@@ -162,14 +162,14 @@ pub fn emit_go(typed: Arc<ResolvedGraph>) -> Arc<EmitResult> {
         let v2rt_file = emit_go_v2rt_module();
         let files = v1_rt::concat(
             v1_rt::concat(
-                Rc::new(vec![go_mod.clone(), v2rt_file.clone()]),
+                Arc::new(vec![go_mod.clone(), v2rt_file.clone()]),
                 module_files.clone(),
             ),
             test_files.clone(),
         );
         Arc::new(EmitResult {
             files: files.clone(),
-            diagnostics: Rc::new(vec![]),
+            diagnostics: Arc::new(vec![]),
         })
     }
 }
@@ -670,28 +670,28 @@ pub fn collect_go_std_imports(
 ) -> Arc<Vec<String>> {
     {
         let fmt_import = if ((has_types.clone() || has_functions.clone()) || has_services.clone()) {
-            Rc::new(vec!["\t\"fmt\"".to_string()])
+            Arc::new(vec!["\t\"fmt\"".to_string()])
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let rt_import = if go_module_needs_v2rt_import(has_services.clone(), has_functions.clone())
         {
-            Rc::new(vec![v1_rt::concat(
+            Arc::new(vec![v1_rt::concat(
                 v1_rt::concat("\t\"".to_string(), go_v2rt_import_path()),
                 "\"".to_string(),
             )])
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let net_imports = if has_services.clone() {
-            Rc::new(vec![
+            Arc::new(vec![
                 "\t\"net/http\"".to_string(),
                 "\t\"encoding/json\"".to_string(),
                 "\t\"bytes\"".to_string(),
                 "\t\"io\"".to_string(),
             ])
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         v1_rt::concat(
             v1_rt::concat(fmt_import.clone(), rt_import.clone()),
@@ -1263,7 +1263,7 @@ pub fn emit_go_func_def(
     {
         let service_names = match lookup_item(registry.clone(), name.clone()) {
             Some(info) => info.service_names.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let params_str = emit_go_func_params(
             params.clone(),
@@ -1603,16 +1603,16 @@ pub fn emit_go_rest_call(
         let all_lines = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    Rc::new(vec![url_line.clone(), body_line.clone(), req_line.clone()]),
+                    Arc::new(vec![url_line.clone(), body_line.clone(), req_line.clone()]),
                     if (auth_line.clone() == "".to_string()) {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     } else {
-                        Rc::new(vec![auth_line.clone()])
+                        Arc::new(vec![auth_line.clone()])
                     },
                 ),
                 header_lines.clone(),
             ),
-            Rc::new(vec![send_lines.clone()]),
+            Arc::new(vec![send_lines.clone()]),
         );
         all_lines.clone().join(&"\n".to_string())
     }
@@ -1671,10 +1671,10 @@ pub fn emit_go_shell_call(
         );
         let all_lines = v1_rt::concat(
             v1_rt::concat(
-                Rc::new(vec![cmd_line.clone(), dir_line.clone()]),
+                Arc::new(vec![cmd_line.clone(), dir_line.clone()]),
                 env_lines.clone(),
             ),
-            Rc::new(vec![run_lines.clone()]),
+            Arc::new(vec![run_lines.clone()]),
         );
         all_lines.clone().join(&"\n".to_string())
     }

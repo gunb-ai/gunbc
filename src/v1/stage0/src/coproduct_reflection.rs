@@ -1,7 +1,7 @@
 use crate::v1_rt::VecCompat;
 use im::HashMap;
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::cli_run::{
     collect_dag_files_tolerant, extract_module_path, is_test_dag, repo_rel, workspace_root,
@@ -17,7 +17,7 @@ use crate::v1_std_core::{
     param_node_type_expr, source_text_at, Connective, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
-type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
+type SourceIndices = Arc<HashMap<String, Arc<NewlineIndex>>>;
 
 fn expect_symbol<'a>(value: Option<&'a Value>, what: &str) -> InterpResult<&'a str> {
     match value {
@@ -79,7 +79,7 @@ pub fn eval_symbol_lexeme(
 pub(crate) fn type_item_by_name<'a>(
     ctx: &'a InterpContext,
     type_name: &str,
-) -> InterpResult<(&'a Rc<Node>, String)> {
+) -> InterpResult<(&'a Arc<Node>, String)> {
     let si = ctx.source_indices();
     for module in ctx.modules.iter() {
         for item in module.items.iter() {
@@ -111,7 +111,7 @@ fn nullary_connective_variant(ctx: &InterpContext, name: &str) -> Value {
     Value::Variant {
         type_name: ctx.sym("Connective"),
         variant_name: ctx.sym(name),
-        fields: Rc::new(vec![]),
+        fields: Arc::new(vec![]),
     }
 }
 
@@ -119,7 +119,7 @@ fn atom_connective_variant(ctx: &InterpContext, identity: &str) -> Value {
     Value::Variant {
         type_name: ctx.sym("Connective"),
         variant_name: ctx.sym("Atom"),
-        fields: Rc::new(vec![(
+        fields: Arc::new(vec![(
             ctx.sym("identity"),
             Value::Str(identity.to_string()),
         )]),
@@ -130,7 +130,7 @@ fn node_kind_type_node(ctx: &InterpContext, connective: Value) -> Value {
     Value::Variant {
         type_name: ctx.sym("NodeKind"),
         variant_name: ctx.sym("TypeNode"),
-        fields: Rc::new(vec![(ctx.sym("connective"), connective)]),
+        fields: Arc::new(vec![(ctx.sym("connective"), connective)]),
     }
 }
 
@@ -138,14 +138,14 @@ fn synthetic_occurrence(ctx: &InterpContext) -> Value {
     Value::Variant {
         type_name: ctx.sym("NodeOccurrenceId"),
         variant_name: ctx.sym("SyntheticOccurrence"),
-        fields: Rc::new(vec![]),
+        fields: Arc::new(vec![]),
     }
 }
 
 fn node_record(ctx: &InterpContext, kind: Value, children: Vec<Value>) -> Value {
     Value::Record {
         type_name: ctx.sym("Node"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (ctx.sym("kind"), kind),
             (
                 ctx.sym("children"),
@@ -159,13 +159,13 @@ fn node_record(ctx: &InterpContext, kind: Value, children: Vec<Value>) -> Value 
 fn edge_named(ctx: &InterpContext, name: &str, target: Value) -> Value {
     Value::Record {
         type_name: ctx.sym("Edge"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (
                 ctx.sym("label"),
                 Value::Variant {
                     type_name: ctx.sym("EdgeLabel"),
                     variant_name: ctx.sym("Named"),
-                    fields: Rc::new(vec![(ctx.sym("name"), Value::Str(name.to_string()))]),
+                    fields: Arc::new(vec![(ctx.sym("name"), Value::Str(name.to_string()))]),
                 },
             ),
             (ctx.sym("target"), target),
@@ -182,8 +182,8 @@ fn unit_type_node(ctx: &InterpContext) -> Value {
 }
 
 fn type_expr_authored_name(
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    type_expr: &Rc<Node>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
+    type_expr: &Arc<Node>,
 ) -> String {
     if type_expr.connective == Connective::Conj
         && type_expr.type_annotation.is_some()
@@ -216,8 +216,8 @@ fn type_expr_authored_name(
 
 fn marshal_type_expr_ref(
     ctx: &InterpContext,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    type_expr: &Rc<Node>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
+    type_expr: &Arc<Node>,
 ) -> InterpResult<Value> {
     let name = type_expr_authored_name(si, type_expr);
     if name.is_empty() {
@@ -234,8 +234,8 @@ fn marshal_type_expr_ref(
 
 fn marshal_variant_arm_target(
     ctx: &InterpContext,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant: &Rc<Node>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
+    variant: &Arc<Node>,
 ) -> InterpResult<Value> {
     if variant.children.is_empty() {
         return Ok(unit_type_node(ctx));
@@ -260,8 +260,8 @@ fn marshal_variant_arm_target(
 
 pub fn marshal_disj_type_item(
     ctx: &InterpContext,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    item: &Rc<Node>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
+    item: &Arc<Node>,
 ) -> InterpResult<Value> {
     if item.connective != Connective::Disj {
         return Err(InterpError::TypeError {
@@ -305,8 +305,8 @@ struct ParsedTypeDecl {
     module_path: String,
     rel_path: String,
     name: String,
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 }
 
 /// Parse-only type-decl extraction over `build_module_path_index` — fail-closed on parse
@@ -351,8 +351,8 @@ fn type_decls_parse_only_fail_closed(
 
 fn concept_decl_node(
     ctx: &InterpContext,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    item: &Rc<Node>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
+    item: &Arc<Node>,
 ) -> InterpResult<Value> {
     match item.connective {
         Connective::Disj => marshal_disj_type_item(ctx, si, item),
@@ -376,16 +376,16 @@ pub fn eval_qualified_name_from_dotted_string(
 
 fn concept_decl_record(
     ctx: &InterpContext,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
     module_name: &str,
     name: &str,
-    item: &Rc<Node>,
+    item: &Arc<Node>,
 ) -> InterpResult<Value> {
     let qualified_name = logical_qualified_name(module_name, name);
     let node = concept_decl_node(ctx, si, item)?;
     Ok(Value::Record {
         type_name: ctx.sym("ConceptDecl"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (ctx.sym("qualified_name"), Value::Str(qualified_name)),
             (ctx.sym("name"), Value::Str(name.to_string())),
             (ctx.sym("node"), node),
@@ -435,7 +435,7 @@ fn for_each_live_registry_item<F>(
     mut f: F,
 ) -> InterpResult<()>
 where
-    F: FnMut(&str, &str, &Rc<Node>) -> InterpResult<()>,
+    F: FnMut(&str, &str, &Arc<Node>) -> InterpResult<()>,
 {
     let si = ctx.source_indices();
     for module in ctx.modules.iter() {
@@ -478,13 +478,13 @@ pub fn eval_concept_decl_facts_live(
 fn edge_positional(ctx: &InterpContext, target: Value) -> Value {
     Value::Record {
         type_name: ctx.sym("Edge"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (
                 ctx.sym("label"),
                 Value::Variant {
                     type_name: ctx.sym("EdgeLabel"),
                     variant_name: ctx.sym("Positional"),
-                    fields: Rc::new(vec![]),
+                    fields: Arc::new(vec![]),
                 },
             ),
             (ctx.sym("target"), target),
@@ -500,7 +500,7 @@ fn atom_identity_node(ctx: &InterpContext, identity: &str) -> Value {
     )
 }
 
-fn node_authored_name(node: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+fn node_authored_name(node: &Arc<Node>, si: &Arc<HashMap<String, Arc<NewlineIndex>>>) -> String {
     if !node.name.is_empty() {
         node.name.clone()
     } else {
@@ -514,7 +514,7 @@ fn node_authored_name(node: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>
 // excluded; and an `ExprCall` whose callee IS the parameter (a fn-valued param applied:
 // `predicate(x)`) -- the callee is the call node's own name, not a child, so it is invisible
 // to a children-only walk. Both are genuine uses of a value parameter.
-fn node_references_param(node: &Rc<Node>, name: &str, param_names: &[String]) -> bool {
+fn node_references_param(node: &Arc<Node>, name: &str, param_names: &[String]) -> bool {
     if name.is_empty() || !param_names.iter().any(|p| p.as_str() == name) {
         return false;
     }
@@ -537,7 +537,7 @@ fn node_references_param(node: &Rc<Node>, name: &str, param_names: &[String]) ->
 // (graft its RHS), so it can never manufacture a false dead-wire RED; it merely forgoes a
 // dead-wire it cannot prove. Atom EMISSION stays on the strict `node_references_param`
 // (LocalValueBinding-only), so the reachability query itself is unchanged.
-fn node_local_reference_name(node: &Rc<Node>, name: &str) -> Option<String> {
+fn node_local_reference_name(node: &Arc<Node>, name: &str) -> Option<String> {
     if name.is_empty() {
         return None;
     }
@@ -552,8 +552,8 @@ fn node_local_reference_name(node: &Rc<Node>, name: &str) -> Option<String> {
 // from a lambda subtree's reference set so a `let` named like a lambda param is not kept
 // spuriously live by the lambda's shadowing use.
 fn lambda_param_names_of(
-    node: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    node: &Arc<Node>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Vec<String> {
     node.children
         .iter()
@@ -584,9 +584,9 @@ fn lambda_param_names_of(
 // construction_justification boundary (3).)
 fn marshal_fn_body_skeleton(
     ctx: &InterpContext,
-    node: &Rc<Node>,
+    node: &Arc<Node>,
     param_names: &[String],
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Value {
     marshal_skeleton(ctx, node, param_names, si).0
 }
@@ -601,9 +601,9 @@ fn conj_record(ctx: &InterpContext, edges: Vec<Value>) -> Value {
 
 fn marshal_skeleton(
     ctx: &InterpContext,
-    node: &Rc<Node>,
+    node: &Arc<Node>,
     param_names: &[String],
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> (Value, std::collections::BTreeSet<String>) {
     match node.expr_data.as_ref() {
         ExprData::ExprBlock => marshal_stmt_sequence(
@@ -625,7 +625,7 @@ fn marshal_skeleton(
 // Host SOURCE half for P1 G2 call-reachability (docs/plans/live-read-witness-classification-design.md §9 P1 / §14).
 // Dissolves when fn-arrow body projection is a modeled substrate fold (same #5364 corridor as
 // `eval_fn_arrow_decl_facts_live`) rather than hand-Rust marshal in this module.
-fn marshal_string_literal_atom(ctx: &InterpContext, node: &Rc<Node>) -> Option<Value> {
+fn marshal_string_literal_atom(ctx: &InterpContext, node: &Arc<Node>) -> Option<Value> {
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value, .. } => match value.as_ref() {
             crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
@@ -639,7 +639,7 @@ fn marshal_string_literal_atom(ctx: &InterpContext, node: &Rc<Node>) -> Option<V
 
 fn hoist_call_arg_string_literal_edges(
     ctx: &InterpContext,
-    node: &Rc<Node>,
+    node: &Arc<Node>,
     edges: &mut Vec<Value>,
 ) {
     if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
@@ -657,9 +657,9 @@ fn hoist_call_arg_string_literal_edges(
 
 fn marshal_generic(
     ctx: &InterpContext,
-    node: &Rc<Node>,
+    node: &Arc<Node>,
     param_names: &[String],
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> (Value, std::collections::BTreeSet<String>) {
     let name = node_authored_name(node, si);
     let mut edges: Vec<Value> = Vec::with_capacity(node.children.len() + 1);
@@ -710,9 +710,9 @@ fn marshal_generic(
 // so its value is always grafted (never a false RED on a degenerate body).
 fn marshal_stmt_sequence(
     ctx: &InterpContext,
-    stmts: &[Rc<Node>],
+    stmts: &[Arc<Node>],
     param_names: &[String],
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> (Value, std::collections::BTreeSet<String>) {
     let mut edges: Vec<Value> = Vec::new();
     let mut live_refs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
@@ -765,7 +765,7 @@ fn marshal_stmt_sequence(
 // itself (`T : T`) -- whereas a value parameter's type-expr names a different type
 // (`xs : List`). So: a parameter is a type parameter iff its first child's authored name
 // equals its own.
-fn param_is_type_param(p: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+fn param_is_type_param(p: &Arc<Node>, si: &Arc<HashMap<String, Arc<NewlineIndex>>>) -> bool {
     let pname = authored_name_at(si.clone(), p.clone());
     if pname.is_empty() {
         return false;
@@ -779,14 +779,14 @@ fn param_is_type_param(p: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>)
 fn fn_arrow_param_record(ctx: &InterpContext, param_name: &str) -> Value {
     Value::Record {
         type_name: ctx.sym("FnArrowParam"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (ctx.sym("name"), Value::Str(param_name.to_string())),
             (ctx.sym("node"), atom_identity_node(ctx, param_name)),
         ])),
     }
 }
 
-fn fn_item_param_names(item: &Rc<Node>, si: &SourceIndices) -> Vec<String> {
+fn fn_item_param_names(item: &Arc<Node>, si: &SourceIndices) -> Vec<String> {
     let mut param_names = Vec::new();
     for p in item.params.iter() {
         if param_is_type_param(p, si) {
@@ -807,7 +807,7 @@ fn fn_item_param_names(item: &Rc<Node>, si: &SourceIndices) -> Vec<String> {
 fn fn_arrow_output_skeleton(
     ctx: &InterpContext,
     si: &SourceIndices,
-    item: &Rc<Node>,
+    item: &Arc<Node>,
 ) -> Option<Value> {
     let body = item.body.as_ref()?;
     let param_names = fn_item_param_names(item, si);
@@ -819,7 +819,7 @@ fn fn_arrow_decl_record(
     si: &SourceIndices,
     module_name: &str,
     name: &str,
-    item: &Rc<Node>,
+    item: &Arc<Node>,
 ) -> Option<Value> {
     let output = fn_arrow_output_skeleton(ctx, si, item)?;
     let param_names = fn_item_param_names(item, si);
@@ -830,7 +830,7 @@ fn fn_arrow_decl_record(
     let qualified_name = logical_qualified_name(module_name, name);
     Some(Value::Record {
         type_name: ctx.sym("FnArrowDecl"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (ctx.sym("qualified_name"), Value::Str(qualified_name)),
             (ctx.sym("name"), Value::Str(name.to_string())),
             (ctx.sym("output"), output),
@@ -886,8 +886,8 @@ pub fn eval_corpus_dependency_view_per_pr_substrate_refuse(
 }
 
 fn literal_source_lexeme(
-    node: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    node: &Arc<Node>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     let index = si.get(&node.span.file)?;
     let text = source_text_at(index.clone(), node.span.clone());
@@ -899,8 +899,8 @@ fn literal_source_lexeme(
 }
 
 fn data_init_literal_fingerprint(
-    body: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    body: &Arc<Node>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     // Encoding must match `v2.std.data_index` (`literal_fingerprint_*_lexeme`).
     let lexeme = literal_source_lexeme(body, si)?;
@@ -926,14 +926,14 @@ fn data_init_decl_record(
     si: &SourceIndices,
     module_name: &str,
     name: &str,
-    item: &Rc<Node>,
+    item: &Arc<Node>,
 ) -> Option<Value> {
     let body = item.body.as_ref()?;
     let literal_fp = data_init_literal_fingerprint(body, si)?;
     let qualified_name = logical_qualified_name(module_name, name);
     Some(Value::Record {
         type_name: ctx.sym("DataInitDecl"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (ctx.sym("qualified_name"), Value::Str(qualified_name)),
             (ctx.sym("module"), Value::Str(module_name.to_string())),
             (ctx.sym("name"), Value::Str(name.to_string())),
@@ -976,7 +976,7 @@ pub struct DeclFactRaw {
     pub qualified_name: String,
     pub name: String,
     pub kind: ItemKind,
-    pub node: Rc<Node>,
+    pub node: Arc<Node>,
     pub rel_path: String,
     pub source_indices: SourceIndices,
 }
@@ -1095,13 +1095,13 @@ fn marshal_decl_item_kind(ctx: &InterpContext, kind: ItemKind) -> Value {
     Value::Variant {
         type_name: ctx.sym("ItemKind"),
         variant_name: ctx.sym(variant),
-        fields: Rc::new(vec![]),
+        fields: Arc::new(vec![]),
     }
 }
 
 fn marshal_decl_fact_node(
     ctx: &InterpContext,
-    item: &Rc<Node>,
+    item: &Arc<Node>,
     kind: ItemKind,
     si: &SourceIndices,
 ) -> InterpResult<Value> {
@@ -1128,8 +1128,8 @@ fn marshal_decl_fact_node(
 // Dissolves per `dag/std/interface_summary.dag::interface_summary_v0_dissolution_trigger`.
 fn marshal_fn_export_signature_node(
     ctx: &InterpContext,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    item: &Rc<Node>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
+    item: &Arc<Node>,
 ) -> InterpResult<Value> {
     let mut edges = Vec::new();
     for p in item.params.iter() {
@@ -1156,7 +1156,7 @@ fn marshal_fn_export_signature_node(
 
 fn marshal_export_signature_node(
     ctx: &InterpContext,
-    item: &Rc<Node>,
+    item: &Arc<Node>,
     kind: ItemKind,
     si: &SourceIndices,
 ) -> InterpResult<Value> {
@@ -1191,7 +1191,7 @@ pub fn eval_export_signature_facts(
             })?;
         rows.push(Value::Record {
             type_name: ctx.sym("DeclFact"),
-            fields: Rc::new(sorted_fields(vec![
+            fields: Arc::new(sorted_fields(vec![
                 (ctx.sym("qualified_name"), Value::Str(fact.qualified_name)),
                 (ctx.sym("name"), Value::Str(fact.name)),
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
@@ -1216,7 +1216,7 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
             })?;
         rows.push(Value::Record {
             type_name: ctx.sym("DeclFact"),
-            fields: Rc::new(sorted_fields(vec![
+            fields: Arc::new(sorted_fields(vec![
                 (ctx.sym("qualified_name"), Value::Str(fact.qualified_name)),
                 (ctx.sym("name"), Value::Str(fact.name)),
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
@@ -1228,7 +1228,7 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
-fn variant_is_nullary(variant: &Rc<Node>) -> bool {
+fn variant_is_nullary(variant: &Arc<Node>) -> bool {
     variant.children.is_empty()
 }
 
@@ -1240,7 +1240,7 @@ fn nullary_coproduct_variant_value(
     Value::Variant {
         type_name: ctx.sym(type_name),
         variant_name: ctx.sym(variant_label),
-        fields: Rc::new(vec![]),
+        fields: Arc::new(vec![]),
     }
 }
 
@@ -1250,13 +1250,13 @@ fn nullary_coproduct_variant_value(
 // Checkable receipt: the imported-named-coproduct generic-wrapper witness must
 // resolve, while the wrong-A/context-B and payload-bearing controls must refuse.
 struct TypedNullaryCoproductWitness {
-    declaration: Rc<Node>,
-    resolution_owner: Rc<Node>,
+    declaration: Arc<Node>,
+    resolution_owner: Arc<Node>,
 }
 
 fn typed_nullary_coproduct_item_from_call(
     ctx: &InterpContext,
-    call: &Rc<Node>,
+    call: &Arc<Node>,
     args: &[(Option<String>, Value)],
 ) -> InterpResult<TypedNullaryCoproductWitness> {
     let discriminator_expr = call
@@ -1330,8 +1330,8 @@ fn typed_nullary_coproduct_item_from_call(
     }
 }
 
-fn syntax_tree_contains_node(root: &Rc<Node>, needle: &Rc<Node>) -> bool {
-    Rc::ptr_eq(root, needle)
+fn syntax_tree_contains_node(root: &Arc<Node>, needle: &Arc<Node>) -> bool {
+    Arc::ptr_eq(root, needle)
         || root
             .children
             .iter()
@@ -1344,9 +1344,9 @@ fn syntax_tree_contains_node(root: &Rc<Node>, needle: &Rc<Node>) -> bool {
 
 fn visible_coproduct_declaration_from_syntax_node(
     ctx: &InterpContext,
-    syntax_node: &Rc<Node>,
+    syntax_node: &Arc<Node>,
     type_name: &str,
-) -> InterpResult<Rc<Node>> {
+) -> InterpResult<Arc<Node>> {
     let module = ctx
         .modules
         .iter()
@@ -1371,7 +1371,7 @@ fn visible_coproduct_declaration_from_syntax_node(
 
 pub fn eval_coproduct_nullary_inhabitants(
     ctx: &InterpContext,
-    call: &Rc<Node>,
+    call: &Arc<Node>,
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
     let type_name = expect_symbol(
@@ -1384,7 +1384,7 @@ pub fn eval_coproduct_nullary_inhabitants(
         &typed_witness.resolution_owner,
         type_name,
     )?;
-    if !Rc::ptr_eq(&requested_declaration, &typed_witness.declaration) {
+    if !Arc::ptr_eq(&requested_declaration, &typed_witness.declaration) {
         return Ok(outcome_rejected_value(
             ctx,
             "coproduct_nullary_inhabitants: requested type does not match typed discriminator",
@@ -1432,7 +1432,7 @@ fn outcome_accepted_list(ctx: &InterpContext, values: Vec<Value>) -> Value {
     Value::Variant {
         type_name: ctx.sym("Outcome"),
         variant_name: ctx.sym("Accepted"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (ctx.sym("value"), crate::v1_interpreter::list_value(values)),
             (
                 ctx.sym("diagnostics"),
@@ -1446,11 +1446,11 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
     Value::Variant {
         type_name: ctx.sym("Outcome"),
         variant_name: ctx.sym("Rejected"),
-        fields: Rc::new(vec![(
+        fields: Arc::new(vec![(
             ctx.sym("diagnostics"),
             crate::v1_interpreter::list_value(vec![Value::Record {
                 type_name: ctx.sym("Diagnostic"),
-                fields: Rc::new(vec![(ctx.sym("reason"), Value::Str(reason.to_string()))]),
+                fields: Arc::new(vec![(ctx.sym("reason"), Value::Str(reason.to_string()))]),
             }]),
         )]),
     }

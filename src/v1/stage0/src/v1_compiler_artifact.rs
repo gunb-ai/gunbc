@@ -93,7 +93,7 @@ pub fn plan_artifacts(rule: Arc<PartitionRule>) -> Arc<ArtifactPlan> {
             artifacts: arts, ..
         } => Arc::new(ArtifactPlan {
             artifacts: arts.clone(),
-            boundaries: Rc::new(vec![]),
+            boundaries: Arc::new(vec![]),
         }),
     }
 }
@@ -109,12 +109,12 @@ pub fn default_artifact_plan(
     target: RenderTarget,
 ) -> Arc<ArtifactPlan> {
     plan_artifacts(Arc::new(PartitionRule::Explicit {
-        artifacts: Rc::new(vec![Arc::new(Artifact {
+        artifacts: Arc::new(vec![Arc::new(Artifact {
             name: "default".to_string(),
             kind: ArtifactKind::ServiceBinary,
             target: target.clone(),
             entry_modules: root_modules.clone(),
-            dependencies: Rc::new(vec![]),
+            dependencies: Arc::new(vec![]),
         })]),
     }))
 }

@@ -283,7 +283,7 @@ pub fn binding_candidates_from_supplied_declarations(
         let seen_candidate_ids = v1_rt::rc_map_insert(build.seen_candidate_ids.clone(), candidate_occurrence.value.clone(), candidate_occurrence.clone());
 match (*occurrence_category_binding_verdict(reference.category.clone(), declaration.category.clone())).clone() {
     OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible => Arc::new(OccurrenceCandidatePopulationBuild {
-    candidates: v1_rt::concat(build.candidates.clone(), Rc::new(vec![binding_candidate_from_declaration(declaration.clone())])),
+    candidates: v1_rt::concat(build.candidates.clone(), Arc::new(vec![binding_candidate_from_declaration(declaration.clone())])),
     seen_candidate_ids: seen_candidate_ids.clone(),
     refusal: None,
 }),

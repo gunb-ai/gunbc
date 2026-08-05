@@ -30,7 +30,7 @@ pub fn generated_pub_mod_block() -> String {
 pub fn generated_pub_mod_basenames() -> Arc<Vec<String>> {
     thread_local! {
         static CACHED: Arc<Vec<String>> = {
-            Rc::new(vec!["v1_interpreter".to_string(), "cli_run".to_string(), "coproduct_reflection".to_string(), "resolved_graph_cache".to_string(), "shared_typecheck_store".to_string(), "recorded_fixture".to_string(), "memory_governor".to_string(), "module_path_index".to_string(), "usv_pilot_v2_std_algebra".to_string(), "usv_pilot_v2_std_collection".to_string(), "usv_pilot_v2_std_node".to_string(), "v2_compiler_resolve".to_string(), "v2_compiler_program_partition".to_string(), "v2_compiler_tokenize".to_string(), "v2_compiler_infer".to_string(), "v1_interpreter_dispatch_generated".to_string()])
+            Arc::new(vec!["v1_interpreter".to_string(), "cli_run".to_string(), "coproduct_reflection".to_string(), "resolved_graph_cache".to_string(), "shared_typecheck_store".to_string(), "recorded_fixture".to_string(), "memory_governor".to_string(), "module_path_index".to_string(), "usv_pilot_v2_std_algebra".to_string(), "usv_pilot_v2_std_collection".to_string(), "usv_pilot_v2_std_node".to_string(), "v2_compiler_resolve".to_string(), "v2_compiler_program_partition".to_string(), "v2_compiler_tokenize".to_string(), "v2_compiler_infer".to_string(), "v1_interpreter_dispatch_generated".to_string()])
         };
     }
     CACHED.with(|c: &Arc<Vec<String>>| c.clone())
@@ -39,7 +39,7 @@ pub fn generated_pub_mod_basenames() -> Arc<Vec<String>> {
 pub fn generated_stage0_filenames() -> Arc<Vec<String>> {
     thread_local! {
         static CACHED: Arc<Vec<String>> = {
-            Rc::new(vec!["v1_interpreter.rs".to_string(), "cli_run.rs".to_string(), "coproduct_reflection.rs".to_string(), "resolved_graph_cache.rs".to_string(), "shared_typecheck_store.rs".to_string(), "recorded_fixture.rs".to_string(), "main.rs".to_string(), "phase_profile.rs".to_string(), "pre_push.rs".to_string(), "census_exclude_derive.rs".to_string(), "memory_governor.rs".to_string(), "std_lens_verdict.rs".to_string(), "v2_compiler_body_producer.rs".to_string(), "v2_compiler_normalize.rs".to_string(), "v2_compiler_target_carriers.rs".to_string(), "v2_compiler_discovery_enumeration.rs".to_string(), "v2_compiler_parse_engine_hooks.rs".to_string(), "v2_compiler_use_site_verdict.rs".to_string(), "usv_pilot_v2_std_algebra.rs".to_string(), "usv_pilot_v2_std_collection.rs".to_string(), "usv_pilot_v2_std_node.rs".to_string(), "v2_compiler_resolve.rs".to_string(), "v2_compiler_program_partition.rs".to_string(), "v2_compiler_tokenize.rs".to_string(), "v2_compiler_infer.rs".to_string(), "v1_interpreter_dispatch_generated.rs".to_string()])
+            Arc::new(vec!["v1_interpreter.rs".to_string(), "cli_run.rs".to_string(), "coproduct_reflection.rs".to_string(), "resolved_graph_cache.rs".to_string(), "shared_typecheck_store.rs".to_string(), "recorded_fixture.rs".to_string(), "main.rs".to_string(), "phase_profile.rs".to_string(), "pre_push.rs".to_string(), "census_exclude_derive.rs".to_string(), "memory_governor.rs".to_string(), "std_lens_verdict.rs".to_string(), "v2_compiler_body_producer.rs".to_string(), "v2_compiler_normalize.rs".to_string(), "v2_compiler_target_carriers.rs".to_string(), "v2_compiler_discovery_enumeration.rs".to_string(), "v2_compiler_parse_engine_hooks.rs".to_string(), "v2_compiler_use_site_verdict.rs".to_string(), "usv_pilot_v2_std_algebra.rs".to_string(), "usv_pilot_v2_std_collection.rs".to_string(), "usv_pilot_v2_std_node.rs".to_string(), "v2_compiler_resolve.rs".to_string(), "v2_compiler_program_partition.rs".to_string(), "v2_compiler_tokenize.rs".to_string(), "v2_compiler_infer.rs".to_string(), "v1_interpreter_dispatch_generated.rs".to_string()])
         };
     }
     CACHED.with(|c: &Arc<Vec<String>>| c.clone())
@@ -48,7 +48,7 @@ pub fn generated_stage0_filenames() -> Arc<Vec<String>> {
 pub fn generated_stage0_dirs() -> Arc<Vec<String>> {
     thread_local! {
         static CACHED: Arc<Vec<String>> = {
-            Rc::new(vec!["module_path_index".to_string(), "cli_run".to_string()])
+            Arc::new(vec!["module_path_index".to_string(), "cli_run".to_string()])
         };
     }
     CACHED.with(|c: &Arc<Vec<String>>| c.clone())

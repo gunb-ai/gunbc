@@ -68,11 +68,11 @@ pub fn container_expected_arity(name: String) -> Option<i64> {
 
 pub fn container_param_names_for(kind_name: String) -> Arc<Vec<String>> {
     if (kind_name.clone() == "Witness".to_string()) {
-        Rc::new(vec!["T".to_string()])
+        Arc::new(vec!["T".to_string()])
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), kind_name.clone()) {
             Some(p) => algebra_type_param_names(p.clone()),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         }
     }
 }
@@ -182,7 +182,7 @@ pub fn container_template_alias_algebra(name: String) -> Option<String> {
 }
 
 pub fn canonical_container_names() -> Arc<Vec<String>> {
-    Rc::new(vec![
+    Arc::new(vec![
         "BooleanAlgebra".to_string(),
         "FreeMonoid".to_string(),
         "List".to_string(),

@@ -56,7 +56,7 @@ pub fn module_item_entries(
         .iter()
         .cloned()
         .fold(
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             |acc: Arc<Vec<Arc<OccurrenceIndexEntry>>>, entry: Arc<OccurrenceIndexEntry>| {
                 if (entry_ancestor_depth(entry.clone()) == 1) {
                     v1_rt::rc_list_push(acc.clone(), entry.clone())
@@ -136,7 +136,7 @@ pub fn annotation_subjects(
         let entries = transport.index.clone().entries.clone();
         let items = module_item_entries(transport.clone());
         entries.clone().iter().cloned().fold(
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             |acc: Arc<Vec<Arc<AnnotationSubject>>>, entry: Arc<OccurrenceIndexEntry>| {
                 let depth = entry_ancestor_depth(entry.clone());
                 let span = entry.projection.clone().diagnostic_span.clone();
@@ -233,7 +233,7 @@ pub fn bind_annotations(
 ) -> Arc<AnnotationAttachmentResult> {
     attach_annotations(
         captures.clone().iter().cloned().fold(
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             |acc: Arc<Vec<Arc<NormalizedAnnotationCapture>>>,
              capture: Arc<UnboundAnnotationCapture>| {
                 v1_rt::rc_list_push(acc, normalize_dag_annotation(capture.clone()))
@@ -273,7 +273,7 @@ pub fn admit_source_annotations(
         AnnotationAdmission::AnnotationsAdmitted { graph: graph, .. } => {
             Arc::new(AdmittedSourceAnnotations {
                 graph: graph.clone(),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             })
         }
         AnnotationAdmission::AnnotationsRefused {
@@ -284,7 +284,7 @@ pub fn admit_source_annotations(
                 .iter()
                 .cloned()
                 .fold(
-                    Rc::new(vec![]),
+                    Arc::new(vec![]),
                     |acc: Arc<Vec<Arc<CompilerDiagnostic>>>,
                      refusal: Arc<AnnotationAttachmentRefusal>| {
                         v1_rt::rc_list_push(

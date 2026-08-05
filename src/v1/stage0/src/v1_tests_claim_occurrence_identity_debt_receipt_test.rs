@@ -153,7 +153,7 @@ pub fn oid_receipt_exact_binding_holds(
     match (*resolve_reference_occurrence_binding(
         transport.clone(),
         reference.occurrence.clone(),
-        Rc::new(vec![declaration.occurrence.clone()]),
+        Arc::new(vec![declaration.occurrence.clone()]),
     ))
     .clone()
     {
@@ -215,7 +215,7 @@ pub fn oid_receipt_unbound_reference_holds(
     match (*resolve_reference_occurrence_binding(
         transport.clone(),
         reference.occurrence.clone(),
-        Rc::new(vec![]),
+        Arc::new(vec![]),
     ))
     .clone()
     {
@@ -560,7 +560,7 @@ pub fn w_pattern_declaration_reachability_executes_holds() -> bool {
             "occurrence-receipt-patterns.dag".to_string(),
             occurrence_id_allocator_initial(),
         );
-        let names = Rc::new(vec![
+        let names = Arc::new(vec![
             "direct_bind".to_string(),
             "explicit_bind".to_string(),
             "shorthand_only".to_string(),

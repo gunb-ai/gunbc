@@ -147,8 +147,8 @@ pub struct UsageAccum {
 pub fn empty_usage_accum() -> Arc<UsageAccum> {
     Arc::new(UsageAccum {
         bindings: v1_rt::rc_empty_map::<String, Arc<BindingUsage>>(),
-        fold_call_nodes: Rc::new(vec![]),
-        touched: Rc::new(vec![]),
+        fold_call_nodes: Arc::new(vec![]),
+        touched: Arc::new(vec![]),
     })
 }
 
@@ -171,7 +171,7 @@ pub fn record_use(
             None => Arc::new(BindingUsage {
                 name: name.clone(),
                 binding_kind: None,
-                consumers: Rc::new(vec![]),
+                consumers: Arc::new(vec![]),
             }),
         };
         let effective_kind = if (existing.binding_kind.clone() != None) {
@@ -219,7 +219,7 @@ pub fn branch_seed(from: Arc<UsageAccum>) -> Arc<UsageAccum> {
     Arc::new(UsageAccum {
         bindings: from.bindings.clone(),
         fold_call_nodes: from.fold_call_nodes.clone(),
-        touched: Rc::new(vec![]),
+        touched: Arc::new(vec![]),
     })
 }
 
@@ -506,7 +506,7 @@ pub fn walk_expr(
                 };
                 merge_branch_usages(
                     c_accum.clone(),
-                    Rc::new(vec![t_accum.clone(), e_accum.clone()]),
+                    Arc::new(vec![t_accum.clone(), e_accum.clone()]),
                 )
             }
             ExprData::ExprLet => {
@@ -945,7 +945,7 @@ pub fn fold_terminal_expr(mut body: Arc<Node>) -> Arc<Node> {
 pub fn empty_fold_acc_use_summary() -> Arc<FoldAccUseSummary> {
     Arc::new(FoldAccUseSummary {
         whole_acc_uses: 0,
-        field_moves: Rc::new(vec![]),
+        field_moves: Arc::new(vec![]),
         nested_acc_refs: false,
     })
 }
@@ -976,13 +976,13 @@ pub fn summarize_fold_acc_uses(
                     if inside_nested.clone() {
                         Arc::new(FoldAccUseSummary {
                             whole_acc_uses: 0,
-                            field_moves: Rc::new(vec![]),
+                            field_moves: Arc::new(vec![]),
                             nested_acc_refs: true,
                         })
                     } else {
                         Arc::new(FoldAccUseSummary {
                             whole_acc_uses: 1,
-                            field_moves: Rc::new(vec![]),
+                            field_moves: Arc::new(vec![]),
                             nested_acc_refs: false,
                         })
                     }
@@ -1002,13 +1002,13 @@ pub fn summarize_fold_acc_uses(
                     if inside_nested.clone() {
                         Arc::new(FoldAccUseSummary {
                             whole_acc_uses: 0,
-                            field_moves: Rc::new(vec![]),
+                            field_moves: Arc::new(vec![]),
                             nested_acc_refs: true,
                         })
                     } else {
                         Arc::new(FoldAccUseSummary {
                             whole_acc_uses: 0,
-                            field_moves: Rc::new(vec![field_access_field_at(
+                            field_moves: Arc::new(vec![field_access_field_at(
                                 node.clone(),
                                 si.clone(),
                             )]),
@@ -1045,7 +1045,7 @@ pub fn summarize_fold_acc_uses(
                 {
                     Arc::new(FoldAccUseSummary {
                         whole_acc_uses: 0,
-                        field_moves: Rc::new(vec![]),
+                        field_moves: Arc::new(vec![]),
                         nested_acc_refs: true,
                     })
                 } else {
@@ -1071,7 +1071,7 @@ pub fn summarize_fold_acc_uses(
                 {
                     Arc::new(FoldAccUseSummary {
                         whole_acc_uses: 0,
-                        field_moves: Rc::new(vec![]),
+                        field_moves: Arc::new(vec![]),
                         nested_acc_refs: true,
                     })
                 } else {
@@ -1253,7 +1253,7 @@ pub fn analyze_ownership(
                             Arc::new(BindingUsage {
                                 name: p_name.clone(),
                                 binding_kind: None,
-                                consumers: Rc::new(vec![]),
+                                consumers: Arc::new(vec![]),
                             }),
                         ),
                         fold_call_nodes: acc.fold_call_nodes,

@@ -304,7 +304,7 @@ pub fn occurrence_identity_acceptance_law_parser_isolation() -> Arc<OccurrenceId
 pub fn occurrence_identity_acceptance_laws() -> Arc<Vec<Arc<OccurrenceIdentityAcceptanceLaw>>> {
     thread_local! {
         static CACHED: Arc<Vec<Arc<OccurrenceIdentityAcceptanceLaw>>> = {
-            Rc::new(vec![occurrence_identity_acceptance_law_rebuilt_reference(), occurrence_identity_acceptance_law_collector_dedupe(), occurrence_identity_acceptance_law_distinct_occurrences(), occurrence_identity_acceptance_law_pattern_reachability(), occurrence_identity_acceptance_law_parser_isolation()])
+            Arc::new(vec![occurrence_identity_acceptance_law_rebuilt_reference(), occurrence_identity_acceptance_law_collector_dedupe(), occurrence_identity_acceptance_law_distinct_occurrences(), occurrence_identity_acceptance_law_pattern_reachability(), occurrence_identity_acceptance_law_parser_isolation()])
         };
     }
     CACHED.with(|c: &Arc<Vec<Arc<OccurrenceIdentityAcceptanceLaw>>>| c.clone())
@@ -475,8 +475,8 @@ pub fn occurrence_containment_ancestors_as_list(
             .clone()
             .iter()
             .cloned()
-            .fold(Rc::new(vec![]), |acc: _, id: OccurrenceId| {
-                v1_rt::concat(Rc::new(vec![id.clone()]), acc)
+            .fold(Arc::new(vec![]), |acc: _, id: OccurrenceId| {
+                v1_rt::concat(Arc::new(vec![id.clone()]), acc)
             }),
     )
 }
@@ -499,7 +499,7 @@ pub fn occurrence_id_list_is_prefix_of(
     } else {
         if ((acc.path_remaining.clone().len() as i64) == 0) {
             Arc::new(OccurrenceIdListPrefixAcc {
-    path_remaining: Rc::new(vec![]),
+    path_remaining: Arc::new(vec![]),
     ok: false,
 })
         } else {

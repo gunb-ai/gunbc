@@ -112,9 +112,9 @@ pub fn check_index_access_node(
         if base_is_string.clone() {
             {
                 let diags = if index_is_int.clone() {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 } else {
-                    Rc::new(vec![access_error(
+                    Arc::new(vec![access_error(
                         "string index requires an Int index".to_string(),
                         span.clone(),
                         module_name.clone(),
@@ -135,9 +135,9 @@ pub fn check_index_access_node(
                         normed_index.clone(),
                         source_indices.clone(),
                     ) {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     } else {
-                        Rc::new(vec![access_error("keyed collection index key type does not match the collection key type".to_string(), span.clone(), module_name.clone())])
+                        Arc::new(vec![access_error("keyed collection index key type does not match the collection key type".to_string(), span.clone(), module_name.clone())])
                     };
                     access_result(
                         with_optional_cardinality(parts.value_type.clone()),
@@ -149,7 +149,7 @@ pub fn check_index_access_node(
                 None => {
                     if node_is_keyed_collection(normed.clone(), source_indices.clone()) {
                         {
-                            let malformed_diags = Rc::new(vec![access_error(
+                            let malformed_diags = Arc::new(vec![access_error(
                                 "malformed keyed collection type in index access".to_string(),
                                 span.clone(),
                                 module_name.clone(),
@@ -177,14 +177,14 @@ pub fn check_index_access_node(
                                 );
                                 access_result(
                                     with_optional_cardinality(elem.clone()),
-                                    Rc::new(vec![]),
+                                    Arc::new(vec![]),
                                     span.clone(),
                                     "list index access".to_string(),
                                 )
                             }
                         } else {
                             {
-                                let diags = Rc::new(vec![access_error("indexing is only supported for String, keyed collection, and list values".to_string(), span.clone(), module_name.clone())]);
+                                let diags = Arc::new(vec![access_error("indexing is only supported for String, keyed collection, and list values".to_string(), span.clone(), module_name.clone())]);
                                 access_result(
                                     unit_type(),
                                     diags.clone(),
@@ -218,9 +218,9 @@ pub fn check_slice_access_node(
                 normed_base.clone(),
             )) && node_is_element_collection(normed_base.clone(), source_indices.clone()));
         let base_diags = if (base_is_string.clone() || base_is_list.clone()) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![access_error(
+            Arc::new(vec![access_error(
                 "slice is only supported for String and list values".to_string(),
                 span.clone(),
                 module_name.clone(),
@@ -229,9 +229,9 @@ pub fn check_slice_access_node(
         let normed_start = normalize_access_type_node(start_type.clone());
         let start_diags =
             if node_type_equals(normed_start.clone(), int_type(), source_indices.clone()) {
-                Rc::new(vec![])
+                Arc::new(vec![])
             } else {
-                Rc::new(vec![access_error(
+                Arc::new(vec![access_error(
                     "slice start requires an Int index".to_string(),
                     span.clone(),
                     module_name.clone(),
@@ -240,9 +240,9 @@ pub fn check_slice_access_node(
         let normed_end = normalize_access_type_node(end_type.clone());
         let end_diags = if node_type_equals(normed_end.clone(), int_type(), source_indices.clone())
         {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![access_error(
+            Arc::new(vec![access_error(
                 "slice end requires an Int index".to_string(),
                 span.clone(),
                 module_name.clone(),

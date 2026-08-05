@@ -59,7 +59,7 @@ pub fn parse_segment_tokens(seg: String) -> Arc<PathSegmentTokensResult> {
             })
         } else {
             Arc::new(PathSegmentTokensResult::ParsedSegmentTokens {
-                tokens: Rc::new(vec![Arc::new(UrlPathToken::LiteralToken {
+                tokens: Arc::new(vec![Arc::new(UrlPathToken::LiteralToken {
                     text: seg.clone(),
                 })]),
             })
@@ -143,25 +143,25 @@ pub fn parse_segment_tokens(seg: String) -> Arc<PathSegmentTokensResult> {
                 }
             };
             let prefix_tokens = if (prefix.clone() != "".to_string()) {
-                Rc::new(vec![Arc::new(UrlPathToken::LiteralToken {
+                Arc::new(vec![Arc::new(UrlPathToken::LiteralToken {
                     text: prefix.clone(),
                 })])
             } else {
-                Rc::new(vec![])
+                Arc::new(vec![])
             };
             let param_tokens = if (param_name.clone() != "".to_string()) {
-                Rc::new(vec![Arc::new(UrlPathToken::ParamToken {
+                Arc::new(vec![Arc::new(UrlPathToken::ParamToken {
                     name: param_name.clone(),
                 })])
             } else {
-                Rc::new(vec![])
+                Arc::new(vec![])
             };
             let suffix_tokens = if (suffix.clone() != "".to_string()) {
-                Rc::new(vec![Arc::new(UrlPathToken::LiteralToken {
+                Arc::new(vec![Arc::new(UrlPathToken::LiteralToken {
                     text: suffix.clone(),
                 })])
             } else {
-                Rc::new(vec![])
+                Arc::new(vec![])
             };
             if (((param_name.clone() == "".to_string())
                 || v1_rt::contains(suffix.clone(), "{".to_string()))
@@ -211,7 +211,7 @@ pub fn match_path_template_note() -> String {
 
 pub fn match_path_segments(path_only: String) -> Arc<Vec<String>> {
     if ((path_only.clone() == "/".to_string()) || (path_only.clone() == "".to_string())) {
-        Rc::new(vec![])
+        Arc::new(vec![])
     } else {
         {
             let raw_segs = Arc::new(
@@ -250,7 +250,7 @@ pub fn match_path_tokens(
         match tokens.clone().first().cloned() {
             None => match segs.clone().first().cloned() {
                 None => Arc::new(PathTemplateMatch::PathMatched {
-                    params: Rc::new(vec![]),
+                    params: Arc::new(vec![]),
                 }),
                 Some(_) => Arc::new(PathTemplateMatch::PathNotMatched),
             },
@@ -293,7 +293,7 @@ pub fn match_path_tokens(
                                 } else {
                                     Arc::new(PathTemplateMatch::PathMatched {
                                         params: v1_rt::concat(
-                                            Rc::new(vec![Arc::new(PathParamBinding {
+                                            Arc::new(vec![Arc::new(PathParamBinding {
                                                 name: n.clone(),
                                                 value: seg.clone(),
                                             })]),
@@ -366,7 +366,7 @@ pub fn parse_path_template(raw: String) -> Arc<PathTemplateParseResult> {
         match segments.clone().first().cloned() {
             None => Arc::new(PathTemplateParseResult::ParsedPathTemplate {
                 template: Arc::new(PathTemplate {
-                    tokens: Rc::new(vec![]),
+                    tokens: Arc::new(vec![]),
                 }),
             }),
             Some(first_seg) => match (*parse_segment_tokens(first_seg.clone())).clone() {

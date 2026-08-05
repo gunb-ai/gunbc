@@ -290,7 +290,7 @@ pub fn distinct_homonym_observation() -> Arc<ReferenceBindingObservation> {
 
 pub fn namespace_structural_binding_observations_a_through_d(
 ) -> Arc<Vec<Arc<ReferenceBindingObservation>>> {
-    Rc::new(vec![
+    Arc::new(vec![
         same_file_neighbour_observation(),
         sibling_branch_observation(),
         later_declaration_observation(),

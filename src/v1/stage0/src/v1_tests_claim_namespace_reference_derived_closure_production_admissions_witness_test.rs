@@ -117,7 +117,7 @@ pub fn witness_structural_production_observations_establish_clauses_a_through_d(
         (((admissions.clone().len() as i64) == 4)
             && {
                 let mut __all = true;
-                for capability in Rc::new(vec![
+                for capability in Arc::new(vec![
                     ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible,
                     ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded,
                     ReferenceDerivedClosureCapability::LaterDeclarationExcluded,
@@ -157,7 +157,7 @@ pub fn witness_closing_contract_still_reds_until_dependency_clauses_land() -> bo
             }
             __result
         });
-        (reference_derived_closure_closing_frontier_count(v1_rt::concat(structural_admissions.clone(), Rc::new(vec![Arc::new(ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
+        (reference_derived_closure_closing_frontier_count(v1_rt::concat(structural_admissions.clone(), Arc::new(vec![Arc::new(ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
     capability: ReferenceDerivedClosureCapability::RepeatedMentionsCollapseDependency,
     trigger: ReferenceDerivedClosureTrigger::P2aReferenceDependencyProjection7515,
 }), Arc::new(ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {

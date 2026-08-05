@@ -19,43 +19,43 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct Magma<T> {
-    pub op: Rc<dyn Fn(T, T) -> T>,
+    pub op: Arc<dyn Fn(T, T) -> T>,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Semigroup<T> {
-    pub op: Rc<dyn Fn(T, T) -> T>,
+    pub op: Arc<dyn Fn(T, T) -> T>,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Monoid<T> {
-    pub op: Rc<dyn Fn(T, T) -> T>,
+    pub op: Arc<dyn Fn(T, T) -> T>,
     pub identity: T,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct CommutativeMonoid<T> {
-    pub op: Rc<dyn Fn(T, T) -> T>,
+    pub op: Arc<dyn Fn(T, T) -> T>,
     pub identity: T,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Group<T> {
-    pub op: Rc<dyn Fn(T, T) -> T>,
+    pub op: Arc<dyn Fn(T, T) -> T>,
     pub identity: T,
-    pub inverse: Rc<dyn Fn(T) -> T>,
+    pub inverse: Arc<dyn Fn(T) -> T>,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct AbelianGroup<T> {
-    pub op: Rc<dyn Fn(T, T) -> T>,
+    pub op: Arc<dyn Fn(T, T) -> T>,
     pub identity: T,
-    pub inverse: Rc<dyn Fn(T) -> T>,
+    pub inverse: Arc<dyn Fn(T) -> T>,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
@@ -137,74 +137,74 @@ pub struct FieldOfFractions<R: Clone> {
 
 #[derive(Clone)]
 pub struct Semiring<T> {
-    pub add: Rc<dyn Fn(T, T) -> T>,
+    pub add: Arc<dyn Fn(T, T) -> T>,
     pub zero: T,
-    pub mul: Rc<dyn Fn(T, T) -> T>,
+    pub mul: Arc<dyn Fn(T, T) -> T>,
     pub one: T,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct CommutativeSemiring<T> {
-    pub add: Rc<dyn Fn(T, T) -> T>,
+    pub add: Arc<dyn Fn(T, T) -> T>,
     pub zero: T,
-    pub mul: Rc<dyn Fn(T, T) -> T>,
+    pub mul: Arc<dyn Fn(T, T) -> T>,
     pub one: T,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Ring<T> {
-    pub add: Rc<dyn Fn(T, T) -> T>,
+    pub add: Arc<dyn Fn(T, T) -> T>,
     pub zero: T,
-    pub negate: Rc<dyn Fn(T) -> T>,
-    pub mul: Rc<dyn Fn(T, T) -> T>,
+    pub negate: Arc<dyn Fn(T) -> T>,
+    pub mul: Arc<dyn Fn(T, T) -> T>,
     pub one: T,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct OrderedRing<T> {
-    pub add: Rc<dyn Fn(T, T) -> T>,
-    pub sub: Rc<dyn Fn(T, T) -> T>,
+    pub add: Arc<dyn Fn(T, T) -> T>,
+    pub sub: Arc<dyn Fn(T, T) -> T>,
     pub zero: T,
-    pub negate: Rc<dyn Fn(T) -> T>,
-    pub mul: Rc<dyn Fn(T, T) -> T>,
-    pub div: Rc<dyn Fn(T, T) -> Arc<Result<T, DivError>>>,
+    pub negate: Arc<dyn Fn(T) -> T>,
+    pub mul: Arc<dyn Fn(T, T) -> T>,
+    pub div: Arc<dyn Fn(T, T) -> Arc<Result<T, DivError>>>,
     pub one: T,
-    pub compare: Rc<dyn Fn(T, T) -> Ordering>,
-    pub eq: Rc<dyn Fn(T, T) -> bool>,
-    pub ne: Rc<dyn Fn(T, T) -> bool>,
-    pub lt: Rc<dyn Fn(T, T) -> bool>,
-    pub le: Rc<dyn Fn(T, T) -> bool>,
-    pub gt: Rc<dyn Fn(T, T) -> bool>,
-    pub ge: Rc<dyn Fn(T, T) -> bool>,
+    pub compare: Arc<dyn Fn(T, T) -> Ordering>,
+    pub eq: Arc<dyn Fn(T, T) -> bool>,
+    pub ne: Arc<dyn Fn(T, T) -> bool>,
+    pub lt: Arc<dyn Fn(T, T) -> bool>,
+    pub le: Arc<dyn Fn(T, T) -> bool>,
+    pub gt: Arc<dyn Fn(T, T) -> bool>,
+    pub ge: Arc<dyn Fn(T, T) -> bool>,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Field<T> {
-    pub add: Rc<dyn Fn(T, T) -> T>,
+    pub add: Arc<dyn Fn(T, T) -> T>,
     pub zero: T,
-    pub negate: Rc<dyn Fn(T) -> T>,
-    pub mul: Rc<dyn Fn(T, T) -> T>,
+    pub negate: Arc<dyn Fn(T) -> T>,
+    pub mul: Arc<dyn Fn(T, T) -> T>,
     pub one: T,
-    pub reciprocal: Rc<dyn Fn(T) -> T>,
-    pub compare: Rc<dyn Fn(T, T) -> Ordering>,
+    pub reciprocal: Arc<dyn Fn(T) -> T>,
+    pub compare: Arc<dyn Fn(T, T) -> Ordering>,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Lattice<T> {
-    pub meet: Rc<dyn Fn(T, T) -> T>,
-    pub join: Rc<dyn Fn(T, T) -> T>,
+    pub meet: Arc<dyn Fn(T, T) -> T>,
+    pub join: Arc<dyn Fn(T, T) -> T>,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct BoundedLattice<T> {
-    pub meet: Rc<dyn Fn(T, T) -> T>,
-    pub join: Rc<dyn Fn(T, T) -> T>,
+    pub meet: Arc<dyn Fn(T, T) -> T>,
+    pub join: Arc<dyn Fn(T, T) -> T>,
     pub top: T,
     pub bottom: T,
     pub _phantom: std::marker::PhantomData<T>,
@@ -212,9 +212,9 @@ pub struct BoundedLattice<T> {
 
 #[derive(Clone)]
 pub struct BooleanAlgebra<T> {
-    pub meet: Rc<dyn Fn(T, T) -> T>,
-    pub join: Rc<dyn Fn(T, T) -> T>,
-    pub complement: Rc<dyn Fn(T) -> T>,
+    pub meet: Arc<dyn Fn(T, T) -> T>,
+    pub join: Arc<dyn Fn(T, T) -> T>,
+    pub complement: Arc<dyn Fn(T) -> T>,
     pub top: T,
     pub bottom: T,
     pub _phantom: std::marker::PhantomData<T>,
@@ -222,7 +222,7 @@ pub struct BooleanAlgebra<T> {
 
 #[derive(Clone)]
 pub struct PointwisePower<T> {
-    pub member: Rc<dyn Fn(T) -> bool>,
+    pub member: Arc<dyn Fn(T) -> bool>,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
@@ -230,16 +230,16 @@ pub type FreeMonoid<T> = Vec<T>;
 
 #[derive(Clone)]
 pub struct PartialFunction<K, V> {
-    pub lookup: Rc<dyn Fn(K) -> Option<V>>,
+    pub lookup: Arc<dyn Fn(K) -> Option<V>>,
     pub empty: Arc<PartialFunction<K, V>>,
-    pub get: Rc<dyn Fn(K) -> Option<V>>,
-    pub insert: Rc<dyn Fn(K, V) -> Arc<PartialFunction<K, V>>>,
-    pub merge: Rc<dyn Fn(Arc<PartialFunction<K, V>>) -> Arc<PartialFunction<K, V>>>,
-    pub keys: Rc<dyn Fn() -> Arc<FreeMonoid<K>>>,
-    pub values: Rc<dyn Fn() -> Arc<FreeMonoid<V>>>,
-    pub has: Rc<dyn Fn(K) -> bool>,
-    pub contains_key: Rc<dyn Fn(K) -> bool>,
-    pub size: Rc<dyn Fn() -> i64>,
+    pub get: Arc<dyn Fn(K) -> Option<V>>,
+    pub insert: Arc<dyn Fn(K, V) -> Arc<PartialFunction<K, V>>>,
+    pub merge: Arc<dyn Fn(Arc<PartialFunction<K, V>>) -> Arc<PartialFunction<K, V>>>,
+    pub keys: Arc<dyn Fn() -> Arc<FreeMonoid<K>>>,
+    pub values: Arc<dyn Fn() -> Arc<FreeMonoid<V>>>,
+    pub has: Arc<dyn Fn(K) -> bool>,
+    pub contains_key: Arc<dyn Fn(K) -> bool>,
+    pub size: Arc<dyn Fn() -> i64>,
     pub _phantom: std::marker::PhantomData<(K, V)>,
 }
 
@@ -417,10 +417,10 @@ pub fn kernel_algebra_profile() -> Arc<HashMap<String, AlgebraProfile>> {
 }
 
 pub fn ordered_ring_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
-    Rc::new(vec![
+    Arc::new(vec![
         Arc::new(AlgebraFieldTemplate {
             name: "add".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -431,7 +431,7 @@ pub fn ordered_ring_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "zero".to_string(),
-            param_types: Rc::new(vec![]),
+            param_types: Arc::new(vec![]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -439,7 +439,7 @@ pub fn ordered_ring_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "negate".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -447,7 +447,7 @@ pub fn ordered_ring_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "mul".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -458,7 +458,7 @@ pub fn ordered_ring_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "one".to_string(),
-            param_types: Rc::new(vec![]),
+            param_types: Arc::new(vec![]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -466,7 +466,7 @@ pub fn ordered_ring_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "compare".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -479,7 +479,7 @@ pub fn ordered_ring_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "clamp".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
@@ -493,10 +493,10 @@ pub fn ordered_ring_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
 }
 
 pub fn approximate_field_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
-    Rc::new(vec![
+    Arc::new(vec![
         Arc::new(AlgebraFieldTemplate {
             name: "add".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -507,7 +507,7 @@ pub fn approximate_field_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "zero".to_string(),
-            param_types: Rc::new(vec![]),
+            param_types: Arc::new(vec![]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -515,7 +515,7 @@ pub fn approximate_field_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "negate".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -523,7 +523,7 @@ pub fn approximate_field_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "mul".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -534,7 +534,7 @@ pub fn approximate_field_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "one".to_string(),
-            param_types: Rc::new(vec![]),
+            param_types: Arc::new(vec![]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -542,7 +542,7 @@ pub fn approximate_field_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "reciprocal".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -550,7 +550,7 @@ pub fn approximate_field_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "compare".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -565,10 +565,10 @@ pub fn approximate_field_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
 }
 
 pub fn boolean_algebra_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
-    Rc::new(vec![
+    Arc::new(vec![
         Arc::new(AlgebraFieldTemplate {
             name: "meet".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -579,7 +579,7 @@ pub fn boolean_algebra_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "join".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -590,7 +590,7 @@ pub fn boolean_algebra_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "complement".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -598,7 +598,7 @@ pub fn boolean_algebra_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "top".to_string(),
-            param_types: Rc::new(vec![]),
+            param_types: Arc::new(vec![]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -606,7 +606,7 @@ pub fn boolean_algebra_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "bottom".to_string(),
-            param_types: Rc::new(vec![]),
+            param_types: Arc::new(vec![]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -616,10 +616,10 @@ pub fn boolean_algebra_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
 }
 
 pub fn boolean_algebra_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
-    Rc::new(vec![
+    Arc::new(vec![
         Arc::new(AlgebraFieldTemplate {
             name: "union".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -630,7 +630,7 @@ pub fn boolean_algebra_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplat
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "intersect".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -641,7 +641,7 @@ pub fn boolean_algebra_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplat
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "diff".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -652,7 +652,7 @@ pub fn boolean_algebra_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplat
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "member".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverElement),
             ]),
@@ -665,7 +665,7 @@ pub fn boolean_algebra_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplat
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "contains".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverElement),
             ]),
@@ -678,10 +678,10 @@ pub fn boolean_algebra_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplat
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "filter".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                    params: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
                     return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                         name: "Bool".to_string(),
                     }),
@@ -694,10 +694,10 @@ pub fn boolean_algebra_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplat
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "map".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                    params: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
                     return_type: Arc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
                         id: "MappedElement".to_string(),
                     }),
@@ -715,10 +715,10 @@ pub fn boolean_algebra_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplat
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "flat_map".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                    params: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
                     return_type: Arc::new(AlgebraTypeTemplate::ContainerOf {
                         source: Arc::new(ContainerSource::SameAsReceiver),
                         element: Arc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
@@ -739,12 +739,12 @@ pub fn boolean_algebra_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplat
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "fold".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
                     id: "FoldAccumulator".to_string(),
                 }),
                 Arc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![
+                    params: Arc::new(vec![
                         Arc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
                             id: "FoldAccumulator".to_string(),
                         }),
@@ -764,10 +764,10 @@ pub fn boolean_algebra_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplat
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "any".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                    params: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
                     return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                         name: "Bool".to_string(),
                     }),
@@ -782,10 +782,10 @@ pub fn boolean_algebra_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplat
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "all".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                    params: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
                     return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                         name: "Bool".to_string(),
                     }),
@@ -800,7 +800,7 @@ pub fn boolean_algebra_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplat
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "count".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Int".to_string(),
             }),
@@ -810,7 +810,7 @@ pub fn boolean_algebra_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplat
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "length".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Int".to_string(),
             }),
@@ -822,16 +822,16 @@ pub fn boolean_algebra_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplat
 }
 
 pub fn pointwise_power_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
-    Rc::new(vec![Arc::new(AlgebraFieldTemplate {
+    Arc::new(vec![Arc::new(AlgebraFieldTemplate {
         name: "member".to_string(),
-        param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::CallableOf {
-            params: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
+        param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::CallableOf {
+            params: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
             return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Bool".to_string(),
             }),
         })]),
         return_type: Arc::new(AlgebraTypeTemplate::CallableOf {
-            params: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
+            params: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
             return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Bool".to_string(),
             }),
@@ -852,10 +852,10 @@ pub fn algebra_count_length_name_fork_note() -> String {
 }
 
 pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
-    Rc::new(vec![
+    Arc::new(vec![
         Arc::new(AlgebraFieldTemplate {
             name: "concat".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -866,7 +866,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "empty".to_string(),
-            param_types: Rc::new(vec![]),
+            param_types: Arc::new(vec![]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -874,7 +874,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "length".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Int".to_string(),
             }),
@@ -884,7 +884,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "count".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Int".to_string(),
             }),
@@ -894,7 +894,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "is_empty".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Bool".to_string(),
             }),
@@ -904,7 +904,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "chars".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ContainerOf {
                 source: Arc::new(ContainerSource::Named {
                     name: "List".to_string(),
@@ -919,7 +919,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "split".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -935,7 +935,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "join".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ContainerOf {
                     source: Arc::new(ContainerSource::Named {
                         name: "List".to_string(),
@@ -951,7 +951,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "contains".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -964,7 +964,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "starts_with".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -977,7 +977,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "ends_with".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -990,7 +990,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "trim".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -998,7 +998,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "to_lower".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -1006,7 +1006,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "to_upper".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -1014,7 +1014,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "replace".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
@@ -1026,7 +1026,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "substring".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::NamedTemplate {
                     name: "Int".to_string(),
@@ -1042,7 +1042,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "to_int".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Int".to_string(),
             }),
@@ -1052,7 +1052,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "to_string".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -1060,7 +1060,7 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "reverse".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: None,
             cost_shape: None,
@@ -1070,13 +1070,13 @@ pub fn free_monoid_scalar_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
 }
 
 pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
-    Rc::new(vec![
+    Arc::new(vec![
         Arc::new(AlgebraFieldTemplate {
             name: "map".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                    params: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
                     return_type: Arc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
                         id: "MappedElement".to_string(),
                     }),
@@ -1094,10 +1094,10 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "filter".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                    params: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
                     return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                         name: "Bool".to_string(),
                     }),
@@ -1110,10 +1110,10 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "flat_map".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                    params: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
                     return_type: Arc::new(AlgebraTypeTemplate::ContainerOf {
                         source: Arc::new(ContainerSource::SameAsReceiver),
                         element: Arc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
@@ -1134,12 +1134,12 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "fold".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
                     id: "FoldAccumulator".to_string(),
                 }),
                 Arc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![
+                    params: Arc::new(vec![
                         Arc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
                             id: "FoldAccumulator".to_string(),
                         }),
@@ -1159,10 +1159,10 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "any".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                    params: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
                     return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                         name: "Bool".to_string(),
                     }),
@@ -1177,10 +1177,10 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "all".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                    params: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverElement)]),
                     return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                         name: "Bool".to_string(),
                     }),
@@ -1195,7 +1195,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "count".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Int".to_string(),
             }),
@@ -1205,7 +1205,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "first".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::OptionalOf {
                 inner: Arc::new(AlgebraTypeTemplate::ReceiverElement),
             }),
@@ -1215,7 +1215,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "last".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::OptionalOf {
                 inner: Arc::new(AlgebraTypeTemplate::ReceiverElement),
             }),
@@ -1225,7 +1225,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "get".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::NamedTemplate {
                     name: "Int".to_string(),
@@ -1240,7 +1240,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "skip".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::NamedTemplate {
                     name: "Int".to_string(),
@@ -1253,7 +1253,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "take".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::NamedTemplate {
                     name: "Int".to_string(),
@@ -1266,7 +1266,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "sort_by".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: Some(CollectionSizeEffect::IdentityEffect),
             cost_shape: Some(CostShape::ShapeSortBody),
@@ -1274,7 +1274,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "append".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverElement),
             ]),
@@ -1285,7 +1285,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "contains".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverElement),
             ]),
@@ -1298,7 +1298,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "enumerate".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ContainerOf {
                 source: Arc::new(ContainerSource::SameAsReceiver),
                 element: Arc::new(AlgebraTypeTemplate::TupleOf {
@@ -1314,7 +1314,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "reverse".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: Some(CollectionSizeEffect::IdentityEffect),
             cost_shape: Some(CostShape::ShapeLinearScan),
@@ -1322,7 +1322,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "join".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::NamedTemplate {
                     name: "String".to_string(),
@@ -1337,7 +1337,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "concat".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -1348,7 +1348,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "list_push".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverElement),
             ]),
@@ -1359,7 +1359,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "length".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Int".to_string(),
             }),
@@ -1369,7 +1369,7 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "is_empty".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Bool".to_string(),
             }),
@@ -1381,10 +1381,10 @@ pub fn free_monoid_collection_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>>
 }
 
 pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
-    Rc::new(vec![
+    Arc::new(vec![
         Arc::new(AlgebraFieldTemplate {
             name: "get".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverKey),
             ]),
@@ -1397,7 +1397,7 @@ pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "map_get".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverKey),
             ]),
@@ -1410,7 +1410,7 @@ pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "lookup".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverKey),
             ]),
@@ -1423,7 +1423,7 @@ pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "map_insert".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverKey),
                 Arc::new(AlgebraTypeTemplate::ReceiverValue),
@@ -1435,7 +1435,7 @@ pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "map_merge".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
             ]),
@@ -1446,7 +1446,7 @@ pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "has".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverKey),
             ]),
@@ -1459,7 +1459,7 @@ pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "map_has".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverKey),
             ]),
@@ -1472,7 +1472,7 @@ pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "map_contains_key".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverKey),
             ]),
@@ -1485,7 +1485,7 @@ pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "keys".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ContainerOf {
                 source: Arc::new(ContainerSource::Named {
                     name: "List".to_string(),
@@ -1498,7 +1498,7 @@ pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "map_keys".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ContainerOf {
                 source: Arc::new(ContainerSource::Named {
                     name: "List".to_string(),
@@ -1511,7 +1511,7 @@ pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "values".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ContainerOf {
                 source: Arc::new(ContainerSource::Named {
                     name: "List".to_string(),
@@ -1524,7 +1524,7 @@ pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "map_values".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::ContainerOf {
                 source: Arc::new(ContainerSource::Named {
                     name: "List".to_string(),
@@ -1537,7 +1537,7 @@ pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "with".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverKey),
                 Arc::new(AlgebraTypeTemplate::ReceiverValue),
@@ -1549,7 +1549,7 @@ pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "contains".to_string(),
-            param_types: Rc::new(vec![
+            param_types: Arc::new(vec![
                 Arc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Arc::new(AlgebraTypeTemplate::ReceiverKey),
             ]),
@@ -1562,7 +1562,7 @@ pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "length".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Int".to_string(),
             }),
@@ -1572,7 +1572,7 @@ pub fn partial_function_templates() -> Arc<Vec<Arc<AlgebraFieldTemplate>>> {
         }),
         Arc::new(AlgebraFieldTemplate {
             name: "count".to_string(),
-            param_types: Rc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            param_types: Arc::new(vec![Arc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Arc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Int".to_string(),
             }),
@@ -1625,19 +1625,19 @@ pub fn algebra_templates_for_profile(
 
 pub fn algebra_type_param_names(profile: AlgebraProfile) -> Arc<Vec<String>> {
     match profile.clone() {
-        AlgebraProfile::OrderedRingProfile => Rc::new(vec![]),
-        AlgebraProfile::ApproximateFieldProfile => Rc::new(vec![]),
-        AlgebraProfile::BooleanAlgebraProfile => Rc::new(vec![]),
-        AlgebraProfile::BooleanAlgebraCollectionProfile => Rc::new(vec!["T".to_string()]),
-        AlgebraProfile::PointwisePowerCollectionProfile => Rc::new(vec!["T".to_string()]),
-        AlgebraProfile::FreeMonoidScalarProfile => Rc::new(vec![]),
-        AlgebraProfile::FreeMonoidCollectionProfile => Rc::new(vec!["T".to_string()]),
-        AlgebraProfile::PartialFunctionProfile => Rc::new(vec!["K".to_string(), "V".to_string()]),
+        AlgebraProfile::OrderedRingProfile => Arc::new(vec![]),
+        AlgebraProfile::ApproximateFieldProfile => Arc::new(vec![]),
+        AlgebraProfile::BooleanAlgebraProfile => Arc::new(vec![]),
+        AlgebraProfile::BooleanAlgebraCollectionProfile => Arc::new(vec!["T".to_string()]),
+        AlgebraProfile::PointwisePowerCollectionProfile => Arc::new(vec!["T".to_string()]),
+        AlgebraProfile::FreeMonoidScalarProfile => Arc::new(vec![]),
+        AlgebraProfile::FreeMonoidCollectionProfile => Arc::new(vec!["T".to_string()]),
+        AlgebraProfile::PartialFunctionProfile => Arc::new(vec!["K".to_string(), "V".to_string()]),
     }
 }
 
 pub fn all_algebra_profiles() -> Arc<Vec<AlgebraProfile>> {
-    Rc::new(vec![
+    Arc::new(vec![
         AlgebraProfile::OrderedRingProfile,
         AlgebraProfile::ApproximateFieldProfile,
         AlgebraProfile::BooleanAlgebraProfile,

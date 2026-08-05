@@ -7,7 +7,7 @@
 //! `v1.compiler.dag_collect_support` is witness-layer importable.
 
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::v1_compiler_dag_collect_support::{
     dag_collect_fp_memo_reset, dag_node_bag_hash, dag_node_seq_hash, dag_node_surface_fingerprint,
@@ -24,8 +24,8 @@ fn fail(msg: impl std::fmt::Display) -> ExitCode {
     ExitCode::from(1)
 }
 
-fn hashes(labels: Vec<&str>) -> Rc<im::Vector<String>> {
-    Rc::new(
+fn hashes(labels: Vec<&str>) -> Arc<im::Vector<String>> {
+    Arc::new(
         labels
             .into_iter()
             .map(|s| atom_identity_hash(s.to_string()))
@@ -33,8 +33,8 @@ fn hashes(labels: Vec<&str>) -> Rc<im::Vector<String>> {
     )
 }
 
-fn synth_span() -> Rc<SourceSpan> {
-    Rc::new(SourceSpan {
+fn synth_span() -> Arc<SourceSpan> {
+    Arc::new(SourceSpan {
         file: "witness.dag".to_string(),
         start: 0,
         end: 0,
@@ -44,17 +44,17 @@ fn synth_span() -> Rc<SourceSpan> {
 fn shell_node(
     name: &str,
     connective: Connective,
-    children: Vec<Rc<Node>>,
-    params: Vec<Rc<Node>>,
-) -> Rc<Node> {
-    Rc::new(Node {
+    children: Vec<Arc<Node>>,
+    params: Vec<Arc<Node>>,
+) -> Arc<Node> {
+    Arc::new(Node {
         name: name.to_string(),
         ident: None,
         span: synth_span(),
         ident_span: None,
-        children: Rc::new(children.into()),
+        children: Arc::new(children.into()),
         connective,
-        params: Rc::new(params.into()),
+        params: Arc::new(params.into()),
         inferred: None,
         return_cardinality: Cardinality::Required,
         uses: empty_node_list(),
@@ -65,7 +65,7 @@ fn shell_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
     })
 }
 

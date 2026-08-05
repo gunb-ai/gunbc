@@ -5,7 +5,7 @@ use crate::resolved_graph_cache::{
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 use std::cell::{Cell, RefCell};
-use std::rc::Rc;
+use std::sync::Arc;
 
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.materialization_provider_consumer_scaffold;
 // witness: dag/test/claim/materialization_provider_consumer_hand_rust_witness_test.dag).
@@ -29,7 +29,7 @@ pub enum ResolvedGraphProviderOutcome {
 }
 
 thread_local! {
-    static MATERIALIZATION_PROVIDER_CTX: RefCell<Option<Rc<InterpContext>>> =
+    static MATERIALIZATION_PROVIDER_CTX: RefCell<Option<Arc<InterpContext>>> =
         RefCell::new(None);
 }
 
@@ -68,7 +68,7 @@ thread_local! {
 /// (§5 — correctness by construction, and a failure arm that refuses rather than
 /// widens). It fails loud and located, so a new re-entrant caller surfaces as a
 /// diagnostic instead of as a dead runner.
-fn materialization_provider_ctx() -> Result<Rc<InterpContext>, String> {
+fn materialization_provider_ctx() -> Result<Arc<InterpContext>, String> {
     if let Some(ctx) = MATERIALIZATION_PROVIDER_CTX.with(|slot| slot.borrow().clone()) {
         return Ok(ctx);
     }
@@ -91,7 +91,7 @@ fn materialization_provider_ctx() -> Result<Rc<InterpContext>, String> {
     MATERIALIZATION_PROVIDER_CTX_BUILDING.with(|b| b.set(true));
     let ctx = {
         let _guard = BuildGuard;
-        Rc::new(build_materialization_provider_ctx_cold()?)
+        Arc::new(build_materialization_provider_ctx_cold()?)
     };
     MATERIALIZATION_PROVIDER_CTX.with(|slot| *slot.borrow_mut() = Some(ctx.clone()));
     Ok(ctx)
@@ -500,7 +500,7 @@ pub fn materialization_provider_ctx_build_count_for_test() -> usize {
 /// control — with the wall removed this rebuilds the provider closure instead of
 /// refusing, which is the unbounded-recursion shape.
 #[doc(hidden)]
-pub fn provider_ctx_reentrancy_refusal_for_test() -> Result<Rc<InterpContext>, String> {
+pub fn provider_ctx_reentrancy_refusal_for_test() -> Result<Arc<InterpContext>, String> {
     MATERIALIZATION_PROVIDER_CTX.with(|slot| *slot.borrow_mut() = None);
     MATERIALIZATION_PROVIDER_CTX_BUILDING.with(|b| b.set(true));
     let result = materialization_provider_ctx();

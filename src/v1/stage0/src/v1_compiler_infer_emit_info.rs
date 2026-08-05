@@ -81,7 +81,7 @@ pub fn dedupe_nonempty_strings(items: Arc<Vec<String>>) -> Arc<Vec<String>> {
         let acc = items.clone().iter().cloned().fold(
             Arc::new(UniqueStringAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
-                result: Rc::new(vec![]),
+                result: Arc::new(vec![]),
             }),
             |inner: Arc<UniqueStringAccum>, item: String| {
                 if ((item.clone() == "".to_string())
@@ -91,7 +91,7 @@ pub fn dedupe_nonempty_strings(items: Arc<Vec<String>>) -> Arc<Vec<String>> {
                 } else {
                     Arc::new(UniqueStringAccum {
                         seen: v1_rt::rc_map_insert(inner.seen.clone(), item.clone(), true),
-                        result: v1_rt::concat(inner.result.clone(), Rc::new(vec![item.clone()])),
+                        result: v1_rt::concat(inner.result.clone(), Arc::new(vec![item.clone()])),
                     })
                 }
             },
@@ -115,9 +115,9 @@ pub fn collect_type_node_import_surface_names(
         let own = if (((name.clone() != "".to_string()) && (name.clone() != "Dynamic".to_string()))
             && !is_tv.clone())
         {
-            Rc::new(vec![name.clone()])
+            Arc::new(vec![name.clone()])
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let child_names = Arc::new({
             let mut __result = Vec::new();
@@ -137,7 +137,7 @@ pub fn collect_type_node_import_surface_names(
             Some(InferredNode::Resolved { node: rt, .. }) => {
                 collect_type_node_import_surface_names(rt.clone(), source_indices.clone())
             }
-            _ => Rc::new(vec![]),
+            _ => Arc::new(vec![]),
         };
         dedupe_nonempty_strings(v1_rt::concat(
             own.clone(),
@@ -207,7 +207,7 @@ pub fn empty_emit_graph_info() -> Arc<EmitGraphInfo> {
         read_only_params: v1_rt::rc_empty_set::<String>(),
         clone_bounded_type_params: v1_rt::rc_empty_map::<String, Arc<BTreeSet<String>>>(),
         corpus_repr: RustCorpusRepr::FaithfulFreeMonoid,
-        fn_generic_param_names: Rc::new(vec![]),
+        fn_generic_param_names: Arc::new(vec![]),
         fn_type_env: empty_type_env(),
         fn_return_type: None,
     })
@@ -564,7 +564,7 @@ pub fn build_enum_field_summaries(
                 }
                 __result
             }),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let shared = Arc::new({
             let mut __result = Vec::new();
@@ -632,7 +632,7 @@ pub fn build_field_type_map(
     children.clone().iter().cloned().fold(
         Arc::new(FieldTypeMapBuild {
             field_types: v1_rt::rc_empty_map::<String, String>(),
-            import_surface_names: Rc::new(vec![]),
+            import_surface_names: Arc::new(vec![]),
         }),
         |acc: Arc<FieldTypeMapBuild>, child: Arc<Node>| match child
             .inferred
@@ -752,7 +752,7 @@ pub fn build_type_summary(
                         source_indices.clone(),
                     ),
                     field_type_map: v1_rt::rc_empty_map::<String, String>(),
-                    field_import_surface_names: Rc::new(vec![]),
+                    field_import_surface_names: Arc::new(vec![]),
                     variant_name_set: item.children.clone().iter().cloned().fold(
                         v1_rt::rc_empty_map::<String, bool>(),
                         |acc: Arc<HashMap<String, bool>>, child: Arc<Node>| {
@@ -938,7 +938,7 @@ pub fn add_emit_item_summary(
                                                         bool,
                                                     >(
                                                     ),
-                                                    generic_param_names: Rc::new(vec![]),
+                                                    generic_param_names: Arc::new(vec![]),
                                                     has_fn_fields: v_has_fn.clone(),
                                                 }),
                                             )

@@ -162,7 +162,7 @@ pub fn arc_template() -> String {
 pub fn common_trait_bounds() -> Arc<Vec<String>> {
     thread_local! {
         static CACHED: Arc<Vec<String>> = {
-            Rc::new(vec!["Clone".to_string(), "Debug".to_string(), "Send".to_string(), "Sync".to_string(), "Serialize".to_string(), "Deserialize".to_string()])
+            Arc::new(vec!["Clone".to_string(), "Debug".to_string(), "Send".to_string(), "Sync".to_string(), "Serialize".to_string(), "Deserialize".to_string()])
         };
     }
     CACHED.with(|c: &Arc<Vec<String>>| c.clone())

@@ -110,7 +110,7 @@ pub struct AlgebraFieldEntry {
 pub fn algebra_field_entries() -> Arc<Vec<Arc<AlgebraFieldEntry>>> {
     thread_local! {
             static CACHED: Arc<Vec<Arc<AlgebraFieldEntry>>> = {
-                Rc::new(vec![Arc::new(AlgebraFieldEntry {
+                Arc::new(vec![Arc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgAdd,
         field_name: "add".to_string(),
     }), Arc::new(AlgebraFieldEntry {

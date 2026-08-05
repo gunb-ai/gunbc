@@ -5,7 +5,7 @@ use crate::v1_std_core::{authored_name_at, expr_call_func_at, expr_var_name_at, 
 use im::HashMap;
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::sync::Arc;
 
 const TEST_MODULE_HYGIENE_ENTRY: &str = "dag/gunbc/test_module_hygiene.dag";
 
@@ -41,8 +41,8 @@ pub(crate) fn is_file_grain_function(function: &str) -> bool {
 }
 
 fn walk_refs(
-    node: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    node: &Arc<Node>,
+    si: &Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
     out: &mut HashSet<String>,
 ) {
     match node.expr_data.as_ref() {
@@ -66,8 +66,8 @@ fn walk_refs(
 }
 
 fn refs_from_body(
-    body: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    body: &Arc<Node>,
+    si: &Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
 ) -> Vec<String> {
     let mut set = HashSet::new();
     walk_refs(body, si, &mut set);
@@ -202,7 +202,7 @@ fn decl_surface_to_value(decl: &DeclSurface, ctx: &InterpContext) -> Value {
     let refs: Vec<Value> = decl.refs.iter().map(|r| Value::Str(r.clone())).collect();
     Value::Record {
         type_name: ctx.sym("DeclSurface"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (ctx.sym("name"), Value::Str(decl.name.clone())),
             (ctx.sym("refs"), v1_interpreter::list_value(refs)),
         ])),
@@ -232,7 +232,7 @@ fn module_surface_to_value(surface: &ModuleSurface, ctx: &InterpContext) -> Valu
         .collect();
     Value::Record {
         type_name: ctx.sym("ModuleSurface"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (ctx.sym("entry"), Value::Str(surface.entry.clone())),
             (ctx.sym("test_fns"), v1_interpreter::list_value(test_fns)),
             (ctx.sym("plain_fns"), v1_interpreter::list_value(plain_fns)),
@@ -442,7 +442,7 @@ pub(crate) fn expand_explicit_entries(
         };
         inputs.push(Value::Record {
             type_name: ctx.sym("ExplicitExpandInput"),
-            fields: Rc::new(sorted_fields(vec![
+            fields: Arc::new(sorted_fields(vec![
                 (ctx.sym("entry"), Value::Str(entry.clone())),
                 (ctx.sym("function"), Value::Str(function.clone())),
                 (ctx.sym("content"), Value::Str(content)),

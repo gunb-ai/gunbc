@@ -131,7 +131,7 @@ pub fn resolve_modules_with_occurrence_transport(
         let resolve_accum = modules.clone().iter().cloned().fold(
             Arc::new(ResolveAccum {
                 imports_by_name: v1_rt::rc_empty_map::<String, Arc<Vec<Arc<ResolvedImport>>>>(),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             }),
             |acc: Arc<ResolveAccum>, m: Arc<Node>| {
                 let acc = v1_rt::take_owned(acc);
@@ -157,8 +157,8 @@ pub fn resolve_modules_with_occurrence_transport(
         let import_diags = resolve_accum.diagnostics.clone();
         let topo_result = topological_sort(modules.clone(), source_indices.clone());
         let topo_diags = match topo_result.cycle_error.clone() {
-            Some(diag) => Rc::new(vec![diag.clone()]),
-            None => Rc::new(vec![]),
+            Some(diag) => Arc::new(vec![diag.clone()]),
+            None => Arc::new(vec![]),
         };
         let sorted_names = topo_result.sorted.clone();
         let sorted_order_map = Arc::new(
@@ -192,7 +192,7 @@ pub fn resolve_modules_with_occurrence_transport(
                                 &imports_by_name,
                                 authored_name_at(source_indices.clone(), m.clone()),
                             ) {
-                                Some(imps) => Rc::new(vec![Arc::new(ResolvedModule {
+                                Some(imps) => Arc::new(vec![Arc::new(ResolvedModule {
                                     module: m.clone(),
                                     resolved_imports: imps.clone(),
                                     dep_order: order.clone(),
@@ -200,9 +200,9 @@ pub fn resolve_modules_with_occurrence_transport(
                                         input.clone(),
                                     ),
                                 })]),
-                                None => Rc::new(vec![]),
+                                None => Arc::new(vec![]),
                             },
-                            None => Rc::new(vec![]),
+                            None => Arc::new(vec![]),
                         }
                     })
                     .iter()
@@ -243,10 +243,10 @@ pub fn resolve_modules(
                     module.clone(),
                     Arc::new(OccurrenceTransport {
                         index: Arc::new(OccurrenceIndex {
-                            entries: Rc::new(vec![]),
+                            entries: Arc::new(vec![]),
                         }),
-                        declarations: Rc::new(vec![]),
-                        references: Rc::new(vec![]),
+                        declarations: Arc::new(vec![]),
+                        references: Arc::new(vec![]),
                     }),
                 ));
             }
@@ -255,10 +255,10 @@ pub fn resolve_modules(
         source_indices.clone(),
         Arc::new(OccurrenceTransport {
             index: Arc::new(OccurrenceIndex {
-                entries: Rc::new(vec![]),
+                entries: Arc::new(vec![]),
             }),
-            declarations: Rc::new(vec![]),
-            references: Rc::new(vec![]),
+            declarations: Arc::new(vec![]),
+            references: Arc::new(vec![]),
         }),
     )
 }
@@ -366,7 +366,7 @@ pub fn resolve_import(
                         ),
                         target_module: None,
                     }),
-                    diagnostics: Rc::new(vec![diag.clone()]),
+                    diagnostics: Arc::new(vec![diag.clone()]),
                 })
             }
             Some(target_mod) => {
@@ -375,7 +375,7 @@ pub fn resolve_import(
                     None => v1_rt::rc_empty_map::<String, bool>(),
                 };
                 let name_diags = if import_is_all(import.clone()) {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 } else {
                     Arc::new({
                         let mut __result = Vec::new();
@@ -453,7 +453,7 @@ pub fn get_exported_names(
             for imp in module_imports(module.clone()).iter().cloned() {
                 __result.extend(
                     (*if import_is_all(imp.clone()) {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     } else {
                         import_specific_names_at(imp.clone(), source_indices.clone())
                     })
@@ -495,7 +495,7 @@ pub fn get_variant_names(
                 __result
             })
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         }
     }
 }
@@ -514,7 +514,7 @@ pub fn check_duplicate_modules(
         let result = modules.clone().iter().cloned().fold(
             Arc::new(DuplicateCheckState {
                 seen_names: v1_rt::rc_empty_map::<String, bool>(),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             }),
             |state: Arc<DuplicateCheckState>, m: Arc<Node>| {
                 let m_name = authored_name_at(source_indices.clone(), m.clone());
@@ -524,7 +524,7 @@ pub fn check_duplicate_modules(
                         seen_names: state.seen_names.clone(),
                         diagnostics: v1_rt::concat(
                             state.diagnostics.clone(),
-                            Rc::new(vec![make_error_node(
+                            Arc::new(vec![make_error_node(
                                 Arc::new(CompilerDiagnostic::DuplicateModule {
                                     name: m_name.clone(),
                                     span: m.span.clone(),
@@ -563,7 +563,7 @@ pub fn adjacency_add_edge(
     {
         let existing = match v1_rt::map_get(&adjacency, from_module.clone()) {
             Some(lst) => lst.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         v1_rt::rc_map_insert(
             adjacency.clone(),
@@ -688,7 +688,7 @@ pub fn topological_sort(
         let module_count = (modules.clone().len() as i64);
         let result = kahn_drain(
             initial_queue.clone(),
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             in_degree_map.clone(),
             adjacency.clone(),
             module_count.clone(),
@@ -762,7 +762,7 @@ pub fn kahn_drain(
                     let new_sorted = v1_rt::rc_list_push(state.sorted, node.clone());
                     let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
                         Some(ns) => ns.clone(),
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     };
                     let new_degrees = neighbors.clone().iter().cloned().fold(
                         state.in_degree_map,
@@ -793,7 +793,7 @@ pub fn kahn_drain(
                     __result.extend(
                         (*match v1_rt::map_get(&adjacency, node.clone()) {
                             Some(ns) => ns.clone(),
-                            None => Rc::new(vec![]),
+                            None => Arc::new(vec![]),
                         })
                         .iter()
                         .cloned(),

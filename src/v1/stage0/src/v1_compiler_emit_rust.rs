@@ -2551,15 +2551,15 @@ pub fn type_variable_node(id: String) -> Arc<Node> {
         name: "".to_string(),
         span: make_span(0, 0),
         ident_span: None,
-        children: Rc::new(vec![]),
+        children: Arc::new(vec![]),
         connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
+        params: Arc::new(vec![]),
         inferred: Some(Arc::new(InferredNode::TypeVariable { id: id.clone() })),
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: Arc::new(vec![]),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Arc::new(vec![]),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
@@ -4097,9 +4097,9 @@ pub fn duplicate_qualified_item_registry_marker(name: String) -> Arc<ItemInfo> {
         name: name.clone(),
         module_name: "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__".to_string(),
         kind: ItemKind::OtherItem,
-        service_names: Rc::new(vec![]),
-        resource_names: Rc::new(vec![]),
-        params: Rc::new(vec![]),
+        service_names: Arc::new(vec![]),
+        resource_names: Arc::new(vec![]),
+        params: Arc::new(vec![]),
         is_self_recursive: false,
         has_non_tail_self_call: false,
     })
@@ -4170,12 +4170,12 @@ pub fn insert_scoped_data_item(
     {
         let existing = match v1_rt::map_get(&scoped, name.clone()) {
             Some(entries) => entries.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         v1_rt::rc_map_insert(
             scoped.clone(),
             name.clone(),
-            v1_rt::concat(existing.clone(), Rc::new(vec![item.clone()])),
+            v1_rt::concat(existing.clone(), Arc::new(vec![item.clone()])),
         )
     }
 }
@@ -4492,7 +4492,7 @@ pub fn rust_render_type_leaf_name(
     name: String,
     variant_to_enum: Arc<HashMap<String, String>>,
 ) -> String {
-    if is_value_variant_type_arg(Rc::new(vec![]), variant_to_enum.clone(), name.clone()) {
+    if is_value_variant_type_arg(Arc::new(vec![]), variant_to_enum.clone(), name.clone()) {
         "()".to_string()
     } else {
         match rust_opaque_kernel_alias_carrier(name.clone()) {
@@ -4595,41 +4595,44 @@ pub fn collect_phantom_zst_marker_names(
     })
     .iter()
     .cloned()
-    .fold(Rc::new(vec![]), |acc: Arc<Vec<String>>, item: Arc<Node>| {
-        item.children.clone().iter().cloned().fold(
-            acc,
-            |inner: Arc<Vec<String>>, child: Arc<Node>| {
-                if ((child.children.clone().len() as i64) == 0) {
-                    {
-                        let vname = authored_name(env.clone(), child.clone());
-                        if ((is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
-                            && !{
-                                let mut __found = false;
-                                for n in inner.clone().iter().cloned() {
-                                    if (n.clone() == vname.clone()) {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            })
-                            && !phantom_marker_name_shadowed_by_real_type_item(
-                                items.clone(),
-                                env.source_indices.clone(),
-                                vname.clone(),
-                            ))
+    .fold(
+        Arc::new(vec![]),
+        |acc: Arc<Vec<String>>, item: Arc<Node>| {
+            item.children.clone().iter().cloned().fold(
+                acc,
+                |inner: Arc<Vec<String>>, child: Arc<Node>| {
+                    if ((child.children.clone().len() as i64) == 0) {
                         {
-                            v1_rt::concat(inner.clone(), Rc::new(vec![vname.clone()]))
-                        } else {
-                            inner.clone()
+                            let vname = authored_name(env.clone(), child.clone());
+                            if ((is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
+                                && !{
+                                    let mut __found = false;
+                                    for n in inner.clone().iter().cloned() {
+                                        if (n.clone() == vname.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                })
+                                && !phantom_marker_name_shadowed_by_real_type_item(
+                                    items.clone(),
+                                    env.source_indices.clone(),
+                                    vname.clone(),
+                                ))
+                            {
+                                v1_rt::concat(inner.clone(), Arc::new(vec![vname.clone()]))
+                            } else {
+                                inner.clone()
+                            }
                         }
+                    } else {
+                        inner.clone()
                     }
-                } else {
-                    inner.clone()
-                }
-            },
-        )
-    })
+                },
+            )
+        },
+    )
 }
 
 pub fn emit_module_phantom_zst_markers(items: Arc<Vec<Arc<Node>>>, env: Arc<TypeEnv>) -> String {
@@ -4959,12 +4962,12 @@ pub fn group_unlisted_type_names(
             CompilerDiagnostic::UnlistedImportUse { name: nm, .. } => {
                 let existing = match v1_rt::map_get(&acc, en.module_name.clone()) {
                     Some(v) => v.clone(),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 v1_rt::rc_map_insert(
                     acc.clone(),
                     en.module_name.clone(),
-                    v1_rt::concat(existing.clone(), Rc::new(vec![nm.clone()])),
+                    v1_rt::concat(existing.clone(), Arc::new(vec![nm.clone()])),
                 )
             }
             _ => acc.clone(),
@@ -5030,7 +5033,7 @@ pub fn emit_rust(typed: Arc<ResolvedGraph>) -> Arc<EmitResult> {
         let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs.clone());
         if ((workflow_default_diags.clone().len() as i64) > 0) {
             return Arc::new(EmitResult {
-                files: Rc::new(vec![]),
+                files: Arc::new(vec![]),
                 diagnostics: workflow_default_diags.clone(),
             });
         }
@@ -5090,7 +5093,7 @@ pub fn emit_rust(typed: Arc<ResolvedGraph>) -> Arc<EmitResult> {
                         ),
                     ) {
                         Some(v) => v.clone(),
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     },
                 ));
             }
@@ -5162,30 +5165,30 @@ pub fn emit_rust(typed: Arc<ResolvedGraph>) -> Arc<EmitResult> {
         );
         let rt_file = emit_v2_rt_module();
         let compiler_tests_file = if has_pipeline.clone() {
-            Rc::new(vec![emit_compiler_tests_module()])
+            Arc::new(vec![emit_compiler_tests_module()])
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let dry_run_file = if has_services.clone() {
-            Rc::new(vec![emit_dry_run_module()])
+            Arc::new(vec![emit_dry_run_module()])
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let v2_std_text_stub = if ((corpus_repr_is_faithful(emit_info.corpus_repr.clone())
             && module_files_reference_v2_std_text(module_files.clone()))
             && !module_files_include_v2_std_text(module_files.clone()))
         {
-            Rc::new(vec![emit_v2_std_text_closure_stub_module()])
+            Arc::new(vec![emit_v2_std_text_closure_stub_module()])
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let v2_std_integer_stub = if ((corpus_repr_is_faithful(emit_info.corpus_repr.clone())
             && module_files_reference_v2_std_integer(module_files.clone()))
             && !module_files_include_v2_std_integer(module_files.clone()))
         {
-            Rc::new(vec![emit_v2_std_integer_closure_stub_module()])
+            Arc::new(vec![emit_v2_std_integer_closure_stub_module()])
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let all_mod_files = v1_rt::concat(
             v1_rt::concat(
@@ -5193,7 +5196,7 @@ pub fn emit_rust(typed: Arc<ResolvedGraph>) -> Arc<EmitResult> {
                     v1_rt::concat(module_files.clone(), v2_std_text_stub.clone()),
                     v2_std_integer_stub.clone(),
                 ),
-                Rc::new(vec![rt_file.clone()]),
+                Arc::new(vec![rt_file.clone()]),
             ),
             dry_run_file.clone(),
         );
@@ -5201,7 +5204,7 @@ pub fn emit_rust(typed: Arc<ResolvedGraph>) -> Arc<EmitResult> {
         let files = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    Rc::new(vec![cargo.clone(), lib_file.clone(), main_file.clone()]),
+                    Arc::new(vec![cargo.clone(), lib_file.clone(), main_file.clone()]),
                     all_mod_files.clone(),
                 ),
                 compiler_tests_file.clone(),
@@ -5210,7 +5213,7 @@ pub fn emit_rust(typed: Arc<ResolvedGraph>) -> Arc<EmitResult> {
         );
         Arc::new(EmitResult {
             files: files.clone(),
-            diagnostics: Rc::new(vec![]),
+            diagnostics: Arc::new(vec![]),
         })
     }
 }
@@ -5412,9 +5415,9 @@ pub fn emit_module(
     registry: Arc<HashMap<String, Arc<ItemInfo>>>,
 ) -> Arc<TextFile> {
     {
-        let has_v1_seed = corpus_has_v1_seed_source_indices(Rc::new(vec![typed_module.clone()]));
+        let has_v1_seed = corpus_has_v1_seed_source_indices(Arc::new(vec![typed_module.clone()]));
         let base_info =
-            build_emit_graph_info(Rc::new(vec![typed_module.clone()]), has_v1_seed.clone());
+            build_emit_graph_info(Arc::new(vec![typed_module.clone()]), has_v1_seed.clone());
         let shared = build_shared_types(
             base_info.type_summaries.clone(),
             base_info.recursive_type_set.clone(),
@@ -5422,7 +5425,7 @@ pub fn emit_module(
         );
         let clone_bounded = v1_clone_bounded_type_params(
             base_info.type_decl_items.clone(),
-            merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
+            merged_module_source_indices(Arc::new(vec![typed_module.clone()])),
         );
         let emit_info = Arc::new(EmitGraphInfo {
             type_summaries: base_info.type_summaries.clone(),
@@ -5444,19 +5447,19 @@ pub fn emit_module(
             fn_return_type: None,
         });
         let shared_types = emit_info.shared_types.clone();
-        let export_sets = build_module_export_sets(Rc::new(vec![typed_module.clone()]));
-        let module_index = build_module_index(Rc::new(vec![typed_module.clone()]));
+        let export_sets = build_module_export_sets(Arc::new(vec![typed_module.clone()]));
+        let module_index = build_module_index(Arc::new(vec![typed_module.clone()]));
         emit_module_full(
             typed_module.clone(),
             registry.clone(),
             emit_info.clone(),
             shared_types.clone(),
             v1_rt::rc_empty_map::<String, String>(),
-            build_data_item_index(Rc::new(vec![typed_module.clone()])),
+            build_data_item_index(Arc::new(vec![typed_module.clone()])),
             export_sets.clone(),
-            Rc::new(vec![typed_module.clone()]),
+            Arc::new(vec![typed_module.clone()]),
             module_index.clone(),
-            Rc::new(vec![]),
+            Arc::new(vec![]),
         )
     }
 }
@@ -5575,7 +5578,7 @@ pub fn record_lit_variant_payload_struct_surfaces(
             None => authored_name_at(source_indices.clone(), n.clone()),
         };
         if (variant_name.clone() == "".to_string()) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
             {
                 let enum_name = match v1_rt::map_get(&variant_to_enum, variant_name.clone()) {
@@ -5583,7 +5586,7 @@ pub fn record_lit_variant_payload_struct_surfaces(
                     None => "".to_string(),
                 };
                 if (enum_name.clone() == "".to_string()) {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 } else {
                     match v1_rt::map_get(
                         &type_summaries,
@@ -5609,7 +5612,7 @@ pub fn record_lit_variant_payload_struct_surfaces(
                             }
                             __result
                         }),
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     }
                 }
             }
@@ -5650,12 +5653,12 @@ pub fn record_lit_resolved_ctor_import_names(
         let from_template = match container_template_algebra(type_name.clone()) {
             Some(algebra) => {
                 if ((algebra.clone() != "".to_string()) && (algebra.clone() != type_name.clone())) {
-                    Rc::new(vec![algebra.clone()])
+                    Arc::new(vec![algebra.clone()])
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 }
             }
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let from_fields = if (type_name.clone() != "".to_string()) {
             {
@@ -5675,9 +5678,9 @@ pub fn record_lit_resolved_ctor_import_names(
                 ) {
                     Some(sn) => {
                         if ((sn.clone() != "".to_string()) && (sn.clone() != type_name.clone())) {
-                            Rc::new(vec![sn.clone()])
+                            Arc::new(vec![sn.clone()])
                         } else {
-                            Rc::new(vec![])
+                            Arc::new(vec![])
                         }
                     }
                     None => match find_unique_struct_name_by_fields(
@@ -5687,17 +5690,17 @@ pub fn record_lit_resolved_ctor_import_names(
                         Some(sn) => {
                             if ((sn.clone() != "".to_string()) && (sn.clone() != type_name.clone()))
                             {
-                                Rc::new(vec![sn.clone()])
+                                Arc::new(vec![sn.clone()])
                             } else {
-                                Rc::new(vec![])
+                                Arc::new(vec![])
                             }
                         }
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     },
                 }
             }
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         unique_strings(v1_rt::concat(from_template.clone(), from_fields.clone()))
     }
@@ -5716,15 +5719,15 @@ pub fn record_lit_ref_names(
             let tn_list = match record_lit_type_name_at(n.clone(), source_indices.clone()) {
                 Some(t) => {
                     if (t.clone() != "".to_string()) {
-                        Rc::new(vec![t.clone()])
+                        Arc::new(vec![t.clone()])
                     } else {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     }
                 }
                 None => {
                     let inferred = emit_inferred_type_leaf_name(n.clone(), source_indices.clone());
                     if (inferred.clone() != "".to_string()) {
-                        Rc::new(vec![inferred.clone()])
+                        Arc::new(vec![inferred.clone()])
                     } else {
                         {
                             let anon = anonymous_record_lit_surface_name(
@@ -5733,9 +5736,9 @@ pub fn record_lit_ref_names(
                                 type_summaries.clone(),
                             );
                             if (anon.clone() != "".to_string()) {
-                                Rc::new(vec![anon.clone()])
+                                Arc::new(vec![anon.clone()])
                             } else {
-                                Rc::new(vec![])
+                                Arc::new(vec![])
                             }
                         }
                     }
@@ -5760,12 +5763,12 @@ pub fn record_lit_ref_names(
             let pe_list = match pe.clone() {
                 Some(p) => {
                     if (p.clone() != "".to_string()) {
-                        Rc::new(vec![p.clone()])
+                        Arc::new(vec![p.clone()])
                     } else {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     }
                 }
-                None => Rc::new(vec![]),
+                None => Arc::new(vec![]),
             };
             let payload_structs = record_lit_variant_payload_struct_surfaces(
                 n.clone(),
@@ -5781,7 +5784,7 @@ pub fn record_lit_ref_names(
                 payload_structs.clone(),
             ))
         }
-        _ => Rc::new(vec![]),
+        _ => Arc::new(vec![]),
     }
 }
 
@@ -5860,7 +5863,7 @@ pub fn collect_items_field_import_surface_names(
                                             }
                                             __result
                                         }),
-                                        None => Rc::new(vec![]),
+                                        None => Arc::new(vec![]),
                                     }
                                 })
                                 .iter()
@@ -5892,19 +5895,19 @@ pub fn collect_value_ref_names(
                 Some(VarBindingKind::FunctionValueBinding) => {
                     let nm = authored_name_at(source_indices.clone(), n.clone());
                     if (nm.clone() != "".to_string()) {
-                        Rc::new(vec![nm.clone()])
+                        Arc::new(vec![nm.clone()])
                     } else {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     }
                 }
-                _ => Rc::new(vec![]),
+                _ => Arc::new(vec![]),
             },
             ExprData::ExprCall { .. } => {
                 let nm = authored_name_at(source_indices.clone(), n.clone());
                 if (nm.clone() != "".to_string()) {
-                    Rc::new(vec![nm.clone()])
+                    Arc::new(vec![nm.clone()])
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 }
             }
             ExprData::ExprRecordLit { parent_enum: _, .. } => record_lit_ref_names(
@@ -5913,7 +5916,7 @@ pub fn collect_value_ref_names(
                 type_summaries.clone(),
                 variant_to_enum.clone(),
             ),
-            _ => Rc::new(vec![]),
+            _ => Arc::new(vec![]),
         };
         let list_fields = v1_rt::concat(
             v1_rt::concat(
@@ -5993,7 +5996,7 @@ pub fn collect_value_ref_names(
                     type_summaries.clone(),
                     variant_to_enum.clone(),
                 ),
-                None => Rc::new(vec![]),
+                None => Arc::new(vec![]),
             },
             v1_rt::concat(
                 match n.transport.clone() {
@@ -6003,7 +6006,7 @@ pub fn collect_value_ref_names(
                         type_summaries.clone(),
                         variant_to_enum.clone(),
                     ),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 },
                 match n.type_annotation.clone() {
                     Some(t) => collect_value_ref_names(
@@ -6012,7 +6015,7 @@ pub fn collect_value_ref_names(
                         type_summaries.clone(),
                         variant_to_enum.clone(),
                     ),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 },
             ),
         );
@@ -6030,7 +6033,7 @@ pub fn collect_item_type_surface_names(
     {
         let from_ann = match item.type_annotation.clone() {
             Some(t) => collect_type_node_import_surface_names(t.clone(), source_indices.clone()),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let from_params = Arc::new({
             let mut __result = Vec::new();
@@ -6050,7 +6053,7 @@ pub fn collect_item_type_surface_names(
             Some(InferredNode::Resolved { node: rt, .. }) => {
                 collect_type_node_import_surface_names(rt.clone(), source_indices.clone())
             }
-            _ => Rc::new(vec![]),
+            _ => Arc::new(vec![]),
         };
         v1_rt::concat(
             from_ann.clone(),
@@ -6086,15 +6089,15 @@ pub fn collect_pattern_rc_prelude_parent_enums(
             ) {
                 Some(parent) => {
                     if (parent.clone() != "".to_string()) {
-                        Rc::new(vec![parent.clone()])
+                        Arc::new(vec![parent.clone()])
                     } else {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     }
                 }
-                None => Rc::new(vec![]),
+                None => Arc::new(vec![]),
             }
         }
-        _ => Rc::new(vec![]),
+        _ => Arc::new(vec![]),
     }
 }
 
@@ -6137,10 +6140,10 @@ pub fn collect_rc_pattern_prelude_parent_enums(
                                     emit_info.clone(),
                                 )
                             }
-                            None => Rc::new(vec![]),
+                            None => Arc::new(vec![]),
                         }
                     } else {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     }
                 } else {
                     Arc::new({
@@ -6189,7 +6192,7 @@ pub fn collect_rc_pattern_prelude_parent_enums(
                                                 emit_info.type_summaries.clone(),
                                             )
                                         } else {
-                                            Rc::new(vec![])
+                                            Arc::new(vec![])
                                         }
                                     }
                                 })
@@ -6201,7 +6204,7 @@ pub fn collect_rc_pattern_prelude_parent_enums(
                     })
                 }
             }
-            _ => Rc::new(vec![]),
+            _ => Arc::new(vec![]),
         }
     })
 }
@@ -6216,9 +6219,9 @@ pub fn collect_match_pattern_parent_enums(
             let scrut = match_scrutinee(expr.clone());
             let scrut_type = emit_scrutinee_type_name(scrut.clone(), source_indices.clone());
             let from_scrut = if (scrut_type.clone() != "".to_string()) {
-                Rc::new(vec![scrut_type.clone()])
+                Arc::new(vec![scrut_type.clone()])
             } else {
-                Rc::new(vec![])
+                Arc::new(vec![])
             };
             let from_arms = Arc::new({
                 let mut __result = Vec::new();
@@ -6241,12 +6244,12 @@ pub fn collect_match_pattern_parent_enums(
                                 ) {
                                     Some(parent) => {
                                         if (parent.clone() != "".to_string()) {
-                                            Rc::new(vec![parent.clone()])
+                                            Arc::new(vec![parent.clone()])
                                         } else {
-                                            Rc::new(vec![])
+                                            Arc::new(vec![])
                                         }
                                     }
-                                    None => Rc::new(vec![]),
+                                    None => Arc::new(vec![]),
                                 },
                                 collect_rc_pattern_prelude_parent_enums(
                                     arm_pat.clone(),
@@ -6266,7 +6269,7 @@ pub fn collect_match_pattern_parent_enums(
             });
             unique_strings(v1_rt::concat(from_scrut.clone(), from_arms.clone()))
         }
-        _ => Rc::new(vec![]),
+        _ => Arc::new(vec![]),
     }
 }
 
@@ -6310,7 +6313,7 @@ pub fn collect_record_lit_field_struct_surfaces(
     {
         let field_name = field_init_node_name_at(field_init.clone(), source_indices.clone());
         if (field_name.clone() == "".to_string()) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
             {
                 let field_value = field_init_node_value(field_init.clone());
@@ -6322,7 +6325,7 @@ pub fn collect_record_lit_field_struct_surfaces(
                             variant_to_enum.clone(),
                         );
                         if (summary_key.clone() == "".to_string()) {
-                            Rc::new(vec![])
+                            Arc::new(vec![])
                         } else {
                             match v1_rt::map_get(&type_summaries, summary_key.clone()) {
                                 Some(summary) => match v1_rt::map_get(
@@ -6339,18 +6342,18 @@ pub fn collect_record_lit_field_struct_surfaces(
                                                 None => false,
                                             })
                                         {
-                                            Rc::new(vec![ft.clone()])
+                                            Arc::new(vec![ft.clone()])
                                         } else {
-                                            Rc::new(vec![])
+                                            Arc::new(vec![])
                                         }
                                     }
-                                    None => Rc::new(vec![]),
+                                    None => Arc::new(vec![]),
                                 },
-                                None => Rc::new(vec![]),
+                                None => Arc::new(vec![]),
                             }
                         }
                     }
-                    _ => Rc::new(vec![]),
+                    _ => Arc::new(vec![]),
                 }
             }
         }
@@ -6380,20 +6383,20 @@ pub fn collect_value_emit_type_surface_names(
             _ => {
                 let from_inferred = emit_inferred_type_leaf_name(n.clone(), source_indices.clone());
                 let from_inferred_list = if (from_inferred.clone() != "".to_string()) {
-                    Rc::new(vec![from_inferred.clone()])
+                    Arc::new(vec![from_inferred.clone()])
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 };
                 let nm = authored_name_at(source_indices.clone(), n.clone());
                 let from_variant = match v1_rt::map_get(&variant_to_enum, nm.clone()) {
                     Some(parent) => {
                         if (parent.clone() != "".to_string()) {
-                            Rc::new(vec![parent.clone()])
+                            Arc::new(vec![parent.clone()])
                         } else {
-                            Rc::new(vec![])
+                            Arc::new(vec![])
                         }
                     }
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 unique_strings(v1_rt::concat(
                     from_inferred_list.clone(),
@@ -6510,7 +6513,7 @@ pub fn collect_value_emit_type_surface_names(
                     source_indices.clone(),
                     emit_info.clone(),
                 ),
-                None => Rc::new(vec![]),
+                None => Arc::new(vec![]),
             },
             v1_rt::concat(
                 match n.transport.clone() {
@@ -6519,13 +6522,13 @@ pub fn collect_value_emit_type_surface_names(
                         source_indices.clone(),
                         emit_info.clone(),
                     ),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 },
                 match n.type_annotation.clone() {
                     Some(t) => {
                         collect_type_node_import_surface_names(t.clone(), source_indices.clone())
                     }
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 },
             ),
         );
@@ -6549,7 +6552,7 @@ pub fn collect_item_emit_surface_names(
                 source_indices.clone(),
                 emit_info.clone(),
             ),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         unique_strings(v1_rt::concat(from_signature.clone(), from_body.clone()))
     }
@@ -6566,7 +6569,7 @@ pub fn provider_proven_exports_symbol(
     name_in_transitive_export_surface(
         name.clone(),
         provider_module.clone(),
-        Rc::new(vec![]),
+        Arc::new(vec![]),
         export_sets.clone(),
         typed_modules.clone(),
         source_indices.clone(),
@@ -6576,7 +6579,7 @@ pub fn provider_proven_exports_symbol(
 
 pub fn imported_names_in_use_line(line: String) -> Arc<Vec<String>> {
     if (v1_rt::contains(line.clone(), "use ".to_string()) == false) {
-        Rc::new(vec![])
+        Arc::new(vec![])
     } else {
         {
             let after = match Arc::new(
@@ -6656,7 +6659,7 @@ pub fn expand_variant_payload_struct_imports(
                 (*match v1_rt::map_get(&variant_to_enum, n.clone()) {
                     Some(enum_name) => {
                         if (enum_name.clone() == "".to_string()) {
-                            Rc::new(vec![])
+                            Arc::new(vec![])
                         } else {
                             match v1_rt::map_get(
                                 &type_summaries,
@@ -6683,11 +6686,11 @@ pub fn expand_variant_payload_struct_imports(
                                     }
                                     __result
                                 }),
-                                None => Rc::new(vec![]),
+                                None => Arc::new(vec![]),
                             }
                         }
                     }
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 })
                 .iter()
                 .cloned(),
@@ -6828,9 +6831,9 @@ pub fn reference_derived_use_lines(
                     (*{
                         let nm = authored_name_at(source_indices.clone(), item.clone());
                         if (nm.clone() == "".to_string()) {
-                            Rc::new(vec![])
+                            Arc::new(vec![])
                         } else {
-                            Rc::new(vec![nm.clone()])
+                            Arc::new(vec![nm.clone()])
                         }
                     })
                     .iter()
@@ -6858,7 +6861,7 @@ pub fn reference_derived_use_lines(
                     (*if (emit_map_has(already.clone(), name.clone())
                         || is_kernel_type(name.clone()))
                     {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     } else {
                         match v1_rt::map_get(&registry, name.clone()) {
                             Some(info) => {
@@ -6872,12 +6875,12 @@ pub fn reference_derived_use_lines(
                                         module_index.clone(),
                                     ))
                                 {
-                                    Rc::new(vec![name.clone()])
+                                    Arc::new(vec![name.clone()])
                                 } else {
-                                    Rc::new(vec![])
+                                    Arc::new(vec![])
                                 }
                             }
-                            None => Rc::new(vec![]),
+                            None => Arc::new(vec![]),
                         }
                     })
                     .iter()
@@ -6891,8 +6894,8 @@ pub fn reference_derived_use_lines(
             for name in unlisted.clone().iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&registry, name.clone()) {
-                        Some(info) => Rc::new(vec![info.module_name.clone()]),
-                        None => Rc::new(vec![]),
+                        Some(info) => Arc::new(vec![info.module_name.clone()]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -6930,7 +6933,7 @@ pub fn reference_derived_use_lines(
                             module_index.clone(),
                         );
                         let block_lines = if (block.clone() == "".to_string()) {
-                            Rc::new(vec![])
+                            Arc::new(vec![])
                         } else {
                             Arc::new(
                                 block
@@ -6966,7 +6969,7 @@ pub fn reference_derived_use_lines(
                                         emit_info.type_summaries.clone(),
                                         nm.clone(),
                                     )) {
-                                        Rc::new(vec![])
+                                        Arc::new(vec![])
                                     } else {
                                         if provider_proven_exports_symbol(
                                             nm.clone(),
@@ -6976,7 +6979,7 @@ pub fn reference_derived_use_lines(
                                             source_indices.clone(),
                                             module_index.clone(),
                                         ) {
-                                            Rc::new(vec![v1_rt::concat(
+                                            Arc::new(vec![v1_rt::concat(
                                                 rust_visibility_prefix(),
                                                 v1_rt::concat(
                                                     "use crate::".to_string(),
@@ -6996,7 +6999,7 @@ pub fn reference_derived_use_lines(
                                                 ),
                                             )])
                                         } else {
-                                            Rc::new(vec![])
+                                            Arc::new(vec![])
                                         }
                                     })
                                     .iter()
@@ -7099,7 +7102,7 @@ pub fn emit_module_full(
             typed_module.items.clone(),
         );
         let dag_import_lines = if (imports_str.clone() == "".to_string()) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
             Arc::new(
                 imports_str
@@ -7124,7 +7127,7 @@ pub fn emit_module_full(
                 typed_modules.clone(),
             )
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let already_imported_names = v1_rt::concat(
             prelude_imported_names.clone(),
@@ -7181,7 +7184,7 @@ pub fn emit_module_full(
                     module_index.clone(),
                 )
             } else {
-                Rc::new(vec![])
+                Arc::new(vec![])
             }
         };
         let merged_imports = dedupe_rust_import_lines(v1_rt::concat(
@@ -7205,7 +7208,7 @@ pub fn emit_module_full(
                         authored_name(scope.type_env.clone(), item.clone()),
                     ) {
                         Some(info) => info.service_names.clone(),
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -7220,9 +7223,9 @@ pub fn emit_module_full(
                     (*match v1_rt::map_get(&svc_module_map, sn.clone()) {
                         Some(mod_file) => {
                             if (mod_file.clone() == this_mod_filename.clone()) {
-                                Rc::new(vec![])
+                                Arc::new(vec![])
                             } else {
-                                Rc::new(vec![v1_rt::concat(
+                                Arc::new(vec![v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
@@ -7240,7 +7243,7 @@ pub fn emit_module_full(
                                 )])
                             }
                         }
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -7543,7 +7546,7 @@ pub fn build_module_index(modules: Arc<Vec<Arc<TypedModule>>>) -> Arc<ModuleInde
                         v1_rt::rc_list_push(prior.clone(), tm.clone()),
                     ),
                     None => {
-                        v1_rt::rc_map_insert(acc.clone(), fname.clone(), Rc::new(vec![tm.clone()]))
+                        v1_rt::rc_map_insert(acc.clone(), fname.clone(), Arc::new(vec![tm.clone()]))
                     }
                 }
             },
@@ -7577,7 +7580,7 @@ pub fn contracts_items_for_module(
         module_index.clone(),
     ) {
         Some(tm) => tm.items.clone(),
-        None => Rc::new(vec![]),
+        None => Arc::new(vec![]),
     }
 }
 
@@ -7594,7 +7597,7 @@ pub fn contracts_imports_for_module(
         module_index.clone(),
     ) {
         Some(tm) => module_imports(tm.module.clone()),
-        None => Rc::new(vec![]),
+        None => Arc::new(vec![]),
     }
 }
 
@@ -7888,7 +7891,7 @@ pub fn name_in_transitive_export_surface(
                                     authored_name_at(source_indices.clone(), imp.clone()),
                                     v1_rt::concat(
                                         visited.clone(),
-                                        Rc::new(vec![module_name.clone()]),
+                                        Arc::new(vec![module_name.clone()]),
                                     ),
                                     export_sets.clone(),
                                     typed_modules.clone(),
@@ -7919,7 +7922,7 @@ pub fn reexport_source_module_name(
     reexport_source_module_name_with_visited(
         name.clone(),
         import_module.clone(),
-        Rc::new(vec![]),
+        Arc::new(vec![]),
         typed_modules.clone(),
         export_sets.clone(),
         source_indices.clone(),
@@ -8022,7 +8025,7 @@ pub fn reexport_source_module_name_with_visited(
                                     Some(src) => {
                                         let __tco_0 = src.clone();
                                         let __tco_1 =
-                                            v1_rt::concat(visited, Rc::new(vec![import_module]));
+                                            v1_rt::concat(visited, Arc::new(vec![import_module]));
                                         import_module = __tco_0;
                                         visited = __tco_1;
                                         continue;
@@ -8057,9 +8060,9 @@ pub fn reexport_source_module_name_with_visited(
                                                             src_mod.clone(),
                                                             v1_rt::concat(
                                                                 visited.clone(),
-                                                                Rc::new(
-                                                                    vec![import_module.clone()],
-                                                                ),
+                                                                Arc::new(vec![
+                                                                    import_module.clone()
+                                                                ]),
                                                             ),
                                                             export_sets.clone(),
                                                             typed_modules.clone(),
@@ -8089,7 +8092,7 @@ pub fn reexport_source_module_name_with_visited(
                                                 let __tco_0 = src.clone();
                                                 let __tco_1 = v1_rt::concat(
                                                     visited,
-                                                    Rc::new(vec![import_module]),
+                                                    Arc::new(vec![import_module]),
                                                 );
                                                 import_module = __tco_0;
                                                 visited = __tco_1;
@@ -8173,7 +8176,7 @@ pub fn import_module_enum_scope(
                 }
                 __result
             }),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         unique_strings(v1_rt::concat(physical.clone(), reexport_parents.clone()))
     }
@@ -8191,7 +8194,7 @@ pub fn enum_names_in_module(
         source_indices.clone(),
         module_index.clone(),
     ) {
-        None => Rc::new(vec![]),
+        None => Arc::new(vec![]),
         Some(tm) => Arc::new({
             let mut __result = Vec::new();
             for item in Arc::new({
@@ -8262,7 +8265,7 @@ pub fn wildcard_import_pool_surface_names(
             }
             __found
         } {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
             match typed_module_by_name(
                 module_name.clone(),
@@ -8270,7 +8273,7 @@ pub fn wildcard_import_pool_surface_names(
                 source_indices.clone(),
                 module_index.clone(),
             ) {
-                None => Rc::new(vec![]),
+                None => Arc::new(vec![]),
                 Some(tm) => Arc::new({
                     let mut __result = Vec::new();
                     for imp in Arc::new({
@@ -8290,7 +8293,7 @@ pub fn wildcard_import_pool_surface_names(
                                 let src_mod = authored_name_at(source_indices.clone(), imp.clone());
                                 let direct = match v1_rt::map_get(&export_sets, src_mod.clone()) {
                                     Some(exported) => Arc::new(v1_rt::sorted_map_keys(&exported)),
-                                    None => Rc::new(vec![]),
+                                    None => Arc::new(vec![]),
                                 };
                                 v1_rt::concat(
                                     direct.clone(),
@@ -8298,7 +8301,7 @@ pub fn wildcard_import_pool_surface_names(
                                         src_mod.clone(),
                                         v1_rt::concat(
                                             visited.clone(),
-                                            Rc::new(vec![module_name.clone()]),
+                                            Arc::new(vec![module_name.clone()]),
                                         ),
                                         export_sets.clone(),
                                         typed_modules.clone(),
@@ -8328,11 +8331,11 @@ pub fn wildcard_reexport_surface_names(
     {
         let local_candidates = match v1_rt::map_get(&export_sets, import_module.clone()) {
             Some(exported) => Arc::new(v1_rt::sorted_map_keys(&exported)),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let wildcard_pool_candidates = wildcard_import_pool_surface_names(
             import_module.clone(),
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             export_sets.clone(),
             typed_modules.clone(),
             source_indices.clone(),
@@ -8820,7 +8823,7 @@ pub fn alias_rhs_base_module_from_import_or_registry(
                         name_in_transitive_export_surface(
                             name.clone(),
                             import_module.clone(),
-                            Rc::new(vec![]),
+                            Arc::new(vec![]),
                             export_sets.clone(),
                             typed_modules.clone(),
                             source_indices.clone(),
@@ -9822,9 +9825,9 @@ pub fn emit_specific_import_block(
                         __result
                     }),
                     if (other_direct_line.clone() != "".to_string()) {
-                        Rc::new(vec![other_direct_line.clone()])
+                        Arc::new(vec![other_direct_line.clone()])
                     } else {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     },
                 );
                 let parent_defining_mods = unique_strings(Arc::new({
@@ -9958,7 +9961,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
     Some(found) => (found.clone() == parent.clone()),
     None => match reexport_variant_parent_in_import_module(n.clone(), import_module.clone(), registry.clone(), type_summaries.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), module_index.clone()) {
     Some(found) => (found.clone() == parent.clone()),
-    None => match find_variant_parent(type_summaries.clone(), n.clone(), Rc::new(vec![parent.clone()])) {
+    None => match find_variant_parent(type_summaries.clone(), n.clone(), Arc::new(vec![parent.clone()])) {
     Some(_) => true,
     None => false,
 },
@@ -10257,12 +10260,12 @@ pub fn rust_pub_use_braced_names(line: String) -> Arc<Vec<String>> {
                         .map(|s| s.to_string())
                         .collect::<Vec<_>>(),
                 ),
-                None => Rc::new(vec![]),
+                None => Arc::new(vec![]),
             },
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         }
     } else {
-        Rc::new(vec![])
+        Arc::new(vec![])
     }
 }
 
@@ -10458,7 +10461,7 @@ pub fn rust_use_line_bound_symbols(line: String) -> Arc<Vec<String>> {
     if ((rust_use_crate_marker(line.clone()) == "".to_string())
         || v1_rt::contains(line.clone(), "::*".to_string()))
     {
-        Rc::new(vec![])
+        Arc::new(vec![])
     } else {
         {
             let braced = rust_pub_use_braced_names(line.clone());
@@ -10474,9 +10477,9 @@ pub fn rust_use_line_bound_symbols(line: String) -> Arc<Vec<String>> {
                 {
                     let singleton = rust_pub_use_singleton_name(line.clone());
                     if (singleton.clone() == "".to_string()) {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     } else {
-                        Rc::new(vec![singleton.clone()])
+                        Arc::new(vec![singleton.clone()])
                     }
                 }
             }
@@ -10508,7 +10511,7 @@ pub fn strip_repeated_use_symbols(lines: Arc<Vec<String>>) -> Arc<Vec<String>> {
                     (*if ((rust_use_crate_marker(line.clone()) == "".to_string())
                         || v1_rt::contains(line.clone(), "::*".to_string()))
                     {
-                        Rc::new(vec![line.clone()])
+                        Arc::new(vec![line.clone()])
                     } else {
                         {
                             let braced = rust_pub_use_braced_names(line.clone());
@@ -10553,8 +10556,8 @@ pub fn strip_repeated_use_symbols(lines: Arc<Vec<String>>) -> Arc<Vec<String>> {
                                                 .first()
                                                 .cloned()
                                                 {
-                                                    Some(entry) => Rc::new(vec![entry.clone()]),
-                                                    None => Rc::new(vec![]),
+                                                    Some(entry) => Arc::new(vec![entry.clone()]),
+                                                    None => Arc::new(vec![]),
                                                 })
                                                 .iter()
                                                 .cloned(),
@@ -10563,12 +10566,12 @@ pub fn strip_repeated_use_symbols(lines: Arc<Vec<String>>) -> Arc<Vec<String>> {
                                         __result
                                     });
                                     if ((kept.clone().len() as i64) == 0) {
-                                        Rc::new(vec![])
+                                        Arc::new(vec![])
                                     } else {
                                         if ((kept.clone().len() as i64)
                                             == (braced.clone().len() as i64))
                                         {
-                                            Rc::new(vec![line.clone()])
+                                            Arc::new(vec![line.clone()])
                                         } else {
                                             match Arc::new(
                                                 line.clone()
@@ -10579,7 +10582,7 @@ pub fn strip_repeated_use_symbols(lines: Arc<Vec<String>>) -> Arc<Vec<String>> {
                                             .first()
                                             .cloned()
                                             {
-                                                Some(prefix) => Rc::new(vec![v1_rt::concat(
+                                                Some(prefix) => Arc::new(vec![v1_rt::concat(
                                                     v1_rt::concat(
                                                         v1_rt::concat(
                                                             prefix.clone(),
@@ -10589,7 +10592,7 @@ pub fn strip_repeated_use_symbols(lines: Arc<Vec<String>>) -> Arc<Vec<String>> {
                                                     ),
                                                     "};".to_string(),
                                                 )]),
-                                                None => Rc::new(vec![line.clone()]),
+                                                None => Arc::new(vec![line.clone()]),
                                             }
                                         }
                                     }
@@ -10598,17 +10601,17 @@ pub fn strip_repeated_use_symbols(lines: Arc<Vec<String>>) -> Arc<Vec<String>> {
                                 {
                                     let singleton = rust_pub_use_singleton_name(line.clone());
                                     if (singleton.clone() == "".to_string()) {
-                                        Rc::new(vec![line.clone()])
+                                        Arc::new(vec![line.clone()])
                                     } else {
                                         match v1_rt::map_get(&owners, singleton.clone()) {
                                             Some(owner) => {
                                                 if (owner.clone() == line.clone()) {
-                                                    Rc::new(vec![line.clone()])
+                                                    Arc::new(vec![line.clone()])
                                                 } else {
-                                                    Rc::new(vec![])
+                                                    Arc::new(vec![])
                                                 }
                                             }
-                                            None => Rc::new(vec![line.clone()]),
+                                            None => Arc::new(vec![line.clone()]),
                                         }
                                     }
                                 }
@@ -10970,7 +10973,7 @@ pub fn module_data_field_struct_import_names(
                         None => "".to_string(),
                     };
                     if (type_name.clone() == "".to_string()) {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     } else {
                         match v1_rt::map_get(&type_summaries, type_name.clone()) {
                             Some(summary) => Arc::new({
@@ -10982,7 +10985,7 @@ pub fn module_data_field_struct_import_names(
                                         && name_in_transitive_export_surface(
                                             field_type.clone(),
                                             import_module.clone(),
-                                            Rc::new(vec![]),
+                                            Arc::new(vec![]),
                                             export_sets.clone(),
                                             typed_modules.clone(),
                                             source_indices.clone(),
@@ -11002,7 +11005,7 @@ pub fn module_data_field_struct_import_names(
                                 }
                                 __result
                             }),
-                            None => Rc::new(vec![]),
+                            None => Arc::new(vec![]),
                         }
                     }
                 })
@@ -11341,9 +11344,9 @@ pub fn emit_faithful_text_carrier_import_lines(
                 local_type_names.clone(),
                 "FreeMonoid".to_string(),
             )) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![v1_rt::concat(
+            Arc::new(vec![v1_rt::concat(
                 rust_visibility_prefix(),
                 "use crate::std_algebra::FreeMonoid;".to_string(),
             )])
@@ -11354,9 +11357,9 @@ pub fn emit_faithful_text_carrier_import_lines(
                 local_type_names.clone(),
                 "Char".to_string(),
             )) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![v1_rt::concat(
+            Arc::new(vec![v1_rt::concat(
                 rust_visibility_prefix(),
                 "use crate::std_types::Char;".to_string(),
             )])
@@ -11367,9 +11370,9 @@ pub fn emit_faithful_text_carrier_import_lines(
                 local_type_names.clone(),
                 "NonEmptyStr".to_string(),
             )) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![v1_rt::concat(
+            Arc::new(vec![v1_rt::concat(
                 rust_visibility_prefix(),
                 "use crate::std_types::NonEmptyStr;".to_string(),
             )])
@@ -11384,9 +11387,9 @@ pub fn emit_faithful_text_carrier_import_lines(
             }
             __found
         }) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![v1_rt::concat(
+            Arc::new(vec![v1_rt::concat(
                 rust_visibility_prefix(),
                 "use crate::v2_std_integer::Int;".to_string(),
             )])
@@ -11397,9 +11400,9 @@ pub fn emit_faithful_text_carrier_import_lines(
                 local_type_names.clone(),
                 "PartialFunction".to_string(),
             )) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![v1_rt::concat(
+            Arc::new(vec![v1_rt::concat(
                 rust_visibility_prefix(),
                 "use crate::std_algebra::PartialFunction;".to_string(),
             )])
@@ -11410,9 +11413,9 @@ pub fn emit_faithful_text_carrier_import_lines(
                 local_type_names.clone(),
                 "Memory".to_string(),
             )) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![v1_rt::concat(
+            Arc::new(vec![v1_rt::concat(
                 rust_visibility_prefix(),
                 "use crate::std_measure::Memory;".to_string(),
             )])
@@ -11423,9 +11426,9 @@ pub fn emit_faithful_text_carrier_import_lines(
                 local_type_names.clone(),
                 "One".to_string(),
             )) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![v1_rt::concat(
+            Arc::new(vec![v1_rt::concat(
                 rust_visibility_prefix(),
                 "use crate::std_measure::One;".to_string(),
             )])
@@ -11579,7 +11582,7 @@ pub fn emit_typed_item(
                                             ),
                                             render_rust_alias_rhs_type(
                                                 resolved_type(item.clone()),
-                                                Rc::new(vec![]),
+                                                Arc::new(vec![]),
                                                 shared_types.clone(),
                                                 emit_info.corpus_repr.clone(),
                                                 env.source_indices.clone(),
@@ -12571,7 +12574,7 @@ pub fn emit_struct_from_children(
                 let all_field_lines = if ((unused_params.clone().len() as i64) > 0) {
                     v1_rt::concat(
                         field_lines.clone(),
-                        Rc::new(vec![v1_rt::concat(
+                        Arc::new(vec![v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
@@ -12662,7 +12665,7 @@ pub fn render_rust_type_with_applied_binding(
                             } else {
                                 render_rust_applied_type_shared(
                                     applied.clone(),
-                                    Rc::new(vec![]),
+                                    Arc::new(vec![]),
                                     shared_types.clone(),
                                     corpus_repr.clone(),
                                     source_indices.clone(),
@@ -12677,8 +12680,8 @@ pub fn render_rust_type_with_applied_binding(
                                             Arc<TypeBinding>,
                                         >(
                                         ),
-                                        parents: Rc::new(vec![]),
-                                        recursive_types: Rc::new(vec![]),
+                                        parents: Arc::new(vec![]),
+                                        recursive_types: Arc::new(vec![]),
                                         recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
                                         inductive_fields: v1_rt::rc_empty_map::<
                                             String,
@@ -12695,7 +12698,7 @@ pub fn render_rust_type_with_applied_binding(
                         } else {
                             render_rust_applied_type_shared(
                                 applied.clone(),
-                                Rc::new(vec![]),
+                                Arc::new(vec![]),
                                 shared_types.clone(),
                                 corpus_repr.clone(),
                                 source_indices.clone(),
@@ -12708,8 +12711,8 @@ pub fn render_rust_type_with_applied_binding(
                                         String,
                                         Arc<TypeBinding>,
                                     >(),
-                                    parents: Rc::new(vec![]),
-                                    recursive_types: Rc::new(vec![]),
+                                    parents: Arc::new(vec![]),
+                                    recursive_types: Arc::new(vec![]),
                                     recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
                                     inductive_fields: v1_rt::rc_empty_map::<
                                         String,
@@ -13198,7 +13201,7 @@ pub fn find_shared_enum_fields(
             __result
         });
         if ((fielded.clone().len() as i64) == 0) {
-            return Rc::new(vec![]);
+            return Arc::new(vec![]);
         }
         let first_fields = match fielded.clone().first().cloned() {
             Some(v) => Arc::new({
@@ -13208,7 +13211,7 @@ pub fn find_shared_enum_fields(
                 }
                 __result
             }),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         Arc::new({
             let mut __result = Vec::new();
@@ -14810,7 +14813,7 @@ pub fn emit_func_def(
         let depth = 0;
         let service_names = match lookup_item(registry.clone(), name.clone()) {
             Some(info) => info.service_names.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let params_str = emit_func_params(
             params.clone(),
@@ -14945,7 +14948,7 @@ pub fn emit_func_body(
                     {
                         let init_state = emit_rust_init_block_stmts(
                             ss.clone(),
-                            Rc::new(vec![]),
+                            Arc::new(vec![]),
                             scope.clone(),
                             registry.clone(),
                             depth.clone(),
@@ -15130,7 +15133,7 @@ pub fn emit_func_params(
             for p in params.clone().iter().cloned() {
                 __result.push(emit_param(
                     p.clone(),
-                    Rc::new(vec![]),
+                    Arc::new(vec![]),
                     shared_types.clone(),
                     corpus_repr.clone(),
                     source_indices.clone(),
@@ -15476,8 +15479,8 @@ pub fn collect_field_binding_string_guards(
                                     fb_pat.clone(),
                                     bind_name.clone(),
                                 ) {
-                                    ref __s if __s == "" => Rc::new(vec![]),
-                                    guard => Rc::new(vec![guard.clone()]),
+                                    ref __s if __s == "" => Arc::new(vec![]),
+                                    guard => Arc::new(vec![guard.clone()]),
                                 }
                             }
                         } else {
@@ -15490,9 +15493,9 @@ pub fn collect_field_binding_string_guards(
                                     source_indices.clone(),
                                 );
                                 if (nested.clone() == "".to_string()) {
-                                    Rc::new(vec![])
+                                    Arc::new(vec![])
                                 } else {
-                                    Rc::new(vec![nested.clone()])
+                                    Arc::new(vec![nested.clone()])
                                 }
                             }
                         }
@@ -16238,7 +16241,7 @@ pub fn empty_rc_pattern_analysis() -> Arc<RcPatternAnalysis> {
         matches_rc_variant: false,
         matches_option_rc_variant: false,
         needs_rc_pattern: false,
-        ref_bound_fields: Rc::new(vec![]),
+        ref_bound_fields: Arc::new(vec![]),
     })
 }
 
@@ -16292,7 +16295,7 @@ pub fn analyze_rc_pattern(
                                         .matches_rc_variant
                                         .clone()),
                                     needs_rc_pattern: inner.needs_rc_pattern.clone(),
-                                    ref_bound_fields: Rc::new(vec![]),
+                                    ref_bound_fields: Arc::new(vec![]),
                                 })
                             }
                             None => empty_rc_pattern_analysis(),
@@ -16344,9 +16347,9 @@ pub fn analyze_rc_pattern(
                                         .matches_rc_variant
                                         .clone()
                                         {
-                                            Rc::new(vec![fb_name.clone()])
+                                            Arc::new(vec![fb_name.clone()])
                                         } else {
-                                            Rc::new(vec![])
+                                            Arc::new(vec![])
                                         }
                                     })
                                     .iter()
@@ -16385,7 +16388,7 @@ pub fn box_bound_fields_for_pattern(
             let bare_n = qualified_last_segment(n.clone());
             if (is_optional_variant_name(bare_n.clone()) && is_optional_parent(parent_enum.clone()))
             {
-                Rc::new(vec![])
+                Arc::new(vec![])
             } else {
                 Arc::new({
                     let mut __result = Vec::new();
@@ -16398,10 +16401,10 @@ pub fn box_bound_fields_for_pattern(
                                 );
                                 let fb_pat = field_binding_pattern(fb.clone());
                                 if (fb_name.clone() == "0".to_string()) {
-                                    Rc::new(vec![])
+                                    Arc::new(vec![])
                                 } else {
                                     match (*fb_pat.clone()).clone() {
-                                        MatchPattern::Wildcard => Rc::new(vec![]),
+                                        MatchPattern::Wildcard => Arc::new(vec![]),
                                         _ => {
                                             if rust_record_field_needs_box(
                                                 scope.clone(),
@@ -16410,9 +16413,9 @@ pub fn box_bound_fields_for_pattern(
                                                 bare_n.clone(),
                                                 fb_name.clone(),
                                             ) {
-                                                Rc::new(vec![fb_name.clone()])
+                                                Arc::new(vec![fb_name.clone()])
                                             } else {
-                                                Rc::new(vec![])
+                                                Arc::new(vec![])
                                             }
                                         }
                                     }
@@ -16426,7 +16429,7 @@ pub fn box_bound_fields_for_pattern(
                 })
             }
         }
-        _ => Rc::new(vec![]),
+        _ => Arc::new(vec![]),
     }
 }
 
@@ -17112,9 +17115,9 @@ pub fn rc_pattern_preludes(
                                                     emit_info.clone(),
                                                 );
                                                 if (inner_preludes.clone() == "".to_string()) {
-                                                    Rc::new(vec![])
+                                                    Arc::new(vec![])
                                                 } else {
-                                                    Rc::new(vec![inner_preludes.clone()])
+                                                    Arc::new(vec![inner_preludes.clone()])
                                                 }
                                             }
                                         } else {
@@ -17129,7 +17132,7 @@ pub fn rc_pattern_preludes(
                                                         fb_pat_here.clone(),
                                                         v1_rt::rc_list_push(
                                                             v1_rt::rc_list_push(
-                                                                Rc::new(vec![]),
+                                                                Arc::new(vec![]),
                                                                 bare_n.clone(),
                                                             ),
                                                             fb_name.clone(),
@@ -17146,7 +17149,7 @@ pub fn rc_pattern_preludes(
                                                     } else {
                                                         " else { unreachable!() };".to_string()
                                                     };
-                                                    Rc::new(vec![v1_rt::concat(
+                                                    Arc::new(vec![v1_rt::concat(
                                                         v1_rt::concat(
                                                             v1_rt::concat(
                                                                 v1_rt::concat(
@@ -17167,7 +17170,7 @@ pub fn rc_pattern_preludes(
                                                     )])
                                                 }
                                             } else {
-                                                Rc::new(vec![])
+                                                Arc::new(vec![])
                                             }
                                         }
                                     })
@@ -19589,7 +19592,7 @@ pub fn emit_typed_call(
                         }
                         __result
                     }),
-                    _ => Rc::new(vec![emit_typed_expr(
+                    _ => Arc::new(vec![emit_typed_expr(
                         update_arg.clone(),
                         registry.clone(),
                         scope.clone(),
@@ -19812,10 +19815,10 @@ pub fn emit_typed_call(
                         v1_rt::concat(resource_args.clone(), service_args.clone())
                     }
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 }
             }
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let all_args = v1_rt::concat(arg_strs.clone(), extra_args.clone());
         let args_str = all_args.clone().join(&", ".to_string());
@@ -19988,17 +19991,17 @@ pub fn fill_op_default_args(
                     (*{
                         let pname = param_node_name_at(p.clone(), si.clone());
                         match v1_rt::map_get(&arg_map, pname.clone()) {
-                            Some(arg) => Rc::new(vec![arg.clone()]),
+                            Some(arg) => Arc::new(vec![arg.clone()]),
                             None => {
                                 if (param_node_default_value(p.clone()) != None) {
-                                    Rc::new(vec![make_arg_node(
+                                    Arc::new(vec![make_arg_node(
                                         Some(pname.clone()),
                                         param_node_default_value(p.clone()).clone().unwrap(),
                                         p.span.clone(),
                                         p.span.clone(),
                                     )])
                                 } else {
-                                    Rc::new(vec![])
+                                    Arc::new(vec![])
                                 }
                             }
                         }
@@ -20475,7 +20478,7 @@ pub fn emit_typed_collection_lambda(
             let param_strs = lambda_param_type_strs(
                 ps.clone(),
                 pn.clone(),
-                Rc::new(vec![elem_type_str.clone()]),
+                Arc::new(vec![elem_type_str.clone()]),
                 shared_types.clone(),
                 emit_info.corpus_repr.clone(),
                 scope.type_env.clone().source_indices.clone(),
@@ -21626,7 +21629,7 @@ pub fn emit_rust_with_method_call(
                 }
                 __result
             }),
-            _ => Rc::new(vec![emit_typed_expr(
+            _ => Arc::new(vec![emit_typed_expr(
                 update_arg.clone(),
                 registry.clone(),
                 scope.clone(),
@@ -21838,7 +21841,7 @@ pub fn emit_rust_generic_method_call(
                     }
                     __result
                 });
-                let all_strs = v1_rt::concat(Rc::new(vec![recv_str.clone()]), arg_strs.clone());
+                let all_strs = v1_rt::concat(Arc::new(vec![recv_str.clone()]), arg_strs.clone());
                 let bridge_name = rust_runtime_bridge_name(function_name.clone());
                 let lowered = v1_rt::concat(
                     v1_rt::concat(
@@ -22151,7 +22154,7 @@ pub fn emit_typed_method_call(
                                                             __result
                                                         });
                                                         let all_arg_strs = v1_rt::concat(
-                                                            Rc::new(vec![recv_str.clone()]),
+                                                            Arc::new(vec![recv_str.clone()]),
                                                             arg_strs.clone(),
                                                         );
                                                         emit_nested_rt_concat(
@@ -22936,7 +22939,7 @@ pub fn emit_typed_match_arm(
                 },
                 _ => emit_pattern(
                     arm_pat.clone(),
-                    Rc::new(vec![]),
+                    Arc::new(vec![]),
                     shared_types.clone(),
                     scrut_type.clone(),
                     si.clone(),
@@ -22947,7 +22950,7 @@ pub fn emit_typed_match_arm(
             if rc_analysis.needs_rc_pattern.clone() {
                 emit_pattern_rc_aware(
                     arm_pat.clone(),
-                    Rc::new(vec![]),
+                    Arc::new(vec![]),
                     rc_analysis.clone(),
                     shared_types.clone(),
                     scrut_type.clone(),
@@ -22957,7 +22960,7 @@ pub fn emit_typed_match_arm(
             } else {
                 emit_pattern(
                     arm_pat.clone(),
-                    Rc::new(vec![]),
+                    Arc::new(vec![]),
                     shared_types.clone(),
                     scrut_type.clone(),
                     si.clone(),
@@ -22966,7 +22969,7 @@ pub fn emit_typed_match_arm(
             }
         };
         let field_guards =
-            collect_pattern_string_guards(arm_pat.clone(), Rc::new(vec![]), si.clone());
+            collect_pattern_string_guards(arm_pat.clone(), Arc::new(vec![]), si.clone());
         let arm_guard_str = match arm_g.clone() {
             Some(g) => emit_typed_expr(
                 g.clone(),
@@ -23200,12 +23203,12 @@ pub fn rust_struct_field_lookup_candidates(
             Some(algebra) => {
                 if ((algebra.clone() != "".to_string()) && (algebra.clone() != struct_name.clone()))
                 {
-                    Rc::new(vec![algebra.clone()])
+                    Arc::new(vec![algebra.clone()])
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 }
             }
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let from_resolve = match lookup_type_by_name(scope.type_env.clone(), struct_name.clone()) {
             Some(type_node) => {
@@ -23223,15 +23226,15 @@ pub fn rust_struct_field_lookup_candidates(
                 if ((resolved_name.clone() != "".to_string())
                     && (resolved_name.clone() != struct_name.clone()))
                 {
-                    Rc::new(vec![resolved_name.clone()])
+                    Arc::new(vec![resolved_name.clone()])
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 }
             }
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         unique_strings(v1_rt::concat(
-            Rc::new(vec![struct_name.clone()]),
+            Arc::new(vec![struct_name.clone()]),
             v1_rt::concat(from_template.clone(), from_resolve.clone()),
         ))
     }
@@ -23727,7 +23730,7 @@ pub fn struct_candidates_by_field_names(
     {
         let n_fields = (field_names.clone().len() as i64);
         if (n_fields.clone() == 0) {
-            return Rc::new(vec![]);
+            return Arc::new(vec![]);
         }
         Arc::new({
             let mut __result = Vec::new();
@@ -24533,25 +24536,25 @@ pub fn emit_typed_record_lit(
                                                         __result.extend((*if is_optional_struct_field(emit_info.clone(), variant_summary_name.clone(), fname.clone()) {
                                             {
                                                 let wrapped_none = wrap_rust_record_field_value("None".to_string(), scope.clone(), emit_info.clone(), shared_types.clone(), ctor_name.clone(), fname.clone());
-Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": ".to_string()), wrapped_none.clone()), ",".to_string())])
+Arc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": ".to_string()), wrapped_none.clone()), ",".to_string())])
 }
                                         } else {
                                             match v1_rt::map_get(&ftm, fname.clone()) {
     Some(ft) => match rust_zero_value(ft.clone(), emit_info.corpus_repr.clone()) {
-    Some(zv) => Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": ".to_string()), zv.clone()), ",".to_string())]),
-    None => Rc::new(vec![]),
+    Some(zv) => Arc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": ".to_string()), zv.clone()), ",".to_string())]),
+    None => Arc::new(vec![]),
 },
-    None => Rc::new(vec![]),
+    None => Arc::new(vec![]),
 }
                                         }).iter().cloned());
                                                     }
                                                     __result
                                                 })
                                             } else {
-                                                Rc::new(vec![])
+                                                Arc::new(vec![])
                                             }
                                         }
-                                        None => Rc::new(vec![]),
+                                        None => Arc::new(vec![]),
                                     };
                                     let phantom_strs = match lookup_type_by_name(
                                         scope.type_env.clone(),
@@ -24578,7 +24581,7 @@ Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_s
                                             );
                                             let has_unused = ((unused.clone().len() as i64) > 0);
                                             if (is_struct.clone() && has_unused.clone()) {
-                                                Rc::new(vec![v1_rt::concat(
+                                                Arc::new(vec![v1_rt::concat(
                                                     v1_rt::concat(
                                                         "    ".to_string(),
                                                         rust_phantom_field_name(),
@@ -24586,10 +24589,10 @@ Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_s
                                                     ": std::marker::PhantomData,".to_string(),
                                                 )])
                                             } else {
-                                                Rc::new(vec![])
+                                                Arc::new(vec![])
                                             }
                                         }
-                                        None => Rc::new(vec![]),
+                                        None => Arc::new(vec![]),
                                     };
                                     let all_field_strs = v1_rt::concat(
                                         v1_rt::concat(field_strs.clone(), default_strs.clone()),
@@ -24998,7 +25001,7 @@ pub fn emit_typed_block(
     {
         let state = emit_rust_block_stmts(
             stmts.clone(),
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             scope.clone(),
             registry.clone(),
             (depth.clone() + 1),
@@ -25767,7 +25770,7 @@ pub fn emit_rust_tco_block(
                 {
                     let init_state = emit_tco_init_block_stmts(
                         ss.clone(),
-                        Rc::new(vec![]),
+                        Arc::new(vec![]),
                         frame.scope.clone(),
                         registry.clone(),
                         frame.depth.clone(),
@@ -25952,7 +25955,7 @@ pub fn emit_typed_tco_match_arm(
         let pat_str = if rc_analysis.needs_rc_pattern.clone() {
             emit_pattern_rc_aware(
                 arm_pat.clone(),
-                Rc::new(vec![]),
+                Arc::new(vec![]),
                 rc_analysis.clone(),
                 shared_types.clone(),
                 scrut_type.clone(),
@@ -25962,7 +25965,7 @@ pub fn emit_typed_tco_match_arm(
         } else {
             emit_pattern(
                 arm_pat.clone(),
-                Rc::new(vec![]),
+                Arc::new(vec![]),
                 shared_types.clone(),
                 scrut_type.clone(),
                 si.clone(),
@@ -25970,7 +25973,7 @@ pub fn emit_typed_tco_match_arm(
             )
         };
         let field_guards =
-            collect_pattern_string_guards(arm_pat.clone(), Rc::new(vec![]), si.clone());
+            collect_pattern_string_guards(arm_pat.clone(), Arc::new(vec![]), si.clone());
         let arm_guard_str = match arm_g.clone() {
             Some(g) => emit_typed_expr(
                 g.clone(),
@@ -26411,7 +26414,7 @@ pub fn emit_service_impl(
             }
             __result
         });
-        let all_methods = v1_rt::concat(Rc::new(vec![new_method.clone()]), method_strs.clone());
+        let all_methods = v1_rt::concat(Arc::new(vec![new_method.clone()]), method_strs.clone());
         let methods_str = all_methods.clone().join(&"\n\n".to_string());
         v1_rt::concat(
             v1_rt::concat(
@@ -26626,7 +26629,7 @@ pub fn emit_operation_method(
                     ),
                     emit_rust_param_type(
                         param_node_type_expr(p.clone()),
-                        Rc::new(vec![]),
+                        Arc::new(vec![]),
                         shared_types.clone(),
                         corpus_repr.clone(),
                         env.source_indices.clone(),
@@ -26998,7 +27001,7 @@ pub fn emit_rest_call(
                     let mut __result = Vec::new();
                     for l in v1_rt::concat(
                         v1_rt::concat(
-                            Rc::new(vec![
+                            Arc::new(vec![
                                 client_init.clone(),
                                 url_line.clone(),
                                 auth_line.clone(),
@@ -27006,7 +27009,7 @@ pub fn emit_rest_call(
                             ]),
                             header_lines.clone(),
                         ),
-                        Rc::new(vec![
+                        Arc::new(vec![
                             query_line.clone(),
                             body_line.clone(),
                             send_line.clone(),
@@ -27222,7 +27225,7 @@ pub fn emit_rest_url_line(
                     for p in parts.clone().iter().cloned() {
                         __result.extend(
                             (*match (*p.clone()).clone() {
-                                StringPart::Text { value: _, .. } => Rc::new(vec![]),
+                                StringPart::Text { value: _, .. } => Arc::new(vec![]),
                                 StringPart::Interpolation { expr: e, .. } => {
                                     let var_name = emit_ident(
                                         expr_var_name_at(e.clone(), source_indices.clone()),
@@ -27230,12 +27233,12 @@ pub fn emit_rest_url_line(
                                     );
                                     let is_opt = is_optional_typed_expr(e.clone());
                                     if is_opt.clone() {
-                                        Rc::new(vec![v1_rt::concat(
+                                        Arc::new(vec![v1_rt::concat(
                                             var_name.clone(),
                                             ".as_deref().unwrap_or(\"\")".to_string(),
                                         )])
                                     } else {
-                                        Rc::new(vec![var_name.clone()])
+                                        Arc::new(vec![var_name.clone()])
                                     }
                                 }
                             })
@@ -27447,7 +27450,7 @@ let fexpr = emit_simple_expr(field_init_node_value(fi.clone()), RenderTarget::Ru
 v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if let Some(ref __v) = ".to_string(), fexpr.clone()), " { __body[\"".to_string()), fname.clone()), "\"] = serde_json::json!(__v); }".to_string())
 }); } __result });
 let assign_line = "let request = request.json(&__body);".to_string();
-v1_rt::concat(v1_rt::concat(Rc::new(vec![body_init.clone()]), opt_lines.clone()), Rc::new(vec![assign_line.clone()])).join(&"\n".to_string())
+v1_rt::concat(v1_rt::concat(Arc::new(vec![body_init.clone()]), opt_lines.clone()), Arc::new(vec![assign_line.clone()])).join(&"\n".to_string())
 }
         }
 },
@@ -28432,7 +28435,7 @@ pub fn emit_shell_call(
                 __result
             })
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let env_entries = transport_env(transport.clone(), source_indices.clone());
         let env_lines = Arc::new({
@@ -28491,10 +28494,10 @@ pub fn emit_shell_call(
                 );
                 let all_lines = v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(Rc::new(vec![cmd_line.clone()]), arg_lines.clone()),
+                        v1_rt::concat(Arc::new(vec![cmd_line.clone()]), arg_lines.clone()),
                         env_lines.clone(),
                     ),
-                    Rc::new(vec![
+                    Arc::new(vec![
                         wd_line.clone(),
                         spawn_line.clone(),
                         spawn_exec.clone(),
@@ -28519,10 +28522,10 @@ pub fn emit_shell_call(
                 );
                 let all_lines = v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(Rc::new(vec![cmd_line.clone()]), arg_lines.clone()),
+                        v1_rt::concat(Arc::new(vec![cmd_line.clone()]), arg_lines.clone()),
                         env_lines.clone(),
                     ),
-                    Rc::new(vec![
+                    Arc::new(vec![
                         wd_line.clone(),
                         output_line.clone(),
                         check_line.clone(),
@@ -28587,7 +28590,7 @@ pub fn emit_shell_argv_element(
                 for p in parts.clone().iter().cloned() {
                     __result.extend(
                         (*match (*p.clone()).clone() {
-                            StringPart::Text { value: _, .. } => Rc::new(vec![]),
+                            StringPart::Text { value: _, .. } => Arc::new(vec![]),
                             StringPart::Interpolation { expr: e, .. } => {
                                 let name = expr_var_name_at(e.clone(), source_indices.clone());
                                 let var_name = emit_ident(name.clone(), RenderTarget::Rust);
@@ -28597,12 +28600,12 @@ pub fn emit_shell_argv_element(
                                         None => false,
                                     });
                                 if is_opt.clone() {
-                                    Rc::new(vec![v1_rt::concat(
+                                    Arc::new(vec![v1_rt::concat(
                                         var_name.clone(),
                                         ".as_deref().unwrap_or(\"\")".to_string(),
                                     )])
                                 } else {
-                                    Rc::new(vec![var_name.clone()])
+                                    Arc::new(vec![var_name.clone()])
                                 }
                             }
                         })
@@ -28887,7 +28890,7 @@ pub fn emit_capability_method(
                     ),
                     emit_rust_param_type(
                         param_node_type_expr(p.clone()),
-                        Rc::new(vec![]),
+                        Arc::new(vec![]),
                         shared_types.clone(),
                         corpus_repr.clone(),
                         env.source_indices.clone(),
@@ -29617,8 +29620,8 @@ pub fn rust_test_signature_comment(
             bindings: v1_rt::rc_empty_map::<i64, Arc<TypeBinding>>(),
             str_bindings: v1_rt::rc_empty_map::<String, Arc<TypeBinding>>(),
             ancestry_str_bindings: v1_rt::rc_empty_map::<String, Arc<TypeBinding>>(),
-            parents: Rc::new(vec![]),
-            recursive_types: Rc::new(vec![]),
+            parents: Arc::new(vec![]),
+            recursive_types: Arc::new(vec![]),
             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
             inductive_fields: v1_rt::rc_empty_map::<String, Arc<Vec<Arc<InductiveField>>>>(),
             source_indices: projection.source_indices.clone(),
@@ -29636,7 +29639,7 @@ pub fn rust_test_signature_comment(
                     ),
                     emit_rust_param_type(
                         param_node_type_expr(p.clone()),
-                        Rc::new(vec![]),
+                        Arc::new(vec![]),
                         v1_rt::rc_empty_set::<String>(),
                         corpus_repr.clone(),
                         projection.source_indices.clone(),
@@ -29840,52 +29843,52 @@ pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Arc<TextFile> 
             "\nedition = \"2021\"\n".to_string(),
         );
         let workspace = "\n[workspace]\n".to_string();
-        let base_deps = Rc::new(vec![
+        let base_deps = Arc::new(vec![
             emit_cargo_dep(
                 "im".to_string(),
                 "15.1".to_string(),
-                Rc::new(vec!["serde".to_string()]),
+                Arc::new(vec!["serde".to_string()]),
             ),
             emit_cargo_dep(
                 "unicode-ident".to_string(),
                 "1".to_string(),
-                Rc::new(vec![]),
+                Arc::new(vec![]),
             ),
             emit_cargo_dep(
                 "unicode-properties".to_string(),
                 "0.1".to_string(),
-                Rc::new(vec!["emoji".to_string()]),
+                Arc::new(vec!["emoji".to_string()]),
             ),
             emit_cargo_dep(
                 "serde".to_string(),
                 "1".to_string(),
-                Rc::new(vec!["derive".to_string(), "rc".to_string()]),
+                Arc::new(vec!["derive".to_string(), "rc".to_string()]),
             ),
-            emit_cargo_dep("serde_json".to_string(), "1".to_string(), Rc::new(vec![])),
-            emit_cargo_dep("stacker".to_string(), "0.1".to_string(), Rc::new(vec![])),
+            emit_cargo_dep("serde_json".to_string(), "1".to_string(), Arc::new(vec![])),
+            emit_cargo_dep("stacker".to_string(), "0.1".to_string(), Arc::new(vec![])),
             emit_cargo_dep(
                 "clap".to_string(),
                 "4".to_string(),
-                Rc::new(vec!["derive".to_string()]),
+                Arc::new(vec!["derive".to_string()]),
             ),
-            emit_cargo_dep("lazy_static".to_string(), "1".to_string(), Rc::new(vec![])),
+            emit_cargo_dep("lazy_static".to_string(), "1".to_string(), Arc::new(vec![])),
             emit_cargo_dep(
                 "ureq".to_string(),
                 "2".to_string(),
-                Rc::new(vec!["json".to_string()]),
+                Arc::new(vec!["json".to_string()]),
             ),
         ]);
         let async_deps = if has_services.clone() {
-            Rc::new(vec![
+            Arc::new(vec![
                 emit_cargo_dep(
                     "tokio".to_string(),
                     "1".to_string(),
-                    Rc::new(vec!["full".to_string()]),
+                    Arc::new(vec!["full".to_string()]),
                 ),
                 emit_cargo_dep_no_default_features(
                     "reqwest".to_string(),
                     "0.12".to_string(),
-                    Rc::new(vec![
+                    Arc::new(vec![
                         "json".to_string(),
                         "rustls-tls".to_string(),
                         "http2".to_string(),
@@ -29895,11 +29898,11 @@ pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Arc<TextFile> 
                 emit_cargo_dep(
                     "async-trait".to_string(),
                     "0.1".to_string(),
-                    Rc::new(vec![]),
+                    Arc::new(vec![]),
                 ),
             ])
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let all_deps = v1_rt::concat(base_deps.clone(), async_deps.clone());
         Arc::new(TextFile {
@@ -30011,7 +30014,7 @@ pub fn to_workflow_func(
         let item_name = authored_name_at(source_indices.clone(), item.clone());
         let svc_names = match lookup_item(registry.clone(), item_name.clone()) {
             Some(info) => info.service_names.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let defaults = item.params.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
@@ -30163,15 +30166,15 @@ let resolved = match v1_rt::map_get(&wf.resolved_defaults.clone(), param_name.cl
 },
 };
 if resolved.clone() {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![make_error_node(Arc::new(CompilerDiagnostic::InternalError {
+            Arc::new(vec![make_error_node(Arc::new(CompilerDiagnostic::InternalError {
     message: v1_rt::concat(v1_rt::concat("workflow CLI default for parameter `".to_string(), param_name.clone()), "` must be a string, int, float, bool literal, or data reference".to_string()),
     span: param.span.clone(),
 }), wf.module_name.clone())])
         }
 },
-    None => Rc::new(vec![]),
+    None => Arc::new(vec![]),
 }).iter().cloned()); } __result })).iter().cloned());
         }
         __result
@@ -30261,7 +30264,7 @@ pub fn emit_main_rs(
                     (*{
                         let mod_name = find_resource_module(rname.clone(), modules.clone());
                         if (mod_name.clone() != "".to_string()) {
-                            Rc::new(vec![v1_rt::concat(
+                            Arc::new(vec![v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
@@ -30281,7 +30284,7 @@ pub fn emit_main_rs(
                                 ";".to_string(),
                             )])
                         } else {
-                            Rc::new(vec![])
+                            Arc::new(vec![])
                         }
                     })
                     .iter()
@@ -30306,7 +30309,7 @@ pub fn emit_main_rs(
                     (*{
                         let struct_name = sanitize_service_name(sn.clone());
                         match v1_rt::map_get(&svc_module_map, sn.clone()) {
-                            Some(mod_name) => Rc::new(vec![v1_rt::concat(
+                            Some(mod_name) => Arc::new(vec![v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
@@ -30325,7 +30328,7 @@ pub fn emit_main_rs(
                                 ),
                                 ";".to_string(),
                             )]),
-                            None => Rc::new(vec![]),
+                            None => Arc::new(vec![]),
                         }
                     })
                     .iter()
@@ -30587,7 +30590,7 @@ pub fn emit_subcommand_enum(
         } else {
             "".to_string()
         };
-        let run_variant_lines = Rc::new(vec![
+        let run_variant_lines = Arc::new(vec![
             "/// Execute a .dag program directly (interpreter)\n".to_string(),
             make_indent((depth.clone() + 1)),
             "Run {\n".to_string(),
@@ -30638,7 +30641,7 @@ pub fn emit_subcommand_enum(
         let all_variants = if has_pipeline.clone() {
             v1_rt::concat(
                 variants.clone(),
-                Rc::new(vec![compile_variant.clone(), run_variant.clone()]),
+                Arc::new(vec![compile_variant.clone(), run_variant.clone()]),
             )
         } else {
             variants.clone()
@@ -30850,7 +30853,7 @@ pub fn emit_main_fn(
         let all_arms = if has_pipeline.clone() {
             v1_rt::concat(
                 match_arms.clone(),
-                Rc::new(vec![compile_arm.clone(), run_arm.clone()]),
+                Arc::new(vec![compile_arm.clone(), run_arm.clone()]),
             )
         } else {
             match_arms.clone()

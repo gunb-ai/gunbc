@@ -3,7 +3,6 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
@@ -77,7 +76,7 @@ pub enum ResolveTypecheckGate {
     DiscoveryCorpusAdvisory,
 }
 
-fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypecheckGate) -> bool {
+fn is_resolve_typecheck_blocking(d: Arc<CompilerDiagnostic>, gate: ResolveTypecheckGate) -> bool {
     match gate {
         ResolveTypecheckGate::Strict => is_interpreter_blocking_diagnostic(d),
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => is_discovery_corpus_blocking_diagnostic(d),
@@ -417,7 +416,7 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
     authority_text: &str,
     ctx: &v1_interpreter::InterpContext,
 ) -> v1_interpreter::InterpResult<v1_interpreter::Value> {
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     use v1_interpreter::{list_value, sorted_fields, Value};
 
@@ -429,12 +428,12 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
         RoadmapAcceptanceHistoryProjection::Projected { events } => Value::Variant {
             type_name: ctx.sym("RoadmapAcceptanceHistoryProjection"),
             variant_name: ctx.sym("RoadmapAcceptanceHistoryProjected"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("events"), list_value(events))])),
+            fields: Arc::new(sorted_fields(vec![(ctx.sym("events"), list_value(events))])),
         },
         RoadmapAcceptanceHistoryProjection::Refused { detail } => Value::Variant {
             type_name: ctx.sym("RoadmapAcceptanceHistoryProjection"),
             variant_name: ctx.sym("RoadmapAcceptanceHistoryProjectionRefused"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), Value::Str(detail))])),
+            fields: Arc::new(sorted_fields(vec![(ctx.sym("detail"), Value::Str(detail))])),
         },
     })
 }
@@ -512,16 +511,16 @@ mod roadmap_acceptance_history_projection_tests {
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::{ExecutionMode, InterpContext};
     use im::HashMap;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     fn empty_ctx() -> InterpContext {
         let graph = ResolvedGraph {
-            modules: Rc::new(im::Vector::new()),
-            item_registry: Rc::new(HashMap::new()),
-            diagnostics: Rc::new(im::Vector::new()),
+            modules: Arc::new(im::Vector::new()),
+            item_registry: Arc::new(HashMap::new()),
+            diagnostics: Arc::new(im::Vector::new()),
             emit_graph_info: empty_emit_graph_info(),
         };
-        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+        InterpContext::new(&graph, Arc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
 
     #[test]
@@ -1520,7 +1519,7 @@ struct ModuleBindingManifestRow {
     module_path: String,
     rel_path: String,
     root_variant: String,
-    ident_span: Rc<SourceSpan>,
+    ident_span: Arc<SourceSpan>,
 }
 
 fn witness_layer_root_spelling(root: &str) -> String {
@@ -1631,9 +1630,9 @@ fn resolve_virtual_source_with_imports(
     entry_path: &str,
     entry_content: &str,
     module_index: &HashMap<String, String>,
-) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
+) -> Vec<Arc<v1_compiler_compile::SourceFile>> {
     let ws = process_workspace_root();
-    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+    let mut seen: HashMap<String, Arc<v1_compiler_compile::SourceFile>> = HashMap::new();
     let mut queue: Vec<String> = vec![entry_content.to_string()];
     while let Some(content) = queue.pop() {
         for module_path in extract_import_paths(&content) {
@@ -1645,7 +1644,7 @@ fn resolve_virtual_source_with_imports(
                 if let Ok(file_content) = std::fs::read_to_string(&abs_path) {
                     seen.insert(
                         module_path,
-                        Rc::new(v1_compiler_compile::SourceFile {
+                        Arc::new(v1_compiler_compile::SourceFile {
                             path: rel_path.clone(),
                             content: file_content.clone(),
                         }),
@@ -1655,10 +1654,10 @@ fn resolve_virtual_source_with_imports(
             }
         }
     }
-    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+    let mut sources: Vec<Arc<v1_compiler_compile::SourceFile>> =
         seen.into_iter().map(|(_, v)| v).collect();
     sources.sort_by(|a, b| a.path.cmp(&b.path));
-    sources.push(Rc::new(v1_compiler_compile::SourceFile {
+    sources.push(Arc::new(v1_compiler_compile::SourceFile {
         path: entry_path.to_string(),
         content: entry_content.to_string(),
     }));
@@ -1716,7 +1715,7 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
             let module_index = build_module_path_index_from_witness_roots();
             let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
             v1_compiler_compile::compile_sources(
-                Rc::new(sources.into()),
+                Arc::new(sources.into()),
                 crate::v1_compiler_artifact::RenderTarget::Rust,
             )
         })
@@ -1774,7 +1773,7 @@ pub fn compile_dag_rust_emit_check(
     let module_index = build_module_path_index_from_witness_roots();
     let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
     let result = v1_compiler_compile::compile_sources(
-        Rc::new(sources.into()),
+        Arc::new(sources.into()),
         crate::v1_compiler_artifact::RenderTarget::Rust,
     );
     let hard_diagnostics = result
@@ -1867,7 +1866,7 @@ pub(crate) fn string_list_data_from_module_source(
         crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.clone(), source_index);
-    let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
+    let result = crate::v1_compiler_parse::parse(tokens, std::sync::Arc::new(source_indices));
     if let Some(err) = result.error.as_ref() {
         panic!(
             "lens table reader: parse error in {module_rel_path}: {}",
@@ -1979,7 +1978,7 @@ pub(crate) fn witness_exclusion_rows_from_module_source(
         crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.clone(), source_index);
-    let source_indices = std::rc::Rc::new(source_indices);
+    let source_indices = std::sync::Arc::new(source_indices);
     let result = crate::v1_compiler_parse::parse(tokens, source_indices.clone());
     if let Some(err) = result.error.as_ref() {
         panic!(
@@ -2267,7 +2266,7 @@ pub fn free_monoid_symbol_value_from_dotted_string(
     let fm_variant = |variant: &str, fields: Vec<_>| Value::Variant {
         type_name: ctx.sym("FreeMonoid"),
         variant_name: ctx.sym(variant),
-        fields: Rc::new(fields),
+        fields: Arc::new(fields),
     };
     if dotted.is_empty() {
         return fm_variant("Empty", vec![]);
@@ -2352,7 +2351,7 @@ pub(crate) fn brace_delta(line: &str) -> i32 {
     c.matches('{').count() as i32 - c.matches('}').count() as i32
 }
 
-type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
+type ModuleSourceIndex = HashMap<String, Arc<v1_compiler_compile::SourceFile>>;
 
 fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
     let mut index = ModuleSourceIndex::new();
@@ -2389,7 +2388,7 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
                 }
                 index.insert(
                     module_path,
-                    Rc::new(v1_compiler_compile::SourceFile {
+                    Arc::new(v1_compiler_compile::SourceFile {
                         path: rel_path,
                         content,
                     }),
@@ -2453,7 +2452,7 @@ fn index_source_root_into_module_index(
             within_root.insert(module_path.clone(), rel_path.clone());
             index.insert(
                 module_path,
-                Rc::new(v1_compiler_compile::SourceFile {
+                Arc::new(v1_compiler_compile::SourceFile {
                     path: rel_path,
                     content,
                 }),
@@ -2466,7 +2465,7 @@ fn load_compile_clean_entry_sources(
     source_roots: &[String],
     mei: &MultiEntryIndex,
     entry_path_filter: Option<&std::collections::HashSet<String>>,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Vec<Arc<v1_compiler_compile::SourceFile>>, String> {
     let index = &mei.source_files;
     let facts = &mei.module_graph_facts;
     let first_root = std::path::Path::new(&source_roots[0]);
@@ -2493,7 +2492,7 @@ fn load_compile_clean_entry_sources(
     let mut entry_for_queue = Vec::new();
     for (path, content) in &entry_files {
         if extract_module_path(content).is_some() {
-            entry_for_queue.push(Rc::new(v1_compiler_compile::SourceFile {
+            entry_for_queue.push(Arc::new(v1_compiler_compile::SourceFile {
                 path: path.clone(),
                 content: content.clone(),
             }));
@@ -2506,7 +2505,7 @@ fn load_compile_clean_entry_sources(
             continue;
         }
         if !sources.iter().any(|s| s.path == path) {
-            sources.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
+            sources.push(Arc::new(v1_compiler_compile::SourceFile { path, content }));
         }
     }
     // BOTH closures to a joint fixpoint via the ONE shared authority the witness
@@ -2532,16 +2531,16 @@ fn load_compile_clean_entry_sources(
 /// parsed-tree reference projection when the Rule-1 terminal step (import as
 /// parse error, deps derived from references) lands.
 fn extend_with_reference_closure(
-    mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    mut sources: Vec<Arc<v1_compiler_compile::SourceFile>>,
     index: &ModuleSourceIndex,
     facts: &ModuleGraphFactsLive,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Vec<Arc<v1_compiler_compile::SourceFile>>, String> {
     let path_lookup = path_to_source_lookup(index);
     let mut known_paths: std::collections::HashSet<String> = sources
         .iter()
         .flat_map(|s| [s.path.clone(), workspace_relative_repo_path(&s.path)])
         .collect();
-    let mut scan_queue: Vec<Rc<v1_compiler_compile::SourceFile>> = sources.clone();
+    let mut scan_queue: Vec<Arc<v1_compiler_compile::SourceFile>> = sources.clone();
     while let Some(sf) = scan_queue.pop() {
         // Sub-attribution of `load` (entry-graph-union slice 1, operator review):
         // `load` being 68% of resolve-span time does not by itself say whether the cost is
@@ -2591,9 +2590,9 @@ fn extend_with_reference_closure(
 }
 
 fn extend_with_reference_closure_for_pool(
-    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    sources: Vec<Arc<v1_compiler_compile::SourceFile>>,
     mei: &MultiEntryIndex,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Vec<Arc<v1_compiler_compile::SourceFile>>, String> {
     let edges = both_closure_edge_index(mei)?;
     extend_sources_via_edge_map(
         sources,
@@ -2723,7 +2722,7 @@ fn compile_clean_policy_read_refuses_gate() -> bool {
 /// Single authority (DESIGN.md §3/§7): whether a diagnostic blocks compile-clean.
 /// `UnlistedImportUse` is governed by `gunbc.compile_clean_diagnostic_policy` (issue 11);
 /// all other classes delegate to `00_core.dag` `is_interpreter_blocking_diagnostic`.
-pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
+pub fn compile_clean_diagnostic_is_hard(d: &Arc<ErrorNode>) -> bool {
     use crate::v1_std_core::CompilerDiagnostic;
     match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnlistedImportUse { .. } => {
@@ -2739,7 +2738,7 @@ pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
 /// Advisory (non-blocking per current policy) diagnostics for compile-clean — the
 /// complement of `compile_clean_diagnostic_is_hard` used by the CLI transport so it
 /// does not print advisories as hard errors when the policy row says FloorNotYet.
-pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
+pub fn compile_clean_diagnostic_is_advisory(d: &Arc<ErrorNode>) -> bool {
     !compile_clean_diagnostic_is_hard(d)
         && matches!(
             d.diagnostic.as_ref(),
@@ -2758,7 +2757,7 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
         )
 }
 
-pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
+pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Arc<ErrorNode>>) -> bool {
     if compile_clean_policy_read_refuses_gate() {
         return true;
     }
@@ -2766,7 +2765,7 @@ pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorN
 }
 
 /// `PipelineResult` adapter for the compile CLI transport.
-pub fn compile_clean_vec_has_hard_errors(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> bool {
+pub fn compile_clean_vec_has_hard_errors(diagnostics: &Arc<Vec<Arc<ErrorNode>>>) -> bool {
     if compile_clean_policy_read_refuses_gate() {
         return true;
     }
@@ -2774,42 +2773,42 @@ pub fn compile_clean_vec_has_hard_errors(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -
 }
 
 /// `ResolvedPipelineResult` / `im::Vector` adapter for compile-clean checks.
-pub fn compile_clean_im_vector_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
+pub fn compile_clean_im_vector_has_hard_errors(diagnostics: &im::Vector<Arc<ErrorNode>>) -> bool {
     if compile_clean_policy_read_refuses_gate() {
         return true;
     }
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 
-pub fn compile_clean_im_vector_hard_error_count(diagnostics: &im::Vector<Rc<ErrorNode>>) -> usize {
+pub fn compile_clean_im_vector_hard_error_count(diagnostics: &im::Vector<Arc<ErrorNode>>) -> usize {
     diagnostics
         .iter()
         .filter(|d| compile_clean_diagnostic_is_hard(d))
         .count()
 }
 
-pub fn compile_clean_im_vector_advisory_count(diagnostics: &im::Vector<Rc<ErrorNode>>) -> usize {
+pub fn compile_clean_im_vector_advisory_count(diagnostics: &im::Vector<Arc<ErrorNode>>) -> usize {
     diagnostics
         .iter()
         .filter(|d| compile_clean_diagnostic_is_advisory(d))
         .count()
 }
 
-pub fn compile_clean_vec_hard_error_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> usize {
+pub fn compile_clean_vec_hard_error_count(diagnostics: &Arc<Vec<Arc<ErrorNode>>>) -> usize {
     diagnostics
         .iter()
         .filter(|d| compile_clean_diagnostic_is_hard(d))
         .count()
 }
 
-pub fn compile_clean_vec_advisory_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> usize {
+pub fn compile_clean_vec_advisory_count(diagnostics: &Arc<Vec<Arc<ErrorNode>>>) -> usize {
     diagnostics
         .iter()
         .filter(|d| compile_clean_diagnostic_is_advisory(d))
         .count()
 }
 
-fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>) {
+fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Arc<ErrorNode>>) {
     const SHOWN_LIMIT: usize = 20;
     let mut shown = 0usize;
     let mut total = 0usize;
@@ -3039,12 +3038,12 @@ pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER: &
 fn compile_clean_shard_entry_paths_from_decl_facts(
     decl_facts: &[ModuleDeclarationFactRaw],
 ) -> Result<Vec<String>, String> {
-    let incomings: Rc<im::Vector<Rc<KeyedRow<String, ModuleDeclarationFactRaw>>>> = Rc::new(
+    let incomings: Arc<im::Vector<Arc<KeyedRow<String, ModuleDeclarationFactRaw>>>> = Arc::new(
         decl_facts
             .iter()
             .map(|decl| {
                 let path = workspace_relative_repo_path(&decl.path);
-                Rc::new(KeyedRow {
+                Arc::new(KeyedRow {
                     row_key: path,
                     value: decl.clone(),
                     _phantom: std::marker::PhantomData,
@@ -3914,7 +3913,7 @@ fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
 
 fn witness_layer_roots_compile_clean_sources_for_plan(
     plan: &CompileCleanScopePlan,
-) -> Result<Option<Vec<Rc<v1_compiler_compile::SourceFile>>>, String> {
+) -> Result<Option<Vec<Arc<v1_compiler_compile::SourceFile>>>, String> {
     match plan {
         CompileCleanScopePlan::Refused { reason } => {
             eprintln!("compile-clean scope: refused ({reason})");
@@ -3953,12 +3952,12 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
 /// Test-only inject: append an unresolved-import module to the compile-clean closure so
 /// `install_floor_compile_clean_receipt` + `consume_floor_compile_clean_gate_verdict` can be
 /// proven end-to-end (§5 discriminating RED) without mutating the workspace tree.
-fn append_test_floor_compile_clean_inject(sources: &mut Vec<Rc<v1_compiler_compile::SourceFile>>) {
+fn append_test_floor_compile_clean_inject(sources: &mut Vec<Arc<v1_compiler_compile::SourceFile>>) {
     if std::env::var("GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED")
         .map(|v| v == "1")
         .unwrap_or(false)
     {
-        sources.push(Rc::new(v1_compiler_compile::SourceFile {
+        sources.push(Arc::new(v1_compiler_compile::SourceFile {
             path: "dag/test/fixture/lever_a_e2e_unresolved_inject.dag".to_string(),
             content: "module test.lever_a_e2e_unresolved_inject\nimport totally.nonexistent.lever_a_module { Foo }\nfn probe() -> Int { 42 }".to_string(),
         }));
@@ -4069,9 +4068,9 @@ fn disable_floor_compile_clean_lazy_install_for_test() {
 /// and precisely BECAUSE it shares no caches with the via-index path it is the
 /// standing second opinion for verdict equivalence
 /// (`compile_clean_via_index_verdict_equivalence` tests).
-fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
+fn floor_compile_clean_emit_ok(sources: Vec<Arc<v1_compiler_compile::SourceFile>>) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
-    let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
+    let result = v1_compiler_compile::compile_sources(Arc::new(sources.into()), RenderTarget::Dag);
     let has_hard_errors = compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref());
     if has_hard_errors {
         eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
@@ -4089,7 +4088,7 @@ fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>
 /// witnesses 1.0–1.4s vs 10–90s cold; red verdict at the failing stage in seconds).
 /// The emit leg (`--target dag` render) runs over the already-typed graph.
 fn floor_compile_clean_emit_ok_via_index(
-    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    sources: Vec<Arc<v1_compiler_compile::SourceFile>>,
     index_roots: &[String],
 ) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
@@ -4114,14 +4113,14 @@ fn floor_compile_clean_emit_ok_via_index(
         eprint_compile_clean_hard_diagnostics(compile_clean_diags.as_ref());
         return false;
     }
-    let newline_indices: Rc<im::Vector<Rc<NewlineIndex>>> =
-        Rc::new(si.values().cloned().collect::<im::Vector<_>>());
-    let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
+    let newline_indices: Arc<im::Vector<Arc<NewlineIndex>>> =
+        Arc::new(si.values().cloned().collect::<im::Vector<_>>());
+    let resolved = Arc::new(v1_compiler_compile::ResolvedPipelineResult {
         graph: Some(graph),
-        diagnostics: Rc::new(im::Vector::new()),
+        diagnostics: Arc::new(im::Vector::new()),
         source_indices: si,
         complexity: empty_complexity_report(),
-        ownership: Rc::new(im::Vector::new()),
+        ownership: Arc::new(im::Vector::new()),
         newline_indices,
     });
     let result = v1_compiler_compile::emit_resolved_for_target(resolved, RenderTarget::Dag);
@@ -4332,13 +4331,13 @@ pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &st
 /// or a floor-enrolled diagnostic-histogram lens subsumes this host transport.
 /// Uses the same resolve kernel as `witness_layer_roots_compile_clean_check`
 /// (`compile_to_resolved` on the whole-tree source closure).
-pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<ErrorNode>>, String> {
+pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Arc<ErrorNode>>, String> {
     let plan = CompileCleanScopePlan::WholeTree;
     let sources = match witness_layer_roots_compile_clean_sources_for_plan(&plan)? {
         None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),
         Some(s) => s,
     };
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    let result = v1_compiler_compile::compile_to_resolved(Arc::new(sources.into()));
     Ok(result
         .diagnostics
         .iter()
@@ -4387,22 +4386,22 @@ pub struct UnlistedImportCensusRow {
 }
 
 fn compile_clean_whole_tree_resolved(
-) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
+) -> Result<Arc<v1_compiler_compile::ResolvedPipelineResult>, String> {
     let plan = CompileCleanScopePlan::WholeTree;
     let sources = match witness_layer_roots_compile_clean_sources_for_plan(&plan)? {
         None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),
         Some(s) => s,
     };
-    Ok(v1_compiler_compile::compile_to_resolved(Rc::new(
+    Ok(v1_compiler_compile::compile_to_resolved(Arc::new(
         sources.into(),
     )))
 }
 
-fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String> {
+fn import_module_paths_for_typed_module(tm: &Arc<TypedModule>) -> HashSet<String> {
     use crate::v1_std_core::module_imports;
     module_imports(tm.module.clone())
         .iter()
-        .map(|imp: &Rc<Node>| imp.name.clone())
+        .map(|imp: &Arc<Node>| imp.name.clone())
         .collect()
 }
 
@@ -4444,7 +4443,7 @@ pub fn classify_unlisted_import_binding_source(
     (UnlistedImportBindingSource::PoolCoincidence, definer)
 }
 
-fn diagnostic_decl_file_for_census(d: &Rc<ErrorNode>) -> String {
+fn diagnostic_decl_file_for_census(d: &Arc<ErrorNode>) -> String {
     let raw = diagnostic_to_span(d.diagnostic.clone()).file.clone();
     normalize_repo_relative_path_for_census(&raw)
 }
@@ -4536,7 +4535,7 @@ pub fn witness_compile_clean_cli_floor_verdicts_agree() -> bool {
 ///
 /// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7):
 /// total match over `CompilerDiagnostic` variants — no silent widening.
-pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, String) {
+pub fn compile_clean_diagnostic_histogram_key(d: &Arc<ErrorNode>) -> (String, String) {
     use crate::v1_std_core::CompilerDiagnostic;
     let class = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { .. } => "UnresolvedImport",
@@ -4682,7 +4681,7 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,
         Ok(Some(sources)) => {
-            let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+            let result = v1_compiler_compile::compile_to_resolved(Arc::new(sources.into()));
             if compile_clean_resolve_has_hard_errors(&result) {
                 eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
                 false
@@ -4765,7 +4764,7 @@ fn pool_roots_for_module_graph_closure(source_roots: &[String]) -> Vec<String> {
 
 fn path_to_source_lookup(
     index: &ModuleSourceIndex,
-) -> HashMap<String, Rc<v1_compiler_compile::SourceFile>> {
+) -> HashMap<String, Arc<v1_compiler_compile::SourceFile>> {
     let mut out = HashMap::new();
     for sf in index.values() {
         let rel = workspace_relative_repo_path(&sf.path);
@@ -5160,12 +5159,12 @@ mod compile_clean_via_index_verdict_equivalence {
     use super::{floor_compile_clean_emit_ok, floor_compile_clean_emit_ok_via_index};
     use crate::v1_compiler_compile::SourceFile;
     use std::fs;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     struct Corpus {
         dir: std::path::PathBuf,
         roots: Vec<String>,
-        sources: Vec<Rc<SourceFile>>,
+        sources: Vec<Arc<SourceFile>>,
     }
 
     impl Corpus {
@@ -5186,7 +5185,7 @@ mod compile_clean_via_index_verdict_equivalence {
             for (name, content) in files {
                 let path = dir.join(name);
                 fs::write(&path, content).expect("write fixture module");
-                sources.push(Rc::new(SourceFile {
+                sources.push(Arc::new(SourceFile {
                     path: path.to_string_lossy().into_owned(),
                     content: (*content).to_string(),
                 }));
@@ -5276,7 +5275,7 @@ mod compile_clean_via_index_verdict_equivalence {
             let _ = std::env::set_current_dir(p);
         }
         assert!(
-            Rc::ptr_eq(&a, &b),
+            Arc::ptr_eq(&a, &b),
             "absolute and relative spellings of the same pool must address ONE shared \
              index — a roots-key fork gives the receipt and batch-2 two typed universes"
         );
@@ -5831,7 +5830,7 @@ fn resolve_discovery_entry_for_corpus_row(
     index: &MultiEntryIndex,
     entry_path: &str,
     execution_mode: v1_interpreter::ExecutionMode,
-    whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+    whole_tree_published_keys: Option<Arc<std::collections::HashSet<String>>>,
     skip_enabled: bool,
     diff_edits: &FloorDiffEdits,
     touched_entry_paths: &[String],
@@ -5984,10 +5983,10 @@ pub fn roster_import_closure_nodes_pre_resolve(
 
 #[cfg(test)]
 fn resolve_transitively_bfs_legacy(
-    entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    entry_sources: Vec<Arc<v1_compiler_compile::SourceFile>>,
     index: &ModuleSourceIndex,
-    mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
-) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
+    mut seen: HashMap<String, Arc<v1_compiler_compile::SourceFile>>,
+) -> Vec<Arc<v1_compiler_compile::SourceFile>> {
     let mut queue = entry_sources;
     while let Some(source) = queue.pop() {
         for module_path in extract_import_paths(&source.content) {
@@ -6006,10 +6005,10 @@ fn resolve_transitively_bfs_legacy(
 }
 
 fn resolve_transitively(
-    entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    entry_sources: Vec<Arc<v1_compiler_compile::SourceFile>>,
     index: &ModuleSourceIndex,
     facts: &ModuleGraphFactsLive,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Vec<Arc<v1_compiler_compile::SourceFile>>, String> {
     let mut path_lookup = path_to_source_lookup(index);
     for entry in &entry_sources {
         let rel = workspace_relative_entry_path(&entry.path);
@@ -6058,7 +6057,7 @@ fn resolve_transitively(
 pub fn load_sources_for_entry(
     source_roots: &[String],
     entry_path: &str,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Vec<Arc<v1_compiler_compile::SourceFile>>, String> {
     let index = build_multi_entry_index(source_roots);
     load_sources_for_entry_with_pool(&index, entry_path)
 }
@@ -6078,7 +6077,7 @@ pub fn load_sources_for_entry_with_pool_index(
     source_roots: &[String],
     entry_path: &str,
     primary_precedence: bool,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Vec<Arc<v1_compiler_compile::SourceFile>>, String> {
     if primary_precedence {
         let index = build_multi_entry_index_primary_precedence(source_roots);
         return load_sources_for_entry_with_pool(&index, entry_path);
@@ -6466,11 +6465,11 @@ fn source_declares_import_lines(content: &str) -> bool {
 
 /// BFS closure extension over a precomputed per-file edge map.
 fn extend_sources_via_edge_map(
-    mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    mut sources: Vec<Arc<v1_compiler_compile::SourceFile>>,
     edge_map: &HashMap<String, Vec<String>>,
     scan_eligible: Option<&HashSet<String>>,
-    path_lookup: &HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    path_lookup: &HashMap<String, Arc<v1_compiler_compile::SourceFile>>,
+) -> Result<Vec<Arc<v1_compiler_compile::SourceFile>>, String> {
     let mut known_paths: HashSet<String> = sources
         .iter()
         .flat_map(|s| [s.path.clone(), workspace_relative_repo_path(&s.path)])
@@ -6506,7 +6505,7 @@ fn extend_sources_via_edge_map(
 }
 
 fn bare_reference_pull_paths_for_source(
-    sf: &Rc<v1_compiler_compile::SourceFile>,
+    sf: &Arc<v1_compiler_compile::SourceFile>,
     index: &MultiEntryIndex,
 ) -> Result<Vec<String>, String> {
     use crate::v1_compiler_infer_env::GlobalBareLookupState;
@@ -6557,13 +6556,13 @@ fn bare_reference_pull_paths_for_source(
     let mut pulled_set: HashSet<String> = HashSet::new();
     for (name, service_head) in all_names {
         let in_call_position = candidates.call_position.contains(&name);
-        let pullable = |binding: &Rc<crate::v1_compiler_infer_env::TypeBinding>| {
+        let pullable = |binding: &Arc<crate::v1_compiler_infer_env::TypeBinding>| {
             in_call_position
                 || !binding.resolved.params.is_empty()
                 || binding.resolved.type_annotation.is_some()
                 || binding.resolved.connective != crate::v1_std_core::Connective::NoConnective
         };
-        let resolve_in = |census: &Rc<SymbolIndex>| -> Option<String> {
+        let resolve_in = |census: &Arc<SymbolIndex>| -> Option<String> {
             if service_head {
                 return v1_rt::map_get(&census.services, name.clone())
                     .map(|entry| entry.module_path.clone());
@@ -6659,7 +6658,7 @@ fn bare_reference_pull_paths_for_source(
 }
 
 fn reference_pull_paths_for_source(
-    sf: &Rc<v1_compiler_compile::SourceFile>,
+    sf: &Arc<v1_compiler_compile::SourceFile>,
     index: &ModuleSourceIndex,
     facts: &ModuleGraphFactsLive,
 ) -> Result<Vec<String>, String> {
@@ -6688,7 +6687,7 @@ fn reference_pull_paths_for_source(
 
 fn build_both_closure_edge_index(
     index: &MultiEntryIndex,
-) -> Result<Rc<BothClosureEdgeIndex>, String> {
+) -> Result<Arc<BothClosureEdgeIndex>, String> {
     let mut bare_out: HashMap<String, Vec<String>> = HashMap::new();
     let mut ref_out: HashMap<String, Vec<String>> = HashMap::new();
     let mut bare_scan_eligible: HashSet<String> = HashSet::new();
@@ -6704,14 +6703,14 @@ fn build_both_closure_edge_index(
         bare_scan_eligible.insert(file_rel.clone());
         bare_out.insert(file_rel, bare_reference_pull_paths_for_source(sf, index)?);
     }
-    Ok(Rc::new(BothClosureEdgeIndex {
+    Ok(Arc::new(BothClosureEdgeIndex {
         bare_out,
         ref_out,
         bare_scan_eligible,
     }))
 }
 
-fn both_closure_edge_index(index: &MultiEntryIndex) -> Result<Rc<BothClosureEdgeIndex>, String> {
+fn both_closure_edge_index(index: &MultiEntryIndex) -> Result<Arc<BothClosureEdgeIndex>, String> {
     if let Some(hit) = index.both_closure_edges.borrow().as_ref() {
         return Ok(hit.clone());
     }
@@ -6730,9 +6729,9 @@ fn both_closure_edge_index(index: &MultiEntryIndex) -> Result<Rc<BothClosureEdge
 /// module's containment position; still ambiguous → load nothing (the typecheck
 /// refusal stays the loud authority, the loader never guesses a side).
 fn extend_with_bare_reference_closure(
-    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    sources: Vec<Arc<v1_compiler_compile::SourceFile>>,
     index: &MultiEntryIndex,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Vec<Arc<v1_compiler_compile::SourceFile>>, String> {
     // Sub-attribution inside the bare-reference closure (entry-graph-union slice 1). The
     // fixpoint measured ~100% of `load`; these three rows say WHICH of its parts, which is
     // what decides whether the fix is a memo, an incremental closure, or a union graph.
@@ -6771,9 +6770,9 @@ fn extend_with_bare_reference_closure(
 /// loop bodies (the §2 duplicate that dissolving the §3 fork would otherwise
 /// have left behind).
 fn extend_sources_to_both_closure_fixpoint(
-    mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    mut sources: Vec<Arc<v1_compiler_compile::SourceFile>>,
     mei: &MultiEntryIndex,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Vec<Arc<v1_compiler_compile::SourceFile>>, String> {
     loop {
         let before = sources.len();
         // Sub-attribution of `load` (entry-graph-union slice 1). This fixpoint is the
@@ -6803,7 +6802,7 @@ fn extend_sources_to_both_closure_fixpoint(
 fn load_sources_for_entry_with_pool(
     index: &MultiEntryIndex,
     entry_path: &str,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Vec<Arc<v1_compiler_compile::SourceFile>>, String> {
     let cache_key = workspace_relative_entry_path(entry_path);
     if let Some(cached) = index.entry_closure_sources.borrow().get(&cache_key) {
         return Ok(cached.clone());
@@ -6825,7 +6824,7 @@ fn load_sources_for_entry_with_index(
     index: &ModuleSourceIndex,
     facts: &ModuleGraphFactsLive,
     entry_path: &str,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Vec<Arc<v1_compiler_compile::SourceFile>>, String> {
     let entry_source = entry_source_from_index_or_disk(index, entry_path)?;
     let rel_path = entry_source.path.clone();
 
@@ -6876,7 +6875,7 @@ fn same_canonical_file(a: &str, b: &str) -> bool {
 fn entry_source_from_index_or_disk(
     index: &ModuleSourceIndex,
     entry_path: &str,
-) -> Result<Rc<v1_compiler_compile::SourceFile>, String> {
+) -> Result<Arc<v1_compiler_compile::SourceFile>, String> {
     let path = std::path::Path::new(entry_path);
     if !path.is_file() {
         return Err(format!(
@@ -6900,7 +6899,7 @@ fn entry_source_from_index_or_disk(
             }
         }
     }
-    Ok(Rc::new(v1_compiler_compile::SourceFile {
+    Ok(Arc::new(v1_compiler_compile::SourceFile {
         path: rel_path,
         content,
     }))
@@ -6908,7 +6907,7 @@ fn entry_source_from_index_or_disk(
 
 fn load_sources(
     source_roots: &[String],
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Vec<Arc<v1_compiler_compile::SourceFile>>, String> {
     let mei = build_multi_entry_index(source_roots);
     load_compile_clean_entry_sources(source_roots, &mei, None)
 }
@@ -6966,8 +6965,8 @@ pub fn resolve_entry_graph(
     entry_file: &str,
 ) -> Result<
     (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Arc<v1_compiler_compile::ResolvedGraph>,
+        Arc<HashMap<String, Arc<NewlineIndex>>>,
     ),
     String,
 > {
@@ -6998,8 +6997,8 @@ thread_local! {
         HashMap<
             (String, String),
             (
-                Rc<v1_compiler_compile::ResolvedGraph>,
-                Rc<HashMap<String, Rc<NewlineIndex>>>,
+                Arc<v1_compiler_compile::ResolvedGraph>,
+                Arc<HashMap<String, Arc<NewlineIndex>>>,
             ),
         >,
     > = RefCell::new(HashMap::new());
@@ -7014,7 +7013,7 @@ thread_local! {
     // the rare roots change. Thread-local by the same Rc-not-Send reason as the store:
     // each shard keeps its own index rather than smuggling Rc across threads.
     #[allow(clippy::type_complexity)]
-    static PROCESS_RESOLVE_INDEX: RefCell<Option<(String, Rc<MultiEntryIndex>)>> =
+    static PROCESS_RESOLVE_INDEX: RefCell<Option<(String, Arc<MultiEntryIndex>)>> =
         const { RefCell::new(None) };
 
     // While loading the materialization-provider authority, cross-process disk hits
@@ -7094,7 +7093,7 @@ fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<String> {
 /// that joins absolute-path reads to this relative-path index can still fork source
 /// identity. The divergence census walls that site with parent-owned `Rc` identity;
 /// the class-wide next rung is canonical `SourceFile` identity at construction.
-fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
+fn process_shared_index(source_roots: &[String]) -> Arc<MultiEntryIndex> {
     let roots = canonical_shared_index_roots(source_roots);
     let roots_key = roots.join("\u{1f}");
     let existing = PROCESS_RESOLVE_INDEX.with(|s| {
@@ -7110,7 +7109,7 @@ fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
         return idx;
     }
     let build_started = std::time::Instant::now();
-    let idx = Rc::new(build_multi_entry_index(&roots));
+    let idx = Arc::new(build_multi_entry_index(&roots));
     discovery_phase_totals::add(
         &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
         build_started.elapsed(),
@@ -7126,8 +7125,8 @@ pub fn resolve_entry_graph_shared(
     entry_file: &str,
 ) -> Result<
     (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Arc<v1_compiler_compile::ResolvedGraph>,
+        Arc<HashMap<String, Arc<NewlineIndex>>>,
     ),
     String,
 > {
@@ -7160,7 +7159,7 @@ pub struct MultiEntryIndex {
     /// collision structurally unable to serve the wrong typecheck (the name-keyed
     /// store relied on `module_source_identity` failing loud instead).
     typed_module_cache:
-        RefCell<std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
+        RefCell<std::collections::HashMap<String, Arc<v1_compiler_infer::TypecheckModuleResult>>>,
     /// Counted evictions from the host-budget-derived typed-cache entry cap (width=1
     /// drain accumulation lane). Each eviction is a typed, located diagnostic — never
     /// a silent widen (§5).
@@ -7186,29 +7185,31 @@ pub struct MultiEntryIndex {
     /// Cross-worker serde-byte transport when increment C is explicitly armed (tests / future Arc).
     cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
     /// Per-index intern table — paired with `parse_cache` on this worker (never shared).
-    intern_table: RefCell<Rc<InternTable>>,
+    intern_table: RefCell<Arc<InternTable>>,
     parse_cache: RefCell<
-        std::collections::HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>,
+        std::collections::HashMap<String, (Arc<v1_compiler_parse::ParseResult>, Arc<NewlineIndex>)>,
     >,
-    normalize_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
-    ownership_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
+    normalize_diag_cache:
+        RefCell<std::collections::HashMap<String, Arc<im::Vector<Arc<ErrorNode>>>>>,
+    ownership_diag_cache:
+        RefCell<std::collections::HashMap<String, Arc<im::Vector<Arc<ErrorNode>>>>>,
     /// The source roots this index was built from — the tree identities behind the
     /// per-tree bare census layers (a module's bare-name universe is its own tree).
     source_roots: Vec<String>,
     /// Parse-grade pool snapshot (every indexed module parsed once, with pool-wide
     /// newline indexes) — the shared input of the qualified fill and the per-tree
     /// bare layers below. Entry-independent, built once per process.
-    pool_parse: RefCell<Option<Rc<PoolParse>>>,
+    pool_parse: RefCell<Option<Arc<PoolParse>>>,
     /// Whole-pool QUALIFIED-ONLY census layer (entries keyed by qualified name;
     /// empty global_bare/services), built once per process and underlaid beneath
     /// each entry's closure census (namespace-resolution-design.md §7.5: "fill =
     /// whole tree; policy gates lookup, never fill").
-    pool_qualified_fill: RefCell<Option<Rc<SymbolIndex>>>,
+    pool_qualified_fill: RefCell<Option<Arc<SymbolIndex>>>,
     /// Per-source-root full census (bare + qualified + services) over that root's
     /// pool modules — the SAME-TREE bare layer underlaid beneath a module's closure
     /// census when it typechecks (bare = own tree; qualified = whole pool; cross-
     /// tree bare reach stays refused). Keyed by source root, built lazily.
-    tree_bare_census: RefCell<std::collections::HashMap<String, Rc<SymbolIndex>>>,
+    tree_bare_census: RefCell<std::collections::HashMap<String, Arc<SymbolIndex>>>,
     /// Whole-pool census (every pool module, both trees) — the LOADER's cross-
     /// tree fallback: a bare reference that misses the referencing file's own
     /// tree census resolves here so the provider still gets pulled into the
@@ -7217,15 +7218,15 @@ pub struct MultiEntryIndex {
     /// steal a same-tree name. Typecheck-side bare visibility is unchanged
     /// (closure census + own-tree underlay); the pulled provider becomes
     /// closure-visible, which is what serves the name at typecheck.
-    pool_bare_census: RefCell<Option<Rc<SymbolIndex>>>,
+    pool_bare_census: RefCell<Option<Arc<SymbolIndex>>>,
     /// Memo: normalized entry path → name-derived closure sources. The bare-
     /// reference fixpoint (`extend_sources_to_both_closure_fixpoint`) is pure
     /// for a fixed pool; witnesses sharing an entry file within one floor worker
     /// reused the loader without this and re-paid the #6848 walk each time.
-    entry_closure_sources: RefCell<HashMap<String, Vec<Rc<v1_compiler_compile::SourceFile>>>>,
+    entry_closure_sources: RefCell<HashMap<String, Vec<Arc<v1_compiler_compile::SourceFile>>>>,
     /// Per-pool precomputed bare/reference closure edges — built once per process,
     /// amortized across every entry's both-closure fixpoint walk.
-    both_closure_edges: RefCell<Option<Rc<BothClosureEdgeIndex>>>,
+    both_closure_edges: RefCell<Option<Arc<BothClosureEdgeIndex>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -7238,9 +7239,9 @@ pub struct MultiEntryIndex {
         HashMap<
             String,
             (
-                Rc<v1_compiler_compile::ResolvedGraph>,
-                Rc<HashMap<String, Rc<NewlineIndex>>>,
-                Rc<im::Vector<Rc<ErrorNode>>>,
+                Arc<v1_compiler_compile::ResolvedGraph>,
+                Arc<HashMap<String, Arc<NewlineIndex>>>,
+                Arc<im::Vector<Arc<ErrorNode>>>,
             ),
         >,
     >,
@@ -7421,8 +7422,8 @@ fn new_multi_entry_index_shell(
 /// `module_items` / `local_binding_for_item`, never bodies.
 struct PoolParse {
     /// Workspace-relative file path → census-head module node.
-    nodes_by_file: Vec<(String, Rc<Node>)>,
-    combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    nodes_by_file: Vec<(String, Arc<Node>)>,
+    combined_si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 }
 
 // Shared per-thread stand-in so stripped fn decls keep `body.is_some()` for
@@ -7439,7 +7440,7 @@ struct PoolParse {
 const CENSUS_HEADS_FN_STAND_IN_NAME: &str = "^census_heads_fn_stand_in";
 
 thread_local! {
-    static STRIPPED_FN_BODY_MARKER: Rc<Node> = Rc::new(Node {
+    static STRIPPED_FN_BODY_MARKER: Arc<Node> = Arc::new(Node {
         name: CENSUS_HEADS_FN_STAND_IN_NAME.to_string(),
         span: no_span(),
         ident_span: None,
@@ -7456,7 +7457,7 @@ thread_local! {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::ExprError {
+        expr_data: Arc::new(ExprData::ExprError {
             kind: ExprErrorKind::CensusHeadsBodyStripped,
             message: "pool census heads-only: function body stripped — refuse to interpret"
                 .to_string(),
@@ -7465,18 +7466,18 @@ thread_local! {
     });
 }
 
-fn stripped_fn_body_marker() -> Rc<Node> {
-    STRIPPED_FN_BODY_MARKER.with(Rc::clone)
+fn stripped_fn_body_marker() -> Arc<Node> {
+    STRIPPED_FN_BODY_MARKER.with(Arc::clone)
 }
 
-pub fn is_census_heads_fn_stand_in(node: &Rc<Node>) -> bool {
+pub fn is_census_heads_fn_stand_in(node: &Arc<Node>) -> bool {
     node.name == CENSUS_HEADS_FN_STAND_IN_NAME
-        || STRIPPED_FN_BODY_MARKER.with(|marker| Rc::ptr_eq(node, marker))
+        || STRIPPED_FN_BODY_MARKER.with(|marker| Arc::ptr_eq(node, marker))
 }
 
 /// Optional query helper for non-inference traversals. Loud refusal on inference is
 /// enforced by `ExprErrorKind::CensusHeadsBodyStripped` in `infer_expr`, not this API.
-pub fn census_heads_body_traversal_refusal(node: &Rc<Node>) -> Option<String> {
+pub fn census_heads_body_traversal_refusal(node: &Arc<Node>) -> Option<String> {
     if is_census_heads_fn_stand_in(node) {
         Some(format!(
             "census heads-only pool parse refused: body traversal hit stand-in '{}'",
@@ -7488,17 +7489,17 @@ pub fn census_heads_body_traversal_refusal(node: &Rc<Node>) -> Option<String> {
 }
 
 #[cfg(any(test, feature = "interp_test_witness"))]
-pub fn census_heads_fn_stand_in_for_test() -> Rc<Node> {
+pub fn census_heads_fn_stand_in_for_test() -> Arc<Node> {
     stripped_fn_body_marker()
 }
 
 #[cfg(any(test, feature = "interp_test_witness"))]
-pub fn census_heads_module_node_for_test(module: Rc<Node>) -> Rc<Node> {
+pub fn census_heads_module_node_for_test(module: Arc<Node>) -> Arc<Node> {
     census_heads_module_node(module)
 }
 
-fn census_heads_children(children: &Rc<im::Vector<Rc<Node>>>) -> Rc<im::Vector<Rc<Node>>> {
-    Rc::new(
+fn census_heads_children(children: &Arc<im::Vector<Arc<Node>>>) -> Arc<im::Vector<Arc<Node>>> {
+    Arc::new(
         children
             .iter()
             .cloned()
@@ -7509,11 +7510,11 @@ fn census_heads_children(children: &Rc<im::Vector<Rc<Node>>>) -> Rc<im::Vector<R
 
 /// Fn-decl discriminator for heads-only shrink — must match `local_binding_for_item`'s
 /// fn arm (`04_infer.dag`: `NoConnective && body.is_some() && transport.is_none()`).
-fn census_heads_item_is_fn_decl(item: &Rc<Node>) -> bool {
+fn census_heads_item_is_fn_decl(item: &Arc<Node>) -> bool {
     item.connective == Connective::NoConnective && item.body.is_some() && item.transport.is_none()
 }
 
-fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
+fn census_heads_module_item(item: Arc<Node>) -> Arc<Node> {
     let body = if census_heads_item_is_fn_decl(&item) {
         Some(stripped_fn_body_marker())
     } else {
@@ -7524,7 +7525,7 @@ fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
     } else {
         census_heads_children(&item.children)
     };
-    Rc::new(Node {
+    Arc::new(Node {
         name: item.name.clone(),
         span: item.span.clone(),
         ident_span: item.ident_span.clone(),
@@ -7541,17 +7542,17 @@ fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
         is_self_recursive: item.is_self_recursive,
         has_non_tail_self_call: item.has_non_tail_self_call,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
         ident: item.ident.clone(),
     })
 }
 
-fn census_heads_module_node(module: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
+fn census_heads_module_node(module: Arc<Node>) -> Arc<Node> {
+    Arc::new(Node {
         name: module.name.clone(),
         span: module.span.clone(),
         ident_span: module.ident_span.clone(),
-        children: Rc::new(
+        children: Arc::new(
             module_items(module.clone())
                 .iter()
                 .cloned()
@@ -7570,7 +7571,7 @@ fn census_heads_module_node(module: Rc<Node>) -> Rc<Node> {
         is_self_recursive: module.is_self_recursive,
         has_non_tail_self_call: module.has_non_tail_self_call,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
         ident: module.ident.clone(),
     })
 }
@@ -7640,7 +7641,7 @@ fn shared_caches_write<'a>(
 ///   single authority the resolved-graph subject digest consumes (§3: one concept, one
 ///   authority; a seed rebuild invalidates both stores through one term).
 fn closure_path_to_authored_name_map<'a>(
-    closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
+    closure_modules: &[Arc<v1_compiler_resolve::ResolvedModule>],
     closure_names: &'a [String],
 ) -> HashMap<String, &'a str> {
     closure_modules
@@ -7661,7 +7662,7 @@ fn typed_key_dependency_hash_not_ready(err: &str) -> bool {
 
 fn typed_module_content_key(
     index: &MultiEntryIndex,
-    resolved: &Rc<v1_compiler_resolve::ResolvedModule>,
+    resolved: &Arc<v1_compiler_resolve::ResolvedModule>,
     mod_name: &str,
     interface_hash_by_name: &std::collections::HashMap<String, String>,
     closure_names: &std::collections::HashSet<&str>,
@@ -7738,7 +7739,7 @@ fn typed_module_content_key(
             import_hashes.push_back(hash);
         }
     }
-    fn structural_from_wire(hex: String) -> Rc<crate::std_content_hash::Fnv1a64Structural> {
+    fn structural_from_wire(hex: String) -> Arc<crate::std_content_hash::Fnv1a64Structural> {
         fnv1a64_structural_hex_digest(hex).unwrap_or_else(|| {
             panic!("typed-module content key refused: reconcile digest is not a valid fnv1a64 structural wire form")
         })
@@ -7746,7 +7747,7 @@ fn typed_module_content_key(
     Ok(typed_module_key(
         module_key(
             structural_from_wire(source_hash),
-            Rc::new(
+            Arc::new(
                 import_hashes
                     .iter()
                     .cloned()
@@ -7765,7 +7766,7 @@ fn typed_module_content_key(
 fn note_interface_hash(
     interface_hash_by_name: &mut std::collections::HashMap<String, String>,
     mod_name: &str,
-    tc_result: &Rc<v1_compiler_infer::TypecheckModuleResult>,
+    tc_result: &Arc<v1_compiler_infer::TypecheckModuleResult>,
 ) {
     interface_hash_by_name.insert(
         mod_name.to_string(),
@@ -9400,7 +9401,7 @@ fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
 fn index_get_typed(
     index: &MultiEntryIndex,
     typed_key: &str,
-) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
+) -> Result<Option<Arc<v1_compiler_infer::TypecheckModuleResult>>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
         return Ok(index.typed_module_cache.borrow().get(typed_key).cloned());
     };
@@ -9427,8 +9428,8 @@ fn check_index_module_source_identity(
 fn index_insert_typed(
     index: &MultiEntryIndex,
     typed_key: String,
-    result: Rc<v1_compiler_infer::TypecheckModuleResult>,
-) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
+    result: Arc<v1_compiler_infer::TypecheckModuleResult>,
+) -> Result<Arc<v1_compiler_infer::TypecheckModuleResult>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
         index
             .typed_module_cache
@@ -9464,7 +9465,7 @@ fn index_insert_typed(
 fn shared_get_typed(
     shared_caches: &Arc<RwLock<SharedTypecheckCaches>>,
     typed_key: &str,
-) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
+) -> Result<Option<Arc<v1_compiler_infer::TypecheckModuleResult>>, String> {
     let bytes = {
         let caches = shared_caches_read(shared_caches)?;
         caches.clone_typed_bytes(typed_key)
@@ -9484,8 +9485,8 @@ fn shared_get_typed(
 /// fact about the source snapshot — unlike `typecheck_compute_count()`, which reads a cumulative
 /// per-thread miss counter and therefore reports a closure size only when the thread started cold.
 fn collect_typed_module_names(
-    modules: impl IntoIterator<Item = Rc<TypedModule>>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    modules: impl IntoIterator<Item = Arc<TypedModule>>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
     out: &mut HashSet<String>,
 ) {
     for m in modules {
@@ -9493,7 +9494,7 @@ fn collect_typed_module_names(
     }
 }
 
-fn seed_kernel_intern_names(table: Rc<InternTable>) -> Rc<InternTable> {
+fn seed_kernel_intern_names(table: Arc<InternTable>) -> Arc<InternTable> {
     let mut t = table;
     for name in v1_rt::map_keys(&kernel_type_set()).iter().cloned() {
         t = intern(t, name).table.clone();
@@ -9523,8 +9524,8 @@ pub fn resolve_entry_with_index(
     entry_file: &str,
 ) -> Result<
     (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Arc<v1_compiler_compile::ResolvedGraph>,
+        Arc<HashMap<String, Arc<NewlineIndex>>>,
     ),
     String,
 > {
@@ -9536,8 +9537,8 @@ pub fn resolve_entry_with_index_for_discovery_corpus(
     entry_file: &str,
 ) -> Result<
     (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Arc<v1_compiler_compile::ResolvedGraph>,
+        Arc<HashMap<String, Arc<NewlineIndex>>>,
     ),
     String,
 > {
@@ -9554,8 +9555,8 @@ fn resolve_entry_graph_with_index(
     entry_file: &str,
 ) -> Result<
     (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Arc<v1_compiler_compile::ResolvedGraph>,
+        Arc<HashMap<String, Arc<NewlineIndex>>>,
     ),
     String,
 > {
@@ -10512,8 +10513,8 @@ fn resolve_entry_with_parse_cache(
     typecheck_gate: ResolveTypecheckGate,
 ) -> Result<
     (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Arc<v1_compiler_compile::ResolvedGraph>,
+        Arc<HashMap<String, Arc<NewlineIndex>>>,
     ),
     String,
 > {
@@ -10530,8 +10531,8 @@ fn resolve_entry_with_parse_cache_inner(
     typecheck_gate: ResolveTypecheckGate,
 ) -> Result<
     (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Arc<v1_compiler_compile::ResolvedGraph>,
+        Arc<HashMap<String, Arc<NewlineIndex>>>,
     ),
     String,
 > {
@@ -10564,11 +10565,11 @@ enum ResolvedGraphMemoShare {
 }
 
 fn compile_clean_diags_from_resolved_stages(
-    resolve_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
-    norm_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
-    typed: &Rc<v1_compiler_compile::ResolvedGraph>,
-    ownership_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
-) -> Rc<im::Vector<Rc<ErrorNode>>> {
+    resolve_diags: &Arc<im::Vector<Arc<ErrorNode>>>,
+    norm_diags: &Arc<im::Vector<Arc<ErrorNode>>>,
+    typed: &Arc<v1_compiler_compile::ResolvedGraph>,
+    ownership_diags: &Arc<im::Vector<Arc<ErrorNode>>>,
+) -> Arc<im::Vector<Arc<ErrorNode>>> {
     let mut acc = im::Vector::new();
     for d in resolve_diags.iter() {
         acc.push_back(d.clone());
@@ -10578,7 +10579,7 @@ fn compile_clean_diags_from_resolved_stages(
         acc.push_back(d.clone());
     }
     acc.extend(ownership_diags.iter().cloned());
-    Rc::new(acc)
+    Arc::new(acc)
 }
 
 fn provider_integrity_refusal_message(outcome: ResolvedGraphProviderOutcome) -> Option<String> {
@@ -10625,9 +10626,9 @@ fn install_cross_process_materialization_hit(
     cached: CachedResolvedGraph,
     memo_share: ResolvedGraphMemoShare,
 ) -> (
-    Rc<v1_compiler_compile::ResolvedGraph>,
-    Rc<HashMap<String, Rc<NewlineIndex>>>,
-    Rc<im::Vector<Rc<ErrorNode>>>,
+    Arc<v1_compiler_compile::ResolvedGraph>,
+    Arc<HashMap<String, Arc<NewlineIndex>>>,
+    Arc<im::Vector<Arc<ErrorNode>>>,
 ) {
     if memo_share == ResolvedGraphMemoShare::Memoize {
         index.resolved_graph_memo.borrow_mut().insert(
@@ -10682,15 +10683,15 @@ fn cross_process_cache_integrity_refusal(reason: CacheRejectReason) -> String {
 /// only produced by complexity analysis, which does not run on this path).
 fn resolved_graph_from_sources_with_index(
     index: &MultiEntryIndex,
-    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    sources: Vec<Arc<v1_compiler_compile::SourceFile>>,
     typecheck_gate: ResolveTypecheckGate,
     phase_label: &str,
     memo_share: ResolvedGraphMemoShare,
 ) -> Result<
     (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-        Rc<im::Vector<Rc<ErrorNode>>>,
+        Arc<v1_compiler_compile::ResolvedGraph>,
+        Arc<HashMap<String, Arc<NewlineIndex>>>,
+        Arc<im::Vector<Arc<ErrorNode>>>,
     ),
     String,
 > {
@@ -10779,8 +10780,8 @@ fn resolved_graph_from_sources_with_index(
         }
     }
 
-    let mut modules: Vec<Rc<Node>> = Vec::new();
-    let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+    let mut modules: Vec<Arc<Node>> = Vec::new();
+    let mut si_map: HashMap<String, Arc<NewlineIndex>> = HashMap::new();
     let mut parse_error_msgs: Vec<String> = Vec::new();
 
     let parse_started = std::time::Instant::now();
@@ -10795,7 +10796,7 @@ fn resolved_graph_from_sources_with_index(
                     v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
                 let nl_index = build_newline_index(source.path.clone(), source.content.clone());
                 let current_table = index.intern_table.borrow().clone();
-                let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+                let single_si: Arc<HashMap<String, Arc<NewlineIndex>>> = Arc::new({
                     let mut m = HashMap::new();
                     m.insert(source.path.clone(), nl_index.clone());
                     m
@@ -10832,13 +10833,13 @@ fn resolved_graph_from_sources_with_index(
         return Err(parse_error_msgs.join("\n"));
     }
 
-    let source_indices = Rc::new(si_map);
+    let source_indices = Arc::new(si_map);
     let global_table = index.intern_table.borrow().clone();
     resolve_stage_slot_add(|s| s.parse += parse_started.elapsed().as_nanos());
 
     let resolve_started = std::time::Instant::now();
     let graph =
-        v1_compiler_resolve::resolve_modules(Rc::new(modules.into()), source_indices.clone());
+        v1_compiler_resolve::resolve_modules(Arc::new(modules.into()), source_indices.clone());
 
     if graph
         .diagnostics
@@ -10857,7 +10858,7 @@ fn resolved_graph_from_sources_with_index(
     // so an entry pays only for modules this process has not normalized before
     // (resolve-split receipt: normalize was 8% of whole-corpus resolve, recomputed
     // per entry at zero marginal information).
-    let mut norm_diag_vec: im::Vector<Rc<ErrorNode>> = im::Vector::new();
+    let mut norm_diag_vec: im::Vector<Arc<ErrorNode>> = im::Vector::new();
     for m in graph.modules.iter() {
         let key = m.module.span.file.clone();
         let cached = index.normalize_diag_cache.borrow().get(&key).cloned();
@@ -10877,7 +10878,7 @@ fn resolved_graph_from_sources_with_index(
         };
         norm_diag_vec.extend(module_diags.iter().cloned());
     }
-    let norm_diags = Rc::new(norm_diag_vec);
+    let norm_diags = Arc::new(norm_diag_vec);
 
     if norm_diags
         .iter()
@@ -10939,7 +10940,7 @@ fn resolved_graph_from_sources_with_index(
     // with no bodied items contributes the same empty row the authority's filter
     // skips. First-touch per module; the per-entry graph-grain rerun (7% of
     // whole-corpus resolve in the resolve-split receipt) collapses to cache reads.
-    let mut ownership_diag_vec: im::Vector<Rc<ErrorNode>> = im::Vector::new();
+    let mut ownership_diag_vec: im::Vector<Arc<ErrorNode>> = im::Vector::new();
     for m in typed.modules.iter() {
         let key = m.module.span.file.clone();
         let cached = index.ownership_diag_cache.borrow().get(&key).cloned();
@@ -10957,7 +10958,7 @@ fn resolved_graph_from_sources_with_index(
         };
         ownership_diag_vec.extend(module_diags.iter().cloned());
     }
-    let ownership_diags = Rc::new(ownership_diag_vec);
+    let ownership_diags = Arc::new(ownership_diag_vec);
     if ownership_diags
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
@@ -11082,7 +11083,7 @@ fn check_module_source_identity_map(
 /// importers; only within-cycle edges can be "missing", identically in both walks).
 /// Batches are deterministic: within a level, modules keep their original relative order.
 fn module_schedule_batches(
-    modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
+    modules: &[Arc<v1_compiler_resolve::ResolvedModule>],
     module_names: &[String],
     index: &MultiEntryIndex,
 ) -> (Vec<Vec<usize>>, HashSet<usize>) {
@@ -11238,11 +11239,11 @@ mod module_schedule_batches_tests {
 }
 
 fn finish_resolved_graph_assembly(
-    modules: Rc<im::Vector<Rc<TypedModule>>>,
-    diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>>,
+    modules: Arc<im::Vector<Arc<TypedModule>>>,
+    diag_chunks: Vec<Arc<im::Vector<Arc<ErrorNode>>>>,
     binding_fork_counts: (usize, usize),
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Result<Rc<ResolvedGraph>, String> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Result<Arc<ResolvedGraph>, String> {
     let (same_tree_fork_count, cross_tree_fork_count) = binding_fork_counts;
     let registry_started = std::time::Instant::now();
     let item_registry = modules.iter().fold(v1_rt::rc_empty_map(), |acc, typed| {
@@ -11254,7 +11255,7 @@ fn finish_resolved_graph_assembly(
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
     resolve_stage_slot_add(|s| s.assembly_services += services_started.elapsed().as_nanos());
     let diagnostics_started = std::time::Instant::now();
-    let diagnostics: Rc<im::Vector<Rc<ErrorNode>>> = Rc::new({
+    let diagnostics: Arc<im::Vector<Arc<ErrorNode>>> = Arc::new({
         let mut acc = im::Vector::new();
         for chunk in &diag_chunks {
             acc.extend(chunk.iter().cloned());
@@ -11290,7 +11291,7 @@ fn finish_resolved_graph_assembly(
     let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
     resolve_stage_slot_add(|s| s.assembly_emit_info += emit_info_started.elapsed().as_nanos());
     let graph_started = std::time::Instant::now();
-    let graph = Rc::new(ResolvedGraph {
+    let graph = Arc::new(ResolvedGraph {
         modules,
         item_registry: expanded_registry,
         diagnostics,
@@ -11315,13 +11316,13 @@ fn finish_resolved_graph_assembly(
 /// loop, which recomputes keys the same way (hits are cheap Rc clones, so the
 /// repeated lookups cost nothing over the old name-keyed precheck).
 fn try_reconcile_all_cache_hits(
-    closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
+    closure_modules: &[Arc<v1_compiler_resolve::ResolvedModule>],
     closure_names: &[String],
     schedule: &[Vec<usize>],
     cycle_residue_slots: &HashSet<usize>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     index: &MultiEntryIndex,
-) -> Result<Option<Rc<ResolvedGraph>>, String> {
+) -> Result<Option<Arc<ResolvedGraph>>, String> {
     // Pass 1 — DEPENDENCY order (`schedule`, the same antichain batches the dispatch loop
     // below uses): a stripped module's reference-derived dependencies are not guaranteed to
     // precede it in `closure_modules`'s resolver order (that DFS only follows declared
@@ -11335,7 +11336,7 @@ fn try_reconcile_all_cache_hits(
         closure_names.iter().map(|s| s.as_str()).collect();
     let closure_path_to_authored_name =
         closure_path_to_authored_name_map(closure_modules, closure_names);
-    let mut results: Vec<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>> =
+    let mut results: Vec<Option<Arc<v1_compiler_infer::TypecheckModuleResult>>> =
         vec![None; closure_modules.len()];
     let probe_started = std::time::Instant::now();
     let mut pending: Vec<usize> = schedule.iter().flatten().copied().collect();
@@ -11408,11 +11409,11 @@ fn try_reconcile_all_cache_hits(
     // the legacy serial fold (module order is an output-shape invariant, not just a schedule
     // convenience — see `reconcile_with_typed_cache`'s S2a move 2 comment).
     let mut modules_vec = im::Vector::new();
-    let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> =
+    let mut diag_chunks: Vec<Arc<im::Vector<Arc<ErrorNode>>>> =
         Vec::with_capacity(closure_modules.len() * 2);
     let mut same_tree_fork_count: usize = 0;
     let mut cross_tree_fork_count: usize = 0;
-    let empty_parent_diags = Rc::new(im::Vector::new());
+    let empty_parent_diags = Arc::new(im::Vector::new());
     for tc_result in results.into_iter() {
         let tc_result = tc_result.expect("every slot filled by the dependency-order pass above");
         let graph_started = std::time::Instant::now();
@@ -11434,7 +11435,7 @@ fn try_reconcile_all_cache_hits(
     }
 
     finish_resolved_graph_assembly(
-        Rc::new(modules_vec),
+        Arc::new(modules_vec),
         diag_chunks,
         (same_tree_fork_count, cross_tree_fork_count),
         source_indices,
@@ -11456,8 +11457,8 @@ fn qualified_name_module_path_prefix(name: &str) -> Option<String> {
 }
 
 fn collect_qualified_projection_module_paths_from_node(
-    node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     out: &mut HashSet<String>,
 ) {
     let name = authored_name_at(source_indices.clone(), node.clone());
@@ -11504,7 +11505,7 @@ fn collect_qualified_projection_module_paths_from_node(
 /// key term of `typed_module_content_key`; it is recorded exactly where the content is
 /// already in hand — never re-read from disk at key-derivation time (purity: the key
 /// derives from declared inputs, not a fresh WorldRead).
-fn note_source_hash(index: &MultiEntryIndex, source: &Rc<v1_compiler_compile::SourceFile>) {
+fn note_source_hash(index: &MultiEntryIndex, source: &Arc<v1_compiler_compile::SourceFile>) {
     let mut map = index.source_hash_by_file.borrow_mut();
     if !map.contains_key(&source.path) {
         map.insert(
@@ -11516,13 +11517,13 @@ fn note_source_hash(index: &MultiEntryIndex, source: &Rc<v1_compiler_compile::So
 
 fn parse_module_heads_for_pool_census(
     index: &MultiEntryIndex,
-    source: Rc<v1_compiler_compile::SourceFile>,
-) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
+    source: Arc<v1_compiler_compile::SourceFile>,
+) -> Result<(Arc<Node>, Arc<NewlineIndex>), String> {
     note_source_hash(index, &source);
     let tokens = v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
     let nl_index = build_newline_index(source.path.clone(), source.content.clone());
     let current_table = index.intern_table.borrow().clone();
-    let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+    let single_si: Arc<HashMap<String, Arc<NewlineIndex>>> = Arc::new({
         let mut m = HashMap::new();
         m.insert(source.path.clone(), nl_index.clone());
         m
@@ -11533,7 +11534,7 @@ fn parse_module_heads_for_pool_census(
     // `parse_cache` here. Closure resolve retains full bodies on its own cache miss.
     if let Some(err) = &parsed.result.error {
         let span = diagnostic_to_span(err.diagnostic.clone());
-        let loc = format_error_loc(&span.file, span.start, &Rc::new(HashMap::new()));
+        let loc = format_error_loc(&span.file, span.start, &Arc::new(HashMap::new()));
         return Err(format!(
             "symbol_index qualified-projection census refused: parse failed for {}: {}",
             loc,
@@ -11551,8 +11552,8 @@ fn parse_module_heads_for_pool_census(
 
 fn parse_module_node_from_index_source(
     index: &MultiEntryIndex,
-    source: Rc<v1_compiler_compile::SourceFile>,
-) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
+    source: Arc<v1_compiler_compile::SourceFile>,
+) -> Result<(Arc<Node>, Arc<NewlineIndex>), String> {
     note_source_hash(index, &source);
     let cached = index.parse_cache.borrow().get(&source.path).cloned();
     let (parse_result, nl_index) = match cached {
@@ -11562,7 +11563,7 @@ fn parse_module_node_from_index_source(
                 v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
             let nl_index = build_newline_index(source.path.clone(), source.content.clone());
             let current_table = index.intern_table.borrow().clone();
-            let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+            let single_si: Arc<HashMap<String, Arc<NewlineIndex>>> = Arc::new({
                 let mut m = HashMap::new();
                 m.insert(source.path.clone(), nl_index.clone());
                 m
@@ -11579,7 +11580,7 @@ fn parse_module_node_from_index_source(
     };
     if let Some(err) = &parse_result.error {
         let span = diagnostic_to_span(err.diagnostic.clone());
-        let loc = format_error_loc(&span.file, span.start, &Rc::new(HashMap::new()));
+        let loc = format_error_loc(&span.file, span.start, &Arc::new(HashMap::new()));
         return Err(format!(
             "symbol_index qualified-projection census refused: parse failed for {}: {}",
             loc,
@@ -11611,7 +11612,7 @@ fn parse_module_node_from_index_source(
 // bare GET/Persistent/JsonValue across 28 witness rows).
 // 🟡 dissolve-on: multi-entry SymbolIndex authority modeled in .dag (census over the
 // indexed pool — namespace-resolution-design.md / type-env-single-authority lane).
-fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
+fn pool_parse(index: &MultiEntryIndex) -> Result<Arc<PoolParse>, String> {
     if let Some(cached) = index.pool_parse.borrow().clone() {
         return Ok(cached);
     }
@@ -11619,8 +11620,8 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
     // build reproducible — determinism gate).
     let mut pool_paths: Vec<String> = index.source_files.keys().cloned().collect();
     pool_paths.sort();
-    let mut combined_si: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
-    let mut nodes_by_file: Vec<(String, Rc<Node>)> = Vec::with_capacity(pool_paths.len());
+    let mut combined_si: HashMap<String, Arc<NewlineIndex>> = HashMap::new();
+    let mut nodes_by_file: Vec<(String, Arc<Node>)> = Vec::with_capacity(pool_paths.len());
     for module_path in pool_paths {
         let source = index
             .source_files
@@ -11632,26 +11633,26 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
         combined_si.insert(file.clone(), nl_index);
         nodes_by_file.push((file, module));
     }
-    let parsed = Rc::new(PoolParse {
+    let parsed = Arc::new(PoolParse {
         nodes_by_file,
-        combined_si: Rc::new(combined_si),
+        combined_si: Arc::new(combined_si),
     });
     *index.pool_parse.borrow_mut() = Some(parsed.clone());
     Ok(parsed)
 }
 
-fn pool_qualified_fill(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> {
+fn pool_qualified_fill(index: &MultiEntryIndex) -> Result<Arc<SymbolIndex>, String> {
     if let Some(cached) = index.pool_qualified_fill.borrow().clone() {
         return Ok(cached);
     }
     let pool = pool_parse(index)?;
-    let nodes: im::Vector<Rc<Node>> = pool
+    let nodes: im::Vector<Arc<Node>> = pool
         .nodes_by_file
         .iter()
         .map(|(_, node)| node.clone())
         .collect();
     let fill = v1_compiler_infer::build_symbol_index_qualified_fill(
-        Rc::new(nodes),
+        Arc::new(nodes),
         pool.combined_si.clone(),
     );
     *index.pool_qualified_fill.borrow_mut() = Some(fill.clone());
@@ -11691,7 +11692,7 @@ fn source_tree_root_of(roots: &[String], file: &str) -> Option<String> {
 fn tree_bare_census_for_root(
     index: &MultiEntryIndex,
     root: &str,
-) -> Result<Rc<SymbolIndex>, String> {
+) -> Result<Arc<SymbolIndex>, String> {
     if let Some(hit) = index.tree_bare_census.borrow().get(root) {
         return Ok(hit.clone());
     }
@@ -11716,14 +11717,14 @@ fn tree_bare_census_for_root(
             }
         }
     }
-    let nodes: im::Vector<Rc<Node>> = pool
+    let nodes: im::Vector<Arc<Node>> = pool
         .nodes_by_file
         .iter()
         .filter(|(file, _)| reached.contains(file))
         .map(|(_, node)| node.clone())
         .collect();
     let census = v1_compiler_infer::build_symbol_index_census_nodes(
-        Rc::new(nodes),
+        Arc::new(nodes),
         pool.combined_si.clone(),
     );
     index
@@ -11738,18 +11739,18 @@ fn tree_bare_census_for_root(
 /// bare `gunbc_ci_spec` (declared in dag/gunbc/ci_spec.dag) resolves here after
 /// missing the v2 tree census, so the provider is pulled and becomes
 /// closure-visible at typecheck.
-fn pool_bare_census(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> {
+fn pool_bare_census(index: &MultiEntryIndex) -> Result<Arc<SymbolIndex>, String> {
     if let Some(hit) = index.pool_bare_census.borrow().as_ref() {
         return Ok(hit.clone());
     }
     let pool = pool_parse(index)?;
-    let nodes: im::Vector<Rc<Node>> = pool
+    let nodes: im::Vector<Arc<Node>> = pool
         .nodes_by_file
         .iter()
         .map(|(_, node)| node.clone())
         .collect();
     let census = v1_compiler_infer::build_symbol_index_census_nodes(
-        Rc::new(nodes),
+        Arc::new(nodes),
         pool.combined_si.clone(),
     );
     *index.pool_bare_census.borrow_mut() = Some(census.clone());
@@ -11758,9 +11759,9 @@ fn pool_bare_census(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> 
 
 fn build_symbol_index_for_reconcile(
     index: &MultiEntryIndex,
-    graph: Rc<v1_compiler_resolve::ModuleGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Result<Rc<SymbolIndex>, String> {
+    graph: Arc<v1_compiler_resolve::ModuleGraph>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Result<Arc<SymbolIndex>, String> {
     let symbol_index_started = std::time::Instant::now();
     let symbol_index =
         v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices);
@@ -11777,14 +11778,14 @@ fn build_symbol_index_for_reconcile(
 }
 
 fn reconcile_with_typed_cache(
-    graph: Rc<v1_compiler_resolve::ModuleGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    intern_table: Rc<InternTable>,
+    graph: Arc<v1_compiler_resolve::ModuleGraph>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    intern_table: Arc<InternTable>,
     index: &MultiEntryIndex,
-) -> Result<Rc<ResolvedGraph>, String> {
-    let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
-    let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
-    let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
+) -> Result<Arc<ResolvedGraph>, String> {
+    let mut module_index: Arc<HashMap<String, Arc<TypedModule>>> = v1_rt::rc_empty_map();
+    let mut diag_chunks: Vec<Arc<im::Vector<Arc<ErrorNode>>>> = Vec::new();
+    let mut variant_surfaces: Arc<HashMap<String, Arc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
@@ -11796,7 +11797,7 @@ fn reconcile_with_typed_cache(
     // is the same assumption the shared typed cache already ships on, held by the
     // every-order equivalence oracles (§6.1).
     let graph_started = std::time::Instant::now();
-    let closure_modules: Vec<Rc<v1_compiler_resolve::ResolvedModule>> =
+    let closure_modules: Vec<Arc<v1_compiler_resolve::ResolvedModule>> =
         graph.modules.iter().cloned().collect();
     let closure_names: Vec<String> = closure_modules
         .iter()
@@ -11850,8 +11851,8 @@ fn reconcile_with_typed_cache(
     let mut tree_symbol_index_memo: std::collections::HashMap<
         String,
         (
-            Rc<SymbolIndex>,
-            Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>>,
+            Arc<SymbolIndex>,
+            Arc<HashMap<String, Arc<crate::v1_compiler_infer_env::TypeBinding>>>,
         ),
     > = std::collections::HashMap::new();
     // Interface hashes of processed modules, for dependents' content keys — filled in
@@ -11865,8 +11866,8 @@ fn reconcile_with_typed_cache(
         closure_path_to_authored_name_map(&closure_modules, &closure_names);
     let mut dispatched: Vec<
         Option<(
-            Rc<im::Vector<Rc<ErrorNode>>>,
-            Rc<v1_compiler_infer::TypecheckModuleResult>,
+            Arc<im::Vector<Arc<ErrorNode>>>,
+            Arc<v1_compiler_infer::TypecheckModuleResult>,
         )>,
     > = vec![None; closure_modules.len()];
 
@@ -11925,7 +11926,7 @@ fn reconcile_with_typed_cache(
                     &resolved.module.span.file,
                 );
                 let parent_diags = if was_cache_hit {
-                    Rc::new(im::Vector::new())
+                    Arc::new(im::Vector::new())
                 } else {
                     let parent_envs_started = std::time::Instant::now();
                     let parent_result = v1_compiler_infer::collect_parent_envs(
@@ -12113,14 +12114,14 @@ fn reconcile_with_typed_cache(
     }
 
     finish_resolved_graph_assembly(
-        Rc::new(modules_vec),
+        Arc::new(modules_vec),
         diag_chunks,
         (same_tree_fork_count, cross_tree_fork_count),
         source_indices,
     )
 }
 
-fn format_error_loc(file: &str, start: i64, si: &HashMap<String, Rc<NewlineIndex>>) -> String {
+fn format_error_loc(file: &str, start: i64, si: &HashMap<String, Arc<NewlineIndex>>) -> String {
     match si.get(file) {
         Some(idx) => {
             let lc = byte_to_line_col(idx.clone(), start);
@@ -12131,8 +12132,8 @@ fn format_error_loc(file: &str, start: i64, si: &HashMap<String, Rc<NewlineIndex
 }
 
 fn format_error_node(
-    d: &Rc<ErrorNode>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    d: &Arc<ErrorNode>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     let span = diagnostic_to_span(d.diagnostic.clone());
     let loc = format_error_loc(&span.file, span.start, source_indices);
@@ -12144,8 +12145,8 @@ fn format_error_node(
 }
 
 fn format_error_nodes(
-    diags: &Rc<im::Vector<Rc<ErrorNode>>>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    diags: &Arc<im::Vector<Arc<ErrorNode>>>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     diags
         .iter()
@@ -12156,21 +12157,21 @@ fn format_error_nodes(
 }
 
 fn resolved_graph_from_sources(
-    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    sources: Vec<Arc<v1_compiler_compile::SourceFile>>,
     typecheck_gate: ResolveTypecheckGate,
 ) -> Result<
     (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Arc<v1_compiler_compile::ResolvedGraph>,
+        Arc<HashMap<String, Arc<NewlineIndex>>>,
     ),
     String,
 > {
     let result = match typecheck_gate {
         ResolveTypecheckGate::Strict => {
-            v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()))
+            v1_compiler_compile::compile_to_resolved(Arc::new(sources.into()))
         }
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
-            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(
+            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Arc::new(
                 sources.into(),
             ))
         }
@@ -12181,7 +12182,7 @@ fn resolved_graph_from_sources(
         .iter()
         .any(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate));
     if has_errors {
-        let si: HashMap<String, Rc<NewlineIndex>> = result
+        let si: HashMap<String, Arc<NewlineIndex>> = result
             .newline_indices
             .iter()
             .map(|idx| (idx.file.clone(), idx.clone()))
@@ -12217,7 +12218,7 @@ fn resolved_graph_from_sources(
 
 pub fn make_eval_context(
     graph: &v1_compiler_compile::ResolvedGraph,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     execution_mode: v1_interpreter::ExecutionMode,
 ) -> v1_interpreter::InterpContext {
     make_eval_context_with_fixture_store(graph, source_indices, execution_mode, None)
@@ -12410,9 +12411,9 @@ pub fn install_group_syntax(source_roots: &[String]) {
 
 pub fn make_eval_context_with_fixture_store(
     graph: &v1_compiler_compile::ResolvedGraph,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     execution_mode: v1_interpreter::ExecutionMode,
-    fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+    fixture_store: Option<Arc<crate::recorded_fixture::RecordedFixtureStore>>,
 ) -> v1_interpreter::InterpContext {
     make_eval_context_with_runtime_options(
         graph,
@@ -12425,10 +12426,10 @@ pub fn make_eval_context_with_fixture_store(
 
 pub fn make_eval_context_with_runtime_options(
     graph: &v1_compiler_compile::ResolvedGraph,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     execution_mode: v1_interpreter::ExecutionMode,
-    fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
-    whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+    fixture_store: Option<Arc<crate::recorded_fixture::RecordedFixtureStore>>,
+    whole_tree_published_keys: Option<Arc<std::collections::HashSet<String>>>,
 ) -> v1_interpreter::InterpContext {
     v1_interpreter::InterpContext::with_runtime_options(
         graph,
@@ -12477,7 +12478,7 @@ pub fn precompute_whole_tree_published_mock_keys(
     // syntax (a string match is structural), and the downstream
     // `type_annotation_names(.., "PublishedMockCase")` check is exact, so a
     // false-positive file only widens the closure slightly — it cannot fabricate a key.
-    let declarers: Vec<Rc<v1_compiler_compile::SourceFile>> = index
+    let declarers: Vec<Arc<v1_compiler_compile::SourceFile>> = index
         .values()
         .filter(|sf| sf.content.contains("PublishedMockCase"))
         .cloned()
@@ -12527,7 +12528,7 @@ pub struct WholeTreeCtx {
 }
 
 pub struct WholeTreeStrictSources {
-    pub sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    pub sources: Vec<Arc<v1_compiler_compile::SourceFile>>,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
 }
@@ -12538,7 +12539,7 @@ pub fn whole_tree_strict_sources(
 ) -> Result<WholeTreeStrictSources, String> {
     let index = build_module_index(source_roots);
     let total = index.len();
-    let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
+    let all_sources: Vec<Arc<v1_compiler_compile::SourceFile>> = index
         .iter()
         .filter(|(module_path, sf)| {
             let p = sf.path.replace('\\', "/");
@@ -12603,7 +12604,7 @@ fn canonical_json_identity_hash<T: Serialize>(value: &T) -> Result<String, Strin
 
 fn module_defined_type_names(
     module: &TypedModule,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> BTreeSet<String> {
     use ItemKind::{DataItem, TypeItem};
     let mut names = BTreeSet::new();
@@ -12618,7 +12619,7 @@ fn module_defined_type_names(
 fn module_emit_repr_fingerprint(
     module: &TypedModule,
     emit_info: &crate::v1_compiler_infer_emit_info::EmitGraphInfo,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Result<String, String> {
     use crate::v1_compiler_infer_emit_info::TypeSummary;
 
@@ -12640,16 +12641,16 @@ pub fn whole_corpus_semantic_oracle_snapshot(
     use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, HostNative};
 
     let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(picked.sources.into()));
+    let result = v1_compiler_compile::compile_to_resolved(Arc::new(picked.sources.into()));
     let graph = result.graph.as_ref().ok_or_else(|| {
-        let si: HashMap<String, Rc<NewlineIndex>> = result
+        let si: HashMap<String, Arc<NewlineIndex>> = result
             .newline_indices
             .iter()
             .map(|idx| (idx.file.clone(), idx.clone()))
             .collect();
         format!(
             "whole-corpus strict resolve failed:\n{}",
-            format_error_nodes(&result.diagnostics, &Rc::new(si))
+            format_error_nodes(&result.diagnostics, &Arc::new(si))
         )
     })?;
     let source_indices = result.source_indices.clone();
@@ -12666,7 +12667,7 @@ pub fn whole_corpus_semantic_oracle_snapshot(
     };
     let emit_graph_fingerprint = canonical_json_identity_hash(graph.emit_graph_info.as_ref())?;
 
-    let mut modules: Vec<Rc<TypedModule>> = graph.modules.iter().cloned().collect();
+    let mut modules: Vec<Arc<TypedModule>> = graph.modules.iter().cloned().collect();
     modules.sort_by(|left, right| {
         let left_path = authored_name_at(source_indices.clone(), left.module.clone());
         let right_path = authored_name_at(source_indices.clone(), right.module.clone());
@@ -12811,40 +12812,43 @@ pub fn whole_tree_ancestry_retention_probe(
         let te = &m.type_env;
         let tec = &m.type_env_cache;
         tallies[0].add(
-            Rc::as_ptr(&tec.str_bindings) as usize,
+            Arc::as_ptr(&tec.str_bindings) as usize,
             tec.str_bindings.len(),
         );
-        tallies[1].add(Rc::as_ptr(&tec.deps_map) as usize, tec.deps_map.len());
+        tallies[1].add(Arc::as_ptr(&tec.deps_map) as usize, tec.deps_map.len());
         tallies[2].add(
-            Rc::as_ptr(&tec.cycle_set_str) as usize,
+            Arc::as_ptr(&tec.cycle_set_str) as usize,
             tec.cycle_set_str.len(),
         );
         tallies[3].add(
-            Rc::as_ptr(&tec.variant_locals) as usize,
+            Arc::as_ptr(&tec.variant_locals) as usize,
             tec.variant_locals.len(),
         );
-        tallies[4].add(Rc::as_ptr(&te.str_bindings) as usize, te.str_bindings.len());
+        tallies[4].add(
+            Arc::as_ptr(&te.str_bindings) as usize,
+            te.str_bindings.len(),
+        );
         tallies[5].add(
-            Rc::as_ptr(&te.ancestry_str_bindings) as usize,
+            Arc::as_ptr(&te.ancestry_str_bindings) as usize,
             te.ancestry_str_bindings.len(),
         );
-        tallies[6].add(Rc::as_ptr(&te.bindings) as usize, te.bindings.len());
+        tallies[6].add(Arc::as_ptr(&te.bindings) as usize, te.bindings.len());
         tallies[7].add(
-            Rc::as_ptr(&te.source_visible_names) as usize,
+            Arc::as_ptr(&te.source_visible_names) as usize,
             te.source_visible_names.len(),
         );
         tallies[8].add(
-            Rc::as_ptr(&te.inductive_fields) as usize,
+            Arc::as_ptr(&te.inductive_fields) as usize,
             te.inductive_fields.len(),
         );
         tallies[9].add(
-            Rc::as_ptr(&te.recursive_type_set) as usize,
+            Arc::as_ptr(&te.recursive_type_set) as usize,
             te.recursive_type_set.len(),
         );
 
         let module_ind_mass: usize = te.inductive_fields.iter().map(|(_, v)| v.len()).sum();
         ind_lists_retained += module_ind_mass;
-        if ind_list_spines.insert(Rc::as_ptr(&te.inductive_fields) as usize) {
+        if ind_list_spines.insert(Arc::as_ptr(&te.inductive_fields) as usize) {
             ind_lists_distinct += module_ind_mass;
         }
 
@@ -13721,7 +13725,7 @@ impl ScopedRunObservation {
         let state = v1_interpreter::Value::Variant {
             type_name: ctx.sym("DynamicLineState"),
             variant_name: ctx.sym("DynamicLineClosed"),
-            fields: Rc::new(vec![]),
+            fields: Arc::new(vec![]),
         };
         Ok(Self {
             ctx,
@@ -13774,7 +13778,7 @@ impl ScopedRunObservation {
                 Some("wall".to_string()),
                 Value::Record {
                     type_name: self.ctx.sym("Nanosecond"),
-                    fields: Rc::new(vec![(self.ctx.sym("count"), Value::Int(wall_ns as i64))]),
+                    fields: Arc::new(vec![(self.ctx.sym("count"), Value::Int(wall_ns as i64))]),
                 },
             ));
         }
@@ -13912,7 +13916,7 @@ impl ScopedRunObservation {
                 Some("wall".to_string()),
                 Value::Record {
                     type_name: self.ctx.sym("Nanosecond"),
-                    fields: Rc::new(vec![(
+                    fields: Arc::new(vec![(
                         self.ctx.sym("count"),
                         Value::Int(self.last_wall_ns as i64),
                     )]),
@@ -13922,7 +13926,7 @@ impl ScopedRunObservation {
                 Some("seed_resolution".to_string()),
                 Value::Record {
                     type_name: self.ctx.sym("Nanosecond"),
-                    fields: Rc::new(vec![(
+                    fields: Arc::new(vec![(
                         self.ctx.sym("count"),
                         Value::Int(self.seed_resolution_ns as i64),
                     )]),
@@ -14128,14 +14132,14 @@ pub fn handle_run_with_options(
     };
     eprintln!("resolved {} sources", sources.len());
 
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    let result = v1_compiler_compile::compile_to_resolved(Arc::new(sources.into()));
 
     let has_errors = result
         .diagnostics
         .iter()
         .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
     if has_errors {
-        let si: HashMap<String, Rc<NewlineIndex>> = result
+        let si: HashMap<String, Arc<NewlineIndex>> = result
             .newline_indices
             .iter()
             .map(|idx| (idx.file.clone(), idx.clone()))
@@ -14765,7 +14769,7 @@ pub struct OwnedDataDeclRecord {
     pub initializer: OwnedDataDeclInitializer,
 }
 
-fn literal_string_from_expr(node: &Rc<Node>) -> Option<String> {
+fn literal_string_from_expr(node: &Arc<Node>) -> Option<String> {
     if let ExprData::ExprLiteral { value } = &*node.expr_data {
         if let LiteralValue::LitStr { value: s } = value.as_ref() {
             return Some(s.clone());
@@ -14775,17 +14779,17 @@ fn literal_string_from_expr(node: &Rc<Node>) -> Option<String> {
 }
 
 fn symbol_name_from_expr(
-    node: &Rc<Node>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    node: &Arc<Node>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
 ) -> Option<String> {
     binding_name_from_expr(node, source_indices)
 }
 
 fn field_init_label(
-    field_init: &Rc<Node>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    field_init: &Arc<Node>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
 ) -> String {
-    let si = Rc::new(source_indices.clone());
+    let si = Arc::new(source_indices.clone());
     let authored = field_init_node_name_at(field_init.clone(), si);
     if !authored.is_empty() {
         return authored;
@@ -14794,10 +14798,10 @@ fn field_init_label(
 }
 
 fn field_init_named<'a>(
-    record: &'a Rc<Node>,
+    record: &'a Arc<Node>,
     field: &str,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> Option<Rc<Node>> {
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
+) -> Option<Arc<Node>> {
     for child in record.children.iter() {
         if field_init_label(child, source_indices) == field {
             return Some(field_init_node_value(child.clone()));
@@ -14807,16 +14811,16 @@ fn field_init_named<'a>(
 }
 
 fn binding_name_from_expr(
-    node: &Rc<Node>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    node: &Arc<Node>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
 ) -> Option<String> {
     if let ExprData::ExprVar { .. } = &*node.expr_data {
-        let name = expr_var_name_at(node.clone(), Rc::new(source_indices.clone()));
+        let name = expr_var_name_at(node.clone(), Arc::new(source_indices.clone()));
         if !name.is_empty() {
             return Some(name);
         }
     }
-    let name = authored_name_at(Rc::new(source_indices.clone()), node.clone());
+    let name = authored_name_at(Arc::new(source_indices.clone()), node.clone());
     if name.is_empty() {
         None
     } else {
@@ -14825,8 +14829,8 @@ fn binding_name_from_expr(
 }
 
 fn extract_bool_witness_transport(
-    claim_body: &Rc<Node>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    claim_body: &Arc<Node>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
 ) -> (String, String) {
     let Some(witness_node) = field_init_named(claim_body, "witness", source_indices) else {
         return (String::new(), String::new());
@@ -14842,10 +14846,10 @@ fn extract_bool_witness_transport(
 
 fn defining_module_for_resolved_type(
     graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
     type_name: &str,
 ) -> Option<String> {
-    let si = Rc::new(source_indices.clone());
+    let si = Arc::new(source_indices.clone());
     for tm in graph.modules.iter() {
         let mod_name = authored_name_at(si.clone(), tm.module.clone());
         if lookup_type_by_name(tm.type_env.clone(), type_name.to_string()).is_some() {
@@ -14866,7 +14870,7 @@ fn defining_module_for_resolved_type(
     None
 }
 
-fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<Rc<Node>> {
+fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<Arc<Node>> {
     for tm in graph.modules.iter() {
         if let Some(node) = lookup_type_by_name(tm.type_env.clone(), type_name.to_string()) {
             return Some(node);
@@ -14876,10 +14880,10 @@ fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<R
 }
 
 fn declared_type_name_from_annotation(
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    type_annotation: &Rc<Node>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
+    type_annotation: &Arc<Node>,
 ) -> Option<String> {
-    let si = Rc::new(source_indices.clone());
+    let si = Arc::new(source_indices.clone());
     let name = authored_name_at(si, type_annotation.clone());
     if name.is_empty() {
         None
@@ -14890,7 +14894,7 @@ fn declared_type_name_from_annotation(
 
 fn resolved_decl_ref_from_type_name(
     graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
     name: &str,
 ) -> Result<ResolvedDeclRef, String> {
     let module = defining_module_for_resolved_type(graph, source_indices, name)
@@ -14903,11 +14907,11 @@ fn resolved_decl_ref_from_type_name(
 
 fn resolved_initializer_decl_ref(
     graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    body: &Rc<Node>,
-    type_annotation: Option<&Rc<Node>>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
+    body: &Arc<Node>,
+    type_annotation: Option<&Arc<Node>>,
 ) -> Result<ResolvedDeclRef, String> {
-    let si = Rc::new(source_indices.clone());
+    let si = Arc::new(source_indices.clone());
     if let ExprData::ExprRecordLit { parent_enum } = &*body.expr_data {
         if let Some(parent_name) = parent_enum.as_deref() {
             // A qualified constructor spelling (v2.std.verification.BoolWitnessClaim)
@@ -14991,10 +14995,10 @@ fn is_resolved_node_corpus(resolved: &ResolvedDeclRef) -> bool {
 
 fn entry_typed_module(
     graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
     entry_module: &str,
-) -> Result<Rc<TypedModule>, String> {
-    let si = Rc::new(source_indices.clone());
+) -> Result<Arc<TypedModule>, String> {
+    let si = Arc::new(source_indices.clone());
     graph
         .modules
         .iter()
@@ -15010,11 +15014,11 @@ fn entry_typed_module(
 
 fn owned_data_initializer_from_body(
     graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
     entry_path: &str,
     decl_name: &str,
-    body: &Rc<Node>,
-    type_annotation: Option<&Rc<Node>>,
+    body: &Arc<Node>,
+    type_annotation: Option<&Arc<Node>>,
 ) -> Result<OwnedDataDeclInitializer, String> {
     let resolved_initializer =
         resolved_initializer_decl_ref(graph, source_indices, body, type_annotation)
@@ -15043,11 +15047,11 @@ fn owned_data_initializer_from_body(
 
 pub fn owned_data_decls_for_entry(
     graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
     entry_path: &str,
     entry_module: &str,
 ) -> Result<Vec<OwnedDataDeclRecord>, String> {
-    let si = Rc::new(source_indices.clone());
+    let si = Arc::new(source_indices.clone());
     let typed_module = entry_typed_module(graph, source_indices, entry_module)
         .map_err(|e| format!("{entry_path}: {e}"))?;
 
@@ -15174,14 +15178,14 @@ fn top_level_decl_names(content: &str) -> Vec<String> {
 
 struct DiscoveryResolveGroup {
     entries: Vec<(String, String, usize)>,
-    sources: HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
+    sources: HashMap<String, Arc<v1_compiler_compile::SourceFile>>,
     decl_names: HashMap<String, String>,
 }
 
 fn closure_group_conflict(
     group: &DiscoveryResolveGroup,
-    closure: &[Rc<v1_compiler_compile::SourceFile>],
-    names_by_file: &HashMap<String, Rc<Vec<String>>>,
+    closure: &[Arc<v1_compiler_compile::SourceFile>],
+    names_by_file: &HashMap<String, Arc<Vec<String>>>,
 ) -> Option<(String, String, String)> {
     for source in closure {
         if group.sources.contains_key(&source.path) {
@@ -15200,8 +15204,8 @@ fn closure_group_conflict(
 
 fn add_closure_to_group(
     group: &mut DiscoveryResolveGroup,
-    closure: Vec<Rc<v1_compiler_compile::SourceFile>>,
-    names_by_file: &HashMap<String, Rc<Vec<String>>>,
+    closure: Vec<Arc<v1_compiler_compile::SourceFile>>,
+    names_by_file: &HashMap<String, Arc<Vec<String>>>,
 ) {
     for source in closure {
         if group.sources.contains_key(&source.path) {
@@ -15238,7 +15242,7 @@ pub fn discover_owned_data_decls(
     let module_index = build_module_index(source_roots);
     let module_graph_facts = build_module_graph_facts_live(source_roots);
 
-    let mut names_by_file: HashMap<String, Rc<Vec<String>>> = HashMap::new();
+    let mut names_by_file: HashMap<String, Arc<Vec<String>>> = HashMap::new();
     let mut groups: Vec<DiscoveryResolveGroup> = Vec::new();
     let mut group_split_collisions: Vec<String> = Vec::new();
     let mut entry_count = 0usize;
@@ -15266,7 +15270,7 @@ pub fn discover_owned_data_decls(
         for source in &closure {
             names_by_file
                 .entry(source.path.clone())
-                .or_insert_with(|| Rc::new(top_level_decl_names(&source.content)));
+                .or_insert_with(|| Arc::new(top_level_decl_names(&source.content)));
         }
 
         let member = (entry, entry_module, marker_count);
@@ -15305,12 +15309,12 @@ pub fn discover_owned_data_decls(
     let graph_resolves = groups.len();
     let mut all_records = Vec::new();
     for group in groups {
-        let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+        let mut sources: Vec<Arc<v1_compiler_compile::SourceFile>> =
             group.sources.into_iter().map(|(_, v)| v).collect();
         sources.sort_by(|a, b| a.path.cmp(&b.path));
         let (graph, source_indices) =
             resolved_graph_from_sources(sources, ResolveTypecheckGate::DiscoveryCorpusAdvisory)?;
-        let si: HashMap<String, Rc<NewlineIndex>> = source_indices
+        let si: HashMap<String, Arc<NewlineIndex>> = source_indices
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
@@ -16138,7 +16142,7 @@ pub fn project_witness_cost_receipt(
             "project_witness_cost_receipt",
             &[(
                 Some("events".to_string()),
-                Value::List(Rc::new(events.into())),
+                Value::List(Arc::new(events.into())),
             )],
             false,
         )
@@ -16342,7 +16346,7 @@ pub fn wet_hermetic_scaffold_roster_entry_prefix(
     let entry_module = extract_module_path(&entry_source.content)
         .ok_or_else(|| format!("{entry}: missing module declaration"))?;
     let typed_module = entry_typed_module(&graph, &source_indices, &entry_module)?;
-    let si = Rc::new((*source_indices).clone());
+    let si = Arc::new((*source_indices).clone());
     for item in typed_module.items.iter() {
         if item.body.is_none() {
             continue;
@@ -17455,8 +17459,8 @@ fn resolve_workspace_entry(
     entry: WorkspaceRootRelativeEntry,
 ) -> Result<
     (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Arc<v1_compiler_compile::ResolvedGraph>,
+        Arc<HashMap<String, Arc<NewlineIndex>>>,
     ),
     String,
 > {
@@ -17468,7 +17472,7 @@ fn owned_data_decl_record_to_value(
     rec: &OwnedDataDeclRecord,
     ctx: &v1_interpreter::InterpContext,
 ) -> v1_interpreter::Value {
-    use std::rc::Rc;
+    use std::sync::Arc;
     use v1_interpreter::{sorted_fields, Value};
     let initializer = match &rec.initializer {
         OwnedDataDeclInitializer::BoolWitnessClaim {
@@ -17477,7 +17481,7 @@ fn owned_data_decl_record_to_value(
         } => Value::Variant {
             type_name: ctx.sym("OwnedDataDeclInitializer"),
             variant_name: ctx.sym("OwnedBoolWitnessClaimInit"),
-            fields: Rc::new(sorted_fields(vec![
+            fields: Arc::new(sorted_fields(vec![
                 (ctx.sym("witness_entry"), Value::Str(witness_entry.clone())),
                 (
                     ctx.sym("witness_function"),
@@ -17488,16 +17492,16 @@ fn owned_data_decl_record_to_value(
         OwnedDataDeclInitializer::NodeCorpus => Value::Variant {
             type_name: ctx.sym("OwnedDataDeclInitializer"),
             variant_name: ctx.sym("OwnedNodeCorpusInit"),
-            fields: Rc::new(vec![]),
+            fields: Arc::new(vec![]),
         },
         OwnedDataDeclInitializer::Other { resolved } => Value::Variant {
             type_name: ctx.sym("OwnedDataDeclInitializer"),
             variant_name: ctx.sym("OwnedOtherInit"),
-            fields: Rc::new(sorted_fields(vec![(
+            fields: Arc::new(sorted_fields(vec![(
                 ctx.sym("resolved"),
                 Value::Record {
                     type_name: ctx.sym("ResolvedDeclRef"),
-                    fields: Rc::new(sorted_fields(vec![
+                    fields: Arc::new(sorted_fields(vec![
                         (ctx.sym("module"), Value::Str(resolved.module.clone())),
                         (ctx.sym("name"), Value::Str(resolved.name.clone())),
                     ])),
@@ -17507,7 +17511,7 @@ fn owned_data_decl_record_to_value(
     };
     Value::Record {
         type_name: ctx.sym("OwnedDataDeclRecord"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (ctx.sym("entry"), Value::Str(rec.entry.clone())),
             (ctx.sym("module"), Value::Str(rec.module.clone())),
             (ctx.sym("decl_name"), Value::Str(rec.decl_name.clone())),
@@ -18812,8 +18816,8 @@ fn changed_new_lines_for_file(
 
 fn newline_index_for_span<'a>(
     span: &SourceSpan,
-    source_indices: &'a HashMap<String, Rc<NewlineIndex>>,
-) -> Option<&'a Rc<NewlineIndex>> {
+    source_indices: &'a HashMap<String, Arc<NewlineIndex>>,
+) -> Option<&'a Arc<NewlineIndex>> {
     let file = normalize_repo_path(&span.file);
     source_indices.get(&span.file).or_else(|| {
         source_indices.iter().find_map(|(path, idx)| {
@@ -19166,7 +19170,7 @@ fn live_tree_disposition_value(
         } else {
             "SubstrateInputsOnly"
         }),
-        fields: Rc::new(Vec::new()),
+        fields: Arc::new(Vec::new()),
     }
 }
 
@@ -20159,7 +20163,7 @@ fn floor_diff_edits_from_line_ranges(
         // module (a batch-2 debt row no gate compiles) dead-ended batch 2 at one
         // entry per CI cycle. Parse errors still refuse (typed, located); typecheck
         // reds surface where they belong — as that entry's own counted discovery row.
-        let source = Rc::new(v1_compiler_compile::SourceFile {
+        let source = Arc::new(v1_compiler_compile::SourceFile {
             path: file_norm.clone(),
             content: content.clone(),
         });
@@ -20167,7 +20171,7 @@ fn floor_diff_edits_from_line_ranges(
             Ok(pair) => pair,
             Err(e) => return Err(format!("parse failed for {file_path}: {e}")),
         };
-        let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+        let single_si: Arc<HashMap<String, Arc<NewlineIndex>>> = Arc::new({
             let mut m = HashMap::new();
             m.insert(file_norm.clone(), nl.clone());
             m
@@ -20371,18 +20375,18 @@ fn realize_advisory_optional_int(
     ctx: &v1_interpreter::InterpContext,
     v: Option<i64>,
 ) -> v1_interpreter::Value {
-    use std::rc::Rc;
+    use std::sync::Arc;
     use v1_interpreter::Value;
     match v {
         Some(n) => Value::Variant {
             type_name: ctx.sym("Optional"),
             variant_name: ctx.sym("Present"),
-            fields: Rc::new(vec![(ctx.sym("value"), Value::Int(n))]),
+            fields: Arc::new(vec![(ctx.sym("value"), Value::Int(n))]),
         },
         None => Value::Variant {
             type_name: ctx.sym("Optional"),
             variant_name: ctx.sym("Absent"),
-            fields: Rc::new(vec![]),
+            fields: Arc::new(vec![]),
         },
     }
 }
@@ -21733,7 +21737,7 @@ fn run_discovery_rows(
     let mut current_entry_runtime_dependency_touched = true;
     let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let pool_roots = witness_layer_roots();
-    let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
+    let whole_tree_published_keys = whole_tree_published_keys.map(Arc::new);
     let entry_fast_skip = if selection == NodeFrontierSelectionMode::Applied {
         discovery_entry_fast_skip_without_resolve(
             rows,
@@ -22092,10 +22096,10 @@ mod floor_skip_frontier_tests {
 
     fn data_item_line(
         fixture: &str,
-        source_indices: &std::rc::Rc<
-            HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>,
+        source_indices: &std::sync::Arc<
+            HashMap<String, std::sync::Arc<crate::v1_std_core::NewlineIndex>>,
         >,
-        graph: &std::rc::Rc<ResolvedGraph>,
+        graph: &std::sync::Arc<ResolvedGraph>,
         name: &str,
     ) -> i64 {
         for module in graph.modules.iter() {
@@ -22648,10 +22652,10 @@ mod floor_witness_a_prove {
         start: i64,
         end: i64,
     ) -> Value {
-        use std::rc::Rc;
+        use std::sync::Arc;
         Value::Record {
             type_name: ctx.sym("FloorDiffLineTouch"),
-            fields: Rc::new(vec![
+            fields: Arc::new(vec![
                 (ctx.sym("path"), Value::Str(path.to_string())),
                 (ctx.sym("start_line"), int_value(start)),
                 (ctx.sym("end_line"), int_value(end)),
@@ -27451,14 +27455,14 @@ pub fn reference_edges_as_import_facts(
 /// Parse a `.dag` module's source text through the real front-end. Returns the module node, or
 /// `None` on a parse error (the whole-tree compile reports such errors loudly; the module graph
 /// simply omits its edges, and the corpus stays green because a syntax-broken file never resolves).
-fn parse_module_node_tolerant(rel: &str, content: &str) -> Option<Rc<crate::v1_std_core::Node>> {
+fn parse_module_node_tolerant(rel: &str, content: &str) -> Option<Arc<crate::v1_std_core::Node>> {
     let filename = rel.to_string();
     let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), filename.clone());
     let source_index =
         crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.clone(), source_index);
-    let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
+    let result = crate::v1_compiler_parse::parse(tokens, std::sync::Arc::new(source_indices));
     if result.error.is_some() {
         return None;
     }
@@ -27470,7 +27474,7 @@ fn parse_module_node_tolerant(rel: &str, content: &str) -> Option<Rc<crate::v1_s
 /// importable symbols and poison the name→module index when record literals use them as labels).
 /// Precise by construction — fn-body locals and params are never descended into — so the
 /// name→module index is not poisoned by incidental identifiers.
-fn collect_module_decl_names(module: &Rc<crate::v1_std_core::Node>) -> Vec<String> {
+fn collect_module_decl_names(module: &Arc<crate::v1_std_core::Node>) -> Vec<String> {
     use crate::v1_compiler_emit_core_support::is_type_def_item;
     use crate::v1_std_core::Connective;
     let mut names = Vec::new();
@@ -27492,7 +27496,7 @@ fn collect_module_decl_names(module: &Rc<crate::v1_std_core::Node>) -> Vec<Strin
 /// Reconstruct a qualified-name segment list from a `FieldAccess` chain (`A.B.c` → `[A, B, c]`).
 /// `None` when the base is not a plain identifier (e.g. a call result `f(x).field` — that is a
 /// value field access, not a module-qualified name).
-fn ref_field_chain(node: &Rc<crate::v1_std_core::Node>) -> Option<Vec<String>> {
+fn ref_field_chain(node: &Arc<crate::v1_std_core::Node>) -> Option<Vec<String>> {
     use crate::v1_std_core::ExprData;
     let mut segs: Vec<String> = vec![node.name.clone()];
     let mut cur = node.children.get(0).cloned()?;
@@ -27520,7 +27524,7 @@ fn ref_field_chain(node: &Rc<crate::v1_std_core::Node>) -> Option<Vec<String>> {
 /// parameters referenced in signatures). Used for import-less reference edges; over-collects local
 /// type-param binders, which is safe for the loader and tolerated at the strict selection tier.
 fn collect_type_ref_names(
-    node: &Rc<crate::v1_std_core::Node>,
+    node: &Arc<crate::v1_std_core::Node>,
     bare: &mut std::collections::HashSet<String>,
 ) {
     if !node.name.is_empty() {
@@ -27542,7 +27546,7 @@ fn collect_type_ref_names(
 /// match-pattern fields, record-literal labels) are excluded — the liberal `node.name` scan was
 /// attributing local names like `items` and `r` to unrelated extdeps modules.
 fn collect_node_refs(
-    node: &Rc<crate::v1_std_core::Node>,
+    node: &Arc<crate::v1_std_core::Node>,
     bare: &mut std::collections::HashSet<String>,
     chains: &mut Vec<Vec<String>>,
 ) {
@@ -27550,7 +27554,7 @@ fn collect_node_refs(
 }
 
 fn collect_node_refs_inner(
-    node: &Rc<crate::v1_std_core::Node>,
+    node: &Arc<crate::v1_std_core::Node>,
     bare: &mut std::collections::HashSet<String>,
     chains: &mut Vec<Vec<String>>,
     skip_bare_name: bool,
@@ -27703,7 +27707,7 @@ pub fn reference_resolution_facts(
     // carries `import` lines is covered EXACTLY by `import_resolution_facts` (no regression, no
     // over-connection). Only an import-less (stripped) file falls back to reference edges. So on the
     // un-stripped tree this producer emits nothing and the module graph is byte-identical to before.
-    let mut pool_trees: HashMap<String, (String, Rc<crate::v1_std_core::Node>, bool)> =
+    let mut pool_trees: HashMap<String, (String, Arc<crate::v1_std_core::Node>, bool)> =
         HashMap::new();
     for root in &abs_pool_roots {
         let root_path = Path::new(root);
@@ -27943,7 +27947,7 @@ pub fn bare_ref_reachability_for_name(
     let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
     let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut seen_modules: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut pool_trees: HashMap<String, (String, Rc<crate::v1_std_core::Node>, bool)> =
+    let mut pool_trees: HashMap<String, (String, Arc<crate::v1_std_core::Node>, bool)> =
         HashMap::new();
     for root in &abs_pool_roots {
         let root_path = Path::new(root);
@@ -28506,7 +28510,7 @@ fn module_path_to_qualified_path(module_path: &str, name: &str) -> String {
     }
 }
 
-type ModuleItemIndex = HashMap<(String, String), Rc<Node>>;
+type ModuleItemIndex = HashMap<(String, String), Arc<Node>>;
 
 fn build_module_item_index(ctx: &v1_interpreter::InterpContext) -> ModuleItemIndex {
     let source_indices = ctx.source_indices.clone();
@@ -28559,15 +28563,15 @@ fn fn_binding_from_sig(owner_module: &str, name: &str, sig: &ResolvedFuncSig) ->
     FnBindingRef {
         owner_module: owner_module.to_string(),
         qualified_path: module_path_to_qualified_path(owner_module, name),
-        node_ptr: Rc::as_ptr(&anchor) as usize,
+        node_ptr: Arc::as_ptr(&anchor) as usize,
     }
 }
 
-fn fn_binding_from_node(owner_module: &str, name: &str, node: &Rc<Node>) -> FnBindingRef {
+fn fn_binding_from_node(owner_module: &str, name: &str, node: &Arc<Node>) -> FnBindingRef {
     FnBindingRef {
         owner_module: owner_module.to_string(),
         qualified_path: module_path_to_qualified_path(owner_module, name),
-        node_ptr: Rc::as_ptr(node) as usize,
+        node_ptr: Arc::as_ptr(node) as usize,
     }
 }
 
@@ -28589,11 +28593,11 @@ fn import_chain_owner(func_env: &ResolvedFuncEnv, name: &str) -> Option<String> 
 pub enum LexicalLookupV1 {
     Hit {
         owner_module: String,
-        node: Rc<Node>,
+        node: Arc<Node>,
         steps: usize,
     },
     Ambiguous {
-        candidates: Vec<(String, Rc<Node>)>,
+        candidates: Vec<(String, Arc<Node>)>,
     },
     Unbound,
 }
@@ -28605,11 +28609,11 @@ pub fn symbol_index_lexical_lookup_v1(
 ) -> LexicalLookupV1 {
     let mut pos = position.to_string();
     let mut step = 0usize;
-    let mut candidates: Vec<(String, Rc<Node>, usize)> = Vec::new();
+    let mut candidates: Vec<(String, Arc<Node>, usize)> = Vec::new();
     loop {
         step += 1;
         let qn = module_path_to_qualified_path(&pos, name);
-        if let Some(node) = symbol_index_lookup(Rc::new(index.clone()), qn) {
+        if let Some(node) = symbol_index_lookup(Arc::new(index.clone()), qn) {
             candidates.push((pos.clone(), node, step));
         }
         if pos.is_empty() {
@@ -28662,7 +28666,7 @@ pub fn containment_resolve_fn_v1_for_module(
                 return ContainmentResolve::Hit {
                     owner_module: owner.clone(),
                     qualified_path: module_path_to_qualified_path(&owner, name),
-                    node_ptr: Rc::as_ptr(&node) as usize,
+                    node_ptr: Arc::as_ptr(&node) as usize,
                     via: ContainmentResolveVia::Lexical,
                     lexical_steps: steps,
                 };
@@ -28680,7 +28684,7 @@ pub fn containment_resolve_fn_v1_for_module(
                 return ContainmentResolve::Hit {
                     owner_module: owner.clone(),
                     qualified_path: module_path_to_qualified_path(&owner, name),
-                    node_ptr: Rc::as_ptr(&binding.resolved) as usize,
+                    node_ptr: Arc::as_ptr(&binding.resolved) as usize,
                     via: ContainmentResolveVia::GlobalUnique,
                     lexical_steps: 0,
                 };
@@ -28695,9 +28699,9 @@ pub fn containment_resolve_fn_v1_for_module(
 }
 
 fn collect_bare_call_sites(
-    node: &Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    out: &mut Vec<(String, Rc<Node>)>,
+    node: &Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    out: &mut Vec<(String, Arc<Node>)>,
 ) {
     match &*node.expr_data {
         ExprData::ExprCall { .. } => {
@@ -28732,7 +28736,7 @@ fn containment_owner_and_via(
 }
 
 fn infer_fn_binding_at_site(
-    type_env: Rc<TypeEnv>,
+    type_env: Arc<TypeEnv>,
     module_path: &str,
     callee: &str,
     item_index: &ModuleItemIndex,
@@ -28751,9 +28755,9 @@ fn infer_fn_binding_at_site(
 fn classify_neither_bound_subclass(
     callee: &str,
     func_env: &ResolvedFuncEnv,
-    caller_item: &Rc<Node>,
-    type_env: Rc<TypeEnv>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    caller_item: &Arc<Node>,
+    type_env: Arc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> NeitherBoundSubclass {
     if infer_builtin_call_type(callee.to_string()).is_some() {
         return NeitherBoundSubclass::BuiltinOrIntrinsic;
@@ -29142,7 +29146,7 @@ pub fn resolution_divergence_census_live_closure_scoped(
 /// cut.
 fn resolution_divergence_closure_scoped_sources(
     roots: &[String],
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Vec<Arc<v1_compiler_compile::SourceFile>>, String> {
     let membership_index = build_multi_entry_index_primary_precedence(roots);
     load_compile_clean_entry_sources(roots, &membership_index, None)
 }
@@ -29153,9 +29157,9 @@ fn resolution_divergence_closure_scoped_sources(
 /// spellings. Re-reading every first-root file from `default_source_roots` creates
 /// new absolute-path `SourceFile`s; resolving imports then pulls the same modules'
 /// relative-path objects from the index, so every declaration appears twice. Seed
-/// the closure from the index's existing `Rc<SourceFile>` values instead. This is a
+/// the closure from the index's existing `Arc<SourceFile>` values instead. This is a
 /// read-only index walk: no second whole-tree disk load and no second index build.
-/// The executable frozen control walls this consumer with `Rc::ptr_eq`; other
+/// The executable frozen control walls this consumer with `Arc::ptr_eq`; other
 /// `default_source_roots` consumers remain an explicitly separate construction-time
 /// identity class, tracked by `node://adhoc-0c214548-ded` and dissolved when
 /// `SourceFile` construction canonicalizes paths. Content equality is NOT an oracle
@@ -29164,12 +29168,12 @@ fn resolution_divergence_closure_scoped_sources(
 /// construction wall lands as evidence that the higher rung is real.
 fn resolution_divergence_closure_scoped_sources_from_shared_index(
     index: &MultiEntryIndex,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Vec<Arc<v1_compiler_compile::SourceFile>>, String> {
     let first_root = index.source_roots.first().ok_or_else(|| {
         "resolution-divergence census refused: parent shared index has no source roots".to_string()
     })?;
     let first_root_only = std::slice::from_ref(first_root);
-    let mut entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
+    let mut entry_sources: Vec<Arc<v1_compiler_compile::SourceFile>> = index
         .source_files
         .values()
         .filter(|sf| {
@@ -29856,7 +29860,7 @@ pub fn walk_target_alias_plan_scope_label(source_roots: &[String]) -> String {
         .join("+")
 }
 
-fn build_module_type_env_map(ctx: &v1_interpreter::InterpContext) -> HashMap<String, Rc<TypeEnv>> {
+fn build_module_type_env_map(ctx: &v1_interpreter::InterpContext) -> HashMap<String, Arc<TypeEnv>> {
     ctx.modules
         .iter()
         .map(|tm| (tm.type_env.module_path.clone(), tm.type_env.clone()))
@@ -29865,7 +29869,7 @@ fn build_module_type_env_map(ctx: &v1_interpreter::InterpContext) -> HashMap<Str
 
 /// Ground walk target for a `global_bare_lcp` silent pick via SymbolIndex — never import lists.
 fn ground_walk_target_global_bare_lcp(
-    type_env: Rc<TypeEnv>,
+    type_env: Arc<TypeEnv>,
     name: &str,
     chosen_module_path: &str,
 ) -> Result<String, String> {
@@ -29896,7 +29900,7 @@ fn ground_walk_target_global_bare_lcp(
 
 /// Ground walk target for `fn_parent_first_hit` via SymbolIndex qualified-path lookup.
 fn ground_walk_target_fn_parent_first_hit(
-    type_env: Rc<TypeEnv>,
+    type_env: Arc<TypeEnv>,
     chosen_parent_module: &str,
     name: &str,
     item_index: &ModuleItemIndex,
@@ -30143,7 +30147,7 @@ mod resolution_divergence_census_tests {
         ResolutionDivergencePhaseState, WholeTreeCtx,
     };
     use crate::v1_interpreter::ExecutionMode::Wet;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     fn write_fixture(root: &std::path::Path, rel: &str, content: &str) {
         let path = root.join(rel);
@@ -30283,7 +30287,7 @@ fn caller() -> Bool {
             sources.iter().all(|source| index
                 .source_files
                 .values()
-                .any(|owned| Rc::ptr_eq(source, owned))),
+                .any(|owned| Arc::ptr_eq(source, owned))),
             "the in-process cut must not reload any source outside the parent index",
         );
         let modules_resolved = sources.len();
@@ -30551,15 +30555,15 @@ fn caller() -> Bool {
         use crate::v1_interpreter::InterpContext;
         use im::HashMap;
         use im::Vector;
-        use std::rc::Rc;
+        use std::sync::Arc;
 
         let graph = ResolvedGraph {
-            modules: Rc::new(Vector::new()),
-            item_registry: Rc::new(HashMap::new()),
-            diagnostics: Rc::new(Vector::new()),
+            modules: Arc::new(Vector::new()),
+            item_registry: Arc::new(HashMap::new()),
+            diagnostics: Arc::new(Vector::new()),
             emit_graph_info: empty_emit_graph_info(),
         };
-        let ctx = InterpContext::new(&graph, Rc::new(HashMap::new()), Wet);
+        let ctx = InterpContext::new(&graph, Arc::new(HashMap::new()), Wet);
         let census = ResolutionDivergenceCensus {
             silent_pick_global_bare_lcp_tie: 1,
             silent_pick_global_bare_lcp_tie_rows: vec![crate::v1_rt::GlobalBareLcpTieSite {
@@ -31430,7 +31434,7 @@ pub(crate) fn non_fold_residue_units_from_module_source(
         crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.clone(), source_index);
-    let source_indices = std::rc::Rc::new(source_indices);
+    let source_indices = std::sync::Arc::new(source_indices);
     let result = crate::v1_compiler_parse::parse(tokens, source_indices.clone());
     if let Some(err) = result.error.as_ref() {
         panic!(
@@ -32823,11 +32827,11 @@ pub struct ComplexityLinearityAuditSummary {
     pub findings: Vec<ComplexityLinearityAuditFinding>,
 }
 
-fn cla_is_wildcard_arm(arm: &Rc<Node>) -> bool {
+fn cla_is_wildcard_arm(arm: &Arc<Node>) -> bool {
     matches!(arm_pattern(arm.clone()).as_ref(), MatchPattern::Wildcard)
 }
 
-fn cla_type_expr_head(ty: Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+fn cla_type_expr_head(ty: Arc<Node>, si: &Arc<HashMap<String, Arc<NewlineIndex>>>) -> String {
     let name = authored_name_at(si.clone(), ty);
     name.chars()
         .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
@@ -32835,8 +32839,8 @@ fn cla_type_expr_head(ty: Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) 
 }
 
 fn cla_fn_param_type_heads(
-    item: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: &Arc<Node>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     for param in item.params.iter() {
@@ -32871,8 +32875,8 @@ struct ClaFnBodyStats {
 }
 
 fn cla_walk_expr(
-    node: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    node: &Arc<Node>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
     param_types: &BTreeMap<String, String>,
     closed_coproducts: &BTreeSet<String>,
     stats: &mut ClaFnBodyStats,
@@ -32943,8 +32947,8 @@ fn cla_triage_complexity(site: &str) -> &'static str {
 fn cla_audit_function_body(
     rel: &str,
     fn_name: &str,
-    body: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    body: &Arc<Node>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
     param_types: &BTreeMap<String, String>,
 ) -> Vec<ComplexityLinearityAuditFinding> {
     let closed = non_fold_residue_closed_coproduct_type_names();
@@ -32973,7 +32977,7 @@ fn cla_audit_function_body(
 
 fn cla_audit_decl_fact(
     fact: &DeclFactRaw,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Vec<ComplexityLinearityAuditFinding> {
     let Some(body) = fact.node.body.as_ref() else {
         return Vec::new();
@@ -33127,8 +33131,8 @@ fn fac_name_is_answer(name: &str) -> bool {
 }
 
 fn fac_walk_body_marks(
-    node: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    node: &Arc<Node>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
     marks: &mut FacBodyMarks,
 ) {
     match node.expr_data.as_ref() {
@@ -33182,8 +33186,8 @@ fn fac_owning_lane(rel_path: &str) -> &'static str {
 }
 
 fn fac_classify_arm(
-    body: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    body: &Arc<Node>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
     closed_scrutinee: bool,
     interim_declared: bool,
 ) -> &'static str {
@@ -33208,8 +33212,8 @@ fn fac_classify_arm(
 }
 
 fn fac_collect_wildcard_arms(
-    node: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    node: &Arc<Node>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
     param_types: &BTreeMap<String, String>,
     closed: &BTreeSet<String>,
     interim_declared: bool,
@@ -35230,8 +35234,8 @@ fn resolve_dag_path_for_transport_script(path: &str) -> PathBuf {
 fn parse_module_items_for_transport_script(
     path: &str,
 ) -> (
-    Rc<im::Vector<Rc<Node>>>,
-    Rc<HashMap<String, Rc<NewlineIndex>>>,
+    Arc<im::Vector<Arc<Node>>>,
+    Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) {
     let resolved = resolve_dag_path_for_transport_script(path);
     let path_str = resolved.to_string_lossy();
@@ -35246,7 +35250,7 @@ fn parse_module_items_for_transport_script(
     let source_index = build_newline_index(filename.to_string(), content);
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.to_string(), source_index);
-    let source_indices = Rc::new(source_indices);
+    let source_indices = Arc::new(source_indices);
     let result = v1_compiler_parse::parse(tokens, source_indices.clone());
     if let Some(err) = result.error.as_ref() {
         panic!(
@@ -35261,7 +35265,7 @@ fn parse_module_items_for_transport_script(
     (module.children.clone(), source_indices)
 }
 
-fn literal_string_value_transport_script(node: &Rc<Node>) -> bool {
+fn literal_string_value_transport_script(node: &Arc<Node>) -> bool {
     matches!(
         node.expr_data.as_ref(),
         ExprData::ExprLiteral {
@@ -35272,9 +35276,9 @@ fn literal_string_value_transport_script(node: &Rc<Node>) -> bool {
 }
 
 fn classify_transport_script_arg(
-    node: &Rc<Node>,
+    node: &Arc<Node>,
     let_literal_bindings: &HashMap<String, bool>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> TransportScriptArgShape {
     if literal_string_value_transport_script(node) {
         return TransportScriptArgShape::BareStringLiteral;
@@ -35312,8 +35316,8 @@ fn classify_transport_script_arg(
 }
 
 fn is_shell_exec_run_transport_script(
-    node: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    node: &Arc<Node>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match node.expr_data.as_ref() {
         ExprData::ExprMethodCall { .. } => {
@@ -35342,25 +35346,25 @@ fn is_shell_exec_run_transport_script(
 }
 
 fn is_transport_script_from_body_call(
-    node: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    node: &Arc<Node>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. })
         && expr_call_func_at(node.clone(), source_indices.clone()) == "transport_script_from_body"
 }
 
 fn transport_script_body_arg_node(
-    node: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+    node: &Arc<Node>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
     let args = crate::v1_compiler_infer::call_args_by_name(node.clone(), source_indices.clone());
     v1_rt::map_get(&args, "body".to_string())
 }
 
 fn effective_transport_script_source(
-    script_node: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+    script_node: &Arc<Node>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Node> {
     if is_transport_script_from_body_call(script_node, source_indices) {
         transport_script_body_arg_node(script_node, source_indices)
             .unwrap_or_else(|| script_node.clone())
@@ -35370,9 +35374,9 @@ fn effective_transport_script_source(
 }
 
 fn transport_script_arg_node(
-    node: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+    node: &Arc<Node>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
     for arg in method_arg_nodes(node.clone()).iter() {
         if arg_name_at(arg.clone(), source_indices.clone()).as_deref() == Some("script") {
             return Some(arg_value(arg.clone()));
@@ -35382,9 +35386,9 @@ fn transport_script_arg_node(
 }
 
 fn binding_is_literal_shaped_transport_script(
-    node: &Rc<Node>,
+    node: &Arc<Node>,
     bindings: &HashMap<String, bool>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     matches!(
         classify_transport_script_arg(node, bindings, source_indices),
@@ -35395,9 +35399,9 @@ fn binding_is_literal_shaped_transport_script(
 }
 
 fn collect_let_bindings_in_block_transport_script(
-    block: &Rc<Node>,
+    block: &Arc<Node>,
     bindings: &mut HashMap<String, bool>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) {
     for stmt in block_stmts(block.clone()).iter() {
         match stmt.expr_data.as_ref() {
@@ -35414,9 +35418,9 @@ fn collect_let_bindings_in_block_transport_script(
 }
 
 fn walk_transport_script_expr(
-    node: &Rc<Node>,
+    node: &Arc<Node>,
     let_bindings: &HashMap<String, bool>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
     on_run: &mut dyn FnMut(TransportScriptArgShape),
 ) {
     if is_shell_exec_run_transport_script(node, source_indices) {
@@ -35437,8 +35441,8 @@ fn walk_transport_script_expr(
 fn transport_script_facts_for_function_body(
     rel_path: &str,
     function: &str,
-    body: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    body: &Arc<Node>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Vec<TransportScriptPositionFactRaw> {
     let mut bindings = HashMap::new();
     if let ExprData::ExprBlock { .. } = body.expr_data.as_ref() {
@@ -35977,8 +35981,8 @@ pub struct ExtdepsShapeTransportPolicyModuleFacts {
 }
 
 type ExtdepsParsedModule = (
-    Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
-    Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    Arc<im::Vector<Arc<crate::v1_std_core::Node>>>,
+    Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
 );
 
 thread_local! {
@@ -36001,8 +36005,8 @@ fn extdeps_source_content_hash(content: &str) -> u64 {
 pub fn parse_extdeps_module_items(
     path: &str,
 ) -> (
-    Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
-    Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    Arc<im::Vector<Arc<crate::v1_std_core::Node>>>,
+    Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
 ) {
     use crate::v1_compiler_parse::parse;
     use crate::v1_compiler_tokenize::tokenize;
@@ -36039,7 +36043,7 @@ pub fn parse_extdeps_module_items(
     let source_index = build_newline_index(filename.to_string(), content);
     let mut source_indices_map = HashMap::new();
     source_indices_map.insert(filename.to_string(), source_index);
-    let source_indices = Rc::new(source_indices_map);
+    let source_indices = Arc::new(source_indices_map);
     let result = parse(tokens, source_indices.clone());
     if let Some(err) = result.error.as_ref() {
         panic!(
@@ -36066,15 +36070,15 @@ pub fn parse_extdeps_module_items(
 /// (`v2.std.operation_argv`): the binding vocabulary is the operation's own
 /// `input { .. }` block, never a fixed list the seed happens to know.
 pub struct OperationArgvDeclaration {
-    pub argv: Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
-    pub declared_inputs: Vec<(String, Option<Rc<crate::v1_std_core::Node>>)>,
-    pub source_indices: Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    pub argv: Arc<im::Vector<Arc<crate::v1_std_core::Node>>>,
+    pub declared_inputs: Vec<(String, Option<Arc<crate::v1_std_core::Node>>)>,
+    pub source_indices: Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
 }
 
 fn operation_declared_inputs(
-    op: &Rc<crate::v1_std_core::Node>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) -> Vec<(String, Option<Rc<crate::v1_std_core::Node>>)> {
+    op: &Arc<crate::v1_std_core::Node>,
+    source_indices: &Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
+) -> Vec<(String, Option<Arc<crate::v1_std_core::Node>>)> {
     op.params
         .iter()
         .map(|p| {
@@ -36138,8 +36142,8 @@ pub struct ShellTransportOperationCensusRow {
 }
 
 fn collect_argv_input_refs(
-    node: &Rc<crate::v1_std_core::Node>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    node: &Arc<crate::v1_std_core::Node>,
+    source_indices: &Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
     out: &mut Vec<String>,
 ) {
     use crate::v1_std_core::{expr_var_name_at, ExprData, StringPart};
@@ -36258,8 +36262,8 @@ pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter:
 }
 
 fn extdeps_argv_expr_token(
-    node: &Rc<crate::v1_std_core::Node>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    node: &Arc<crate::v1_std_core::Node>,
+    source_indices: &Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
 ) -> String {
     use crate::v1_std_core::{expr_var_name_at, ExprData, LiteralValue};
     match node.expr_data.as_ref() {
@@ -36298,7 +36302,7 @@ fn extdeps_argv_expr_token(
     }
 }
 
-fn extdeps_literal_string_value(node: &Rc<crate::v1_std_core::Node>) -> Option<String> {
+fn extdeps_literal_string_value(node: &Arc<crate::v1_std_core::Node>) -> Option<String> {
     use crate::v1_std_core::{ExprData, LiteralValue};
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
@@ -36310,10 +36314,10 @@ fn extdeps_literal_string_value(node: &Rc<crate::v1_std_core::Node>) -> Option<S
 }
 
 fn extdeps_record_field_value(
-    record: &Rc<crate::v1_std_core::Node>,
+    record: &Arc<crate::v1_std_core::Node>,
     field_name: &str,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) -> Option<Rc<crate::v1_std_core::Node>> {
+    source_indices: &Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
+) -> Option<Arc<crate::v1_std_core::Node>> {
     use crate::v1_std_core::{field_init_node_name_at, field_init_node_value, ExprData};
     if !matches!(record.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
         return None;
@@ -36328,7 +36332,7 @@ fn extdeps_record_field_value(
 }
 
 fn extdeps_module_source_nickname_count_in_node(
-    node: &Rc<crate::v1_std_core::Node>,
+    node: &Arc<crate::v1_std_core::Node>,
     real_paths: &std::collections::HashSet<String>,
 ) -> i64 {
     let mut count = 0i64;
@@ -36353,8 +36357,8 @@ fn extdeps_module_source_nickname_count_in_node(
 }
 
 fn extdeps_gist_create_declares_filename_for_items(
-    items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    items: &Arc<im::Vector<Arc<crate::v1_std_core::Node>>>,
+    source_indices: &Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     use crate::v1_std_core::param_node_name_at;
     for item in items.iter() {
@@ -36377,8 +36381,8 @@ fn extdeps_gist_create_declares_filename_for_items(
 }
 
 fn extdeps_gist_map_keys_use_filename(
-    map_node: &Rc<crate::v1_std_core::Node>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    map_node: &Arc<crate::v1_std_core::Node>,
+    source_indices: &Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     use crate::v1_std_core::{field_init_node_name_at, ExprData};
     if !matches!(map_node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
@@ -36397,8 +36401,8 @@ fn extdeps_gist_map_keys_use_filename(
 }
 
 fn extdeps_gist_create_files_keyed_by_filename_for_items(
-    items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    items: &Arc<im::Vector<Arc<crate::v1_std_core::Node>>>,
+    source_indices: &Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     use crate::v1_std_core::{is_rest_transport, transport_request_body};
     for item in items.iter() {
@@ -36586,10 +36590,10 @@ enum ExternalAuthorityAnchorProjection {
 }
 
 fn external_authority_uri_record_from_anchor_body(
-    body: &Rc<crate::v1_std_core::Node>,
+    body: &Arc<crate::v1_std_core::Node>,
     variant: &str,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) -> Option<Rc<crate::v1_std_core::Node>> {
+    source_indices: &Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
+) -> Option<Arc<crate::v1_std_core::Node>> {
     match variant {
         "ExternalAuthority" | "StableAuthority" | "ExternalUri" => {
             extdeps_record_field_value(body, "uri", source_indices)
@@ -36599,16 +36603,16 @@ fn external_authority_uri_record_from_anchor_body(
 }
 
 fn external_authority_scheme_identity_from_value_node(
-    node: &Rc<crate::v1_std_core::Node>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    node: &Arc<crate::v1_std_core::Node>,
+    source_indices: &Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
 ) -> String {
     use crate::v1_std_core::authored_name_at;
     authored_name_at(source_indices.clone(), node.clone())
 }
 
 fn read_external_authority_anchor_from_items(
-    items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    items: &Arc<im::Vector<Arc<crate::v1_std_core::Node>>>,
+    source_indices: &Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
 ) -> ExternalAuthorityAnchorProjection {
     use crate::v1_compiler_emit_core_support::is_data_def_item;
     use crate::v1_std_core::authored_name_at;
@@ -36860,9 +36864,9 @@ pub struct RestTransportCollectResult {
 }
 
 fn rest_transport_field_string(
-    props: Rc<im::Vector<Rc<Node>>>,
+    props: Arc<im::Vector<Arc<Node>>>,
     prop_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     use crate::v1_std_core::{find_property, find_property_string, ExprData};
     find_property_string(props.clone(), prop_name.clone(), source_indices.clone()).or_else(|| {
@@ -36882,8 +36886,8 @@ fn rest_transport_field_string(
 }
 
 pub fn collect_rest_transport_operations(
-    module: &Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module: &Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> RestTransportCollectResult {
     use crate::v1_std_core::{
         is_rest_transport, transport_method_key, transport_path_template_key,
@@ -36891,8 +36895,8 @@ pub fn collect_rest_transport_operations(
     let mut out = Vec::new();
     let mut errors = Vec::new();
     fn walk(
-        n: &Rc<Node>,
-        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        n: &Arc<Node>,
+        source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
         service_ctx: Option<String>,
         out: &mut Vec<DeclaredRestTransportOp>,
         errors: &mut Vec<RestTransportFactError>,
@@ -36995,13 +36999,13 @@ type WireSerializeResult<T> = Result<T, String>;
 
 pub fn resolve_coproduct_wire_policy(
     coproduct_name: &str,
-    modules: &[Rc<TypedModule>],
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> Option<Rc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> {
+    modules: &[Arc<TypedModule>],
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
+) -> Option<Arc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> {
     use crate::v1_compiler_emit_rust::resolve_local_coproduct_wire_policy;
     use crate::v1_std_core::module_imports;
-    let si = Rc::new(source_indices.clone());
-    let mut matches: Vec<Rc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> = Vec::new();
+    let si = Arc::new(source_indices.clone());
+    let mut matches: Vec<Arc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> = Vec::new();
     for tm in modules {
         let imports = module_imports(tm.module.clone());
         if let Some(local) = resolve_local_coproduct_wire_policy(
@@ -37216,7 +37220,7 @@ mod import_closure_equivalence_tests {
     use im::HashMap;
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     fn workspace_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -37227,7 +37231,7 @@ mod import_closure_equivalence_tests {
     }
 
     fn closure_paths(
-        sources: &[Rc<crate::v1_compiler_compile::SourceFile>],
+        sources: &[Arc<crate::v1_compiler_compile::SourceFile>],
     ) -> std::collections::BTreeSet<String> {
         sources
             .iter()
@@ -37244,11 +37248,11 @@ mod import_closure_equivalence_tests {
         let entry_abs = ws.join(entry_rel);
         let content =
             std::fs::read_to_string(&entry_abs).unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
-        let entry_source = Rc::new(crate::v1_compiler_compile::SourceFile {
+        let entry_source = Arc::new(crate::v1_compiler_compile::SourceFile {
             path: entry_abs.to_string_lossy().into_owned(),
             content,
         });
-        let mut seen: HashMap<String, Rc<crate::v1_compiler_compile::SourceFile>> = HashMap::new();
+        let mut seen: HashMap<String, Arc<crate::v1_compiler_compile::SourceFile>> = HashMap::new();
         if let Some(mod_path) = super::extract_module_path(&entry_source.content) {
             seen.insert(mod_path, entry_source.clone());
         }
@@ -37432,7 +37436,7 @@ mod import_closure_equivalence_tests {
     }
 
     fn module_paths_for_sources(
-        sources: &[Rc<crate::v1_compiler_compile::SourceFile>],
+        sources: &[Arc<crate::v1_compiler_compile::SourceFile>],
     ) -> Vec<String> {
         let mut out: Vec<String> = sources
             .iter()
@@ -37457,11 +37461,11 @@ mod import_closure_equivalence_tests {
             let index = build_module_index(&roots);
             let content = std::fs::read_to_string(ws.join(entry_rel))
                 .unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
-            let entry_source = Rc::new(crate::v1_compiler_compile::SourceFile {
+            let entry_source = Arc::new(crate::v1_compiler_compile::SourceFile {
                 path: ws.join(entry_rel).to_string_lossy().into_owned(),
                 content,
             });
-            let mut seen: HashMap<String, Rc<crate::v1_compiler_compile::SourceFile>> =
+            let mut seen: HashMap<String, Arc<crate::v1_compiler_compile::SourceFile>> =
                 HashMap::new();
             if let Some(mod_path) = super::extract_module_path(&entry_source.content) {
                 seen.insert(mod_path, entry_source.clone());
@@ -37543,7 +37547,7 @@ mod import_closure_equivalence_tests {
         for entry_rel in entries {
             let content = std::fs::read_to_string(workspace_root().join(entry_rel))
                 .unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
-            entry_sources.push(Rc::new(crate::v1_compiler_compile::SourceFile {
+            entry_sources.push(Arc::new(crate::v1_compiler_compile::SourceFile {
                 path: workspace_root()
                     .join(entry_rel)
                     .to_string_lossy()
@@ -37576,7 +37580,7 @@ mod import_closure_equivalence_tests {
         let entry_path = scratch.join("out_of_pool_entry.dag");
         let content = "module test.claim.out_of_pool_entry\n\nimport extdeps.filesystem.filesystem_io\n\nfunc out_of_pool_probe() -> Bool {\n  true\n}\n";
         std::fs::write(&entry_path, content).expect("write entry");
-        let entry = Rc::new(crate::v1_compiler_compile::SourceFile {
+        let entry = Arc::new(crate::v1_compiler_compile::SourceFile {
             path: entry_path.to_string_lossy().into_owned(),
             content: content.to_string(),
         });
@@ -37701,10 +37705,10 @@ mod process_resolve_store_tests {
         let (g1, i1) = resolve_entry_graph_shared(&roots, &entry).expect("first resolve");
         let (g2, i2) = resolve_entry_graph_shared(&roots, &entry).expect("second resolve");
         assert!(
-            Rc::ptr_eq(&g1, &g2),
+            Arc::ptr_eq(&g1, &g2),
             "second resolve must be the stored graph (Rc identity), not a recompute"
         );
-        assert!(Rc::ptr_eq(&i1, &i2), "source indices must be stored too");
+        assert!(Arc::ptr_eq(&i1, &i2), "source indices must be stored too");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -37739,8 +37743,8 @@ mod peel_alias_fixpoint_termination {
             );
             let base =
                 crate::v1_std_core::leaf_node_with_span("PeelFixpointProbe".to_string(), span);
-            let n = std::rc::Rc::new(crate::v1_std_core::Node {
-                children: std::rc::Rc::new(im::vector![elem]),
+            let n = std::sync::Arc::new(crate::v1_std_core::Node {
+                children: std::sync::Arc::new(im::vector![elem]),
                 ..(*base).clone()
             });
             // The strip-tree mechanism: the name resolves via SymbolIndex.global_bare
@@ -37748,35 +37752,35 @@ mod peel_alias_fixpoint_termination {
             // (build_symbol_index_census stores unresolved stubs), so
             // resolve_node(n) == n — the resolve fixed point the recurse arm
             // loops on (measured: 3M+ iterations of one peel call pre-guard).
-            let census_binding = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeBinding {
+            let census_binding = std::sync::Arc::new(crate::v1_compiler_infer_env::TypeBinding {
                 name: "PeelFixpointProbe".to_string(),
                 resolved: n.clone(),
-                provenance: std::rc::Rc::new(
+                provenance: std::sync::Arc::new(
                     crate::std_induction::SubValueRelation::SubValueUnknown,
                 ),
             });
             let global_bare = crate::v1_rt::rc_map_insert(
                 crate::v1_rt::rc_empty_map(),
                 "PeelFixpointProbe".to_string(),
-                std::rc::Rc::new(
+                std::sync::Arc::new(
                     crate::v1_compiler_infer_env::GlobalBareLookupState::GlobalBareUniqueBinding {
                         module_path: "".to_string(),
                         binding: census_binding,
                     },
                 ),
             );
-            let symbol_index = std::rc::Rc::new(crate::v1_compiler_infer_env::SymbolIndex {
+            let symbol_index = std::sync::Arc::new(crate::v1_compiler_infer_env::SymbolIndex {
                 entries: crate::v1_rt::rc_empty_map(),
                 global_bare,
                 services: crate::v1_rt::rc_empty_map(),
             });
-            let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
+            let env = std::sync::Arc::new(crate::v1_compiler_infer_env::TypeEnv {
                 module_path: "".to_string(),
                 bindings: crate::v1_rt::rc_empty_map(),
                 str_bindings: crate::v1_rt::rc_empty_map(),
                 ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
-                parents: std::rc::Rc::new(im::vector![]),
-                recursive_types: std::rc::Rc::new(im::vector![]),
+                parents: std::sync::Arc::new(im::vector![]),
+                recursive_types: std::sync::Arc::new(im::vector![]),
                 recursive_type_set: crate::v1_rt::rc_empty_map(),
                 inductive_fields: crate::v1_rt::rc_empty_map(),
                 source_indices: crate::v1_rt::rc_empty_map(),
@@ -37882,7 +37886,7 @@ fn record_probe() -> Int {
 }
 "#;
         let result = crate::v1_compiler_compile::compile_sources(
-            std::rc::Rc::new(im::vector![std::rc::Rc::new(
+            std::sync::Arc::new(im::vector![std::sync::Arc::new(
                 crate::v1_compiler_compile::SourceFile {
                     path: "peel_consumer_probe.dag".to_string(),
                     content: source.to_string(),
@@ -37936,18 +37940,18 @@ mod sigs_env_flat_parents {
     // it construction itself re-becomes path-counted and the watchdog fires);
     // (2) linearization preserves the old walk's shadowing order exactly
     // (own local, then closure-of-last-import before earlier imports).
-    use std::rc::Rc;
+    use std::sync::Arc;
 
-    fn w2_sig(fn_name: &str, marker: &str) -> Rc<crate::v1_compiler_infer_sigs::ResolvedFuncSig> {
-        Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncSig {
+    fn w2_sig(fn_name: &str, marker: &str) -> Arc<crate::v1_compiler_infer_sigs::ResolvedFuncSig> {
+        Arc::new(crate::v1_compiler_infer_sigs::ResolvedFuncSig {
             name: fn_name.to_string(),
-            params: Rc::new(im::vector![]),
+            params: Arc::new(im::vector![]),
             inferred: crate::v1_std_core::leaf_node_with_span(
                 marker.to_string(),
                 crate::v1_std_core::kernel_span(marker.to_string()),
             ),
             is_async: false,
-            output_provenance: Rc::new(im::vector![]),
+            output_provenance: Arc::new(im::vector![]),
             variant_provenance: crate::v1_rt::rc_empty_map(),
         })
     }
@@ -37955,16 +37959,16 @@ mod sigs_env_flat_parents {
     fn w2_env(
         name: &str,
         sigs: &[(&str, &str)],
-        direct: Vec<Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>>,
-    ) -> Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv> {
+        direct: Vec<Arc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>>,
+    ) -> Arc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv> {
         let mut local = crate::v1_rt::rc_empty_map();
         for (f, m) in sigs {
             local = crate::v1_rt::rc_map_insert(local, f.to_string(), w2_sig(f, m));
         }
-        Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncEnv {
+        Arc::new(crate::v1_compiler_infer_sigs::ResolvedFuncEnv {
             name: name.to_string(),
             local,
-            parents: crate::v1_compiler_infer_sigs::flatten_parent_envs(Rc::new(
+            parents: crate::v1_compiler_infer_sigs::flatten_parent_envs(Arc::new(
                 direct.into_iter().collect(),
             )),
         })
@@ -38047,7 +38051,7 @@ mod sigs_env_flat_parents {
         let _policy = PolicyGuard(crate::v1_rt::name_resolution_policy_is_namespace_only());
         crate::v1_rt::name_resolution_policy_set_namespace_only(false);
 
-        let read = |env: &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>, f: &str| {
+        let read = |env: &Arc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>, f: &str| {
             crate::v1_compiler_infer_lookup::func_sig_if_resolved(
                 crate::v1_compiler_infer_sigs::lookup_resolved_sig(env.clone(), f.to_string()),
             )
@@ -38110,8 +38114,8 @@ mod sigs_env_flat_parents {
         let c = w2_env("dep.c", &[], vec![b.clone()]);
         let result = crate::v1_compiler_infer_sigs::resolve_func_sigs(
             crate::v1_rt::rc_empty_map(),
-            Rc::new([b, c].into_iter().collect()),
-            Rc::new(im::vector![]),
+            Arc::new([b, c].into_iter().collect()),
+            Arc::new(im::vector![]),
             "top.module".to_string(),
             crate::v1_rt::rc_empty_map(),
         );
@@ -38155,9 +38159,9 @@ mod compile_clean_loader_closure_fork_regression {
     //     -- --ignored --nocapture --test-threads=1
     use super::*;
 
-    fn hard_diags(sources: &[Rc<v1_compiler_compile::SourceFile>]) -> Vec<String> {
+    fn hard_diags(sources: &[Arc<v1_compiler_compile::SourceFile>]) -> Vec<String> {
         v1_compiler_compile::compile_sources(
-            Rc::new(sources.to_vec().into()),
+            Arc::new(sources.to_vec().into()),
             crate::v1_compiler_artifact::RenderTarget::Dag,
         )
         .diagnostics

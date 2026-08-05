@@ -74,7 +74,7 @@ pub fn ambiguity_labels_from_decide(owners: Arc<Vec<String>>, name: String) -> A
             }
             __result
         }),
-        ModulePathBindingProjection::ModulePathBindingHit { owner: _, .. } => Rc::new(vec![]),
-        ModulePathBindingProjection::ModulePathBindingMiss => Rc::new(vec![]),
+        ModulePathBindingProjection::ModulePathBindingHit { owner: _, .. } => Arc::new(vec![]),
+        ModulePathBindingProjection::ModulePathBindingMiss => Arc::new(vec![]),
     }
 }

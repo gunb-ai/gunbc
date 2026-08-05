@@ -142,7 +142,7 @@ pub fn transport_fixture_span() -> Arc<SourceSpan> {
 
 pub fn transport_fixture_path(occurrence: OccurrenceId) -> Arc<OccurrenceContainmentPath> {
     Arc::new(OccurrenceContainmentPath {
-        ancestors: Rc::new(vec![]),
+        ancestors: Arc::new(vec![]),
         terminal: occurrence.clone(),
     })
 }
@@ -407,7 +407,7 @@ pub fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> bool 
                 (ok && (entry.projection.clone().occurrence.clone().value.clone()
                     >= first.occurrence_allocator.clone().next_id.clone()))
             });
-        let merged = merge_intern_tables(Rc::new(vec![
+        let merged = merge_intern_tables(Arc::new(vec![
             first.intern_table.clone(),
             second.intern_table.clone(),
         ]));
@@ -501,14 +501,14 @@ pub fn w_parse_error_preserves_authored_token_ordinal_space() -> bool {
 pub fn w_production_frontend_accepts_valid_occurrence_transport() -> bool {
     {
         let result = resolve_frontend_occurrence_transport(
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
             Arc::new(OccurrenceTransport {
                 index: Arc::new(OccurrenceIndex {
-                    entries: Rc::new(vec![]),
+                    entries: Arc::new(vec![]),
                 }),
-                declarations: Rc::new(vec![]),
-                references: Rc::new(vec![]),
+                declarations: Arc::new(vec![]),
+                references: Arc::new(vec![]),
             }),
         );
         ((result.graph.clone() != None) && ((result.diagnostics.clone().len() as i64) == 0))
@@ -519,14 +519,14 @@ pub fn w_production_frontend_refuses_missing_occurrence_identity() -> bool {
     {
         let occurrence = OccurrenceId { value: 17 };
         let result = resolve_frontend_occurrence_transport(
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
             Arc::new(OccurrenceTransport {
                 index: Arc::new(OccurrenceIndex {
-                    entries: Rc::new(vec![]),
+                    entries: Arc::new(vec![]),
                 }),
-                declarations: Rc::new(vec![transport_fixture_declaration(occurrence.clone())]),
-                references: Rc::new(vec![]),
+                declarations: Arc::new(vec![transport_fixture_declaration(occurrence.clone())]),
+                references: Arc::new(vec![]),
             }),
         );
         ((result.graph.clone() == None)
@@ -554,14 +554,14 @@ pub fn w_production_frontend_refuses_duplicate_occurrence_identity() -> bool {
         let occurrence = OccurrenceId { value: 23 };
         let entry = transport_fixture_index_entry(occurrence.clone());
         let result = resolve_frontend_occurrence_transport(
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
             Arc::new(OccurrenceTransport {
                 index: Arc::new(OccurrenceIndex {
-                    entries: Rc::new(vec![entry.clone(), entry.clone()]),
+                    entries: Arc::new(vec![entry.clone(), entry.clone()]),
                 }),
-                declarations: Rc::new(vec![transport_fixture_declaration(occurrence.clone())]),
-                references: Rc::new(vec![]),
+                declarations: Arc::new(vec![transport_fixture_declaration(occurrence.clone())]),
+                references: Arc::new(vec![]),
             }),
         );
         ((result.graph.clone() == None)
@@ -590,14 +590,14 @@ pub fn w_production_frontend_refuses_wrong_occurrence_role() -> bool {
     {
         let occurrence = OccurrenceId { value: 29 };
         let result = resolve_frontend_occurrence_transport(
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
             Arc::new(OccurrenceTransport {
                 index: Arc::new(OccurrenceIndex {
-                    entries: Rc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
+                    entries: Arc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
                 }),
-                declarations: Rc::new(vec![transport_fixture_declaration(occurrence.clone())]),
-                references: Rc::new(vec![transport_fixture_reference(occurrence.clone())]),
+                declarations: Arc::new(vec![transport_fixture_declaration(occurrence.clone())]),
+                references: Arc::new(vec![transport_fixture_reference(occurrence.clone())]),
             }),
         );
         ((result.graph.clone() == None)
@@ -630,17 +630,17 @@ pub fn w_production_frontend_refuses_index_terminal_mismatch() -> bool {
         let mismatched_terminal = OccurrenceId { value: 32 };
         let entry = transport_fixture_index_entry(occurrence.clone());
         let result = resolve_frontend_occurrence_transport(
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
             Arc::new(OccurrenceTransport {
                 index: Arc::new(OccurrenceIndex {
-                    entries: Rc::new(vec![Arc::new(OccurrenceIndexEntry {
+                    entries: Arc::new(vec![Arc::new(OccurrenceIndexEntry {
                         projection: entry.projection.clone(),
                         containment: transport_fixture_path(mismatched_terminal.clone()),
                     })]),
                 }),
-                declarations: Rc::new(vec![]),
-                references: Rc::new(vec![]),
+                declarations: Arc::new(vec![]),
+                references: Arc::new(vec![]),
             }),
         );
         ((result.graph.clone() == None)
@@ -671,22 +671,22 @@ pub fn w_production_frontend_refuses_ancestor_path_mismatch() -> bool {
         let ancestor = OccurrenceId { value: 34 };
         let declaration = transport_fixture_declaration(occurrence.clone());
         let result = resolve_frontend_occurrence_transport(
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
             Arc::new(OccurrenceTransport {
                 index: Arc::new(OccurrenceIndex {
-                    entries: Rc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
+                    entries: Arc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
                 }),
-                declarations: Rc::new(vec![Arc::new(DeclarationOccurrence {
+                declarations: Arc::new(vec![Arc::new(DeclarationOccurrence {
                     occurrence: declaration.occurrence.clone(),
                     containment: Arc::new(OccurrenceContainmentPath {
-                        ancestors: Rc::new(vec![ancestor.clone()]),
+                        ancestors: Arc::new(vec![ancestor.clone()]),
                         terminal: occurrence.clone(),
                     }),
                     category: declaration.category.clone(),
                     diagnostic_span: declaration.diagnostic_span.clone(),
                 })]),
-                references: Rc::new(vec![]),
+                references: Arc::new(vec![]),
             }),
         );
         ((result.graph.clone() == None)
@@ -716,14 +716,14 @@ pub fn w_production_frontend_refuses_duplicate_declaration_rows() -> bool {
         let occurrence = OccurrenceId { value: 35 };
         let declaration = transport_fixture_declaration(occurrence.clone());
         let result = resolve_frontend_occurrence_transport(
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
             Arc::new(OccurrenceTransport {
                 index: Arc::new(OccurrenceIndex {
-                    entries: Rc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
+                    entries: Arc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
                 }),
-                declarations: Rc::new(vec![declaration.clone(), declaration.clone()]),
-                references: Rc::new(vec![]),
+                declarations: Arc::new(vec![declaration.clone(), declaration.clone()]),
+                references: Arc::new(vec![]),
             }),
         );
         ((result.graph.clone() == None)
@@ -753,14 +753,14 @@ pub fn w_production_frontend_refuses_duplicate_reference_rows() -> bool {
         let occurrence = OccurrenceId { value: 36 };
         let reference = transport_fixture_reference(occurrence.clone());
         let result = resolve_frontend_occurrence_transport(
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
             Arc::new(OccurrenceTransport {
                 index: Arc::new(OccurrenceIndex {
-                    entries: Rc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
+                    entries: Arc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
                 }),
-                declarations: Rc::new(vec![]),
-                references: Rc::new(vec![reference.clone(), reference.clone()]),
+                declarations: Arc::new(vec![]),
+                references: Arc::new(vec![reference.clone(), reference.clone()]),
             }),
         );
         ((result.graph.clone() == None)

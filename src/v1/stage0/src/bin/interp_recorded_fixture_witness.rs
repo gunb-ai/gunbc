@@ -16,7 +16,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Output};
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::recorded_fixture::{value_from_fixture_json, RecordedFixtureStore};
@@ -194,10 +194,10 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) -> Result<(),
     Ok(())
 }
 
-fn single_source(content: &str) -> Rc<im::Vector<Rc<SourceFile>>> {
+fn single_source(content: &str) -> Arc<im::Vector<Arc<SourceFile>>> {
     // The witness modules below have no imports, so import-transitive resolution
     // is exactly the entry file itself.
-    Rc::new(im::vector![Rc::new(SourceFile {
+    Arc::new(im::vector![Arc::new(SourceFile {
         path: "test.dag".to_string(),
         content: content.to_string(),
     })])

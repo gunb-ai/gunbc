@@ -103,11 +103,11 @@ pub fn inferred_to_outputs(
     source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Arc<Vec<Arc<Node>>> {
     if (inferred.clone() == None) {
-        Rc::new(vec![])
+        Arc::new(vec![])
     } else {
         match (*inferred.clone().unwrap()).clone() {
-            InferredNode::CompilerError { .. } => Rc::new(vec![]),
-            InferredNode::TypeVariable { id: _, .. } => Rc::new(vec![]),
+            InferredNode::CompilerError { .. } => Arc::new(vec![]),
+            InferredNode::TypeVariable { id: _, .. } => Arc::new(vec![]),
             InferredNode::Resolved { node: rt, .. } => {
                 let has_structure = (rt.connective.clone() != Connective::NoConnective);
                 if has_structure.clone() {
@@ -137,7 +137,7 @@ pub fn inferred_to_outputs(
                                     __result
                                 })
                             } else {
-                                Rc::new(vec![make_field_node(
+                                Arc::new(vec![make_field_node(
                                     "value".to_string(),
                                     rt.clone(),
                                     Cardinality::Required,
@@ -148,7 +148,7 @@ pub fn inferred_to_outputs(
                                 )])
                             }
                         } else {
-                            Rc::new(vec![make_field_node(
+                            Arc::new(vec![make_field_node(
                                 "value".to_string(),
                                 rt.clone(),
                                 Cardinality::Required,
@@ -163,9 +163,9 @@ pub fn inferred_to_outputs(
                     if ((rt.connective.clone() == Connective::Conj)
                         && ((rt.children.clone().len() as i64) == 0))
                     {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     } else {
-                        Rc::new(vec![make_field_node(
+                        Arc::new(vec![make_field_node(
                             "value".to_string(),
                             rt.clone(),
                             Cardinality::Required,

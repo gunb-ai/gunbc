@@ -168,13 +168,13 @@ pub fn obcpw_declarations_named(
     name: String,
 ) -> Arc<Vec<Arc<DeclarationOccurrence>>> {
     transport.declarations.clone().iter().cloned().fold(
-        Rc::new(vec![]),
+        Arc::new(vec![]),
         |acc: Arc<Vec<Arc<DeclarationOccurrence>>>, declaration: Arc<DeclarationOccurrence>| {
             match index_entry_for_declaration(transport.clone(), declaration.clone()) {
                 None => acc.clone(),
                 Some(entry) => {
                     match (entry.projection.clone().authored_name.clone() == name.clone()) {
-                        true => v1_rt::concat(acc.clone(), Rc::new(vec![declaration.clone()])),
+                        true => v1_rt::concat(acc.clone(), Arc::new(vec![declaration.clone()])),
                         false => acc.clone(),
                     }
                 }
@@ -213,13 +213,13 @@ pub fn obcpw_references_named(
     name: String,
 ) -> Arc<Vec<Arc<ReferenceOccurrence>>> {
     transport.references.clone().iter().cloned().fold(
-        Rc::new(vec![]),
+        Arc::new(vec![]),
         |acc: Arc<Vec<Arc<ReferenceOccurrence>>>, reference: Arc<ReferenceOccurrence>| {
             match index_entry_for_reference(transport.clone(), reference.clone()) {
                 None => acc.clone(),
                 Some(entry) => {
                     match (entry.projection.clone().authored_name.clone() == name.clone()) {
-                        true => v1_rt::concat(acc.clone(), Rc::new(vec![reference.clone()])),
+                        true => v1_rt::concat(acc.clone(), Arc::new(vec![reference.clone()])),
                         false => acc.clone(),
                     }
                 }
@@ -572,7 +572,7 @@ pub fn obcpw_bound_providers_named(
             .iter()
             .cloned()
             .fold(
-                Rc::new(vec![]),
+                Arc::new(vec![]),
                 |acc: _, reference: Arc<ReferenceOccurrence>| {
                     match (*resolve_reference_binding_via_structural_candidates(
                         transport.clone(),
@@ -584,7 +584,7 @@ pub fn obcpw_bound_providers_named(
                         ReferenceBindingProjection::ReferenceBindingProjectionBound {
                             provider: provider,
                             ..
-                        } => v1_rt::concat(Rc::new(vec![provider.clone()]), acc.clone()),
+                        } => v1_rt::concat(Arc::new(vec![provider.clone()]), acc.clone()),
                         _ => acc.clone(),
                     }
                 },
@@ -733,7 +733,7 @@ pub fn parser_production_call_binds_with_edge_holds() -> bool {
                             ))
                             && match (*direct_module_dependencies_from_bound_population(Arc::new(
                                 BoundReferencePopulation::AllReferencesBound {
-                                    providers: Rc::new(vec![provider.clone()]),
+                                    providers: Arc::new(vec![provider.clone()]),
                                 },
                             )))
                             .clone()
@@ -784,11 +784,11 @@ pub fn obcpw_inputs_with_lexical_fn_a(
                 module_paths: inputs.module_paths.clone(),
                 authored_order_rows: inputs.authored_order_rows.clone(),
                 exposure_rows: v1_rt::reverse(inputs.exposure_rows.clone().iter().cloned().fold(
-                    Rc::new(vec![]),
+                    Arc::new(vec![]),
                     |acc: _, row: Arc<DeclarationExposureRow>| {
                         match (row.occurrence.clone().value.clone() == fn_a_id.value.clone()) {
                             true => v1_rt::concat(
-                                Rc::new(vec![Arc::new(DeclarationExposureRow {
+                                Arc::new(vec![Arc::new(DeclarationExposureRow {
                                     occurrence: row.occurrence.clone(),
                                     exposure: Arc::new(DeclarationExposure::LexicalExposure {
                                         exposing_scope: fn_a_declaration.containment.clone(),
@@ -796,7 +796,7 @@ pub fn obcpw_inputs_with_lexical_fn_a(
                                 })]),
                                 acc.clone(),
                             ),
-                            false => v1_rt::concat(Rc::new(vec![row.clone()]), acc.clone()),
+                            false => v1_rt::concat(Arc::new(vec![row.clone()]), acc.clone()),
                         }
                     },
                 )),
@@ -815,11 +815,11 @@ pub fn obcpw_inputs_without_fn_a_exposure(
             module_paths: inputs.module_paths.clone(),
             authored_order_rows: inputs.authored_order_rows.clone(),
             exposure_rows: v1_rt::reverse(inputs.exposure_rows.clone().iter().cloned().fold(
-                Rc::new(vec![]),
+                Arc::new(vec![]),
                 |acc: _, row: Arc<DeclarationExposureRow>| {
                     match (row.occurrence.clone().value.clone() == fn_a_id.value.clone()) {
                         true => acc.clone(),
-                        false => v1_rt::concat(Rc::new(vec![row.clone()]), acc.clone()),
+                        false => v1_rt::concat(Arc::new(vec![row.clone()]), acc.clone()),
                     }
                 },
             )),
@@ -837,12 +837,12 @@ pub fn obcpw_inputs_without_reference_authored_order(
         exposure_rows: inputs.exposure_rows.clone(),
         authored_order_rows: v1_rt::reverse(
             inputs.authored_order_rows.clone().iter().cloned().fold(
-                Rc::new(vec![]),
+                Arc::new(vec![]),
                 |acc: _, row: Arc<AuthoredOrderRow>| match (row.occurrence.clone().value.clone()
                     == reference.occurrence.clone().value.clone())
                 {
                     true => acc.clone(),
-                    false => v1_rt::concat(Rc::new(vec![row.clone()]), acc.clone()),
+                    false => v1_rt::concat(Arc::new(vec![row.clone()]), acc.clone()),
                 },
             ),
         ),

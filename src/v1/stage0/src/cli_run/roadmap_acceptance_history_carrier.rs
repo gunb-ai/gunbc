@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -82,7 +82,7 @@ fn validate_hex16(digest: &str, field: &str) -> Result<(), String> {
 fn fnv1a64_structural_value(digest: String, ctx: &InterpContext) -> Value {
     Value::Record {
         type_name: ctx.sym("Fnv1a64Structural"),
-        fields: Rc::new(sorted_fields(vec![(ctx.sym("digest"), Value::Str(digest))])),
+        fields: Arc::new(sorted_fields(vec![(ctx.sym("digest"), Value::Str(digest))])),
     }
 }
 
@@ -91,7 +91,7 @@ fn red_control_value(red_control: JsonRedControl, ctx: &InterpContext) -> Result
         JsonRedControl::RedControlNotRun => Value::Variant {
             type_name: ctx.sym("RedControlEvidence"),
             variant_name: ctx.sym("RedControlNotRun"),
-            fields: Rc::new(Vec::new()),
+            fields: Arc::new(Vec::new()),
         },
         JsonRedControl::RedControlExecuted {
             witness_module,
@@ -100,7 +100,7 @@ fn red_control_value(red_control: JsonRedControl, ctx: &InterpContext) -> Result
         } => Value::Variant {
             type_name: ctx.sym("RedControlEvidence"),
             variant_name: ctx.sym("RedControlExecuted"),
-            fields: Rc::new(sorted_fields(vec![
+            fields: Arc::new(sorted_fields(vec![
                 (ctx.sym("witness_module"), Value::Str(witness_module)),
                 (ctx.sym("witness_fn"), Value::Str(witness_fn)),
                 (ctx.sym("executed_on"), Value::Str(executed_on)),
@@ -114,7 +114,7 @@ fn handback_value(handback: JsonHandback, ctx: &InterpContext) -> Result<Value, 
         JsonHandback::HandbackNotDelivered => Value::Variant {
             type_name: ctx.sym("HandbackEvidence"),
             variant_name: ctx.sym("HandbackNotDelivered"),
-            fields: Rc::new(Vec::new()),
+            fields: Arc::new(Vec::new()),
         },
         JsonHandback::HandbackDelivered {
             first_artifact,
@@ -122,7 +122,7 @@ fn handback_value(handback: JsonHandback, ctx: &InterpContext) -> Result<Value, 
         } => Value::Variant {
             type_name: ctx.sym("HandbackEvidence"),
             variant_name: ctx.sym("HandbackDelivered"),
-            fields: Rc::new(sorted_fields(vec![
+            fields: Arc::new(sorted_fields(vec![
                 (ctx.sym("first_artifact"), Value::Str(first_artifact)),
                 (
                     ctx.sym("further_artifacts"),
@@ -142,7 +142,7 @@ fn receipt_value(receipt: JsonReceipt, ctx: &InterpContext) -> Result<Value, Str
     validate_hex16(&receipt.criteria_digest, "criteria_digest")?;
     Ok(Value::Record {
         type_name: ctx.sym("RoadmapAcceptanceReceipt"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (ctx.sym("node"), Value::Str(receipt.node)),
             (
                 ctx.sym("criteria_digest"),
@@ -164,7 +164,7 @@ fn event_value(event: JsonEvent, ctx: &InterpContext) -> Result<Value, String> {
         JsonEvent::AcceptanceRecorded { receipt } => Value::Variant {
             type_name: ctx.sym("RoadmapAcceptanceEvent"),
             variant_name: ctx.sym("AcceptanceRecorded"),
-            fields: Rc::new(sorted_fields(vec![(
+            fields: Arc::new(sorted_fields(vec![(
                 ctx.sym("receipt"),
                 receipt_value(receipt, ctx)?,
             )])),
@@ -181,14 +181,14 @@ fn event_value(event: JsonEvent, ctx: &InterpContext) -> Result<Value, String> {
                     Value::Variant {
                         type_name: ctx.sym("AcceptanceRevocationDisposition"),
                         variant_name: ctx.sym("AcceptanceNodeReopensActiveFrontier"),
-                        fields: Rc::new(Vec::new()),
+                        fields: Arc::new(Vec::new()),
                     }
                 }
             };
             Value::Variant {
                 type_name: ctx.sym("RoadmapAcceptanceEvent"),
                 variant_name: ctx.sym("AcceptanceRevoked"),
-                fields: Rc::new(sorted_fields(vec![
+                fields: Arc::new(sorted_fields(vec![
                     (
                         ctx.sym("exact_prior_receipt"),
                         receipt_value(exact_prior_receipt, ctx)?,
@@ -404,12 +404,12 @@ pub fn parse_roadmap_acceptance_event_history_jsonl_builtin(
         RoadmapAcceptanceEventHistoryParse::Parsed { events } => Value::Variant {
             type_name: ctx.sym("RoadmapAcceptanceEventHistoryParse"),
             variant_name: ctx.sym("RoadmapAcceptanceEventHistoryParsed"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("events"), list_value(events))])),
+            fields: Arc::new(sorted_fields(vec![(ctx.sym("events"), list_value(events))])),
         },
         RoadmapAcceptanceEventHistoryParse::Refused { detail } => Value::Variant {
             type_name: ctx.sym("RoadmapAcceptanceEventHistoryParse"),
             variant_name: ctx.sym("RoadmapAcceptanceEventHistoryParseRefused"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), Value::Str(detail))])),
+            fields: Arc::new(sorted_fields(vec![(ctx.sym("detail"), Value::Str(detail))])),
         },
     })
 }
@@ -421,16 +421,16 @@ mod tests {
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::ExecutionMode;
     use im::HashMap;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     fn empty_ctx() -> InterpContext {
         let graph = ResolvedGraph {
-            modules: Rc::new(im::Vector::new()),
-            item_registry: Rc::new(HashMap::new()),
-            diagnostics: Rc::new(im::Vector::new()),
+            modules: Arc::new(im::Vector::new()),
+            item_registry: Arc::new(HashMap::new()),
+            diagnostics: Arc::new(im::Vector::new()),
             emit_graph_info: empty_emit_graph_info(),
         };
-        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+        InterpContext::new(&graph, Arc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
 
     #[test]

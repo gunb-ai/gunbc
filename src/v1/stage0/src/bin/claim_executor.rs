@@ -3,7 +3,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus};
-use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
@@ -2910,7 +2909,7 @@ fn slowest_witness_attribution_n() -> usize {
 }
 
 fn str_list_value(lines: &[String]) -> Value {
-    Value::List(Rc::new(
+    Value::List(Arc::new(
         lines
             .iter()
             .cloned()
@@ -4507,7 +4506,7 @@ fn write_floor_component_receipt_at(
             "floor_component_receipt_document_with_selection",
             &[
                 (Some("run_id".to_string()), Value::Str(run_id.clone())),
-                (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
+                (Some("rows".to_string()), Value::List(Arc::new(rows.into()))),
                 (
                     Some("selection_mode_tag".to_string()),
                     Value::Str(snapshot.selection_mode_tag.clone()),
@@ -4553,7 +4552,7 @@ fn write_floor_component_receipt_at(
             "floor_component_receipt_document",
             &[
                 (Some("run_id".to_string()), Value::Str(run_id.clone())),
-                (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
+                (Some("rows".to_string()), Value::List(Arc::new(rows.into()))),
             ],
             false,
         ) {
@@ -6987,7 +6986,7 @@ fn run_walk(
     let mut batch_records: Vec<BatchRecord> = Vec::new();
     // Cross-batch resolve memo: SharedClaims whose runnable does a heavy whole-tree resolve
     // run on the main thread and share a single resolved InterpContext per entry across all batches.
-    // Rc<ResolvedGraph> is !Send so these units cannot run on spawned threads; they
+    // Arc<ResolvedGraph> is !Send so these units cannot run on spawned threads; they
     // run sequentially here after the spawned (non-memo) threads in each batch are joined.
     // Key invariant: source_roots is constant for the lifetime of a run_walk call, so
     // keying the memo by (entry, execution_mode) is sufficient — a given entry always

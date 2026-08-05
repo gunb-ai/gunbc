@@ -710,12 +710,12 @@ pub fn declarations_by_name_insert(
         None => v1_rt::rc_map_insert(
             acc.clone(),
             name.clone(),
-            Rc::new(vec![declaration.clone()]),
+            Arc::new(vec![declaration.clone()]),
         ),
         Some(existing) => v1_rt::rc_map_insert(
             acc.clone(),
             name.clone(),
-            v1_rt::concat(Rc::new(vec![declaration.clone()]), existing.clone()),
+            v1_rt::concat(Arc::new(vec![declaration.clone()]), existing.clone()),
         ),
     }
 }
@@ -912,12 +912,12 @@ pub fn candidate_occurrence_ids_for_reference(
         &index.entries_by_id.clone(),
         reference.occurrence.clone().value.clone(),
     ) {
-        None => Rc::new(vec![]),
+        None => Arc::new(vec![]),
         Some(entry) => match v1_rt::map_get(
             &index.declarations_by_name.clone(),
             entry.projection.clone().authored_name.clone(),
         ) {
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
             Some(same_spelling) => Arc::new({
                 let mut __result = Vec::new();
                 for declaration in Arc::new({
@@ -1016,7 +1016,7 @@ pub fn direct_module_dependency_dedup_step(
                         ),
                     ),
                     edges_first_seen: v1_rt::concat(
-                        Rc::new(vec![edge.clone()]),
+                        Arc::new(vec![edge.clone()]),
                         acc.edges_first_seen.clone(),
                     ),
                 }),
@@ -1034,7 +1034,7 @@ pub fn direct_module_dependency_dedup_step(
                                 ),
                             ),
                             edges_first_seen: v1_rt::concat(
-                                Rc::new(vec![edge.clone()]),
+                                Arc::new(vec![edge.clone()]),
                                 acc.edges_first_seen.clone(),
                             ),
                         })
@@ -1056,7 +1056,7 @@ pub fn direct_module_dependencies_from_providers(
             .fold(
                 Arc::new(DirectModuleDependencyDedupBuild {
                     providers_by_consumer: v1_rt::rc_empty_map::<String, Arc<BTreeSet<String>>>(),
-                    edges_first_seen: Rc::new(vec![]),
+                    edges_first_seen: Arc::new(vec![]),
                 }),
                 |acc: Arc<DirectModuleDependencyDedupBuild>,
                  provider: Arc<BoundReferenceProvider>| {
@@ -1105,7 +1105,7 @@ pub fn bound_reference_population_fold_step(
             provider: provider, ..
         } => Arc::new(BoundReferencePopulationBuild {
             providers_reversed: v1_rt::concat(
-                Rc::new(vec![provider.clone()]),
+                Arc::new(vec![provider.clone()]),
                 acc.providers_reversed.clone(),
             ),
             first_failure: acc.first_failure.clone(),
@@ -1122,7 +1122,7 @@ pub fn bound_reference_population_fold_step(
                     providers_reversed: acc.providers_reversed.clone(),
                     first_failure: acc.first_failure.clone(),
                     more_failures_reversed: v1_rt::concat(
-                        Rc::new(vec![projection.clone()]),
+                        Arc::new(vec![projection.clone()]),
                         acc.more_failures_reversed.clone(),
                     ),
                 }),
@@ -1140,7 +1140,7 @@ pub fn bound_reference_population_fold_step(
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: acc.first_failure.clone(),
                 more_failures_reversed: v1_rt::concat(
-                    Rc::new(vec![projection.clone()]),
+                    Arc::new(vec![projection.clone()]),
                     acc.more_failures_reversed.clone(),
                 ),
             }),
@@ -1158,7 +1158,7 @@ pub fn bound_reference_population_fold_step(
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: acc.first_failure.clone(),
                 more_failures_reversed: v1_rt::concat(
-                    Rc::new(vec![projection.clone()]),
+                    Arc::new(vec![projection.clone()]),
                     acc.more_failures_reversed.clone(),
                 ),
             }),
@@ -1176,7 +1176,7 @@ pub fn bound_reference_population_fold_step(
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: acc.first_failure.clone(),
                 more_failures_reversed: v1_rt::concat(
-                    Rc::new(vec![projection.clone()]),
+                    Arc::new(vec![projection.clone()]),
                     acc.more_failures_reversed.clone(),
                 ),
             }),
@@ -1194,7 +1194,7 @@ pub fn bound_reference_population_fold_step(
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: acc.first_failure.clone(),
                 more_failures_reversed: v1_rt::concat(
-                    Rc::new(vec![projection.clone()]),
+                    Arc::new(vec![projection.clone()]),
                     acc.more_failures_reversed.clone(),
                 ),
             }),
@@ -1212,7 +1212,7 @@ pub fn bound_reference_population_fold_step(
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: acc.first_failure.clone(),
                 more_failures_reversed: v1_rt::concat(
-                    Rc::new(vec![projection.clone()]),
+                    Arc::new(vec![projection.clone()]),
                     acc.more_failures_reversed.clone(),
                 ),
             }),
@@ -1230,7 +1230,7 @@ pub fn bound_reference_population_fold_step(
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: acc.first_failure.clone(),
                 more_failures_reversed: v1_rt::concat(
-                    Rc::new(vec![projection.clone()]),
+                    Arc::new(vec![projection.clone()]),
                     acc.more_failures_reversed.clone(),
                 ),
             }),
@@ -1248,7 +1248,7 @@ pub fn bound_reference_population_fold_step(
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: acc.first_failure.clone(),
                 more_failures_reversed: v1_rt::concat(
-                    Rc::new(vec![projection.clone()]),
+                    Arc::new(vec![projection.clone()]),
                     acc.more_failures_reversed.clone(),
                 ),
             }),
@@ -1264,7 +1264,7 @@ pub fn bound_reference_population_fold_step(
                     providers_reversed: acc.providers_reversed.clone(),
                     first_failure: acc.first_failure.clone(),
                     more_failures_reversed: v1_rt::concat(
-                        Rc::new(vec![projection.clone()]),
+                        Arc::new(vec![projection.clone()]),
                         acc.more_failures_reversed.clone(),
                     ),
                 }),
@@ -1279,9 +1279,9 @@ pub fn bound_reference_population_from_projections(
     {
         let build = projections.clone().iter().cloned().fold(
             Arc::new(BoundReferencePopulationBuild {
-                providers_reversed: Rc::new(vec![]),
+                providers_reversed: Arc::new(vec![]),
                 first_failure: None,
-                more_failures_reversed: Rc::new(vec![]),
+                more_failures_reversed: Arc::new(vec![]),
             }),
             |acc: Arc<BoundReferencePopulationBuild>,
              projection: Arc<ReferenceBindingProjection>| {
@@ -1639,7 +1639,7 @@ pub fn section13_witness_module_path() -> String {
 pub fn section13_population_law_roster() -> Arc<Vec<Arc<Section13PopulationLawRosterRow>>> {
     thread_local! {
             static CACHED: Arc<Vec<Arc<Section13PopulationLawRosterRow>>> = {
-                Rc::new(vec![Arc::new(Section13PopulationLawRosterRow {
+                Arc::new(vec![Arc::new(Section13PopulationLawRosterRow {
         law: Section13PopulationLawId::Section13StructuralVisibility,
         evidence: Arc::new(Section13PopulationLawEvidence::Section13PopulationLawExecuting {
         receipt: section13_executing_receipt(section13_witness_module_path(), "module_scope_sibling_is_visible_holds".to_string()),

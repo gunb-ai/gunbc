@@ -131,7 +131,7 @@ pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_dissolve_o
 pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist() -> Arc<Vec<String>> {
     thread_local! {
         static CACHED: Arc<Vec<String>> = {
-            Rc::new(vec!["std.keyed_row".to_string(), "std.keyed_roster".to_string()])
+            Arc::new(vec!["std.keyed_row".to_string(), "std.keyed_roster".to_string()])
         };
     }
     CACHED.with(|c: &Arc<Vec<String>>| c.clone())
@@ -1590,7 +1590,7 @@ pub fn v1_item_clone_bounded_param_names(
             }
             __result
         }),
-        None => Rc::new(vec![]),
+        None => Arc::new(vec![]),
     }
 }
 

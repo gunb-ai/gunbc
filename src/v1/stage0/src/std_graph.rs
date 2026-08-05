@@ -49,7 +49,7 @@ pub fn seed_adjacency_map(names: Arc<Vec<String>>) -> Arc<HashMap<String, Arc<Ve
     names.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Arc<Vec<String>>>(),
         |acc: Arc<HashMap<String, Arc<Vec<String>>>>, name: String| {
-            v1_rt::rc_map_insert(acc, name.clone(), Rc::new(vec![]))
+            v1_rt::rc_map_insert(acc, name.clone(), Arc::new(vec![]))
         },
     )
 }
@@ -98,13 +98,13 @@ pub fn build_adjacency_views(
             |acc: Arc<CallGraphAdjacencyViews>, edge: Arc<GraphEdge>| {
                 let forward_neighbors =
                     match v1_rt::map_get(&acc.forward.clone(), edge.caller.clone()) {
-                        Some(ns) => v1_rt::concat(ns.clone(), Rc::new(vec![edge.callee.clone()])),
-                        None => Rc::new(vec![edge.callee.clone()]),
+                        Some(ns) => v1_rt::concat(ns.clone(), Arc::new(vec![edge.callee.clone()])),
+                        None => Arc::new(vec![edge.callee.clone()]),
                     };
                 let reverse_neighbors =
                     match v1_rt::map_get(&acc.reverse.clone(), edge.callee.clone()) {
-                        Some(ns) => v1_rt::concat(ns.clone(), Rc::new(vec![edge.caller.clone()])),
-                        None => Rc::new(vec![edge.caller.clone()]),
+                        Some(ns) => v1_rt::concat(ns.clone(), Arc::new(vec![edge.caller.clone()])),
+                        None => Arc::new(vec![edge.caller.clone()]),
                     };
                 Arc::new(CallGraphAdjacencyViews {
                     forward: v1_rt::rc_map_insert(
@@ -154,7 +154,7 @@ pub fn dfs_finish_order(
                 let next_visited = v1_rt::rc_set_insert(acc.visited.clone(), node.clone());
                 let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
                     Some(ns) => ns.clone(),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 let explored = neighbors.clone().iter().cloned().fold(
                     Arc::new(DfsFinishAcc {
@@ -188,7 +188,7 @@ pub fn dfs_collect_component(
                 let next_members = v1_rt::rc_list_push(acc.members.clone(), node.clone());
                 let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
                     Some(ns) => ns.clone(),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 neighbors.clone().iter().cloned().fold(
                     Arc::new(SccComponentAcc {
@@ -213,7 +213,7 @@ pub fn graph_multi_node_scc_members(
         let finish = names.clone().iter().cloned().fold(
             Arc::new(DfsFinishAcc {
                 visited: v1_rt::rc_empty_set::<String>(),
-                order: Rc::new(vec![]),
+                order: Arc::new(vec![]),
             }),
             |acc: Arc<DfsFinishAcc>, name: String| {
                 dfs_finish_order(name.clone(), adjacency.forward.clone(), acc)
@@ -222,7 +222,7 @@ pub fn graph_multi_node_scc_members(
         let result = v1_rt::reverse(finish.order.clone()).iter().cloned().fold(
             Arc::new(SccMembersAcc {
                 visited: v1_rt::rc_empty_set::<String>(),
-                members: Rc::new(vec![]),
+                members: Arc::new(vec![]),
             }),
             |acc: Arc<SccMembersAcc>, name: String| {
                 if v1_rt::set_contains(&acc.visited.clone(), name.clone()) {
@@ -234,7 +234,7 @@ pub fn graph_multi_node_scc_members(
                             adjacency.reverse.clone(),
                             Arc::new(SccComponentAcc {
                                 visited: acc.visited.clone(),
-                                members: Rc::new(vec![]),
+                                members: Arc::new(vec![]),
                             }),
                         );
                         let members = if ((component.members.clone().len() as i64) > 1) {
@@ -274,7 +274,7 @@ pub fn graph_cycle_members(names: Arc<Vec<String>>, graph: Arc<CallGraph>) -> Ar
         .fold(
             Arc::new(DfsFinishAcc {
                 visited: v1_rt::rc_empty_set::<String>(),
-                order: Rc::new(vec![]),
+                order: Arc::new(vec![]),
             }),
             |acc: Arc<DfsFinishAcc>, edge: Arc<GraphEdge>| {
                 if v1_rt::set_contains(&acc.visited.clone(), edge.caller.clone()) {
@@ -326,7 +326,7 @@ pub fn graph_reverse_reachable_members(
             reverse_adjacency(names.clone(), graph.clone()),
             Arc::new(SccComponentAcc {
                 visited: v1_rt::rc_empty_set::<String>(),
-                members: Rc::new(vec![]),
+                members: Arc::new(vec![]),
             }),
         );
         Arc::new({
@@ -402,7 +402,7 @@ pub fn is_valid_proof(proof: Arc<TerminationProof>, edges: Arc<Vec<Arc<ProofEdge
                     let mut __result = Vec::new();
                     for e in edges.clone().iter().cloned() {
                         __result.extend(
-                            (*Rc::new(vec![e.caller.clone(), e.callee.clone()]))
+                            (*Arc::new(vec![e.caller.clone(), e.callee.clone()]))
                                 .iter()
                                 .cloned(),
                         );

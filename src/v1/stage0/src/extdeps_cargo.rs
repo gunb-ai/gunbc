@@ -125,16 +125,16 @@ pub fn cargo_target_source_path(
 ) -> Arc<FilePathParts> {
     match (*target.clone()).clone() {
         CargoTarget::Lib => Arc::new(FilePathParts {
-            segments: Rc::new(vec!["src".to_string(), "lib.rs".to_string()]),
+            segments: Arc::new(vec!["src".to_string(), "lib.rs".to_string()]),
         }),
         CargoTarget::Bin { name: name, .. } => {
             if (name.clone() == package_name.clone()) {
                 Arc::new(FilePathParts {
-                    segments: Rc::new(vec!["src".to_string(), "main.rs".to_string()]),
+                    segments: Arc::new(vec!["src".to_string(), "main.rs".to_string()]),
                 })
             } else {
                 Arc::new(FilePathParts {
-                    segments: Rc::new(vec![
+                    segments: Arc::new(vec![
                         "src".to_string(),
                         "bin".to_string(),
                         v1_rt::concat(name.clone(), ".rs".to_string()),
@@ -143,19 +143,19 @@ pub fn cargo_target_source_path(
             }
         }
         CargoTarget::CargoTest { name: name, .. } => Arc::new(FilePathParts {
-            segments: Rc::new(vec![
+            segments: Arc::new(vec![
                 "tests".to_string(),
                 v1_rt::concat(name.clone(), ".rs".to_string()),
             ]),
         }),
         CargoTarget::Example { name: name, .. } => Arc::new(FilePathParts {
-            segments: Rc::new(vec![
+            segments: Arc::new(vec![
                 "examples".to_string(),
                 v1_rt::concat(name.clone(), ".rs".to_string()),
             ]),
         }),
         CargoTarget::Bench { name: name, .. } => Arc::new(FilePathParts {
-            segments: Rc::new(vec![
+            segments: Arc::new(vec![
                 "benches".to_string(),
                 v1_rt::concat(name.clone(), ".rs".to_string()),
             ]),
@@ -164,15 +164,15 @@ pub fn cargo_target_source_path(
 }
 
 pub fn rust_module_candidate_paths(stem: String) -> Arc<Vec<Arc<FilePathParts>>> {
-    Rc::new(vec![
+    Arc::new(vec![
         Arc::new(FilePathParts {
-            segments: Rc::new(vec![
+            segments: Arc::new(vec![
                 "src".to_string(),
                 v1_rt::concat(stem.clone(), ".rs".to_string()),
             ]),
         }),
         Arc::new(FilePathParts {
-            segments: Rc::new(vec!["src".to_string(), stem.clone(), "mod.rs".to_string()]),
+            segments: Arc::new(vec!["src".to_string(), stem.clone(), "mod.rs".to_string()]),
         }),
     ])
 }
@@ -182,7 +182,7 @@ pub type CargoProfile = String;
 pub fn canonical_profiles() -> Arc<Vec<String>> {
     thread_local! {
         static CACHED: Arc<Vec<String>> = {
-            Rc::new(vec!["dev".to_string(), "release".to_string(), "test".to_string(), "bench".to_string()])
+            Arc::new(vec!["dev".to_string(), "release".to_string(), "test".to_string(), "bench".to_string()])
         };
     }
     CACHED.with(|c: &Arc<Vec<String>>| c.clone())

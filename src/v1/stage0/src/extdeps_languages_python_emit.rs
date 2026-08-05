@@ -64,7 +64,7 @@ pub fn python_container_templates() -> Arc<HashMap<String, String>> {
 pub fn python_reserved() -> Arc<Vec<String>> {
     thread_local! {
         static CACHED: Arc<Vec<String>> = {
-            Rc::new(vec!["False".to_string(), "None".to_string(), "True".to_string(), "and".to_string(), "as".to_string(), "assert".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "class".to_string(), "continue".to_string(), "def".to_string(), "del".to_string(), "elif".to_string(), "else".to_string(), "except".to_string(), "finally".to_string(), "for".to_string(), "from".to_string(), "global".to_string(), "if".to_string(), "import".to_string(), "in".to_string(), "is".to_string(), "lambda".to_string(), "nonlocal".to_string(), "not".to_string(), "or".to_string(), "pass".to_string(), "raise".to_string(), "return".to_string(), "try".to_string(), "while".to_string(), "with".to_string(), "yield".to_string(), "type".to_string(), "match".to_string(), "case".to_string()])
+            Arc::new(vec!["False".to_string(), "None".to_string(), "True".to_string(), "and".to_string(), "as".to_string(), "assert".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "class".to_string(), "continue".to_string(), "def".to_string(), "del".to_string(), "elif".to_string(), "else".to_string(), "except".to_string(), "finally".to_string(), "for".to_string(), "from".to_string(), "global".to_string(), "if".to_string(), "import".to_string(), "in".to_string(), "is".to_string(), "lambda".to_string(), "nonlocal".to_string(), "not".to_string(), "or".to_string(), "pass".to_string(), "raise".to_string(), "return".to_string(), "try".to_string(), "while".to_string(), "with".to_string(), "yield".to_string(), "type".to_string(), "match".to_string(), "case".to_string()])
         };
     }
     CACHED.with(|c: &Arc<Vec<String>>| c.clone())
@@ -217,7 +217,7 @@ pub fn python_module_init() -> String {
 pub fn python_string_types() -> Arc<Vec<String>> {
     thread_local! {
         static CACHED: Arc<Vec<String>> = {
-            Rc::new(vec!["String".to_string(), "Secret".to_string()])
+            Arc::new(vec!["String".to_string(), "Secret".to_string()])
         };
     }
     CACHED.with(|c: &Arc<Vec<String>>| c.clone())

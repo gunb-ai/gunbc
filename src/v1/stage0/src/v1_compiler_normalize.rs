@@ -41,7 +41,7 @@ pub fn check_bare_containers(
         };
         let nname = authored_name_at(source_indices.clone(), n.clone());
         let self_diags = if is_expr.clone() {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
             match container_expected_arity(nname.clone()) {
                 Some(expected) => {
@@ -50,7 +50,7 @@ pub fn check_bare_containers(
                         && (n.connective.clone() == Connective::NoConnective))
                         && !has_structure.clone())
                     {
-                        Rc::new(vec![make_error_node(
+                        Arc::new(vec![make_error_node(
                             Arc::new(CompilerDiagnostic::ArityMismatch {
                                 name: nname.clone(),
                                 expected: expected.clone(),
@@ -60,10 +60,10 @@ pub fn check_bare_containers(
                             module_name.clone(),
                         )])
                     } else {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     }
                 }
-                None => Rc::new(vec![]),
+                None => Arc::new(vec![]),
             }
         };
         let child_diags = Arc::new({
@@ -100,16 +100,16 @@ pub fn check_bare_containers(
             Some(ta) => {
                 check_bare_containers(ta.clone(), module_name.clone(), source_indices.clone())
             }
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let body_diags = match n.body.clone() {
             Some(b) => {
                 check_bare_containers(b.clone(), module_name.clone(), source_indices.clone())
             }
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
             match n.inferred.clone() {
                 Some(inf) => match (*inf.clone()).clone() {
@@ -118,9 +118,9 @@ pub fn check_bare_containers(
                         module_name.clone(),
                         source_indices.clone(),
                     ),
-                    _ => Rc::new(vec![]),
+                    _ => Arc::new(vec![]),
                 },
-                None => Rc::new(vec![]),
+                None => Arc::new(vec![]),
             }
         };
         let uses_diags = Arc::new({
@@ -155,7 +155,7 @@ pub fn check_bare_containers(
         });
         Arc::new({
             let mut __result = Vec::new();
-            for d in Rc::new(vec![
+            for d in Arc::new(vec![
                 self_diags.clone(),
                 child_diags.clone(),
                 param_diags.clone(),

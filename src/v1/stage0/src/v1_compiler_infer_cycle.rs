@@ -35,7 +35,7 @@ pub fn compute_in_graph_deps(
                     });
                     v1_rt::rc_map_insert(acc.clone(), name.clone(), local.clone())
                 }
-                None => v1_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(vec![])),
+                None => v1_rt::rc_map_insert(acc.clone(), name.clone(), Arc::new(vec![])),
             },
         );
         result
@@ -57,7 +57,7 @@ pub fn build_reverse_adj(
                 |inner_acc: Arc<HashMap<String, Arc<Vec<String>>>>, dep: String| {
                     let existing = match v1_rt::map_get(&inner_acc, dep.clone()) {
                         Some(v) => v.clone(),
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     };
                     v1_rt::rc_map_insert(
                         inner_acc.clone(),
@@ -114,7 +114,7 @@ pub fn kahn_remove_loop(
             (remaining.clone().len() as i64),
         );
         if (final_state.removed_count.clone() == (remaining.clone().len() as i64)) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
             Arc::new({
                 let mut __result = Vec::new();
@@ -162,7 +162,7 @@ pub fn kahn_cycle_drain(
                 {
                     let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
                         Some(v) => v.clone(),
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     };
                     let new_deg = dependents.clone().iter().cloned().fold(
                         state.in_degree,
@@ -186,10 +186,10 @@ pub fn kahn_cycle_drain(
                 .clone()
                 .iter()
                 .cloned()
-                .fold(Rc::new(vec![]), |acc: _, node: String| {
+                .fold(Arc::new(vec![]), |acc: _, node: String| {
                     let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
                         Some(v) => v.clone(),
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     };
                     dependents
                         .clone()

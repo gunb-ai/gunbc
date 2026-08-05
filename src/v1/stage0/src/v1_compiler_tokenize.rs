@@ -222,12 +222,12 @@ pub fn tokenize_artifact(source: String, file: String) -> Arc<V1LexArtifact> {
         });
         let initial = Arc::new(TokPos {
             pos: 0,
-            interp_depth: Rc::new(vec![]),
+            interp_depth: Arc::new(vec![]),
         });
         let final_state = tokenize_loop(
             src.clone(),
-            Rc::new(vec![]),
-            Rc::new(vec![]),
+            Arc::new(vec![]),
+            Arc::new(vec![]),
             initial.clone(),
             (source_len(src.clone()) + 1),
         );
@@ -848,7 +848,7 @@ pub fn scan_string(source: Arc<SourceRef>, pos: Arc<TokPos>) -> Arc<ScanResult> 
     {
         let span_start = pos.pos.clone();
         let body_start = (pos.pos.clone() + 1);
-        let result = scan_string_body(source.clone(), body_start.clone(), Rc::new(vec![]));
+        let result = scan_string_body(source.clone(), body_start.clone(), Arc::new(vec![]));
         match (*result.clone()).clone() {
             StringScanResult::ClosedString {
                 content, end_pos, ..
@@ -906,7 +906,7 @@ pub fn scan_string(source: Arc<SourceRef>, pos: Arc<TokPos>) -> Arc<ScanResult> 
 
 pub fn scan_str_cont(source: Arc<SourceRef>, pos: Arc<TokPos>, span_start: i64) -> Arc<ScanResult> {
     {
-        let result = scan_string_body(source.clone(), pos.pos.clone(), Rc::new(vec![]));
+        let result = scan_string_body(source.clone(), pos.pos.clone(), Arc::new(vec![]));
         match (*result.clone()).clone() {
             StringScanResult::ClosedString {
                 content, end_pos, ..
@@ -1062,7 +1062,7 @@ pub fn should_start_interpolation(source: Arc<SourceRef>, pos: i64) -> bool {
 }
 
 pub fn process_escapes(chars: Arc<Vec<i64>>) -> Arc<EscapeProcessResult> {
-    process_escapes_loop(chars.clone(), 0, Rc::new(vec![]))
+    process_escapes_loop(chars.clone(), 0, Arc::new(vec![]))
 }
 
 pub fn code_point_at_accessor_note() -> String {
@@ -1332,7 +1332,7 @@ pub fn drop_last(stack: Arc<Vec<i64>>) -> Arc<Vec<i64>> {
         .iter()
         .cloned()
         .fold(
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             |result: Arc<Vec<i64>>, pair: (i64, i64)| {
                 if (pair.0.clone() < (len.clone() - 1)) {
                     Arc::new(v1_rt::append(result.clone(), pair.1.clone()))

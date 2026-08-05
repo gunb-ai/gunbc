@@ -638,7 +638,7 @@ pub fn rust_spec() -> Arc<LanguageSpec> {
             }),
             format_template: "format!(\"{0}\", {1})".to_string(),
             plain_template: "\"{0}\".to_string()".to_string(),
-            escape_pairs: Rc::new(vec![
+            escape_pairs: Arc::new(vec![
                 Arc::new(EscapePair {
                     from: "{".to_string(),
                     to: "{{".to_string(),
@@ -649,7 +649,7 @@ pub fn rust_spec() -> Arc<LanguageSpec> {
                 }),
             ]),
         }),
-        callable_type_template: Some("Rc<dyn Fn({params}) -> {return}>".to_string()),
+        callable_type_template: Some("Arc<dyn Fn({params}) -> {return}>".to_string()),
         naming_case: NamingCase::SnakeCase,
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "".to_string(),
@@ -820,7 +820,7 @@ pub fn python_spec() -> Arc<LanguageSpec> {
             style: Arc::new(InterpStyle::InlineExpr),
             format_template: "f\"{0}\"".to_string(),
             plain_template: "f\"{0}\"".to_string(),
-            escape_pairs: Rc::new(vec![
+            escape_pairs: Arc::new(vec![
                 Arc::new(EscapePair {
                     from: "{".to_string(),
                     to: "{{".to_string(),
@@ -1000,7 +1000,7 @@ pub fn go_spec() -> Arc<LanguageSpec> {
             }),
             format_template: "fmt.Sprintf(\"{0}\", {1})".to_string(),
             plain_template: "\"{0}\"".to_string(),
-            escape_pairs: Rc::new(vec![Arc::new(EscapePair {
+            escape_pairs: Arc::new(vec![Arc::new(EscapePair {
                 from: "%".to_string(),
                 to: "%%".to_string(),
             })]),
@@ -1173,7 +1173,7 @@ pub fn dag_spec() -> Arc<LanguageSpec> {
             style: Arc::new(InterpStyle::InlineExpr),
             format_template: "\"{0}\"".to_string(),
             plain_template: "\"{0}\"".to_string(),
-            escape_pairs: Rc::new(vec![
+            escape_pairs: Arc::new(vec![
                 Arc::new(EscapePair {
                     from: "{".to_string(),
                     to: "\\{".to_string(),

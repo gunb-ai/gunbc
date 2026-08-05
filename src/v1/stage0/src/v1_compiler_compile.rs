@@ -338,7 +338,7 @@ pub fn ownership_diagnostics(proofs: Arc<Vec<Arc<OwnershipProof>>>) -> Arc<Vec<A
                                     consumer_count: count,
                                     sites,
                                     ..
-                                } => Rc::new(vec![make_error_node(
+                                } => Arc::new(vec![make_error_node(
                                     Arc::new(CompilerDiagnostic::OwnershipViolation {
                                         binding: binding.clone(),
                                         fn_name: proof.func_name.clone(),
@@ -347,7 +347,7 @@ pub fn ownership_diagnostics(proofs: Arc<Vec<Arc<OwnershipProof>>>) -> Arc<Vec<A
                                     }),
                                     proof.func_name.clone(),
                                 )]),
-                                _ => Rc::new(vec![]),
+                                _ => Arc::new(vec![]),
                             })
                             .iter()
                             .cloned(),
@@ -381,7 +381,7 @@ pub fn census_only_sources_note() -> String {
 pub fn default_compile_pipeline_options() -> Arc<CompilePipelineOptions> {
     Arc::new(CompilePipelineOptions {
         analyze_complexity: false,
-        census_only_sources: Rc::new(vec![]),
+        census_only_sources: Arc::new(vec![]),
     })
 }
 
@@ -419,8 +419,8 @@ pub fn complexity_diagnostics(complexity: Arc<ComplexityReport>) -> Arc<Vec<Arc<
 
 pub fn empty_artifact_plan() -> Arc<ArtifactPlan> {
     Arc::new(ArtifactPlan {
-        artifacts: Rc::new(vec![]),
-        boundaries: Rc::new(vec![]),
+        artifacts: Arc::new(vec![]),
+        boundaries: Arc::new(vec![]),
     })
 }
 
@@ -478,8 +478,8 @@ pub fn dag_emit_check_ref_target(
     key_to_id: Arc<HashMap<String, String>>,
 ) -> Arc<Vec<Arc<ErrorNode>>> {
     match v1_rt::map_get(&key_to_id, dag_node_key(node.clone())) {
-        Some(_) => Rc::new(vec![]),
-        None => Rc::new(vec![dag_node_missing_ref_error(node.clone())]),
+        Some(_) => Arc::new(vec![]),
+        None => Arc::new(vec![dag_node_missing_ref_error(node.clone())]),
     }
 }
 
@@ -489,7 +489,7 @@ pub fn dag_emit_check_optional_ref_target(
 ) -> Arc<Vec<Arc<ErrorNode>>> {
     match value.clone() {
         Some(inner) => dag_emit_check_ref_target(inner.clone(), key_to_id.clone()),
-        None => Rc::new(vec![]),
+        None => Arc::new(vec![]),
     }
 }
 
@@ -501,7 +501,7 @@ pub fn dag_emit_check_inferred_ref_target(
         Some(InferredNode::Resolved { node: n, .. }) => {
             dag_emit_check_ref_target(n.clone(), key_to_id.clone())
         }
-        _ => Rc::new(vec![]),
+        _ => Arc::new(vec![]),
     }
 }
 
@@ -517,7 +517,7 @@ pub fn dag_emit_check_node_refs(
                         v1_rt::concat(
                             v1_rt::concat(
                                 if is_import_statement_node(node.clone()) {
-                                    Rc::new(vec![])
+                                    Arc::new(vec![])
                                 } else {
                                     Arc::new({
                                         let mut __result = Vec::new();
@@ -535,7 +535,7 @@ pub fn dag_emit_check_node_refs(
                                     })
                                 },
                                 if is_module_shell_node(node.clone()) {
-                                    Rc::new(vec![])
+                                    Arc::new(vec![])
                                 } else {
                                     Arc::new({
                                         let mut __result = Vec::new();
@@ -2109,7 +2109,7 @@ pub fn emit_dag_artifact(typed: Arc<ResolvedGraph>) -> Arc<EmitResult> {
         let _ = v1_rt::trace_mark("compile.emit.dag.collect.done".to_string());
         if ((collected.collision_errors.clone().len() as i64) > 0) {
             return Arc::new(EmitResult {
-                files: Rc::new(vec![]),
+                files: Arc::new(vec![]),
                 diagnostics: collected.collision_errors.clone(),
             });
         }
@@ -2118,7 +2118,7 @@ pub fn emit_dag_artifact(typed: Arc<ResolvedGraph>) -> Arc<EmitResult> {
         let ref_errors = dag_emit_ref_errors(order.clone(), key_to_id.clone());
         if ((ref_errors.clone().len() as i64) > 0) {
             return Arc::new(EmitResult {
-                files: Rc::new(vec![]),
+                files: Arc::new(vec![]),
                 diagnostics: ref_errors.clone(),
             });
         }
@@ -2179,11 +2179,11 @@ pub fn emit_dag_artifact(typed: Arc<ResolvedGraph>) -> Arc<EmitResult> {
         );
         let _ = v1_rt::trace_mark("compile.emit.dag.serialize.done".to_string());
         Arc::new(EmitResult {
-            files: Rc::new(vec![Arc::new(TextFile {
+            files: Arc::new(vec![Arc::new(TextFile {
                 path: "dag-artifact.json".to_string(),
                 content: json.clone(),
             })]),
-            diagnostics: Rc::new(vec![]),
+            diagnostics: Arc::new(vec![]),
         })
     }
 }
@@ -2199,9 +2199,9 @@ pub fn boundary_ref_error(names: Arc<Vec<String>>, ref_name: String) -> Arc<Vec<
         }
         __found
     } {
-        Rc::new(vec![])
+        Arc::new(vec![])
     } else {
-        Rc::new(vec![compile_bundle_error(v1_rt::concat(
+        Arc::new(vec![compile_bundle_error(v1_rt::concat(
             v1_rt::concat(
                 "boundary references unknown artifact '".to_string(),
                 ref_name.clone(),
@@ -2280,8 +2280,8 @@ pub fn emit_from_artifact_plan(
         let typed = emittable.graph.clone();
         if ((artifact_plan.artifacts.clone().len() as i64) == 0) {
             return Arc::new(EmitResult {
-                files: Rc::new(vec![]),
-                diagnostics: Rc::new(vec![compile_bundle_error(
+                files: Arc::new(vec![]),
+                diagnostics: Arc::new(vec![compile_bundle_error(
                     "compile_sources planned no artifacts".to_string(),
                 )]),
             });
@@ -2289,7 +2289,7 @@ pub fn emit_from_artifact_plan(
         let boundary_diags = validate_boundaries(artifact_plan.clone());
         if ((boundary_diags.clone().len() as i64) > 0) {
             return Arc::new(EmitResult {
-                files: Rc::new(vec![]),
+                files: Arc::new(vec![]),
                 diagnostics: boundary_diags.clone(),
             });
         }
@@ -2323,7 +2323,7 @@ pub fn emit_from_artifact_plan(
 
 pub fn collect_diagnostics(parse_results: Arc<Vec<Arc<ParseResult>>>) -> Arc<Vec<Arc<ErrorNode>>> {
     parse_results.clone().iter().cloned().fold(
-        Rc::new(vec![]),
+        Arc::new(vec![]),
         |acc: Arc<Vec<Arc<ErrorNode>>>, pr: Arc<ParseResult>| match pr.error.clone() {
             Some(diag) => v1_rt::rc_list_push(acc.clone(), diag.clone()),
             None => acc.clone(),
@@ -2339,7 +2339,7 @@ pub fn resolve_frontend_occurrence_transport(
     match occurrence_transport_refusal(occurrence_transport.clone()) {
         Some(refusal) => Arc::new(FrontendOccurrenceResolution {
             graph: None,
-            diagnostics: Rc::new(vec![make_error_node(
+            diagnostics: Arc::new(vec![make_error_node(
                 Arc::new(CompilerDiagnostic::OccurrenceTransportViolation {
                     refusal: refusal.clone(),
                 }),
@@ -2384,13 +2384,13 @@ pub fn front_end_sources(sources: Arc<Vec<Arc<SourceFile>>>) -> Arc<FrontendResu
         );
         let parsed = prepared.clone().iter().cloned().fold(
             Arc::new(FrontendAccum {
-                parse_results: Rc::new(vec![]),
-                module_inputs: Rc::new(vec![]),
-                newline_indices: Rc::new(vec![]),
+                parse_results: Arc::new(vec![]),
+                module_inputs: Arc::new(vec![]),
+                newline_indices: Arc::new(vec![]),
                 intern_table: intern_table.clone(),
                 occurrence_allocator: occurrence_id_allocator_initial(),
                 annotations: source_annotation_graph_empty(),
-                annotation_diagnostics: Rc::new(vec![]),
+                annotation_diagnostics: Arc::new(vec![]),
             }),
             |acc: Arc<FrontendAccum>, p: Arc<FrontendPrepared>| {
                 let parsed = parse_with_table_in_occurrence_scope(
@@ -2527,13 +2527,13 @@ pub fn parse_census_fill_sources(sources: Arc<Vec<Arc<SourceFile>>>) -> Arc<Cens
         );
         let parsed = prepared.clone().iter().cloned().fold(
             Arc::new(FrontendAccum {
-                parse_results: Rc::new(vec![]),
-                module_inputs: Rc::new(vec![]),
-                newline_indices: Rc::new(vec![]),
+                parse_results: Arc::new(vec![]),
+                module_inputs: Arc::new(vec![]),
+                newline_indices: Arc::new(vec![]),
                 intern_table: intern_table.clone(),
                 occurrence_allocator: occurrence_id_allocator_initial(),
                 annotations: source_annotation_graph_empty(),
-                annotation_diagnostics: Rc::new(vec![]),
+                annotation_diagnostics: Arc::new(vec![]),
             }),
             |acc: Arc<FrontendAccum>, p: Arc<FrontendPrepared>| {
                 let parsed = parse_with_table_in_occurrence_scope(
@@ -2623,7 +2623,7 @@ pub fn resolve_sources(sources: Arc<Vec<Arc<SourceFile>>>) -> Arc<CompileResult>
     {
         let frontend = front_end_sources(sources.clone());
         Arc::new(CompileResult {
-            files: Rc::new(vec![]),
+            files: Arc::new(vec![]),
             diagnostics: frontend.diagnostics.clone(),
         })
     }
@@ -2757,7 +2757,7 @@ pub fn compile_to_resolved_with_options(
                 diagnostics: frontend.diagnostics.clone(),
                 source_indices: v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
                 complexity: empty_complexity_report(),
-                ownership: Rc::new(vec![]),
+                ownership: Arc::new(vec![]),
                 newline_indices: newline_indices.clone(),
             }),
             Some(graph) => {
@@ -2794,7 +2794,7 @@ pub fn compile_to_resolved_with_options(
                 let complexity_diags = if options.analyze_complexity.clone() {
                     complexity_diagnostics(complexity.clone())
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 };
                 let all_diags = v1_rt::concat(typed_diags.clone(), complexity_diags.clone());
                 let ownership = extract_ownership_proofs(typed.clone());
@@ -2831,7 +2831,7 @@ pub fn emit_resolved_for_target(
 ) -> Arc<PipelineResult> {
     match emittable_graph(resolved.clone()) {
         None => Arc::new(PipelineResult {
-            files: Rc::new(vec![]),
+            files: Arc::new(vec![]),
             diagnostics: resolved.diagnostics.clone(),
             complexity: resolved.complexity.clone(),
             ownership: resolved.ownership.clone(),
@@ -2868,7 +2868,7 @@ pub fn emit_resolved_for_target(
                 __result
             });
             let final_files = if ((emit_errors.clone().len() as i64) > 0) {
-                Rc::new(vec![])
+                Arc::new(vec![])
             } else {
                 emit_files.clone()
             };

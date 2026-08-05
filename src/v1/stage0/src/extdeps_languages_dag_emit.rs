@@ -64,7 +64,7 @@ pub fn dag_container_templates() -> Arc<HashMap<String, String>> {
 pub fn dag_reserved() -> Arc<Vec<String>> {
     thread_local! {
         static CACHED: Arc<Vec<String>> = {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
     }
     CACHED.with(|c: &Arc<Vec<String>>| c.clone())
@@ -73,7 +73,7 @@ pub fn dag_reserved() -> Arc<Vec<String>> {
 pub fn dag_string_types() -> Arc<Vec<String>> {
     thread_local! {
         static CACHED: Arc<Vec<String>> = {
-            Rc::new(vec!["String".to_string(), "Secret".to_string()])
+            Arc::new(vec!["String".to_string(), "Secret".to_string()])
         };
     }
     CACHED.with(|c: &Arc<Vec<String>>| c.clone())

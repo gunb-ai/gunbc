@@ -32,7 +32,7 @@ pub type VersionIdentity = String;
 
 #[derive(Clone)]
 pub struct VersionScheme {
-    pub compare: Rc<dyn Fn(VersionIdentity, VersionIdentity) -> Ordering>,
+    pub compare: Arc<dyn Fn(VersionIdentity, VersionIdentity) -> Ordering>,
 }
 
 pub type VersionConstraint = String;

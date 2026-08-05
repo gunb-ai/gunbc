@@ -142,8 +142,8 @@ pub fn empty_type_env() -> Arc<TypeEnv> {
         bindings: v1_rt::rc_empty_map::<i64, Arc<TypeBinding>>(),
         str_bindings: v1_rt::rc_empty_map::<String, Arc<TypeBinding>>(),
         ancestry_str_bindings: v1_rt::rc_empty_map::<String, Arc<TypeBinding>>(),
-        parents: Rc::new(vec![]),
-        recursive_types: Rc::new(vec![]),
+        parents: Arc::new(vec![]),
+        recursive_types: Arc::new(vec![]),
         recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
         inductive_fields: v1_rt::rc_empty_map::<String, Arc<Vec<Arc<InductiveField>>>>(),
         source_indices: v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
@@ -194,7 +194,7 @@ pub fn symbol_index_track_global_bare(
                     Arc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding {
                         candidates: v1_rt::concat(
                             cands.clone(),
-                            Rc::new(vec![Arc::new(GlobalBareCandidate {
+                            Arc::new(vec![Arc::new(GlobalBareCandidate {
                                 module_path: module_path.clone(),
                                 binding: binding.clone(),
                             })]),
@@ -215,7 +215,7 @@ pub fn symbol_index_track_global_bare(
                     global_bare.clone(),
                     binding.name.clone(),
                     Arc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-                        candidates: Rc::new(vec![
+                        candidates: Arc::new(vec![
                             Arc::new(GlobalBareCandidate {
                                 module_path: existing_path.clone(),
                                 binding: existing.clone(),
@@ -453,7 +453,7 @@ pub fn guarded_union_str_bindings_into_acc(
                             ),
                             conflicts: v1_rt::concat(
                                 state.conflicts.clone(),
-                                Rc::new(vec![Arc::new(TypeEnvCacheMergeConflict {
+                                Arc::new(vec![Arc::new(TypeEnvCacheMergeConflict {
                                     name: name.clone(),
                                     import_path: import_path.clone(),
                                     existing_site: existing
@@ -517,7 +517,7 @@ pub fn guarded_union_str_bindings_into_overlay(
                             bindings: state.bindings.clone(),
                             conflicts: v1_rt::concat(
                                 state.conflicts.clone(),
-                                Rc::new(vec![Arc::new(TypeEnvCacheMergeConflict {
+                                Arc::new(vec![Arc::new(TypeEnvCacheMergeConflict {
                                     name: name.clone(),
                                     import_path: import_path.clone(),
                                     existing_site: accumulated
@@ -1054,7 +1054,7 @@ pub fn global_bare_strict_ambiguity_candidates(
 ) -> Arc<Vec<String>> {
     {
         if (v1_rt::name_resolution_policy_is_namespace_only() == false) {
-            return Rc::new(vec![]);
+            return Arc::new(vec![]);
         }
         match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
             .as_deref()
@@ -1075,7 +1075,7 @@ pub fn global_bare_strict_ambiguity_candidates(
                     name.clone(),
                 )
             }
-            _ => Rc::new(vec![]),
+            _ => Arc::new(vec![]),
         }
     }
 }
@@ -1644,13 +1644,13 @@ pub fn inductive_fields_for(env: Arc<TypeEnv>, type_name: String) -> Arc<Vec<Arc
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let local = match v1_rt::map_get(&env.inductive_fields.clone(), type_name.clone()) {
             Some(fields) => fields.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         if ((local.clone().len() as i64) > 0) {
             local.clone()
         } else {
             env.parents.clone().iter().cloned().fold(
-                Rc::new(vec![]),
+                Arc::new(vec![]),
                 |acc: Arc<Vec<Arc<InductiveField>>>, parent: Arc<TypeEnv>| {
                     if ((acc.clone().len() as i64) > 0) {
                         acc.clone()
@@ -1711,7 +1711,7 @@ pub fn append_inductive_field_absent(
     } {
         existing.clone()
     } else {
-        v1_rt::concat(existing.clone(), Rc::new(vec![incoming.clone()]))
+        v1_rt::concat(existing.clone(), Arc::new(vec![incoming.clone()]))
     }
 }
 
@@ -1725,7 +1725,7 @@ pub fn put_inductive_field(
     {
         let existing = match v1_rt::map_get(&fields, type_name.clone()) {
             Some(fs) => fs.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         v1_rt::rc_map_insert(
             fields.clone(),
@@ -1755,7 +1755,7 @@ pub fn put_inductive_field_cross(
     {
         let existing = match v1_rt::map_get(&fields, type_name.clone()) {
             Some(fs) => fs.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         v1_rt::rc_map_insert(
             fields.clone(),
@@ -1873,12 +1873,12 @@ pub fn inductive_fields_list_to_map(
         |acc: Arc<HashMap<String, Arc<Vec<Arc<InductiveField>>>>>, field: Arc<InductiveField>| {
             let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {
                 Some(fs) => fs.clone(),
-                None => Rc::new(vec![]),
+                None => Arc::new(vec![]),
             };
             v1_rt::rc_map_insert(
                 acc.clone(),
                 field.type_name.clone(),
-                v1_rt::concat(existing.clone(), Rc::new(vec![field.clone()])),
+                v1_rt::concat(existing.clone(), Arc::new(vec![field.clone()])),
             )
         },
     )
@@ -1899,17 +1899,17 @@ pub fn env_with_type_variable_bindings(
                     name: tp_name.clone(),
                     span: kernel_span(tp_name.clone()),
                     ident_span: Some(kernel_span(tp_name.clone())),
-                    children: Rc::new(vec![]),
+                    children: Arc::new(vec![]),
                     connective: Connective::NoConnective,
-                    params: Rc::new(vec![]),
+                    params: Arc::new(vec![]),
                     inferred: Some(Arc::new(InferredNode::TypeVariable {
                         id: tp_name.clone(),
                     })),
                     return_cardinality: Cardinality::Required,
-                    uses: Rc::new(vec![]),
+                    uses: Arc::new(vec![]),
                     body: None,
                     transport: None,
-                    properties: Rc::new(vec![]),
+                    properties: Arc::new(vec![]),
                     type_annotation: None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,

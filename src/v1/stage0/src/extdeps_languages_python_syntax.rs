@@ -39,7 +39,7 @@ pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
 pub fn python_item_forms() -> Arc<Vec<Arc<ItemForm>>> {
     thread_local! {
             static CACHED: Arc<Vec<Arc<ItemForm>>> = {
-                Rc::new(vec![Arc::new(ItemForm {
+                Arc::new(vec![Arc::new(ItemForm {
         kind: ItemFormKind::FuncForm,
         keyword: "def".to_string(),
         has_type_params: false,
@@ -93,7 +93,7 @@ pub fn python_item_forms() -> Arc<Vec<Arc<ItemForm>>> {
 pub fn python_operators() -> Arc<Vec<Arc<OperatorSpec>>> {
     thread_local! {
             static CACHED: Arc<Vec<Arc<OperatorSpec>>> = {
-                Rc::new(vec![Arc::new(OperatorSpec {
+                Arc::new(vec![Arc::new(OperatorSpec {
         symbol: "or".to_string(),
         left_bp: 5,
         right_bp: 6,

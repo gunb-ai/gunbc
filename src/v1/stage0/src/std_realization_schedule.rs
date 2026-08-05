@@ -749,7 +749,7 @@ pub fn scoped_witness_execution_outcome_detail(
 }
 
 pub fn scoped_witness_execution_result_tsv_row(row: Arc<ScopedWitnessExecutionResult>) -> String {
-    Rc::new(vec![
+    Arc::new(vec![
         row.head_sha.clone(),
         row.batch_id.clone(),
         scoped_witness_source_roots_digest_wire_text(row.source_roots_digest.clone()),
@@ -1023,7 +1023,7 @@ pub fn scoped_witness_execution_receipt_decode(
                     )
                 } else {
                     rows.clone().iter().cloned().fold(Arc::new(ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptDecoded {
-    rows: Rc::new(vec![]),
+    rows: Arc::new(vec![]),
 }), |state: Arc<ScopedWitnessExecutionReceiptDecode>, line: String| match (*state).clone() {
     ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptRefused { detail: detail, .. } => Arc::new(ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptRefused {
     detail: detail.clone(),
@@ -1033,7 +1033,7 @@ pub fn scoped_witness_execution_receipt_decode(
     detail: "malformed scoped witness execution result row".to_string(),
 }),
     Some(row) => Arc::new(ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptDecoded {
-    rows: v1_rt::concat(rows.clone(), Rc::new(vec![row.clone()])),
+    rows: v1_rt::concat(rows.clone(), Arc::new(vec![row.clone()])),
 }),
 },
 })

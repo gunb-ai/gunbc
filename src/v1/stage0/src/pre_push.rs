@@ -117,7 +117,7 @@ fn load_active_gates(plan: &PlanCtx, changed: &[String]) -> Result<Vec<ActiveGat
 }
 
 fn string_list_to_value(items: &[String]) -> Value {
-    Value::List(std::rc::Rc::new(
+    Value::List(std::sync::Arc::new(
         items.iter().cloned().map(Value::Str).collect(),
     ))
 }

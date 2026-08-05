@@ -887,7 +887,7 @@ pub fn collect_parser_progress_block_edges(
     {
         let acc = stmts.clone().iter().cloned().fold(
             Arc::new(ParserProgressAcc {
-                edges: Rc::new(vec![]),
+                edges: Arc::new(vec![]),
                 env: env.clone(),
             }),
             |acc: Arc<ParserProgressAcc>, stmt: Arc<Node>| match (*stmt.expr_data.clone()).clone() {
@@ -974,7 +974,7 @@ pub fn collect_parser_progress_edges(
                     scc_name_set.clone(),
                     expr_call_func_at(body.clone(), si.clone()),
                 ) {
-                    Rc::new(vec![Arc::new(ParserProgressEdge {
+                    Arc::new(vec![Arc::new(ParserProgressEdge {
                         caller: caller.clone(),
                         callee: expr_call_func_at(body.clone(), si.clone()),
                         progress: parser_call_edge_progress(
@@ -987,7 +987,7 @@ pub fn collect_parser_progress_edges(
                         ),
                     })])
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 };
                 let child_edges = Arc::new({
                     let mut __result = Vec::new();
@@ -1050,7 +1050,7 @@ pub fn collect_parser_progress_edges(
                         consumed_true_set.clone(),
                         si.clone(),
                     ),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 v1_rt::concat(
                     v1_rt::concat(cond_edges.clone(), then_edges.clone()),
@@ -1089,7 +1089,7 @@ pub fn collect_parser_progress_edges(
                         consumed_true_set.clone(),
                         si.clone(),
                     ),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 v1_rt::concat(value_edges.clone(), body_edges.clone())
             }
@@ -1329,7 +1329,7 @@ pub fn parser_success_progress(
                 ));
                 let acc = prefix.clone().iter().cloned().fold(
                     Arc::new(ParserProgressAcc {
-                        edges: Rc::new(vec![]),
+                        edges: Arc::new(vec![]),
                         env: env.clone(),
                     }),
                     |acc: Arc<ParserProgressAcc>, stmt: Arc<Node>| match (*stmt.expr_data.clone())
@@ -1452,7 +1452,7 @@ pub fn infer_parser_always_advancing_members_worklist(
                             ) {
                                 let callers = match v1_rt::map_get(&reverse_graph, name.clone()) {
                                     Some(members) => members.clone(),
-                                    None => Rc::new(vec![]),
+                                    None => Arc::new(vec![]),
                                 };
                                 {
                                     let __tco_0 =
@@ -1502,8 +1502,8 @@ pub fn infer_parser_always_advancing_members(
             for name in members.clone().iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&func_index, name.clone()) {
-                        Some(entry) => Rc::new(vec![entry.clone()]),
-                        None => Rc::new(vec![]),
+                        Some(entry) => Arc::new(vec![entry.clone()]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -1678,7 +1678,7 @@ pub fn collect_parser_edges_for_scc(
             __all
         };
         if (all_have_state.clone() == false) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
             {
                 let proven = infer_parser_always_advancing_members(
@@ -1704,10 +1704,10 @@ pub fn collect_parser_edges_for_scc(
                                             v1_rt::rc_empty_map::<String, bool>(),
                                             si.clone(),
                                         ),
-                                        None => Rc::new(vec![]),
+                                        None => Arc::new(vec![]),
                                     }
                                 }
-                                None => Rc::new(vec![]),
+                                None => Arc::new(vec![]),
                             })
                             .iter()
                             .cloned(),
@@ -5003,7 +5003,7 @@ pub fn try_type_directed_dimension(
             si.clone(),
         ) {
             Some(DescentEvidence::Strict) => Some(Arc::new(TerminationProof {
-                dimensions: Rc::new(vec![Arc::new(RankingDimension::TreeSize {
+                dimensions: Arc::new(vec![Arc::new(RankingDimension::TreeSize {
                     param: param_name.clone(),
                 })]),
             })),
@@ -5018,7 +5018,7 @@ pub fn try_type_directed_dimension(
             si.clone(),
         ) {
             Some(DescentEvidence::Strict) => Some(Arc::new(TerminationProof {
-                dimensions: Rc::new(vec![Arc::new(RankingDimension::ListLength {
+                dimensions: Arc::new(vec![Arc::new(RankingDimension::ListLength {
                     param: param_name.clone(),
                 })]),
             })),
@@ -5033,7 +5033,7 @@ pub fn try_type_directed_dimension(
             si.clone(),
         ) {
             Some(DescentEvidence::Strict) => Some(Arc::new(TerminationProof {
-                dimensions: Rc::new(vec![Arc::new(RankingDimension::ArithmeticValue {
+                dimensions: Arc::new(vec![Arc::new(RankingDimension::ArithmeticValue {
                     param: param_name.clone(),
                 })]),
             })),
@@ -5081,7 +5081,7 @@ pub fn construct_termination_proof(
                                 match tree_evidence.clone() {
                                     Some(DescentEvidence::Strict) => {
                                         Some(Arc::new(TerminationProof {
-                                            dimensions: Rc::new(vec![Arc::new(
+                                            dimensions: Arc::new(vec![Arc::new(
                                                 RankingDimension::TreeSize {
                                                     param: pname.clone(),
                                                 },
@@ -5100,7 +5100,7 @@ pub fn construct_termination_proof(
                                         match list_evidence.clone() {
                                             Some(DescentEvidence::Strict) => {
                                                 Some(Arc::new(TerminationProof {
-                                                    dimensions: Rc::new(vec![Arc::new(
+                                                    dimensions: Arc::new(vec![Arc::new(
                                                         RankingDimension::ListLength {
                                                             param: pname.clone(),
                                                         },
@@ -5119,7 +5119,7 @@ pub fn construct_termination_proof(
                                                 match arith_evidence.clone() {
                                                     Some(DescentEvidence::Strict) => {
                                                         Some(Arc::new(TerminationProof {
-                                                            dimensions: Rc::new(vec![Arc::new(
+                                                            dimensions: Arc::new(vec![Arc::new(
                                                                 RankingDimension::ArithmeticValue {
                                                                     param: pname.clone(),
                                                                 },
@@ -5162,7 +5162,7 @@ pub fn construct_termination_proof(
                         __all
                     }) {
                         Some(Arc::new(TerminationProof {
-                            dimensions: Rc::new(vec![Arc::new(RankingDimension::TokenPosition {
+                            dimensions: Arc::new(vec![Arc::new(RankingDimension::TokenPosition {
                                 param: state_param.name.clone(),
                             })]),
                         }))
@@ -5186,7 +5186,7 @@ pub fn construct_termination_proof(
                 });
                 let func_index = seed_func_entry_map(func_name.clone(), func_entry.clone());
                 construct_scc_termination_proof(
-                    Rc::new(vec![func_name.clone()]),
+                    Arc::new(vec![func_name.clone()]),
                     func_index.clone(),
                     self_set.clone(),
                     si.clone(),
@@ -5222,7 +5222,7 @@ pub fn construct_branching_termination_proof(
                             si.clone(),
                         ) {
                             Some(DescentEvidence::Strict) => Some(Arc::new(TerminationProof {
-                                dimensions: Rc::new(vec![Arc::new(RankingDimension::TreeSize {
+                                dimensions: Arc::new(vec![Arc::new(RankingDimension::TreeSize {
                                     param: pname.clone(),
                                 })]),
                             })),
@@ -5239,9 +5239,11 @@ pub fn construct_branching_termination_proof(
                             si.clone(),
                         ) {
                             Some(DescentEvidence::Strict) => Some(Arc::new(TerminationProof {
-                                dimensions: Rc::new(vec![Arc::new(RankingDimension::ListLength {
-                                    param: pname.clone(),
-                                })]),
+                                dimensions: Arc::new(vec![Arc::new(
+                                    RankingDimension::ListLength {
+                                        param: pname.clone(),
+                                    },
+                                )]),
                             })),
                             _ => None,
                         }
@@ -5258,7 +5260,7 @@ pub fn construct_branching_termination_proof(
                         );
                         match tree_ev.clone() {
                             Some(DescentEvidence::Strict) => Some(Arc::new(TerminationProof {
-                                dimensions: Rc::new(vec![Arc::new(RankingDimension::TreeSize {
+                                dimensions: Arc::new(vec![Arc::new(RankingDimension::TreeSize {
                                     param: pname.clone(),
                                 })]),
                             })),
@@ -5274,7 +5276,7 @@ pub fn construct_branching_termination_proof(
                                 match list_ev.clone() {
                                     Some(DescentEvidence::Strict) => {
                                         Some(Arc::new(TerminationProof {
-                                            dimensions: Rc::new(vec![Arc::new(
+                                            dimensions: Arc::new(vec![Arc::new(
                                                 RankingDimension::ListLength {
                                                     param: pname.clone(),
                                                 },
@@ -5785,15 +5787,15 @@ pub fn collect_local_call_edges_in_expr(
             ExprData::ExprCall { .. } => {
                 let callee = expr_call_func_at(body.clone(), si.clone());
                 if set_has(local_func_set.clone(), callee.clone()) {
-                    Rc::new(vec![Arc::new(CallEdge {
+                    Arc::new(vec![Arc::new(CallEdge {
                         caller: caller.clone(),
                         callee: callee.clone(),
                     })])
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 }
             }
-            _ => Rc::new(vec![]),
+            _ => Arc::new(vec![]),
         };
         let child_edges = Arc::new({
             let mut __result = Vec::new();
@@ -6025,7 +6027,7 @@ pub fn collect_scc_child_edges(
 ) -> Arc<Vec<Arc<ParserProgressEdge>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
-            ExprData::ExprLambda => Rc::new(vec![]),
+            ExprData::ExprLambda => Arc::new(vec![]),
             ExprData::ExprCall { .. } => {
                 let callee = expr_call_func_at(body.clone(), si.clone());
                 let own_edges = if set_has(target_set.clone(), callee.clone()) {
@@ -6067,14 +6069,14 @@ pub fn collect_scc_child_edges(
                                 }
                             },
                         );
-                        Rc::new(vec![Arc::new(ParserProgressEdge {
+                        Arc::new(vec![Arc::new(ParserProgressEdge {
                             caller: caller.clone(),
                             callee: callee.clone(),
                             progress: progress.clone(),
                         })])
                     }
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 };
                 let child_edges = Arc::new({
                     let mut __result = Vec::new();
@@ -6154,7 +6156,7 @@ pub fn collect_scc_child_edges(
                                                         si.clone(),
                                                     )
                                                 }
-                                                None => Rc::new(vec![]),
+                                                None => Arc::new(vec![]),
                                             },
                                             _ => collect_scc_child_edges(
                                                 arg_val.clone(),
@@ -6401,7 +6403,7 @@ pub fn collect_scc_child_edges(
                         scc_measure_params.clone(),
                         si.clone(),
                     ),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 v1_rt::concat(val_edges.clone(), body_edges.clone())
             }
@@ -6444,7 +6446,7 @@ pub fn collect_scc_child_edges(
             ExprData::ExprBlock => {
                 let result = body.children.clone().iter().cloned().fold(
                     Arc::new(SccEdgeBlockAcc {
-                        edges: Rc::new(vec![]),
+                        edges: Arc::new(vec![]),
                         vars: descent_vars.clone(),
                     }),
                     |acc: Arc<SccEdgeBlockAcc>, stmt: Arc<Node>| {
@@ -6512,7 +6514,7 @@ pub fn collect_scc_child_edges(
                         scc_measure_params.clone(),
                         si.clone(),
                     ),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 v1_rt::concat(
                     cond_edges.clone(),
@@ -6560,7 +6562,7 @@ pub fn is_scc_container_child_descent(
                     (*match v1_rt::map_get(&func_index, name.clone()) {
                         Some(entry) => {
                             let best_edges = entry.params.clone().iter().cloned().fold(
-                                Rc::new(vec![]),
+                                Arc::new(vec![]),
                                 |best: _, p: Arc<Node>| {
                                     let pname = param_node_name_at(p.clone(), si.clone());
                                     let descent_vars = collect_descent_vars(
@@ -6596,7 +6598,7 @@ pub fn is_scc_container_child_descent(
                             );
                             best_edges.clone()
                         }
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -6614,7 +6616,7 @@ pub fn progress_edge_to_proof_edge(pe: Arc<ParserProgressEdge>) -> Arc<ProofEdge
     Arc::new(ProofEdge {
         caller: pe.caller.clone(),
         callee: pe.callee.clone(),
-        evidence: Rc::new(vec![pe.progress.clone()]),
+        evidence: Arc::new(vec![pe.progress.clone()]),
     })
 }
 
@@ -6678,11 +6680,11 @@ Arc::new({ let mut __result = Vec::new(); for callee in Arc::new(v1_rt::map_keys
 Arc::new(ProofEdge {
     caller: name.clone(),
     callee: callee.clone(),
-    evidence: Rc::new(vec![ev.clone()]),
+    evidence: Arc::new(vec![ev.clone()]),
 })
 }); } __result })
 },
-    None => Rc::new(vec![]),
+    None => Arc::new(vec![]),
 }).iter().cloned());
             }
             __result
@@ -6766,11 +6768,11 @@ let list_ev = match v1_rt::map_get(&list_edge_map, callee.clone()) {
 Arc::new(ProofEdge {
     caller: name.clone(),
     callee: callee.clone(),
-    evidence: Rc::new(vec![tree_ev.clone(), list_ev.clone()]),
+    evidence: Arc::new(vec![tree_ev.clone(), list_ev.clone()]),
 })
 }); } __result })
 },
-    None => Rc::new(vec![]),
+    None => Arc::new(vec![]),
 }).iter().cloned());
             }
             __result
@@ -6815,7 +6817,7 @@ pub fn collect_scc_tree_parser_dim_edges(
             si.clone(),
         );
         if ((all_parser_edges.clone().len() as i64) == 0) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
             {
                 let measure_params =
@@ -6848,11 +6850,11 @@ let parser_ev = match v1_rt::map_get(&parser_edge_map, callee.clone()) {
 Arc::new(ProofEdge {
     caller: name.clone(),
     callee: callee.clone(),
-    evidence: Rc::new(vec![tree_ev.clone(), parser_ev.clone()]),
+    evidence: Arc::new(vec![tree_ev.clone(), parser_ev.clone()]),
 })
 }); } __result })
 },
-    None => Rc::new(vec![]),
+    None => Arc::new(vec![]),
 }).iter().cloned());
                     }
                     __result
@@ -6913,21 +6915,21 @@ match ev.clone() {
 });
 descent_evidence_lattice_meet(worst, call_best.clone())
 });
-Rc::new(vec![Arc::new(ProofEdge {
+Arc::new(vec![Arc::new(ProofEdge {
     caller: name.clone(),
     callee: name.clone(),
-    evidence: Rc::new(vec![derived.clone()]),
+    evidence: Arc::new(vec![derived.clone()]),
 })])
 }
                 } else {
-                    Rc::new(vec![Arc::new(ProofEdge {
+                    Arc::new(vec![Arc::new(ProofEdge {
     caller: name.clone(),
     callee: name.clone(),
-    evidence: Rc::new(vec![DescentEvidence::DescentUnknown]),
+    evidence: Arc::new(vec![DescentEvidence::DescentUnknown]),
 })])
                 }
             } else {
-                Rc::new(vec![])
+                Arc::new(vec![])
             };
 let other_members = Arc::new({ let mut __result = Vec::new(); for m in Arc::new(v1_rt::map_keys(&scc_name_set)).iter().cloned() { if (m.clone() != name.clone()) { __result.push(m); } } __result });
 let cross_edges = Arc::new({ let mut __result = Vec::new(); for callee in other_members.clone().iter().cloned() { __result.extend((*{
@@ -6935,19 +6937,19 @@ let cross_edges = Arc::new({ let mut __result = Vec::new(); for callee in other_
 if ((callee_evidence.clone().len() as i64) > 0) {
                     {
                         let ev = derive_edge_evidence(callee_evidence.clone());
-Rc::new(vec![Arc::new(ProofEdge {
+Arc::new(vec![Arc::new(ProofEdge {
     caller: name.clone(),
     callee: callee.clone(),
-    evidence: Rc::new(vec![ev.clone()]),
+    evidence: Arc::new(vec![ev.clone()]),
 })])
 }
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 }
 }).iter().cloned()); } __result });
 v1_rt::concat(self_edge.clone(), cross_edges.clone())
 },
-    None => Rc::new(vec![]),
+    None => Arc::new(vec![]),
 }).iter().cloned());
             }
             __result
@@ -7035,7 +7037,7 @@ pub fn construct_scc_termination_proof(
         };
         let cx_l2_param = scc_descending_param(members.clone(), func_index.clone(), si.clone());
         let cx_l2_proof = Arc::new(TerminationProof {
-            dimensions: Rc::new(vec![Arc::new(RankingDimension::TreeSize {
+            dimensions: Arc::new(vec![Arc::new(RankingDimension::TreeSize {
                 param: if (cx_l2_param.clone() != "".to_string()) {
                     cx_l2_param.clone()
                 } else {
@@ -7075,7 +7077,7 @@ pub fn construct_scc_termination_proof(
                     __all
                 };
                 let tree_proof = Arc::new(TerminationProof {
-                    dimensions: Rc::new(vec![Arc::new(RankingDimension::TreeSize {
+                    dimensions: Arc::new(vec![Arc::new(RankingDimension::TreeSize {
                         param: "scc".to_string(),
                     })]),
                 });
@@ -7111,7 +7113,7 @@ pub fn construct_scc_termination_proof(
                             __all
                         };
                         let list_proof = Arc::new(TerminationProof {
-                            dimensions: Rc::new(vec![Arc::new(RankingDimension::ListLength {
+                            dimensions: Arc::new(vec![Arc::new(RankingDimension::ListLength {
                                 param: "scc".to_string(),
                             })]),
                         });
@@ -7145,7 +7147,7 @@ pub fn construct_scc_termination_proof(
                                     __all
                                 };
                                 let parser_proof = Arc::new(TerminationProof {
-                                    dimensions: Rc::new(vec![Arc::new(
+                                    dimensions: Arc::new(vec![Arc::new(
                                         RankingDimension::TokenPosition {
                                             param: "scc".to_string(),
                                         },
@@ -7185,7 +7187,7 @@ pub fn construct_scc_termination_proof(
                                             __all
                                         };
                                         let lex_proof = Arc::new(TerminationProof {
-                                            dimensions: Rc::new(vec![
+                                            dimensions: Arc::new(vec![
                                                 Arc::new(RankingDimension::TreeSize {
                                                     param: "scc".to_string(),
                                                 }),
@@ -7238,7 +7240,7 @@ pub fn construct_scc_termination_proof(
                                                     __all
                                                 };
                                                 let tp_proof = Arc::new(TerminationProof {
-                                                    dimensions: Rc::new(vec![
+                                                    dimensions: Arc::new(vec![
                                                         Arc::new(RankingDimension::TreeSize {
                                                             param: "scc".to_string(),
                                                         }),
@@ -7380,7 +7382,7 @@ pub fn build_scc_index(
         let finish = names.clone().iter().cloned().fold(
             Arc::new(DfsFinishAcc {
                 visited: v1_rt::rc_empty_set::<String>(),
-                order: Rc::new(vec![]),
+                order: Arc::new(vec![]),
             }),
             |acc: Arc<DfsFinishAcc>, name: String| {
                 dfs_finish_order(name.clone(), adjacency.clone(), acc)
@@ -7402,7 +7404,7 @@ pub fn build_scc_index(
                             reverse_graph.clone(),
                             Arc::new(SccComponentAcc {
                                 visited: acc.assigned.clone(),
-                                members: Rc::new(vec![]),
+                                members: Arc::new(vec![]),
                             }),
                         );
                         let member_set =
@@ -8129,8 +8131,8 @@ pub fn empty_complexity_report() -> Arc<ComplexityReport> {
         function_classes: v1_rt::rc_empty_map::<String, String>(),
         space_classes: v1_rt::rc_empty_map::<String, String>(),
         function_space_bytes: v1_rt::rc_empty_map::<String, i64>(),
-        violations: Rc::new(vec![]),
-        structural_bounds: Rc::new(vec![]),
+        violations: Arc::new(vec![]),
+        structural_bounds: Arc::new(vec![]),
     })
 }
 
@@ -8768,16 +8770,16 @@ pub fn collect_size_vars_from_size(size: Arc<SizeExpr>) -> Arc<Vec<String>> {
         match (*size.clone()).clone() {
             SizeExpr::SizeLen { collection: c, .. } => {
                 if (c.clone() == "__expr".to_string()) {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 } else {
-                    Rc::new(vec![c.clone()])
+                    Arc::new(vec![c.clone()])
                 }
             }
             SizeExpr::SizeVar { name: n, .. } => {
                 if (n.clone() == "__k".to_string()) {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 } else {
-                    Rc::new(vec![n.clone()])
+                    Arc::new(vec![n.clone()])
                 }
             }
             SizeExpr::SizeAdd {
@@ -8792,7 +8794,7 @@ pub fn collect_size_vars_from_size(size: Arc<SizeExpr>) -> Arc<Vec<String>> {
                 collect_size_vars_from_size(l.clone()),
                 collect_size_vars_from_size(r.clone()),
             ),
-            _ => Rc::new(vec![]),
+            _ => Arc::new(vec![]),
         }
     })
 }
@@ -8816,7 +8818,7 @@ pub fn collect_size_vars(expr: Arc<CostExpr>) -> Arc<Vec<String>> {
                 left: l, right: r, ..
             } => v1_rt::concat(collect_size_vars(l.clone()), collect_size_vars(r.clone())),
             CostExpr::CostLog { argument: a, .. } => collect_size_vars_from_size(a.clone()),
-            _ => Rc::new(vec![]),
+            _ => Arc::new(vec![]),
         }
     })
 }
@@ -8832,7 +8834,7 @@ pub fn deduplicate(items: Arc<Vec<String>>) -> Arc<Vec<String>> {
         let result = items.clone().iter().cloned().fold(
             Arc::new(DeduplicateAcc {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
-                out: Rc::new(vec![]),
+                out: Arc::new(vec![]),
             }),
             |acc: Arc<DeduplicateAcc>, item: String| match v1_rt::map_get(
                 &acc.seen.clone(),
@@ -9201,7 +9203,7 @@ pub fn cost_of_expr(
                             }),
                             table: s_r.table.clone(),
                         }),
-                        branch_costs: Rc::new(vec![]),
+                        branch_costs: Arc::new(vec![]),
                     }),
                     |acc: Arc<MatchCostAccum>, arm_node: Arc<Node>| {
                         let ar = cost_of_expr(
@@ -9232,7 +9234,7 @@ pub fn cost_of_expr(
                             }),
                             branch_costs: v1_rt::concat(
                                 acc.branch_costs.clone(),
-                                Rc::new(vec![ar.summary.clone().work.clone()]),
+                                Arc::new(vec![ar.summary.clone().work.clone()]),
                             ),
                         })
                     },
@@ -9245,7 +9247,7 @@ pub fn cost_of_expr(
                         ),
                         span: cost_conditional(
                             s_r.summary.clone().span.clone(),
-                            Rc::new(vec![arms_accum.result.clone().summary.clone().span.clone()]),
+                            Arc::new(vec![arms_accum.result.clone().summary.clone().span.clone()]),
                         ),
                         output_size: arms_accum
                             .result
@@ -9312,14 +9314,14 @@ pub fn cost_of_expr(
                     summary: Arc::new(ComplexitySummary {
                         work: cost_conditional(
                             c_r.summary.clone().work.clone(),
-                            Rc::new(vec![
+                            Arc::new(vec![
                                 t_r.summary.clone().work.clone(),
                                 e_result.summary.clone().work.clone(),
                             ]),
                         ),
                         span: cost_conditional(
                             c_r.summary.clone().span.clone(),
-                            Rc::new(vec![
+                            Arc::new(vec![
                                 t_r.summary.clone().span.clone(),
                                 e_result.summary.clone().span.clone(),
                             ]),
@@ -9594,7 +9596,7 @@ pub fn get_or_compute_summary(
                 );
                 let scc_members = match v1_rt::map_get(&scc_index, func_name.clone()) {
                     Some(info) => info.members.clone(),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 let is_scc = ((scc_members.clone().len() as i64) > 1);
                 let bounded = match target.clone() {
@@ -9717,14 +9719,14 @@ pub fn collect_call_evidence(
                 let callee = expr_call_func_at(body.clone(), si.clone());
                 let own = if (v1_rt::map_get(&target_set, callee.clone()) != None) {
                     match de.clone() {
-                        Some(evidence) => Rc::new(vec![evidence.clone()]),
-                        None => Rc::new(vec![]),
+                        Some(evidence) => Arc::new(vec![evidence.clone()]),
+                        None => Arc::new(vec![]),
                     }
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 };
                 let from_children = body.children.clone().iter().cloned().fold(
-                    Rc::new(vec![]),
+                    Arc::new(vec![]),
                     |acc: _, child: Arc<Node>| {
                         v1_rt::concat(
                             acc,
@@ -9735,7 +9737,7 @@ pub fn collect_call_evidence(
                 v1_rt::concat(own.clone(), from_children.clone())
             }
             _ => body.children.clone().iter().cloned().fold(
-                Rc::new(vec![]),
+                Arc::new(vec![]),
                 |acc: Arc<Vec<Arc<Vec<Arc<SubValueRelation>>>>>, child: Arc<Node>| {
                     v1_rt::concat(
                         acc,
@@ -10032,7 +10034,7 @@ pub fn analyze_structural_bounds(
     si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Arc<Vec<Arc<StructuralBoundResult>>> {
     func_entries.clone().iter().cloned().fold(
-        Rc::new(vec![]),
+        Arc::new(vec![]),
         |acc: Arc<Vec<Arc<StructuralBoundResult>>>, entry: Arc<FuncEntry>| {
             let all_calls =
                 collect_self_call_evidence(entry.body.clone(), entry.name.clone(), si.clone());
@@ -10053,7 +10055,7 @@ pub fn analyze_structural_bounds(
                     .iter()
                     .cloned()
                     .fold(
-                        Rc::new(vec![]),
+                        Arc::new(vec![]),
                         |pacc: _, pair: (i64, Arc<Node>)| {
                             let param_index = pair.0.clone();
                             let param_node = pair.1.clone();
@@ -10134,7 +10136,7 @@ pub fn analyze_structural_bounds(
                                             };
                                             v1_rt::concat(
                                                 pacc.clone(),
-                                                Rc::new(vec![Arc::new(StructuralBoundResult {
+                                                Arc::new(vec![Arc::new(StructuralBoundResult {
                                                     func_name: entry.name.clone(),
                                                     param: param_name.clone(),
                                                     recurrence_bound: recurrence.clone(),
@@ -10192,7 +10194,7 @@ pub fn build_complexity_report(
                                 si.clone(),
                             );
                             let info = Arc::new(SccInfo {
-                                members: Rc::new(vec![entry.name.clone()]),
+                                members: Arc::new(vec![entry.name.clone()]),
                                 member_set: v1_rt::rc_set_insert(
                                     v1_rt::rc_empty_set::<_>(),
                                     entry.name.clone(),
@@ -10222,7 +10224,7 @@ pub fn build_complexity_report(
             |acc: Arc<HashMap<String, i64>>, entry: Arc<FuncEntry>| {
                 let callees = match v1_rt::map_get(&call_forward, entry.name.clone()) {
                     Some(cs) => cs.clone(),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 let unique_set = callees.clone().iter().cloned().fold(
                     v1_rt::rc_empty_map::<String, bool>(),
@@ -10248,7 +10250,7 @@ pub fn build_complexity_report(
                 classes: v1_rt::rc_empty_map::<String, String>(),
                 space_classes: v1_rt::rc_empty_map::<String, String>(),
                 function_space_bytes: v1_rt::rc_empty_map::<String, i64>(),
-                violations: Rc::new(vec![]),
+                violations: Arc::new(vec![]),
                 fan_in: fan_in.clone(),
                 processed: v1_rt::rc_empty_map::<String, bool>(),
             }),
@@ -10296,7 +10298,7 @@ pub fn build_complexity_report(
                     let new_violations = if is_unknown_cost(sr.summary.clone().work.clone()) {
                         v1_rt::concat(
                             acc.violations.clone(),
-                            Rc::new(vec![Arc::new(ComplexityViolation {
+                            Arc::new(vec![Arc::new(ComplexityViolation {
                                 func_name: func_name.clone(),
                                 reason: extract_unknown_reason(sr.summary.clone().work.clone()),
                                 span: entry.span.clone(),
@@ -10307,7 +10309,7 @@ pub fn build_complexity_report(
                     };
                     let callees = match v1_rt::map_get(&call_forward, func_name.clone()) {
                         Some(cs) => cs.clone(),
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     };
                     let unique_set = callees.clone().iter().cloned().fold(
                         v1_rt::rc_empty_map::<String, bool>(),

@@ -4,12 +4,12 @@
 // is emitted-only and the behavioral harness is modeled (sn_scaffold_dissolution_trigger).
 
 use im::{vector as vec, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::usv_pilot_v2_std_algebra::list_snoc_item;
 use crate::usv_pilot_v2_std_node::{node_rebuild, Behavior, Connective, Node, NodeKind};
 
-fn well_formed(_n: Rc<Node>) -> bool {
+fn well_formed(_n: Arc<Node>) -> bool {
     true
 }
 
@@ -19,30 +19,30 @@ pub enum Outcome<T> {
     Rejected { diagnostics: () },
 }
 
-pub type NormalizedTree = Rc<Node>;
-pub type ParseTree = Rc<Node>;
+pub type NormalizedTree = Arc<Node>;
+pub type ParseTree = Arc<Node>;
 
-pub fn normalize_fold_init(n: Rc<Node>) -> Rc<Outcome<Rc<Node>>> {
-    Rc::new(Outcome::Accepted {
-        value: node_rebuild(n, Rc::new(vec![])),
+pub fn normalize_fold_init(n: Arc<Node>) -> Arc<Outcome<Arc<Node>>> {
+    Arc::new(Outcome::Accepted {
+        value: node_rebuild(n, Arc::new(vec![])),
         diagnostics: (),
     })
 }
 
-pub fn normalize(parse_tree: ParseTree) -> Rc<Outcome<NormalizedTree>> {
+pub fn normalize(parse_tree: ParseTree) -> Arc<Outcome<NormalizedTree>> {
     let init = normalize_fold_init(parse_tree);
     match init.as_ref() {
         Outcome::Accepted { value, .. } => {
             if well_formed(value.clone()) {
-                Rc::new(Outcome::Accepted {
+                Arc::new(Outcome::Accepted {
                     value: value.clone(),
                     diagnostics: (),
                 })
             } else {
-                Rc::new(Outcome::Rejected { diagnostics: () })
+                Arc::new(Outcome::Rejected { diagnostics: () })
             }
         }
-        Outcome::Rejected { diagnostics } => Rc::new(Outcome::Rejected {
+        Outcome::Rejected { diagnostics } => Arc::new(Outcome::Rejected {
             diagnostics: *diagnostics,
         }),
     }

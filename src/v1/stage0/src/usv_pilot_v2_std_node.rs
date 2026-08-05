@@ -1,7 +1,7 @@
 // Seed-retained dep surface for v2.compiler.use_site_verdict pilot (Wave 2 Band A).
 // Dissolve-on: v2.std.node self-emits; seed-linked extern imports replace this scaffold.
 use im::{vector as vec, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub type Symbol = String;
 
@@ -36,7 +36,7 @@ pub enum Behavior {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum NodeKind {
-    TypeNode { connective: Rc<Connective> },
+    TypeNode { connective: Arc<Connective> },
     ComputationNode { behavior: Behavior },
 }
 
@@ -49,35 +49,35 @@ pub enum EdgeLabel {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Edge {
-    pub label: Rc<EdgeLabel>,
-    pub target: Rc<Node>,
+    pub label: Arc<EdgeLabel>,
+    pub target: Arc<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Node {
-    pub kind: Rc<NodeKind>,
-    pub children: Rc<Vec<Rc<Edge>>>,
-    pub occurrence_id: Rc<NodeOccurrenceId>,
+    pub kind: Arc<NodeKind>,
+    pub children: Arc<Vec<Arc<Edge>>>,
+    pub occurrence_id: Arc<NodeOccurrenceId>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum NamedEdgeTargetLookup {
-    Found { target: Rc<Node> },
+    Found { target: Arc<Node> },
     Ambiguous,
     Absent,
 }
 
-pub fn node_synthetic(kind: Rc<NodeKind>, children: Rc<Vec<Rc<Edge>>>) -> Rc<Node> {
-    Rc::new(Node {
+pub fn node_synthetic(kind: Arc<NodeKind>, children: Arc<Vec<Arc<Edge>>>) -> Arc<Node> {
+    Arc::new(Node {
         kind,
         children,
-        occurrence_id: Rc::new(NodeOccurrenceId::SyntheticOccurrence),
+        occurrence_id: Arc::new(NodeOccurrenceId::SyntheticOccurrence),
     })
 }
 
-pub fn node_rebuild(n: Rc<Node>, children: Rc<Vec<Rc<Edge>>>) -> Rc<Node> {
-    Rc::new(Node {
+pub fn node_rebuild(n: Arc<Node>, children: Arc<Vec<Arc<Edge>>>) -> Arc<Node> {
+    Arc::new(Node {
         kind: n.kind.clone(),
         children,
         occurrence_id: n.occurrence_id.clone(),
@@ -85,21 +85,21 @@ pub fn node_rebuild(n: Rc<Node>, children: Rc<Vec<Rc<Edge>>>) -> Rc<Node> {
 }
 
 pub fn named_edge_target_lookup(
-    children: Rc<Vec<Rc<Edge>>>,
+    children: Arc<Vec<Arc<Edge>>>,
     name: Symbol,
-) -> Rc<NamedEdgeTargetLookup> {
+) -> Arc<NamedEdgeTargetLookup> {
     children
         .iter()
         .cloned()
-        .fold(Rc::new(NamedEdgeTargetLookup::Absent), |acc, e| {
+        .fold(Arc::new(NamedEdgeTargetLookup::Absent), |acc, e| {
             match (&*e.label, &*acc) {
                 (EdgeLabel::Named { name: sym }, NamedEdgeTargetLookup::Absent) if sym == &name => {
-                    Rc::new(NamedEdgeTargetLookup::Found {
+                    Arc::new(NamedEdgeTargetLookup::Found {
                         target: e.target.clone(),
                     })
                 }
                 (EdgeLabel::Named { name: sym }, _) if sym == &name => {
-                    Rc::new(NamedEdgeTargetLookup::Ambiguous)
+                    Arc::new(NamedEdgeTargetLookup::Ambiguous)
                 }
                 _ => acc,
             }

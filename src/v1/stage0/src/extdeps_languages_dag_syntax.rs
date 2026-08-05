@@ -41,7 +41,7 @@ pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
 pub fn dag_item_forms() -> Arc<Vec<Arc<ItemForm>>> {
     thread_local! {
             static CACHED: Arc<Vec<Arc<ItemForm>>> = {
-                Rc::new(vec![Arc::new(ItemForm {
+                Arc::new(vec![Arc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
         keyword: "alias".to_string(),
         has_type_params: false,
@@ -211,7 +211,7 @@ pub fn dag_non_name_keywords() -> Arc<HashMap<String, bool>> {
 pub fn dag_operators() -> Arc<Vec<Arc<OperatorSpec>>> {
     thread_local! {
             static CACHED: Arc<Vec<Arc<OperatorSpec>>> = {
-                Rc::new(vec![Arc::new(OperatorSpec {
+                Arc::new(vec![Arc::new(OperatorSpec {
         symbol: "||".to_string(),
         left_bp: 5,
         right_bp: 6,

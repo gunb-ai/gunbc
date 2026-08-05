@@ -732,8 +732,8 @@ fn main() -> ExitCode {
     }
 
     // Exit WITHOUT running thread-local destructors. `cli_run`'s PROCESS_RESOLVE_INDEX
-    // (`Rc<MultiEntryIndex>`, the whole-pool index) and PROCESS_RESOLVE_STORE (one
-    // `Rc<ResolvedGraph>` per scenario resolved above) are thread-locals, and thread-locals
+    // (`Arc<MultiEntryIndex>`, the whole-pool index) and PROCESS_RESOLVE_STORE (one
+    // `Arc<ResolvedGraph>` per scenario resolved above) are thread-locals, and thread-locals
     // ARE dropped when the main thread ends — so returning normally spent 11.2s walking
     // Rc/HashMap destructors for a whole-corpus graph the process is about to abandon
     // (measured: run 30482171871 job 90679506428, last receipt line 19:30:55.34, step

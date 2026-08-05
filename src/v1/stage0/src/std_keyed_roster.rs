@@ -217,7 +217,7 @@ pub fn keyed_roster_insert<K: Clone, V: Clone>(
                 incoming: incoming.clone(),
             }),
             None => Arc::new(KeyedRosterInsert::KeyedRosterInserted {
-                rows: v1_rt::concat(rows.clone(), Rc::new(vec![incoming.clone()])),
+                rows: v1_rt::concat(rows.clone(), Arc::new(vec![incoming.clone()])),
             }),
         },
     }
@@ -235,7 +235,7 @@ pub fn keyed_roster_insert_into_unique<K: Clone, V: Clone>(
             incoming: incoming.clone(),
         }),
         None => Arc::new(KeyedRosterInsert::KeyedRosterInserted {
-            rows: v1_rt::concat(rows.clone(), Rc::new(vec![incoming.clone()])),
+            rows: v1_rt::concat(rows.clone(), Arc::new(vec![incoming.clone()])),
         }),
     }
 }
@@ -259,7 +259,7 @@ pub fn keyed_roster_build<K: Clone, V: Clone>(
 ) -> Arc<KeyedRosterBuild<K, V>> {
     incomings.clone().iter().cloned().fold(
         Arc::new(KeyedRosterBuild::KeyedRosterBuilt {
-            rows: Rc::new(vec![]),
+            rows: Arc::new(vec![]),
         }),
         |acc: Arc<KeyedRosterBuild<K, V>>, row: Arc<KeyedRow<K, V>>| match (*acc).clone() {
             KeyedRosterBuild::KeyedRosterBuilt { rows: rows, .. } => {

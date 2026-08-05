@@ -136,14 +136,16 @@ pub fn collect_unit_variant_phantom_matches(
             .iter()
             .cloned()
             .fold(
-                Rc::new(vec![]),
+                Arc::new(vec![]),
                 |acc: Arc<Vec<Arc<Node>>>, binding: Arc<TypeBinding>| {
                     match unit_variant_in_coproduct(
                         env.clone(),
                         structural_type_for_variant_lookup(env.clone(), binding.resolved.clone()),
                         variant_name.clone(),
                     ) {
-                        Some(variant) => v1_rt::concat(acc.clone(), Rc::new(vec![variant.clone()])),
+                        Some(variant) => {
+                            v1_rt::concat(acc.clone(), Arc::new(vec![variant.clone()]))
+                        }
                         None => acc.clone(),
                     }
                 },
@@ -800,7 +802,7 @@ pub fn resolve_node_bounded(
         if (depth.clone() > 100) {
             return Arc::new(NodeResolveResult {
                 resolved: n.clone(),
-                diagnostics: Rc::new(vec![make_error_node(
+                diagnostics: Arc::new(vec![make_error_node(
                     Arc::new(CompilerDiagnostic::InternalError {
                         message: v1_rt::concat(
                             v1_rt::concat(
@@ -837,7 +839,7 @@ pub fn resolve_node_bounded(
                                         name: n.name.clone(),
                                         span: n.span.clone(),
                                         ident_span: n.ident_span.clone(),
-                                        children: Rc::new(vec![base_resolved.clone()]),
+                                        children: Arc::new(vec![base_resolved.clone()]),
                                         connective: n.connective.clone(),
                                         params: n.params.clone(),
                                         inferred: n.inferred.clone(),
@@ -858,7 +860,7 @@ pub fn resolve_node_bounded(
                             }
                             None => Arc::new(NodeResolveResult {
                                 resolved: n.clone(),
-                                diagnostics: Rc::new(vec![]),
+                                diagnostics: Arc::new(vec![]),
                             }),
                         }
                     } else {
@@ -869,7 +871,7 @@ pub fn resolve_node_bounded(
                                     __result.push(if (child.inferred.clone() == None) {
                                         Arc::new(NodeResolveResult {
                                             resolved: child.clone(),
-                                            diagnostics: Rc::new(vec![]),
+                                            diagnostics: Arc::new(vec![]),
                                         })
                                     } else {
                                         {
@@ -995,7 +997,7 @@ pub fn resolve_node_bounded(
                                                         if (field_child.inferred.clone() == None) {
                                                             Arc::new(NodeResolveResult {
                                                                 resolved: field_child.clone(),
-                                                                diagnostics: Rc::new(vec![]),
+                                                                diagnostics: Arc::new(vec![]),
                                                             })
                                                         } else {
                                                             {
@@ -1020,7 +1022,7 @@ pub fn resolve_node_bounded(
                                                                 {
                                                                     Arc::new(NodeResolveResult {
                                                                         resolved: field_rt.clone(),
-                                                                        diagnostics: Rc::new(
+                                                                        diagnostics: Arc::new(
                                                                             vec![],
                                                                         ),
                                                                     })
@@ -1167,7 +1169,7 @@ pub fn resolve_node_bounded(
                     let expected_arity = (decl.params.clone().len() as i64);
                     let actual_arity = (n.children.clone().len() as i64);
                     let arity_diags = if (expected_arity.clone() != actual_arity.clone()) {
-                        Rc::new(vec![make_error_node(
+                        Arc::new(vec![make_error_node(
                             Arc::new(CompilerDiagnostic::ArityMismatch {
                                 name: type_name.clone(),
                                 expected: expected_arity.clone(),
@@ -1177,7 +1179,7 @@ pub fn resolve_node_bounded(
                             module_name.clone(),
                         )])
                     } else {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     };
                     let arg_results = Arc::new({
                         let mut __result = Vec::new();
@@ -1295,7 +1297,7 @@ pub fn resolve_node_bounded(
                                 ident_span: n.ident_span.clone(),
                                 children: target_result.resolved.clone().children.clone(),
                                 connective: target_result.resolved.clone().connective.clone(),
-                                params: Rc::new(vec![]),
+                                params: Arc::new(vec![]),
                                 inferred: target_result.resolved.clone().inferred.clone(),
                                 return_cardinality: n.return_cardinality.clone(),
                                 uses: n.uses.clone(),
@@ -1315,7 +1317,7 @@ pub fn resolve_node_bounded(
                                 ident_span: n.ident_span.clone(),
                                 children: resolved_args.clone(),
                                 connective: Connective::NoConnective,
-                                params: Rc::new(vec![]),
+                                params: Arc::new(vec![]),
                                 inferred: Some(Arc::new(InferredNode::Resolved {
                                     node: expanded_node.clone(),
                                 })),
@@ -1361,7 +1363,7 @@ pub fn resolve_node_bounded(
                                 ident_span: n.ident_span.clone(),
                                 children: substituted_children.clone(),
                                 connective: decl.connective.clone(),
-                                params: Rc::new(vec![]),
+                                params: Arc::new(vec![]),
                                 inferred: n.inferred.clone(),
                                 return_cardinality: n.return_cardinality.clone(),
                                 uses: n.uses.clone(),
@@ -1382,7 +1384,7 @@ pub fn resolve_node_bounded(
                                     ident_span: n.ident_span.clone(),
                                     children: resolved_args.clone(),
                                     connective: Connective::NoConnective,
-                                    params: Rc::new(vec![]),
+                                    params: Arc::new(vec![]),
                                     inferred: Some(Arc::new(InferredNode::Resolved {
                                         node: expanded_node.clone(),
                                     })),
@@ -1459,17 +1461,17 @@ pub fn resolve_node_bounded(
                                 name: key_param_name.clone(),
                                 span: key_child_node.span.clone(),
                                 ident_span: key_child_node.ident_span.clone(),
-                                children: Rc::new(vec![]),
+                                children: Arc::new(vec![]),
                                 connective: Connective::NoConnective,
-                                params: Rc::new(vec![]),
+                                params: Arc::new(vec![]),
                                 inferred: Some(Arc::new(InferredNode::Resolved {
                                     node: key_resolved.clone(),
                                 })),
                                 return_cardinality: Cardinality::Required,
-                                uses: Rc::new(vec![]),
+                                uses: Arc::new(vec![]),
                                 body: None,
                                 transport: None,
-                                properties: Rc::new(vec![]),
+                                properties: Arc::new(vec![]),
                                 type_annotation: None,
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
@@ -1481,17 +1483,17 @@ pub fn resolve_node_bounded(
                                 name: val_param_name.clone(),
                                 span: val_child_node.span.clone(),
                                 ident_span: val_child_node.ident_span.clone(),
-                                children: Rc::new(vec![]),
+                                children: Arc::new(vec![]),
                                 connective: Connective::NoConnective,
-                                params: Rc::new(vec![]),
+                                params: Arc::new(vec![]),
                                 inferred: Some(Arc::new(InferredNode::Resolved {
                                     node: val_resolved.clone(),
                                 })),
                                 return_cardinality: Cardinality::Required,
-                                uses: Rc::new(vec![]),
+                                uses: Arc::new(vec![]),
                                 body: None,
                                 transport: None,
-                                properties: Rc::new(vec![]),
+                                properties: Arc::new(vec![]),
                                 type_annotation: None,
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
@@ -1504,7 +1506,7 @@ pub fn resolve_node_bounded(
                                     name: type_name.clone(),
                                     span: n.span.clone(),
                                     ident_span: n.ident_span.clone(),
-                                    children: Rc::new(vec![
+                                    children: Arc::new(vec![
                                         resolved_key_child.clone(),
                                         resolved_val_child.clone(),
                                     ]),
@@ -1557,17 +1559,17 @@ pub fn resolve_node_bounded(
                                             name: el_param_name.clone(),
                                             span: child_node.span.clone(),
                                             ident_span: child_node.ident_span.clone(),
-                                            children: Rc::new(vec![]),
+                                            children: Arc::new(vec![]),
                                             connective: Connective::NoConnective,
-                                            params: Rc::new(vec![]),
+                                            params: Arc::new(vec![]),
                                             inferred: Some(Arc::new(InferredNode::Resolved {
                                                 node: el_resolved.clone(),
                                             })),
                                             return_cardinality: Cardinality::Required,
-                                            uses: Rc::new(vec![]),
+                                            uses: Arc::new(vec![]),
                                             body: None,
                                             transport: None,
-                                            properties: Rc::new(vec![]),
+                                            properties: Arc::new(vec![]),
                                             type_annotation: None,
                                             is_self_recursive: false,
                                             has_non_tail_self_call: false,
@@ -1580,7 +1582,7 @@ pub fn resolve_node_bounded(
                                                 name: type_name.clone(),
                                                 span: n.span.clone(),
                                                 ident_span: n.ident_span.clone(),
-                                                children: Rc::new(vec![resolved_child.clone()]),
+                                                children: Arc::new(vec![resolved_child.clone()]),
                                                 connective: n.connective.clone(),
                                                 params: n.params.clone(),
                                                 inferred: n.inferred.clone(),
@@ -1601,7 +1603,7 @@ pub fn resolve_node_bounded(
                                     }
                                     None => Arc::new(NodeResolveResult {
                                         resolved: n.clone(),
-                                        diagnostics: Rc::new(vec![]),
+                                        diagnostics: Arc::new(vec![]),
                                     }),
                                 }
                             }
@@ -1633,7 +1635,7 @@ pub fn resolve_node_bounded(
                                     {
                                         Arc::new(NodeResolveResult {
                                             resolved: n.clone(),
-                                            diagnostics: Rc::new(vec![]),
+                                            diagnostics: Arc::new(vec![]),
                                         })
                                     } else {
                                         match lookup_type_for(env.clone(), n.clone()) {
@@ -1718,7 +1720,7 @@ pub fn resolve_node_bounded(
                                                 {
                                                     Arc::new(NodeResolveResult {
                                                         resolved: final_resolved.clone(),
-                                                        diagnostics: Rc::new(vec![
+                                                        diagnostics: Arc::new(vec![
                                                             make_error_node(
                                                                 bare_name_miss_diagnostic(
                                                                     env.clone(),
@@ -1740,12 +1742,12 @@ pub fn resolve_node_bounded(
                                                                 type_name.clone(),
                                                             ) == false))
                                                         {
-                                                            Rc::new(vec![make_error_node(Arc::new(CompilerDiagnostic::UnlistedImportUse {
+                                                            Arc::new(vec![make_error_node(Arc::new(CompilerDiagnostic::UnlistedImportUse {
     name: type_name.clone(),
     span: n.span.clone(),
 }), module_name.clone())])
                                                         } else {
-                                                            Rc::new(vec![])
+                                                            Arc::new(vec![])
                                                         };
                                                         Arc::new(NodeResolveResult {
                                                             resolved: final_resolved.clone(),
@@ -1783,7 +1785,7 @@ pub fn resolve_node_bounded(
                                                 {
                                                     Arc::new(NodeResolveResult {
                                                         resolved: n.clone(),
-                                                        diagnostics: Rc::new(vec![]),
+                                                        diagnostics: Arc::new(vec![]),
                                                     })
                                                 } else {
                                                     match lookup_unit_variant_phantom_type(
@@ -1793,12 +1795,12 @@ pub fn resolve_node_bounded(
                                                         Some(phantom) => {
                                                             Arc::new(NodeResolveResult {
                                                                 resolved: phantom.clone(),
-                                                                diagnostics: Rc::new(vec![]),
+                                                                diagnostics: Arc::new(vec![]),
                                                             })
                                                         }
                                                         None => Arc::new(NodeResolveResult {
                                                             resolved: n.clone(),
-                                                            diagnostics: Rc::new(vec![
+                                                            diagnostics: Arc::new(vec![
                                                                 make_error_node(
                                                                     bare_name_miss_diagnostic(
                                                                         env.clone(),
@@ -1821,7 +1823,7 @@ pub fn resolve_node_bounded(
                             } else {
                                 Arc::new(NodeResolveResult {
                                     resolved: n.clone(),
-                                    diagnostics: Rc::new(vec![]),
+                                    diagnostics: Arc::new(vec![]),
                                 })
                             }
                         }
@@ -1846,7 +1848,7 @@ pub fn missing_generic_args_diagnostics(
                 Some(d) => d.clone(),
                 None => n.clone(),
             };
-            Rc::new(vec![make_error_node(
+            Arc::new(vec![make_error_node(
                 Arc::new(CompilerDiagnostic::ArityMismatch {
                     name: type_name.clone(),
                     expected: (decl.params.clone().len() as i64),
@@ -1857,7 +1859,7 @@ pub fn missing_generic_args_diagnostics(
             )])
         }
     } else {
-        Rc::new(vec![])
+        Arc::new(vec![])
     }
 }
 
@@ -1869,7 +1871,7 @@ pub fn resolve_optional_node(
     if (n.clone() == None) {
         Arc::new(NodeResolveResult {
             resolved: unit_type(),
-            diagnostics: Rc::new(vec![]),
+            diagnostics: Arc::new(vec![]),
         })
     } else {
         match (*n.clone().unwrap()).clone() {
@@ -1886,7 +1888,7 @@ pub fn resolve_optional_node(
                     msg.clone(),
                     sp.clone(),
                 ),
-                diagnostics: Rc::new(vec![make_error_node(
+                diagnostics: Arc::new(vec![make_error_node(
                     Arc::new(CompilerDiagnostic::InternalError {
                         message: msg.clone(),
                         span: sp.clone(),
@@ -1899,15 +1901,15 @@ pub fn resolve_optional_node(
                     name: tv.clone(),
                     span: kernel_span(tv.clone()),
                     ident_span: Some(kernel_span(tv.clone())),
-                    children: Rc::new(vec![]),
+                    children: Arc::new(vec![]),
                     connective: Connective::NoConnective,
-                    params: Rc::new(vec![]),
+                    params: Arc::new(vec![]),
                     inferred: Some(Arc::new(InferredNode::TypeVariable { id: tv.clone() })),
                     return_cardinality: Cardinality::Required,
-                    uses: Rc::new(vec![]),
+                    uses: Arc::new(vec![]),
                     body: None,
                     transport: None,
-                    properties: Rc::new(vec![]),
+                    properties: Arc::new(vec![]),
                     type_annotation: None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
@@ -1915,7 +1917,7 @@ pub fn resolve_optional_node(
                     expr_data: Arc::new(ExprData::NoExprData),
                     ident: None,
                 }),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             }),
         }
     }
@@ -1948,7 +1950,7 @@ pub fn resolve_field(
         };
         let default_diags = match default_resolved.clone() {
             Some(result) => result.diagnostics.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         Arc::new(FieldResolveResult {
             field: make_field_node(
@@ -2021,7 +2023,7 @@ pub fn resolve_param(
         };
         let default_diags = match default_resolved.clone() {
             Some(result) => result.diagnostics.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let default_expr = match default_resolved.clone() {
             Some(result) => Some(result.expr.clone()),
@@ -2130,7 +2132,7 @@ pub fn resolve_match_arm(
         };
         let guard_diags = match guard_result.clone() {
             Some(result) => result.diagnostics.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let body_result =
             resolve_expr_types(arm_body(arm.clone()), env.clone(), module_name.clone());
@@ -2161,7 +2163,7 @@ pub fn resolve_string_part(
             part: Arc::new(StringPart::Text {
                 value: value.clone(),
             }),
-            diagnostics: Rc::new(vec![]),
+            diagnostics: Arc::new(vec![]),
         }),
         StringPart::Interpolation { expr: expr, .. } => {
             let expr_result = resolve_expr_types(expr.clone(), env.clone(), module_name.clone());
@@ -2185,7 +2187,7 @@ pub fn resolve_transport_binding(
     if is_local_transport(transport.clone(), env.source_indices.clone()) {
         Arc::new(TransportResolveResult {
             transport: transport.clone(),
-            diagnostics: Rc::new(vec![]),
+            diagnostics: Arc::new(vec![]),
         })
     } else {
         {
@@ -2253,15 +2255,15 @@ pub fn resolve_transport_binding(
             let body_diags =
                 match transport_request_body(transport.clone(), env.source_indices.clone()) {
                     Some(b) => match (*b.expr_data.clone()).clone() {
-                        ExprData::ExprRecordLit { .. } => Rc::new(vec![]),
-                        _ => Rc::new(
+                        ExprData::ExprRecordLit { .. } => Arc::new(vec![]),
+                        _ => Arc::new(
                             vec![make_error_node(Arc::new(CompilerDiagnostic::InternalError {
     message: "transport body must be a record expression { field: value, ... }".to_string(),
     span: b.span.clone(),
 }), module_name.clone())],
                         ),
                     },
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
             Arc::new(TransportResolveResult {
                 transport: make_transport_node(
@@ -2288,11 +2290,11 @@ pub fn resolve_expr_types(
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: _, .. } => Arc::new(ExprResolveResult {
                 expr: texpr.clone(),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             }),
             ExprData::ExprError { kind, message, .. } => Arc::new(ExprResolveResult {
                 expr: make_expr_error_node(kind.clone(), message.clone(), texpr.span.clone()),
-                diagnostics: Rc::new(vec![make_error_node(
+                diagnostics: Arc::new(vec![make_error_node(
                     Arc::new(CompilerDiagnostic::InternalError {
                         message: message.clone(),
                         span: texpr.span.clone(),
@@ -2304,7 +2306,7 @@ pub fn resolve_expr_types(
                 binding_kind: _, ..
             } => Arc::new(ExprResolveResult {
                 expr: texpr.clone(),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             }),
             ExprData::ExprFieldAccess { summary: _, .. } => {
                 let r = match texpr.children.clone().first().cloned() {
@@ -2313,7 +2315,7 @@ pub fn resolve_expr_types(
                     }
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 Arc::new(ExprResolveResult {
@@ -2522,7 +2524,7 @@ pub fn resolve_expr_types(
                                                 ),
                                                 None => Arc::new(ExprResolveResult {
                                                     expr: child.clone(),
-                                                    diagnostics: Rc::new(vec![]),
+                                                    diagnostics: Arc::new(vec![]),
                                                 }),
                                             };
                                             let body_r = match arm_ch
@@ -2539,7 +2541,7 @@ pub fn resolve_expr_types(
                                                 ),
                                                 None => Arc::new(ExprResolveResult {
                                                     expr: child.clone(),
-                                                    diagnostics: Rc::new(vec![]),
+                                                    diagnostics: Arc::new(vec![]),
                                                 }),
                                             };
                                             Arc::new(ExprResolveResult {
@@ -2568,7 +2570,7 @@ pub fn resolve_expr_types(
                                                 ),
                                                 None => Arc::new(ExprResolveResult {
                                                     expr: child.clone(),
-                                                    diagnostics: Rc::new(vec![]),
+                                                    diagnostics: Arc::new(vec![]),
                                                 }),
                                             };
                                             Arc::new(ExprResolveResult {
@@ -2621,14 +2623,14 @@ pub fn resolve_expr_types(
                     Some(c) => resolve_expr_types(c.clone(), env.clone(), module_name.clone()),
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 let tr = match ch.clone().iter().cloned().skip(1 as usize).next() {
                     Some(t) => resolve_expr_types(t.clone(), env.clone(), module_name.clone()),
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 let er = match ch.clone().iter().cloned().skip(2 as usize).next() {
@@ -2640,8 +2642,8 @@ pub fn resolve_expr_types(
                     None => None,
                 };
                 let resolved_children = match er.clone() {
-                    Some(r) => Rc::new(vec![cr.expr.clone(), tr.expr.clone(), r.expr.clone()]),
-                    None => Rc::new(vec![cr.expr.clone(), tr.expr.clone()]),
+                    Some(r) => Arc::new(vec![cr.expr.clone(), tr.expr.clone(), r.expr.clone()]),
+                    None => Arc::new(vec![cr.expr.clone(), tr.expr.clone()]),
                 };
                 Arc::new(ExprResolveResult {
                     expr: make_expr_node(
@@ -2654,7 +2656,7 @@ pub fn resolve_expr_types(
                         v1_rt::concat(cr.diagnostics.clone(), tr.diagnostics.clone()),
                         match er.clone() {
                             Some(r) => r.diagnostics.clone(),
-                            None => Rc::new(vec![]),
+                            None => Arc::new(vec![]),
                         },
                     ),
                 })
@@ -2665,7 +2667,7 @@ pub fn resolve_expr_types(
                     Some(v) => resolve_expr_types(v.clone(), env.clone(), module_name.clone()),
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 let br = match ch.clone().iter().cloned().skip(1 as usize).next() {
@@ -2677,13 +2679,13 @@ pub fn resolve_expr_types(
                     None => None,
                 };
                 let resolved_children = match br.clone() {
-                    Some(r) => Rc::new(vec![vr.expr.clone(), r.expr.clone()]),
-                    None => Rc::new(vec![vr.expr.clone()]),
+                    Some(r) => Arc::new(vec![vr.expr.clone(), r.expr.clone()]),
+                    None => Arc::new(vec![vr.expr.clone()]),
                 };
                 let anno_resolved = if (texpr.type_annotation.clone() == None) {
                     Arc::new(NodeResolveResult {
                         resolved: unit_type(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     })
                 } else {
                     if is_type_expr_annotation(texpr.type_annotation.clone().clone().unwrap()) {
@@ -2695,7 +2697,7 @@ pub fn resolve_expr_types(
                     } else {
                         Arc::new(NodeResolveResult {
                             resolved: texpr.type_annotation.clone().clone().unwrap(),
-                            diagnostics: Rc::new(vec![]),
+                            diagnostics: Arc::new(vec![]),
                         })
                     }
                 };
@@ -2717,13 +2719,13 @@ pub fn resolve_expr_types(
                     ),
                     children: resolved_children.clone(),
                     connective: Connective::NoConnective,
-                    params: Rc::new(vec![]),
+                    params: Arc::new(vec![]),
                     inferred: texpr.inferred.clone(),
                     return_cardinality: Cardinality::Required,
-                    uses: Rc::new(vec![]),
+                    uses: Arc::new(vec![]),
                     body: None,
                     transport: None,
-                    properties: Rc::new(vec![]),
+                    properties: Arc::new(vec![]),
                     type_annotation: resolved_anno.clone(),
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
@@ -2738,7 +2740,7 @@ pub fn resolve_expr_types(
                             vr.diagnostics.clone(),
                             match br.clone() {
                                 Some(r) => r.diagnostics.clone(),
-                                None => Rc::new(vec![]),
+                                None => Arc::new(vec![]),
                             },
                         ),
                         anno_resolved.diagnostics.clone(),
@@ -2845,14 +2847,14 @@ pub fn resolve_expr_types(
                     Some(l) => resolve_expr_types(l.clone(), env.clone(), module_name.clone()),
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 let rr = match ch.clone().iter().cloned().skip(1 as usize).next() {
                     Some(r) => resolve_expr_types(r.clone(), env.clone(), module_name.clone()),
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 Arc::new(ExprResolveResult {
@@ -2861,7 +2863,7 @@ pub fn resolve_expr_types(
                             op: op.clone(),
                             algebra_field: af.clone(),
                         }),
-                        Rc::new(vec![lr.expr.clone(), rr.expr.clone()]),
+                        Arc::new(vec![lr.expr.clone(), rr.expr.clone()]),
                         texpr.inferred.clone(),
                         texpr.span.clone(),
                     ),
@@ -2873,13 +2875,13 @@ pub fn resolve_expr_types(
                     Some(o) => resolve_expr_types(o.clone(), env.clone(), module_name.clone()),
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 Arc::new(ExprResolveResult {
                     expr: make_expr_node(
                         Arc::new(ExprData::ExprUnaryOp { op: op.clone() }),
-                        Rc::new(vec![r.expr.clone()]),
+                        Arc::new(vec![r.expr.clone()]),
                         texpr.inferred.clone(),
                         texpr.span.clone(),
                     ),
@@ -2900,13 +2902,13 @@ pub fn resolve_expr_types(
                     Some(b) => resolve_expr_types(b.clone(), env.clone(), module_name.clone()),
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 Arc::new(ExprResolveResult {
                     expr: make_expr_node(
                         Arc::new(ExprData::ExprLambda),
-                        v1_rt::concat(Rc::new(vec![r.expr.clone()]), lam_param_nodes.clone()),
+                        v1_rt::concat(Arc::new(vec![r.expr.clone()]), lam_param_nodes.clone()),
                         texpr.inferred.clone(),
                         texpr.span.clone(),
                     ),
@@ -2920,7 +2922,7 @@ pub fn resolve_expr_types(
                         __result.push(match (*part_node.expr_data.clone()).clone() {
                             ExprData::ExprLiteral { value: _, .. } => Arc::new(ExprResolveResult {
                                 expr: part_node.clone(),
-                                diagnostics: Rc::new(vec![]),
+                                diagnostics: Arc::new(vec![]),
                             }),
                             _ => match part_node.children.clone().first().cloned() {
                                 Some(inner) => {
@@ -2939,7 +2941,7 @@ pub fn resolve_expr_types(
                                 }
                                 None => Arc::new(ExprResolveResult {
                                     expr: part_node.clone(),
-                                    diagnostics: Rc::new(vec![]),
+                                    diagnostics: Arc::new(vec![]),
                                 }),
                             },
                         });
@@ -3014,20 +3016,20 @@ pub fn resolve_expr_types(
                     }
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 let tr = match ch.clone().iter().cloned().skip(1 as usize).next() {
                     Some(target) => resolve_node(target.clone(), env.clone(), module_name.clone()),
                     None => Arc::new(NodeResolveResult {
                         resolved: unit_type(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 Arc::new(ExprResolveResult {
                     expr: make_expr_node(
                         Arc::new(ExprData::ExprCast),
-                        Rc::new(vec![r.expr.clone(), tr.resolved.clone()]),
+                        Arc::new(vec![r.expr.clone(), tr.resolved.clone()]),
                         texpr.inferred.clone(),
                         texpr.span.clone(),
                     ),
@@ -3040,21 +3042,21 @@ pub fn resolve_expr_types(
                     Some(c) => resolve_expr_types(c.clone(), env.clone(), module_name.clone()),
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 let br = match ch.clone().iter().cloned().skip(1 as usize).next() {
                     Some(b) => resolve_expr_types(b.clone(), env.clone(), module_name.clone()),
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 Arc::new(ExprResolveResult {
                     expr: make_named_expr_node(
                         foreach_variable_at(texpr.clone(), env.source_indices.clone()),
                         Arc::new(ExprData::ExprForEach),
-                        Rc::new(vec![cr.expr.clone(), br.expr.clone()]),
+                        Arc::new(vec![cr.expr.clone(), br.expr.clone()]),
                         texpr.inferred.clone(),
                         texpr.span.clone(),
                         node_name_span(texpr.clone()),
@@ -3070,7 +3072,7 @@ pub fn resolve_expr_types(
                     }
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 let ir = match ch.clone().iter().cloned().skip(1 as usize).next() {
@@ -3079,13 +3081,13 @@ pub fn resolve_expr_types(
                     }
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 Arc::new(ExprResolveResult {
                     expr: make_expr_node(
                         Arc::new(ExprData::ExprIndex),
-                        Rc::new(vec![br.expr.clone(), ir.expr.clone()]),
+                        Arc::new(vec![br.expr.clone(), ir.expr.clone()]),
                         texpr.inferred.clone(),
                         texpr.span.clone(),
                     ),
@@ -3100,7 +3102,7 @@ pub fn resolve_expr_types(
                     }
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 let sr = match ch.clone().iter().cloned().skip(1 as usize).next() {
@@ -3109,7 +3111,7 @@ pub fn resolve_expr_types(
                     }
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 let er = match ch.clone().iter().cloned().skip(2 as usize).next() {
@@ -3118,13 +3120,13 @@ pub fn resolve_expr_types(
                     }
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 Arc::new(ExprResolveResult {
                     expr: make_expr_node(
                         Arc::new(ExprData::ExprSlice),
-                        Rc::new(vec![br.expr.clone(), sr.expr.clone(), er.expr.clone()]),
+                        Arc::new(vec![br.expr.clone(), sr.expr.clone(), er.expr.clone()]),
                         texpr.inferred.clone(),
                         texpr.span.clone(),
                     ),
@@ -3141,13 +3143,13 @@ pub fn resolve_expr_types(
                     }
                     None => Arc::new(ExprResolveResult {
                         expr: texpr.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 };
                 Arc::new(ExprResolveResult {
                     expr: make_expr_node(
                         Arc::new(ExprData::ExprReturn),
-                        Rc::new(vec![r.expr.clone()]),
+                        Arc::new(vec![r.expr.clone()]),
                         texpr.inferred.clone(),
                         texpr.span.clone(),
                     ),
@@ -3156,7 +3158,7 @@ pub fn resolve_expr_types(
             }
             ExprData::NoExprData => Arc::new(ExprResolveResult {
                 expr: texpr.clone(),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             }),
         }
     })
@@ -3255,12 +3257,12 @@ pub fn resolve_item_types(
             fn_type_param_names(item.clone(), env.source_indices.clone())
         };
         let collision_diags = if has_duplicate_type_param_name(tp_names.clone()) {
-            Rc::new(vec![make_error_node(Arc::new(CompilerDiagnostic::InternalError {
+            Arc::new(vec![make_error_node(Arc::new(CompilerDiagnostic::InternalError {
     message: v1_rt::concat(v1_rt::concat("type param name collides with a value param in fn '".to_string(), authored_name_at(env.source_indices.clone(), item.clone())), "' — a value param shares its name with a declared type param (e.g., `fn f<T>(T: T)`). Rename the value param, or dissolve via ParamKind / params-slot partition.".to_string()),
     span: item.span.clone(),
 }), module_name.clone())])
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let env = env_with_type_variable_bindings(env.clone(), tp_names.clone());
         let param_results = Arc::new({
@@ -3335,7 +3337,7 @@ pub fn resolve_item_types(
         let body_resolved = if (item.body.clone() == None) {
             Arc::new(ExprResolveResult {
                 expr: item.clone(),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             })
         } else {
             resolve_expr_types(
@@ -3350,14 +3352,14 @@ pub fn resolve_item_types(
             Some(body_resolved.expr.clone())
         };
         let body_diags = if (item.body.clone() == None) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
             body_resolved.diagnostics.clone()
         };
         let anno_resolved = if (item.type_annotation.clone() == None) {
             Arc::new(NodeResolveResult {
                 resolved: unit_type(),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             })
         } else {
             resolve_node(
@@ -3375,7 +3377,7 @@ pub fn resolve_item_types(
         let transport_resolved = if (item.transport.clone() == None) {
             Arc::new(TransportResolveResult {
                 transport: local_transport_node(no_span()),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             })
         } else {
             resolve_transport_binding(

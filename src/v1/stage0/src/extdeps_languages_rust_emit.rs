@@ -123,7 +123,7 @@ pub fn rust_method_wraps_result() -> Arc<HashMap<String, bool>> {
 pub fn rust_reserved() -> Arc<Vec<String>> {
     thread_local! {
         static CACHED: Arc<Vec<String>> = {
-            Rc::new(vec!["as".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "const".to_string(), "continue".to_string(), "crate".to_string(), "dyn".to_string(), "else".to_string(), "enum".to_string(), "extern".to_string(), "false".to_string(), "fn".to_string(), "for".to_string(), "if".to_string(), "impl".to_string(), "in".to_string(), "let".to_string(), "loop".to_string(), "match".to_string(), "mod".to_string(), "move".to_string(), "mut".to_string(), "pub".to_string(), "ref".to_string(), "return".to_string(), "self".to_string(), "Self".to_string(), "static".to_string(), "struct".to_string(), "super".to_string(), "trait".to_string(), "true".to_string(), "type".to_string(), "unsafe".to_string(), "use".to_string(), "where".to_string(), "while".to_string(), "yield".to_string(), "abstract".to_string(), "become".to_string(), "box".to_string(), "do".to_string(), "final".to_string(), "macro".to_string(), "override".to_string(), "priv".to_string(), "try".to_string(), "typeof".to_string(), "unsized".to_string(), "virtual".to_string()])
+            Arc::new(vec!["as".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "const".to_string(), "continue".to_string(), "crate".to_string(), "dyn".to_string(), "else".to_string(), "enum".to_string(), "extern".to_string(), "false".to_string(), "fn".to_string(), "for".to_string(), "if".to_string(), "impl".to_string(), "in".to_string(), "let".to_string(), "loop".to_string(), "match".to_string(), "mod".to_string(), "move".to_string(), "mut".to_string(), "pub".to_string(), "ref".to_string(), "return".to_string(), "self".to_string(), "Self".to_string(), "static".to_string(), "struct".to_string(), "super".to_string(), "trait".to_string(), "true".to_string(), "type".to_string(), "unsafe".to_string(), "use".to_string(), "where".to_string(), "while".to_string(), "yield".to_string(), "abstract".to_string(), "become".to_string(), "box".to_string(), "do".to_string(), "final".to_string(), "macro".to_string(), "override".to_string(), "priv".to_string(), "try".to_string(), "typeof".to_string(), "unsized".to_string(), "virtual".to_string()])
         };
     }
     CACHED.with(|c: &Arc<Vec<String>>| c.clone())
@@ -141,7 +141,7 @@ pub fn rust_reserved_escape_suffix() -> String {
 pub fn rust_string_types() -> Arc<Vec<String>> {
     thread_local! {
         static CACHED: Arc<Vec<String>> = {
-            Rc::new(vec!["String".to_string(), "Secret".to_string()])
+            Arc::new(vec!["String".to_string(), "Secret".to_string()])
         };
     }
     CACHED.with(|c: &Arc<Vec<String>>| c.clone())
@@ -376,7 +376,7 @@ pub fn rust_error_expr_template() -> String {
 pub fn rust_list_literal_empty() -> String {
     thread_local! {
         static CACHED: String = {
-            "Rc::new(vec![])".to_string()
+            "Arc::new(vec![])".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -385,7 +385,7 @@ pub fn rust_list_literal_empty() -> String {
 pub fn rust_list_literal_template() -> String {
     thread_local! {
         static CACHED: String = {
-            "Rc::new(vec![{0}])".to_string()
+            "Arc::new(vec![{0}])".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -841,7 +841,7 @@ pub fn rust_pair_completion_arm_render(
 }
 
 pub fn rust_pair_completion_no_later_sources() -> Arc<Vec<String>> {
-    Rc::new(vec![])
+    Arc::new(vec![])
 }
 
 pub fn rust_pair_completion_body_render(body: Arc<PairCompletionBody>) -> String {

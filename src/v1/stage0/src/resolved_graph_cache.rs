@@ -4,7 +4,7 @@ use im::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -107,9 +107,9 @@ pub enum CacheLookupResult {
 
 #[derive(Debug, Clone)]
 pub struct CachedResolvedGraph {
-    pub graph: Rc<ResolvedGraph>,
-    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    pub compile_clean_diags: Rc<Vector<Rc<ErrorNode>>>,
+    pub graph: Arc<ResolvedGraph>,
+    pub source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    pub compile_clean_diags: Arc<Vector<Arc<ErrorNode>>>,
     pub content_digest: Hash,
     pub payload_byte_count: u64,
 }
@@ -163,7 +163,7 @@ fn encode_source_indices_part(
 }
 
 fn encode_compile_clean_union_part(
-    compile_clean_diags: &Vector<Rc<ErrorNode>>,
+    compile_clean_diags: &Vector<Arc<ErrorNode>>,
 ) -> Result<Vec<u8>, String> {
     let plain: Vec<ErrorNode> = compile_clean_diags.iter().map(|d| (**d).clone()).collect();
     let value =
@@ -179,11 +179,11 @@ fn decode_source_indices_part(bytes: &[u8]) -> Result<HashMap<String, NewlineInd
     serde_json::from_slice(bytes).map_err(|e| format!("cache indices decode failed: {e}"))
 }
 
-fn decode_compile_clean_union_part(bytes: &[u8]) -> Result<Vector<Rc<ErrorNode>>, String> {
+fn decode_compile_clean_union_part(bytes: &[u8]) -> Result<Vector<Arc<ErrorNode>>, String> {
     let plain: Vec<ErrorNode> =
         serde_json::from_slice(bytes).map_err(|e| format!("cache union decode failed: {e}"))?;
     Ok(Vector::from(
-        plain.into_iter().map(Rc::new).collect::<Vec<_>>(),
+        plain.into_iter().map(Arc::new).collect::<Vec<_>>(),
     ))
 }
 
@@ -235,7 +235,7 @@ fn extract_module_path(content: &str) -> Option<String> {
     None
 }
 
-pub fn closure_content_digest(sources: &[Rc<SourceFile>]) -> Hash {
+pub fn closure_content_digest(sources: &[Arc<SourceFile>]) -> Hash {
     let mut pairs: Vec<(String, &str)> = sources
         .iter()
         .map(|s| {
@@ -319,7 +319,7 @@ pub fn derive_subject_digest(materials: &KeyInputMaterials) -> Hash {
     )
 }
 
-pub fn subject_digest_for_closure(sources: &[Rc<SourceFile>]) -> Hash {
+pub fn subject_digest_for_closure(sources: &[Arc<SourceFile>]) -> Hash {
     let materials =
         KeyInputMaterials::new(closure_content_digest(sources), transform_content_digest());
     derive_subject_digest(&materials)
@@ -752,14 +752,18 @@ fn decode_v3_payload_from_file(file: &mut File, header: V3Header) -> CacheLookup
             return CacheLookupResult::RejectedHit(CacheRejectReason::PartDecodeFailure);
         }
     };
-    let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> =
-        Rc::new(si_plain.into_iter().map(|(k, v)| (k, Rc::new(v))).collect());
-    let decoded = Rc::new(decoded_graph);
+    let source_indices: Arc<HashMap<String, Arc<NewlineIndex>>> = Arc::new(
+        si_plain
+            .into_iter()
+            .map(|(k, v)| (k, Arc::new(v)))
+            .collect(),
+    );
+    let decoded = Arc::new(decoded_graph);
     let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
     let modules =
         rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
     let modules = rewire_func_env_parent_links(modules, source_indices.clone());
-    let graph = Rc::new(ResolvedGraph {
+    let graph = Arc::new(ResolvedGraph {
         modules,
         item_registry: decoded.item_registry.clone(),
         diagnostics: decoded.diagnostics.clone(),
@@ -769,7 +773,7 @@ fn decode_v3_payload_from_file(file: &mut File, header: V3Header) -> CacheLookup
     CacheLookupResult::Hit(CachedResolvedGraph {
         graph,
         source_indices,
-        compile_clean_diags: Rc::new(compile_clean_diags),
+        compile_clean_diags: Arc::new(compile_clean_diags),
         content_digest: header.stored_semantic_digest.clone(),
         payload_byte_count: header.payload_len,
     })
@@ -944,8 +948,8 @@ pub struct EncodedResolvedGraphParts {
 
 pub fn encode_resolved_graph_parts(
     graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    compile_clean_diags: &Vector<Rc<ErrorNode>>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
+    compile_clean_diags: &Vector<Arc<ErrorNode>>,
 ) -> Result<EncodedResolvedGraphParts, String> {
     let si_plain: HashMap<String, NewlineIndex> = source_indices
         .iter()
@@ -968,8 +972,8 @@ pub fn write(
     cache_root: &Path,
     subject_digest: &str,
     graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    compile_clean_diags: &Vector<Rc<ErrorNode>>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
+    compile_clean_diags: &Vector<Arc<ErrorNode>>,
     stored_request_key: &str,
     stored_semantic_digest: &str,
 ) -> Result<CacheWriteOutcome, String> {
@@ -1147,8 +1151,8 @@ pub fn write_raw_artifact_for_test(
 pub fn build_valid_artifact_bytes(
     subject_digest: &str,
     graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    compile_clean_diags: &Vector<Rc<ErrorNode>>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
+    compile_clean_diags: &Vector<Arc<ErrorNode>>,
     stored_request_key: &str,
     stored_semantic_digest: &str,
 ) -> Result<Vec<u8>, String> {
@@ -1197,8 +1201,8 @@ pub fn is_union_part_absent(parts: &FaithfulResolvedGraphProbeParts) -> bool {
 pub fn build_incomplete_v3_artifact_bytes(
     subject_digest: &str,
     graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    compile_clean_diags: &Vector<Rc<ErrorNode>>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
+    compile_clean_diags: &Vector<Arc<ErrorNode>>,
     stored_request_key: &str,
     stored_semantic_digest: &str,
 ) -> Result<Vec<u8>, String> {
@@ -1238,7 +1242,7 @@ pub fn build_incomplete_v3_artifact_bytes(
 
 pub fn serialize_fixture_payload_for_test(
     graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    source_indices: &HashMap<String, Arc<NewlineIndex>>,
 ) -> Result<Vec<u8>, String> {
     let si_plain: HashMap<String, NewlineIndex> = source_indices
         .iter()
@@ -1254,27 +1258,27 @@ pub fn serialize_fixture_payload_for_test(
 pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolvedGraph, String> {
     let payload: CachePayload =
         serde_json::from_slice(bytes).map_err(|e| format!("fixture payload decode: {e}"))?;
-    let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new(
+    let source_indices: Arc<HashMap<String, Arc<NewlineIndex>>> = Arc::new(
         payload
             .source_indices
             .into_iter()
-            .map(|(k, v)| (k, Rc::new(v)))
+            .map(|(k, v)| (k, Arc::new(v)))
             .collect(),
     );
-    let decoded = Rc::new(payload.graph);
+    let decoded = Arc::new(payload.graph);
     let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
     let modules =
         rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
     let modules = rewire_func_env_parent_links(modules, source_indices.clone());
     Ok(CachedResolvedGraph {
-        graph: Rc::new(ResolvedGraph {
+        graph: Arc::new(ResolvedGraph {
             modules,
             item_registry: decoded.item_registry.clone(),
             diagnostics: decoded.diagnostics.clone(),
             emit_graph_info: decoded.emit_graph_info.clone(),
         }),
         source_indices,
-        compile_clean_diags: Rc::new(Vector::new()),
+        compile_clean_diags: Arc::new(Vector::new()),
         content_digest: payload_content_digest(bytes),
         payload_byte_count: bytes.len() as u64,
     })
@@ -1327,10 +1331,10 @@ pub trait NodeKeyedGraphEncode: Sized {
     fn local_payload_bytes(&self) -> Vec<u8>;
 
     /// Shared children, in canonical order.
-    fn graph_children(&self) -> Vec<Rc<Self>>;
+    fn graph_children(&self) -> Vec<Arc<Self>>;
 
     /// Rebuild from the row-local payload plus the decoded (shared) children.
-    fn rebuild(local_payload: &[u8], children: Vec<Rc<Self>>) -> Result<Self, String>;
+    fn rebuild(local_payload: &[u8], children: Vec<Arc<Self>>) -> Result<Self, String>;
 }
 
 const GRAPH_ARTIFACT_MAGIC: &[u8; 8] = b"gunbngat";
@@ -1365,12 +1369,12 @@ struct GraphEncodeState {
 }
 
 fn graph_encode_node<T: NodeKeyedGraphEncode>(
-    root: &Rc<T>,
+    root: &Arc<T>,
     state: &mut GraphEncodeState,
 ) -> Result<Hash, String> {
-    let mut stack: Vec<(Rc<T>, bool)> = vec![(root.clone(), false)];
+    let mut stack: Vec<(Arc<T>, bool)> = vec![(root.clone(), false)];
     while let Some((node, expanded)) = stack.pop() {
-        let ptr = Rc::as_ptr(&node) as *const ();
+        let ptr = Arc::as_ptr(&node) as *const ();
         if state.by_ptr.contains_key(&ptr) {
             continue;
         }
@@ -1380,7 +1384,7 @@ fn graph_encode_node<T: NodeKeyedGraphEncode>(
                 .graph_children()
                 .iter()
                 .map(|child| {
-                    let child_ptr = Rc::as_ptr(child) as *const ();
+                    let child_ptr = Arc::as_ptr(child) as *const ();
                     state.by_ptr.get(&child_ptr).cloned().ok_or_else(|| {
                         "graph encode: child left unhashed by post-order walk".to_string()
                     })
@@ -1404,7 +1408,7 @@ fn graph_encode_node<T: NodeKeyedGraphEncode>(
             state.in_progress.insert(ptr);
             stack.push((node.clone(), true));
             for child in node.graph_children() {
-                let child_ptr = Rc::as_ptr(&child) as *const ();
+                let child_ptr = Arc::as_ptr(&child) as *const ();
                 if !state.by_ptr.contains_key(&child_ptr) {
                     stack.push((child, false));
                 }
@@ -1413,7 +1417,7 @@ fn graph_encode_node<T: NodeKeyedGraphEncode>(
     }
     state
         .by_ptr
-        .get(&(Rc::as_ptr(root) as *const ()))
+        .get(&(Arc::as_ptr(root) as *const ()))
         .cloned()
         .ok_or_else(|| "graph encode: root left unhashed".to_string())
 }
@@ -1423,7 +1427,7 @@ fn graph_encode_node<T: NodeKeyedGraphEncode>(
 /// deterministic post-order walk, so re-encoding a decode of these bytes is
 /// byte-identical.
 pub fn node_keyed_graph_encode<T: NodeKeyedGraphEncode>(
-    entries: &[(Hash, Rc<T>)],
+    entries: &[(Hash, Arc<T>)],
 ) -> Result<Vec<u8>, String> {
     let mut state = GraphEncodeState {
         rows: Vec::new(),
@@ -1552,7 +1556,7 @@ fn graph_row_facts_with_end(bytes: &[u8]) -> Result<(Vec<NodeKeyedGraphRowFacts>
 }
 
 pub struct NodeKeyedGraphDecoded<T> {
-    pub entries: Vec<(Hash, Rc<T>)>,
+    pub entries: Vec<(Hash, Arc<T>)>,
     pub row_count: usize,
 }
 
@@ -1565,7 +1569,7 @@ pub fn node_keyed_graph_decode<T: NodeKeyedGraphEncode>(
 ) -> Result<NodeKeyedGraphDecoded<T>, String> {
     let (rows, table_end) = graph_row_facts_with_end(bytes)?;
     let row_count = rows.len();
-    let mut by_hash: std::collections::HashMap<Hash, Rc<T>> = std::collections::HashMap::new();
+    let mut by_hash: std::collections::HashMap<Hash, Arc<T>> = std::collections::HashMap::new();
     for (row_index, row) in rows.into_iter().enumerate() {
         if by_hash.contains_key(&row.content_hash) {
             return Err(format!(
@@ -1573,7 +1577,7 @@ pub fn node_keyed_graph_decode<T: NodeKeyedGraphEncode>(
                 row.content_hash
             ));
         }
-        let children: Vec<Rc<T>> = row
+        let children: Vec<Arc<T>> = row
             .child_refs
             .iter()
             .map(|child| {
@@ -1586,7 +1590,7 @@ pub fn node_keyed_graph_decode<T: NodeKeyedGraphEncode>(
             })
             .collect::<Result<_, String>>()?;
         let node = T::rebuild(&row.payload, children)?;
-        by_hash.insert(row.content_hash, Rc::new(node));
+        by_hash.insert(row.content_hash, Arc::new(node));
     }
     let mut cursor = GraphDecodeCursor {
         bytes,

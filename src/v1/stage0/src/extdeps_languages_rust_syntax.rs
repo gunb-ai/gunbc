@@ -37,7 +37,7 @@ pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
 pub fn rust_item_forms() -> Arc<Vec<Arc<ItemForm>>> {
     thread_local! {
             static CACHED: Arc<Vec<Arc<ItemForm>>> = {
-                Rc::new(vec![Arc::new(ItemForm {
+                Arc::new(vec![Arc::new(ItemForm {
         kind: ItemFormKind::FuncForm,
         keyword: "fn".to_string(),
         has_type_params: true,
@@ -190,7 +190,7 @@ pub fn rust_keyword_set() -> Arc<HashMap<String, bool>> {
 pub fn rust_operators() -> Arc<Vec<Arc<OperatorSpec>>> {
     thread_local! {
             static CACHED: Arc<Vec<Arc<OperatorSpec>>> = {
-                Rc::new(vec![Arc::new(OperatorSpec {
+                Arc::new(vec![Arc::new(OperatorSpec {
         symbol: "||".to_string(),
         left_bp: 5,
         right_bp: 6,

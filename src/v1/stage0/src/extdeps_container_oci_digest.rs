@@ -45,7 +45,7 @@ pub fn extdeps_model_scope() -> Arc<ExternalModelScope> {
     }),
     }),
         first_citation: extdeps_external_authority_anchor(),
-        further_citations: Rc::new(vec![]),
+        further_citations: Arc::new(vec![]),
     })
             };
         }

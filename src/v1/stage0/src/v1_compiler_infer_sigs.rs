@@ -82,7 +82,7 @@ pub fn flatten_parent_envs(
             let mut __result = Vec::new();
             for p in v1_rt::reverse(direct_parents.clone()).iter().cloned() {
                 __result.extend(
-                    (*v1_rt::concat(Rc::new(vec![p.clone()]), p.parents.clone()))
+                    (*v1_rt::concat(Arc::new(vec![p.clone()]), p.parents.clone()))
                         .iter()
                         .cloned(),
                 );
@@ -92,7 +92,7 @@ pub fn flatten_parent_envs(
         let dedup = ordered.clone().iter().cloned().fold(
             Arc::new(FlattenAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
-                out: Rc::new(vec![]),
+                out: Arc::new(vec![]),
             }),
             |acc: Arc<FlattenAccum>, p: Arc<ResolvedFuncEnv>| {
                 if emit_map_has(acc.seen.clone(), p.name.clone()) {
@@ -147,7 +147,7 @@ pub fn lookup_resolved_sig_unique_across_parents(
         let scan = env.parents.clone().iter().cloned().fold(
             Arc::new(ChainSigScan {
                 first_sig: None,
-                owners: Rc::new(vec![]),
+                owners: Arc::new(vec![]),
             }),
             |acc: Arc<ChainSigScan>, p: Arc<ResolvedFuncEnv>| match v1_rt::map_get(
                 &p.local.clone(),
@@ -159,7 +159,7 @@ pub fn lookup_resolved_sig_unique_across_parents(
                     } else {
                         Some(sig.clone())
                     },
-                    owners: v1_rt::concat(acc.owners.clone(), Rc::new(vec![p.name.clone()])),
+                    owners: v1_rt::concat(acc.owners.clone(), Arc::new(vec![p.name.clone()])),
                 }),
                 None => acc.clone(),
             },
@@ -281,7 +281,7 @@ pub fn collect_func_call_edges(
                         source_indices.clone(),
                     )
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 })
                 .iter()
                 .cloned(),
@@ -302,15 +302,15 @@ pub fn collect_calls_in_expr(
             ExprData::ExprCall { .. } => {
                 let f = expr_call_func_at(texpr.clone(), source_indices.clone());
                 if emit_map_has(local_func_set.clone(), f.clone()) {
-                    Rc::new(vec![Arc::new(CallEdge {
+                    Arc::new(vec![Arc::new(CallEdge {
                         caller: caller.clone(),
                         callee: f.clone(),
                     })])
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 }
             }
-            _ => Rc::new(vec![]),
+            _ => Arc::new(vec![]),
         };
         let child_edges = Arc::new({
             let mut __result = Vec::new();
@@ -526,7 +526,7 @@ pub fn topo_resolve_loop(
                 let cycle_accum = remaining.clone().iter().cloned().fold(
                     Arc::new(SigsAccum {
                         signatures: resolved.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                     |acc: Arc<SigsAccum>, fn_name: String| match v1_rt::map_get(
                         &declared_sigs,
@@ -700,7 +700,7 @@ pub fn resolve_func_sigs(
             call_edges.clone(),
             local_func_set.clone(),
             module_name.clone(),
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             flatten_parent_envs(parent_envs.clone()),
             (local_func_names.clone().len() as i64),
         )

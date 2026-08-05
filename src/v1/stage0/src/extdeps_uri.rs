@@ -916,7 +916,7 @@ pub fn uri_percent_encode_outcome_wires(
     outcomes: Arc<Vec<Arc<UriPercentEncodeScalarOutcome>>>,
 ) -> Arc<Vec<String>> {
     outcomes.clone().iter().cloned().fold(
-        Rc::new(vec![]),
+        Arc::new(vec![]),
         |wires: Arc<Vec<String>>, outcome: Arc<UriPercentEncodeScalarOutcome>| match (*outcome
             .clone())
         .clone()

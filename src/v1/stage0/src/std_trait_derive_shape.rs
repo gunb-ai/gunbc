@@ -528,21 +528,21 @@ pub fn pair_completion_factor(
 }
 
 pub fn pair_completion_op_rows() -> Arc<Vec<Arc<PairCompletionOpRow>>> {
-    Rc::new(vec![
+    Arc::new(vec![
         Arc::new(PairCompletionOpRow {
             op: ReprGroundingDeriveTrait::ReprDeriveNeg,
             body: Arc::new(PairCompletionBody::PairCompletionSumOfProducts {
                 pos: Arc::new(PairCompletionArm {
-                    terms: Rc::new(vec![Arc::new(PairCompletionTerm {
-                        factors: Rc::new(vec![pair_completion_factor(
+                    terms: Arc::new(vec![Arc::new(PairCompletionTerm {
+                        factors: Arc::new(vec![pair_completion_factor(
                             PairCompletionOperand::PairCompletionSelf,
                             PairCompletionComponent::PairCompletionNeg,
                         )]),
                     })]),
                 }),
                 neg: Arc::new(PairCompletionArm {
-                    terms: Rc::new(vec![Arc::new(PairCompletionTerm {
-                        factors: Rc::new(vec![pair_completion_factor(
+                    terms: Arc::new(vec![Arc::new(PairCompletionTerm {
+                        factors: Arc::new(vec![pair_completion_factor(
                             PairCompletionOperand::PairCompletionSelf,
                             PairCompletionComponent::PairCompletionPos,
                         )]),
@@ -554,15 +554,15 @@ pub fn pair_completion_op_rows() -> Arc<Vec<Arc<PairCompletionOpRow>>> {
             op: ReprGroundingDeriveTrait::ReprDeriveAdd,
             body: Arc::new(PairCompletionBody::PairCompletionSumOfProducts {
                 pos: Arc::new(PairCompletionArm {
-                    terms: Rc::new(vec![
+                    terms: Arc::new(vec![
                         Arc::new(PairCompletionTerm {
-                            factors: Rc::new(vec![pair_completion_factor(
+                            factors: Arc::new(vec![pair_completion_factor(
                                 PairCompletionOperand::PairCompletionSelf,
                                 PairCompletionComponent::PairCompletionPos,
                             )]),
                         }),
                         Arc::new(PairCompletionTerm {
-                            factors: Rc::new(vec![pair_completion_factor(
+                            factors: Arc::new(vec![pair_completion_factor(
                                 PairCompletionOperand::PairCompletionRhs,
                                 PairCompletionComponent::PairCompletionPos,
                             )]),
@@ -570,15 +570,15 @@ pub fn pair_completion_op_rows() -> Arc<Vec<Arc<PairCompletionOpRow>>> {
                     ]),
                 }),
                 neg: Arc::new(PairCompletionArm {
-                    terms: Rc::new(vec![
+                    terms: Arc::new(vec![
                         Arc::new(PairCompletionTerm {
-                            factors: Rc::new(vec![pair_completion_factor(
+                            factors: Arc::new(vec![pair_completion_factor(
                                 PairCompletionOperand::PairCompletionSelf,
                                 PairCompletionComponent::PairCompletionNeg,
                             )]),
                         }),
                         Arc::new(PairCompletionTerm {
-                            factors: Rc::new(vec![pair_completion_factor(
+                            factors: Arc::new(vec![pair_completion_factor(
                                 PairCompletionOperand::PairCompletionRhs,
                                 PairCompletionComponent::PairCompletionNeg,
                             )]),
@@ -595,9 +595,9 @@ pub fn pair_completion_op_rows() -> Arc<Vec<Arc<PairCompletionOpRow>>> {
             op: ReprGroundingDeriveTrait::ReprDeriveMul,
             body: Arc::new(PairCompletionBody::PairCompletionSumOfProducts {
                 pos: Arc::new(PairCompletionArm {
-                    terms: Rc::new(vec![
+                    terms: Arc::new(vec![
                         Arc::new(PairCompletionTerm {
-                            factors: Rc::new(vec![
+                            factors: Arc::new(vec![
                                 pair_completion_factor(
                                     PairCompletionOperand::PairCompletionSelf,
                                     PairCompletionComponent::PairCompletionPos,
@@ -609,7 +609,7 @@ pub fn pair_completion_op_rows() -> Arc<Vec<Arc<PairCompletionOpRow>>> {
                             ]),
                         }),
                         Arc::new(PairCompletionTerm {
-                            factors: Rc::new(vec![
+                            factors: Arc::new(vec![
                                 pair_completion_factor(
                                     PairCompletionOperand::PairCompletionSelf,
                                     PairCompletionComponent::PairCompletionNeg,
@@ -623,9 +623,9 @@ pub fn pair_completion_op_rows() -> Arc<Vec<Arc<PairCompletionOpRow>>> {
                     ]),
                 }),
                 neg: Arc::new(PairCompletionArm {
-                    terms: Rc::new(vec![
+                    terms: Arc::new(vec![
                         Arc::new(PairCompletionTerm {
-                            factors: Rc::new(vec![
+                            factors: Arc::new(vec![
                                 pair_completion_factor(
                                     PairCompletionOperand::PairCompletionSelf,
                                     PairCompletionComponent::PairCompletionPos,
@@ -637,7 +637,7 @@ pub fn pair_completion_op_rows() -> Arc<Vec<Arc<PairCompletionOpRow>>> {
                             ]),
                         }),
                         Arc::new(PairCompletionTerm {
-                            factors: Rc::new(vec![
+                            factors: Arc::new(vec![
                                 pair_completion_factor(
                                     PairCompletionOperand::PairCompletionSelf,
                                     PairCompletionComponent::PairCompletionNeg,

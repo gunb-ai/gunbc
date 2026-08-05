@@ -15,7 +15,7 @@ use std::sync::Arc;
 pub fn compiler_inductive_fields() -> Arc<Vec<Arc<InductiveField>>> {
     thread_local! {
             static CACHED: Arc<Vec<Arc<InductiveField>>> = {
-                Rc::new(vec![Arc::new(InductiveField {
+                Arc::new(vec![Arc::new(InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "children".to_string(),

@@ -255,7 +255,7 @@ pub fn dag_collect_from_module(
 pub fn collect_dag_nodes(typed: Arc<ResolvedGraph>) -> Arc<DagCollectAcc> {
     {
         let _memo_reset = dag_collect_fp_memo_reset();
-        let collision_errors = Rc::new(vec![]);
+        let collision_errors = Arc::new(vec![]);
         let slots = typed.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Arc<DagCollectSlot>>(),
             |s: Arc<HashMap<String, Arc<DagCollectSlot>>>, m: Arc<TypedModule>| {

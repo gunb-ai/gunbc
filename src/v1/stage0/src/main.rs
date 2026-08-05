@@ -5,7 +5,7 @@
 use clap::{Parser, Subcommand};
 
 use im::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 use v1_compiler::cli_run;
 use v1_compiler::v1_compiler_compile;
 use v1_compiler::v1_compiler_compile::PipelineResult;
@@ -250,8 +250,8 @@ fn build_module_index(
 fn resolve_transitively_with_seen(
     entry_sources: Vec<(String, String)>,
     index: &HashMap<String, std::path::PathBuf>,
-    mut seen: HashMap<String, Rc<v1_compiler::v1_compiler_compile::SourceFile>>,
-) -> Vec<Rc<v1_compiler::v1_compiler_compile::SourceFile>> {
+    mut seen: HashMap<String, Arc<v1_compiler::v1_compiler_compile::SourceFile>>,
+) -> Vec<Arc<v1_compiler::v1_compiler_compile::SourceFile>> {
     let mut queue: Vec<(String, String)> = entry_sources;
 
     while let Some((_path, content)) = queue.pop() {
@@ -273,7 +273,7 @@ fn resolve_transitively_with_seen(
                     )
                 });
                 let rel_path = file_path.to_string_lossy().to_string();
-                let source = Rc::new(v1_compiler::v1_compiler_compile::SourceFile {
+                let source = Arc::new(v1_compiler::v1_compiler_compile::SourceFile {
                     path: rel_path.clone(),
                     content: file_content.clone(),
                 });
@@ -379,7 +379,7 @@ fn main() {
 
             // Indexed modules outside the compile closure, included in the name
             // census only (fill = whole tree; the compile scope stays the closure).
-            let mut census_only_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
+            let mut census_only_sources: Vec<Arc<v1_compiler_compile::SourceFile>> = Vec::new();
             let sources = if !source_roots.is_empty() {
                 let index = build_module_index(&source_roots, pool_index);
                 eprintln!(
@@ -445,12 +445,12 @@ fn main() {
                         std::process::exit(1);
                     })
                 } else {
-                    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> =
+                    let mut seen: HashMap<String, Arc<v1_compiler_compile::SourceFile>> =
                         HashMap::new();
                     let mut entry_for_queue = Vec::new();
                     for (path, content) in &entry_files {
                         if let Some(mod_path) = extract_module_path(content) {
-                            let source = Rc::new(v1_compiler_compile::SourceFile {
+                            let source = Arc::new(v1_compiler_compile::SourceFile {
                                 path: path.clone(),
                                 content: content.clone(),
                             });
@@ -467,7 +467,7 @@ fn main() {
                         let already_there = resolved.iter().any(|s| s.path == path);
                         if !already_there {
                             resolved
-                                .push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
+                                .push(Arc::new(v1_compiler_compile::SourceFile { path, content }));
                         }
                     }
                     resolved
@@ -501,7 +501,7 @@ fn main() {
                                 module_path, file_path, e
                             )
                         });
-                        census_only_sources.push(Rc::new(v1_compiler_compile::SourceFile {
+                        census_only_sources.push(Arc::new(v1_compiler_compile::SourceFile {
                             path: file_path.to_string_lossy().to_string(),
                             content,
                         }));
@@ -523,7 +523,7 @@ fn main() {
                     let content = std::fs::read_to_string(path)
                         .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
                     let filename = path.file_name().unwrap().to_string_lossy().to_string();
-                    sources.push(Rc::new(v1_compiler_compile::SourceFile {
+                    sources.push(Arc::new(v1_compiler_compile::SourceFile {
                         path: filename,
                         content,
                     }));
@@ -540,13 +540,13 @@ fn main() {
                 std::process::exit(1);
             };
 
-            let pipeline_options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
+            let pipeline_options = Arc::new(v1_compiler_compile::CompilePipelineOptions {
                 analyze_complexity: false,
-                census_only_sources: Rc::new(census_only_sources.into()),
+                census_only_sources: Arc::new(census_only_sources.into()),
             });
             if render_targets.len() == 1 {
                 let result = v1_compiler_compile::compile_sources_with_options(
-                    Rc::new(sources.into()),
+                    Arc::new(sources.into()),
                     render_targets[0].1.clone(),
                     pipeline_options.clone(),
                 );
@@ -568,7 +568,7 @@ fn main() {
                 }
             } else {
                 let resolved = v1_compiler_compile::compile_to_resolved_with_options(
-                    Rc::new(sources.into()),
+                    Arc::new(sources.into()),
                     pipeline_options.clone(),
                 );
                 let mut total_files = 0usize;
@@ -667,7 +667,7 @@ fn render_diagnostics(result: &PipelineResult) {
         return;
     }
 
-    let index_map: HashMap<String, Rc<NewlineIndex>> = result
+    let index_map: HashMap<String, Arc<NewlineIndex>> = result
         .newline_indices
         .iter()
         .map(|idx| (idx.file.clone(), idx.clone()))
@@ -689,8 +689,8 @@ fn render_diagnostics(result: &PipelineResult) {
 }
 
 fn render_one_diagnostic(
-    d: &Rc<v1_compiler::v1_std_core::ErrorNode>,
-    index_map: &HashMap<String, Rc<NewlineIndex>>,
+    d: &Arc<v1_compiler::v1_std_core::ErrorNode>,
+    index_map: &HashMap<String, Arc<NewlineIndex>>,
     indent: &str,
 ) {
     let severity = if cli_run::compile_clean_diagnostic_is_advisory(d) {

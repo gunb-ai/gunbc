@@ -40,7 +40,7 @@ pub fn target_inhabitants(target: RenderTarget) -> Arc<Vec<Arc<InhabitantDecl>>>
         RenderTarget::Rust => rust_algebra_inhabitants(),
         RenderTarget::Python => python_algebra_inhabitants(),
         RenderTarget::Go => go_algebra_inhabitants(),
-        RenderTarget::Dag => Rc::new(vec![]),
+        RenderTarget::Dag => Arc::new(vec![]),
     }
 }
 
@@ -100,7 +100,7 @@ pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> 
             Some(s) => s.clone(),
             None => Arc::new(CastSyntax {
                 template: "{expr}".to_string(),
-                cast_rules: Rc::new(vec![]),
+                cast_rules: Arc::new(vec![]),
             }),
         };
         v1_rt::replace(
@@ -243,9 +243,9 @@ pub fn checkpoint_tests(target: RenderTarget) -> Arc<Vec<Arc<CoercionTestEntry>>
         let label = target_label(target.clone());
         let cps = target_checkpoints(target.clone());
         if ((cps.clone().len() as i64) == 0) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![Arc::new(CoercionTestEntry {
+            Arc::new(vec![Arc::new(CoercionTestEntry {
                 test_name: v1_rt::concat(
                     v1_rt::concat("coercion_".to_string(), label.clone()),
                     "_checkpoint_resolves_primitives".to_string(),
@@ -269,7 +269,7 @@ pub fn checkpoint_tests(target: RenderTarget) -> Arc<Vec<Arc<CoercionTestEntry>>
 pub fn inhabitant_test_names() -> Arc<Vec<String>> {
     v1_rt::concat(
         canonical_container_names(),
-        Rc::new(vec!["PointwisePower".to_string()]),
+        Arc::new(vec!["PointwisePower".to_string()]),
     )
 }
 
@@ -282,13 +282,13 @@ pub fn inhabitant_tests(target: RenderTarget) -> Arc<Vec<Arc<CoercionTestEntry>>
                 __result.extend(
                     (*match coerce_container_template(target.clone(), name.clone()) {
                         Some(tmpl) => {
-                            Rc::new(vec![Arc::new(CoercionAssertion::ContainerAssertion {
+                            Arc::new(vec![Arc::new(CoercionAssertion::ContainerAssertion {
                                 target: target.clone(),
                                 container_name: name.clone(),
                                 expected_template: tmpl.clone(),
                             })])
                         }
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -297,9 +297,9 @@ pub fn inhabitant_tests(target: RenderTarget) -> Arc<Vec<Arc<CoercionTestEntry>>
             __result
         });
         if ((assertions.clone().len() as i64) == 0) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![Arc::new(CoercionTestEntry {
+            Arc::new(vec![Arc::new(CoercionTestEntry {
                 test_name: v1_rt::concat(
                     v1_rt::concat("coercion_".to_string(), label.clone()),
                     "_inhabitant_resolves_containers".to_string(),
@@ -318,12 +318,12 @@ pub fn copy_tests() -> Arc<Vec<Arc<CoercionTestEntry>>> {
             for cp in cps.clone().iter().cloned() {
                 __result.extend(
                     (*match cp.is_copy.clone() {
-                        Some(v) => Rc::new(vec![Arc::new(CoercionAssertion::CopyAssertion {
+                        Some(v) => Arc::new(vec![Arc::new(CoercionAssertion::CopyAssertion {
                             target: RenderTarget::Rust,
                             dag_name: cp.dag_name.clone(),
                             expected_copy: v.clone(),
                         })]),
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -332,9 +332,9 @@ pub fn copy_tests() -> Arc<Vec<Arc<CoercionTestEntry>>> {
             __result
         });
         if ((copy_assertions.clone().len() as i64) == 0) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![Arc::new(CoercionTestEntry {
+            Arc::new(vec![Arc::new(CoercionTestEntry {
                 test_name: "coercion_is_copy_from_checkpoint".to_string(),
                 assertions: copy_assertions.clone(),
             })])
@@ -346,7 +346,7 @@ pub fn unique_inhabitants_for_template_tests(
     inhs: Arc<Vec<Arc<InhabitantDecl>>>,
 ) -> Arc<Vec<Arc<InhabitantDecl>>> {
     inhs.clone().iter().cloned().fold(
-        Rc::new(vec![]),
+        Arc::new(vec![]),
         |acc: Arc<Vec<Arc<InhabitantDecl>>>, inh: Arc<InhabitantDecl>| {
             if {
                 let mut __found = false;
@@ -362,7 +362,7 @@ pub fn unique_inhabitants_for_template_tests(
             } {
                 acc.clone()
             } else {
-                v1_rt::concat(acc.clone(), Rc::new(vec![inh.clone()]))
+                v1_rt::concat(acc.clone(), Arc::new(vec![inh.clone()]))
             }
         },
     )
@@ -370,7 +370,7 @@ pub fn unique_inhabitants_for_template_tests(
 
 pub fn template_application_tests() -> Arc<Vec<Arc<CoercionTestEntry>>> {
     {
-        let targets = Rc::new(vec![
+        let targets = Arc::new(vec![
             RenderTarget::Rust,
             RenderTarget::Python,
             RenderTarget::Go,
@@ -394,10 +394,10 @@ pub fn template_application_tests() -> Arc<Vec<Arc<CoercionTestEntry>>> {
                                                 inh.template.clone(),
                                                 int_target.clone(),
                                             );
-                                            Rc::new(vec![Arc::new(
+                                            Arc::new(vec![Arc::new(
                                                 CoercionAssertion::TemplateAssertion {
                                                     template: inh.template.clone(),
-                                                    args: Rc::new(vec![int_target.clone()]),
+                                                    args: Arc::new(vec![int_target.clone()]),
                                                     expected: expected.clone(),
                                                 },
                                             )])
@@ -410,10 +410,10 @@ pub fn template_application_tests() -> Arc<Vec<Arc<CoercionTestEntry>>> {
                                                     str_target.clone(),
                                                     int_target.clone(),
                                                 );
-                                                Rc::new(vec![Arc::new(
+                                                Arc::new(vec![Arc::new(
                                                     CoercionAssertion::TemplateAssertion {
                                                         template: inh.template.clone(),
-                                                        args: Rc::new(vec![
+                                                        args: Arc::new(vec![
                                                             str_target.clone(),
                                                             int_target.clone(),
                                                         ]),
@@ -422,7 +422,7 @@ pub fn template_application_tests() -> Arc<Vec<Arc<CoercionTestEntry>>> {
                                                 )])
                                             }
                                         } else {
-                                            Rc::new(vec![])
+                                            Arc::new(vec![])
                                         }
                                     })
                                     .iter()
@@ -439,9 +439,9 @@ pub fn template_application_tests() -> Arc<Vec<Arc<CoercionTestEntry>>> {
             __result
         });
         if ((assertions.clone().len() as i64) == 0) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![Arc::new(CoercionTestEntry {
+            Arc::new(vec![Arc::new(CoercionTestEntry {
                 test_name: "coercion_template_application".to_string(),
                 assertions: assertions.clone(),
             })])

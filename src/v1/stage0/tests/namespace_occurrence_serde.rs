@@ -3,7 +3,7 @@
 // (dag/test/claim/namespace_occurrence_transport_test.dag). v1-test class: this file
 // deletes with src/v1 once its behavior is carried per the v1-test-migration coverage bar.
 use im::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::std_occurrence_identity::{
     occurrence_id_allocator_initial, OccurrenceCategory, OccurrenceContainmentPath,
@@ -17,15 +17,15 @@ fn parse_source(
     source: &str,
     file: &str,
     allocator: OccurrenceIdAllocator,
-) -> Rc<ParseWithTableResult> {
-    let mut source_indices: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+) -> Arc<ParseWithTableResult> {
+    let mut source_indices: HashMap<String, Arc<NewlineIndex>> = HashMap::new();
     source_indices.insert(
         file.to_string(),
         build_newline_index(file.to_string(), source.to_string()),
     );
     parse_with_table_in_occurrence_scope(
         tokenize(source.to_string(), file.to_string()),
-        Rc::new(source_indices),
+        Arc::new(source_indices),
         empty_intern_table(),
         allocator,
     )
@@ -112,7 +112,7 @@ fn occurrence_transport_round_trips_with_node_identity_and_paths() {
     assert!(!parsed.occurrence_transport.references.is_empty());
 
     let encoded = serde_json::to_vec(&parsed).expect("serialize occurrence parse result");
-    let decoded: Rc<ParseWithTableResult> =
+    let decoded: Arc<ParseWithTableResult> =
         serde_json::from_slice(&encoded).expect("deserialize occurrence parse result");
     assert_eq!(decoded, parsed);
 

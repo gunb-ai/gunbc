@@ -72,7 +72,7 @@ pub fn external_model_scope_citations(
     scope: Arc<ExternalModelScope>,
 ) -> Arc<Vec<Arc<ExternalAuthority>>> {
     v1_rt::concat(
-        Rc::new(vec![scope.first_citation.clone()]),
+        Arc::new(vec![scope.first_citation.clone()]),
         scope.further_citations.clone(),
     )
 }
@@ -246,7 +246,7 @@ pub fn external_model_scope_portfolio_decision(
     mods: Arc<Vec<Arc<DeclaredScopeFacts>>>,
 ) -> Arc<ScopeDecision> {
     external_model_scope_decision_of_findings(mods.clone().iter().cloned().fold(
-        Rc::new(vec![]),
+        Arc::new(vec![]),
         |acc: Arc<Vec<Arc<ScopeFinding>>>, m: Arc<DeclaredScopeFacts>| {
             v1_rt::concat(acc, external_model_scope_findings(m.clone()))
         },

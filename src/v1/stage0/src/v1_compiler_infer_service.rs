@@ -102,7 +102,7 @@ pub fn collect_typed_service_calls(
             texpr.clone(),
             Arc::new(UniqueAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
-                result: Rc::new(vec![]),
+                result: Arc::new(vec![]),
             }),
             source_indices.clone(),
         );
@@ -198,7 +198,7 @@ pub fn collect_called_func_names(
             texpr.clone(),
             Arc::new(UniqueAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
-                result: Rc::new(vec![]),
+                result: Arc::new(vec![]),
             }),
             source_indices.clone(),
         );
@@ -222,7 +222,7 @@ if has_no_body.clone() {
                     let called = collect_called_func_names(item.body.clone().clone().unwrap(), m.type_env.clone().source_indices.clone());
 let extra = Arc::new({ let mut __result = Vec::new(); for callee_name in called.clone().iter().cloned() { __result.extend((*match v1_rt::map_get(&reg2, callee_name.clone()) {
     Some(callee_info) => callee_info.service_names.clone(),
-    None => Rc::new(vec![]),
+    None => Arc::new(vec![]),
 }).iter().cloned()); } __result });
 let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: Arc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
                         svc_list.clone()
@@ -358,17 +358,17 @@ pub fn check_service_method_call_node(
                                                 name: f.name.clone(),
                                                 span: f.span.clone(),
                                                 ident_span: f.ident_span.clone(),
-                                                children: Rc::new(vec![]),
+                                                children: Arc::new(vec![]),
                                                 connective: Connective::NoConnective,
-                                                params: Rc::new(vec![]),
+                                                params: Arc::new(vec![]),
                                                 inferred: Some(Arc::new(InferredNode::Resolved {
                                                     node: param_node_type_expr(f.clone()),
                                                 })),
                                                 return_cardinality: Cardinality::Required,
-                                                uses: Rc::new(vec![]),
+                                                uses: Arc::new(vec![]),
                                                 body: None,
                                                 transport: None,
-                                                properties: Rc::new(vec![]),
+                                                properties: Arc::new(vec![]),
                                                 type_annotation: None,
                                                 is_self_recursive: false,
                                                 has_non_tail_self_call: false,
@@ -380,13 +380,13 @@ pub fn check_service_method_call_node(
                                         __result
                                     }),
                                     connective: Connective::Conj,
-                                    params: Rc::new(vec![]),
+                                    params: Arc::new(vec![]),
                                     inferred: None,
                                     return_cardinality: Cardinality::Required,
-                                    uses: Rc::new(vec![]),
+                                    uses: Arc::new(vec![]),
                                     body: None,
                                     transport: None,
-                                    properties: Rc::new(vec![]),
+                                    properties: Arc::new(vec![]),
                                     type_annotation: None,
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,

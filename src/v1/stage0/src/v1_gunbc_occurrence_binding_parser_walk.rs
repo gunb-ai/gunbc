@@ -197,10 +197,10 @@ pub fn occurrence_binding_inputs_from_transport(
                 .iter()
                 .cloned()
                 .fold(
-                    Rc::new(vec![]),
+                    Arc::new(vec![]),
                     |acc: _, entry: Arc<OccurrenceIndexEntry>| {
                         v1_rt::concat(
-                            Rc::new(vec![Arc::new(OccurrenceModulePathRow {
+                            Arc::new(vec![Arc::new(OccurrenceModulePathRow {
                                 occurrence: entry.projection.clone().occurrence.clone(),
                                 module_path: module_path.clone(),
                             })]),
@@ -210,10 +210,10 @@ pub fn occurrence_binding_inputs_from_transport(
                 ),
         ),
         exposure_rows: v1_rt::reverse(transport.declarations.clone().iter().cloned().fold(
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             |acc: _, declaration: Arc<DeclarationOccurrence>| {
                 v1_rt::concat(
-                    Rc::new(vec![Arc::new(DeclarationExposureRow {
+                    Arc::new(vec![Arc::new(DeclarationExposureRow {
                         occurrence: declaration.occurrence.clone(),
                         exposure: declaration_exposure_from_containment(
                             module_path.clone(),
@@ -233,10 +233,10 @@ pub fn occurrence_binding_inputs_from_transport(
                 .iter()
                 .cloned()
                 .fold(
-                    Rc::new(vec![]),
+                    Arc::new(vec![]),
                     |acc: _, entry: Arc<OccurrenceIndexEntry>| {
                         v1_rt::concat(
-                            Rc::new(vec![authored_order_row_from_entry(entry.clone())]),
+                            Arc::new(vec![authored_order_row_from_entry(entry.clone())]),
                             acc,
                         )
                     },
@@ -372,13 +372,13 @@ pub fn references_named(
     name: String,
 ) -> Arc<Vec<Arc<ReferenceOccurrence>>> {
     transport.references.clone().iter().cloned().fold(
-        Rc::new(vec![]),
+        Arc::new(vec![]),
         |acc: Arc<Vec<Arc<ReferenceOccurrence>>>, reference: Arc<ReferenceOccurrence>| {
             match index_entry_for_occurrence(transport.clone(), reference.occurrence.clone()) {
                 None => acc.clone(),
                 Some(entry) => {
                     match (entry.projection.clone().authored_name.clone() == name.clone()) {
-                        true => v1_rt::concat(acc.clone(), Rc::new(vec![reference.clone()])),
+                        true => v1_rt::concat(acc.clone(), Arc::new(vec![reference.clone()])),
                         false => acc.clone(),
                     }
                 }
@@ -392,13 +392,13 @@ pub fn declarations_named(
     name: String,
 ) -> Arc<Vec<Arc<DeclarationOccurrence>>> {
     transport.declarations.clone().iter().cloned().fold(
-        Rc::new(vec![]),
+        Arc::new(vec![]),
         |acc: Arc<Vec<Arc<DeclarationOccurrence>>>, declaration: Arc<DeclarationOccurrence>| {
             match index_entry_for_occurrence(transport.clone(), declaration.occurrence.clone()) {
                 None => acc.clone(),
                 Some(entry) => {
                     match (entry.projection.clone().authored_name.clone() == name.clone()) {
-                        true => v1_rt::concat(acc.clone(), Rc::new(vec![declaration.clone()])),
+                        true => v1_rt::concat(acc.clone(), Arc::new(vec![declaration.clone()])),
                         false => acc.clone(),
                     }
                 }

@@ -68,8 +68,8 @@ pub struct Trace {
 
 pub fn empty_trace() -> Arc<Trace> {
     Arc::new(Trace {
-        events: Rc::new(vec![]),
-        stack: Rc::new(vec![]),
+        events: Arc::new(vec![]),
+        stack: Arc::new(vec![]),
     })
 }
 
@@ -93,7 +93,7 @@ pub fn trace_pop_frame(trace: Arc<Trace>) -> Arc<Trace> {
         if (n.clone() <= 1) {
             Arc::new(Trace {
                 events: trace.events.clone(),
-                stack: Rc::new(vec![]),
+                stack: Arc::new(vec![]),
             })
         } else {
             Arc::new(Trace {

@@ -2,7 +2,7 @@
 
 use im::HashMap;
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
@@ -300,7 +300,7 @@ fn extract_imports(source: &str) -> Vec<String> {
         v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert("test.dag".to_string(), source_index);
-    let result = v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(source_indices));
+    let result = v1_compiler::v1_compiler_parse::parse(tokens, Arc::new(source_indices));
     match &result.module {
         Some(module) => v1_compiler::v1_std_core::module_imports(module.clone())
             .iter()
@@ -314,9 +314,9 @@ fn resolve_imports_transitively(
     entry_path: &str,
     entry_content: &str,
     module_index: &ModuleIndex,
-) -> Vec<Rc<SourceFile>> {
+) -> Vec<Arc<SourceFile>> {
     let ws = workspace_root();
-    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
+    let mut seen: HashMap<String, Arc<SourceFile>> = HashMap::new();
     let mut queue = vec![(entry_path.to_string(), entry_content.to_string())];
 
     while let Some((_path, content)) = queue.pop() {
@@ -333,7 +333,7 @@ fn resolve_imports_transitively(
                         .to_string();
                     seen.insert(
                         module_path.clone(),
-                        Rc::new(SourceFile {
+                        Arc::new(SourceFile {
                             path: rel_path.clone(),
                             content: file_content.clone(),
                         }),
@@ -344,8 +344,8 @@ fn resolve_imports_transitively(
         }
     }
 
-    let mut sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
-    sources.push(Rc::new(SourceFile {
+    let mut sources: Vec<Arc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
+    sources.push(Arc::new(SourceFile {
         path: entry_path.to_string(),
         content: entry_content.to_string(),
     }));
@@ -366,9 +366,9 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
     );
 }
 
-fn resolve(module_index: &ModuleIndex, src: &str) -> Rc<ResolvedPipelineResult> {
+fn resolve(module_index: &ModuleIndex, src: &str) -> Arc<ResolvedPipelineResult> {
     let sources = resolve_imports_transitively("test.dag", src, module_index);
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     resolved
 }

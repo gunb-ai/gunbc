@@ -5,7 +5,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
-use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Instant;
 
@@ -532,7 +532,7 @@ fn assert_registry_is_partitioned() -> Result<(), String> {
 fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
     let roots = vec![workspace.join("src/v1"), workspace.join("dag")];
     let sources = source_files_for_roots(&roots, workspace)?;
-    let result = compile_sources(Rc::new(sources.into()), RenderTarget::Rust);
+    let result = compile_sources(Arc::new(sources.into()), RenderTarget::Rust);
     if let Some(message) = stage0_self_compile_refusal_message(result.clone()) {
         return Err(message);
     }
@@ -547,7 +547,7 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
 fn source_files_for_roots(
     roots: &[PathBuf],
     workspace: &Path,
-) -> Result<Vec<Rc<SourceFile>>, String> {
+) -> Result<Vec<Arc<SourceFile>>, String> {
     // The regen input closure ([src/v1, dag] entries + transitive import closure) is
     // computed by the single authority `cli_run::regen_input_sources`, which the
     // regen-affected-set skip witness also consumes — so "what regen reads" lives in
@@ -563,7 +563,7 @@ fn source_files_for_roots(
     let sources = v1_compiler::cli_run::regen_input_sources(workspace)?;
     Ok(sources
         .into_iter()
-        .map(|(path, content)| Rc::new(SourceFile { path, content }))
+        .map(|(path, content)| Arc::new(SourceFile { path, content }))
         .collect())
 }
 
@@ -1476,7 +1476,7 @@ mod tests {
             .keys()
             .find(|path| path.ends_with("compiler_tests.rs"))
             .expect("compiler_tests.rs in emitted stage0 roster");
-        let bad = "intern_table.clone(),\n                        std::rc::Rc::new(HashMap::new()),\n                        crate::v1_compiler_infer_env::empty_symbol_index()";
+        let bad = "intern_table.clone(),\n                        std::sync::Arc::new(HashMap::new()),\n                        crate::v1_compiler_infer_env::empty_symbol_index()";
         assert!(
             !emitted[key].contains(bad),
             "fresh emit of compiler_tests.rs still passes removed global_bare arg"

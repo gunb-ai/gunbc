@@ -34,7 +34,7 @@ pub fn namespace_reference_derived_closure_contract_dissolution_note() -> String
 
 pub fn reference_derived_closure_required_capabilities(
 ) -> Arc<Vec<ReferenceDerivedClosureCapability>> {
-    Rc::new(vec![
+    Arc::new(vec![
         ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible,
         ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded,
         ReferenceDerivedClosureCapability::LaterDeclarationExcluded,
@@ -117,7 +117,7 @@ pub fn reference_derived_closure_closing_contract_holds(
 
 pub fn namespace_reference_derived_closure_acceptance_admissions(
 ) -> Arc<Vec<Arc<ReferenceDerivedClosureAdmission>>> {
-    Rc::new(vec![
+    Arc::new(vec![
         Arc::new(
             ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
                 capability: ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible,

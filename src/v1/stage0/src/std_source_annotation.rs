@@ -91,7 +91,7 @@ pub struct SourceAnnotationGraph {
 
 pub fn source_annotation_graph_empty() -> Arc<SourceAnnotationGraph> {
     Arc::new(SourceAnnotationGraph {
-        rows: Rc::new(vec![]),
+        rows: Arc::new(vec![]),
     })
 }
 
@@ -223,7 +223,7 @@ pub enum AnnotationAdmission {
 pub fn non_empty_refusals_all(
     refusals: Arc<NonEmptyAnnotationAttachmentRefusals>,
 ) -> Arc<Vec<Arc<AnnotationAttachmentRefusal>>> {
-    v1_rt::concat(Rc::new(vec![refusals.head.clone()]), refusals.tail.clone())
+    v1_rt::concat(Arc::new(vec![refusals.head.clone()]), refusals.tail.clone())
 }
 
 pub fn admit_annotations(result: Arc<AnnotationAttachmentResult>) -> Arc<AnnotationAdmission> {
@@ -571,8 +571,8 @@ pub fn attach_annotations(
     {
         let acc = captures.clone().iter().cloned().fold(
             Arc::new(AnnotationAttachAcc {
-                rows: Rc::new(vec![]),
-                refusals: Rc::new(vec![]),
+                rows: Arc::new(vec![]),
+                refusals: Arc::new(vec![]),
                 pending: None,
             }),
             |acc: Arc<AnnotationAttachAcc>, capture: Arc<NormalizedAnnotationCapture>| {

@@ -16,7 +16,6 @@
 //! worker A's byte snapshot against its own intern table without a cross-representation straddle.
 
 use std::collections::HashMap as StdHashMap;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::v1_compiler_infer::TypecheckModuleResult;
@@ -46,10 +45,10 @@ impl SharedTypecheckCaches {
 
     /// Decode a typed snapshot **without** holding the store lock.
     /// Payload is name-keyed (no intern-table indices) — safe to materialize on any worker index.
-    pub fn decode_typed_snapshot(bytes: &[u8]) -> Result<Rc<TypecheckModuleResult>, String> {
+    pub fn decode_typed_snapshot(bytes: &[u8]) -> Result<Arc<TypecheckModuleResult>, String> {
         let value: TypecheckModuleResult = serde_json::from_slice(bytes)
             .map_err(|e| format!("shared typecheck store decode: {e}"))?;
-        Ok(Rc::new(value))
+        Ok(Arc::new(value))
     }
 
     /// Encode a typed result **without** holding the store lock.
@@ -64,7 +63,7 @@ impl SharedTypecheckCaches {
         self.typed_module_cache.insert(typed_key, bytes);
     }
 
-    pub fn get_typed(&self, typed_key: &str) -> Result<Option<Rc<TypecheckModuleResult>>, String> {
+    pub fn get_typed(&self, typed_key: &str) -> Result<Option<Arc<TypecheckModuleResult>>, String> {
         let Some(bytes) = self.clone_typed_bytes(typed_key) else {
             return Ok(None);
         };
@@ -74,7 +73,7 @@ impl SharedTypecheckCaches {
     pub fn insert_typed(
         &mut self,
         typed_key: String,
-        result: Rc<TypecheckModuleResult>,
+        result: Arc<TypecheckModuleResult>,
     ) -> Result<(), String> {
         let bytes = Self::encode_typed_snapshot(&result)?;
         self.insert_typed_preencoded(typed_key, bytes);

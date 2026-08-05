@@ -150,14 +150,14 @@ pub fn emit_python(typed: Arc<ResolvedGraph>) -> Arc<EmitResult> {
         let requirements = emit_requirements_txt(has_service_items(typed.clone()));
         let files = v1_rt::concat(
             v1_rt::concat(
-                Rc::new(vec![requirements.clone(), init_file.clone()]),
+                Arc::new(vec![requirements.clone(), init_file.clone()]),
                 module_files.clone(),
             ),
             test_files.clone(),
         );
         Arc::new(EmitResult {
             files: files.clone(),
-            diagnostics: Rc::new(vec![]),
+            diagnostics: Arc::new(vec![]),
         })
     }
 }
@@ -995,7 +995,7 @@ pub fn emit_py_func_def(
         let depth = 0;
         let service_names = match lookup_item(registry.clone(), name.clone()) {
             Some(info) => info.service_names.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let params_str = emit_py_func_params(
             params.clone(),

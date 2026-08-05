@@ -4,8 +4,8 @@ use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 use im::HashMap as HamtMap;
@@ -52,12 +52,12 @@ mod selected_identity_path_tests {
     use super::{ExecutionMode, InterpContext};
     use crate::v1_compiler_compile::SourceFile;
     use im::HashMap;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     #[test]
     fn selected_function_identity_refuses_suffix_collision_on_actual_node() {
         let result =
-            crate::v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![Rc::new(
+            crate::v1_compiler_compile::compile_to_resolved(Arc::new(im::vector![Arc::new(
                 SourceFile {
                     path: "workspace/src/common.dag".to_string(),
                     content: "module fixture.common\nfn check() -> Bool { true }\n".to_string(),
@@ -129,7 +129,7 @@ impl SymbolInterner {
 thread_local! {
     static ACTIVE_CTX: std::cell::Cell<Option<*const InterpContext>> =
         const { std::cell::Cell::new(None) };
-    static LEXICAL_BASE_ENV: std::cell::RefCell<Option<Rc<Env>>> =
+    static LEXICAL_BASE_ENV: std::cell::RefCell<Option<Arc<Env>>> =
         const { std::cell::RefCell::new(None) };
 }
 
@@ -138,12 +138,12 @@ thread_local! {
     static CALL_ENV_DEPTH_PEAK: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-fn with_lexical_base_env<R>(base: &Rc<Env>, f: impl FnOnce() -> R) -> R {
+fn with_lexical_base_env<R>(base: &Arc<Env>, f: impl FnOnce() -> R) -> R {
     LEXICAL_BASE_ENV.with(|cell| {
         let prev = cell.borrow_mut().take();
         cell.borrow_mut().replace(base.clone());
         struct LexicalBaseGuard {
-            prev: Option<Rc<Env>>,
+            prev: Option<Arc<Env>>,
         }
         impl Drop for LexicalBaseGuard {
             fn drop(&mut self) {
@@ -159,7 +159,7 @@ fn with_lexical_base_env<R>(base: &Rc<Env>, f: impl FnOnce() -> R) -> R {
     })
 }
 
-fn lexical_base_env(caller_env: &Rc<Env>) -> Rc<Env> {
+fn lexical_base_env(caller_env: &Arc<Env>) -> Arc<Env> {
     LEXICAL_BASE_ENV.with(|cell| {
         cell.borrow()
             .clone()
@@ -408,42 +408,42 @@ pub enum Value {
     Int(i64),
     Float(f64),
     Str(String),
-    List(Rc<RrbVector<Value>>),
-    Map(Rc<HamtMap<CanonKey, Value>>),
-    Set(Rc<OrdSet<String>>),
+    List(Arc<RrbVector<Value>>),
+    Map(Arc<HamtMap<CanonKey, Value>>),
+    Set(Arc<OrdSet<String>>),
     Record {
         type_name: Symbol,
-        fields: Rc<Vec<(Symbol, Value)>>,
+        fields: Arc<Vec<(Symbol, Value)>>,
     },
     Variant {
         type_name: Symbol,
         variant_name: Symbol,
-        fields: Rc<Vec<(Symbol, Value)>>,
+        fields: Arc<Vec<(Symbol, Value)>>,
     },
     Closure {
         params: Vec<Symbol>,
-        body: Rc<Node>,
-        env: Rc<Env>,
+        body: Arc<Node>,
+        env: Arc<Env>,
     },
     Fn {
-        node: Rc<Node>,
+        node: Arc<Node>,
     },
     Unit,
 }
 
 pub(crate) fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
-    Value::List(Rc::new(items.into()))
+    Value::List(Arc::new(items.into()))
 }
 
 fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
-    Value::Map(Rc::new(entries))
+    Value::Map(Arc::new(entries))
 }
 
 fn optional_present(value: Value, ctx: &InterpContext) -> Value {
     Value::Variant {
         type_name: ctx.sym("Optional"),
         variant_name: ctx.sym("Present"),
-        fields: Rc::new(vec![(ctx.sym("value"), value)]),
+        fields: Arc::new(vec![(ctx.sym("value"), value)]),
     }
 }
 
@@ -451,7 +451,7 @@ fn optional_absent(ctx: &InterpContext) -> Value {
     Value::Variant {
         type_name: ctx.sym("Optional"),
         variant_name: ctx.sym("Absent"),
-        fields: Rc::new(vec![]),
+        fields: Arc::new(vec![]),
     }
 }
 
@@ -616,7 +616,7 @@ impl PartialEq for Value {
                 },
             ) => a == b && af == bf,
             (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => af == bf,
-            (Value::Fn { node: a }, Value::Fn { node: b }) => Rc::ptr_eq(a, b),
+            (Value::Fn { node: a }, Value::Fn { node: b }) => Arc::ptr_eq(a, b),
             (Value::List(_), Value::Variant { .. }) | (Value::Variant { .. }, Value::List(_)) => {
                 match (free_monoid_to_vec(self), free_monoid_to_vec(other)) {
                     (Some(a), Some(b)) => a == b,
@@ -640,28 +640,28 @@ impl PartialEq for Value {
 #[derive(Debug, Clone)]
 pub struct Env {
     bindings: HashMap<Symbol, Value>,
-    parent: Option<Rc<Env>>,
+    parent: Option<Arc<Env>>,
 }
 
 impl Env {
-    pub fn empty() -> Rc<Self> {
-        Rc::new(Env {
+    pub fn empty() -> Arc<Self> {
+        Arc::new(Env {
             bindings: HashMap::new(),
             parent: None,
         })
     }
 
-    pub fn extend(parent: &Rc<Env>, bindings: HashMap<Symbol, Value>) -> Rc<Self> {
-        Rc::new(Env {
+    pub fn extend(parent: &Arc<Env>, bindings: HashMap<Symbol, Value>) -> Arc<Self> {
+        Arc::new(Env {
             bindings,
             parent: Some(parent.clone()),
         })
     }
 
-    pub fn with_binding(parent: &Rc<Env>, name: Symbol, value: Value) -> Rc<Self> {
+    pub fn with_binding(parent: &Arc<Env>, name: Symbol, value: Value) -> Arc<Self> {
         let mut bindings = HashMap::new();
         bindings.insert(name, value);
-        Rc::new(Env {
+        Arc::new(Env {
             bindings,
             parent: Some(parent.clone()),
         })
@@ -678,7 +678,7 @@ impl Env {
     }
 
     /// Outermost frame of the parent-linked chain (globals / eager data env).
-    pub fn root(env: &Rc<Self>) -> Rc<Self> {
+    pub fn root(env: &Arc<Self>) -> Arc<Self> {
         let mut current = env.clone();
         while let Some(parent) = current.parent.clone() {
             current = parent;
@@ -883,13 +883,13 @@ pub enum AuthResolution {
 
 pub type InterpResult<T> = Result<T, InterpError>;
 
-type ServiceOp = (Rc<Node>, Rc<Node>);
+type ServiceOp = (Arc<Node>, Arc<Node>);
 
 #[derive(Default)]
 struct PureCallMemo {
     map: HashMap<(usize, Vec<usize>), Value>,
     keepalive: Vec<Value>,
-    keepalive_fns: Vec<Rc<Node>>,
+    keepalive_fns: Vec<Arc<Node>>,
 }
 
 #[derive(Default)]
@@ -920,10 +920,10 @@ struct EvalRecomputeTrace {
     unkeyed_by_fn: std::collections::HashMap<String, u64>,
     // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
     // (same discipline as PureCallMemo.keepalive_fns).
-    keepalive_fns: Vec<Rc<Node>>,
+    keepalive_fns: Vec<Arc<Node>>,
     // fn_ptr -> interned display name, so millions of ledger entries share
     // one allocation per function instead of a String clone per key.
-    fn_names: std::collections::HashMap<usize, Rc<str>>,
+    fn_names: std::collections::HashMap<usize, Arc<str>>,
     keyed_calls: u64,
     unkeyed_calls: u64,
     // Calls refused a NEW ledger key once map hits EVAL_RECOMPUTE_KEY_CAP —
@@ -958,10 +958,10 @@ enum EvalRecomputeArgKey {
 }
 
 enum CompositeWeak {
-    List(std::rc::Weak<RrbVector<Value>>),
-    Fields(std::rc::Weak<Vec<(Symbol, Value)>>),
-    Map(std::rc::Weak<HamtMap<CanonKey, Value>>),
-    Set(std::rc::Weak<OrdSet<String>>),
+    List(std::sync::Weak<RrbVector<Value>>),
+    Fields(std::sync::Weak<Vec<(Symbol, Value)>>),
+    Map(std::sync::Weak<HamtMap<CanonKey, Value>>),
+    Set(std::sync::Weak<OrdSet<String>>),
 }
 
 impl CompositeWeak {
@@ -978,7 +978,7 @@ impl CompositeWeak {
 type EvalRecomputeHashMemo = std::collections::HashMap<usize, (CompositeWeak, u64)>;
 
 struct EvalRecomputeEntry {
-    fn_name: Rc<str>,
+    fn_name: Arc<str>,
     count: u64,
     total_ns: u128,
     // Distinct call-site node ptrs (capped) with "file:offset" labels. One site
@@ -1048,7 +1048,7 @@ struct EvalCallMemo {
     map: std::collections::HashMap<EvalRecomputeKey, Vec<(Vec<(Option<String>, Value)>, Value)>>,
     // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
     // (same discipline as EvalRecomputeTrace.keepalive_fns).
-    keepalive_fns: Vec<Rc<Node>>,
+    keepalive_fns: Vec<Arc<Node>>,
     hits: u64,
     misses: u64,
     overflow: u64,
@@ -1234,11 +1234,11 @@ fn accounting_first_visit(
 }
 
 fn account_env(
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     visited: &mut std::collections::HashSet<usize>,
     acc: &mut MemoryAccounting,
 ) {
-    if !accounting_first_visit(Rc::as_ptr(env) as usize, "(env)", visited, acc) {
+    if !accounting_first_visit(Arc::as_ptr(env) as usize, "(env)", visited, acc) {
         return;
     }
     let mut bytes = (env.bindings.len() * std::mem::size_of::<(Symbol, Value)>()) as u64;
@@ -1253,11 +1253,11 @@ fn account_env(
 
 fn account_named_fields(
     label: &'static str,
-    fields: &Rc<Vec<(Symbol, Value)>>,
+    fields: &Arc<Vec<(Symbol, Value)>>,
     visited: &mut std::collections::HashSet<usize>,
     acc: &mut MemoryAccounting,
 ) {
-    if !accounting_first_visit(Rc::as_ptr(fields) as usize, label, visited, acc) {
+    if !accounting_first_visit(Arc::as_ptr(fields) as usize, label, visited, acc) {
         return;
     }
     let bytes = (fields.len() * std::mem::size_of::<(Symbol, Value)>()) as u64;
@@ -1290,7 +1290,7 @@ fn account_value(
         Value::Null | Value::Bool(_) | Value::Int(_) | Value::Float(_) | Value::Unit => {}
         Value::Str(s) => acc.add_unique(label, s.len() as u64),
         Value::List(items) => {
-            if !accounting_first_visit(Rc::as_ptr(items) as usize, label, visited, acc) {
+            if !accounting_first_visit(Arc::as_ptr(items) as usize, label, visited, acc) {
                 return;
             }
             acc.add_unique(label, (items.len() * std::mem::size_of::<Value>()) as u64);
@@ -1299,7 +1299,7 @@ fn account_value(
             }
         }
         Value::Map(entries) => {
-            if !accounting_first_visit(Rc::as_ptr(entries) as usize, label, visited, acc) {
+            if !accounting_first_visit(Arc::as_ptr(entries) as usize, label, visited, acc) {
                 return;
             }
             acc.add_unique(
@@ -1313,7 +1313,7 @@ fn account_value(
             }
         }
         Value::Set(members) => {
-            if !accounting_first_visit(Rc::as_ptr(members) as usize, label, visited, acc) {
+            if !accounting_first_visit(Arc::as_ptr(members) as usize, label, visited, acc) {
                 return;
             }
             let mut bytes = (members.len() * std::mem::size_of::<String>()) as u64;
@@ -1363,21 +1363,21 @@ impl ExecutionMode {
 }
 
 pub struct InterpContext {
-    pub modules: Rc<im::Vector<Rc<TypedModule>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    fn_nodes: HashMap<String, Rc<Node>>,
+    pub modules: Arc<im::Vector<Arc<TypedModule>>>,
+    pub item_registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    pub source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    fn_nodes: HashMap<String, Arc<Node>>,
     ambiguous_bare_function_names: std::collections::HashSet<String>,
     service_ops: HashMap<String, ServiceOp>,
     pub execution_mode: ExecutionMode,
-    pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+    pub fixture_store: Option<Arc<crate::recorded_fixture::RecordedFixtureStore>>,
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
     // Per-call parameter-name derivation is invariant per fn_node but was re-sliced from
     // source spans on every call (authored_name_at). Memoize it per ctx, keyed by fn_node
     // pointer identity — sound because the ctx owns fn_nodes, so pointers are stable for the
     // cache's lifetime and the cache dies with the ctx (same discipline as data_cache above).
     // Value = (filtered named-param list, all-param list), matching call_function's two uses.
-    param_name_cache: std::cell::RefCell<HashMap<usize, Rc<(Vec<String>, Vec<String>)>>>,
+    param_name_cache: std::cell::RefCell<HashMap<usize, Arc<(Vec<String>, Vec<String>)>>>,
     // Same chokepoint, ExprVar arm: eval_var rebuilt the variable name String from its source
     // span (expr_var_name_at) and re-interned it (ctx.sym) on every read. Memoize the interned
     // Symbol per ExprVar node — keyed by node pointer, sound for the ctx lifetime exactly as
@@ -1402,9 +1402,9 @@ pub struct InterpContext {
     eval_recompute_hash_memo: std::cell::RefCell<EvalRecomputeHashMemo>,
     mutation_counters: std::cell::RefCell<MutationCounters>,
     symbols: RefCell<SymbolInterner>,
-    published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
-    whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
-    governed_services: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
+    published_mock_keys: RefCell<Option<Arc<std::collections::HashSet<String>>>>,
+    whole_tree_published_keys: Option<Arc<std::collections::HashSet<String>>>,
+    governed_services: RefCell<Option<Arc<std::collections::HashSet<String>>>>,
     // Cooperative per-witness eval deadline (fast-lane 5s rule, operator 2026-07-12).
     // The bound must unwind from INSIDE eval as a typed error: witness evals run on
     // in-process worker threads with no kill authority, so a wall-clock bound imposed
@@ -1529,7 +1529,7 @@ impl InterpContext {
 
     pub fn new(
         graph: &ResolvedGraph,
-        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
         execution_mode: ExecutionMode,
     ) -> Self {
         Self::with_runtime_options(graph, source_indices, execution_mode, None, None)
@@ -1537,19 +1537,19 @@ impl InterpContext {
 
     pub fn with_fixture_store(
         graph: &ResolvedGraph,
-        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
         execution_mode: ExecutionMode,
-        fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+        fixture_store: Option<Arc<crate::recorded_fixture::RecordedFixtureStore>>,
     ) -> Self {
         Self::with_runtime_options(graph, source_indices, execution_mode, fixture_store, None)
     }
 
     pub fn with_runtime_options(
         graph: &ResolvedGraph,
-        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
         execution_mode: ExecutionMode,
-        fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
-        whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+        fixture_store: Option<Arc<crate::recorded_fixture::RecordedFixtureStore>>,
+        whole_tree_published_keys: Option<Arc<std::collections::HashSet<String>>>,
     ) -> Self {
         let mut fn_nodes = HashMap::new();
         let mut bare_name_counts = HashMap::<String, usize>::new();
@@ -1685,7 +1685,7 @@ impl InterpContext {
         }
     }
 
-    fn published_mock_keys(&self) -> InterpResult<Rc<std::collections::HashSet<String>>> {
+    fn published_mock_keys(&self) -> InterpResult<Arc<std::collections::HashSet<String>>> {
         {
             if let Some(keys) = self.published_mock_keys.borrow().as_ref() {
                 return Ok(keys.clone());
@@ -1693,18 +1693,18 @@ impl InterpContext {
         }
         let keys = if let Some(seed) = self.whole_tree_published_keys.as_ref() {
             if seed.is_empty() {
-                Rc::new(resolve_published_mock_keys(self)?)
+                Arc::new(resolve_published_mock_keys(self)?)
             } else {
                 seed.clone()
             }
         } else {
-            Rc::new(resolve_published_mock_keys(self)?)
+            Arc::new(resolve_published_mock_keys(self)?)
         };
         *self.published_mock_keys.borrow_mut() = Some(keys.clone());
         Ok(keys)
     }
 
-    fn governed_services(&self) -> InterpResult<Rc<std::collections::HashSet<String>>> {
+    fn governed_services(&self) -> InterpResult<Arc<std::collections::HashSet<String>>> {
         {
             if let Some(services) = self.governed_services.borrow().as_ref() {
                 return Ok(services.clone());
@@ -1715,20 +1715,20 @@ impl InterpContext {
             .iter()
             .filter_map(|k| k.rsplit_once('.').map(|(svc, _)| svc.to_string()))
             .collect();
-        let services = Rc::new(services);
+        let services = Arc::new(services);
         *self.governed_services.borrow_mut() = Some(services.clone());
         Ok(services)
     }
 
-    fn si(&self) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
+    fn si(&self) -> Arc<HashMap<String, Arc<NewlineIndex>>> {
         self.source_indices.clone()
     }
 
-    pub(crate) fn source_indices(&self) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
+    pub(crate) fn source_indices(&self) -> Arc<HashMap<String, Arc<NewlineIndex>>> {
         self.si()
     }
 
-    fn lookup_fn(&self, name: &str) -> Option<&Rc<Node>> {
+    fn lookup_fn(&self, name: &str) -> Option<&Arc<Node>> {
         self.fn_nodes.get(name)
     }
 
@@ -1754,7 +1754,7 @@ impl InterpContext {
 
 pub fn run(
     graph: &ResolvedGraph,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     entry_fn: &str,
 ) -> InterpResult<Value> {
     run_with_options(graph, source_indices, entry_fn, ExecutionMode::Wet, true)
@@ -1762,7 +1762,7 @@ pub fn run(
 
 pub fn run_with_options(
     graph: &ResolvedGraph,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     entry_fn: &str,
     execution_mode: ExecutionMode,
     eager_data_env: bool,
@@ -1823,7 +1823,7 @@ pub fn call_env_depth_peak_snapshot() -> usize {
     CALL_ENV_DEPTH_PEAK.with(|peak| peak.get())
 }
 
-fn build_initial_env(ctx: &InterpContext) -> InterpResult<Rc<Env>> {
+fn build_initial_env(ctx: &InterpContext) -> InterpResult<Arc<Env>> {
     let mut bindings = HashMap::new();
     for (name, info) in ctx.item_registry.iter() {
         if info.kind == ItemKind::DataItem {
@@ -1883,9 +1883,9 @@ const CALL_DEPTH_LIMIT: u32 = 100_000;
 
 fn call_function(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
 ) -> InterpResult<Value> {
     let depth = CALL_DEPTH.with(|d| {
         let v = d.get() + 1;
@@ -1899,9 +1899,9 @@ fn call_function(
 
 fn call_function_guarded(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     depth: u32,
 ) -> InterpResult<Value> {
     if depth > CALL_DEPTH_LIMIT {
@@ -1923,9 +1923,9 @@ fn call_function_guarded(
 
 fn call_function_dispatch(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
 ) -> InterpResult<Value> {
     if !residual_hunt_forensics_enabled() {
         return call_function_inner(ctx, fn_node, args, env);
@@ -1946,9 +1946,9 @@ fn call_function_dispatch(
 
 fn call_function_inner(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
 ) -> InterpResult<Value> {
     if let Some(result) = try_v2_std_collection_map_primitive_grounding(ctx, fn_node, args) {
         return result;
@@ -1964,7 +1964,7 @@ fn call_function_inner(
     let _dag_fn_guard = DagFnGuard::enter(fn_node.name.as_str());
 
     let cached_params = {
-        let key = Rc::as_ptr(fn_node) as usize;
+        let key = Arc::as_ptr(fn_node) as usize;
         // Bind the lookup to a local so the immutable borrow is released before the
         // None branch takes a mutable borrow (an `if let ...borrow()` would hold it through `else`).
         let hit = ctx.param_name_cache.borrow().get(&key).cloned();
@@ -1988,7 +1988,7 @@ fn call_function_inner(
                 })
                 .map(|(i, _)| all[i].clone())
                 .collect();
-            let c = Rc::new((filtered, all));
+            let c = Arc::new((filtered, all));
             ctx.param_name_cache.borrow_mut().insert(key, c.clone());
             c
         }
@@ -2173,7 +2173,7 @@ pub fn thread_cpu_nanos() -> u128 {
     }
 }
 
-fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_expr(node: &Arc<Node>, env: &Arc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     if let Some((cpu_baseline_nanos, budget_ms)) = ctx.eval_deadline.get() {
         let stride = ctx.eval_deadline_stride.get().wrapping_add(1);
         ctx.eval_deadline_stride.set(stride);
@@ -2214,7 +2214,7 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     result
 }
 
-fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_expr_inner(node: &Arc<Node>, env: &Arc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let si = ctx.si();
     match (*node.expr_data).clone() {
         ExprData::ExprLiteral { value } => eval_literal(&value),
@@ -2312,14 +2312,14 @@ fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
 }
 
 fn eval_var(
-    node: &Rc<Node>,
+    node: &Arc<Node>,
     binding_kind: Option<&VarBindingKind>,
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     // Resolve and intern this ExprVar's name once, then reuse the Symbol on every eval
     // (skips the per-eval source-span slice in expr_var_name_at and the ctx.sym re-intern).
-    let key = Rc::as_ptr(node) as usize;
+    let key = Arc::as_ptr(node) as usize;
     let sym = {
         let hit = ctx.var_sym_cache.borrow().get(&key).copied();
         match hit {
@@ -2351,7 +2351,7 @@ fn eval_var(
         return Ok(Value::Variant {
             type_name: ctx.sym(parent_enum),
             variant_name: ctx.sym(vn.rsplit('.').next().unwrap_or(&vn)),
-            fields: Rc::new(vec![]),
+            fields: Arc::new(vec![]),
         });
     }
 
@@ -2370,7 +2370,7 @@ fn eval_var(
                             return Ok(Value::Str(name));
                         }
                     }
-                    let key = Rc::as_ptr(fn_node) as usize;
+                    let key = Arc::as_ptr(fn_node) as usize;
                     if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                         return Ok(v);
                     }
@@ -2397,7 +2397,7 @@ fn eval_var(
             match item_kind(fn_node.clone()) {
                 ItemKind::DataItem => {
                     if let Some(ref body) = fn_node.body {
-                        let key = Rc::as_ptr(fn_node) as usize;
+                        let key = Arc::as_ptr(fn_node) as usize;
                         if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                             return Ok(v);
                         }
@@ -2431,7 +2431,7 @@ fn eval_var(
                             return Ok(Value::Variant {
                                 type_name: ctx.sym(&ty_name),
                                 variant_name: ctx.sym(&last),
-                                fields: Rc::new(vec![]),
+                                fields: Arc::new(vec![]),
                             });
                         }
                     }
@@ -2787,7 +2787,7 @@ fn eval_unaryop(op: &UnaryOpKind, val: Value) -> InterpResult<Value> {
     }
 }
 
-fn eval_if(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_if(node: &Arc<Node>, env: &Arc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let cond = eval_expr(&if_condition(node.clone()), env, ctx)?;
     if cond.is_truthy() {
         eval_expr(&if_then_branch(node.clone()), env, ctx)
@@ -2799,7 +2799,7 @@ fn eval_if(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<
     }
 }
 
-fn eval_let(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_let(node: &Arc<Node>, env: &Arc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let name = let_binding_name_at(node.clone(), ctx.si());
     let val = eval_expr(&let_value(node.clone()), env, ctx)?;
     let new_env = Env::with_binding(env, ctx.sym(&name), val);
@@ -2809,7 +2809,7 @@ fn eval_let(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult
     }
 }
 
-fn eval_block(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_block(node: &Arc<Node>, env: &Arc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let stmts = block_stmts(node.clone());
     let mut current_env = env.clone();
     let mut last_val = Value::Unit;
@@ -2831,7 +2831,7 @@ fn eval_block(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     Ok(last_val)
 }
 
-fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_match(node: &Arc<Node>, env: &Arc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let scrutinee_val = eval_expr(&match_scrutinee(node.clone()), env, ctx)?;
     let arms = match_arm_nodes(node.clone());
 
@@ -2855,7 +2855,7 @@ fn char_value(c: char) -> Value {
 fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
     let anchor = Value::Record {
         type_name: ctx.sym("LocusAnchor"),
-        fields: Rc::new(vec![(
+        fields: Arc::new(vec![(
             ctx.sym("at"),
             Value::Str("map_lookup_port".to_string()),
         )]),
@@ -2863,23 +2863,23 @@ fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
     let locus = Value::Variant {
         type_name: ctx.sym("Locus"),
         variant_name: ctx.sym("PortLocus"),
-        fields: Rc::new(vec![(ctx.sym("anchor"), anchor)]),
+        fields: Arc::new(vec![(ctx.sym("anchor"), anchor)]),
     };
     let correction = Value::Variant {
         type_name: ctx.sym("Correction"),
         variant_name: ctx.sym("Unavailable"),
-        fields: Rc::new(vec![(
+        fields: Arc::new(vec![(
             ctx.sym("reason"),
             Value::Variant {
                 type_name: ctx.sym("NoCorrectionReason"),
                 variant_name: ctx.sym("ExternalContractUnknown"),
-                fields: Rc::new(vec![]),
+                fields: Arc::new(vec![]),
             },
         )]),
     };
     Value::Record {
         type_name: ctx.sym("Diagnostic"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (ctx.sym("at"), locus),
             (ctx.sym("correction"), correction),
             (ctx.sym("reason"), Value::Str("map_key_absent".to_string())),
@@ -2950,36 +2950,36 @@ const WITNESS_EVALUATION_MODULE: &str = "v2.std.witness_evaluation";
 
 fn witness_evaluation_diagnostic_value(
     ctx: &InterpContext,
-    call_node: &Rc<Node>,
+    call_node: &Arc<Node>,
     error: &InterpError,
 ) -> Value {
     let at = format!("{}:{}", call_node.span.file, call_node.span.start);
     let locus = Value::Variant {
         type_name: ctx.sym("Locus"),
         variant_name: ctx.sym("PortLocus"),
-        fields: Rc::new(vec![(
+        fields: Arc::new(vec![(
             ctx.sym("anchor"),
             Value::Record {
                 type_name: ctx.sym("LocusAnchor"),
-                fields: Rc::new(vec![(ctx.sym("at"), Value::Str(at))]),
+                fields: Arc::new(vec![(ctx.sym("at"), Value::Str(at))]),
             },
         )]),
     };
     let correction = Value::Variant {
         type_name: ctx.sym("Correction"),
         variant_name: ctx.sym("Unavailable"),
-        fields: Rc::new(vec![(
+        fields: Arc::new(vec![(
             ctx.sym("reason"),
             Value::Variant {
                 type_name: ctx.sym("NoCorrectionReason"),
                 variant_name: ctx.sym("ExternalContractUnknown"),
-                fields: Rc::new(vec![]),
+                fields: Arc::new(vec![]),
             },
         )]),
     };
     Value::Record {
         type_name: ctx.sym("Diagnostic"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (ctx.sym("at"), locus),
             (ctx.sym("correction"), correction),
             (ctx.sym("reason"), Value::Str(error.to_string())),
@@ -2996,7 +2996,7 @@ fn witness_evaluation_variant(
     Value::Variant {
         type_name: ctx.sym("WitnessEvaluation"),
         variant_name: ctx.sym(variant),
-        fields: Rc::new(vec![(ctx.sym(field), value)]),
+        fields: Arc::new(vec![(ctx.sym(field), value)]),
     }
 }
 
@@ -3006,10 +3006,10 @@ fn current_witness_evaluation_frame() -> Option<Value> {
 
 fn try_witness_evaluation_dispatch(
     ctx: &InterpContext,
-    call_node: &Rc<Node>,
-    fn_node: &Rc<Node>,
+    call_node: &Arc<Node>,
+    fn_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
 ) -> Option<InterpResult<Value>> {
     let is_authority = ctx
         .item_registry
@@ -3542,7 +3542,7 @@ pub fn std_qualified_name_bridge_fn_names() -> &'static [&'static str] {
     STD_QUALIFIED_NAME_BRIDGE_FNS
 }
 
-fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>) -> bool {
+fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Arc<Node>) -> bool {
     if !STD_COLLECTION_MAP_GROUNDED_FNS.contains(&fn_node.name.as_str()) {
         return false;
     }
@@ -3553,7 +3553,7 @@ fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>)
 
 fn try_v2_std_collection_map_primitive_grounding(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
 ) -> Option<InterpResult<Value>> {
     if !is_v2_std_collection_map_grounded_fn(ctx, fn_node) {
@@ -3601,9 +3601,9 @@ macro_rules! v1_native_intercept_dispatch {
     };
 }
 
-fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_call(node: &Arc<Node>, env: &Arc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let func_name = {
-        let key = Rc::as_ptr(node) as usize;
+        let key = Arc::as_ptr(node) as usize;
         let hit = ctx.call_func_name_cache.borrow().get(&key).cloned();
         match hit {
             Some(s) => s,
@@ -3687,11 +3687,11 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
 /// value. Unkeyed calls (closure args) stay unmemoized and are counted.
 fn eval_pure_named_call(
     ctx: &InterpContext,
-    call_node: &Rc<Node>,
-    fn_node: &Rc<Node>,
+    call_node: &Arc<Node>,
+    fn_node: &Arc<Node>,
     func_name: &str,
     args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
 ) -> InterpResult<Value> {
     let trace_on = eval_recompute_trace_enabled();
     let memo_on = ctx.eval_call_memo.borrow().enabled;
@@ -3745,7 +3745,7 @@ fn eval_pure_named_call(
 
 fn eval_fold_list_native(
     args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
@@ -3786,7 +3786,7 @@ fn eval_fold_list_native(
 
 fn eval_fold_list_right_native(
     args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
@@ -3813,7 +3813,7 @@ fn witness_holds(value: Value, ctx: &InterpContext) -> Value {
     Value::Variant {
         type_name: ctx.sym("Witness"),
         variant_name: ctx.sym("Holds"),
-        fields: Rc::new(vec![(ctx.sym("value"), value)]),
+        fields: Arc::new(vec![(ctx.sym("value"), value)]),
     }
 }
 
@@ -3821,7 +3821,7 @@ fn witness_violates(diagnostic: Value, ctx: &InterpContext) -> Value {
     Value::Variant {
         type_name: ctx.sym("Witness"),
         variant_name: ctx.sym("Violates"),
-        fields: Rc::new(vec![(ctx.sym("diagnostic"), diagnostic)]),
+        fields: Arc::new(vec![(ctx.sym("diagnostic"), diagnostic)]),
     }
 }
 
@@ -3948,9 +3948,9 @@ macro_rules! v1_parse_table_dispatch {
 fn try_parse_table_memo_dispatch(
     ctx: &InterpContext,
     func_name: &str,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
 ) -> InterpResult<Option<Value>> {
     v1_parse_table_arms!(v1_parse_table_dispatch, func_name, ctx, fn_node, args, env)
 }
@@ -3995,16 +3995,16 @@ fn eval_recompute_canon_key_hash(k: &CanonKey) -> u64 {
 // data-sized, so recursion here would overflow the host stack.
 enum EvalRecomputeFrameKind {
     List {
-        rc: Rc<RrbVector<Value>>,
+        rc: Arc<RrbVector<Value>>,
     },
     Fields {
-        rc: Rc<Vec<(Symbol, Value)>>,
+        rc: Arc<Vec<(Symbol, Value)>>,
         type_sym: u32,
         variant_sym: u32,
         is_variant: bool,
     },
     Map {
-        rc: Rc<HamtMap<CanonKey, Value>>,
+        rc: Arc<HamtMap<CanonKey, Value>>,
         key_hashes: Vec<u64>,
         values: Vec<Value>,
     },
@@ -4048,8 +4048,8 @@ fn eval_recompute_frame_finalize(memo: &mut EvalRecomputeHashMemo, f: EvalRecomp
     match kind {
         EvalRecomputeFrameKind::List { rc } => {
             memo.insert(
-                Rc::as_ptr(&rc) as usize,
-                (CompositeWeak::List(Rc::downgrade(&rc)), h),
+                Arc::as_ptr(&rc) as usize,
+                (CompositeWeak::List(Arc::downgrade(&rc)), h),
             );
             h
         }
@@ -4064,8 +4064,8 @@ fn eval_recompute_frame_finalize(memo: &mut EvalRecomputeHashMemo, f: EvalRecomp
             // across constructions), so the memo entry never bakes in the
             // wrapper identity.
             memo.insert(
-                Rc::as_ptr(&rc) as usize,
-                (CompositeWeak::Fields(Rc::downgrade(&rc)), h),
+                Arc::as_ptr(&rc) as usize,
+                (CompositeWeak::Fields(Arc::downgrade(&rc)), h),
             );
             if is_variant {
                 eval_recompute_mix(
@@ -4082,8 +4082,8 @@ fn eval_recompute_frame_finalize(memo: &mut EvalRecomputeHashMemo, f: EvalRecomp
         EvalRecomputeFrameKind::Map { rc, .. } => {
             let vh = eval_recompute_mix(0xA5A5_0090, h);
             memo.insert(
-                Rc::as_ptr(&rc) as usize,
-                (CompositeWeak::Map(Rc::downgrade(&rc)), vh),
+                Arc::as_ptr(&rc) as usize,
+                (CompositeWeak::Map(Arc::downgrade(&rc)), vh),
             );
             vh
         }
@@ -4118,11 +4118,11 @@ fn eval_recompute_value_hash(memo: &mut EvalRecomputeHashMemo, root: &Value) -> 
                 )),
                 Value::Fn { node } => EvalRecomputeStep::Have(eval_recompute_mix(
                     0xA5A5_0050,
-                    Rc::as_ptr(node) as u64,
+                    Arc::as_ptr(node) as u64,
                 )),
                 Value::Closure { .. } => EvalRecomputeStep::Bail,
                 Value::Set(s) => {
-                    let ptr = Rc::as_ptr(s) as usize;
+                    let ptr = Arc::as_ptr(s) as usize;
                     match memo.get(&ptr) {
                         Some((w, h)) if w.alive() => EvalRecomputeStep::Have(*h),
                         _ => {
@@ -4130,13 +4130,13 @@ fn eval_recompute_value_hash(memo: &mut EvalRecomputeHashMemo, root: &Value) -> 
                             for item in s.iter() {
                                 h = eval_recompute_mix(h, eval_recompute_str_hash(item));
                             }
-                            memo.insert(ptr, (CompositeWeak::Set(Rc::downgrade(s)), h));
+                            memo.insert(ptr, (CompositeWeak::Set(Arc::downgrade(s)), h));
                             EvalRecomputeStep::Have(h)
                         }
                     }
                 }
                 Value::List(xs) => {
-                    let ptr = Rc::as_ptr(xs) as usize;
+                    let ptr = Arc::as_ptr(xs) as usize;
                     match memo.get(&ptr) {
                         Some((w, h)) if w.alive() => EvalRecomputeStep::Have(*h),
                         _ => {
@@ -4150,7 +4150,7 @@ fn eval_recompute_value_hash(memo: &mut EvalRecomputeHashMemo, root: &Value) -> 
                     }
                 }
                 Value::Record { type_name, fields } => {
-                    let ptr = Rc::as_ptr(fields) as usize;
+                    let ptr = Arc::as_ptr(fields) as usize;
                     match memo.get(&ptr) {
                         Some((w, h)) if w.alive() => EvalRecomputeStep::Have(eval_recompute_mix(
                             eval_recompute_mix(0xA5A5_0070, u64::from(type_name.0)),
@@ -4176,7 +4176,7 @@ fn eval_recompute_value_hash(memo: &mut EvalRecomputeHashMemo, root: &Value) -> 
                     variant_name,
                     fields,
                 } => {
-                    let ptr = Rc::as_ptr(fields) as usize;
+                    let ptr = Arc::as_ptr(fields) as usize;
                     match memo.get(&ptr) {
                         Some((w, h)) if w.alive() => EvalRecomputeStep::Have(eval_recompute_mix(
                             eval_recompute_mix(
@@ -4201,7 +4201,7 @@ fn eval_recompute_value_hash(memo: &mut EvalRecomputeHashMemo, root: &Value) -> 
                     }
                 }
                 Value::Map(m) => {
-                    let ptr = Rc::as_ptr(m) as usize;
+                    let ptr = Arc::as_ptr(m) as usize;
                     match memo.get(&ptr) {
                         Some((w, h)) if w.alive() => EvalRecomputeStep::Have(*h),
                         _ => {
@@ -4289,7 +4289,7 @@ fn eval_recompute_arg_key(
 
 fn eval_recompute_key(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
 ) -> Option<EvalRecomputeKey> {
     let mut memo = ctx.eval_recompute_hash_memo.borrow_mut();
@@ -4298,15 +4298,15 @@ fn eval_recompute_key(
         keys.push(eval_recompute_arg_key(&mut memo, v)?);
     }
     Some(EvalRecomputeKey {
-        fn_ptr: Rc::as_ptr(fn_node) as usize,
+        fn_ptr: Arc::as_ptr(fn_node) as usize,
         args: keys,
     })
 }
 
 fn eval_recompute_record(
     ctx: &InterpContext,
-    call_node: &Rc<Node>,
-    fn_node: &Rc<Node>,
+    call_node: &Arc<Node>,
+    fn_node: &Arc<Node>,
     func_name: &str,
     key: EvalRecomputeKey,
     elapsed_ns: u128,
@@ -4321,11 +4321,11 @@ fn eval_recompute_record(
         }
         tr.keepalive_fns.push(fn_node.clone());
     }
-    let fn_ptr = Rc::as_ptr(fn_node) as usize;
+    let fn_ptr = Arc::as_ptr(fn_node) as usize;
     let interned_name = tr
         .fn_names
         .entry(fn_ptr)
-        .or_insert_with(|| Rc::from(func_name))
+        .or_insert_with(|| Arc::from(func_name))
         .clone();
     let entry = tr.map.entry(key).or_insert_with(|| EvalRecomputeEntry {
         fn_name: interned_name,
@@ -4335,7 +4335,7 @@ fn eval_recompute_record(
     });
     entry.count += 1;
     entry.total_ns += elapsed_ns;
-    let site_ptr = Rc::as_ptr(call_node) as usize;
+    let site_ptr = Arc::as_ptr(call_node) as usize;
     if entry.sites.len() < EVAL_RECOMPUTE_SITE_CAP
         && !entry.sites.iter().any(|(p, _)| *p == site_ptr)
     {
@@ -4541,11 +4541,11 @@ impl Drop for InterpContext {
 fn value_rc_identity(v: &Value) -> Option<usize> {
     match v {
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
-            Some(Rc::as_ptr(fields) as usize)
+            Some(Arc::as_ptr(fields) as usize)
         }
-        Value::List(xs) => Some(Rc::as_ptr(xs) as usize),
-        Value::Map(m) => Some(Rc::as_ptr(m) as usize),
-        Value::Set(s) => Some(Rc::as_ptr(s) as usize),
+        Value::List(xs) => Some(Arc::as_ptr(xs) as usize),
+        Value::Map(m) => Some(Arc::as_ptr(m) as usize),
+        Value::Set(s) => Some(Arc::as_ptr(s) as usize),
         _ => None,
     }
 }
@@ -4595,7 +4595,7 @@ fn eval_call_memo_get(
 
 fn eval_call_memo_put(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     key: EvalRecomputeKey,
     args: &[(Option<String>, Value)],
     value: Value,
@@ -4622,14 +4622,14 @@ pub fn eval_call_memo_counters(ctx: &InterpContext) -> (u64, u64, u64) {
     (m.hits, m.misses, m.overflow)
 }
 fn pure_call_memo_key(
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     func_name: &str,
     args: &[(Option<String>, Value)],
 ) -> Option<(usize, Vec<usize>)> {
     if !is_structural_pure_fn(func_name) {
         return None;
     }
-    let fid = Rc::as_ptr(fn_node) as usize;
+    let fid = Arc::as_ptr(fn_node) as usize;
     let mut ids = Vec::with_capacity(args.len());
     for (_, v) in args {
         ids.push(value_rc_identity(v)?);
@@ -4641,7 +4641,7 @@ fn pure_call_memo_get(ctx: &InterpContext, key: &(usize, Vec<usize>)) -> Option<
 }
 fn pure_call_memo_put(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     key: (usize, Vec<usize>),
     args: &[(Option<String>, Value)],
     result: Value,
@@ -4654,7 +4654,7 @@ fn pure_call_memo_put(
     st.map.insert(key, result);
 }
 
-fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_method_call(node: &Arc<Node>, env: &Arc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let method_name = expr_method_name_at(node.clone(), ctx.si());
     let semantics = expr_method_call_semantics(node.clone());
 
@@ -4731,9 +4731,9 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
 }
 
 fn eval_field_access(
-    node: &Rc<Node>,
+    node: &Arc<Node>,
     summary: Option<&FieldSummary>,
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let base_val = eval_expr(&field_access_base(node.clone()), env, ctx)?;
@@ -4762,7 +4762,7 @@ fn eval_field_access(
 fn extract_field(
     value: &Value,
     field: &str,
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let field_sym = ctx.sym(field);
@@ -4792,9 +4792,9 @@ fn extract_field(
 }
 
 fn eval_record_lit(
-    node: &Rc<Node>,
+    node: &Arc<Node>,
     parent_enum: Option<&str>,
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let type_name = record_lit_type_name_at(node.clone(), ctx.si()).unwrap_or_default();
@@ -4818,7 +4818,7 @@ fn eval_record_lit(
         Ok(Value::Variant {
             type_name: ctx.sym(pe),
             variant_name: ctx.sym(type_name.rsplit('.').next().unwrap_or(&type_name)),
-            fields: Rc::new(fields),
+            fields: Arc::new(fields),
         })
     } else {
         if type_name == "GroupCompletion" {
@@ -4831,12 +4831,16 @@ fn eval_record_lit(
         }
         Ok(Value::Record {
             type_name: ctx.sym(&type_name),
-            fields: Rc::new(fields),
+            fields: Arc::new(fields),
         })
     }
 }
 
-fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_string_interp(
+    node: &Arc<Node>,
+    env: &Arc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
     let parts = extract_string_interp_parts(node.clone());
     let mut result = String::new();
     for part in parts.iter() {
@@ -4852,7 +4856,7 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
     Ok(Value::Str(result))
 }
 
-fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
+fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Option<Arc<Node>> {
     for module in ctx.modules.iter() {
         for item in module.items.iter() {
             if authored_name_at(ctx.si(), item.clone()) == type_name {
@@ -4863,7 +4867,7 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
     None
 }
 
-fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
+fn alias_rhs_next_name(ctx: &InterpContext, rhs: Arc<Node>) -> Option<String> {
     let direct = authored_name_at(ctx.si(), rhs.clone());
     if !direct.is_empty() {
         return Some(direct);
@@ -4889,7 +4893,7 @@ fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
     }
 }
 
-fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<String> {
+fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Arc<Node>) -> Option<String> {
     let rhs = match item.inferred.as_deref()? {
         InferredNode::Resolved { node } => node.clone(),
         _ => return None,
@@ -4897,7 +4901,7 @@ fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<Stri
     alias_rhs_next_name(ctx, rhs)
 }
 
-fn cast_target_seed_name(ctx: &InterpContext, target: Rc<Node>) -> String {
+fn cast_target_seed_name(ctx: &InterpContext, target: Arc<Node>) -> String {
     let from_span = authored_name_at(ctx.si(), target.clone());
     if !from_span.is_empty() {
         return from_span;
@@ -4923,7 +4927,7 @@ fn cast_target_seed_name(ctx: &InterpContext, target: Rc<Node>) -> String {
     String::new()
 }
 
-fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> String {
+fn cast_target_underlying_kernel(ctx: &InterpContext, target: Arc<Node>) -> String {
     let mut current = cast_target_seed_name(ctx, target);
     let mut seen = BTreeSet::new();
 
@@ -4958,7 +4962,7 @@ fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> Strin
 fn str_identity_cast_if_string_family(
     val: &Value,
     ctx: &InterpContext,
-    target: Rc<Node>,
+    target: Arc<Node>,
 ) -> Option<Value> {
     let Value::Str(s) = val else {
         return None;
@@ -4971,7 +4975,7 @@ fn str_identity_cast_if_string_family(
     }
 }
 
-fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_cast(node: &Arc<Node>, env: &Arc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
     let target_node = cast_target(node.clone());
     let target_name = cast_target_seed_name(ctx, target_node.clone());
@@ -4993,7 +4997,7 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     }
 }
 
-fn eval_for_each(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_for_each(node: &Arc<Node>, env: &Arc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let var_name = foreach_variable_at(node.clone(), ctx.si());
     let collection = eval_expr(&foreach_collection(node.clone()), env, ctx)?;
     let body_node = foreach_body(node.clone());
@@ -5007,7 +5011,7 @@ fn eval_for_each(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpR
     Ok(list_value((results)))
 }
 
-fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_index(node: &Arc<Node>, env: &Arc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let base = eval_expr(&index_base(node.clone()), env, ctx)?;
     let idx = eval_expr(&index_expr(node.clone()), env, ctx)?;
 
@@ -5039,7 +5043,7 @@ fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     }
 }
 
-fn eval_slice(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_slice(node: &Arc<Node>, env: &Arc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let base = eval_expr(&slice_base(node.clone()), env, ctx)?;
     let start = eval_expr(&slice_start(node.clone()), env, ctx)?;
     let end = eval_expr(&slice_end(node.clone()), env, ctx)?;
@@ -5075,7 +5079,7 @@ fn eval_algebra_method(
     method: &str,
     receiver: Value,
     args: &[Value],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     if !residual_hunt_forensics_enabled() {
@@ -5359,7 +5363,7 @@ macro_rules! v1_algebra_method_arms {
                     .enumerate()
                     .map(|(i, v)| Value::Record {
                         type_name: $ctx.sym("Pair"),
-                        fields: Rc::new(sorted_fields(vec![
+                        fields: Arc::new(sorted_fields(vec![
                             ($ctx.sym("first"), Value::Int(i as i64)),
                             ($ctx.sym("second"), v.clone()),
                         ])),
@@ -5619,7 +5623,7 @@ fn eval_algebra_method_inner(
     method: &str,
     receiver: Value,
     args: &[Value],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     v1_algebra_method_arms!(v1_algebra_dispatch, method, receiver, args, env, ctx)
@@ -5640,7 +5644,7 @@ fn wet_service_call(
     service_name: &str,
     op_name: &str,
     args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
 ) -> InterpResult<Value> {
     let key = format!("{}.{}", service_name, op_name);
     let (service_node, op_node) =
@@ -5817,7 +5821,7 @@ fn eval_service_call(
     service_name: &str,
     op_name: &str,
     args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     ctx: &InterpContext,
     declared: ExpectationDeclaration,
 ) -> InterpResult<Value> {
@@ -6013,10 +6017,10 @@ fn eval_service_call(
 }
 
 fn dispatch_service_wet(
-    service_node: &Rc<Node>,
-    op_node: &Rc<Node>,
-    transport: &Rc<Node>,
-    param_env: &Rc<Env>,
+    service_node: &Arc<Node>,
+    op_node: &Arc<Node>,
+    transport: &Arc<Node>,
+    param_env: &Arc<Env>,
     ctx: &InterpContext,
     intent: &str,
     expected: ExpectedOutcome,
@@ -6048,8 +6052,8 @@ fn dispatch_service_wet(
 /// semantics as printenv (unset/empty → Null optional; value trimmed), with no
 /// ObservationEvent and no child process.
 fn dispatch_env_get_native(
-    op_node: &Rc<Node>,
-    param_env: &Rc<Env>,
+    op_node: &Arc<Node>,
+    param_env: &Arc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let name = match param_env.lookup(ctx.sym("name")) {
@@ -6071,16 +6075,16 @@ fn dispatch_env_get_native(
     };
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
-        fields: Rc::new(vec![(ctx.sym("value"), value)]),
+        fields: Arc::new(vec![(ctx.sym("value"), value)]),
     })
 }
 
 fn build_service_param_env(
-    op_node: &Rc<Node>,
+    op_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     ctx: &InterpContext,
-) -> InterpResult<Rc<Env>> {
+) -> InterpResult<Arc<Env>> {
     let mut bindings = HashMap::new();
 
     for (opt_name, val) in args {
@@ -6197,7 +6201,7 @@ pub enum ArgvRefusalCause {
     BindingMalformed(String),
 }
 
-fn argv_expr_kind_label(node: &Rc<Node>) -> &'static str {
+fn argv_expr_kind_label(node: &Arc<Node>) -> &'static str {
     match node.expr_data.as_ref() {
         ExprData::NoExprData => "no-expr",
         ExprData::ExprLiteral { .. } => "literal",
@@ -6229,7 +6233,7 @@ fn argv_expr_kind_label(node: &Rc<Node>) -> &'static str {
 /// default that is a call or a reference is left UNBOUND, so an argv position that
 /// needs it refuses by name rather than being filled with a guess (DESIGN §5 — a
 /// fabricated plausible default is the failure this avoids).
-fn declared_default_value(node: &Rc<Node>) -> Option<Value> {
+fn declared_default_value(node: &Arc<Node>) -> Option<Value> {
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
             LiteralValue::LitStr { value } => Some(Value::Str(value.clone())),
@@ -6327,7 +6331,7 @@ fn operation_input_binding_entry(
 /// channel a generic binder must not keep open.
 fn operation_input_binding_env(
     bindings: &Value,
-    declared: &[(String, Option<Rc<Node>>)],
+    declared: &[(String, Option<Arc<Node>>)],
     ctx: &InterpContext,
 ) -> Result<HashMap<String, Value>, ArgvRefusalCause> {
     let Some(items) = free_monoid_to_vec(bindings) else {
@@ -6362,9 +6366,9 @@ fn operation_input_binding_env(
 }
 
 fn bind_argv_expr(
-    node: &Rc<Node>,
+    node: &Arc<Node>,
     env: &HashMap<String, Value>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    source_indices: &Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
 ) -> Result<Value, ArgvRefusalCause> {
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
@@ -6454,7 +6458,7 @@ fn argv_refusal_cause_value(cause: &ArgvRefusalCause, ctx: &InterpContext) -> Va
     let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
         type_name: ctx.sym("ArgvRefusalCause"),
         variant_name: ctx.sym(name),
-        fields: Rc::new(sorted_fields(fields)),
+        fields: Arc::new(sorted_fields(fields)),
     };
     match cause {
         ArgvRefusalCause::OperationNotFound => variant("OperationNotFound", vec![]),
@@ -6493,7 +6497,7 @@ fn argv_refusal_cause_value(cause: &ArgvRefusalCause, ctx: &InterpContext) -> Va
 fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpContext) -> Value {
     Value::Record {
         type_name: ctx.sym("OperationRef"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (ctx.sym("path"), Value::Str(path.to_string())),
             (ctx.sym("service"), Value::Str(service.to_string())),
             (ctx.sym("operation"), Value::Str(operation.to_string())),
@@ -6513,13 +6517,13 @@ fn compile_diagnostic_census_value(
         crate::cli_run::CompileDiagnosticCensus::Observed(rows) => Value::Variant {
             type_name: ctx.sym("CompileDiagnosticCensus"),
             variant_name: ctx.sym("CensusObserved"),
-            fields: Rc::new(sorted_fields(vec![(
+            fields: Arc::new(sorted_fields(vec![(
                 ctx.sym("rows"),
                 list_value(
                     rows.into_iter()
                         .map(|r| Value::Record {
                             type_name: ctx.sym("CompileDiagnosticCensusRow"),
-                            fields: Rc::new(sorted_fields(vec![
+                            fields: Arc::new(sorted_fields(vec![
                                 (ctx.sym("diagnostic_class"), Value::Str(r.diagnostic_class)),
                                 (ctx.sym("subject_name"), Value::Str(r.subject_name)),
                                 (ctx.sym("blocking"), Value::Bool(r.blocking)),
@@ -6533,7 +6537,7 @@ fn compile_diagnostic_census_value(
         crate::cli_run::CompileDiagnosticCensus::NotRunnable(cause) => Value::Variant {
             type_name: ctx.sym("CompileDiagnosticCensus"),
             variant_name: ctx.sym("CensusNotRunnable"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), Value::Str(cause))])),
+            fields: Arc::new(sorted_fields(vec![(ctx.sym("cause"), Value::Str(cause))])),
         },
     }
 }
@@ -6549,7 +6553,7 @@ fn argv_materialization_value(
         Ok(argv) => Value::Variant {
             type_name: ctx.sym("ArgvMaterialization"),
             variant_name: ctx.sym("ArgvMaterialized"),
-            fields: Rc::new(sorted_fields(vec![(
+            fields: Arc::new(sorted_fields(vec![(
                 ctx.sym("argv"),
                 list_value(argv.into_iter().map(Value::Str).collect::<Vec<_>>()),
             )])),
@@ -6557,7 +6561,7 @@ fn argv_materialization_value(
         Err(cause) => Value::Variant {
             type_name: ctx.sym("ArgvMaterialization"),
             variant_name: ctx.sym("ArgvMaterializationRefused"),
-            fields: Rc::new(sorted_fields(vec![
+            fields: Arc::new(sorted_fields(vec![
                 (
                     ctx.sym("at"),
                     operation_ref_value(path, service, operation, ctx),
@@ -7288,8 +7292,8 @@ fn wait_child_honoring_wall_deadline(
 }
 
 fn dispatch_shell(
-    transport: &Rc<Node>,
-    param_env: &Rc<Env>,
+    transport: &Arc<Node>,
+    param_env: &Arc<Env>,
     ctx: &InterpContext,
     intent: &str,
     expected: ExpectedOutcome,
@@ -7413,7 +7417,7 @@ fn dispatch_shell(
 
 fn map_shell_outputs(
     result: &ShellResult,
-    op_node: &Rc<Node>,
+    op_node: &Arc<Node>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let return_type = match op_node.inferred.as_deref() {
@@ -7463,11 +7467,11 @@ fn map_shell_outputs(
 
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
-        fields: Rc::new(fields),
+        fields: Arc::new(fields),
     })
 }
 
-fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String> {
+fn extract_from_key(field_node: &Arc<Node>, ctx: &InterpContext) -> Option<String> {
     for prop in field_node.properties.iter() {
         let prop_name = field_init_node_name_at(prop.clone(), ctx.si());
         if prop_name == "from_key" || prop_name == "from" {
@@ -7491,9 +7495,9 @@ struct FileResult {
 }
 
 fn dispatch_file(
-    op_node: &Rc<Node>,
-    transport: &Rc<Node>,
-    param_env: &Rc<Env>,
+    op_node: &Arc<Node>,
+    transport: &Arc<Node>,
+    param_env: &Arc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<FileResult> {
     let si = ctx.si();
@@ -7655,7 +7659,7 @@ fn dispatch_file(
 
 fn map_file_outputs(
     result: &FileResult,
-    op_node: &Rc<Node>,
+    op_node: &Arc<Node>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let return_type = match op_node.inferred.as_deref() {
@@ -7692,7 +7696,7 @@ fn map_file_outputs(
 
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
-        fields: Rc::new(fields),
+        fields: Arc::new(fields),
     })
 }
 
@@ -7794,7 +7798,7 @@ fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool
 /// authority; see rest_outcome_note. Inspect the field's TYPE, not its spelling, so
 /// callers may choose a domain-appropriate field name without creating another
 /// transport convention.
-fn rest_outcome_output_field(op_node: &Rc<Node>, ctx: &InterpContext) -> Option<String> {
+fn rest_outcome_output_field(op_node: &Arc<Node>, ctx: &InterpContext) -> Option<String> {
     let return_type = match op_node.inferred.as_deref()? {
         InferredNode::Resolved { node } => node,
         _ => return None,
@@ -7819,7 +7823,7 @@ fn rest_outcome_variant(
     Value::Variant {
         type_name: ctx.sym("RestOutcome"),
         variant_name: ctx.sym(variant),
-        fields: Rc::new(fields),
+        fields: Arc::new(fields),
     }
 }
 
@@ -7877,7 +7881,7 @@ fn rest_variant(ctx: &InterpContext, type_name: &str, variant_name: &str) -> Val
     Value::Variant {
         type_name: ctx.sym(type_name),
         variant_name: ctx.sym(variant_name),
-        fields: Rc::new(vec![]),
+        fields: Arc::new(vec![]),
     }
 }
 
@@ -7921,7 +7925,7 @@ fn rest_auth_identity_value(
             Value::Variant {
                 type_name: ctx.sym("RestAuthSensitiveIdentity"),
                 variant_name: ctx.sym("RestAuthenticated"),
-                fields: Rc::new(sorted_fields(vec![
+                fields: Arc::new(sorted_fields(vec![
                     (ctx.sym("scheme"), Value::Str(scheme)),
                     (ctx.sym("digest"), fnv1a64_structural_value(digest, ctx)),
                 ])),
@@ -7938,7 +7942,7 @@ fn rest_auth_identity_value(
 fn fnv1a64_structural_value(digest: String, ctx: &InterpContext) -> Value {
     Value::Record {
         type_name: ctx.sym("Fnv1a64Structural"),
-        fields: Rc::new(sorted_fields(vec![(ctx.sym("digest"), Value::Str(digest))])),
+        fields: Arc::new(sorted_fields(vec![(ctx.sym("digest"), Value::Str(digest))])),
     }
 }
 
@@ -7970,7 +7974,7 @@ fn rest_uri_value(url: &str, ctx: &InterpContext) -> InterpResult<Value> {
     };
     Ok(Value::Record {
         type_name: ctx.sym("Uri"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (ctx.sym("scheme"), rest_variant(ctx, "UriScheme", scheme)),
             (ctx.sym("locator"), Value::Str(locator.to_string())),
         ])),
@@ -7978,11 +7982,11 @@ fn rest_uri_value(url: &str, ctx: &InterpContext) -> InterpResult<Value> {
 }
 
 fn rest_bound_invocation_value(
-    service_node: &Rc<Node>,
-    op_node: &Rc<Node>,
+    service_node: &Arc<Node>,
+    op_node: &Arc<Node>,
     method: &str,
     url: &str,
-    param_env: &Rc<Env>,
+    param_env: &Arc<Env>,
     auth: &AuthResolution,
     basic_header: Option<&str>,
     ctx: &InterpContext,
@@ -7994,7 +7998,7 @@ fn rest_bound_invocation_value(
         crate::recorded_fixture::content_hash_service_inputs(op_node, param_env, ctx);
     Ok(Value::Record {
         type_name: ctx.sym("RestBoundOperationInvocation"),
-        fields: Rc::new(sorted_fields(vec![
+        fields: Arc::new(sorted_fields(vec![
             (ctx.sym("at"), at),
             (ctx.sym("method"), rest_variant(ctx, "HttpMethod", method)),
             (ctx.sym("target"), rest_uri_value(url, ctx)?),
@@ -8192,7 +8196,7 @@ fn observe_rest_exchange(
 
 fn decide_rest_exchange(
     observation: RestExchangeObservationHost,
-    op_node: &Rc<Node>,
+    op_node: &Arc<Node>,
     response_format: &str,
     outcome_field: Option<&str>,
     ctx: &InterpContext,
@@ -8276,7 +8280,7 @@ fn decide_rest_exchange(
 /// just the outcome field.
 fn attach_rest_outcome(
     mapped: Option<Value>,
-    op_node: &Rc<Node>,
+    op_node: &Arc<Node>,
     outcome_field: &str,
     outcome: Value,
     ctx: &InterpContext,
@@ -8312,15 +8316,15 @@ fn attach_rest_outcome(
     fields.sort_unstable_by_key(|(name, _)| name.0);
     Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
-        fields: Rc::new(fields),
+        fields: Arc::new(fields),
     }
 }
 
 fn dispatch_rest(
-    service_node: &Rc<Node>,
-    op_node: &Rc<Node>,
-    transport: &Rc<Node>,
-    param_env: &Rc<Env>,
+    service_node: &Arc<Node>,
+    op_node: &Arc<Node>,
+    transport: &Arc<Node>,
+    param_env: &Arc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let si = ctx.si();
@@ -8595,10 +8599,10 @@ fn dispatch_rest(
 }
 
 pub fn resolve_auth(
-    service_node: &Rc<Node>,
-    _transport: &Rc<Node>,
-    param_env: &Rc<Env>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    service_node: &Arc<Node>,
+    _transport: &Arc<Node>,
+    param_env: &Arc<Env>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
     ctx: &InterpContext,
 ) -> AuthResolution {
     let mut header_name = "Authorization".to_string();
@@ -8693,7 +8697,7 @@ pub fn resolve_auth(
     }
 }
 
-fn extract_string_value(node: &Rc<Node>) -> Option<String> {
+fn extract_string_value(node: &Arc<Node>) -> Option<String> {
     if let ExprData::ExprLiteral { ref value } = *node.expr_data {
         if let LiteralValue::LitStr { value: s } = value.as_ref() {
             return Some(s.clone());
@@ -8717,10 +8721,10 @@ fn extract_string_value(node: &Rc<Node>) -> Option<String> {
 // were both returned as `Some(String)`, so the failure could only surface downstream
 // as a malformed URL instead of as a located refusal at the config read.
 fn find_service_config_string(
-    service_node: &Rc<Node>,
+    service_node: &Arc<Node>,
     key: &str,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    param_env: &Rc<Env>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
+    param_env: &Arc<Env>,
     ctx: &InterpContext,
 ) -> Option<Result<String, String>> {
     for prop in service_node.properties.iter() {
@@ -8742,7 +8746,7 @@ fn find_service_config_string(
     None
 }
 
-fn substitute_template(template: &str, env: &Rc<Env>, ctx: &InterpContext) -> String {
+fn substitute_template(template: &str, env: &Arc<Env>, ctx: &InterpContext) -> String {
     let mut result = String::new();
     let mut chars = template.chars().peekable();
     while let Some(c) = chars.next() {
@@ -8839,7 +8843,7 @@ fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
 fn map_response_to_value(
     text: &str,
     _json: Option<&serde_json::Value>,
-    op_node: &Rc<Node>,
+    op_node: &Arc<Node>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let return_type = match op_node.inferred.as_deref() {
@@ -8861,13 +8865,13 @@ fn map_response_to_value(
     fields.sort_unstable_by_key(|(k, _)| k.0);
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
-        fields: Rc::new(fields),
+        fields: Arc::new(fields),
     })
 }
 
 fn map_response_to_value_json(
     json: &serde_json::Value,
-    op_node: &Rc<Node>,
+    op_node: &Arc<Node>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let return_type = match op_node.inferred.as_deref() {
@@ -8888,7 +8892,7 @@ fn map_response_to_value_json(
         let first_field = authored_name_at(ctx.si(), children[0].clone());
         return Ok(Value::Record {
             type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
-            fields: Rc::new(vec![(ctx.sym(&first_field), json_to_value(json))]),
+            fields: Arc::new(vec![(ctx.sym(&first_field), json_to_value(json))]),
         });
     }
 
@@ -8921,7 +8925,7 @@ fn map_response_to_value_json(
 
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
-        fields: Rc::new(fields),
+        fields: Arc::new(fields),
     })
 }
 
@@ -8952,7 +8956,7 @@ fn json_to_value(json: &serde_json::Value) -> Value {
     }
 }
 
-fn type_annotation_names(ctx: &InterpContext, ty: &Rc<Node>, target: &str) -> bool {
+fn type_annotation_names(ctx: &InterpContext, ty: &Arc<Node>, target: &str) -> bool {
     if ty.name == target || authored_name_at(ctx.si(), ty.clone()) == target {
         return true;
     }
@@ -9016,7 +9020,7 @@ fn published_case_operation_key(ctx: &InterpContext, fields: &[(Symbol, Value)])
     })
 }
 
-fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_mock_response(op_node: &Arc<Node>, ctx: &InterpContext) -> InterpResult<Value> {
     for prop in op_node.properties.iter() {
         let prop_name = field_init_node_name_at(prop.clone(), ctx.si());
         if has_mock_prefix(prop_name) {
@@ -9095,7 +9099,7 @@ fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResu
 
     Ok(Value::Record {
         type_name: ctx.sym("FilesystemReadResult"),
-        fields: Rc::new(vec![(ctx.sym("content"), Value::Str(content))]),
+        fields: Arc::new(vec![(ctx.sym("content"), Value::Str(content))]),
     })
 }
 
@@ -9979,7 +9983,7 @@ fn emit_host_run_transport_cached_in_workspace(
             // fields_get is a binary search by Symbol id, so a multi-field record
             // MUST be sorted at construction; declaration order is interning-order-
             // dependent and broke .success lookups when #6904 shifted interning.
-            fields: Rc::new(sorted_fields(vec![
+            fields: Arc::new(sorted_fields(vec![
                 (ctx.sym("phase"), Value::Str(phase.to_string())),
                 (ctx.sym("success"), Value::Bool(success)),
                 (ctx.sym("exit_code"), Value::Int(exit_code)),
@@ -10169,7 +10173,7 @@ fn emit_host_run_transport_in_workspace(
             // fields_get is a binary search by Symbol id, so a multi-field record
             // MUST be sorted at construction; declaration order is interning-order-
             // dependent and broke .success lookups when #6904 shifted interning.
-            fields: Rc::new(sorted_fields(vec![
+            fields: Arc::new(sorted_fields(vec![
                 (ctx.sym("phase"), Value::Str(phase.to_string())),
                 (ctx.sym("success"), Value::Bool(success)),
                 (ctx.sym("exit_code"), Value::Int(exit_code)),
@@ -10278,7 +10282,7 @@ macro_rules! v1_builtin_arms {
                     } => Value::Variant {
                         type_name: $ctx.sym("CargoManifestBinParse"),
                         variant_name: $ctx.sym("CargoManifestBinsParsed"),
-                        fields: Rc::new(sorted_fields(vec![(
+                        fields: Arc::new(sorted_fields(vec![(
                             $ctx.sym("authored_relative_paths"),
                             list_value(
                                 authored_relative_paths
@@ -10292,7 +10296,7 @@ macro_rules! v1_builtin_arms {
                         Value::Variant {
                             type_name: $ctx.sym("CargoManifestBinParse"),
                             variant_name: $ctx.sym("CargoManifestBinsParseRefused"),
-                            fields: Rc::new(sorted_fields(vec![(
+                            fields: Arc::new(sorted_fields(vec![(
                                 $ctx.sym("detail"),
                                 Value::Str(detail),
                             )])),
@@ -10343,14 +10347,14 @@ macro_rules! v1_builtin_arms {
                     .into_iter()
                     .map(|identity| Value::Record {
                         type_name: $ctx.sym("Stage0SourceModuleIdentity"),
-                        fields: Rc::new(sorted_fields(vec![
+                        fields: Arc::new(sorted_fields(vec![
                             ($ctx.sym("module_path"), Value::Str(identity.module_path)),
                             (
                                 $ctx.sym("provenance"),
                                 Value::Variant {
                                     type_name: $ctx.sym("Stage0SourceIdentityProvenance"),
                                     variant_name: $ctx.sym("ParsedFromRegenSourceClosure"),
-                                    fields: Rc::new(Vec::new()),
+                                    fields: Arc::new(Vec::new()),
                                 },
                             ),
                             (
@@ -10358,7 +10362,7 @@ macro_rules! v1_builtin_arms {
                                 Value::Variant {
                                     type_name: $ctx.sym("Stage0SourceTree"),
                                     variant_name: $ctx.sym(identity.source_tree),
-                                    fields: Rc::new(Vec::new()),
+                                    fields: Arc::new(Vec::new()),
                                 },
                             ),
                             ($ctx.sym("storage_path"), Value::Str(identity.storage_path)),
@@ -10368,7 +10372,7 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Variant {
                     type_name: $ctx.sym("Stage0SourceIdentitySupply"),
                     variant_name: $ctx.sym("Stage0SourceIdentitySupplyAvailable"),
-                    fields: Rc::new(vec![($ctx.sym("identities"), list_value(items))]),
+                    fields: Arc::new(vec![($ctx.sym("identities"), list_value(items))]),
                 }))
             },
 
@@ -10684,7 +10688,7 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.empty_map" { "empty_map" } => Ok(Some(map_value(HamtMap::new()))),
 
-            arm "free_call.empty_set" { "empty_set" } => Ok(Some(Value::Set(Rc::new(OrdSet::new())))),
+            arm "free_call.empty_set" { "empty_set" } => Ok(Some(Value::Set(Arc::new(OrdSet::new())))),
 
             arm "free_call.set_insert" { "set_insert" } => match $positional.as_slice() {
                 [Value::Set(s), Value::Str(k)] => {
@@ -10694,7 +10698,7 @@ macro_rules! v1_builtin_arms {
                     drop(counters);
                     let mut result = s.as_ref().clone();
                     result.insert(k.clone());
-                    Ok(Some(Value::Set(Rc::new(result))))
+                    Ok(Some(Value::Set(Arc::new(result))))
                 }
                 _ => Ok(None),
             },
@@ -10707,7 +10711,7 @@ macro_rules! v1_builtin_arms {
                     drop(counters);
                     let mut result = a.as_ref().clone();
                     result.extend(b.iter().cloned());
-                    Ok(Some(Value::Set(Rc::new(result))))
+                    Ok(Some(Value::Set(Arc::new(result))))
                 }
                 _ => Ok(None),
             },
@@ -10938,11 +10942,11 @@ macro_rules! v1_builtin_arms {
                     let layer = Value::Variant {
                         type_name: $ctx.sym("LayerPrefix"),
                         variant_name: $ctx.sym(f.layer),
-                        fields: Rc::new(vec![]),
+                        fields: Arc::new(vec![]),
                     };
                     items.push(Value::Record {
                         type_name: $ctx.sym("LayerImportFact"),
-                        fields: Rc::new(sorted_fields(vec![
+                        fields: Arc::new(sorted_fields(vec![
                             ($ctx.sym("import_module"), Value::Str(f.import_module)),
                             ($ctx.sym("layer"), layer),
                             ($ctx.sym("path"), Value::Str(f.path)),
@@ -10968,7 +10972,7 @@ macro_rules! v1_builtin_arms {
                 for f in facts {
                     items.push(Value::Record {
                         type_name: $ctx.sym("ImportResolutionFact"),
-                        fields: Rc::new(sorted_fields(vec![
+                        fields: Arc::new(sorted_fields(vec![
                             ($ctx.sym("import_module"), Value::Str(f.import_module)),
                             ($ctx.sym("path"), Value::Str(f.path)),
                             ($ctx.sym("target_declared"), Value::Bool(f.target_declared)),
@@ -11000,7 +11004,7 @@ macro_rules! v1_builtin_arms {
                 for f in facts {
                     items.push(Value::Record {
                         type_name: $ctx.sym("ImportResolutionFact"),
-                        fields: Rc::new(sorted_fields(vec![
+                        fields: Arc::new(sorted_fields(vec![
                             ($ctx.sym("import_module"), Value::Str(f.import_module)),
                             ($ctx.sym("path"), Value::Str(f.path)),
                             ($ctx.sym("target_declared"), Value::Bool(f.target_declared)),
@@ -11042,7 +11046,7 @@ macro_rules! v1_builtin_arms {
                 for f in facts {
                     items.push(Value::Record {
                         type_name: $ctx.sym("ModuleDeclarationFact"),
-                        fields: Rc::new(sorted_fields(vec![
+                        fields: Arc::new(sorted_fields(vec![
                             ($ctx.sym("module"), Value::Str(f.module)),
                             ($ctx.sym("path"), Value::Str(f.path)),
                         ])),
@@ -11063,11 +11067,11 @@ macro_rules! v1_builtin_arms {
                     let tree_value = Value::Variant {
                         type_name: $ctx.sym("FactCardinalityTree"),
                         variant_name: $ctx.sym(tree),
-                        fields: Rc::new(vec![]),
+                        fields: Arc::new(vec![]),
                     };
                     items.push(Value::Record {
                         type_name: $ctx.sym("FactCardinalityDeclFact"),
-                        fields: Rc::new(sorted_fields(vec![
+                        fields: Arc::new(sorted_fields(vec![
                             (
                                 $ctx.sym("rel_path_decl_key"),
                                 Value::Str(f.rel_path_decl_key),
@@ -11151,7 +11155,7 @@ macro_rules! v1_builtin_arms {
                 for row in crate::cli_run::shell_transport_operation_rows() {
                     items.push(Value::Record {
                         type_name: $ctx.sym("ShellTransportOperationRow"),
-                        fields: Rc::new(sorted_fields(vec![
+                        fields: Arc::new(sorted_fields(vec![
                             (
                                 $ctx.sym("at"),
                                 operation_ref_value(&row.path, &row.service, &row.operation, $ctx),
@@ -11202,11 +11206,11 @@ macro_rules! v1_builtin_arms {
                     let shape = Value::Variant {
                         type_name: $ctx.sym("TransportScriptArgShape"),
                         variant_name: $ctx.sym(f.shape),
-                        fields: Rc::new(vec![]),
+                        fields: Arc::new(vec![]),
                     };
                     items.push(Value::Record {
                         type_name: $ctx.sym("TransportScriptPositionFact"),
-                        fields: Rc::new(sorted_fields(vec![
+                        fields: Arc::new(sorted_fields(vec![
                             ($ctx.sym("function"), Value::Str(f.function)),
                             ($ctx.sym("path"), Value::Str(f.path)),
                             ($ctx.sym("shape"), shape),
@@ -11228,7 +11232,7 @@ macro_rules! v1_builtin_arms {
                     .iter()
                     .map(|f| Value::Record {
                         type_name: $ctx.sym("ExtdepsTransportArgvFact"),
-                        fields: Rc::new(sorted_fields(vec![
+                        fields: Arc::new(sorted_fields(vec![
                             ($ctx.sym("argv_index"), Value::Int(f.argv_index)),
                             ($ctx.sym("argv_token"), Value::Str(f.argv_token.clone())),
                             ($ctx.sym("module"), (*qn).clone()),
@@ -11239,7 +11243,7 @@ macro_rules! v1_builtin_arms {
                                 Value::Variant {
                                     type_name: $ctx.sym("ExtdepsTransportKind"),
                                     variant_name: $ctx.sym(f.transport_kind),
-                                    fields: Rc::new(vec![]),
+                                    fields: Arc::new(vec![]),
                                 },
                             ),
                         ])),
@@ -11250,7 +11254,7 @@ macro_rules! v1_builtin_arms {
                     .iter()
                     .map(|f| Value::Record {
                         type_name: $ctx.sym("ExtdepsTransportFusionFact"),
-                        fields: Rc::new(sorted_fields(vec![
+                        fields: Arc::new(sorted_fields(vec![
                             ($ctx.sym("endpoint_key"), Value::Str(f.endpoint_key.clone())),
                             ($ctx.sym("module"), (*qn).clone()),
                             ($ctx.sym("service_a"), Value::Str(f.service_a.clone())),
@@ -11263,7 +11267,7 @@ macro_rules! v1_builtin_arms {
                     .iter()
                     .map(|f| Value::Record {
                         type_name: $ctx.sym("ExtdepsOperationInputFact"),
-                        fields: Rc::new(sorted_fields(vec![
+                        fields: Arc::new(sorted_fields(vec![
                             ($ctx.sym("module"), (*qn).clone()),
                             ($ctx.sym("operation"), Value::Str(f.operation.clone())),
                             ($ctx.sym("param_name"), Value::Str(f.param_name.clone())),
@@ -11276,7 +11280,7 @@ macro_rules! v1_builtin_arms {
                     .iter()
                     .map(|f| Value::Record {
                         type_name: $ctx.sym("ExtdepsEmbeddedPolicyLiteralFact"),
-                        fields: Rc::new(sorted_fields(vec![
+                        fields: Arc::new(sorted_fields(vec![
                             ($ctx.sym("data_name"), Value::Str(f.data_name.clone())),
                             ($ctx.sym("field_name"), Value::Str(f.field_name.clone())),
                             (
@@ -11289,7 +11293,7 @@ macro_rules! v1_builtin_arms {
                     .collect();
                 let result = Value::Record {
                     type_name: $ctx.sym("ExtdepsModuleFacts"),
-                    fields: Rc::new(sorted_fields(vec![
+                    fields: Arc::new(sorted_fields(vec![
                         ($ctx.sym("argv_facts"), list_value(argv_items)),
                         ($ctx.sym("embedded_facts"), list_value(embedded_items)),
                         ($ctx.sym("fusion_facts"), list_value(fusion_items)),
@@ -11320,7 +11324,7 @@ macro_rules! v1_builtin_arms {
                 let facts = crate::cli_run::extdeps_external_authority_module_facts(&module_path);
                 let result = Value::Record {
                     type_name: $ctx.sym("ExtdepsExternalAuthorityModuleFacts"),
-                    fields: Rc::new(sorted_fields(vec![
+                    fields: Arc::new(sorted_fields(vec![
                         ($ctx.sym("anchor_kind"), Value::Str(facts.anchor_kind)),
                         (
                             $ctx.sym("scheme_identity"),
@@ -11502,7 +11506,7 @@ macro_rules! v1_builtin_arms {
                 for f in facts {
                     items.push(Value::Record {
                         type_name: $ctx.sym("ComplexityLinearityWildcardFact"),
-                        fields: Rc::new(sorted_fields(vec![
+                        fields: Arc::new(sorted_fields(vec![
                             (
                                 $ctx.sym("closed_coproduct_wildcard"),
                                 Value::Bool(f.closed_coproduct_wildcard),
@@ -11522,7 +11526,7 @@ macro_rules! v1_builtin_arms {
                 for f in facts {
                     items.push(Value::Record {
                         type_name: $ctx.sym("FallbackArmCensusFact"),
-                        fields: Rc::new(sorted_fields(vec![
+                        fields: Arc::new(sorted_fields(vec![
                             (
                                 $ctx.sym("closed_coproduct_scrutinee"),
                                 Value::Bool(f.closed_coproduct_scrutinee),
@@ -11598,7 +11602,7 @@ fn eval_builtin_inner(
 fn apply_closure(
     closure: &Value,
     args: &[Value],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     // Same bounded-execution guard as call_function — closures are the other
@@ -11629,7 +11633,7 @@ fn apply_closure(
 fn apply_closure_inner(
     closure: &Value,
     args: &[Value],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     match closure {
@@ -11665,12 +11669,12 @@ fn list_method_with_closure<F>(
     method_name: &str,
     receiver: Value,
     args: &[Value],
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     ctx: &InterpContext,
     f: F,
 ) -> InterpResult<Value>
 where
-    F: FnOnce(&RrbVector<Value>, &Value, &Rc<Env>, &InterpContext) -> InterpResult<Value>,
+    F: FnOnce(&RrbVector<Value>, &Value, &Arc<Env>, &InterpContext) -> InterpResult<Value>,
 {
     let items = expect_list(&receiver, method_name)?;
     let closure = args.first().ok_or_else(|| InterpError::TypeError {
@@ -11818,7 +11822,7 @@ pub fn dag_fn_self_time_snapshot() -> Vec<(String, u64, u64)> {
 // dissolve-on: same as the recorders above -- delete with the residual-hunt
 // work item, not a permanent profiler.
 thread_local! {
-    static CURRENT_DAG_FN: std::cell::RefCell<Vec<Rc<str>>> =
+    static CURRENT_DAG_FN: std::cell::RefCell<Vec<Arc<str>>> =
         const { std::cell::RefCell::new(Vec::new()) };
 }
 
@@ -11826,7 +11830,7 @@ pub(crate) struct DagFnGuard(bool);
 impl DagFnGuard {
     pub(crate) fn enter(name: &str) -> Self {
         if residual_hunt_forensics_enabled() {
-            CURRENT_DAG_FN.with(|s| s.borrow_mut().push(Rc::from(name)));
+            CURRENT_DAG_FN.with(|s| s.borrow_mut().push(Arc::from(name)));
             DagFnGuard(true)
         } else {
             DagFnGuard(false)
@@ -12422,12 +12426,12 @@ pub(crate) fn free_monoid_to_string(val: &Value) -> Option<String> {
     Some(out)
 }
 
-fn value_to_list_carrier(val: &Value) -> Option<(Rc<RrbVector<Value>>, u64)> {
+fn value_to_list_carrier(val: &Value) -> Option<(Arc<RrbVector<Value>>, u64)> {
     match val {
         Value::List(items) => Some((items.clone(), 0)),
         _ => free_monoid_to_vec(val).map(|items| {
             let copied = items.len() as u64;
-            (Rc::new(RrbVector::from(items)), copied)
+            (Arc::new(RrbVector::from(items)), copied)
         }),
     }
 }
@@ -12436,11 +12440,11 @@ fn list_get_at_or_null(items: &RrbVector<Value>, idx: i64) -> Value {
     items.get(idx as usize).cloned().unwrap_or(Value::Null)
 }
 
-fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<RrbVector<Value>>> {
+fn expect_list(val: &Value, context: &str) -> InterpResult<Arc<RrbVector<Value>>> {
     match val {
         Value::List(items) => Ok(items.clone()),
         _ => match free_monoid_to_vec(val) {
-            Some(items) => Ok(Rc::new(RrbVector::from(items))),
+            Some(items) => Ok(Arc::new(RrbVector::from(items))),
             None => Err(InterpError::TypeError {
                 msg: format!("{} expects a list, got {}", context, val.type_label()),
             }),
@@ -12461,7 +12465,7 @@ fn is_map_lookup_receiver(val: &Value) -> bool {
 fn raw_map_lookup(
     map: &Value,
     key: &Value,
-    env: &Rc<Env>,
+    env: &Arc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<RawMapLookup> {
     match map {
@@ -12503,7 +12507,7 @@ fn raw_map_lookup(
     }
 }
 
-fn expect_map(val: &Value, context: &str) -> InterpResult<Rc<HamtMap<CanonKey, Value>>> {
+fn expect_map(val: &Value, context: &str) -> InterpResult<Arc<HamtMap<CanonKey, Value>>> {
     match val {
         Value::Map(m) => Ok(m.clone()),
         _ => Err(InterpError::TypeError {
@@ -13058,7 +13062,7 @@ mod shell_completion_trace_tests {
 #[cfg(test)]
 mod wall_deadline_kill_tests {
     use std::process::{Command, Stdio};
-    use std::rc::Rc;
+    use std::sync::Arc;
     use std::time::Instant;
 
     use im::{vector as im_vec, HashMap};
@@ -13070,12 +13074,12 @@ mod wall_deadline_kill_tests {
 
     fn wet_ctx() -> InterpContext {
         let graph = ResolvedGraph {
-            modules: Rc::new(im_vec![]),
-            item_registry: Rc::new(HashMap::new()),
-            diagnostics: Rc::new(im_vec![]),
+            modules: Arc::new(im_vec![]),
+            item_registry: Arc::new(HashMap::new()),
+            diagnostics: Arc::new(im_vec![]),
             emit_graph_info: empty_emit_graph_info(),
         };
-        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Wet)
+        InterpContext::new(&graph, Arc::new(HashMap::new()), ExecutionMode::Wet)
     }
 
     #[test]
@@ -13128,7 +13132,7 @@ mod wall_deadline_kill_tests {
 
 #[cfg(test)]
 mod emit_host_admission_flip_test {
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     use im::{vector as im_vec, HashMap};
 
@@ -13139,19 +13143,19 @@ mod emit_host_admission_flip_test {
 
     fn ctx_in(mode: ExecutionMode) -> InterpContext {
         let graph = ResolvedGraph {
-            modules: Rc::new(im_vec![]),
-            item_registry: Rc::new(HashMap::new()),
-            diagnostics: Rc::new(im_vec![]),
+            modules: Arc::new(im_vec![]),
+            item_registry: Arc::new(HashMap::new()),
+            diagnostics: Arc::new(im_vec![]),
             emit_graph_info: empty_emit_graph_info(),
         };
-        InterpContext::new(&graph, Rc::new(HashMap::new()), mode)
+        InterpContext::new(&graph, Arc::new(HashMap::new()), mode)
     }
 
     fn verdict(ctx: &InterpContext, variant: &str) -> Value {
         Value::Variant {
             type_name: ctx.sym("AccessDecision"),
             variant_name: ctx.sym(variant),
-            fields: Rc::new(vec![]),
+            fields: Arc::new(vec![]),
         }
     }
 
@@ -13187,7 +13191,7 @@ mod emit_host_admission_flip_test {
         let forged = Value::Variant {
             type_name: ctx.sym("UnrelatedDecision"),
             variant_name: ctx.sym("Permit"),
-            fields: Rc::new(vec![]),
+            fields: Arc::new(vec![]),
         };
         let err = require_permitted_transport(Some(&forged), &ctx, "emit_host_run_transport")
             .expect_err("a Permit arm outside AccessDecision must not authorize a host effect");
@@ -13207,7 +13211,7 @@ mod emit_host_admission_flip_test {
 
 #[cfg(test)]
 mod argv_arg_limit_test {
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     use im::{vector as im_vec, HashMap};
 
@@ -13222,24 +13226,24 @@ mod argv_arg_limit_test {
 
     fn argv_limit_test_context() -> InterpContext {
         let graph = ResolvedGraph {
-            modules: Rc::new(im_vec![]),
-            item_registry: Rc::new(HashMap::new()),
-            diagnostics: Rc::new(im_vec![]),
+            modules: Arc::new(im_vec![]),
+            item_registry: Arc::new(HashMap::new()),
+            diagnostics: Arc::new(im_vec![]),
             emit_graph_info: empty_emit_graph_info(),
         };
-        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Wet)
+        InterpContext::new(&graph, Arc::new(HashMap::new()), ExecutionMode::Wet)
     }
 
     /// `shell.Exec.Check`-shaped argv: `sh -c "<command>"` as three literal tokens.
-    fn shell_check_style_transport(command: &str) -> Rc<Node> {
+    fn shell_check_style_transport(command: &str) -> Arc<Node> {
         let span = make_span(0, 0);
         shell_transport_node(
-            Rc::new(im_vec![
+            Arc::new(im_vec![
                 make_text_part_node("sh".to_string(), span.clone()),
                 make_text_part_node("-c".to_string(), span.clone()),
                 make_text_part_node(command.to_string(), span.clone()),
             ]),
-            Rc::new(im_vec![]),
+            Arc::new(im_vec![]),
             None,
             span,
         )

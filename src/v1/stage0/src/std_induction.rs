@@ -672,7 +672,7 @@ pub fn cost_log(param: String) -> Arc<CostBound> {
 
 pub fn cost_nlogn(param: String) -> Arc<CostBound> {
     Arc::new(CostBound::ProductBound {
-        factors: Rc::new(vec![
+        factors: Arc::new(vec![
             Arc::new(AtomicCost::PolyCost {
                 param: param.clone(),
                 exponent: poly_exp_degree_one(),
@@ -686,12 +686,12 @@ pub fn cost_nlogn(param: String) -> Arc<CostBound> {
 
 pub fn cost_graph_linear(v_param: String, e_param: String) -> Arc<CostBound> {
     Arc::new(CostBound::SumOfProductsBound {
-        terms: Rc::new(vec![
-            Rc::new(vec![Arc::new(AtomicCost::PolyCost {
+        terms: Arc::new(vec![
+            Arc::new(vec![Arc::new(AtomicCost::PolyCost {
                 param: v_param.clone(),
                 exponent: poly_exp_degree_one(),
             })]),
-            Rc::new(vec![Arc::new(AtomicCost::PolyCost {
+            Arc::new(vec![Arc::new(AtomicCost::PolyCost {
                 param: e_param.clone(),
                 exponent: poly_exp_degree_one(),
             })]),
@@ -891,7 +891,7 @@ pub fn master_theorem(form: Arc<RecurrenceForm>) -> Arc<CostBound> {
                                         d_ok.clone(),
                                     ) {
                                         Some(deg) => Arc::new(CostBound::ProductBound {
-                                            factors: Rc::new(vec![
+                                            factors: Arc::new(vec![
                                                 Arc::new(AtomicCost::PolyCost {
                                                     param: n.clone(),
                                                     exponent: Arc::new(
@@ -1060,8 +1060,8 @@ pub fn bfs_dfs_bound() -> Arc<CostBound> {
 
 pub fn dijkstra_bound() -> Arc<CostBound> {
     Arc::new(CostBound::SumOfProductsBound {
-        terms: Rc::new(vec![
-            Rc::new(vec![
+        terms: Arc::new(vec![
+            Arc::new(vec![
                 Arc::new(AtomicCost::PolyCost {
                     param: "V".to_string(),
                     exponent: poly_exp_degree_one(),
@@ -1070,7 +1070,7 @@ pub fn dijkstra_bound() -> Arc<CostBound> {
                     param: "V".to_string(),
                 }),
             ]),
-            Rc::new(vec![
+            Arc::new(vec![
                 Arc::new(AtomicCost::PolyCost {
                     param: "E".to_string(),
                     exponent: poly_exp_degree_one(),
@@ -1085,7 +1085,7 @@ pub fn dijkstra_bound() -> Arc<CostBound> {
 
 pub fn bellman_ford_bound() -> Arc<CostBound> {
     Arc::new(CostBound::ProductBound {
-        factors: Rc::new(vec![
+        factors: Arc::new(vec![
             Arc::new(AtomicCost::PolyCost {
                 param: "V".to_string(),
                 exponent: poly_exp_degree_one(),

@@ -89,7 +89,7 @@ pub fn unique_strings(items: Arc<Vec<String>>) -> Arc<Vec<String>> {
         let result = items.clone().iter().cloned().fold(
             Arc::new(UniqueAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
-                result: Rc::new(vec![]),
+                result: Arc::new(vec![]),
             }),
             |acc: Arc<UniqueAccum>, item: String| {
                 if emit_map_has(acc.seen.clone(), item.clone()) {
@@ -115,7 +115,7 @@ pub fn to_string(value: i64) -> String {
                 "0".to_string()
             } else {
                 {
-                    let digit_chars = Rc::new(vec![
+                    let digit_chars = Arc::new(vec![
                         "0".to_string(),
                         "1".to_string(),
                         "2".to_string(),
@@ -127,7 +127,7 @@ pub fn to_string(value: i64) -> String {
                         "8".to_string(),
                         "9".to_string(),
                     ]);
-                    to_string_helper(value.clone(), Rc::new(vec![])).join(&"".to_string())
+                    to_string_helper(value.clone(), Arc::new(vec![])).join(&"".to_string())
                 }
             }
         }
@@ -141,7 +141,7 @@ pub fn to_string_helper(mut value: i64, mut acc: Arc<Vec<String>>) -> Arc<Vec<St
         } else {
             let rest = (value.clone() / 10);
             let digit = (value.clone() - (rest.clone() * 10));
-            let digit_chars = Rc::new(vec![
+            let digit_chars = Arc::new(vec![
                 "0".to_string(),
                 "1".to_string(),
                 "2".to_string(),
@@ -181,7 +181,7 @@ pub fn to_string_helper(mut value: i64, mut acc: Arc<Vec<String>>) -> Arc<Vec<St
             };
             {
                 let __tco_0 = rest.clone();
-                let __tco_1 = v1_rt::concat(Rc::new(vec![ch.clone()]), acc);
+                let __tco_1 = v1_rt::concat(Arc::new(vec![ch.clone()]), acc);
                 value = __tco_0;
                 acc = __tco_1;
                 continue;

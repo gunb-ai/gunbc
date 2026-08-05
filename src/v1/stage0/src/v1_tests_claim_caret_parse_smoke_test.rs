@@ -98,7 +98,7 @@ pub fn caret_source_file(path: String, content: String) -> Arc<SourceFile> {
 
 pub fn caret_compile_rust_emitted(source: Arc<SourceFile>) -> String {
     {
-        let result = compile_sources(Rc::new(vec![source.clone()]), RenderTarget::Rust);
+        let result = compile_sources(Arc::new(vec![source.clone()]), RenderTarget::Rust);
         Arc::new({
             let mut __result = Vec::new();
             for f in result.files.clone().iter().cloned() {
@@ -112,7 +112,7 @@ pub fn caret_compile_rust_emitted(source: Arc<SourceFile>) -> String {
 
 pub fn caret_compile_rust_has_no_errors(source: Arc<SourceFile>) -> bool {
     {
-        let result = compile_sources(Rc::new(vec![source.clone()]), RenderTarget::Rust);
+        let result = compile_sources(Arc::new(vec![source.clone()]), RenderTarget::Rust);
         ({
             let mut __found = false;
             for d in result.diagnostics.clone().iter().cloned() {
@@ -253,7 +253,7 @@ pub fn w_parse_module_let_caret_paren() -> bool {
 
 pub fn w_compile_to_resolved_caret_probe5b_has_no_caret_function_error() -> bool {
     {
-        let result = compile_to_resolved(Rc::new(vec![caret_source_file(
+        let result = compile_to_resolved(Arc::new(vec![caret_source_file(
             "caret_probe5b.dag".to_string(),
             caret_probe5b_source(),
         )]));
@@ -282,7 +282,7 @@ pub fn w_emit_caret_paren_discriminant_sugar() -> bool {
                 "CaretAlpha".to_string(),
             ))
             && (caret_diagnostics_contain_pattern(
-                compile_sources(Rc::new(vec![source.clone()]), RenderTarget::Rust)
+                compile_sources(Arc::new(vec![source.clone()]), RenderTarget::Rust)
                     .diagnostics
                     .clone(),
                 "function '^'".to_string(),

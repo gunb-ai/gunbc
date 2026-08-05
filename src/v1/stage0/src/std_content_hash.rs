@@ -274,7 +274,7 @@ pub fn serialize_content_hash(hash: Arc<ContentHash>) -> String {
 }
 
 pub fn sha256_digest_wire_form(digest: Arc<Sha256Digest>) -> String {
-    Rc::new(vec!["sha256:".to_string(), digest.hex.clone()]).join(&"".to_string())
+    Arc::new(vec!["sha256:".to_string(), digest.hex.clone()]).join(&"".to_string())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

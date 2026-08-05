@@ -135,7 +135,7 @@ pub fn interface_def_template() -> String {
 pub fn integer_types() -> Arc<Vec<String>> {
     thread_local! {
         static CACHED: Arc<Vec<String>> = {
-            Rc::new(vec!["int".to_string(), "int8".to_string(), "int16".to_string(), "int32".to_string(), "int64".to_string(), "uint".to_string(), "uint8".to_string(), "uint16".to_string(), "uint32".to_string(), "uint64".to_string(), "uintptr".to_string()])
+            Arc::new(vec!["int".to_string(), "int8".to_string(), "int16".to_string(), "int32".to_string(), "int64".to_string(), "uint".to_string(), "uint8".to_string(), "uint16".to_string(), "uint32".to_string(), "uint64".to_string(), "uintptr".to_string()])
         };
     }
     CACHED.with(|c: &Arc<Vec<String>>| c.clone())
@@ -144,7 +144,7 @@ pub fn integer_types() -> Arc<Vec<String>> {
 pub fn float_types() -> Arc<Vec<String>> {
     thread_local! {
         static CACHED: Arc<Vec<String>> = {
-            Rc::new(vec!["float32".to_string(), "float64".to_string()])
+            Arc::new(vec!["float32".to_string(), "float64".to_string()])
         };
     }
     CACHED.with(|c: &Arc<Vec<String>>| c.clone())
