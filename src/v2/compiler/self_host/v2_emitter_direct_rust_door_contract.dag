@@ -8,8 +8,9 @@ import v2.compiler.self_host.candidate_generation {
   ProducerReceiptRejected,
   ProvenancedRustArtifact,
   ProvenancedRustEmissionObservation,
+  provenanced_rust_artifact_producer_is_v2_interpreted,
+  provenanced_rust_artifact_seed_emitter_unreachable,
   observe_provenanced_rust_emission_from_ingest,
-  provenanced_rust_artifact_seed_independent
 }
 import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_admission,
@@ -53,7 +54,9 @@ import v2.std.text { String }
 
 data v2_emitter_direct_rust_door_contract_note: String = "THE CLOSING CONDITION for roadmap node v2-emitter-direct-rust-door. MissingTranslationRuleRefuses: a deliberately incomplete Rust TargetModel must refuse through target_serialize_source_from_model with TargetBundleMalformed rather than accepting guessed source — it is the one direct-door leaf OBSERVED independently of the production emission walk. The former second capability, WrittenSourceIndependentOfSeedEmitter, is DELETED with its fold: it named a single admission whose refusal arm answered for both a rejected pipeline and a seed-dependent artifact, and the fact it tried to carry is now the declared-producer-closure leaf projected from ProvenancedRustEmissionObservation, where a stop before the artifact reports LeafNotReached with its stage instead of a refusal."
 
-data v2_emitter_direct_rust_door_contract_dissolution_note: String = "DISSOLVES BY GREENING, never deletion. When candidate_generation wires serialize_target and the seed-independent written-source check executes green, the unchanged closing witness greens; its QuarantineProbeExpectRed exclusion and known-red roster entry delete in the same change, promoting it to ordinary discovery as the permanent direct-rust-door regression wall."
+data v2_emitter_direct_rust_door_contract_dissolution_note: String = "DISSOLVES BY GREENING, never deletion. The prior condition — candidate_generation wires serialize_target, and the seed-independent written-source check greens — is OBSOLETE and was stale prose by 2026-08-05: emit IS already called, the real inferred tree rejects inside it, and the named seed-independent admission fold has been deleted. The condition in current vocabulary: the production observation reaches ArtifactProduced, all five leaf projections establish (source fidelity, producer identity, seed-emitter absence, SourceProduced qualification, missing-rule refusal), the known-red expectation row deletes in that same change, and the unchanged group root promotes to ordinary DiscoverySelection as the lane's permanent regression evidence."
+
+data direct_rust_door_execution_receipt_ceiling_note: String = "HONEST CEILING on what the SCHEDULER learns, stated so no roster prose overclaims it. The group value retains every child outcome — which leaf refused, which stage a LeafNotReached names — but the only scheduled root returns Bool, so the executor receipt carries FAIL and nothing else. What is established today: the typed located observation exists and is inspectable by any consumer holding the group. What is NOT established: that the scheduled red receipt itself names the stage. Those are different claims and only the first is true. Dissolve-on: the witness-lifecycle pointwise expectation/evidence work preserves the group observation in the execution receipt; until then a red here is located by re-running the root locally, not by reading the falsifier receipt."
 
 data direct_rust_door_emitted_root: Node = rust_fixture_emitted_add_fn
 
@@ -117,6 +120,8 @@ data direct_rust_door_leaf_not_reached_emission: Symbol = ^direct_rust_door_leaf
 data direct_rust_door_leaf_not_reached_receipt: Symbol = ^direct_rust_door_leaf_not_reached_producer_receipt_rejected
 
 data direct_rust_door_source_mismatch_cause: Symbol = ^direct_rust_door_emitted_source_differs_from_expected
+
+data direct_rust_door_wrong_producer_cause: Symbol = ^direct_rust_door_producer_is_not_v2_emitter_interpreted
 
 data direct_rust_door_declared_closure_seed_cause: Symbol = ^direct_rust_door_declared_producer_closure_contains_seed_emitter
 
@@ -184,12 +189,22 @@ fn direct_rust_door_source_fidelity_leaf(
   )
 }
 
-fn direct_rust_door_declared_producer_closure_leaf(
+fn direct_rust_door_producer_identity_leaf(
   group: DirectRustDoorProductionGroup
 ) -> DirectRustDoorLeafResult {
   direct_rust_door_artifact_leaf(
     emission: group.emission,
-    holds: fn(a) { provenanced_rust_artifact_seed_independent(artifact: a) },
+    holds: fn(a) { provenanced_rust_artifact_producer_is_v2_interpreted(artifact: a) },
+    refusal_cause: direct_rust_door_wrong_producer_cause
+  )
+}
+
+fn direct_rust_door_seed_emitter_absence_leaf(
+  group: DirectRustDoorProductionGroup
+) -> DirectRustDoorLeafResult {
+  direct_rust_door_artifact_leaf(
+    emission: group.emission,
+    holds: fn(a) { provenanced_rust_artifact_seed_emitter_unreachable(artifact: a) },
     refusal_cause: direct_rust_door_declared_closure_seed_cause
   )
 }
@@ -226,7 +241,8 @@ fn direct_rust_door_group_leaves(
 ) -> List<DirectRustDoorLeafResult> {
   [
     direct_rust_door_source_fidelity_leaf(group: group),
-    direct_rust_door_declared_producer_closure_leaf(group: group),
+    direct_rust_door_producer_identity_leaf(group: group),
+    direct_rust_door_seed_emitter_absence_leaf(group: group),
     direct_rust_door_source_produced_leaf(group: group),
     direct_rust_door_missing_rule_leaf(group: group),
   ]

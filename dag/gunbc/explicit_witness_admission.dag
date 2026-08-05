@@ -122,6 +122,13 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolve_on: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall"
   ),
   known_red_probe(
+    entry: "src/v2/test/claim/schedule_occurrence_multiplicity_test.dag",
+    f: "direct_rust_door_group_root_is_scheduled_exactly_once",
+    kind: CorpusWitnessKind,
+    reason: "RED BY EXECUTION at 2, and the 2 is a MACHINERY DEFICIT, not a rostering mistake. An expensive AND known-red witness cannot be expressed in one batch today: select_discovery_batch_budgets arms the 180s ceiling only for a batch whose explicit entries intersect falsifier_substrate_long_lane_entries, and that roster IS batch 6, so a known-red root earns its budget by ALSO joining the long batch. Known-red-only would BudgetExceed at 5s and go red for the wrong reason, masking the real red; long-lane-only would fail a batch that expects green. Both are worse than a counted red, so the duplicate is declared here rather than papered over. Its sibling multiplicity_counter_discriminates_a_planted_duplicate is green and proves the counter can fail, so this row is a real measurement rather than a constant.",
+    dissolve_on: "the witness-lifecycle split separates the execution-requirement/budget authority from the batch roster, so a root can declare a long budget without joining a second batch — then this root drops to one occurrence, this witness greens, and this row deletes"
+  ),
+  known_red_probe(
     entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag",
     f: "direct_rust_door_production_group_closing_expectation_holds",
     kind: CorpusWitnessKind,

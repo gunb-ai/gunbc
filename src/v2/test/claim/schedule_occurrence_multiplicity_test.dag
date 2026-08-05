@@ -1,0 +1,56 @@
+module v2.test.claim.schedule_occurrence_multiplicity_test
+
+import gunbc.ci_layer_roots {
+  falsifier_substrate_long_lane_entries,
+  known_red_probe_roster
+}
+import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
+import v2.std.algebra { fold_list, length, filter }
+import v2.std.collection { List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.integer { Int }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data schedule_occurrence_multiplicity_note: String = "THE MULTIPLICITY WALL for scheduled witness functions. A witness enrolled in two rosters is APPENDED to the falsifier plan twice, so its cost is paid twice while its receipt count reads as one lane each — the composition claim 'this expensive root executes once' is decided HERE, at schedule grain, not inside the function that walks the pipeline once per call. The direct-rust-door group root is the first subject: it is the lane's only production walk, and this row reds if any change re-enrolls it in a second roster. This is deliberately an identity join over enrollment rosters, never a count of rows: a count would go green if one duplicate were added while an unrelated row was deleted."
+
+data multiplicity_subject_direct_rust_door: String = "direct_rust_door_production_group_closing_expectation_holds"
+
+fn schedule_entry_function_occurrences(
+  entries: List<ScheduleWitnessEntry>,
+  f: String
+) -> Int {
+  length(xs: entries |> filter(e => e.function == f))
+}
+
+fn total_scheduled_occurrences(f: String) -> Int {
+  let long_lane = schedule_entry_function_occurrences(entries: falsifier_substrate_long_lane_entries(), f: f)
+  let known_red = schedule_entry_function_occurrences(entries: known_red_probe_roster(), f: f)
+  long_lane + known_red
+}
+
+test fn direct_rust_door_group_root_is_scheduled_exactly_once() -> Bool {
+  total_scheduled_occurrences(f: multiplicity_subject_direct_rust_door) == 1
+}
+
+test fn multiplicity_counter_discriminates_a_planted_duplicate() -> Bool {
+  let planted = [
+    ScheduleWitnessEntry {
+      entry: "a.dag",
+      function: multiplicity_subject_direct_rust_door,
+      kind: CorpusWitnessKind
+    },
+    ScheduleWitnessEntry {
+      entry: "b.dag",
+      function: multiplicity_subject_direct_rust_door,
+      kind: CorpusWitnessKind
+    },
+  ]
+  schedule_entry_function_occurrences(
+    entries: planted,
+    f: multiplicity_subject_direct_rust_door
+  ) == 2
+    && schedule_entry_function_occurrences(entries: planted, f: "absent_function") == 0
+}

@@ -348,11 +348,25 @@ fn generate_written_rust_candidate_from_ingest(
   )
 }
 
-fn provenanced_rust_artifact_seed_independent(
+data provenanced_rust_artifact_conjunct_split_note: String = "provenanced_rust_artifact_seed_independent is a CONJUNCTION of two independent facts, and fusing them made one of them unreportable: a wrong producer fails the conjunction and was named SeedEmitterReachable, citing a cause that did not hold. The two conjuncts are now separately readable, so each consumer names the fact that actually failed. The conjunction survives for callers that genuinely want both (mint admission, written-artifact ok), never as the only way to ask."
+
+fn provenanced_rust_artifact_producer_is_v2_interpreted(
   artifact: ProvenancedRustArtifact
 ) -> Bool {
   artifact.producer_receipt.producer == V2EmitterInterpreted
-    && !seed_emit_rust_reachable(closure: artifact.producer_receipt.realized_closure)
+}
+
+fn provenanced_rust_artifact_seed_emitter_unreachable(
+  artifact: ProvenancedRustArtifact
+) -> Bool {
+  !seed_emit_rust_reachable(closure: artifact.producer_receipt.realized_closure)
+}
+
+fn provenanced_rust_artifact_seed_independent(
+  artifact: ProvenancedRustArtifact
+) -> Bool {
+  provenanced_rust_artifact_producer_is_v2_interpreted(artifact: artifact)
+    && provenanced_rust_artifact_seed_emitter_unreachable(artifact: artifact)
 }
 
 fn written_provenanced_rust_artifact_ok(
