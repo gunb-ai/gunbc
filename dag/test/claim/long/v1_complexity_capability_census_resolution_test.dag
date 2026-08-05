@@ -1,0 +1,180 @@
+module test.claim.long.v1_complexity_capability_census_resolution_test
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.types { String, NonEmptyStr, Bool, List }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
+import v2.std.decl_index { DeclFact, decl_facts }
+import v2.std.decl_ref_resolution {
+  resolve_declaration_ref,
+  declaration_ref_resolves,
+  cited_declaration_ref_refusal_count,
+  DeclarationRefResolved,
+  DeclarationRefModuleAbsent,
+  DeclarationRefDeclarationAbsent,
+  DeclarationRefAmbiguous,
+}
+import gunbc.v1_complexity_capability_census {
+  v1_complexity_capability_roster,
+  capability_all_declaration_refs,
+  capability_cited_carrier,
+  call_graph_and_scc,
+  asymptotic_class_and_dominance,
+}
+import v1.compiler.complexity {
+  ComplexitySummary,
+  CostExpr,
+  CostConst,
+  Certainty,
+  Proven,
+  CostInternTable,
+  empty_cost_intern_table,
+  cache_summary,
+  lookup_summary,
+  evict_summary,
+}
+
+data resolution_witness_note: String = "The exact half of C0(b1) citation hygiene, in the long lane because each witness pays a full witness-layer decl_facts scan — the same reason test.claim.long.cited_symbol_resolution_witness_test lives here (operator 5s fast-lane rule). This replaces the previous revision's string_contains check, which could green when a name survived only inside a note, appeared as a substring of another declaration, was ambiguous across modules, or named a declaration of the wrong kind. Resolution here is the repository's single resolution authority: a typed DeclarationRef resolves to exactly one declaration_identity or refuses with one of five typed arms."
+
+data file_is_observed_not_authored_note: String = "The census no longer authors a file path beside each symbol. A resolved declaration_identity carries rel_path as an OBSERVED property, so the file a capability lives in is derived from resolution rather than being a second authored identity that can drift from the first. That was the operator's structural point: CitedSymbol { symbol, file } is two identities for one declaration."
+
+data census_resolution_pool_note: String = "The pool must contain the seed, because half of every row's citations point into v1.compiler.complexity — the module this census is ABOUT. witness_layer_roots is [dag, src/v2] and deliberately excludes src/v1, so resolving against it would refuse every v1 carrier with DeclarationRefModuleAbsent and the witness would be measuring its own pool rather than the citations. The wider envelope follows the precedent ci_layer_roots already sets for v1-subject witnesses (compile_clean_source_roots appends src/v1; v1_claim_scoped_witness_batch runs at [dag, src/v1]), and it is scoped to this witness rather than widening the shared roster."
+
+data census_resolution_pool_roots: List<String> = ["dag", "src/v2", "src/v1"]
+
+data census_resolution_facts: List<DeclFact> = decl_facts(pool_roots: census_resolution_pool_roots)
+
+data census_resolution_modules: List<ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: census_resolution_pool_roots)
+
+test fn census_every_declaration_ref_resolves_exactly() -> Bool {
+  cited_declaration_ref_refusal_count(
+    refs: capability_all_declaration_refs(rows: v1_complexity_capability_roster),
+    facts: census_resolution_facts,
+    modules: census_resolution_modules
+  ) == 0
+}
+
+data census_resolution_red_controls_note: String = "Three planted refusals, one per failure mode the substring check could not see. A declaration that does not exist must refuse with DeclarationRefDeclarationAbsent rather than greening because the spelling appears in a note; a module that does not exist must refuse with DeclarationRefModuleAbsent. Both are controlled fixtures authored here, which is the oracle form the repository sanctions — this witness authors the input and the expected verdict."
+
+test fn census_absent_declaration_refuses() -> Bool {
+  match resolve_declaration_ref(
+    ref: decl_ref(module_path: "v1.compiler.complexity", decl_name: "this_declaration_does_not_exist_in_the_seed"),
+    facts: census_resolution_facts,
+    modules: census_resolution_modules
+  ) {
+    DeclarationRefDeclarationAbsent { reference: _ } => true
+    _ => false
+  }
+}
+
+test fn census_absent_module_refuses() -> Bool {
+  match resolve_declaration_ref(
+    ref: decl_ref(module_path: "v1.compiler.this_module_does_not_exist", decl_name: "classify_complexity"),
+    facts: census_resolution_facts,
+    modules: census_resolution_modules
+  ) {
+    DeclarationRefModuleAbsent { reference: _ } => true
+    _ => false
+  }
+}
+
+data census_prose_only_name_note: String = "The discriminating control for the exact defect the operator named: a name that survives only inside a note string must NOT resolve. 'basis Derived' appears verbatim in the seed's cost_account_space_from_summary note, so a substring check finds it; as a DeclarationRef it is not a declaration and resolution refuses. This is the difference between the old check and this one, executed."
+
+test fn census_prose_only_name_does_not_resolve() -> Bool {
+  !declaration_ref_resolves(
+    ref: decl_ref(module_path: "v1.compiler.complexity", decl_name: "Derived"),
+    facts: census_resolution_facts,
+    modules: census_resolution_modules
+  )
+}
+
+test fn census_resolved_identity_carries_observed_path() -> Bool {
+  match capability_cited_carrier(c: asymptotic_class_and_dominance) {
+    Absent => false
+    Present { value: r } =>
+      match resolve_declaration_ref(
+        ref: r,
+        facts: census_resolution_facts,
+        modules: census_resolution_modules
+      ) {
+        DeclarationRefResolved { declaration_identity: id } =>
+          string_contains(s: id.rel_path, pattern: "lens/cost.dag") &&
+          id.name == "asymptotic_class_of_cost"
+        _ => false
+      }
+  }
+}
+
+data census_substrate_carrier_resolves_note: String = "The integration finding's citation, resolved exactly rather than matched: std.graph really declares graph_multi_node_scc_members, so the claim that the SCC capability already lives in shared substrate rests on a resolved declaration identity and not on a name appearing in a file."
+
+test fn census_shared_substrate_carrier_resolves() -> Bool {
+  match capability_cited_carrier(c: call_graph_and_scc) {
+    Absent => false
+    Present { value: r } =>
+      match resolve_declaration_ref(
+        ref: r,
+        facts: census_resolution_facts,
+        modules: census_resolution_modules
+      ) {
+        DeclarationRefResolved { declaration_identity: id } =>
+          id.name == "graph_multi_node_scc_members" &&
+          string_contains(s: id.rel_path, pattern: "graph.dag")
+        _ => false
+      }
+  }
+}
+
+data eviction_executing_control_note: String = "CENSUS HAZARD, proven by EXECUTION rather than by matching source text (operator review 2026-08-05). The previous control asserted only that the source contained 'fn evict_summary' and a cache_summary call prefix — a safe implementation could keep both and the control would stay green, so it established nothing about the defect. This runs the seed: cache a summary whose work is nonzero, evict it, look it up again. The correct behavior is Absent — the entry was evicted, so it is NOT COMPUTED. The seed instead returns a Present summary whose work is zero and whose certainty is Proven, so a consumer reads 'costs nothing, proven' for a function whose cost was never derived. The assertions below pin that defect as it exists today; when the migrated form removes the entry or refuses, this witness REDS, which is the correct direction because the row exists to stop this realization carrying across."
+
+fn eviction_probe_table() -> CostInternTable {
+  cache_summary(
+    table: empty_cost_intern_table(),
+    func_name: "probe_fn",
+    summary: ComplexitySummary {
+      work: CostConst { value: 42 },
+      span: CostConst { value: 7 },
+      output_size: empty_map(),
+      certainty: Proven
+    }
+  )
+}
+
+test fn census_eviction_probe_caches_a_nonzero_summary() -> Bool {
+  match lookup_summary(table: eviction_probe_table(), func_name: "probe_fn") {
+    Absent => false
+    Present { value: s } =>
+      match s.work {
+        CostConst { value: v } => v == 42
+        _ => false
+      }
+  }
+}
+
+test fn census_eviction_returns_a_proven_zero_instead_of_absent() -> Bool {
+  let evicted = evict_summary(table: eviction_probe_table(), func_name: "probe_fn")
+  match lookup_summary(table: evicted, func_name: "probe_fn") {
+    Absent => false
+    Present { value: s } =>
+      match s.work {
+        CostConst { value: w } =>
+          match s.span {
+            CostConst { value: sp } =>
+              match s.certainty {
+                Proven => w == 0 && sp == 0
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+data eviction_correct_behavior_control_note: String = "The paired statement of what correct looks like, so the defect is described by contrast rather than only pinned. An entry that was never cached must look up Absent — the seed gets THIS case right, which is what makes the evicted case a genuine conflation rather than a uniform absence of the concept: lookup can express 'not computed', and eviction declines to use it."
+
+test fn census_never_cached_function_is_absent() -> Bool {
+  match lookup_summary(table: eviction_probe_table(), func_name: "a_function_never_cached") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
