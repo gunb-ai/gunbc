@@ -12,27 +12,25 @@ import v2.compiler.self_host.direct_rust_door_fixture {
 }
 import v2.compiler.self_host.emitter_producer_provenance {
   BuildRefused,
-  ProducerEmissionReceipt,
   V2EmitterInterpreted,
   mint_producer_emission_receipt,
   realized_closure_for_v2_direct_rust_door_emit_run,
   source_produced_qualifications,
 }
 import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
+  DirectRustDoorAdmission,
   DirectRustDoorEstablished,
   DirectRustDoorRefused,
   LeafEstablished,
   LeafNotReached,
   LeafRefused,
   MissingRuleAcceptedDespiteGap,
-  MissingTranslationRuleRefuses,
   direct_rust_door_group_from_observations,
   direct_rust_door_missing_rule_leaf,
   direct_rust_door_production_group_holds,
   direct_rust_door_source_fidelity_leaf,
 }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.rust { rust_fixture_emitted_add_fn }
 import v2.std.diagnostic {
   Diagnostic,
@@ -42,7 +40,6 @@ import v2.std.diagnostic {
   port_locus,
 }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
@@ -82,8 +79,8 @@ fn planted_artifact_with_source(source_text: String) -> ProvenancedRustEmissionO
   }
 }
 
-fn missing_rule_established() -> DirectRustDoorEstablished {
-  DirectRustDoorEstablished { capability: MissingTranslationRuleRefuses }
+fn missing_rule_established() -> DirectRustDoorAdmission {
+  DirectRustDoorEstablished
 }
 
 test fn emission_rejection_makes_artifact_leaf_not_reached() -> Bool {
@@ -138,10 +135,7 @@ test fn one_refused_leaf_keeps_the_parent_open() -> Bool {
   !direct_rust_door_production_group_holds(
     group: direct_rust_door_group_from_observations(
       emission: planted_artifact_with_source(source_text: direct_rust_door_expected_source),
-      missing_rule: DirectRustDoorRefused {
-        capability: MissingTranslationRuleRefuses,
-        failure: MissingRuleAcceptedDespiteGap
-      }
+      missing_rule: DirectRustDoorRefused { failure: MissingRuleAcceptedDespiteGap }
     )
   )
 }
@@ -169,10 +163,7 @@ test fn missing_rule_leaf_projects_its_admission() -> Bool {
   let refused = match direct_rust_door_missing_rule_leaf(
     group: direct_rust_door_group_from_observations(
       emission: planted_emission_rejected(),
-      missing_rule: DirectRustDoorRefused {
-        capability: MissingTranslationRuleRefuses,
-        failure: MissingRuleAcceptedDespiteGap
-      }
+      missing_rule: DirectRustDoorRefused { failure: MissingRuleAcceptedDespiteGap }
     )
   ) {
     LeafRefused { cause: _ } => true

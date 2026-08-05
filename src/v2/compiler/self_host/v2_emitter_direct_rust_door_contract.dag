@@ -31,7 +31,7 @@ import v2.extdeps.languages.rust {
   rust_fixture_emitted_add_fn,
   rust_fn_add_lex,
 }
-import v2.std.algebra { any, filter, length }
+import v2.std.algebra { any }
 import v2.std.collection { empty_map, List }
 import v2.std.compilers.target_model {
   TargetModel,
@@ -51,11 +51,9 @@ import v2.std.node {
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
-data v2_emitter_direct_rust_door_contract_note: String = "THE CLOSING CONDITION for roadmap node v2-emitter-direct-rust-door, transcribed at the node's two-clause red control. MissingTranslationRuleRefuses: a deliberately incomplete Rust TargetModel must refuse through target_serialize_source_from_model with TargetBundleMalformed rather than accepting guessed source. WrittenSourceIndependentOfSeedEmitter: mint_provenanced_rust_artifact with V2EmitterInterpreted and a realized closure excluding v1.compiler.emit_rust establishes the capability; byte-equality against rust_source_text is owned by the discriminating provenance witness, not this admission fold."
+data v2_emitter_direct_rust_door_contract_note: String = "THE CLOSING CONDITION for roadmap node v2-emitter-direct-rust-door. MissingTranslationRuleRefuses: a deliberately incomplete Rust TargetModel must refuse through target_serialize_source_from_model with TargetBundleMalformed rather than accepting guessed source — it is the one direct-door leaf OBSERVED independently of the production emission walk. The former second capability, WrittenSourceIndependentOfSeedEmitter, is DELETED with its fold: it named a single admission whose refusal arm answered for both a rejected pipeline and a seed-dependent artifact, and the fact it tried to carry is now the declared-producer-closure leaf projected from ProvenancedRustEmissionObservation, where a stop before the artifact reports LeafNotReached with its stage instead of a refusal."
 
 data v2_emitter_direct_rust_door_contract_dissolution_note: String = "DISSOLVES BY GREENING, never deletion. When candidate_generation wires serialize_target and the seed-independent written-source check executes green, the unchanged closing witness greens; its QuarantineProbeExpectRed exclusion and known-red roster entry delete in the same change, promoting it to ordinary discovery as the permanent direct-rust-door regression wall."
-
-data candidate_generation_serialize_target_wiring_trigger: String = "CandidateGenerationSerializeTargetWiring"
 
 data direct_rust_door_emitted_root: Node = rust_fixture_emitted_add_fn
 
@@ -74,37 +72,22 @@ data direct_rust_door_missing_rules_target: TargetModel = TargetModel {
   runtime_row: target_emit_host_runtime_row_unconfigured,
 }
 
-type DirectRustDoorCapability
-  = MissingTranslationRuleRefuses
-  | WrittenSourceIndependentOfSeedEmitter
-
 type DirectRustDoorScenarioFailure
   = MissingRuleAcceptedDespiteGap
   | MissingRuleWrongDiagnostic
   | MissingRuleDiagnosticAbsent
 
 type DirectRustDoorAdmission
-  = DirectRustDoorEstablished {
-      capability: DirectRustDoorCapability,
-    }
+  = DirectRustDoorEstablished
   | DirectRustDoorRefused {
-      capability: DirectRustDoorCapability,
       failure: DirectRustDoorScenarioFailure,
     }
   | DirectRustDoorUnavailable {
-      capability: DirectRustDoorCapability,
       trigger: String,
     }
 
-fn established(capability: DirectRustDoorCapability) -> DirectRustDoorAdmission {
-  DirectRustDoorEstablished { capability: capability }
-}
-
-fn refused(
-  capability: DirectRustDoorCapability,
-  failure: DirectRustDoorScenarioFailure,
-) -> DirectRustDoorAdmission {
-  DirectRustDoorRefused { capability: capability, failure: failure }
+fn refused(failure: DirectRustDoorScenarioFailure) -> DirectRustDoorAdmission {
+  DirectRustDoorRefused { failure: failure }
 }
 
 fn assess_missing_translation_rule_refuses() -> DirectRustDoorAdmission {
@@ -113,24 +96,12 @@ fn assess_missing_translation_rule_refuses() -> DirectRustDoorAdmission {
     emitted: direct_rust_door_emitted_root,
   ) {
     Accepted { value: _, diagnostics: _ } =>
-      refused(
-        capability: MissingTranslationRuleRefuses,
-        failure: MissingRuleAcceptedDespiteGap,
-      )
+      refused(failure: MissingRuleAcceptedDespiteGap)
     Rejected { diagnostics: r } =>
       match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
-        Present { value: TargetBundleMalformed } =>
-          established(capability: MissingTranslationRuleRefuses)
-        Present { value: _ } =>
-          refused(
-            capability: MissingTranslationRuleRefuses,
-            failure: MissingRuleWrongDiagnostic,
-          )
-        Absent =>
-          refused(
-            capability: MissingTranslationRuleRefuses,
-            failure: MissingRuleDiagnosticAbsent,
-          )
+        Present { value: TargetBundleMalformed } => DirectRustDoorEstablished
+        Present { value: _ } => refused(failure: MissingRuleWrongDiagnostic)
+        Absent => refused(failure: MissingRuleDiagnosticAbsent)
       }
   }
 }
@@ -242,29 +213,32 @@ fn direct_rust_door_missing_rule_leaf(
   group: DirectRustDoorProductionGroup
 ) -> DirectRustDoorLeafResult {
   match group.missing_rule {
-    DirectRustDoorEstablished { capability: _ } => LeafEstablished
-    DirectRustDoorRefused { capability: _, failure: _ } =>
+    DirectRustDoorEstablished => LeafEstablished
+    DirectRustDoorRefused { failure: _ } =>
       LeafRefused { cause: direct_rust_door_missing_rule_refused_cause }
-    DirectRustDoorUnavailable { capability: _, trigger: _ } =>
+    DirectRustDoorUnavailable { trigger: _ } =>
       LeafNotReached { cause: direct_rust_door_missing_rule_unavailable_cause }
   }
 }
 
-fn direct_rust_door_leaf_established(leaf: DirectRustDoorLeafResult) -> Bool {
-  match leaf {
-    LeafEstablished => true
-    LeafRefused { cause: _ } => false
-    LeafNotReached { cause: _ } => false
-  }
+fn direct_rust_door_group_leaves(
+  group: DirectRustDoorProductionGroup
+) -> List<DirectRustDoorLeafResult> {
+  [
+    direct_rust_door_source_fidelity_leaf(group: group),
+    direct_rust_door_declared_producer_closure_leaf(group: group),
+    direct_rust_door_source_produced_leaf(group: group),
+    direct_rust_door_missing_rule_leaf(group: group),
+  ]
 }
 
 fn direct_rust_door_production_group_holds(
   group: DirectRustDoorProductionGroup
 ) -> Bool {
-  direct_rust_door_leaf_established(leaf: direct_rust_door_source_fidelity_leaf(group: group))
-    && direct_rust_door_leaf_established(
-      leaf: direct_rust_door_declared_producer_closure_leaf(group: group)
-    )
-    && direct_rust_door_leaf_established(leaf: direct_rust_door_source_produced_leaf(group: group))
-    && direct_rust_door_leaf_established(leaf: direct_rust_door_missing_rule_leaf(group: group))
+  !(direct_rust_door_group_leaves(group: group)
+    |> any(leaf => match leaf {
+      LeafEstablished => false
+      LeafRefused { cause: _ } => true
+      LeafNotReached { cause: _ } => true
+    }))
 }

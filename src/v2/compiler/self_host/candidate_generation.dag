@@ -71,9 +71,9 @@ data direct_rust_door_scaffold_build_cause: Symbol = ^direct_rust_door_scaffold_
 
 data direct_rust_door_awaiting_cargo_cause: Symbol = ^direct_rust_door_awaiting_cargo
 
-data direct_rust_door_probe_entry: String = "src/v2/test/claim/long/direct_rust_door_emission_witness_test.dag"
+data direct_rust_door_probe_entry: String = "src/v2/test/claim/long/direct_rust_door_production_group_test.dag"
 
-data direct_rust_door_probe_function: String = "witness_direct_rust_door_provenanced_artifact_holds"
+data direct_rust_door_probe_function: String = "direct_rust_door_production_group_closing_expectation_holds"
 
 data direct_rust_door_cargo_toml_scaffold_note: String = "SCAFFOLD: feature:medium_structure_containment — direct_rust_door_cargo_toml is a hand-authored TOML medium piped into Filesystem.Write without grammar-emitted Cargo.toml serialization (transport-is-a-handler debt). dissolve-on: emit the fixture workspace manifest through the target-model / serialize_target path (or a cited Toml medium carrier) so write_rust_workspace stops writing a raw string literal; this note and direct_rust_door_cargo_toml delete together."
 
