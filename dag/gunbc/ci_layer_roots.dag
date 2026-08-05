@@ -1,7 +1,5 @@
 module gunbc.ci_layer_roots
 
-import gunbc.plans.md_helpers { row }
-
 import std.realization_schedule {
   ScheduleWitnessEntry, ExecutionWitnessKind, CorpusWitnessKind,
   ScopedWitnessBatch, ScopedWitnessBatchId, ScopedWitnessBatchResourceProfile,
