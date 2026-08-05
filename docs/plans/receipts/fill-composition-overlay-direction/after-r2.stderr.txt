@@ -1,0 +1,168 @@
+claim_batch: 50 entry group(s), 50 witness(es) total; building module index...
+◐ started compile.frontend
+✓ compile.frontend done in 144ms
+✓ compile.normalize done in 19ms
+✓ compile.reconcile done in 394ms
+✓ compile.analyses done in 12ms
+◷ post-mock-precompute-rss — 1.7 GiB
+◷ post-mock-precompute-children-max-rss — 0.0 GiB
+claim_batch: whole-tree published mock corpus — 87 operation key(s)
+claim_batch: resolving dag/test/claim/accelerator_demo_execution_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/accelerator_demo_execution_witness_test.dag: 31007ms  (68 modules, 1479 resolved items in closure)
+◷ post-first-entry-resolve-rss — 2.3 GiB
+[witness] accelerator_demo_execution_lane_witnesses: 3ms subject=119c62d1427e24a1 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/accelerator_demo_gpu_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/accelerator_demo_gpu_witness_test.dag: 420ms  (49 modules, 747 resolved items in closure)
+[witness] accelerator_demo_gpu_modeling_witnesses: 1ms subject=8d0b3b7efe36c124 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/accelerator_demo_model_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/accelerator_demo_model_witness_test.dag: 408ms  (58 modules, 1247 resolved items in closure)
+[witness] accelerator_demo_modeling_lane_witnesses: 0ms subject=8f353ea95ac30e1c eval_self=0.000ms
+claim_batch: resolving dag/test/claim/access_authorization_profile_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/access_authorization_profile_witness_test.dag: 233ms  (9 modules, 196 resolved items in closure)
+[witness] overlapping_audiences_are_not_forced_into_a_chain: 0ms subject=c2a4d47dd570fcd2 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/access_iam_validation_test.dag (1 witness(es))
+[resolve] dag/test/claim/access_iam_validation_test.dag: 362ms  (29 modules, 660 resolved items in closure)
+[witness] iam_internal_prefix_mfa_permits: 0ms subject=b5a15bf7f75fc9a5 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/access_layer_extension_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/access_layer_extension_witness_test.dag: 442ms  (27 modules, 568 resolved items in closure)
+[witness] posix_root_identification_holds: 0ms subject=d0f3bcc368709b73 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/access_token_ensure_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/access_token_ensure_witness_test.dag: 408ms  (35 modules, 596 resolved items in closure)
+[witness] auth_deficit_failure_classifies_interactive_upsert: 0ms subject=5ece463fdf1fa576 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/access_validation_test.dag (1 witness(es))
+[resolve] dag/test/claim/access_validation_test.dag: 212ms  (14 modules, 282 resolved items in closure)
+[witness] posix_owner_can_read: 0ms subject=79f63b341d3c62cb eval_self=0.000ms
+claim_batch: resolving dag/test/claim/acquisition_mechanism_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/acquisition_mechanism_witness_test.dag: 242ms  (19 modules, 417 resolved items in closure)
+[witness] w_two_step_funnel_composes_exact_fraction_and_cost: 0ms subject=b9611a34bff57306 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/advertising_interface_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/advertising_interface_witness_test.dag: 265ms  (18 modules, 293 resolved items in closure)
+[witness] w_google_billable_unit_catalog_is_total_and_wire_labeled: 0ms subject=c6133765027f931b eval_self=0.000ms
+claim_batch: resolving dag/test/claim/annotation_carrier_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/annotation_carrier_witness_test.dag: 1098ms  (77 modules, 1479 resolved items in closure)
+[witness] census_closure_frontier_rows_count_is_twenty_one: 4ms subject=2053143a85848ade eval_self=0.000ms
+claim_batch: resolving dag/test/claim/anomaly_evidence_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/anomaly_evidence_witness_test.dag: 12995ms  (220 modules, 7645 resolved items in closure)
+[witness] anomaly_reason_is_a_surface: 74ms subject=54249c0897ffb846 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/argv_command_render_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/argv_command_render_witness_test.dag: 248ms  (12 modules, 251 resolved items in closure)
+[witness] shell_quote_plain_args_single_quoted: 0ms subject=c36fc6cd39257910 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/artifact_store_fs_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/artifact_store_fs_witness_test.dag: 529ms  (43 modules, 1196 resolved items in closure)
+[witness] artifact_fs_roundtrip_holds: 1ms subject=15ac914692d87d5d eval_self=0.000ms
+claim_batch: resolving dag/test/claim/artifact_store_scratch_grant_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/artifact_store_scratch_grant_witness_test.dag: 386ms  (38 modules, 1137 resolved items in closure)
+[witness] artifact_store_scratch_grant_admits_gunbc_tmp_holds: 0ms subject=394c36ec7d6eebce eval_self=0.000ms
+claim_batch: resolving dag/test/claim/artifact_store_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/artifact_store_witness_test.dag: 474ms  (43 modules, 1230 resolved items in closure)
+[witness] store_construction_reads_eviction_holds: 0ms subject=adc4f737589fb9c6 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/asrock_live_probe_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/asrock_live_probe_witness_test.dag: 392ms  (34 modules, 919 resolved items in closure)
+[witness] srv3_live_bmc_host_is_grounded: 0ms subject=0f8df132f44e2d27 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bach_double_slit_observation_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bach_double_slit_observation_witness_test.dag: 313ms  (28 modules, 594 resolved items in closure)
+[witness] w_bach_cited_buildup_progression_holds: 0ms subject=92f91fe8bd88dec2 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bach_double_slit_path_additivity_synthetic_fixture_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bach_double_slit_path_additivity_synthetic_fixture_witness_test.dag: 337ms  (29 modules, 603 resolved items in closure)
+[witness] w_synthetic_path_additivity_refuted_by_fold_derivation: 0ms subject=da62ee04d5880450 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/base64_rfc4648_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/base64_rfc4648_witness_test.dag: 273ms  (29 modules, 559 resolved items in closure)
+[witness] bytes_octets_iso_holds: 0ms subject=8d446816f1733607 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_auth_runtime_secret_seam_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_auth_runtime_secret_seam_test.dag: 313ms  (35 modules, 611 resolved items in closure)
+[witness] factory_published_password_promotes_to_basic_auth_secret: 0ms subject=adf740353406e240 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_bootstrap_provision_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_bootstrap_provision_witness_test.dag: 2747ms  (167 modules, 5099 resolved items in closure)
+[witness] bootstrap_bindings_least_privilege: 0ms subject=61b0c0c29783af62 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_capability_solve_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_capability_solve_witness_test.dag: 370ms  (35 modules, 930 resolved items in closure)
+[witness] firmware_wire_version_is_parsed_before_track_matching: 0ms subject=bdd44ea9a4e6e7e4 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_factory_credential_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_factory_credential_witness_test.dag: 320ms  (36 modules, 927 resolved items in closure)
+[witness] bmc_factory_credential_holds: 0ms subject=e0affd03357dfd4f eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_fan_converge_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_fan_converge_witness_test.dag: 1956ms  (139 modules, 2607 resolved items in closure)
+[witness] duty_curve_cannot_fall_after_reaching_emergency_full_duty: 0ms subject=c5d33c721a623ef7 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_firmware_thermal_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_firmware_thermal_witness_test.dag: 888ms  (88 modules, 1816 resolved items in closure)
+[witness] every_metal_host_uses_the_single_global_bmc_valid_state: 1ms subject=08bd74e65a46df1c eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_live_receipts_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_live_receipts_witness_test.dag: 643ms  (86 modules, 1748 resolved items in closure)
+[witness] firmware_and_redfish_surfaces_are_literal_versioned_observations: 0ms subject=c1bf792c5a58307c eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_netboot_serve_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_netboot_serve_witness_test.dag: 942ms  (105 modules, 1993 resolved items in closure)
+[witness] srv4_grub_cfg_boots_mirror_bulk_with_bmc_seed: 1ms subject=36c673c88b6a4a24 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_netboot_shell_boot_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_netboot_shell_boot_witness_test.dag: 734ms  (107 modules, 2014 resolved items in closure)
+[witness] srv4_shell_boot_sequence_direct_kernel: 1ms subject=5bd745c2ec197eae eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_onboard_body_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_onboard_body_witness_test.dag: 635ms  (86 modules, 1778 resolved items in closure)
+[witness] netrc_content_shape_holds: 0ms subject=35c35000c836e74d eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_onboarding_lifecycle_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_onboarding_lifecycle_witness_test.dag: 1532ms  (169 modules, 5163 resolved items in closure)
+[witness] bmc_onboarding_lifecycle_is_linear_dag: 0ms subject=914744168137690e eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_redfish_grounding_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_redfish_grounding_witness_test.dag: 376ms  (36 modules, 936 resolved items in closure)
+[witness] bmc_redfish_grounding_holds: 0ms subject=00918f2b2dd8c3a6 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_token_federation_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_token_federation_witness_test.dag: 1459ms  (158 modules, 5023 resolved items in closure)
+[witness] bmc_assimilator_least_privilege_two_scoped_roles: 0ms subject=26ff86132117203e eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_typed_operations_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_typed_operations_witness_test.dag: 341ms  (40 modules, 757 resolved items in closure)
+[witness] object_mapper_zero_cardinality_is_preserved: 0ms subject=ddea1e1d8092de9e eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_virtual_media_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_virtual_media_witness_test.dag: 560ms  (51 modules, 1160 resolved items in closure)
+[witness] srv4_nbd_export_read_only_seeded_iso: 0ms subject=596f9841bf852f0b eval_self=0.000ms
+claim_batch: resolving dag/test/claim/bmc_wif_delegation_chain_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/bmc_wif_delegation_chain_witness_test.dag: 10334ms  (414 modules, 9558 resolved items in closure)
+[witness] chain_has_four_steps_in_delegation_order: 37ms subject=59cd135af497658f eval_self=0.000ms
+claim_batch: resolving dag/test/claim/branded_list_first_optional_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/branded_list_first_optional_witness_test.dag: 277ms  (13 modules, 613 resolved items in closure)
+[witness] branded_list_first_content_hash_method_nonempty: 0ms subject=b4a5552cc2d24783 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/budget_tree_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/budget_tree_witness_test.dag: 263ms  (20 modules, 433 resolved items in closure)
+[witness] witness_conservation_residue_lens: 0ms subject=a37f7b713edd115e eval_self=0.000ms
+claim_batch: resolving dag/test/claim/build_artifact_corruption_probe_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/build_artifact_corruption_probe_witness_test.dag: 733ms  (64 modules, 1516 resolved items in closure)
+[witness] build_artifact_corruption_probe_holds: 0ms subject=7bae2bbe295fbd9b eval_self=0.000ms
+claim_batch: resolving dag/test/claim/build_cache_endpoint_path_test.dag (1 witness(es))
+[resolve] dag/test/claim/build_cache_endpoint_path_test.dag: 500ms  (46 modules, 963 resolved items in closure)
+[witness] witness_the_srv4_stale_socket_is_the_one_state_that_unlinks: 0ms subject=a095976ee66c22b2 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/build_cache_ensure_test.dag (1 witness(es))
+[resolve] dag/test/claim/build_cache_ensure_test.dag: 536ms  (48 modules, 1011 resolved items in closure)
+[witness] witness_the_generated_unit_reproduces_the_captured_environment: 1ms subject=32085581e61f32fd eval_self=0.000ms
+claim_batch: resolving dag/test/claim/build_cache_placement_observation_test.dag (1 witness(es))
+✓ typecheck gunbc.host_effect_realize done in 4 seconds
+[resolve] dag/test/claim/build_cache_placement_observation_test.dag: 13584ms  (521 modules, 12167 resolved items in closure)
+[witness] witness_retired_slot_owner_is_runner_owned_and_retired: 5ms subject=324ea595bd4fec41 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/builtin_get_resolver_test.dag (1 witness(es))
+[resolve] dag/test/claim/builtin_get_resolver_test.dag: 364ms  (11 modules, 500 resolved items in closure)
+[witness] witness_get_in_bounds_returns_element: 0ms subject=a661a9403c0ded24 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/busybox_bmc_build_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/busybox_bmc_build_witness_test.dag: 378ms  (47 modules, 678 resolved items in closure)
+[witness] busybox_build_is_modeled_and_grounded: 1ms subject=edde2ecabdc70553 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/cache_key_completeness_test.dag (1 witness(es))
+[resolve] dag/test/claim/cache_key_completeness_test.dag: 661ms  (57 modules, 1264 resolved items in closure)
+[witness] witness_cav_toolchain_derives_transform: 0ms subject=a9de738c5d1616bb eval_self=0.000ms
+claim_batch: resolving dag/test/claim/cache_layer_planner_test.dag (1 witness(es))
+[resolve] dag/test/claim/cache_layer_planner_test.dag: 418ms  (42 modules, 757 resolved items in closure)
+[witness] witness_cheap_recompute_skips_wan_layers: 3ms subject=53f3f9c878182638 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/cache_purity_verdict_test.dag (1 witness(es))
+[resolve] dag/test/claim/cache_purity_verdict_test.dag: 251ms  (14 modules, 277 resolved items in closure)
+[witness] witness_pure_on_match: 0ms subject=b733654ec52b3056 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/card_intake_risk_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/card_intake_risk_witness_test.dag: 851ms  (51 modules, 1260 resolved items in closure)
+[witness] witness_zero_results_classifies_no_match: 0ms subject=0066fccb7c307021 eval_self=0.000ms
+claim_batch: resolving dag/test/claim/cargo_target_path_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/cargo_target_path_witness_test.dag: 358ms  (30 modules, 559 resolved items in closure)
+[witness] lib_lands_on_src_lib: 0ms subject=21102557ef3a65bd eval_self=0.000ms
+claim_batch: resolving dag/test/claim/cargo_version_witness_test.dag (1 witness(es))
+[resolve] dag/test/claim/cargo_version_witness_test.dag: 256ms  (30 modules, 558 resolved items in closure)
+[witness] w_stage0_default_package_version: 0ms subject=8150970eb3e438ef eval_self=0.000ms
+[resolve-summary] 50 resolve(s) in 94624ms; 50 witness(es) in 133ms
+[expectation-frontier] 2 site(s), 2 dispatch(es) undeclared: Filesystem.Write=1 git.Inspect.Toplevel=1
+[resolve-split] load=55410.9ms parse=4850.6ms resolve=682.7ms normalize=584.3ms typecheck=24870.4ms parent_envs=7.6ms reconcile_assembly=216.2ms ownership=739.6ms
+[assembly-split] schedule=19.0ms probe=23.4ms graph=10.1ms symbol_index=7491.8ms pool_fill=3000.7ms symbol_index_merge=585.4ms variant_base=411.1ms root_symbol_index=618.5ms root_variant_base=7209.6ms environment=419.5ms diagnostics=6.9ms registry=58.5ms services=2061.2ms rewire_type_env=1055.5ms rewire_import_str=10223.1ms rewire_func_env=185.5ms emit_info=2421.0ms other=216.2ms rewire_total_observation=11464.0ms
+[cost-partition] {"basis":"summed_top_level_resolve_span_nanos","basis_note":"additive: each top-level resolve span's own duration, thread-sequential. Elapsed wall is NOT additive over concurrent spans and is carried under `observations`, never partitioned.","parent_span_nanos":123329261810,"spans":51,"nested_spans":0,"exclusive":{"load":55410922228,"parse":4850576091,"resolve_modules":682728280,"normalize":584256353,"typecheck_compute":24870380964,"parent_envs":7580504,"assembly_schedule":19034082,"assembly_probe":23390044,"assembly_graph":10058154,"assembly_symbol_index":7491757126,"assembly_pool_fill":3000713907,"assembly_symbol_index_merge":585370025,"assembly_variant_base":411124778,"assembly_root_symbol_index":618489188,"assembly_root_variant_base":7209600420,"assembly_environment":419500968,"assembly_diagnostics":6947145,"assembly_registry":58481779,"assembly_services":2061239003,"assembly_rewire_type_env":1055459698,"assembly_rewire_import_str":10223050847,"assembly_rewire_func_env":185480589,"assembly_emit_info":2421014424,"reconcile_assembly":216243106,"ownership":739558832},"sum_exclusive_nanos":123162958535,"remainder_nanos":166303275,"inclusive":{"load_reference_scan":{"nanos":49454042,"contained_in":"load"},"load_import_closure":{"nanos":219086365,"contained_in":"load"},"load_bare_reference_closure":{"nanos":54535257439,"contained_in":"load"},"load_pool_reference_closure":{"nanos":370726635,"contained_in":"load"},"load_bare_edge_index":{"nanos":54195243720,"contained_in":"load_bare_reference_closure"},"load_bare_path_lookup":{"nanos":259306424,"contained_in":"load_bare_reference_closure"},"load_bare_edge_walk":{"nanos":9244535,"contained_in":"load_bare_reference_closure"}},"load_reference_scan_volume":{"bytes":11764692,"calls":1618,"fixpoint_rounds":92},"accounting_law":"parent_span_nanos == sum_exclusive_nanos + remainder_nanos","verdict":{"state":"Reconciled","residual_nanos":0,"tolerance_nanos":0},"span_nanos_by_entry":[{"entry":"dag/test/claim/accelerator_demo_execution_witness_test.dag","spans":1,"nanos":31007627150,"exclusive":{"load":27500657881,"parse":293504176,"resolve_modules":8573013,"normalize":44747564,"typecheck_compute":1084944961,"parent_envs":467085,"reconcile_assembly":6234066,"ownership":35253821}},{"entry":"dag/gunbc/output_policy.dag","spans":1,"nanos":28687796084,"exclusive":{"load":26729560826,"parse":55812027,"resolve_modules":1178013,"normalize":8820579,"typecheck_compute":162079616,"parent_envs":55961,"reconcile_assembly":946809,"ownership":5086937}},{"entry":"dag/test/claim/build_cache_placement_observation_test.dag","spans":1,"nanos":13584509542,"exclusive":{"load":36653982,"parse":290667790,"resolve_modules":121015500,"normalize":32612540,"typecheck_compute":6565581359,"parent_envs":1448856,"reconcile_assembly":37311983,"ownership":52158298}},{"entry":"dag/test/claim/anomaly_evidence_witness_test.dag","spans":1,"nanos":12995114072,"exclusive":{"load":46646102,"parse":2269975126,"resolve_modules":53806377,"normalize":263828754,"typecheck_compute":7246388825,"parent_envs":1737737,"reconcile_assembly":19119928,"ownership":362884947}},{"entry":"dag/test/claim/bmc_wif_delegation_chain_witness_test.dag","spans":1,"nanos":10334490435,"exclusive":{"load":27196366,"parse":1047887660,"resolve_modules":84969533,"normalize":117901639,"typecheck_compute":4642477640,"parent_envs":1679328,"reconcile_assembly":25049226,"ownership":155031138}},{"entry":"dag/test/claim/bmc_bootstrap_provision_witness_test.dag","spans":1,"nanos":2747259329,"exclusive":{"load":24867144,"parse":148523298,"resolve_modules":36805151,"normalize":20210215,"typecheck_compute":960758641,"parent_envs":378325,"reconcile_assembly":10309997,"ownership":23373768}},{"entry":"dag/test/claim/bmc_fan_converge_witness_test.dag","spans":1,"nanos":1956190882,"exclusive":{"load":29911037,"parse":177732205,"resolve_modules":24307897,"normalize":19944252,"typecheck_compute":849465236,"parent_envs":229722,"reconcile_assembly":7231355,"ownership":24810143}},{"entry":"dag/test/claim/bmc_onboarding_lifecycle_witness_test.dag","spans":1,"nanos":1532261604,"exclusive":{"load":25863553,"parse":7336637,"resolve_modules":38266564,"normalize":1530576,"typecheck_compute":52714636,"parent_envs":4000,"reconcile_assembly":9736546,"ownership":4645009}},{"entry":"dag/test/claim/bmc_token_federation_witness_test.dag","spans":1,"nanos":1459008770,"exclusive":{"load":24549699,"parse":2758309,"resolve_modules":35874178,"normalize":790048,"typecheck_compute":38022081,"parent_envs":4960,"reconcile_assembly":9194617,"ownership":3981002}},{"entry":"dag/test/claim/annotation_carrier_witness_test.dag","spans":1,"nanos":1098642307,"exclusive":{"load":23825936,"parse":87332780,"resolve_modules":11277962,"normalize":11426843,"typecheck_compute":520869210,"parent_envs":345280,"reconcile_assembly":4687571,"ownership":9628624}},{"entry":"dag/test/claim/bmc_netboot_serve_witness_test.dag","spans":1,"nanos":942847605,"exclusive":{"load":31238450,"parse":34097320,"resolve_modules":15971209,"normalize":4896452,"typecheck_compute":254502771,"parent_envs":163961,"reconcile_assembly":5465016,"ownership":4793171}},{"entry":"dag/test/claim/bmc_firmware_thermal_witness_test.dag","spans":1,"nanos":888362680,"exclusive":{"load":30750206,"parse":33922839,"resolve_modules":22321236,"normalize":4209005,"typecheck_compute":211727800,"parent_envs":20200,"reconcile_assembly":5129977,"ownership":7143516}},{"entry":"dag/test/claim/card_intake_risk_witness_test.dag","spans":1,"nanos":851459172,"exclusive":{"load":17004455,"parse":32583816,"resolve_modules":8940612,"normalize":3707038,"typecheck_compute":158245911,"parent_envs":83321,"reconcile_assembly":2657185,"ownership":2457866}},{"entry":"dag/test/claim/bmc_netboot_shell_boot_witness_test.dag","spans":1,"nanos":734102195,"exclusive":{"load":29944797,"parse":8110405,"resolve_modules":16504095,"normalize":1270453,"typecheck_compute":63381310,"parent_envs":28680,"reconcile_assembly":5467422,"ownership":2165223}},{"entry":"dag/test/claim/build_artifact_corruption_probe_witness_test.dag","spans":1,"nanos":733243610,"exclusive":{"load":23695248,"parse":26416515,"resolve_modules":9745862,"normalize":3446716,"typecheck_compute":185778500,"parent_envs":120760,"reconcile_assembly":3303561,"ownership":3493717}},{"entry":"dag/test/claim/cache_key_completeness_test.dag","spans":1,"nanos":661068298,"exclusive":{"load":24047688,"parse":4805370,"resolve_modules":9017413,"normalize":696087,"typecheck_compute":52937026,"parent_envs":23080,"reconcile_assembly":2763226,"ownership":939369}},{"entry":"dag/test/claim/bmc_live_receipts_witness_test.dag","spans":1,"nanos":643061441,"exclusive":{"load":30457363,"parse":7907044,"resolve_modules":17326383,"normalize":924730,"typecheck_compute":29883436,"parent_envs":14241,"reconcile_assembly":4993414,"ownership":2105462}},{"entry":"dag/test/claim/bmc_onboard_body_witness_test.dag","spans":1,"nanos":635630230,"exclusive":{"load":25089185,"parse":14970878,"resolve_modules":12453492,"normalize":1816019,"typecheck_compute":71817958,"parent_envs":27040,"reconcile_assembly":4399091,"ownership":2290464}},{"entry":"dag/test/claim/bmc_virtual_media_witness_test.dag","spans":1,"nanos":560368618,"exclusive":{"load":22738560,"parse":18690517,"resolve_modules":7278276,"normalize":2894031,"typecheck_compute":168857058,"parent_envs":84960,"reconcile_assembly":2509987,"ownership":2364745}},{"entry":"dag/test/claim/build_cache_ensure_test.dag","spans":1,"nanos":536206550,"exclusive":{"load":24589656,"parse":16891456,"resolve_modules":9521299,"normalize":2014701,"typecheck_compute":93579455,"parent_envs":21440,"reconcile_assembly":2424388,"ownership":1919260}},{"entry":"dag/test/claim/artifact_store_fs_witness_test.dag","spans":1,"nanos":529930963,"exclusive":{"load":22763922,"parse":19236885,"resolve_modules":7312998,"normalize":2577588,"typecheck_compute":117046607,"parent_envs":52520,"reconcile_assembly":2337902,"ownership":2814950}},{"entry":"dag/test/claim/build_cache_endpoint_path_test.dag","spans":1,"nanos":500006255,"exclusive":{"load":24674418,"parse":15623683,"resolve_modules":9206856,"normalize":1720218,"typecheck_compute":61539640,"parent_envs":26520,"reconcile_assembly":2347104,"ownership":1437015}},{"entry":"dag/test/claim/artifact_store_witness_test.dag","spans":1,"nanos":474207887,"exclusive":{"load":26075198,"parse":18529398,"resolve_modules":7665401,"normalize":2176943,"typecheck_compute":63907201,"parent_envs":24680,"reconcile_assembly":2313746,"ownership":2228264}},{"entry":"dag/test/claim/access_layer_extension_witness_test.dag","spans":1,"nanos":442961215,"exclusive":{"load":16476938,"parse":30019923,"resolve_modules":3234315,"normalize":4299646,"typecheck_compute":162431991,"parent_envs":48921,"reconcile_assembly":1449213,"ownership":3708000}},{"entry":"dag/test/claim/accelerator_demo_gpu_witness_test.dag","spans":1,"nanos":420151415,"exclusive":{"load":25638996,"parse":11955249,"resolve_modules":5774303,"normalize":1677018,"typecheck_compute":95995476,"parent_envs":46722,"reconcile_assembly":2244144,"ownership":1227133}},{"entry":"dag/test/claim/cache_layer_planner_test.dag","spans":1,"nanos":418141790,"exclusive":{"load":20080007,"parse":2306184,"resolve_modules":6576188,"normalize":458325,"typecheck_compute":37102703,"parent_envs":4800,"reconcile_assembly":2012379,"ownership":517325}},{"entry":"dag/test/claim/accelerator_demo_model_witness_test.dag","spans":1,"nanos":408215804,"exclusive":{"load":24005579,"parse":1615457,"resolve_modules":7988807,"normalize":322363,"typecheck_compute":14888200,"parent_envs":3720,"reconcile_assembly":2743628,"ownership":684087}},{"entry":"dag/test/claim/access_token_ensure_witness_test.dag","spans":1,"nanos":408095679,"exclusive":{"load":23427212,"parse":19855574,"resolve_modules":3707360,"normalize":2684229,"typecheck_compute":116989462,"parent_envs":54400,"reconcile_assembly":1514897,"ownership":2105703}},{"entry":"dag/test/claim/asrock_live_probe_witness_test.dag","spans":1,"nanos":392067612,"exclusive":{"load":24772184,"parse":12204250,"resolve_modules":5035454,"normalize":1723138,"typecheck_compute":61895537,"parent_envs":34841,"reconcile_assembly":1977982,"ownership":1447976}},{"entry":"dag/test/claim/artifact_store_scratch_grant_witness_test.dag","spans":1,"nanos":386212113,"exclusive":{"load":25153148,"parse":1683058,"resolve_modules":6748231,"normalize":256683,"typecheck_compute":12938378,"parent_envs":8760,"reconcile_assembly":2157984,"ownership":551646}},{"entry":"dag/test/claim/busybox_bmc_build_witness_test.dag","spans":1,"nanos":378023740,"exclusive":{"load":22705394,"parse":4278644,"resolve_modules":4825890,"normalize":597486,"typecheck_compute":48462421,"parent_envs":32880,"reconcile_assembly":1767177,"ownership":684567}},{"entry":"dag/test/claim/bmc_redfish_grounding_witness_test.dag","spans":1,"nanos":376274685,"exclusive":{"load":24811781,"parse":6770352,"resolve_modules":6365467,"normalize":999490,"typecheck_compute":45810042,"parent_envs":10320,"reconcile_assembly":2067861,"ownership":1138412}},{"entry":"dag/test/claim/bmc_capability_solve_witness_test.dag","spans":1,"nanos":370843452,"exclusive":{"load":29438313,"parse":8086206,"resolve_modules":7258997,"normalize":1003931,"typecheck_compute":31809138,"parent_envs":16961,"reconcile_assembly":2004261,"ownership":1090451}},{"entry":"dag/test/claim/builtin_get_resolver_test.dag","spans":1,"nanos":364048438,"exclusive":{"load":34423436,"parse":6383146,"resolve_modules":2886670,"normalize":550166,"typecheck_compute":17148297,"parent_envs":6600,"reconcile_assembly":1243651,"ownership":296003}},{"entry":"dag/test/claim/access_iam_validation_test.dag","spans":1,"nanos":362307868,"exclusive":{"load":15476407,"parse":11960089,"resolve_modules":3737160,"normalize":1871820,"typecheck_compute":75400092,"parent_envs":38481,"reconcile_assembly":1485935,"ownership":1146573}},{"entry":"dag/test/claim/cargo_target_path_witness_test.dag","spans":1,"nanos":358301370,"exclusive":{"load":19681203,"parse":4306684,"resolve_modules":3251594,"normalize":683847,"typecheck_compute":33055860,"parent_envs":16240,"reconcile_assembly":1226335,"ownership":538126}},{"entry":"dag/test/claim/bmc_typed_operations_witness_test.dag","spans":1,"nanos":340976189,"exclusive":{"load":18712397,"parse":9232297,"resolve_modules":7475238,"normalize":1006931,"typecheck_compute":18576636,"parent_envs":6600,"reconcile_assembly":1980262,"ownership":774888}},{"entry":"dag/test/claim/bach_double_slit_path_additivity_synthetic_fixture_witness_test.dag","spans":1,"nanos":337101385,"exclusive":{"load":22167635,"parse":18075272,"resolve_modules":4332166,"normalize":2114743,"typecheck_compute":55308549,"parent_envs":25481,"reconcile_assembly":1408576,"ownership":2099262}},{"entry":"dag/test/claim/bmc_factory_credential_witness_test.dag","spans":1,"nanos":320516438,"exclusive":{"load":23376728,"parse":872010,"resolve_modules":5577099,"normalize":179682,"typecheck_compute":9218018,"parent_envs":3880,"reconcile_assembly":1883740,"ownership":436485}},{"entry":"dag/test/claim/bmc_auth_runtime_secret_seam_test.dag","spans":1,"nanos":313107287,"exclusive":{"load":22123835,"parse":8532090,"resolve_modules":3511758,"normalize":1436575,"typecheck_compute":40184387,"parent_envs":19280,"reconcile_assembly":1509655,"ownership":1851499}},{"entry":"dag/test/claim/bach_double_slit_observation_witness_test.dag","spans":1,"nanos":313057050,"exclusive":{"load":23314648,"parse":11810126,"resolve_modules":3544437,"normalize":1603337,"typecheck_compute":46482294,"parent_envs":22480,"reconcile_assembly":1227497,"ownership":1447535}},{"entry":"dag/test/claim/branded_list_first_optional_witness_test.dag","spans":1,"nanos":277542177,"exclusive":{"load":23848208,"parse":2577027,"resolve_modules":3065232,"normalize":313003,"typecheck_compute":15391401,"parent_envs":7400,"reconcile_assembly":1036052,"ownership":360004}},{"entry":"dag/test/claim/base64_rfc4648_witness_test.dag","spans":1,"nanos":273883793,"exclusive":{"load":22479920,"parse":2412146,"resolve_modules":3417796,"normalize":375084,"typecheck_compute":20693420,"parent_envs":3840,"reconcile_assembly":1252012,"ownership":410205}},{"entry":"dag/test/claim/advertising_interface_witness_test.dag","spans":1,"nanos":265672021,"exclusive":{"load":15321245,"parse":8027806,"resolve_modules":1775939,"normalize":951570,"typecheck_compute":62996117,"parent_envs":53480,"reconcile_assembly":868570,"ownership":556886}},{"entry":"dag/test/claim/budget_tree_witness_test.dag","spans":1,"nanos":263284148,"exclusive":{"load":22590235,"parse":3470036,"resolve_modules":2415065,"normalize":543806,"typecheck_compute":27857811,"parent_envs":3360,"reconcile_assembly":920889,"ownership":419484}},{"entry":"dag/test/claim/cargo_version_witness_test.dag","spans":1,"nanos":256537322,"exclusive":{"load":19192157,"parse":1401935,"resolve_modules":3191552,"normalize":226243,"typecheck_compute":13398458,"parent_envs":4000,"reconcile_assembly":1188933,"ownership":283483}},{"entry":"dag/test/claim/cache_purity_verdict_test.dag","spans":1,"nanos":251814516,"exclusive":{"load":13904984,"parse":2147143,"resolve_modules":1405094,"normalize":257963,"typecheck_compute":22393910,"parent_envs":14480,"reconcile_assembly":587925,"ownership":230682}},{"entry":"dag/test/claim/argv_command_render_witness_test.dag","spans":1,"nanos":248734490,"exclusive":{"load":22293718,"parse":4739211,"resolve_modules":1605657,"normalize":576246,"typecheck_compute":35687940,"parent_envs":10200,"reconcile_assembly":633489,"ownership":344164}},{"entry":"dag/test/claim/acquisition_mechanism_witness_test.dag","spans":1,"nanos":242367810,"exclusive":{"load":14767799,"parse":7490160,"resolve_modules":2062222,"normalize":1059172,"typecheck_compute":29485638,"parent_envs":14960,"reconcile_assembly":829568,"ownership":894850}},{"entry":"dag/test/claim/access_authorization_profile_witness_test.dag","spans":1,"nanos":233078034,"exclusive":{"load":16160894,"parse":10178310,"resolve_modules":1123812,"normalize":1551417,"typecheck_compute":44786082,"parent_envs":18960,"reconcile_assembly":496246,"ownership":734208}},{"entry":"dag/test/claim/access_validation_test.dag","spans":1,"nanos":212548290,"exclusive":{"load":21775555,"parse":4869572,"resolve_modules":1495457,"normalize":769448,"typecheck_compute":17485828,"parent_envs":5800,"reconcile_assembly":590128,"ownership":572486}}],"observations":{"witness_entry_resolve_wall_nanos":94624000000,"witness_eval_wall_nanos":133000000},"observations_note":"Elapsed-wall figures from the surrounding receipts. They measure a DIFFERENT universe than `parent_span_nanos` (witness-entry resolves only, or process wall across concurrent workers) and are reported, never partitioned."}
+◷ per-shard-peak-rss — 5.5 GiB
+◷ children-max-rss — 0.0 GiB

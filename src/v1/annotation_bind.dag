@@ -1,0 +1,188 @@
+module v1.compiler.annotation_bind
+
+import std.types { Bool, Int, String, SourceSpan, List }
+import std.occurrence_identity {
+  OccurrenceIndexEntry,
+  OccurrenceTransport
+}
+import std.source_annotation {
+  AnnotationAttachmentRefusal,
+  AnnotationAttachmentResult,
+  AnnotationSubject,
+  AnnotationsAdmitted,
+  AnnotationsRefused,
+  NormalizedAnnotationCapture,
+  SourceAnnotationGraph,
+  UnboundAnnotationCapture,
+  admit_annotations,
+  attach_annotations,
+  non_empty_refusals_all,
+  source_annotation_graph_empty
+}
+import v1.std.core { CompilerDiagnostic, SourceAnnotationRefused }
+
+data annotation_bind_authority_note: String = "The .dag realization of annotation attachment: it turns what the tokenizer captured into subject-bound rows by calling std.source_annotation.attach_annotations. Everything here is either .dag-specific — what the comment delimiter looks like, how a module item is recognized in this parser's transport — or a projection of facts the parser already produced. The RULE itself is not here; a second copy of the rule beside the shared one is the fork this lane exists to prevent.
+
+It is a PURE DOWNSTREAM READER of the occurrence transport. No allocator is in scope, so the identities it reads were all minted by the semantic parser before it ran, and no edit to a comment can shift one."
+
+data module_item_roster_source_note: String = "The roster comes from the occurrence INDEX, not from OccurrenceTransport.declarations, and the difference is measured rather than assumed. Parsing `module p.q` with one data row, one type, and one fn yields four declaration-role rows — the module, the fn, and two lexical binders inside the fn body — while the index carries fifteen entries including `alpha` at ancestor depth 1 and `Thing` at ancestor depth 1.
+
+So `data` and `type` module items DO receive occurrence identities; they are absent only from the declaration-role projection, because parsed_occurrence_role_for_node classifies a node carrying both a body and a type annotation as unclassified. Rostering from `declarations` would therefore have made exactly the population this feature exists to serve — the `_note` rows that hold this repository's prose — permanently unattachable, and it would have looked like a narrow first cut rather than a defect. That role-projection gap is real and pre-existing; it is NOT repaired here, because widening a declaration role changes what binding and resolution see, which is a semantic change this lane has no business making.
+
+Ancestor depth is the module-item test: depth 0 is the module itself, depth 1 its direct members, depth 2 and beyond nested structure."
+
+fn entry_ancestor_depth(entry: OccurrenceIndexEntry) -> Int {
+  count(entry.containment.ancestors)
+}
+
+fn module_item_entries(transport: OccurrenceTransport) -> List<OccurrenceIndexEntry> {
+  fold(
+    transport.index.entries,
+    init: [],
+    f: (acc, entry) =>
+      if entry_ancestor_depth(entry: entry) == 1 { list_push(acc, entry) } else { acc }
+  )
+}
+
+data subject_extent_derivation_note: String = "A module item's occurrence span is a START MARKER, not an extent: `data alpha` spans the `data` keyword and `fn go` spans the `fn` keyword. Attachment needs an extent, because the rule that keeps body prose from being filed against the next unrelated declaration is containment.
+
+The extent is derived rather than invented. An item runs from its own start to the furthest end of any occurrence lying between it and the next module item — those occurrences are precisely its own nested structure, since a sibling item's structure cannot begin before that sibling does. Taking the next item's start as the end instead would be wrong in the ordinary case: the whitespace and the leading comment BELONGING TO the next item sit in that gap, so a comment written to describe `type Thing` would fall inside `data alpha` and be refused as body grain.
+
+The module itself is rostered with its raw span and no derived extent. Its true extent is the whole file, which would swallow every capture; a degenerate span makes the two cases that matter come out right, since a comment above `module` still finds the module as its nearest following subject and a comment below it finds the first member.
+
+Both derivations scan the entry list per item. DISSOLVE-ON: index entries expose source order, or a declaration carries its own extent; then the successor is a neighbor lookup and the extent is read rather than derived."
+
+fn next_module_item_start(
+  items: List<OccurrenceIndexEntry>,
+  after: Int,
+  fallback: Int
+) -> Int {
+  fold(
+    items,
+    init: fallback,
+    f: (best, entry) =>
+      let start = entry.projection.diagnostic_span.start
+      if start > after && start < best { start } else { best }
+  )
+}
+
+fn module_item_extent_end(
+  entries: List<OccurrenceIndexEntry>,
+  start: Int,
+  limit: Int,
+  own_end: Int
+) -> Int {
+  fold(
+    entries,
+    init: own_end,
+    f: (best, entry) =>
+      let entry_start = entry.projection.diagnostic_span.start
+      let entry_end = entry.projection.diagnostic_span.end
+      if entry_start >= start && entry_start < limit && entry_end > best { entry_end } else { best }
+  )
+}
+
+fn annotation_subjects(
+  transport: OccurrenceTransport,
+  source_length: Int
+) -> List<AnnotationSubject> {
+  let entries = transport.index.entries
+  let items = module_item_entries(transport: transport)
+  fold(
+    entries,
+    init: [],
+    f: (acc, entry) =>
+      let depth = entry_ancestor_depth(entry: entry)
+      let span = entry.projection.diagnostic_span
+      if depth == 0 {
+        list_push(acc, AnnotationSubject { occurrence: entry.projection.occurrence, span: span })
+      } else if depth == 1 {
+        let limit = next_module_item_start(items: items, after: span.start, fallback: source_length)
+        list_push(
+          acc,
+          AnnotationSubject {
+            occurrence: entry.projection.occurrence,
+            span: SourceSpan {
+              file: span.file,
+              start: span.start,
+              end: module_item_extent_end(entries: entries, start: span.start, limit: limit, own_end: span.end),
+            },
+          }
+        )
+      } else {
+        acc
+      }
+  )
+}
+
+data delimiter_normalization_note: String = "The single place `//` is removed, and it is here rather than in the tokenizer on purpose. A capture carries RAW syntax so the lexer reports what it saw; normalization into durable text is a language fact, and .dag's fact is that the delimiter is two slashes optionally followed by one space.
+
+Exactly one space is consumed, never a run, because `//   indented` is authored indentation the writer chose and swallowing it would silently rewrite the prose. A lexeme not starting with the delimiter passes through unchanged rather than being truncated by a fixed offset — that arm is unreachable through the .dag annotation rule today, and the alternative is a normalizer that corrupts content when it is wrong about its input."
+
+fn strip_line_comment_delimiter(lexeme: String) -> String {
+  let len = string_length(s: lexeme)
+  if starts_with(s: lexeme, prefix: "// ") {
+    substring(s: lexeme, start: 3, end: len)
+  } else if starts_with(s: lexeme, prefix: "//") {
+    substring(s: lexeme, start: 2, end: len)
+  } else {
+    lexeme
+  }
+}
+
+fn normalize_dag_annotation(capture: UnboundAnnotationCapture) -> NormalizedAnnotationCapture {
+  NormalizedAnnotationCapture {
+    text: strip_line_comment_delimiter(lexeme: capture.lexeme),
+    origin: capture.origin,
+    placement: capture.placement,
+    preceded_by_blank_line: capture.preceded_by_blank_line,
+  }
+}
+
+data bind_annotations_note: String = "The .dag entry point: normalize, roster, attach. The attach step is the shared fold, so a change to the attachment rule reaches this realization and the v2 one together and cannot reach only one."
+
+fn bind_annotations(
+  transport: OccurrenceTransport,
+  captures: List<UnboundAnnotationCapture>,
+  source_length: Int
+) -> AnnotationAttachmentResult {
+  attach_annotations(
+    captures: fold(
+      captures,
+      init: [],
+      f: (acc, capture) => list_push(acc, normalize_dag_annotation(capture: capture))
+    ),
+    subjects: annotation_subjects(transport: transport, source_length: source_length)
+  )
+}
+
+data admit_source_annotations_note: String = "THE single seam both production frontend paths use. front_end_sources and parse_census_fill_sources call this one function rather than each repeating normalize-roster-attach-admit, so the two cannot drift into disagreeing about whether a given file's prose is admissible — a drift that would be invisible, because the census path and the compile path would simply produce different graphs for the same source.
+
+Refusal is a BLOCKING diagnostic, not a note carried alongside a successful result. Unclassified prose stops the line: the graph is withheld entirely and every refusal is reported at its own span. Admitting the attachable rows while dropping the rest is the shape DESIGN forbids — the dropped prose would be uncounted, and a source that lost half its commentary would compile exactly like one that never had it."
+
+type AdmittedSourceAnnotations {
+  graph: SourceAnnotationGraph
+  diagnostics: List<CompilerDiagnostic>
+}
+
+fn admit_source_annotations(
+  transport: OccurrenceTransport,
+  captures: List<UnboundAnnotationCapture>,
+  source_length: Int
+) -> AdmittedSourceAnnotations {
+  match admit_annotations(
+    result: bind_annotations(transport: transport, captures: captures, source_length: source_length)
+  ) {
+    AnnotationsAdmitted { graph: graph } =>
+      AdmittedSourceAnnotations { graph: graph, diagnostics: [] }
+    AnnotationsRefused { refusals: refusals } =>
+      AdmittedSourceAnnotations {
+        graph: source_annotation_graph_empty(),
+        diagnostics: fold(
+          non_empty_refusals_all(refusals: refusals),
+          init: [],
+          f: (acc, refusal) => list_push(acc, SourceAnnotationRefused { refusal: refusal })
+        ),
+      }
+  }
+}

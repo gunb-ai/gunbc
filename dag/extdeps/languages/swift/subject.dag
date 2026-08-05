@@ -1,0 +1,41 @@
+module extdeps.languages.swift.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.swift.org/documentation/"
+  }
+}
+
+data swift_language_further_authority_1: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "github.com/swiftlang/swift-book"
+  }
+}
+
+data swift_language_subject_note: String = "SWIFT, cited to The Swift Programming Language (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): swift.org describes 'The Swift Programming Language' (TSPL) as 'the authoritative reference for Swift', offering a guided tour, a comprehensive guide, and a formal reference of the language; Swift is maintained by Apple Inc. and published through swift.org. WHY swift.org AND NOT docs.swift.org: the docs.swift.org book pages render their content through JavaScript and returned no readable title to this fetch, so the locator carried here is the one that actually verified."
+
+type Swift
+  = | SwiftTarget
+
+data swift_language: Swift = SwiftTarget
+
+data swift_language_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.swift.subject",
+      decl_name: "swift_language",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [swift_language_further_authority_1]
+}
+
+data extdeps_model_scope: ExternalModelScope = swift_language_model_scope
