@@ -365,6 +365,7 @@ test fn witness_operator_action_carries_locator_and_delta() -> Bool {
       match action {
         AcceptInstallationPermissions => true
         ApplyAppPermissionChange => false
+        GenerateAppSigningKey => false
       }
         && locator.locator == "github.com/organizations/gunb-ai/settings/installations/999"
         && count(permission_delta) == 1
@@ -405,7 +406,11 @@ test fn witness_live_control_plane_needs_operator_key_generation() -> Bool {
     _ => false
   } && match control_plane_next_action(state: live_heal_control_plane) {
     OperatorActionRequired { action, locator, permission_delta, readback: _ } =>
-      match action { GenerateAppSigningKey => true  _ => false }
+      match action {
+        GenerateAppSigningKey => true
+        AcceptInstallationPermissions => false
+        ApplyAppPermissionChange => false
+      }
         && locator.locator == "github.com/organizations/gunb-ai/settings/apps/gunbai"
         && count(permission_delta) == 0
     _ => false

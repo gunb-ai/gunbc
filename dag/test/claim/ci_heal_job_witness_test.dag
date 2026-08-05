@@ -3,10 +3,11 @@ module test.claim.ci_heal_job_witness
 import gunbc.ci_workflow {
   ci_workflow,
   ci_heal_generated_artifacts_job,
+  ci_heal_author_commit_upload_step,
   ci_build_job,
   ci_job,
-  ci_heal_branch_ref_expr
 }
+import extdeps.github.effect { path_is_hidden }
 import extdeps.languages.yaml.types {
   YamlKeyValue, YamlValue,
   YamlString, YamlNull, YamlBool, YamlInt, YamlFloat, YamlSequence, YamlMapping
@@ -34,8 +35,13 @@ import gunbc.heal_push_plan {
   author_commit_required_committed_artifact_paths,
   live_heal_push_refusal_cause_token
 }
-import gunbc.ci_heal_credential { ci_heal_job_permissions, ci_heal_effective_grant }
-import gunbc.ci_workflow_expressions { ci_regen_heal_if }
+import gunbc.ci_heal_credential {
+  ci_heal_job_permissions,
+  ci_heal_effective_grant,
+  ci_heal_branch_ref_expr,
+  ci_regen_heal_if
+}
+
 import extdeps.github.actions {
   Job, Workflow, WorkflowPermissions, PermissionLevel, PermWrite, PermRead,
   WorkflowDispatch, Push, PullRequest, Schedule, WorkflowCall, MergeGroup,
@@ -232,6 +238,49 @@ fn step_uploads_author_commit_artifact(s: Step) -> Bool {
       }
     RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
   }
+}
+
+fn step_with_value(s: Step, key: NonEmptyStr) -> YamlValue? {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => none
+    UsesStep { name: _, id: _, uses: _, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match w {
+        Absent => none
+        Present { value: rows } => fold(rows, init: none, f: fn(found, row) {
+          match found {
+            Present { value: v } => Present { value: v }
+            Absent => if row.key == key { Present { value: row.value } } else { none }
+          }
+        })
+      }
+  }
+}
+
+test fn heal_author_commit_upload_includes_hidden_workflow_files() -> Bool {
+  let paths = author_commit_required_committed_artifact_paths()
+  let all_hidden = fold(paths, init: true, f: fn(ok, p) { ok && path_is_hidden(path: p) })
+  let any_hidden = fold(paths, init: false, f: fn(found, p) { found || path_is_hidden(path: p) })
+  (count(paths) > 0)
+    && all_hidden
+    && any_hidden
+    && path_is_hidden(path: artifact_path(a: CiYamlArtifact))
+    && path_is_hidden(path: artifact_path(a: GitignoreArtifact))
+    && !path_is_hidden(path: "DESIGN.md")
+    && !path_is_hidden(path: "src/v2/compiler/03_normalize.dag")
+    && match step_with_value(s: ci_heal_author_commit_upload_step(), key: "include-hidden-files") {
+         Present { value: v } => match v {
+           YamlBool { value: b } => b == any_hidden
+           _ => false
+         }
+         Absent => false
+       }
+    && match step_with_value(s: ci_heal_author_commit_upload_step(), key: "path") {
+         Present { value: v } => match v {
+           YamlString { value: d } => d == ci_heal_author_commit_artifact_dir
+           _ => false
+         }
+         Absent => false
+       }
 }
 
 test fn heal_author_commit_upload_step_enrolled() -> Bool {

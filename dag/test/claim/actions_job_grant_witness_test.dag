@@ -212,10 +212,7 @@ data ordinary_effect: GitHubEffect = AdvanceRepositoryBranch {
 }
 
 test fn witness_fork_pull_request_cannot_advance_any_branch() -> Bool {
-  let fork_credential = credential_from_push_binding(
-    binding: ci_heal_push_binding,
-    grant: fork_origin_grant()
-  )
+  let fork_credential = ActionsJobCredential { grant: fork_origin_grant() }
   !credential_authorizes(
     authority: fork_credential,
     control_plane: live_heal_control_plane,
