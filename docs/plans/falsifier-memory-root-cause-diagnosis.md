@@ -1,11 +1,19 @@
 # Falsifier reliability diagnosis
 
-**Status:** updated 2026-08-04 (session bold-eagle-790). Operator correction
-(still-bat-561): **there is no memory event** — governor receipts show
-`budget_exceeded=0 forced_serial=0` on every examined run; step 11 **completes**
-and exits 1 on witness redness. This doc separates two failure classes previously
-conflated under "nine red windows." PR #7813 (build/floor job split) remains a
-cgroup-headroom hygiene fix, separate from witness containment.
+**Status:** updated 2026-08-05 (session bold-eagle-790). **Scope split (operator
+ruling on #7813):** **7813A** (this PR, mergeable) = §5 build→floor job isolation
+only. **7813B** (wise-ram-22 / swift-otter-728, NOT this PR) = §4 parent-first
+bisect with memory.current/peak/events, oom_kill, oomd, termination signal, cgroup +
+runner identity — do not treat §4a as completed root cause.
+
+Operator correction (still-bat-561): **there is no memory event** — governor
+receipts show `budget_exceeded=0 forced_serial=0` on every examined run; step 11
+**completes** and exits 1 on witness redness. This doc separates two failure classes
+previously conflated under "nine red windows." PR #7813A (build/floor job split) is
+cgroup-headroom hygiene only, separate from witness containment (wise-ram-22).
+
+**Rebase:** #7813A rebases onto main after #7812 (dark controls) merges; do not
+compete on `falsifier_workflow.dag` until then.
 
 ---
 
@@ -54,7 +62,13 @@ run-stability lane.
 
 ---
 
-## 4. Class B bisect (`76ef121ec4..44126ca1de`)
+## 4. Class B bisect (`76ef121ec4..44126ca1de`) — **7813B / wise-ram-22 (WIP, not merge criterion)**
+
+**NOT part of #7813A deliverable.** Interim parent-first bisect receipt below;
+introduction commit not found. Continuation requires fresh binary at every head plus
+memory.current, memory.peak, memory.events, oom_kill, oomd, termination signal, cgroup
+and runner identity per operator ruling — memory.peak is historical max, not current
+residency; positive OOM evidence required, never inferred from peak or exit code.
 
 Seven commits between last BudgetExceeded window and first WitnessRed window:
 
@@ -72,7 +86,7 @@ Method: run named witnesses per candidate head via
 direct_rust_door contract shape; **#7776 ruled out** (landed after first WitnessRed
 window).
 
-### 4a. Bisect receipt (executed 2026-08-04/05)
+### 4a. Interim bisect receipt (executed 2026-08-04/05; **incomplete — search widening backward**)
 
 Method: fresh `claim_batch` build at each candidate head (stale Aug-2 binary ruled out
 for dispatch-layer changes). Parent-before-candidate test per still-bat-561.
@@ -97,7 +111,7 @@ commits before `7237024035`.
 
 ---
 
-## 5. Infrastructure note — build/floor job split (PR #7813)
+## 5. Infrastructure — build/floor job split (**7813A / PR #7813, mergeable**)
 
 The monolith job carries ~9.5 GiB pre-floor residency (release build + selection
 control) in the same cgroup as the floor peak measurement. Splitting into
