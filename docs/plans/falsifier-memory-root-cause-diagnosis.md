@@ -79,6 +79,7 @@ for dispatch-layer changes). Parent-before-candidate test per still-bat-561.
 
 | SHA | Commit | Fresh build | `fn_wf` | `closing_contract` | `production_admissions` | `written_source` |
 |---|---|---|---|---|---|---|
+| `76ef121ec4` | last BudgetExceeded window head (#7722) | yes | **FAIL** | **FAIL** | (not run) | (not run) |
 | `7237024035` | parent of #7682 (#7594 publisher) | yes | **FAIL** | **FAIL** | **FAIL** | **FAIL** |
 | `44126ca1de` | **#7682 dispatch authority** | yes | **FAIL** | **FAIL** | **FAIL** | **FAIL** |
 
@@ -87,7 +88,9 @@ binary built at that head. The first WitnessRed *falsifier window* coincides wit
 HEAD, but witness redness predates it — likely enrollment or cadence visibility, not this
 commit introducing the failure.
 
-Earlier boundary (`76ef121ec4`, last BudgetExceeded window head): measurement pending.
+**`76ef121ec4` boundary:** `fn_wf` and `closing_contract` already **FAIL** with fresh
+build — Class B witness redness predates the BudgetExceeded/WitnessRed window split.
+Introduction is earlier than the seven-commit window.
 
 **Next candidates** (after #7682 ruled out): `0b6b99315f`, `b12027cd94`, then remaining
 commits before `7237024035`.
