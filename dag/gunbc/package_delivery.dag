@@ -52,6 +52,12 @@ import extdeps.tools.sha512sum {
   Sha512FileObservationRefused,
 }
 import extdeps.tools.npm
+import extdeps.tools.node
+import extdeps.languages.json.emit {
+  JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
+  JsonKeyValue, serialize_json,
+}
+import extdeps.languages.json.parse { parse_json }
 import gunbc.retained_shell_script { retained_foreign }
 
 
@@ -206,9 +212,25 @@ fn staging_archive_name_from_lock_key(lock_node_key: NonEmptyStr) -> NonEmptyStr
   ) as NonEmptyStr
 }
 
+type AdmittedPackageArtifactReceipt {
+  lock_node_key: NonEmptyStr
+  package_name: NonEmptyStr
+  version: VersionIdentity
+  source_locator: NonEmptyStr
+  expected_digest: Sha512Digest
+  observed_digest: Sha512Digest
+}
+
+data admitted_package_path_note: String = "Staging archive paths are NOT durable receipt fields. StagedAdmittedPackageArtifact carries local_artifact_path only while the staging directory lives; CodexRuntimeBundleReceipt / CodexRuntimeBundle retain digest-only AdmittedPackageArtifactReceipt rows after staging is deleted."
+
+type StagedAdmittedPackageArtifact {
+  receipt: AdmittedPackageArtifactReceipt
+  local_artifact_path: FilePath
+}
+
 type RegistryArtifactAcquisition
   = RegistryArtifactAdmitted {
-      receipt: AdmittedPackageArtifactReceipt
+      staged: StagedAdmittedPackageArtifact
     }
   | RegistryArtifactLocatorRefused {
       admission: CodexRegistryLocatorAdmission
@@ -222,16 +244,6 @@ type RegistryArtifactAcquisition
   | RegistryArtifactSha1Unsupported {
       digest: Sha1Digest
     }
-
-type AdmittedPackageArtifactReceipt {
-  lock_node_key: NonEmptyStr
-  package_name: NonEmptyStr
-  version: VersionIdentity
-  source_locator: NonEmptyStr
-  expected_digest: Sha512Digest
-  observed_digest: Sha512Digest
-  local_artifact_path: FilePath
-}
 
 fn acquire_and_admit_registry_artifact(
   artifact: NpmRegistryArtifact,
@@ -268,13 +280,15 @@ fn acquire_and_admit_registry_artifact(
             ) {
               PackageArchiveDigestMatched { locator: _, digest } =>
                 RegistryArtifactAdmitted {
-                  receipt: AdmittedPackageArtifactReceipt {
-                    lock_node_key: lock_node_key,
-                    package_name: artifact.package.name,
-                    version: artifact.version,
-                    source_locator: artifact.resolved.locator,
-                    expected_digest: expected,
-                    observed_digest: digest,
+                  staged: StagedAdmittedPackageArtifact {
+                    receipt: AdmittedPackageArtifactReceipt {
+                      lock_node_key: lock_node_key,
+                      package_name: artifact.package.name,
+                      version: artifact.version,
+                      source_locator: artifact.resolved.locator,
+                      expected_digest: expected,
+                      observed_digest: digest,
+                    },
                     local_artifact_path: dest,
                   },
                 }
