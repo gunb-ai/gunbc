@@ -453,7 +453,8 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
       activity == legacy_attempt_supersedable_label
         && segment_state(progress.segments, "environment") == "refused"
         && segment_state(progress.segments, "workspace") == "refused"
-        && progress.reconciliation.observed_refusal_count == 4
+        && segment_state(progress.segments, "verify") == "pending"
+        && progress.reconciliation.observed_refusal_count == 3
     _ => false
   }
 }
