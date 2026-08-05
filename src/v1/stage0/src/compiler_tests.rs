@@ -580,22 +580,38 @@ mod compiler_tests {
                 );
                 // Runtime authority: the same duplicate-label call must refuse via
                 // call_function_inner (InterpError::CallContractMismatch), never
-                // silently pick the last-bound value.
+                // silently pick the last-bound value. Single-parameter fixture,
+                // deliberately: a second declared-but-unlabeled parameter (e.g. `b`)
+                // would stay unbound whether or not the duplicate check fires, so a
+                // two-param fixture's `run.is_err()` is satisfied by an unrelated
+                // `NoSuchVariable` from reading that unbound param — a false-discriminator
+                // caught by mutation testing (removing the duplicate-check block left
+                // this test green for the wrong reason). With one parameter, disabling
+                // the check leaves `bindings` fully populated (last-write-wins) and `run`
+                // succeeds, so the test only reds when the duplicate check itself fires.
                 let resolved = crate::v1_compiler_compile::compile_to_resolved(
                     std::rc::Rc::new(im::vector![std::rc::Rc::new(
                         crate::v1_compiler_compile::SourceFile {
                             path: "duplicate_rt.dag".to_string(),
-                            content: "module duplicate_rt\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(a: 1, a: 2) }\n".to_string(),
+                            content: "module duplicate_rt\nfn two(a: Int) -> Int { a }\nfn f() -> Int { two(a: 1, a: 2) }\n".to_string(),
                         }
                     )]),
                 );
                 let graph = resolved.graph.clone().expect("duplicate-label fixture must resolve — it is a runtime-authority probe, not a compile-seam one");
                 let run = crate::v1_interpreter::run(&graph, resolved.source_indices.clone(), "f");
-                assert!(
-                    run.is_err(),
-                    "the runtime authority must refuse a duplicate-label call rather than silently overwrite the earlier binding, got: {:?}",
-                    run
-                );
+                // Assert the typed outcome, never the polarity: match the specific
+                // CallContractMismatch variant AND its duplicate-specific detail text,
+                // since the same variant also covers unknown-label and
+                // positional-surplus refusals at other sites in call_function_inner —
+                // bare `run.is_err()` would pass under any of those unrelated causes too.
+                match &run {
+                    Err(crate::v1_interpreter::InterpError::CallContractMismatch { detail, .. })
+                        if detail.contains("supplied more than once") => {}
+                    other => panic!(
+                        "the runtime authority must refuse a duplicate-label call with CallContractMismatch{{detail: \"argument 'a' supplied more than once\"}}, never silently overwrite the earlier binding, got: {:?}",
+                        other
+                    ),
+                }
                 // POSITIVE CONTROLS at ZERO diagnostics: distinct labels, positional
                 // args, the reordered-named-args idiom, and the deliberately-unused
                 // underscore idiom (two DIFFERENT surface labels for the SAME
