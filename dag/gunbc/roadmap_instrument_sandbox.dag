@@ -336,7 +336,7 @@ fn render_reading(label: String, r: ProgramReading) -> Fragment {
     ])
     ReadingUnavailable { mode, subject_key, cause } =>
       el_class("div", instrument_refusal_class, [
-        txt(join([mode, " · ", subject_key, " — unavailable: ", cause], "")),
+        txt(join([label, " · ", subject_key, " — unavailable: ", cause], "")),
       ])
   }
 }

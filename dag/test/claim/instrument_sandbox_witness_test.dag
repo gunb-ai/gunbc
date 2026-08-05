@@ -24,7 +24,6 @@ import gunbc.roadmap_program_view {
   V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused, V1DeletionProgramView,
 }
 import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, GET, media_type_wire_label }
-import extdeps.cloud.gcp.gcp { GcpProjectId }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -44,11 +43,11 @@ fn served() -> ServeHttpResponse {
 }
 
 fn last_segment(s: String, marker: String) -> String {
-  fold(split(s: s, sep: marker), init: "", f: (acc, part) => part)
+  fold(split(s: s, delimiter: marker), init: "", f: (acc, part) => part)
 }
 
 fn first_segment(s: String, marker: String) -> String {
-  fold(split(s: s, sep: marker), init: "", f: (acc, part) => if acc == "" { part } else { acc })
+  fold(split(s: s, delimiter: marker), init: "", f: (acc, part) => if acc == "" { part } else { acc })
 }
 
 fn emission_var_ref(i: AuditionIntensity) -> String {
@@ -167,7 +166,7 @@ data evidence_refusal_note: String = "Evidence depth refuses, and unlike the pre
 
 fn witness_red_evidence_depth_refuses_with_its_real_cause() -> Bool {
   let r = served()
-  string_contains(s: r.body, pattern: "evidence / status — unavailable:")
+  string_contains(s: r.body, pattern: "evidence / status · compiler-fixed-point — unavailable:")
     && string_contains(s: r.body, pattern: "verification-receipt join is test-only")
 }
 
