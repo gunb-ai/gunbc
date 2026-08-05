@@ -106,6 +106,8 @@ jobs:
               if (c.outcome === 'failed') return `Failed — ${c.error}`;
               if (c.outcome === 'skipped') return `Skipped — ${c.reason}`;
               if (c.outcome === 'done') return 'Done';
+              // The receipt's own arm for a component that reached no conclusion.
+              if (c.outcome === 'not_concluded') return 'reached no conclusion';
               return String(c.outcome);
             }
 
@@ -137,8 +139,18 @@ jobs:
                 lines.push(`**Affected-set cold control: GREEN** — concluded Done over ${n} witnesses.`);
                 lines.push('Per-PR affected-set selection IS verified by this run.');
               } else if (ctl.state === 'present') {
+                // A control that DID NOT RUN is not a control that FAILED. Both leave
+                // selection unverified — that stays fail-closed either way — but they
+                // have different remedies (restore the enrollment vs. fix the control),
+                // so labelling a Skipped control "RED" is a state-space conflation of
+                // exactly the kind this receipt exists to prevent. This arm sees Skipped
+                // once unreached components keep their planned identity (#7818): they
+                // resolve to present/unverified rather than collapsing to absent.
                 const c = ctl.component || {};
-                lines.push(`**Affected-set cold control: RED** — ${describeOutcome(c)}.`);
+                const didNotRun = c.outcome === 'skipped' || c.outcome === 'not_concluded';
+                lines.push(didNotRun
+                  ? `**Affected-set cold control: DID NOT RUN** — ${describeOutcome(c)}.`
+                  : `**Affected-set cold control: RED** — ${describeOutcome(c)}.`);
                 lines.push('Per-PR affected-set selection runs UNVERIFIED while this stands.');
               } else {
                 lines.push(`**Affected-set cold control: ${String(ctl.state || 'unknown').toUpperCase()}** — ${ctl.cause || 'no cause recorded'}.`);
