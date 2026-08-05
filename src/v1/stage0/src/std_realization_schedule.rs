@@ -19,7 +19,6 @@ use self::ScopedWitnessExecutionOutcome::*;
 use self::ScopedWitnessExecutionReceiptDecode::*;
 use self::ScopedWitnessProcessIsolation::*;
 use self::WitnessCostBasis::*;
-use self::WitnessCostClock::*;
 use self::WitnessKind::*;
 use self::WitnessSpan::*;
 pub use crate::std_algebra::FreeMonoid;
@@ -32,9 +31,12 @@ pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
 pub use crate::std_execution_mode::execution_mode_eq;
 pub use crate::std_execution_mode::ExecutionMode;
 use crate::std_execution_mode::ExecutionMode::Hermetic;
+use crate::std_measure::ClockBasis::{CpuClock, WallClock};
 use crate::std_measure::Quantity::Time;
-pub use crate::std_measure::{byte_size, byte_size_count, measure_count, time_measure, watt};
-pub use crate::std_measure::{ByteSize, Measure, Millisecond, Quantity, Second, Watt};
+pub use crate::std_measure::{
+    byte_size, byte_size_count, clock_basis_eq, measure_count, time_measure, watt,
+};
+pub use crate::std_measure::{ByteSize, ClockBasis, Measure, Millisecond, Quantity, Second, Watt};
 pub use crate::std_nat::Nat;
 pub use crate::std_pareto::AxisGoal;
 use crate::std_pareto::AxisGoal::*;
@@ -113,50 +115,28 @@ pub struct WitnessSeam {
 pub fn witness_cost_clock_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Which clock the duration carrier names (operator msg_e24f4cab, 2026-08-04): run_claim_timed builds performance receipts from wall_nanos (performance_receipt_from_witness) while the per-witness eval budget gate consumes thread CPU nanos (budget_completion_outcome). Both cross as std.measure Millisecond — without the clock tag a stored figure is not comparable to a threshold. claim_batch receipt logs cited on MeasuredAtExactSubject rows are WitnessCostWallEval unless re-measured on ThreadCpu.".to_string()
+            "Which clock the duration carrier names (operator msg_e24f4cab, 2026-08-04): run_claim_timed builds performance receipts from wall_nanos (performance_receipt_from_witness) while the per-witness eval budget gate consumes thread CPU nanos (budget_completion_outcome). Both cross as std.measure Millisecond — without the clock tag a stored figure is not comparable to a threshold. claim_batch receipt logs cited on MeasuredAtExactSubject rows are WallClock unless re-measured on thread CPU. THE CARRIER IS std.measure ClockBasis, and this note records why it is not a second one. A local WitnessCostClock = WitnessCostWallEval | WitnessCostThreadCpuEval stood here until 2026-08-05, minted one day before std.measure ClockBasis = CpuClock | WallClock and for the SAME stated reason — the sentence above, that an untagged figure is not comparable to a threshold, appears in both notes. Two carriers, one concept, one argument, two names is the section 3 nicknaming violation exactly, and it duplicates at the meaning layer where everything derived duplicates again. It was also not merely redundant, which is what made it urgent rather than tidy: the declared side of a cost comparison was tagged in this vocabulary while the observed side (gunbc.witness_row_cost, ObservationEvent durations) was tagged in ClockBasis, so witness_row_cost_verdict's BasisClockMismatch — the wall built to refuse a thread-CPU figure compared against a wall baseline — could not see across the two spellings. A fork that defeats the mechanism written to catch that mistake reports clean while comparing the two quantities it exists to keep apart. Dissolved by IMPORT rather than by re-declaration, so the arms below are the same values the observation side already carries and a cross-clock pair refuses on one comparator.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum WitnessCostClock {
-    WitnessCostWallEval,
-    WitnessCostThreadCpuEval,
-}
-
-pub fn witness_cost_clock_eq(a: WitnessCostClock, b: WitnessCostClock) -> bool {
-    match a.clone() {
-        WitnessCostClock::WitnessCostWallEval => match b.clone() {
-            WitnessCostClock::WitnessCostWallEval => true,
-            WitnessCostClock::WitnessCostThreadCpuEval => false,
-        },
-        WitnessCostClock::WitnessCostThreadCpuEval => match b.clone() {
-            WitnessCostClock::WitnessCostThreadCpuEval => true,
-            WitnessCostClock::WitnessCostWallEval => false,
-        },
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum WitnessCostBasis {
     MeasuredAtExactSubject {
-        clock: WitnessCostClock,
+        clock: ClockBasis,
         duration: Millisecond,
         receipt: String,
     },
     EstimatedFromSiblingClass {
-        clock: WitnessCostClock,
+        clock: ClockBasis,
         source_witness: String,
         basis: String,
     },
 }
 impl WitnessCostBasis {
-    pub fn clock(&self) -> WitnessCostClock {
+    pub fn clock(&self) -> ClockBasis {
         match self {
             WitnessCostBasis::MeasuredAtExactSubject { clock: __val, .. } => __val.clone(),
             WitnessCostBasis::EstimatedFromSiblingClass { clock: __val, .. } => __val.clone(),
@@ -1670,10 +1650,6 @@ pub struct CorpusWitnessKind;
 pub struct ExecutionWitnessKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NativeBundleWitnessKind;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct WitnessCostWallEval;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct WitnessCostThreadCpuEval;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RunnableMemoryNegligible;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

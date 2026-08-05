@@ -1764,6 +1764,7 @@ fn census_heads_fn_stand_in_naive_infer_expr_refuses_not_succeeds() {
         service_registry: Rc::new(HashMap::new()),
         item_registry: Rc::new(HashMap::new()),
         lambda_param_provenance: Rc::new(HashMap::new()),
+        caller_decl_name: "".to_string(),
     });
     let result = infer_expr(stand_in, scope, None);
     assert!(
