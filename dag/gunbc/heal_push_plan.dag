@@ -1,6 +1,8 @@
 module gunbc.heal_push_plan
 
 import std.types { NonEmptyStr, String, List }
+import std.decl_ref { DeclarationRef }
+import extdeps.languages.yaml.types { YamlValueKind }
 import extdeps.github.app { GitHubPermissionAxis, permission_name_eq }
 import extdeps.github.effect {
   RepositoryPath,
@@ -69,9 +71,16 @@ type HealPushRefusalCause
   | ManagedInstallationGrantUnobserved
   | ManagedCredentialSubjectMismatch
 
+type HealPushBindingSite {
+  checkout_step: DeclarationRef
+  input: NonEmptyStr?
+  observed_kind: YamlValueKind?
+}
+
 type HealPushFailure {
   cause: HealPushRefusalCause
   missing: GitHubPermissionAxis?
+  site: HealPushBindingSite?
 }
 
 type HealPushRefusal {
@@ -119,19 +128,19 @@ fn capability_failure(c: CredentialCapability) -> HealPushFailure? {
   match c {
     CredentialGrants => none
     CredentialKindCannotSatisfy { missing } =>
-      Present { value: HealPushFailure { cause: ActionsJobCredentialScopeUnavailable, missing: Present { value: missing } } }
+      Present { value: HealPushFailure { cause: ActionsJobCredentialScopeUnavailable, missing: Present { value: missing }, site: none } }
     CredentialScopeNotGranted { missing } =>
-      Present { value: HealPushFailure { cause: ActionsJobCredentialScopeNotGranted, missing: Present { value: missing } } }
+      Present { value: HealPushFailure { cause: ActionsJobCredentialScopeNotGranted, missing: Present { value: missing }, site: none } }
     CredentialForkPolicyUnobserved { missing } =>
-      Present { value: HealPushFailure { cause: ActionsJobCredentialForkPolicyUnobserved, missing: Present { value: missing } } }
+      Present { value: HealPushFailure { cause: ActionsJobCredentialForkPolicyUnobserved, missing: Present { value: missing }, site: none } }
     CredentialAxisNotModeled { missing } =>
-      Present { value: HealPushFailure { cause: ActionsJobCredentialAxisNotModeled, missing: Present { value: missing } } }
+      Present { value: HealPushFailure { cause: ActionsJobCredentialAxisNotModeled, missing: Present { value: missing }, site: none } }
     CredentialDeclaredAccessInvalid { missing } =>
-      Present { value: HealPushFailure { cause: ActionsJobCredentialDeclaredAccessInvalid, missing: Present { value: missing } } }
+      Present { value: HealPushFailure { cause: ActionsJobCredentialDeclaredAccessInvalid, missing: Present { value: missing }, site: none } }
     CredentialSubjectMismatch { missing } =>
-      Present { value: HealPushFailure { cause: ManagedCredentialSubjectMismatch, missing: Present { value: missing } } }
+      Present { value: HealPushFailure { cause: ManagedCredentialSubjectMismatch, missing: Present { value: missing }, site: none } }
     CredentialGrantNotObserved { missing } =>
-      Present { value: HealPushFailure { cause: ManagedInstallationGrantUnobserved, missing: Present { value: missing } } }
+      Present { value: HealPushFailure { cause: ManagedInstallationGrantUnobserved, missing: Present { value: missing }, site: none } }
   }
 }
 
@@ -209,24 +218,61 @@ fn plan_heal_push_from_binding(
   match resolution {
     PushBindingResolved { binding: _, authority } =>
       plan_heal_push(artifacts: artifacts, authority: authority, control_plane: control_plane)
-    PushCredentialBindingMissing { checkout_step: _ } =>
-      binding_refused_plan(artifacts: artifacts, cause: PushBindingMissingOnCheckoutStep)
-    PushCredentialLeaseUnresolved { checkout_step: _ } =>
-      binding_refused_plan(artifacts: artifacts, cause: PushBindingLeaseUnresolved)
-    PushBindingStepKindUnsupported { checkout_step: _ } =>
-      binding_refused_plan(artifacts: artifacts, cause: PushBindingStepKindNotSupported)
-    PushBindingActionMismatch { checkout_step: _ } =>
-      binding_refused_plan(artifacts: artifacts, cause: PushBindingActionNotCheckout)
-    PushBindingInputDuplicated { checkout_step: _, input: _ } =>
-      binding_refused_plan(artifacts: artifacts, cause: PushBindingInputObservationDuplicated)
-    PushBindingInputUnsupported { checkout_step: _, input: _, observed_kind: _ } =>
-      binding_refused_plan(artifacts: artifacts, cause: PushBindingInputValueUnsupported)
+    PushCredentialBindingMissing { checkout_step } =>
+      binding_refused_plan(
+        artifacts: artifacts,
+        cause: PushBindingMissingOnCheckoutStep,
+        site: step_site(checkout_step: checkout_step)
+      )
+    PushCredentialLeaseUnresolved { checkout_step } =>
+      binding_refused_plan(
+        artifacts: artifacts,
+        cause: PushBindingLeaseUnresolved,
+        site: step_site(checkout_step: checkout_step)
+      )
+    PushBindingStepKindUnsupported { checkout_step } =>
+      binding_refused_plan(
+        artifacts: artifacts,
+        cause: PushBindingStepKindNotSupported,
+        site: step_site(checkout_step: checkout_step)
+      )
+    PushBindingActionMismatch { checkout_step } =>
+      binding_refused_plan(
+        artifacts: artifacts,
+        cause: PushBindingActionNotCheckout,
+        site: step_site(checkout_step: checkout_step)
+      )
+    PushBindingInputDuplicated { checkout_step, input } =>
+      binding_refused_plan(
+        artifacts: artifacts,
+        cause: PushBindingInputObservationDuplicated,
+        site: HealPushBindingSite {
+          checkout_step: checkout_step,
+          input: Present { value: input },
+          observed_kind: none
+        }
+      )
+    PushBindingInputUnsupported { checkout_step, input, observed_kind } =>
+      binding_refused_plan(
+        artifacts: artifacts,
+        cause: PushBindingInputValueUnsupported,
+        site: HealPushBindingSite {
+          checkout_step: checkout_step,
+          input: Present { value: input },
+          observed_kind: Present { value: observed_kind }
+        }
+      )
   }
+}
+
+fn step_site(checkout_step: DeclarationRef) -> HealPushBindingSite {
+  HealPushBindingSite { checkout_step: checkout_step, input: none, observed_kind: none }
 }
 
 fn binding_refused_plan(
   artifacts: List<GeneratedArtifact>,
-  cause: HealPushRefusalCause
+  cause: HealPushRefusalCause,
+  site: HealPushBindingSite
 ) -> HealPushPlan {
   if count(artifacts) == 0 {
     HealPushNothingToDo
@@ -235,7 +281,7 @@ fn binding_refused_plan(
       refused: artifacts,
       cause: HealPushRefusal {
         paths: map(artifacts, a => artifact_repository_path(a: a)),
-        failures: [HealPushFailure { cause: cause, missing: none }]
+        failures: [HealPushFailure { cause: cause, missing: none, site: Present { value: site } }]
       }
     }
   }
