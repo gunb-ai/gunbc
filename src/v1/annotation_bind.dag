@@ -209,7 +209,7 @@ fn authored_name_of(transport: OccurrenceTransport, id: OccurrenceId) -> String?
     init: none,
     f: (acc, entry) =>
       if entry.projection.occurrence.value == id.value {
-        Present { value: entry.projection.authored_name }
+        Present { value: "SAME" }
       } else {
         acc
       }

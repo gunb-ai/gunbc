@@ -21,7 +21,7 @@ import v1.compiler.tokenize { tokenize_artifact }
 import v1.compiler.parse { parse_with_table }
 import v1.std.core { build_newline_index, empty_intern_table, NewlineIndex }
 
-data v1_annotation_round_trip_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_round_trip_test.dag --functions w_two_blocks_survive_the_round_trip,w_a_renderer_without_the_blank_line_merges_them,w_one_block_spanning_two_lines_stays_one_block,w_identical_text_twice_stays_twice,w_authored_indentation_survives,w_an_empty_annotation_line_survives,w_a_source_with_no_prose_is_not_evidence,w_same_text_same_position_different_declaration_disagrees,w_each_declaration_keeps_its_own_prose,w_mixed_subject_rows_cannot_reach_the_renderer"
+data v1_annotation_round_trip_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_round_trip_test.dag --functions w_two_blocks_survive_the_round_trip,w_a_renderer_without_the_blank_line_merges_them,w_one_block_spanning_two_lines_stays_one_block,w_identical_text_twice_stays_twice,w_authored_indentation_survives,w_an_empty_annotation_line_survives,w_a_source_with_no_prose_is_not_evidence,w_the_two_declarations_share_an_occurrence_ordinal,w_same_text_same_position_different_declaration_disagrees,w_each_declaration_keeps_its_own_prose,w_mixed_subject_rows_cannot_reach_the_renderer"
 
 data v1_annotation_round_trip_note: String = "D-C property 7: parse, render, parse — the graph survives. What agreement means is single-authored in std.source_annotation as keyed_annotation_rows_agree, so this file exercises the property rather than restating it.
 
@@ -202,6 +202,21 @@ data cross_graph_identity_note: String = "THE FALSE-POSITIVE CONTROL for the key
 data alpha_named_source: String = "module rt\n\n// shared text\ndata alpha: String = \"a\"\n"
 
 data beta_named_source: String = "module rt\n\n// shared text\ndata beta: String = \"a\"\n"
+
+data ordinal_collision_note: String = "The MEASURED fact that makes the control below discriminating rather than merely true. If the two declarations happened to receive different occurrence ordinals, `they disagree` would hold for the wrong reason and would keep holding even under the unsound id-valued comparison the keying replaced. They do not: alpha in one source and beta in the other are allocated the SAME id value, so an id-valued oracle agreed on two annotations naming different declarations. This arm pins that, so the pair reads as `same ordinal, different key, must disagree`."
+
+fn subject_id_value(source: String, name: String) -> Int {
+  match subject_named(source: source, name: name) {
+    Absent => 0 - 1
+    Present { value: id } => id.value
+  }
+}
+
+test fn w_the_two_declarations_share_an_occurrence_ordinal() -> Bool {
+  subject_id_value(source: alpha_named_source, name: "alpha") ==
+    subject_id_value(source: beta_named_source, name: "beta") &&
+    subject_id_value(source: alpha_named_source, name: "alpha") > (0 - 1)
+}
 
 test fn w_same_text_same_position_different_declaration_disagrees() -> Bool {
   match admitted_keyed_rows(source: alpha_named_source) {
