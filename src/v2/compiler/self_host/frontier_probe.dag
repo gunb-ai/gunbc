@@ -607,6 +607,26 @@ fn frontier_probe_receipt_for_subject_outcome(
   }
 }
 
+fn frontier_probe_receipt_for_host_manifest_entry(
+  refs: List<SourceRef>,
+  entry: SourceRef,
+  coverage: SourceRootCoverage,
+  ingest_read_count: Int,
+  host_discovered_digest: DiscoveredSourceRefsDigest,
+  fixture_module_path: String
+) -> FrontierProbeReceipt {
+  frontier_probe_receipt_for_subject_outcome(
+    subject_outcome: frontier_probe_discovered_closure_subject_from_host_manifest(
+      refs: refs,
+      entry: entry,
+      coverage: coverage,
+      ingest_read_count: ingest_read_count,
+      host_discovered_digest: host_discovered_digest
+    ),
+    fixture_module_path: fixture_module_path
+  )
+}
+
 fn frontier_probe_emit_from_ingest(
   module_path: String,
   ingest: SourceRootIngest,
