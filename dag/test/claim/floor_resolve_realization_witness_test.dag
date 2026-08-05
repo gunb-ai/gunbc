@@ -119,8 +119,12 @@ test fn witness_declared_count_derives_from_roster() -> Bool {
     && ci_floor_declared_resolve_count() == 2
 }
 
-test fn witness_forked_declared_count_reds_against_roster() -> Bool {
-  ci_floor_expected_resolve_obligation_count() != ci_floor_declared_resolve_count() + 1
+fn anchor_only_obligations() -> List<ResolveObligation> {
+  [expected_obligation(id: CompileAnchorWholeTree)]
+}
+
+test fn witness_forked_obligation_population_reds_against_declared_count() -> Bool {
+  ci_floor_declared_resolve_count() != (anchor_only_obligations() |> count)
 }
 
 test fn witness_refuse_native_obligation_absent() -> Bool {

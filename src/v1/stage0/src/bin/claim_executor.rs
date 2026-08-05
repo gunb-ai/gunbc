@@ -1661,6 +1661,8 @@ enum ResolveRealizationObservation {
 }
 
 /// Per-entry walk memo provider — grain distinct from index-build `process_shared_index`.
+/// Authority: `gunbc.floor_materialization` `floor_entry_walk_memo_provider_id`;
+/// drift gate: `floor_entry_walk_memo_provider_id_matches_dag_authority`.
 const FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID: &str = "walk_memo";
 
 /// The pair explaining a budget kill, kept alongside the flattened `ok`/`detail`.
@@ -9002,14 +9004,39 @@ mod tests {
         }
     }
 
-    fn anchor_only_floor_finalization() -> FloorFinalization {
-        FloorFinalization {
-            expected_obligations: vec![TransportedObligation {
-                identity: "CompileAnchorWholeTree".to_string(),
-                entry: "dag/tools/floor_effect_gate_witness.dag".to_string(),
-                function: "dag_compile_clean_gate_passes".to_string(),
-            }],
-        }
+    fn repo_root_from_manifest() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .expect("repo root from CARGO_MANIFEST_DIR")
+    }
+
+    fn dag_source_from_repo(rel: &str) -> String {
+        let path = repo_root_from_manifest().join(rel);
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+    }
+
+    fn dag_string_data_literal(source: &str, data_name: &str) -> String {
+        let marker = format!("data {data_name}: String = \"");
+        let start = source
+            .find(&marker)
+            .unwrap_or_else(|| panic!("string data row {data_name} not found in authority source"))
+            + marker.len();
+        let rest = &source[start..];
+        let end = rest
+            .find('"')
+            .expect("unterminated string literal in authority source");
+        rest[..end].to_string()
+    }
+
+    /// Seed-retained walk-memo provider id must track the `.dag` authority row.
+    #[test]
+    fn floor_entry_walk_memo_provider_id_matches_dag_authority() {
+        let floor_materialization = dag_source_from_repo("dag/gunbc/floor_materialization.dag");
+        assert_eq!(
+            dag_string_data_literal(&floor_materialization, "floor_entry_walk_memo_provider_id"),
+            FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID,
+        );
     }
 
     fn resolve_observation_for_nanos(nanos: u64) -> Option<ResolveRealizationObservation> {
