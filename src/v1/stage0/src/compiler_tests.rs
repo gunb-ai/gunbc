@@ -1229,6 +1229,61 @@ mod compiler_tests {
     }
 
     #[test]
+    fn constructor_call_admission_refuses_unlisted_cross_module_caller() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let mint_mod = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "mint_mod.dag".to_string(),
+                    content: "module mint_mod\ntype Sealed sole_constructor { tag: String }\nfn mint(tag: String) -> Sealed admit_callers: [decl_ref(module_path: \"caller_ok\", decl_name: \"ok_call\")] = Sealed { tag: tag }\n".to_string(),
+                });
+                let caller_ok = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "caller_ok.dag".to_string(),
+                    content: "module caller_ok\nimport mint_mod { mint, Sealed }\nfn ok_call() -> Sealed { mint(\"ok\") }\n".to_string(),
+                });
+                let caller_bad = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "caller_bad.dag".to_string(),
+                    content: "module caller_bad\nimport mint_mod { mint, Sealed }\nfn bad_call() -> Sealed { mint(\"forged\") }\n".to_string(),
+                });
+                let ok_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![mint_mod.clone(), caller_ok.clone()]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                assert!(
+                    ok_result.diagnostics.iter().all(|d| !matches!(
+                        *d.diagnostic,
+                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused { .. }
+                    )),
+                    "listed caller should compile clean, got: {:?}",
+                    ok_result.diagnostics
+                );
+                let bad_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![mint_mod, caller_bad]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let admission_errors: Vec<_> = bad_result.diagnostics.iter()
+                    .filter(|d| matches!(
+                        *d.diagnostic,
+                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused { .. }
+                    ))
+                    .collect();
+                assert!(
+                    !admission_errors.is_empty(),
+                    "expected ConstructorCallAdmissionRefused for unlisted caller, got: {:?}",
+                    bad_result.diagnostics
+                );
+                assert!(
+                    admission_errors.iter().any(|e| e.module_name == "caller_bad"),
+                    "refusal should be reported in caller_bad, got: {:?}",
+                    admission_errors
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("constructor_call_admission_refuses_unlisted_cross_module_caller panicked");
+    }
+
+    #[test]
     fn sole_constructor_fieldless_newtype_witness() {
         // Discriminating witness: a field-less (empty-body) sole_constructor record.
         // EmittableGraph is Conj (multi-field) so the phantom property is inert there.

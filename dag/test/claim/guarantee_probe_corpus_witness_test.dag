@@ -658,6 +658,12 @@ test fn canonical_probe_resolution_refuses_duplicate_population() -> Bool {
 // sole_constructor_mint_fn_hole_still_compile_clean) — a tracked open compile gap from #7790,
 // never a retired Rust dark-suite witness — so its absence from every disposition is named here,
 // not silently unaccounted for in either direction of the join.
+// Named residue (DESIGN §4c): known_v1_migration_gap_ids is a hand-authored allowlist and its
+// one entry's justification lives only in this prose annotation, which no Accepted program can
+// read — the completeness join below cannot itself verify the exception is warranted, only that
+// it is the sole one taken. Dissolution trigger: when #7790 closes and
+// sole_constructor_mint_fn_hole_still_compile_clean's expectation holds, remove this probe from
+// known_v1_migration_gap_ids so it is covered by disposition or registry retirement instead.
 test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
   let dispositions = guarantee_probe_dark_suite_dispositions()
   let disposition_probes: List<GuaranteeProbeId> = dispositions
