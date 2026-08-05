@@ -1,7 +1,7 @@
 module gunbc.codex_runtime_bundle
 
 import std.types { NonEmptyStr, FilePath, String, List }
-import std.content_hash { ContentHash, Sha512Digest }
+import std.content_hash { ContentHash }
 import gunbc.package_delivery {
   CodexRuntimeBundle,
   CodexRuntimeMaterialization,
