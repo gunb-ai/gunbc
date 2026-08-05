@@ -201,6 +201,7 @@ fn call_shape_diagnostic_msgs(resolved: &ResolvedPipelineResult) -> Vec<String> 
                 *d.diagnostic,
                 CompilerDiagnostic::CallArgumentNameUnknown { .. }
                     | CompilerDiagnostic::CallPositionalSurplus { .. }
+                    | CompilerDiagnostic::CallNamedArgOnFunctionValue { .. }
             )
         })
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
@@ -213,6 +214,7 @@ fn assert_call_shape_diags_block(resolved: &ResolvedPipelineResult) {
             *d.diagnostic,
             CompilerDiagnostic::CallArgumentNameUnknown { .. }
                 | CompilerDiagnostic::CallPositionalSurplus { .. }
+                | CompilerDiagnostic::CallNamedArgOnFunctionValue { .. }
         )
     }) {
         assert!(
