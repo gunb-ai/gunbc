@@ -1,7 +1,6 @@
 #![allow(clippy::disallowed_macros)]
 
-#[path = "claim_executor_floor_evidence.rs"]
-mod floor_evidence;
+use v1_floor_evidence as floor_evidence;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -4360,7 +4359,7 @@ fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
 }
 
 /// Attempt-scoped floor-evidence finalize (operator ruling on #7785).
-/// Implementation: `claim_executor_floor_evidence.rs` — fingerprint-paired registry,
+/// Implementation: `v1-floor-evidence` — fingerprint-paired registry,
 /// observation-join only (no global target/ scrape), LocalSubjectRefused → non-zero.
 fn finalize_floor_evidence() -> Result<ExitCode, ExitCode> {
     floor_evidence::finalize_floor_evidence()

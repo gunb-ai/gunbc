@@ -1,0 +1,11 @@
+[package]
+name = "v1-floor-evidence"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Attempt-scoped floor-evidence sink for CI population receipts (#7785)"
+
+[dependencies]
+serde_json = { workspace = true }
+sha2 = { workspace = true }

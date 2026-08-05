@@ -31,7 +31,7 @@ pub const PHASE_JOURNAL_REL: &str = "phase-journal.tsv";
 /// the drift gate is automatically this seed's registry too — there is no second copy
 /// left to disagree.
 pub const FLOOR_EVIDENCE_REGISTRY_FINGERPRINT: &str =
-    include_str!("../../../../../dag/gunbc/ci_floor_population_receipt_registry.fingerprint");
+    include_str!("../../../../dag/gunbc/ci_floor_population_receipt_registry.fingerprint");
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Locator {
@@ -248,6 +248,29 @@ fn relative_path_escapes_root(relative_path: &str) -> bool {
     false
 }
 
+/// Publish `tmp` as `dest` atomically without replacement: `hard_link` fails with
+/// `AlreadyExists` if another writer won the race, closing the TOCTOU gap between
+/// `exists()` and `rename()` on Unix.
+fn publish_via_hard_link(tmp: &Path, dest: &Path, refusal_label: &str) -> Result<(), String> {
+    match fs::hard_link(tmp, dest) {
+        Ok(()) => {
+            let _ = fs::remove_file(tmp);
+            Ok(())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            let _ = fs::remove_file(tmp);
+            Err(format!(
+                "write_floor_receipt refused {refusal_label} already published at {}",
+                dest.display()
+            ))
+        }
+        Err(e) => {
+            let _ = fs::remove_file(tmp);
+            Err(format!("publish {}: {e}", dest.display()))
+        }
+    }
+}
+
 /// Observation-fragment filename for one receipt (blocker 5, #7785 commit 4A). A
 /// singleton kind (any `Locator::Exact` row) owns exactly one fragment file named after
 /// the kind, so a second write for the same kind is a filesystem-visible collision
@@ -267,12 +290,9 @@ fn observation_fragment_relpath(kind: &str, relative_path: &str) -> String {
 
 /// Atomic write under `target/floor-evidence/<attempt>/` plus an atomic per-receipt
 /// observation fragment (blocker 5, #7785 commit 4A): write receipt tmp → write obs tmp
-/// → rename receipt → rename obs — a best-effort atomic PAIR, not a single fsync unit.
-/// A crash between the two renames leaves a published receipt with no observation
-/// fragment, which the finalizer reads as `MissingAfterProducerReached` (a real, typed
-/// state) rather than as a false `ObservedPresent` — it never claims presence it cannot
-/// prove, and it never partially-writes a shared file that a concurrent worker could
-/// also be appending to (the defect this fragment split replaces).
+/// → hard_link receipt → hard_link obs — a best-effort atomic PAIR, not a single fsync
+/// unit. `hard_link` refuses if the destination already exists, so a singleton cannot be
+/// silently replaced by a concurrent second writer.
 pub fn write_floor_receipt(
     attempt: &str,
     kind: &str,
@@ -303,8 +323,6 @@ pub fn write_floor_receipt(
             pattern_of(&row.locator)
         ));
     }
-    let singleton = matches!(row.locator, Locator::Exact(_));
-
     let root = floor_evidence_root(attempt);
     let path = root.join(relative_path);
     if let Some(parent) = path.parent() {
@@ -313,25 +331,6 @@ pub fn write_floor_receipt(
     let digest = sha256_bytes(body);
     let obs_rel = observation_fragment_relpath(kind, relative_path);
     let obs_path = root.join(&obs_rel);
-
-    // A singleton kind is published exactly once per attempt. Renaming over an existing
-    // receipt destroyed the earlier bytes AND left the observation fragment describing
-    // whichever write happened to land last — an attempt's evidence silently rewritten
-    // rather than a second producer refused.
-    if singleton {
-        if path.exists() {
-            return Err(format!(
-                "write_floor_receipt refused replacement of singleton {kind} receipt already published at {}",
-                path.display()
-            ));
-        }
-        if obs_path.exists() {
-            return Err(format!(
-                "write_floor_receipt refused replacement of singleton {kind} observation fragment already published at {}",
-                obs_path.display()
-            ));
-        }
-    }
 
     let receipt_tmp = path.with_extension(format!("tmp-{}", std::process::id()));
     let _ = fs::remove_file(&receipt_tmp);
@@ -361,14 +360,20 @@ pub fn write_floor_receipt(
         return Err(format!("write {}: {e}", obs_tmp.display()));
     }
 
-    if let Err(e) = fs::rename(&receipt_tmp, &path) {
-        let _ = fs::remove_file(&receipt_tmp);
+    if let Err(e) = publish_via_hard_link(
+        &receipt_tmp,
+        &path,
+        &format!("replacement of singleton {kind} receipt"),
+    ) {
         let _ = fs::remove_file(&obs_tmp);
-        return Err(format!("publish {}: {e}", path.display()));
+        return Err(e);
     }
-    if let Err(e) = fs::rename(&obs_tmp, &obs_path) {
-        let _ = fs::remove_file(&obs_tmp);
-        return Err(format!("publish {}: {e}", obs_path.display()));
+    if let Err(e) = publish_via_hard_link(
+        &obs_tmp,
+        &obs_path,
+        &format!("replacement of singleton {kind} observation fragment"),
+    ) {
+        return Err(e);
     }
     Ok(path)
 }
@@ -1619,6 +1624,48 @@ mod tests {
             assert_eq!(
                 body, "first",
                 "the published bytes must survive a refused second write"
+            );
+        });
+    }
+
+    #[test]
+    fn concurrent_singleton_publish_one_wins_one_refuses() {
+        use std::sync::{Arc, Barrier};
+
+        with_temp_cwd(|_| {
+            let barrier = Arc::new(Barrier::new(2));
+            let mut handles = Vec::new();
+            for i in 0..2 {
+                let b = Arc::clone(&barrier);
+                handles.push(std::thread::spawn(move || {
+                    let _ = b.wait();
+                    write_floor_receipt(
+                        "race",
+                        "BatchWall",
+                        "receipts/batch-wall.txt",
+                        format!("body-{i}\n").as_bytes(),
+                        "DuringFloor",
+                    )
+                }));
+            }
+            let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+            let ok_count = results.iter().filter(|r| r.is_ok()).count();
+            let err_count = results.iter().filter(|r| r.is_err()).count();
+            assert_eq!(ok_count, 1, "exactly one publish must win: {results:?}");
+            assert_eq!(err_count, 1, "exactly one publish must refuse: {results:?}");
+            for err in results.iter().filter_map(|r| r.as_ref().err()) {
+                assert!(
+                    err.contains("refused replacement"),
+                    "loser must refuse, not overwrite: {err}"
+                );
+            }
+            let body = fs::read_to_string(
+                floor_evidence_root("race").join("receipts/batch-wall.txt"),
+            )
+            .unwrap();
+            assert!(
+                body == "body-0\n" || body == "body-1\n",
+                "published body must be from the winning thread only, got {body:?}"
             );
         });
     }

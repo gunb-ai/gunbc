@@ -31,6 +31,7 @@ test_hooks = []
 # follow-on step, gated on this swap's measured cost -- im refcounts
 # atomically, so this taxes every collection op including the interpreter
 # hot path.
+v1-floor-evidence = { path = "../floor_evidence" }
 im = { version = "15.1", features = ["serde"] }
 unicode-ident = "1"
 unicode-properties = { version = "0.1", features = ["emoji"] }

@@ -1,0 +1,153 @@
+module gunbc.ci_floor_population_settlement_receipt
+
+import std.types { Bool, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { Millisecond, millisecond, millisecond_count, measure_add }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import gunbc.ci_floor_population_reconcile {
+  MechanismEvidenceSettle,
+  Delivered,
+  NotDelivered,
+  MissingArtifactOpen,
+  admission_settle_from_stage_walls,
+  native_fleet_settle_from_transition_counts,
+}
+
+data ci_floor_population_settlement_receipt_note: String = "ONE SUBJECT-BOUND SETTLEMENT from an exact uploaded floor-evidence artifact (#7785 review). Numbers and counts live only here as harvested observations; MechanismEvidenceSettle is DERIVED via gunbc.ci_floor_population_reconcile settle folds — never re-authored beside them. Identity binds source_head/tested commits, tree, Actions run/attempt/job, walk_attempt, manifest_body_digest, and uploaded_artifact_digest so a later hand edit of walls without matching digests is a different subject, not a silent rewrite of this one. Harvested from Actions run 30987560453 attempt 1 job ci (artifact ci-floor-population-receipts-30987560453-1-ci). Warm-hit stays Open: the banked control is same-process MultiEntryIndex reuse, not a two-process TYPECHECK_COMPUTE_COUNT receipt."
+
+type ColdAdmissionBaselineReceipt {
+  dated_subject: NonEmptyStr,
+  wall: Millisecond,
+}
+
+type BankedAdmissionObservation {
+  capture_wall: Millisecond,
+  on_success_stage1_wall: Millisecond,
+  on_success_stage2_wall: Millisecond,
+}
+
+type BankedNativeTransitionObservation {
+  selected_witness_count: Nat,
+  native_count: Nat,
+  fallback_count: Nat,
+  unavailable_count: Nat,
+  verdict: NonEmptyStr,
+}
+
+type WarmHitStanding
+  = WarmHitOpenCrossProcessReceiptAbsent {}
+
+type CiFloorPopulationSettlementReceipt {
+  source_head_commit: NonEmptyStr,
+  tested_commit: NonEmptyStr,
+  tested_tree: NonEmptyStr,
+  github_run_id: NonEmptyStr,
+  github_run_attempt: NonEmptyStr,
+  job_key: NonEmptyStr,
+  walk_attempt: NonEmptyStr,
+  manifest_body_digest: Sha256Digest,
+  uploaded_artifact_name: NonEmptyStr,
+  uploaded_artifact_digest: Sha256Digest,
+  cold_admission_baseline: ColdAdmissionBaselineReceipt,
+  admission: BankedAdmissionObservation,
+  native_transition: BankedNativeTransitionObservation,
+  warm_hit: WarmHitStanding,
+}
+
+fn cold_admission_baseline_197130ms() -> ColdAdmissionBaselineReceipt {
+  ColdAdmissionBaselineReceipt {
+    dated_subject: "cold_admission_baseline_wall@ci_cost_arc_closeout_receipt subject (197130ms banked with HandHarvestedDatedAudit run 30863019228)" as NonEmptyStr,
+    wall: millisecond(count: 197130),
+  }
+}
+
+fn exact_head_floor_population_settlement_receipt() -> CiFloorPopulationSettlementReceipt {
+  CiFloorPopulationSettlementReceipt {
+    source_head_commit: "1e85e017f1bb1c8df3c0c8d98f124bdc422c6ca2" as NonEmptyStr,
+    tested_commit: "fa1a09e01b039310f516c207af4218f5e3301d2a" as NonEmptyStr,
+    tested_tree: "4b2eaa2b4c35a9a02367841f16c8e1a9c0cfc4fb" as NonEmptyStr,
+    github_run_id: "30987560453" as NonEmptyStr,
+    github_run_attempt: "1" as NonEmptyStr,
+    job_key: "ci" as NonEmptyStr,
+    walk_attempt: "30987560453-1-ci" as NonEmptyStr,
+    manifest_body_digest: Sha256Digest {
+      hex: "0aa11df5abc0de1b6db90061841cb49cf0a7b4003ae9a13a652c2b1faccbaf61" as Sha256DigestHex,
+    },
+    uploaded_artifact_name: "ci-floor-population-receipts-30987560453-1-ci" as NonEmptyStr,
+    uploaded_artifact_digest: Sha256Digest {
+      hex: "b288522496f70e147aa0ce2dc842ce93fb7239ced99fb7140f5abb1f57282bd2" as Sha256DigestHex,
+    },
+    cold_admission_baseline: cold_admission_baseline_197130ms(),
+    admission: BankedAdmissionObservation {
+      capture_wall: millisecond(count: 105802),
+      on_success_stage1_wall: millisecond(count: 12073),
+      on_success_stage2_wall: millisecond(count: 549),
+    },
+    native_transition: BankedNativeTransitionObservation {
+      selected_witness_count: 3,
+      native_count: 0,
+      fallback_count: 3,
+      unavailable_count: 3,
+      verdict: "fallback:native_realization_refused" as NonEmptyStr,
+    },
+    warm_hit: WarmHitOpenCrossProcessReceiptAbsent {},
+  }
+}
+
+fn banked_admission_observed_total_ms(r: CiFloorPopulationSettlementReceipt) -> Millisecond {
+  measure_add(
+    a: measure_add(a: r.admission.capture_wall, b: r.admission.on_success_stage1_wall),
+    b: r.admission.on_success_stage2_wall
+  )
+}
+
+fn admission_settle_from_settlement_receipt(
+  r: CiFloorPopulationSettlementReceipt
+) -> MechanismEvidenceSettle {
+  admission_settle_from_stage_walls(
+    capture: r.admission.capture_wall,
+    stage1: Present { value: r.admission.on_success_stage1_wall },
+    stage2: Present { value: r.admission.on_success_stage2_wall },
+    cold_baseline: r.cold_admission_baseline.wall
+  )
+}
+
+fn native_fleet_settle_from_settlement_receipt(
+  r: CiFloorPopulationSettlementReceipt
+) -> MechanismEvidenceSettle {
+  match native_fleet_settle_from_transition_counts(
+    native_count: Present { value: r.native_transition.native_count },
+    fallback_count: Present { value: r.native_transition.fallback_count },
+    selected_count: Present { value: r.native_transition.selected_witness_count }
+  ) {
+    Delivered {} => Delivered {}
+    MissingArtifactOpen { owed } => MissingArtifactOpen { owed: owed }
+    NotDelivered { reason: _ } =>
+      NotDelivered { reason: r.native_transition.verdict }
+  }
+}
+
+fn warm_hit_settle_from_settlement_receipt(
+  r: CiFloorPopulationSettlementReceipt
+) -> MechanismEvidenceSettle {
+  match r.warm_hit {
+    WarmHitOpenCrossProcessReceiptAbsent {} =>
+      MissingArtifactOpen {
+        owed: "CrossProcessExecutionReceiptAbsent" as NonEmptyStr
+      }
+  }
+}
+
+fn banked_admission_total_matches_review_arithmetic(r: CiFloorPopulationSettlementReceipt) -> Bool {
+  millisecond_count(m: banked_admission_observed_total_ms(r: r)) == 118424
+}
+
+fn banked_admission_recovery_ms(r: CiFloorPopulationSettlementReceipt) -> Nat {
+  let baseline = millisecond_count(m: r.cold_admission_baseline.wall)
+  let observed = millisecond_count(m: banked_admission_observed_total_ms(r: r))
+  if baseline >= observed {
+    baseline - observed
+  } else {
+    0
+  }
+}

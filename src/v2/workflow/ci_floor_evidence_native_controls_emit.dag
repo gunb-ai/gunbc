@@ -19,14 +19,12 @@ import v2.workflow.effect_plan_bash_materialize {
   effect_plan_bash_refusal_label
 }
 
-data ci_floor_evidence_native_controls_extra_args_note: String = "#7785 commit 4A, blocker 7: the required CI must actually EXECUTE the floor-evidence native controls (claim_executor_floor_evidence.rs #[cfg(test)] module) rather than merely compile them - every prior claim about symlink removal, atomic observation fragments, fail-closed writes, and the fingerprint pairing is asserted only by this module's own unit tests, so a required CI job that never runs cargo test on it could regress silently under a change that still compiles. --test-threads=1 matches this module's own CWD_LOCK serialization (the tests share std::env::set_current_dir)."
+data ci_floor_evidence_native_controls_extra_args_note: String = "#7785 commit 4A, blocker 7: the required CI must actually EXECUTE the floor-evidence native controls (v1-floor-evidence #[cfg(test)] module) rather than merely compile them - every prior claim about symlink removal, atomic observation fragments, fail-closed writes, and the fingerprint pairing is asserted only by this crate's own unit tests, so a required CI job that never runs cargo test on it could regress silently under a change that still compiles. `cargo test -p v1-floor-evidence --lib` avoids rebuilding the full v1-compiler test profile (review P0: ~4m compile for ~60ms of tests). --test-threads=1 matches this module's own CWD_LOCK serialization (the tests share std::env::set_current_dir)."
 
 data ci_floor_evidence_native_controls_extra_args: List<String> = [
   "-p",
-  "v1-compiler",
-  "--bin",
-  "claim_executor",
-  "floor_evidence::",
+  "v1-floor-evidence",
+  "--lib",
   "--",
   "--test-threads=1"
 ]
@@ -38,7 +36,7 @@ data ci_floor_evidence_native_controls_cargo_bin_env_var: String = "CARGO_BIN"
 
 data ci_floor_evidence_native_controls_refusal_prefix: String = "__GUNBC_EFFECT_PLAN_BASH_REFUSED__ floor-evidence native controls: "
 
-data ci_floor_evidence_native_controls_authority_note: String = "Build-job executed-controls step for claim_executor_floor_evidence.rs (#7785 commit 4A, blocker 7). Same typed-carrier shape as ci_v1_compiler_tests_compile_gate_emit (one extdeps.cargo_build invocation bound by name, HostEnvVar CARGO_BIN from the same pin-rustup prelude the build job already ran before this step). Unlike the compile gate, this one actually RUNS the tests (cargo.Build.Test, not Check) — the point is execution, not compilation."
+data ci_floor_evidence_native_controls_authority_note: String = "Build-job executed-controls step for v1-floor-evidence (#7785 commit 4A, blocker 7). Same typed-carrier shape as ci_v1_compiler_tests_compile_gate_emit (one extdeps.cargo_build invocation bound by name, HostEnvVar CARGO_BIN from the same pin-rustup prelude the build job already ran before this step). Unlike the compile gate, this one actually RUNS the tests (cargo.Build.Test, not Check) — the point is execution, not compilation."
 
 data ci_floor_evidence_native_controls_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
