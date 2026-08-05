@@ -47,6 +47,15 @@ fn source_annotation_graph_rows(graph: SourceAnnotationGraph) -> List<SourceAnno
   graph.rows
 }
 
+data source_annotation_graph_concat_note: String = "Joins the graphs of separately parsed sources, preserving order. It exists so a consumer accumulating across a compilation never reaches into `rows` to append — the ordered-sequence law lives with the carrier, and a caller that rebuilt the record itself would be free to sort, dedupe, or reverse it and silently lose the multiplicity the order encodes."
+
+fn source_annotation_graph_concat(
+  left: SourceAnnotationGraph,
+  right: SourceAnnotationGraph
+) -> SourceAnnotationGraph {
+  SourceAnnotationGraph { rows: concat(left.rows, right.rows) }
+}
+
 data annotation_attachment_refusal_note: String = "Refusals are typed and located rather than dropped, because a dropped annotation is indistinguishable from a source that never carried one — the empty-observation narrow DESIGN names. UnattachedAtScopeEnd is the pending-block-at-EOF case: prose that names no subject. TrailingNotModeled and BodyGrainNotModeled are the two deliberate first-cut narrowings; each names what would have to be modeled to admit it, so neither reads as an oversight."
 
 type AnnotationAttachmentRefusal
