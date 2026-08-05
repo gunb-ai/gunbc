@@ -5275,8 +5275,11 @@ fn write_witness_row_cost_drift_receipt_at(
 }
 
 /// Single-authority projection: fetch `gunbc.witness_row_cost.witness_row_cost_migration_threshold_ms`
-/// once (never a hand-typed 500 in the seed — DESIGN §3) so the threshold cannot drift from the
-/// fast-lane budget authority it is derived from.
+/// once (never a hand-typed 500 in the seed — DESIGN §3) so there is exactly one authored copy of
+/// the threshold. The value is authored directly on the WALL clock (operator ruling 2026-08-05),
+/// not derived from the fast-lane fail-stop budget — that budget is enforced on a different clock
+/// (thread CPU), so dividing it to produce a wall-clock threshold was a cross-basis arithmetic
+/// defect, not a single-authority derivation.
 fn witness_row_cost_migration_threshold_ms_via_authority(
     ctx: &InterpContext,
 ) -> Result<u128, String> {

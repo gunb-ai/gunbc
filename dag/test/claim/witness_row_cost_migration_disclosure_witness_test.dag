@@ -3,6 +3,7 @@ module test.claim.witness_row_cost_migration_disclosure
 import gunbc.witness_row_cost {
   BelowMigrationThreshold,
   MandatoryMigration,
+  MigrationMeasurementUnavailable,
   WitnessCostReceiptRow,
   witness_row_cost_migration_threshold_ms,
   witness_row_cost_migration_verdict,
@@ -14,13 +15,13 @@ import std.nat { Nat }
 import std.types { NonEmptyStr, List, Int }
 import std.measure { millisecond, millisecond_count, millisecond_to_nanosecond }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.observation { Done }
+import std.observation { Done, observation_durations_wall }
 import v2.std.algebra { count_where, for_all }
 import v2.std.text { String }
 
-data witness_row_cost_migration_disclosure_note: String = "Executing consumer for the mandatory-migration disclosure (gunbc.witness_row_cost). THE PAIR IS THE PROOF, per the drift comparator's own discipline: a synthetic row at-or-above the derived threshold MUST produce MandatoryMigration, and a row comfortably below MUST NOT — either alone is satisfiable by a broken comparator. The derivation itself is pinned so the 500ms figure can never silently drift from the fast-lane authority: this test asserts the threshold IS gunbc_ci_fast_lane_eval_budget_ms()/10, never a hand-typed 500 literal."
+data witness_row_cost_migration_disclosure_note: String = "Executing consumer for the mandatory-migration disclosure (gunbc.witness_row_cost). THE PAIR IS THE PROOF, per the drift comparator's own discipline: a synthetic row at-or-above the threshold MUST produce MandatoryMigration, and a row comfortably below MUST NOT — either alone is satisfiable by a broken comparator. The threshold is authored directly on the WALL clock (operator ruling 2026-08-05, witness_row_cost_migration_threshold_note) rather than derived from the fast-lane fail-stop budget (a different, thread-CPU clock): this test pins the literal 500ms figure itself, since that is now the single authored source."
 
-fn derived_threshold_is_500ms_holds() -> Bool {
+fn authored_threshold_is_500ms_holds() -> Bool {
   witness_row_cost_migration_threshold_ms() == 500
 }
 
@@ -31,6 +32,7 @@ fn at_threshold_is_mandatory_migration_holds() -> Bool {
       millisecond_count(m: o) == witness_row_cost_migration_threshold_ms() &&
       millisecond_count(m: t) == witness_row_cost_migration_threshold_ms()
     BelowMigrationThreshold => false
+    MigrationMeasurementUnavailable => false
   }
 }
 
@@ -39,6 +41,7 @@ fn just_below_threshold_is_not_mandatory_holds() -> Bool {
   match v {
     BelowMigrationThreshold => true
     MandatoryMigration { observed: _, threshold: _ } => false
+    MigrationMeasurementUnavailable => false
   }
 }
 
@@ -54,7 +57,7 @@ fn sample_row(name: String, eval_ms: Nat) -> WitnessCostReceiptRow {
   WitnessCostReceiptRow {
     entry: "dag/test/claim/witness_row_cost_migration_disclosure_witness_test.dag" as NonEmptyStr,
     declaration: sample_decl(name: name),
-    eval: millisecond_to_nanosecond(m: millisecond(count: eval_ms)),
+    eval: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: eval_ms))),
     resolve: millisecond_to_nanosecond(m: millisecond(count: 1)),
     warm: millisecond_to_nanosecond(m: millisecond(count: eval_ms + 1)),
     outcome: Done
@@ -79,7 +82,7 @@ fn zero_over_threshold_rows_counts_zero_holds() -> Bool {
 }
 
 test fn witness_row_cost_migration_disclosure_holds() -> Bool {
-  derived_threshold_is_500ms_holds()
+  authored_threshold_is_500ms_holds()
     && at_threshold_is_mandatory_migration_holds()
     && just_below_threshold_is_not_mandatory_holds()
     && rows_filter_and_count_agree_and_are_located_holds()
