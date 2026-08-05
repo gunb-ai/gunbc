@@ -1,7 +1,5 @@
 module gunbc.roadmap_acceptance_history_observation
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import extdeps.git.inspect
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
@@ -27,13 +25,13 @@ import gunbc.roadmap_model {
   AcceptanceHistoryIntegrityRefusedPriorHistoryObservation,
   acceptance_history_integrity_verdict,
 }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_eq_structural }
+import std.content_hash { content_hash_atom, content_hash_eq_structural }
 import std.types { CommitSha, GitRef, Int, String }
 import v2.std.collection { List }
 
 data roadmap_acceptance_history_authority_repo_path: String = "dag/gunbc/roadmap_authority.dag"
 
-data roadmap_acceptance_history_prior_history_next_rung_trigger: String = "DISSOLVED: merge-base prior_history parses dag/gunbc/roadmap_acceptance_event_history.jsonl via gunbc.roadmap_acceptance_history_carrier when the carrier exists at merge-base; when absent (carrier introduction on main) the typed bootstrap projects inline authority history via gunbc.roadmap_acceptance_history_projection. A changed carrier without a valid merge-base observation refuses AcceptanceHistoryIntegrityRefusedPriorHistoryObservation — never prior_history = []. Remaining dissolve-on: delete both seed bridges when a modeled revision-addressed carrier ingest lands."
+data roadmap_acceptance_history_prior_history_next_rung_trigger: String = "DISSOLVED: merge-base prior_history parses dag/gunbc/roadmap_acceptance_event_history.jsonl via gunbc.roadmap_acceptance_history_carrier when the carrier exists at merge-base; when absent (carrier introduction on main) the typed bootstrap projects inline authority history via gunbc.roadmap_acceptance_history_projection. A changed carrier without a valid merge-base observation refuses AcceptanceHistoryIntegrityRefusedPriorHistoryObservation — never prior_history = []. git_show_path_absent_at_ref substring-matches git stderr until extdeps.git carries a typed path-absent-at-ref disposition. Remaining dissolve-on: delete both seed bridges when a modeled revision-addressed carrier ingest lands."
 
 type RoadmapAcceptanceHistoryPriorObservation
   = PriorHistoryObserved { prior: List<RoadmapAcceptanceEvent> }
@@ -205,27 +203,4 @@ fn acceptance_history_integrity_holds_from_prior_observation_with_prior(
     AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
     AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
   }
-}
-
-data roadmap_acceptance_history_sealed_compat_scaffold: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.roadmap_acceptance_history_observation",
-    decl_name: "acceptance_history_integrity_holds_from_prior_observation",
-    field: WholeDeclaration,
-  }
-}
-
-data roadmap_acceptance_history_sealed_compat_note: String = "Merge-base main still called acceptance_history_integrity_holds_from_prior_observation with sealed_event_count and sealed_chain_digest (roadmap_authority.dag production caller + contract witnesses); this branch retires every authored caller to acceptance_history_integrity_holds_from_prior_observation_with_prior. Grep receipt 2026-08-05 on this branch: acceptance_history_integrity_holds_from_prior_observation( → 1 hit (definition only in gunbc.roadmap_acceptance_history_observation); sealed_event_count in roadmap_authority.dag → 0 hits. The 6-arg wrapper remains only so bootstrap overlay can compile pre-merge authority text during the transition; it forwards to _with_prior and does not re-enforce sealed-prefix pinning (dissolved on the JSONL carrier path). Dissolution trigger: delete roadmap_acceptance_history_sealed_compat_scaffold and the 6-arg wrapper when merge-base no longer references sealed_event_count."
-
-fn acceptance_history_integrity_holds_from_prior_observation(
-  observation: RoadmapAcceptanceHistoryPriorObservation,
-  history: List<RoadmapAcceptanceEvent>,
-  sealed_event_count: Int,
-  sealed_chain_digest: Fnv1a64Structural,
-) -> Bool {
-  acceptance_history_integrity_holds_from_prior_observation_with_prior(
-    observation: observation,
-    history: history,
-  )
 }
