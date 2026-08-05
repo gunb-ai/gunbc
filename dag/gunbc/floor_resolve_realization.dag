@@ -10,7 +10,6 @@ import gunbc.ci_materialization {
   ci_floor_expected_resolve_obligations,
   ci_floor_expected_resolve_obligation_count,
   ci_floor_resolve_obligation_identities,
-  resolve_obligation_roster_agrees_with_declared_count,
   resolve_realization_finalization_holds,
   cold_realization,
   warm_realization,
@@ -25,14 +24,4 @@ import std.nat { Nat }
 import v2.std.text { String }
 import v2.std.collection { List }
 
-data floor_resolve_realization_note: String = "Thin re-export of gunbc.ci_materialization resolve-obligation authority (0B, 2026-08-04). Expected population and finalization law live in ci_materialization; shared-pool provider id is consumed from gunbc.floor_materialization via ci_materialization import. claim_executor observes; ci_floor_plan transports declared_resolve_count only."
-
-fn ci_floor_resolve_obligation_roster() -> List<ResolveObligationIdentity> {
-  ci_floor_resolve_obligation_identities()
-}
-
-fn ci_floor_resolve_obligation_count() -> Nat {
-  ci_floor_expected_resolve_obligation_count()
-}
-
-data roadmap_render_witness_cost_receipt_note: String = "Roadmap-render witness cost census (shared CI floor item 0, operator-measured 2026-08-04, three populations — NOT one cluster). CLASS A (this lane): witness_per_artifact_red_receipts rehomed to dag/test/claim/long/generated_artifact_drift_red_receipt_witness_test.dag — nine heterogeneous committed generators (CiYaml through Plan), each with its own artifact_generate and perturb-sensitive drift pair; no single shared producer to hoist (operator remedy 1); narrowing drops real per-generator coverage (remedy 2). Direct precedent: generated_artifact_drift_test.dag fixed_point_witness_long_lane_note (operator 2026-08-03, same 5-second rule, same inline gate coverage). Measured 4350-4776ms on green main; drift gate still runs artifact_red_receipt_ok inline. CLASS B (PR #7791, NOT this lane): six roadmap healthz witnesses ~5000ms when roadmap inputs change — render whole site behind warm memo. CLASS C: witness_bounded_poll_early_exit_on_grounded_read ~3260ms, witness_digest_readback_script_is_bounded_and_post_mutation ~2719ms."
+data floor_resolve_realization_note: String = "Thin re-export of gunbc.ci_materialization resolve-obligation authority (0B, 2026-08-04). Expected population and finalization law live in ci_materialization; claim_executor records observations at reuse sites; ci_floor_plan transports expected_resolve_obligations only."

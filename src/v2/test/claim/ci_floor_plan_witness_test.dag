@@ -93,7 +93,14 @@ import std.realization_schedule {
   CorpusWitnessKind, ExecutionWitnessKind
 }
 import std.realization_schedule { WalkPlan, NoWalkFinalization, NoFinalizationDeclared, NoPreWalkExecution }
-import gunbc.ci_materialization { FloorFinalization, ci_floor_declared_resolve_count }
+import gunbc.ci_materialization {
+  FloorFinalization,
+  ResolveObligation,
+  ci_floor_expected_resolve_obligations,
+  ci_floor_expected_resolve_obligation_count,
+  expected_obligation,
+  CompileAnchorWholeTree,
+}
 import std.execution_mode { Hermetic, Wet, execution_mode_eq }
 import std.measure { second_count, millisecond_count, minute_count }
 import v2.std.algebra { length, list_snoc_item, skip }
@@ -803,22 +810,26 @@ ONE property is genuinely not witnessable: materialization disclosure is intrins
 
 The three no-finalization rows below WERE briefly omitted as tautologies, and that reasoning was wrong (review 2026-07-30, corrected). It assumed the declared return type bounds the runtime value. The probe above shows it does not: a function declared `-> WalkPlan<NoWalkFinalization>` can return a record carrying FloorFinalization, and a caller reading the signature would never know. Matching the ACTUAL value is therefore load-bearing, not a match over a one-inhabitant type — the inhabitant set at runtime is not one. Their mutation control is to substitute FloorFinalization into each body while leaving the signature unchanged; each corresponding row must red.
 
-What IS falsifiable is WHICH count the floor projects: any Nat typechecks, so the row below asserts it projects the single authority gunbc.ci_materialization.ci_floor_declared_resolve_count, and the RED control forks that count by one and proves the same predicate refuses. Both execute."
+What IS falsifiable is WHICH obligation population the floor projects: any List typechecks, so the row below asserts it projects the single authority gunbc.ci_materialization.ci_floor_expected_resolve_obligations(), and the RED control drops one obligation and proves the same predicate refuses. Both execute."
 
-fn floor_plan_declared_resolve_count() -> Int {
-  gunbc_ci_floor_plan().finalization.declared_resolve_count
+fn floor_plan_obligation_count() -> Int {
+  length(xs: gunbc_ci_floor_plan().finalization.expected_resolve_obligations)
 }
 
-fn plan_declares_authority_count(p: WalkPlan<FloorFinalization>) -> Bool {
-  p.finalization.declared_resolve_count == ci_floor_declared_resolve_count
+fn plan_transports_authority_obligations(p: WalkPlan<FloorFinalization>) -> Bool {
+  p.finalization.expected_resolve_obligations == ci_floor_expected_resolve_obligations()
 }
 
-fn forked_count_floor_plan() -> WalkPlan<FloorFinalization> {
+fn anchor_only_obligations() -> List<ResolveObligation> {
+  [expected_obligation(id: CompileAnchorWholeTree)]
+}
+
+fn forked_obligation_floor_plan() -> WalkPlan<FloorFinalization> {
   WalkPlan {
     pre_walk_execution: NoPreWalkExecution {},
     batches: gunbc_ci_floor_ordinary_batches(),
     finalization: FloorFinalization {
-      declared_resolve_count: ci_floor_declared_resolve_count + 1,
+      expected_resolve_obligations: anchor_only_obligations(),
     },
     on_success_stages: [],
     ordinary_budget: none,
@@ -826,9 +837,9 @@ fn forked_count_floor_plan() -> WalkPlan<FloorFinalization> {
   }
 }
 
-test fn floor_plan_projects_the_declared_resolve_count_authority() -> Bool {
-  plan_declares_authority_count(p: gunbc_ci_floor_plan())
-    && floor_plan_declared_resolve_count() == ci_floor_declared_resolve_count
+test fn floor_plan_projects_the_declared_obligation_authority() -> Bool {
+  plan_transports_authority_obligations(p: gunbc_ci_floor_plan())
+    && floor_plan_obligation_count() == ci_floor_expected_resolve_obligation_count()
 }
 
 test fn floor_plan_carries_disjoint_ordinary_and_postcondition_budgets() -> Bool {
@@ -846,8 +857,8 @@ test fn floor_plan_carries_disjoint_ordinary_and_postcondition_budgets() -> Bool
   }
 }
 
-test fn forked_declared_count_is_refused_by_the_same_predicate() -> Bool {
-  !plan_declares_authority_count(p: forked_count_floor_plan())
+test fn forked_obligation_population_is_refused_by_the_same_predicate() -> Bool {
+  !plan_transports_authority_obligations(p: forked_obligation_floor_plan())
 }
 
 fn plan_carries_no_finalization(plan: WalkPlan<NoWalkFinalization>) -> Bool {
@@ -879,7 +890,7 @@ data plan_roster_exhaustiveness_note: String = "WHAT THIS ROW ENFORCES, AND WHAT
 
 fn plan_variant_is_walk_plan_shaped(p: PlanFunction) -> Bool {
   match p {
-    CiFloorPlan => plan_declares_authority_count(p: gunbc_ci_floor_plan())
+    CiFloorPlan => plan_transports_authority_obligations(p: gunbc_ci_floor_plan())
     CiRegenFloorPlan => plan_carries_no_finalization(plan: gunbc_ci_regen_floor_plan())
     CiPlanArtifactPlan => plan_carries_no_finalization(plan: gunbc_ci_plan_artifact_plan())
     FalsifierPlan => plan_carries_no_finalization(plan: gunbc_falsifier_plan())

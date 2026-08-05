@@ -20,7 +20,7 @@ import extdeps.cache.materialization {
 import extdeps.cache.sccache { sccache_local_facts, sccache_local_id }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
 import extdeps.github.actions { Workflow, Job, Step, RunStep, UsesStep }
-import gunbc.floor_materialization { floor_index_build_share_provider_id }
+import gunbc.floor_materialization { floor_entry_walk_memo_provider_id }
 import v2.std.logic { all, any }
 
 
@@ -174,11 +174,9 @@ data ci_floor_resolve_receipt_path: String = "target/floor-resolve-receipt.txt"
 
 data ci_floor_admission_capture_resolve_receipt_note: String = "RECEIPT 7 — CONSCIOUS RAISING 1 -> 2 (2026-07-31, first capture placement): the production WalkPlan run with the old declaration refused exactly `floor resolve count 2 differs from declared 1` and wrote target/floor-resolve-receipt.txt with `resolves_total=2`, `resolve_ms_total=64486`. The then-ordinary first-batch capture_tested_subject claim was one new entry class whose closure escaped the compile anchor. The two non-heavy success stages use a separate entry and may each resolve it; those resolves belong to the attempt-scoped on-success receipt, not the ordinary-floor count. This was the empirical law above operating as designed, not a guessed increment. The same red run proved the safety boundary: finalization refusal left `0 of 2` success stages run. Receipt 8 records why the capture placement and this temporary raise were later retired."
 
-data ci_floor_declared_resolve_count: Nat = 2
-
 data ci_floor_declared_resolve_count_obligation_note: String = "SEMANTICS (shared CI floor item 0B, operator ruling 2026-08-04): this row names the CLOSED UNIVERSE of semantic resolve OBLIGATIONS the floor roster structurally owes each run — compile-anchor-whole-tree plus native-bundle-escaping-entry — NOT the count of physical cold resolves (resolve_nanos > 0). THE LAW (single authority here, observed by claim_executor, transported by ci_floor_plan only): expected obligation identities == observed realization obligation identities. Warm shared-pool satisfaction is SatisfiedFromSharedPool with provider + receipt, never absence. cold_resolves_total in target/floor-resolve-receipt.txt is observational only. STANDING CONSTRAINT: stays at 2 until identity-based finalization REPLACES it via a conscious roster change in the PR that adds or removes an escaping entry class."
 
-data ci_floor_resolve_obligation_authority_note: String = "AUTHORITY SPLIT (0B): gunbc.ci_materialization owns ci_floor_expected_resolve_obligations and resolve_realization_finalization_holds; warm_realization consumes gunbc.floor_materialization floor_index_build_share_provider_id (no second literal). claim_executor observes cold resolves and shared-pool hits into ResolveRealization rows; HAND-Rust subject literals are seed-retained until P4 executor cutover — checkable receipt: claim_executor.rs floor_resolve_obligation_seed_constants_match_dag_authority parses these .dag rows and refuses drift. ci_floor_plan projects ci_floor_declared_resolve_count into WalkPlan.finalization only — it does NOT author a second obligation roster."
+data ci_floor_resolve_obligation_authority_note: String = "AUTHORITY SPLIT (0B): gunbc.ci_materialization owns ci_floor_expected_resolve_obligations and resolve_realization_finalization_holds. claim_executor records ResolveRealizationObservation at each reuse decision site and joins observed rows to the obligation population transported in WalkPlan.finalization.expected_resolve_obligations — no HAND-Rust subject literals, no timing-derived disposition. ci_floor_plan transports ci_floor_expected_resolve_obligations() unchanged into FloorFinalization only."
 
 type ResolveObligationIdentity
   = CompileAnchorWholeTree
@@ -228,12 +226,12 @@ fn ci_floor_expected_resolve_obligation_count() -> Nat {
   ci_floor_expected_resolve_obligations() |> count
 }
 
-fn ci_floor_resolve_obligation_identities() -> List<ResolveObligationIdentity> {
-  [CompileAnchorWholeTree, NativeBundleEscapingEntry]
+fn ci_floor_declared_resolve_count() -> Nat {
+  ci_floor_expected_resolve_obligation_count()
 }
 
-fn resolve_obligation_roster_agrees_with_declared_count() -> Bool {
-  ci_floor_expected_resolve_obligation_count() == ci_floor_declared_resolve_count
+fn ci_floor_resolve_obligation_identities() -> List<ResolveObligationIdentity> {
+  map(ci_floor_expected_resolve_obligations(), o => o.identity)
 }
 
 type ResolveColdReceipt {
@@ -354,8 +352,8 @@ fn cold_realization(id: ResolveObligationIdentity, nanos: Nat) -> ResolveRealiza
 fn warm_realization(id: ResolveObligationIdentity) -> ResolveRealization {
   SatisfiedFromSharedPool {
     obligation: expected_obligation(id: id),
-    provider: ResolveSharedPoolProvider { provider_id: floor_index_build_share_provider_id },
-    receipt: ResolveSharedPoolReceipt { provider_id: floor_index_build_share_provider_id },
+    provider: ResolveSharedPoolProvider { provider_id: floor_entry_walk_memo_provider_id },
+    receipt: ResolveSharedPoolReceipt { provider_id: floor_entry_walk_memo_provider_id },
   }
 }
 
@@ -379,7 +377,7 @@ TWO LAWS, ONE FIELD. Materialization disclosure was briefly a `require_materiali
 declared_resolve_count is Nat, not Int: a negative declared count has no meaning, and making it unrepresentable is cheaper than guaranteeing it mismatches later."
 
 type FloorFinalization {
-  declared_resolve_count: Nat
+  expected_resolve_obligations: List<ResolveObligation>
 }
 
 data ci_sccache_provider_shell_injection_dissolution_trigger: Disposition = Scaffold {
