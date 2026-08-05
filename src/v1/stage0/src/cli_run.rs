@@ -15481,9 +15481,7 @@ fn witness_cost_eval_durations(
         ],
         false,
     )
-    .map_err(|e| {
-        format!("[witness-row-cost] REFUSED: eval duration constructor failed: {e}")
-    })
+    .map_err(|e| format!("[witness-row-cost] REFUSED: eval duration constructor failed: {e}"))
 }
 
 fn witness_cost_string_field(
