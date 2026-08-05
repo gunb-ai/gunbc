@@ -19,7 +19,14 @@ import gunbc.roadmap_model {
   Pointer,
   RoadmapNodeId,
   RoadmapAcceptanceReceipt,
+  RoadmapAcceptanceEvent,
+  AcceptanceRecorded,
+  AcceptanceRevoked,
+  AcceptanceNodeReopensActiveFrontier,
   node_accepted,
+  project_live_acceptance_receipts,
+  acceptance_history_integrity_holds,
+  acceptance_history_chain_digest,
   Intricacy,
   IntricacyLow,
   IntricacyMedium,
@@ -34,6 +41,10 @@ import gunbc.roadmap_model {
   ManualAcceptance,
   section_group,
   section_prose,
+}
+import gunbc.roadmap_acceptance_history_observation {
+  current_roadmap_acceptance_history_prior_observation,
+  acceptance_history_integrity_holds_from_prior_observation,
 }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified, contract_has_closing_validation }
 import gunbc.roadmap_focus {
@@ -246,6 +257,8 @@ fn v1_rust_source_observation_execution_contract() -> WorkItemExecutionContract 
   )
 }
 
+data namespace_structural_observations_execution_contract_note: String = "RETRACTED INTERIM (2026-08-04, operator ruling via loyal-ram-550): the prior ordinary_compile_structural_closing_contract_holds predicate checked only scenario-variant presence and could green four StructuralBindingProductionRefused observations — worse than no binding. namespace-structural-observations returns ExecutionContractUnspecified until a factual carrier with ordinary-compile subject provenance and semantic closure (assess_reference_binding_observation authority, not variant counting) lands. Executing fixture evidence remains src/v1/tests/claim/namespace_reference_derived_closure_production_admissions_witness_test.dag under v1_claim_scoped_witness_batch only."
+
 data namespace_reference_derived_closure_execution_contract_note: String = "THE SIX-ARM CLOSING DISCRIMINATOR for namespace-reference-derived-closure. The validation is deliberately RED while its production admission seam carries a typed unavailable row for every clause: the closed capability population is the node's own red control, and missing capabilities are a derived set difference, so duplicate evidence cannot hide an unexecuted clause and zero work cannot verify as complete. Clauses (a-d) wait on #7515's structural candidate producer, (e) waits on its reference-derived dependency projection, and (f) waits on the projection's pool-membership-independence wall. The paired fixture suite executes the merged P1 kernel for the first four clauses and proves every clause rejects its planted wrong output, but the bound acceptance witness imports none of those fixtures; it can green only when the gated node supplies production observations. It is enrolled QuarantineProbeExpectRed until that transition."
 
 fn namespace_reference_derived_closure_execution_contract() -> WorkItemExecutionContract {
@@ -319,6 +332,15 @@ fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
     entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag" as FilePath,
     function: "legacy_test_behavior_unclassified_frontier_is_zero" as NonEmptyStr,
+  )
+}
+
+data roadmap_receipt_continuity_execution_contract_note: String = "THE CLOSING CHECK FOR roadmap-receipt-continuity. Acceptance history is append-only: roadmap_acceptance_event_history is the single authority and roadmap_acceptance_receipts is a projection. The hermetic contract plants each red control from the node's bar — deleted events, dual-list deletion, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite, and planted git-refusal observation. Live integrity over git-observed prior_history executes in test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries)."
+
+fn roadmap_receipt_continuity_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/roadmap_receipt_continuity_acceptance_test.dag" as FilePath,
+    function: "roadmap_receipt_continuity_acceptance_contract_holds" as NonEmptyStr,
   )
 }
 
@@ -647,6 +669,57 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The decision function plus worked none/one/many examples actually run, with the malformed-population and wrong-role refusals executing."
       )
     ),
+    active_sized(
+      identity: "rn_7QF3M2KDX8VNAT6JWZR0PC5HY",
+      id: "namespace-structural-observations",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Work out what a name can see from where it is written, inside one file",
+        boundary: "Make an ordinary compiled path produce, for each name written in a file, the declarations actually in view from that position, and record which one answered. Four cases, each shown on its own: an ordinary neighbour written earlier in the same file is in view; a declaration inside a different branch of a decision is not; a declaration written further down is not; and two declarations spelled the same at genuinely different positions stay distinct rather than merging.",
+        displaced_cost: "The parser walk that can answer this already exists and is switched on, but nothing in an ordinary compile asks it. Until it is asked on a real compile, every claim about what a name can see rests on hand-built examples, and the four rules above are asserted rather than observed.",
+        first_slice: "Write the closing check for this row first, then make one ordinary compiled file produce all four observations through it.",
+        red_control: "Each of the four cases fails on its own when the rule is broken: a neighbour written earlier goes missing, a declaration from another branch leaks in, one written further down leaks in, or two same-spelled declarations merge into one.",
+        out_of_scope: "Names answered by another file, and working out what a file depends on — both belong to the next row. Does not change the check that closes the parent row, and does not stand in for the cases it does not cover.",
+        handback: "One ordinary compiled file producing all four observations, each case shown failing on its own, and the closing check written and bound."
+      )
+    ),
+    active_sized(
+      identity: "rn_4LT9SBW1EGKM3XQPZ7DVNC02J",
+      id: "namespace-cross-file-provenance",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeLarge,
+      t: fields(
+        headline: "Answer names that live in another file, and derive what each file depends on",
+        boundary: "Work out, for a name whose answer lives in another file, which declaration answers it, then derive from those answers what the file depends on. Keep two separate results: for every mention, which declaration answered it; and for the file, the set of distinct files it depends on. Repeated mentions of one target collapse only in the second.",
+        displaced_cost: "What a file depends on is written out by hand today, so it can disagree with what the file actually refers to. Hundreds of files were patched by hand to keep the two in step — work that should never have existed, because what a file depends on follows from what it refers to.",
+        first_slice: "Write the closing check for this row first, then answer one name across a file boundary and derive that file's dependencies from the answers alone.",
+        red_control: "Two mentions of one target give one dependency but stay two separate records of which mention produced it; and no dependency appears that no name asked for.",
+        out_of_scope: "No hand-written dependency statements, no falling back to searching everything currently loaded, and no discarding which particular mention produced which dependency. The same-file rules belong to the previous row.",
+        handback: "One file's dependencies derived from its answers alone, matching what was written by hand, with both results kept separate and the closing check written and bound."
+      )
+    ),
+    active_sized(
+      identity: "rn_9WK5DZP6TAY2QN8XFVB13JMHR",
+      id: "namespace-pool-independence",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Loading an unrelated file must not change any answer",
+        boundary: "Run the same source twice — once with an unrelated file loaded alongside it, once without — and compare the whole result: which declaration each name answered to, which mention produced which dependency, what the file depends on, and which names refused. Nothing may differ.",
+        displaced_cost: "Names currently resolve partly by luck: a file's names find their targets when some unrelated file elsewhere happens to have pulled those targets in. That makes every green result conditional on what else was loaded, and it is why removing dependency statements had to be stopped across the whole repository.",
+        first_slice: "Write the closing check for this row first, then run one source under both pools and compare the full result.",
+        red_control: "A perturbation that changes which declaration a name answered to is caught even when the set of files depended on happens to come out the same.",
+        out_of_scope: "Does not compare only the list of files depended on — that alone can hide a changed answer underneath an unchanged list.",
+        handback: "One source run under both pools with the full result identical, and a planted difference shown being caught."
+      )
+    ),
     with_execution(active_large(
       identity: "rn_G0299VOOIL1XOOSXY3J4YUYDLH",
       id: "namespace-reference-derived-closure",
@@ -656,7 +729,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Work out what each name can see, and let that be what a file depends on",
         boundary: "From where a name is written, work outward to every declaration actually in view — including ordinary neighbours in the same file — respecting where things were written relative to each other. Then record, for each name, exactly which declaration answered it, and derive what each file depends on from those answers.",
         displaced_cost: "What a file depends on is currently written out by hand as a separate statement, so it can disagree with what the file actually refers to. Hundreds of files were patched by hand to keep those two in step, which is work that should never have existed: what a file depends on is a consequence of what it refers to, not a second thing to maintain.",
-        first_slice: "One ordinary production file: work out what each name in it can see, bind each name, and derive the file's dependencies from those bindings alone.",
+        first_slice: "Admit all six observations from the three rows in front of this one through the existing check, retire the expecting-red enrolment, and close the row.",
         red_control: "A neighbour in the same file is in view; something inside a different branch of a decision is not; something written further down is not; the same name written twice in genuinely different places stays ambiguous; repeated mentions of one thing collapse to a single dependency; and nothing depends on an unrelated file happening to be loaded at the same time.",
         out_of_scope: "No hand-written dependency statements, no falling back to searching everything that happens to be loaded, no mass edits across the repository, and no throwing away which particular name produced which dependency.",
         handback: "The derived dependencies for one real file, matching what was written by hand, with each of the red controls actually run."
@@ -1561,6 +1634,24 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
+    with_execution(active_sized(
+      identity: "rn_2NDX8VQ4KJ7ZTBM5WGPRAF06L",
+      id: "roadmap-receipt-continuity",
+      owner: "roadmap-runtime",
+      path: "docs/plans/roadmap-workspace-ux-plan.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "An accepted thing cannot quietly become unaccepted again",
+        boundary: "Compare the acceptance records held before a change against those held after. A record that was valid and is now gone refuses, unless a revocation names the exact item, the exact record being withdrawn, a reason, and what follows from it. Rewriting an item's pass/fail test while keeping its record is the existing digest path and is not a withdrawal.",
+        displaced_cost: "An accepted fact that goes missing puts an item back on the board as if it had never been done, and the only way anyone notices is by redoing the work. That happened: a branch spent real effort reconstructing an acceptance record that already existed, because nothing refused when it went absent.",
+        first_slice: "Write the closing check for this row first, then compare the two populations across one real change.",
+        red_control: "A removed record with no withdrawal refuses; a kept record passes; a removal with its exact matching withdrawal passes; a withdrawal naming a different item or a different record refuses; a withdrawal with nothing removed refuses; two withdrawals claiming one removal refuse; and rewriting a pass/fail test with the record kept stays on the digest path.",
+        out_of_scope: "Not the check for items that never had a closing test — that already exists and finds a different thing. Does not decide whether any particular withdrawal was a good idea.",
+        handback: "The comparison running over one real change, with each of the listed cases shown separately, and the closing check written and bound."
+      )
+    ), roadmap_receipt_continuity_execution_contract()),
+
     active_small(
       identity: "rn_WWVQ07RC0HF55DPM2CXNKWY8RR",
       id: "fleet-state-frontier",
@@ -1743,6 +1834,11 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
 
     edge(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport"),
     edge(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel"),
+    edge(child: "namespace-structural-observations", parent: "namespace-binding-kernel"),
+    edge(child: "namespace-cross-file-provenance", parent: "namespace-binding-kernel"),
+    edge(child: "namespace-pool-independence", parent: "namespace-cross-file-provenance"),
+    edge(child: "namespace-reference-derived-closure", parent: "namespace-structural-observations"),
+    edge(child: "namespace-reference-derived-closure", parent: "namespace-pool-independence"),
     edge(child: "namespace-ambiguity-discharge", parent: "namespace-reference-derived-closure"),
     edge(child: "namespace-canonical-binding", parent: "namespace-ambiguity-discharge"),
     edge(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding"),
@@ -1834,6 +1930,8 @@ data entry_graph_union_construction_acceptance_note: String = "CLOSED NO-GO (ope
 
 data namespace_binding_kernel_acceptance_note: String = "STATUS RECONCILIATION, NOT NEW WORK (operator ruling 2026-08-01). PR #7508 merged the supplied-candidate binding kernel, so the IMPLEMENTATION dependency for namespace-reference-derived-closure was resolved, but no acceptance receipt existed — leaving the roadmap saying its own prerequisite was unaccepted while the code depended on it. Two different truths for the same fact, which is exactly what node_is_startable reads, so P2a was being worked on while not honestly startable under the roadmap's own definition. The digest 2eba4715cdef42eb is the POST-#7530 value: #7530 rewrote this node's boundary, red_control and out_of_scope to cut authority from retirement, and roadmap_criteria_digest covers brief plus red_control plus handback, so the pre-amendment digest is stale by construction. It was DERIVED BY EXECUTION rather than transcribed — node_criteria_digest was run against the live node on this tree, not copied from a prior receipt or computed by hand. The red control names the malformed-transport refusal because that is the first arm #7530's amended row requires; the sibling arms (absent versus wrong-role identity distinct, duplicate supplied identity refused, wrong-category excluded, zero/one/two giving unbound/bound/ambiguous, exact declaration identity surviving, canonical fold invoked once) all execute in the same witness module and were green on the exact-head run that merged #7508."
 
+data namespace_closure_prerequisite_cut_note: String = "THE SIX CAPABILITIES INSIDE namespace-reference-derived-closure ARE NOT SIX NODES, and this cut adds exactly three rows in front of it rather than decomposing it (2026-08-04). Its closing contract, namespace_reference_derived_closure_contract, is a set-difference frontier over six capabilities under three triggers, and every row read Unavailable while the node itself was the only dispatchable thing in the lane. That is a single startable row standing for three separable pieces of work with different substrates, which is the coarse-node hazard namespace_node_recut_note already priced once.\n\nTHE CUT FOLLOWS THE TRIGGERS, because the triggers already record which work each capability waits on. namespace-structural-observations owns the four capabilities under P2aStructuralCandidateProducer7515 — same-parse-tree rules, whose substrate is the merged occurrence-binding parser walk. namespace-cross-file-provenance owns the one under P2aReferenceDependencyProjection7515. namespace-pool-independence owns the one under P2aPoolIndependentDependencyProjection7515.\n\nTHE FIRST TWO ARE PARALLEL, NOT SEQUENTIAL. No dependency runs from the same-file rules to the cross-file projection; they share only the contract they feed. Sequencing them would have idled one worker for no modeled reason. Pool independence DOES depend on cross-file provenance, because a differential needs a projector to perturb.\n\nWHY THE CROSS-FILE ROW IS THE LARGE ONE. The merged parser walk resolves nothing across a file boundary — its own authority note scopes it to authored source through parse_with_table, with transport and module path from the parser. So cross-file target realization sits INSIDE that row rather than upstream of it, and the trigger being named after a merged PR does not mean the capability is discharged.\n\nNO NEW IDENTITY WAS MINTED FOR THE INTEGRATION OR FOR THE CENSUS. namespace-reference-derived-closure keeps its durable identity and now denotes the aggregate handback — all six observations admitted, the expecting-red enrolment retired, its existing check green — so its first_slice moved to say so while its boundary, which still covers all six, did not. namespace-ambiguity-discharge likewise keeps its identity and its existing dependency on the closure node; the census it owns is authoritative only once all six close, never after the same-file rows alone, because a census taken before cross-file answers exist undercounts exactly the candidates that cross a file boundary and inherits the pool coincidence pool-independence exists to remove.\n\nTHE THREE NEW ROWS ARE DELIBERATELY UNBOUND. Each first_slice names authoring its own closing check as its first act, per v1_lane_binding_survey_note: the contract follows the witness, never precedes it. Authoring contracts here to make the rows look startable is the coverage-by-illusion tier that note forbids, and pool-independence could not honestly carry one at all — its differential compares an output shape its own prerequisite has not yet produced."
+
 data scm_prerequisite_acceptance_note: String = "The operator explicitly accepted the three independent R0 models and the separate P−1 evidence carrier, then accepted R1 after merging its three-realization compatibility extraction, and accepted P0 after its layered landing spine and twenty-two executing journey witnesses landed. R1 depends only on the three R0 receipts; P0 consumes both accepted R1 and accepted P−1. These receipts preserve every prerequisite and handback as durable facts. Replacing accepted rows with their child would erase history and violate roadmap_acceptance_receipt_note."
 
 data scm_p0_acceptance_evidence_note: String = "P0 acceptance maps the roadmap clauses through test.claim.source_integration_landing_spine_witness witness_p0_roadmap_acceptance_contract_holds: all seven removed closure receipts stay machine-owned; evidence support/challenge/neither/conflict and terminal blocking do not become a preference question; both material alternatives resume by structural position; authorization, self-amendment, exhausted-bound, and permanent-effect failures keep their typed internal refusal and plain terminal projection; stale-parent work retries internally; a committed independently read-back transition stays Landed through projection failure; the audience projection excludes internal theory and manual Git-repair vocabulary; and the successful path retains its ordinary Git compatibility receipt. The same aggregate executes the explicit 50-agent/10-overlap/30-minute stress profile and timestamp non-authority. Handback remains bounded exactly at P0: gunbc.source_integration_landing_spine names the absent P1 proof kernel, P2 capture/edit lens, and P3 effect transport; none is claimed or activated by this receipt."
@@ -1850,9 +1948,9 @@ fn chash(s: String) -> Fnv1a64Structural {
   }
 }
 
-fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
+fn roadmap_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
   [
-    RoadmapAcceptanceReceipt {
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "2-scm-git-upstream-model"),
       criteria_digest: chash(s: "b3747b95baf099cc"),
       red_control: RedControlExecuted {
@@ -1869,8 +1967,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-29",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "2-scm-mercurial-upstream-model"),
       criteria_digest: chash(s: "c43b17d5134b111d"),
       red_control: RedControlExecuted {
@@ -1887,8 +1985,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-29",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "2-scm-pijul-upstream-model"),
       criteria_digest: chash(s: "098c989bdc87dac7"),
       red_control: RedControlExecuted {
@@ -1905,8 +2003,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-29",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "2-claim-indexed-evidence"),
       criteria_digest: chash(s: "2b81ac6aacf6a190"),
       red_control: RedControlExecuted {
@@ -1925,8 +2023,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-29",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "2-scm-compatibility-shape"),
       criteria_digest: chash(s: "f023bb4e862d9e27"),
       red_control: RedControlExecuted {
@@ -1945,8 +2043,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-29",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "2-scm-p0-landing-spine"),
       criteria_digest: chash(s: "9d3aa951e0f5ffa3"),
       red_control: RedControlExecuted {
@@ -1965,8 +2063,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-08-01",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "namespace-occurrence-transport"),
       criteria_digest: chash(s: "d76cf14b12dbf4bf"),
       red_control: RedControlExecuted {
@@ -1983,8 +2081,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-28",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "namespace-binding-kernel"),
       criteria_digest: chash(s: "2eba4715cdef42eb"),
       red_control: RedControlExecuted {
@@ -2001,8 +2099,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-08-01",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "entry-graph-union-construction"),
       criteria_digest: chash(s: "3502539e920d9e40"),
       red_control: RedControlExecuted {
@@ -2021,8 +2119,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-08-01",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "pderive-typesafe-nullary-reflection"),
       criteria_digest: chash(s: "dac83172a613e659"),
       red_control: RedControlExecuted {
@@ -2039,8 +2137,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-28",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "pderive-static-supplemental-contract"),
       criteria_digest: chash(s: "fa6378dabdb12432"),
       red_control: RedControlExecuted {
@@ -2057,8 +2155,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-29",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "v1-test-hygiene-producer-retirement"),
       criteria_digest: chash(s: "8f77a4b2e0ee3387"),
       red_control: RedControlExecuted {
@@ -2075,8 +2173,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-29",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "v1-interpreter-primitive-roster"),
       criteria_digest: chash(s: "581758f45921b40a"),
       red_control: RedControlExecuted {
@@ -2094,8 +2192,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-08-02",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "ladder-measurement-schema"),
       criteria_digest: chash(s: "74da4d8be7125c81"),
       red_control: RedControlExecuted {
@@ -2111,8 +2209,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-08-01",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "v2-emitter-producer-provenance"),
       criteria_digest: chash(s: "f1c76111c83a0a60"),
       red_control: RedControlExecuted {
@@ -2128,8 +2226,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-08-02",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "v1-seed-honesty-decision"),
       criteria_digest: chash(s: "1717cfe258d9afe1"),
       red_control: RedControlExecuted {
@@ -2146,8 +2244,30 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-08-02",
-    },
+    }},
   ]
+}
+
+data roadmap_acceptance_history_note: String = "roadmap_acceptance_event_history is the single authority for acceptance facts. roadmap_acceptance_receipts projects the live receipt set by replaying recorded and revoked events only — never a second editable receipt list. New acceptance appends AcceptanceRecorded; withdrawal appends AcceptanceRevoked naming the exact prior receipt, a disposition, and audit fields. roadmap_acceptance_history_sealed_event_count and roadmap_acceptance_history_sealed_chain_digest pin the immutable prefix so prior events cannot be deleted without updating the seal in the same change. LIVE prior_history wiring is partial: gunbc.roadmap_acceptance_history_observation compares merge-base versus HEAD authority file content identity and admits prior_history = current only when that file is unchanged; a changed authority file without merge-base revision evaluation keeps prior_history empty on the production path; git observation refusal returns AcceptanceHistoryIntegrityRefusedPriorHistoryObservation — never fabricated prior_history — see roadmap_acceptance_history_prior_history_next_rung_trigger. The sealed prefix digest remains load-bearing defense in depth against prefix edits."
+
+fn roadmap_acceptance_history_sealed_event_count() -> Int { 16 }
+
+fn roadmap_acceptance_history_sealed_chain_digest() -> Fnv1a64Structural {
+  chash(s: "4d935ab20742e0e7")
+}
+
+fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
+  project_live_acceptance_receipts(history: roadmap_acceptance_event_history())
+}
+
+fn roadmap_acceptance_history_integrity_holds() -> Bool {
+  let current = roadmap_acceptance_event_history()
+  acceptance_history_integrity_holds_from_prior_observation(
+    observation: current_roadmap_acceptance_history_prior_observation(current_history: current),
+    history: current,
+    sealed_event_count: roadmap_acceptance_history_sealed_event_count(),
+    sealed_chain_digest: roadmap_acceptance_history_sealed_chain_digest(),
+  )
 }
 
 data v2_emitter_producer_provenance_acceptance_note: String = "ACCEPTANCE OF LANDED WORK, the exact state closing_contract_task_naming_correction_note names this node as the specimen of: bound, implemented, green, awaiting the operator act. The landing is the Gate-A oracle (#7408, operator-merged): SelfEmitted requires an executed probe receipt, so an emitter-produced claim without a receipt from the run that made it is unrepresentable — the ticket's own red control. Evidence, executed 2026-08-02 on the tree carrying this receipt: all 27 witness fns in the contract's entry file pass, including the bound closing validation (a restored binding without an executed receipt does not authorize) and its sibling refusal controls (hand-forged authorization, minted executed verdicts, synthesized digests, fabricated build-greens all red). The digest f1c76111c83a0a60 was DERIVED BY EXECUTION — node_criteria_digest run against the live node on this tree, not transcribed. The handback's three elements are on main: the relabelled roster (every frontier row producer-qualified), the retired single count (per-producer baselines, witness_producer_qualified_baselines_holds), and the refusal demonstration (the _reds suite). Acceptance is the operator's merge of the change adding this receipt; the receipt is authored by the roadmap steward as the vehicle, never as the act."

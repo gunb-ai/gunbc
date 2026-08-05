@@ -85,7 +85,7 @@ test fn compiler_frontier_receipt_totality_wall_live_survey_holds() -> Bool {
   compiler_frontier_receipt_totality_wall_holds(survey: host_frontier_probe_survey)
 }
 
-data compiler_frontier_wave2_sizing_band_a_leaf_count_note: String = "Closeout band (PR #7747): realization_count >= 20 applies when the full 27-module host_frontier_probe_survey manifest is bound — not green today (manifest stub Empty). Interim 17/27 slice at 9f978aa8df (#7697) had 14 RealizationGap + 3 NameResolutionGap at ProbeStageAssemble."
+data compiler_frontier_wave2_sizing_band_a_leaf_count_note: String = "Closeout band: realization_count >= 20 applies when host_frontier_probe_survey_manifest binds all 27 execution_measurement receipts at one pinned source_head. Prior interim audit at 9f978aa8df (#7697) had execution_measurement=17 (14 RealizationGap + 3 NameResolutionGap at ProbeStageAssemble, self_emit_ready=0); superseded — not combinable with a later head."
 
 test fn compiler_frontier_wave2_emit_surface_dominates_holds() -> Bool {
   let realization_count = frontier_wave2_realization_module_count(receipts: host_frontier_probe_survey)

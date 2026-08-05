@@ -11,57 +11,31 @@ import gunbc.generated_artifact {
 import gunbc.generated_artifact_emit {
   ArtifactGenerated,
   ArtifactGenerationRefused,
-  artifact_generate,
-  artifact_extra_valid
+  artifact_generate
 }
-
-data drift_perturb_suffix: String = "\n# gunbc-generated-artifact-drift-receipt-perturb"
+import gunbc.generated_artifact_observation {
+  observe_generated_artifact_population
+}
+import gunbc.generated_artifact_assessment {
+  assess_generated_artifact_population,
+  first_failing_diagnostic_path
+}
 
 fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
 }
 
-fn artifact_drifted(a: GeneratedArtifact, committed: String) -> Bool {
-  match artifact_generate(a: a) {
-    ArtifactGenerated { content } => !(committed == content)
-    ArtifactGenerationRefused { reason: _ } => true
-  }
-}
-
-fn artifact_gate_ok(a: GeneratedArtifact) -> Bool {
-  let committed = Filesystem.Read(path: artifact_path(a: a))
-  committed.success
-    && !artifact_drifted(a: a, committed: committed.content)
-    && artifact_extra_valid(a: a)
-}
-
-fn artifact_red_receipt_ok(a: GeneratedArtifact) -> Bool {
-  let committed = Filesystem.Read(path: artifact_path(a: a))
-  let clean_ok = committed.success && !artifact_drifted(a: a, committed: committed.content)
-  match artifact_generate(a: a) {
-    ArtifactGenerationRefused { reason: _ } => false
-    ArtifactGenerated { content } => clean_ok && artifact_drifted(a: a, committed: concat(content, drift_perturb_suffix))
-  }
-}
-
-fn artifact_fully_ok(a: GeneratedArtifact) -> Bool {
-  artifact_gate_ok(a: a) && artifact_red_receipt_ok(a: a)
-}
-
-fn first_failing_path() -> String {
-  fold(committed_generated_artifacts(), init: "", f: fn(acc, a) {
-    if acc == "" && !artifact_fully_ok(a: a) { artifact_path(a: a) } else { acc }
-  })
-}
+data run_generated_artifact_drift_gate_body_note: String = "One live pass: observe_generated_artifact_population() reads each committed file and generates each artifact exactly once (gunbc.generated_artifact_observation). The pure group and leaf assessments, and the failure diagnostic, all read that SAME retained population — no re-invocation of the producer (operator ruling: cost and correctness must not ride on incidental memoization of a repeated producer call)."
 
 func run_generated_artifact_drift_gate_body() -> ProcessExit {
-  let all_ok = all(committed_generated_artifacts(), a => artifact_fully_ok(a: a))
+  let observations = observe_generated_artifact_population()
+  let all_ok = assess_generated_artifact_population(expected: committed_generated_artifacts(), observations: observations)
   return if all_ok {
     ExitSuccess
   } else {
     exit_failure(
       reason: concat(
-        concat("generated-artifact drift/validation failed: ", first_failing_path()),
+        concat("generated-artifact drift/validation failed: ", first_failing_diagnostic_path(expected: committed_generated_artifacts(), observations: observations)),
         " — it is a GENERATED projection of its .dag authority; do not hand-edit, regenerate via main_wet on dag/tools/generated_artifact_gate.dag"
       )
     )

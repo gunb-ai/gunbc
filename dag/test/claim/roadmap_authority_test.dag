@@ -10,6 +10,7 @@ import gunbc.roadmap_authority {
   active_roadmap_nodes,
   active_roadmap_edges,
   roadmap_acceptance_receipts,
+  roadmap_acceptance_event_history,
   accepted_roadmap_node_ids,
   roadmap_authority,
   authored_merged_prs,
@@ -46,9 +47,18 @@ import gunbc.roadmap_model {
   RoadmapEdge,
   RoadmapNodeId,
   RoadmapAcceptanceReceipt,
+  RoadmapAcceptanceEvent,
+  AcceptanceRecorded,
+  AcceptanceRevoked,
+  AcceptanceNodeReopensActiveFrontier,
   node_accepted,
   receipt_matches_node,
   node_criteria_digest,
+  acceptance_history_integrity_holds,
+  acceptance_history_extends_prior,
+  acceptance_history_chain_digest,
+  project_live_acceptance_receipts,
+  drop_first_acceptance_event,
   roadmap_parent_ids,
   is_top_level,
   Pointer,
@@ -330,6 +340,44 @@ test fn witness_unexecuted_or_undelivered_evidence_refuses_acceptance() -> Bool 
 test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
   let ghost = receipt_fixture(node: "no-such-roadmap-node", digest: tchash(s: "0000000000000000"))
   all(nodes(), n => !node_accepted(receipts: [ghost], rn: n))
+}
+
+data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). roadmap_acceptance_event_history is the single authority; roadmap_acceptance_receipts projects live receipts only. Live git-observed integrity executes in test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries). RED controls in test.claim.roadmap_receipt_continuity_acceptance plant deleted history events, dual-deletion via prior-prefix refusal, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite on the digest path, and planted git-refusal observation."
+
+test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
+  let prior = roadmap_acceptance_event_history()
+  let current = prior
+    |> filter(e =>
+      match e {
+        AcceptanceRecorded { receipt: r } => r.node != tnid(s: "namespace-occurrence-transport")
+        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => true
+      }
+    )
+  !acceptance_history_extends_prior(prior: prior, current: current)
+}
+
+test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
+  let prior = roadmap_acceptance_event_history()
+  let receipt = first(
+    project_live_acceptance_receipts(history: prior)
+      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+  )
+  let current = concat(prior, [
+    AcceptanceRevoked {
+      exact_prior_receipt: receipt,
+      disposition: AcceptanceNodeReopensActiveFrontier {},
+      reason: "fixture revocation witness" as NonEmptyStr,
+      revoked_by: "operator" as NonEmptyStr,
+      revoked_on: "2026-08-04" as NonEmptyStr,
+    },
+  ])
+  acceptance_history_extends_prior(prior: prior, current: current)
+    && acceptance_history_integrity_holds(
+      history: current,
+      sealed_event_count: count(current),
+      sealed_chain_digest: acceptance_history_chain_digest(events: current),
+      prior_history: prior,
+    )
 }
 
 test fn witness_accepted_parent_discharges_active_dependency() -> Bool {

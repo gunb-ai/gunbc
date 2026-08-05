@@ -40,9 +40,10 @@ use std::rc::Rc;
 use v1_compiler::cli_run::{
     build_multi_entry_index, load_sources_for_entry, make_eval_context,
     materialization_provider_ctx_build_count_for_test, provider_bootstrap_store_skip_count,
-    provider_ctx_reentrancy_refusal_for_test, resolve_closure_request_key_from_digests,
-    resolve_entry_graph, resolve_entry_with_index, resolved_graph_parts_semantic_digest, run_claim,
-    ClaimOutcome,
+    provider_ctx_reentrancy_refusal_for_test, reset_typecheck_compute_count,
+    resolve_closure_request_key_from_digests, resolve_entry_graph, resolve_entry_with_index,
+    resolved_graph_parts_semantic_digest, run_claim, typecheck_compute_count,
+    with_typecheck_compute_count_receipt, ClaimOutcome,
 };
 use v1_compiler::resolved_graph_cache::{
     build_incomplete_v3_artifact_bytes, build_valid_artifact_bytes, closure_content_digest,
@@ -1272,8 +1273,55 @@ fn reentrant_provider_ctx_construction_refuses() {
 // `cross_process_hit_skips_semantic_recompute` was written and executed against
 // `same_subject_resolves_share_one_graph_store_hits_v2_disk`'s shape, then removed
 // rather than landed, because at the time it reliably OOM-killed the runner instead
-// of failing loud and located. That finding is now ROOT-CAUSED AND FIXED — the seam's
-// store direction ignored the provider-bootstrap suppression flag that its probe
-// direction honoured, so the provider's own bootstrap resolve rebuilt the provider
-// closure recursively. The two tests above are the controls that replaced it, and the
-// skipped-recompute witness can now be re-attempted without taking the runner down.
+// of failing loud and located. That finding is ROOT-CAUSED AND FIXED (#7728) — the
+// seam's store direction ignored the provider-bootstrap suppression flag that its
+// probe direction honoured, so the provider's own bootstrap resolve rebuilt the
+// provider closure recursively. The two tests above are the controls that replaced it
+// at the reentrancy layer; this is the remaining warm-hit skip-proof itself, enrolled
+// (DESIGN.md "disk-tier repeat-resolve memory growth" open thread).
+//
+// The discriminating oracle is TYPECHECK_COMPUTE_COUNT (the same once-per-node counter
+// `union_resolve_receipts_test.rs` uses for the in-process share tier): a disk-tier hit
+// for an already-materialized subject must return via
+// `install_cross_process_materialization_hit` without ever entering the per-module
+// typecheck loop that calls `bump_typecheck_compute_count`. A regression that silently
+// falls back to a full semantic recompute on a "hit" would still return a correct graph
+// — only the counter would move — which is exactly the failure mode a byte-comparison
+// of the result cannot catch.
+#[test]
+fn cross_process_hit_skips_semantic_recompute() {
+    let dir = temp_dir("skip-recompute");
+    let (roots, a, _b, _c) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    with_cache_env(&cache_dir, || {
+        with_typecheck_compute_count_receipt(|| {
+            // Cold: first touch of the subject in this process, populates both the
+            // in-process share and (once the provider can serve a complete artifact)
+            // the disk-tier store.
+            let index = build_multi_entry_index(&roots);
+            reset_typecheck_compute_count();
+            resolve_entry_with_index(&index, &a).expect("cold resolve populates the store");
+            let cold = typecheck_compute_count();
+            assert!(
+                cold > 0,
+                "the cold resolve must genuinely compute something, or a flat 0 downstream \
+                 proves nothing about skipping recompute"
+            );
+
+            // A fresh index for the same subject — the shape of a new process's first
+            // touch, served from the disk-tier store rather than the in-process share.
+            let index2 = build_multi_entry_index(&roots);
+            reset_typecheck_compute_count();
+            resolve_entry_with_index(&index2, &a).expect("disk-tier hit");
+            assert_eq!(
+                typecheck_compute_count(),
+                0,
+                "a disk-tier hit for an already-materialized subject must not re-run semantic \
+                 typecheck — TYPECHECK_COMPUTE_COUNT staying at 0 is the proof that the warm \
+                 path skips recompute rather than silently rebuilding it"
+            );
+        });
+    });
+}
