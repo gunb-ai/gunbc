@@ -4309,6 +4309,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
+        CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -4343,6 +4344,23 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
+        }
+        // The three refusal kinds are separate failure classes — a reader fixing
+        // "prose in the wrong place" needs to know WHICH wrong place, so they stay
+        // distinct in the histogram rather than collapsing to one annotation bucket.
+        CompilerDiagnostic::SourceAnnotationRefused { refusal, .. } => {
+            use crate::std_source_annotation::AnnotationAttachmentRefusal;
+            match refusal.as_ref() {
+                AnnotationAttachmentRefusal::UnattachedAtScopeEnd { .. } => {
+                    "(annotation-unattached)".to_string()
+                }
+                AnnotationAttachmentRefusal::TrailingNotModeled { .. } => {
+                    "(annotation-trailing)".to_string()
+                }
+                AnnotationAttachmentRefusal::BodyGrainNotModeled { .. } => {
+                    "(annotation-body-grain)".to_string()
+                }
+            }
         }
     };
     (class.to_string(), name)

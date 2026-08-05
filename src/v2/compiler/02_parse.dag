@@ -55,6 +55,14 @@ import v2.std.occurrence_id {
   occurrence_id_allocator_initial
 }
 import std.occurrence_identity { OccurrenceIdAllocator }
+import std.source_annotation {
+  AnnotationAttachmentResult,
+  AnnotationsAdmitted,
+  AnnotationsRefused,
+  NonEmptyAnnotationAttachmentRefusals,
+  SourceAnnotationGraph,
+  admit_annotations
+}
 import v2.std.provenance {
   DerivedBy,
   SpanIndex,
@@ -132,6 +140,54 @@ type ParseArtifact {
   tree: ParseTree
   span_index: v2.std.provenance.SpanIndex
 }
+
+data authored_parse_artifact_note: String = "The parse-layer twin of LexArtifact: the semantic parse result PLUS what the annotation channel captured, now bound to subjects. `authored_parse_semantic` is the erasure boundary — a consumer projecting through it sees exactly the ParseArtifact it saw before this channel existed, which is what lets every existing semantic consumer stay untouched while annotation-aware machinery reads the whole thing.
+
+It carries NO refusal field. Refusals do not travel inside this artifact, because a wrapper holding both an annotation graph and a list of things that failed to attach invites a consumer to read the first and never the second. The artifact exists only when nothing refused — see AuthoredParseOutcome below, which is the only thing that constructs one."
+
+data authored_parse_artifact_v2_roster_disposition: String = "SCAFFOLD — v2 carries the carrier, not yet the producer. Attachment needs a module-item subject roster (identity plus span per module-scope declaration), and the v2 parse tree does not project one today; the working attachment realization is the v1 seed parser, which is the production path that compiles this corpus. So the rows below are constructed and projected by execution, but no v2 parse entry point yet emits one with a non-empty graph.
+
+DISSOLVE-ON: v2 parse projects a module-item roster of AnnotationSubject from its parse tree. At that point parse_module gains an authored sibling that calls std.source_annotation.attach_annotations — the SAME fold the v1 realization calls, never a second one — and this disposition row is deleted."
+
+type AuthoredParseArtifact {
+  semantic: ParseArtifact
+  annotations: SourceAnnotationGraph
+}
+
+data authored_parse_outcome_note: String = "Refusal BLOCKS continuation; it does not ride along inside a successful-looking artifact. An earlier shape carried the refusals as a field on the wrapper, which left every consumer free to read `annotations` and never look at `refusals` — prose dropped, compilation proceeding, exactly the outcome admitting `//` and discarding the capture would have produced.
+
+Only the accepted arm holds an AuthoredParseArtifact, and the artifact is constructible ONLY inside that arm, so `has annotations` and `nothing was refused` are the same fact rather than two fields a caller must remember to check together. The rejected arm still carries the semantic ParseArtifact, because the parse itself succeeded and the diagnostic must be reported against real located structure."
+
+type AuthoredParseOutcome
+  = AuthoredParseAccepted { artifact: AuthoredParseArtifact }
+  | AuthoredParseRejected {
+      semantic: ParseArtifact,
+      refusals: NonEmptyAnnotationAttachmentRefusals
+    }
+
+fn authored_parse_outcome(
+  semantic: ParseArtifact,
+  attachment: AnnotationAttachmentResult
+) -> AuthoredParseOutcome {
+  match admit_annotations(result: attachment) {
+    AnnotationsAdmitted { graph: graph } =>
+      AuthoredParseAccepted {
+        artifact: AuthoredParseArtifact { semantic: semantic, annotations: graph },
+      }
+    AnnotationsRefused { refusals: refusals } =>
+      AuthoredParseRejected { semantic: semantic, refusals: refusals }
+  }
+}
+
+fn authored_parse_semantic(artifact: AuthoredParseArtifact) -> ParseArtifact {
+  artifact.semantic
+}
+
+fn authored_parse_annotations(artifact: AuthoredParseArtifact) -> SourceAnnotationGraph {
+  artifact.annotations
+}
+
+
 
 type ParseMintSourceResult {
   id: OccurrenceId
