@@ -117,5 +117,8 @@ pub mod extdeps_units_iso8601;
 #[path = "../../stage0/src/std_occurrence_identity.rs"]
 pub mod std_occurrence_identity;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_source_annotation.rs"]
+pub mod std_source_annotation;
+#[rustfmt::skip]
 #[path = "../../stage0/src/v1_std_core.rs"]
 pub mod v1_std_core;
