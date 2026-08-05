@@ -90,9 +90,15 @@ type AnnotationAttachment
   = AnnotationAttached { row: SourceAnnotationDebt }
   | AnnotationRefused { refusal: AnnotationAttachmentRefusal }
 
-data annotation_admission_note: String = "The gate between analysing attachment and CONTINUING with it. AnnotationAttachmentResult is an analysis surface — it reports what attached and what did not, and a reader may legitimately inspect both. But a caller free to take `graph` from that record and carry on has done exactly what admitting `//` and discarding the capture would have done: the prose is dropped and compilation proceeds as though the source never carried it.
+data annotation_admission_note: String = "The gate between analysing attachment and CONTINUING with it. AnnotationAttachmentResult is an analysis surface — it reports what attached and what did not, and a reader may legitimately inspect both. But a caller that takes `graph` from that record and carries on has done exactly what admitting `//` and discarding the capture would have done: the prose is dropped and compilation proceeds as though the source never carried it.
 
-So the only path from an attachment result to a graph that flows onward is through here, and it refuses whenever anything refused. The refusal payload is a NON-EMPTY carrier, which is what makes `refused, with nothing to report` unwritable rather than merely unlikely — a refusal arm holding an empty list would be a silent success wearing a refusal's name.
+WHAT THIS ACTUALLY GUARANTEES, AT ITS HONEST RUNG. Both production v1 frontend paths route through this function, and on that path a refusal withholds the graph entirely and blocks emitted output. That is a ROUTING INVARIANT enforced by every caller using one seam — it is NOT a construction impossibility. `AnnotationAttachmentResult` is a plain record and `annotation_attachment_result_graph` returns its graph without consulting admission, so a newly written caller could bypass this and nothing would stop it.
+
+The two fail differently, and the distinction is why this paragraph exists rather than a stronger-sounding one. A routing invariant holds while every caller goes through the seam and breaks SILENTLY the first time one does not; an impossibility cannot break, because the bypass has no representation. Calling the first the second is the rung inflation DESIGN 4b names as worse than sitting low, since an inflated class never ranks for climbing.
+
+NEXT-RUNG TRIGGER, and it is small and known: make the bypass unrepresentable — remove the unadmitted graph accessor and seal the result carrier so a graph can only be obtained through admission — landed with a discriminating control proving a bypass does not compile. Until that exists, this is a mechanically preventive wall on the production path, not a language-level guarantee.
+
+The refusal payload is a NON-EMPTY carrier, which does make `refused, with nothing to report` unwritable rather than merely unlikely — a refusal arm holding an empty list would be a silent success wearing a refusal's name.
 
 This is deliberately all-or-nothing per compilation unit. A partial admission — take the rows that bound, ignore the ones that did not — is the absorbing fallback in its authored form: the deficit's frequency drops to zero, nothing counts it, and the unattachable prose quietly stops existing."
 
