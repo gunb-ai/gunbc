@@ -7245,6 +7245,34 @@ pub struct MultiEntryIndex {
     /// hold, so the mechanism is strictly additive. Authority: modeled policy in
     /// `dag/gunbc/executor_schedule_retention.dag`, mirrored above.
     schedule_retention: RefCell<Option<ScheduleRetention>>,
+    /// Shared entry-view facts keyed by closure semantic input identity
+    /// (`closure_content_digest`): the closure symbol index (census + pool qualified
+    /// fill) and the once-per-closure variant-owner base derived from it.
+    closure_assembly_env_memo:
+        RefCell<std::collections::HashMap<String, Rc<ClosureAssemblyEnv>>>,
+    /// Per-root composed symbol index + variant base keyed by
+    /// `root_assembly_env_key(closure_digest, root)`.
+    root_assembly_env_memo: RefCell<std::collections::HashMap<String, Rc<RootAssemblyEnv>>>,
+    /// Post-rewire typed module list keyed by `rewire_semantic_input_identity`
+    /// (ordered typed-module content keys ⊕ compiler identity).
+    rewired_modules_memo:
+        RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<TypedModule>>>>>,
+}
+
+/// Closure-grain assembly environment shared across every entry whose closure carries
+/// the same semantic input identity.
+#[derive(Clone)]
+struct ClosureAssemblyEnv {
+    symbol_index: Rc<SymbolIndex>,
+    closure_variant_base: Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>>,
+}
+
+/// Root-grain assembly environment: closure census underlaid with one source-tree's bare
+/// census plus the variant-owner base for the composed `global_bare`.
+#[derive(Clone)]
+struct RootAssemblyEnv {
+    composed_symbol_index: Rc<SymbolIndex>,
+    root_variant_base: Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>>,
 }
 
 pub fn new_shared_typecheck_caches() -> Arc<RwLock<SharedTypecheckCaches>> {
@@ -7405,6 +7433,9 @@ fn new_multi_entry_index_shell(
         pool_bare_census: RefCell::new(None),
         entry_closure_sources: RefCell::new(HashMap::new()),
         both_closure_edges: RefCell::new(None),
+        closure_assembly_env_memo: RefCell::new(std::collections::HashMap::new()),
+        root_assembly_env_memo: RefCell::new(std::collections::HashMap::new()),
+        rewired_modules_memo: RefCell::new(std::collections::HashMap::new()),
     }
 }
 
