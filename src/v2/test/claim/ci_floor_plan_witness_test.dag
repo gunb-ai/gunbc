@@ -829,6 +829,10 @@ test fn witness_live_floor_discovery_batch_count_includes_wet_lanes() -> Bool {
   }
 }
 
+test fn witness_live_floor_discovery_batch_count_is_four() -> Bool {
+  schedule_discovery_batch_count(batches: gunbc_ci_floor_ordinary_batches()) == 4
+}
+
 test fn ci_floor_plan_witnesses() -> Bool {
   witness_floor_compile_gate_honest_heavy_profile() &&
     witness_cheap_gate_membership_declared() &&
@@ -837,6 +841,9 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_cheap_gates_precede_compile_root() &&
     witness_cheap_gates_precede_all_corpus_batches() &&
     witness_floor_schedule_preserves_enrolled_set() &&
+    witness_live_floor_schedules_bin_witness_wet_batch() &&
+    witness_live_floor_discovery_batch_count_includes_wet_lanes() &&
+    witness_live_floor_discovery_batch_count_is_four() &&
     witness_non_cheap_gate_absent_from_early_batch() &&
     witness_floor_stop_policy_pr_is_fail_fast() &&
     witness_floor_stop_policy_push_is_full_ledger() &&

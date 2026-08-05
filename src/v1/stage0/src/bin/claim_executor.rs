@@ -3395,6 +3395,21 @@ fn discovery_claim_result(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn discovery_corpus_kind_label(
+    scan_dirs: &[String],
+    explicit_entries: &[(String, String)],
+) -> &'static str {
+    if !scan_dirs.is_empty() {
+        "discovery-corpus"
+    } else if explicit_entries.len() >= 30 {
+        "bin-witness-corpus"
+    } else if explicit_entries.len() > 1 {
+        "execution-corpus"
+    } else {
+        "explicit-corpus"
+    }
+}
+
 fn run_discovery_batch_node(
     source_roots: Vec<String>,
     execution_authority_source_roots: Vec<String>,
@@ -3411,7 +3426,8 @@ fn run_discovery_batch_node(
     expect_red: bool,
     scoped_receipt: Option<ScopedReceiptBatch>,
 ) -> ClaimResult {
-    set_phase(FloorPhase::Discovery, "discovery-corpus");
+    let corpus_kind = discovery_corpus_kind_label(&scan_dirs, &explicit_entries);
+    set_phase(FloorPhase::Discovery, corpus_kind);
     // Post-discovery projections are executor machinery too.  Scoped batches keep
     // their witness subjects under the narrow `source_roots`, while the authored
     // timing projector and its renderers live in the enclosing walk universe.  Keep
@@ -3420,7 +3436,7 @@ fn run_discovery_batch_node(
     // `gunbc.witness_row_cost` and tempts callers to widen the subject envelope.
     let execution_projection_source_roots = execution_authority_source_roots.clone();
     let label = format!(
-        "discovery-corpus[{} root(s)+{} explicit, adaptive width{}]",
+        "{corpus_kind}[{} root(s)+{} explicit, adaptive width{}]",
         source_roots.len(),
         explicit_entries.len(),
         if expect_red { ", expect_red" } else { "" },
@@ -5061,6 +5077,14 @@ fn write_floor_wet_witness_row_outcome_receipt_at(
     eprintln!(
         "[receipt] floor wet witness row-outcome: {row_count} row(s) (TSV receipt: {})",
         path.display()
+    );
+    trace_floor_phase(
+        "wet-witness-row-outcome-receipt",
+        "completed",
+        &format!(
+            "row_count={row_count} path={}",
+            path.display()
+        ),
     );
     true
 }
@@ -7837,20 +7861,36 @@ fn replay_floor_wet_witness_row_outcomes_from_receipt(path: &Path) -> Result<usi
 
 fn replay_ordinary_floor_wet_witness_row_outcomes() {
     let path = Path::new(FLOOR_WET_WITNESS_ROW_OUTCOME_RECEIPT_PATH);
-    match replay_floor_wet_witness_row_outcomes_from_receipt(path) {
-        Ok(count) => {
+    match collect_wet_witness_row_outcome_replay_lines(path) {
+        Ok(lines) => {
+            let count = lines.len();
             eprintln!(
                 "[wet-witness-row-outcome] coordinator replayed {count} row(s) from {}",
                 path.display()
             );
+            append_floor_phase_journal(
+                "wet-witness-row-outcome-replay",
+                "completed",
+                &format!("row_count={count} path={}", path.display()),
+            );
+            for line in lines {
+                eprintln!("{line}");
+                append_floor_phase_journal("wet-witness-row-outcome-replay", "row", &line);
+            }
         }
         Err(msg) if path.exists() => {
             eprintln!("claim_executor: wet witness row-outcome coordinator replay refused: {msg}");
+            append_floor_phase_journal("wet-witness-row-outcome-replay", "refused", &msg);
         }
         Err(_) => {
             eprintln!(
                 "claim_executor: wet witness row-outcome receipt absent at {} — per-row wet batch outcomes unobservable",
                 path.display()
+            );
+            append_floor_phase_journal(
+                "wet-witness-row-outcome-replay",
+                "absent",
+                &format!("path={}", path.display()),
             );
         }
     }
