@@ -5436,15 +5436,15 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
         let n = rec.batch_index + 1;
         for result in &rec.results {
             for row in &result.witness_row_costs {
-                if row.5 == "selection-skipped" {
+                if row_measurement_is_absent(&row.outcome) {
                     observation_absent_count += 1;
                     body.push_str(&format!(
                         "{n}\t{}\t{}\t\t{threshold_ms}\tObservationAbsent\n",
-                        row.0, row.1
+                        row.entry, row.function
                     ));
                     continue;
                 }
-                let observed = row.2 / 1_000_000;
+                let observed = row.eval_wall_nanos / 1_000_000;
                 let is_mandatory = match witness_row_cost_migration_verdict_via_authority(
                     &ctx, observed,
                 ) {
@@ -5452,21 +5452,21 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
                     Err(e) => {
                         eprintln!(
                             "claim_executor: migration verdict refused for {}::{}: {e} — walk fails closed here",
-                            row.0, row.1
+                            row.entry, row.function
                         );
                         return false;
                     }
                 };
                 let verdict = if is_mandatory {
                     mandatory_count += 1;
-                    worst.push((observed, row.0.clone(), row.1.clone()));
+                    worst.push((observed, row.entry.clone(), row.function.clone()));
                     "MandatoryMigration"
                 } else {
                     "BelowMigrationThreshold"
                 };
                 body.push_str(&format!(
                     "{n}\t{}\t{}\t{observed}\t{threshold_ms}\t{verdict}\n",
-                    row.0, row.1
+                    row.entry, row.function
                 ));
             }
         }
