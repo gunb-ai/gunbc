@@ -2032,7 +2032,18 @@ fn call_function_inner(
                 // HashMap::insert, so the earlier argument's evaluated value vanished
                 // unlocatably (DESIGN §5: the compile-side wall must not report a fact the
                 // runtime keeps quiet about). Refuse instead of taking the last value.
-                if bindings.contains_key(&ctx.sym(name)) {
+                //
+                // An anonymous binding key ("_") is excluded from the collision check (but
+                // still inserted, harmlessly overwriting any earlier "_" — the body cannot
+                // read a parameter named "_", so two anonymous parameters bound at different
+                // positions/labels are two distinct, unreadable slots, not a collision; the
+                // insert itself must still happen so the required-argument "supplied" check
+                // below, which reads `bindings.contains_key`, keeps seeing an anonymous
+                // parameter as filled) (review from parent session loyal-ant-382, 2026-08-05
+                // — the prior form both keyed AND refused every anonymous param under the
+                // literal "_", false-refusing a signature with two or more anonymous
+                // parameters).
+                if name != "_" && bindings.contains_key(&ctx.sym(name)) {
                     return Err(InterpError::CallContractMismatch {
                         callee: fn_node.name.clone(),
                         detail: format!("argument '{}' supplied more than once", name),
@@ -2046,8 +2057,14 @@ fn call_function_inner(
                 // where the positional slot 0's declared name is `a`, already bound by the
                 // named actual) must refuse the same way, not silently overwrite last-write-wins
                 // (DESIGN §5 fail-closed; review 48817).
+                //
+                // An anonymous declared parameter ("_") is excluded from the collision check
+                // (see the named-branch note above): two anonymous parameters filled
+                // positionally are two distinct, unreadable slots, not a duplicate. The
+                // insert still happens unconditionally so the required-argument check below
+                // sees the slot as filled.
                 let pname = &param_names[positional_idx];
-                if bindings.contains_key(&ctx.sym(pname)) {
+                if pname != "_" && bindings.contains_key(&ctx.sym(pname)) {
                     return Err(InterpError::CallContractMismatch {
                         callee: fn_node.name.clone(),
                         detail: format!("argument '{}' supplied more than once", pname),
