@@ -2,6 +2,7 @@ module v1.compiler.annotation_bind
 
 import std.types { Bool, Int, String, SourceSpan, List }
 import std.occurrence_identity {
+  OccurrenceId,
   OccurrenceIndexEntry,
   OccurrenceTransport
 }
@@ -13,12 +14,14 @@ import std.source_annotation {
   AnnotationsRefused,
   NormalizedAnnotationCapture,
   SourceAnnotationGraph,
+  KeyedAnnotationRow,
   SourceAnnotationDebt,
   UnboundAnnotationCapture,
   admit_annotations,
   attach_annotations,
   non_empty_refusals_all,
-  source_annotation_graph_empty
+  source_annotation_graph_empty,
+  source_annotation_graph_rows
 }
 import v1.std.core { CompilerDiagnostic, SourceAnnotationRefused }
 
@@ -131,6 +134,12 @@ fn strip_line_comment_delimiter(lexeme: String) -> String {
   }
 }
 
+data annotation_render_consumer_scope_note: String = "WHAT CONSUMES THIS TODAY, stated because the honest answer is `no production renderer yet` and the reason is measured rather than assumed. There is no authored-.dag-source renderer in this tree to wire the canonical form into: `gunbc compile --target dag` emits dag-artifact.json, a JSON graph dump, and extdeps.languages.dag.emit is a keyword-and-template vocabulary consumed by the shared emitter fold rather than a module that writes .dag text. Threading the annotation graph to such a renderer additionally requires crossing the erasure boundary property 4 pinned, where ResolvedPipelineResult and emit_resolved_for_target carry no authored graph at all.
+
+So this module supplies the canonical spelling and the round-trip evidence, and the production consumer is EXPLICITLY OPEN rather than quietly implied. That distinction is the whole point of saying it here: a helper with no consumer that is described as an emitter would read as delivered, and the prose-migration lane is gated on a real writer existing — until one does, a rendering path could still drop newly modeled prose, which is exactly why migration stays behind it.
+
+DISSOLVE-ON: an authored-source renderer exists and carries the annotation graph; then the round-trip property re-executes through it end to end and this note goes away with the scaffolding it describes."
+
 data dag_annotation_canonical_form_note: String = "THE CANONICAL .dag SPELLING, and the inverse of strip_line_comment_delimiter directly above. It sits beside its inverse deliberately: the delimiter is stated once, and a change to what .dag strips is in the same edit as what .dag writes. Two functions in two modules agreeing about `//` by coincidence is the fork this lane removes.
 
 The form is a single `//` followed by one space, then the line's normalized text. The empty line renders as a bare `//` with NO trailing space, and that is a correctness case rather than tidiness: `// ` and `//` both normalize to the empty string, so either round-trips, but a trailing space is the character formatters and editors strip on save — so choosing the spelling that survives contact with a text editor is choosing the one that keeps the fixed point stable. An empty line inside a block is reachable: an author writing a bare `//` between two commented lines produces one block whose middle line is empty.
@@ -149,12 +158,84 @@ fn render_annotation_block(text: String) -> String {
     |> join(separator: "\n")
 }
 
-data render_subject_blocks_note: String = "Consecutive rows on ONE subject are separated by a blank line, which is the renderer half of the std law. Joining with a single newline instead would emit two authored blocks as one, and the round trip would then certify a merge the author never wrote — the exact failure the blank-line grouping ruling exists to prevent, reintroduced from the writing side."
+data subject_annotation_blocks_note: String = "The renderer's precondition made STRUCTURAL rather than documented. An earlier cut took a bare List<SourceAnnotationDebt>, named it `rows for one subject`, and then ignored every row's subject field — so a caller handing it rows attached to two different declarations would have rendered both above the first, and the next parse would silently rebind the second declaration's prose onto the first. The note said one subject; nothing checked it, and no fixture with two declarations existed to notice.
 
-fn render_subject_annotation_blocks(rows: List<SourceAnnotationDebt>) -> String {
-  rows
+Construction is the check. subject_annotation_blocks_for refuses when any row names a different subject, so a mixed-subject list cannot reach the renderer at all — the misuse has no representable value rather than a validation that a future caller might skip. Empty is also refused: rendering `no blocks` is the caller's decision to omit the region entirely, and returning an empty string would put a bare newline where nothing was authored."
+
+type SubjectAnnotationBlocks {
+  subject: OccurrenceId
+  rows: List<SourceAnnotationDebt>
+}
+
+fn rows_all_name_subject(rows: List<SourceAnnotationDebt>, subject: OccurrenceId) -> Bool {
+  fold(rows, init: true, f: (ok, row) => ok && row.subject.value == subject.value)
+}
+
+fn subject_annotation_blocks_for(
+  graph: SourceAnnotationGraph,
+  subject: OccurrenceId
+) -> SubjectAnnotationBlocks? {
+  let rows = fold(
+    source_annotation_graph_rows(graph: graph),
+    init: [],
+    f: (acc, row) => if row.subject.value == subject.value { list_push(acc, row) } else { acc }
+  )
+  if (rows |> count) == 0 {
+    none
+  } else if rows_all_name_subject(rows: rows, subject: subject) {
+    Present { value: SubjectAnnotationBlocks { subject: subject, rows: rows } }
+  } else {
+    none
+  }
+}
+
+data render_subject_blocks_note: String = "Consecutive rows on ONE subject are separated by a blank line, which is the renderer half of the std law. Joining with a single newline instead would emit two authored blocks as one, and the round trip would then certify a merge the author never wrote — the exact failure the blank-line grouping ruling exists to prevent, reintroduced from the writing side.
+
+It takes SubjectAnnotationBlocks rather than a list because the one-subject precondition is what makes `separated by a blank line` mean anything: blocks belonging to different declarations are not consecutive blocks on one subject, they are two regions of the file."
+
+fn render_subject_annotation_blocks(blocks: SubjectAnnotationBlocks) -> String {
+  blocks.rows
     |> map(row => render_annotation_block(text: row.text))
     |> join(separator: "\n\n")
+}
+
+data keyed_annotation_rows_note: String = "Projects a graph's rows onto the cross-parse-stable key std.source_annotation's agreement is defined over. The key is the AUTHORED NAME resolved through the same occurrence index the subject roster was built from, because that is the fact a reader means by `the same declaration` and it survives reparsing, which the occurrence id does not.
+
+It is FAIL-CLOSED: a subject that does not resolve to a name yields Absent for the whole projection rather than a row with an empty or placeholder key. A placeholder would make two unresolvable subjects compare equal to each other, turning a lookup failure into a false agreement — the same false-positive direction the keying exists to close."
+
+fn authored_name_of(transport: OccurrenceTransport, id: OccurrenceId) -> String? {
+  fold(
+    transport.index.entries,
+    init: none,
+    f: (acc, entry) =>
+      if entry.projection.occurrence.value == id.value {
+        Present { value: entry.projection.authored_name }
+      } else {
+        acc
+      }
+  )
+}
+
+fn keyed_annotation_rows(
+  transport: OccurrenceTransport,
+  graph: SourceAnnotationGraph
+) -> List<KeyedAnnotationRow>? {
+  fold(
+    source_annotation_graph_rows(graph: graph),
+    init: Present { value: [] },
+    f: (acc, row) =>
+      match acc {
+        Absent => none
+        Present { value: rows } =>
+          match authored_name_of(transport: transport, id: row.subject) {
+            Absent => none
+            Present { value: name } =>
+              Present {
+                value: list_push(rows, KeyedAnnotationRow { subject_key: name, text: row.text }),
+              }
+          }
+      }
+  )
 }
 
 fn normalize_dag_annotation(capture: UnboundAnnotationCapture) -> NormalizedAnnotationCapture {

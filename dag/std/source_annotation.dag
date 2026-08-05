@@ -264,37 +264,48 @@ FOUR THINGS ARE THEREFORE EXCLUDED ON PURPOSE. Original delimiter spacing, becau
 
 ORDER AND MULTIPLICITY ARE IN, not incidentally but because the carrier says they are its identity: two rows with the same text on the same subject are two annotations, and the first-written is first."
 
-data annotation_agreement_walk_note: String = "Walks both row lists together rather than comparing counts and then contents. A count check followed by a per-row check reads as equivalent and is not — it answers `same size` and `these rows match somewhere` as two separate questions, and neither pins ORDER. Consuming both lists in step makes position part of the comparison by construction, and a length difference falls out as one list running dry before the other."
+data annotation_subject_key_note: String = "WHY AGREEMENT IS KEYED ON A STRING AND NOT ON OccurrenceId. An occurrence identity is unique within ONE graph-scoped allocator. Two separately parsed sources have two allocators, so equal id VALUES across them establish equal allocation ordinals and nothing else — a round trip comparing them directly would report `same subject` for two declarations that merely occupy the same position in their respective files.
 
-fn annotation_row_agrees(left: SourceAnnotationDebt, right: SourceAnnotationDebt) -> Bool {
-  left.subject.value == right.subject.value && left.text == right.text
+That is not a hypothetical. Identical prose above `data alpha` in one source and above `data beta` in another source of the same shape yields the same ordinal for both, so an id-valued comparison agrees while the annotations name different declarations. The failure is a FALSE POSITIVE in the oracle, which is the direction that never gets noticed.
+
+So agreement is stated over a caller-supplied key that is stable ACROSS parses. The realization decides what that key is, because only the realization knows: for the first .dag cut it is the authored declaration name, which is unique among one module's items and is exactly what a reader means by `the same subject`. A realization whose subjects are not uniquely named must supply a qualified key instead, and DISSOLVE-ON: when the containment tree is the single naming authority, the key becomes the containment path and uniqueness stops being a per-realization precondition."
+
+type KeyedAnnotationRow {
+  subject_key: String
+  text: String
 }
 
-fn annotation_rows_agree(
-  left: List<SourceAnnotationDebt>,
-  right: List<SourceAnnotationDebt>
-) -> Bool {
-  match first(left) {
-    Absent =>
-      match first(right) {
-        Absent => true
-        Present { value: _ } => false
-      }
-    Present { value: l } =>
-      match first(right) {
-        Absent => false
-        Present { value: r } =>
-          annotation_row_agrees(left: l, right: r)
-            && annotation_rows_agree(left: skip(left, 1), right: skip(right, 1))
-      }
-  }
+data annotation_agreement_walk_note: String = "Walks both row lists together rather than comparing counts and then contents. A count check followed by a per-row check reads as equivalent and is not — it answers `same size` and `these rows match somewhere` as two separate questions, and neither pins ORDER. Consuming both lists in step makes position part of the comparison by construction.
+
+It is a FOLD carrying the unconsumed right-hand rows, not a recursion over both. Graphs concatenate across compilation units, so row count scales with the corpus's whole prose population and a recursive comparison would make stack depth a function of how much prose the repository holds. The positional guarantee is identical either way; only the depth dependency differs.
+
+Length mismatch falls out of the walk rather than being checked separately: a right side that runs dry marks disagreement, and a right side with rows left over fails the final emptiness check."
+
+type KeyedAnnotationRowWalk {
+  rest: List<KeyedAnnotationRow>
+  agreed: Bool
 }
 
-fn source_annotation_graphs_agree(
-  left: SourceAnnotationGraph,
-  right: SourceAnnotationGraph
+fn keyed_annotation_rows_agree(
+  left: List<KeyedAnnotationRow>,
+  right: List<KeyedAnnotationRow>
 ) -> Bool {
-  annotation_rows_agree(left: left.rows, right: right.rows)
+  let walk = fold(
+    left,
+    init: KeyedAnnotationRowWalk { rest: right, agreed: true },
+    f: (acc, row) =>
+      match first(acc.rest) {
+        Absent => KeyedAnnotationRowWalk { rest: [], agreed: false }
+        Present { value: other } =>
+          KeyedAnnotationRowWalk {
+            rest: skip(acc.rest, 1),
+            agreed: acc.agreed
+              && row.subject_key == other.subject_key
+              && row.text == other.text,
+          }
+      }
+  )
+  walk.agreed && (walk.rest |> count) == 0
 }
 
 type AnnotationAttachAcc {

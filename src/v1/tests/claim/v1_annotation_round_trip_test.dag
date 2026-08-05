@@ -1,86 +1,121 @@
 module v1.tests.claim.v1_annotation_round_trip_test
 
 import std.types { Bool, Int, String, List }
-import std.occurrence_identity { OccurrenceTransport }
+import std.occurrence_identity { OccurrenceId, OccurrenceTransport }
 import std.source_annotation {
-  SourceAnnotationDebt,
+  KeyedAnnotationRow,
   SourceAnnotationGraph,
-  annotation_attachment_result_graph,
-  annotation_attachment_result_refusals,
-  source_annotation_graph_rows,
-  source_annotation_graphs_agree
+  keyed_annotation_rows_agree,
+  source_annotation_graph_rows
 }
 import v1.compiler.annotation_bind {
-  bind_annotations,
+  AdmittedSourceAnnotations,
+  admit_source_annotations,
+  keyed_annotation_rows,
   render_annotation_block,
   render_line_comment_delimiter,
-  render_subject_annotation_blocks
+  render_subject_annotation_blocks,
+  subject_annotation_blocks_for
 }
 import v1.compiler.tokenize { tokenize_artifact }
 import v1.compiler.parse { parse_with_table }
 import v1.std.core { build_newline_index, empty_intern_table, NewlineIndex }
 
-data v1_annotation_round_trip_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_round_trip_test.dag --functions w_two_blocks_survive_the_round_trip,w_a_renderer_without_the_blank_line_merges_them,w_one_block_spanning_two_lines_stays_one_block,w_identical_text_twice_stays_twice,w_authored_indentation_survives,w_an_empty_annotation_line_survives,w_round_trip_over_a_source_with_no_prose_is_not_evidence,w_the_fixture_actually_carried_prose"
+data v1_annotation_round_trip_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_round_trip_test.dag --functions w_two_blocks_survive_the_round_trip,w_a_renderer_without_the_blank_line_merges_them,w_one_block_spanning_two_lines_stays_one_block,w_identical_text_twice_stays_twice,w_authored_indentation_survives,w_an_empty_annotation_line_survives,w_a_source_with_no_prose_is_not_evidence,w_same_text_same_position_different_declaration_disagrees,w_each_declaration_keeps_its_own_prose,w_mixed_subject_rows_cannot_reach_the_renderer"
 
-data v1_annotation_round_trip_note: String = "D-C property 7: parse, render, parse — the graph survives. What agreement means is single-authored in std.source_annotation as source_annotation_graphs_agree, so this file exercises the property rather than restating it; a second definition of `agree` living here is the fork that would let the two drift.
+data v1_annotation_round_trip_note: String = "D-C property 7: parse, render, parse — the graph survives. What agreement means is single-authored in std.source_annotation as keyed_annotation_rows_agree, so this file exercises the property rather than restating it.
 
-THE PROPERTY IS OVER THE ANNOTATION CHANNEL, and the declaration text is held fixed to isolate it. That is the point rather than a shortcut: property 4 already proved on the other side that annotations do not perturb the semantic projection or the emitted bytes, so what is unproven — and what this file proves — is that the prose itself makes the trip. Re-emitting the declaration would put the whole .dag source emitter inside the oracle, and a failure would no longer say which half broke.
+AGREEMENT IS KEYED ON THE AUTHORED NAME, NOT ON THE OCCURRENCE ID, and that is a correctness fix rather than a convenience. The two graphs come from two parses with two allocators, so equal id values would mean equal allocation ORDINALS — identical prose above `data alpha` in one source and above `data beta` in another of the same shape would compare equal. There is a discriminating arm below for exactly that, because a false-positive oracle is the failure this file would otherwise be unable to see in itself.
 
-WHY A ROUND TRIP IS EASY TO GREEN VACUOUSLY, and what stops it here. A source carrying no annotations round-trips perfectly: the empty graph agrees with the empty graph, and every arm passes while nothing is exercised. So the negative control below asserts that the empty case is NOT evidence, and every positive arm asserts its fixture produced a NONEMPTY graph before comparing. Agreement alone is never the whole assertion."
+EVERY GRAPH COMES THROUGH THE PRODUCTION ADMISSION SEAM. An earlier cut read the graph straight off the attachment result, which is the bypass the authority itself warns about: that accessor returns the attached rows even when others were refused, so a renderer that introduced an unattachable annotation could drop it and the surviving subset could still satisfy the comparison. admit_source_annotations is what both v1 frontend paths use, and requiring it on BOTH the original and the rendered source is what makes a dropped annotation fail the property instead of shrinking both sides of it.
+
+THE PROPERTY IS OVER THE ANNOTATION CHANNEL, with the declaration text held fixed to isolate it. Property 4 already proved that annotations do not perturb the semantic projection or the emitted bytes; what this proves is that the prose itself makes the trip. See the scope note in the module authority for why no production authored-source renderer is wired: there is none in the tree to wire."
+
+data single_tokenize_note: String = "Tokenizes ONCE and feeds both the semantic tokens and the captures from that same artifact. Tokenizing the same source twice — once for the parser and once for the captures — is two runs of a fold that is supposed to produce one artifact, and it would mask a defect in which the two halves disagree, since each call would independently re-derive its own half."
+
+fn admitted_of(source: String) -> AdmittedSourceAnnotations {
+  let artifact = tokenize_artifact(source: source, file: "rt.dag")
+  admit_source_annotations(
+    transport: parse_with_table(
+      tokens: artifact.tokens,
+      source_indices: map_insert(empty_map(), "rt.dag", build_newline_index(file: "rt.dag", source: source)),
+      intern_table: empty_intern_table(),
+    ).occurrence_transport,
+    captures: artifact.annotations,
+    source_length: string_length(s: source)
+  )
+}
 
 fn transport_of(source: String) -> OccurrenceTransport {
+  let artifact = tokenize_artifact(source: source, file: "rt.dag")
   parse_with_table(
-    tokens: tokenize_artifact(source: source, file: "rt.dag").tokens,
+    tokens: artifact.tokens,
     source_indices: map_insert(empty_map(), "rt.dag", build_newline_index(file: "rt.dag", source: source)),
     intern_table: empty_intern_table(),
   ).occurrence_transport
 }
 
-fn graph_of(source: String) -> SourceAnnotationGraph {
-  annotation_attachment_result_graph(
-    result: bind_annotations(
-      transport: transport_of(source: source),
-      captures: tokenize_artifact(source: source, file: "rt.dag").annotations,
-      source_length: string_length(s: source)
-    )
-  )
+data admitted_rows_note: String = "The keyed projection of an ADMITTED graph, or Absent. Three distinct failures collapse to Absent here — the source was refused admission, or a subject would not resolve to a name — and every one of them must make a property arm fail rather than compare an empty list against an empty list, which is why the evidence predicate below requires nonemptiness explicitly."
+
+fn admitted_keyed_rows(source: String) -> List<KeyedAnnotationRow>? {
+  let admitted = admitted_of(source: source)
+  if (admitted.diagnostics |> count) > 0 {
+    none
+  } else {
+    keyed_annotation_rows(transport: transport_of(source: source), graph: admitted.graph)
+  }
 }
 
-fn refusal_count(source: String) -> Int {
-  annotation_attachment_result_refusals(
-    result: bind_annotations(
-      transport: transport_of(source: source),
-      captures: tokenize_artifact(source: source, file: "rt.dag").annotations,
-      source_length: string_length(s: source)
-    )
-  ) |> count
+fn admitted_row_count(source: String) -> Int {
+  match admitted_keyed_rows(source: source) {
+    Absent => 0 - 1
+    Present { value: rows } => rows |> count
+  }
 }
-
-fn row_count(source: String) -> Int {
-  source_annotation_graph_rows(graph: graph_of(source: source)) |> count
-}
-
-data declaration_note: String = "The fixed declaration every fixture hangs its prose on. One module-scope data row, because that is the population this feature exists to serve and the one the roster reaches."
 
 data declaration_text: String = "data alpha: String = \"a\"\n"
 
-data rendered_source_note: String = "Rebuilds a source from the CANONICAL rendering of a parsed graph: module header, the rendered blocks, then the same declaration. This is the render half of the round trip, and it deliberately uses render_subject_annotation_blocks — the production renderer — rather than assembling annotation lines locally, so a defect in the renderer reaches these claims instead of being papered over by test-local string building."
+data rendered_source_note: String = "Rebuilds a source from the CANONICAL rendering of an admitted graph, through subject_annotation_blocks_for and the production renderer rather than assembling annotation lines locally, so a defect in either reaches these claims. A source whose graph is refused, empty, or unresolvable renders as a marker that parses to no annotations, so the failure surfaces as a disagreement rather than as an accidentally-matching empty pair."
 
-fn rendered_source(source: String) -> String {
-  concat(
-    "module rt\n\n",
-    concat(
-      render_subject_annotation_blocks(rows: source_annotation_graph_rows(graph: graph_of(source: source))),
-      concat("\n", declaration_text)
-    )
+fn rendered_source_for(source: String, subject_name: String, decl: String) -> String {
+  let admitted = admitted_of(source: source)
+  match subject_named(source: source, name: subject_name) {
+    Absent => "module rt\n\n"
+    Present { value: subject } =>
+      match subject_annotation_blocks_for(graph: admitted.graph, subject: subject) {
+        Absent => "module rt\n\n"
+        Present { value: blocks } =>
+          concat(
+            "module rt\n\n",
+            concat(render_subject_annotation_blocks(blocks: blocks), concat("\n", decl))
+          )
+      }
+  }
+}
+
+fn subject_named(source: String, name: String) -> OccurrenceId? {
+  fold(
+    transport_of(source: source).index.entries,
+    init: none,
+    f: (acc, entry) =>
+      if entry.projection.authored_name == name { Present { value: entry.projection.occurrence } } else { acc }
   )
 }
 
-fn round_trips(source: String) -> Bool {
-  source_annotation_graphs_agree(
-    left: graph_of(source: source),
-    right: graph_of(source: rendered_source(source: source))
-  )
+data evidence_predicate_note: String = "ONE predicate for `this arm is evidence`, so no arm can pass on an empty comparison. It requires the original to be admitted with a NONEMPTY keyed projection, the rendered source to be admitted too, and the two to agree. Agreement alone is satisfied by empty-against-empty, which is precisely how a round-trip witness greens while exercising nothing."
+
+fn round_trip_is_evidence(source: String, subject_name: String) -> Bool {
+  match admitted_keyed_rows(source: source) {
+    Absent => false
+    Present { value: before } =>
+      (before |> count) > 0 &&
+        match admitted_keyed_rows(
+          source: rendered_source_for(source: source, subject_name: subject_name, decl: declaration_text)
+        ) {
+          Absent => false
+          Present { value: after } => keyed_annotation_rows_agree(left: before, right: after)
+        }
+  }
 }
 
 data two_blocks_source: String = "module rt\n\n// first block\n\n// second block\ndata alpha: String = \"a\"\n"
@@ -95,21 +130,23 @@ data empty_line_source: String = "module rt\n\n// above\n//\n// below\ndata alph
 
 data bare_source: String = "module rt\n\ndata alpha: String = \"a\"\n"
 
-data discriminating_case_note: String = "THE CASE THAT DECIDES THE RENDERER, built first. Two blocks separated by a blank line must come back as two rows. The positive arm asserts exactly two rows before and after — not merely that the graphs agree — because agreement between two identically-merged graphs would also pass, and the count is what pins which shape survived."
+data discriminating_case_note: String = "THE CASE THAT DECIDES THE RENDERER. Two blocks separated by a blank line must come back as two rows. The arm asserts the count on BOTH sides as well as agreement, because agreement between two identically-merged graphs would also pass and the count is what pins which shape survived."
 
 test fn w_two_blocks_survive_the_round_trip() -> Bool {
-  row_count(source: two_blocks_source) == 2 &&
-    row_count(source: rendered_source(source: two_blocks_source)) == 2 &&
-    round_trips(source: two_blocks_source)
+  admitted_row_count(source: two_blocks_source) == 2 &&
+    admitted_row_count(
+      source: rendered_source_for(source: two_blocks_source, subject_name: "alpha", decl: declaration_text)
+    ) == 2 &&
+    round_trip_is_evidence(source: two_blocks_source, subject_name: "alpha")
 }
 
-data blank_line_is_load_bearing_note: String = "The RED control for the arm above: a renderer that joined the blocks with a single newline instead of a blank line. It is spelled out here rather than invoked because the production renderer does not offer the wrong behaviour — so this reconstructs it, and asserts the round trip would have MERGED two authored blocks into one. Without this arm, `two blocks survive` passes for a renderer that is right and also for one that is wrong in a way no other claim in this file observes."
+data blank_line_is_load_bearing_note: String = "The RED control: a renderer joining blocks with a single newline instead of a blank line. It is reconstructed here because the production renderer does not offer the wrong behaviour, and it asserts the round trip would have MERGED two authored blocks into one. Without it, the arm above passes for a renderer that is right and for one that is wrong in a way nothing else here observes."
 
 fn merged_rendering(source: String) -> String {
   concat(
     "module rt\n\n",
     concat(
-      source_annotation_graph_rows(graph: graph_of(source: source))
+      source_annotation_graph_rows(graph: admitted_of(source: source).graph)
         |> map(row => render_annotation_block(text: row.text))
         |> join(separator: "\n"),
       concat("\n", declaration_text)
@@ -118,52 +155,101 @@ fn merged_rendering(source: String) -> String {
 }
 
 test fn w_a_renderer_without_the_blank_line_merges_them() -> Bool {
-  row_count(source: merged_rendering(source: two_blocks_source)) == 1 &&
-    !source_annotation_graphs_agree(
-      left: graph_of(source: two_blocks_source),
-      right: graph_of(source: merged_rendering(source: two_blocks_source))
-    )
+  admitted_row_count(source: merged_rendering(source: two_blocks_source)) == 1 &&
+    match admitted_keyed_rows(source: two_blocks_source) {
+      Absent => false
+      Present { value: before } =>
+        match admitted_keyed_rows(source: merged_rendering(source: two_blocks_source)) {
+          Absent => false
+          Present { value: after } => !keyed_annotation_rows_agree(left: before, right: after)
+        }
+    }
 }
 
 test fn w_one_block_spanning_two_lines_stays_one_block() -> Bool {
-  row_count(source: one_block_source) == 1 &&
-    row_count(source: rendered_source(source: one_block_source)) == 1 &&
-    round_trips(source: one_block_source)
+  admitted_row_count(source: one_block_source) == 1 &&
+    round_trip_is_evidence(source: one_block_source, subject_name: "alpha")
 }
 
-data multiplicity_note: String = "Order and multiplicity are the carrier's declared identity, so two rows with identical text must stay two rows. A renderer that deduplicated would still agree on subject and text for the survivor; only the count catches it."
-
 test fn w_identical_text_twice_stays_twice() -> Bool {
-  row_count(source: twice_source) == 2 &&
-    row_count(source: rendered_source(source: twice_source)) == 2 &&
-    round_trips(source: twice_source)
+  admitted_row_count(source: twice_source) == 2 &&
+    admitted_row_count(
+      source: rendered_source_for(source: twice_source, subject_name: "alpha", decl: declaration_text)
+    ) == 2 &&
+    round_trip_is_evidence(source: twice_source, subject_name: "alpha")
 }
 
 test fn w_authored_indentation_survives() -> Bool {
-  row_count(source: indented_source) == 1 &&
-    render_line_comment_delimiter(line: "  indented") == "//   indented" &&
-    round_trips(source: indented_source)
+  render_line_comment_delimiter(line: "  indented") == "//   indented" &&
+    round_trip_is_evidence(source: indented_source, subject_name: "alpha")
 }
-
-data empty_line_note: String = "A bare `//` inside a block. It is the case that decides the empty-line spelling: rendering it as `// ` would leave a trailing space for an editor to strip, and this asserts the bare form both renders and survives."
 
 test fn w_an_empty_annotation_line_survives() -> Bool {
   render_line_comment_delimiter(line: "") == "//" &&
-    row_count(source: empty_line_source) == 1 &&
-    round_trips(source: empty_line_source)
+    admitted_row_count(source: empty_line_source) == 1 &&
+    round_trip_is_evidence(source: empty_line_source, subject_name: "alpha")
 }
 
-data vacuous_green_note: String = "The guard against the whole file passing for the wrong reason. A source with no prose round-trips trivially — empty agrees with empty — so this asserts that agreement while proving the fixture carried NOTHING, which is what makes it evidence of nothing. Read together with the arm below it: agreement is only meaningful over a nonempty graph."
+data vacuity_note: String = "Vacuity is asserted to FAIL, not merely demonstrated. An earlier cut showed that empty agrees with empty and returned true, which proves the round trip is reflexive and says nothing about whether prose survives. The evidence predicate requires a nonempty admitted projection, so the bare fixture must NOT satisfy it — and it must still be admitted, so the failure is `no prose to carry` rather than `refused`."
 
-test fn w_round_trip_over_a_source_with_no_prose_is_not_evidence() -> Bool {
-  row_count(source: bare_source) == 0 && round_trips(source: bare_source)
+test fn w_a_source_with_no_prose_is_not_evidence() -> Bool {
+  admitted_row_count(source: bare_source) == 0 &&
+    !round_trip_is_evidence(source: bare_source, subject_name: "alpha")
 }
 
-test fn w_the_fixture_actually_carried_prose() -> Bool {
-  row_count(source: two_blocks_source) > 0 &&
-    row_count(source: one_block_source) > 0 &&
-    row_count(source: twice_source) > 0 &&
-    row_count(source: indented_source) > 0 &&
-    row_count(source: empty_line_source) > 0 &&
-    refusal_count(source: two_blocks_source) == 0
+data cross_graph_identity_note: String = "THE FALSE-POSITIVE CONTROL for the keying decision. Both sources carry the same annotation text in the same position above a single declaration; only the declaration's NAME differs. Their subjects therefore receive the same allocation ordinal in their own parses, so an id-valued comparison would report agreement. Keyed on the authored name they must disagree — and the arm also asserts each side is nonempty, so disagreement cannot come from one side being absent."
+
+data alpha_named_source: String = "module rt\n\n// shared text\ndata alpha: String = \"a\"\n"
+
+data beta_named_source: String = "module rt\n\n// shared text\ndata beta: String = \"a\"\n"
+
+test fn w_same_text_same_position_different_declaration_disagrees() -> Bool {
+  match admitted_keyed_rows(source: alpha_named_source) {
+    Absent => false
+    Present { value: a } =>
+      match admitted_keyed_rows(source: beta_named_source) {
+        Absent => false
+        Present { value: b } =>
+          (a |> count) == 1 && (b |> count) == 1 && !keyed_annotation_rows_agree(left: a, right: b)
+      }
+  }
+}
+
+data two_declaration_note: String = "The control the single-declaration fixtures could not provide: two declarations each carrying their own prose. It asserts the blocks are selected PER SUBJECT — alpha's rendering contains alpha's text and not beta's — which is what the typed one-subject carrier exists to guarantee and what a bare row list silently got wrong."
+
+data two_decl_source: String = "module rt\n\n// about alpha\ndata alpha: String = \"a\"\n\n// about beta\ndata beta: String = \"b\"\n"
+
+test fn w_each_declaration_keeps_its_own_prose() -> Bool {
+  admitted_row_count(source: two_decl_source) == 2 &&
+    rendered_source_for(source: two_decl_source, subject_name: "alpha", decl: declaration_text)
+      == "module rt\n\n// about alpha\ndata alpha: String = \"a\"\n" &&
+    rendered_source_for(source: two_decl_source, subject_name: "beta", decl: declaration_text)
+      == "module rt\n\n// about beta\ndata alpha: String = \"a\"\n"
+}
+
+data mixed_subject_note: String = "Construction refuses what the renderer's signature no longer has to trust. subject_annotation_blocks_for over a two-declaration graph yields only that subject's rows, and a subject carrying no rows yields Absent rather than an empty block list — so `render both declarations' prose above the first` has no value to construct, rather than being a misuse a caller must remember to avoid."
+
+test fn w_mixed_subject_rows_cannot_reach_the_renderer() -> Bool {
+  let graph = admitted_of(source: two_decl_source).graph
+  match subject_named(source: two_decl_source, name: "alpha") {
+    Absent => false
+    Present { value: alpha } =>
+      match subject_annotation_blocks_for(graph: graph, subject: alpha) {
+        Absent => false
+        Present { value: blocks } =>
+          (blocks.rows |> count) == 1 &&
+            render_subject_annotation_blocks(blocks: blocks) == "// about alpha" &&
+            match subject_named(source: bare_source, name: "alpha") {
+              Absent => false
+              Present { value: unannotated } =>
+                match subject_annotation_blocks_for(
+                  graph: admitted_of(source: bare_source).graph,
+                  subject: unannotated
+                ) {
+                  Absent => true
+                  Present { value: _ } => false
+                }
+            }
+      }
+  }
 }
