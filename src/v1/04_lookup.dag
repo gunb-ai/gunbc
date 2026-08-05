@@ -16,7 +16,8 @@ import v1.std.core {
   ErrorNode,
 
   CardOptional,
-  error_type
+  error_type,
+  fn_admit_callers
 }
 
 import std.algebra {
