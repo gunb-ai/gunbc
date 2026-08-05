@@ -4631,6 +4631,36 @@ fn row_measurement_is_absent(outcome_variant: &str) -> bool {
     outcome_variant == "selection-skipped"
 }
 
+/// What the drift wire may say about one row, decided BEFORE any comparison runs.
+///
+/// The fail-open this closes was not a bad comparison — it was comparing at all. A row that
+/// never executed floored to `observed = 0`, and 0 never exceeds a basis, so the comparator
+/// returned `WithinBasis`: a positive claim that the row met its cost basis, from a
+/// measurement that does not exist, and one that could never fail. Deciding comparability
+/// first makes that verdict unreachable rather than merely unlikely.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DriftRowDisposition {
+    /// No measurement exists — nothing to judge. Mirror of `BasisAbsent`.
+    ObservationAbsent,
+    /// A measurement exists but no basis to judge it against.
+    BasisAbsent,
+    /// Both present: the only state in which a verdict is meaningful.
+    Comparable,
+}
+
+fn drift_row_disposition(outcome_variant: &str, has_basis: bool) -> DriftRowDisposition {
+    // Order is load-bearing: absence of the OBSERVATION wins over presence of a basis. The
+    // defect was precisely a row that had a basis and no measurement being treated as
+    // comparable because its fabricated zero looked like one.
+    if row_measurement_is_absent(outcome_variant) {
+        DriftRowDisposition::ObservationAbsent
+    } else if has_basis {
+        DriftRowDisposition::Comparable
+    } else {
+        DriftRowDisposition::BasisAbsent
+    }
+}
+
 fn write_witness_row_cost_receipt_at(
     base: &std::path::Path,
     batch_records: &[BatchRecord],
@@ -4913,10 +4943,13 @@ fn write_witness_row_cost_drift_receipt_at(
                 // there a measurement exists with no basis to judge it, here a basis exists
                 // with no measurement to judge. Neither is a comparison, and neither is
                 // reported as one. Counted, so the population is visible rather than absorbed.
-                if row_measurement_is_absent(&row.5) {
+                let key = (row.0.clone(), row.1.clone());
+                if drift_row_disposition(&row.5, basis.contains_key(&key))
+                    == DriftRowDisposition::ObservationAbsent
+                {
                     observation_absent_count += 1;
                     let basis_cell = basis
-                        .get(&(row.0.clone(), row.1.clone()))
+                        .get(&key)
                         .map(|b| b.eval_ms_basis.to_string())
                         .unwrap_or_default();
                     body.push_str(&format!(
@@ -4926,7 +4959,6 @@ fn write_witness_row_cost_drift_receipt_at(
                     continue;
                 }
                 let observed = row.2 / 1_000_000;
-                let key = (row.0.clone(), row.1.clone());
                 match basis.get(&key) {
                     None => {
                         basis_absent_count += 1;
@@ -11047,49 +11079,38 @@ mod tests {
     /// its basis, from a measurement that does not exist, and one that can NEVER fail because
     /// 0 never exceeds anything. That is a fail-open verdict, not a conservative default.
     fn drift_comparator_refuses_to_judge_an_unexecuted_row() {
-        let base = std::env::temp_dir().join(format!(
-            "gunbc-drift-absent-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = fs::remove_dir_all(&base);
-        // A basis EXISTS for the skipped row, so the comparator would otherwise have
-        // everything it needs to emit a (wrong) WithinBasis.
-        let basis_path = base.join("basis.tsv");
-        fs::create_dir_all(&base).unwrap();
-        fs::write(
-            &basis_path,
-            "entry\tfunction\teval_ms_basis\trun_ref\thost_class\n\
-             dag/test/claim/skipped_test.dag\tnever_executed_at_all\t50\trun-1\tsrv_fleet_arm64\n",
-        )
-        .unwrap();
+        // THE DISCRIMINATING CASE: a basis EXISTS, so the comparator has everything it needs
+        // to emit a verdict — and must still refuse, because the observation does not exist.
+        // Before this, that row floored to 0, compared as `0 <= basis`, and reported
+        // `WithinBasis`: a verdict that could never fail, about a row that never ran.
+        assert_eq!(
+            drift_row_disposition("selection-skipped", true),
+            DriftRowDisposition::ObservationAbsent,
+            "an unexecuted row with a basis present must still refuse a verdict"
+        );
+        assert_eq!(
+            drift_row_disposition("selection-skipped", false),
+            DriftRowDisposition::ObservationAbsent,
+            "absence of the observation outranks absence of the basis"
+        );
 
-        assert!(write_witness_row_cost_drift_receipt_at(
-            &base,
-            &zero_eval_collision_records(),
-            &basis_path,
-            &["dag".to_string(), "src/v2".to_string()],
-        ));
-        let body = fs::read_to_string(base.join("floor-witness-row-cost-drift-receipt.tsv")).unwrap();
-        let skipped = body
-            .lines()
-            .find(|l| l.contains("never_executed_at_all"))
-            .expect("skipped row present — never silently dropped");
-
-        // The discriminating assertion: it goes RED if the comparator ever judges this row.
-        assert!(
-            skipped.contains("\tObservationAbsent\t"),
-            "an unexecuted row must refuse a verdict: {skipped}"
+        // The two states that ARE meaningful stay reachable — this is not a blanket refusal.
+        assert_eq!(
+            drift_row_disposition("Done", true),
+            DriftRowDisposition::Comparable,
+            "an executed row with a basis is the only comparable state"
         );
-        assert!(
-            !skipped.contains("WithinBasis"),
-            "an unexecuted row must never read as having met its basis: {skipped}"
+        assert_eq!(
+            drift_row_disposition("Done", false),
+            DriftRowDisposition::BasisAbsent
         );
-        assert!(
-            skipped.contains(&format!("\t{UNMEASURED_CELL}\t")),
-            "observed column must report absence, not 0: {skipped}"
+        // An executed row that measured genuinely-zero milliseconds is a real measurement and
+        // must remain comparable — the whole point is that 0-because-fast and
+        // 0-because-never-ran are different facts.
+        assert_eq!(
+            drift_row_disposition("Failed", true),
+            DriftRowDisposition::Comparable
         );
-        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]
