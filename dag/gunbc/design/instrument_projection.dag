@@ -1,0 +1,115 @@
+module gunbc.design.instrument_projection
+
+import std.types { String, Bool, Int, List }
+import std.integer { PositiveInt }
+import gunbc.design.salience {
+  SalienceRole, SalienceAssignment, SalienceGround, SalienceSupporting,
+  SalienceFocal, SalienceCritical, FocalAdmission, region_focal_admission,
+}
+import gunbc.design.instrument_camera {
+  ProgramCamera, FocusSubject, NoSubjectSelected, FinishLineFocused,
+  focus_subject_key, focus_finish_line,
+}
+import gunbc.v1_deletion_plan { V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_key }
+
+data projection_note: String = "THE PROJECTION THAT DECIDES A ROLE FROM REAL FACTS, firing gunbc.design.salience salience_note's declared dissolve-on. Until this landed, every SalienceRole in the corpus arrived as a hand-supplied input, so the budget table, the focal-admission fold, and the emission envelope were all lawful over roles NOBODY DERIVED — the section 6 coverage-by-illusion tier, one layer up from an inert lens. What decides a role here is the camera's selection and the region a subject sits in, and nothing else: there is no per-subject importance field, no authored priority, and no way for a caller to hand a role in. The four rules are exactly the operator's: the selected subject is Focal, the subjects sharing its region are Supporting, everything outside that region is Ground, and an active refusal needing action is Critical."
+
+data subject_placement_note: String = "A subject is a KEY and the REGION it occupies — the two facts the projection needs and no more. It deliberately does not carry the subject's claim, status, or acceptance: the projection decides visual energy, and a projection that could read a claim could make energy mean truth, which is precisely the fabricated affordance the register forbids."
+
+type SubjectPlacement {
+  key: String
+  region: String
+}
+
+data refusal_is_aggregated_note: String = "AN ACTIVE REFUSAL IS ONE CRITICAL SUBJECT, NOT ONE PER REFUSAL (operator directive). Critical is the interrupt channel — strong chroma, admissible emission, sharp motion — so granting it per refusal would let a five-refusal state light five objects and destroy the calm field the register's whole thesis rests on. The count travels as data on the single aggregate so the surface can say how many without spending five energy budgets. NoActiveRefusal is a variant rather than a zero count because 'nothing is refusing' and 'something is refusing, zero times' are different states; the count is a std.integer PositiveInt so the second one has no literal that constructs it, rather than a guard that catches it after the fact."
+
+type RefusalAggregate
+  = NoActiveRefusal
+  | ActiveRefusals { refused_count: PositiveInt }
+
+fn refusal_count(r: RefusalAggregate) -> Int {
+  match r {
+    NoActiveRefusal => 0
+    ActiveRefusals { refused_count } => refused_count
+  }
+}
+
+data refusal_subject_key: String = "active-refusals"
+
+fn subject_region(placements: List<SubjectPlacement>, key: String) -> String {
+  fold(placements, init: "", f: (acc, p) => if p.key == key { p.region } else { acc })
+}
+
+data focal_region_note: String = "With nothing selected there is no focal region, so no subject can be Supporting-by-sibling and the whole field reads Ground. That is the correct still state rather than a degenerate one: the instrument opens with the energy unspent, and the first selection is what spends it."
+
+fn focal_region(camera: ProgramCamera, placements: List<SubjectPlacement>) -> String {
+  match camera.focus {
+    NoSubjectSelected => ""
+    FinishLineFocused { line_key } => subject_region(placements: placements, key: line_key)
+  }
+}
+
+fn placement_role(p: SubjectPlacement, focus_key: String, focus_region: String) -> SalienceRole {
+  if p.key == focus_key {
+    SalienceFocal
+  } else if focus_region != "" && p.region == focus_region {
+    SalienceSupporting
+  } else {
+    SalienceGround
+  }
+}
+
+fn refusal_assignments(refusal: RefusalAggregate) -> List<SalienceAssignment> {
+  match refusal {
+    NoActiveRefusal => []
+    ActiveRefusals { refused_count } => [
+      SalienceAssignment { subject: refusal_subject_key, role: SalienceCritical },
+    ]
+  }
+}
+
+fn project_salience(
+  camera: ProgramCamera,
+  placements: List<SubjectPlacement>,
+  refusal: RefusalAggregate,
+) -> List<SalienceAssignment> {
+  let focus_key = focus_subject_key(f: camera.focus)
+  let region = focal_region(camera: camera, placements: placements)
+  (placements |> map(p => SalienceAssignment {
+    subject: p.key,
+    role: placement_role(p: p, focus_key: focus_key, focus_region: region),
+  }))
+  |> concat(refusal_assignments(refusal: refusal))
+}
+
+data admission_is_derived_not_asserted_note: String = "The at-most-one-Focal law is not restated here. project_salience produces assignments and region_focal_admission judges them, so the projection is checked by the SAME fold every hand-authored region is checked by — one authority, asked about derived rows instead of authored ones. A witness that runs the projection through it is therefore a real test of the projection, not a second copy of the rule."
+
+fn project_admission(
+  camera: ProgramCamera,
+  placements: List<SubjectPlacement>,
+  refusal: RefusalAggregate,
+) -> FocalAdmission {
+  region_focal_admission(
+    region: focal_region(camera: camera, placements: placements),
+    assignments: project_salience(camera: camera, placements: placements, refusal: refusal),
+  )
+}
+
+data finish_line_region: String = "v1-finish-lines"
+
+data finish_line_placements_note: String = "The instrument's subjects are V0's four v1-deletion finish lines, read from gunbc.v1_deletion_plan rather than restated — so a fifth finish line appears in the instrument by being declared once, and a renamed one cannot drift out of alignment with the roadmap node it binds to. They share one region because they are one field of peers: selecting any of them makes the other three its siblings."
+
+fn finish_line_placements() -> List<SubjectPlacement> {
+  v1_exit_finish_lines() |> map(s => SubjectPlacement {
+    key: v1_finish_line_key(l: s.line),
+    region: finish_line_region,
+  })
+}
+
+fn project_finish_line_salience(camera: ProgramCamera, refusal: RefusalAggregate) -> List<SalienceAssignment> {
+  project_salience(camera: camera, placements: finish_line_placements(), refusal: refusal)
+}
+
+fn assignment_role_for(assignments: List<SalienceAssignment>, subject: String) -> SalienceRole {
+  fold(assignments, init: SalienceGround, f: (acc, a) => if a.subject == subject { a.role } else { acc })
+}
