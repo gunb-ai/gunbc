@@ -13,8 +13,8 @@ fn build_job_step_index_running_native_controls() -> Int? {
       Absent => match step {
         RunStep { name: _, id: _, run: cmd, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
           if string_contains(s: cmd, pattern: "'test'")
-            && string_contains(s: cmd, pattern: "'claim_executor'")
-            && string_contains(s: cmd, pattern: "'floor_evidence::'") {
+            && string_contains(s: cmd, pattern: "'v1-floor-evidence'")
+            && string_contains(s: cmd, pattern: "'--lib'") {
             { idx: acc.idx, found: Present { value: acc.idx } }
           } else {
             { idx: acc.idx + 1, found: none }
