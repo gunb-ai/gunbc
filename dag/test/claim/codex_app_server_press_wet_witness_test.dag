@@ -2,30 +2,57 @@ module test.claim.codex_app_server_press_wet_witness_test
 
 import extdeps.filesystem.filesystem_io
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.types { Bool, String, FilePath }
+import std.types { Bool, String, FilePath, List }
 import gunbc.package_delivery {
   codex_runtime_lock_path,
   codex_runtime_manifest_path,
   materialize_codex_runtime_bundle,
   CodexRuntimeMaterialized,
 }
-import gunbc.provider_interface_binding {
-  observe_bind_codex_app_server_stdio,
-  ProviderInterfaceResolved,
-  RequiredProviderInterfaceUnavailable,
+import gunbc.codex_app_server_press {
+  press_codex_app_server_for_bundle,
+  codex_press_specimen_node_identity,
+  codex_press_outcome_wire_status,
+  CodexPressTurnStarted,
+  CodexPressLoginRequired,
+  CodexPressUnavailable,
+  CodexPressRefused,
+  CodexPressRawFrame,
 }
 import gunbc.codex_runtime_bundle { codex_bundle_executable_path }
 import extdeps.shell
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data witness_note: String = "WET: materialize content-addressed Codex runtime and bind via successful app-server initialize (userAgent result). Held-open account/read+rateLimits trip is scaffolded in gunbc.codex_app_server_press.observe_codex_press_account_trip for the next wet enrollment. Excluded from hermetic discovery."
+data witness_note: String = "WET: materialize content-addressed Codex runtime, then press through held-open initialize → account/read → account/rateLimits/read. Accepts turn_started (account standing ok) OR typed login_required / quota press_refused. Receipt frames must stay redacted (no email/token bytes). Excluded from hermetic discovery."
 
 fn committed_codex_lock_text() -> String {
   filesystem_read(path: codex_runtime_lock_path as String).content
 }
 
-test fn press_initialize_binding_succeeds_on_released_bundle() -> Bool {
+fn frames_are_redacted(frames: List<CodexPressRawFrame>) -> Bool {
+  all(frames, f => {
+    let body = f.body
+    body.contains("@") == false
+      && body.contains("access_token") == false
+      && body.contains("refresh_token") == false
+      && body.contains("email") == false
+  })
+}
+
+fn press_account_trip_outcome_is_attributable(status: String, reason: String) -> Bool {
+  if status == "turn_started" {
+    true
+  } else if status == "login_required" {
+    true
+  } else if status == "press_refused" {
+    reason.contains("quota") || reason.contains("incomplete") || reason.contains("initialize")
+  } else {
+    false
+  }
+}
+
+test fn press_account_trip_yields_turn_or_typed_refusal_with_redacted_frames() -> Bool {
   match materialize_codex_runtime_bundle(
     lock_text: committed_codex_lock_text(),
     manifest_src: codex_runtime_manifest_path as FilePath,
@@ -33,13 +60,39 @@ test fn press_initialize_binding_succeeds_on_released_bundle() -> Bool {
   ) {
     CodexRuntimeMaterialized { bundle } => {
       let path = codex_bundle_executable_path(bundle: bundle)
-      let present = shell.Test.IsFile(path: path)
-      if present.is_file == false {
+      if shell.Test.IsFile(path: path).is_file == false {
         false
       } else {
-        match observe_bind_codex_app_server_stdio(bundle: bundle) {
-          ProviderInterfaceResolved { binding: _ } => true
-          RequiredProviderInterfaceUnavailable { interface: _, reason: _ } => false
+        match press_codex_app_server_for_bundle(
+          bundle: bundle,
+          node_identity: codex_press_specimen_node_identity,
+          attempt_key: "wet-account-trip-1",
+          turn_key: "wet-account-trip-1-turn-1",
+          workspace_root: "/tmp" as FilePath,
+          head_sha: "wet",
+        ) {
+          CodexPressTurnStarted { receipt } =>
+            codex_press_outcome_wire_status(
+              outcome: CodexPressTurnStarted { receipt: receipt },
+            ) == "turn_started"
+              && frames_are_redacted(frames: receipt.frames)
+              && any(receipt.frames, f => (f.body as String).contains("account_read_ok"))
+          CodexPressLoginRequired { reason, frames } =>
+            codex_press_outcome_wire_status(
+              outcome: CodexPressLoginRequired { reason: reason, frames: frames },
+            ) == "login_required"
+              && frames_are_redacted(frames: frames)
+          CodexPressRefused { reason, frames } =>
+            press_account_trip_outcome_is_attributable(
+              status: "press_refused",
+              reason: reason as String,
+            )
+              && frames_are_redacted(frames: frames)
+              && (
+                (reason as String).contains("quota")
+                  || (reason as String).contains("incomplete")
+              )
+          CodexPressUnavailable { reason: _ } => false
         }
       }
     }

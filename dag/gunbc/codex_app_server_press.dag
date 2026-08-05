@@ -169,24 +169,24 @@ data codex_press_frame_redaction_note: String = "Raw NDJSON frames retained for 
 
 fn codex_press_account_trip_script(executable: FilePath) -> String {
   concat(
-    "set -e; FIFO=$(mktemp -u); OUT=$(mktemp); ERR=$(mktemp); mkfifo \"$FIFO\"; '",
+    "REQ=$(mktemp); OUT=$(mktemp); ",
     concat(
-      executable as String,
+      "printf '%s\\n' '",
       concat(
-        "' app-server --stdio <\"$FIFO\" >\"$OUT\" 2>\"$ERR\" & PID=$!; exec 3>\"$FIFO\"; ",
+        codex_app_server_initialize_request_line() as String,
         concat(
-          "printf '%s\\n' '",
+          "' >\"$REQ\"; printf '%s\\n' '",
           concat(
-            codex_app_server_initialize_request_line() as String,
+            codex_app_server_account_read_request_line() as String,
             concat(
-              "' >&3; sleep 1; printf '%s\\n' '",
+              "' >>\"$REQ\"; printf '%s\\n' '",
               concat(
-                codex_app_server_account_read_request_line() as String,
+                codex_app_server_rate_limits_read_request_line() as String,
                 concat(
-                  "' >&3; sleep 1; printf '%s\\n' '",
+                  "' >>\"$REQ\"; (cat \"$REQ\"; sleep 3) | '",
                   concat(
-                    codex_app_server_rate_limits_read_request_line() as String,
-                    "' >&3; sleep 2; exec 3>&-; wait $PID || true; cat \"$OUT\"; rm -f \"$FIFO\" \"$OUT\" \"$ERR\"",
+                    executable as String,
+                    "' app-server --stdio >\"$OUT\" 2>/dev/null; cat \"$OUT\"; rm -f \"$REQ\" \"$OUT\"",
                   ),
                 ),
               ),
@@ -199,16 +199,16 @@ fn codex_press_account_trip_script(executable: FilePath) -> String {
 }
 
 fn redact_press_stdout_for_receipt(stdout: String) -> String {
-  if stdout.contains("userAgent") {
-    if stdout.contains("rate_limit_reached") {
-      "initialize_ok; account_read_ok; rate_limits_quota_reached"
-    } else if stdout.contains("\"account\"") {
-      "initialize_ok; account_read_ok; rate_limits_observed"
-    } else {
-      "initialize_ok; account_or_limits_incomplete"
-    }
-  } else {
+  if stdout.contains("userAgent") == false {
     "initialize_missing"
+  } else if stdout.contains("requiresOpenaiAuth") || stdout.contains("authentication required") {
+    "initialize_ok; login_required"
+  } else if stdout.contains("rate_limit_reached") {
+    "initialize_ok; account_read_ok; rate_limits_quota_reached"
+  } else if stdout.contains("\"account\"") {
+    "initialize_ok; account_read_ok; rate_limits_observed"
+  } else {
+    "initialize_ok; account_or_limits_incomplete"
   }
 }
 
@@ -244,7 +244,7 @@ fn observe_codex_press_account_trip(
       reason: "codex app-server trip missing initialize result" as NonEmptyStr,
       frames: frames,
     }
-  } else if (run.stdout as String).contains("login") && !(run.stdout as String).contains("\"account\"") {
+  } else if summary.contains("login_required") {
     CodexPressLoginRequired {
       reason: "codex app-server account trip requires login" as NonEmptyStr,
       frames: frames,
@@ -293,25 +293,12 @@ fn press_codex_app_server_for_bundle(
     CodexPressBindingUnavailable { reason } =>
       CodexPressUnavailable { reason: reason }
     CodexPressStartAdmitted { start, itinerary: _ } =>
-      CodexPressTurnStarted {
-        receipt: CodexPressTerminalReceipt {
-          node_identity: start.node_identity,
-          attempt_key: start.attempt_key,
-          turn_key: start.turn_key,
-          head_sha: start.head_sha,
-          frames: [
-            CodexPressRawFrame {
-              direction: "client_to_server" as NonEmptyStr,
-              body: "initialize",
-            },
-            CodexPressRawFrame {
-              direction: "bind_observation" as NonEmptyStr,
-              body: "initialize observed during observe_bind_codex_app_server_stdio",
-            },
-          ],
-          provider_thread_id: none,
-          provider_turn_id: none,
-        },
-      }
+      observe_codex_press_account_trip(
+        binding: start.binding,
+        node_identity: start.node_identity,
+        attempt_key: start.attempt_key,
+        turn_key: start.turn_key,
+        head_sha: start.head_sha,
+      )
   }
 }

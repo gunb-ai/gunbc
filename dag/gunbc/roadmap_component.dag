@@ -136,6 +136,7 @@ fn dispatch_caption_set() -> List<String> {
     dispatch_press_login_required_caption,
     dispatch_press_unavailable_caption,
     dispatch_press_refused_caption,
+    dispatch_press_quota_exhausted_caption,
   ])
 }
 
@@ -161,6 +162,7 @@ data dispatch_press_turn_started_caption: String = "turn started"
 data dispatch_press_login_required_caption: String = "login required"
 data dispatch_press_unavailable_caption: String = "unavailable"
 data dispatch_press_refused_caption: String = "refused"
+data dispatch_press_quota_exhausted_caption: String = "quota exhausted"
 
 fn dispatch_ok_caption_for_status(status: String) -> String {
   if status == "turn_started" {
@@ -912,6 +914,9 @@ fn dispatch_terminal_apply_body() -> TsStmt {
       left: js_b_member(name: "textContent"),
       op: "=",
       right: ts_cond(
+        test: js_j_member(name: "caption"),
+        consequent: js_j_member(name: "caption"),
+        alternate: ts_cond(
         test: ts_binop(
           left: ts_ident(name: "s"),
           op: "===",
@@ -965,6 +970,7 @@ fn dispatch_terminal_apply_body() -> TsStmt {
             ),
           ),
         ),
+      ),
       ),
     )),
     js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_requested)),

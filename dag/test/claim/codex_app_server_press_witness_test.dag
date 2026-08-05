@@ -23,7 +23,11 @@ import gunbc.codex_app_server_press {
   codex_press_method_itinerary,
   codex_press_specimen_node_identity,
   codex_press_outcome_wire_status,
+  codex_press_outcome_operator_caption,
+  redact_press_stdout_for_receipt,
   CodexPressTurnStarted,
+  CodexPressLoginRequired,
+  CodexPressRefused,
   CodexPressTerminalReceipt,
 }
 import gunbc.provider_turn_adjudication {
@@ -206,4 +210,40 @@ test fn press_outcome_wire_status_is_not_dispatch_accepted() -> Bool {
       status == "turn_started" && status != "accepted" && status != "spawned"
     }
   }
+}
+
+test fn account_trip_redaction_classifies_login_quota_and_ok() -> Bool {
+  let login = redact_press_stdout_for_receipt(
+    stdout: "{\"result\":{\"userAgent\":\"x\"}}{\"result\":{\"account\":null,\"requiresOpenaiAuth\":true}}",
+  )
+  let quota = redact_press_stdout_for_receipt(
+    stdout: "{\"result\":{\"userAgent\":\"x\"}}{\"result\":{\"account\":{}}}rate_limit_reached",
+  )
+  let ok = redact_press_stdout_for_receipt(
+    stdout: "{\"result\":{\"userAgent\":\"x\"}}{\"result\":{\"account\":{\"type\":\"chatgpt\"}}}",
+  )
+  let missing = redact_press_stdout_for_receipt(stdout: "{\"error\":\"boom\"}")
+  login == "initialize_ok; login_required"
+    && quota == "initialize_ok; account_read_ok; rate_limits_quota_reached"
+    && ok == "initialize_ok; account_read_ok; rate_limits_observed"
+    && missing == "initialize_missing"
+}
+
+test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
+  let outcome = CodexPressRefused {
+    reason: "codex quota exhausted at account/rateLimits/read" as NonEmptyStr,
+    frames: [],
+  }
+  codex_press_outcome_wire_status(outcome: outcome) == "press_refused"
+    && codex_press_outcome_operator_caption(outcome: outcome) == "quota exhausted"
+    && codex_press_outcome_wire_status(outcome: outcome) != "accepted"
+}
+
+test fn login_required_wire_status_is_not_accepted() -> Bool {
+  let outcome = CodexPressLoginRequired {
+    reason: "codex app-server account trip requires login" as NonEmptyStr,
+    frames: [],
+  }
+  codex_press_outcome_wire_status(outcome: outcome) == "login_required"
+    && codex_press_outcome_wire_status(outcome: outcome) != "accepted"
 }
