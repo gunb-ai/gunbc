@@ -441,13 +441,23 @@ fn program_sequential_depth_map(
   )
 }
 
+fn program_line_scope_ids(
+  reverse_adj: Map<String, List<String>>,
+  lines: List<V1FinishLineSpec>,
+) -> List<String> {
+  program_dedupe_ids(
+    fold(lines, init: [], f: (acc, l) => concat(acc,
+      program_ancestors_or_self(reverse_adj: reverse_adj, id: l.node as String))))
+}
+
+data program_top_level_remaining_scope_note: String = "Top-level V1DeletionProgramView.remaining counts only the finish-line ancestor closure (program_line_scope_ids), matching pre-index behavior: front-gate ancestor nodes outside that closure may appear in scoped standings for front/line views but do not inflate the program-level remaining shape. Union scope (lines plus fronts) bounds standings, depth, and headline derivation only."
+
 fn program_union_scope_ids(
   reverse_adj: Map<String, List<String>>,
   lines: List<V1FinishLineSpec>,
   fronts: List<ConvergenceFrontSpec>,
 ) -> List<String> {
-  let line_scope = fold(lines, init: [], f: (acc, l) => concat(acc,
-    program_ancestors_or_self(reverse_adj: reverse_adj, id: l.node as String)))
+  let line_scope = program_line_scope_ids(reverse_adj: reverse_adj, lines: lines)
   let front_scope = fold(fronts, init: [], f: (acc, fs) => concat(acc,
     fold(fs.gates, init: [], f: (gate_acc, g) => concat(gate_acc,
       program_ancestors_or_self(reverse_adj: reverse_adj, id: g as String)))))
@@ -653,6 +663,8 @@ fn program_view(
     let in_flight_map = program_member_map(ids: in_flight)
     let scope_ids = program_union_scope_ids(reverse_adj: reverse_adj, lines: lines, fronts: fronts)
     let scope_map = program_member_map(ids: scope_ids)
+    let line_scope_ids = program_line_scope_ids(reverse_adj: reverse_adj, lines: lines)
+    let line_scope_map = program_member_map(ids: line_scope_ids)
     let depth_map = program_sequential_depth_map(
       ids: scope_ids,
       parent_index: parent_index,
@@ -686,7 +698,7 @@ fn program_view(
       standings: standings,
       depth_map: depth_map,
       headlines: headlines))
-    let program_scope_map = program_member_map(ids: scope_ids)
+    let program_scope_map = line_scope_map
     ProgramViewDerived { view: V1DeletionProgramView {
       finish_lines: line_views,
       fronts: front_views,
