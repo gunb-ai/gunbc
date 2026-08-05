@@ -7,7 +7,12 @@ import std.realization_schedule {
   NoPreWalkExecution,
   runnable_resource_profile_negligible
 }
-import gunbc.ci_materialization { FloorFinalization }
+import gunbc.ci_materialization {
+  FloorFinalization,
+  ResolveObligation,
+  ResolveObligationSubject,
+  CompileAnchorWholeTree,
+}
 import v2.std.collection { List }
 import std.types { Int }
 
@@ -28,7 +33,15 @@ fn gunbc_ci_floor_plan() -> WalkPlan<FloorFinalization> {
     pre_walk_execution: NoPreWalkExecution {},
     batches: [[budget_red_control_claim()]],
     finalization: FloorFinalization {
-      declared_resolve_count: 1,
+      expected_resolve_obligations: [
+        ResolveObligation {
+          identity: CompileAnchorWholeTree,
+          subject: ResolveObligationSubject {
+            entry: "src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag",
+            function: "falsifier_green_control_holds",
+          },
+        },
+      ],
     },
     on_success_stages: [],
     ordinary_budget: none,
