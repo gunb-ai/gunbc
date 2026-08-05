@@ -523,9 +523,9 @@ data gunbc_ci_step_timeout_measure_grounding_disposition: Disposition = Scaffold
 
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
-data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
+data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 20
 
-data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests compile gate step budget (operator ruling 2026-08-01, PR #7533 receipt): cargo check -p v1-compiler-tests --tests exceeded the 5m aux cap on cold native-cache hosts (run 30692671758 @ 6f20329: srv1-05, step killed at 5m00s while still compiling deps; warm-cache runs complete in ~50s). Raised 10m -> 15m after run 30719671973 @ 6945446401 (srv1-01, cache hit): step killed at 10m00s while Checking v1-compiler-tests — deps consumed the full prior budget. 15m is the cold-host envelope after that receipt — not RustMonolithGate re-enrollment."
+data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests compile gate step budget (operator ruling 2026-08-01, PR #7533 receipt): cargo check -p v1-compiler-tests --tests exceeded the 5m aux cap on cold native-cache hosts (run 30692671758 @ 6f20329: srv1-05, step killed at 5m00s while still compiling deps; warm-cache runs complete in ~50s). Raised 10m -> 15m after run 30719671973 @ 6945446401 (srv1-01, cache hit): step killed at 10m00s while Checking v1-compiler-tests — deps consumed the full prior budget. Raised 15m -> 20m after run 30973970516 @ 9048c039d59 (#7785, srv1-02): step killed at 15m00s while Checking v1-compiler after ~8m deps + ~7m crate check with no compiler diagnostic — warm/local check still finishes in ~1m, so this remains the cold-native-cache envelope, not RustMonolithGate re-enrollment."
 
 data gunbc_ci_floor_evidence_native_controls_timeout_minutes: Int = 15
 
