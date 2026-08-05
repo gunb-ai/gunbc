@@ -1,0 +1,249 @@
+module test.claim.source_annotation_attachment_witness
+
+import std.types { Bool, Int, String, SourceSpan, List }
+import std.occurrence_identity { OccurrenceId }
+import std.source_annotation {
+  AnnotationSubject,
+  AnnotationAttachmentRefusal,
+  BodyGrainNotModeled,
+  LeadingAfterLineIndent,
+  NormalizedAnnotationCapture,
+  SourceAnnotationGraph,
+  TrailingAfterSemanticToken,
+  TrailingNotModeled,
+  UnattachedAtScopeEnd,
+  attach_annotations,
+  annotation_attachment_result_graph,
+  annotation_attachment_result_refusals,
+  source_annotation_graph_rows
+}
+
+data source_annotation_attachment_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/debug/claim_batch --source-root dag --entry dag/test/claim/source_annotation_attachment_witness_test.dag --functions w_leading_block_attaches_to_the_following_subject,w_consecutive_leading_captures_merge_into_one_block,w_distinct_subjects_produce_distinct_rows,w_body_grain_capture_refuses_rather_than_attaching_to_the_next_subject,w_body_grain_capture_would_otherwise_have_attached,w_trailing_capture_refuses_and_lands_no_row,w_capture_after_the_last_subject_refuses_unattached,w_attachment_refers_to_supplied_identities_and_mints_none,w_no_captures_yields_an_empty_graph_and_no_refusals"
+
+data source_annotation_attachment_note: String = "Exercises attach_annotations directly on a synthetic roster, so the attachment RULE is proven independently of either tokenizer. That separation is the point: a test that reached the fold only through the v1 lexer would pass on a fold that was wrong in a way the .dag grammar happens never to produce, and the same fold is what the v2 realization will call.
+
+The roster is synthetic offsets rather than parsed source because attachment consumes exactly two facts per subject — an identity and a span — and inventing them directly is what lets the body-grain and scope-end cases be constructed at all. A real .dag file cannot easily be made to exhibit an unattached-at-scope-end capture beside a body-grain capture beside a trailing one in one pass."
+
+data fixture_note: String = "One synthetic source laid out so every arm of the rule fires exactly once.
+
+  10..20   alpha    leading, before subject f      -> attaches to f
+  30..40   beta     leading, before subject f      -> merges into the alpha block
+  100..200          subject f
+  150..160 inner    leading, INSIDE f              -> BodyGrainNotModeled
+  210..220 gamma    leading, between f and g       -> attaches to g
+  250..260 tail     trailing                       -> TrailingNotModeled
+  300..400          subject g
+  500..510 orphan   leading, after every subject   -> UnattachedAtScopeEnd
+
+`inner` is the load-bearing one. Its nearest FOLLOWING subject is g, so a rule that checked proximity without checking containment would silently file a function's body commentary against the next unrelated declaration — a plausible wrong answer rather than a refusal."
+
+fn probe_span(start: Int, end: Int) -> SourceSpan {
+  SourceSpan { file: "probe.dag", start: start, end: end }
+}
+
+fn subject_f() -> AnnotationSubject {
+  AnnotationSubject { occurrence: OccurrenceId { value: 7 }, span: probe_span(start: 100, end: 200) }
+}
+
+fn subject_g() -> AnnotationSubject {
+  AnnotationSubject { occurrence: OccurrenceId { value: 9 }, span: probe_span(start: 300, end: 400) }
+}
+
+fn subjects() -> List<AnnotationSubject> {
+  [subject_f(), subject_g()]
+}
+
+fn leading(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
+  NormalizedAnnotationCapture {
+    text: text,
+    origin: probe_span(start: start, end: end),
+    placement: LeadingAfterLineIndent,
+    preceded_by_blank_line: false,
+  }
+}
+
+fn leading_after_blank(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
+  NormalizedAnnotationCapture {
+    text: text,
+    origin: probe_span(start: start, end: end),
+    placement: LeadingAfterLineIndent,
+    preceded_by_blank_line: true,
+  }
+}
+
+fn trailing(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
+  NormalizedAnnotationCapture {
+    text: text,
+    origin: probe_span(start: start, end: end),
+    placement: TrailingAfterSemanticToken,
+    preceded_by_blank_line: false,
+  }
+}
+
+fn captures() -> List<NormalizedAnnotationCapture> {
+  [
+    leading(text: "alpha", start: 10, end: 20),
+    leading(text: "beta", start: 30, end: 40),
+    leading(text: "inner", start: 150, end: 160),
+    leading(text: "gamma", start: 210, end: 220),
+    trailing(text: "tail", start: 250, end: 260),
+    leading(text: "orphan", start: 500, end: 510),
+  ]
+}
+
+fn attached_graph() -> SourceAnnotationGraph {
+  annotation_attachment_result_graph(
+    result: attach_annotations(captures: captures(), subjects: subjects())
+  )
+}
+
+fn attached_refusals() -> List<AnnotationAttachmentRefusal> {
+  annotation_attachment_result_refusals(
+    result: attach_annotations(captures: captures(), subjects: subjects())
+  )
+}
+
+data row_rendering_note: String = "Rows render to one delimited string rather than being indexed, because equality against a complete rendering fails on any extra, missing, reordered, or mis-merged row at once. Indexing element by element asserts only what the author remembered to index, and the failure this whole fold could plausibly produce is a row that should not be there."
+
+fn render_rows(graph: SourceAnnotationGraph) -> String {
+  fold(
+    source_annotation_graph_rows(graph: graph),
+    init: "",
+    f: (acc, row) => concat(acc, concat("|", concat(to_string(row.subject.value), concat(":", row.text))))
+  )
+}
+
+fn row_count(graph: SourceAnnotationGraph) -> Int {
+  source_annotation_graph_rows(graph: graph) |> count
+}
+
+fn count_body_grain(refusals: List<AnnotationAttachmentRefusal>) -> Int {
+  fold(
+    refusals,
+    init: 0,
+    f: (n, refusal) =>
+      match refusal {
+        BodyGrainNotModeled { origin: _ } => n + 1
+        TrailingNotModeled { origin: _ } => n
+        UnattachedAtScopeEnd { origin: _ } => n
+      }
+  )
+}
+
+fn count_trailing(refusals: List<AnnotationAttachmentRefusal>) -> Int {
+  fold(
+    refusals,
+    init: 0,
+    f: (n, refusal) =>
+      match refusal {
+        BodyGrainNotModeled { origin: _ } => n
+        TrailingNotModeled { origin: _ } => n + 1
+        UnattachedAtScopeEnd { origin: _ } => n
+      }
+  )
+}
+
+fn count_unattached(refusals: List<AnnotationAttachmentRefusal>) -> Int {
+  fold(
+    refusals,
+    init: 0,
+    f: (n, refusal) =>
+      match refusal {
+        BodyGrainNotModeled { origin: _ } => n
+        TrailingNotModeled { origin: _ } => n
+        UnattachedAtScopeEnd { origin: _ } => n + 1
+      }
+  )
+}
+
+test fn w_leading_block_attaches_to_the_following_subject() -> Bool {
+  render_rows(graph: attached_graph()) == "|7:alpha\nbeta|9:gamma"
+}
+
+test fn w_consecutive_leading_captures_merge_into_one_block() -> Bool {
+  let single = annotation_attachment_result_graph(
+    result: attach_annotations(
+      captures: [leading(text: "alpha", start: 10, end: 20), leading(text: "beta", start: 30, end: 40)],
+      subjects: subjects()
+    )
+  )
+  row_count(graph: single) == 1 && render_rows(graph: single) == "|7:alpha\nbeta"
+}
+
+test fn w_distinct_subjects_produce_distinct_rows() -> Bool {
+  row_count(graph: attached_graph()) == 2
+}
+
+test fn w_body_grain_capture_refuses_rather_than_attaching_to_the_next_subject() -> Bool {
+  count_body_grain(refusals: attached_refusals()) == 1 &&
+    render_rows(graph: attached_graph()) == "|7:alpha\nbeta|9:gamma"
+}
+
+data body_grain_control_note: String = "The discriminating control for the body-grain refusal. It reruns the SAME capture against a roster with f removed, so the capture is no longer inside anything and the nearest following subject is g. It then attaches. That proves the refusal above is produced by the containment rule and not by the capture being dropped, mis-parsed, or filtered somewhere upstream — the two are indistinguishable from the refusal count alone."
+
+test fn w_body_grain_capture_would_otherwise_have_attached() -> Bool {
+  let result = attach_annotations(
+    captures: [leading(text: "inner", start: 150, end: 160)],
+    subjects: [subject_g()]
+  )
+  render_rows(graph: annotation_attachment_result_graph(result: result)) == "|9:inner" &&
+    count_body_grain(refusals: annotation_attachment_result_refusals(result: result)) == 0
+}
+
+test fn w_trailing_capture_refuses_and_lands_no_row() -> Bool {
+  let result = attach_annotations(
+    captures: [trailing(text: "tail", start: 250, end: 260)],
+    subjects: subjects()
+  )
+  row_count(graph: annotation_attachment_result_graph(result: result)) == 0 &&
+    count_trailing(refusals: annotation_attachment_result_refusals(result: result)) == 1
+}
+
+test fn w_capture_after_the_last_subject_refuses_unattached() -> Bool {
+  count_unattached(refusals: attached_refusals()) == 1 &&
+    count_trailing(refusals: attached_refusals()) == 1
+}
+
+data identity_conservation_note: String = "Attachment REFERS to occurrence identities and never mints one, which is the property that keeps a comment edit from shifting declaration identities here and in every later-parsed module. There is no allocator in scope for the fold to draw from, so this asserts the observable consequence: every subject appearing in the output is one that was supplied on the way in."
+
+test fn w_attachment_refers_to_supplied_identities_and_mints_none() -> Bool {
+  fold(
+    source_annotation_graph_rows(graph: attached_graph()),
+    init: true,
+    f: (ok, row) => ok && (row.subject.value == 7 || row.subject.value == 9)
+  )
+}
+
+test fn w_no_captures_yields_an_empty_graph_and_no_refusals() -> Bool {
+  let result = attach_annotations(captures: [], subjects: subjects())
+  row_count(graph: annotation_attachment_result_graph(result: result)) == 0 &&
+    (annotation_attachment_result_refusals(result: result) |> count) == 0
+}
+
+data blank_line_split_note: String = "THE discriminating pair for block adjacency. Both cases send two leading captures resolving to the SAME subject, and differ only in whether the second was preceded by a blank line. Adjacent captures merge into one row; separated captures stay two rows.
+
+Without the second claim the model would be untested exactly where it was wrong: same-subject-only grouping passes the first case and silently fails the second, producing one row where the author wrote two blocks. Asserting the rendered rows rather than a count is what makes the failure legible — a merge shows up as `alpha\nbeta` in a single row instead of two rows."
+
+test fn w_blank_line_splits_one_block_into_two() -> Bool {
+  let result = attach_annotations(
+    captures: [
+      leading(text: "alpha", start: 10, end: 20),
+      leading_after_blank(text: "beta", start: 30, end: 40)
+    ],
+    subjects: subjects()
+  )
+  let graph = annotation_attachment_result_graph(result: result)
+  row_count(graph: graph) == 2 && render_rows(graph: graph) == "|7:alpha|7:beta"
+}
+
+test fn w_adjacent_captures_still_merge_into_one_block() -> Bool {
+  let result = attach_annotations(
+    captures: [
+      leading(text: "alpha", start: 10, end: 20),
+      leading(text: "beta", start: 30, end: 40)
+    ],
+    subjects: subjects()
+  )
+  let graph = annotation_attachment_result_graph(result: result)
+  row_count(graph: graph) == 1 && render_rows(graph: graph) == "|7:alpha\nbeta"
+}

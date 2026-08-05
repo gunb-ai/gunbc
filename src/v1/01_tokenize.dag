@@ -1,6 +1,11 @@
 module v1.compiler.tokenize
 
 import std.types { SourceSpan }
+import std.source_annotation {
+  AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken,
+  UnboundAnnotationCapture,
+  advance_line_prefix_indent_only_text, placement_from_line_prefix
+}
 import std.unicode.types { unicode_scalar }
 
 import v1.std.core {
@@ -41,7 +46,21 @@ data single_punct: Map<String, TokenShape> = {
 type TokenizerState {
   pos: Int
   tokens: List<Token>
+  annotations: List<UnboundAnnotationCapture>
   interp_depth: List<Int>
+}
+
+data v1_scan_step_note: String = "scan_next_token used to return exactly one Token, which encoded the assumption that every lexeme becomes one. An annotation breaks that: it consumes source and produces NO semantic token. Rather than smuggle it through as a token the parser must filter — the TokenRule mistake DESIGN 4c names — the scan result becomes a sum, and the caller decides which accumulator it lands in."
+
+type ScanStep
+  = ScannedToken { result: ScanResult }
+  | ScannedAnnotation { pos: Int, capture: UnboundAnnotationCapture, interp_depth: List<Int> }
+
+data v1_tokenize_artifact_note: String = "tokenize keeps returning List<Token> and is the SEMANTIC PROJECTION, so every existing caller (compile.dag, the parser, the Rust seed tests) is untouched by construction. tokenize_artifact is the authored result. The projection direction is one-way on purpose: a semantic consumer cannot reach annotation text."
+
+type V1LexArtifact {
+  tokens: List<Token>
+  annotations: List<UnboundAnnotationCapture>
 }
 
 type TokPos {
@@ -104,22 +123,89 @@ fn source_scan_to_eol(source: SourceRef, start: Int) -> Int {
   else { source_scan_to_eol(source: source, start: start + 1) }
 }
 
-fn tokenize(source: String, file: String) -> List<Token> {
+fn tokenize_artifact(source: String, file: String) -> V1LexArtifact {
   let c = chars(source)
   let src = SourceRef { file: file, text: source, source_chars: c }
   let initial = TokPos { pos: 0, interp_depth: [] }
-  let final_state = tokenize_loop(source: src, tokens: [], pos: initial, fuel: source_len(source: src) + 1)
+  let final_state = tokenize_loop(source: src, tokens: [], annotations: [], pos: initial, fuel: source_len(source: src) + 1)
   let eof_span = make_file_span(file: src.file, start: final_state.pos, end: final_state.pos)
-  list_push(final_state.tokens, make_token(text: "", span: eof_span, shape: ShEof))
+  V1LexArtifact {
+    tokens: list_push(final_state.tokens, make_token(text: "", span: eof_span, shape: ShEof)),
+    annotations: final_state.annotations
+  }
 }
 
-fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanResult {
+fn tokenize(source: String, file: String) -> List<Token> {
+  tokenize_artifact(source: source, file: file).tokens
+}
+
+data v1_line_prefix_note: String = "The seed reads the PHYSICAL LINE PREFIX directly instead of threading a `have I seen a semantic token` flag. It can, because it holds the whole source and an index: source_line_start walks back to just after the previous line feed, and the shared std.source_annotation fold then judges the slice between there and the annotation.
+
+This is the same rule the modeled lexer applies, not a second one — that lexer walks lexemes and so must thread the state forward, while this one can look back. Only the way each obtains the code points differs. Removing the flag also removes the failure it invited: the flag was set by token CATEGORY, which is wrong for any grammar whose tokens may themselves contain line feeds.
+
+The backward walk stops at the previous line feed, so it costs one line, not one file."
+
+fn source_line_start(source: SourceRef, pos: Int) -> Int {
+  if pos <= 0 {
+    0
+  } else if source_code_point(source: source, pos: pos - 1) == 10 {
+    pos
+  } else {
+    source_line_start(source: source, pos: pos - 1)
+  }
+}
+
+data v1_blank_line_lookback_note: String = "Whether a blank line precedes the annotation, observed here because it cannot be observed later — the whitespace between two captures is consumed before the parser sees anything, so by attachment time two adjacent comment lines and two blocks separated by a blank line are indistinguishable.
+
+The previous line is the text between the line start before this one and this line's start. It is blank exactly when that text is indentation only, which is the SAME predicate placement uses, so a blank line and an indent-only prefix are one concept read at two positions rather than two spellings of whitespace. An annotation on the first line of a file has no previous line and is not preceded by one. The walk is bounded by one line."
+
+fn preceded_by_blank_line(source: SourceRef, pos: Int) -> Bool {
+  let line_start = source_line_start(source: source, pos: pos)
+  if line_start <= 0 {
+    false
+  } else {
+    advance_line_prefix_indent_only_text(
+      previous: true,
+      lexeme: source_substring(
+        source: source,
+        start: source_line_start(source: source, pos: line_start - 1),
+        end: line_start - 1
+      )
+    )
+  }
+}
+
+fn line_prefix_is_indent_only(source: SourceRef, pos: Int) -> Bool {
+  advance_line_prefix_indent_only_text(
+    previous: true,
+    lexeme: source_substring(source: source, start: source_line_start(source: source, pos: pos), end: pos)
+  )
+}
+
+fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanStep {
   let ch = source_code_point(source: source, pos: pos.pos)
 
   if ch == 10 {
-    return ScanResult {
+    return ScannedToken { result: ScanResult {
       pos: pos.pos + 1,
       token: make_token(text: "\n", span: make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: ShNewline),
+      interp_depth: pos.interp_depth
+    } }
+  }
+
+  let next_ch_for_comment = if pos.pos + 1 < source_len(source: source) {
+    source_code_point(source: source, pos: pos.pos + 1)
+  } else { 0 }
+  if ch == 47 && next_ch_for_comment == 47 {
+    let eol = source_scan_to_eol(source: source, start: pos.pos)
+    return ScannedAnnotation {
+      pos: eol,
+      capture: UnboundAnnotationCapture {
+        lexeme: source_substring(source: source, start: pos.pos, end: eol),
+        origin: make_file_span(file: source.file, start: pos.pos, end: eol),
+        placement: placement_from_line_prefix(indent_only: line_prefix_is_indent_only(source: source, pos: pos.pos)),
+        preceded_by_blank_line: preceded_by_blank_line(source: source, pos: pos.pos)
+      },
       interp_depth: pos.interp_depth
     }
   }
@@ -129,26 +215,30 @@ fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanResult {
     if top == 0 {
       let popped = drop_last(stack: pos.interp_depth)
       let cont_pos = TokPos { pos: pos.pos + 1, interp_depth: popped }
-      return scan_str_cont(source: source, pos: cont_pos, span_start: pos.pos)
+      return ScannedToken { result: scan_str_cont(source: source, pos: cont_pos, span_start: pos.pos) }
     } else {
-      return ScanResult {
+      return ScannedToken { result: ScanResult {
         pos: pos.pos + 1,
         token: make_token(text: "}", span: make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: ShRBrace),
         interp_depth: replace_last(stack: pos.interp_depth, value: top - 1)
-      }
+      } }
     }
   }
 
-  scan_token(source: source, pos: pos, ch: ch)
+  ScannedToken { result: scan_token(source: source, pos: pos, ch: ch) }
 }
 
-fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos, fuel: Int) -> TokenizerState {
+fn tokenize_loop(source: SourceRef, tokens: List<Token>, annotations: List<UnboundAnnotationCapture>, pos: TokPos, fuel: Int) -> TokenizerState {
   let s = skip_spaces(source: source, pos: pos)
   if s.pos >= source_len(source: source) {
-    return TokenizerState { pos: s.pos, tokens: tokens, interp_depth: s.interp_depth }
+    return TokenizerState { pos: s.pos, tokens: tokens, annotations: annotations, interp_depth: s.interp_depth }
   }
-  let result = scan_next_token(source: source, pos: s)
-  tokenize_loop(source: source, tokens: list_push(tokens, result.token), pos: TokPos { pos: result.pos, interp_depth: result.interp_depth }, fuel: fuel - 1)
+  match scan_next_token(source: source, pos: s) {
+    ScannedAnnotation { pos: next_pos, capture: capture, interp_depth: depth } =>
+      tokenize_loop(source: source, tokens: tokens, annotations: list_push(annotations, capture), pos: TokPos { pos: next_pos, interp_depth: depth }, fuel: fuel - 1)
+    ScannedToken { result: result } =>
+      tokenize_loop(source: source, tokens: list_push(tokens, result.token), annotations: annotations, pos: TokPos { pos: result.pos, interp_depth: result.interp_depth }, fuel: fuel - 1)
+  }
 }
 
 fn scan_token(source: SourceRef, pos: TokPos, ch: Int) -> ScanResult {
