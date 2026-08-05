@@ -67,7 +67,8 @@ import gunbc.auth.github_credential {
   PushCredentialLeaseUnresolved,
   PushBindingStepKindUnsupported,
   PushBindingActionMismatch,
-  PushBindingInputObservationRefused,
+  PushBindingInputDuplicated,
+  PushBindingInputUnsupported,
   credential_authorizes
 }
 import gunbc.ci_heal_credential {
@@ -91,6 +92,8 @@ import gunbc.ci_heal_credential {
 }
 import extdeps.languages.yaml.types {
   YamlKeyValue, YamlValue, YamlString, YamlBool,
+  YamlSequence,
+  yaml_value_kind_token,
   kv, yaml_string, yaml_int, yaml_bool
 }
 import extdeps.github.actions { Step, UsesStep, RunStep, ActionRef, checkout_action, upload_artifact_action }
@@ -367,11 +370,33 @@ test fn witness_only_a_real_checkout_action_binds_the_push_credential() -> Bool 
     PushBindingActionMismatch { checkout_step: _ } => true
     _ => false
   } && match resolve_push_binding(step: duplicate_token, grant: ci_heal_effective_grant) {
-    PushBindingInputObservationRefused { checkout_step: _, duplicated_input } => duplicated_input == "token"
+    PushBindingInputDuplicated { checkout_step: _, input } => input == "token"
     _ => false
   } && match resolve_push_binding(step: duplicate_persist, grant: ci_heal_effective_grant) {
-    PushBindingInputObservationRefused { checkout_step: _, duplicated_input } =>
-      duplicated_input == "persist-credentials"
+    PushBindingInputDuplicated { checkout_step: _, input } =>
+      input == "persist-credentials"
+    _ => false
+  }
+}
+
+test fn witness_malformed_checkout_input_is_not_reported_as_duplicated() -> Bool {
+  let malformed = checkout_variant(rows: [
+    kv(key: "persist-credentials", value: yaml_string(s: "maybe"))
+  ])
+  let sequence_valued = checkout_variant(rows: [
+    kv(key: "persist-credentials", value: YamlSequence { elements: [] })
+  ])
+  match resolve_push_binding(step: malformed, grant: ci_heal_effective_grant) {
+    PushBindingInputUnsupported { checkout_step: _, input, observed_kind } =>
+      input == "persist-credentials"
+        && yaml_value_kind_token(k: observed_kind) == "str"
+    _ => false
+  } && match resolve_push_binding(step: sequence_valued, grant: ci_heal_effective_grant) {
+    PushBindingInputUnsupported { checkout_step: _, input: _, observed_kind } =>
+      yaml_value_kind_token(k: observed_kind) == "seq"
+    _ => false
+  } && !match resolve_push_binding(step: malformed, grant: ci_heal_effective_grant) {
+    PushBindingInputDuplicated { checkout_step: _, input: _ } => true
     _ => false
   }
 }

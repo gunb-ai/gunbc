@@ -25,7 +25,9 @@ import gunbc.heal_push_plan {
   HealPushRemediation, HealAutomatically, AuthorCommitRequired, MachineRepairRequired,
   ProviderObservationRequired, HealNothingToRemediate, HealPlanInconsistent,
   HealPushPlanInconsistent, RemedyOwner, RemedyAuthor, RemedyMachine,
-  RemedyProviderObservation, RemedyOperator, RemedyInconsistent,
+  RemedyProviderObservation,
+  HealPushFailure, PushBindingInputValueUnsupported,
+  failure_causes, refusal_causes_token, remediation_for_refusal,
   refusal_cause_remedy_owner, plan_remediation, live_heal_remediation,
   remediation_author_commit_paths,
   heal_push_refusal_cause_token, live_heal_push_refusal_cause_token,
@@ -269,13 +271,20 @@ fn plan_refuses_workflow_paths(plan: HealPushPlan) -> Bool {
 }
 
 fn refusal_is_actions_scope_unavailable(cause: HealPushRefusal) -> Bool {
-  match cause.missing {
-    Absent => false
-    Present { value: axis } => permission_axis_wire_name(axis: axis) == "workflows"
-  } && match cause.cause {
-    ActionsJobCredentialScopeUnavailable => true
-    _ => false
-  }
+  count(cause.failures) == 1
+    && fold_list(
+         xs: cause.failures,
+         empty: true,
+         cons: fn(acc, f) {
+           acc && match f.missing {
+             Absent => false
+             Present { value: axis } => permission_axis_wire_name(axis: axis) == "workflows"
+           } && match f.cause {
+             ActionsJobCredentialScopeUnavailable => true
+             _ => false
+           }
+         }
+       )
 }
 
 fn plan_cause_is_kind_cannot_satisfy(plan: HealPushPlan) -> Bool {
@@ -307,6 +316,7 @@ test fn witness_only_a_structurally_unavailable_scope_is_author_work() -> Bool {
     && owner_is_machine(c: PushBindingStepKindNotSupported)
     && owner_is_machine(c: PushBindingActionNotCheckout)
     && owner_is_machine(c: PushBindingInputObservationDuplicated)
+    && owner_is_machine(c: PushBindingInputValueUnsupported)
     && owner_is_machine(c: ManagedCredentialSubjectMismatch)
     && owner_is_machine(c: ActionsJobCredentialAxisNotModeled)
     && owner_is_machine(c: ActionsJobCredentialDeclaredAccessInvalid)
@@ -328,18 +338,145 @@ test fn witness_machine_fault_never_becomes_author_work() -> Bool {
     control_plane: live_heal_control_plane
   )
   match plan_remediation(plan: broken_checkout) {
-    MachineRepairRequired { cause } =>
-      match cause { PushBindingMissingOnCheckoutStep => true  _ => false }
+    MachineRepairRequired { causes } =>
+      (count(causes) == 1) && any(
+        map(causes, c => heal_push_refusal_cause_token(cause: c)),
+        t => t == "PushBindingMissingOnCheckoutStep"
+      )
     _ => false
   } && (count(remediation_author_commit_paths(r: plan_remediation(plan: broken_checkout))) == 0)
     && match live_heal_remediation {
-         AuthorCommitRequired { paths, cause } =>
-           (count(paths) == 2) && match cause {
-             ActionsJobCredentialScopeUnavailable => true
-             _ => false
-           }
+         AuthorCommitRequired { paths, causes } =>
+           (count(paths) == 2) && (count(causes) == 1) && any(
+             map(causes, c => heal_push_refusal_cause_token(cause: c)),
+             t => t == "ActionsJobCredentialScopeUnavailable"
+           )
          _ => false
        }
+}
+
+fn remediation_token(r: HealPushRemediation) -> String {
+  match r {
+    HealAutomatically { paths: _ } => "HealAutomatically"
+    AuthorCommitRequired { paths: _, causes: _ } => "AuthorCommitRequired"
+    MachineRepairRequired { causes: _ } => "MachineRepairRequired"
+    ProviderObservationRequired { causes: _ } => "ProviderObservationRequired"
+    HealNothingToRemediate => "HealNothingToRemediate"
+    HealPlanInconsistent { refused_paths: _ } => "HealPlanInconsistent"
+  }
+}
+
+test fn witness_a_machine_repairable_failure_dominates_the_author_fallback() -> Bool {
+  let workflow_path = RepositoryPath { value: ".github/workflows/ci.yml" }
+  let both = HealPushRefusal {
+    paths: [workflow_path],
+    failures: [
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeNotGranted,
+        missing: Present { value: ContentsAxis }
+      },
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeUnavailable,
+        missing: Present { value: WorkflowsAxis }
+      }
+    ]
+  }
+  let residual_only = HealPushRefusal {
+    paths: [workflow_path],
+    failures: [
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeUnavailable,
+        missing: Present { value: WorkflowsAxis }
+      }
+    ]
+  }
+  remediation_token(r: remediation_for_refusal(refusal: both)) == "MachineRepairRequired"
+    && remediation_token(r: remediation_for_refusal(refusal: residual_only)) == "AuthorCommitRequired"
+    && (count(remediation_author_commit_paths(r: remediation_for_refusal(refusal: both))) == 0)
+    && match remediation_for_refusal(refusal: both) {
+         MachineRepairRequired { causes } => count(causes) == 1
+         _ => false
+       }
+}
+
+test fn witness_author_commit_requires_the_exact_workflow_path_residual() -> Bool {
+  let non_workflow = HealPushRefusal {
+    paths: [RepositoryPath { value: ".gitignore" }],
+    failures: [
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeUnavailable,
+        missing: Present { value: WorkflowsAxis }
+      }
+    ]
+  }
+  let wrong_axis = HealPushRefusal {
+    paths: [RepositoryPath { value: ".github/workflows/ci.yml" }],
+    failures: [
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeUnavailable,
+        missing: Present { value: ContentsAxis }
+      }
+    ]
+  }
+  let axis_absent = HealPushRefusal {
+    paths: [RepositoryPath { value: ".github/workflows/ci.yml" }],
+    failures: [
+      HealPushFailure { cause: ActionsJobCredentialScopeUnavailable, missing: none }
+    ]
+  }
+  remediation_token(r: remediation_for_refusal(refusal: non_workflow)) == "HealPlanInconsistent"
+    && remediation_token(r: remediation_for_refusal(refusal: wrong_axis)) == "HealPlanInconsistent"
+    && remediation_token(r: remediation_for_refusal(refusal: axis_absent)) == "HealPlanInconsistent"
+}
+
+test fn witness_provider_observation_outranks_author_but_not_machine() -> Bool {
+  let workflow_path = RepositoryPath { value: ".github/workflows/ci.yml" }
+  let provider_and_residual = HealPushRefusal {
+    paths: [workflow_path],
+    failures: [
+      HealPushFailure {
+        cause: ActionsJobCredentialForkPolicyUnobserved,
+        missing: Present { value: ContentsAxis }
+      },
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeUnavailable,
+        missing: Present { value: WorkflowsAxis }
+      }
+    ]
+  }
+  let machine_and_provider = HealPushRefusal {
+    paths: [workflow_path],
+    failures: [
+      HealPushFailure {
+        cause: ActionsJobCredentialForkPolicyUnobserved,
+        missing: Present { value: ContentsAxis }
+      },
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeNotGranted,
+        missing: Present { value: ContentsAxis }
+      }
+    ]
+  }
+  remediation_token(r: remediation_for_refusal(refusal: provider_and_residual)) == "ProviderObservationRequired"
+    && remediation_token(r: remediation_for_refusal(refusal: machine_and_provider)) == "MachineRepairRequired"
+}
+
+test fn witness_refusal_population_is_retained_not_collapsed() -> Bool {
+  let two = HealPushRefusal {
+    paths: [RepositoryPath { value: ".github/workflows/ci.yml" }],
+    failures: [
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeNotGranted,
+        missing: Present { value: ContentsAxis }
+      },
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeUnavailable,
+        missing: Present { value: WorkflowsAxis }
+      }
+    ]
+  }
+  (count(two.failures) == 2)
+    && (refusal_causes_token(causes: failure_causes(fs: two.failures)) == "ActionsJobCredentialScopeNotGranted+ActionsJobCredentialScopeUnavailable")
 }
 
 test fn witness_live_refusal_cause_token_is_derived_from_the_plan() -> Bool {

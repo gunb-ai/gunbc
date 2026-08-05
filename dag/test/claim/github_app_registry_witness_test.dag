@@ -388,9 +388,11 @@ test fn witness_bound_producer_yields_the_operator_packet() -> Bool {
     action: AcceptInstallationPermissions,
     locator: bot_installation_locator,
     postcondition: InstallationHoldsPermissions { accept: [workflows_write_perm] },
-    observation: ObservationProducerBound { producer: control_plane_probe_ref }
+    observation: ObservationProducerBound {
+      bound: BoundObservationProducer { producer: control_plane_probe_ref }
+    }
   ) {
-    OperatorActionRequired { action, locator, postcondition, observation } =>
+    OperatorActionRequired { action, locator, postcondition, readback } =>
       match action {
         AcceptInstallationPermissions => true
         ApplyAppPermissionChange => false
@@ -401,10 +403,7 @@ test fn witness_bound_producer_yields_the_operator_packet() -> Bool {
              InstallationHoldsPermissions { accept } => count(accept) == 1
              _ => false
            }
-        && match observation {
-             ObservationProducerBound { producer } => producer.decl_name == "app_control_plane_state"
-             ObservationProducerAbsent { required_observation: _ } => false
-           }
+        && readback.producer.decl_name == "app_control_plane_state"
     _ => false
   }
 }
@@ -485,9 +484,11 @@ test fn witness_key_generation_is_operator_work_only_after_discovery_fails() -> 
     action: GenerateAppSigningKey,
     locator: app_key_settings_locator(app: gunbai_bot_declared),
     postcondition: AppHasRegisteredSigningKey { app: gunbai_bot_declared },
-    observation: ObservationProducerBound { producer: control_plane_probe_ref }
+    observation: ObservationProducerBound {
+      bound: BoundObservationProducer { producer: control_plane_probe_ref }
+    }
   ) {
-    OperatorActionRequired { action, locator, postcondition, observation: _ } =>
+    OperatorActionRequired { action, locator, postcondition, readback: _ } =>
       match action {
         GenerateAppSigningKey => true
         AcceptInstallationPermissions => false
@@ -625,6 +626,41 @@ test fn witness_unknown_provider_permission_survives_refusal_verbatim() -> Bool 
   } && match permission_axis_from_wire(name: "future_provider_permission") {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+test fn witness_registration_readback_preserves_unknown_provider_permission() -> Bool {
+  let unknown = ObservedGitHubPermission {
+    name: ObservedGitHubPermissionName { wire_name: "future_provider_permission" },
+    access: AppAccessRead
+  }
+  match app_control_plane_state(
+    app: gunbai_bot_declared,
+    custody: sealed_bot_signer,
+    registration: AppRegistrationReadback {
+      app_id: gunbai_bot_declared.app_id,
+      requested_permissions: [unknown, unknown]
+    },
+    observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
+    required: full_workflow_grant,
+    reason: "heal branch advance"
+  ) {
+    PermissionObservationRefused { app: _, duplicate } =>
+      duplicate.wire_name == "future_provider_permission"
+    _ => false
+  } && match app_control_plane_state(
+    app: gunbai_bot_declared,
+    custody: sealed_bot_signer,
+    registration: AppRegistrationReadback {
+      app_id: gunbai_bot_declared.app_id,
+      requested_permissions: [unknown]
+    },
+    observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
+    required: full_workflow_grant,
+    reason: "heal branch advance"
+  ) {
+    PermissionObservationRefused { app: _, duplicate: _ } => false
+    _ => true
   }
 }
 

@@ -1,7 +1,7 @@
 module gunbc.heal_push_plan
 
 import std.types { NonEmptyStr, String, List }
-import extdeps.github.app { GitHubPermissionAxis }
+import extdeps.github.app { GitHubPermissionAxis, permission_name_eq }
 import extdeps.github.effect {
   GitHubEffect,
   AdvanceRepositoryBranch,
@@ -30,7 +30,8 @@ import gunbc.auth.github_credential {
   PushCredentialLeaseUnresolved,
   PushBindingStepKindUnsupported,
   PushBindingActionMismatch,
-  PushBindingInputObservationRefused
+  PushBindingInputDuplicated,
+  PushBindingInputUnsupported
 }
 import gunbc.ci_heal_credential { live_heal_push_binding_resolution, live_heal_control_plane }
 import gunbc.generated_artifact {
@@ -77,13 +78,18 @@ type HealPushRefusalCause
   | PushBindingStepKindNotSupported
   | PushBindingActionNotCheckout
   | PushBindingInputObservationDuplicated
+  | PushBindingInputValueUnsupported
   | ManagedInstallationGrantUnobserved
   | ManagedCredentialSubjectMismatch
 
+type HealPushFailure {
+  cause: HealPushRefusalCause
+  missing: GitHubPermissionAxis?
+}
+
 type HealPushRefusal {
   paths: List<RepositoryPath>
-  missing: GitHubPermissionAxis?
-  cause: HealPushRefusalCause
+  failures: List<HealPushFailure>
 }
 
 fn heal_push_refusal_cause_token(cause: HealPushRefusalCause) -> String {
@@ -98,6 +104,7 @@ fn heal_push_refusal_cause_token(cause: HealPushRefusalCause) -> String {
     PushBindingStepKindNotSupported => "PushBindingStepKindNotSupported"
     PushBindingActionNotCheckout => "PushBindingActionNotCheckout"
     PushBindingInputObservationDuplicated => "PushBindingInputObservationDuplicated"
+    PushBindingInputValueUnsupported => "PushBindingInputValueUnsupported"
     ManagedInstallationGrantUnobserved => "ManagedInstallationGrantUnobserved"
     ManagedCredentialSubjectMismatch => "ManagedCredentialSubjectMismatch"
   }
@@ -121,40 +128,65 @@ type RefusalDerivation
   = RefusalDerived { refusal: HealPushRefusal }
   | RefusalDerivationInconsistent { refused_paths: List<RepositoryPath> }
 
-fn first_refusal_cause(
+fn capability_failure(c: CredentialCapability) -> HealPushFailure? {
+  match c {
+    CredentialGrants => none
+    CredentialKindCannotSatisfy { missing } =>
+      Present { value: HealPushFailure { cause: ActionsJobCredentialScopeUnavailable, missing: Present { value: missing } } }
+    CredentialScopeNotGranted { missing } =>
+      Present { value: HealPushFailure { cause: ActionsJobCredentialScopeNotGranted, missing: Present { value: missing } } }
+    CredentialForkPolicyUnobserved { missing } =>
+      Present { value: HealPushFailure { cause: ActionsJobCredentialForkPolicyUnobserved, missing: Present { value: missing } } }
+    CredentialAxisNotModeled { missing } =>
+      Present { value: HealPushFailure { cause: ActionsJobCredentialAxisNotModeled, missing: Present { value: missing } } }
+    CredentialDeclaredAccessInvalid { missing } =>
+      Present { value: HealPushFailure { cause: ActionsJobCredentialDeclaredAccessInvalid, missing: Present { value: missing } } }
+    CredentialSubjectMismatch { missing } =>
+      Present { value: HealPushFailure { cause: ManagedCredentialSubjectMismatch, missing: Present { value: missing } } }
+    CredentialGrantNotObserved { missing } =>
+      Present { value: HealPushFailure { cause: ManagedInstallationGrantUnobserved, missing: Present { value: missing } } }
+  }
+}
+
+data no_heal_push_failures: List<HealPushFailure> = []
+
+fn refusal_failure_population(
+  paths: List<RepositoryPath>,
+  authority: GitHubCredentialAuthority,
+  control_plane: GitHubAppControlPlaneState
+) -> List<HealPushFailure> {
+  fold_list(
+    xs: unsatisfied_capabilities(
+      authority: authority,
+      control_plane: control_plane,
+      effect: advance_branch_effect(paths: paths)
+    ),
+    empty: no_heal_push_failures,
+    cons: fn(acc, c) {
+      match capability_failure(c: c) {
+        Absent => acc
+        Present { value: f } => concat(acc, [f])
+      }
+    }
+  )
+}
+
+fn derive_refusal(
   refused: List<GeneratedArtifact>,
   authority: GitHubCredentialAuthority,
   control_plane: GitHubAppControlPlaneState
 ) -> RefusalDerivation {
   let paths = map(refused, a => artifact_repository_path(a: a))
-  let unsatisfied = unsatisfied_capabilities(
+  let failures = refusal_failure_population(
+    paths: paths,
     authority: authority,
-    control_plane: control_plane,
-    effect: advance_branch_effect(paths: paths)
+    control_plane: control_plane
   )
-  fold_list(
-    xs: unsatisfied,
-    empty: RefusalDerivationInconsistent { refused_paths: paths },
-    cons: fn(acc, c) {
-      match c {
-        CredentialKindCannotSatisfy { missing } =>
-          RefusalDerived { refusal: HealPushRefusal { paths: paths, missing: Present { value: missing }, cause: ActionsJobCredentialScopeUnavailable } }
-        CredentialScopeNotGranted { missing } =>
-          RefusalDerived { refusal: HealPushRefusal { paths: paths, missing: Present { value: missing }, cause: ActionsJobCredentialScopeNotGranted } }
-        CredentialForkPolicyUnobserved { missing } =>
-          RefusalDerived { refusal: HealPushRefusal { paths: paths, missing: Present { value: missing }, cause: ActionsJobCredentialForkPolicyUnobserved } }
-        CredentialAxisNotModeled { missing } =>
-          RefusalDerived { refusal: HealPushRefusal { paths: paths, missing: Present { value: missing }, cause: ActionsJobCredentialAxisNotModeled } }
-        CredentialDeclaredAccessInvalid { missing } =>
-          RefusalDerived { refusal: HealPushRefusal { paths: paths, missing: Present { value: missing }, cause: ActionsJobCredentialDeclaredAccessInvalid } }
-        CredentialSubjectMismatch { missing } =>
-          RefusalDerived { refusal: HealPushRefusal { paths: paths, missing: Present { value: missing }, cause: ManagedCredentialSubjectMismatch } }
-        CredentialGrantNotObserved { missing } =>
-          RefusalDerived { refusal: HealPushRefusal { paths: paths, missing: Present { value: missing }, cause: ManagedInstallationGrantUnobserved } }
-        CredentialGrants => acc
-      }
-    }
-  )
+  if count(failures) == 0 {
+    RefusalDerivationInconsistent { refused_paths: paths }
+  } else {
+    RefusalDerived { refusal: HealPushRefusal { paths: paths, failures: failures } }
+  }
 }
 
 fn plan_heal_push(
@@ -169,7 +201,7 @@ fn plan_heal_push(
   } else if count(refused) == 0 {
     HealPushReady { artifacts: ready }
   } else {
-    match first_refusal_cause(refused: refused, authority: authority, control_plane: control_plane) {
+    match derive_refusal(refused: refused, authority: authority, control_plane: control_plane) {
       RefusalDerivationInconsistent { refused_paths } =>
         HealPushPlanInconsistent { refused_paths: refused_paths }
       RefusalDerived { refusal } =>
@@ -198,8 +230,10 @@ fn plan_heal_push_from_binding(
       binding_refused_plan(artifacts: artifacts, cause: PushBindingStepKindNotSupported)
     PushBindingActionMismatch { checkout_step: _ } =>
       binding_refused_plan(artifacts: artifacts, cause: PushBindingActionNotCheckout)
-    PushBindingInputObservationRefused { checkout_step: _, duplicated_input: _ } =>
+    PushBindingInputDuplicated { checkout_step: _, input: _ } =>
       binding_refused_plan(artifacts: artifacts, cause: PushBindingInputObservationDuplicated)
+    PushBindingInputUnsupported { checkout_step: _, input: _, observed_kind: _ } =>
+      binding_refused_plan(artifacts: artifacts, cause: PushBindingInputValueUnsupported)
   }
 }
 
@@ -214,8 +248,7 @@ fn binding_refused_plan(
       refused: artifacts,
       cause: HealPushRefusal {
         paths: map(artifacts, a => artifact_repository_path(a: a)),
-        missing: none,
-        cause: cause
+        failures: [HealPushFailure { cause: cause, missing: none }]
       }
     }
   }
@@ -251,8 +284,6 @@ type RemedyOwner
   = RemedyAuthor
   | RemedyMachine
   | RemedyProviderObservation
-  | RemedyOperator
-  | RemedyInconsistent
 
 fn refusal_cause_remedy_owner(cause: HealPushRefusalCause) -> RemedyOwner {
   match cause {
@@ -268,24 +299,88 @@ fn refusal_cause_remedy_owner(cause: HealPushRefusalCause) -> RemedyOwner {
     PushBindingStepKindNotSupported => RemedyMachine
     PushBindingActionNotCheckout => RemedyMachine
     PushBindingInputObservationDuplicated => RemedyMachine
+    PushBindingInputValueUnsupported => RemedyMachine
   }
+}
+
+fn failure_is_machine_owned(f: HealPushFailure) -> Bool {
+  match refusal_cause_remedy_owner(cause: f.cause) {
+    RemedyMachine => true
+    RemedyAuthor => false
+    RemedyProviderObservation => false
+  }
+}
+
+fn failure_is_provider_owned(f: HealPushFailure) -> Bool {
+  match refusal_cause_remedy_owner(cause: f.cause) {
+    RemedyProviderObservation => true
+    RemedyMachine => false
+    RemedyAuthor => false
+  }
+}
+
+fn failure_causes(fs: List<HealPushFailure>) -> List<HealPushRefusalCause> {
+  map(fs, f => f.cause)
+}
+
+fn failure_is_actions_workflow_scope_residual(f: HealPushFailure) -> Bool {
+  match f.cause {
+    ActionsJobCredentialScopeUnavailable => match f.missing {
+      Absent => false
+      Present { value: axis } => permission_name_eq(a: axis, b: workflows_permission_name)
+    }
+    ActionsJobCredentialScopeNotGranted => false
+    ActionsJobCredentialAxisNotModeled => false
+    ActionsJobCredentialDeclaredAccessInvalid => false
+    ActionsJobCredentialForkPolicyUnobserved => false
+    ManagedInstallationGrantUnobserved => false
+    ManagedCredentialSubjectMismatch => false
+    PushBindingMissingOnCheckoutStep => false
+    PushBindingLeaseUnresolved => false
+    PushBindingStepKindNotSupported => false
+    PushBindingActionNotCheckout => false
+    PushBindingInputObservationDuplicated => false
+    PushBindingInputValueUnsupported => false
+  }
+}
+
+fn author_residual_exact(refusal: HealPushRefusal) -> Bool {
+  count(refusal.failures) > 0
+    && count(refusal.paths) > 0
+    && fold_list(
+         xs: refusal.failures,
+         empty: true,
+         cons: fn(acc, f) { acc && failure_is_actions_workflow_scope_residual(f: f) }
+       )
+    && fold_list(
+         xs: refusal.paths,
+         empty: true,
+         cons: fn(acc, p) { acc && is_workflow_projection_path(path: p) }
+       )
 }
 
 type HealPushRemediation
   = HealAutomatically { paths: List<RepositoryPath> }
-  | AuthorCommitRequired { paths: List<RepositoryPath>, cause: HealPushRefusalCause }
-  | MachineRepairRequired { cause: HealPushRefusalCause }
-  | ProviderObservationRequired { cause: HealPushRefusalCause }
+  | AuthorCommitRequired { paths: List<RepositoryPath>, causes: List<HealPushRefusalCause> }
+  | MachineRepairRequired { causes: List<HealPushRefusalCause> }
+  | ProviderObservationRequired { causes: List<HealPushRefusalCause> }
   | HealNothingToRemediate
   | HealPlanInconsistent { refused_paths: List<RepositoryPath> }
 
 fn remediation_for_refusal(refusal: HealPushRefusal) -> HealPushRemediation {
-  match refusal_cause_remedy_owner(cause: refusal.cause) {
-    RemedyAuthor => AuthorCommitRequired { paths: refusal.paths, cause: refusal.cause }
-    RemedyMachine => MachineRepairRequired { cause: refusal.cause }
-    RemedyProviderObservation => ProviderObservationRequired { cause: refusal.cause }
-    RemedyOperator => ProviderObservationRequired { cause: refusal.cause }
-    RemedyInconsistent => HealPlanInconsistent { refused_paths: refusal.paths }
+  let machine = filter(refusal.failures, f => failure_is_machine_owned(f: f))
+  let provider = filter(refusal.failures, f => failure_is_provider_owned(f: f))
+  if count(machine) > 0 {
+    MachineRepairRequired { causes: failure_causes(fs: machine) }
+  } else if count(provider) > 0 {
+    ProviderObservationRequired { causes: failure_causes(fs: provider) }
+  } else if author_residual_exact(refusal: refusal) {
+    AuthorCommitRequired {
+      paths: refusal.paths,
+      causes: failure_causes(fs: refusal.failures)
+    }
+  } else {
+    HealPlanInconsistent { refused_paths: refusal.paths }
   }
 }
 
@@ -304,10 +399,10 @@ data live_heal_remediation: HealPushRemediation = plan_remediation(plan: live_he
 
 fn remediation_author_commit_paths(r: HealPushRemediation) -> List<RepositoryPath> {
   match r {
-    AuthorCommitRequired { paths, cause: _ } => paths
+    AuthorCommitRequired { paths, causes: _ } => paths
     HealAutomatically { paths: _ } => []
-    MachineRepairRequired { cause: _ } => []
-    ProviderObservationRequired { cause: _ } => []
+    MachineRepairRequired { causes: _ } => []
+    ProviderObservationRequired { causes: _ } => []
     HealNothingToRemediate => []
     HealPlanInconsistent { refused_paths: _ } => []
   }
@@ -360,10 +455,24 @@ fn classify_heal_repair_paths(changed_paths: List<String>) -> HealRepairDisposit
   }
 }
 
+fn refusal_causes_token(causes: List<HealPushRefusalCause>) -> String {
+  fold_list(
+    xs: causes,
+    empty: "HealPushRefusalPopulationEmpty",
+    cons: fn(acc, c) {
+      if acc == "HealPushRefusalPopulationEmpty" {
+        heal_push_refusal_cause_token(cause: c)
+      } else {
+        concat(acc, concat("+", heal_push_refusal_cause_token(cause: c)))
+      }
+    }
+  )
+}
+
 fn live_heal_push_refusal_cause_token() -> String {
   match live_heal_push_plan {
-    HealPushPartial { ready: _, refused: _, cause } => heal_push_refusal_cause_token(cause: cause.cause)
-    HealPushRefused { refused: _, cause } => heal_push_refusal_cause_token(cause: cause.cause)
+    HealPushPartial { ready: _, refused: _, cause } => refusal_causes_token(causes: failure_causes(fs: cause.failures))
+    HealPushRefused { refused: _, cause } => refusal_causes_token(causes: failure_causes(fs: cause.failures))
     HealPushReady { artifacts: _ } => "NoRefusal"
     HealPushNothingToDo => "NoRefusal"
     HealPushPlanInconsistent { refused_paths: _ } => "HealPushPlanInconsistent"
