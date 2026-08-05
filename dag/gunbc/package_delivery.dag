@@ -690,7 +690,7 @@ fn lock_path_key_rel(key: NpmLockPathKey) -> NonEmptyStr? {
 
 data codex_runtime_release_parent: NonEmptyStr = "/tmp/gunbc-codex-runtime" as NonEmptyStr
 
-data codex_runtime_bundle_receipt_note: String = "FULL cryptographic CodexRuntimeBundleReceipt: manifest + lock + target + admitted rows (canonicalized by lock-node key) + native executable digest + observed npm CLI version + ClientRequest schema identity from the bundled executable's generate-json-schema. Bundle root is an immutable content-addressed release directory derived from receipt identity — not a leftover mktemp build tree."
+data codex_runtime_bundle_receipt_note: String = "FULL cryptographic CodexRuntimeBundleReceipt: manifest + lock + target + admitted rows (canonicalized by lock-node key) + native executable digest + observed npm CLI version + ClientRequest schema identity from the bundled executable's generate-json-schema. Bundle root is a content-addressed release directory derived from receipt identity — not a leftover mktemp build tree. Host chmod a-w on the release tree is deliberately NOT applied: measured 2026-08-05, Codex app-server --stdio produces empty stdout against an a-w tree (bundled bubblewrap/vendor needs write); immutability is the content-addressed path + receipt identity, not filesystem write bits."
 
 type CodexRuntimeBundleReceipt {
   manifest_digest: Sha512Digest
@@ -932,12 +932,7 @@ fn release_codex_runtime_bundle_immutable(
           if moved.success == false {
             none
           } else {
-            let locked = shell.Chmod.RecursiveReadOnly(path: dest)
-            if locked.success == false {
-              none
-            } else {
-              Present { value: dest }
-            }
+            Present { value: dest }
           }
         }
       }

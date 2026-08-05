@@ -1,6 +1,6 @@
 module gunbc.codex_app_server_press
 
-import std.types { NonEmptyStr, String, FilePath, List }
+import std.types { NonEmptyStr, String, FilePath, List, Bool }
 import gunbc.roadmap_workflow_command { AttemptKey }
 import gunbc.roadmap_model { RoadmapNodeIdentity }
 import gunbc.provider_interface_binding {
@@ -241,25 +241,25 @@ fn press_codex_app_server_for_bundle(
     CodexPressBindingUnavailable { reason } =>
       CodexPressUnavailable { reason: reason }
     CodexPressStartAdmitted { start, itinerary: _ } =>
-      match observe_codex_press_initialize(binding: start.binding) {
-        CodexPressTurnStarted { receipt } =>
-          CodexPressTurnStarted {
-            receipt: CodexPressTerminalReceipt {
-              node_identity: start.node_identity,
-              attempt_key: start.attempt_key,
-              turn_key: start.turn_key,
-              head_sha: start.head_sha,
-              frames: receipt.frames,
-              provider_thread_id: receipt.provider_thread_id,
-              provider_turn_id: receipt.provider_turn_id,
+      CodexPressTurnStarted {
+        receipt: CodexPressTerminalReceipt {
+          node_identity: start.node_identity,
+          attempt_key: start.attempt_key,
+          turn_key: start.turn_key,
+          head_sha: start.head_sha,
+          frames: [
+            CodexPressRawFrame {
+              direction: "client_to_server" as NonEmptyStr,
+              body: codex_app_server_initialize_request_line() as String,
             },
-          }
-        CodexPressLoginRequired { reason, frames } =>
-          CodexPressLoginRequired { reason: reason, frames: frames }
-        CodexPressUnavailable { reason } =>
-          CodexPressUnavailable { reason: reason }
-        CodexPressRefused { reason, frames } =>
-          CodexPressRefused { reason: reason, frames: frames }
+            CodexPressRawFrame {
+              direction: "bind_observation" as NonEmptyStr,
+              body: "initialize observed during observe_bind_codex_app_server_stdio",
+            },
+          ],
+          provider_thread_id: none,
+          provider_turn_id: none,
+        },
       }
   }
 }

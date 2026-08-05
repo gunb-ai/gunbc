@@ -1,0 +1,48 @@
+module test.claim.codex_app_server_press_wet_witness_test
+
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, String, FilePath }
+import gunbc.package_delivery {
+  codex_runtime_lock_path,
+  codex_runtime_manifest_path,
+  materialize_codex_runtime_bundle,
+  CodexRuntimeMaterialized,
+}
+import gunbc.provider_interface_binding {
+  observe_bind_codex_app_server_stdio,
+  ProviderInterfaceResolved,
+  RequiredProviderInterfaceUnavailable,
+}
+import gunbc.codex_runtime_bundle { codex_bundle_executable_path }
+import extdeps.shell
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data witness_note: String = "WET: materialize content-addressed Codex runtime and bind via successful app-server initialize (userAgent result). Full itinerary beyond initialize is the next wet slice. Excluded from hermetic discovery."
+
+fn committed_codex_lock_text() -> String {
+  filesystem_read(path: codex_runtime_lock_path as String).content
+}
+
+test fn press_initialize_binding_succeeds_on_released_bundle() -> Bool {
+  match materialize_codex_runtime_bundle(
+    lock_text: committed_codex_lock_text(),
+    manifest_src: codex_runtime_manifest_path as FilePath,
+    lock_src: codex_runtime_lock_path as FilePath,
+  ) {
+    CodexRuntimeMaterialized { bundle } => {
+      let path = codex_bundle_executable_path(bundle: bundle)
+      let present = shell.Test.IsFile(path: path)
+      if present.is_file == false {
+        false
+      } else {
+        match observe_bind_codex_app_server_stdio(bundle: bundle) {
+          ProviderInterfaceResolved { binding: _ } => true
+          RequiredProviderInterfaceUnavailable { interface: _, reason: _ } => false
+        }
+      }
+    }
+    _ => false
+  }
+}
