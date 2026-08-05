@@ -739,12 +739,21 @@ pub enum InterpError {
         key: String,
         service: String,
     },
+    /// The fast-lane per-witness eval budget, enforced on THREAD CPU by the cooperative
+    /// stride-poll in `eval_expr`. The measured field is named for its clock deliberately:
+    /// this budget and the wall-clock one below are different quantities of the same
+    /// occurrence, and a shared `elapsed_ms` spelling let a CPU figure be read as wall at
+    /// every downstream consumer (2026-08-05 — the same conflation that leaves the enforced
+    /// quantity absent from every cost receipt; see `witness_cost_clock_basis_note`).
     EvalBudgetExceeded {
-        elapsed_ms: u64,
+        cpu_ms: u64,
         budget_ms: u64,
     },
+    /// The whole-receipt wall budget (falsifier wet/silent-pick lane). Genuinely wall:
+    /// emit+cargo subprocess I/O counts against it, which is why it cannot share the CPU
+    /// carrier above.
     WitnessWallBudgetExceeded {
-        elapsed_ms: u64,
+        wall_ms: u64,
         budget_ms: u64,
     },
     ArgvExceedsHostArgMax {
@@ -789,22 +798,22 @@ impl fmt::Display for InterpError {
             }
             InterpError::TypeError { msg } => write!(f, "type error: {}", msg),
             InterpError::EvalBudgetExceeded {
-                elapsed_ms,
+                cpu_ms: elapsed_ms,
                 budget_ms,
             } => {
                 write!(
                     f,
-                    "eval budget exceeded: {}ms elapsed > {}ms fast-lane budget (operator 5s rule 2026-07-12: a witness this slow lives in a long/ test dir and runs via its dedicated lane, not per-PR discovery)",
+                    "eval budget exceeded: {}ms thread-CPU > {}ms fast-lane budget (operator 5s rule 2026-07-12). This budget is enforced on THREAD CPU, not wall. RELOCATING THE FILE DOES NOT DISCHARGE IT: moving a witness under a long/ dir removes it from per-PR discovery without giving it an executing consumer, which deletes the coverage while retaining the source (the gunbc#7762 specimen behind the 2026-08-04 admission ruling). Either reduce the witness's cost, or enroll it in a lane that declares its own dated ceiling AND names the row as an executing consumer.",
                     elapsed_ms, budget_ms
                 )
             }
             InterpError::WitnessWallBudgetExceeded {
-                elapsed_ms,
+                wall_ms: elapsed_ms,
                 budget_ms,
             } => {
                 write!(
                     f,
-                    "witness receipt wall budget exceeded: {}ms elapsed > {}ms whole-receipt budget (falsifier wet/silent-pick lane; kill-at-deadline)",
+                    "witness receipt wall budget exceeded: {}ms wall > {}ms whole-receipt budget (falsifier wet/silent-pick lane; kill-at-deadline)",
                     elapsed_ms, budget_ms
                 )
             }
@@ -1668,7 +1677,7 @@ impl InterpContext {
         let elapsed_ms = start.elapsed().as_millis() as u64;
         if elapsed_ms > budget_ms {
             Some(InterpError::WitnessWallBudgetExceeded {
-                elapsed_ms,
+                wall_ms: elapsed_ms,
                 budget_ms,
             })
         } else {
@@ -2048,6 +2057,76 @@ fn call_function_inner(
         }
     }
 
+    let caller_label_matches_param = |param_name: &str, arg_label: &str| {
+        param_name == arg_label
+            || param_name == "_"
+            || param_name
+                .strip_prefix('_')
+                .is_some_and(|stripped| stripped == arg_label)
+    };
+    let param_supplied_at_call = |pname: &str| {
+        if bindings.contains_key(&ctx.sym(pname)) {
+            return true;
+        }
+        for (opt_name, _) in args.iter() {
+            if let Some(label) = opt_name {
+                if caller_label_matches_param(pname, label) {
+                    return true;
+                }
+            }
+        }
+        false
+    };
+
+    let required_count = fn_node
+        .params
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| {
+            param_node_default_value((*p).clone()).is_none()
+                && match p.children.first() {
+                    Some(type_expr) => {
+                        authored_name_at(ctx.si(), type_expr.clone()) != all_param_names[*i]
+                    }
+                    None => false,
+                }
+        })
+        .count();
+    let supplied_required = fn_node
+        .params
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| {
+            param_node_default_value((*p).clone()).is_none()
+                && match p.children.first() {
+                    Some(type_expr) => {
+                        authored_name_at(ctx.si(), type_expr.clone()) != all_param_names[*i]
+                    }
+                    None => false,
+                }
+                && param_supplied_at_call(&all_param_names[*i])
+        })
+        .count();
+    for (i, param) in fn_node.params.iter().enumerate() {
+        let pname = &all_param_names[i];
+        let is_value_param = match param.children.first() {
+            Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != *pname,
+            None => false,
+        };
+        if is_value_param
+            && param_node_default_value(param.clone()).is_none()
+            && !param_supplied_at_call(pname)
+        {
+            return Err(InterpError::CallContractMismatch {
+                callee: fn_node.name.clone(),
+                detail: format!(
+                    "missing required argument '{}' ({} of {} required argument(s) supplied)",
+                    pname, supplied_required, required_count
+                ),
+            });
+        }
+    }
+
     let call_env = Env::extend(&lexical_base_env(env), bindings);
     #[cfg(any(test, feature = "interp_test_witness"))]
     record_call_env_depth(&call_env);
@@ -2103,7 +2182,7 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
                 (thread_cpu_nanos().saturating_sub(cpu_baseline_nanos) / 1_000_000) as u64;
             if elapsed_ms > budget_ms {
                 return Err(InterpError::EvalBudgetExceeded {
-                    elapsed_ms,
+                    cpu_ms: elapsed_ms,
                     budget_ms,
                 });
             }
@@ -3303,43 +3382,52 @@ macro_rules! v1_bridge_family_arms {
     ($cb:ident, $fname:ident, $args:ident, $node:ident, $ctx:ident) => {
         $cb! {
             $fname, $args, $node, $ctx;
-            family STD_NODE_BRIDGE_FNS "v2.std.node" {
+            family STD_NODE_BRIDGE_FNS "v2.std.node"
+                lookup_eval_call_bridge_std_node eval_call_bridge__v2_std_node_arm {
                 arm "v4_bridge.resolve_type_node" { "resolve_type_node" } =>
                     crate::coproduct_reflection::eval_resolve_type_node($ctx, &$args),
             }
-            family STD_LEXING_BRIDGE_FNS "v2.std.compilers.lexing" {
+            family STD_LEXING_BRIDGE_FNS "v2.std.compilers.lexing"
+                lookup_eval_call_bridge_std_compilers_lexing eval_call_bridge__v2_std_compilers_lexing_arm {
                 arm "v4_bridge.symbol_intern_lexeme" { "symbol_intern_lexeme" } =>
                     crate::coproduct_reflection::eval_symbol_intern_lexeme($ctx, &$args),
                 arm "v4_bridge.symbol_lexeme" { "symbol_lexeme" } =>
                     crate::coproduct_reflection::eval_symbol_lexeme($ctx, &$args),
             }
-            family STD_QUALIFIED_NAME_BRIDGE_FNS "v2.std.qualified_name" {
+            family STD_QUALIFIED_NAME_BRIDGE_FNS "v2.std.qualified_name"
+                lookup_eval_call_bridge_std_qualified_name eval_call_bridge__v2_std_qualified_name_arm {
                 arm "v4_bridge.qualified_name_from_dotted_string" { "qualified_name_from_dotted_string" } =>
                     crate::coproduct_reflection::eval_qualified_name_from_dotted_string($ctx, &$args),
             }
-            family STD_NODE_QUERY_BRIDGE_FNS "v2.std.node_query" {
+            family STD_NODE_QUERY_BRIDGE_FNS "v2.std.node_query"
+                lookup_eval_call_bridge_std_node_query eval_call_bridge__v2_std_node_query_arm {
                 arm "v4_bridge.coproduct_nullary_inhabitants" { "coproduct_nullary_inhabitants" } =>
                     crate::coproduct_reflection::eval_coproduct_nullary_inhabitants($ctx, $node, &$args),
             }
-            family STD_CONCEPT_INDEX_BRIDGE_FNS "v2.std.concept_index" {
+            family STD_CONCEPT_INDEX_BRIDGE_FNS "v2.std.concept_index"
+                lookup_eval_call_bridge_std_concept_index eval_call_bridge__v2_std_concept_index_arm {
                 arm "v4_bridge.concept_decl_facts_live" { "concept_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_concept_decl_facts_live($ctx, &$args),
             }
-            family STD_FN_INDEX_BRIDGE_FNS "v2.std.fn_index" {
+            family STD_FN_INDEX_BRIDGE_FNS "v2.std.fn_index"
+                lookup_eval_call_bridge_std_fn_index eval_call_bridge__v2_std_fn_index_arm {
                 arm "v4_bridge.fn_arrow_decl_facts_live" { "fn_arrow_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_facts_live($ctx, &$args),
                 arm "v4_bridge.fn_arrow_decl_substrate_is_whole_tree" { "fn_arrow_decl_substrate_is_whole_tree" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree($ctx, &$args),
             }
-            family CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS "v2.lens.affected_set.corpus_dependency_view" {
+            family CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS "v2.lens.affected_set.corpus_dependency_view"
+                lookup_eval_call_bridge_lens_affected_set_corpus_dependency_view eval_call_bridge__v2_lens_affected_set_corpus_dependency_view_arm {
                 arm "v4_bridge.corpus_dependency_view_per_pr_substrate_refuse" { "corpus_dependency_view_per_pr_substrate_refuse" } =>
                     crate::coproduct_reflection::eval_corpus_dependency_view_per_pr_substrate_refuse($ctx, &$args),
             }
-            family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index" {
+            family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index"
+                lookup_eval_call_bridge_std_data_index eval_call_bridge__v2_std_data_index_arm {
                 arm "v4_bridge.data_init_decl_facts_live" { "data_init_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_data_init_decl_facts_live($ctx, &$args),
             }
-            family INERT_LENS_BRIDGE_FNS "v2.lens.inert_lens" {
+            family INERT_LENS_BRIDGE_FNS "v2.lens.inert_lens"
+                lookup_eval_call_bridge_lens_inert_lens eval_call_bridge__v2_lens_inert_lens_arm {
                 arm "v4_bridge.inert_lens_unreached_module_count" { "inert_lens_unreached_module_count" } =>
                     Ok(Value::Int(crate::cli_run::inert_lens_unreached_module_count())),
                 arm "v4_bridge.inert_lens_top_level_module_count" { "inert_lens_top_level_module_count" } =>
@@ -3352,7 +3440,9 @@ macro_rules! v1_bridge_family_arms {
 /// Expansion 1: the name lists the guard predicate tests.
 macro_rules! v1_bridge_consts {
     ($f:ident, $a:ident, $n:ident, $c:ident;
-     $(family $cname:ident $module:literal { $(arm $id:tt { $lit:literal } => $body:expr ,)* })*) => {
+     $(family $cname:ident $module:literal $lookup_fn:ident $arm_macro:ident {
+         $(arm $id:tt { $lit:literal } => $body:expr ,)*
+     })*) => {
         $( pub(crate) const $cname: &[&str] = &[$($lit),*]; )*
     };
 }
@@ -3361,13 +3451,14 @@ v1_bridge_family_arms!(v1_bridge_consts, func_name, args, node, ctx);
 
 macro_rules! v1_bridge_dispatch {
     ($f:ident, $a:ident, $n:ident, $c:ident;
-     $(family $cname:ident $module:literal { $(arm $id:tt { $lit:literal } => $body:expr ,)* })*) => {
+     $(family $cname:ident $module:literal $lookup_fn:ident $arm_macro:ident {
+         $(arm $id:tt { $lit:literal } => $body:expr ,)*
+     })*) => {
         $(
             if is_v4_bridge_family($c, &$f, $cname, $module) {
-                return match $crate::v1_interpreter_dispatch_generated::lookup_eval_call_bridge(&$f) {
+                return match $crate::v1_interpreter_dispatch_generated::$lookup_fn(&$f) {
                     Some(arm) => match arm {
-                        $( eval_call_bridge_arm!($id) => $body , )*
-                        _ => unreachable!("bridge family guard/lookup mismatch for {}", $module),
+                        $( $arm_macro!($id) => $body , )*
                     },
                     None => unreachable!("bridge fn set mismatch: {}", $module),
                 };
@@ -10211,6 +10302,30 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(variant))
             },
 
+            arm "free_call.parse_roadmap_acceptance_event_history_jsonl" { "parse_roadmap_acceptance_event_history_jsonl" } => {
+                let text = expect_str(
+                    $positional.first().copied(),
+                    "parse_roadmap_acceptance_event_history_jsonl text",
+                )?;
+                crate::cli_run::roadmap_acceptance_history_carrier::parse_roadmap_acceptance_event_history_jsonl_builtin(
+                    &text,
+                    $ctx,
+                )
+                .map(Some)
+            },
+
+            arm "free_call.project_roadmap_acceptance_event_history_from_authority_text_host" { "project_roadmap_acceptance_event_history_from_authority_text_host" } => {
+                let authority_text = expect_str(
+                    $positional.first().copied(),
+                    "project_roadmap_acceptance_event_history_from_authority_text_host authority_text",
+                )?;
+                crate::cli_run::project_roadmap_acceptance_event_history_from_authority_text_builtin(
+                    &authority_text,
+                    $ctx,
+                )
+                .map(Some)
+            },
+
             // DECLARED SCAFFOLD supplying gunbc.stage0_emit_plan with SOURCE identities only.
             // It parses cli_run::regen_input_sources through the module-binding authority path;
             // it never observes EmitResult. Dissolve-on: generated_artifact_gate accepts a
@@ -11776,7 +11891,20 @@ pub fn fold_caller_snapshot() -> Vec<(String, u64, u64, u64, &'static str)> {
 /// HashMap/HashSet write, per call. dissolve-on: the residual-hunt work item
 /// closes (adhoc-c328b166-bca) -- delete these recorders and their call
 /// sites, they are not a permanent profiler.
+#[cfg(any(test, feature = "test_hooks"))]
+static FORCE_FORENSICS_FOR_TEST: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(any(test, feature = "test_hooks"))]
+pub fn set_call_frequency_forensics_for_test(enabled: bool) {
+    FORCE_FORENSICS_FOR_TEST.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn residual_hunt_forensics_enabled() -> bool {
+    #[cfg(any(test, feature = "test_hooks"))]
+    if FORCE_FORENSICS_FOR_TEST.load(std::sync::atomic::Ordering::Relaxed) {
+        return true;
+    }
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok())
 }
@@ -11909,6 +12037,7 @@ fn record_call_frequency(func_name: &str) {
         "parse_table_lookup",
         "parse_table_insert",
         "parse_choice_residue_backtrack",
+        "uri_percent_encode_scalar_fragment",
     ];
     let Some(key) = WATCHLIST.iter().find(|w| **w == func_name) else {
         return;
@@ -12022,10 +12151,57 @@ fn eval_profile_enabled() -> bool {
 pub struct PerformanceReceipt {
     pub subject_key: String,
     pub work_shape: String,
+    /// Wall-clock duration of the witness — the MEASUREMENT basis, and what every
+    /// existing receipt column projects.
     pub wall_nanos: u128,
+    /// Thread-CPU duration of the witness — the ENFORCEMENT basis: the quantity the
+    /// fast-lane cap is actually compared against, by both the cooperative stride-poll
+    /// (`EvalBudgetExceeded`) and the completion-side backstop (`BudgetKind::Cpu`).
+    ///
+    /// Carried beside `wall_nanos` rather than replacing it because they are two clocks
+    /// on one occurrence and neither substitutes for the other. Before this field existed
+    /// the enforced quantity was computed, spent on the budget decision, and dropped — so
+    /// no artifact in the tree recorded the number the cap reads, and any threshold built
+    /// on a cost receipt selected a different population than the cap kills.
+    ///
+    /// Recording both clocks is correct; what is provisional is that this one says which
+    /// clock it is only by its NAME. See `WITNESS_COST_CLOCK_BASIS_NOTE` for the ruled
+    /// model that replaces it (a basis-carrying measurement) and the dissolution trigger.
+    ///
+    /// The useful bound, since eval is single-threaded and CPU is therefore bounded above
+    /// by wall: a recorded wall UNDER the cap proves CPU under the cap, so budget triggers
+    /// stated as "lands under the fast-lane budget" were always decidable from wall alone.
+    /// What wall cannot answer is the other direction — how near the cap a row sits, or
+    /// whether an over-cap wall figure reflects CPU at all — which is exactly the ranking
+    /// question the per-witness cost-envelope lane needs.
+    pub cpu_nanos: u128,
     pub eval_self_nanos: u128,
     pub sample_count: u64,
 }
+
+pub const WITNESS_COST_CLOCK_BASIS_NOTE: &str = "\
+Witness cost carries TWO clocks and they are not interchangeable. wall is the measurement \
+basis; cpu is the enforcement basis (thread CPU, what the fast-lane cap is compared \
+against). Recording only wall meant the enforced quantity appeared in no artifact. Eval is \
+single-threaded, so cpu <= wall: a wall figure under the cap PROVES cpu under the cap \
+(firing direction, decidable), while an over-cap wall figure proves nothing about cpu \
+(ranking direction, blind). \
+\
+RECORDING BOTH CLOCKS IS CORRECT AND IS NOT THE DEFECT (operator ruling 2026-08-05). The \
+defect a second bare field would introduce is a duration whose meaning lives only in its \
+field NAME. The ruled model is that each observed duration CARRIES ITS OWN BASIS -- \
+ClockBasis = CpuClock | WallClock, a basis-carrying elapsed measurement, and a basis on the \
+TimedOut outcome so a crossing says which cap it crossed. Under that model a receipt may \
+legitimately hold both a cpu and a wall observation, because neither is relying on its name \
+to say what it is. \
+\
+SEED DISPOSITION: the u128 fields below are seed instrumentation, and they are the ONLY \
+reason this note exists -- they carry their basis in a field name, which is exactly what the \
+ruled model replaces. They are retained because the enforced quantity had to stop being \
+dropped before the authority lands, and the seed is not where the authority belongs. \
+DISSOLVE-ON: ClockBasis lands in the std.observation authority and the declaration-grain \
+receipt projects cpu and wall through it; at that point these two bare fields are replaced \
+by basis-carrying measurements and this note is deleted with them.";
 
 pub fn subject_self_nanos_snapshot() -> HashMap<String, u128> {
     SUBJECT_SELF_NANOS.with(|m| m.borrow().clone())
@@ -12044,10 +12220,14 @@ pub fn eval_subject_timing_reset() {
     CHILD_NANOS.set(0);
 }
 
+/// Both clocks are REQUIRED parameters. Defaulting `cpu_nanos` would reintroduce exactly
+/// the defect this field closes: a caller that forgot it would silently record zero for the
+/// enforced quantity, which reads as "measured, and free" rather than "not measured".
 pub fn performance_receipt_from_witness(
     subject_key: String,
     work_shape: &str,
     wall_nanos: u128,
+    cpu_nanos: u128,
 ) -> PerformanceReceipt {
     let eval_self_nanos = SUBJECT_SELF_NANOS
         .with(|m| m.borrow().get(&subject_key).copied())
@@ -12056,6 +12236,7 @@ pub fn performance_receipt_from_witness(
         subject_key,
         work_shape: work_shape.to_string(),
         wall_nanos,
+        cpu_nanos,
         eval_self_nanos,
         sample_count: 1,
     }
@@ -12909,7 +13090,7 @@ mod wall_deadline_kill_tests {
         let elapsed_ms = started.elapsed().as_millis() as u64;
         match err {
             InterpError::WitnessWallBudgetExceeded {
-                elapsed_ms: reported,
+                wall_ms: reported,
                 budget_ms,
             } => {
                 assert_eq!(budget_ms, 200);

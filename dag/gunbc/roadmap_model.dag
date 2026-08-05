@@ -7,6 +7,8 @@ import gunbc.roadmap_status {
   RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift,
   TicketFields, line_ticket,
   RedControlEvidence, HandbackEvidence,
+  RedControlNotRun, RedControlExecuted,
+  HandbackNotDelivered, HandbackDelivered,
   red_control_evidence_satisfied, handback_evidence_satisfied,
 }
 import gunbc.roadmap_execution_contract { WorkItemExecutionContract }
@@ -164,4 +166,482 @@ fn receipts_for_node(receipts: List<RoadmapAcceptanceReceipt>, id: RoadmapNodeId
 fn node_accepted(receipts: List<RoadmapAcceptanceReceipt>, rn: RoadmapNode) -> Bool {
   let rs = receipts_for_node(receipts: receipts, id: rn.node)
   count(rs) == 1 && all(rs, r => receipt_matches_node(r: r, rn: rn))
+}
+
+data acceptance_receipt_continuity_wall_note: String = "THE FAIL-OPEN roadmap_acceptance_receipt_note DECLARES BUT DID NOT CLOSE. Acceptance is a durable typed fact, never row deletion — yet removing a RoadmapAcceptanceReceipt row from the authority silently returned the node to the active set with no refusal. A prior validation slice kept a second hand-maintained baseline_nodes ledger beside roadmap_acceptance_receipts, so deleting both rows stayed green — the dual representation this repository keeps paying for. THIS SLICE LANDS THE CONSTRUCTION ANSWER: roadmap_acceptance_event_history is the single authority; roadmap_acceptance_receipts is a projection only. AcceptanceRecorded appends a receipt; AcceptanceRevoked names the exact prior receipt, a disposition, and audit fields. Replay refuses a vanished recorded receipt without an exact matching revocation, a wrong prior digest, a revocation while the exact receipt is still live, a revocation with nothing live to remove, and duplicate revocations for one removal. A sealed prefix chain digest refuses edits to prior events without updating the pin; witness tests compare prior history to mutated history for the deletion arms."
+
+type AcceptanceNodeReopensActiveFrontier {}
+
+type AcceptanceRevocationDisposition = AcceptanceNodeReopensActiveFrontier
+
+type RoadmapAcceptanceEvent
+  = AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt }
+  | AcceptanceRevoked {
+      exact_prior_receipt: RoadmapAcceptanceReceipt,
+      disposition: AcceptanceRevocationDisposition,
+      reason: NonEmptyStr,
+      revoked_by: NonEmptyStr,
+      revoked_on: NonEmptyStr,
+    }
+
+type AcceptanceHistoryReplayState {
+  live: List<RoadmapAcceptanceReceipt>
+  revoked: List<RoadmapAcceptanceReceipt>
+  ever_recorded: List<RoadmapAcceptanceReceipt>
+}
+
+type AcceptanceHistoryIntegrityVerdict
+  = AcceptanceHistoryIntegrityHolds
+  | AcceptanceHistoryIntegrityRefusedReplay
+  | AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation {
+      receipt: RoadmapAcceptanceReceipt,
+    }
+  | AcceptanceHistoryIntegrityRefusedPriorPrefix { index: Int }
+  | AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: String }
+
+fn red_control_evidence_eq(a: RedControlEvidence, b: RedControlEvidence) -> Bool {
+  match a {
+    RedControlNotRun =>
+      match b {
+        RedControlNotRun => true
+        RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _ } => false
+      }
+    RedControlExecuted { witness_module: am, witness_fn: af, executed_on: ao } =>
+      match b {
+        RedControlNotRun => false
+        RedControlExecuted { witness_module: bm, witness_fn: bf, executed_on: bo } =>
+          am == bm && af == bf && ao == bo
+      }
+  }
+}
+
+fn handback_evidence_eq(a: HandbackEvidence, b: HandbackEvidence) -> Bool {
+  match a {
+    HandbackNotDelivered =>
+      match b {
+        HandbackNotDelivered => true
+        HandbackDelivered { first_artifact: _, further_artifacts: _ } => false
+      }
+    HandbackDelivered { first_artifact: af, further_artifacts: afs } =>
+      match b {
+        HandbackNotDelivered => false
+        HandbackDelivered { first_artifact: bf, further_artifacts: bfs } =>
+          af == bf && non_empty_str_list_eq_ordered(a: afs, b: bfs)
+      }
+  }
+}
+
+fn non_empty_str_list_eq_ordered(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> Bool {
+  if count(a) != count(b) {
+    false
+  } else if count(a) == 0 {
+    true
+  } else {
+    first(a) == first(b)
+      && non_empty_str_list_eq_ordered(
+        a: drop_first_non_empty_str(items: a),
+        b: drop_first_non_empty_str(items: b),
+      )
+  }
+}
+
+type DropFirstStrState {
+  skipped: Bool
+  rest: List<NonEmptyStr>
+}
+
+type DropFirstEventState {
+  skipped: Bool
+  rest: List<RoadmapAcceptanceEvent>
+}
+
+fn drop_first_non_empty_str(items: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  fold(
+    items,
+    init: DropFirstStrState { skipped: false, rest: [] },
+    f: fn(state, item) {
+      if state.skipped {
+        DropFirstStrState { skipped: true, rest: concat(state.rest, [item]) }
+      } else {
+        DropFirstStrState { skipped: true, rest: state.rest }
+      }
+    },
+  ).rest
+}
+
+fn acceptance_receipt_eq(a: RoadmapAcceptanceReceipt, b: RoadmapAcceptanceReceipt) -> Bool {
+  a.node == b.node
+    && content_hash_eq_structural(left: a.criteria_digest, right: b.criteria_digest)
+    && red_control_evidence_eq(a: a.red_control, b: b.red_control)
+    && handback_evidence_eq(a: a.handback, b: b.handback)
+    && a.accepted_by == b.accepted_by
+    && a.accepted_on == b.accepted_on
+}
+
+fn acceptance_event_eq(a: RoadmapAcceptanceEvent, b: RoadmapAcceptanceEvent) -> Bool {
+  match a {
+    AcceptanceRecorded { receipt: ar } =>
+      match b {
+        AcceptanceRecorded { receipt: br } => acceptance_receipt_eq(a: ar, b: br)
+        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => false
+      }
+    AcceptanceRevoked { exact_prior_receipt: apr, disposition: ad, reason: ar, revoked_by: ab, revoked_on: ao } =>
+      match b {
+        AcceptanceRecorded { receipt: _ } => false
+        AcceptanceRevoked { exact_prior_receipt: bpr, disposition: bd, reason: br, revoked_by: bb, revoked_on: bo } =>
+          acceptance_receipt_eq(a: apr, b: bpr)
+            && match ad {
+              AcceptanceNodeReopensActiveFrontier {} =>
+                match bd {
+                  AcceptanceNodeReopensActiveFrontier {} => true
+                }
+            }
+            && ar == br
+            && ab == bb
+            && ao == bo
+      }
+  }
+}
+
+fn receipt_present_exact(
+  receipts: List<RoadmapAcceptanceReceipt>,
+  receipt: RoadmapAcceptanceReceipt,
+) -> Bool {
+  receipts |> any(r => acceptance_receipt_eq(a: r, b: receipt))
+}
+
+fn receipt_live_for_node(
+  live: List<RoadmapAcceptanceReceipt>,
+  id: RoadmapNodeId,
+) -> Bool {
+  live |> any(r => r.node == id)
+}
+
+fn remove_exact_receipt(
+  receipts: List<RoadmapAcceptanceReceipt>,
+  receipt: RoadmapAcceptanceReceipt,
+) -> List<RoadmapAcceptanceReceipt> {
+  receipts |> filter(r => !acceptance_receipt_eq(a: r, b: receipt))
+}
+
+fn non_empty_str_list_digest(items: List<NonEmptyStr>) -> Fnv1a64Structural {
+  fold(
+    items,
+    init: content_hash_atom(value: "non-empty-str-list-v1" as NonEmptyStr),
+    f: fn(acc, item) {
+      content_hash_combine_structural(
+        left: acc,
+        right: content_hash_atom(value: item),
+      )
+    },
+  )
+}
+
+fn red_control_evidence_digest(e: RedControlEvidence) -> Fnv1a64Structural {
+  match e {
+    RedControlNotRun =>
+      content_hash_tagged_structural(
+        tag: "roadmap-red-control-not-run-v1",
+        payload: content_hash_atom(value: "RedControlNotRun" as NonEmptyStr),
+      )
+    RedControlExecuted { witness_module, witness_fn, executed_on } =>
+      content_hash_tagged_structural(
+        tag: "roadmap-red-control-executed-v1",
+        payload: content_hash_combine_structural(
+          left: content_hash_combine_structural(
+            left: content_hash_atom(value: witness_module),
+            right: content_hash_atom(value: witness_fn),
+          ),
+          right: content_hash_atom(value: executed_on),
+        ),
+      )
+  }
+}
+
+fn handback_evidence_digest(e: HandbackEvidence) -> Fnv1a64Structural {
+  match e {
+    HandbackNotDelivered =>
+      content_hash_tagged_structural(
+        tag: "roadmap-handback-not-delivered-v1",
+        payload: content_hash_atom(value: "HandbackNotDelivered" as NonEmptyStr),
+      )
+    HandbackDelivered { first_artifact, further_artifacts } =>
+      content_hash_tagged_structural(
+        tag: "roadmap-handback-delivered-v1",
+        payload: content_hash_combine_structural(
+          left: content_hash_atom(value: first_artifact),
+          right: non_empty_str_list_digest(items: further_artifacts),
+        ),
+      )
+  }
+}
+
+fn acceptance_receipt_digest(receipt: RoadmapAcceptanceReceipt) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "roadmap-acceptance-receipt-v1",
+    payload: content_hash_combine_structural(
+      left: content_hash_combine_structural(
+        left: content_hash_atom(value: receipt.node as NonEmptyStr),
+        right: content_hash_combine_structural(
+          left: receipt.criteria_digest,
+          right: red_control_evidence_digest(e: receipt.red_control),
+        ),
+      ),
+      right: content_hash_combine_structural(
+        left: handback_evidence_digest(e: receipt.handback),
+        right: content_hash_combine_structural(
+          left: content_hash_atom(value: receipt.accepted_by),
+          right: content_hash_atom(value: receipt.accepted_on),
+        ),
+      ),
+    ),
+  )
+}
+
+fn acceptance_revocation_disposition_digest(
+  disposition: AcceptanceRevocationDisposition,
+) -> Fnv1a64Structural {
+  match disposition {
+    AcceptanceNodeReopensActiveFrontier {} =>
+      content_hash_tagged_structural(
+        tag: "roadmap-acceptance-reopens-active-frontier-v1",
+        payload: content_hash_atom(value: "AcceptanceNodeReopensActiveFrontier" as NonEmptyStr),
+      )
+  }
+}
+
+fn acceptance_event_digest(event: RoadmapAcceptanceEvent) -> Fnv1a64Structural {
+  match event {
+    AcceptanceRecorded { receipt } =>
+      content_hash_tagged_structural(
+        tag: "roadmap-acceptance-recorded-v2",
+        payload: acceptance_receipt_digest(receipt: receipt),
+      )
+    AcceptanceRevoked { exact_prior_receipt, disposition, reason, revoked_by, revoked_on } =>
+      content_hash_tagged_structural(
+        tag: "roadmap-acceptance-revoked-v2",
+        payload: content_hash_combine_structural(
+          left: acceptance_receipt_digest(receipt: exact_prior_receipt),
+          right: content_hash_combine_structural(
+            left: acceptance_revocation_disposition_digest(disposition: disposition),
+            right: content_hash_combine_structural(
+              left: content_hash_atom(value: reason),
+              right: content_hash_combine_structural(
+                left: content_hash_atom(value: revoked_by),
+                right: content_hash_atom(value: revoked_on),
+              ),
+            ),
+          ),
+        ),
+      )
+  }
+}
+
+fn acceptance_history_chain_digest(events: List<RoadmapAcceptanceEvent>) -> Fnv1a64Structural {
+  fold(
+    events,
+    init: content_hash_atom(value: "roadmap-acceptance-history-v1" as NonEmptyStr),
+    f: fn(acc, event) {
+      content_hash_combine_structural(
+        left: acc,
+        right: acceptance_event_digest(event: event),
+      )
+    },
+  )
+}
+
+fn drop_first_acceptance_event(events: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceEvent> {
+  fold(
+    events,
+    init: DropFirstEventState { skipped: false, rest: [] },
+    f: fn(state, event) {
+      if state.skipped {
+        DropFirstEventState { skipped: true, rest: concat(state.rest, [event]) }
+      } else {
+        DropFirstEventState { skipped: true, rest: state.rest }
+      }
+    },
+  ).rest
+}
+
+fn acceptance_history_prior_prefix_mismatch_index_at(
+  prior: List<RoadmapAcceptanceEvent>,
+  current: List<RoadmapAcceptanceEvent>,
+  index: Int,
+) -> Int {
+  if count(prior) == 0 {
+    index
+  } else if count(current) == 0 {
+    index
+  } else if !acceptance_event_eq(a: first(prior), b: first(current)) {
+    index
+  } else {
+    acceptance_history_prior_prefix_mismatch_index_at(
+      prior: drop_first_acceptance_event(events: prior),
+      current: drop_first_acceptance_event(events: current),
+      index: index + 1,
+    )
+  }
+}
+
+fn acceptance_history_prior_prefix_mismatch_index(
+  prior: List<RoadmapAcceptanceEvent>,
+  current: List<RoadmapAcceptanceEvent>,
+) -> Int {
+  acceptance_history_prior_prefix_mismatch_index_at(prior: prior, current: current, index: 0)
+}
+
+fn acceptance_history_extends_prior(
+  prior: List<RoadmapAcceptanceEvent>,
+  current: List<RoadmapAcceptanceEvent>,
+) -> Bool {
+  if count(prior) == 0 {
+    true
+  } else if count(current) < count(prior) {
+    false
+  } else {
+    acceptance_event_eq(a: first(prior), b: first(current))
+      && acceptance_history_extends_prior(
+        prior: drop_first_acceptance_event(events: prior),
+        current: drop_first_acceptance_event(events: current),
+      )
+  }
+}
+
+fn replay_acceptance_event(
+  state: AcceptanceHistoryReplayState,
+  event: RoadmapAcceptanceEvent,
+) -> AcceptanceHistoryReplayState? {
+  match event {
+    AcceptanceRecorded { receipt } =>
+      if receipt_live_for_node(live: state.live, id: receipt.node)
+        || receipt_present_exact(receipts: state.live, receipt: receipt) {
+        none
+      } else {
+        Present { value: AcceptanceHistoryReplayState {
+          live: concat(state.live, [receipt]),
+          revoked: state.revoked,
+          ever_recorded: concat(state.ever_recorded, [receipt]),
+        } }
+      }
+    AcceptanceRevoked { exact_prior_receipt, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
+      if !receipt_present_exact(receipts: state.live, receipt: exact_prior_receipt)
+        || receipt_present_exact(receipts: state.revoked, receipt: exact_prior_receipt) {
+        none
+      } else {
+        Present { value: AcceptanceHistoryReplayState {
+          live: remove_exact_receipt(receipts: state.live, receipt: exact_prior_receipt),
+          revoked: concat(state.revoked, [exact_prior_receipt]),
+          ever_recorded: state.ever_recorded,
+        } }
+      }
+  }
+}
+
+fn replay_acceptance_history(events: List<RoadmapAcceptanceEvent>) -> AcceptanceHistoryReplayState? {
+  fold(
+    events,
+    init: Present { value: AcceptanceHistoryReplayState {
+      live: [],
+      revoked: [],
+      ever_recorded: [],
+    } },
+    f: fn(acc, event) {
+      match acc {
+        Absent => Absent
+        Present { value: state } =>
+          match replay_acceptance_event(state: state, event: event) {
+            Absent => Absent
+            Present { value: next } => Present { value: next }
+          }
+      }
+    },
+  )
+}
+
+fn ever_recorded_receipt_accounted_for(
+  receipt: RoadmapAcceptanceReceipt,
+  live: List<RoadmapAcceptanceReceipt>,
+  revoked: List<RoadmapAcceptanceReceipt>,
+) -> Bool {
+  receipt_present_exact(receipts: live, receipt: receipt)
+    || receipt_present_exact(receipts: revoked, receipt: receipt)
+}
+
+fn project_live_acceptance_receipts(history: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceReceipt> {
+  match replay_acceptance_history(events: history) {
+    Present { value: state } => state.live
+    Absent => []
+  }
+}
+
+fn acceptance_history_integrity_verdict(
+  history: List<RoadmapAcceptanceEvent>,
+  prior_history: List<RoadmapAcceptanceEvent>,
+) -> AcceptanceHistoryIntegrityVerdict {
+  if count(prior_history) > 0 && !acceptance_history_extends_prior(prior: prior_history, current: history) {
+    AcceptanceHistoryIntegrityRefusedPriorPrefix {
+      index: acceptance_history_prior_prefix_mismatch_index(
+        prior: prior_history,
+        current: history,
+      ),
+    }
+  } else {
+    match replay_acceptance_history(events: history) {
+      Absent => AcceptanceHistoryIntegrityRefusedReplay
+      Present { value: state } =>
+        if !all(
+          state.ever_recorded,
+          r => ever_recorded_receipt_accounted_for(
+            receipt: r,
+            live: state.live,
+            revoked: state.revoked,
+          ),
+        ) {
+          AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation {
+            receipt: first(
+              state.ever_recorded |> filter(r =>
+                !ever_recorded_receipt_accounted_for(
+                  receipt: r,
+                  live: state.live,
+                  revoked: state.revoked,
+                )
+              ),
+            ),
+          }
+        } else {
+          AcceptanceHistoryIntegrityHolds
+        }
+    }
+  }
+}
+
+fn acceptance_history_integrity_holds(
+  history: List<RoadmapAcceptanceEvent>,
+  prior_history: List<RoadmapAcceptanceEvent>,
+) -> Bool {
+  match acceptance_history_integrity_verdict(
+    history: history,
+    prior_history: prior_history,
+  ) {
+    AcceptanceHistoryIntegrityHolds => true
+    AcceptanceHistoryIntegrityRefusedReplay => false
+    AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
+    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
+    AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
+  }
+}
+
+fn acceptance_history_integrity_verdict_detail(verdict: AcceptanceHistoryIntegrityVerdict) -> String {
+  match verdict {
+    AcceptanceHistoryIntegrityHolds => ""
+    AcceptanceHistoryIntegrityRefusedReplay =>
+      "acceptance history replay refused: event sequence is not replayable"
+    AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: receipt } =>
+      concat("acceptance receipt vanished without revocation: node=", receipt.node as String)
+    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: index } =>
+      concat("prior acceptance history prefix mismatch at index ", to_string(index))
+    AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: detail } =>
+      concat("prior history observation refused: ", detail)
+  }
 }

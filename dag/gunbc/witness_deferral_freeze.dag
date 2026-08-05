@@ -1,0 +1,1165 @@
+module gunbc.witness_deferral_freeze
+
+import std.types { NonEmptyStr, String, List, Bool, Int }
+
+data witness_deferral_freeze_authority_note: String = "THE FROZEN LEGACY POPULATION OF PATH-POLICY DEFERRALS, and the escape hatch it exists to close. A witness leaves per-PR discovery for one of two reasons (v2.workflow.witness_admission witness_row_excluded_two_kinds_note): an exact function-grain admission naming the cadence that executes it, or a broad path policy row in gunbc.ci_layer_roots witness_exclusion_frontier. The admission side is already correct — explicit_witness_admission_cadence_executes REFUSES OfflineLocalRecipe on an admission row, precisely so that an admission cannot satisfy the has-a-consumer wall while executing nowhere. The path side had no such wall: a row whose entry matched an OfflineLocalRecipe pattern was admitted unconditionally, because the deferred-row refusal fired only on NoConsumer. So a directory decided an admission question, and the answer was always yes.
+
+THE TRANSFORMATION THAT PERMITTED, stated as the live sequence rather than as a risk: a required per-PR witness goes over the five-second fast-lane budget; its file is moved under test/claim/long/; it leaves per-PR discovery; no cadence row is added; nothing executes it; and admission holds. Green CI, zero executed coverage, source file still present. That is not deferral — it is deletion of the evidence with the file left behind.
+
+THE MOTIVATING SPECIMEN, verified by execution rather than cited from a summary: gunbc#7762 commit 0cfd199f8648fae69c87579fa973585046868586, titled Move frontier probe closure matrix to long lane to fix CI fast-lane budget failures, renamed src/v2/test/claim/workflow/frontier_probe_closure_matrix_test.dag to src/v2/test/claim/long/frontier_probe_closure_matrix_test.dag. Thirteen test fns crossed in that rename. What the commit added beside them was a data row holding a claim_batch command line — prose naming a recipe, not a consumer that runs — and the file appears in no cadence roster. A later commit on the same branch split eight of the thirteen back onto the per-PR path, which is the right repair and also the proof that nothing mechanical forced it: the split happened because a reviewer looked, and the admission wall said yes either way.
+
+WHY THE EVAL DEADLINE IS NOT A BACKSTOP, correcting a claim this repo carried in two places. gunbc.ci_layer_roots long_lane_exclusion_note and the Form-C blessing in gunbc.roster_registry both said membership in the long home is safe because the five-second deadline makes an over-budget fast-lane witness unwritable-in-place. It does not. The deadline is evaluated only while a witness RUNS, and relocation is exactly the act that stops it running, so the mechanism the blessing rests on is disarmed by the move it was supposed to govern. BudgetExceeded remains what it is — an interruption plus a measured lower bound on cost — and it must never read as a semantic verdict on a witness, nor discharge one by causing its relocation.
+
+THE GOVERNING RULE this freeze serves (operator ruling, 2026-08-04): a test is not entitled to arbitrary computation merely because it is a test. Its size must be DERIVED from what it proves — a modeled boundary it crosses, where the smallest crossing specimen is the requirement plus one rather than a realistic-looking input; a live population whose breadth is the subject, which decomposes into small discriminating mechanism fixtures every PR plus the irreducible census on an enrolled cadence; an external effect that IS the subject, which runs wet under an explicit budget; or a resource contract whose threshold comes from a declared requirement. Everything else large is a benchmark, a soak test, a demonstration, or a cost-shape defect in the implementation, and none of those may gate.
+
+WHAT THIS ROSTER IS, AND WHAT IT IS NOT. It is the exact identity-grain population of (entry, function) pairs that path policy admitted with no executing consumer at the moment the wall landed — a frozen debt, not a permission, and specifically NOT a claim of coverage. Membership here yields LegacyFrozenPathDeferral on the execution-standing axis, which the coverage gate answers NO to and only the floor's migration ratchet tolerates; the axes and why they must not be one arm are in std.witness_admission witness_execution_standing_axis_note. The first shape of this wall returned the same success arm an executing consumer returns, and then read the green floor gate as evidence that every current row was admitted — while every one of these rows still executed nowhere. It is NOT a count: no witness here asserts the roster's size against a literal, because a number copied from the current tree is a snapshot rather than an oracle. Completeness is an identity join over the discovered witness population in both directions — an offline-classified witness outside this roster and outside gunbc.explicit_witness_admission REFUSES as UnclassifiedPathDeferral, and a row here naming a witness the tree no longer carries (file gone, test decl gone, or path no longer offline-classified) REFUSES as a stale freeze row, so the freeze cannot rot into a permission slip.
+
+THE RATCHET, and why it is a freeze rather than a sweep. Classifying every historical resident in one pass would either red the repo or produce 701 guesses at purposes nobody measured; both are worse than the debt. So the population is frozen as-is and the FORWARD hole closes immediately: a new or relocated witness under any OfflineLocalRecipe path must carry an exact admission naming an executing cadence, which is the same bar every other deferral already meets. Legacy rows migrate as their files are touched or as a cadence enrolls them. DISSOLVE-ON: this roster reaching empty — at which point the path-policy pass-through arm in both v2.workflow.witness_admission and the host projection deletes with it, and OfflineLocalRecipe stops being an admission answer at all."
+
+data witness_deferral_freeze_shrink_log_note: String = "SHRINK LOG. The 701-identity / 152-entry figures the notes around this one quote are the FREEZE-POINT BASELINE and are deliberately not restated as the roster's current size — a hand-maintained live count is the change detector DESIGN section 5's oracle rule rejects, and the roster below is the authority for what the population is right now. This row records migrations OUT, which is the only direction permitted, so that the baseline stays legible as history rather than decaying into a false present-tense claim. 2026-08-05 — src/v2/test/claim/long/orchestration_while_emit_test.dag, 14 identities, MIGRATED not exempted: the file returned to src/v2/workflow/orchestration_while_emit_test.dag, the per-PR-discovered path it occupied before gunbc#7098 relocated it, so its rows now classify as WitnessHasExecutingConsumer and the freeze row had to go — a row naming a witness the tree no longer carries at that entry is a StaleFrozenPathDeferral refusal, and its diagnostic says to delete it in the change that moved the witness. Measured eval justifying the return, on a load-average-28 host: 94 / 54 / 36 / 8 ms per witness against the 5000ms gunbc_ci_fast_lane_witness_eval_budget; those are wall figures against a thread-CPU budget, and cpu <= wall for one witness thread, so the bound runs the safe way. Rationale and the receipt live with the witness in orch_while_unfreeze_note."
+
+data witness_deferral_freeze_purpose_frontier_note: String = "WHAT THIS FREEZE DELIBERATELY DOES NOT CARRY, so its coverage is not overread. A frozen row records IDENTITY only — that this exact (entry, function) was already deferred by path policy when the wall landed. It records no purpose, no measured cost, and no consumer, because it has none: the whole point of the freeze is that these 701 identities (152 entries, measured at the freeze point) were admitted without any of the three. The purpose taxonomy (which boundary, population, external effect, or resource contract justifies the size) and the per-witness cost envelope are the NEXT slice, and a frozen row is the debt marker that one is owed.
+
+A FROZEN ROW ASSERTS MEMBERSHIP AND NOTHING ELSE, and that neutrality is load-bearing rather than incidental. It records that this exact identity was already path-deferred at the freeze point. It does NOT say the witness is a violation, that it will owe a cadence, or that it is permanently unadmitted — because which of those it turns out to be is not yet decided, and a baseline everyone reads afterward is the most expensive place to bake a wrong label. At least three dispositions live in this population and they owe different things: a PERMANENT regression witness owes a scheduled consumer, since an offline recipe can establish that this head was tested once but never that a later regression will be observed; a TERMINATING one-shot survey owes no cadence at all, because it has no later — it runs once at a pinned head to produce a manifest and then deletes itself, and demanding a cadence would enroll a job whose whole purpose is to be removed; and a witness with no discriminating red owes deletion rather than either. Live specimen of the terminating kind, already in this roster: the seven rows of src/v2/test/claim/long/compiler_frontier_per_module_probe_test.dag, whose compiler_frontier_per_module_probe_exclusion_note names all seven functions, the exact invocation, the pinned subject and a dissolve_on under which the note, the exclusion row and the probe scaffold delete together at 27 of 27 receipts.
+
+THE ARM THAT DOES NOT EXIST YET, named so its absence is not read as a decision: this mechanism cannot tell a terminating one-shot from a permanent witness, because the distinction lives in prose. Typing it is strictly more demanding than typing a cadence, not less — a one-shot owes a pinned subject, a mechanically checkable dissolution trigger, AND a deadline after which an undissolved one-shot refuses. Without that deadline every permanent witness can simply claim to be a one-shot, which is the same laundering as an extrapolation wearing the word measured. NEXT TRIGGER: the purpose taxonomy, where PermanentRegressionWitness and TerminatingSurvey become distinct carriers with distinct obligations; until then this roster deliberately labels neither.
+
+THREE RESIDUES, each with its trigger, because a gap with a named trigger is a tracked ceiling while the same gap unstated is debt.
+
+(1) MODIFIED-IN-PLACE is not covered. Identity grain refuses a NEW function under an offline path; it cannot see a frozen function whose body grew a corpus scan, because the identity did not change. NEXT TRIGGER: the cost half — a per-witness declared cost envelope the measured eval is checked against, at which point a witness that outgrows its declaration refuses on the measurement rather than on its name. Explicitly REJECTED as a stand-in: a per-file content pin in this roster. A hash an author must hand-bump on every unrelated touch is a change detector, and change detectors train the blind bump, which this repo treats as a line-stop rather than a workflow.
+
+(2) ROSTER GROWTH is walled by the monotonicity gate (cli_run collect_frozen_path_deferral_additions), which refuses when this roster gains identities relative to the diff baseline — so the freeze can only shrink, and appending a row in the same change that adds the witness is not an available move. The one non-refusing arm is the roster being ABSENT at the baseline, which is the change that introduces it and is unreachable once the roster is on the base branch. An unresolvable baseline REFUSES rather than passing unchecked.
+
+(3) FixtureExplicitRoster is untouched by this wall. Those patterns name control fixtures consumed by other witnesses rather than witnesses claiming their own coverage, so the has-a-consumer question is answered elsewhere; if that class ever grows a witness of its own it inherits exactly this defect, and the arm is written so extending it is one predicate."
+
+type FrozenPathDeferral {
+  entry: NonEmptyStr
+  functions: List<String>
+}
+
+data frozen_path_deferrals: List<FrozenPathDeferral> = [
+  FrozenPathDeferral {
+    entry: "dag/test/claim/artifact_store_fs_witness_test.dag",
+    functions: [
+      "artifact_fs_roundtrip_holds", "artifact_fs_refuses_non_scratch_store_root_holds",
+      "artifact_fs_delete_then_misses_holds", "artifact_fs_mutated_input_misses_holds",
+      "artifact_fs_eviction_removes_only_the_evicted_key",
+      "artifact_fs_eviction_of_empty_receipt_deletes_nothing"
+    ]
+  },
+  FrozenPathDeferral { entry: "dag/test/claim/ci_deploy_observed_wet_test.dag", functions: ["ci_deploy_observed_wet_witnesses"] },
+  FrozenPathDeferral { entry: "dag/test/claim/ci_exclusion_proof_test.dag", functions: ["ci_exclusion_proof_sentinel"] },
+  FrozenPathDeferral {
+    entry: "dag/test/claim/deploy_access_privilege_witness_test.dag",
+    functions: [
+      "witness_modeled_unprivileged_fixture_is_denied",
+      "witness_unprivileged_mutation_refused_before_shell",
+      "witness_unprivileged_mutation_directive_is_refused_terminal",
+      "witness_privileged_fixture_mutation_applies", "witness_privileged_fixture_surfaces_stdout"
+    ]
+  },
+  FrozenPathDeferral { entry: "dag/test/claim/direct_rust_door_write_compile_witness_test.dag", functions: ["direct_rust_door_emit_write_compile_holds"] },
+  FrozenPathDeferral {
+    entry: "dag/test/claim/external_model_scope_live_cover_witness_test.dag",
+    functions: [
+      "red_cover_walker_refuses_missing_root", "frontier_cover_of_live_extdeps_tree_holds",
+      "manifest_rows_all_predate_freeze_sha"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "dag/test/claim/host_effect_apply_witness_test.dag",
+    functions: [
+      "witness_shell_on_host_success_converges", "witness_shell_on_host_failure_fails_closed",
+      "witness_redfish_on_bmc_unimplemented_fails_closed",
+      "witness_redfish_on_hostos_typed_mismatch", "witness_shell_on_bmc_typed_mismatch",
+      "witness_converge_policy_redrives_not_converged",
+      "witness_oneshot_policy_terminal_not_converged", "witness_incompatible_is_refused_terminal",
+      "witness_converged_is_settled", "witness_ssh_shell_unreachable_fails_closed",
+      "witness_ssh_empty_script_fails_closed", "witness_shell_failure_surfaces_captured_stdout",
+      "witness_identity_evidence_derives_oneshot_drive",
+      "witness_converge_loop_evidence_derives_converge_drive",
+      "witness_arbitrary_non_idempotent_derives_oneshot_not_redrive",
+      "witness_lattice_breaking_shape_derives_oneshot_not_redrive",
+      "witness_converge_plan_fail_closed_on_knob_frontier",
+      "witness_converge_plan_on_bmc_typed_mismatch", "witness_converge_plan_redrives_on_frontier"
+    ]
+  },
+  FrozenPathDeferral { entry: "dag/test/claim/interp_recorded_fixture_witness_test.dag", functions: ["interp_recorded_fixture_keystone_holds"] },
+  FrozenPathDeferral { entry: "dag/test/claim/lever_a_local_receipt_witness_test.dag", functions: ["lever_a_local_receipts_hold"] },
+  FrozenPathDeferral {
+    entry: "dag/test/claim/long/cited_symbol_resolution_witness_test.dag",
+    functions: [
+      "cited_symbol_hand_authored_binds_all_resolve",
+      "cited_symbol_hand_authored_census_is_zero_refusals",
+      "cited_symbol_resolution_lens_is_green_on_live_corpus", "doc_graph_works_refs_all_resolve",
+      "cited_symbol_post7688_production_census_is_zero_violations",
+      "cited_symbol_refusal_count_red_on_dangling_fixture",
+      "cited_symbol_planted_doc_graph_controls_all_refuse",
+      "cited_symbol_enrolled_population_refusal_proves_gate_not_vacuous",
+      "cited_symbol_planted_ambiguous_control_refuses_via_resolver",
+      "cited_symbol_production_census_ambiguous_count_is_zero",
+      "cited_symbol_resolves_node_kind_authority", "cited_symbol_resolves_decl_ref_constructor",
+      "cited_symbol_refuses_module_absent", "cited_symbol_refuses_declaration_absent",
+      "cited_symbol_refuses_ambiguous_binding", "cited_symbol_refuses_named_field_absent"
+    ]
+  },
+  FrozenPathDeferral { entry: "dag/test/claim/long/commit_witness_claim_roster_witness_test.dag", functions: ["commit_witness_claim_roster_holds"] },
+  FrozenPathDeferral { entry: "dag/test/claim/long/import_closure_live_test.dag", functions: ["dag_import_closure_live_witness_bundle_holds"] },
+  FrozenPathDeferral { entry: "dag/test/claim/long/inert_lens_hygiene_witness_test.dag", functions: ["inert_lens_hygiene_has_no_unreached_modules", "inert_lens_hygiene_universe_is_nonempty"] },
+  FrozenPathDeferral { entry: "dag/test/claim/long/reference_closure_equivalence_test.dag", functions: ["reference_closure_b2_safety_wall_holds"] },
+  FrozenPathDeferral {
+    entry: "dag/test/claim/random_bytes_csprng_witness_test.dag",
+    functions: [
+      "random_bytes_count_holds", "random_bytes_zero_holds",
+      "random_bytes_base64url_mint_16_length_holds", "random_bytes_base64url_mint_20_length_holds"
+    ]
+  },
+  FrozenPathDeferral { entry: "dag/test/claim/self_host_00_compile_behavioral_witness_test.dag", functions: ["self_host_00_compile_behavioral_receipt_holds"] },
+  FrozenPathDeferral { entry: "dag/test/claim/self_host_01_tokenize_behavioral_witness_test.dag", functions: ["self_host_01_tokenize_behavioral_receipt_holds"] },
+  FrozenPathDeferral { entry: "dag/test/claim/self_host_02_parse_behavioral_witness_test.dag", functions: ["self_host_02_parse_behavioral_receipt_holds"] },
+  FrozenPathDeferral { entry: "dag/test/claim/self_host_03_ingest_behavioral_witness_test.dag", functions: ["self_host_03_ingest_behavioral_receipt_holds"] },
+  FrozenPathDeferral { entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag", functions: ["self_host_03_normalize_declared_source_refs_complete_holds"] },
+  FrozenPathDeferral { entry: "dag/test/claim/self_host_03_resolve_behavioral_witness_test.dag", functions: ["self_host_03_resolve_behavioral_receipt_holds"] },
+  FrozenPathDeferral { entry: "dag/test/claim/self_host_04_infer_behavioral_witness_test.dag", functions: ["self_host_04_infer_behavioral_receipt_holds"] },
+  FrozenPathDeferral { entry: "dag/test/claim/self_host_materialization_carriers_behavioral_witness_test.dag", functions: ["self_host_materialization_carriers_behavioral_receipt_holds"] },
+  FrozenPathDeferral { entry: "dag/test/claim/self_host_program_assembly_behavioral_witness_test.dag", functions: ["self_host_program_assembly_behavioral_receipt_holds"] },
+  FrozenPathDeferral { entry: "dag/test/claim/self_host_program_partition_behavioral_witness_test.dag", functions: ["self_host_program_partition_behavioral_receipt_holds"] },
+  FrozenPathDeferral { entry: "dag/test/claim/self_host_source_authority_behavioral_witness_test.dag", functions: ["self_host_source_authority_behavioral_receipt_holds"] },
+  FrozenPathDeferral { entry: "dag/test/claim/served_surface_browser_artifact_integrity_witness_test.dag", functions: ["witness_checked_in_screenshots_match_receipts"] },
+  FrozenPathDeferral {
+    entry: "dag/test/claim/srv3_host_effect_apply_witness_test.dag",
+    functions: [
+      "witness_srv3_receipt_emit_apply_converges_in_process",
+      "witness_bmcweb_token_extract_ssh_transport_refuses_typed",
+      "witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash",
+      "witness_srv3_apply_shell_failure_refuses_typed",
+      "witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated",
+      "witness_srv3_apply_failure_no_fabricated_stdout",
+      "witness_srv3_typed_effect_on_bmc_refuses_typed",
+      "witness_srv3_typed_reconcile_ssh_transport_refuses_typed",
+      "witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time",
+      "witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill",
+      "witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_ref",
+      "witness_srv3_nbd_proxy_apply_observe_unimplemented_refuses_fail_closed",
+      "witness_srv3_nbd_proxy_serve_session_binding_carries_lease",
+      "witness_srv3_nbd_proxy_on_bmc_refuses_typed",
+      "srv3_typed_receipt_emit_realizes_in_process_not_shell",
+      "srv3_typed_receipt_carrier_holds_lines", "shell_bash_runner_still_present_for_p5b",
+      "srv3_nbd_proxy_serve_realize_layer_dissolves_via_host_effect_nbd_proxy_serve"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag",
+    functions: [
+      "scaffold_host_observation_is_live_and_observed",
+      "scaffold_host_observation_reaches_path_derived_verdict",
+      "scaffold_mechanical_checks_reflect_live_classification"
+    ]
+  },
+  FrozenPathDeferral { entry: "dag/test/manual/git_upstream_model_execution_test.dag", functions: ["witness_git_cli_fixture_hashes_projects_and_independently_reads_back"] },
+  FrozenPathDeferral { entry: "dag/test/manual/mercurial_upstream_model_execution_test.dag", functions: ["witness_mercurial_cli_fixture_projects_and_independently_reads_back"] },
+  FrozenPathDeferral { entry: "dag/test/manual/pijul_upstream_model_execution_test.dag", functions: ["witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict"] },
+  FrozenPathDeferral { entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_lean_bash_test.dag", functions: ["roster_lean_zero_suspects_within_ratchet", "roster_bash_zero_suspects_within_ratchet"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag",
+    functions: [
+      "roster_std_change_dag_zero_suspects_within_ratchet",
+      "roster_std_render_repeat_string_bootstrap_within_ratchet"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_swift_test.dag", functions: ["roster_swift_zero_suspects_within_ratchet"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag",
+    functions: [
+      "roster_machine_code_zero_suspects_within_ratchet",
+      "roster_compile_stage_zero_suspects_within_ratchet",
+      "roster_glob_discovery_zero_suspects_within_ratchet",
+      "roster_lens_traversal_zero_suspects_within_ratchet",
+      "roster_lens_cost_model_zero_suspects_within_ratchet",
+      "roster_std_algebra_zero_suspects_within_ratchet", "red_control_planted_copy_still_alarms"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/enforcement/cost_coverage_witness_test.dag",
+    functions: [
+      "cost_coverage_smoke_totality_holds", "cost_coverage_smoke_recomputed_by_execution_holds",
+      "cost_coverage_dag_logic_has_three_fn_bodies", "cost_coverage_reject_is_typed_not_silent",
+      "cost_coverage_dag_tree_receipt_by_execution", "cost_coverage_v2_tree_receipt_by_execution",
+      "cost_coverage_unknown_fraction_is_derived", "cost_coverage_corpus_roster_nonempty",
+      "cost_coverage_decl_facts_roster_smoke_totality_holds",
+      "cost_coverage_file_row_totality_holds_on_smoke",
+      "cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/enforcement/grammar_coverage_witness_test.dag",
+    functions: [
+      "grammar_coverage_smoke_totality_holds",
+      "grammar_coverage_smoke_recomputed_by_execution_holds",
+      "grammar_coverage_dag_tree_totality_holds", "grammar_coverage_reject_is_typed_not_silent",
+      "grammar_coverage_corpus_roster_dedupes_decl_facts",
+      "grammar_coverage_decl_facts_roster_smoke_totality_holds",
+      "grammar_coverage_take_n_live_dag_subset5_work_units_by_execution",
+      "grammar_coverage_take_n_live_dag_subset10_work_units_by_execution",
+      "grammar_coverage_take_n_fixed_roster_saturates_by_execution",
+      "grammar_coverage_dag_tree_receipt_by_execution",
+      "grammar_coverage_v1_core_file_reject_locus_by_execution",
+      "grammar_coverage_v1_tokenize_file_reject_locus_by_execution",
+      "grammar_coverage_v1_rejected_rows_identity_by_execution",
+      "grammar_coverage_v1_tree_receipt_by_execution",
+      "grammar_coverage_v2_tree_receipt_by_execution",
+      "grammar_coverage_parse_fraction_is_derived"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/enforcement/lens_module_gate_witness_test.dag",
+    functions: [
+      "lens_closure_question_zero_holds_live", "lens_module_gate_holds_live",
+      "red_control_unenrolled_lens_refused", "red_control_redundant_verdict_remedy_refused",
+      "red_control_genuinely_new_distinct_surface_passes",
+      "red_control_fully_authorized_fixture_clean", "question_zero_verdict_live_holds",
+      "audit_residue_counted_for_known_pending_fork", "question_zero_fixture_redundant_leg_fails",
+      "lens_closure_question_zero_live_matches_gate"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/enforcement_inventory_witness_test.dag",
+    functions: [
+      "enforcement_live_witness_exclusion_inventory_matches_frontier",
+      "witness_admission_inventory_reconciles_exclusion_frontier",
+      "enforcement_inventory_witness_excluded_via_frontier",
+      "inventory_reconciles_registry_both_ways_live",
+      "inventory_unbound_rows_match_contract_unbound_live",
+      "unbound_lenses_remain_in_inventory_live",
+      "cost_has_contract_and_standing_intent_applications_live",
+      "cost_repo_wide_application_reports_support_gap_live",
+      "cost_contract_consumer_application_support_held_live",
+      "inventory_rows_report_evaluated_scope_absent_live"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/enforcement_live_witness_test.dag",
+    functions: [
+      "enforcement_consistency_gate_holds", "complexity_repo_wide_verdict_matches_roadmap",
+      "roster_read_liveness_discriminates", "empty_facts_feed_reds_subjects_leg",
+      "red_control_of_red_control_flips", "only_cost_contract_carries_red_control_probe",
+      "self_application_liveness_discriminates", "skeleton_only_fact_lands_body_unavailable",
+      "totality_judged_plus_unavailable_equals_fn_items", "per_root_sentinels_hold_in_one_walk",
+      "live_corpus_is_currently_all_body_unavailable", "unbound_contracts_remain_enumerable",
+      "bound_contracts_derive_live_receipts", "unbound_contracts_omit_semantic_receipts"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/add_arrow_eval_by_execution_test.dag",
+    functions: [
+      "add_arrow_eval_tokenize_holds", "add_arrow_eval_parse_holds",
+      "add_arrow_eval_normalize_holds", "add_arrow_eval_resolve_holds",
+      "add_arrow_eval_source_pipeline_admits_add_holds",
+      "add_arrow_eval_canonical_tree_infers_holds", "add_arrow_eval_direct_runtime_holds",
+      "add_arrow_eval_source_driven_add_executes_holds",
+      "add_arrow_eval_produced_add_body_executes_holds",
+      "add_arrow_eval_generality_executes_holds", "add_arrow_eval_swapped_operands_red_holds",
+      "add_arrow_eval_wrong_value_red_holds", "add_arrow_excess_signature_red_holds",
+      "add_arrow_excess_body_red_holds", "add_arrow_excess_actual_red_holds",
+      "add_arrow_eval_lazy_arm_branch_suppression_holds",
+      "add_arrow_eval_lazy_arm_loop_suppression_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/bind_eval_by_execution_test.dag",
+    functions: [
+      "bind_source_pipeline_admits_holds", "bind_source_driven_executes_holds",
+      "bind_direct_runtime_holds", "bind_value_perturbation_red_holds",
+      "bind_fixture_producer_holds", "bind_fixture_wrong_value_red_holds",
+      "bind_census_ingested_executes_holds", "bind_census_ingested_wrong_value_red_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/bind_round_trip_test.dag",
+    functions: [
+      "bind_emit_matches_serialize_holds", "bind_grammar_inverse_holds",
+      "bind_ingest_via_coerce_matches_canonical"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/branch_eval_by_execution_test.dag",
+    functions: [
+      "branch_source_pipeline_admits_holds", "branch_source_driven_pick_true_executes_holds",
+      "branch_source_driven_pick_false_executes_holds", "branch_condition_perturbation_red_holds",
+      "branch_direct_runtime_true_holds", "branch_swapped_arms_red_holds",
+      "branch_fixture_producer_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/branch_if_then_else_round_trip_test.dag",
+    functions: [
+      "branch_if_then_else_emit_matches_serialize_holds",
+      "branch_if_then_else_grammar_inverse_holds",
+      "branch_if_then_else_ingest_via_coerce_matches_canonical"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/c_add_emit_host_run_test.dag",
+    functions: [
+      "c_add_emit_host_green_run_holds", "c_add_emit_host_inject_fault_refuses_holds",
+      "c_add_emit_host_nonzero_exit_refuses_holds",
+      "c_add_emit_host_byte_width_mismatch_refuses_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/c_type_decl_emit_host_run_test.dag",
+    functions: [
+      "c_type_decl_emit_host_green_run_holds", "c_type_decl_emit_host_inject_fault_refuses_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/dag_add_emit_round_trip_test.dag",
+    functions: [
+      "dag_add_emit_matches_serialize_holds", "dag_add_grammar_inverse_holds",
+      "dag_add_ingest_via_coerce_matches_canonical", "dag_add_domain_coerce_accepts_holds",
+      "dag_add_domain_translate_accepts_holds", "dag_add_translate_accepts_holds",
+      "dag_add_emit_add_fn_accepts_holds"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/execution/effect_io_eval_by_execution_test.dag", functions: ["effect_io_eval_roundtrip_holds", "effect_io_eval_unbound_fail_closed_holds"] },
+  FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag", functions: ["emit_host_add_wrong_oracle_refuses_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
+    functions: [
+      "ingested_classical_not_eval_subgraph_canonical_octet_zero_holds",
+      "ingested_classical_not_staging_swapped_emit_refuses_underived_holds",
+      "emit_host_classical_not_ingested_swapped_refuses_holds",
+      "ingested_classical_not_real_infer_holds",
+      "ingested_classical_not_match_only_param_scrutinee_infer_refuses_holds",
+      "ingested_classical_not_arrow_empty_domain_infer_refuses_holds"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag", functions: ["emit_host_complement_wrong_fixture_refuses_holds"] },
+  FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag", functions: ["emit_host_field_access_wrong_fixture_refuses_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/emit_host_filesystem_read_equals_eval_test.dag",
+    functions: [
+      "filesystem_read_eval_reads_real_bash_argv",
+      "emit_host_filesystem_read_wrong_oracle_refuses_holds"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag", functions: ["emit_host_fold_closure_wrong_fixture_refuses_holds"] },
+  FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag", functions: ["emit_host_loop_wrong_fixture_refuses_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
+    functions: [
+      "emit_host_match_wrong_fixture_refuses_holds", "emit_host_match_eval_only_accepts",
+      "emit_host_match_emit_only_accepts"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
+    functions: [
+      "emit_host_meet_wrong_fixture_refuses_holds", "emit_host_join_wrong_fixture_refuses_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/emit_host_module_equals_eval_test.dag",
+    functions: [
+      "emit_host_module_add_equals_eval_holds", "emit_host_module_wrong_oracle_refuses_holds",
+      "emit_module_join_concatenates_two_decls"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/emit_host_produced_module_equals_eval_test.dag",
+    functions: [
+      "produced_module_two_distinct_fns_assemble",
+      "emit_host_produced_module_add_equals_eval_holds",
+      "emit_host_produced_module_wrong_oracle_refuses_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/emit_host_shell_exec_run_equals_eval_test.dag",
+    functions: [
+      "shell_exec_run_eval_argv_is_bash_dash_s",
+      "emit_host_shell_exec_run_wrong_oracle_refuses_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/emit_host_transport_wire_test.dag",
+    functions: [
+      "emit_host_transport_outside_grant_refuses_holds", "emit_host_transport_green_run_holds",
+      "emit_host_transport_nonzero_exit_refuses_holds",
+      "emit_host_transport_byte_width_mismatch_refuses_holds",
+      "emit_host_row_bound_executable_identity_holds",
+      "emit_host_row_bound_executable_identity_discriminates_holds"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag", functions: ["emit_host_variant_construct_wrong_fixture_refuses_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/emit_ingest_grammar_relation_round_trip_test.dag",
+    functions: [
+      "emit_backward_selects_canonical_row_holds",
+      "ingest_forward_selects_canonical_emitted_holds",
+      "emit_then_ingest_selector_identity_holds", "ingest_then_emit_selector_identity_holds",
+      "same_grammar_parse_ingest_bridge_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/emit_ingest_python_same_language_round_trip_test.dag",
+    functions: [
+      "emit_python_backward_selects_canonical_row_holds",
+      "ingest_python_forward_selects_canonical_emitted_holds",
+      "emit_then_ingest_python_selector_identity_holds",
+      "ingest_then_emit_python_selector_identity_holds",
+      "emit_ingest_python_perturbed_frontier_fails_closed",
+      "ingest_python_forward_fails_closed_off_frontier_holds",
+      "emit_python_backward_fails_closed_on_foreign_emitted_holds",
+      "python_same_language_parse_bridge_holds",
+      "python_same_language_source_emit_round_trip_holds",
+      "emit_ingest_python_same_language_round_trip_holds"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_ingest_type_decl_round_trip_test.dag", functions: ["type_decl_real_source_round_trip_holds", "emit_ingest_type_decl_round_trip_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/emit_ingest_typescript_same_language_round_trip_test.dag",
+    functions: [
+      "emit_typescript_backward_selects_canonical_row_holds",
+      "ingest_typescript_forward_selects_canonical_emitted_holds",
+      "emit_then_ingest_typescript_selector_identity_holds",
+      "ingest_then_emit_typescript_selector_identity_holds",
+      "emit_ingest_typescript_perturbed_frontier_fails_closed",
+      "ingest_typescript_forward_fails_closed_off_frontier_holds",
+      "emit_typescript_backward_fails_closed_on_foreign_emitted_holds",
+      "typescript_same_language_parse_bridge_holds",
+      "typescript_same_language_source_emit_round_trip_holds",
+      "emit_ingest_typescript_same_language_round_trip_holds"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/execution/eval_bind_non_bind_interpreter_rejects_test.dag", functions: ["eval_bind_node_eval_rejects_value_interpreter_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/floor_diff_observe_witness_test.dag",
+    functions: [
+      "witness_ci_policy_observation_succeeds", "witness_invalid_base_fails_closed",
+      "witness_ci_policy_name_status_observation_succeeds",
+      "witness_invalid_base_name_status_fails_closed"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/fold_assembly_round_trip_test.dag",
+    functions: [
+      "gate_chain_round_trips", "divergent_chain_round_trips", "short_chain_round_trips",
+      "apply_inverts_extract_on_gate_step", "fold_form_has_exactly_one_template_edge",
+      "fold_form_template_is_the_kernel_template", "fold_form_preserves_per_element_fills",
+      "corrupted_content_expands_but_differs", "structural_missing_template_edge_is_rejected",
+      "structural_duplicate_template_edge_is_rejected",
+      "structural_cons_head_without_tail_is_rejected",
+      "structural_fill_arity_mismatch_is_rejected"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/loop_eval_by_execution_test.dag",
+    functions: [
+      "loop_source_pipeline_admits_holds", "loop_source_driven_executes_holds",
+      "loop_source_driven_wrong_value_red_holds", "loop_direct_runtime_holds",
+      "loop_value_perturbation_red_holds", "loop_fixture_producer_holds",
+      "loop_fixture_wrong_value_red_holds", "loop_census_ingested_executes_holds",
+      "loop_census_ingested_wrong_value_red_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/loop_round_trip_test.dag",
+    functions: [
+      "loop_emit_matches_serialize_holds", "loop_grammar_inverse_holds",
+      "loop_ingest_via_coerce_matches_canonical"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/match_bool_round_trip_test.dag",
+    functions: [
+      "match_bool_emit_matches_serialize_holds", "match_bool_grammar_inverse_holds",
+      "match_bool_ingest_via_coerce_matches_canonical"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/native_selected_witness_bundle_test.dag",
+    functions: [
+      "native_selected_witness_bundle_interpreter_meet_green_holds",
+      "native_selected_witness_bundle_interpreter_join_green_holds",
+      "native_selected_witness_bundle_interpreter_complement_green_holds",
+      "native_selected_witness_bundle_interpreter_meet_wrong_body_oracle_holds",
+      "native_selected_witness_bundle_interpreter_join_wrong_body_oracle_holds",
+      "native_selected_witness_bundle_interpreter_complement_wrong_body_oracle_holds",
+      "native_selected_witness_bundle_monotonic_observation_holds",
+      "native_selected_witness_bundle_primary_typed_admission_holds",
+      "native_selected_witness_bundle_primary_rows_holds",
+      "native_selected_witness_bundle_primary_interpreted_verdicts_holds",
+      "native_selected_witness_bundle_primary_native_verdicts_holds",
+      "native_selected_witness_bundle_cutover_evidence_holds",
+      "native_selected_witness_bundle_cold_warm_equivalence_holds",
+      "native_selected_witness_bundle_discriminating_red_holds",
+      "native_selected_witness_bundle_divergence_hard_red_holds",
+      "native_selected_witness_bundle_missing_red_refuses_holds",
+      "native_selected_witness_bundle_non_discriminating_red_refuses_holds",
+      "native_selected_witness_bundle_unplanted_subject_red_refuses_holds",
+      "native_selected_witness_bundle_process_count_refuses_holds",
+      "native_selected_witness_bundle_empty_coverage_refuses_holds",
+      "native_selected_witness_bundle_no_native_members_refuses_holds",
+      "native_selected_witness_bundle_execution_plan_identity_refuses_holds",
+      "native_selected_witness_bundle_execution_stale_compiler_refuses_holds",
+      "native_selected_witness_bundle_execution_stale_plan_compiler_refuses_holds",
+      "native_selected_witness_bundle_warm_artifact_miss_refuses_holds",
+      "native_selected_witness_bundle_frontier_count_refuses_holds",
+      "native_selected_witness_bundle_stale_compiler_refuses_holds",
+      "native_selected_witness_bundle_stale_plan_compiler_refuses_holds",
+      "native_selected_witness_bundle_member_drift_refuses_holds",
+      "native_selected_witness_bundle_unavailable_is_counted_holds",
+      "native_selected_witness_bundle_compiler_identity_keys_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/pick_ingested_probe_test.dag",
+    functions: [
+      "pick_probe_pipeline_resolves_holds", "pick_probe_normalized_branch_holds",
+      "pick_probe_normalized_arrow_branch_holds", "pick_probe_swapped_arms_structural_red_holds",
+      "pick_probe_eval_equals_holds", "pick_probe_resolved_then_arm_has_magnitude_child_holds",
+      "pick_probe_resolved_else_arm_has_magnitude_child_holds",
+      "pick_probe_normalized_then_arm_has_magnitude_child_holds",
+      "pick_probe_parsed_then_arm_has_magnitude_child_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/pick_ingested_structural_lowering_test.dag",
+    functions: [
+      "pick_ingested_normalized_swapped_arms_structural_red_holds",
+      "pick_ingested_pick_true_executes_holds", "pick_ingested_pick_false_executes_holds",
+      "pick_ingested_swapped_arms_red_holds", "pick_ingested_pipeline_resolves_holds",
+      "pick_ingested_normalized_arrow_has_branch_body_holds",
+      "pick_ingested_parsed_module_from_source_holds", "pick2_ingested_pick_true_executes_holds",
+      "pick2_ingested_pick_false_executes_holds", "pick2_ingested_swapped_arms_red_holds"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/execution/proactive_verification_ledger_overlap_execution_test.dag", functions: ["proactive_verification_ledger_overlap_execution_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/rust_emit_host_call_equals_eval_test.dag",
+    functions: [
+      "rust_emit_host_call_eval_subgraph_holds", "rust_emit_host_call_equals_eval_holds",
+      "rust_emit_host_call_wrong_oracle_refuses_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/rust_record_construct_emit_host_equals_eval_test.dag",
+    functions: [
+      "rust_record_construct_emit_host_equals_eval_holds",
+      "rust_record_construct_emit_host_wrong_field_refuses_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/self_host_candidate_generation_test.dag",
+    functions: [
+      "translate_diagnostic_reason_symbol_inverse_holds",
+      "candidate_generation_translate_self_emit_dag_add_slice_holds",
+      "translate_error_profile_roster_nonempty_holds",
+      "translate_error_profile_rust_add_malformed_bundle_classified",
+      "translate_error_profile_sg2_projected_arrow_serialize_accepts",
+      "translate_error_profile_sg2_projected_conj_serialize_accepts",
+      "translate_error_profile_sg2_projected_instantiation_serialize_accepts",
+      "translate_error_profile_coproduct_mapping_perturb_red_holds"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/execution/self_host_compiler_closure_emit_test.dag", functions: ["scoped_closure_excludes_lens_module_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/self_host_fixed_point_test.dag",
+    functions: [
+      "self_host_fixed_point_digests_match_on_equal",
+      "self_host_fixpoint_equal_carries_emitted_bytes_authority",
+      "self_host_snake_closes_on_equal_stages",
+      "self_host_snake_closes_fails_on_perturbed_regen_source",
+      "fixed_point_scaffold_holds_on_equal",
+      "fixed_point_scaffold_violates_on_perturbed_regen_source",
+      "self_host_fixpoint_witness_holds_on_equal_stages",
+      "self_host_fixpoint_witness_violates_on_perturbed_regen_source",
+      "self_host_fixed_point_digests_diverge_on_perturbed_regen_source",
+      "self_host_bytes_digest_source_perturb_teeth_holds",
+      "stage_emission_equality_holds_on_equal", "stage_emission_equality_violates_on_perturbed",
+      "self_host_fixed_point_fails_closed_until_regen_byte_pair",
+      "self_host_fixed_point_validate_accepts_matching_regen_bytes",
+      "self_host_fixed_point_validate_rejects_perturbed_regen_bytes"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/typescript_closure_emit_by_execution_test.dag",
+    functions: [
+      "ts_closure_emit_by_execution_exact_holds",
+      "ts_closure_emit_swapped_operands_discriminates_holds",
+      "ts_closure_emit_swapped_params_discriminates_holds",
+      "ts_closure_emit_prefix_row_perturbation_fails_closed_holds",
+      "ts_closure_statement_sequenced_fails_closed_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/typescript_enum_union_emit_by_execution_test.dag",
+    functions: [
+      "ts_enum_union_emit_by_execution_exact_holds",
+      "ts_enum_union_projected_pipeline_emit_holds",
+      "ts_enum_union_swapped_variants_discriminates_holds",
+      "ts_enum_union_construct_distinct_from_record_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/execution/typescript_import_emit_by_execution_test.dag",
+    functions: [
+      "ts_import_emit_by_execution_exact_holds",
+      "ts_import_emit_swapped_names_discriminates_holds",
+      "ts_import_emit_other_path_discriminates_holds",
+      "ts_import_emit_missing_qn_fails_closed_holds",
+      "ts_import_emit_empty_names_fails_closed_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag",
+    functions: [
+      "roster_dag_language_model_zero_suspects_within_ratchet",
+      "roster_body_lowering_fold_zero_suspects_within_ratchet",
+      "roster_ingest_stage_zero_suspects_within_ratchet",
+      "roster_parse_stage_zero_suspects_within_ratchet",
+      "roster_accumulator_copy_analyze_zero_suspects_within_ratchet",
+      "red_control_planted_identity_escape_still_alarms",
+      "red_control_planted_identity_escape_finding_count_is_one",
+      "green_control_sanctioned_reader_body_not_flagged",
+      "green_control_sanctioned_reader_body_has_no_findings_at_all",
+      "unrelated_caret_literal_call_not_flagged"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/impossible_bug/release_demos_test.dag",
+    functions: [
+      "release_complexity_claims_are_class_rejections",
+      "release_idempotency_claims_are_class_rejections",
+      "release_transport_claims_are_class_rejections"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/a4_opacity_test.dag",
+    functions: [
+      "a4_opacity_charoffset_for_byteoffset_rejects",
+      "a4_opacity_byteoffset_for_charoffset_rejects", "a4_opacity_same_brand_accepts"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag",
+    functions: [
+      "gate_red_quadratic_rejects", "gate_green_identity_accepts_clean",
+      "gate_refusal_ledger_counted_not_gating", "door_root_roster_runs_and_passes_clean_tree"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/accumulator_copy_fold_analysis_test.dag",
+    functions: [
+      "quadratic_fold_has_suspect", "real_branch_body_quadratic_is_caught",
+      "noncarrier_name_in_copied_port_refuses_not_clean", "let_alias_is_proven_suspect",
+      "let_transitive_alias_is_proven_suspect", "let_fresh_binding_is_provably_clean",
+      "let_unknown_alias_still_refuses_may_alias",
+      "nested_call_head_cannot_masquerade_as_bare_name",
+      "unregistered_combiner_reached_by_carrier_refuses",
+      "carrier_inside_computed_argument_to_unregistered_combiner_refuses",
+      "item_inside_computed_argument_stays_clean",
+      "computed_let_mentioning_carrier_refuses_at_unregistered_use",
+      "unreadable_call_head_with_carrier_port_refuses",
+      "named_step_fold_refuses_accumulator_unread", "multiline_unregistered_combiner_refuses",
+      "projection_call_carrier_is_classified", "quadratic_ingest_has_lowered_loop",
+      "quadratic_ingest_has_no_surface_fold_call", "identity_fold_has_no_finding",
+      "out_of_iteration_append_is_out_of_domain", "report_counters_state_the_domain"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/alias_decl_parse_witness_test.dag",
+    functions: [
+      "witness_alias_decl_parse_and_binding_row_holds",
+      "witness_alias_decl_keyword_reserved_red_control_holds",
+      "witness_alias_decl_fill_lexical_lookup_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/bash_program_real_probes_witness_test.dag",
+    functions: [
+      "bash_program_real_witness_matches_golden_holds",
+      "bash_program_real_claims_matches_golden_holds"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/compile_door_ledger_test.dag", functions: ["ledger_cause_histogram_over_mixed_affected_set"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/compiler_frontier_measured_roster_test.dag",
+    functions: [
+      "compiler_frontier_structural_census_invariants_holds",
+      "compiler_frontier_measured_parse_engine_hooks_self_emit_ready_holds",
+      "compiler_frontier_measured_tokenize_emit_surface_holds",
+      "compiler_frontier_measured_compile_emit_surface_holds",
+      "compiler_frontier_sweep_order_has_expected_length_holds",
+      "compiler_frontier_measured_sweep_order_matches_tractability_rank_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/compiler_frontier_per_module_probe_test.dag",
+    functions: [
+      "compiler_frontier_per_module_probe_survey_holds",
+      "compiler_frontier_gap_clustering_common_root_at_blocker_class_holds",
+      "compiler_frontier_wave2_blocker_partition_totality_holds",
+      "compiler_frontier_roster_bidirectional_totality_live_survey_holds",
+      "compiler_frontier_receipt_totality_wall_live_survey_holds",
+      "compiler_frontier_wave2_emit_surface_dominates_holds",
+      "compiler_frontier_wave2_sizing_band_a_leaf_count_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/compiler_frontier_probe_entry_test.dag",
+    functions: [
+      "frontier_probe_entry_blocker_is_emit_surface",
+      "frontier_probe_entry_located_stage_is_emit_holds",
+      "frontier_probe_entry_overlay_present_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/cross_tree_real_ingest_activation_test.dag",
+    functions: [
+      "cross_tree_real_ingest_v2_to_dag_admitted_holds",
+      "cross_tree_real_ingest_dag_to_v2_denied_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/cwc_resolution_probe_test.dag",
+    functions: [
+      "cwc_norm_two_variant_accepts", "cwc_norm_three_variant_accepts",
+      "cwc_non_coproduct_rhs_passes_through", "cwc_malformed_nary_coproduct_normalize_rejects",
+      "cwc_malformed_nary_coproduct_fail_open_control", "cwc_norm_review_event_accepts",
+      "cwc_cwc_module_resolve_accepts", "cwc_review_normalized_has_disj",
+      "cwc_review_disj_has_four_arms"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/dag_caret_symbol_lex_test.dag",
+    functions: [
+      "caret_lex_accepts_symbol_literal_holds", "caret_parse_accepts_symbol_literal_holds",
+      "caret_lex_rejects_unknown_char_control_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/dag_comma_optional_list_test.dag",
+    functions: [
+      "comma_optional_two_newline_fields_accepts_holds",
+      "comma_optional_record_payload_newline_accepts_holds",
+      "comma_optional_comma_separated_still_accepts_holds",
+      "comma_optional_one_field_still_accepts_holds",
+      "comma_optional_missing_colon_field_rejects_control_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/dag_compile_clean_scope_sigma_test.dag",
+    functions: [
+      "corpus_scope_parse_accepted", "corpus_scope_has_no_sigma_families",
+      "corpus_red_control_planted_family_fires"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/dag_import_block_lexeme_stamp_test.dag", functions: ["dag_import_block_lexeme_stamp_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/dag_repeat_spine_wellformed_test.dag",
+    functions: [
+      "repeat_spine_three_seg_qual_name_normalizes_holds",
+      "repeat_spine_import_block_newline_normalizes_holds",
+      "repeat_spine_single_name_import_normalizes_holds", "repeat_spine_bare_fn_normalizes_holds",
+      "repeat_spine_dup_named_conj_still_ill_formed_control_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/decl_index_enumeration_test.dag",
+    functions: [
+      "decl_facts_nonempty_over_witness_roots", "decl_facts_fn_items_nonempty_over_witness_roots",
+      "decl_facts_rows_carry_locked_shape_fields", "logical_qualified_name_strips_v2_prefix"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/door_real_module_probe_test.dag",
+    functions: [
+      "quad_namespace_only_resolve_accepts_holds",
+      "quad_import_scoped_admission_reds_ambiguous_export_holds",
+      "quad_with_peer_import_scoped_reds_ambiguous_export_holds",
+      "quad_with_peer_greens_under_namespace_only_projection"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/fold_lowering_test.dag",
+    functions: [
+      "fold_probe_ingest_is_accepted", "fold_callee_name_survives_parse",
+      "fold_collection_name_survives_parse", "fold_call_lowers_to_terminating_loop",
+      "lowered_loop_binds_carrier_binder", "duplicate_carrier_edge_is_malformed",
+      "non_fold_call_refuses", "bodyless_fold_call_refuses_no_loop_fabricated"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/free_monoid_not_diverged_green_test.dag", functions: ["corpus_free_monoid_not_diverged_green_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/gap4_parse_tokens_remain_test.dag",
+    functions: [
+      "gap4_match_arm_let_stmt_parses_holds",
+      "gap4_match_arm_chained_lets_tail_record_parses_holds",
+      "gap4_multi_arm_let_then_next_arm_parses_holds", "gap4_match_arm_expr_tail_parses_holds",
+      "gap4_malformed_match_arm_missing_arrow_rejects_holds",
+      "gap4_unrecognized_char_rejects_not_tokens_remain_holds",
+      "gap5_string_escape_quote_in_literal_parses_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/identity_captured_navigation_fidelity_test.dag",
+    functions: [
+      "suspect_finding_projects_to_exactly_one_under_claimed_edge",
+      "sanctioned_reader_projects_to_zero_discrepancies"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/inhabitant_neutralization_e2e_witness_test.dag",
+    functions: [
+      "inhabitant_neutralization_python_to_ts_cross_language_compile_refuses_underived_holds",
+      "inhabitant_neutralization_python_to_go_cross_language_compile_refuses_underived_holds",
+      "inhabitant_neutralization_python_to_go_discriminates_on_real_tree",
+      "inhabitant_neutralization_python_to_go_holds",
+      "inhabitant_neutralization_python_to_go_translate_rejects",
+      "inhabitant_neutralization_python_to_go_emit_rejects"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/lattice_coexistence_debt_test.dag", functions: ["corpus_lattice_coexistence_debt_holds"] },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/lattice_not_diverged_green_test.dag", functions: ["corpus_lattice_not_diverged_green_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag",
+    functions: [
+      "mandatory_tag_extdeps_corpus_wall_holds", "mandatory_tag_corpus_subdir_color_wall_holds",
+      "mandatory_tag_corpus_walker_refuses_missing_root"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/mandatory_tag_gate_witness_test.dag",
+    functions: [
+      "mandatory_tag_parse_grain_clean_accepts", "mandatory_tag_parse_grain_misnamed_rejects",
+      "mandatory_tag_parse_grain_missing_rejects",
+      "mandatory_tag_parse_grain_file_scheme_rejects",
+      "mandatory_tag_parse_grain_bogus_scheme_rejects",
+      "mandatory_tag_parse_grain_wrong_type_rejects",
+      "mandatory_tag_parse_grain_off_region_accepts",
+      "mandatory_tag_parse_grain_exempt_fixture_accepts",
+      "mandatory_tag_normalized_grain_clean_accepts",
+      "mandatory_tag_normalized_grain_missing_rejects",
+      "mandatory_tag_normalized_grain_misnamed_rejects",
+      "mandatory_tag_enrolled_in_root_roster_rejects_violating_module"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/meta_exec_confinement_clean_tree_test.dag",
+    functions: [
+      "scanner_clean_tree_meta_exec_holds_on_rostered_corpus",
+      "meta_exec_live_scan_non_degenerate_holds", "meta_exec_roster_soundness_live_holds",
+      "meta_exec_roster_soundness_live_planted_stale_red_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/module_binding_host_consistency_test.dag",
+    functions: [
+      "module_binding_host_manifest_is_populated", "module_binding_host_agrees_with_parse_oracle",
+      "module_binding_host_resolves_a_known_compiler_module"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/module_storage_binding_derivation_test.dag",
+    functions: [
+      "module_storage_binding_derived_from_parse_holds", "module_storage_path_projection_holds",
+      "module_storage_duplicate_module_refuses", "module_storage_underivable_module_name_refuses"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/namespace_graft_normalize_witness_test.dag",
+    functions: [
+      "namespace_graft_manual_graft_on_parsed_module_holds",
+      "namespace_graft_well_formed_after_manual_graft_holds",
+      "namespace_graft_normalize_accepts_holds", "namespace_graft_manual_qn_on_parsed_holds",
+      "namespace_graft_normalize_applies_on_parsed_module_holds",
+      "namespace_graft_graft_after_normalize_body_holds",
+      "namespace_graft_normalize_qn_round_trip_holds",
+      "namespace_graft_normalize_output_has_zero_metadata_edges_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/native_routing_membership_receipt_test.dag",
+    functions: [
+      "native_routing_derived_membership_equals_bound_entries",
+      "native_routing_red_control_unreached_subject_is_not_member",
+      "native_routing_green_control_bound_entry_reaches_subject"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/no_dual_representation_test_test.dag", functions: ["no_violations_in_examined_scope", "coverage_honesty_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/parse_table_memo_amortization_test.dag",
+    functions: [
+      "memo_amort_parse_one_file_holds", "memo_amort_parse_two_files_twice_holds",
+      "parse_table_grammar_memo_multi_file_ingest_parses",
+      "parse_table_memo_hit_path_content_hash_stable_holds",
+      "empty_ingest_assembles_to_empty_roots_without_prepare"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/parse_table_memo_counter_witness_test.dag",
+    functions: [
+      "parse_memo_counter_lookup_calls_recorded_holds",
+      "parse_memo_counter_counters_consistent_holds", "parse_memo_counter_misses_recorded_holds"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag", functions: ["parse_table_memo_warm_equals_cold_content_hash"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/parser_completeness_frontier_test.dag",
+    functions: [
+      "parser_frontier_parse_module_header_holds", "parser_frontier_parse_type_decl_holds",
+      "parser_frontier_parse_fn_simple_body_holds",
+      "parser_frontier_parse_single_arm_match_holds",
+      "parser_frontier_infer_single_arm_module_holds",
+      "parser_frontier_parse_multi_arm_match_holds",
+      "parser_frontier_logic_empty_record_type_holds",
+      "parser_frontier_logic_record_type_fields_holds",
+      "parser_frontier_logic_data_nested_ctor_holds", "parser_frontier_logic_let_discard_holds",
+      "parser_frontier_logic_generic_data_holds",
+      "parser_frontier_logic_inline_fn_multi_arm_holds",
+      "parser_frontier_logic_nested_rec_fn_holds",
+      "parser_frontier_logic_untyped_single_param_fn_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/pipeline_stage_add_pick_relationship_witness_test.dag",
+    functions: [
+      "pipeline_parse_add_relationship_green",
+      "pipeline_normalize_add_transform_relationship_green",
+      "pipeline_normalize_pick_then_arm_magnitude_relationship_green"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/pipeline_stage_match_corpus_witness_test.dag",
+    functions: [
+      "pipeline_match_corpus_normalize_relationship_green",
+      "pipeline_match_corpus_resolve_relationship_green",
+      "pipeline_match_corpus_infer_relationship_green",
+      "pipeline_match_corpus_lower_relationship_green"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/ratchet_baseline_test.dag", functions: ["corpus_coexistence_ratchet_baseline_holds"] },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag", functions: ["realization_vocab_live_corpus_receipt_holds"] },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/s1_closure_receipt_test.dag", functions: ["s1_closure_parses_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/self_host_module_emit_derisk_test.dag",
+    functions: [
+      "self_host_frontier_emit_ownership_miss_accepts",
+      "self_host_frontier_emit_two_user_types_accepts",
+      "self_host_frontier_parse_module_header_holds", "self_host_frontier_parse_type_decl_holds",
+      "self_host_frontier_parse_fn_simple_body_holds",
+      "self_host_frontier_parse_single_arm_match_holds",
+      "self_host_frontier_infer_single_arm_module_holds",
+      "self_host_frontier_parse_multi_arm_match_holds"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/source_bridged_pipeline_bridge_witness_test.dag", functions: ["source_bridged_pipeline_bridge_resolves_add_source"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/string_head_linear_witness_test.dag",
+    functions: [
+      "string_head_linear_purity_oracle_holds",
+      "string_head_linear_logic_token_count_oracle_holds",
+      "string_head_linear_trunc_fixtures_tokenize_accept_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/symbol_index_scaling_receipt_test.dag",
+    functions: [
+      "symbol_index_fill_zero_poly2_suspects_holds",
+      "name_resolve_fill_path_zero_poly2_suspects_holds",
+      "symbol_index_fill_refusal_count_within_ratchet_holds",
+      "name_resolve_fill_path_refusal_count_within_ratchet_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/syntactic_audit_witness_test.dag",
+    functions: [
+      "syntactic_audit_runs_over_witness_roots", "syntactic_audit_finds_wildcard_match_arms",
+      "syntactic_audit_bites_translate_boundary_bounded",
+      "syntactic_audit_bites_tokenize_prefer_longer", "wildcard_fact_universe_is_nonempty",
+      "wildcard_triage_classifies_migration_debt", "wildcard_triage_open_domain_is_proper_subset",
+      "wildcard_triage_eval_match_site_is_migration_debt",
+      "wildcard_triage_testgen_anchor_is_migration_debt"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/typescript_descriptor_node_run_witness_test.dag",
+    functions: [
+      "typescript_descriptor_node_ts_node_run_add_holds",
+      "typescript_descriptor_node_ts_node_run_catalog_minus_discriminates"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/typescript_import_pipeline_test.dag", functions: ["ts_import_pipeline_exact_holds", "ts_import_pipeline_discriminating_red_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/validate_ingest_staging_stage_bisect_test.dag",
+    functions: [
+      "bisect_tokenize_terminates", "bisect_parse_terminates", "bisect_normalize_terminates",
+      "bisect_grammar_validate_terminates", "witness_bisect_parse_module_add_correctness_holds",
+      "witness_bisect_unbound_reference_rejected",
+      "witness_bisect_unbound_reference_no_binding_rejected"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/variant_visibility_test.dag", functions: ["variant_visibility_unique_resolves_holds", "variant_visibility_ambiguous_refuses_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/wave1_gate1_a1_fn_body_seam_witness_test.dag",
+    functions: [
+      "wave1_gate1_a1_fn_body_seam_shell_lowers_identity_witness_holds",
+      "wave1_gate1_a1_fn_body_seam_fn_decl_binding_ordering_witness_holds",
+      "wave1_gate1_a1_fn_body_seam_normalize_arrow_transform_witness_holds",
+      "wave1_gate1_a1_fn_body_seam_red_premature_fn_decl_shell_witness_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/wave1_gate1_a1_projection_call_witness_test.dag",
+    functions: [
+      "wave1_gate1_a1_projection_call_lowers_witness_holds",
+      "wave1_gate1_a1_projection_call_normalize_accepts_witness_holds",
+      "wave1_gate1_a1_projection_field_access_refuses_witness_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/wave1_gate1_a1_symbol_index_body_producer_witness_test.dag",
+    functions: [
+      "wave1_gate1_a1_ingest_param_domain_parity_witness_holds",
+      "wave1_gate1_a1_domain_param_list_walk_witness_holds",
+      "wave1_gate1_a1_symbol_index_frontend_parity_witness_holds",
+      "wave1_gate1_a1_real_ingest_lowers_witness_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/wave1_gate1_b1_bare_call_body_producer_witness_test.dag",
+    functions: [
+      "wave1_gate1_b1_bare_call_lowers_to_transform_witness_holds",
+      "wave1_gate1_b1_bare_call_resolves_end_to_end_witness_holds",
+      "wave1_gate1_b1_builtin_call_resolves_end_to_end_witness_holds",
+      "wave1_gate1_b1_unbound_call_resolve_rejects_witness_holds",
+      "wave1_gate1_b1_symbol_index_frontend_parity_no_regression_witness_holds"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/wave1_gate1_c1_copied_port_derivation_witness_test.dag", functions: ["wave1_gate1_c1_derived_registry_execution_witness_holds"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/long/wave1_gate1_general_body_producer_witness_test.dag",
+    functions: [
+      "wave1_gate1_ingested_add_normalize_yields_arrow_transform_holds",
+      "wave1_gate1_ingested_add_normalize_resolves_holds",
+      "wave1_gate1_ingested_add_resolved_arrow_transform_holds",
+      "wave1_gate1_ingested_match_normalize_yields_match_holds",
+      "wave1_gate1_ingested_match_resolves_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/manual/emit_source_store_test.dag",
+    functions: [
+      "emit_source_store_cold_then_warm_holds", "emit_source_store_mutated_emitter_misses_holds",
+      "emit_source_store_provider_gate_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/program_assembly/real_ingest_test.dag",
+    functions: [
+      "program_assembly_real_ingest_module_roots_parse_holds",
+      "program_assembly_real_ingest_host_manifest_receipt_holds",
+      "program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
+    functions: [
+      "self_host_closure_witness_layer_roots_reexports_authority_holds",
+      "compiler_closure_ingest_receipt_describes_carrier_holds",
+      "gap4_probe_all_ingest_reads_accept_holds", "compiler_closure_scoped_ingest_parses_holds"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/self_host/crate_layout_witness_test.dag",
+    functions: [
+      "transition_parity_host_index_agrees_with_hand_rows", "projection_refuses_on_absent_index",
+      "crate_layout_witnesses"
+    ]
+  },
+  FrozenPathDeferral { entry: "src/v2/test/manual/grounding_lens_whole_tree_test.dag", functions: ["grounding_lens_whole_tree_witnesses"] },
+  FrozenPathDeferral {
+    entry: "src/v2/test/manual/ownership_movable_test.dag",
+    functions: [
+      "witness_read_then_consume_param_is_movable", "witness_double_consume_is_not_movable",
+      "witness_zero_consume_is_not_movable", "witness_whole_read_then_consume_is_not_movable",
+      "witness_threaded_then_consume_is_not_movable"
+    ]
+  }
+]
+
+fn frozen_path_deferral_function_listed(functions: List<String>, function: String) -> Bool {
+  fold(
+    functions,
+    init: false,
+    f: fn(found, name) { found || (name == function) }
+  )
+}
+
+fn frozen_path_deferral_row_covers(
+  row: FrozenPathDeferral,
+  entry: String,
+  function: String
+) -> Bool {
+  (row.entry == entry)
+    && frozen_path_deferral_function_listed(functions: row.functions, function: function)
+}
+
+fn frozen_path_deferral_covers_in(
+  rows: List<FrozenPathDeferral>,
+  entry: String,
+  function: String
+) -> Bool {
+  fold(
+    rows,
+    init: false,
+    f: fn(found, row) {
+      found || frozen_path_deferral_row_covers(row: row, entry: entry, function: function)
+    }
+  )
+}
+
+fn frozen_path_deferral_covers(entry: String, function: String) -> Bool {
+  frozen_path_deferral_covers_in(
+    rows: frozen_path_deferrals,
+    entry: entry,
+    function: function
+  )
+}
+
+fn frozen_path_deferral_row_well_formed(row: FrozenPathDeferral) -> Bool {
+  !(row.entry == "")
+    && !(row.functions.length() == 0)
+    && fold(
+      row.functions,
+      init: true,
+      f: fn(ok, name) { ok && !(name == "") }
+    )
+}
+
+fn frozen_path_deferrals_well_formed_in(rows: List<FrozenPathDeferral>) -> Bool {
+  fold(
+    rows,
+    init: true,
+    f: fn(ok, row) { ok && frozen_path_deferral_row_well_formed(row: row) }
+  )
+}
+
+fn frozen_path_deferrals_well_formed() -> Bool {
+  frozen_path_deferrals_well_formed_in(rows: frozen_path_deferrals)
+}
+
+fn frozen_path_deferral_identity_count_in(rows: List<FrozenPathDeferral>) -> Int {
+  fold(
+    rows,
+    init: 0,
+    f: fn(n, row) { n + row.functions.length() }
+  )
+}
+
+data frozen_path_deferral_count_is_a_receipt_note: String = "frozen_path_deferral_identity_count_in is a RECEIPT projection and must never become an oracle. No witness may assert it against a literal: the roster was authored from the current tree, so a count equality would compare a measurement to a copy of itself and would go green on any pair of compensating edits. The executing oracles are the two identity joins in v2.workflow.witness_admission and its host projection — an unfrozen offline-classified witness refuses, and a frozen row the tree no longer carries refuses. This projection exists so the debt's size is readable in a receipt, and so its decline is visible."
+
+fn frozen_path_deferral_identity_count() -> Int {
+  frozen_path_deferral_identity_count_in(rows: frozen_path_deferrals)
+}

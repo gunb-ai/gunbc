@@ -320,6 +320,66 @@ fn orphan_names_from_reachable(plains: List<String>, reachable_plains: List<Stri
   )
 }
 
+data failure_receipt_companion_note: String = "claim_executor invokes <witness>_failure_receipt on Bool(false) via the _holds/_passes → _failure_receipt naming convention (v2.std.native_agreement / gunbc#7644). Orphan reachability treats the companion as reachable from its witness even though no .dag decl references it — the executor is the caller. Single authority for the suffix derivation: Rust cli_run::failure_receipt_companion delegates here."
+
+fn without_suffix(s: String, suffix: String) -> String {
+  if ends_with(s: s, suffix: suffix) {
+    substring(
+      s: s,
+      start: 0,
+      end: string_length(s: s) - string_length(s: suffix)
+    )
+  } else {
+    s
+  }
+}
+
+fn failure_receipt_companion(function: String) -> Optional<String> {
+  if ends_with(s: function, suffix: "_holds") {
+    optional_present(
+      value: concat(without_suffix(s: function, suffix: "_holds"), "_failure_receipt")
+    )
+  } else if ends_with(s: function, suffix: "_passes") {
+    optional_present(
+      value: concat(without_suffix(s: function, suffix: "_passes"), "_failure_receipt")
+    )
+  } else {
+    optional_absent()
+  }
+}
+
+fn failure_receipt_companion_plain_names(module: ModuleSurface, plains: List<String>) -> List<String> {
+  fold(
+    module.test_fns,
+    init: [],
+    f: fn(acc, test_fn) {
+      match failure_receipt_companion(function: test_fn.name) {
+        Present { value: companion } =>
+          if name_in(xs: plains, needle: companion) {
+            unique_snoc(xs: acc, item: companion)
+          } else {
+            acc
+          }
+        Absent => acc
+      }
+    }
+  )
+}
+
+fn reachable_plains_with_failure_receipt_companions(
+  module: ModuleSurface,
+  plains: List<String>,
+  reachable_plains: List<String>
+) -> List<String> {
+  fold(
+    failure_receipt_companion_plain_names(module: module, plains: plains),
+    init: reachable_plains,
+    f: fn(acc, companion) {
+      unique_snoc(xs: acc, item: companion)
+    }
+  )
+}
+
 fn orphan_plain_names_or_refuse(module: ModuleSurface) -> OrphanPlainNamesOutcome {
   let plains = plain_names(module: module)
   if length(xs: plains) == 0 {
@@ -361,7 +421,14 @@ fn orphan_plain_names_or_refuse(module: ModuleSurface) -> OrphanPlainNamesOutcom
         }
       } else {
         Orphans {
-          names: orphan_names_from_reachable(plains: plains, reachable_plains: closed.reachable_plains)
+          names: orphan_names_from_reachable(
+            plains: plains,
+            reachable_plains: reachable_plains_with_failure_receipt_companions(
+              module: module,
+              plains: plains,
+              reachable_plains: closed.reachable_plains
+            )
+          )
         }
       }
     }
@@ -447,6 +514,22 @@ data fixture_orphan_plant: ModuleSurface = ModuleSurface {
   entry: "orphan_plant_test.dag",
   test_fns: [DeclSurface { name: "live_holds", refs: [] }],
   plain_fns: [DeclSurface { name: "dark_unreachable_check", refs: [] }],
+  test_data: [],
+  plain_data: []
+}
+
+data fixture_failure_receipt_companion_pair: ModuleSurface = ModuleSurface {
+  entry: "failure_receipt_companion_test.dag",
+  test_fns: [DeclSurface { name: "witness_holds", refs: [] }],
+  plain_fns: [DeclSurface { name: "witness_failure_receipt", refs: [] }],
+  test_data: [],
+  plain_data: []
+}
+
+data fixture_failure_receipt_orphan: ModuleSurface = ModuleSurface {
+  entry: "failure_receipt_orphan_test.dag",
+  test_fns: [DeclSurface { name: "witness_holds", refs: [] }],
+  plain_fns: [DeclSurface { name: "orphan_failure_receipt", refs: [] }],
   test_data: [],
   plain_data: []
 }

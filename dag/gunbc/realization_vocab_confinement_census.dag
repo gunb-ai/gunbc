@@ -1,0 +1,369 @@
+module gunbc.realization_vocab_confinement_census
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import gunbc.repository_census_observation {
+  RepositoryIdentity,
+  SourceRootIdentity,
+  CensusSubjectKey,
+  RepositoryPopulation,
+  CensusMethodRunIdentity,
+  CensusObservedRow,
+  RepositoryCensusObservation,
+  census_observed_row,
+  repository_census_observation,
+  repository_census_row_count,
+  repository_census_subject_keys,
+}
+import gunbc.repository_census_coverage {
+  CensusDenominatorObservation,
+  CensusCoverageOutcome,
+  CoverageEstablished,
+  CoverageRefused,
+  CensusMethodCapability,
+  ClassifiesDeclaredStructure,
+  CensusControlPair,
+  CensusConformanceOutcome,
+  CensusConformanceEstablished,
+  CensusConformanceControlOutcomesUnjoined,
+  CensusConformanceControlNotDistinctFromMeasurement,
+  CensusConformanceControlsDidNotDiscriminate,
+  CensusMethodConformanceReceipt,
+  CensusMethodCapabilityReceipt,
+  CensusInferenceCeiling,
+  CensusInferenceCeilingOutcome,
+  CensusCeilingDerived,
+  CensusCeilingRefusedRunMismatch,
+  census_denominator_observation,
+  census_establish_coverage,
+  census_method_conformance_receipt,
+  census_conformance_receipt_of,
+  census_method_capability_receipt,
+  census_inference_ceiling,
+  census_ceiling_supports_semantic_subject_claim,
+  census_ceiling_supports_semantic_absence,
+}
+import gunbc.guarantee_measurement { MeasurementRevision, GitRevision }
+import v2.lens.realization_vocabulary_containment {
+  target_ast_vocab_modules,
+  target_ast_vocab_module_prefixes,
+  realization_edge_path_prefixes,
+  realization_vocab_exception_paths,
+}
+
+data confinement_census_consumer_note: String = "THE FIRST DOMAIN CLAIM CARRIED END TO END ON THE CENSUS CARRIER, and the reason this module exists at all rather than another synthetic fixture. Blocker 8 asked for a real consumer, and a carrier tested only against rows it authored itself proves nothing about whether real data can inhabit it. The subject here is the confinement surface of the realization-vocabulary containment lens (v2.lens.realization_vocabulary_containment): the four declared rosters by which that lens decides what counts as target-AST vocabulary and where it is allowed to appear. Those rosters are ordinary declared data on main, so this census is substrate-only — it reads no live tree, and its row set is a function of the pinned revision rather than of whenever CI happens to run."
+
+data confinement_census_grain_note: String = "THE GRAIN IS A STRING PREFIX, NOT NAMESPACE CONTAINMENT, and conflating the two is a measurement error this repository has already paid for. The lens confines by string prefix: 'v2.workflow.bash' matches 'v2.workflow.bash_command_fold_serialize' because the characters match, not because one module contains the other. A sweep that reads those rows as namespace containment reports a module confined when it is not, and reports a phantom when a sibling name merely shares a prefix. This census therefore keys on the declared string verbatim and classifies its AXIS, never re-deriving what the string is supposed to denote."
+
+data confinement_census_ceiling_note: String = "WHAT THIS CENSUS CANNOT CONCLUDE, stated because the ceiling is the product. Exhaustive coverage here is exhaustive over the DECLARED ROSTERS — every key the lens declares is enumerated and classified, and the absence of a key from the result means the lens does not declare it. It says nothing whatever about which modules in the live tree import confined vocabulary; that is a different population, read by a different method, at a different fidelity. DESIGN records that the live containment receipt currently FAILS on main with three unexempted importers, and nothing in this census either supports or contradicts that — a reader who takes an exhaustive roster census as evidence about live importers has made exactly the substitution the carrier exists to prevent."
+
+type ConfinementSurfaceAxis
+  = ExactVocabularyModule
+  | VocabularyModulePrefix
+  | RealizationEdgePathPrefix
+  | DeclaredExceptionUnit
+
+fn confinement_axis_tag(axis: ConfinementSurfaceAxis) -> NonEmptyStr {
+  match axis {
+    ExactVocabularyModule => "ExactVocabularyModule" as NonEmptyStr
+    VocabularyModulePrefix => "VocabularyModulePrefix" as NonEmptyStr
+    RealizationEdgePathPrefix => "RealizationEdgePathPrefix" as NonEmptyStr
+    DeclaredExceptionUnit => "DeclaredExceptionUnit" as NonEmptyStr
+  }
+}
+
+fn confinement_axis_is_prefix_grain(axis: ConfinementSurfaceAxis) -> Bool {
+  match axis {
+    ExactVocabularyModule => false
+    VocabularyModulePrefix => true
+    RealizationEdgePathPrefix => true
+    DeclaredExceptionUnit => false
+  }
+}
+
+data confinement_census_repository: RepositoryIdentity = "gunbc" as RepositoryIdentity
+
+fn confinement_census_decl(name: String) -> DeclarationRef {
+  decl_ref(module_path: "gunbc.realization_vocab_confinement_census", decl_name: name)
+}
+
+data confinement_census_population: RepositoryPopulation = RepositoryPopulation {
+  repository: confinement_census_repository,
+  first_source_root: "src/v2" as SourceRootIdentity,
+  additional_source_roots: [],
+  inclusion_rule: confinement_census_decl(name: "confinement_surface_declared_keys"),
+  exclusion_rule: Absent,
+}
+
+fn confinement_census_revision(commit: String) -> MeasurementRevision {
+  GitRevision { commit: commit }
+}
+
+fn confinement_census_invocation(
+  procedure: String,
+  invocation: String,
+  revision: MeasurementRevision,
+) -> CensusMethodRunIdentity {
+  CensusMethodRunIdentity {
+    classifier: confinement_census_decl(name: procedure),
+    classifier_revision: revision,
+    invocation_identity: content_hash_atom(value: invocation as NonEmptyStr),
+  }
+}
+
+fn confinement_census_run(
+  procedure: String,
+  revision: MeasurementRevision,
+) -> CensusMethodRunIdentity {
+  confinement_census_invocation(
+    procedure: procedure,
+    invocation: procedure,
+    revision: revision,
+  )
+}
+
+data confinement_census_capability: CensusMethodCapability = ClassifiesDeclaredStructure {
+  contract: confinement_census_decl(name: "confinement_surface_axis_of_declared_key"),
+}
+
+data confinement_census_denominator_note: String = "THE DENOMINATOR IS ASSEMBLED BY A DIFFERENT PROCEDURE THAN THE ROWS, which is the only reason the join can catch anything. Enumeration flattens all four declared rosters into one key list in roster order and knows nothing about axes. Classification walks each roster SEPARATELY and stamps the axis it came from. So a dropped axis, a roster walked twice, or a key stamped onto the wrong list shows up as a located missing, unexpected or duplicated subject rather than as a total that still happens to add up. The independence is at the PROCEDURE level and no further: both sides read the same four declared rosters, so this join cannot detect an error inside those rosters themselves — it detects an error in how a census walks them. That is the defect class actually paid for here (a concat census that missed an axis reported 117 where the population was 204), and overstating the independence would be the same substitution one level up."
+
+fn confinement_surface_declared_keys() -> List<CensusSubjectKey> {
+  let exact = target_ast_vocab_modules |> map(key => key as CensusSubjectKey)
+  let prefixes = target_ast_vocab_module_prefixes |> map(key => key as CensusSubjectKey)
+  let edges = realization_edge_path_prefixes |> map(key => key as CensusSubjectKey)
+  let exceptions = realization_vocab_exception_paths() |> map(key => key as CensusSubjectKey)
+  append(append(append(exact, prefixes), edges), exceptions)
+}
+
+fn confinement_surface_row(key: String, axis: ConfinementSurfaceAxis) -> CensusObservedRow {
+  census_observed_row(
+    subject: key as CensusSubjectKey,
+    fact: content_hash_atom(value: confinement_axis_tag(axis: axis)),
+  )
+}
+
+fn confinement_surface_axis_of_declared_key() -> List<CensusObservedRow> {
+  let exact = target_ast_vocab_modules
+    |> map(key => confinement_surface_row(key: key, axis: ExactVocabularyModule))
+  let prefixes = target_ast_vocab_module_prefixes
+    |> map(key => confinement_surface_row(key: key, axis: VocabularyModulePrefix))
+  let edges = realization_edge_path_prefixes
+    |> map(key => confinement_surface_row(key: key, axis: RealizationEdgePathPrefix))
+  let exceptions = realization_vocab_exception_paths()
+    |> map(key => confinement_surface_row(key: key, axis: DeclaredExceptionUnit))
+  append(append(append(exact, prefixes), edges), exceptions)
+}
+
+fn confinement_surface_observation(revision: MeasurementRevision) -> RepositoryCensusObservation {
+  repository_census_observation(
+    population: confinement_census_population,
+    observed_at_revision: revision,
+    method_run: confinement_census_run(
+      procedure: "confinement_surface_axis_of_declared_key",
+      revision: revision,
+    ),
+    rows: confinement_surface_axis_of_declared_key(),
+  )
+}
+
+fn confinement_surface_denominator(revision: MeasurementRevision) -> CensusDenominatorObservation {
+  census_denominator_observation(
+    population: confinement_census_population,
+    observed_at_revision: revision,
+    enumeration_run: confinement_census_run(
+      procedure: "confinement_surface_declared_keys",
+      revision: revision,
+    ),
+    subjects: confinement_surface_declared_keys(),
+  )
+}
+
+fn confinement_surface_coverage(revision: MeasurementRevision) -> CensusCoverageOutcome {
+  census_establish_coverage(
+    denominator: confinement_surface_denominator(revision: revision),
+    observation: confinement_surface_observation(revision: revision),
+  )
+}
+
+data confinement_conformance_note: String = "THE CONFORMANCE CONTROLS EXECUTE INSIDE THE CORPUS, which is the difference between licensing a design decision and guarding it. A mutation probe run in a disposable worktree demonstrates that a classifier discriminates and then vanishes with the worktree; nothing re-runs it, so it is evidence about a moment rather than standing evidence. These two controls are ordinary functions this module evaluates, reached by an enrolled witness, so the discrimination is re-established on every affected change. The discriminating input is the classifier output with one whole axis dropped — the same defect probe 5 plants — and conformance requires that the reconciliation REFUSE it. The positive control requires that the real output reconcile. Both are needed: a classifier that refuses everything passes the first alone, and one that accepts everything passes the second alone. What this cannot establish is that the dropped axis was the right defect to plant; that judgement is the author's, and it is the honest frontier of the receipt."
+
+fn confinement_surface_defective_rows() -> List<CensusObservedRow> {
+  let exact = target_ast_vocab_modules
+    |> map(key => confinement_surface_row(key: key, axis: ExactVocabularyModule))
+  let prefixes = target_ast_vocab_module_prefixes
+    |> map(key => confinement_surface_row(key: key, axis: VocabularyModulePrefix))
+  let edges = realization_edge_path_prefixes
+    |> map(key => confinement_surface_row(key: key, axis: RealizationEdgePathPrefix))
+  append(append(exact, prefixes), edges)
+}
+
+fn confinement_control_observation(
+  rows: List<CensusObservedRow>,
+  invocation: String,
+  revision: MeasurementRevision,
+) -> RepositoryCensusObservation {
+  repository_census_observation(
+    population: confinement_census_population,
+    observed_at_revision: revision,
+    method_run: confinement_census_invocation(
+      procedure: "confinement_surface_axis_of_declared_key",
+      invocation: invocation,
+      revision: revision,
+    ),
+    rows: rows,
+  )
+}
+
+data confinement_control_outcome_note: String = "THE CONTROLS HAND UP THEIR OUTCOMES, NOT A VERDICT ABOUT THEM. This helper used to collapse each control run to a Bool and pass the pair of Bools into the generic carrier, which is what let the carrier accept an authored answer where an executed one belonged (operator ruling 2026-08-05). Returning the CensusCoverageOutcome unchanged means the derivation happens once, inside the authority that owns it, against evidence that carries its own run identity — so this module can no longer be the only reason the conformance verdict is honest."
+
+fn confinement_control_outcome(
+  rows: List<CensusObservedRow>,
+  invocation: String,
+  revision: MeasurementRevision,
+) -> CensusCoverageOutcome {
+  census_establish_coverage(
+    denominator: confinement_surface_denominator(revision: revision),
+    observation: confinement_control_observation(
+      rows: rows,
+      invocation: invocation,
+      revision: revision,
+    ),
+  )
+}
+
+data confinement_control_run_note: String = "BOTH CONTROLS RUN UNDER ONE DECLARED CONTROL INVOCATION, and the carrier now checks that rather than taking this module's word for it. The pair names the invocation the two control observations were produced under, and census_method_conformance_receipt refuses unless each outcome's own classification run identity equals it — so a control outcome produced under some other invocation cannot be presented here, and the control invocation must still differ from the measurement invocation."
+
+fn confinement_control_pair(revision: MeasurementRevision) -> CensusControlPair {
+  let control_invocation = "confinement_surface_axis_of_declared_key.conformance_controls"
+  CensusControlPair {
+    control_run: confinement_census_invocation(
+      procedure: "confinement_surface_axis_of_declared_key",
+      invocation: control_invocation,
+      revision: revision,
+    ),
+    discriminating: confinement_control_outcome(
+      rows: confinement_surface_defective_rows(),
+      invocation: control_invocation,
+      revision: revision,
+    ),
+    positive: confinement_control_outcome(
+      rows: confinement_surface_axis_of_declared_key(),
+      invocation: control_invocation,
+      revision: revision,
+    ),
+  }
+}
+
+fn confinement_conformance_outcome(
+  revision: MeasurementRevision,
+) -> CensusConformanceOutcome {
+  census_method_conformance_receipt(
+    pair: confinement_control_pair(revision: revision),
+    method_run: confinement_census_run(
+      procedure: "confinement_surface_axis_of_declared_key",
+      revision: revision,
+    ),
+  )
+}
+
+fn confinement_capability_receipt(
+  revision: MeasurementRevision,
+) -> CensusMethodCapabilityReceipt? {
+  census_method_capability_receipt(
+    observation: confinement_surface_observation(revision: revision),
+    capability: confinement_census_capability,
+    conformance: census_conformance_receipt_of(
+      outcome: confinement_conformance_outcome(revision: revision),
+    ),
+  )
+}
+
+data confinement_ceiling_cause_note: String = "THE TWO WAYS TO HAVE NO CEILING ARE DIFFERENT FACTS AND THIS MODULE KEEPS THEM APART. Upstream now refuses a run mismatch by name rather than by answering none, and collapsing that back into one Optional here would absorb the located cause one line after it was produced — the producer would be countable and the consumer would not, which is the shape DESIGN section 5 forbids and the reason the upstream frontier dissolved. ReceiptUnavailable means the capability receipt never existed, so the classifier was never joined to its contract and there was nothing to present. CeilingRefused means a receipt DID exist and named a different classification run than the coverage carries, and it forwards both identities unchanged. A holder that only wants a ceiling still matches one arm; a holder reporting why there is none can now say which of the two happened."
+
+type ConfinementSurfaceCeiling
+  = ConfinementCeilingDerived { ceiling: CensusInferenceCeiling }
+  | ConfinementCeilingReceiptUnavailable
+  | ConfinementCeilingRefused {
+      coverage_classification_run_identity: Fnv1a64Structural
+      capability_method_run_identity: Fnv1a64Structural
+    }
+
+fn confinement_surface_ceiling(revision: MeasurementRevision) -> ConfinementSurfaceCeiling {
+  match confinement_capability_receipt(revision: revision) {
+    Present { value: receipt } =>
+      match census_inference_ceiling(
+        capability_receipt: receipt,
+        coverage: confinement_surface_coverage(revision: revision),
+      ) {
+        CensusCeilingDerived { ceiling: ceiling } =>
+          ConfinementCeilingDerived { ceiling: ceiling }
+        CensusCeilingRefusedRunMismatch {
+          coverage_classification_run_identity: coverage_run,
+          capability_method_run_identity: method_run,
+        } =>
+          ConfinementCeilingRefused {
+            coverage_classification_run_identity: coverage_run,
+            capability_method_run_identity: method_run,
+          }
+      }
+    Absent => ConfinementCeilingReceiptUnavailable
+  }
+}
+
+data confinement_claim_note: String = "THE CLAIM IS A PRODUCT OF THE CEILING, NOT A NUMBER BESIDE IT. ConfinementSurfacePopulationObserved is sole_constructor and the only function returning one is confinement_surface_population_claim, which returns none unless a ceiling EXISTS — the capability receipt joined its contract to the executed classifier, and the ceiling joined that receipt to the coverage outcome — and unless that ceiling supports a semantic subject claim. So the population size is not something this module can state and then annotate with a caveat: where the chain does not join, there is no claim value to hold. The key count is derived from the observation rows at read time; the claim carries no count field of its own, so it cannot drift from the rows it summarizes."
+
+type ConfinementSurfacePopulationObserved sole_constructor {
+  observed_at_revision: MeasurementRevision
+  observation: RepositoryCensusObservation
+  ceiling: CensusInferenceCeiling
+}
+
+fn confinement_surface_population_claim(
+  revision: MeasurementRevision,
+) -> ConfinementSurfacePopulationObserved? {
+  match confinement_surface_ceiling(revision: revision) {
+    ConfinementCeilingDerived { ceiling: ceiling } => {
+      let claim = ConfinementSurfacePopulationObserved {
+        observed_at_revision: revision,
+        observation: confinement_surface_observation(revision: revision),
+        ceiling: ceiling,
+      }
+      if census_ceiling_supports_semantic_subject_claim(ceiling: ceiling) {
+        Present { value: claim }
+      } else {
+        none
+      }
+    }
+    ConfinementCeilingReceiptUnavailable => none
+    ConfinementCeilingRefused {
+      coverage_classification_run_identity: _,
+      capability_method_run_identity: _,
+    } => none
+  }
+}
+
+fn confinement_surface_declared_key_count(
+  claim: ConfinementSurfacePopulationObserved,
+) -> Int {
+  repository_census_row_count(observation: claim.observation)
+}
+
+fn confinement_surface_claimed_keys(
+  claim: ConfinementSurfacePopulationObserved,
+) -> List<CensusSubjectKey> {
+  repository_census_subject_keys(observation: claim.observation)
+}
+
+fn confinement_surface_supports_undeclared_key_absence(
+  claim: ConfinementSurfacePopulationObserved,
+) -> Bool {
+  census_ceiling_supports_semantic_absence(ceiling: claim.ceiling)
+}
+
+fn confinement_surface_prefix_grain_keys() -> List<CensusSubjectKey> {
+  let prefixes = target_ast_vocab_module_prefixes |> map(key => key as CensusSubjectKey)
+  let edges = realization_edge_path_prefixes |> map(key => key as CensusSubjectKey)
+  append(prefixes, edges)
+}

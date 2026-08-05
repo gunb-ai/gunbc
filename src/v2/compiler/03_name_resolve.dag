@@ -31,7 +31,7 @@ import v2.compiler.namespace_graft {
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list }
-import v2.std.collection { Absent, Map, Present, empty_map, map_get, map_insert, optional_absent, optional_present }
+import v2.std.collection { Absent, Map, Present, List, empty_map, map_get, map_insert, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -45,8 +45,13 @@ import v2.std.diagnostic {
   diagnostics_merge,
   diagnostics_singleton,
   port_locus,
-  rejected_with_pending
+  rejected_with_pending,
+  textual_whole_file_diagnostic
 }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.lens.reference_deps { reference_qn_from_import_decl_strict }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.node {
   Conj,
   Edge,
@@ -57,6 +62,7 @@ import v2.std.node {
   fold_node_topdown,
   well_formed
 }
+import v2.std.algebra { list_reverse }
 import v2.std.passing_candidate_fold {
   ManyPassingCandidates,
   NoPassingCandidate,
@@ -127,6 +133,97 @@ fn resolve_diagnostic(reason: Symbol) -> Diagnostic {
 
 fn resolve_diagnostics(reason: Symbol) -> NonEmptyDiagnostics {
   diagnostics_singleton(d: resolve_diagnostic(reason: reason))
+}
+
+data resolve_module_not_found_identity_note: String = "module_root_find refuses with the exact QualifiedName sought — rendered as a dotted string on the Textual diagnostic file locus (§3: structural QN is identity; dotted form is projection for display). ModuleRootLookup is the structural authority; diagnostics project from ModuleRootMissing rather than parsing display text back."
+
+type ModuleRootLookup
+  = ModuleRootFound { root: Node }
+  | ModuleRootMissing { requested: QualifiedName }
+  | ModuleRootAmbiguous { requested: QualifiedName }
+  | ModuleRootLookupRejected { diagnostics: NonEmptyDiagnostics }
+
+fn resolve_module_not_found_diagnostic_from_missing(
+  requested: QualifiedName
+) -> NonEmptyDiagnostics {
+  diagnostics_singleton(
+    d: textual_whole_file_diagnostic(
+      reason: ^resolve_module_not_found,
+      module_file: symbol_intern_lexeme(
+        lexeme: qualified_name_to_dotted_string(qn: requested)
+      ),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    )
+  )
+}
+
+fn resolve_module_not_found_diagnostic(name: QualifiedName) -> NonEmptyDiagnostics {
+  resolve_module_not_found_diagnostic_from_missing(requested: name)
+}
+
+fn collect_import_decl_nodes(n: Node, acc: FreeMonoid<Node>) -> FreeMonoid<Node> {
+  let here = match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } =>
+      if id == ^dag_surface_import_decl {
+        Cons { head: n, tail: acc }
+      } else {
+        acc
+      }
+    Absent => acc
+  }
+  fold(n.children, init: here, f: fn(a, e) {
+    collect_import_decl_nodes(n: e.target, acc: a)
+  })
+}
+
+type ImportRowsState
+  = ImportRowsFailed { reason: Symbol }
+  | ImportRowsOk { rows: List<Import> }
+
+fn import_rows_from_parsed_module(root: Node) -> ImportRowsState {
+  let gathered = fold_list(
+    xs: list_reverse(xs: collect_import_decl_nodes(n: root, acc: Empty)),
+    empty: ImportRowsOk { rows: Empty },
+    cons: fn(state, import_node) {
+      match state {
+        ImportRowsFailed { reason: r } => ImportRowsFailed { reason: r }
+        ImportRowsOk { rows: prior } =>
+          match reference_qn_from_import_decl_strict(node: import_node, module_root: root) {
+            Rejected { diagnostics: d } => ImportRowsFailed { reason: d.head.reason }
+            Accepted { value: target_qn, diagnostics: _ } =>
+              ImportRowsOk {
+                rows: Cons {
+                  head: Import { target: target_qn, visibility: ImportVisible },
+                  tail: prior
+                }
+              }
+          }
+      }
+    }
+  )
+  match gathered {
+    ImportRowsFailed { reason: r } => ImportRowsFailed { reason: r }
+    ImportRowsOk { rows: rev } => ImportRowsOk { rows: list_reverse(xs: rev) }
+  }
+}
+
+fn admission_from_module_root(root: Node) -> Outcome<Admission> {
+  match qualified_name_from_module_node(root: root) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: subject_qn, diagnostics: _ } =>
+      match import_rows_from_parsed_module(root: root) {
+        ImportRowsFailed { reason: r } =>
+          Rejected { diagnostics: resolve_diagnostics(reason: r) }
+        ImportRowsOk { rows: rows } =>
+          Accepted {
+            value: Admission {
+              subject: ResolutionSubject { name: subject_qn },
+              imports: rows
+            },
+            diagnostics: None
+          }
+      }
+  }
 }
 
 fn admission_initial(base: Namespace) -> AdmissionState {
@@ -245,10 +342,12 @@ fn validate_module_roots(roots: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
   }
 }
 
-fn module_root_find(
+data module_root_lookup_note: String = "Typed lookup result beside module_root_find diagnostics. ModuleRootMissing and ModuleRootAmbiguous preserve the exact QualifiedName sought; diagnostics are projections of these results for consumers that still read Outcome<Node>."
+
+fn module_root_lookup(
   roots: FreeMonoid<Node>,
   name: QualifiedName
-) -> Outcome<Node> {
+) -> ModuleRootLookup {
   match fold_list(
     xs: roots,
     empty: Accepted { value: NoPassingCandidate, diagnostics: v2.std.diagnostic.None },
@@ -281,16 +380,37 @@ fn module_root_find(
       }
     }
   ) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: d } =>
+      ModuleRootLookupRejected { diagnostics: d }
     Accepted { value: fold_state, diagnostics: _ } =>
       match fold_state {
         NoPassingCandidate =>
-          Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_module_not_found) }
+          ModuleRootMissing { requested: name }
         OnePassingCandidate { candidate: root } =>
-          Accepted { value: root, diagnostics: v2.std.diagnostic.None }
+          ModuleRootFound { root: root }
         ManyPassingCandidates =>
-          Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_duplicate_module_name) }
+          ModuleRootAmbiguous { requested: name }
       }
+  }
+}
+
+fn module_root_find(
+  roots: FreeMonoid<Node>,
+  name: QualifiedName
+) -> Outcome<Node> {
+  match module_root_lookup(roots: roots, name: name) {
+    ModuleRootFound { root: root } =>
+      Accepted { value: root, diagnostics: v2.std.diagnostic.None }
+    ModuleRootMissing { requested: requested } =>
+      Rejected {
+        diagnostics: resolve_module_not_found_diagnostic_from_missing(
+          requested: requested
+        )
+      }
+    ModuleRootAmbiguous { requested: _ } =>
+      Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_duplicate_module_name) }
+    ModuleRootLookupRejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
   }
 }
 

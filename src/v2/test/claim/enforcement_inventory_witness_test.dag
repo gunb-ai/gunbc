@@ -69,7 +69,11 @@ test fn unbound_lenses_remain_in_inventory_live() -> Bool {
   unbound_contract_count() > 0
     && inventory_contains_lens_id(
       inventory: lens_enforcement_inventory_live(),
-      id: Complexity
+      id: ComplexityDerivedKernel
+    )
+    && inventory_contains_lens_id(
+      inventory: lens_enforcement_inventory_live(),
+      id: ComplexityOptimality
     )
     && inventory_contains_lens_id(
       inventory: lens_enforcement_inventory_live(),

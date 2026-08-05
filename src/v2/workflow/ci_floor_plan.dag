@@ -1,6 +1,7 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
+import gunbc.explicit_witness_admission { known_red_probe_corpus_roster, known_red_probe_v1_envelope_roster }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, scoped_witness_batches, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_silent_pick_gate_roster, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
@@ -10,7 +11,7 @@ import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_batch_enrolled,
   falsifier_self_host_wet_known_red_roster
 }
-import gunbc.ci_materialization { ci_floor_declared_resolve_count }
+import gunbc.ci_materialization { ci_floor_expected_resolve_obligations, FloorFinalization }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs,
@@ -23,6 +24,21 @@ import gunbc.ci_spec {
   gunbc_ci_admission_postcondition_budget_minutes,
 }
 import gunbc.falsifier_workflow { falsifier_plan_function }
+import gunbc.falsifier_lane {
+  FalsifierLane,
+  LanePredictOnly,
+  LaneSelfHostWet,
+  LaneSelfHostWetKnownRed,
+  LaneKnownRedProbe,
+  LaneSilentPickGate,
+  LaneRehomedBinWet,
+  LaneSubstrateLongLane,
+  LaneCadenceWitness,
+  LaneGates,
+  FalsifierLaneEnrollment,
+  FalsifierPlannedComponent,
+  falsifier_planned_components
+}
 import gunbc.commit_workflow { commit_gate_roster, project_falsifier_witness_entries, project_falsifier_gates }
 import gunbc.ci_gate {
   Gate, EmitHostGate, CheapClaimPoolGate,
@@ -82,7 +98,6 @@ import std.realization_schedule {
   NoWalkFinalization,
   NoFinalizationDeclared,
 }
-import gunbc.ci_materialization { FloorFinalization }
 import v2.lens.schedule_lens { walk_plan_schedule_lens_verdict_for_ci_floor, schedule_lens_batch_has_any_cheap_gate }
 import v2.std.lens_verdict { Holds, NotApplicable, Unrealized, Violation }
 import v2.workflow.executor {
@@ -95,6 +110,8 @@ import v2.workflow.realization_runner {
   runner_schedule_plan_from_dependencies,
   runner_schedule_store_covers_nodes
 }
+
+data ci_floor_plan_resolve_finalization_transport_note: String = "0B AUTHORITY SPLIT: WalkPlan.finalization.expected_resolve_obligations projects gunbc.ci_materialization ci_floor_expected_resolve_obligations() unchanged — this plan does NOT author a second obligation roster. claim_executor records ResolveRealizationObservation at reuse sites and joins observed rows to the transported subjects."
 
 data ci_floor_target_digest: ContentHash = content_hash_of_value(value: "gunbc-ci-floor-v1")
 data ci_floor_compile_gate_fn: String = "dag_compile_clean_gate_passes"
@@ -945,10 +962,10 @@ fn falsifier_self_host_wet_batch_enrolled() -> Bool {
     && (length(xs: falsifier_self_host_wet_entries()) > 0)
 }
 
-data falsifier_known_red_probe_batch_note: String = "Nightly falsifier batch 3 (Phase 0(b) admission invariant): the declared Hermetic probe lane for known-red quarantined witnesses (gunbc.ci_layer_roots known_red_probe_entries — see known_red_probe_note). Runs SelectionApplied after the wet self-host batch; EXPECT RED on main so greening is a counted un-quarantine event, never a hand discovery. Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts)."
+data falsifier_known_red_probe_batch_note: String = "Nightly falsifier batch 3 (Phase 0(b) admission invariant): the declared Hermetic probe lane for known-red quarantined witnesses whose subject resolves under witness_layer_roots (gunbc.explicit_witness_admission known_red_probe_corpus_roster — see known_red_probe_note). Rows needing the dag plus src/v1 envelope (src/v1 paths and dag witnesses that import v1.*) run on the ordinary floor under v1_claim_scoped_known_red_probe_batch. Runs SelectionApplied after the wet self-host batch; EXPECT RED on main so greening is a counted un-quarantine event, never a hand discovery. Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts)."
 
 fn falsifier_known_red_probe_batch_enrolled() -> Bool {
-  length(xs: known_red_probe_roster()) > 0
+  length(xs: known_red_probe_corpus_roster()) > 0
 }
 
 data falsifier_silent_pick_gate_batch_note: String = "Nightly falsifier batch 4 (#6967 consumption — see falsifier_silent_pick_gate_note in gunbc.ci_layer_roots): the declared Wet bin-execution lane for the resolution-divergence-census silent-pick refusal. Runs SelectionApplied after the known-red probe batch; claim_executor halts this batch if an earlier one fails (fail-closed), matching the other three falsifier batches. Whole-receipt wall budget: gunbc_falsifier_silent_pick_gate_receipt_wall_budget (900s dated basis, review #7199)."
@@ -997,7 +1014,7 @@ fn gunbc_falsifier_known_red_probe_batch() -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
-    explicit_entries: known_red_probe_roster(),
+    explicit_entries: known_red_probe_corpus_roster(),
     node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
@@ -1065,14 +1082,6 @@ fn falsifier_batches_append_if_enrolled(acc: List<List<Runnable>>, enrolled: Boo
   }
 }
 
-fn falsifier_batches_append_group_if_enrolled(acc: List<List<Runnable>>, enrolled: Bool, batch: List<Runnable>) -> List<List<Runnable>> {
-  if enrolled {
-    list_snoc_item(xs: acc, item: batch)
-  } else {
-    acc
-  }
-}
-
 data falsifier_gate_batch_note: String = "The EXECUTING consumer for gates enrolled on gunbc.commit_workflow's FalsifierCadenceJob surface — the gate counterpart of gunbc_falsifier_cadence_witness_batch, and it lands in the same change as project_falsifier_gates and the gate-half wall for the reason that note already states: a surface tag with no batch reading it is enrollment-by-illusion. Until this existed, the FalsifierCadenceJob surface accepted a gate row syntactically and executed it nowhere, and no witness could red on that because the bare-deenrollment wall filtered on enrollment_is_witness_claim. GRAIN: one batch holding every cadence gate, not one batch per gate — the gates are mutually independent (each is its own RunnableSingleClaim with its own profile from gate_runnable) and the falsifier's fail-closed halt already sequences batches, so splitting them would buy ordering nobody needs and cost a batch boundary each. AT LANDING THIS APPENDS NOTHING: no gate rides FalsifierCadenceJob until the measured flips land, so falsifier_gate_batch_enrolled() is false and the batch chain is byte-identical — the same zero-behaviour-change-until-flip discipline gunbc_pr_native_batch_note follows. Profile is NOT restated here: each runnable carries gate_runnable_profile(g), the single authority the per-PR floor reads, so a gate's resource shape cannot fork between the two lanes."
 
 fn falsifier_gate_runnables() -> List<Runnable> {
@@ -1129,47 +1138,74 @@ fn gunbc_falsifier_substrate_long_lane_batch() -> Runnable {
   }
 }
 
+data gunbc_falsifier_lane_batches_note: String = "THE SINGLE ENROLLMENT AUTHORITY, and the reason it replaced a chain of append-if-enrolled lets. Both the executed schedule and the per-component LANE attribution are projections of this one ordered list, so an added lane cannot reach the schedule without also reaching attribution — the divergence stops being writable rather than being caught afterwards (DESIGN section 5, construction over validation; the higher rung of section 4b's ladder). Before this, the lane fact was known only inside each batch's constructor name and was DISCARDED the moment the schedule flattened to List<List<Runnable>>: the receipt could say a batch was red but nothing could say which roster it was, because the label the seed stamps is generated from the runnable's shape ('discovery-corpus[N root(s)+M explicit, adaptive width]') and names no lane. A parallel hand-authored lane table would have restored the name at the cost of a second representation that drifts on the next enrollment flip (DESIGN section 3) — hence one list, two readings. ORDER IS LOAD-BEARING and is preserved exactly as the former let-chain appended: predict-only always first, then wet, wet-known-red, known-red probe, silent-pick gate, rehomed bin wet, substrate long lane, cadence witness, and the gate GROUP last. Position determines the 1-based component index the receipt reports, which is the join key gunbc.falsifier_lane uses; reordering these rows renumbers components and is a schedule change, not a refactor. Batches are constructed eagerly for unenrolled lanes exactly as the former helper's eager argument did, so enrollment gates membership and never construction."
+
+type FalsifierLaneBatch {
+  lane: FalsifierLane
+  enrolled: Bool
+  batch: List<Runnable>
+}
+
+fn gunbc_falsifier_lane_batches() -> List<FalsifierLaneBatch> {
+  [
+    FalsifierLaneBatch {
+      lane: LanePredictOnly,
+      enrolled: true,
+      batch: [gunbc_falsifier_predict_only_batch()]
+    },
+    FalsifierLaneBatch {
+      lane: LaneSelfHostWet,
+      enrolled: falsifier_self_host_wet_batch_enrolled(),
+      batch: [gunbc_falsifier_self_host_wet_batch()]
+    },
+    FalsifierLaneBatch {
+      lane: LaneSelfHostWetKnownRed,
+      enrolled: falsifier_self_host_wet_known_red_batch_enrolled(),
+      batch: [gunbc_falsifier_self_host_wet_known_red_batch()]
+    },
+    FalsifierLaneBatch {
+      lane: LaneKnownRedProbe,
+      enrolled: falsifier_known_red_probe_batch_enrolled(),
+      batch: [gunbc_falsifier_known_red_probe_batch()]
+    },
+    FalsifierLaneBatch {
+      lane: LaneSilentPickGate,
+      enrolled: falsifier_silent_pick_gate_batch_enrolled(),
+      batch: [gunbc_falsifier_silent_pick_gate_batch()]
+    },
+    FalsifierLaneBatch {
+      lane: LaneRehomedBinWet,
+      enrolled: falsifier_rehomed_bin_wet_batch_enrolled(),
+      batch: [gunbc_falsifier_rehomed_bin_wet_batch()]
+    },
+    FalsifierLaneBatch {
+      lane: LaneSubstrateLongLane,
+      enrolled: falsifier_substrate_long_lane_batch_enrolled(),
+      batch: [gunbc_falsifier_substrate_long_lane_batch()]
+    },
+    FalsifierLaneBatch {
+      lane: LaneCadenceWitness,
+      enrolled: falsifier_cadence_witness_batch_enrolled(),
+      batch: [gunbc_falsifier_cadence_witness_batch()]
+    },
+    FalsifierLaneBatch {
+      lane: LaneGates,
+      enrolled: falsifier_gate_batch_enrolled(),
+      batch: falsifier_gate_runnables()
+    }
+  ]
+}
+
 fn gunbc_falsifier_ordinary_batches() -> List<List<Runnable>> {
-  let base = [[gunbc_falsifier_predict_only_batch()]]
-  let with_wet = falsifier_batches_append_if_enrolled(
-    acc: base,
-    enrolled: falsifier_self_host_wet_batch_enrolled(),
-    batch: gunbc_falsifier_self_host_wet_batch()
-  )
-  let with_wet_known_red = falsifier_batches_append_if_enrolled(
-    acc: with_wet,
-    enrolled: falsifier_self_host_wet_known_red_batch_enrolled(),
-    batch: gunbc_falsifier_self_host_wet_known_red_batch()
-  )
-  let with_probe = falsifier_batches_append_if_enrolled(
-    acc: with_wet_known_red,
-    enrolled: falsifier_known_red_probe_batch_enrolled(),
-    batch: gunbc_falsifier_known_red_probe_batch()
-  )
-  let with_silent_pick = falsifier_batches_append_if_enrolled(
-    acc: with_probe,
-    enrolled: falsifier_silent_pick_gate_batch_enrolled(),
-    batch: gunbc_falsifier_silent_pick_gate_batch()
-  )
-  let with_rehomed = falsifier_batches_append_if_enrolled(
-    acc: with_silent_pick,
-    enrolled: falsifier_rehomed_bin_wet_batch_enrolled(),
-    batch: gunbc_falsifier_rehomed_bin_wet_batch()
-  )
-  let with_substrate_long = falsifier_batches_append_if_enrolled(
-    acc: with_rehomed,
-    enrolled: falsifier_substrate_long_lane_batch_enrolled(),
-    batch: gunbc_falsifier_substrate_long_lane_batch()
-  )
-  let with_cadence_witness = falsifier_batches_append_if_enrolled(
-    acc: with_substrate_long,
-    enrolled: falsifier_cadence_witness_batch_enrolled(),
-    batch: gunbc_falsifier_cadence_witness_batch()
-  )
-  falsifier_batches_append_group_if_enrolled(
-    acc: with_cadence_witness,
-    enrolled: falsifier_gate_batch_enrolled(),
-    batch: falsifier_gate_runnables()
+  fold(gunbc_falsifier_lane_batches(), init: [], f: fn(acc, row) {
+    if row.enrolled { concat(acc, [row.batch]) } else { acc }
+  })
+}
+
+fn gunbc_falsifier_planned_components() -> List<FalsifierPlannedComponent> {
+  falsifier_planned_components(
+    enrollments: gunbc_falsifier_lane_batches()
+      |> map(row => FalsifierLaneEnrollment { lane: row.lane, enrolled: row.enrolled })
   )
 }
 
@@ -1237,9 +1273,37 @@ fn gunbc_ci_floor_ordinary_batches() -> List<List<Runnable>> {
     enrolled: gunbc_pr_native_batch_enrolled(),
     batch: gunbc_pr_native_batch()
   )
-  fold(scoped_witness_batches, init: ordinary, f: fn(acc, batch) {
+  let with_scoped = fold(scoped_witness_batches, init: ordinary, f: fn(acc, batch) {
     list_snoc_item(xs: acc, item: [RunnableScopedWitnessBatch { batch: batch }])
   })
+  falsifier_batches_append_if_enrolled(
+    acc: with_scoped,
+    enrolled: v1_claim_scoped_known_red_probe_batch_enrolled(),
+    batch: gunbc_v1_claim_scoped_known_red_probe_batch()
+  )
+}
+
+data v1_claim_scoped_known_red_probe_batch_note: String = "Per-PR Hermetic expect_red lane for known-red CorpusWitnessKind rows whose subject needs the dag plus src/v1 envelope (gunbc.explicit_witness_admission known_red_probe_v1_envelope_roster: src/v1 paths plus dag witnesses that import v1.*). The falsifier's corpus-root probe batch cannot resolve these entries; running them there would treat resolve-refuse as expect-red success without executing the predicate (DESIGN section 5 specification-without-execution). This batch mirrors v1_claim_scoped_witness_batch's dag plus src/v1 source-root envelope and runs SelectionApplied on the ordinary floor. ENROLLMENT COUPLING: enrolling this batch (known_red_probe_v1_envelope_roster becomes non-empty) requires adding its companion positional row to gunbc.ci_spec gunbc_ci_floor_batch_clamp_params in the same change — the clamp table is unconditional data while this batch is conditionally enrolled, so a roster-only edit that enrolls the batch without the clamp row fails with floor batch clamp params must cover N scheduled batches."
+
+fn v1_claim_scoped_known_red_probe_batch_enrolled() -> Bool {
+  length(xs: known_red_probe_v1_envelope_roster()) > 0
+}
+
+fn gunbc_v1_claim_scoped_known_red_probe_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: ["dag", "src/v1"],
+    scan_dirs: [],
+    explicit_entries: known_red_probe_v1_envelope_roster(),
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: false,
+      memory: runnable_memory_substantial(),
+      execution_mode: Hermetic
+    )
+  }
 }
 
 data gunbc_ci_witness_corpus_only_batches_note: String = "The pre-push local test gate (consumer: dag/gunbc/githooks_pre_push_emit.dag NEED_WITNESS). It is the SAME affected-set witness corpus CI runs (corpus_runnable_for(gunbc_ci_spec), SelectionApplied scoped to the push diff via the executor's git-diff observation), MINUS two lanes on purpose: (1) the whole-tree --target dag compile-clean gate (the compile-clean anchor batch of gunbc_ci_floor_plan, after the cheap-gate early batch) - infeasible per-push (~72min emit), CI-owned; and (2) the Wet execution + bin-witness lanes (execution_corpus_node / bin_witness_corpus_node) - they need prebuilt release witness bins and spawn a host compiler, so they stay CI-owned. This is a DECLARED scope narrowing, not a silent one (the enforcement-intent rule): the hermetic discovery corpus is the affected-set bulk and catches the resolve / typecheck / witness-logic red class before push; CI remains the whole wall. Selection stays fail-closed exactly as the floor (ci_spec_discovery_flip_note; compile_door_ledger; cli_run AFFECTED-SET REFUSAL): a diff-observation / provenance gap REFUSES with a typed, located diagnostic — it never widens to the whole corpus and never silently skips (DESIGN §5: refuse, never widen)."
@@ -1364,7 +1428,7 @@ fn gunbc_ci_floor_plan() -> WalkPlan<FloorFinalization> {
     },
     batches: gunbc_ci_floor_ordinary_batches(),
     finalization: FloorFinalization {
-      declared_resolve_count: ci_floor_declared_resolve_count,
+      expected_resolve_obligations: ci_floor_expected_resolve_obligations(),
     },
     on_success_stages: gunbc_ci_on_success_stages(),
     ordinary_budget: Present { value: minute_to_millisecond(m: gunbc_ci_ordinary_floor_budget_minutes) },

@@ -13,6 +13,7 @@ import std.occurrence_identity {
   OccurrenceTransportRefusal,
   OccurrenceTransportValidated,
   OccurrenceTransportRefused,
+  UnknownOccurrenceIdentity,
   DeclarationOccurrence,
   ReferenceOccurrence,
   OccurrenceCategory,
@@ -30,6 +31,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.roster_frontier { declaration_ref_eq }
 import std.occurrence_binding_resolve {
   resolve_reference_occurrence_binding,
+  OccurrenceReferenceBindingOutcome,
   OccurrenceReferenceBindingDecided,
   OccurrenceReferenceBindingTransportRefused,
 }

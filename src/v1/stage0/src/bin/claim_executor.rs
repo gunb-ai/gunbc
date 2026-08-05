@@ -339,6 +339,7 @@ fn write_compile_clean_cost_drift_receipt_at(
         String::from("kind\tsubject\tobserved_wall_ms\tbasis_wall_ms\tverdict\trun_ref\n");
     let mut drift_count = 0usize;
     let mut basis_absent_count = 0usize;
+    let mut clock_mismatch_count = 0usize;
     for (kind, subj, observed) in &rows {
         match basis.get(&(kind.clone(), subj.clone())) {
             None => {
@@ -346,25 +347,21 @@ fn write_compile_clean_cost_drift_receipt_at(
                 body.push_str(&format!("{kind}\t{subj}\t{observed}\t\tBasisAbsent\t\n"));
             }
             Some(b) => {
-                let exceeds = match witness_row_cost_exceeds_basis_via_authority(
-                    &ctx,
-                    *observed,
-                    b.eval_ms_basis,
-                ) {
+                let verdict = match witness_row_cost_verdict_via_authority(&ctx, *observed, Some(b))
+                {
                     Ok(v) => v,
                     Err(e) => {
                         eprintln!(
-                            "claim_executor: compile-clean drift comparator refused for {kind}::{subj}: {e} — walk fails closed here"
-                        );
+                                "claim_executor: compile-clean drift comparator refused for {kind}::{subj}: {e} — walk fails closed here"
+                            );
                         return false;
                     }
                 };
-                let verdict = if exceeds {
-                    drift_count += 1;
-                    "DriftExceeded"
-                } else {
-                    "WithinBasis"
-                };
+                match verdict.as_str() {
+                    "DriftExceeded" => drift_count += 1,
+                    "BasisClockMismatch" => clock_mismatch_count += 1,
+                    _ => {}
+                }
                 body.push_str(&format!(
                     "{kind}\t{subj}\t{observed}\t{}\t{verdict}\t{}\n",
                     b.eval_ms_basis, b.run_ref
@@ -373,7 +370,7 @@ fn write_compile_clean_cost_drift_receipt_at(
         }
     }
     eprintln!(
-        "[compile-clean-cost-drift] basis_absent={basis_absent_count} drift_exceeded={drift_count}"
+        "[compile-clean-cost-drift] basis_absent={basis_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count}"
     );
     for line in body.lines() {
         eprintln!("[compile-clean-cost-drift] {line}");
@@ -387,7 +384,7 @@ fn write_compile_clean_cost_drift_receipt_at(
         return false;
     }
     eprintln!(
-        "[receipt] floor compile-clean cost drift: basis_absent={basis_absent_count} drift_exceeded={drift_count} (TSV: {})",
+        "[receipt] floor compile-clean cost drift: basis_absent={basis_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count} (TSV: {})",
         path.display()
     );
     true
@@ -1380,6 +1377,140 @@ fn optional_walk_budget_ms(
 /// `Nat` reaches the interpreter as a native `Int` (the numeric tower is grounded), so
 /// a negative value cannot arrive from a well-typed plan; it is still refused rather
 /// than carried into a count comparison it could only lose.
+/// Transported semantic resolve obligation — population decoded from
+/// `WalkPlan.finalization.expected_resolve_obligations`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TransportedObligation {
+    identity: String,
+    entry: String,
+    function: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FloorFinalization {
+    expected_obligations: Vec<TransportedObligation>,
+}
+
+type ObligationSubjectKey = (String, String);
+type ObligationSubjectSet = std::collections::HashSet<ObligationSubjectKey>;
+
+fn obligation_subject_set(fin: Option<&FloorFinalization>) -> Option<ObligationSubjectSet> {
+    fin.map(|fin| {
+        fin.expected_obligations
+            .iter()
+            .map(|obl| (obl.entry.clone(), obl.function.clone()))
+            .collect()
+    })
+}
+
+fn is_rostered_obligation_subject(
+    subjects: &ObligationSubjectSet,
+    entry: &str,
+    function: &str,
+) -> bool {
+    subjects.contains(&(entry.to_string(), function.to_string()))
+}
+
+/// Attach the group's resolve-realization observation to the first rostered obligation
+/// subject in the resolve group — not the first arbitrary co-resident claim.
+fn take_group_observation_for_claim(
+    obligation_subjects: Option<&ObligationSubjectSet>,
+    entry: &str,
+    function: &str,
+    group_observation: &Option<ResolveRealizationObservation>,
+    group_observation_attached: &mut bool,
+) -> Option<ResolveRealizationObservation> {
+    if *group_observation_attached {
+        return None;
+    }
+    let rostered = match obligation_subjects {
+        None => true,
+        Some(subjects) => is_rostered_obligation_subject(subjects, entry, function),
+    };
+    if !rostered {
+        return None;
+    }
+    *group_observation_attached = true;
+    group_observation.clone()
+}
+
+impl FloorFinalization {
+    /// Derived roster size — never a stored count literal (DESIGN §5).
+    #[allow(dead_code)]
+    fn declared_resolve_count(&self) -> i64 {
+        self.expected_obligations.len() as i64
+    }
+}
+
+fn string_field_from_record(
+    fields: &[(v1_compiler::v1_interpreter::Symbol, Value)],
+    ctx: &InterpContext,
+    field: &str,
+) -> Result<String, String> {
+    match ctx.field(fields, field) {
+        Some(Value::Str(s)) => Ok(s.clone()),
+        other => Err(format!("expected {field}: String, got {other:?}")),
+    }
+}
+
+fn parse_resolve_obligation_identity(v: &Value, ctx: &InterpContext) -> Result<String, String> {
+    match v {
+        Value::Variant { variant_name, .. } => Ok(ctx.resolve(*variant_name)),
+        other => Err(format!(
+            "ResolveObligationIdentity must be a variant, got {}",
+            ctx.format_value(other)
+        )),
+    }
+}
+
+fn parse_resolve_obligation_from_value(
+    v: &Value,
+    ctx: &InterpContext,
+) -> Result<TransportedObligation, String> {
+    let fields = match v {
+        Value::Record { fields, .. } => fields,
+        other => {
+            return Err(format!(
+                "ResolveObligation must be a record, got {}",
+                ctx.format_value(other)
+            ))
+        }
+    };
+    let identity = parse_resolve_obligation_identity(
+        ctx.field(fields, "identity")
+            .ok_or_else(|| "ResolveObligation missing field `identity`".to_string())?,
+        ctx,
+    )?;
+    let subject_fields = match ctx.field(fields, "subject") {
+        Some(Value::Record { fields, .. }) => fields,
+        other => {
+            return Err(format!(
+                "ResolveObligation.subject must be a record, got {other:?}"
+            ))
+        }
+    };
+    Ok(TransportedObligation {
+        identity,
+        entry: string_field_from_record(subject_fields, ctx, "entry")?,
+        function: string_field_from_record(subject_fields, ctx, "function")?,
+    })
+}
+
+fn parse_expected_obligations_from_fields(
+    fields: &[(v1_compiler::v1_interpreter::Symbol, Value)],
+    ctx: &InterpContext,
+) -> Result<Vec<TransportedObligation>, String> {
+    let list_val = ctx
+        .field(fields, "expected_resolve_obligations")
+        .ok_or_else(|| {
+            "FloorFinalization missing field `expected_resolve_obligations`".to_string()
+        })?;
+    free_monoid_elems(list_val, ctx)?
+        .iter()
+        .map(|elem| parse_resolve_obligation_from_value(elem, ctx))
+        .collect()
+}
+
 fn finalization_from_value(
     v: &Value,
     ctx: &InterpContext,
@@ -1389,25 +1520,17 @@ fn finalization_from_value(
     // standalone record in gunbc.ci_materialization (Value::Record), while
     // NoFinalizationDeclared is the nullary variant of std's NoWalkFinalization sum
     // (Value::Variant). Both are matched by TYPE NAME — never by "has a field called
-    // declared_resolve_count", which would admit any record that happened to carry one.
+    // expected_resolve_obligations", which would admit any record that happened to carry one.
     let floor_from_fields =
-        |fields: &[(v1_compiler::v1_interpreter::Symbol, Value)]| -> Result<i64, String> {
-            match ctx.field(fields, "declared_resolve_count") {
-                Some(Value::Int(n)) if *n >= 0 => Ok(*n),
-                Some(Value::Int(n)) => Err(format!(
-                    "FloorFinalization.declared_resolve_count is Nat, got {n}"
-                )),
-                other => Err(format!(
-                    "FloorFinalization.declared_resolve_count must be a Nat, got {other:?}"
-                )),
-            }
+        |fields: &[(v1_compiler::v1_interpreter::Symbol, Value)]| -> Result<FloorFinalization, String> {
+            Ok(FloorFinalization {
+                expected_obligations: parse_expected_obligations_from_fields(fields, ctx)?,
+            })
         };
     match v {
         Value::Record {
             type_name, fields, ..
-        } if ctx.sym_eq(*type_name, "FloorFinalization") => Ok(Some(FloorFinalization {
-            declared_resolve_count: floor_from_fields(fields)?,
-        })),
+        } if ctx.sym_eq(*type_name, "FloorFinalization") => Ok(Some(floor_from_fields(fields)?)),
         Value::Variant {
             variant_name,
             fields,
@@ -1416,12 +1539,7 @@ fn finalization_from_value(
             if ctx.sym_eq(*variant_name, "NoFinalizationDeclared") {
                 Ok(None)
             } else if ctx.sym_eq(*variant_name, "FloorFinalization") {
-                // Retained because the same declaration can reach the interpreter as a
-                // record OR as a variant depending on how it was constructed; refusing
-                // one spelling of a value the model does admit would be a false wall.
-                Ok(Some(FloorFinalization {
-                    declared_resolve_count: floor_from_fields(fields)?,
-                }))
+                Ok(Some(floor_from_fields(fields)?))
             } else {
                 Err(
                     "unknown variant (expected NoFinalizationDeclared or FloorFinalization)"
@@ -1566,7 +1684,33 @@ struct ClaimResult {
     budget_refusal: Option<BudgetRefusal>,
     /// Discovery batch only: finalized selection-degradation facts for floor receipts.
     selection_degradation: Option<SelectionDegradationSnapshot>,
+    /// Recorded at the reuse decision site for rostered obligation subjects only.
+    /// Disposition is NEVER inferred from `resolve_nanos` alone — timing is cost evidence.
+    resolve_realization: Option<ResolveRealizationObservation>,
 }
+
+/// Hand-Rust mirror of `gunbc.ci_materialization` `ResolveRealization` (variant names
+/// must match exactly; dissolve-on: witness-realization P4 executor cutover decodes
+/// modeled `.dag` observations at reuse sites instead of re-authoring them).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ResolveRealizationObservation {
+    ColdResolvePerformed {
+        resolve_nanos: u128,
+    },
+    SatisfiedFromSharedPool {
+        computation_identity: String,
+        provider_id: String,
+    },
+}
+
+/// Receipt disposition tags — must match `ResolveRealization` variant names exactly.
+const RESOLVE_REALIZATION_DISPOSITION_COLD: &str = "ColdResolvePerformed";
+const RESOLVE_REALIZATION_DISPOSITION_WARM: &str = "SatisfiedFromSharedPool";
+
+/// Per-entry walk memo provider — grain distinct from index-build `process_shared_index`.
+/// Authority: `gunbc.floor_materialization` `floor_entry_walk_memo_provider_id`;
+/// drift gate: `floor_entry_walk_memo_provider_id_matches_dag_authority`.
+const FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID: &str = "walk_memo";
 
 /// The pair explaining a budget kill, kept alongside the flattened `ok`/`detail`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1756,6 +1900,10 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
 ///
 /// The alternative was to leave the reason discarded, which is the DESIGN §5 trap this whole
 /// PR exists to close — a refusal that cannot be located is not a refusal anyone can act on.
+///
+/// `resolve_realization` is acquisition evidence from the resolve seam; every outcome arm
+/// preserves it when present so a semantic witness failure cannot fabricate a missing-
+/// realization refusal at finalization.
 fn claim_result_for_outcome(
     ctx: &InterpContext,
     function: String,
@@ -1763,6 +1911,7 @@ fn claim_result_for_outcome(
     outcome: ClaimOutcome,
     wall_nanos: u128,
     resolve_nanos: u128,
+    resolve_realization: Option<ResolveRealizationObservation>,
 ) -> ClaimResult {
     match outcome {
         ClaimOutcome::Pass => ClaimResult {
@@ -1778,18 +1927,16 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
+            resolve_realization,
         },
         ClaimOutcome::Fail => ClaimResult {
             detail: {
                 let mut detail = "returned Bool(false)".to_string();
-                if let Some(companion) = v1_compiler::cli_run::failure_receipt_companion(&function)
-                {
-                    let receipt = v1_compiler::cli_run::run_claim_failure_receipt(ctx, &companion);
-                    if !receipt.is_empty() {
-                        detail.push_str(" | ");
-                        detail.push_str(&receipt);
-                    }
-                }
+                v1_compiler::cli_run::append_failure_receipt_companion_loudness(
+                    &mut detail,
+                    ctx,
+                    &function,
+                );
                 detail
             },
             function,
@@ -1803,6 +1950,7 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
+            resolve_realization,
         },
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
@@ -1817,6 +1965,7 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
+            resolve_realization,
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
             function,
@@ -1831,6 +1980,7 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
+            resolve_realization,
         },
         ClaimOutcome::TimedOut {
             elapsed_ms,
@@ -1863,6 +2013,7 @@ fn claim_result_for_outcome(
                 kind,
             }),
             selection_degradation: None,
+            resolve_realization,
         },
     }
 }
@@ -2135,7 +2286,7 @@ fn run_native_bundle_unit(
     execution_mode: ExecutionMode,
 ) -> ClaimResult {
     let started = Instant::now();
-    let fail = |detail: String| ClaimResult {
+    let fail_before_resolve = |detail: String| ClaimResult {
         function: selector_function.clone(),
         entry: entry.clone(),
         ok: false,
@@ -2148,25 +2299,45 @@ fn run_native_bundle_unit(
         witness_row_costs: Vec::new(),
         budget_refusal: None,
         selection_degradation: None,
+        resolve_realization: None,
     };
     if execution_mode != ExecutionMode::Wet {
-        return fail(
+        return fail_before_resolve(
             "NativeBundle handler requires Wet execution_mode (typed envelope refusal)".to_string(),
         );
     }
     let resolve_started = Instant::now();
     let (graph, indices) = match resolve_entry_graph(source_roots, &entry) {
         Ok(v) => v,
-        Err(e) => return fail(format!("native bundle selector resolve refusal: {e}")),
+        Err(e) => {
+            return fail_before_resolve(format!("native bundle selector resolve refusal: {e}"))
+        }
     };
     let resolve_nanos = resolve_started.elapsed().as_nanos();
+    let resolve_observation =
+        || Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos });
+    let fail_after_resolve = |detail: String| ClaimResult {
+        function: selector_function.clone(),
+        entry: entry.clone(),
+        ok: false,
+        detail,
+        wall_nanos: started.elapsed().as_nanos(),
+        resolve_nanos,
+        corpus_resolve_nanos: 0,
+        corpus_eval_nanos: 0,
+        corpus_witnesses: 3,
+        witness_row_costs: Vec::new(),
+        budget_refusal: None,
+        selection_degradation: None,
+        resolve_realization: resolve_observation(),
+    };
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
     let primary = match run_in_context(&ctx, &selector_function, false)
         .map_err(|e| e.to_string())
         .and_then(|v| native_bundle_spec_from_value(&v, &ctx))
     {
         Ok(spec) => spec,
-        Err(e) => return fail(format!("native bundle selector refusal: {e}")),
+        Err(e) => return fail_after_resolve(format!("native bundle selector refusal: {e}")),
     };
     let planted = run_in_context(&ctx, "native_selected_logic_planted_red_spec", false)
         .map_err(|e| e.to_string())
@@ -2280,7 +2451,7 @@ fn run_native_bundle_unit(
         primary.bundle_count, primary.shard_count, primary.bundle_identity
     );
     if let Err(e) = write_native_transition_receipt(&receipt) {
-        return fail(e);
+        return fail_after_resolve(e);
     }
     eprintln!("[native-selected-bundle] {}", receipt.replace('\n', " "));
     ClaimResult {
@@ -2308,6 +2479,9 @@ fn run_native_bundle_unit(
         witness_row_costs: Vec::new(),
         budget_refusal: None,
         selection_degradation: None,
+        resolve_realization: Some(ResolveRealizationObservation::ColdResolvePerformed {
+            resolve_nanos,
+        }),
     }
 }
 
@@ -2326,6 +2500,7 @@ fn run_batch_unit(
     governor: Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
+    obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> Vec<ClaimResult> {
     match unit {
         BatchUnit::UnrunnableSentinel { function } => vec![ClaimResult {
@@ -2344,6 +2519,7 @@ fn run_batch_unit(
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
+            resolve_realization: None,
         }],
         BatchUnit::NativeBundle {
             entry,
@@ -2446,8 +2622,13 @@ fn run_batch_unit(
             // slot for the unit's lifetime so gate threads and discovery workers draw
             // from the same admission window instead of stacking unbounded.
             let mut slot = AdmittedSlot::acquire_blocking(&governor, &format!("gate-unit {entry}"));
-            let results =
-                run_shared_entry_claims(&source_roots, &entry, &functions, execution_mode);
+            let results = run_shared_entry_claims(
+                &source_roots,
+                &entry,
+                &functions,
+                execution_mode,
+                obligation_subjects,
+            );
             slot.note_unit_complete();
             results
         }
@@ -2459,6 +2640,7 @@ fn run_shared_entry_claims(
     entry: &str,
     functions: &[String],
     execution_mode: ExecutionMode,
+    obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> Vec<ClaimResult> {
     let resolve_start = Instant::now();
     let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
@@ -2479,13 +2661,17 @@ fn run_shared_entry_claims(
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
+                    resolve_realization: None,
                 })
                 .collect();
         }
     };
     let resolve_nanos = resolve_start.elapsed().as_nanos();
+    let group_resolve_observation =
+        Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos });
     let ctx = make_eval_context(&graph, source_indices, execution_mode);
-    let mut first = true;
+    let mut first_physical = true;
+    let mut group_observation_attached = false;
     functions
         .iter()
         .map(|function| {
@@ -2496,11 +2682,21 @@ fn run_shared_entry_claims(
             // witnesses sharing this ctx (byte-unbounded, 20GiB-class kills).
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
             let wall_nanos = claim_start.elapsed().as_nanos();
-            let rn = if first {
-                first = false;
-                resolve_nanos
-            } else {
-                0
+            let (rn, observation) = {
+                let rn = if first_physical {
+                    first_physical = false;
+                    resolve_nanos
+                } else {
+                    0
+                };
+                let observation = take_group_observation_for_claim(
+                    obligation_subjects,
+                    entry,
+                    function,
+                    &group_resolve_observation,
+                    &mut group_observation_attached,
+                );
+                (rn, observation)
             };
             claim_result_for_outcome(
                 &ctx,
@@ -2509,6 +2705,7 @@ fn run_shared_entry_claims(
                 outcome,
                 wall_nanos,
                 rn,
+                observation,
             )
         })
         .collect()
@@ -2523,6 +2720,7 @@ fn run_memo_shared_claims(
     functions: &[String],
     execution_mode: ExecutionMode,
     memo: &mut std::collections::HashMap<(String, ExecutionMode), InterpContext>,
+    obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> Vec<ClaimResult> {
     let resolve_start = Instant::now();
     let mut fresh_resolve = false;
@@ -2548,6 +2746,7 @@ fn run_memo_shared_claims(
                         witness_row_costs: Vec::new(),
                         budget_refusal: None,
                         selection_degradation: None,
+                        resolve_realization: None,
                     })
                     .collect();
             }
@@ -2563,8 +2762,17 @@ fn run_memo_shared_claims(
     } else {
         0
     };
+    let group_resolve_observation = if fresh_resolve {
+        Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos })
+    } else {
+        Some(ResolveRealizationObservation::SatisfiedFromSharedPool {
+            computation_identity: format!("entry-closure:{entry}:{execution_mode:?}"),
+            provider_id: FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID.to_string(),
+        })
+    };
     let ctx = memo.get(&memo_key).expect("memo populated above");
-    let mut first = fresh_resolve;
+    let mut first_physical = true;
+    let mut group_observation_attached = false;
     functions
         .iter()
         .map(|function| {
@@ -2575,11 +2783,21 @@ fn run_memo_shared_claims(
             // groups, so per-witness release matters here most of all.
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(ctx);
             let wall_nanos = claim_start.elapsed().as_nanos();
-            let rn = if first {
-                first = false;
-                resolve_nanos
-            } else {
-                0
+            let (rn, observation) = {
+                let rn = if first_physical {
+                    first_physical = false;
+                    resolve_nanos
+                } else {
+                    0
+                };
+                let observation = take_group_observation_for_claim(
+                    obligation_subjects,
+                    entry,
+                    function,
+                    &group_resolve_observation,
+                    &mut group_observation_attached,
+                );
+                (rn, observation)
             };
             claim_result_for_outcome(
                 ctx,
@@ -2588,6 +2806,7 @@ fn run_memo_shared_claims(
                 outcome,
                 wall_nanos,
                 rn,
+                observation,
             )
         })
         .collect()
@@ -3129,6 +3348,7 @@ fn discovery_claim_result(
                 selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                     selection, summary,
                 )),
+                resolve_realization: None,
             }
         }
         Err(msg) => {
@@ -3161,6 +3381,7 @@ fn discovery_claim_result(
                 selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                     selection, summary,
                 )),
+                resolve_realization: None,
             }
         }
     }
@@ -3239,6 +3460,7 @@ fn run_discovery_batch_node(
                             node_frontier_selection,
                             &summary,
                         )),
+                        resolve_realization: None,
                     };
                 }
             }
@@ -3403,6 +3625,7 @@ fn run_discovery_batch_node(
                             node_frontier_selection,
                             &summary,
                         )),
+                        resolve_realization: None,
                     };
                 }
             }
@@ -3468,6 +3691,7 @@ fn run_discovery_batch_node(
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
+                    resolve_realization: None,
                 }
             } else {
                 ClaimResult {
@@ -3486,6 +3710,7 @@ fn run_discovery_batch_node(
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
+                    resolve_realization: None,
                 }
             }
         }
@@ -4189,8 +4414,9 @@ fn write_floor_component_receipt_at(
     base: &std::path::Path,
     source_roots: &[String],
     batch_records: &[BatchRecord],
-    total_batches: usize,
+    batches: &[Vec<Runnable>],
 ) -> bool {
+    let total_batches = batches.len();
     let Some(entry) = source_roots
         .iter()
         .map(|r| Path::new(r).join("gunbc/floor_component_receipt.dag"))
@@ -4233,13 +4459,31 @@ fn write_floor_component_receipt_at(
     }
     // Batches the stop policy never reached are Skipped with their cause — a named
     // state, never an absent row the alert would have to guess about.
+    //
+    // They carry their PLANNED identity, not a placeholder. `batch_heartbeat_label` and
+    // `batch_selection_tag` are pure functions of `batches[bi]`, so the roster identity of
+    // an unreached component is fully available here; the earlier version discarded it and
+    // wrote a literal "not reached" / "off" pair. That made the receipt complete by COUNT
+    // and anonymous by IDENTITY for exactly the components that did not run — the shape
+    // DESIGN §5 rules out ("Completeness is an identity join, not a count equality").
+    //
+    // The erased `selection_tag` was the load-bearing half. The affected-set cold control is
+    // identified by the property that DEFINES it — `predict_only`
+    // (`gunbc.floor_component_receipt` role note) — so padding it as "off" deleted the cold
+    // control from its own receipt: `floor_affected_set_control_state` then returned
+    // `ControlAbsent`, which cannot distinguish "the control was never enrolled" from "the
+    // control was enrolled and an earlier batch stopped the line before it ran". Two states,
+    // two different remedies, one output — a state-space conflation in the receipt whose
+    // whole purpose is to keep component states distinct. With the planned tag carried, that
+    // run instead yields `ControlConcluded` with a `Skipped` outcome, and the alert reports
+    // the control RED with its real cause.
     for bi in batch_records.len()..total_batches {
         match floor_component_row_value(
             &ctx,
             &run_id,
             bi as i64 + 1,
-            "not reached",
-            "off",
+            &batch_heartbeat_label(&batches[bi]),
+            batch_selection_tag(&batches[bi]),
             0,
             "not_reached",
             "batch not reached — an earlier batch failed under the stop policy",
@@ -4440,8 +4684,17 @@ fn floor_component_row_value(
     }
 }
 
-fn write_resolve_receipt(source_roots: &[String], batch_records: &[BatchRecord]) -> bool {
-    write_resolve_receipt_at(std::path::Path::new("target"), source_roots, batch_records)
+fn write_resolve_receipt(
+    source_roots: &[String],
+    batch_records: &[BatchRecord],
+    floor_finalization: Option<&FloorFinalization>,
+) -> bool {
+    write_resolve_receipt_at(
+        std::path::Path::new("target"),
+        source_roots,
+        batch_records,
+        floor_finalization,
+    )
 }
 
 /// Per-batch wall receipt (THE COST WALL, Piece 3 derived clamp): typed rows — one
@@ -4571,10 +4824,45 @@ fn write_gate_warm_cost_receipt_at(
 }
 
 /// Per-witness cost receipt (Piece #5 spine): one row per discovery witness preserving
-/// `(entry, function, eval_ms, resolve_ms)` identity — the grain falsifier_cadence_surface_note
-/// requires before per-row placement is admissible. The complete machine-readable record is
-/// the TSV file; rendered streams may project a subset later (W2 ruling: one record, two
-/// projections). Fail-closed on write error.
+/// `(entry, function, eval_wall_ms, resolve_ms)` identity — the grain
+/// falsifier_cadence_surface_note requires before per-row placement is admissible. The
+/// complete machine-readable record is the TSV file; rendered streams may project a subset
+/// later (W2 ruling: one record, two projections). Fail-closed on write error.
+///
+/// TWO COLUMN CORRECTIONS (2026-08-05), both cases of a column that could not say what it
+/// meant:
+///
+/// 1. `eval_ms` -> `eval_wall_ms`. The figure is and always was WALL, while the fast-lane
+///    cap that kills these rows is enforced on THREAD CPU, so the old name invited a
+///    threshold built on this file to select a different population than the cap kills.
+///    Renaming is the honest half; the *enforced* quantity still does not appear here at
+///    all, because these rows project through `std.observation.ObservationEvent`, which
+///    carries wall and rss but no cpu. See `v1_interpreter::WITNESS_COST_CLOCK_BASIS_NOTE`
+///    for the bound that makes this narrower than it sounds (eval is single-threaded, so
+///    wall bounds cpu above: a row under the cap on wall is provably under on cpu) and for
+///    the std change that would close it.
+///
+/// 2. `outcome` and `detail` are now EMITTED rather than dropped. The row tuple always
+///    carried them; the writer discarded the last two fields. Because `discovery_claim_result`
+///    pushes selection-skipped rows into this same receipt with zero timings, a `0` in the
+///    eval column meant "never executed" OR "ran in under a millisecond" and the file could
+///    not distinguish them — the empty-observation narrow, in an artifact whose whole
+///    purpose is per-row cost. A census taken from a selection-applied per-PR run would have
+///    counted skipped rows as fast ones.
+///
+///    Note the `.dag` model was never wrong here: `WitnessCostReceiptRow` already carries
+///    `outcome` and the projection witness already matches on it. Only this writer dropped
+///    it — the model/realization fork, not a modeling gap.
+///
+/// 3. An absent measurement now renders as `unmeasured`, not `0`. Emitting the outcome column
+///    made the two cases *decidable*, but the number itself was still fabricated, and
+///    `std.observation`'s `observation_measured_note` rules on exactly this: "A renderer
+///    projecting MeasuredUnavailable prints the cause; it never prints 0 and never omits the
+///    field, because a silently omitted number is the same fabrication one layer up." An
+///    executed witness may legitimately measure 0 ms, and those rows keep their `0`; a row
+///    that never ran has no cost to report and now says so. The cell is deliberately
+///    non-numeric so a consumer reaching for a number fails loudly rather than counting an
+///    unexecuted row as a fast one.
 fn write_witness_row_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_log: bool) -> bool {
     write_witness_row_cost_receipt_at(
         std::path::Path::new("target"),
@@ -4583,23 +4871,84 @@ fn write_witness_row_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_l
     )
 }
 
+/// Rendering for a timing cell whose measurement does not exist. Deliberately NOT a number,
+/// so a consumer that reaches for one fails loudly instead of counting an unexecuted row as a
+/// fast one — the failure mode this receipt had while the cell said `0`.
+const UNMEASURED_CELL: &str = "unmeasured";
+
+/// Whether a row's timings are absent rather than measured. Keyed on the same
+/// `selection-skipped` outcome spelling `discovery_claim_result` writes and
+/// `wet_witness_row_outcome_label` already dispatches on, rather than inferring absence from
+/// the numbers — inferring it from a zero is precisely the conflation being closed.
+fn row_measurement_is_absent(outcome_variant: &str) -> bool {
+    outcome_variant == "selection-skipped"
+}
+
+/// What the drift wire may say about one row, decided BEFORE any comparison runs.
+///
+/// The fail-open this closes was not a bad comparison — it was comparing at all. A row that
+/// never executed floored to `observed = 0`, and 0 never exceeds a basis, so the comparator
+/// returned `WithinBasis`: a positive claim that the row met its cost basis, from a
+/// measurement that does not exist, and one that could never fail. Deciding comparability
+/// first makes that verdict unreachable rather than merely unlikely.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DriftRowDisposition {
+    /// No measurement exists — nothing to judge. Mirror of `BasisAbsent`.
+    ObservationAbsent,
+    /// A measurement exists but no basis to judge it against.
+    BasisAbsent,
+    /// Both present: the only state in which a verdict is meaningful.
+    Comparable,
+}
+
+fn drift_row_disposition(outcome_variant: &str, has_basis: bool) -> DriftRowDisposition {
+    // Order is load-bearing: absence of the OBSERVATION wins over presence of a basis. The
+    // defect was precisely a row that had a basis and no measurement being treated as
+    // comparable because its fabricated zero looked like one.
+    if row_measurement_is_absent(outcome_variant) {
+        DriftRowDisposition::ObservationAbsent
+    } else if has_basis {
+        DriftRowDisposition::Comparable
+    } else {
+        DriftRowDisposition::BasisAbsent
+    }
+}
+
 fn write_witness_row_cost_receipt_at(
     base: &std::path::Path,
     batch_records: &[BatchRecord],
     emit_full_tsv_log: bool,
 ) -> bool {
-    let mut body = String::from("batch\tentry\tfunction\teval_ms\tresolve_ms\twarm_ms\n");
+    let mut body = String::from(
+        "batch\tentry\tfunction\teval_wall_ms\tresolve_ms\twarm_ms\toutcome\tdetail\n",
+    );
     let mut row_count = 0usize;
     for rec in batch_records {
         let n = rec.batch_index + 1;
         for result in &rec.results {
             for row in &result.witness_row_costs {
-                let eval_ms = row.2 / 1_000_000;
-                let resolve_ms = row.3 / 1_000_000;
-                let warm_ms = row.4 / 1_000_000;
+                // A row that never executed has no cost to report. Printing `0` for it would
+                // be the fabricated zero std.observation's `observation_measured_note`
+                // forbids in as many words: "A renderer projecting MeasuredUnavailable prints
+                // the cause; it never prints 0 and never omits the field." So the timing
+                // columns render as UNMEASURED and the cause rides in outcome/detail, rather
+                // than a real measurement of zero standing in for the absence of one.
+                //
+                // Note the two are genuinely different facts here: an executed witness may
+                // legitimately measure 0 ms (sub-millisecond), and those rows keep their `0`.
+                let cells = if row_measurement_is_absent(&row.5) {
+                    format!("{UNMEASURED_CELL}\t{UNMEASURED_CELL}\t{UNMEASURED_CELL}")
+                } else {
+                    format!(
+                        "{}\t{}\t{}",
+                        row.2 / 1_000_000,
+                        row.3 / 1_000_000,
+                        row.4 / 1_000_000
+                    )
+                };
                 body.push_str(&format!(
-                    "{n}\t{}\t{}\t{eval_ms}\t{resolve_ms}\t{warm_ms}\n",
-                    row.0, row.1
+                    "{n}\t{}\t{}\t{cells}\t{}\t{}\n",
+                    row.0, row.1, row.5, row.6
                 ));
                 row_count += 1;
             }
@@ -4698,15 +5047,34 @@ fn write_floor_wet_witness_row_outcome_receipt_at(
 /// Required `host_class` on every signed basis row (`witness_row_cost_basis_host_class_note`).
 const WITNESS_ROW_COST_BASIS_HOST_CLASS: &str = "srv_fleet_arm64";
 
+/// The `.dag` constructor for each `std.observation.ClockBasis` arm, keyed by the spelling the
+/// basis file uses. The seed names no clock of its own: it maps the cell to a constructor and
+/// calls it, so a clock that this repository does not model has no path into a comparison.
+fn clock_basis_constructor_for(cell: &str) -> Option<&'static str> {
+    match cell {
+        "wall" => Some("clock_basis_wall"),
+        "cpu" => Some("clock_basis_cpu"),
+        _ => None,
+    }
+}
+
 #[derive(Debug)]
 struct WitnessRowCostBasisRow {
     eval_ms_basis: u128,
     run_ref: String,
+    /// Which clock `eval_ms_basis` was read from, as the `.dag` constructor name for it.
+    ///
+    /// Carried per row rather than assumed for the file, because the file's rows are seeded
+    /// over time from whatever the producer of the day recorded — and a basis whose clock is
+    /// assumed is exactly the state the 2026-08-05 ruling ends. A comparison against an
+    /// observation on a different clock refuses (`BasisClockMismatch`) rather than answering.
+    clock_constructor: &'static str,
 }
 
 /// Parse one TSV body line from `witness_row_cost_basis.tsv`.
-/// Returns `Ok(None)` for blank/comment lines; `Err` for malformed or wrong-host-class rows
-/// (caller must not insert them — a wrong host class would poison the 2× comparator).
+/// Returns `Ok(None)` for blank/comment lines; `Err` for malformed, wrong-host-class, or
+/// unknown-clock rows (caller must not insert them — a wrong host class would poison the 2×
+/// comparator, and an unmodelled clock cannot be compared at all).
 fn parse_witness_row_cost_basis_line(
     line: &str,
 ) -> Result<Option<((String, String), WitnessRowCostBasisRow)>, String> {
@@ -4715,9 +5083,9 @@ fn parse_witness_row_cost_basis_line(
         return Ok(None);
     }
     let parts: Vec<&str> = line.split('\t').collect();
-    if parts.len() < 5 {
+    if parts.len() < 6 {
         return Err(format!(
-            "malformed witness-row-cost basis line (need 5 cols: entry function eval_ms_basis run_ref host_class): {line}"
+            "malformed witness-row-cost basis line (need 6 cols: entry function eval_ms_basis run_ref host_class clock): {line}"
         ));
     }
     let host_class = parts[4];
@@ -4726,6 +5094,16 @@ fn parse_witness_row_cost_basis_line(
             "witness-row-cost basis row host_class={host_class:?} refused (required {WITNESS_ROW_COST_BASIS_HOST_CLASS}; wrong host class poisons the 2× comparator): {line}"
         ));
     }
+    // A row that does not say which clock its figure came from is REFUSED, not defaulted.
+    // Defaulting to wall would be right for every row in the file today and wrong the first
+    // time someone seeds one from a CPU receipt — and it would be wrong silently, which is
+    // the whole failure this column exists to prevent.
+    let Some(clock_constructor) = clock_basis_constructor_for(parts[5]) else {
+        return Err(format!(
+            "witness-row-cost basis row clock={:?} refused (known clocks: wall, cpu; a basis whose clock is unknown cannot be compared): {line}",
+            parts[5]
+        ));
+    };
     let eval_ms_basis = parts[2].parse::<u128>().unwrap_or(0);
     if eval_ms_basis == 0 {
         return Err(format!(
@@ -4737,6 +5115,7 @@ fn parse_witness_row_cost_basis_line(
         WitnessRowCostBasisRow {
             eval_ms_basis,
             run_ref: parts[3].to_string(),
+            clock_constructor,
         },
     )))
 }
@@ -4758,27 +5137,65 @@ fn millisecond_value(ctx: &InterpContext, count_ms: u128) -> Result<Value, Strin
 
 /// Single-authority projection: evaluate `gunbc.witness_row_cost.witness_row_cost_exceeds_basis`
 /// rather than re-implementing `observed > basis * 2` in the seed (review 43261).
-fn witness_row_cost_exceeds_basis_via_authority(
+/// The clock the drift wire's observed figure is read from.
+///
+/// `witness_row_costs.2` is the row's `eval_wall_ms` — wall, and named so since #7820 — which
+/// is also the clock the witness threshold is stated on (operator ruling 2026-08-05). It is
+/// passed to the comparator rather than left implicit, which is the entire point: the
+/// comparison now asserts that both sides are the same clock instead of both happening to be.
+const WITNESS_ROW_COST_OBSERVED_CLOCK: &str = "clock_basis_wall";
+
+/// Ask the authored comparator for a verdict and return the ARM IT NAMED.
+///
+/// The seed used to call `witness_row_cost_exceeds_basis` — the bare ratio predicate — and
+/// then rebuild `DriftExceeded` / `WithinBasis` / `BasisAbsent` as Rust string literals. That
+/// was a second representation of `WitnessRowCostVerdict`, and it meant the cross-clock wall
+/// the carrier grew could not reach the cadence receipt at all: the clock never crossed the
+/// seam, so a CPU figure against a wall basis would still have answered confidently.
+///
+/// Now the arm's own name is what gets rendered, so a new arm reaches the receipt without a
+/// Rust edit and `BasisClockMismatch` fires here exactly as it does in the witness.
+fn witness_row_cost_verdict_via_authority(
     ctx: &InterpContext,
     observed_ms: u128,
-    basis_ms: u128,
-) -> Result<bool, String> {
+    basis: Option<&WitnessRowCostBasisRow>,
+) -> Result<String, String> {
     let observed = millisecond_value(ctx, observed_ms)?;
-    let basis = millisecond_value(ctx, basis_ms)?;
-    match run_in_context_with_args(
-        ctx,
-        "witness_row_cost_exceeds_basis",
-        &[
-            (Some("observed".to_string()), observed),
-            (Some("basis".to_string()), basis),
-        ],
-        false,
-    ) {
-        Ok(Value::Bool(b)) => Ok(b),
+    let observed_clock = run_in_context_with_args(ctx, WITNESS_ROW_COST_OBSERVED_CLOCK, &[], false)
+        .map_err(|e| format!("{WITNESS_ROW_COST_OBSERVED_CLOCK}: {e}"))?;
+    let (function, args) = match basis {
+        None => (
+            "witness_row_cost_seed_verdict_undated",
+            vec![
+                (Some("observed".to_string()), observed),
+                (Some("observed_clock".to_string()), observed_clock),
+            ],
+        ),
+        Some(b) => {
+            let basis_clock = run_in_context_with_args(ctx, b.clock_constructor, &[], false)
+                .map_err(|e| format!("{}: {e}", b.clock_constructor))?;
+            let basis_eval = millisecond_value(ctx, b.eval_ms_basis)?;
+            (
+                "witness_row_cost_seed_verdict_dated",
+                vec![
+                    (Some("observed".to_string()), observed),
+                    (Some("observed_clock".to_string()), observed_clock),
+                    (Some("basis_clock".to_string()), basis_clock),
+                    (Some("basis_eval".to_string()), basis_eval),
+                    (
+                        Some("run_ref".to_string()),
+                        Value::Str(b.run_ref.clone().into()),
+                    ),
+                ],
+            )
+        }
+    };
+    match run_in_context_with_args(ctx, function, &args, false) {
+        Ok(Value::Variant { variant_name, .. }) => Ok(ctx.resolve(variant_name).to_string()),
         Ok(other) => Err(format!(
-            "witness_row_cost_exceeds_basis returned {other}, expected Bool (fail-closed)"
+            "{function} returned {other}, expected a WitnessRowCostVerdict (fail-closed)"
         )),
-        Err(e) => Err(format!("witness_row_cost_exceeds_basis: {e}")),
+        Err(e) => Err(format!("{function}: {e}")),
     }
 }
 
@@ -4831,52 +5248,74 @@ fn write_witness_row_cost_drift_receipt_at(
         String::from("batch\tentry\tfunction\tobserved_eval_ms\tbasis_eval_ms\tverdict\trun_ref\n");
     let mut drift_count = 0usize;
     let mut basis_absent_count = 0usize;
+    let mut observation_absent_count = 0usize;
+    // A cross-clock pair is neither within basis nor exceeding it, and it is not a missing
+    // basis either — a basis IS present, on the wrong clock. Counted on its own line because
+    // its remedy differs: seed the missing row versus fix the producer handing over the wrong
+    // clock. Absorbing it into either neighbour would zero its frequency by construction.
+    let mut clock_mismatch_count = 0usize;
     for rec in batch_records {
         let n = rec.batch_index + 1;
         for result in &rec.results {
             for row in &result.witness_row_costs {
-                let observed = row.2 / 1_000_000;
+                // A row that never executed has no observation to compare. Flooring it to 0
+                // and running the comparator produced `WithinBasis` — a POSITIVE verdict that
+                // the row met its cost basis, derived entirely from a measurement that does
+                // not exist, and one that can never fail because 0 never exceeds anything.
+                // That is the fabricated zero of the sibling receipt promoted into a verdict,
+                // and it fails open: the drift wire silently passed unexecuted rows.
+                //
+                // `ObservationAbsent` is the mirror of the `BasisAbsent` arm already below —
+                // there a measurement exists with no basis to judge it, here a basis exists
+                // with no measurement to judge. Neither is a comparison, and neither is
+                // reported as one. Counted, so the population is visible rather than absorbed.
                 let key = (row.0.clone(), row.1.clone());
-                match basis.get(&key) {
-                    None => {
-                        basis_absent_count += 1;
-                        body.push_str(&format!(
-                            "{n}\t{}\t{}\t{observed}\t\tBasisAbsent\t\n",
-                            row.0, row.1
-                        ));
-                    }
-                    Some(b) => {
-                        let exceeds = match witness_row_cost_exceeds_basis_via_authority(
-                            &ctx,
-                            observed,
-                            b.eval_ms_basis,
-                        ) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                eprintln!(
-                                    "claim_executor: drift comparator refused for {}::{}: {e} — walk fails closed here",
-                                    row.0, row.1
-                                );
-                                return false;
-                            }
-                        };
-                        let verdict = if exceeds {
-                            drift_count += 1;
-                            "DriftExceeded"
-                        } else {
-                            "WithinBasis"
-                        };
-                        body.push_str(&format!(
-                            "{n}\t{}\t{}\t{observed}\t{}\t{verdict}\t{}\n",
-                            row.0, row.1, b.eval_ms_basis, b.run_ref
-                        ));
-                    }
+                if drift_row_disposition(&row.5, basis.contains_key(&key))
+                    == DriftRowDisposition::ObservationAbsent
+                {
+                    observation_absent_count += 1;
+                    let basis_cell = basis
+                        .get(&key)
+                        .map(|b| b.eval_ms_basis.to_string())
+                        .unwrap_or_default();
+                    body.push_str(&format!(
+                        "{n}\t{}\t{}\t{UNMEASURED_CELL}\t{basis_cell}\tObservationAbsent\t\n",
+                        row.0, row.1
+                    ));
+                    continue;
                 }
+                let observed = row.2 / 1_000_000;
+                let dated = basis.get(&key);
+                let verdict = match witness_row_cost_verdict_via_authority(&ctx, observed, dated) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "claim_executor: drift comparator refused for {}::{}: {e} — walk fails closed here",
+                            row.0, row.1
+                        );
+                        return false;
+                    }
+                };
+                // Counting reads the arm the authority named; it does not re-decide it.
+                match verdict.as_str() {
+                    "BasisAbsent" => basis_absent_count += 1,
+                    "DriftExceeded" => drift_count += 1,
+                    "BasisClockMismatch" => clock_mismatch_count += 1,
+                    _ => {}
+                }
+                let (basis_cell, run_ref_cell) = match dated {
+                    None => (String::new(), String::new()),
+                    Some(b) => (b.eval_ms_basis.to_string(), b.run_ref.clone()),
+                };
+                body.push_str(&format!(
+                    "{n}\t{}\t{}\t{observed}\t{basis_cell}\t{verdict}\t{run_ref_cell}\n",
+                    row.0, row.1
+                ));
             }
         }
     }
     eprintln!(
-        "[witness-row-cost-drift] basis_absent={basis_absent_count} drift_exceeded={drift_count}"
+        "[witness-row-cost-drift] basis_absent={basis_absent_count} observation_absent={observation_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count}"
     );
     for line in body.lines() {
         eprintln!("[witness-row-cost-drift] {line}");
@@ -4890,7 +5329,7 @@ fn write_witness_row_cost_drift_receipt_at(
         return false;
     }
     eprintln!(
-        "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} drift_exceeded={drift_count} (TSV: {})",
+        "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} observation_absent={observation_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count} (TSV: {})",
         path.display()
     );
     true
@@ -5197,10 +5636,228 @@ fn write_selection_degradation_receipt_at(
     true
 }
 
+/// Receipt line derived from transported obligations joined to observed realizations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolveObligationLine {
+    identity: String,
+    disposition: &'static str,
+    resolve_nanos: u128,
+    provider_id: Option<String>,
+    computation_identity: Option<String>,
+    entry: String,
+    function: String,
+}
+
+fn find_claim_result<'a>(
+    batch_records: &'a [BatchRecord],
+    entry: &str,
+    function: &str,
+) -> Option<&'a ClaimResult> {
+    for rec in batch_records {
+        for result in &rec.results {
+            if result.entry == entry && result.function == function {
+                return Some(result);
+            }
+        }
+    }
+    None
+}
+
+fn observation_to_obligation_line(
+    obl: &TransportedObligation,
+    result: &ClaimResult,
+) -> Result<ResolveObligationLine, String> {
+    let observation = result.resolve_realization.as_ref().ok_or_else(|| {
+        format!(
+            "floor resolve obligation missing realization observation: {} ({}::{})",
+            obl.identity, obl.entry, obl.function
+        )
+    })?;
+    match observation {
+        ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos } => {
+            if *resolve_nanos == 0 {
+                return Err(format!(
+                    "floor resolve cold disposition without resolve receipt: {}",
+                    obl.identity
+                ));
+            }
+            Ok(ResolveObligationLine {
+                identity: obl.identity.clone(),
+                disposition: RESOLVE_REALIZATION_DISPOSITION_COLD,
+                resolve_nanos: *resolve_nanos,
+                provider_id: None,
+                computation_identity: None,
+                entry: obl.entry.clone(),
+                function: obl.function.clone(),
+            })
+        }
+        ResolveRealizationObservation::SatisfiedFromSharedPool {
+            computation_identity,
+            provider_id,
+        } => {
+            if provider_id.is_empty() {
+                return Err(format!(
+                    "floor resolve warm disposition without provider id: {}",
+                    obl.identity
+                ));
+            }
+            Ok(ResolveObligationLine {
+                identity: obl.identity.clone(),
+                disposition: RESOLVE_REALIZATION_DISPOSITION_WARM,
+                resolve_nanos: result.resolve_nanos,
+                provider_id: Some(provider_id.clone()),
+                computation_identity: Some(computation_identity.clone()),
+                entry: obl.entry.clone(),
+                function: obl.function.clone(),
+            })
+        }
+    }
+}
+
+fn derive_resolve_obligation_receipts(
+    fin: &FloorFinalization,
+    batch_records: &[BatchRecord],
+) -> Result<Vec<ResolveObligationLine>, String> {
+    fin.expected_obligations
+        .iter()
+        .map(|obl| {
+            let result =
+                find_claim_result(batch_records, &obl.entry, &obl.function).ok_or_else(|| {
+                    format!(
+                        "floor resolve obligation missing: {} ({}::{})",
+                        obl.identity, obl.entry, obl.function
+                    )
+                })?;
+            observation_to_obligation_line(obl, result)
+        })
+        .collect()
+}
+
+fn obligation_entries_with_realization(
+    fin: &FloorFinalization,
+    batch_records: &[BatchRecord],
+) -> std::collections::HashSet<String> {
+    let subjects = obligation_subject_set(Some(fin)).expect("fin provided");
+    let mut entries = std::collections::HashSet::new();
+    for rec in batch_records {
+        for result in &rec.results {
+            if result.resolve_realization.is_none() {
+                continue;
+            }
+            if is_rostered_obligation_subject(&subjects, &result.entry, &result.function) {
+                entries.insert(result.entry.clone());
+            }
+        }
+    }
+    entries
+}
+
+fn unattributed_physical_resolve_subjects(
+    fin: &FloorFinalization,
+    batch_records: &[BatchRecord],
+) -> Vec<(String, String)> {
+    let subjects = obligation_subject_set(Some(fin)).expect("fin provided");
+    let satisfied_entries = obligation_entries_with_realization(fin, batch_records);
+    let mut seen = std::collections::HashSet::new();
+    let mut surplus = Vec::new();
+    for rec in batch_records {
+        for result in &rec.results {
+            if result.resolve_nanos == 0 {
+                continue;
+            }
+            if is_rostered_obligation_subject(&subjects, &result.entry, &result.function) {
+                continue;
+            }
+            if satisfied_entries.contains(&result.entry) {
+                continue;
+            }
+            let key = format!("{}::{}", result.entry, result.function);
+            if seen.insert(key) {
+                surplus.push((result.entry.clone(), result.function.clone()));
+            }
+        }
+    }
+    surplus
+}
+
+fn count_unattributed_physical_resolves(
+    fin: &FloorFinalization,
+    batch_records: &[BatchRecord],
+) -> u64 {
+    unattributed_physical_resolve_subjects(fin, batch_records).len() as u64
+}
+
+fn obligation_entry_duplicate_cold_resolves(
+    fin: &FloorFinalization,
+    batch_records: &[BatchRecord],
+) -> Vec<(String, u64)> {
+    let obligation_entries: std::collections::HashSet<String> = fin
+        .expected_obligations
+        .iter()
+        .map(|o| o.entry.clone())
+        .collect();
+    let mut cold_per_entry: std::collections::HashMap<String, u64> =
+        std::collections::HashMap::new();
+    for rec in batch_records {
+        for result in &rec.results {
+            if result.resolve_nanos == 0 {
+                continue;
+            }
+            if !obligation_entries.contains(&result.entry) {
+                continue;
+            }
+            *cold_per_entry.entry(result.entry.clone()).or_insert(0) += 1;
+        }
+    }
+    obligation_entries
+        .into_iter()
+        .filter_map(|entry| {
+            let count = cold_per_entry.get(&entry).copied().unwrap_or(0);
+            if count > 1 {
+                Some((entry, count))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn append_resolve_obligation_receipt_body(
+    body: &mut String,
+    fin: &FloorFinalization,
+    batch_records: &[BatchRecord],
+) -> Result<(), String> {
+    let obligations = derive_resolve_obligation_receipts(fin, batch_records)?;
+    let cold_resolves_total = obligations
+        .iter()
+        .filter(|o| o.disposition == RESOLVE_REALIZATION_DISPOSITION_COLD)
+        .count();
+    let unattributed_physical_resolves = count_unattributed_physical_resolves(fin, batch_records);
+    body.push_str(&format!("obligations_total={}\n", obligations.len()));
+    body.push_str(&format!("cold_resolves_total={cold_resolves_total}\n"));
+    body.push_str(&format!(
+        "unattributed_physical_resolves={unattributed_physical_resolves}\n"
+    ));
+    for line in &obligations {
+        let provider = line.provider_id.as_deref().unwrap_or("-");
+        body.push_str(&format!(
+            "obligation={} disposition={} resolve_nanos={} provider_id={} entry={} function={}\n",
+            line.identity,
+            line.disposition,
+            line.resolve_nanos,
+            provider,
+            line.entry,
+            line.function
+        ));
+    }
+    Ok(())
+}
+
 fn write_resolve_receipt_at(
     base: &std::path::Path,
     source_roots: &[String],
     batch_records: &[BatchRecord],
+    floor_finalization: Option<&FloorFinalization>,
 ) -> bool {
     let mut resolves_total: u64 = 0;
     let mut resolve_ms_total: u128 = 0;
@@ -5220,6 +5877,12 @@ fn write_resolve_receipt_at(
     let mut body = format!(
         "resolves_total={resolves_total}\nresolve_ms_total={resolve_ms_total}\ndiscovery_corpus_resolve_ms={discovery_corpus_resolve_ms}\ndiscovery_corpus_eval_ms={discovery_corpus_eval_ms}\n{discovery_phases}"
     );
+    if let Some(fin) = floor_finalization {
+        if let Err(msg) = append_resolve_obligation_receipt_body(&mut body, fin, batch_records) {
+            eprintln!("claim_executor: resolve obligation receipt refused: {msg}");
+            return false;
+        }
+    }
     if let Some(snapshot) = selection_degradation_from_batch_records(batch_records) {
         match render_selection_degradation_receipt_body(source_roots, &snapshot) {
             Ok(selection_body) => {
@@ -5655,47 +6318,79 @@ fn validate_on_success_stage_admissibility(stages: &[Vec<Runnable>]) -> Vec<Stri
 /// materialization check while the success line still reported that disclosure held
 /// (review 2026-07-30). A plan DECLARES that it carries these laws by returning
 /// `WalkPlan<FloorFinalization>` where regen/falsifier/plan-artifact return
-/// `WalkPlan<NoWalkFinalization>` — a declaration, not a guarantee: the typechecker
-/// does not check return position, so the value is what decides, and the enrolled
-/// witnesses in v2.test.claim.ci_floor_plan_witness are what check the value.
-struct FloorFinalization {
-    declared_resolve_count: i64,
+/// Obligation subjects never executed on a completed walk.
+fn unexecuted_transport_obligations<'a>(
+    fin: &'a FloorFinalization,
+    batch_records: &[BatchRecord],
+) -> Vec<&'a TransportedObligation> {
+    fin.expected_obligations
+        .iter()
+        .filter(|obl| find_claim_result(batch_records, &obl.entry, &obl.function).is_none())
+        .collect()
 }
 
-/// Validate the floor's finalization laws against the walk's own records. Returns the
-/// list of typed refusals (empty = contract satisfied). The receipt FILES keep being
-/// written by the walk — they are observability — this validates the laws the deleted
-/// shell steps used to re-derive from those files.
-///
-/// `plan_site` is the `<entry>::<function>` the value was read from, so a refusal
-/// locates the field it actually consumed rather than always pointing at the
-/// production authority — the fixture and any future plan declare their own counts.
 fn validate_floor_finalization(
     fin: &FloorFinalization,
-    plan_site: &str,
+    _plan_site: &str,
     batch_records: &[BatchRecord],
+    walk_truncated: bool,
 ) -> Vec<String> {
     let mut refusals = Vec::new();
-    // Law 1 — the declared cold-resolve count (gunbc.ci_materialization
-    // ci_floor_resolve_receipt_note): resolves_total is recomputed from the SAME rule
-    // write_resolve_receipt_at uses, never re-parsed from the file we just wrote.
-    let mut resolves_total: u64 = 0;
-    for rec in batch_records {
-        for result in &rec.results {
-            if result.resolve_nanos > 0 {
-                resolves_total += 1;
-            }
-        }
-    }
-    if resolves_total as i64 != fin.declared_resolve_count {
+    // Law 1 — semantic resolve OBLIGATIONS (gunbc.ci_materialization / 0B):
+    // transported obligation subjects == observed realization observations.
+    // Warm shared-pool satisfaction requires provider + receipt recorded at the reuse
+    // site; unattributed physical cold resolves refuse. resolve_nanos is cost evidence.
+    let unattributed = unattributed_physical_resolve_subjects(fin, batch_records);
+    if !unattributed.is_empty() {
+        let listing = unattributed
+            .iter()
+            .map(|(entry, function)| format!("{entry}::{function}"))
+            .collect::<Vec<_>>()
+            .join("; ");
         refusals.push(format!(
-            "floor resolve count {} differs from declared {}: duplicate-computation debt \
-             changed - update the count this plan declared, at \
-             {plan_site} WalkPlan.finalization.declared_resolve_count \
-             (the production floor projects it from gunbc.ci_materialization \
-             ci_floor_declared_resolve_count; a fixture or another plan declares its own)",
-            resolves_total, fin.declared_resolve_count
+            "floor resolve unattributed physical resolve(s): {} subject(s) with \
+             resolve_nanos > 0 outside transported expected_resolve_obligations — {listing}",
+            unattributed.len(),
         ));
+    }
+    for (entry, count) in obligation_entry_duplicate_cold_resolves(fin, batch_records) {
+        refusals.push(format!(
+            "floor resolve duplicate cold on obligation entry {entry}: {count} physical \
+             resolve(s) with resolve_nanos > 0 (expected at most 1 per rostered entry)"
+        ));
+    }
+    let unexecuted = unexecuted_transport_obligations(fin, batch_records);
+    if !unexecuted.is_empty() {
+        let listing = unexecuted
+            .iter()
+            .map(|obl| format!("{} ({}::{})", obl.identity, obl.entry, obl.function))
+            .collect::<Vec<_>>()
+            .join("; ");
+        let cause = if walk_truncated {
+            "walk stopped before dependent batches"
+        } else {
+            "obligation subject(s) never executed on a completed walk"
+        };
+        refusals.push(format!(
+            "floor resolve obligations not fully scheduled: {} obligation subject(s) never ran \
+             ({cause}); count law unevaluable — {listing}",
+            unexecuted.len(),
+        ));
+    } else {
+        match derive_resolve_obligation_receipts(fin, batch_records) {
+            Ok(obligations) => {
+                let mut seen = std::collections::HashSet::new();
+                for line in &obligations {
+                    if !seen.insert(line.identity.clone()) {
+                        refusals.push(format!(
+                            "floor resolve obligation duplicate identity: {}",
+                            line.identity
+                        ));
+                    }
+                }
+            }
+            Err(msg) => refusals.push(msg),
+        }
     }
     // Law 2 — materialization disclosure (ci_floor_materialization_receipt_note):
     // receipt exists, keyed/unkeyed/duplicated parse, keyed nonzero. Read from the
@@ -5901,6 +6596,7 @@ fn run_stage(
     falsifier_self_host_wet_budgets: &FalsifierSelfHostWetBudgets,
     clamp_params: Option<(u128, u128)>,
     budget_tighten_ms: Option<u128>,
+    obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> StageRun {
     let units = group_batch_units(stage);
     // Arm the observation heartbeat feed at stage-enter: discovery leaves entry_total
@@ -5972,6 +6668,7 @@ fn run_stage(
             let roots = source_roots.to_vec();
             let unit_governor = governor.clone();
             let wet_budgets = falsifier_self_host_wet_budgets.clone();
+            let obligation_subjects_owned = obligation_subjects.cloned();
             let boxed: Box<dyn FnOnce() -> Vec<ClaimResult> + Send> = Box::new(move || {
                 run_batch_unit(
                     roots,
@@ -5979,6 +6676,7 @@ fn run_stage(
                     unit_governor,
                     fast_lane_eval_budget_ms,
                     wet_budgets,
+                    obligation_subjects_owned.as_ref(),
                 )
             });
             boxed
@@ -5995,8 +6693,14 @@ fn run_stage(
             ..
         } = unit
         {
-            let results =
-                run_memo_shared_claims(source_roots, &entry, &functions, execution_mode, memo);
+            let results = run_memo_shared_claims(
+                source_roots,
+                &entry,
+                &functions,
+                execution_mode,
+                memo,
+                obligation_subjects,
+            );
             memo_results.extend(results);
         }
     }
@@ -6011,6 +6715,7 @@ fn run_stage(
             governor.clone(),
             fast_lane_eval_budget_ms,
             falsifier_self_host_wet_budgets.clone(),
+            obligation_subjects,
         ));
     }
     // Collect all results before returning — the caller's PASS/FAIL prints must land
@@ -6270,6 +6975,7 @@ fn run_walk(
     let mut walk_memo: std::collections::HashMap<(String, ExecutionMode), InterpContext> =
         std::collections::HashMap::new();
     let memo_path_entries = memo_path_entry_keys(batches);
+    let obligation_subjects = obligation_subject_set(floor_finalization);
     for (bi, batch) in batches.iter().enumerate() {
         if ordinary_budget_ms
             .is_some_and(|budget| ordinary_start.elapsed().as_millis() >= u128::from(budget))
@@ -6314,6 +7020,7 @@ fn run_walk(
                 .copied()
                 .flatten(),
             budget_tighten_ms,
+            obligation_subjects.as_ref(),
         );
         for result in &batch_results {
             if result.ok {
@@ -6418,8 +7125,8 @@ fn run_walk(
     let total_wall_nanos = walk_start.elapsed().as_nanos();
     emit_gantt(&batch_records, total_wall_nanos);
     trace_floor_phase("resolve-receipt", "started", "");
-    let resolve_receipt_ok =
-        !emit_ordinary_floor_receipts || write_resolve_receipt(source_roots, &batch_records);
+    let resolve_receipt_ok = !emit_ordinary_floor_receipts
+        || write_resolve_receipt(source_roots, &batch_records, floor_finalization);
     trace_floor_phase("resolve-receipt", "completed", "");
     trace_floor_phase("selection-degradation-receipt", "started", "");
     let selection_degradation_receipt_ok = !emit_ordinary_floor_receipts
@@ -6467,7 +7174,7 @@ fn run_walk(
             std::path::Path::new("target"),
             source_roots,
             &batch_records,
-            batches.len(),
+            &batches,
         );
     trace_floor_phase("floor-component-receipt", "completed", "");
     // Memo contexts absorb their ledger totals into the process accumulator on
@@ -6502,13 +7209,13 @@ fn run_walk(
     // materialization gate steps): validated AFTER the receipts wrote and BEFORE the
     // on-success stages, so a violation blocks admission instead of post-dating it.
     if let Some(fin) = floor_finalization {
-        let refusals = validate_floor_finalization(fin, plan_site, &batch_records);
+        let walk_truncated = batch_records.len() < batches.len();
+        let refusals = validate_floor_finalization(fin, plan_site, &batch_records, walk_truncated);
         if refusals.is_empty() {
             if !ordinary_failed {
                 eprintln!(
-                    "claim_executor: floor contract finalized — resolve count matches declared {} \
-                     and materialization disclosure holds",
-                    fin.declared_resolve_count
+                    "claim_executor: floor contract finalized — resolve obligation identity join \
+                     holds and materialization disclosure holds"
                 );
             }
         } else {
@@ -6622,12 +7329,8 @@ fn run_walk(
                     // The arm-time validator refuses the profiles that would need one.
                     None,
                     budget_tighten_ms,
+                    obligation_subjects.as_ref(),
                 );
-                // A supplied clamp must have teeth. Stages pass None today (see the
-                // call above), so this is currently unreachable — it is wired now so that
-                // adding a declared stage clamp is a one-line change rather than a
-                // one-line change plus remembering this fold, which is exactly the kind of
-                // omission the ordinary path's own clamp handling had to be corrected for.
                 let mut stage_failed = run.thread_panicked || run.over_budget;
                 if run.over_budget {
                     failure_details.push(format!(
@@ -8660,57 +9363,621 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
+                    resolve_realization: None,
                 })
                 .collect(),
         }
+    }
+
+    fn test_floor_finalization() -> FloorFinalization {
+        FloorFinalization {
+            expected_obligations: vec![
+                TransportedObligation {
+                    identity: "CompileAnchorWholeTree".to_string(),
+                    entry: TEST_COMPILE_ANCHOR_OBLIGATION_ENTRY.to_string(),
+                    function: TEST_COMPILE_ANCHOR_OBLIGATION_FUNCTION.to_string(),
+                },
+                TransportedObligation {
+                    identity: "NativeBundleEscapingEntry".to_string(),
+                    entry: TEST_NATIVE_BUNDLE_OBLIGATION_ENTRY.to_string(),
+                    function: TEST_NATIVE_BUNDLE_OBLIGATION_FUNCTION.to_string(),
+                },
+            ],
+        }
+    }
+
+    fn repo_root_from_manifest() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .expect("repo root from CARGO_MANIFEST_DIR")
+    }
+
+    fn dag_source_from_repo(rel: &str) -> String {
+        let path = repo_root_from_manifest().join(rel);
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+    }
+
+    fn dag_string_data_literal(source: &str, data_name: &str) -> String {
+        let marker = format!("data {data_name}: String = \"");
+        let start = source
+            .find(&marker)
+            .unwrap_or_else(|| panic!("string data row {data_name} not found in authority source"))
+            + marker.len();
+        let rest = &source[start..];
+        let end = rest
+            .find('"')
+            .expect("unterminated string literal in authority source");
+        rest[..end].to_string()
+    }
+
+    fn dag_record_string_field(source: &str, data_name: &str, field: &str) -> String {
+        let marker = format!("data {data_name}:");
+        let start = source
+            .find(&marker)
+            .unwrap_or_else(|| panic!("data row {data_name} not found in authority source"));
+        let slice = &source[start..];
+        let field_marker = format!("{field}: \"");
+        let fstart = slice
+            .find(&field_marker)
+            .unwrap_or_else(|| panic!("field {field} not found on data row {data_name}"))
+            + field_marker.len();
+        let rest = &slice[fstart..];
+        let end = rest
+            .find('"')
+            .expect("unterminated string field in authority source");
+        rest[..end].to_string()
+    }
+
+    // Test-only mirror of gunbc.ci_materialization obligation subject rows. Production
+    // parses transported obligations from WalkPlan.finalization; this module is the
+    // checkable drift receipt (review 48261 / 48570).
+    const TEST_COMPILE_ANCHOR_OBLIGATION_ENTRY: &str = "dag/tools/floor_effect_gate_witness.dag";
+    const TEST_COMPILE_ANCHOR_OBLIGATION_FUNCTION: &str = "dag_compile_clean_gate_passes";
+    const TEST_NATIVE_BUNDLE_OBLIGATION_ENTRY: &str =
+        "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag";
+    const TEST_NATIVE_BUNDLE_OBLIGATION_FUNCTION: &str = "native_selected_logic_production_spec";
+
+    /// Seed-retained walk-memo provider id must track the `.dag` authority row.
+    #[test]
+    fn floor_entry_walk_memo_provider_id_matches_dag_authority() {
+        let floor_materialization = dag_source_from_repo("dag/gunbc/floor_materialization.dag");
+        assert_eq!(
+            dag_string_data_literal(&floor_materialization, "floor_entry_walk_memo_provider_id"),
+            FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID,
+        );
+    }
+
+    /// Test-only obligation-subject literals must track gunbc.ci_materialization authority rows.
+    #[test]
+    fn floor_resolve_obligation_seed_constants_match_dag_authority() {
+        let ci_materialization = dag_source_from_repo("dag/gunbc/ci_materialization.dag");
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "compile_anchor_obligation_subject",
+                "entry"
+            ),
+            TEST_COMPILE_ANCHOR_OBLIGATION_ENTRY,
+        );
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "compile_anchor_obligation_subject",
+                "function"
+            ),
+            TEST_COMPILE_ANCHOR_OBLIGATION_FUNCTION,
+        );
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "native_bundle_obligation_subject",
+                "entry"
+            ),
+            TEST_NATIVE_BUNDLE_OBLIGATION_ENTRY,
+        );
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "native_bundle_obligation_subject",
+                "function"
+            ),
+            TEST_NATIVE_BUNDLE_OBLIGATION_FUNCTION,
+        );
+    }
+
+    /// Resolve realization is acquisition evidence: a semantic witness failure must not
+    /// discard the observation recorded when resolve succeeded.
+    #[test]
+    fn claim_result_for_outcome_preserves_resolve_realization_on_semantic_failure() {
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dag/tools/floor_effect_gate_witness.dag")
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) =
+            resolve_entry_graph(&source_roots, &entry).expect("resolve compile-anchor entry");
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let observation =
+            Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 42 });
+        let result = claim_result_for_outcome(
+            &ctx,
+            "dag_compile_clean_gate_passes".to_string(),
+            entry,
+            ClaimOutcome::NotBool {
+                got: "unit".to_string(),
+            },
+            1,
+            42,
+            observation.clone(),
+        );
+        assert!(!result.ok);
+        assert_eq!(result.resolve_realization, observation);
+    }
+
+    #[test]
+    fn floor_finalization_preserves_resolve_evidence_when_business_claim_fails() {
+        let fin = test_floor_finalization();
+        let mut records = obligation_finalization_records(5, 3);
+        records[0].results[0].ok = false;
+        records[0].results[0].detail = "returned Bool(false)".to_string();
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
+        assert!(
+            !refusals.iter().any(|m| {
+                m.contains("missing realization observation") || m.contains("count law unevaluable")
+            }),
+            "semantic witness failure must not fabricate missing resolve evidence: {refusals:?}"
+        );
+    }
+
+    fn resolve_observation_for_nanos(nanos: u64) -> Option<ResolveRealizationObservation> {
+        if nanos > 0 {
+            Some(ResolveRealizationObservation::ColdResolvePerformed {
+                resolve_nanos: nanos as u128,
+            })
+        } else {
+            Some(ResolveRealizationObservation::SatisfiedFromSharedPool {
+                computation_identity: "entry-closure:fixture".to_string(),
+                provider_id: FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID.to_string(),
+            })
+        }
+    }
+
+    fn obligation_finalization_records(anchor_nanos: u64, native_nanos: u64) -> Vec<BatchRecord> {
+        vec![BatchRecord {
+            batch_index: 0,
+            wall_nanos: 0,
+            clamp_ms: None,
+            unit_count: 0,
+            label: "obligation-fixture".to_string(),
+            selection_tag: "fixture",
+            is_wet: false,
+            results: vec![
+                ClaimResult {
+                    function: "dag_compile_clean_gate_passes".to_string(),
+                    entry: "dag/tools/floor_effect_gate_witness.dag".to_string(),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: anchor_nanos as u128,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
+                    budget_refusal: None,
+                    selection_degradation: None,
+                    resolve_realization: resolve_observation_for_nanos(anchor_nanos),
+                },
+                ClaimResult {
+                    function: "native_selected_logic_production_spec".to_string(),
+                    entry:
+                        "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag"
+                            .to_string(),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: native_nanos as u128,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
+                    budget_refusal: None,
+                    selection_degradation: None,
+                    resolve_realization: resolve_observation_for_nanos(native_nanos),
+                },
+            ],
+        }]
     }
 
     /// The `<entry>::<function>` a refusal locates itself at — the same shape the
     /// production caller passes.
     const TEST_PLAN_SITE: &str = "src/v2/workflow/ci_floor_plan.dag::gunbc_ci_floor_plan";
 
-    // Floor finalization law 1 (in-executor form of the deleted resolve-receipt gate
-    // step): the count is recomputed from batch records by the same nonzero-
-    // resolve_nanos rule the receipt writer uses. Declared-vs-actual mismatch refuses
-    // in BOTH directions; match passes. The materialization arm is exercised through
-    // the missing-file refusal (no target/ receipt exists under cargo test), which
-    // also pins that law 2 cannot silently pass when the receipt is absent.
     #[test]
-    fn floor_finalization_refuses_on_resolve_count_mismatch_both_directions() {
-        let fin = FloorFinalization {
-            declared_resolve_count: 1,
-        };
-        let over = [finalization_record(&[5, 7])];
-        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &over);
+    fn floor_finalization_refuses_unattributed_physical_resolve() {
+        let fin = test_floor_finalization();
+        let mut records = obligation_finalization_records(3, 0);
+        records[0].results.push(ClaimResult {
+            function: "extra_witness".to_string(),
+            entry: "dag/test/claim/extra.dag".to_string(),
+            ok: true,
+            detail: String::new(),
+            wall_nanos: 0,
+            resolve_nanos: 42,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
+            budget_refusal: None,
+            selection_degradation: None,
+            resolve_realization: None,
+        });
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
         assert!(
             refusals
                 .iter()
-                .any(|m| m.contains("floor resolve count 2 differs from declared 1")),
-            "over-count must refuse: {refusals:?}"
-        );
-        let under = [finalization_record(&[])];
-        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &under);
-        assert!(
-            refusals
-                .iter()
-                .any(|m| m.contains("floor resolve count 0 differs from declared 1")),
-            "under-count must refuse: {refusals:?}"
+                .any(|m| m.contains("unattributed physical resolve")),
+            "extra cold resolve must refuse: {refusals:?}"
         );
     }
 
     #[test]
-    fn floor_finalization_matching_count_leaves_only_the_materialization_arm() {
-        let fin = FloorFinalization {
-            declared_resolve_count: 2,
-        };
-        let records = [finalization_record(&[3, 0, 9])];
-        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
-        // resolve law satisfied (two nonzero-resolve results); under cargo test no
-        // materialization receipt file exists, so exactly the missing-receipt refusal
-        // remains — proving law 2 fails closed on absence rather than passing.
+    fn floor_finalization_refuses_unattributed_physical_resolve_at_non_rostered_subject() {
+        let fin = test_floor_finalization();
+        let anchor_entry = TEST_COMPILE_ANCHOR_OBLIGATION_ENTRY;
+        let records = vec![BatchRecord {
+            batch_index: 0,
+            wall_nanos: 0,
+            clamp_ms: None,
+            unit_count: 0,
+            label: "emit-only".to_string(),
+            selection_tag: "fixture",
+            is_wet: false,
+            results: vec![ClaimResult {
+                function: "emit_host_gate_passes".to_string(),
+                entry: anchor_entry.to_string(),
+                ok: true,
+                detail: String::new(),
+                wall_nanos: 0,
+                resolve_nanos: 7,
+                corpus_resolve_nanos: 0,
+                corpus_eval_nanos: 0,
+                corpus_witnesses: 0,
+                witness_row_costs: Vec::new(),
+                budget_refusal: None,
+                selection_degradation: None,
+                resolve_realization: None,
+            }],
+        }];
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
         assert!(
-            !refusals.iter().any(|m| m.contains("differs from declared")),
-            "resolve law must be satisfied: {refusals:?}"
+            refusals.iter().any(|m| {
+                m.contains("unattributed physical resolve")
+                    && m.contains(&format!("{anchor_entry}::emit_host_gate_passes"))
+            }),
+            "non-rostered subject with cold resolve_nanos must be named: {refusals:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_names_unattributed_subject_when_roster_subject_also_missing() {
+        let fin = test_floor_finalization();
+        let anchor_entry = TEST_COMPILE_ANCHOR_OBLIGATION_ENTRY;
+        let mut records = obligation_finalization_records(5, 0);
+        records[0]
+            .results
+            .retain(|r| r.function == "dag_compile_clean_gate_passes");
+        records[0].results[0].resolve_realization = None;
+        records[0].results.push(ClaimResult {
+            function: "emit_host_gate_passes".to_string(),
+            entry: anchor_entry.to_string(),
+            ok: true,
+            detail: String::new(),
+            wall_nanos: 0,
+            resolve_nanos: 7,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
+            budget_refusal: None,
+            selection_degradation: None,
+            resolve_realization: None,
+        });
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
+        assert!(
+            refusals.iter().any(|m| {
+                m.contains("unattributed physical resolve")
+                    && m.contains(&format!("{anchor_entry}::emit_host_gate_passes"))
+            }),
+            "unattributed subject must be named even when a roster subject is also missing: {refusals:?}"
+        );
+        assert!(
+            refusals
+                .iter()
+                .any(|m| m.contains("native_selected_logic_production_spec")),
+            "missing roster subject must still be named: {refusals:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_cheap_gate_cold_on_shared_obligation_entry_is_not_unattributed() {
+        let fin = test_floor_finalization();
+        let anchor_entry = "dag/tools/floor_effect_gate_witness.dag";
+        let records = vec![
+            BatchRecord {
+                batch_index: 0,
+                wall_nanos: 0,
+                clamp_ms: None,
+                unit_count: 0,
+                label: "cheap-gates".to_string(),
+                selection_tag: "fixture",
+                is_wet: false,
+                results: vec![ClaimResult {
+                    function: "cheap_claim_pool_gate_passes".to_string(),
+                    entry: anchor_entry.to_string(),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: 9,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
+                    budget_refusal: None,
+                    selection_degradation: None,
+                    resolve_realization: Some(
+                        ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 9 },
+                    ),
+                }],
+            },
+            BatchRecord {
+                batch_index: 1,
+                wall_nanos: 0,
+                clamp_ms: None,
+                unit_count: 0,
+                label: "compile-anchor".to_string(),
+                selection_tag: "fixture",
+                is_wet: false,
+                results: vec![ClaimResult {
+                    function: "dag_compile_clean_gate_passes".to_string(),
+                    entry: anchor_entry.to_string(),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: 0,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
+                    budget_refusal: None,
+                    selection_degradation: None,
+                    resolve_realization: Some(
+                        ResolveRealizationObservation::SatisfiedFromSharedPool {
+                            computation_identity: format!("entry-closure:{anchor_entry}:Hermetic"),
+                            provider_id: FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID.to_string(),
+                        },
+                    ),
+                }],
+            },
+            BatchRecord {
+                batch_index: 2,
+                wall_nanos: 0,
+                clamp_ms: None,
+                unit_count: 0,
+                label: "native-bundle".to_string(),
+                selection_tag: "fixture",
+                is_wet: false,
+                results: vec![ClaimResult {
+                    function: "native_selected_logic_production_spec".to_string(),
+                    entry:
+                        "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag"
+                            .to_string(),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: 3,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
+                    budget_refusal: None,
+                    selection_degradation: None,
+                    resolve_realization: resolve_observation_for_nanos(3),
+                }],
+            },
+        ];
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
+        assert!(
+            !refusals
+                .iter()
+                .any(|m| m.contains("unattributed physical resolve")),
+            "cheap-gate cold on shared obligation entry must not refuse: {refusals:?}"
+        );
+        assert!(
+            !refusals
+                .iter()
+                .any(|m| m.contains("floor resolve obligation missing")),
+            "warm compile-clean must satisfy anchor obligation: {refusals:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_refuses_duplicate_cold_on_obligation_entry() {
+        let fin = test_floor_finalization();
+        let anchor_entry = "dag/tools/floor_effect_gate_witness.dag";
+        let records = vec![BatchRecord {
+            batch_index: 0,
+            wall_nanos: 0,
+            clamp_ms: None,
+            unit_count: 0,
+            label: "memo-regression".to_string(),
+            selection_tag: "fixture",
+            is_wet: false,
+            results: vec![
+                ClaimResult {
+                    function: "cheap_claim_pool_gate_passes".to_string(),
+                    entry: anchor_entry.to_string(),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: 9,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
+                    budget_refusal: None,
+                    selection_degradation: None,
+                    resolve_realization: Some(
+                        ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 9 },
+                    ),
+                },
+                ClaimResult {
+                    function: "dag_compile_clean_gate_passes".to_string(),
+                    entry: anchor_entry.to_string(),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: 7,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
+                    budget_refusal: None,
+                    selection_degradation: None,
+                    resolve_realization: Some(
+                        ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 7 },
+                    ),
+                },
+            ],
+        }];
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
+        assert!(
+            refusals
+                .iter()
+                .any(|m| m.contains("duplicate cold on obligation entry")),
+            "second cold on rostered entry must refuse: {refusals:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_warm_native_includes_provider_receipt() {
+        let fin = test_floor_finalization();
+        let records = obligation_finalization_records(3, 0);
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
+        assert!(
+            !refusals
+                .iter()
+                .any(|m| m.contains("warm disposition without provider")),
+            "warm native with provider must not refuse: {refusals:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_refuses_warm_without_provider_observation() {
+        let fin = test_floor_finalization();
+        let mut records = obligation_finalization_records(3, 0);
+        records[0].results[1].resolve_realization =
+            Some(ResolveRealizationObservation::SatisfiedFromSharedPool {
+                computation_identity: "entry-closure:fixture".to_string(),
+                provider_id: String::new(),
+            });
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
+        assert!(
+            refusals
+                .iter()
+                .any(|m| m.contains("warm disposition without provider id")),
+            "fabricated warm without provider must refuse: {refusals:?}"
+        );
+    }
+
+    // Floor finalization law 1 (in-executor form of the deleted resolve-receipt gate
+    // step): transported obligation population must match observed realizations.
+    #[test]
+    fn floor_finalization_refuses_on_obligation_mismatch_both_directions() {
+        let fin = test_floor_finalization();
+        let mut partial = obligation_finalization_records(5, 0);
+        partial[0]
+            .results
+            .retain(|r| r.function == "dag_compile_clean_gate_passes");
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &partial, false);
+        assert!(
+            refusals.iter().any(|m| {
+                m.contains("count law unevaluable")
+                    && m.contains("never executed on a completed walk")
+                    && m.contains("native_selected_logic_production_spec")
+            }),
+            "missing transported obligation on complete walk must refuse unevaluable: {refusals:?}"
+        );
+        let under = [finalization_record(&[])];
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &under, false);
+        assert!(
+            refusals.iter().any(|m| m.contains("count law unevaluable")),
+            "missing obligations on complete walk must refuse unevaluable: {refusals:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_truncated_walk_reports_unevaluable_not_debt_change() {
+        let fin = test_floor_finalization();
+        let mut partial = obligation_finalization_records(5, 0);
+        partial[0]
+            .results
+            .retain(|r| r.function == "dag_compile_clean_gate_passes");
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &partial, true);
+        assert!(
+            refusals.iter().any(|m| {
+                m.contains("obligations not fully scheduled")
+                    && m.contains("native_selected_logic_production_spec")
+            }),
+            "truncated walk must name never-ran obligations: {refusals:?}"
+        );
+        assert!(
+            !refusals
+                .iter()
+                .any(|m| m.contains("differs from transported")),
+            "truncated walk must not diagnose roster debt change: {refusals:?}"
+        );
+        assert!(
+            !refusals
+                .iter()
+                .any(|m| m.contains("floor resolve obligation missing")),
+            "truncated walk must not use missing-obligation debt wording: {refusals:?}"
+        );
+        assert!(
+            refusals
+                .iter()
+                .any(|m| m.contains("walk stopped before dependent batches")),
+            "truncated walk must name truncation cause: {refusals:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_warm_native_satisfies_obligations_with_one_cold() {
+        let fin = test_floor_finalization();
+        let records = obligation_finalization_records(3, 0);
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
+        assert!(
+            !refusals
+                .iter()
+                .any(|m| m.contains("floor resolve obligation")),
+            "warm native + cold anchor must satisfy obligations: {refusals:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_matching_obligations_leaves_only_the_materialization_arm() {
+        let fin = test_floor_finalization();
+        let records = obligation_finalization_records(3, 9);
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
+        assert!(
+            !refusals
+                .iter()
+                .any(|m| m.contains("differs from transported")),
+            "obligation law must be satisfied: {refusals:?}"
         );
         assert!(
             refusals
@@ -8858,6 +10125,8 @@ mod tests {
                 budget_ms: 900_000,
                 kind: BudgetKind::Wall,
             }),
+            selection_degradation: None,
+            resolve_realization: None,
         };
         // Sanity: the string classifier alone really would misclassify this detail.
         assert_eq!(
@@ -8884,6 +10153,7 @@ mod tests {
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
+            resolve_realization: None,
         };
         let (mode, _) = batch_failure_mode_and_detail(&batch_record_for_test(vec![plain]));
         assert_eq!(mode, "WitnessRed");
@@ -9086,9 +10356,107 @@ mod tests {
             std::env::temp_dir().join(format!("claim-executor-receipt-red-{}", std::process::id()));
         let _ = fs::remove_file(&base);
         fs::write(&base, b"a file where the receipt dir should be").unwrap();
-        assert!(!write_resolve_receipt_at(&base, &[], &[]));
+        assert!(!write_resolve_receipt_at(&base, &[], &[], None));
         assert!(!write_batch_wall_receipt_at(&base, &[]));
         let _ = fs::remove_file(&base);
+    }
+
+    /// TOTALITY, BOTH DIRECTIONS: a component the stop policy never reached appears in the
+    /// receipt under its OWN planned identity, not a placeholder.
+    ///
+    /// This is the discriminating pair for the identity join. The plan below is the shape
+    /// that matters: batch 0 is an ordinary claim that fails, batch 1 is the affected-set
+    /// cold control (`predict_only`), and the stop policy means batch 1 never runs — so it
+    /// exists only as a padded row. Before this fix that row was written with a literal
+    /// "not reached" label and an "off" selection tag, which deleted the one property that
+    /// IDENTIFIES the cold control (`gunbc.floor_component_receipt` role note keys on
+    /// `predict_only`). `floor_affected_set_control_state` then answered `ControlAbsent`,
+    /// conflating "the control was never enrolled" with "the control was enrolled and the
+    /// line stopped before it ran" — different states with different remedies.
+    ///
+    /// The negative half is the point: asserting only that `predict_only` is present would
+    /// also pass on a receipt that tagged EVERY padded row predict_only. So the batch-0
+    /// side is asserted too — a real `off` component stays `off` — and the vanished
+    /// placeholder literal is asserted absent.
+    #[test]
+    fn unreached_components_carry_planned_identity_not_placeholder() {
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let base = std::env::temp_dir().join(format!(
+            "claim-executor-totality-{}-{}",
+            std::process::id(),
+            "unreached"
+        ));
+        let _ = fs::remove_dir_all(&base);
+
+        // The PLAN: two components. Batch 1 is the cold control and is never reached.
+        let batches: Vec<Vec<Runnable>> = vec![
+            vec![Runnable::SingleClaim {
+                entry: "dag/test/claim/some_gate_test.dag".to_string(),
+                function: "some_gate_holds".to_string(),
+                profile: ParsedRunnableProfile::undeclared(),
+            }],
+            vec![Runnable::DiscoveryBatch {
+                source_roots: source_roots.clone(),
+                scan_dirs: vec!["dag/test/claim".to_string()],
+                explicit_entries: Vec::new(),
+                native_bundle_entries: Vec::new(),
+                node_frontier_selection: NodeFrontierSelectionMode::PredictOnly,
+                exclude_substrings: Vec::new(),
+                discovery_scope_dirs: Vec::new(),
+                execution_mode: ExecutionMode::Hermetic,
+            }],
+        ];
+
+        // The RUN: only batch 0 produced a record — the line stopped there.
+        let batch_records = vec![BatchRecord {
+            batch_index: 0,
+            wall_nanos: 1_000_000_000,
+            clamp_ms: None,
+            unit_count: 1,
+            results: Vec::new(),
+            label: batch_heartbeat_label(&batches[0]),
+            selection_tag: batch_selection_tag(&batches[0]),
+            is_wet: false,
+        }];
+
+        assert!(write_floor_component_receipt_at(
+            &base,
+            &source_roots,
+            &batch_records,
+            &batches,
+        ));
+        let body = fs::read_to_string(base.join("floor-component-receipt.json")).unwrap();
+
+        // The unreached cold control is present AS the cold control.
+        assert!(
+            body.contains("\"selection\": \"predict_only\""),
+            "the unreached cold control must keep the predict_only tag that identifies it: {body}"
+        );
+        assert!(
+            body.contains("some_gate_holds"),
+            "the reached component keeps its own label: {body}"
+        );
+        // Its outcome is honestly Skipped with the stop-policy cause — not fabricated Done.
+        assert!(
+            body.contains("\"outcome\": \"skipped\""),
+            "an unreached component concludes Skipped: {body}"
+        );
+        // The placeholder identity is gone.
+        assert!(
+            !body.contains("\"label\": \"not reached\""),
+            "the placeholder label must not survive: {body}"
+        );
+        // NEGATIVE HALF: a genuinely `off` component is not relabelled predict_only.
+        assert!(
+            body.contains("\"selection\": \"off\""),
+            "batch 0 is an ordinary off component and must stay off: {body}"
+        );
+
+        let _ = fs::remove_dir_all(&base);
     }
 
     // D5 receipt rows, both directions: an over-budget batch records OverBudget and is
@@ -10219,10 +11587,16 @@ mod tests {
         }
     }
 
+    /// A discovery batch that actually discovers something. `scan_dirs` is non-empty
+    /// deliberately: `group_batch_units` emits a `BatchUnit::Discovery` only when the batch
+    /// has scan dirs or explicit entries, because empty-and-empty is defined to mean zero
+    /// witness-corpus nodes (the regen spec's shape, DESIGN "Building & checks"). A fixture
+    /// with both empty is therefore not a discovery batch at all, and asserting that it
+    /// produces a discovery unit asserts against the spec.
     fn discovery() -> Runnable {
         Runnable::DiscoveryBatch {
             source_roots: vec!["src/v2".to_string()],
-            scan_dirs: vec![],
+            scan_dirs: vec!["dag/test/claim".to_string()],
             explicit_entries: vec![],
             native_bundle_entries: vec![],
             node_frontier_selection: NodeFrontierSelectionMode::Applied,
@@ -10421,6 +11795,7 @@ mod tests {
             Arc::new(MemoryGovernor::from_environment(1)),
             None,
             FalsifierSelfHostWetBudgets::default(),
+            None,
         );
         assert_eq!(results.len(), 1);
         assert!(!results[0].ok, "unmapped sentinel must fail closed");
@@ -10546,6 +11921,7 @@ mod tests {
                     &entry,
                     std::slice::from_ref(f),
                     ExecutionMode::Hermetic,
+                    None,
                 )
                 .into_iter()
                 .map(|r| (r.function, r.ok, r.detail))
@@ -10563,6 +11939,7 @@ mod tests {
                     std::slice::from_ref(f),
                     ExecutionMode::Hermetic,
                     &mut memo,
+                    None,
                 )
                 .into_iter()
                 .map(|r| (r.function, r.ok, r.detail))
@@ -10601,6 +11978,7 @@ mod tests {
             &["witness_negligible_profile_is_not_heavy".to_string()],
             ExecutionMode::Hermetic,
             &mut memo,
+            None,
         );
         assert!(
             first[0].resolve_nanos > 0,
@@ -10616,11 +11994,139 @@ mod tests {
             &["witness_substantial_memory_forbids_corpus_co_residence".to_string()],
             ExecutionMode::Hermetic,
             &mut memo,
+            None,
         );
         assert_eq!(
             second[0].resolve_nanos, 0,
             "second call must cache-hit — resolve_entry_graph must NOT fire again"
         );
+    }
+
+    /// Warm memo reuse must attach SatisfiedFromSharedPool to the first claim in the
+    /// group — finalization reads resolve_realization from find_claim_result, not from
+    /// resolve_nanos alone. Goes RED if `first` is gated on `fresh_resolve`.
+    #[test]
+    fn memo_warm_attaches_shared_pool_observation_on_first_claim() {
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dag/test/claim/runnable_resource_profile_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let mut memo = std::collections::HashMap::new();
+        let _cold = run_memo_shared_claims(
+            &source_roots,
+            &entry,
+            &["witness_negligible_profile_is_not_heavy".to_string()],
+            ExecutionMode::Hermetic,
+            &mut memo,
+            None,
+        );
+        let warm = run_memo_shared_claims(
+            &source_roots,
+            &entry,
+            &["witness_substantial_memory_forbids_corpus_co_residence".to_string()],
+            ExecutionMode::Hermetic,
+            &mut memo,
+            None,
+        );
+        assert_eq!(warm[0].resolve_nanos, 0);
+        match warm[0].resolve_realization.as_ref() {
+            Some(ResolveRealizationObservation::SatisfiedFromSharedPool { provider_id, .. }) => {
+                assert_eq!(provider_id, FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID);
+            }
+            other => panic!(
+                "warm memo first claim must carry SatisfiedFromSharedPool observation, got {other:?}"
+            ),
+        }
+    }
+
+    #[test]
+    fn take_group_observation_attaches_only_to_rostered_subject() {
+        let subjects: ObligationSubjectSet =
+            [("fixture.dag".to_string(), "rostered_fn".to_string())]
+                .into_iter()
+                .collect();
+        let observation =
+            Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 42 });
+        let mut attached = false;
+        assert!(take_group_observation_for_claim(
+            Some(&subjects),
+            "fixture.dag",
+            "other_fn",
+            &observation,
+            &mut attached,
+        )
+        .is_none());
+        assert!(!attached);
+        assert!(matches!(
+            take_group_observation_for_claim(
+                Some(&subjects),
+                "fixture.dag",
+                "rostered_fn",
+                &observation,
+                &mut attached,
+            ),
+            Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 42 })
+        ));
+    }
+
+    #[test]
+    fn obligation_observation_skips_non_rostered_co_residents() {
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dag/test/claim/runnable_resource_profile_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let rostered_fn = "witness_substantial_memory_forbids_corpus_co_residence".to_string();
+        let non_rostered_fn = "witness_negligible_profile_is_not_heavy".to_string();
+        let subjects: ObligationSubjectSet =
+            [(entry.clone(), rostered_fn.clone())].into_iter().collect();
+        let mode = ExecutionMode::Hermetic;
+
+        let cheap_only = run_shared_entry_claims(
+            &source_roots,
+            &entry,
+            &[non_rostered_fn.clone()],
+            mode,
+            Some(&subjects),
+        );
+        assert!(cheap_only[0].resolve_realization.is_none());
+
+        let mut memo = std::collections::HashMap::new();
+        let rostered_only = run_memo_shared_claims(
+            &source_roots,
+            &entry,
+            &[rostered_fn.clone()],
+            mode,
+            &mut memo,
+            Some(&subjects),
+        );
+        assert!(matches!(
+            rostered_only[0].resolve_realization,
+            Some(ResolveRealizationObservation::ColdResolvePerformed { .. })
+        ));
+
+        let co_resident = run_memo_shared_claims(
+            &source_roots,
+            &entry,
+            &[non_rostered_fn, rostered_fn],
+            mode,
+            &mut memo,
+            Some(&subjects),
+        );
+        assert!(co_resident[0].resolve_realization.is_none());
+        assert!(matches!(
+            co_resident[1].resolve_realization,
+            Some(ResolveRealizationObservation::SatisfiedFromSharedPool { .. })
+        ));
     }
 
     /// The committed basis file must actually load. A basis that parses to zero rows
@@ -10669,33 +12175,118 @@ mod tests {
         }
     }
 
+    fn drift_authority_source_roots() -> Vec<String> {
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root");
+        vec![
+            workspace.join("dag").to_string_lossy().into_owned(),
+            workspace.join("src/v2").to_string_lossy().into_owned(),
+        ]
+    }
+
+    fn drift_basis_fixture(clock_constructor: &'static str) -> WitnessRowCostBasisRow {
+        WitnessRowCostBasisRow {
+            eval_ms_basis: 10,
+            run_ref: "synthetic-run".to_string(),
+            clock_constructor,
+        }
+    }
+
+    /// The END-TO-END proof that the drift seam carries the clock, which neither the `.dag`
+    /// witnesses nor the parser tests can give: the witnesses never cross this Rust boundary,
+    /// and the parser only shows the cell is read.
+    ///
+    /// Two claims. First, every verdict string in the receipt is a name the AUTHORITY
+    /// produced — the seed no longer decides that exceeding a basis means `DriftExceeded`, so
+    /// an arm added to `WitnessRowCostVerdict` reaches the cadence receipt with no Rust edit.
+    /// Second, a cross-clock pair REFUSES, asserted on BOTH sides of the 2× ratio: 21ms and
+    /// 20ms against a 10ms basis land on opposite sides of the threshold, so a single case
+    /// would be satisfiable by a comparator refusing for the wrong reason. The pair proves
+    /// the refusal is decided by the CLOCK, not the magnitude.
+    #[test]
+    fn drift_verdicts_come_from_the_authority_and_a_cross_clock_basis_refuses() {
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root");
+        let roots = drift_authority_source_roots();
+        let entry = workspace.join("dag/gunbc/witness_row_cost.dag");
+        let (graph, indices) =
+            resolve_entry_graph(&roots, &entry.to_string_lossy()).expect("resolve");
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+
+        let wall = drift_basis_fixture("clock_basis_wall");
+        let cpu = drift_basis_fixture("clock_basis_cpu");
+        let verdict = |observed, basis| {
+            witness_row_cost_verdict_via_authority(&ctx, observed, basis).expect("verdict")
+        };
+
+        // Same clock on both sides: the ratio decides, in both directions.
+        assert_eq!(verdict(21, Some(&wall)), "DriftExceeded");
+        assert_eq!(verdict(20, Some(&wall)), "WithinBasis");
+
+        // No dated basis: the honest third state, and it too comes from the authority.
+        assert_eq!(verdict(999, None), "BasisAbsent");
+
+        // Different clocks: refused on BOTH sides of the ratio. Before the clock crossed
+        // this seam these two answered `DriftExceeded` and `WithinBasis` — confident
+        // verdicts about two different quantities.
+        assert_eq!(verdict(21, Some(&cpu)), "BasisClockMismatch");
+        assert_eq!(verdict(20, Some(&cpu)), "BasisClockMismatch");
+    }
+
     #[test]
     fn parse_witness_row_cost_basis_line_requires_srv_fleet_arm64() {
         // RED control for review 43284: wrong/missing host_class must refuse, never load.
-        let ok = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64")
+        let ok = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64\twall")
             .expect("parse")
             .expect("row");
         assert_eq!(ok.0, ("e.dag".to_string(), "f".to_string()));
         assert_eq!(ok.1.eval_ms_basis, 10);
         assert_eq!(ok.1.run_ref, "run-1");
+        assert_eq!(ok.1.clock_constructor, "clock_basis_wall");
+
+        // The clock is READ, not assumed: a cpu-clocked basis row loads as cpu, which is
+        // what lets the comparator refuse it against a wall observation instead of
+        // answering. If this cell were ignored the whole column would be decoration.
+        let cpu = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64\tcpu")
+            .expect("parse")
+            .expect("row");
+        assert_eq!(cpu.1.clock_constructor, "clock_basis_cpu");
 
         assert!(parse_witness_row_cost_basis_line("# comment")
             .unwrap()
             .is_none());
         assert!(parse_witness_row_cost_basis_line("").unwrap().is_none());
 
-        let wrong = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tlocal_x86")
+        let wrong = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tlocal_x86\twall")
             .expect_err("wrong host_class must refuse");
         assert!(
             wrong.contains("host_class") && wrong.contains("srv_fleet_arm64"),
             "expected host_class refusal, got: {wrong}"
         );
 
-        let short =
-            parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1").expect_err("need 5 cols");
-        assert!(short.contains("need 5 cols"), "got: {short}");
+        // A row with no clock cell REFUSES rather than defaulting to wall. Defaulting
+        // would be right for every row in the file today and silently wrong the first
+        // time one is seeded from a CPU receipt — the exact failure the column exists to
+        // prevent, so the pre-clock 5-column shape must not still parse.
+        let short = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64")
+            .expect_err("a row without a clock column must refuse");
+        assert!(short.contains("need 6 cols"), "got: {short}");
 
-        let zero = parse_witness_row_cost_basis_line("e.dag\tf\t0\trun-1\tsrv_fleet_arm64")
+        // An unmodelled clock is not a clock. It cannot map to a ClockBasis constructor,
+        // so it cannot enter a comparison at all.
+        let unknown =
+            parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64\tmonotonic")
+                .expect_err("unknown clock must refuse");
+        assert!(
+            unknown.contains("clock") && unknown.contains("monotonic"),
+            "got: {unknown}"
+        );
+
+        let zero = parse_witness_row_cost_basis_line("e.dag\tf\t0\trun-1\tsrv_fleet_arm64\twall")
             .expect_err("zero eval must refuse");
         assert!(zero.contains("zero eval_ms_basis"), "got: {zero}");
     }
@@ -10757,6 +12348,8 @@ mod tests {
                     ),
                 ],
                 budget_refusal: None,
+                selection_degradation: None,
+                resolve_realization: None,
             }],
         }];
         assert!(write_floor_wet_witness_row_outcome_receipt_at(
@@ -10791,6 +12384,197 @@ mod tests {
         assert_ne!(passed_line, skipped_line);
         assert_ne!(failed_line, skipped_line);
         let _ = fs::remove_dir_all(&base);
+    }
+
+    /// Fixture for the row-cost receipt: one row that EXECUTED in under a millisecond and
+    /// one row that was NEVER EXECUTED. Both floor to `0` in the millisecond eval column,
+    /// which is precisely the collision the receipt has to survive.
+    fn zero_eval_collision_records() -> Vec<BatchRecord> {
+        vec![BatchRecord {
+            batch_index: 0,
+            wall_nanos: 0,
+            clamp_ms: None,
+            unit_count: 2,
+            label: "collision".to_string(),
+            selection_tag: "applied",
+            is_wet: false,
+            results: vec![ClaimResult {
+                function: "discovery-corpus".to_string(),
+                entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
+                ok: true,
+                detail: String::new(),
+                wall_nanos: 0,
+                resolve_nanos: 0,
+                corpus_resolve_nanos: 0,
+                corpus_eval_nanos: 0,
+                corpus_witnesses: 2,
+                witness_row_costs: vec![
+                    // Executed, sub-millisecond: 500_000ns / 1_000_000 == 0.
+                    (
+                        "dag/test/claim/fast_test.dag".to_string(),
+                        "ran_in_under_a_millisecond".to_string(),
+                        500_000,
+                        0,
+                        0,
+                        "Done".to_string(),
+                        String::new(),
+                    ),
+                    // Never executed: pushed by `discovery_claim_result` with zero timings.
+                    (
+                        "dag/test/claim/skipped_test.dag".to_string(),
+                        "never_executed_at_all".to_string(),
+                        0,
+                        0,
+                        0,
+                        "selection-skipped".to_string(),
+                        "affected-set".to_string(),
+                    ),
+                ],
+                budget_refusal: None,
+                selection_degradation: None,
+                resolve_realization: None,
+            }],
+        }]
+    }
+
+    #[test]
+    /// The empty-observation narrow, closed at the artifact: a `0` in the eval column means
+    /// "ran in under a millisecond" OR "was never run", and before the outcome/detail columns
+    /// were emitted the receipt could not say which. A census taken from a selection-applied
+    /// per-PR run would have counted skipped rows as fast ones.
+    fn witness_row_cost_receipt_distinguishes_unexecuted_from_sub_millisecond() {
+        let base =
+            std::env::temp_dir().join(format!("gunbc-row-cost-collision-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        assert!(write_witness_row_cost_receipt_at(
+            &base,
+            &zero_eval_collision_records(),
+            false
+        ));
+        let path = base.join("floor-witness-row-cost-receipt.tsv");
+        let body = fs::read_to_string(&path).unwrap();
+
+        let executed = body
+            .lines()
+            .find(|l| l.contains("ran_in_under_a_millisecond"))
+            .expect("executed row");
+        let skipped = body
+            .lines()
+            .find(|l| l.contains("never_executed_at_all"))
+            .expect("skipped row");
+
+        let cost_cols = |line: &str| {
+            let f: Vec<&str> = line.split('\t').collect();
+            (f[3].to_string(), f[4].to_string(), f[5].to_string())
+        };
+
+        // The executed row measured genuinely-zero milliseconds (500_000ns floors to 0). That
+        // is a real measurement and must survive as the number it is.
+        assert_eq!(
+            cost_cols(executed),
+            ("0".to_string(), "0".to_string(), "0".to_string()),
+            "a sub-millisecond row measured 0 and must report 0: {executed}"
+        );
+
+        // The unexecuted row has NO measurement and must not fabricate one — the
+        // std.observation observation_measured_note rule applied at the renderer: never print
+        // 0 for an absent measurement, never omit the field.
+        let absent = cost_cols(skipped);
+        assert_eq!(
+            absent,
+            (
+                UNMEASURED_CELL.to_string(),
+                UNMEASURED_CELL.to_string(),
+                UNMEASURED_CELL.to_string()
+            ),
+            "an unexecuted row must report absence, not a zero: {skipped}"
+        );
+        for cell in [&absent.0, &absent.1, &absent.2] {
+            assert!(
+                cell.parse::<u128>().is_err(),
+                "an absent measurement must not parse as a number, or a census counts an \
+                 unexecuted row as a fast one: {cell}"
+            );
+        }
+
+        // Discriminating on cost alone — false before this landed, and the assertion that
+        // goes RED if a fabricated zero ever returns.
+        assert_ne!(
+            cost_cols(executed),
+            absent,
+            "executed and unexecuted must differ in the cost columns themselves"
+        );
+
+        // The typed disposition still rides beside the number, so the cause stays recoverable
+        // rather than being merely signalled by absence.
+        assert!(
+            executed.contains("\tDone\t"),
+            "executed row must carry its outcome: {executed}"
+        );
+        assert!(
+            skipped.contains("\tselection-skipped\t"),
+            "unexecuted row must say so: {skipped}"
+        );
+
+        // The eval column is WALL and must say so: the fast-lane cap that kills these rows
+        // is enforced on thread CPU, so a bare `eval_ms` invites a threshold built on this
+        // file to select a different population than the cap kills.
+        //
+        // Compared at COLUMN grain rather than by substring. A substring test is answering a
+        // question about column names with a question about characters, and the two only
+        // coincide by accident: `\teval_ms` happens not to occur inside `\teval_wall_ms`
+        // (review 48405 read it as though it did, which is a fair thing to misread and reason
+        // enough not to write it that way). Splitting on tabs asks the question directly.
+        let header: Vec<&str> = body.lines().next().expect("header").split('\t').collect();
+        assert!(
+            header.contains(&"eval_wall_ms"),
+            "eval column must name its clock: {header:?}"
+        );
+        assert!(
+            !header.contains(&"eval_ms"),
+            "the clock-ambiguous spelling must not return: {header:?}"
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    /// A row that never executed must not receive a verdict about its cost. Flooring it to 0
+    /// and running the comparator yields `WithinBasis` — a positive claim that the row met
+    /// its basis, from a measurement that does not exist, and one that can NEVER fail because
+    /// 0 never exceeds anything. That is a fail-open verdict, not a conservative default.
+    fn drift_comparator_refuses_to_judge_an_unexecuted_row() {
+        // THE DISCRIMINATING CASE: a basis EXISTS, so the comparator has everything it needs
+        // to emit a verdict — and must still refuse, because the observation does not exist.
+        // Before this, that row floored to 0, compared as `0 <= basis`, and reported
+        // `WithinBasis`: a verdict that could never fail, about a row that never ran.
+        assert_eq!(
+            drift_row_disposition("selection-skipped", true),
+            DriftRowDisposition::ObservationAbsent,
+            "an unexecuted row with a basis present must still refuse a verdict"
+        );
+        assert_eq!(
+            drift_row_disposition("selection-skipped", false),
+            DriftRowDisposition::ObservationAbsent,
+            "absence of the observation outranks absence of the basis"
+        );
+
+        // The two states that ARE meaningful stay reachable — this is not a blanket refusal.
+        assert_eq!(
+            drift_row_disposition("Done", true),
+            DriftRowDisposition::Comparable,
+            "an executed row with a basis is the only comparable state"
+        );
+        assert_eq!(
+            drift_row_disposition("Done", false),
+            DriftRowDisposition::BasisAbsent
+        );
+        // An executed row that measured genuinely-zero milliseconds is a real measurement and
+        // must remain comparable — the whole point is that 0-because-fast and
+        // 0-because-never-ran are different facts.
+        assert_eq!(
+            drift_row_disposition("Failed", true),
+            DriftRowDisposition::Comparable
+        );
     }
 
     #[test]
@@ -11009,6 +12793,7 @@ mod tests {
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
+            resolve_realization: None,
         }
     }
 

@@ -1,0 +1,71 @@
+module v2.test.claim.self_host.direct_rust_door_fixture_containment_witness_test
+
+import v2.compiler.self_host.candidate_generation { RustWorkspaceWriteReceipt }
+import v2.compiler.self_host.fixture_synthetic_emission {
+  advance_written_synthetic_emitted_artifact_cargo_green,
+  mint_synthetic_emitted_artifact_from_fixture_inferred,
+  synthetic_emitted_artifact_has_fixture_source_produced_only,
+  WrittenSyntheticEmittedArtifact,
+  written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification,
+  written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualification
+}
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_inferred_tree,
+  direct_rust_door_module_path,
+  direct_rust_door_target_model
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+data direct_rust_door_fixture_containment_witness_note: String = "wise-ram-22 PR1 containment: fixture synthetic mint returns SyntheticEmittedArtifact with FixtureEmissionQualification only — no ProducerEmissionReceipt constructor and no production qualification ladder on this path."
+
+data direct_rust_door_fixture_containment_lane_tag: String = "direct_rust_door_fixture_containment_hermetic"
+
+test fn fixture_synthetic_mint_is_fixture_source_produced_only() -> Bool {
+  match mint_synthetic_emitted_artifact_from_fixture_inferred(
+    inferred: direct_rust_door_inferred_tree,
+    target: direct_rust_door_target_model(),
+    module_path: direct_rust_door_module_path,
+    fixture_lane_tag: direct_rust_door_fixture_containment_lane_tag
+  ) {
+    Accepted { value: artifact, diagnostics: _ } =>
+      synthetic_emitted_artifact_has_fixture_source_produced_only(artifact: artifact)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn fixture_cargo_green_advance_is_not_behaviorally_equivalent() -> Bool {
+  match mint_synthetic_emitted_artifact_from_fixture_inferred(
+    inferred: direct_rust_door_inferred_tree,
+    target: direct_rust_door_target_model(),
+    module_path: direct_rust_door_module_path,
+    fixture_lane_tag: direct_rust_door_fixture_containment_lane_tag
+  ) {
+    Accepted { value: artifact, diagnostics: _ } =>
+      match advance_written_synthetic_emitted_artifact_cargo_green(
+        written: WrittenSyntheticEmittedArtifact {
+          artifact: artifact,
+          write: RustWorkspaceWriteReceipt {
+            workspace_dir: "hermetic_fixture/containment",
+            manifest_path: "hermetic_fixture/containment/Cargo.toml",
+            main_rs_path: "hermetic_fixture/containment/src/lib.rs",
+            manifest_write_ok: true,
+            main_write_ok: true
+          }
+        },
+        cargo_green: true
+      ) {
+        Present { value: cargo_written } =>
+          written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
+            written: cargo_written
+          )
+            && !written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualification(
+              written: cargo_written
+            )
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}

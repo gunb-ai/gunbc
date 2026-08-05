@@ -18,6 +18,8 @@ use self::ScopedWitnessExecutionAuthority::*;
 use self::ScopedWitnessExecutionOutcome::*;
 use self::ScopedWitnessExecutionReceiptDecode::*;
 use self::ScopedWitnessProcessIsolation::*;
+use self::WitnessCostBasis::*;
+use self::WitnessCostClock::*;
 use self::WitnessKind::*;
 use self::WitnessSpan::*;
 pub use crate::std_algebra::FreeMonoid;
@@ -73,7 +75,7 @@ pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
     })
 }
 
-pub fn cost_account_measured<S: Clone>(time: Rc<Measure<(), S, i64>>) -> Rc<CostAccount<S>> {
+pub fn cost_account_measured<S>(time: Rc<Measure<(), S, i64>>) -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
         time: time.clone(),
         space: byte_size(0),
@@ -83,7 +85,7 @@ pub fn cost_account_measured<S: Clone>(time: Rc<Measure<(), S, i64>>) -> Rc<Cost
     })
 }
 
-pub fn cost_account_time_count<S: Clone>(account: Rc<CostAccount<S>>) -> Nat {
+pub fn cost_account_time_count<S>(account: Rc<CostAccount<S>>) -> Nat {
     measure_count(account.time.clone())
 }
 
@@ -108,17 +110,86 @@ pub struct WitnessSeam {
     pub consumer: String,
 }
 
+pub fn witness_cost_clock_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Which clock the duration carrier names (operator msg_e24f4cab, 2026-08-04): run_claim_timed builds performance receipts from wall_nanos (performance_receipt_from_witness) while the per-witness eval budget gate consumes thread CPU nanos (budget_completion_outcome). Both cross as std.measure Millisecond — without the clock tag a stored figure is not comparable to a threshold. claim_batch receipt logs cited on MeasuredAtExactSubject rows are WitnessCostWallEval unless re-measured on ThreadCpu.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum WitnessCostClock {
+    WitnessCostWallEval,
+    WitnessCostThreadCpuEval,
+}
+
+pub fn witness_cost_clock_eq(a: WitnessCostClock, b: WitnessCostClock) -> bool {
+    match a.clone() {
+        WitnessCostClock::WitnessCostWallEval => match b.clone() {
+            WitnessCostClock::WitnessCostWallEval => true,
+            WitnessCostClock::WitnessCostThreadCpuEval => false,
+        },
+        WitnessCostClock::WitnessCostThreadCpuEval => match b.clone() {
+            WitnessCostClock::WitnessCostThreadCpuEval => true,
+            WitnessCostClock::WitnessCostWallEval => false,
+        },
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum WitnessCostBasis {
+    MeasuredAtExactSubject {
+        clock: WitnessCostClock,
+        duration: Millisecond,
+        receipt: String,
+    },
+    EstimatedFromSiblingClass {
+        clock: WitnessCostClock,
+        source_witness: String,
+        basis: String,
+    },
+}
+impl WitnessCostBasis {
+    pub fn clock(&self) -> WitnessCostClock {
+        match self {
+            WitnessCostBasis::MeasuredAtExactSubject { clock: __val, .. } => __val.clone(),
+            WitnessCostBasis::EstimatedFromSiblingClass { clock: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScheduledWitnessEnvelope {
+    pub cadence: String,
+    pub wall_budget: Millisecond,
+    pub max_staleness: String,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum WitnessSpan {
     SpanUndeclared,
-    SpanSeams { seams: Rc<Vec<Rc<WitnessSeam>>> },
+    SpanSeams {
+        seams: Rc<Vec<Rc<WitnessSeam>>>,
+    },
+    SpanEnrolled {
+        seams: Rc<Vec<Rc<WitnessSeam>>>,
+        cost_basis: Rc<WitnessCostBasis>,
+        envelope: Rc<ScheduledWitnessEnvelope>,
+    },
 }
 impl WitnessSpan {
     pub fn seams(&self) -> Rc<Vec<Rc<WitnessSeam>>> {
         match self {
             WitnessSpan::SpanUndeclared => panic!("no seams on unit variant"),
             WitnessSpan::SpanSeams { seams: __val, .. } => __val.clone(),
+            WitnessSpan::SpanEnrolled { seams: __val, .. } => __val.clone(),
         }
     }
 }
@@ -1384,7 +1455,7 @@ pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: Strin
         })
 }
 
-pub fn schedule_generates_same_batch_count<S: Clone>(
+pub fn schedule_generates_same_batch_count<S>(
     left: Rc<RealizationPlan<S>>,
     right: Rc<RealizationPlan<S>>,
 ) -> bool {
@@ -1582,7 +1653,7 @@ continue;
     }
 }
 
-pub fn schedule_generates_identical_schedule<S: Clone>(
+pub fn schedule_generates_identical_schedule<S>(
     plan: Rc<RealizationPlan<S>>,
     schedule: Schedule,
 ) -> bool {
@@ -1599,6 +1670,10 @@ pub struct CorpusWitnessKind;
 pub struct ExecutionWitnessKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NativeBundleWitnessKind;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WitnessCostWallEval;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WitnessCostThreadCpuEval;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RunnableMemoryNegligible;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -1,15 +1,17 @@
 //! Positive control for R1 dispatch-authority lookup routing.
-//! On single-family sites, a roster row without a matching handler macro arm fails
-//! `cargo build` via a non-exhaustive inner `match` on the generated enum (not exercised
-//! here). Bridge and native-intercept families share one enum per site but expand
-//! per-family subsets with a wildcard — those sites rely on runtime `unreachable!`.
+//! On every site, a roster row without a matching handler macro arm fails `cargo build`
+//! via a non-exhaustive inner `match` on the generated enum (not exercised here). Each
+//! `EvalCallBridgeFamilySite` bridge family gets its own generated enum and lookup
+//! function keyed by the family's module, so a handler gap in one family cannot be
+//! papered over by a shared wildcard.
 
 use v1_compiler::v1_interpreter_dispatch_generated::{
-    lookup_eval_algebra_method_inner, lookup_eval_builtin_inner, lookup_eval_call_bridge,
+    lookup_eval_algebra_method_inner, lookup_eval_builtin_inner,
+    lookup_eval_call_bridge_std_compilers_lexing, lookup_eval_call_bridge_std_node,
     lookup_eval_call_native_intercept, lookup_try_parse_table_memo_dispatch,
     lookup_try_v2_std_collection_map_primitive_grounding, EvalAlgebraMethodArm, EvalBuiltinArm,
-    EvalCallBridgeArm, EvalCallNativeInterceptArm, TryParseTableMemoDispatchArm,
-    TryV2StdCollectionMapPrimitiveGroundingArm,
+    EvalCallBridgeStdCompilersLexingArm, EvalCallBridgeStdNodeArm, EvalCallNativeInterceptArm,
+    TryParseTableMemoDispatchArm, TryV2StdCollectionMapPrimitiveGroundingArm,
 };
 
 fn all_eval_builtin_variants_reachable() {
@@ -33,13 +35,14 @@ fn all_eval_algebra_variants_reachable() {
 }
 
 fn all_bridge_variants_reachable() {
-    let spellings = ["resolve_type_node", "symbol_lexeme"];
-    for spelling in spellings {
-        assert!(
-            lookup_eval_call_bridge(spelling).is_some(),
-            "missing lookup for eval_call bridge spelling: {spelling}"
-        );
-    }
+    assert!(
+        lookup_eval_call_bridge_std_node("resolve_type_node").is_some(),
+        "missing lookup for eval_call bridge (std_node) spelling: resolve_type_node"
+    );
+    assert!(
+        lookup_eval_call_bridge_std_compilers_lexing("symbol_lexeme").is_some(),
+        "missing lookup for eval_call bridge (std_compilers_lexing) spelling: symbol_lexeme"
+    );
 }
 
 #[test]
@@ -63,8 +66,12 @@ fn generated_enums_are_copy_and_distinct() {
         EvalAlgebraMethodArm::MethodCallMap
     );
     assert_ne!(
-        EvalCallBridgeArm::V4BridgeResolveTypeNode,
-        EvalCallBridgeArm::V4BridgeSymbolLexeme
+        EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolInternLexeme,
+        EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolLexeme
+    );
+    assert_eq!(
+        EvalCallBridgeStdNodeArm::V4BridgeResolveTypeNode,
+        EvalCallBridgeStdNodeArm::V4BridgeResolveTypeNode
     );
     assert_ne!(
         TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert,
