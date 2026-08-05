@@ -1,6 +1,6 @@
 module extdeps.systems.nvidia_fleet_lifecycle
 
-import std.types { NonEmptyStr, String, List, Int, Bool }
+import std.types { NonEmptyStr, List, Int, Bool }
 import std.types { Timestamp, Milliseconds }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -13,8 +13,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data fleet_lifecycle_grounding_note: String = "SPARK-0 (2026-08-05), live-fetched from the cited page. This models the OPERATION SHAPE only (DESIGN §3: 'the interface shape ... is what extdeps owns'; transport -- SSH execution of these Python entry points -- and business policy -- which host, which maintenance window -- are realization and workflow facts respectively, owned elsewhere, never here). Quoted verbatim: the common envelope carries 'tool' (stable identifier), 'ts' (UTC timestamp), 'host' (target identity used by the orchestrator), 'status', 'rc' (exit code), 'duration_ms', 'summary' (bounded, indexable), 'warnings' (optional non-fatal issues), 'artifacts' (optional artifact pointers). Failure is classified into exactly four named classes: 'Transport/auth -- SSH could not connect or authenticate; device unreachable; key or policy issue.'; 'Privilege -- Command requires sudo or access to privileged system interfaces.'; 'Tool execution -- Missing dependency, unexpected OS state, or tool internal error.'; 'Endpoint degraded -- Tool ran successfully but returned warning or failure status due to device health signals.' Operations split into two safety classes: 'Collectors are read-only tools safe to run frequently and at high concurrency.' vs 'Controllers change state and must be gated by changing windows, rings or waves, and validation.' spark_updatectl.py (the sole documented Controller) has a maintenance-window shape of three phases -- 'Pre-check -- Build identity + health', 'Update control -- spark_updatectl.py', 'Post-check -- Build identity + health' -- modeled here as the requirement that a controller invocation is only ever evaluated inside that shape, never the concrete window/ring/wave values (those are workflow policy). The document names seven tools; reset_reason_reporter.py is explicitly informational-only ('None documented; informational signals only') and is modeled as a Collector with no failure-class distinction beyond the shared four."
-
+// SPARK-0 (2026-08-05), live-fetched from the cited page. This models the OPERATION SHAPE only (DESIGN §3: 'the interface shape ... is what extdeps owns'; transport -- SSH execution of these Python entry points -- and business policy -- which host, which maintenance window -- are realization and workflow facts respectively, owned elsewhere, never here). Quoted verbatim: the common envelope carries 'tool' (stable identifier), 'ts' (UTC timestamp), 'host' (target identity used by the orchestrator), 'status', 'rc' (exit code), 'duration_ms', 'summary' (bounded, indexable), 'warnings' (optional non-fatal issues), 'artifacts' (optional artifact pointers). Failure is classified into exactly four named classes: 'Transport/auth -- SSH could not connect or authenticate; device unreachable; key or policy issue.'; 'Privilege -- Command requires sudo or access to privileged system interfaces.'; 'Tool execution -- Missing dependency, unexpected OS state, or tool internal error.'; 'Endpoint degraded -- Tool ran successfully but returned warning or failure status due to device health signals.'
+// Operations split into two safety classes: 'Collectors are read-only tools safe to run frequently and at high concurrency.' vs 'Controllers change state and must be gated by changing windows, rings or waves, and validation.' spark_updatectl.py (the sole documented Controller) has a maintenance-window shape of three phases -- 'Pre-check -- Build identity + health', 'Update control -- spark_updatectl.py', 'Post-check -- Build identity + health' -- modeled here as the requirement that a controller invocation is only ever evaluated inside that shape, never the concrete window/ring/wave values (those are workflow policy). The document names seven tools; reset_reason_reporter.py is explicitly informational-only ('None documented; informational signals only') and is modeled as a Collector with no failure-class distinction beyond the shared four.
 type FleetLifecycleOperationClass = Collector | Controller
 
 type FleetLifecycleOperation
@@ -97,18 +97,4 @@ type SparkUpdateEvidence {
   precheck: FleetLifecycleEnvelope
   postcheck: FleetLifecycleEnvelope?
   rollback_available: Bool
-}
-
-fn fleet_lifecycle_outcome_envelope(outcome: FleetLifecycleOutcome) -> FleetLifecycleEnvelope? {
-  match outcome {
-    FleetLifecycleObserved { envelope: e } => Present { value: e }
-    FleetLifecycleRefused { class: _ } => none
-  }
-}
-
-fn fleet_lifecycle_outcome_is_refused(outcome: FleetLifecycleOutcome) -> Bool {
-  match outcome {
-    FleetLifecycleObserved { envelope: _ } => false
-    FleetLifecycleRefused { class: _ } => true
-  }
 }

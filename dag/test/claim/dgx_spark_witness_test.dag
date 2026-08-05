@@ -25,13 +25,6 @@ import extdeps.systems.nvidia_fleet_lifecycle {
   FleetLifecycleEnvelope,
   FleetLifecycleStatus,
   StatusOk,
-  FleetLifecycleOutcome,
-  FleetLifecycleObserved,
-  FleetLifecycleRefused,
-  FleetLifecycleFailureClass,
-  TransportAuthFailure,
-  fleet_lifecycle_outcome_envelope,
-  fleet_lifecycle_outcome_is_refused,
 }
 import gunbc.dgx_spark_procurement {
   dgx_spark_procurement_intent,
@@ -41,12 +34,15 @@ import gunbc.dgx_spark_procurement {
   DgxSparkAdmissionOutcome,
   DgxSparkDeploymentAdmitted,
   DgxSparkDeploymentRefused,
+  DgxSparkAdmissionRefusalReason,
+  DeploymentAdmissionNoEvidence,
+  DeploymentAdmissionWrongTool,
+  DeploymentAdmissionHostMismatch,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data dgx_spark_witness_note: String = "SPARK-0 green-by-execution proof. The RED control (w_red_admission_without_evidence_refuses) is the deliverable per the brief: constructing a DgxSparkDeployment from vendor catalog data plus procurement intent alone, with no FleetLifecycleEnvelope, must REFUSE -- physical binding evidence (a real device_identity.py observation) is absent, and catalog+intent can never substitute for it. w_admission_with_real_evidence_succeeds is the positive control proving the same function admits once that evidence is supplied, so the RED control is proven to be a real discriminator and not a permanently-broken function. w_red_admission_with_wrong_tool_evidence_refuses is a second RED control (review 49032): presence of ANY FleetLifecycleEnvelope is not sufficient -- an envelope from a different tool (spark_updatectl.py, an UpdateControl observation) must also REFUSE, proving the wall discriminates on evidence identity, not mere presence. bold-eagle-107 caught (msg_2d71b55b) a second capitalized False/True defect at the same enrollment-blind spot, one function over: fleet_lifecycle_outcome_is_refused had both arms broken (undefined variable on every input) with zero referencing witnesses. Fixed the literals and added w_outcome_envelope_present_only_when_observed and w_outcome_is_refused_distinguishes_observed_and_refused, each exercising BOTH the FleetLifecycleObserved and FleetLifecycleRefused arms so a single-arm gap cannot recur silently. Full-diff sweep for capitalized True/False across all five changed files (nvidia.dag, nvidia_fleet_lifecycle.dag, types.dag, dgx_spark_procurement.dag, this file) found no further occurrences in code positions. dgx_spark_catalog_row (extdeps.systems.nvidia) has no witness calling it by name but is exercised indirectly: it constructs nvidia_dgx_spark_1tb_catalog and nvidia_dgx_spark_4tb_catalog as data, and multiple witnesses above dereference both, so its body executes on every run of this file. fleet_lifecycle_outcome_envelope and fleet_lifecycle_outcome_is_refused were the only genuinely unwitnessed functions found; both are witnessed now."
-
+// SPARK-0 green-by-execution proof. The RED control (w_red_admission_without_evidence_refuses) is the deliverable per the brief: constructing a DgxSparkDeployment from vendor catalog data plus procurement intent alone, with no FleetLifecycleEnvelope, must REFUSE -- physical binding evidence (a real device_identity.py observation) is absent, and catalog+intent can never substitute for it. w_admission_with_real_evidence_succeeds is the positive control proving the same function admits once that evidence is supplied, so the RED control is proven to be a real discriminator and not a permanently-broken function. w_red_admission_with_wrong_tool_evidence_refuses is a second RED control (review 49032): presence of ANY FleetLifecycleEnvelope is not sufficient -- an envelope from a different tool (spark_updatectl.py, an UpdateControl observation) must also REFUSE, proving the wall discriminates on evidence identity, not mere presence. w_red_admission_with_mismatched_host_refuses is a third RED control (review 49071): a real device_identity.py envelope observed against one host must not bind a deployment for a different identity. dgx_spark_catalog_row (extdeps.systems.nvidia) has no witness calling it by name but is exercised indirectly: it constructs nvidia_dgx_spark_1tb_catalog and nvidia_dgx_spark_4tb_catalog as data, and multiple witnesses above dereference both, so its body executes on every run of this file.
 test fn w_catalog_row_nests_gpu_from_grounded_authority() -> Bool {
   nvidia_dgx_spark_1tb_catalog.gpu.model == nvidia_gb10_gpu_catalog.model
     && nvidia_dgx_spark_1tb_catalog.gpu.model == "GB10 Blackwell GPU"
@@ -94,7 +90,8 @@ test fn w_red_admission_without_evidence_refuses() -> Bool {
     catalog: nvidia_dgx_spark_4tb_catalog,
     identity_observation: none,
   ) {
-    DgxSparkDeploymentRefused { reason: _ } => true
+    DgxSparkDeploymentRefused { reason: DeploymentAdmissionNoEvidence } => true
+    DgxSparkDeploymentRefused { reason: _ } => false
     DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
@@ -144,7 +141,8 @@ test fn w_red_admission_with_wrong_tool_evidence_refuses() -> Bool {
     catalog: nvidia_dgx_spark_4tb_catalog,
     identity_observation: Present { value: synthetic_wrong_tool_envelope() },
   ) {
-    DgxSparkDeploymentRefused { reason: _ } => true
+    DgxSparkDeploymentRefused { reason: DeploymentAdmissionWrongTool { observed_tool: t } } => t == "spark_updatectl.py"
+    DgxSparkDeploymentRefused { reason: _ } => false
     DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
@@ -155,33 +153,11 @@ test fn w_red_admission_with_mismatched_host_refuses() -> Bool {
     catalog: nvidia_dgx_spark_4tb_catalog,
     identity_observation: Present { value: synthetic_device_identity_envelope() },
   ) {
-    DgxSparkDeploymentRefused { reason: _ } => true
+    DgxSparkDeploymentRefused {
+      reason: DeploymentAdmissionHostMismatch { observed_host: h, requested_identity: i }
+    } => h == "srv5" && i == srv6_reserved
+    DgxSparkDeploymentRefused { reason: _ } => false
     DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
 
-fn synthetic_refused_outcome() -> FleetLifecycleOutcome {
-  FleetLifecycleRefused {
-    class: TransportAuthFailure { detail: "synthetic: SSH could not connect" }
-  }
-}
-
-fn synthetic_observed_outcome() -> FleetLifecycleOutcome {
-  FleetLifecycleObserved { envelope: synthetic_device_identity_envelope() }
-}
-
-test fn w_outcome_envelope_present_only_when_observed() -> Bool {
-  match fleet_lifecycle_outcome_envelope(outcome: synthetic_observed_outcome()) {
-    Present { value: e } => e.tool == "device_identity.py"
-    Absent => false
-  }
-    && match fleet_lifecycle_outcome_envelope(outcome: synthetic_refused_outcome()) {
-      Present { value: _ } => false
-      Absent => true
-    }
-}
-
-test fn w_outcome_is_refused_distinguishes_observed_and_refused() -> Bool {
-  !fleet_lifecycle_outcome_is_refused(outcome: synthetic_observed_outcome())
-    && fleet_lifecycle_outcome_is_refused(outcome: synthetic_refused_outcome())
-}
