@@ -216,6 +216,7 @@ import gunbc.roadmap_verification_receipt {
   CurrentVerificationSelection,
   CurrentVerificationSelectionObservation,
   SelectionAbsent,
+  SelectionUnaddressable,
   SelectionUnreadable,
   SelectionMalformed,
   SelectionObserved,
@@ -2769,6 +2770,8 @@ fn belt_verification_subject_from_selection(
   selection: CurrentVerificationSelectionObservation,
 ) -> VerificationSubjectObservation {
   match selection {
+    SelectionUnaddressable { cause } =>
+      VerificationSubjectUnobserved { reason: cause }
     SelectionAbsent =>
       VerificationSubjectUnobserved {
         reason: "the belt has not selected a verification window for this head yet",
@@ -2846,6 +2849,13 @@ fn belt_verification_receipt_source(
   selection: CurrentVerificationSelectionObservation,
 ) -> VerificationReceiptFileSource {
   match selection {
+    SelectionUnaddressable { cause } =>
+      VerificationReceiptUnreadable {
+        detail: join([
+          "the worktree head could not be observed, so the exact receipt path was not established: ",
+          cause,
+        ], ""),
+      }
     SelectionAbsent => VerificationReceiptAbsent
     SelectionUnreadable { cause } =>
       VerificationReceiptUnreadable {
@@ -2953,7 +2963,8 @@ fn belt_workflow_progress_for_attempt_ref(
       head: head,
     )
     let verification_selection = match head {
-      WorktreeHeadUnobserved { reason: _ } => SelectionAbsent
+      WorktreeHeadUnobserved { reason } =>
+        SelectionUnaddressable { cause: reason }
       WorktreeHeadObserved { revision: revision } =>
         belt_verification_selection_observe(
           instance: instance,

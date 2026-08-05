@@ -90,6 +90,7 @@ import gunbc.roadmap_verification_receipt {
   VerificationFileDecoded,
   CurrentVerificationSelectionObservation,
   SelectionAbsent,
+  SelectionUnaddressable,
   SelectionUnreadable,
   SelectionMalformed,
   SelectionObserved,
@@ -590,6 +591,15 @@ fn verification_segment(
   verification_source: VerificationReceiptFileSource,
 ) -> WorkflowSegment {
   match verification_selection {
+    SelectionUnaddressable { cause } =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: WorkflowSegmentRefused,
+        detail: join([
+          "the worktree head could not be observed, so the verification question cannot be addressed: ",
+          cause,
+        ], ""),
+      }
     SelectionAbsent =>
       WorkflowSegment {
         kind: VerificationWorkflowSegment,

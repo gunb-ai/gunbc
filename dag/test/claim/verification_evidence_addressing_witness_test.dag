@@ -70,7 +70,9 @@ import gunbc.roadmap_verification_receipt {
   ExactVerificationReceiptPresent,
   ExactVerificationReceiptUnreadable,
   CurrentVerificationSelectionObservation,
+  CurrentVerificationSelection,
   SelectionAbsent,
+  SelectionUnaddressable,
   SelectionUnreadable,
   SelectionMalformed,
   SelectionObserved,
@@ -82,6 +84,8 @@ import gunbc.roadmap_verification_receipt {
   verification_receipt_json,
   exact_verification_receipt_basename,
   current_verification_selection_basename,
+  current_verification_selection_json,
+  current_verification_selection_decode_document,
   exact_verification_address_for,
   verification_receipt_schema_v1,
   verification_receipt_v1_decode,
@@ -100,6 +104,8 @@ import gunbc.roadmap_belt_actuate {
 }
 
 data fixture_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
+
+data fixture_other_head: CommitSha = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" as CommitSha
 
 data fixture_window_w1: Fnv1a64Structural = git_diff_window_absent_identity()
 

@@ -94,7 +94,8 @@ type CurrentVerificationSelection {
 }
 
 type CurrentVerificationSelectionObservation
-  = SelectionAbsent
+  = SelectionUnaddressable { cause: String }
+  | SelectionAbsent
   | SelectionUnreadable { cause: String }
   | SelectionMalformed { cause: String }
   | SelectionObserved {
@@ -282,6 +283,75 @@ fn verification_receipt_v1_decode(receipt: String) -> LegacyExactHeadVerificatio
   }
 }
 
+fn current_verification_selection_decode_document(
+  selection_path: String,
+  expected_head_sha: String,
+  content: String,
+) -> CurrentVerificationSelectionObservation {
+  match parse_json(s: content) {
+    Absent =>
+      SelectionMalformed {
+        cause: join([
+          "the current verification selection at ",
+          selection_path,
+          " is not one complete JSON value",
+        ], ""),
+      }
+    Present { value: doc } =>
+      match verification_receipt_string_member(doc: doc, key: "schema") {
+        VerificationReceiptMemberUnreadable { reason: r } =>
+          SelectionMalformed { cause: r }
+        VerificationReceiptMemberRead { value: schema } =>
+          if schema != (current_verification_selection_schema as String) {
+            SelectionMalformed {
+              cause: join([
+                "current verification selection schema is ",
+                schema,
+                ", not ",
+                current_verification_selection_schema as String,
+              ], ""),
+            }
+          } else {
+            match verification_receipt_string_member(doc: doc, key: "head_sha") {
+              VerificationReceiptMemberUnreadable { reason: r } =>
+                SelectionMalformed { cause: r }
+              VerificationReceiptMemberRead { value: head_wire } =>
+                match verification_receipt_string_member(
+                  doc: doc,
+                  key: "change_window_identity",
+                ) {
+                  VerificationReceiptMemberUnreadable { reason: r } =>
+                    SelectionMalformed { cause: r }
+                  VerificationReceiptMemberRead { value: window_wire } =>
+                    match fnv1a64_structural_hex_digest(hex: window_wire) {
+                      Absent =>
+                        SelectionMalformed {
+                          cause: "current verification selection change_window_identity is not readable",
+                        }
+                      Present { value: window_identity } =>
+                        if head_wire != expected_head_sha {
+                          SelectionMalformed {
+                            cause: join([
+                              "current verification selection names a different head ",
+                              head_wire,
+                              " than the observed worktree head ",
+                              expected_head_sha,
+                            ], ""),
+                          }
+                        } else {
+                          SelectionObserved {
+                            head: expected_head_sha as CommitSha,
+                            window_identity: window_identity,
+                          }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
 fn current_verification_selection_observe(
   attempt_dir: String,
   verification_dir: String,
@@ -341,57 +411,11 @@ fn current_verification_selection_observe(
             ], ""),
           }
         } else {
-          match parse_json(s: read.content) {
-            Absent =>
-              SelectionMalformed {
-                cause: join([
-                  "the current verification selection at ",
-                  selection_path,
-                  " is not one complete JSON value",
-                ], ""),
-              }
-            Present { value: doc } =>
-              match verification_receipt_string_member(doc: doc, key: "schema") {
-                VerificationReceiptMemberUnreadable { reason: r } =>
-                  SelectionMalformed { cause: r }
-                VerificationReceiptMemberRead { value: schema } =>
-                  if schema != (current_verification_selection_schema as String) {
-                    SelectionMalformed {
-                      cause: join([
-                        "current verification selection schema is ",
-                        schema,
-                        ", not ",
-                        current_verification_selection_schema as String,
-                      ], ""),
-                    }
-                  } else {
-                    match verification_receipt_string_member(doc: doc, key: "head_sha") {
-                      VerificationReceiptMemberUnreadable { reason: r } =>
-                        SelectionMalformed { cause: r }
-                      VerificationReceiptMemberRead { value: head_wire } =>
-                        match verification_receipt_string_member(
-                          doc: doc,
-                          key: "change_window_identity",
-                        ) {
-                          VerificationReceiptMemberUnreadable { reason: r } =>
-                            SelectionMalformed { cause: r }
-                          VerificationReceiptMemberRead { value: window_wire } =>
-                            match fnv1a64_structural_hex_digest(hex: window_wire) {
-                              Absent =>
-                                SelectionMalformed {
-                                  cause: "current verification selection change_window_identity is not readable",
-                                }
-                              Present { value: window_identity } =>
-                                SelectionObserved {
-                                  head: head_wire as CommitSha,
-                                  window_identity: window_identity,
-                                }
-                            }
-                        }
-                    }
-                  }
-              }
-          }
+          current_verification_selection_decode_document(
+            selection_path: selection_path,
+            expected_head_sha: head_sha,
+            content: read.content,
+          )
         }
       }
     }
