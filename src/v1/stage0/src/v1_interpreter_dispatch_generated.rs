@@ -526,54 +526,174 @@ macro_rules! eval_algebra_method_inner_arm {
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum EvalCallBridgeArm {
+pub enum EvalCallBridgeStdNodeArm {
     V4BridgeResolveTypeNode,
-    V4BridgeSymbolInternLexeme,
-    V4BridgeSymbolLexeme,
-    V4BridgeQualifiedNameFromDottedString,
-    V4BridgeCoproductNullaryInhabitants,
-    V4BridgeConceptDeclFactsLive,
-    V4BridgeFnArrowDeclFactsLive,
-    V4BridgeFnArrowDeclSubstrateIsWholeTree,
-    V4BridgeCorpusDependencyViewPerPrSubstrateRefuse,
-    V4BridgeDataInitDeclFactsLive,
-    V4BridgeInertLensUnreachedModuleCount,
-    V4BridgeInertLensTopLevelModuleCount,
 }
 
 #[rustfmt::skip]
-pub fn lookup_eval_call_bridge(spelling: &str) -> Option<EvalCallBridgeArm> {
+pub fn lookup_eval_call_bridge_std_node(spelling: &str) -> Option<EvalCallBridgeStdNodeArm> {
     match spelling {
-        "resolve_type_node" => Some(EvalCallBridgeArm::V4BridgeResolveTypeNode),
-        "symbol_intern_lexeme" => Some(EvalCallBridgeArm::V4BridgeSymbolInternLexeme),
-        "symbol_lexeme" => Some(EvalCallBridgeArm::V4BridgeSymbolLexeme),
-        "qualified_name_from_dotted_string" => Some(EvalCallBridgeArm::V4BridgeQualifiedNameFromDottedString),
-        "coproduct_nullary_inhabitants" => Some(EvalCallBridgeArm::V4BridgeCoproductNullaryInhabitants),
-        "concept_decl_facts_live" => Some(EvalCallBridgeArm::V4BridgeConceptDeclFactsLive),
-        "fn_arrow_decl_facts_live" => Some(EvalCallBridgeArm::V4BridgeFnArrowDeclFactsLive),
-        "fn_arrow_decl_substrate_is_whole_tree" => Some(EvalCallBridgeArm::V4BridgeFnArrowDeclSubstrateIsWholeTree),
-        "corpus_dependency_view_per_pr_substrate_refuse" => Some(EvalCallBridgeArm::V4BridgeCorpusDependencyViewPerPrSubstrateRefuse),
-        "data_init_decl_facts_live" => Some(EvalCallBridgeArm::V4BridgeDataInitDeclFactsLive),
-        "inert_lens_unreached_module_count" => Some(EvalCallBridgeArm::V4BridgeInertLensUnreachedModuleCount),
-        "inert_lens_top_level_module_count" => Some(EvalCallBridgeArm::V4BridgeInertLensTopLevelModuleCount),
+        "resolve_type_node" => Some(EvalCallBridgeStdNodeArm::V4BridgeResolveTypeNode),
         _ => None,
     }
 }
 
 #[rustfmt::skip]
-macro_rules! eval_call_bridge_arm {
-    ("v4_bridge.resolve_type_node") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeResolveTypeNode };
-    ("v4_bridge.symbol_intern_lexeme") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeSymbolInternLexeme };
-    ("v4_bridge.symbol_lexeme") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeSymbolLexeme };
-    ("v4_bridge.qualified_name_from_dotted_string") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeQualifiedNameFromDottedString };
-    ("v4_bridge.coproduct_nullary_inhabitants") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeCoproductNullaryInhabitants };
-    ("v4_bridge.concept_decl_facts_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeConceptDeclFactsLive };
-    ("v4_bridge.fn_arrow_decl_facts_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeFnArrowDeclFactsLive };
-    ("v4_bridge.fn_arrow_decl_substrate_is_whole_tree") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeFnArrowDeclSubstrateIsWholeTree };
-    ("v4_bridge.corpus_dependency_view_per_pr_substrate_refuse") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeCorpusDependencyViewPerPrSubstrateRefuse };
-    ("v4_bridge.data_init_decl_facts_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeDataInitDeclFactsLive };
-    ("v4_bridge.inert_lens_unreached_module_count") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeInertLensUnreachedModuleCount };
-    ("v4_bridge.inert_lens_top_level_module_count") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeInertLensTopLevelModuleCount };
+macro_rules! eval_call_bridge__v2_std_node_arm {
+    ("v4_bridge.resolve_type_node") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdNodeArm::V4BridgeResolveTypeNode };
+}
+#[rustfmt::skip]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EvalCallBridgeStdCompilersLexingArm {
+    V4BridgeSymbolInternLexeme,
+    V4BridgeSymbolLexeme,
+}
+
+#[rustfmt::skip]
+pub fn lookup_eval_call_bridge_std_compilers_lexing(spelling: &str) -> Option<EvalCallBridgeStdCompilersLexingArm> {
+    match spelling {
+        "symbol_intern_lexeme" => Some(EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolInternLexeme),
+        "symbol_lexeme" => Some(EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolLexeme),
+        _ => None,
+    }
+}
+
+#[rustfmt::skip]
+macro_rules! eval_call_bridge__v2_std_compilers_lexing_arm {
+    ("v4_bridge.symbol_intern_lexeme") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolInternLexeme };
+    ("v4_bridge.symbol_lexeme") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolLexeme };
+}
+#[rustfmt::skip]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EvalCallBridgeStdQualifiedNameArm {
+    V4BridgeQualifiedNameFromDottedString,
+}
+
+#[rustfmt::skip]
+pub fn lookup_eval_call_bridge_std_qualified_name(spelling: &str) -> Option<EvalCallBridgeStdQualifiedNameArm> {
+    match spelling {
+        "qualified_name_from_dotted_string" => Some(EvalCallBridgeStdQualifiedNameArm::V4BridgeQualifiedNameFromDottedString),
+        _ => None,
+    }
+}
+
+#[rustfmt::skip]
+macro_rules! eval_call_bridge__v2_std_qualified_name_arm {
+    ("v4_bridge.qualified_name_from_dotted_string") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdQualifiedNameArm::V4BridgeQualifiedNameFromDottedString };
+}
+#[rustfmt::skip]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EvalCallBridgeStdNodeQueryArm {
+    V4BridgeCoproductNullaryInhabitants,
+}
+
+#[rustfmt::skip]
+pub fn lookup_eval_call_bridge_std_node_query(spelling: &str) -> Option<EvalCallBridgeStdNodeQueryArm> {
+    match spelling {
+        "coproduct_nullary_inhabitants" => Some(EvalCallBridgeStdNodeQueryArm::V4BridgeCoproductNullaryInhabitants),
+        _ => None,
+    }
+}
+
+#[rustfmt::skip]
+macro_rules! eval_call_bridge__v2_std_node_query_arm {
+    ("v4_bridge.coproduct_nullary_inhabitants") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdNodeQueryArm::V4BridgeCoproductNullaryInhabitants };
+}
+#[rustfmt::skip]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EvalCallBridgeStdConceptIndexArm {
+    V4BridgeConceptDeclFactsLive,
+}
+
+#[rustfmt::skip]
+pub fn lookup_eval_call_bridge_std_concept_index(spelling: &str) -> Option<EvalCallBridgeStdConceptIndexArm> {
+    match spelling {
+        "concept_decl_facts_live" => Some(EvalCallBridgeStdConceptIndexArm::V4BridgeConceptDeclFactsLive),
+        _ => None,
+    }
+}
+
+#[rustfmt::skip]
+macro_rules! eval_call_bridge__v2_std_concept_index_arm {
+    ("v4_bridge.concept_decl_facts_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdConceptIndexArm::V4BridgeConceptDeclFactsLive };
+}
+#[rustfmt::skip]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EvalCallBridgeStdFnIndexArm {
+    V4BridgeFnArrowDeclFactsLive,
+    V4BridgeFnArrowDeclSubstrateIsWholeTree,
+}
+
+#[rustfmt::skip]
+pub fn lookup_eval_call_bridge_std_fn_index(spelling: &str) -> Option<EvalCallBridgeStdFnIndexArm> {
+    match spelling {
+        "fn_arrow_decl_facts_live" => Some(EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclFactsLive),
+        "fn_arrow_decl_substrate_is_whole_tree" => Some(EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclSubstrateIsWholeTree),
+        _ => None,
+    }
+}
+
+#[rustfmt::skip]
+macro_rules! eval_call_bridge__v2_std_fn_index_arm {
+    ("v4_bridge.fn_arrow_decl_facts_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclFactsLive };
+    ("v4_bridge.fn_arrow_decl_substrate_is_whole_tree") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclSubstrateIsWholeTree };
+}
+#[rustfmt::skip]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EvalCallBridgeLensAffectedSetCorpusDependencyViewArm {
+    V4BridgeCorpusDependencyViewPerPrSubstrateRefuse,
+}
+
+#[rustfmt::skip]
+pub fn lookup_eval_call_bridge_lens_affected_set_corpus_dependency_view(spelling: &str) -> Option<EvalCallBridgeLensAffectedSetCorpusDependencyViewArm> {
+    match spelling {
+        "corpus_dependency_view_per_pr_substrate_refuse" => Some(EvalCallBridgeLensAffectedSetCorpusDependencyViewArm::V4BridgeCorpusDependencyViewPerPrSubstrateRefuse),
+        _ => None,
+    }
+}
+
+#[rustfmt::skip]
+macro_rules! eval_call_bridge__v2_lens_affected_set_corpus_dependency_view_arm {
+    ("v4_bridge.corpus_dependency_view_per_pr_substrate_refuse") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeLensAffectedSetCorpusDependencyViewArm::V4BridgeCorpusDependencyViewPerPrSubstrateRefuse };
+}
+#[rustfmt::skip]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EvalCallBridgeStdDataIndexArm {
+    V4BridgeDataInitDeclFactsLive,
+}
+
+#[rustfmt::skip]
+pub fn lookup_eval_call_bridge_std_data_index(spelling: &str) -> Option<EvalCallBridgeStdDataIndexArm> {
+    match spelling {
+        "data_init_decl_facts_live" => Some(EvalCallBridgeStdDataIndexArm::V4BridgeDataInitDeclFactsLive),
+        _ => None,
+    }
+}
+
+#[rustfmt::skip]
+macro_rules! eval_call_bridge__v2_std_data_index_arm {
+    ("v4_bridge.data_init_decl_facts_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdDataIndexArm::V4BridgeDataInitDeclFactsLive };
+}
+#[rustfmt::skip]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EvalCallBridgeLensInertLensArm {
+    V4BridgeInertLensUnreachedModuleCount,
+    V4BridgeInertLensTopLevelModuleCount,
+}
+
+#[rustfmt::skip]
+pub fn lookup_eval_call_bridge_lens_inert_lens(spelling: &str) -> Option<EvalCallBridgeLensInertLensArm> {
+    match spelling {
+        "inert_lens_unreached_module_count" => Some(EvalCallBridgeLensInertLensArm::V4BridgeInertLensUnreachedModuleCount),
+        "inert_lens_top_level_module_count" => Some(EvalCallBridgeLensInertLensArm::V4BridgeInertLensTopLevelModuleCount),
+        _ => None,
+    }
+}
+
+#[rustfmt::skip]
+macro_rules! eval_call_bridge__v2_lens_inert_lens_arm {
+    ("v4_bridge.inert_lens_unreached_module_count") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeLensInertLensArm::V4BridgeInertLensUnreachedModuleCount };
+    ("v4_bridge.inert_lens_top_level_module_count") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeLensInertLensArm::V4BridgeInertLensTopLevelModuleCount };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
