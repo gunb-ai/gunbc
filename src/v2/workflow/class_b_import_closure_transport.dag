@@ -1,6 +1,7 @@
 module v2.workflow.class_b_import_closure_transport
 
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.shell
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.class_b_import_closure_overlay {
