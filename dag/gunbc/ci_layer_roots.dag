@@ -997,6 +997,12 @@ data falsifier_substrate_long_lane_note: String = "Nightly falsifier batch 6 (te
 
 data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
   SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/direct_rust_door_observation_test.dag",
+    function: "direct_rust_door_observation_is_candidate_rejected",
+    reason: "12.7-15.1s measured eval per witness (wise-ram-22, 2026-08-04, four runs at --eval-budget-ms 900000): observe_direct_rust_door_provenance runs the real ingest-assemble-infer-mint path. The cost is fixture-shaped pipeline depth, not corpus breadth — the cost partition attributes ~79 percent to load_bare_edge_index, a corpus-wide index memoized per MultiEntryIndex that a single-entry harness pays in full and that amortizes across a real batch, so the witness's own work is roughly the 5s typecheck plus eval remainder",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery — or this witness becomes stale because DirectRustDoorSourceProduced becomes reachable (containment lane PR D) - it asserts a CURRENT state, so it must be deleted or re-aimed in the change that fixes the source path, not left asserting a false negative; or the witness-evidence-lifecycle program lands per-witness declared execution requirements and route derives from those rather than from this file's directory (docs/plans/witness-evidence-lifecycle-design.md), at which point this row and the test/claim/long dir grain dissolve together"
+  },
+  SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
     function: "wave1_gate1_d_census_subsumption_witness_holds",
     reason: "134526ms measured witness wall on a cold run (27x a 5s fast-lane budget, test-decomposition-wcf-cut.md Class C, merry-ibex-306 2026-07-25): the fn builds 10 ingested_fixture_arrows fixtures through a real tokenize->parse_module->normalize->resolve pass each, across two aggregator checks (well-formedness, behavior-kind) — genuine corpus breadth, not a fixture-shaped defect. The mechanism-only sibling (self_host/wave1_gate1_d_mvp_subsumption_witness_test.dag table_fixture check_fns, measured eval_self=0.000ms) is already covered by the source-root *_test.dag discovery walk (gunbc.commit_workflow wave1_gate1_d_census_class_c_split_note) — no explicit per-PR roster row for it",
