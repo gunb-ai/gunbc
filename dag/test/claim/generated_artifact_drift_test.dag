@@ -27,6 +27,7 @@ import gunbc.heal_push_plan {
   HealPushPlanInconsistent, RemedyOwner, RemedyAuthor, RemedyMachine,
   RemedyProviderObservation,
   HealPushFailure, PushBindingInputValueUnsupported,
+  HealPushBindingSite,
   failure_causes, refusal_causes_token, remediation_for_refusal,
   refusal_cause_remedy_owner, plan_remediation, live_heal_remediation,
   remediation_author_commit_paths,
@@ -329,6 +330,48 @@ test fn witness_only_a_structurally_unavailable_scope_is_author_work() -> Bool {
          RemedyProviderObservation => true
          _ => false
        }
+}
+
+test fn witness_binding_refusal_retains_its_locator() -> Bool {
+  let broken = plan_heal_push_from_binding(
+    artifacts: [CiYamlArtifact, GitignoreArtifact],
+    resolution: PushCredentialBindingMissing { checkout_step: ci_heal_checkout_step_ref },
+    control_plane: live_heal_control_plane
+  )
+  match broken {
+    HealPushRefused { refused: _, cause } =>
+      (count(cause.failures) == 1) && any(
+        cause.failures,
+        f => match f.site {
+          Absent => false
+          Present { value: site } =>
+            site.checkout_step.module_path == ci_heal_checkout_step_ref.module_path
+              && site.checkout_step.decl_name == ci_heal_checkout_step_ref.decl_name
+              && match site.input { Absent => true  _ => false }
+        }
+      )
+    _ => false
+  }
+}
+
+test fn witness_refusal_cause_tokens_are_pairwise_distinct() -> Bool {
+  let causes = [
+    ActionsJobCredentialScopeUnavailable, ActionsJobCredentialScopeNotGranted,
+    ActionsJobCredentialForkPolicyUnobserved, ActionsJobCredentialAxisNotModeled,
+    ActionsJobCredentialDeclaredAccessInvalid, PushBindingMissingOnCheckoutStep,
+    PushBindingLeaseUnresolved, PushBindingStepKindNotSupported,
+    PushBindingActionNotCheckout, PushBindingInputObservationDuplicated,
+    PushBindingInputValueUnsupported, ManagedInstallationGrantUnobserved,
+    ManagedCredentialSubjectMismatch
+  ]
+  let tokens = map(causes, c => heal_push_refusal_cause_token(cause: c))
+  fold_list(
+    xs: tokens,
+    empty: true,
+    cons: fn(ok, t) {
+      ok && (count(filter(tokens, u => u == t)) == 1) && (t != "")
+    }
+  )
 }
 
 test fn witness_machine_fault_never_becomes_author_work() -> Bool {
