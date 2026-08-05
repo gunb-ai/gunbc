@@ -1002,7 +1002,7 @@ pub fn constructor_reference_admission_enforced() -> bool {
 pub fn constructor_reference_admission_frontier_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Counted v1 seed realization for ConstructorReferenceAdmission (Horn 3, msg_968d6c24): unified infer construction-admission beside sole_constructor record-literal refusal. Dissolves when compiler_frontier_row_04_infer self-emits CargoGreen and v2 infer is the production typecheck path (^migrate_when_closure_self_emits_cargo_green).".to_string()
+            "Counted v1 seed realization for ConstructorReferenceAdmission (Horn 3, msg_968d6c24): unified infer construction-admission beside sole_constructor record-literal refusal. MERGED on main via gunbc#7860 (2026-08-05): infer-time ConstructorCallAdmissionRefused with decl_ref roster is the shipped authority; lookup-only admission (#7859) remains superseded sizing evidence only. Dissolves when compiler_frontier_row_04_infer self-emits CargoGreen and v2 infer is the production typecheck path (^migrate_when_closure_self_emits_cargo_green).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
