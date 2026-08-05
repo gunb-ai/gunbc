@@ -5305,14 +5305,22 @@ fn write_witness_row_cost_drift_receipt_at(
                     ));
                     continue;
                 }
+<<<<<<< HEAD
                 let observed = row.eval_wall_nanos / 1_000_000;
+=======
+                let observed = row.2 / 1_000_000;
+>>>>>>> origin/main
                 let dated = basis.get(&key);
                 let verdict = match witness_row_cost_verdict_via_authority(&ctx, observed, dated) {
                     Ok(v) => v,
                     Err(e) => {
                         eprintln!(
                             "claim_executor: drift comparator refused for {}::{}: {e} — walk fails closed here",
+<<<<<<< HEAD
                             row.entry, row.function
+=======
+                            row.0, row.1
+>>>>>>> origin/main
                         );
                         return false;
                     }
@@ -5330,7 +5338,11 @@ fn write_witness_row_cost_drift_receipt_at(
                 };
                 body.push_str(&format!(
                     "{n}\t{}\t{}\t{observed}\t{basis_cell}\t{verdict}\t{run_ref_cell}\n",
+<<<<<<< HEAD
                     row.entry, row.function
+=======
+                    row.0, row.1
+>>>>>>> origin/main
                 ));
             }
         }
