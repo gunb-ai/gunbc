@@ -333,6 +333,20 @@ import gunbc.roadmap_presentation {
 import extdeps.gunbc
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
+import gunbc.package_delivery {
+  materialize_codex_runtime_bundle,
+  CodexRuntimeMaterialized,
+  codex_runtime_lock_path,
+  codex_runtime_manifest_path,
+}
+import gunbc.codex_app_server_press {
+  codex_press_specimen_node_identity,
+  press_codex_app_server_for_bundle,
+  CodexPressTurnStarted,
+  CodexPressLoginRequired,
+  CodexPressUnavailable,
+  CodexPressRefused,
+}
 import extdeps.llm.cli {
   shape_codex_login_status_env_args_for_program,
   shape_codex_version_env_args_for_program,
@@ -4459,6 +4473,79 @@ type BeltDispatchResult
   | DispatchObserveRefused { node_id: String, reason: String }
   | DispatchAuthorityRefused { node_id: String, detail: String }
   | DispatchSpawnFailed { node_id: String, step: String, detail: String }
+  | DispatchPressTurnStarted {
+      node_id: String
+      attempt_key: String
+      turn_key: String
+      caption: String
+    }
+  | DispatchPressLoginRequired { node_id: String, reason: String }
+  | DispatchPressUnavailable { node_id: String, reason: String }
+  | DispatchPressRefused { node_id: String, reason: String }
+
+data belt_codex_press_specimen_cutover_note: String = "FIRST CODEX PRESS SPECIMEN cutover: node identity codex-app-server-press-vertical routes through app-server JSON-RPC (materialize → bind via initialize → press outcome), never tmux + exec --json. Other nodes retain the legacy spawn path until their own cutover. UI captions for press outcomes are turn started | login required | unavailable | refused — never dispatch · accepted."
+
+fn belt_dispatch_codex_press_specimen(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+) -> BeltDispatchResult {
+  let node_id = node.node as String
+  match clock_now_probed_at() {
+    Absent =>
+      DispatchPressUnavailable {
+        node_id: node_id,
+        reason: "clock observation refused before Codex press attempt mint",
+      }
+    Present { value: probed_at } => {
+      let attempt = dispatch_attempt_key(node_id: node.node, probed_at: probed_at as String)
+      let turn = concat(attempt, "-turn-1")
+      let lock_text = filesystem_read(path: codex_runtime_lock_path as String).content
+      match materialize_codex_runtime_bundle(
+        lock_text: lock_text,
+        manifest_src: codex_runtime_manifest_path as FilePath,
+        lock_src: codex_runtime_lock_path as FilePath,
+      ) {
+        CodexRuntimeMaterialized { bundle } =>
+          match press_codex_app_server_for_bundle(
+            bundle: bundle,
+            node_identity: codex_press_specimen_node_identity,
+            attempt_key: attempt,
+            turn_key: turn,
+            workspace_root: instance.repo_root as FilePath,
+            head_sha: "",
+          ) {
+            CodexPressTurnStarted { receipt } =>
+              DispatchPressTurnStarted {
+                node_id: node_id,
+                attempt_key: receipt.attempt_key,
+                turn_key: receipt.turn_key,
+                caption: "turn started",
+              }
+            CodexPressLoginRequired { reason, frames: _ } =>
+              DispatchPressLoginRequired {
+                node_id: node_id,
+                reason: reason as String,
+              }
+            CodexPressUnavailable { reason } =>
+              DispatchPressUnavailable {
+                node_id: node_id,
+                reason: reason as String,
+              }
+            CodexPressRefused { reason, frames: _ } =>
+              DispatchPressRefused {
+                node_id: node_id,
+                reason: reason as String,
+              }
+          }
+        _ =>
+          DispatchPressUnavailable {
+            node_id: node_id,
+            reason: "Codex runtime bundle materialization refused before press",
+          }
+      }
+    }
+  }
+}
 
 fn belt_dispatch_node_for_instance(
   instance: HostDashboardInstance,
@@ -4479,6 +4566,8 @@ fn belt_dispatch_node_for_instance(
     NodeFound { node: node } =>
       if signoff_accepts(s: node.signoff) {
         DispatchNodeAlreadyDone { node_id: node_id }
+      } else if node_id == (codex_press_specimen_node_identity as String) {
+        belt_dispatch_codex_press_specimen(instance: instance, node: node)
       } else {
         match belt_observe_for_instance(instance: instance) {
           ObserveRefused { reason: r } =>
@@ -4540,6 +4629,15 @@ fn belt_dispatch_status_label(r: BeltDispatchResult) -> String {
     DispatchObserveRefused { node_id: _, reason: _ } => "observe_refused"
     DispatchAuthorityRefused { node_id: _, detail: _ } => "authority_refused"
     DispatchSpawnFailed { node_id: _, step: _, detail: _ } => "spawn_failed"
+    DispatchPressTurnStarted {
+      node_id: _,
+      attempt_key: _,
+      turn_key: _,
+      caption: _,
+    } => "turn_started"
+    DispatchPressLoginRequired { node_id: _, reason: _ } => "login_required"
+    DispatchPressUnavailable { node_id: _, reason: _ } => "unavailable"
+    DispatchPressRefused { node_id: _, reason: _ } => "press_refused"
   }
 }
 
@@ -4571,6 +4669,15 @@ fn belt_dispatch_result_band(r: BeltDispatchResult) -> DispatchBand {
     DispatchObserveRefused { node_id: _, reason: _ } => BandLoud
     DispatchAuthorityRefused { node_id: _, detail: _ } => BandLoud
     DispatchSpawnFailed { node_id: _, step: _, detail: _ } => BandLoud
+    DispatchPressTurnStarted {
+      node_id: _,
+      attempt_key: _,
+      turn_key: _,
+      caption: _,
+    } => BandOk
+    DispatchPressLoginRequired { node_id: _, reason: _ } => BandFail
+    DispatchPressUnavailable { node_id: _, reason: _ } => BandLoud
+    DispatchPressRefused { node_id: _, reason: _ } => BandLoud
   }
 }
 
@@ -4633,6 +4740,15 @@ fn belt_dispatch_result_exemplars() -> List<BeltDispatchResult> {
     DispatchObserveRefused { node_id: "x", reason: "r" },
     DispatchAuthorityRefused { node_id: "x", detail: "d" },
     DispatchSpawnFailed { node_id: "x", step: "s", detail: "d" },
+    DispatchPressTurnStarted {
+      node_id: "x",
+      attempt_key: "a",
+      turn_key: "t",
+      caption: "turn started",
+    },
+    DispatchPressLoginRequired { node_id: "x", reason: "r" },
+    DispatchPressUnavailable { node_id: "x", reason: "r" },
+    DispatchPressRefused { node_id: "x", reason: "r" },
   ]
 }
 
@@ -4714,6 +4830,41 @@ fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> JsonValue {
         json_kv(key: "provider", value: json_string(s: belt_dispatch_provider_label())),
         json_kv(key: "step", value: json_string(s: st)),
         json_kv(key: "detail", value: json_string(s: d)),
+      ])
+    DispatchPressTurnStarted {
+      node_id: nid,
+      attempt_key: ak,
+      turn_key: tk,
+      caption: cap,
+    } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
+        json_kv(key: "attempt_key", value: json_string(s: ak)),
+        json_kv(key: "turn_key", value: json_string(s: tk)),
+        json_kv(key: "caption", value: json_string(s: cap)),
+        json_kv(key: "provider", value: json_string(s: "codex-app-server")),
+      ])
+    DispatchPressLoginRequired { node_id: nid, reason: why } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
+        json_kv(key: "reason", value: json_string(s: why)),
+        json_kv(key: "caption", value: json_string(s: "login required")),
+      ])
+    DispatchPressUnavailable { node_id: nid, reason: why } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
+        json_kv(key: "reason", value: json_string(s: why)),
+        json_kv(key: "caption", value: json_string(s: "unavailable")),
+      ])
+    DispatchPressRefused { node_id: nid, reason: why } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
+        json_kv(key: "reason", value: json_string(s: why)),
+        json_kv(key: "caption", value: json_string(s: "refused")),
       ])
   }
 }

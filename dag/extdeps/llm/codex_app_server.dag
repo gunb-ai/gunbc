@@ -54,3 +54,10 @@ data codex_app_server_method_note: String = "FIRST PRESS SLICE method sequence f
 type CodexAppServerExecutable {
   path: FilePath
 }
+
+fn codex_app_server_initialize_request_line() -> NonEmptyStr {
+  concat(
+    "\{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":",
+    "\{\"clientInfo\":\{\"name\":\"gunbc\",\"title\":\"gunbc\",\"version\":\"0\"\},\"capabilities\":\{\}\}\}",
+  ) as NonEmptyStr
+}
