@@ -8,8 +8,8 @@ import v2.std.algebra { ListTailResult, TailAbsent, TailFound, fold_list, is_emp
 import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_source, string_head, string_is_empty, string_tail }
 import v2.std.nat { Nat, nat_lte, nat_gte }
 import v2.std.logic { Bool }
+import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken }
 import v2.std.compilers.lexing {
-  AnnotationPlacement,
   AnnotationRule,
   BlockCommentTextChar,
   DigitChar,
@@ -33,8 +33,6 @@ import v2.std.compilers.lexing {
   lex_artifact_semantic_tokens,
   token_stream_empty,
   token_stream_new,
-  LeadingAfterLineIndent,
-  TrailingAfterSemanticToken,
   TriviaRule,
   UnboundSourceAnnotation,
   VoidLexRules,
