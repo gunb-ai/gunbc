@@ -6197,6 +6197,142 @@ pub fn load_sources_for_entry_with_pool_index(
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
+/// Import-edge closure ONLY — no reference-derived or bare-reference extension.
+/// Host twin for witnesses proving a module's cross-module bindings come from
+/// declared `import` edges, not pool membership or bare-reference coincidence
+/// (Class B controls per DESIGN import-strip witness-discovery cascade).
+#[cfg(feature = "test_hooks")]
+pub fn declared_import_closure_live_paths(
+    source_roots: &[String],
+    entry_path: &str,
+) -> Result<Vec<String>, String> {
+    let index = build_multi_entry_index_primary_precedence(source_roots);
+    let entry_rel = workspace_relative_entry_path(entry_path);
+    if !index.module_graph_facts.declares_repo_path(&entry_rel) {
+        return Err(format!(
+            "declared_import_closure_live_paths: entry '{entry_rel}' has no provenance in the module-graph facts pool (fail-closed)"
+        ));
+    }
+    Ok(import_closure_live_paths_with_facts(
+        &entry_rel,
+        &index.module_graph_facts,
+    ))
+}
+
+/// Whether `module_path` is indexed under primary-precedence `pool_roots`.
+#[cfg(feature = "test_hooks")]
+pub fn primary_precedence_pool_contains_module(pool_roots: &[String], module_path: &str) -> bool {
+    let index = build_multi_entry_index_primary_precedence(pool_roots);
+    index.source_files.contains_key(module_path)
+}
+
+/// Repo-relative paths of modules loaded for the entry's declared import closure.
+#[cfg(feature = "test_hooks")]
+pub fn declared_import_closure_source_paths(
+    pool_roots: &[String],
+    entry_path: &str,
+) -> Result<Vec<String>, String> {
+    let index = build_multi_entry_index_primary_precedence(pool_roots);
+    let sources = load_declared_import_closure_sources(&index, entry_path)?;
+    Ok(sources
+        .iter()
+        .map(|s| workspace_relative_repo_path(&s.path))
+        .collect())
+}
+
+#[cfg(feature = "test_hooks")]
+fn load_declared_import_closure_sources(
+    index: &MultiEntryIndex,
+    entry_path: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let entry_source = entry_source_from_index_or_disk(&index.source_files, entry_path)?;
+    let rel_path = entry_source.path.clone();
+    let mut sources = resolve_transitively(
+        vec![entry_source.clone()],
+        &index.source_files,
+        &index.module_graph_facts,
+    )?;
+    if !sources
+        .iter()
+        .any(|s| s.path == rel_path || same_canonical_file(&s.path, &rel_path))
+    {
+        sources.push(entry_source);
+    }
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    sources.dedup_by(|a, b| a.path == b.path);
+    Ok(sources)
+}
+
+/// Resolve/typecheck an entry using ONLY its declared import-edge closure.
+#[cfg(feature = "test_hooks")]
+pub fn compile_entry_on_declared_import_closure_only(
+    source_roots: &[String],
+    entry_path: &str,
+) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
+    compile_declared_import_closure_only_with_pool(source_roots, entry_path, None)
+}
+
+/// Pool-scoped variant: builds the module index from `pool_roots` but compiles only
+/// the entry's declared import-edge closure. Use a tmp-root overlay (primary-precedence
+/// root[0]) when simulating a stripped entry so pool membership can affect resolution
+/// while the import closure stays entry-only; `entry_content_override` skips the pool
+/// entirely and is only for fast isolated negative controls without ambient pressure.
+#[cfg(feature = "test_hooks")]
+pub fn compile_declared_import_closure_only_with_pool(
+    pool_roots: &[String],
+    entry_path: &str,
+    entry_content_override: Option<&str>,
+) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
+    let index = build_multi_entry_index_primary_precedence(pool_roots);
+    let sources = if let Some(content) = entry_content_override {
+        vec![Rc::new(v1_compiler_compile::SourceFile {
+            path: entry_path.to_string(),
+            content: content.to_string(),
+        })]
+    } else {
+        load_declared_import_closure_sources(&index, entry_path)?
+    };
+    Ok(v1_compiler_compile::compile_to_resolved(Rc::new(
+        sources.into(),
+    )))
+}
+
+/// Declaration identity + binding-source receipt for one cross-module symbol site.
+#[cfg(feature = "test_hooks")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrossModuleBindingReceipt {
+    pub definer_module: Option<String>,
+    pub binding_source: Option<UnlistedImportBindingSource>,
+}
+
+/// Extract per-symbol binding receipts for a consumer module against a resolved graph.
+#[cfg(feature = "test_hooks")]
+pub fn cross_module_binding_receipts_for_symbols(
+    graph: &ResolvedGraph,
+    consumer_module: &str,
+    symbols: &[&str],
+) -> std::collections::BTreeMap<String, CrossModuleBindingReceipt> {
+    use std::collections::BTreeMap;
+    symbols
+        .iter()
+        .map(|sym| {
+            let definer = definer_module_for_name(graph, sym);
+            let binding_source = if definer.is_some() {
+                Some(classify_unlisted_import_binding_source(graph, consumer_module, sym).0)
+            } else {
+                None
+            };
+            (
+                (*sym).to_string(),
+                CrossModuleBindingReceipt {
+                    definer_module: definer,
+                    binding_source,
+                },
+            )
+        })
+        .collect::<BTreeMap<_, _>>()
+}
+
 /// Builtins that REQUIRE a service registration to dispatch, paired with the
 /// services-census key whose provider must therefore be in the closure. This is
 /// the one dependency edge a name-derived closure cannot see: the builtin's
@@ -35768,6 +35904,51 @@ mod module_path_index_tests {
             ws.join(sample).is_file(),
             "indexed rel path must resolve under workspace_root()"
         );
+    }
+
+    #[test]
+    fn build_module_path_index_matches_primary_precedence_module_source_index() {
+        let ws = workspace_root();
+        let tmp = ws.join("target").join(format!(
+            "path-index-prec-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let stub_dir = tmp.join("dag/gunbc");
+        std::fs::create_dir_all(&stub_dir).expect("overlay parents");
+        std::fs::write(
+            stub_dir.join("ci_layer_roots.dag"),
+            "module gunbc.ci_layer_roots\n\ndata overlay_shadow_marker: Int = 0\n",
+        )
+        .expect("write overlay stub");
+
+        let roots = vec![
+            tmp.to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let source_index = super::build_module_index_primary_precedence(&roots);
+        let path_index = build_module_path_index(&roots);
+        let module = "gunbc.ci_layer_roots";
+        let source_path = workspace_relative_repo_path(
+            &source_index
+                .get(module)
+                .expect("primary-precedence source index")
+                .path,
+        );
+        let indexed_path = path_index.get(module).expect("module path index").clone();
+        assert_eq!(
+            indexed_path, source_path,
+            "module-graph facts path index must agree with primary-precedence source index"
+        );
+        assert!(
+            indexed_path.contains("path-index-prec"),
+            "root[0] overlay must win over later dag root for the same module path"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
