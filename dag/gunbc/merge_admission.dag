@@ -30,7 +30,7 @@ import gunbc.commit_workflow {
   CommitCheckEnrollment, CommitCheckKind,
   CommitSpecGate, CommitWitnessClaim, CommitCargoFmtCheck,
 }
-import std.measure { millisecond_count }
+import std.measure { millisecond_count, ClockBasis, CpuClock, WallClock }
 import std.realization_schedule {
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, NativeBundleWitnessKind,
   WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams, SpanEnrolled,

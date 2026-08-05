@@ -36,7 +36,7 @@ import v2.compiler.source_authority {
   ParsedFromSource,
   ProducedByBehavior,
 }
-import std.measure { millisecond, millisecond_count }
+import std.measure { millisecond, millisecond_count, WallClock, clock_basis_eq }
 import std.realization_schedule {
   string_list_eq, ScheduleWitnessEntry,
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq,

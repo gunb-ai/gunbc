@@ -15,7 +15,7 @@ import gunbc.commit_workflow {
   roster_witness_spans_wellformed,
   witness_span_wellformed
 }
-import std.measure { millisecond }
+import std.measure { millisecond, WallClock }
 import std.realization_schedule {
   WitnessSeam, SpanSeams, SpanUndeclared, SpanEnrolled,
   WitnessCostBasis, MeasuredAtExactSubject,
