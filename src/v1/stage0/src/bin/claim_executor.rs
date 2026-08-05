@@ -384,7 +384,7 @@ fn write_compile_clean_cost_drift_receipt_at(
         return false;
     }
     eprintln!(
-        "[receipt] floor compile-clean cost drift: basis_absent={basis_absent_count} drift_exceeded={drift_count} (TSV: {})",
+        "[receipt] floor compile-clean cost drift: basis_absent={basis_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count} (TSV: {})",
         path.display()
     );
     true
