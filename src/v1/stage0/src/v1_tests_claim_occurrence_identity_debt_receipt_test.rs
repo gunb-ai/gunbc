@@ -26,7 +26,7 @@ pub use crate::v1_std_core::{NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn occurrence_identity_debt_receipt_offline_recipe() -> String {
     thread_local! {
@@ -59,11 +59,11 @@ pub fn oid_receipt_parse(
     source: String,
     file: String,
     allocator: OccurrenceIdAllocator,
-) -> Rc<ParseWithTableResult> {
+) -> Arc<ParseWithTableResult> {
     parse_with_table_in_occurrence_scope(
         tokenize(source.clone(), file.clone()),
         v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
             file.clone(),
             build_newline_index(file.clone(), source.clone()),
         ),
@@ -73,10 +73,10 @@ pub fn oid_receipt_parse(
 }
 
 pub fn oid_receipt_name_for_occurrence(
-    transport: Rc<OccurrenceTransport>,
+    transport: Arc<OccurrenceTransport>,
     occurrence: OccurrenceId,
 ) -> Option<String> {
-    match Rc::new({
+    match Arc::new({
         let mut __result = Vec::new();
         for entry in transport.index.clone().entries.clone().iter().cloned() {
             if (entry.projection.clone().occurrence.clone().value.clone()
@@ -96,10 +96,10 @@ pub fn oid_receipt_name_for_occurrence(
 }
 
 pub fn oid_receipt_lexical_declarations_named(
-    transport: Rc<OccurrenceTransport>,
+    transport: Arc<OccurrenceTransport>,
     name: String,
-) -> Rc<Vec<Rc<DeclarationOccurrence>>> {
-    Rc::new({
+) -> Arc<Vec<Arc<DeclarationOccurrence>>> {
+    Arc::new({
         let mut __result = Vec::new();
         for declaration in transport.declarations.clone().iter().cloned() {
             if match declaration.category.clone() {
@@ -121,10 +121,10 @@ pub fn oid_receipt_lexical_declarations_named(
 }
 
 pub fn oid_receipt_lexical_references_named(
-    transport: Rc<OccurrenceTransport>,
+    transport: Arc<OccurrenceTransport>,
     name: String,
-) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
-    Rc::new({
+) -> Arc<Vec<Arc<ReferenceOccurrence>>> {
+    Arc::new({
         let mut __result = Vec::new();
         for reference in transport.references.clone().iter().cloned() {
             if match reference.category.clone() {
@@ -146,9 +146,9 @@ pub fn oid_receipt_lexical_references_named(
 }
 
 pub fn oid_receipt_exact_binding_holds(
-    transport: Rc<OccurrenceTransport>,
-    reference: Rc<ReferenceOccurrence>,
-    declaration: Rc<DeclarationOccurrence>,
+    transport: Arc<OccurrenceTransport>,
+    reference: Arc<ReferenceOccurrence>,
+    declaration: Arc<DeclarationOccurrence>,
 ) -> bool {
     match (*resolve_reference_occurrence_binding(
         transport.clone(),
@@ -167,7 +167,7 @@ pub fn oid_receipt_exact_binding_holds(
                 unreachable!()
             };
             (occurrence_containment_paths_equal(
-                Rc::new(OccurrenceContainmentPath {
+                Arc::new(OccurrenceContainmentPath {
                     ancestors: binding
                         .occurrence
                         .clone()
@@ -185,7 +185,7 @@ pub fn oid_receipt_exact_binding_holds(
                 }),
                 reference.containment.clone(),
             ) && occurrence_containment_paths_equal(
-                Rc::new(OccurrenceContainmentPath {
+                Arc::new(OccurrenceContainmentPath {
                     ancestors: binding
                         .candidate
                         .clone()
@@ -209,8 +209,8 @@ pub fn oid_receipt_exact_binding_holds(
 }
 
 pub fn oid_receipt_unbound_reference_holds(
-    transport: Rc<OccurrenceTransport>,
-    reference: Rc<ReferenceOccurrence>,
+    transport: Arc<OccurrenceTransport>,
+    reference: Arc<ReferenceOccurrence>,
 ) -> bool {
     match (*resolve_reference_occurrence_binding(
         transport.clone(),
@@ -230,7 +230,7 @@ pub fn oid_receipt_unbound_reference_holds(
                 unreachable!()
             };
             occurrence_containment_paths_equal(
-                Rc::new(OccurrenceContainmentPath {
+                Arc::new(OccurrenceContainmentPath {
                     ancestors: occurrence.containment.clone().ancestors.clone(),
                     terminal: occurrence.containment.clone().terminal.clone(),
                 }),
@@ -242,9 +242,9 @@ pub fn oid_receipt_unbound_reference_holds(
 }
 
 pub fn oid_receipt_all_pairs_bind_exactly(
-    transport: Rc<OccurrenceTransport>,
-    references: Rc<Vec<Rc<ReferenceOccurrence>>>,
-    declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
+    transport: Arc<OccurrenceTransport>,
+    references: Arc<Vec<Arc<ReferenceOccurrence>>>,
+    declarations: Arc<Vec<Arc<DeclarationOccurrence>>>,
 ) -> bool {
     {
         let mut __all = true;
@@ -272,9 +272,9 @@ pub fn oid_receipt_all_pairs_bind_exactly(
 }
 
 pub fn oid_receipt_single_pair_binds_exactly(
-    transport: Rc<OccurrenceTransport>,
-    references: Rc<Vec<Rc<ReferenceOccurrence>>>,
-    declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
+    transport: Arc<OccurrenceTransport>,
+    references: Arc<Vec<Arc<ReferenceOccurrence>>>,
+    declarations: Arc<Vec<Arc<DeclarationOccurrence>>>,
 ) -> bool {
     if (((references.clone().len() as i64) != 1) || ((declarations.clone().len() as i64) != 1)) {
         false
@@ -294,10 +294,10 @@ pub fn oid_receipt_single_pair_binds_exactly(
 }
 
 pub fn oid_receipt_single_populations_have_distinct_ids(
-    first_references: Rc<Vec<Rc<ReferenceOccurrence>>>,
-    first_declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
-    second_references: Rc<Vec<Rc<ReferenceOccurrence>>>,
-    second_declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
+    first_references: Arc<Vec<Arc<ReferenceOccurrence>>>,
+    first_declarations: Arc<Vec<Arc<DeclarationOccurrence>>>,
+    second_references: Arc<Vec<Arc<ReferenceOccurrence>>>,
+    second_declarations: Arc<Vec<Arc<DeclarationOccurrence>>>,
 ) -> bool {
     match first_references.clone().first().cloned() {
         None => false,
@@ -320,11 +320,11 @@ pub fn oid_receipt_single_populations_have_distinct_ids(
 }
 
 pub fn oid_receipt_occurrence_ids_are_pairwise_distinct(
-    occurrences: Rc<Vec<OccurrenceId>>,
+    occurrences: Arc<Vec<OccurrenceId>>,
 ) -> bool {
     {
         let mut __all = true;
-        for left in Rc::new(
+        for left in Arc::new(
             occurrences
                 .clone()
                 .iter()
@@ -338,7 +338,7 @@ pub fn oid_receipt_occurrence_ids_are_pairwise_distinct(
         {
             if !({
                 let mut __all = true;
-                for right in Rc::new(
+                for right in Arc::new(
                     occurrences
                         .clone()
                         .iter()
@@ -368,11 +368,11 @@ pub fn oid_receipt_occurrence_ids_are_pairwise_distinct(
 }
 
 pub fn oid_receipt_containments_are_pairwise_distinct(
-    containments: Rc<Vec<Rc<OccurrenceContainmentPath>>>,
+    containments: Arc<Vec<Arc<OccurrenceContainmentPath>>>,
 ) -> bool {
     {
         let mut __all = true;
-        for left in Rc::new(
+        for left in Arc::new(
             containments
                 .clone()
                 .iter()
@@ -386,7 +386,7 @@ pub fn oid_receipt_containments_are_pairwise_distinct(
         {
             if !({
                 let mut __all = true;
-                for right in Rc::new(
+                for right in Arc::new(
                     containments
                         .clone()
                         .iter()
@@ -416,7 +416,7 @@ pub fn oid_receipt_containments_are_pairwise_distinct(
 }
 
 pub fn oid_receipt_same_name_population_holds(
-    transport: Rc<OccurrenceTransport>,
+    transport: Arc<OccurrenceTransport>,
     name: String,
     declaration_count: i64,
     reference_count: i64,
@@ -425,14 +425,14 @@ pub fn oid_receipt_same_name_population_holds(
         let declarations = oid_receipt_lexical_declarations_named(transport.clone(), name.clone());
         let references = oid_receipt_lexical_references_named(transport.clone(), name.clone());
         let ids = v1_rt::concat(
-            Rc::new({
+            Arc::new({
                 let mut __result = Vec::new();
                 for declaration in declarations.clone().iter().cloned() {
                     __result.push(declaration.occurrence.clone());
                 }
                 __result
             }),
-            Rc::new({
+            Arc::new({
                 let mut __result = Vec::new();
                 for reference in references.clone().iter().cloned() {
                     __result.push(reference.occurrence.clone());
@@ -441,14 +441,14 @@ pub fn oid_receipt_same_name_population_holds(
             }),
         );
         let paths = v1_rt::concat(
-            Rc::new({
+            Arc::new({
                 let mut __result = Vec::new();
                 for declaration in declarations.clone().iter().cloned() {
                     __result.push(declaration.containment.clone());
                 }
                 __result
             }),
-            Rc::new({
+            Arc::new({
                 let mut __result = Vec::new();
                 for reference in references.clone().iter().cloned() {
                     __result.push(reference.containment.clone());

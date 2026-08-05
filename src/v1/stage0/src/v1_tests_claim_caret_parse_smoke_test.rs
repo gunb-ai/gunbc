@@ -19,7 +19,7 @@ pub use crate::v1_std_core::{ErrorNode, NewlineIndex, Node, TokenShape};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn caret_parse_smoke_parser_transport_enrollment() -> String {
     thread_local! {
@@ -30,10 +30,10 @@ pub fn caret_parse_smoke_parser_transport_enrollment() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn caret_parse_ctx() -> Rc<ParseContext> {
+pub fn caret_parse_ctx() -> Arc<ParseContext> {
     {
-        let empty = v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>();
-        Rc::new(ParseContext {
+        let empty = v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>();
+        Arc::new(ParseContext {
             source_indices: empty.clone(),
             intern_table: empty_intern_table(),
             occurrence_allocator: None,
@@ -89,17 +89,17 @@ pub fn caret_emit_disc_source() -> String {
     )
 }
 
-pub fn caret_source_file(path: String, content: String) -> Rc<SourceFile> {
-    Rc::new(SourceFile {
+pub fn caret_source_file(path: String, content: String) -> Arc<SourceFile> {
+    Arc::new(SourceFile {
         path: path.clone(),
         content: content.clone(),
     })
 }
 
-pub fn caret_compile_rust_emitted(source: Rc<SourceFile>) -> String {
+pub fn caret_compile_rust_emitted(source: Arc<SourceFile>) -> String {
     {
         let result = compile_sources(Rc::new(vec![source.clone()]), RenderTarget::Rust);
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
             for f in result.files.clone().iter().cloned() {
                 __result.push(f.content.clone());
@@ -110,7 +110,7 @@ pub fn caret_compile_rust_emitted(source: Rc<SourceFile>) -> String {
     }
 }
 
-pub fn caret_compile_rust_has_no_errors(source: Rc<SourceFile>) -> bool {
+pub fn caret_compile_rust_has_no_errors(source: Arc<SourceFile>) -> bool {
     {
         let result = compile_sources(Rc::new(vec![source.clone()]), RenderTarget::Rust);
         ({
@@ -127,7 +127,7 @@ pub fn caret_compile_rust_has_no_errors(source: Rc<SourceFile>) -> bool {
 }
 
 pub fn caret_diagnostics_contain_pattern(
-    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    diagnostics: Arc<Vec<Arc<ErrorNode>>>,
     pattern: String,
 ) -> bool {
     {
@@ -142,9 +142,9 @@ pub fn caret_diagnostics_contain_pattern(
     }
 }
 
-pub fn caret_token_stream_only_eof_remains(stream: Rc<TokenStream>) -> bool {
+pub fn caret_token_stream_only_eof_remains(stream: Arc<TokenStream>) -> bool {
     {
-        let remaining = Rc::new(
+        let remaining = Arc::new(
             stream
                 .all
                 .clone()
@@ -166,15 +166,15 @@ pub fn caret_token_stream_only_eof_remains(stream: Rc<TokenStream>) -> bool {
     }
 }
 
-pub fn caret_expr_is_symbol_literal(expr: Rc<Node>) -> bool {
+pub fn caret_expr_is_symbol_literal(expr: Arc<Node>) -> bool {
     (expr_data_variant(expr.expr_data.clone()) == "ExprLiteral".to_string())
 }
 
-pub fn caret_expr_is_discriminant_call(expr: Rc<Node>) -> bool {
+pub fn caret_expr_is_discriminant_call(expr: Arc<Node>) -> bool {
     ((expr_data_variant(expr.expr_data.clone()) == "ExprCall".to_string())
         && (expr_call_func_at(
             expr.clone(),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
         ) == "discriminant".to_string()))
 }
 

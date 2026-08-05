@@ -13,7 +13,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn keyed_roster_note() -> String {
     thread_local! {
@@ -25,14 +25,14 @@ pub fn keyed_roster_note() -> String {
 }
 
 pub fn keyed_occurrence_count<K: Clone, V: Clone>(
-    rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
+    rows: Arc<Vec<Arc<KeyedRow<K, V>>>>,
     wanted_key: K,
     key_eq: impl Fn(K, K) -> bool + Clone,
 ) -> i64 {
     rows.clone()
         .iter()
         .cloned()
-        .fold(0, |n: i64, row: Rc<KeyedRow<K, V>>| {
+        .fold(0, |n: i64, row: Arc<KeyedRow<K, V>>| {
             if key_eq(row.row_key.clone(), wanted_key.clone()) {
                 (n.clone() + 1)
             } else {
@@ -45,12 +45,12 @@ pub fn keyed_occurrence_count<K: Clone, V: Clone>(
 pub struct KeyedRosterDuplicateEvidence<K: Clone, V: Clone> {
     pub key: K,
     pub value: V,
-    pub first: Rc<KeyedRow<K, V>>,
-    pub duplicate: Rc<KeyedRow<K, V>>,
+    pub first: Arc<KeyedRow<K, V>>,
+    pub duplicate: Arc<KeyedRow<K, V>>,
     pub _phantom: std::marker::PhantomData<(K, V)>,
 }
 
-pub fn path_occurrence_count(paths: Rc<Vec<String>>, target: String) -> i64 {
+pub fn path_occurrence_count(paths: Arc<Vec<String>>, target: String) -> i64 {
     paths.clone().iter().cloned().fold(0, |n: i64, p: String| {
         if (p.clone() == target.clone()) {
             (n.clone() + 1)
@@ -65,10 +65,10 @@ pub fn path_occurrence_count(paths: Rc<Vec<String>>, target: String) -> i64 {
 pub enum KeyedRosterSecondRowScan<K: Clone, V: Clone> {
     KeyedRosterSecondRowScanAbsent,
     KeyedRosterSecondRowScanAwaitingSecond,
-    KeyedRosterSecondRowScanFound { row: Rc<KeyedRow<K, V>> },
+    KeyedRosterSecondRowScanFound { row: Arc<KeyedRow<K, V>> },
 }
 impl<K: Clone, V: Clone> KeyedRosterSecondRowScan<K, V> {
-    pub fn row(&self) -> Rc<KeyedRow<K, V>> {
+    pub fn row(&self) -> Arc<KeyedRow<K, V>> {
         match self {
             KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAbsent => {
                 panic!("no row on unit variant")
@@ -84,19 +84,19 @@ impl<K: Clone, V: Clone> KeyedRosterSecondRowScan<K, V> {
 }
 
 pub fn keyed_roster_locate_second_row<K: Clone, V: Clone>(
-    rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
+    rows: Arc<Vec<Arc<KeyedRow<K, V>>>>,
     wanted_key: K,
     key_eq: impl Fn(K, K) -> bool + Clone,
-) -> Option<Rc<KeyedRow<K, V>>> {
+) -> Option<Arc<KeyedRow<K, V>>> {
     match (*rows.clone().iter().cloned().fold(
-        Rc::new(KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAbsent),
-        |acc: Rc<KeyedRosterSecondRowScan<K, V>>, row: Rc<KeyedRow<K, V>>| match (*acc.clone())
+        Arc::new(KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAbsent),
+        |acc: Arc<KeyedRosterSecondRowScan<K, V>>, row: Arc<KeyedRow<K, V>>| match (*acc.clone())
             .clone()
         {
             KeyedRosterSecondRowScan::KeyedRosterSecondRowScanFound { row: _, .. } => acc.clone(),
             KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAwaitingSecond => {
                 if key_eq(row.row_key.clone(), wanted_key.clone()) {
-                    Rc::new(KeyedRosterSecondRowScan::KeyedRosterSecondRowScanFound {
+                    Arc::new(KeyedRosterSecondRowScan::KeyedRosterSecondRowScanFound {
                         row: row.clone(),
                     })
                 } else {
@@ -105,7 +105,7 @@ pub fn keyed_roster_locate_second_row<K: Clone, V: Clone>(
             }
             KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAbsent => {
                 if key_eq(row.row_key.clone(), wanted_key.clone()) {
-                    Rc::new(KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAwaitingSecond)
+                    Arc::new(KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAwaitingSecond)
                 } else {
                     acc.clone()
                 }
@@ -123,14 +123,14 @@ pub fn keyed_roster_locate_second_row<K: Clone, V: Clone>(
 }
 
 pub fn keyed_roster_locate_first_row<K: Clone, V: Clone>(
-    rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
+    rows: Arc<Vec<Arc<KeyedRow<K, V>>>>,
     wanted_key: K,
     key_eq: impl Fn(K, K) -> bool + Clone,
-) -> Option<Rc<KeyedRow<K, V>>> {
+) -> Option<Arc<KeyedRow<K, V>>> {
     rows.clone()
         .iter()
         .cloned()
-        .fold(None, |acc: _, row: Rc<KeyedRow<K, V>>| match acc.clone() {
+        .fold(None, |acc: _, row: Arc<KeyedRow<K, V>>| match acc.clone() {
             Some(_) => acc.clone(),
             None => {
                 if key_eq(row.row_key.clone(), wanted_key.clone()) {
@@ -143,13 +143,13 @@ pub fn keyed_roster_locate_first_row<K: Clone, V: Clone>(
 }
 
 pub fn keyed_roster_locate_duplicate<K: Clone, V: Clone>(
-    rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
+    rows: Arc<Vec<Arc<KeyedRow<K, V>>>>,
     key_eq: impl Fn(K, K) -> bool + Clone,
-) -> Option<Rc<KeyedRosterDuplicateEvidence<K, V>>> {
+) -> Option<Arc<KeyedRosterDuplicateEvidence<K, V>>> {
     rows.clone()
         .iter()
         .cloned()
-        .fold(None, |acc: _, row: Rc<KeyedRow<K, V>>| match acc.clone() {
+        .fold(None, |acc: _, row: Arc<KeyedRow<K, V>>| match acc.clone() {
             Some(_) => acc.clone(),
             None => {
                 if (keyed_occurrence_count(rows.clone(), row.row_key.clone(), key_eq.clone()) > 1) {
@@ -163,7 +163,7 @@ pub fn keyed_roster_locate_duplicate<K: Clone, V: Clone>(
                             row.row_key.clone(),
                             key_eq.clone(),
                         ) {
-                            Some(duplicate) => Some(Rc::new(KeyedRosterDuplicateEvidence {
+                            Some(duplicate) => Some(Arc::new(KeyedRosterDuplicateEvidence {
                                 key: row.row_key.clone(),
                                 value: row.value.clone(),
                                 first: first.clone(),
@@ -185,38 +185,38 @@ pub fn keyed_roster_locate_duplicate<K: Clone, V: Clone>(
 #[serde(tag = "_variant")]
 pub enum KeyedRosterInsert<K: Clone, V: Clone> {
     KeyedRosterInserted {
-        rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
+        rows: Arc<Vec<Arc<KeyedRow<K, V>>>>,
     },
     KeyedRosterDuplicateKey {
         key: K,
-        existing: Rc<KeyedRow<K, V>>,
-        incoming: Rc<KeyedRow<K, V>>,
+        existing: Arc<KeyedRow<K, V>>,
+        incoming: Arc<KeyedRow<K, V>>,
     },
     KeyedRosterInvalidRoster {
         key: K,
-        first: Rc<KeyedRow<K, V>>,
-        duplicate: Rc<KeyedRow<K, V>>,
+        first: Arc<KeyedRow<K, V>>,
+        duplicate: Arc<KeyedRow<K, V>>,
     },
 }
 
 pub fn keyed_roster_insert<K: Clone, V: Clone>(
-    rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
-    incoming: Rc<KeyedRow<K, V>>,
+    rows: Arc<Vec<Arc<KeyedRow<K, V>>>>,
+    incoming: Arc<KeyedRow<K, V>>,
     key_eq: impl Fn(K, K) -> bool + Clone,
-) -> Rc<KeyedRosterInsert<K, V>> {
+) -> Arc<KeyedRosterInsert<K, V>> {
     match keyed_roster_locate_duplicate(rows.clone(), key_eq.clone()) {
-        Some(evidence) => Rc::new(KeyedRosterInsert::KeyedRosterInvalidRoster {
+        Some(evidence) => Arc::new(KeyedRosterInsert::KeyedRosterInvalidRoster {
             key: evidence.key.clone(),
             first: evidence.first.clone(),
             duplicate: evidence.duplicate.clone(),
         }),
         None => match keyed_row_find(rows.clone(), incoming.row_key.clone(), key_eq.clone()) {
-            Some(existing) => Rc::new(KeyedRosterInsert::KeyedRosterDuplicateKey {
+            Some(existing) => Arc::new(KeyedRosterInsert::KeyedRosterDuplicateKey {
                 key: incoming.row_key.clone(),
                 existing: existing.clone(),
                 incoming: incoming.clone(),
             }),
-            None => Rc::new(KeyedRosterInsert::KeyedRosterInserted {
+            None => Arc::new(KeyedRosterInsert::KeyedRosterInserted {
                 rows: v1_rt::concat(rows.clone(), Rc::new(vec![incoming.clone()])),
             }),
         },
@@ -224,17 +224,17 @@ pub fn keyed_roster_insert<K: Clone, V: Clone>(
 }
 
 pub fn keyed_roster_insert_into_unique<K: Clone, V: Clone>(
-    rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
-    incoming: Rc<KeyedRow<K, V>>,
+    rows: Arc<Vec<Arc<KeyedRow<K, V>>>>,
+    incoming: Arc<KeyedRow<K, V>>,
     key_eq: impl Fn(K, K) -> bool + Clone,
-) -> Rc<KeyedRosterInsert<K, V>> {
+) -> Arc<KeyedRosterInsert<K, V>> {
     match keyed_row_find(rows.clone(), incoming.row_key.clone(), key_eq.clone()) {
-        Some(existing) => Rc::new(KeyedRosterInsert::KeyedRosterDuplicateKey {
+        Some(existing) => Arc::new(KeyedRosterInsert::KeyedRosterDuplicateKey {
             key: incoming.row_key.clone(),
             existing: existing.clone(),
             incoming: incoming.clone(),
         }),
-        None => Rc::new(KeyedRosterInsert::KeyedRosterInserted {
+        None => Arc::new(KeyedRosterInsert::KeyedRosterInserted {
             rows: v1_rt::concat(rows.clone(), Rc::new(vec![incoming.clone()])),
         }),
     }
@@ -244,37 +244,37 @@ pub fn keyed_roster_insert_into_unique<K: Clone, V: Clone>(
 #[serde(tag = "_variant")]
 pub enum KeyedRosterBuild<K: Clone, V: Clone> {
     KeyedRosterBuilt {
-        rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
+        rows: Arc<Vec<Arc<KeyedRow<K, V>>>>,
     },
     KeyedRosterBuildDuplicateKey {
         key: K,
-        first: Rc<KeyedRow<K, V>>,
-        duplicate: Rc<KeyedRow<K, V>>,
+        first: Arc<KeyedRow<K, V>>,
+        duplicate: Arc<KeyedRow<K, V>>,
     },
 }
 
 pub fn keyed_roster_build<K: Clone, V: Clone>(
-    incomings: Rc<Vec<Rc<KeyedRow<K, V>>>>,
+    incomings: Arc<Vec<Arc<KeyedRow<K, V>>>>,
     key_eq: impl Fn(K, K) -> bool + Clone,
-) -> Rc<KeyedRosterBuild<K, V>> {
+) -> Arc<KeyedRosterBuild<K, V>> {
     incomings.clone().iter().cloned().fold(
-        Rc::new(KeyedRosterBuild::KeyedRosterBuilt {
+        Arc::new(KeyedRosterBuild::KeyedRosterBuilt {
             rows: Rc::new(vec![]),
         }),
-        |acc: Rc<KeyedRosterBuild<K, V>>, row: Rc<KeyedRow<K, V>>| match (*acc).clone() {
+        |acc: Arc<KeyedRosterBuild<K, V>>, row: Arc<KeyedRow<K, V>>| match (*acc).clone() {
             KeyedRosterBuild::KeyedRosterBuilt { rows: rows, .. } => {
                 match (*keyed_roster_insert_into_unique(rows.clone(), row.clone(), key_eq.clone()))
                     .clone()
                 {
                     KeyedRosterInsert::KeyedRosterInserted { rows: next, .. } => {
-                        Rc::new(KeyedRosterBuild::KeyedRosterBuilt { rows: next.clone() })
+                        Arc::new(KeyedRosterBuild::KeyedRosterBuilt { rows: next.clone() })
                     }
                     KeyedRosterInsert::KeyedRosterDuplicateKey {
                         key: k,
                         existing: first,
                         incoming: dup,
                         ..
-                    } => Rc::new(KeyedRosterBuild::KeyedRosterBuildDuplicateKey {
+                    } => Arc::new(KeyedRosterBuild::KeyedRosterBuildDuplicateKey {
                         key: k.clone(),
                         first: first.clone(),
                         duplicate: dup.clone(),
@@ -284,7 +284,7 @@ pub fn keyed_roster_build<K: Clone, V: Clone>(
                         first: f,
                         duplicate: d,
                         ..
-                    } => Rc::new(KeyedRosterBuild::KeyedRosterBuildDuplicateKey {
+                    } => Arc::new(KeyedRosterBuild::KeyedRosterBuildDuplicateKey {
                         key: k.clone(),
                         first: f.clone(),
                         duplicate: d.clone(),
@@ -296,7 +296,7 @@ pub fn keyed_roster_build<K: Clone, V: Clone>(
                 first: f,
                 duplicate: d,
                 ..
-            } => Rc::new(KeyedRosterBuild::KeyedRosterBuildDuplicateKey {
+            } => Arc::new(KeyedRosterBuild::KeyedRosterBuildDuplicateKey {
                 key: k.clone(),
                 first: f.clone(),
                 duplicate: d.clone(),
@@ -306,9 +306,9 @@ pub fn keyed_roster_build<K: Clone, V: Clone>(
 }
 
 pub fn keyed_roster_union<K: Clone, V: Clone>(
-    left: Rc<Vec<Rc<KeyedRow<K, V>>>>,
-    right: Rc<Vec<Rc<KeyedRow<K, V>>>>,
+    left: Arc<Vec<Arc<KeyedRow<K, V>>>>,
+    right: Arc<Vec<Arc<KeyedRow<K, V>>>>,
     key_eq: impl Fn(K, K) -> bool + Clone,
-) -> Rc<KeyedRosterBuild<K, V>> {
+) -> Arc<KeyedRosterBuild<K, V>> {
     keyed_roster_build(v1_rt::concat(left.clone(), right.clone()), key_eq.clone())
 }

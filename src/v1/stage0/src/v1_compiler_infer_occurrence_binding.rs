@@ -7,7 +7,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn infer_occurrence_binding_canonical_decide_note() -> String {
     thread_local! {
@@ -23,26 +23,26 @@ pub fn infer_occurrence_binding_canonical_decide_note() -> String {
 pub enum ModulePathBindingProjection {
     ModulePathBindingHit { owner: String },
     ModulePathBindingMiss,
-    ModulePathBindingAmbiguous { owners: Rc<Vec<String>> },
+    ModulePathBindingAmbiguous { owners: Arc<Vec<String>> },
 }
 
 pub fn module_path_owner_binding_decide(
-    owners: Rc<Vec<String>>,
-) -> Rc<ModulePathBindingProjection> {
+    owners: Arc<Vec<String>>,
+) -> Arc<ModulePathBindingProjection> {
     {
         let owner_count = (owners.clone().len() as i64);
         if (owner_count.clone() == 0) {
-            Rc::new(ModulePathBindingProjection::ModulePathBindingMiss)
+            Arc::new(ModulePathBindingProjection::ModulePathBindingMiss)
         } else {
             if (owner_count.clone() == 1) {
                 match owners.clone().first().cloned() {
-                    Some(owner) => Rc::new(ModulePathBindingProjection::ModulePathBindingHit {
+                    Some(owner) => Arc::new(ModulePathBindingProjection::ModulePathBindingHit {
                         owner: owner.clone(),
                     }),
-                    None => Rc::new(ModulePathBindingProjection::ModulePathBindingMiss),
+                    None => Arc::new(ModulePathBindingProjection::ModulePathBindingMiss),
                 }
             } else {
-                Rc::new(ModulePathBindingProjection::ModulePathBindingAmbiguous {
+                Arc::new(ModulePathBindingProjection::ModulePathBindingAmbiguous {
                     owners: owners.clone(),
                 })
             }
@@ -59,12 +59,12 @@ pub fn ambiguity_labels_single_authority_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn ambiguity_labels_from_decide(owners: Rc<Vec<String>>, name: String) -> Rc<Vec<String>> {
+pub fn ambiguity_labels_from_decide(owners: Arc<Vec<String>>, name: String) -> Arc<Vec<String>> {
     match (*module_path_owner_binding_decide(owners.clone())).clone() {
         ModulePathBindingProjection::ModulePathBindingAmbiguous {
             owners: ambiguous_owners,
             ..
-        } => Rc::new({
+        } => Arc::new({
             let mut __result = Vec::new();
             for owner in ambiguous_owners.clone().iter().cloned() {
                 __result.push(v1_rt::concat(

@@ -14,11 +14,11 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
+pub fn kernel_type_set() -> Arc<HashMap<String, bool>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Arc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("String".to_string(), true);
             __m.insert("Int".to_string(), true);
@@ -28,10 +28,10 @@ pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
             __m.insert("Json".to_string(), true);
             __m.insert("Unit".to_string(), true);
             __m.insert("Bytes".to_string(), true);
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, bool>>| c.clone())
 }
 
 pub fn is_kernel_type(name: String) -> bool {
@@ -41,18 +41,18 @@ pub fn is_kernel_type(name: String) -> bool {
     }
 }
 
-pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
+pub fn container_type_arity() -> Arc<HashMap<String, i64>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, i64>> = {
+        static CACHED: Arc<HashMap<String, i64>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), 1);
             __m.insert("Set".to_string(), 1);
             __m.insert("Map".to_string(), 2);
             __m.insert("Witness".to_string(), 1);
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, i64>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, i64>>| c.clone())
 }
 
 pub fn is_container_type(name: String) -> bool {
@@ -66,7 +66,7 @@ pub fn container_expected_arity(name: String) -> Option<i64> {
     v1_rt::map_get(&container_type_arity(), name.clone())
 }
 
-pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
+pub fn container_param_names_for(kind_name: String) -> Arc<Vec<String>> {
     if (kind_name.clone() == "Witness".to_string()) {
         Rc::new(vec!["T".to_string()])
     } else {
@@ -80,11 +80,11 @@ pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
 pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
     {
         let names = container_param_names_for(kind_name.clone());
-        match Rc::new({
+        match Arc::new({
             let mut __result = Vec::new();
-            for pair in Rc::new({
+            for pair in Arc::new({
                 let mut __result = Vec::new();
-                for pair in Rc::new(
+                for pair in Arc::new(
                     names
                         .clone()
                         .iter()
@@ -118,24 +118,24 @@ pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
     }
 }
 
-pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
+pub fn ordered_element_collections() -> Arc<HashMap<String, bool>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Arc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), true);
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, bool>>| c.clone())
 }
 
 pub fn is_ordered_element_collection(name: String) -> bool {
     v1_rt::map_contains_key(&ordered_element_collections(), name.clone())
 }
 
-pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
+pub fn container_template_algebra_rows() -> Arc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Arc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
             __m.insert("list".to_string(), "FreeMonoid".to_string());
@@ -151,15 +151,15 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
             __m.insert("partial_function".to_string(), "PartialFunction".to_string());
             __m.insert("PointwisePower".to_string(), "PointwisePower".to_string());
             __m.insert("pointwise_power".to_string(), "PointwisePower".to_string());
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, String>>| c.clone())
 }
 
-pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
+pub fn container_template_alias_rows() -> Arc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Arc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
             __m.insert("list".to_string(), "FreeMonoid".to_string());
@@ -167,10 +167,10 @@ pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
             __m.insert("set".to_string(), "PointwisePower".to_string());
             __m.insert("Map".to_string(), "PartialFunction".to_string());
             __m.insert("map".to_string(), "PartialFunction".to_string());
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, String>>| c.clone())
 }
 
 pub fn container_template_algebra(name: String) -> Option<String> {
@@ -181,7 +181,7 @@ pub fn container_template_alias_algebra(name: String) -> Option<String> {
     v1_rt::map_get(&container_template_alias_rows(), name.clone())
 }
 
-pub fn canonical_container_names() -> Rc<Vec<String>> {
+pub fn canonical_container_names() -> Arc<Vec<String>> {
     Rc::new(vec![
         "BooleanAlgebra".to_string(),
         "FreeMonoid".to_string(),
@@ -219,11 +219,11 @@ pub type Char = i64;
 
 pub type List<Element> = Vec<Element>;
 
-pub type Set<Element> = Rc<crate::std_algebra::PointwisePower<Element>>;
+pub type Set<Element> = Arc<crate::std_algebra::PointwisePower<Element>>;
 
-pub type Map<Key, Value> = Rc<crate::std_algebra::PartialFunction<Key, Value>>;
+pub type Map<Key, Value> = Arc<crate::std_algebra::PartialFunction<Key, Value>>;
 
-pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
+pub fn list_length<T: Clone>(items: Arc<Vec<T>>) -> i64 {
     items.clone().iter().fold(0, |acc: i64, _: _| (acc + 1))
 }
 
@@ -289,12 +289,12 @@ pub type RenderedTerminalText = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FilePathParts {
-    pub segments: Rc<Vec<PathSegment>>,
+    pub segments: Arc<Vec<PathSegment>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GlobPattern {
-    pub segments: Rc<Vec<GlobSegment>>,
+    pub segments: Arc<Vec<GlobSegment>>,
 }
 
 pub type FilePath = String;
@@ -418,17 +418,17 @@ pub enum AuthScheme {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AccessToken {
     pub token: String,
-    pub scheme: Rc<AuthScheme>,
+    pub scheme: Arc<AuthScheme>,
     pub expires_at: Option<Timestamp>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Credential {
     pub token: String,
-    pub scheme: Rc<AuthScheme>,
+    pub scheme: Arc<AuthScheme>,
     pub header_name: Option<String>,
     pub source_id: String,
-    pub required_scopes: Rc<Vec<String>>,
+    pub required_scopes: Arc<Vec<String>>,
     pub expires_in: Option<i64>,
 }
 
@@ -514,14 +514,14 @@ pub struct ToolEntry {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ToolRegistry {
-    pub tools: Rc<Vec<Rc<ToolEntry>>>,
+    pub tools: Arc<Vec<Arc<ToolEntry>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagTopology {
-    pub nodes: Rc<Vec<Rc<TopologyNode>>>,
-    pub edges: Rc<Vec<Rc<TopologyEdge>>>,
-    pub subdag_boundaries: Rc<Vec<String>>,
+    pub nodes: Arc<Vec<Arc<TopologyNode>>>,
+    pub edges: Arc<Vec<Arc<TopologyEdge>>>,
+    pub subdag_boundaries: Arc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -541,9 +541,9 @@ pub struct TopologyEdge {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagDiff {
-    pub added: Rc<Vec<String>>,
-    pub removed: Rc<Vec<String>>,
-    pub changed: Rc<Vec<String>>,
+    pub added: Arc<Vec<String>>,
+    pub removed: Arc<Vec<String>>,
+    pub changed: Arc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -3,7 +3,7 @@
 
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use crate::v1_rt::{VecCompat, VecJoin};
-use std::rc::Rc;
+use std::sync::Arc;
 use crate::v1_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
@@ -33,7 +33,7 @@ pub fn namespace_reference_derived_closure_contract_dissolution_note() -> String
 }
 
 pub fn reference_derived_closure_required_capabilities(
-) -> Rc<Vec<ReferenceDerivedClosureCapability>> {
+) -> Arc<Vec<ReferenceDerivedClosureCapability>> {
     Rc::new(vec![
         ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible,
         ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded,
@@ -45,9 +45,9 @@ pub fn reference_derived_closure_required_capabilities(
 }
 
 pub fn reference_derived_closure_missing_capabilities(
-    admissions: Rc<Vec<Rc<ReferenceDerivedClosureAdmission>>>,
-) -> Rc<Vec<ReferenceDerivedClosureCapability>> {
-    Rc::new({
+    admissions: Arc<Vec<Arc<ReferenceDerivedClosureAdmission>>>,
+) -> Arc<Vec<ReferenceDerivedClosureCapability>> {
+    Arc::new({
         let mut __result = Vec::new();
         for required in reference_derived_closure_required_capabilities()
             .iter()
@@ -104,52 +104,52 @@ pub fn reference_derived_closure_missing_capabilities(
 }
 
 pub fn reference_derived_closure_closing_frontier_count(
-    admissions: Rc<Vec<Rc<ReferenceDerivedClosureAdmission>>>,
+    admissions: Arc<Vec<Arc<ReferenceDerivedClosureAdmission>>>,
 ) -> i64 {
     (reference_derived_closure_missing_capabilities(admissions.clone()).len() as i64)
 }
 
 pub fn reference_derived_closure_closing_contract_holds(
-    admissions: Rc<Vec<Rc<ReferenceDerivedClosureAdmission>>>,
+    admissions: Arc<Vec<Arc<ReferenceDerivedClosureAdmission>>>,
 ) -> bool {
     (reference_derived_closure_closing_frontier_count(admissions.clone()) == 0)
 }
 
 pub fn namespace_reference_derived_closure_acceptance_admissions(
-) -> Rc<Vec<Rc<ReferenceDerivedClosureAdmission>>> {
+) -> Arc<Vec<Arc<ReferenceDerivedClosureAdmission>>> {
     Rc::new(vec![
-        Rc::new(
+        Arc::new(
             ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
                 capability: ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible,
                 trigger: ReferenceDerivedClosureTrigger::P2aStructuralCandidateProducer7515,
             },
         ),
-        Rc::new(
+        Arc::new(
             ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
                 capability: ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded,
                 trigger: ReferenceDerivedClosureTrigger::P2aStructuralCandidateProducer7515,
             },
         ),
-        Rc::new(
+        Arc::new(
             ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
                 capability: ReferenceDerivedClosureCapability::LaterDeclarationExcluded,
                 trigger: ReferenceDerivedClosureTrigger::P2aStructuralCandidateProducer7515,
             },
         ),
-        Rc::new(
+        Arc::new(
             ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
                 capability:
                     ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved,
                 trigger: ReferenceDerivedClosureTrigger::P2aStructuralCandidateProducer7515,
             },
         ),
-        Rc::new(
+        Arc::new(
             ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
                 capability: ReferenceDerivedClosureCapability::RepeatedMentionsCollapseDependency,
                 trigger: ReferenceDerivedClosureTrigger::P2aReferenceDependencyProjection7515,
             },
         ),
-        Rc::new(
+        Arc::new(
             ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
                 capability: ReferenceDerivedClosureCapability::UnrelatedLoadedFileExcluded,
                 trigger: ReferenceDerivedClosureTrigger::P2aPoolIndependentDependencyProjection7515,

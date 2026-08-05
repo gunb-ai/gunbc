@@ -3,7 +3,7 @@
 
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use crate::v1_rt::{VecCompat, VecJoin};
-use std::rc::Rc;
+use std::sync::Arc;
 use crate::v1_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
@@ -104,7 +104,7 @@ pub fn witness_structural_production_variants_match_clauses_a_through_d() -> boo
 
 pub fn witness_structural_production_observations_establish_clauses_a_through_d() -> bool {
     {
-        let admissions = Rc::new({
+        let admissions = Arc::new({
             let mut __result = Vec::new();
             for observation in namespace_structural_binding_observations_a_through_d()
                 .iter()
@@ -147,7 +147,7 @@ pub fn witness_structural_production_observations_establish_clauses_a_through_d(
 
 pub fn witness_closing_contract_still_reds_until_dependency_clauses_land() -> bool {
     {
-        let structural_admissions = Rc::new({
+        let structural_admissions = Arc::new({
             let mut __result = Vec::new();
             for observation in namespace_structural_binding_observations_a_through_d()
                 .iter()
@@ -157,17 +157,12 @@ pub fn witness_closing_contract_still_reds_until_dependency_clauses_land() -> bo
             }
             __result
         });
-        (reference_derived_closure_closing_frontier_count(v1_rt::concat(
-            structural_admissions.clone(),
-            Rc::new(
-                vec![Rc::new(ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
+        (reference_derived_closure_closing_frontier_count(v1_rt::concat(structural_admissions.clone(), Rc::new(vec![Arc::new(ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
     capability: ReferenceDerivedClosureCapability::RepeatedMentionsCollapseDependency,
     trigger: ReferenceDerivedClosureTrigger::P2aReferenceDependencyProjection7515,
-}), Rc::new(ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
+}), Arc::new(ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
     capability: ReferenceDerivedClosureCapability::UnrelatedLoadedFileExcluded,
     trigger: ReferenceDerivedClosureTrigger::P2aPoolIndependentDependencyProjection7515,
-})],
-            ),
-        )) == 2)
+})]))) == 2)
     }
 }

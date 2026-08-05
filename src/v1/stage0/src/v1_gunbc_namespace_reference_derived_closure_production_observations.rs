@@ -32,7 +32,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn namespace_reference_derived_closure_production_observations_note() -> String {
     thread_local! {
@@ -56,13 +56,13 @@ pub fn namespace_reference_derived_closure_production_fixture_note() -> String {
 #[serde(tag = "_variant")]
 pub enum NrdfcParsed {
     NrdfcParsedReady {
-        transport: Rc<OccurrenceTransport>,
-        inputs: Rc<OccurrenceBindingCandidateInputs>,
+        transport: Arc<OccurrenceTransport>,
+        inputs: Arc<OccurrenceBindingCandidateInputs>,
     },
     NrdfcParsedRefused,
 }
 impl NrdfcParsed {
-    pub fn transport(&self) -> Rc<OccurrenceTransport> {
+    pub fn transport(&self) -> Arc<OccurrenceTransport> {
         match self {
             NrdfcParsed::NrdfcParsedReady {
                 transport: __val, ..
@@ -70,7 +70,7 @@ impl NrdfcParsed {
             NrdfcParsed::NrdfcParsedRefused => panic!("no transport on unit variant"),
         }
     }
-    pub fn inputs(&self) -> Rc<OccurrenceBindingCandidateInputs> {
+    pub fn inputs(&self) -> Arc<OccurrenceBindingCandidateInputs> {
         match self {
             NrdfcParsed::NrdfcParsedReady { inputs: __val, .. } => __val.clone(),
             NrdfcParsed::NrdfcParsedRefused => panic!("no inputs on unit variant"),
@@ -78,16 +78,16 @@ impl NrdfcParsed {
     }
 }
 
-pub fn nrdfc_parse(file: String, source: String) -> Rc<NrdfcParsed> {
+pub fn nrdfc_parse(file: String, source: String) -> Arc<NrdfcParsed> {
     match (*parse_authored_occurrence_binding_source(file.clone(), source.clone())).clone() {
         ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => {
-            Rc::new(NrdfcParsed::NrdfcParsedRefused)
+            Arc::new(NrdfcParsed::NrdfcParsedRefused)
         }
         ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
             transport,
             module_path,
             ..
-        } => Rc::new(NrdfcParsed::NrdfcParsedReady {
+        } => Arc::new(NrdfcParsed::NrdfcParsedReady {
             transport: transport.clone(),
             inputs: occurrence_binding_inputs_from_transport(
                 module_path.clone(),
@@ -113,14 +113,14 @@ pub fn nrdfc_distinct_homonym_source() -> String {
     "module gunbc.closure_fixture.distinct_homonym\n\nfn helper() -> Int {\n  0\n}\n\nfn helper() -> Int {\n  1\n}\n\nfn demo() -> Int {\n  helper()\n}\n".to_string()
 }
 
-pub fn same_file_neighbour_observation() -> Rc<ReferenceBindingObservation> {
+pub fn same_file_neighbour_observation() -> Arc<ReferenceBindingObservation> {
     match (*nrdfc_parse(
         "gunbc/closure_fixture/same_file_neighbour.dag".to_string(),
         nrdfc_same_file_neighbour_source(),
     ))
     .clone()
     {
-        NrdfcParsed::NrdfcParsedRefused => Rc::new(
+        NrdfcParsed::NrdfcParsedRefused => Arc::new(
             ReferenceBindingObservation::SameFileNeighbourProductionRefused {
                 gap: ReferenceBindingProductionGap::ReferenceBindingParserTransportRefused,
             },
@@ -128,7 +128,7 @@ pub fn same_file_neighbour_observation() -> Rc<ReferenceBindingObservation> {
         NrdfcParsed::NrdfcParsedReady {
             transport, inputs, ..
         } => match reference_named(transport.clone(), "fn_a".to_string()) {
-            None => Rc::new(
+            None => Arc::new(
                 ReferenceBindingObservation::SameFileNeighbourProductionRefused {
                     gap: ReferenceBindingProductionGap::ReferenceBindingNamedReferenceAbsent,
                 },
@@ -137,13 +137,13 @@ pub fn same_file_neighbour_observation() -> Rc<ReferenceBindingObservation> {
                 .first()
                 .cloned()
             {
-                None => Rc::new(
+                None => Arc::new(
                     ReferenceBindingObservation::SameFileNeighbourProductionRefused {
                         gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
                     },
                 ),
                 Some(neighbour) => {
-                    Rc::new(ReferenceBindingObservation::SameFileNeighbourObservation {
+                    Arc::new(ReferenceBindingObservation::SameFileNeighbourObservation {
                         neighbour: neighbour.occurrence.clone(),
                         resolution: structural_binding_resolution_from_candidates(
                             transport.clone(),
@@ -157,14 +157,14 @@ pub fn same_file_neighbour_observation() -> Rc<ReferenceBindingObservation> {
     }
 }
 
-pub fn sibling_branch_observation() -> Rc<ReferenceBindingObservation> {
+pub fn sibling_branch_observation() -> Arc<ReferenceBindingObservation> {
     match (*nrdfc_parse(
         "gunbc/closure_fixture/sibling_branch.dag".to_string(),
         nrdfc_sibling_branch_source(),
     ))
     .clone()
     {
-        NrdfcParsed::NrdfcParsedRefused => Rc::new(
+        NrdfcParsed::NrdfcParsedRefused => Arc::new(
             ReferenceBindingObservation::SiblingBranchProductionRefused {
                 gap: ReferenceBindingProductionGap::ReferenceBindingParserTransportRefused,
             },
@@ -175,22 +175,22 @@ pub fn sibling_branch_observation() -> Rc<ReferenceBindingObservation> {
             let x_declarations = declarations_named(transport.clone(), "x".to_string());
             let x_references = references_named(transport.clone(), "x".to_string());
             match x_declarations.clone().first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::SiblingBranchProductionRefused {
+    None => Arc::new(ReferenceBindingObservation::SiblingBranchProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
     Some(then_branch_x) => match v1_rt::reverse(x_declarations.clone()).first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::SiblingBranchProductionRefused {
+    None => Arc::new(ReferenceBindingObservation::SiblingBranchProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
     Some(else_branch_x) => match v1_rt::reverse(x_references.clone()).first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::SiblingBranchObservation {
+    None => Arc::new(ReferenceBindingObservation::SiblingBranchObservation {
     own_branch_declaration: else_branch_x.occurrence.clone(),
     sibling_branch_declaration: then_branch_x.occurrence.clone(),
-    resolution: Rc::new(StructuralBindingResolution::StructuralBindingProductionRefused {
+    resolution: Arc::new(StructuralBindingResolution::StructuralBindingProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedReferenceAbsent,
 }),
 }),
-    Some(else_branch_ref) => Rc::new(ReferenceBindingObservation::SiblingBranchObservation {
+    Some(else_branch_ref) => Arc::new(ReferenceBindingObservation::SiblingBranchObservation {
     own_branch_declaration: else_branch_x.occurrence.clone(),
     sibling_branch_declaration: then_branch_x.occurrence.clone(),
     resolution: structural_binding_resolution_from_candidates(transport.clone(), inputs.clone(), else_branch_ref.clone()),
@@ -202,14 +202,14 @@ pub fn sibling_branch_observation() -> Rc<ReferenceBindingObservation> {
     }
 }
 
-pub fn later_declaration_observation() -> Rc<ReferenceBindingObservation> {
+pub fn later_declaration_observation() -> Arc<ReferenceBindingObservation> {
     match (*nrdfc_parse(
         "gunbc/closure_fixture/later_declaration.dag".to_string(),
         nrdfc_later_declaration_source(),
     ))
     .clone()
     {
-        NrdfcParsed::NrdfcParsedRefused => Rc::new(
+        NrdfcParsed::NrdfcParsedRefused => Arc::new(
             ReferenceBindingObservation::LaterDeclarationProductionRefused {
                 gap: ReferenceBindingProductionGap::ReferenceBindingParserTransportRefused,
             },
@@ -217,7 +217,7 @@ pub fn later_declaration_observation() -> Rc<ReferenceBindingObservation> {
         NrdfcParsed::NrdfcParsedReady {
             transport, inputs, ..
         } => match reference_named(transport.clone(), "fn_later".to_string()) {
-            None => Rc::new(
+            None => Arc::new(
                 ReferenceBindingObservation::LaterDeclarationProductionRefused {
                     gap: ReferenceBindingProductionGap::ReferenceBindingNamedReferenceAbsent,
                 },
@@ -226,13 +226,13 @@ pub fn later_declaration_observation() -> Rc<ReferenceBindingObservation> {
                 .first()
                 .cloned()
             {
-                None => Rc::new(
+                None => Arc::new(
                     ReferenceBindingObservation::LaterDeclarationProductionRefused {
                         gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
                     },
                 ),
                 Some(later_declaration) => {
-                    Rc::new(ReferenceBindingObservation::LaterDeclarationObservation {
+                    Arc::new(ReferenceBindingObservation::LaterDeclarationObservation {
                         later_declaration: later_declaration.occurrence.clone(),
                         resolution: structural_binding_resolution_from_candidates(
                             transport.clone(),
@@ -246,14 +246,14 @@ pub fn later_declaration_observation() -> Rc<ReferenceBindingObservation> {
     }
 }
 
-pub fn distinct_homonym_observation() -> Rc<ReferenceBindingObservation> {
+pub fn distinct_homonym_observation() -> Arc<ReferenceBindingObservation> {
     match (*nrdfc_parse(
         "gunbc/closure_fixture/distinct_homonym.dag".to_string(),
         nrdfc_distinct_homonym_source(),
     ))
     .clone()
     {
-        NrdfcParsed::NrdfcParsedRefused => Rc::new(
+        NrdfcParsed::NrdfcParsedRefused => Arc::new(
             ReferenceBindingObservation::DistinctHomonymProductionRefused {
                 gap: ReferenceBindingProductionGap::ReferenceBindingParserTransportRefused,
             },
@@ -261,7 +261,7 @@ pub fn distinct_homonym_observation() -> Rc<ReferenceBindingObservation> {
         NrdfcParsed::NrdfcParsedReady {
             transport, inputs, ..
         } => match reference_named(transport.clone(), "helper".to_string()) {
-            None => Rc::new(
+            None => Arc::new(
                 ReferenceBindingObservation::DistinctHomonymProductionRefused {
                     gap: ReferenceBindingProductionGap::ReferenceBindingNamedReferenceAbsent,
                 },
@@ -269,14 +269,14 @@ pub fn distinct_homonym_observation() -> Rc<ReferenceBindingObservation> {
             Some(reference) => {
                 let helpers = declarations_named(transport.clone(), "helper".to_string());
                 match helpers.clone().first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::DistinctHomonymProductionRefused {
+    None => Arc::new(ReferenceBindingObservation::DistinctHomonymProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
     Some(first_helper) => match v1_rt::reverse(helpers.clone()).first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::DistinctHomonymProductionRefused {
+    None => Arc::new(ReferenceBindingObservation::DistinctHomonymProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
-    Some(second_helper) => Rc::new(ReferenceBindingObservation::DistinctHomonymObservation {
+    Some(second_helper) => Arc::new(ReferenceBindingObservation::DistinctHomonymObservation {
     first_declaration: first_helper.occurrence.clone(),
     second_declaration: second_helper.occurrence.clone(),
     resolution: structural_binding_resolution_from_candidates(transport.clone(), inputs.clone(), reference.clone()),
@@ -289,7 +289,7 @@ pub fn distinct_homonym_observation() -> Rc<ReferenceBindingObservation> {
 }
 
 pub fn namespace_structural_binding_observations_a_through_d(
-) -> Rc<Vec<Rc<ReferenceBindingObservation>>> {
+) -> Arc<Vec<Arc<ReferenceBindingObservation>>> {
     Rc::new(vec![
         same_file_neighbour_observation(),
         sibling_branch_observation(),

@@ -48,7 +48,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn occurrence_binding_candidates_authority_note() -> String {
     thread_local! {
@@ -108,7 +108,7 @@ pub fn declaration_exposure_note() -> String {
 #[serde(tag = "_variant")]
 pub enum DeclarationExposure {
     LexicalExposure {
-        exposing_scope: Rc<OccurrenceContainmentPath>,
+        exposing_scope: Arc<OccurrenceContainmentPath>,
     },
     ModuleExposure {
         module: NonEmptyStr,
@@ -119,7 +119,7 @@ pub enum DeclarationExposure {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclarationExposureRow {
     pub occurrence: OccurrenceId,
-    pub exposure: Rc<DeclarationExposure>,
+    pub exposure: Arc<DeclarationExposure>,
 }
 
 pub fn authored_order_note() -> String {
@@ -139,9 +139,9 @@ pub struct AuthoredOrderRow {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceBindingCandidateInputs {
-    pub module_paths: Rc<Vec<Rc<OccurrenceModulePathRow>>>,
-    pub exposure_rows: Rc<Vec<Rc<DeclarationExposureRow>>>,
-    pub authored_order_rows: Rc<Vec<Rc<AuthoredOrderRow>>>,
+    pub module_paths: Arc<Vec<Arc<OccurrenceModulePathRow>>>,
+    pub exposure_rows: Arc<Vec<Arc<DeclarationExposureRow>>>,
+    pub authored_order_rows: Arc<Vec<Arc<AuthoredOrderRow>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -179,14 +179,14 @@ impl OccurrenceModulePathIndexRefusal {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceModulePathIndexBuild {
-    pub module_by_occurrence: Rc<HashMap<i64, NonEmptyStr>>,
-    pub refusal: Option<Rc<OccurrenceModulePathIndexRefusal>>,
+    pub module_by_occurrence: Arc<HashMap<i64, NonEmptyStr>>,
+    pub refusal: Option<Arc<OccurrenceModulePathIndexRefusal>>,
 }
 
 pub fn module_by_occurrence_fold_step(
-    build: Rc<OccurrenceModulePathIndexBuild>,
-    row: Rc<OccurrenceModulePathRow>,
-) -> Rc<OccurrenceModulePathIndexBuild> {
+    build: Arc<OccurrenceModulePathIndexBuild>,
+    row: Arc<OccurrenceModulePathRow>,
+) -> Arc<OccurrenceModulePathIndexBuild> {
     match build.refusal.clone() {
         Some(_) => build,
         None => {
@@ -198,9 +198,9 @@ pub fn module_by_occurrence_fold_step(
                     if (existing.clone() == row.module_path.clone()) {
                         build
                     } else {
-                        Rc::new(OccurrenceModulePathIndexBuild {
+                        Arc::new(OccurrenceModulePathIndexBuild {
     module_by_occurrence: build.module_by_occurrence.clone(),
-    refusal: Some(Rc::new(OccurrenceModulePathIndexRefusal::DuplicateOccurrenceModulePathRow {
+    refusal: Some(Arc::new(OccurrenceModulePathIndexRefusal::DuplicateOccurrenceModulePathRow {
     occurrence: row.occurrence.clone(),
     first_module_path: existing.clone(),
     conflicting_module_path: row.module_path.clone(),
@@ -208,7 +208,7 @@ pub fn module_by_occurrence_fold_step(
 })
                     }
                 }
-                None => Rc::new(OccurrenceModulePathIndexBuild {
+                None => Arc::new(OccurrenceModulePathIndexBuild {
                     module_by_occurrence: v1_rt::rc_map_insert(
                         build.module_by_occurrence.clone(),
                         row.occurrence.clone().value.clone(),
@@ -222,14 +222,14 @@ pub fn module_by_occurrence_fold_step(
 }
 
 pub fn module_by_occurrence_build(
-    rows: Rc<Vec<Rc<OccurrenceModulePathRow>>>,
-) -> Rc<OccurrenceModulePathIndexBuild> {
+    rows: Arc<Vec<Arc<OccurrenceModulePathRow>>>,
+) -> Arc<OccurrenceModulePathIndexBuild> {
     rows.clone().iter().cloned().fold(
-        Rc::new(OccurrenceModulePathIndexBuild {
+        Arc::new(OccurrenceModulePathIndexBuild {
             module_by_occurrence: v1_rt::rc_empty_map::<i64, String>(),
             refusal: None,
         }),
-        |build: Rc<OccurrenceModulePathIndexBuild>, row: Rc<OccurrenceModulePathRow>| {
+        |build: Arc<OccurrenceModulePathIndexBuild>, row: Arc<OccurrenceModulePathRow>| {
             module_by_occurrence_fold_step(build, row.clone())
         },
     )
@@ -243,8 +243,8 @@ pub enum DeclarationExposureIndexRefusal {
     },
     ConflictingDeclarationExposure {
         occurrence: OccurrenceId,
-        first_exposure: Rc<DeclarationExposure>,
-        conflicting_exposure: Rc<DeclarationExposure>,
+        first_exposure: Arc<DeclarationExposure>,
+        conflicting_exposure: Arc<DeclarationExposure>,
     },
 }
 impl DeclarationExposureIndexRefusal {
@@ -264,13 +264,13 @@ impl DeclarationExposureIndexRefusal {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclarationExposureIndexBuild {
-    pub exposure_by_occurrence: Rc<HashMap<i64, Rc<DeclarationExposure>>>,
-    pub refusal: Option<Rc<DeclarationExposureIndexRefusal>>,
+    pub exposure_by_occurrence: Arc<HashMap<i64, Arc<DeclarationExposure>>>,
+    pub refusal: Option<Arc<DeclarationExposureIndexRefusal>>,
 }
 
 pub fn declaration_exposure_eq(
-    left: Rc<DeclarationExposure>,
-    right: Rc<DeclarationExposure>,
+    left: Arc<DeclarationExposure>,
+    right: Arc<DeclarationExposure>,
 ) -> bool {
     match (*left.clone()).clone() {
         DeclarationExposure::LexicalExposure {
@@ -301,9 +301,9 @@ pub fn declaration_exposure_eq(
 }
 
 pub fn declaration_exposure_fold_step(
-    build: Rc<DeclarationExposureIndexBuild>,
-    row: Rc<DeclarationExposureRow>,
-) -> Rc<DeclarationExposureIndexBuild> {
+    build: Arc<DeclarationExposureIndexBuild>,
+    row: Arc<DeclarationExposureRow>,
+) -> Arc<DeclarationExposureIndexBuild> {
     match build.refusal.clone() {
         Some(_) => build,
         None => match v1_rt::map_get(
@@ -314,9 +314,9 @@ pub fn declaration_exposure_fold_step(
                 if declaration_exposure_eq(existing.clone(), row.exposure.clone()) {
                     build
                 } else {
-                    Rc::new(DeclarationExposureIndexBuild {
+                    Arc::new(DeclarationExposureIndexBuild {
                         exposure_by_occurrence: build.exposure_by_occurrence.clone(),
-                        refusal: Some(Rc::new(
+                        refusal: Some(Arc::new(
                             DeclarationExposureIndexRefusal::ConflictingDeclarationExposure {
                                 occurrence: row.occurrence.clone(),
                                 first_exposure: existing.clone(),
@@ -326,7 +326,7 @@ pub fn declaration_exposure_fold_step(
                     })
                 }
             }
-            None => Rc::new(DeclarationExposureIndexBuild {
+            None => Arc::new(DeclarationExposureIndexBuild {
                 exposure_by_occurrence: v1_rt::rc_map_insert(
                     build.exposure_by_occurrence.clone(),
                     row.occurrence.clone().value.clone(),
@@ -339,14 +339,14 @@ pub fn declaration_exposure_fold_step(
 }
 
 pub fn exposure_by_occurrence_build(
-    rows: Rc<Vec<Rc<DeclarationExposureRow>>>,
-) -> Rc<DeclarationExposureIndexBuild> {
+    rows: Arc<Vec<Arc<DeclarationExposureRow>>>,
+) -> Arc<DeclarationExposureIndexBuild> {
     rows.clone().iter().cloned().fold(
-        Rc::new(DeclarationExposureIndexBuild {
-            exposure_by_occurrence: v1_rt::rc_empty_map::<i64, Rc<DeclarationExposure>>(),
+        Arc::new(DeclarationExposureIndexBuild {
+            exposure_by_occurrence: v1_rt::rc_empty_map::<i64, Arc<DeclarationExposure>>(),
             refusal: None,
         }),
-        |build: Rc<DeclarationExposureIndexBuild>, row: Rc<DeclarationExposureRow>| {
+        |build: Arc<DeclarationExposureIndexBuild>, row: Arc<DeclarationExposureRow>| {
             declaration_exposure_fold_step(build, row.clone())
         },
     )
@@ -379,14 +379,14 @@ impl AuthoredOrderIndexRefusal {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AuthoredOrderIndexBuild {
-    pub order_by_occurrence: Rc<HashMap<i64, AuthoredTokenOrdinal>>,
-    pub refusal: Option<Rc<AuthoredOrderIndexRefusal>>,
+    pub order_by_occurrence: Arc<HashMap<i64, AuthoredTokenOrdinal>>,
+    pub refusal: Option<Arc<AuthoredOrderIndexRefusal>>,
 }
 
 pub fn authored_order_fold_step(
-    build: Rc<AuthoredOrderIndexBuild>,
-    row: Rc<AuthoredOrderRow>,
-) -> Rc<AuthoredOrderIndexBuild> {
+    build: Arc<AuthoredOrderIndexBuild>,
+    row: Arc<AuthoredOrderRow>,
+) -> Arc<AuthoredOrderIndexBuild> {
     match build.refusal.clone() {
         Some(_) => build,
         None => match v1_rt::map_get(
@@ -397,9 +397,9 @@ pub fn authored_order_fold_step(
                 if authored_token_ordinal_eq(existing.clone(), row.ordinal.clone()) {
                     build
                 } else {
-                    Rc::new(AuthoredOrderIndexBuild {
+                    Arc::new(AuthoredOrderIndexBuild {
                         order_by_occurrence: build.order_by_occurrence.clone(),
-                        refusal: Some(Rc::new(
+                        refusal: Some(Arc::new(
                             AuthoredOrderIndexRefusal::ConflictingAuthoredOrderRow {
                                 occurrence: row.occurrence.clone(),
                                 first_ordinal: existing.clone(),
@@ -409,7 +409,7 @@ pub fn authored_order_fold_step(
                     })
                 }
             }
-            None => Rc::new(AuthoredOrderIndexBuild {
+            None => Arc::new(AuthoredOrderIndexBuild {
                 order_by_occurrence: v1_rt::rc_map_insert(
                     build.order_by_occurrence.clone(),
                     row.occurrence.clone().value.clone(),
@@ -422,38 +422,38 @@ pub fn authored_order_fold_step(
 }
 
 pub fn authored_order_by_occurrence_build(
-    rows: Rc<Vec<Rc<AuthoredOrderRow>>>,
-) -> Rc<AuthoredOrderIndexBuild> {
+    rows: Arc<Vec<Arc<AuthoredOrderRow>>>,
+) -> Arc<AuthoredOrderIndexBuild> {
     rows.clone().iter().cloned().fold(
-        Rc::new(AuthoredOrderIndexBuild {
+        Arc::new(AuthoredOrderIndexBuild {
             order_by_occurrence: v1_rt::rc_empty_map::<i64, AuthoredTokenOrdinal>(),
             refusal: None,
         }),
-        |build: Rc<AuthoredOrderIndexBuild>, row: Rc<AuthoredOrderRow>| {
+        |build: Arc<AuthoredOrderIndexBuild>, row: Arc<AuthoredOrderRow>| {
             authored_order_fold_step(build, row.clone())
         },
     )
 }
 
 pub fn ordinal_of_occurrence(
-    order_by_occurrence: Rc<HashMap<i64, AuthoredTokenOrdinal>>,
+    order_by_occurrence: Arc<HashMap<i64, AuthoredTokenOrdinal>>,
     occurrence: OccurrenceId,
 ) -> Option<AuthoredTokenOrdinal> {
     v1_rt::map_get(&order_by_occurrence, occurrence.value.clone())
 }
 
 pub fn exposure_of_occurrence(
-    exposure_by_occurrence: Rc<HashMap<i64, Rc<DeclarationExposure>>>,
+    exposure_by_occurrence: Arc<HashMap<i64, Arc<DeclarationExposure>>>,
     occurrence: OccurrenceId,
-) -> Option<Rc<DeclarationExposure>> {
+) -> Option<Arc<DeclarationExposure>> {
     v1_rt::map_get(&exposure_by_occurrence, occurrence.value.clone())
 }
 
 pub fn module_exposure_declaration_missing_path_refusal(
-    module_by_occurrence: Rc<HashMap<i64, String>>,
-    exposure_by_occurrence: Rc<HashMap<i64, Rc<DeclarationExposure>>>,
-    declaration: Rc<DeclarationOccurrence>,
-) -> Option<Rc<OccurrenceModulePathIndexRefusal>> {
+    module_by_occurrence: Arc<HashMap<i64, String>>,
+    exposure_by_occurrence: Arc<HashMap<i64, Arc<DeclarationExposure>>>,
+    declaration: Arc<DeclarationOccurrence>,
+) -> Option<Arc<OccurrenceModulePathIndexRefusal>> {
     match v1_rt::map_get(
         &exposure_by_occurrence,
         declaration.occurrence.clone().value.clone(),
@@ -464,7 +464,7 @@ pub fn module_exposure_declaration_missing_path_refusal(
                 &module_by_occurrence,
                 declaration.occurrence.clone().value.clone(),
             ) {
-                None => Some(Rc::new(
+                None => Some(Arc::new(
                     OccurrenceModulePathIndexRefusal::MissingOccurrenceModulePathRow {
                         occurrence: declaration.occurrence.clone(),
                     },
@@ -480,14 +480,14 @@ pub fn module_exposure_declaration_missing_path_refusal(
 }
 
 pub fn reference_missing_module_path_refusal(
-    module_by_occurrence: Rc<HashMap<i64, String>>,
-    reference: Rc<ReferenceOccurrence>,
-) -> Option<Rc<OccurrenceModulePathIndexRefusal>> {
+    module_by_occurrence: Arc<HashMap<i64, String>>,
+    reference: Arc<ReferenceOccurrence>,
+) -> Option<Arc<OccurrenceModulePathIndexRefusal>> {
     match v1_rt::map_get(
         &module_by_occurrence,
         reference.occurrence.clone().value.clone(),
     ) {
-        None => Some(Rc::new(
+        None => Some(Arc::new(
             OccurrenceModulePathIndexRefusal::MissingOccurrenceModulePathRow {
                 occurrence: reference.occurrence.clone(),
             },
@@ -497,14 +497,14 @@ pub fn reference_missing_module_path_refusal(
 }
 
 pub fn module_paths_validate_transport(
-    transport: Rc<ValidatedOccurrenceTransport>,
-    module_by_occurrence: Rc<HashMap<i64, String>>,
-    exposure_by_occurrence: Rc<HashMap<i64, Rc<DeclarationExposure>>>,
-) -> Option<Rc<OccurrenceModulePathIndexRefusal>> {
+    transport: Arc<ValidatedOccurrenceTransport>,
+    module_by_occurrence: Arc<HashMap<i64, String>>,
+    exposure_by_occurrence: Arc<HashMap<i64, Arc<DeclarationExposure>>>,
+) -> Option<Arc<OccurrenceModulePathIndexRefusal>> {
     {
         let declaration_refusal = transport.declarations.clone().iter().cloned().fold(
             None,
-            |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
+            |refusal: _, declaration: Arc<DeclarationOccurrence>| match refusal.clone() {
                 Some(_) => refusal.clone(),
                 None => module_exposure_declaration_missing_path_refusal(
                     module_by_occurrence.clone(),
@@ -517,7 +517,7 @@ pub fn module_paths_validate_transport(
             Some(refusal) => Some(refusal.clone()),
             None => transport.references.clone().iter().cloned().fold(
                 None,
-                |refusal: _, reference: Rc<ReferenceOccurrence>| match refusal.clone() {
+                |refusal: _, reference: Arc<ReferenceOccurrence>| match refusal.clone() {
                     Some(_) => refusal.clone(),
                     None => reference_missing_module_path_refusal(
                         module_by_occurrence.clone(),
@@ -530,26 +530,26 @@ pub fn module_paths_validate_transport(
 }
 
 pub fn module_of_occurrence(
-    module_by_occurrence: Rc<HashMap<i64, String>>,
+    module_by_occurrence: Arc<HashMap<i64, String>>,
     occurrence: OccurrenceId,
 ) -> Option<String> {
     v1_rt::map_get(&module_by_occurrence, occurrence.value.clone())
 }
 
 pub fn exposure_validate_transport_declarations(
-    declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
-    exposure_by_occurrence: Rc<HashMap<i64, Rc<DeclarationExposure>>>,
-) -> Option<Rc<DeclarationExposureIndexRefusal>> {
+    declarations: Arc<Vec<Arc<DeclarationOccurrence>>>,
+    exposure_by_occurrence: Arc<HashMap<i64, Arc<DeclarationExposure>>>,
+) -> Option<Arc<DeclarationExposureIndexRefusal>> {
     declarations.clone().iter().cloned().fold(
         None,
-        |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
+        |refusal: _, declaration: Arc<DeclarationOccurrence>| match refusal.clone() {
             Some(_) => refusal.clone(),
             None => match v1_rt::map_get(
                 &exposure_by_occurrence,
                 declaration.occurrence.clone().value.clone(),
             ) {
                 Some(_) => None,
-                None => Some(Rc::new(
+                None => Some(Arc::new(
                     DeclarationExposureIndexRefusal::MissingDeclarationExposure {
                         occurrence: declaration.occurrence.clone(),
                     },
@@ -560,12 +560,12 @@ pub fn exposure_validate_transport_declarations(
 }
 
 pub fn authored_order_validate_transport_occurrence(
-    order_by_occurrence: Rc<HashMap<i64, AuthoredTokenOrdinal>>,
+    order_by_occurrence: Arc<HashMap<i64, AuthoredTokenOrdinal>>,
     occurrence: OccurrenceId,
-) -> Option<Rc<AuthoredOrderIndexRefusal>> {
+) -> Option<Arc<AuthoredOrderIndexRefusal>> {
     match v1_rt::map_get(&order_by_occurrence, occurrence.value.clone()) {
         Some(_) => None,
-        None => Some(Rc::new(
+        None => Some(Arc::new(
             AuthoredOrderIndexRefusal::MissingAuthoredOrderRow {
                 occurrence: occurrence.clone(),
             },
@@ -574,13 +574,13 @@ pub fn authored_order_validate_transport_occurrence(
 }
 
 pub fn authored_order_validate_transport(
-    transport: Rc<ValidatedOccurrenceTransport>,
-    order_by_occurrence: Rc<HashMap<i64, AuthoredTokenOrdinal>>,
-) -> Option<Rc<AuthoredOrderIndexRefusal>> {
+    transport: Arc<ValidatedOccurrenceTransport>,
+    order_by_occurrence: Arc<HashMap<i64, AuthoredTokenOrdinal>>,
+) -> Option<Arc<AuthoredOrderIndexRefusal>> {
     {
         let declaration_refusal = transport.declarations.clone().iter().cloned().fold(
             None,
-            |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
+            |refusal: _, declaration: Arc<DeclarationOccurrence>| match refusal.clone() {
                 Some(_) => refusal.clone(),
                 None => authored_order_validate_transport_occurrence(
                     order_by_occurrence.clone(),
@@ -592,7 +592,7 @@ pub fn authored_order_validate_transport(
             Some(refusal) => Some(refusal.clone()),
             None => transport.references.clone().iter().cloned().fold(
                 None,
-                |refusal: _, reference: Rc<ReferenceOccurrence>| match refusal.clone() {
+                |refusal: _, reference: Arc<ReferenceOccurrence>| match refusal.clone() {
                     Some(_) => refusal.clone(),
                     None => authored_order_validate_transport_occurrence(
                         order_by_occurrence.clone(),
@@ -614,18 +614,18 @@ pub fn occurrence_module_sibling_exposure_note() -> String {
 }
 
 pub fn declaration_lexically_exposed(
-    exposing_scope: Rc<OccurrenceContainmentPath>,
-    reference: Rc<ReferenceOccurrence>,
+    exposing_scope: Arc<OccurrenceContainmentPath>,
+    reference: Arc<ReferenceOccurrence>,
 ) -> bool {
     occurrence_containment_path_is_prefix_of(exposing_scope.clone(), reference.containment.clone())
 }
 
 pub fn declaration_module_sibling_exposed(
-    declaration: Rc<DeclarationOccurrence>,
-    reference: Rc<ReferenceOccurrence>,
+    declaration: Arc<DeclarationOccurrence>,
+    reference: Arc<ReferenceOccurrence>,
     exposure_module: String,
-    module_by_occurrence: Rc<HashMap<i64, String>>,
-    order_by_occurrence: Rc<HashMap<i64, AuthoredTokenOrdinal>>,
+    module_by_occurrence: Arc<HashMap<i64, String>>,
+    order_by_occurrence: Arc<HashMap<i64, AuthoredTokenOrdinal>>,
 ) -> bool {
     match ordinal_of_occurrence(order_by_occurrence.clone(), declaration.occurrence.clone()) {
         None => false,
@@ -652,11 +652,11 @@ pub fn declaration_module_sibling_exposed(
 }
 
 pub fn declaration_exposed_on_reference_chain(
-    declaration: Rc<DeclarationOccurrence>,
-    reference: Rc<ReferenceOccurrence>,
-    module_by_occurrence: Rc<HashMap<i64, String>>,
-    exposure_by_occurrence: Rc<HashMap<i64, Rc<DeclarationExposure>>>,
-    order_by_occurrence: Rc<HashMap<i64, AuthoredTokenOrdinal>>,
+    declaration: Arc<DeclarationOccurrence>,
+    reference: Arc<ReferenceOccurrence>,
+    module_by_occurrence: Arc<HashMap<i64, String>>,
+    exposure_by_occurrence: Arc<HashMap<i64, Arc<DeclarationExposure>>>,
+    order_by_occurrence: Arc<HashMap<i64, AuthoredTokenOrdinal>>,
 ) -> bool {
     match exposure_of_occurrence(
         exposure_by_occurrence.clone(),
@@ -694,18 +694,18 @@ pub fn occurrence_candidate_index_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceCandidateIndex {
-    pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
-    pub declarations_by_name: Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
-    pub module_by_occurrence: Rc<HashMap<i64, NonEmptyStr>>,
-    pub exposure_by_occurrence: Rc<HashMap<i64, Rc<DeclarationExposure>>>,
-    pub order_by_occurrence: Rc<HashMap<i64, AuthoredTokenOrdinal>>,
+    pub entries_by_id: Arc<HashMap<i64, Arc<OccurrenceIndexEntry>>>,
+    pub declarations_by_name: Arc<HashMap<String, Arc<Vec<Arc<DeclarationOccurrence>>>>>,
+    pub module_by_occurrence: Arc<HashMap<i64, NonEmptyStr>>,
+    pub exposure_by_occurrence: Arc<HashMap<i64, Arc<DeclarationExposure>>>,
+    pub order_by_occurrence: Arc<HashMap<i64, AuthoredTokenOrdinal>>,
 }
 
 pub fn declarations_by_name_insert(
-    acc: Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
+    acc: Arc<HashMap<String, Arc<Vec<Arc<DeclarationOccurrence>>>>>,
     name: String,
-    declaration: Rc<DeclarationOccurrence>,
-) -> Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>> {
+    declaration: Arc<DeclarationOccurrence>,
+) -> Arc<HashMap<String, Arc<Vec<Arc<DeclarationOccurrence>>>>> {
     match v1_rt::map_get(&acc, name.clone()) {
         None => v1_rt::rc_map_insert(
             acc.clone(),
@@ -733,7 +733,7 @@ pub fn declarations_by_name_build_note() -> String {
 #[serde(tag = "_variant")]
 pub enum DeclarationsByNameBuild {
     DeclarationsByNameReady {
-        by_name: Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
+        by_name: Arc<HashMap<String, Arc<Vec<Arc<DeclarationOccurrence>>>>>,
     },
     DeclarationsByNameMissingIndexEntry {
         occurrence: OccurrenceId,
@@ -744,7 +744,7 @@ pub enum DeclarationsByNameBuild {
 #[serde(tag = "_variant")]
 pub enum DeclarationsByNameFold {
     DeclarationsByNameFoldReady {
-        by_name: Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
+        by_name: Arc<HashMap<String, Arc<Vec<Arc<DeclarationOccurrence>>>>>,
     },
     DeclarationsByNameFoldMissing {
         occurrence: OccurrenceId,
@@ -752,15 +752,15 @@ pub enum DeclarationsByNameFold {
 }
 
 pub fn declarations_by_name_build(
-    entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
-    declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
-) -> Rc<DeclarationsByNameBuild> {
+    entries_by_id: Arc<HashMap<i64, Arc<OccurrenceIndexEntry>>>,
+    declarations: Arc<Vec<Arc<DeclarationOccurrence>>>,
+) -> Arc<DeclarationsByNameBuild> {
     {
         let fold_result = declarations.clone().iter().cloned().fold(
-            Rc::new(DeclarationsByNameFold::DeclarationsByNameFoldReady {
+            Arc::new(DeclarationsByNameFold::DeclarationsByNameFoldReady {
                 by_name: v1_rt::rc_empty_map::<_, _>(),
             }),
-            |acc: Rc<DeclarationsByNameFold>, declaration: Rc<DeclarationOccurrence>| match (*acc
+            |acc: Arc<DeclarationsByNameFold>, declaration: Arc<DeclarationOccurrence>| match (*acc
                 .clone())
             .clone()
             {
@@ -773,10 +773,10 @@ pub fn declarations_by_name_build(
                     &entries_by_id,
                     declaration.occurrence.clone().value.clone(),
                 ) {
-                    None => Rc::new(DeclarationsByNameFold::DeclarationsByNameFoldMissing {
+                    None => Arc::new(DeclarationsByNameFold::DeclarationsByNameFoldMissing {
                         occurrence: declaration.occurrence.clone(),
                     }),
-                    Some(entry) => Rc::new(DeclarationsByNameFold::DeclarationsByNameFoldReady {
+                    Some(entry) => Arc::new(DeclarationsByNameFold::DeclarationsByNameFoldReady {
                         by_name: declarations_by_name_insert(
                             by_name.clone(),
                             entry.projection.clone().authored_name.clone(),
@@ -789,13 +789,13 @@ pub fn declarations_by_name_build(
         match (*fold_result.clone()).clone() {
             DeclarationsByNameFold::DeclarationsByNameFoldReady {
                 by_name: by_name, ..
-            } => Rc::new(DeclarationsByNameBuild::DeclarationsByNameReady {
+            } => Arc::new(DeclarationsByNameBuild::DeclarationsByNameReady {
                 by_name: by_name.clone(),
             }),
             DeclarationsByNameFold::DeclarationsByNameFoldMissing {
                 occurrence: occurrence,
                 ..
-            } => Rc::new(
+            } => Arc::new(
                 DeclarationsByNameBuild::DeclarationsByNameMissingIndexEntry {
                     occurrence: occurrence.clone(),
                 },
@@ -808,19 +808,19 @@ pub fn declarations_by_name_build(
 #[serde(tag = "_variant")]
 pub enum OccurrenceCandidateIndexBuild {
     OccurrenceCandidateIndexReady {
-        index: Rc<OccurrenceCandidateIndex>,
+        index: Arc<OccurrenceCandidateIndex>,
     },
     OccurrenceCandidateIndexTransportRefused {
-        refusal: Rc<OccurrenceTransportRefusal>,
+        refusal: Arc<OccurrenceTransportRefusal>,
     },
     OccurrenceCandidateIndexModulePathRefused {
-        refusal: Rc<OccurrenceModulePathIndexRefusal>,
+        refusal: Arc<OccurrenceModulePathIndexRefusal>,
     },
     OccurrenceCandidateIndexExposureRefused {
-        refusal: Rc<DeclarationExposureIndexRefusal>,
+        refusal: Arc<DeclarationExposureIndexRefusal>,
     },
     OccurrenceCandidateIndexAuthoredOrderRefused {
-        refusal: Rc<AuthoredOrderIndexRefusal>,
+        refusal: Arc<AuthoredOrderIndexRefusal>,
     },
     OccurrenceCandidateIndexDeclarationBucketRefused {
         occurrence: OccurrenceId,
@@ -828,13 +828,13 @@ pub enum OccurrenceCandidateIndexBuild {
 }
 
 pub fn occurrence_candidate_index_build(
-    transport: Rc<OccurrenceTransport>,
-    inputs: Rc<OccurrenceBindingCandidateInputs>,
-) -> Rc<OccurrenceCandidateIndexBuild> {
+    transport: Arc<OccurrenceTransport>,
+    inputs: Arc<OccurrenceBindingCandidateInputs>,
+) -> Arc<OccurrenceCandidateIndexBuild> {
     match (*occurrence_transport_validate(transport.clone())).clone() {
         OccurrenceTransportValidation::OccurrenceTransportRefused {
             refusal: refusal, ..
-        } => Rc::new(
+        } => Arc::new(
             OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexTransportRefused {
                 refusal: refusal.clone(),
             },
@@ -848,35 +848,35 @@ pub fn occurrence_candidate_index_build(
             let order_build =
                 authored_order_by_occurrence_build(inputs.authored_order_rows.clone());
             match module_path_build.refusal.clone() {
-    Some(refusal) => Rc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexModulePathRefused {
+    Some(refusal) => Arc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexModulePathRefused {
     refusal: refusal.clone(),
 }),
     None => match exposure_build.refusal.clone() {
-    Some(refusal) => Rc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexExposureRefused {
+    Some(refusal) => Arc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexExposureRefused {
     refusal: refusal.clone(),
 }),
     None => match order_build.refusal.clone() {
-    Some(refusal) => Rc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexAuthoredOrderRefused {
+    Some(refusal) => Arc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexAuthoredOrderRefused {
     refusal: refusal.clone(),
 }),
     None => match module_paths_validate_transport(validated.clone(), module_path_build.module_by_occurrence.clone(), exposure_build.exposure_by_occurrence.clone()) {
-    Some(refusal) => Rc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexModulePathRefused {
+    Some(refusal) => Arc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexModulePathRefused {
     refusal: refusal.clone(),
 }),
     None => match exposure_validate_transport_declarations(validated.declarations.clone(), exposure_build.exposure_by_occurrence.clone()) {
-    Some(refusal) => Rc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexExposureRefused {
+    Some(refusal) => Arc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexExposureRefused {
     refusal: refusal.clone(),
 }),
     None => match authored_order_validate_transport(validated.clone(), order_build.order_by_occurrence.clone()) {
-    Some(refusal) => Rc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexAuthoredOrderRefused {
+    Some(refusal) => Arc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexAuthoredOrderRefused {
     refusal: refusal.clone(),
 }),
     None => match (*declarations_by_name_build(validated.entries_by_id.clone(), validated.declarations.clone())).clone() {
-    DeclarationsByNameBuild::DeclarationsByNameMissingIndexEntry { occurrence: occurrence, .. } => Rc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexDeclarationBucketRefused {
+    DeclarationsByNameBuild::DeclarationsByNameMissingIndexEntry { occurrence: occurrence, .. } => Arc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexDeclarationBucketRefused {
     occurrence: occurrence.clone(),
 }),
-    DeclarationsByNameBuild::DeclarationsByNameReady { by_name: by_name, .. } => Rc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady {
-    index: Rc::new(OccurrenceCandidateIndex {
+    DeclarationsByNameBuild::DeclarationsByNameReady { by_name: by_name, .. } => Arc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady {
+    index: Arc::new(OccurrenceCandidateIndex {
     entries_by_id: validated.entries_by_id.clone(),
     declarations_by_name: by_name.clone(),
     module_by_occurrence: module_path_build.module_by_occurrence.clone(),
@@ -905,9 +905,9 @@ pub fn occurrence_candidate_cardinality_note() -> String {
 }
 
 pub fn candidate_occurrence_ids_for_reference(
-    index: Rc<OccurrenceCandidateIndex>,
-    reference: Rc<ReferenceOccurrence>,
-) -> Rc<Vec<OccurrenceId>> {
+    index: Arc<OccurrenceCandidateIndex>,
+    reference: Arc<ReferenceOccurrence>,
+) -> Arc<Vec<OccurrenceId>> {
     match v1_rt::map_get(
         &index.entries_by_id.clone(),
         reference.occurrence.clone().value.clone(),
@@ -918,9 +918,9 @@ pub fn candidate_occurrence_ids_for_reference(
             entry.projection.clone().authored_name.clone(),
         ) {
             None => Rc::new(vec![]),
-            Some(same_spelling) => Rc::new({
+            Some(same_spelling) => Arc::new({
                 let mut __result = Vec::new();
-                for declaration in Rc::new({
+                for declaration in Arc::new({
                     let mut __result = Vec::new();
                     for declaration in v1_rt::reverse(same_spelling.clone()).iter().cloned() {
                         if declaration_exposed_on_reference_chain(
@@ -979,9 +979,9 @@ pub struct DirectModuleDependency {
 }
 
 pub fn direct_module_dependency_from_provider(
-    provider: Rc<BoundReferenceProvider>,
-) -> Rc<DirectModuleDependency> {
-    Rc::new(DirectModuleDependency {
+    provider: Arc<BoundReferenceProvider>,
+) -> Arc<DirectModuleDependency> {
+    Arc::new(DirectModuleDependency {
         consumer_module: provider.consumer_module.clone(),
         provider_module: provider.provider_module.clone(),
     })
@@ -989,14 +989,14 @@ pub fn direct_module_dependency_from_provider(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DirectModuleDependencyDedupBuild {
-    pub providers_by_consumer: Rc<HashMap<NonEmptyStr, Rc<BTreeSet<String>>>>,
-    pub edges_first_seen: Rc<Vec<Rc<DirectModuleDependency>>>,
+    pub providers_by_consumer: Arc<HashMap<NonEmptyStr, Arc<BTreeSet<String>>>>,
+    pub edges_first_seen: Arc<Vec<Arc<DirectModuleDependency>>>,
 }
 
 pub fn direct_module_dependency_dedup_step(
-    acc: Rc<DirectModuleDependencyDedupBuild>,
-    provider: Rc<BoundReferenceProvider>,
-) -> Rc<DirectModuleDependencyDedupBuild> {
+    acc: Arc<DirectModuleDependencyDedupBuild>,
+    provider: Arc<BoundReferenceProvider>,
+) -> Arc<DirectModuleDependencyDedupBuild> {
     {
         let edge = direct_module_dependency_from_provider(provider.clone());
         if (edge.consumer_module.clone() == edge.provider_module.clone()) {
@@ -1006,7 +1006,7 @@ pub fn direct_module_dependency_dedup_step(
                 &acc.providers_by_consumer.clone(),
                 edge.consumer_module.clone(),
             ) {
-                None => Rc::new(DirectModuleDependencyDedupBuild {
+                None => Arc::new(DirectModuleDependencyDedupBuild {
                     providers_by_consumer: v1_rt::rc_map_insert(
                         acc.providers_by_consumer.clone(),
                         edge.consumer_module.clone(),
@@ -1024,7 +1024,7 @@ pub fn direct_module_dependency_dedup_step(
                     if v1_rt::set_contains(&existing_providers, edge.provider_module.clone()) {
                         acc.clone()
                     } else {
-                        Rc::new(DirectModuleDependencyDedupBuild {
+                        Arc::new(DirectModuleDependencyDedupBuild {
                             providers_by_consumer: v1_rt::rc_map_insert(
                                 acc.providers_by_consumer.clone(),
                                 edge.consumer_module.clone(),
@@ -1046,20 +1046,20 @@ pub fn direct_module_dependency_dedup_step(
 }
 
 pub fn direct_module_dependencies_from_providers(
-    providers: Rc<Vec<Rc<BoundReferenceProvider>>>,
-) -> Rc<Vec<Rc<DirectModuleDependency>>> {
+    providers: Arc<Vec<Arc<BoundReferenceProvider>>>,
+) -> Arc<Vec<Arc<DirectModuleDependency>>> {
     v1_rt::reverse(
         providers
             .clone()
             .iter()
             .cloned()
             .fold(
-                Rc::new(DirectModuleDependencyDedupBuild {
-                    providers_by_consumer: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+                Arc::new(DirectModuleDependencyDedupBuild {
+                    providers_by_consumer: v1_rt::rc_empty_map::<String, Arc<BTreeSet<String>>>(),
                     edges_first_seen: Rc::new(vec![]),
                 }),
-                |acc: Rc<DirectModuleDependencyDedupBuild>,
-                 provider: Rc<BoundReferenceProvider>| {
+                |acc: Arc<DirectModuleDependencyDedupBuild>,
+                 provider: Arc<BoundReferenceProvider>| {
                     direct_module_dependency_dedup_step(acc, provider.clone())
                 },
             )
@@ -1072,11 +1072,11 @@ pub fn direct_module_dependencies_from_providers(
 #[serde(tag = "_variant")]
 pub enum BoundReferencePopulation {
     AllReferencesBound {
-        providers: Rc<Vec<Rc<BoundReferenceProvider>>>,
+        providers: Arc<Vec<Arc<BoundReferenceProvider>>>,
     },
     ReferencePopulationRefused {
-        first_failure: Rc<ReferenceBindingProjection>,
-        more_failures: Rc<Vec<Rc<ReferenceBindingProjection>>>,
+        first_failure: Arc<ReferenceBindingProjection>,
+        more_failures: Arc<Vec<Arc<ReferenceBindingProjection>>>,
     },
 }
 
@@ -1091,19 +1091,19 @@ pub fn bound_reference_population_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BoundReferencePopulationBuild {
-    pub providers_reversed: Rc<Vec<Rc<BoundReferenceProvider>>>,
-    pub first_failure: Option<Rc<ReferenceBindingProjection>>,
-    pub more_failures_reversed: Rc<Vec<Rc<ReferenceBindingProjection>>>,
+    pub providers_reversed: Arc<Vec<Arc<BoundReferenceProvider>>>,
+    pub first_failure: Option<Arc<ReferenceBindingProjection>>,
+    pub more_failures_reversed: Arc<Vec<Arc<ReferenceBindingProjection>>>,
 }
 
 pub fn bound_reference_population_fold_step(
-    acc: Rc<BoundReferencePopulationBuild>,
-    projection: Rc<ReferenceBindingProjection>,
-) -> Rc<BoundReferencePopulationBuild> {
+    acc: Arc<BoundReferencePopulationBuild>,
+    projection: Arc<ReferenceBindingProjection>,
+) -> Arc<BoundReferencePopulationBuild> {
     match (*projection.clone()).clone() {
         ReferenceBindingProjection::ReferenceBindingProjectionBound {
             provider: provider, ..
-        } => Rc::new(BoundReferencePopulationBuild {
+        } => Arc::new(BoundReferencePopulationBuild {
             providers_reversed: v1_rt::concat(
                 Rc::new(vec![provider.clone()]),
                 acc.providers_reversed.clone(),
@@ -1113,12 +1113,12 @@ pub fn bound_reference_population_fold_step(
         }),
         ReferenceBindingProjection::ReferenceBindingProjectionUnbound { occurrence: _, .. } => {
             match acc.first_failure.clone() {
-                None => Rc::new(BoundReferencePopulationBuild {
+                None => Arc::new(BoundReferencePopulationBuild {
                     providers_reversed: acc.providers_reversed.clone(),
                     first_failure: Some(projection.clone()),
                     more_failures_reversed: acc.more_failures_reversed.clone(),
                 }),
-                Some(_) => Rc::new(BoundReferencePopulationBuild {
+                Some(_) => Arc::new(BoundReferencePopulationBuild {
                     providers_reversed: acc.providers_reversed.clone(),
                     first_failure: acc.first_failure.clone(),
                     more_failures_reversed: v1_rt::concat(
@@ -1131,12 +1131,12 @@ pub fn bound_reference_population_fold_step(
         ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous {
             occurrence: _, ..
         } => match acc.first_failure.clone() {
-            None => Rc::new(BoundReferencePopulationBuild {
+            None => Arc::new(BoundReferencePopulationBuild {
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: Some(projection.clone()),
                 more_failures_reversed: acc.more_failures_reversed.clone(),
             }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
+            Some(_) => Arc::new(BoundReferencePopulationBuild {
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: acc.first_failure.clone(),
                 more_failures_reversed: v1_rt::concat(
@@ -1149,12 +1149,12 @@ pub fn bound_reference_population_fold_step(
             refusal: _,
             ..
         } => match acc.first_failure.clone() {
-            None => Rc::new(BoundReferencePopulationBuild {
+            None => Arc::new(BoundReferencePopulationBuild {
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: Some(projection.clone()),
                 more_failures_reversed: acc.more_failures_reversed.clone(),
             }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
+            Some(_) => Arc::new(BoundReferencePopulationBuild {
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: acc.first_failure.clone(),
                 more_failures_reversed: v1_rt::concat(
@@ -1167,12 +1167,12 @@ pub fn bound_reference_population_fold_step(
             refusal: _,
             ..
         } => match acc.first_failure.clone() {
-            None => Rc::new(BoundReferencePopulationBuild {
+            None => Arc::new(BoundReferencePopulationBuild {
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: Some(projection.clone()),
                 more_failures_reversed: acc.more_failures_reversed.clone(),
             }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
+            Some(_) => Arc::new(BoundReferencePopulationBuild {
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: acc.first_failure.clone(),
                 more_failures_reversed: v1_rt::concat(
@@ -1185,12 +1185,12 @@ pub fn bound_reference_population_fold_step(
             refusal: _,
             ..
         } => match acc.first_failure.clone() {
-            None => Rc::new(BoundReferencePopulationBuild {
+            None => Arc::new(BoundReferencePopulationBuild {
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: Some(projection.clone()),
                 more_failures_reversed: acc.more_failures_reversed.clone(),
             }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
+            Some(_) => Arc::new(BoundReferencePopulationBuild {
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: acc.first_failure.clone(),
                 more_failures_reversed: v1_rt::concat(
@@ -1203,12 +1203,12 @@ pub fn bound_reference_population_fold_step(
             refusal: _,
             ..
         } => match acc.first_failure.clone() {
-            None => Rc::new(BoundReferencePopulationBuild {
+            None => Arc::new(BoundReferencePopulationBuild {
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: Some(projection.clone()),
                 more_failures_reversed: acc.more_failures_reversed.clone(),
             }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
+            Some(_) => Arc::new(BoundReferencePopulationBuild {
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: acc.first_failure.clone(),
                 more_failures_reversed: v1_rt::concat(
@@ -1221,12 +1221,12 @@ pub fn bound_reference_population_fold_step(
             occurrence: _,
             ..
         } => match acc.first_failure.clone() {
-            None => Rc::new(BoundReferencePopulationBuild {
+            None => Arc::new(BoundReferencePopulationBuild {
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: Some(projection.clone()),
                 more_failures_reversed: acc.more_failures_reversed.clone(),
             }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
+            Some(_) => Arc::new(BoundReferencePopulationBuild {
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: acc.first_failure.clone(),
                 more_failures_reversed: v1_rt::concat(
@@ -1239,12 +1239,12 @@ pub fn bound_reference_population_fold_step(
             occurrence: _,
             ..
         } => match acc.first_failure.clone() {
-            None => Rc::new(BoundReferencePopulationBuild {
+            None => Arc::new(BoundReferencePopulationBuild {
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: Some(projection.clone()),
                 more_failures_reversed: acc.more_failures_reversed.clone(),
             }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
+            Some(_) => Arc::new(BoundReferencePopulationBuild {
                 providers_reversed: acc.providers_reversed.clone(),
                 first_failure: acc.first_failure.clone(),
                 more_failures_reversed: v1_rt::concat(
@@ -1255,12 +1255,12 @@ pub fn bound_reference_population_fold_step(
         },
         ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory { .. } => {
             match acc.first_failure.clone() {
-                None => Rc::new(BoundReferencePopulationBuild {
+                None => Arc::new(BoundReferencePopulationBuild {
                     providers_reversed: acc.providers_reversed.clone(),
                     first_failure: Some(projection.clone()),
                     more_failures_reversed: acc.more_failures_reversed.clone(),
                 }),
-                Some(_) => Rc::new(BoundReferencePopulationBuild {
+                Some(_) => Arc::new(BoundReferencePopulationBuild {
                     providers_reversed: acc.providers_reversed.clone(),
                     first_failure: acc.first_failure.clone(),
                     more_failures_reversed: v1_rt::concat(
@@ -1274,24 +1274,25 @@ pub fn bound_reference_population_fold_step(
 }
 
 pub fn bound_reference_population_from_projections(
-    projections: Rc<Vec<Rc<ReferenceBindingProjection>>>,
-) -> Rc<BoundReferencePopulation> {
+    projections: Arc<Vec<Arc<ReferenceBindingProjection>>>,
+) -> Arc<BoundReferencePopulation> {
     {
         let build = projections.clone().iter().cloned().fold(
-            Rc::new(BoundReferencePopulationBuild {
+            Arc::new(BoundReferencePopulationBuild {
                 providers_reversed: Rc::new(vec![]),
                 first_failure: None,
                 more_failures_reversed: Rc::new(vec![]),
             }),
-            |acc: Rc<BoundReferencePopulationBuild>, projection: Rc<ReferenceBindingProjection>| {
+            |acc: Arc<BoundReferencePopulationBuild>,
+             projection: Arc<ReferenceBindingProjection>| {
                 bound_reference_population_fold_step(acc, projection.clone())
             },
         );
         match build.first_failure.clone() {
-            None => Rc::new(BoundReferencePopulation::AllReferencesBound {
+            None => Arc::new(BoundReferencePopulation::AllReferencesBound {
                 providers: v1_rt::reverse(build.providers_reversed.clone()),
             }),
-            Some(first_failure) => Rc::new(BoundReferencePopulation::ReferencePopulationRefused {
+            Some(first_failure) => Arc::new(BoundReferencePopulation::ReferencePopulationRefused {
                 first_failure: first_failure.clone(),
                 more_failures: v1_rt::reverse(build.more_failures_reversed.clone()),
             }),
@@ -1303,26 +1304,26 @@ pub fn bound_reference_population_from_projections(
 #[serde(tag = "_variant")]
 pub enum DirectModuleDependencyBuild {
     DirectModuleDependencyListReady {
-        edges: Rc<Vec<Rc<DirectModuleDependency>>>,
+        edges: Arc<Vec<Arc<DirectModuleDependency>>>,
     },
     DirectModuleDependencyPopulationRefused {
-        population: Rc<BoundReferencePopulation>,
+        population: Arc<BoundReferencePopulation>,
     },
 }
 
 pub fn direct_module_dependencies_from_bound_population(
-    population: Rc<BoundReferencePopulation>,
-) -> Rc<DirectModuleDependencyBuild> {
+    population: Arc<BoundReferencePopulation>,
+) -> Arc<DirectModuleDependencyBuild> {
     match (*population.clone()).clone() {
         BoundReferencePopulation::AllReferencesBound {
             providers: providers,
             ..
-        } => Rc::new(
+        } => Arc::new(
             DirectModuleDependencyBuild::DirectModuleDependencyListReady {
                 edges: direct_module_dependencies_from_providers(providers.clone()),
             },
         ),
-        BoundReferencePopulation::ReferencePopulationRefused { .. } => Rc::new(
+        BoundReferencePopulation::ReferencePopulationRefused { .. } => Arc::new(
             DirectModuleDependencyBuild::DirectModuleDependencyPopulationRefused {
                 population: population.clone(),
             },
@@ -1334,7 +1335,7 @@ pub fn direct_module_dependencies_from_bound_population(
 #[serde(tag = "_variant")]
 pub enum ReferenceBindingProjection {
     ReferenceBindingProjectionBound {
-        provider: Rc<BoundReferenceProvider>,
+        provider: Arc<BoundReferenceProvider>,
     },
     ReferenceBindingProjectionUnbound {
         occurrence: OccurrenceId,
@@ -1343,16 +1344,16 @@ pub enum ReferenceBindingProjection {
         occurrence: OccurrenceId,
     },
     ReferenceBindingProjectionTransportRefused {
-        refusal: Rc<OccurrenceTransportRefusal>,
+        refusal: Arc<OccurrenceTransportRefusal>,
     },
     ReferenceBindingProjectionModulePathRefused {
-        refusal: Rc<OccurrenceModulePathIndexRefusal>,
+        refusal: Arc<OccurrenceModulePathIndexRefusal>,
     },
     ReferenceBindingProjectionExposureRefused {
-        refusal: Rc<DeclarationExposureIndexRefusal>,
+        refusal: Arc<DeclarationExposureIndexRefusal>,
     },
     ReferenceBindingProjectionAuthoredOrderRefused {
-        refusal: Rc<AuthoredOrderIndexRefusal>,
+        refusal: Arc<AuthoredOrderIndexRefusal>,
     },
     ReferenceBindingProjectionDeclarationBucketRefused {
         occurrence: OccurrenceId,
@@ -1376,17 +1377,17 @@ pub fn resolve_type_reference_containment_binding_note() -> String {
 }
 
 pub fn resolve_type_reference_containment_binding(
-    transport: Rc<OccurrenceTransport>,
-    inputs: Rc<OccurrenceBindingCandidateInputs>,
-    reference: Rc<ReferenceOccurrence>,
-) -> Rc<ReferenceBindingProjection> {
+    transport: Arc<OccurrenceTransport>,
+    inputs: Arc<OccurrenceBindingCandidateInputs>,
+    reference: Arc<ReferenceOccurrence>,
+) -> Arc<ReferenceBindingProjection> {
     match reference.category.clone() {
         OccurrenceCategory::TypeOccurrence => resolve_reference_binding_via_structural_candidates(
             transport.clone(),
             inputs.clone(),
             reference.clone(),
         ),
-        _ => Rc::new(
+        _ => Arc::new(
             ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory {
                 occurrence: reference.occurrence.clone(),
                 observed: reference.category.clone(),
@@ -1405,10 +1406,10 @@ pub fn resolve_reference_via_structural_candidates_note() -> String {
 }
 
 pub fn resolve_reference_via_structural_candidates(
-    transport: Rc<OccurrenceTransport>,
-    index: Rc<OccurrenceCandidateIndex>,
-    reference: Rc<ReferenceOccurrence>,
-) -> Rc<ReferenceBindingProjection> {
+    transport: Arc<OccurrenceTransport>,
+    index: Arc<OccurrenceCandidateIndex>,
+    reference: Arc<ReferenceOccurrence>,
+) -> Arc<ReferenceBindingProjection> {
     {
         let candidates = candidate_occurrence_ids_for_reference(index.clone(), reference.clone());
         match (*resolve_reference_occurrence_binding(
@@ -1421,7 +1422,7 @@ pub fn resolve_reference_via_structural_candidates(
             OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
                 refusal: refusal,
                 ..
-            } => Rc::new(
+            } => Arc::new(
                 ReferenceBindingProjection::ReferenceBindingProjectionTransportRefused {
                     refusal: refusal.clone(),
                 },
@@ -1430,12 +1431,12 @@ pub fn resolve_reference_via_structural_candidates(
                 result: result,
                 ..
             } => match (*result.clone()).clone() {
-                OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. } => Rc::new(
+                OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. } => Arc::new(
                     ReferenceBindingProjection::ReferenceBindingProjectionUnbound {
                         occurrence: reference.occurrence.clone(),
                     },
                 ),
-                OccurrenceBindingResult::OccurrenceAmbiguous { .. } => Rc::new(
+                OccurrenceBindingResult::OccurrenceAmbiguous { .. } => Arc::new(
                     ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous {
                         occurrence: reference.occurrence.clone(),
                     },
@@ -1451,15 +1452,15 @@ pub fn resolve_reference_via_structural_candidates(
                         .terminal
                         .clone();
                     match module_of_occurrence(index.module_by_occurrence.clone(), reference.occurrence.clone()) {
-    None => Rc::new(ReferenceBindingProjection::ReferenceBindingProjectionModulePathMissing {
+    None => Arc::new(ReferenceBindingProjection::ReferenceBindingProjectionModulePathMissing {
     occurrence: reference.occurrence.clone(),
 }),
     Some(consumer_module) => match module_of_occurrence(index.module_by_occurrence.clone(), declaration_occurrence.clone()) {
-    None => Rc::new(ReferenceBindingProjection::ReferenceBindingProjectionModulePathMissing {
+    None => Arc::new(ReferenceBindingProjection::ReferenceBindingProjectionModulePathMissing {
     occurrence: declaration_occurrence.clone(),
 }),
-    Some(provider_module) => Rc::new(ReferenceBindingProjection::ReferenceBindingProjectionBound {
-    provider: Rc::new(BoundReferenceProvider {
+    Some(provider_module) => Arc::new(ReferenceBindingProjection::ReferenceBindingProjectionBound {
+    provider: Arc::new(BoundReferenceProvider {
     reference_occurrence: reference.occurrence.clone(),
     declaration_occurrence: declaration_occurrence.clone(),
     consumer_module: consumer_module.clone(),
@@ -1475,15 +1476,15 @@ pub fn resolve_reference_via_structural_candidates(
 }
 
 pub fn resolve_reference_binding_via_structural_candidates(
-    transport: Rc<OccurrenceTransport>,
-    inputs: Rc<OccurrenceBindingCandidateInputs>,
-    reference: Rc<ReferenceOccurrence>,
-) -> Rc<ReferenceBindingProjection> {
+    transport: Arc<OccurrenceTransport>,
+    inputs: Arc<OccurrenceBindingCandidateInputs>,
+    reference: Arc<ReferenceOccurrence>,
+) -> Arc<ReferenceBindingProjection> {
     match (*occurrence_candidate_index_build(transport.clone(), inputs.clone())).clone() {
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexTransportRefused {
             refusal: refusal,
             ..
-        } => Rc::new(
+        } => Arc::new(
             ReferenceBindingProjection::ReferenceBindingProjectionTransportRefused {
                 refusal: refusal.clone(),
             },
@@ -1491,7 +1492,7 @@ pub fn resolve_reference_binding_via_structural_candidates(
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexModulePathRefused {
             refusal: refusal,
             ..
-        } => Rc::new(
+        } => Arc::new(
             ReferenceBindingProjection::ReferenceBindingProjectionModulePathRefused {
                 refusal: refusal.clone(),
             },
@@ -1499,7 +1500,7 @@ pub fn resolve_reference_binding_via_structural_candidates(
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexExposureRefused {
             refusal: refusal,
             ..
-        } => Rc::new(
+        } => Arc::new(
             ReferenceBindingProjection::ReferenceBindingProjectionExposureRefused {
                 refusal: refusal.clone(),
             },
@@ -1507,7 +1508,7 @@ pub fn resolve_reference_binding_via_structural_candidates(
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexAuthoredOrderRefused {
             refusal: refusal,
             ..
-        } => Rc::new(
+        } => Arc::new(
             ReferenceBindingProjection::ReferenceBindingProjectionAuthoredOrderRefused {
                 refusal: refusal.clone(),
             },
@@ -1515,7 +1516,7 @@ pub fn resolve_reference_binding_via_structural_candidates(
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexDeclarationBucketRefused {
             occurrence: occurrence,
             ..
-        } => Rc::new(
+        } => Arc::new(
             ReferenceBindingProjection::ReferenceBindingProjectionDeclarationBucketRefused {
                 occurrence: occurrence.clone(),
             },
@@ -1531,11 +1532,11 @@ pub fn resolve_reference_binding_via_structural_candidates(
 }
 
 pub fn resolve_all_references_via_structural_candidates(
-    transport: Rc<OccurrenceTransport>,
-    index: Rc<OccurrenceCandidateIndex>,
-    references: Rc<Vec<Rc<ReferenceOccurrence>>>,
-) -> Rc<Vec<Rc<ReferenceBindingProjection>>> {
-    Rc::new({
+    transport: Arc<OccurrenceTransport>,
+    index: Arc<OccurrenceCandidateIndex>,
+    references: Arc<Vec<Arc<ReferenceOccurrence>>>,
+) -> Arc<Vec<Arc<ReferenceBindingProjection>>> {
+    Arc::new({
         let mut __result = Vec::new();
         for reference in references.clone().iter().cloned() {
             __result.push(resolve_reference_via_structural_candidates(
@@ -1582,7 +1583,7 @@ pub enum Section13PopulationLawId {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Section13ExactHeadExecutionObservation {
     pub head: CommitSha,
-    pub declaration: Rc<DeclarationRef>,
+    pub declaration: Arc<DeclarationRef>,
     pub passed: bool,
 }
 
@@ -1590,17 +1591,17 @@ pub struct Section13ExactHeadExecutionObservation {
 #[serde(tag = "_variant")]
 pub enum Section13PopulationLawEvidence {
     Section13PopulationLawExecuting {
-        receipt: Rc<DeclarationRef>,
+        receipt: Arc<DeclarationRef>,
     },
     Section13PopulationLawDeferredProductionOccurrenceCollectorMissing {
-        dissolve_on: Option<Rc<DeclarationRef>>,
+        dissolve_on: Option<Arc<DeclarationRef>>,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Section13PopulationLawRosterRow {
     pub law: Section13PopulationLawId,
-    pub evidence: Rc<Section13PopulationLawEvidence>,
+    pub evidence: Arc<Section13PopulationLawEvidence>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1609,25 +1610,25 @@ pub enum Section13PopulationLawRosterVerdict {
     Section13PopulationLawRosterHolds,
     Section13PopulationLawRosterRefusedDuplicateLaw { law: Section13PopulationLawId },
     Section13PopulationLawRosterRefusedUncoveredLaw { law: Section13PopulationLawId },
-    Section13PopulationLawRosterRefusedPositionalModulePath { receipt: Rc<DeclarationRef> },
-    Section13PopulationLawRosterRefusedMissingObservation { receipt: Rc<DeclarationRef> },
-    Section13PopulationLawRosterRefusedFailedOrStaleObservation { receipt: Rc<DeclarationRef> },
+    Section13PopulationLawRosterRefusedPositionalModulePath { receipt: Arc<DeclarationRef> },
+    Section13PopulationLawRosterRefusedMissingObservation { receipt: Arc<DeclarationRef> },
+    Section13PopulationLawRosterRefusedFailedOrStaleObservation { receipt: Arc<DeclarationRef> },
     Section13PopulationLawRosterRefusedDeferredMissingTrigger,
 }
 
-pub fn section13_executing_receipt(module_path: String, decl_name: String) -> Rc<DeclarationRef> {
-    Rc::new(DeclarationRef {
+pub fn section13_executing_receipt(module_path: String, decl_name: String) -> Arc<DeclarationRef> {
+    Arc::new(DeclarationRef {
         module_path: module_path.clone(),
         decl_name: decl_name.clone(),
-        field: Rc::new(DeclField::WholeDeclaration),
+        field: Arc::new(DeclField::WholeDeclaration),
     })
 }
 
-pub fn section13_collector_dedup_dissolve_on() -> Rc<DeclarationRef> {
-    Rc::new(DeclarationRef {
+pub fn section13_collector_dedup_dissolve_on() -> Arc<DeclarationRef> {
+    Arc::new(DeclarationRef {
         module_path: "std.occurrence_binding_candidates".to_string(),
         decl_name: "occurrence_safe_collector_dedup_receipt".to_string(),
-        field: Rc::new(DeclField::WholeDeclaration),
+        field: Arc::new(DeclField::WholeDeclaration),
     })
 }
 
@@ -1635,43 +1636,43 @@ pub fn section13_witness_module_path() -> String {
     "test.claim.occurrence_binding_candidates_witness_test".to_string()
 }
 
-pub fn section13_population_law_roster() -> Rc<Vec<Rc<Section13PopulationLawRosterRow>>> {
+pub fn section13_population_law_roster() -> Arc<Vec<Arc<Section13PopulationLawRosterRow>>> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<Section13PopulationLawRosterRow>>> = {
-                Rc::new(vec![Rc::new(Section13PopulationLawRosterRow {
+            static CACHED: Arc<Vec<Arc<Section13PopulationLawRosterRow>>> = {
+                Rc::new(vec![Arc::new(Section13PopulationLawRosterRow {
         law: Section13PopulationLawId::Section13StructuralVisibility,
-        evidence: Rc::new(Section13PopulationLawEvidence::Section13PopulationLawExecuting {
+        evidence: Arc::new(Section13PopulationLawEvidence::Section13PopulationLawExecuting {
         receipt: section13_executing_receipt(section13_witness_module_path(), "module_scope_sibling_is_visible_holds".to_string()),
     }),
-    }), Rc::new(Section13PopulationLawRosterRow {
+    }), Arc::new(Section13PopulationLawRosterRow {
         law: Section13PopulationLawId::Section13SiblingArmExclusion,
-        evidence: Rc::new(Section13PopulationLawEvidence::Section13PopulationLawExecuting {
+        evidence: Arc::new(Section13PopulationLawEvidence::Section13PopulationLawExecuting {
         receipt: section13_executing_receipt(section13_witness_module_path(), "sibling_match_arm_not_visible_holds".to_string()),
     }),
-    }), Rc::new(Section13PopulationLawRosterRow {
+    }), Arc::new(Section13PopulationLawRosterRow {
         law: Section13PopulationLawId::Section13LexicalEnclosure,
-        evidence: Rc::new(Section13PopulationLawEvidence::Section13PopulationLawExecuting {
+        evidence: Arc::new(Section13PopulationLawEvidence::Section13PopulationLawExecuting {
         receipt: section13_executing_receipt(section13_witness_module_path(), "nested_lexical_only_inside_scope_holds".to_string()),
     }),
-    }), Rc::new(Section13PopulationLawRosterRow {
+    }), Arc::new(Section13PopulationLawRosterRow {
         law: Section13PopulationLawId::Section13SourceOrderGate,
-        evidence: Rc::new(Section13PopulationLawEvidence::Section13PopulationLawExecuting {
+        evidence: Arc::new(Section13PopulationLawEvidence::Section13PopulationLawExecuting {
         receipt: section13_executing_receipt(section13_witness_module_path(), "declaration_below_occurrence_not_visible_holds".to_string()),
     }),
-    }), Rc::new(Section13PopulationLawRosterRow {
+    }), Arc::new(Section13PopulationLawRosterRow {
         law: Section13PopulationLawId::Section13DistinctIdentityAmbiguity,
-        evidence: Rc::new(Section13PopulationLawEvidence::Section13PopulationLawExecuting {
+        evidence: Arc::new(Section13PopulationLawEvidence::Section13PopulationLawExecuting {
         receipt: section13_executing_receipt(section13_witness_module_path(), "same_text_distinct_identities_is_ambiguous_holds".to_string()),
     }),
-    }), Rc::new(Section13PopulationLawRosterRow {
+    }), Arc::new(Section13PopulationLawRosterRow {
         law: Section13PopulationLawId::Section13RepeatedDiscoverySameIdentityCollapse,
-        evidence: Rc::new(Section13PopulationLawEvidence::Section13PopulationLawDeferredProductionOccurrenceCollectorMissing {
+        evidence: Arc::new(Section13PopulationLawEvidence::Section13PopulationLawDeferredProductionOccurrenceCollectorMissing {
         dissolve_on: Some(section13_collector_dedup_dissolve_on()),
     }),
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<Section13PopulationLawRosterRow>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<Section13PopulationLawRosterRow>>>| c.clone())
 }
 
 pub fn section13_population_law_id_eq(
@@ -1735,7 +1736,7 @@ pub fn section13_module_path_is_symbolic(module_path: String) -> bool {
 }
 
 pub fn section13_roster_has_law(
-    rows: Rc<Vec<Rc<Section13PopulationLawRosterRow>>>,
+    rows: Arc<Vec<Arc<Section13PopulationLawRosterRow>>>,
     law: Section13PopulationLawId,
 ) -> bool {
     {
@@ -1751,7 +1752,7 @@ pub fn section13_roster_has_law(
 }
 
 pub fn section13_roster_covers_all_laws(
-    rows: Rc<Vec<Rc<Section13PopulationLawRosterRow>>>,
+    rows: Arc<Vec<Arc<Section13PopulationLawRosterRow>>>,
 ) -> bool {
     (((((section13_roster_has_law(
         rows.clone(),
@@ -1775,16 +1776,16 @@ pub fn section13_roster_covers_all_laws(
 }
 
 pub fn section13_roster_has_duplicate_law(
-    rows: Rc<Vec<Rc<Section13PopulationLawRosterRow>>>,
+    rows: Arc<Vec<Arc<Section13PopulationLawRosterRow>>>,
 ) -> bool {
     rows.clone().iter().cloned().fold(
         false,
-        |found: bool, row: Rc<Section13PopulationLawRosterRow>| match found {
+        |found: bool, row: Arc<Section13PopulationLawRosterRow>| match found {
             true => true,
             false => {
                 (rows.clone().iter().cloned().fold(
                     0,
-                    |count: i64, other: Rc<Section13PopulationLawRosterRow>| {
+                    |count: i64, other: Arc<Section13PopulationLawRosterRow>| {
                         match section13_population_law_id_eq(row.law.clone(), other.law.clone()) {
                             true => (count.clone() + 1),
                             false => count.clone(),
@@ -1797,16 +1798,16 @@ pub fn section13_roster_has_duplicate_law(
 }
 
 pub fn section13_first_duplicate_law(
-    rows: Rc<Vec<Rc<Section13PopulationLawRosterRow>>>,
+    rows: Arc<Vec<Arc<Section13PopulationLawRosterRow>>>,
 ) -> Option<Section13PopulationLawId> {
     rows.clone().iter().cloned().fold(
         None,
-        |found: _, row: Rc<Section13PopulationLawRosterRow>| match found.clone() {
+        |found: _, row: Arc<Section13PopulationLawRosterRow>| match found.clone() {
             Some(_) => found.clone(),
             None => {
                 if (rows.clone().iter().cloned().fold(
                     0,
-                    |count: i64, other: Rc<Section13PopulationLawRosterRow>| {
+                    |count: i64, other: Arc<Section13PopulationLawRosterRow>| {
                         match section13_population_law_id_eq(row.law.clone(), other.law.clone()) {
                             true => (count.clone() + 1),
                             false => count.clone(),
@@ -1824,7 +1825,7 @@ pub fn section13_first_duplicate_law(
 }
 
 pub fn section13_first_uncovered_law(
-    rows: Rc<Vec<Rc<Section13PopulationLawRosterRow>>>,
+    rows: Arc<Vec<Arc<Section13PopulationLawRosterRow>>>,
 ) -> Option<Section13PopulationLawId> {
     if !section13_roster_has_law(
         rows.clone(),
@@ -1869,13 +1870,13 @@ pub fn section13_first_uncovered_law(
 }
 
 pub fn section13_observation_joins_receipt(
-    receipt: Rc<DeclarationRef>,
-    observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
+    receipt: Arc<DeclarationRef>,
+    observations: Arc<Vec<Arc<Section13ExactHeadExecutionObservation>>>,
     required_head: String,
 ) -> Option<bool> {
     observations.clone().iter().cloned().fold(
         None,
-        |found: _, observation: Rc<Section13ExactHeadExecutionObservation>| match found.clone() {
+        |found: _, observation: Arc<Section13ExactHeadExecutionObservation>| match found.clone() {
             Some(_) => found.clone(),
             None => {
                 if (declaration_ref_eq(observation.declaration.clone(), receipt.clone())
@@ -1891,54 +1892,54 @@ pub fn section13_observation_joins_receipt(
 }
 
 pub fn section13_adjudicate_row(
-    row: Rc<Section13PopulationLawRosterRow>,
-    observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
+    row: Arc<Section13PopulationLawRosterRow>,
+    observations: Arc<Vec<Arc<Section13ExactHeadExecutionObservation>>>,
     required_head: String,
-) -> Rc<Section13PopulationLawRosterVerdict> {
+) -> Arc<Section13PopulationLawRosterVerdict> {
     match (*row.evidence.clone()).clone() {
     Section13PopulationLawEvidence::Section13PopulationLawExecuting { receipt: receipt, .. } => if !section13_module_path_is_symbolic(receipt.module_path.clone()) {
-        Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedPositionalModulePath {
+        Arc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedPositionalModulePath {
     receipt: receipt.clone(),
 })
     } else {
         match section13_observation_joins_receipt(receipt.clone(), observations.clone(), required_head.clone()) {
-    None => Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedMissingObservation {
+    None => Arc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedMissingObservation {
     receipt: receipt.clone(),
 }),
-    Some(false) => Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedFailedOrStaleObservation {
+    Some(false) => Arc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedFailedOrStaleObservation {
     receipt: receipt.clone(),
 }),
-    Some(true) => Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds),
+    Some(true) => Arc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds),
 }
     },
     Section13PopulationLawEvidence::Section13PopulationLawDeferredProductionOccurrenceCollectorMissing { dissolve_on: dissolve_on, .. } => match dissolve_on.clone() {
     Some(trigger) => if section13_module_path_is_symbolic(trigger.module_path.clone()) {
-        Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds)
+        Arc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds)
     } else {
-        Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedPositionalModulePath {
+        Arc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedPositionalModulePath {
     receipt: trigger.clone(),
 })
     },
-    None => Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedDeferredMissingTrigger),
+    None => Arc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedDeferredMissingTrigger),
 },
 }
 }
 
 pub fn section13_population_law_roster_adjudicate(
-    observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
+    observations: Arc<Vec<Arc<Section13ExactHeadExecutionObservation>>>,
     required_head: String,
-) -> Rc<Section13PopulationLawRosterVerdict> {
+) -> Arc<Section13PopulationLawRosterVerdict> {
     {
         let rows = section13_population_law_roster();
         match section13_first_duplicate_law(rows.clone()) {
-    Some(law) => Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedDuplicateLaw {
+    Some(law) => Arc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedDuplicateLaw {
     law: law.clone(),
 }),
     None => match section13_first_uncovered_law(rows.clone()) {
-    Some(law) => Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedUncoveredLaw {
+    Some(law) => Arc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedUncoveredLaw {
     law: law.clone(),
 }),
-    None => rows.clone().iter().cloned().fold(Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds), |verdict: Rc<Section13PopulationLawRosterVerdict>, row: Rc<Section13PopulationLawRosterRow>| match (*verdict.clone()).clone() {
+    None => rows.clone().iter().cloned().fold(Arc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds), |verdict: Arc<Section13PopulationLawRosterVerdict>, row: Arc<Section13PopulationLawRosterRow>| match (*verdict.clone()).clone() {
     Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds => section13_adjudicate_row(row.clone(), observations.clone(), required_head.clone()),
     _ => verdict.clone(),
 }),
@@ -1948,7 +1949,7 @@ pub fn section13_population_law_roster_adjudicate(
 }
 
 pub fn section13_population_law_roster_denominator_holds(
-    observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
+    observations: Arc<Vec<Arc<Section13ExactHeadExecutionObservation>>>,
     required_head: String,
 ) -> bool {
     match (*section13_population_law_roster_adjudicate(observations.clone(), required_head.clone()))

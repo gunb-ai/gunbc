@@ -16,7 +16,7 @@ pub use crate::v1_std_core::{build_newline_index, empty_intern_table};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn v1_annotation_target_emission_offline_recipe() -> String {
     thread_local! {
@@ -69,7 +69,7 @@ pub fn annotation_row_count(source: String) -> i64 {
         let parsed = parse_with_table(
             artifact.tokens.clone(),
             v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
                 "emit_probe.dag".to_string(),
                 build_newline_index("emit_probe.dag".to_string(), source.clone()),
             ),

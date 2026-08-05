@@ -23,7 +23,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -59,7 +59,7 @@ pub fn uri_scheme_is_http(s: UriScheme) -> bool {
     }
 }
 
-pub fn uri_is_url(uri: Rc<Uri>) -> bool {
+pub fn uri_is_url(uri: Arc<Uri>) -> bool {
     uri_scheme_is_http(uri.scheme.clone())
 }
 
@@ -76,7 +76,7 @@ pub fn uri_scheme_wire(s: UriScheme) -> String {
     }
 }
 
-pub fn uri_wire(uri: Rc<Uri>) -> String {
+pub fn uri_wire(uri: Arc<Uri>) -> String {
     v1_rt::concat(uri_scheme_wire(uri.scheme.clone()), uri.locator.clone())
 }
 
@@ -105,58 +105,58 @@ pub fn href_is_relative_reference(s: String) -> bool {
         || !v1_rt::contains(s.clone(), ":".to_string()))
 }
 
-pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
+pub fn parse_href_scheme(url: String) -> Arc<ParsedHrefScheme> {
     {
         let s = v1_rt::trim(url.clone());
         if v1_rt::starts_with(s.clone(), "//".to_string()) {
-            Rc::new(ParsedHrefScheme::UnknownHref)
+            Arc::new(ParsedHrefScheme::UnknownHref)
         } else {
             if href_is_relative_reference(s.clone()) {
-                Rc::new(ParsedHrefScheme::RelativeHref)
+                Arc::new(ParsedHrefScheme::RelativeHref)
             } else {
                 if (v1_rt::starts_with(s.clone(), "javascript:".to_string())
                     || v1_rt::starts_with(s.clone(), "JAVASCRIPT:".to_string()))
                 {
-                    Rc::new(ParsedHrefScheme::HrefScheme {
+                    Arc::new(ParsedHrefScheme::HrefScheme {
                         scheme: UriScheme::Javascript,
                     })
                 } else {
                     if (v1_rt::starts_with(s.clone(), "data:".to_string())
                         || v1_rt::starts_with(s.clone(), "DATA:".to_string()))
                     {
-                        Rc::new(ParsedHrefScheme::HrefScheme {
+                        Arc::new(ParsedHrefScheme::HrefScheme {
                             scheme: UriScheme::Data,
                         })
                     } else {
                         if (v1_rt::starts_with(s.clone(), "vbscript:".to_string())
                             || v1_rt::starts_with(s.clone(), "VBSCRIPT:".to_string()))
                         {
-                            Rc::new(ParsedHrefScheme::HrefScheme {
+                            Arc::new(ParsedHrefScheme::HrefScheme {
                                 scheme: UriScheme::Vbscript,
                             })
                         } else {
                             if (v1_rt::starts_with(s.clone(), "https://".to_string())
                                 || v1_rt::starts_with(s.clone(), "HTTPS://".to_string()))
                             {
-                                Rc::new(ParsedHrefScheme::HrefScheme {
+                                Arc::new(ParsedHrefScheme::HrefScheme {
                                     scheme: UriScheme::Https,
                                 })
                             } else {
                                 if (v1_rt::starts_with(s.clone(), "http://".to_string())
                                     || v1_rt::starts_with(s.clone(), "HTTP://".to_string()))
                                 {
-                                    Rc::new(ParsedHrefScheme::HrefScheme {
+                                    Arc::new(ParsedHrefScheme::HrefScheme {
                                         scheme: UriScheme::Http,
                                     })
                                 } else {
                                     if (v1_rt::starts_with(s.clone(), "mailto:".to_string())
                                         || v1_rt::starts_with(s.clone(), "MAILTO:".to_string()))
                                     {
-                                        Rc::new(ParsedHrefScheme::HrefScheme {
+                                        Arc::new(ParsedHrefScheme::HrefScheme {
                                             scheme: UriScheme::Mailto,
                                         })
                                     } else {
-                                        Rc::new(ParsedHrefScheme::UnknownHref)
+                                        Arc::new(ParsedHrefScheme::UnknownHref)
                                     }
                                 }
                             }
@@ -313,7 +313,7 @@ pub enum UriPercentEncodeFoldState {
         wire: String,
     },
     UriPercentEncodeRefused {
-        cause: Rc<UriPercentEncodeRefusalCause>,
+        cause: Arc<UriPercentEncodeRefusalCause>,
     },
 }
 
@@ -332,11 +332,11 @@ pub enum UriPercentEncodeRefusalCause {
 pub enum UriPercentEncodeComponent {
     UriPercentComponentEncoded(String),
     UriPercentComponentRefused {
-        cause: Rc<UriPercentEncodeRefusalCause>,
+        cause: Arc<UriPercentEncodeRefusalCause>,
     },
 }
 impl UriPercentEncodeComponent {
-    pub fn cause(&self) -> Rc<UriPercentEncodeRefusalCause> {
+    pub fn cause(&self) -> Arc<UriPercentEncodeRefusalCause> {
         match self {
             UriPercentEncodeComponent::UriPercentComponentEncoded(_) => {
                 panic!("no cause on positional-payload variant")
@@ -358,78 +358,78 @@ pub fn uri_component_is_unreserved(cp: i64) -> bool {
         || (cp.clone() == 126))
 }
 
-pub fn uri_hex_nibble_construction(d: i64) -> Rc<UriHexNibbleConstruction> {
+pub fn uri_hex_nibble_construction(d: i64) -> Arc<UriHexNibbleConstruction> {
     if (d.clone() == 0) {
-        Rc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
+        Arc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
             UriHexNibble::UriNibble0,
         ))
     } else {
         if (d.clone() == 1) {
-            Rc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
+            Arc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
                 UriHexNibble::UriNibble1,
             ))
         } else {
             if (d.clone() == 2) {
-                Rc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
+                Arc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
                     UriHexNibble::UriNibble2,
                 ))
             } else {
                 if (d.clone() == 3) {
-                    Rc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
+                    Arc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
                         UriHexNibble::UriNibble3,
                     ))
                 } else {
                     if (d.clone() == 4) {
-                        Rc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
+                        Arc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
                             UriHexNibble::UriNibble4,
                         ))
                     } else {
                         if (d.clone() == 5) {
-                            Rc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
+                            Arc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
                                 UriHexNibble::UriNibble5,
                             ))
                         } else {
                             if (d.clone() == 6) {
-                                Rc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
+                                Arc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
                                     UriHexNibble::UriNibble6,
                                 ))
                             } else {
                                 if (d.clone() == 7) {
-                                    Rc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
+                                    Arc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
                                         UriHexNibble::UriNibble7,
                                     ))
                                 } else {
                                     if (d.clone() == 8) {
-                                        Rc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
+                                        Arc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(
                                             UriHexNibble::UriNibble8,
                                         ))
                                     } else {
                                         if (d.clone() == 9) {
-                                            Rc::new(
+                                            Arc::new(
                                                 UriHexNibbleConstruction::UriHexNibbleConstructed(
                                                     UriHexNibble::UriNibble9,
                                                 ),
                                             )
                                         } else {
                                             if (d.clone() == 10) {
-                                                Rc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(UriHexNibble::UriNibbleA))
+                                                Arc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(UriHexNibble::UriNibbleA))
                                             } else {
                                                 if (d.clone() == 11) {
-                                                    Rc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(UriHexNibble::UriNibbleB))
+                                                    Arc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(UriHexNibble::UriNibbleB))
                                                 } else {
                                                     if (d.clone() == 12) {
-                                                        Rc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(UriHexNibble::UriNibbleC))
+                                                        Arc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(UriHexNibble::UriNibbleC))
                                                     } else {
                                                         if (d.clone() == 13) {
-                                                            Rc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(UriHexNibble::UriNibbleD))
+                                                            Arc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(UriHexNibble::UriNibbleD))
                                                         } else {
                                                             if (d.clone() == 14) {
-                                                                Rc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(UriHexNibble::UriNibbleE))
+                                                                Arc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(UriHexNibble::UriNibbleE))
                                                             } else {
                                                                 if (d.clone() == 15) {
-                                                                    Rc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(UriHexNibble::UriNibbleF))
+                                                                    Arc::new(UriHexNibbleConstruction::UriHexNibbleConstructed(UriHexNibble::UriNibbleF))
                                                                 } else {
-                                                                    Rc::new(UriHexNibbleConstruction::UriHexNibbleOutOfRange {
+                                                                    Arc::new(UriHexNibbleConstruction::UriHexNibbleOutOfRange {
     digit: d.clone(),
 })
                                                                 }
@@ -471,14 +471,14 @@ pub fn uri_hex_nibble_wire(nibble: UriHexNibble) -> String {
     }
 }
 
-pub fn uri_validated_scalar_construction(cp: i64) -> Rc<UriValidatedScalarConstruction> {
+pub fn uri_validated_scalar_construction(cp: i64) -> Arc<UriValidatedScalarConstruction> {
     if (cp.clone() < 0) {
-        Rc::new(
+        Arc::new(
             UriValidatedScalarConstruction::UriValidatedScalarOutOfRangeRefused { cp: cp.clone() },
         )
     } else {
         if (cp.clone() > unicode_scalar_max_code_point()) {
-            Rc::new(
+            Arc::new(
                 UriValidatedScalarConstruction::UriValidatedScalarOutOfRangeRefused {
                     cp: cp.clone(),
                 },
@@ -487,13 +487,13 @@ pub fn uri_validated_scalar_construction(cp: i64) -> Rc<UriValidatedScalarConstr
             if ((cp.clone() >= unicode_surrogate_first_code_point())
                 && (cp.clone() <= unicode_surrogate_last_code_point()))
             {
-                Rc::new(
+                Arc::new(
                     UriValidatedScalarConstruction::UriValidatedScalarSurrogateRefused {
                         cp: cp.clone(),
                     },
                 )
             } else {
-                Rc::new(
+                Arc::new(
                     UriValidatedScalarConstruction::UriValidatedScalarConstructed(
                         UriValidatedScalar {
                             admitted_cp: cp.clone(),
@@ -505,50 +505,50 @@ pub fn uri_validated_scalar_construction(cp: i64) -> Rc<UriValidatedScalarConstr
     }
 }
 
-pub fn uri_unicode_scalar_construction(cp: i64) -> Rc<UriUnicodeScalarConstruction> {
+pub fn uri_unicode_scalar_construction(cp: i64) -> Arc<UriUnicodeScalarConstruction> {
     match (*uri_validated_scalar_construction(cp.clone())).clone() {
         UriValidatedScalarConstruction::UriValidatedScalarSurrogateRefused { cp: c, .. } => {
-            Rc::new(
+            Arc::new(
                 UriUnicodeScalarConstruction::UriUnicodeScalarSurrogateRefused { cp: c.clone() },
             )
         }
         UriValidatedScalarConstruction::UriValidatedScalarOutOfRangeRefused { cp: c, .. } => {
-            Rc::new(
+            Arc::new(
                 UriUnicodeScalarConstruction::UriUnicodeScalarOutOfRangeRefused { cp: c.clone() },
             )
         }
-        UriValidatedScalarConstruction::UriValidatedScalarConstructed(scalar) => Rc::new(
+        UriValidatedScalarConstruction::UriValidatedScalarConstructed(scalar) => Arc::new(
             UriUnicodeScalarConstruction::UriUnicodeScalarConstructed(scalar.clone()),
         ),
     }
 }
 
-pub fn uri_utf8_octet_construction(byte: i64) -> Rc<UriUtf8OctetConstruction> {
+pub fn uri_utf8_octet_construction(byte: i64) -> Arc<UriUtf8OctetConstruction> {
     if ((byte.clone() >= 0) && (byte.clone() <= 255)) {
-        Rc::new(UriUtf8OctetConstruction::UriUtf8OctetConstructed(
+        Arc::new(UriUtf8OctetConstruction::UriUtf8OctetConstructed(
             UriUtf8Octet { byte: byte.clone() },
         ))
     } else {
-        Rc::new(UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused {
+        Arc::new(UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused {
             value: byte.clone(),
         })
     }
 }
 
-pub fn uri_percent_octet_wire(octet: UriUtf8Octet) -> Rc<UriPercentOctetWire> {
+pub fn uri_percent_octet_wire(octet: UriUtf8Octet) -> Arc<UriPercentOctetWire> {
     match (*uri_hex_nibble_construction((octet.byte.clone() / 16))).clone() {
         UriHexNibbleConstruction::UriHexNibbleOutOfRange { digit: d, .. } => {
-            Rc::new(UriPercentOctetWire::UriPercentOctetNibbleOutOfRange { digit: d.clone() })
+            Arc::new(UriPercentOctetWire::UriPercentOctetNibbleOutOfRange { digit: d.clone() })
         }
         UriHexNibbleConstruction::UriHexNibbleConstructed(hi) => {
             match (*uri_hex_nibble_construction((octet.byte.clone() % 16))).clone() {
                 UriHexNibbleConstruction::UriHexNibbleOutOfRange { digit: d, .. } => {
-                    Rc::new(UriPercentOctetWire::UriPercentOctetNibbleOutOfRange {
+                    Arc::new(UriPercentOctetWire::UriPercentOctetNibbleOutOfRange {
                         digit: d.clone(),
                     })
                 }
                 UriHexNibbleConstruction::UriHexNibbleConstructed(lo) => {
-                    Rc::new(UriPercentOctetWire::UriPercentOctetEncoded {
+                    Arc::new(UriPercentOctetWire::UriPercentOctetEncoded {
                         wire: v1_rt::concat(
                             "%".to_string(),
                             v1_rt::concat(
@@ -566,18 +566,18 @@ pub fn uri_percent_octet_wire(octet: UriUtf8Octet) -> Rc<UriPercentOctetWire> {
 pub fn uri_percent_encode_two_octets(
     lead: UriUtf8Octet,
     trail: UriUtf8Octet,
-) -> Rc<UriPercentEncodeFoldState> {
+) -> Arc<UriPercentEncodeFoldState> {
     match (*uri_percent_octet_wire(lead.clone())).clone() {
         UriPercentOctetWire::UriPercentOctetEncoded { wire: w0, .. } => {
             match (*uri_percent_octet_wire(trail.clone())).clone() {
                 UriPercentOctetWire::UriPercentOctetEncoded { wire: w1, .. } => {
-                    Rc::new(UriPercentEncodeFoldState::UriPercentEncodeBuilding {
+                    Arc::new(UriPercentEncodeFoldState::UriPercentEncodeBuilding {
                         wire: v1_rt::concat(w0.clone(), w1.clone()),
                     })
                 }
                 UriPercentOctetWire::UriPercentOctetNibbleOutOfRange { digit: d, .. } => {
-                    Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-                        cause: Rc::new(
+                    Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+                        cause: Arc::new(
                             UriPercentEncodeRefusalCause::UriPercentEncodeHexNibbleOutOfRange {
                                 digit: d.clone(),
                             },
@@ -587,8 +587,8 @@ pub fn uri_percent_encode_two_octets(
             }
         }
         UriPercentOctetWire::UriPercentOctetNibbleOutOfRange { digit: d, .. } => {
-            Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-                cause: Rc::new(
+            Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+                cause: Arc::new(
                     UriPercentEncodeRefusalCause::UriPercentEncodeHexNibbleOutOfRange {
                         digit: d.clone(),
                     },
@@ -602,23 +602,23 @@ pub fn uri_percent_encode_three_octets(
     b0: UriUtf8Octet,
     b1: UriUtf8Octet,
     b2: UriUtf8Octet,
-) -> Rc<UriPercentEncodeFoldState> {
+) -> Arc<UriPercentEncodeFoldState> {
     match (*uri_percent_encode_two_octets(b0.clone(), b1.clone())).clone() {
         UriPercentEncodeFoldState::UriPercentEncodeRefused { cause: cause, .. } => {
-            Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+            Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
                 cause: cause.clone(),
             })
         }
         UriPercentEncodeFoldState::UriPercentEncodeBuilding { wire: prefix, .. } => {
             match (*uri_percent_octet_wire(b2.clone())).clone() {
                 UriPercentOctetWire::UriPercentOctetEncoded { wire: w2, .. } => {
-                    Rc::new(UriPercentEncodeFoldState::UriPercentEncodeBuilding {
+                    Arc::new(UriPercentEncodeFoldState::UriPercentEncodeBuilding {
                         wire: v1_rt::concat(prefix.clone(), w2.clone()),
                     })
                 }
                 UriPercentOctetWire::UriPercentOctetNibbleOutOfRange { digit: d, .. } => {
-                    Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-                        cause: Rc::new(
+                    Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+                        cause: Arc::new(
                             UriPercentEncodeRefusalCause::UriPercentEncodeHexNibbleOutOfRange {
                                 digit: d.clone(),
                             },
@@ -635,23 +635,23 @@ pub fn uri_percent_encode_four_octets(
     b1: UriUtf8Octet,
     b2: UriUtf8Octet,
     b3: UriUtf8Octet,
-) -> Rc<UriPercentEncodeFoldState> {
+) -> Arc<UriPercentEncodeFoldState> {
     match (*uri_percent_encode_three_octets(b0.clone(), b1.clone(), b2.clone())).clone() {
         UriPercentEncodeFoldState::UriPercentEncodeRefused { cause: cause, .. } => {
-            Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+            Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
                 cause: cause.clone(),
             })
         }
         UriPercentEncodeFoldState::UriPercentEncodeBuilding { wire: prefix, .. } => {
             match (*uri_percent_octet_wire(b3.clone())).clone() {
                 UriPercentOctetWire::UriPercentOctetEncoded { wire: w3, .. } => {
-                    Rc::new(UriPercentEncodeFoldState::UriPercentEncodeBuilding {
+                    Arc::new(UriPercentEncodeFoldState::UriPercentEncodeBuilding {
                         wire: v1_rt::concat(prefix.clone(), w3.clone()),
                     })
                 }
                 UriPercentOctetWire::UriPercentOctetNibbleOutOfRange { digit: d, .. } => {
-                    Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-                        cause: Rc::new(
+                    Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+                        cause: Arc::new(
                             UriPercentEncodeRefusalCause::UriPercentEncodeHexNibbleOutOfRange {
                                 digit: d.clone(),
                             },
@@ -665,11 +665,11 @@ pub fn uri_percent_encode_four_octets(
 
 pub fn uri_percent_encode_unicode_scalar(
     scalar: UriUnicodeScalar,
-) -> Rc<UriPercentEncodeFoldState> {
+) -> Arc<UriPercentEncodeFoldState> {
     match (*uri_unicode_scalar_construction(scalar.cp.clone())).clone() {
         UriUnicodeScalarConstruction::UriUnicodeScalarSurrogateRefused { cp: c, .. } => {
-            Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-                cause: Rc::new(
+            Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+                cause: Arc::new(
                     UriPercentEncodeRefusalCause::UriPercentEncodeSurrogateScalarRefused {
                         cp: c.clone(),
                     },
@@ -677,8 +677,8 @@ pub fn uri_percent_encode_unicode_scalar(
             })
         }
         UriUnicodeScalarConstruction::UriUnicodeScalarOutOfRangeRefused { cp: c, .. } => {
-            Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-                cause: Rc::new(
+            Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+                cause: Arc::new(
                     UriPercentEncodeRefusalCause::UriPercentEncodeUnicodeScalarOutOfRangeRefused {
                         cp: c.clone(),
                     },
@@ -697,27 +697,27 @@ pub fn uri_validated_scalar_code_point(scalar: UriValidatedScalar) -> i64 {
 
 pub fn uri_percent_encode_admitted_scalar_wire(
     scalar: UriValidatedScalar,
-) -> Rc<UriPercentEncodeFoldState> {
+) -> Arc<UriPercentEncodeFoldState> {
     {
         let cp = uri_validated_scalar_code_point(scalar.clone());
         if uri_component_is_unreserved(cp.clone()) {
-            Rc::new(UriPercentEncodeFoldState::UriPercentEncodeBuilding {
+            Arc::new(UriPercentEncodeFoldState::UriPercentEncodeBuilding {
                 wire: v1_rt::from_code_point(cp.clone()),
             })
         } else {
             if (cp.clone() < 128) {
                 match (*uri_utf8_octet_construction(cp.clone())).clone() {
-    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-    cause: Rc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
+    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+    cause: Arc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
     value: v.clone(),
 }),
 }),
     UriUtf8OctetConstruction::UriUtf8OctetConstructed(octet) => match (*uri_percent_octet_wire(octet.clone())).clone() {
-    UriPercentOctetWire::UriPercentOctetEncoded { wire: w, .. } => Rc::new(UriPercentEncodeFoldState::UriPercentEncodeBuilding {
+    UriPercentOctetWire::UriPercentOctetEncoded { wire: w, .. } => Arc::new(UriPercentEncodeFoldState::UriPercentEncodeBuilding {
     wire: w.clone(),
 }),
-    UriPercentOctetWire::UriPercentOctetNibbleOutOfRange { digit: d, .. } => Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-    cause: Rc::new(UriPercentEncodeRefusalCause::UriPercentEncodeHexNibbleOutOfRange {
+    UriPercentOctetWire::UriPercentOctetNibbleOutOfRange { digit: d, .. } => Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+    cause: Arc::new(UriPercentEncodeRefusalCause::UriPercentEncodeHexNibbleOutOfRange {
     digit: d.clone(),
 }),
 }),
@@ -726,14 +726,14 @@ pub fn uri_percent_encode_admitted_scalar_wire(
             } else {
                 if (cp.clone() < 2048) {
                     match (*uri_utf8_octet_construction((192 + (cp.clone() / 64)))).clone() {
-    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-    cause: Rc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
+    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+    cause: Arc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
     value: v.clone(),
 }),
 }),
     UriUtf8OctetConstruction::UriUtf8OctetConstructed(b0) => match (*uri_utf8_octet_construction((128 + (cp.clone() % 64)))).clone() {
-    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-    cause: Rc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
+    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+    cause: Arc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
     value: v.clone(),
 }),
 }),
@@ -743,20 +743,20 @@ pub fn uri_percent_encode_admitted_scalar_wire(
                 } else {
                     if (cp.clone() < 65536) {
                         match (*uri_utf8_octet_construction((224 + (cp.clone() / 4096)))).clone() {
-    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-    cause: Rc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
+    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+    cause: Arc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
     value: v.clone(),
 }),
 }),
     UriUtf8OctetConstruction::UriUtf8OctetConstructed(b0) => match (*uri_utf8_octet_construction((128 + ((cp.clone() / 64) % 64)))).clone() {
-    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-    cause: Rc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
+    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+    cause: Arc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
     value: v.clone(),
 }),
 }),
     UriUtf8OctetConstruction::UriUtf8OctetConstructed(b1) => match (*uri_utf8_octet_construction((128 + (cp.clone() % 64)))).clone() {
-    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-    cause: Rc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
+    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+    cause: Arc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
     value: v.clone(),
 }),
 }),
@@ -766,26 +766,26 @@ pub fn uri_percent_encode_admitted_scalar_wire(
 }
                     } else {
                         match (*uri_utf8_octet_construction((240 + (cp.clone() / 262144)))).clone() {
-    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-    cause: Rc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
+    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+    cause: Arc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
     value: v.clone(),
 }),
 }),
     UriUtf8OctetConstruction::UriUtf8OctetConstructed(b0) => match (*uri_utf8_octet_construction((128 + ((cp.clone() / 4096) % 64)))).clone() {
-    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-    cause: Rc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
+    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+    cause: Arc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
     value: v.clone(),
 }),
 }),
     UriUtf8OctetConstruction::UriUtf8OctetConstructed(b1) => match (*uri_utf8_octet_construction((128 + ((cp.clone() / 64) % 64)))).clone() {
-    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-    cause: Rc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
+    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+    cause: Arc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
     value: v.clone(),
 }),
 }),
     UriUtf8OctetConstruction::UriUtf8OctetConstructed(b2) => match (*uri_utf8_octet_construction((128 + (cp.clone() % 64)))).clone() {
-    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-    cause: Rc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
+    UriUtf8OctetConstruction::UriUtf8OctetOutOfRangeRefused { value: v, .. } => Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+    cause: Arc::new(UriPercentEncodeRefusalCause::UriPercentEncodeUtf8OctetOutOfRangeRefused {
     value: v.clone(),
 }),
 }),
@@ -801,11 +801,11 @@ pub fn uri_percent_encode_admitted_scalar_wire(
     }
 }
 
-pub fn uri_percent_encode_code_point(cp: i64) -> Rc<UriPercentEncodeComponent> {
+pub fn uri_percent_encode_code_point(cp: i64) -> Arc<UriPercentEncodeComponent> {
     match (*uri_unicode_scalar_construction(cp.clone())).clone() {
         UriUnicodeScalarConstruction::UriUnicodeScalarSurrogateRefused { cp: c, .. } => {
-            Rc::new(UriPercentEncodeComponent::UriPercentComponentRefused {
-                cause: Rc::new(
+            Arc::new(UriPercentEncodeComponent::UriPercentComponentRefused {
+                cause: Arc::new(
                     UriPercentEncodeRefusalCause::UriPercentEncodeSurrogateScalarRefused {
                         cp: c.clone(),
                     },
@@ -813,8 +813,8 @@ pub fn uri_percent_encode_code_point(cp: i64) -> Rc<UriPercentEncodeComponent> {
             })
         }
         UriUnicodeScalarConstruction::UriUnicodeScalarOutOfRangeRefused { cp: c, .. } => {
-            Rc::new(UriPercentEncodeComponent::UriPercentComponentRefused {
-                cause: Rc::new(
+            Arc::new(UriPercentEncodeComponent::UriPercentComponentRefused {
+                cause: Arc::new(
                     UriPercentEncodeRefusalCause::UriPercentEncodeUnicodeScalarOutOfRangeRefused {
                         cp: c.clone(),
                     },
@@ -824,11 +824,11 @@ pub fn uri_percent_encode_code_point(cp: i64) -> Rc<UriPercentEncodeComponent> {
         UriUnicodeScalarConstruction::UriUnicodeScalarConstructed(validated) => {
             match (*uri_percent_encode_admitted_scalar_wire(validated.clone())).clone() {
                 UriPercentEncodeFoldState::UriPercentEncodeRefused { cause: cause, .. } => {
-                    Rc::new(UriPercentEncodeComponent::UriPercentComponentRefused {
+                    Arc::new(UriPercentEncodeComponent::UriPercentComponentRefused {
                         cause: cause.clone(),
                     })
                 }
-                UriPercentEncodeFoldState::UriPercentEncodeBuilding { wire: wire, .. } => Rc::new(
+                UriPercentEncodeFoldState::UriPercentEncodeBuilding { wire: wire, .. } => Arc::new(
                     UriPercentEncodeComponent::UriPercentComponentEncoded(wire.clone()),
                 ),
             }
@@ -836,17 +836,17 @@ pub fn uri_percent_encode_code_point(cp: i64) -> Rc<UriPercentEncodeComponent> {
     }
 }
 
-pub fn uri_percent_encode_component(value: String) -> Rc<UriPercentEncodeComponent> {
-    uri_percent_encode_code_points(Rc::new(
+pub fn uri_percent_encode_component(value: String) -> Arc<UriPercentEncodeComponent> {
+    uri_percent_encode_code_points(Arc::new(
         value.clone().chars().map(|c| c as i64).collect::<Vec<_>>(),
     ))
 }
 
-pub fn uri_percent_encode_scalar_fragment(cp: i64) -> Rc<UriPercentEncodeFoldState> {
+pub fn uri_percent_encode_scalar_fragment(cp: i64) -> Arc<UriPercentEncodeFoldState> {
     match (*uri_unicode_scalar_construction(cp.clone())).clone() {
         UriUnicodeScalarConstruction::UriUnicodeScalarSurrogateRefused { cp: c, .. } => {
-            Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-                cause: Rc::new(
+            Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+                cause: Arc::new(
                     UriPercentEncodeRefusalCause::UriPercentEncodeSurrogateScalarRefused {
                         cp: c.clone(),
                     },
@@ -854,8 +854,8 @@ pub fn uri_percent_encode_scalar_fragment(cp: i64) -> Rc<UriPercentEncodeFoldSta
             })
         }
         UriUnicodeScalarConstruction::UriUnicodeScalarOutOfRangeRefused { cp: c, .. } => {
-            Rc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
-                cause: Rc::new(
+            Arc::new(UriPercentEncodeFoldState::UriPercentEncodeRefused {
+                cause: Arc::new(
                     UriPercentEncodeRefusalCause::UriPercentEncodeUnicodeScalarOutOfRangeRefused {
                         cp: c.clone(),
                     },
@@ -875,29 +875,29 @@ pub enum UriPercentEncodeScalarOutcome {
         wire: String,
     },
     UriPercentEncodeScalarRefused {
-        cause: Rc<UriPercentEncodeRefusalCause>,
+        cause: Arc<UriPercentEncodeRefusalCause>,
     },
 }
 
-pub fn uri_percent_encode_scalar_outcome(cp: i64) -> Rc<UriPercentEncodeScalarOutcome> {
+pub fn uri_percent_encode_scalar_outcome(cp: i64) -> Arc<UriPercentEncodeScalarOutcome> {
     match (*uri_percent_encode_scalar_fragment(cp.clone())).clone() {
-        UriPercentEncodeFoldState::UriPercentEncodeRefused { cause: cause, .. } => Rc::new(
+        UriPercentEncodeFoldState::UriPercentEncodeRefused { cause: cause, .. } => Arc::new(
             UriPercentEncodeScalarOutcome::UriPercentEncodeScalarRefused {
                 cause: cause.clone(),
             },
         ),
-        UriPercentEncodeFoldState::UriPercentEncodeBuilding { wire: wire, .. } => Rc::new(
+        UriPercentEncodeFoldState::UriPercentEncodeBuilding { wire: wire, .. } => Arc::new(
             UriPercentEncodeScalarOutcome::UriPercentEncodeScalarEncoded { wire: wire.clone() },
         ),
     }
 }
 
 pub fn uri_percent_encode_outcomes_first_refusal(
-    outcomes: Rc<Vec<Rc<UriPercentEncodeScalarOutcome>>>,
-) -> Option<Rc<UriPercentEncodeRefusalCause>> {
+    outcomes: Arc<Vec<Arc<UriPercentEncodeScalarOutcome>>>,
+) -> Option<Arc<UriPercentEncodeRefusalCause>> {
     outcomes.clone().iter().cloned().fold(
         None,
-        |acc: _, outcome: Rc<UriPercentEncodeScalarOutcome>| match acc.clone() {
+        |acc: _, outcome: Arc<UriPercentEncodeScalarOutcome>| match acc.clone() {
             Some(_) => acc.clone(),
             None => match (*outcome.clone()).clone() {
                 UriPercentEncodeScalarOutcome::UriPercentEncodeScalarRefused {
@@ -913,11 +913,11 @@ pub fn uri_percent_encode_outcomes_first_refusal(
 }
 
 pub fn uri_percent_encode_outcome_wires(
-    outcomes: Rc<Vec<Rc<UriPercentEncodeScalarOutcome>>>,
-) -> Rc<Vec<String>> {
+    outcomes: Arc<Vec<Arc<UriPercentEncodeScalarOutcome>>>,
+) -> Arc<Vec<String>> {
     outcomes.clone().iter().cloned().fold(
         Rc::new(vec![]),
-        |wires: Rc<Vec<String>>, outcome: Rc<UriPercentEncodeScalarOutcome>| match (*outcome
+        |wires: Arc<Vec<String>>, outcome: Arc<UriPercentEncodeScalarOutcome>| match (*outcome
             .clone())
         .clone()
         {
@@ -931,14 +931,16 @@ pub fn uri_percent_encode_outcome_wires(
     )
 }
 
-pub fn uri_percent_encode_code_points(code_points: Rc<Vec<i64>>) -> Rc<UriPercentEncodeComponent> {
+pub fn uri_percent_encode_code_points(
+    code_points: Arc<Vec<i64>>,
+) -> Arc<UriPercentEncodeComponent> {
     if ((code_points.clone().len() as i64) == 0) {
-        Rc::new(UriPercentEncodeComponent::UriPercentComponentRefused {
-            cause: Rc::new(UriPercentEncodeRefusalCause::UriPercentEncodeEmptyInputRefused),
+        Arc::new(UriPercentEncodeComponent::UriPercentComponentRefused {
+            cause: Arc::new(UriPercentEncodeRefusalCause::UriPercentEncodeEmptyInputRefused),
         })
     } else {
         {
-            let outcomes = Rc::new({
+            let outcomes = Arc::new({
                 let mut __result = Vec::new();
                 for cp in code_points.clone().iter().cloned() {
                     __result.push(uri_percent_encode_scalar_outcome(cp.clone()));
@@ -946,10 +948,10 @@ pub fn uri_percent_encode_code_points(code_points: Rc<Vec<i64>>) -> Rc<UriPercen
                 __result
             });
             match uri_percent_encode_outcomes_first_refusal(outcomes.clone()) {
-                Some(cause) => Rc::new(UriPercentEncodeComponent::UriPercentComponentRefused {
+                Some(cause) => Arc::new(UriPercentEncodeComponent::UriPercentComponentRefused {
                     cause: cause.clone(),
                 }),
-                None => Rc::new(UriPercentEncodeComponent::UriPercentComponentEncoded(
+                None => Arc::new(UriPercentEncodeComponent::UriPercentComponentEncoded(
                     uri_percent_encode_outcome_wires(outcomes.clone()).join(&"".to_string()),
                 )),
             }

@@ -16,7 +16,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn roster_frontier_note() -> String {
     thread_local! {
@@ -35,7 +35,7 @@ pub enum FrontierSubject {
     },
     DeclSubject {
         #[serde(rename = "ref")]
-        ref_: Rc<DeclarationRef>,
+        ref_: Arc<DeclarationRef>,
     },
 }
 
@@ -44,7 +44,7 @@ pub enum FrontierSubject {
 pub enum DissolveTrigger {
     TriggerDeclExists {
         #[serde(rename = "ref")]
-        ref_: Rc<DeclarationRef>,
+        ref_: Arc<DeclarationRef>,
     },
     TriggerProse {
         text: String,
@@ -53,46 +53,46 @@ pub enum DissolveTrigger {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontierRow {
-    pub subject: Rc<FrontierSubject>,
+    pub subject: Arc<FrontierSubject>,
     pub reason: String,
-    pub trigger: Rc<DissolveTrigger>,
+    pub trigger: Arc<DissolveTrigger>,
 }
 
 pub fn frontier_row_path(
     path: String,
     reason: String,
-    trigger: Rc<DissolveTrigger>,
-) -> Rc<FrontierRow> {
-    Rc::new(FrontierRow {
-        subject: Rc::new(FrontierSubject::PathSubject { path: path.clone() }),
+    trigger: Arc<DissolveTrigger>,
+) -> Arc<FrontierRow> {
+    Arc::new(FrontierRow {
+        subject: Arc::new(FrontierSubject::PathSubject { path: path.clone() }),
         reason: reason.clone(),
         trigger: trigger.clone(),
     })
 }
 
-pub fn frontier_row(unit: String, reason: String, dissolve_on: String) -> Rc<FrontierRow> {
+pub fn frontier_row(unit: String, reason: String, dissolve_on: String) -> Arc<FrontierRow> {
     frontier_row_path(
         unit.clone(),
         reason.clone(),
-        Rc::new(DissolveTrigger::TriggerProse {
+        Arc::new(DissolveTrigger::TriggerProse {
             text: dissolve_on.clone(),
         }),
     )
 }
 
 pub fn frontier_row_decl(
-    ref_: Rc<DeclarationRef>,
+    ref_: Arc<DeclarationRef>,
     reason: String,
-    trigger: Rc<DissolveTrigger>,
-) -> Rc<FrontierRow> {
-    Rc::new(FrontierRow {
-        subject: Rc::new(FrontierSubject::DeclSubject { ref_: ref_.clone() }),
+    trigger: Arc<DissolveTrigger>,
+) -> Arc<FrontierRow> {
+    Arc::new(FrontierRow {
+        subject: Arc::new(FrontierSubject::DeclSubject { ref_: ref_.clone() }),
         reason: reason.clone(),
         trigger: trigger.clone(),
     })
 }
 
-pub fn decl_field_eq(a: Rc<DeclField>, b: Rc<DeclField>) -> bool {
+pub fn decl_field_eq(a: Arc<DeclField>, b: Arc<DeclField>) -> bool {
     match (*a.clone()).clone() {
         DeclField::WholeDeclaration => match (*b.clone()).clone() {
             DeclField::WholeDeclaration => true,
@@ -105,25 +105,25 @@ pub fn decl_field_eq(a: Rc<DeclField>, b: Rc<DeclField>) -> bool {
     }
 }
 
-pub fn declaration_ref_eq(a: Rc<DeclarationRef>, b: Rc<DeclarationRef>) -> bool {
+pub fn declaration_ref_eq(a: Arc<DeclarationRef>, b: Arc<DeclarationRef>) -> bool {
     (((a.module_path.clone() == b.module_path.clone())
         && (a.decl_name.clone() == b.decl_name.clone()))
         && decl_field_eq(a.field.clone(), b.field.clone()))
 }
 
 pub fn declaration_ref_in_list(
-    target: Rc<DeclarationRef>,
-    refs: Rc<Vec<Rc<DeclarationRef>>>,
+    target: Arc<DeclarationRef>,
+    refs: Arc<Vec<Arc<DeclarationRef>>>,
 ) -> bool {
     refs.clone()
         .iter()
         .cloned()
-        .fold(false, |acc: bool, r: Rc<DeclarationRef>| {
+        .fold(false, |acc: bool, r: Arc<DeclarationRef>| {
             (acc || declaration_ref_eq(target.clone(), r.clone()))
         })
 }
 
-pub fn prose_in_list(text: String, prose_fired: Rc<Vec<String>>) -> bool {
+pub fn prose_in_list(text: String, prose_fired: Arc<Vec<String>>) -> bool {
     prose_fired
         .clone()
         .iter()
@@ -134,9 +134,9 @@ pub fn prose_in_list(text: String, prose_fired: Rc<Vec<String>>) -> bool {
 }
 
 pub fn dissolve_trigger_fired(
-    trigger: Rc<DissolveTrigger>,
-    prose_fired: Rc<Vec<String>>,
-    present_decls: Rc<Vec<Rc<DeclarationRef>>>,
+    trigger: Arc<DissolveTrigger>,
+    prose_fired: Arc<Vec<String>>,
+    present_decls: Arc<Vec<Arc<DeclarationRef>>>,
 ) -> bool {
     match (*trigger.clone()).clone() {
         DissolveTrigger::TriggerDeclExists { ref_: r, .. } => {
@@ -148,7 +148,7 @@ pub fn dissolve_trigger_fired(
     }
 }
 
-pub fn frontier_row_well_formed(row: Rc<FrontierRow>) -> bool {
+pub fn frontier_row_well_formed(row: Arc<FrontierRow>) -> bool {
     ((!(row.reason.clone() == "".to_string())
         && match (*row.trigger.clone()).clone() {
             DissolveTrigger::TriggerDeclExists { ref_: r, .. } => {
@@ -166,16 +166,16 @@ pub fn frontier_row_well_formed(row: Rc<FrontierRow>) -> bool {
         })
 }
 
-pub fn frontier_rows_well_formed(rows: Rc<Vec<Rc<FrontierRow>>>) -> bool {
+pub fn frontier_rows_well_formed(rows: Arc<Vec<Arc<FrontierRow>>>) -> bool {
     rows.clone()
         .iter()
         .cloned()
-        .fold(true, |acc: bool, row: Rc<FrontierRow>| {
+        .fold(true, |acc: bool, row: Arc<FrontierRow>| {
             (acc && frontier_row_well_formed(row.clone()))
         })
 }
 
-pub fn declaration_ref_display_key(ref_: Rc<DeclarationRef>) -> String {
+pub fn declaration_ref_display_key(ref_: Arc<DeclarationRef>) -> String {
     match (*ref_.field.clone()).clone() {
         DeclField::WholeDeclaration => v1_rt::concat(
             ref_.module_path.clone(),
@@ -194,11 +194,11 @@ pub fn declaration_ref_display_key(ref_: Rc<DeclarationRef>) -> String {
     }
 }
 
-pub fn frontier_subject_eq(a: Rc<FrontierSubject>, b: Rc<FrontierSubject>) -> bool {
+pub fn frontier_subject_eq(a: Arc<FrontierSubject>, b: Arc<FrontierSubject>) -> bool {
     (a.clone() == b.clone())
 }
 
-pub fn frontier_subject_key(subject: Rc<FrontierSubject>) -> String {
+pub fn frontier_subject_key(subject: Arc<FrontierSubject>) -> String {
     match (*subject.clone()).clone() {
         FrontierSubject::PathSubject { path: p, .. } => p.clone(),
         FrontierSubject::DeclSubject { ref_: r, .. } => declaration_ref_display_key(r.clone()),
@@ -206,12 +206,12 @@ pub fn frontier_subject_key(subject: Rc<FrontierSubject>) -> String {
 }
 
 pub fn frontier_rows_to_keyed_rows(
-    rows: Rc<Vec<Rc<FrontierRow>>>,
-) -> Rc<Vec<Rc<KeyedRow<Rc<FrontierSubject>, Rc<FrontierRow>>>>> {
-    Rc::new({
+    rows: Arc<Vec<Arc<FrontierRow>>>,
+) -> Arc<Vec<Arc<KeyedRow<Arc<FrontierSubject>, Arc<FrontierRow>>>>> {
+    Arc::new({
         let mut __result = Vec::new();
         for row in rows.clone().iter().cloned() {
-            __result.push(Rc::new(KeyedRow {
+            __result.push(Arc::new(KeyedRow {
                 row_key: row.subject.clone(),
                 value: row.clone(),
                 _phantom: std::marker::PhantomData,
@@ -222,16 +222,16 @@ pub fn frontier_rows_to_keyed_rows(
 }
 
 pub fn frontier_rows_keyed_roster_build(
-    rows: Rc<Vec<Rc<FrontierRow>>>,
-) -> Rc<KeyedRosterBuild<Rc<FrontierSubject>, Rc<FrontierRow>>> {
+    rows: Arc<Vec<Arc<FrontierRow>>>,
+) -> Arc<KeyedRosterBuild<Arc<FrontierSubject>, Arc<FrontierRow>>> {
     keyed_roster_build(
         frontier_rows_to_keyed_rows(rows.clone()),
         frontier_subject_eq,
     )
 }
 
-pub fn frontier_path_subjects(rows: Rc<Vec<Rc<FrontierRow>>>) -> Rc<Vec<String>> {
-    Rc::new({
+pub fn frontier_path_subjects(rows: Arc<Vec<Arc<FrontierRow>>>) -> Arc<Vec<String>> {
+    Arc::new({
         let mut __result = Vec::new();
         for row in rows.clone().iter().cloned() {
             __result.push(frontier_subject_key(row.subject.clone()));
@@ -240,14 +240,14 @@ pub fn frontier_path_subjects(rows: Rc<Vec<Rc<FrontierRow>>>) -> Rc<Vec<String>>
     })
 }
 
-pub fn frontier_units(rows: Rc<Vec<Rc<FrontierRow>>>) -> Rc<Vec<String>> {
+pub fn frontier_units(rows: Arc<Vec<Arc<FrontierRow>>>) -> Arc<Vec<String>> {
     frontier_path_subjects(rows.clone())
 }
 
 pub fn concat_frontier_row_groups(
-    groups: Rc<Vec<Rc<Vec<Rc<FrontierRow>>>>>,
-) -> Rc<Vec<Rc<FrontierRow>>> {
-    Rc::new({
+    groups: Arc<Vec<Arc<Vec<Arc<FrontierRow>>>>>,
+) -> Arc<Vec<Arc<FrontierRow>>> {
+    Arc::new({
         let mut __result = Vec::new();
         for group in groups.clone().iter().cloned() {
             __result.extend((*group.clone()).iter().cloned());
@@ -263,16 +263,16 @@ pub struct FrontierExpiryReport {
 }
 
 pub fn fold_frontier_expiry(
-    rows: Rc<Vec<Rc<FrontierRow>>>,
-    prose_fired: Rc<Vec<String>>,
-    present_decls: Rc<Vec<Rc<DeclarationRef>>>,
+    rows: Arc<Vec<Arc<FrontierRow>>>,
+    prose_fired: Arc<Vec<String>>,
+    present_decls: Arc<Vec<Arc<DeclarationRef>>>,
 ) -> FrontierExpiryReport {
     rows.clone().iter().cloned().fold(
         FrontierExpiryReport {
             unfired_count: 0,
             fired_still_present_count: 0,
         },
-        |acc: FrontierExpiryReport, row: Rc<FrontierRow>| {
+        |acc: FrontierExpiryReport, row: Arc<FrontierRow>| {
             if dissolve_trigger_fired(
                 row.trigger.clone(),
                 prose_fired.clone(),

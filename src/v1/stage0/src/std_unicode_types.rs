@@ -9,7 +9,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn unicode_scalar_max_code_point() -> i64 {
     1114111
@@ -111,7 +111,7 @@ pub fn unicode_char_code_point(c: i64) -> i64 {
     (c.clone() + 0)
 }
 
-pub fn in_block(cp: i64, block: Rc<UnicodeBlock>) -> bool {
+pub fn in_block(cp: i64, block: Arc<UnicodeBlock>) -> bool {
     ((cp.clone() >= block.start.clone()) && (cp.clone() <= block.end_inclusive.clone()))
 }
 

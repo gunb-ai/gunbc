@@ -45,7 +45,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -58,15 +58,15 @@ pub enum CostBasis {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostAccount<S> {
-    pub time: Rc<Measure<(), S, Nat>>,
+    pub time: Arc<Measure<(), S, Nat>>,
     pub space: ByteSize,
     pub power: Watt,
     pub basis: CostBasis,
     pub _phantom: std::marker::PhantomData<S>,
 }
 
-pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
-    Rc::new(CostAccount {
+pub fn cost_account_predicted_zero<S>() -> Arc<CostAccount<S>> {
+    Arc::new(CostAccount {
         time: time_measure(0),
         space: byte_size(0),
         power: watt(0),
@@ -75,8 +75,8 @@ pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
     })
 }
 
-pub fn cost_account_measured<S>(time: Rc<Measure<(), S, i64>>) -> Rc<CostAccount<S>> {
-    Rc::new(CostAccount {
+pub fn cost_account_measured<S>(time: Arc<Measure<(), S, i64>>) -> Arc<CostAccount<S>> {
+    Arc::new(CostAccount {
         time: time.clone(),
         space: byte_size(0),
         power: watt(0),
@@ -85,13 +85,13 @@ pub fn cost_account_measured<S>(time: Rc<Measure<(), S, i64>>) -> Rc<CostAccount
     })
 }
 
-pub fn cost_account_time_count<S>(account: Rc<CostAccount<S>>) -> Nat {
+pub fn cost_account_time_count<S>(account: Arc<CostAccount<S>>) -> Nat {
     measure_count(account.time.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RealizationObjective {
-    pub goals: Rc<Vec<AxisGoal>>,
+    pub goals: Arc<Vec<AxisGoal>>,
 }
 
 #[derive(
@@ -176,16 +176,16 @@ pub struct ScheduledWitnessEnvelope {
 pub enum WitnessSpan {
     SpanUndeclared,
     SpanSeams {
-        seams: Rc<Vec<Rc<WitnessSeam>>>,
+        seams: Arc<Vec<Arc<WitnessSeam>>>,
     },
     SpanEnrolled {
-        seams: Rc<Vec<Rc<WitnessSeam>>>,
-        cost_basis: Rc<WitnessCostBasis>,
-        envelope: Rc<ScheduledWitnessEnvelope>,
+        seams: Arc<Vec<Arc<WitnessSeam>>>,
+        cost_basis: Arc<WitnessCostBasis>,
+        envelope: Arc<ScheduledWitnessEnvelope>,
     },
 }
 impl WitnessSpan {
-    pub fn seams(&self) -> Rc<Vec<Rc<WitnessSeam>>> {
+    pub fn seams(&self) -> Arc<Vec<Arc<WitnessSeam>>> {
         match self {
             WitnessSpan::SpanUndeclared => panic!("no seams on unit variant"),
             WitnessSpan::SpanSeams { seams: __val, .. } => __val.clone(),
@@ -275,10 +275,10 @@ pub struct RunnableBatchClamp {
 #[serde(tag = "_variant")]
 pub enum RunnableBatchClampSource {
     RunnableUsesFloorPositionalClamp,
-    RunnableOwnsBatchClamp { clamp: Rc<RunnableBatchClamp> },
+    RunnableOwnsBatchClamp { clamp: Arc<RunnableBatchClamp> },
 }
 impl RunnableBatchClampSource {
-    pub fn clamp(&self) -> Rc<RunnableBatchClamp> {
+    pub fn clamp(&self) -> Arc<RunnableBatchClamp> {
         match self {
             RunnableBatchClampSource::RunnableUsesFloorPositionalClamp => {
                 panic!("no clamp on unit variant")
@@ -329,12 +329,12 @@ pub enum FloorWorkerTermination {
 #[serde(tag = "_variant")]
 pub enum FloorWorkerTerminalReceipt {
     FloorWorkerTerminalReceiptObserved {
-        report: Rc<FloorWorkerTerminalReport>,
+        report: Arc<FloorWorkerTerminalReport>,
     },
     FloorWorkerTerminalReceiptMissing,
 }
 impl FloorWorkerTerminalReceipt {
-    pub fn report(&self) -> Rc<FloorWorkerTerminalReport> {
+    pub fn report(&self) -> Arc<FloorWorkerTerminalReport> {
         match self {
             FloorWorkerTerminalReceipt::FloorWorkerTerminalReceiptObserved {
                 report: __val,
@@ -402,16 +402,16 @@ impl FloorWorkerObservationOutcome {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FloorWorkerObservation {
-    pub worker: Rc<FloorWorkerIdentity>,
-    pub termination: Rc<FloorWorkerTermination>,
-    pub terminal_receipt: Rc<FloorWorkerTerminalReceipt>,
+    pub worker: Arc<FloorWorkerIdentity>,
+    pub termination: Arc<FloorWorkerTermination>,
+    pub terminal_receipt: Arc<FloorWorkerTerminalReceipt>,
 }
 
 pub fn floor_worker_observation_outcome(
-    observation: Rc<FloorWorkerObservation>,
-) -> Rc<FloorWorkerObservationOutcome> {
+    observation: Arc<FloorWorkerObservation>,
+) -> Arc<FloorWorkerObservationOutcome> {
     match (*observation.terminal_receipt.clone()).clone() {
-        FloorWorkerTerminalReceipt::FloorWorkerTerminalReceiptMissing => Rc::new(
+        FloorWorkerTerminalReceipt::FloorWorkerTerminalReceiptMissing => Arc::new(
             FloorWorkerObservationOutcome::FloorWorkerDiedWithoutTerminalReceipt {
                 detail: "worker termination had no terminal report".to_string(),
             },
@@ -423,23 +423,23 @@ pub fn floor_worker_observation_outcome(
                 .clone()
             {
                 FloorWorkerTerminalReport::FloorWorkerReportedCompleted { detail: _, .. } => {
-                    Rc::new(FloorWorkerObservationOutcome::FloorWorkerCompleted)
+                    Arc::new(FloorWorkerObservationOutcome::FloorWorkerCompleted)
                 }
                 FloorWorkerTerminalReport::FloorWorkerReportedRefused {
                     detail: detail, ..
-                } => Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                } => Arc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
                     detail: ("refusal report contradicted exit code 0: ".to_string()
                         + &detail.clone()),
                 }),
                 FloorWorkerTerminalReport::FloorWorkerReportedFailed { detail: detail, .. } => {
-                    Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                    Arc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
                         detail: detail.clone(),
                     })
                 }
                 FloorWorkerTerminalReport::FloorWorkerTerminalReportMalformed {
                     detail: detail,
                     ..
-                } => Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                } => Arc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
                     detail: detail.clone(),
                 }),
             },
@@ -447,34 +447,34 @@ pub fn floor_worker_observation_outcome(
                 .clone()
             {
                 FloorWorkerTerminalReport::FloorWorkerReportedCompleted { detail: _, .. } => {
-                    Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                    Arc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
                         detail: "completion report contradicted nonzero exit".to_string(),
                     })
                 }
                 FloorWorkerTerminalReport::FloorWorkerReportedRefused {
                     detail: detail, ..
-                } => Rc::new(FloorWorkerObservationOutcome::FloorWorkerRefused {
+                } => Arc::new(FloorWorkerObservationOutcome::FloorWorkerRefused {
                     detail: detail.clone(),
                 }),
                 FloorWorkerTerminalReport::FloorWorkerReportedFailed { detail: detail, .. } => {
-                    Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                    Arc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
                         detail: detail.clone(),
                     })
                 }
                 FloorWorkerTerminalReport::FloorWorkerTerminalReportMalformed {
                     detail: detail,
                     ..
-                } => Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                } => Arc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
                     detail: detail.clone(),
                 }),
             },
             FloorWorkerTermination::FloorWorkerSignaled { signal: _, .. } => {
-                Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                Arc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
                     detail: "terminal report contradicted signal death".to_string(),
                 })
             }
             FloorWorkerTermination::FloorWorkerTerminationUnobserved => {
-                Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                Arc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
                     detail: "terminal report exists but process termination was unobserved"
                         .to_string(),
                 })
@@ -518,8 +518,8 @@ pub fn floor_worker_observation_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScopedWitnessBatchResourceProfile {
-    pub runnable: Rc<RunnableResourceProfile>,
-    pub clamp: Rc<RunnableBatchClamp>,
+    pub runnable: Arc<RunnableResourceProfile>,
+    pub clamp: Arc<RunnableBatchClamp>,
     pub process_isolation: ScopedWitnessProcessIsolation,
 }
 
@@ -552,19 +552,21 @@ pub fn scoped_witness_execution_authority_seed_refusal_note() -> String {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScopedWitnessBatch {
     pub batch_id: ScopedWitnessBatchId,
-    pub source_roots: Rc<Vec<String>>,
-    pub entries: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
-    pub scan_dirs: Rc<Vec<String>>,
+    pub source_roots: Arc<Vec<String>>,
+    pub entries: Arc<Vec<Arc<ScheduleWitnessEntry>>>,
+    pub scan_dirs: Arc<Vec<String>>,
     pub node_frontier_selection: NodeFrontierSelection,
     pub execution_authority: ScopedWitnessExecutionAuthority,
     pub execution_mode: ExecutionMode,
-    pub resource_profile: Rc<ScopedWitnessBatchResourceProfile>,
+    pub resource_profile: Arc<ScopedWitnessBatchResourceProfile>,
 }
 
-pub fn scoped_witness_source_roots_digest(source_roots: Rc<Vec<String>>) -> Rc<Fnv1a64Structural> {
+pub fn scoped_witness_source_roots_digest(
+    source_roots: Arc<Vec<String>>,
+) -> Arc<Fnv1a64Structural> {
     source_roots.clone().iter().cloned().fold(
         content_hash_atom("scoped-witness-source-roots".to_string()),
-        |acc: Rc<Fnv1a64Structural>, root: String| {
+        |acc: Arc<Fnv1a64Structural>, root: String| {
             content_hash_combine_structural(acc, content_hash_atom(root.clone()))
         },
     )
@@ -572,13 +574,13 @@ pub fn scoped_witness_source_roots_digest(source_roots: Rc<Vec<String>>) -> Rc<F
 
 pub fn scoped_witness_batch(
     batch_id: NonEmptyStr,
-    source_roots: Rc<Vec<String>>,
-    entries: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
-    scan_dirs: Rc<Vec<String>>,
+    source_roots: Arc<Vec<String>>,
+    entries: Arc<Vec<Arc<ScheduleWitnessEntry>>>,
+    scan_dirs: Arc<Vec<String>>,
     node_frontier_selection: NodeFrontierSelection,
-    resource_profile: Rc<ScopedWitnessBatchResourceProfile>,
-) -> Rc<ScopedWitnessBatch> {
-    Rc::new(ScopedWitnessBatch {
+    resource_profile: Arc<ScopedWitnessBatchResourceProfile>,
+) -> Arc<ScopedWitnessBatch> {
+    Arc::new(ScopedWitnessBatch {
         batch_id: batch_id.clone(),
         source_roots: source_roots.clone(),
         entries: entries.clone(),
@@ -603,18 +605,18 @@ pub enum ScopedWitnessExecutionOutcome {
 pub struct ScopedWitnessExecutionResult {
     pub head_sha: CommitSha,
     pub batch_id: String,
-    pub source_roots_digest: Rc<Fnv1a64Structural>,
+    pub source_roots_digest: Arc<Fnv1a64Structural>,
     pub entry: String,
     pub function: String,
     pub witness_kind: WitnessKind,
-    pub outcome: Rc<ScopedWitnessExecutionOutcome>,
+    pub outcome: Arc<ScopedWitnessExecutionOutcome>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ScopedWitnessExecutionReceiptDecode {
     ScopedWitnessExecutionReceiptDecoded {
-        rows: Rc<Vec<Rc<ScopedWitnessExecutionResult>>>,
+        rows: Arc<Vec<Arc<ScopedWitnessExecutionResult>>>,
     },
     ScopedWitnessExecutionReceiptRefused {
         detail: String,
@@ -665,7 +667,7 @@ pub fn scoped_witness_batch_id_wire_text(batch_id: NonEmptyStr) -> String {
 }
 
 pub fn scoped_witness_source_roots_digest_wire_text(
-    source_roots_digest: Rc<Fnv1a64Structural>,
+    source_roots_digest: Arc<Fnv1a64Structural>,
 ) -> String {
     v1_rt::concat(
         "".to_string(),
@@ -673,7 +675,7 @@ pub fn scoped_witness_source_roots_digest_wire_text(
     )
 }
 
-pub fn scoped_witness_source_roots_digest_for_wire(source_roots: Rc<Vec<String>>) -> String {
+pub fn scoped_witness_source_roots_digest_for_wire(source_roots: Arc<Vec<String>>) -> String {
     scoped_witness_source_roots_digest_wire_text(scoped_witness_source_roots_digest(
         source_roots.clone(),
     ))
@@ -704,7 +706,7 @@ pub fn scoped_witness_kind_from_label(label: String) -> Option<WitnessKind> {
 }
 
 pub fn scoped_witness_execution_outcome_label(
-    outcome: Rc<ScopedWitnessExecutionOutcome>,
+    outcome: Arc<ScopedWitnessExecutionOutcome>,
 ) -> String {
     match (*outcome.clone()).clone() {
         ScopedWitnessExecutionOutcome::ScopedWitnessExecuted { ok: _, .. } => {
@@ -723,7 +725,7 @@ pub fn scoped_witness_execution_outcome_label(
 }
 
 pub fn scoped_witness_execution_outcome_detail(
-    outcome: Rc<ScopedWitnessExecutionOutcome>,
+    outcome: Arc<ScopedWitnessExecutionOutcome>,
 ) -> String {
     match (*outcome.clone()).clone() {
         ScopedWitnessExecutionOutcome::ScopedWitnessExecuted { ok: ok, .. } => {
@@ -746,7 +748,7 @@ pub fn scoped_witness_execution_outcome_detail(
     }
 }
 
-pub fn scoped_witness_execution_result_tsv_row(row: Rc<ScopedWitnessExecutionResult>) -> String {
+pub fn scoped_witness_execution_result_tsv_row(row: Arc<ScopedWitnessExecutionResult>) -> String {
     Rc::new(vec![
         row.head_sha.clone(),
         row.batch_id.clone(),
@@ -763,21 +765,21 @@ pub fn scoped_witness_execution_result_tsv_row(row: Rc<ScopedWitnessExecutionRes
 pub fn scoped_witness_execution_outcome_from_wire(
     label: String,
     detail: String,
-) -> Option<Rc<ScopedWitnessExecutionOutcome>> {
+) -> Option<Arc<ScopedWitnessExecutionOutcome>> {
     if ((label.clone() == "executed".to_string()) && (detail.clone() == "true".to_string())) {
-        Some(Rc::new(
+        Some(Arc::new(
             ScopedWitnessExecutionOutcome::ScopedWitnessExecuted { ok: true },
         ))
     } else {
         if ((label.clone() == "executed".to_string()) && (detail.clone() == "false".to_string())) {
-            Some(Rc::new(
+            Some(Arc::new(
                 ScopedWitnessExecutionOutcome::ScopedWitnessExecuted { ok: false },
             ))
         } else {
             if ((label.clone() == "selection-skipped".to_string())
                 && (detail.clone() != "".to_string()))
             {
-                Some(Rc::new(
+                Some(Arc::new(
                     ScopedWitnessExecutionOutcome::ScopedWitnessSelectionSkipped {
                         provenance: detail.clone(),
                     },
@@ -786,7 +788,7 @@ pub fn scoped_witness_execution_outcome_from_wire(
                 if ((label.clone() == "scheduling-refused".to_string())
                     && (detail.clone() != "".to_string()))
                 {
-                    Some(Rc::new(
+                    Some(Arc::new(
                         ScopedWitnessExecutionOutcome::ScopedWitnessSchedulingRefused {
                             detail: detail.clone(),
                         },
@@ -795,7 +797,7 @@ pub fn scoped_witness_execution_outcome_from_wire(
                     if ((label.clone() == "budget-killed".to_string())
                         && (detail.clone() != "".to_string()))
                     {
-                        Some(Rc::new(
+                        Some(Arc::new(
                             ScopedWitnessExecutionOutcome::ScopedWitnessBudgetKilled {
                                 detail: detail.clone(),
                             },
@@ -812,7 +814,7 @@ pub fn scoped_witness_execution_outcome_from_wire(
 pub fn scoped_witness_exact_head_text_holds(head: String) -> bool {
     ((v1_rt::string_length(&head) == 40) && {
         let mut __all = true;
-        for cp in Rc::new(head.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+        for cp in Arc::new(head.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
             .iter()
             .cloned()
         {
@@ -837,54 +839,54 @@ pub fn scoped_witness_exact_head_grounding_note() -> String {
 }
 
 pub fn scoped_witness_execution_result_from_columns(
-    columns: Rc<Vec<String>>,
-) -> Option<Rc<ScopedWitnessExecutionResult>> {
+    columns: Arc<Vec<String>>,
+) -> Option<Arc<ScopedWitnessExecutionResult>> {
     {
         let __fm = columns.clone();
         if __fm.is_empty() {
             None
         } else {
             let head_sha = (*__fm)[0].clone();
-            let after_head: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
+            let after_head: Arc<Vec<_>> = Arc::new((*__fm).iter().skip(1).cloned().collect());
             {
                 let __fm = after_head.clone();
                 if __fm.is_empty() {
                     None
                 } else {
                     let batch_id = (*__fm)[0].clone();
-                    let after_batch: Rc<Vec<_>> =
-                        Rc::new((*__fm).iter().skip(1).cloned().collect());
+                    let after_batch: Arc<Vec<_>> =
+                        Arc::new((*__fm).iter().skip(1).cloned().collect());
                     {
                         let __fm = after_batch.clone();
                         if __fm.is_empty() {
                             None
                         } else {
                             let source_roots_digest = (*__fm)[0].clone();
-                            let after_digest: Rc<Vec<_>> =
-                                Rc::new((*__fm).iter().skip(1).cloned().collect());
+                            let after_digest: Arc<Vec<_>> =
+                                Arc::new((*__fm).iter().skip(1).cloned().collect());
                             {
                                 let __fm = after_digest.clone();
                                 if __fm.is_empty() {
                                     None
                                 } else {
                                     let entry = (*__fm)[0].clone();
-                                    let after_entry: Rc<Vec<_>> =
-                                        Rc::new((*__fm).iter().skip(1).cloned().collect());
+                                    let after_entry: Arc<Vec<_>> =
+                                        Arc::new((*__fm).iter().skip(1).cloned().collect());
                                     {
                                         let __fm = after_entry.clone();
                                         if __fm.is_empty() {
                                             None
                                         } else {
                                             let function = (*__fm)[0].clone();
-                                            let after_function: Rc<Vec<_>> =
-                                                Rc::new((*__fm).iter().skip(1).cloned().collect());
+                                            let after_function: Arc<Vec<_>> =
+                                                Arc::new((*__fm).iter().skip(1).cloned().collect());
                                             {
                                                 let __fm = after_function.clone();
                                                 if __fm.is_empty() {
                                                     None
                                                 } else {
                                                     let witness_kind_label = (*__fm)[0].clone();
-                                                    let after_kind: Rc<Vec<_>> = Rc::new(
+                                                    let after_kind: Arc<Vec<_>> = Arc::new(
                                                         (*__fm).iter().skip(1).cloned().collect(),
                                                     );
                                                     {
@@ -893,13 +895,14 @@ pub fn scoped_witness_execution_result_from_columns(
                                                             None
                                                         } else {
                                                             let outcome_label = (*__fm)[0].clone();
-                                                            let after_outcome: Rc<Vec<_>> = Rc::new(
-                                                                (*__fm)
-                                                                    .iter()
-                                                                    .skip(1)
-                                                                    .cloned()
-                                                                    .collect(),
-                                                            );
+                                                            let after_outcome: Arc<Vec<_>> =
+                                                                Arc::new(
+                                                                    (*__fm)
+                                                                        .iter()
+                                                                        .skip(1)
+                                                                        .cloned()
+                                                                        .collect(),
+                                                                );
                                                             {
                                                                 let __fm = after_outcome.clone();
                                                                 if __fm.is_empty() {
@@ -907,8 +910,8 @@ pub fn scoped_witness_execution_result_from_columns(
                                                                 } else {
                                                                     let outcome_detail =
                                                                         (*__fm)[0].clone();
-                                                                    let after_detail: Rc<Vec<_>> =
-                                                                        Rc::new(
+                                                                    let after_detail: Arc<Vec<_>> =
+                                                                        Arc::new(
                                                                             (*__fm)
                                                                                 .iter()
                                                                                 .skip(1)
@@ -928,7 +931,7 @@ pub fn scoped_witness_execution_result_from_columns(
     None => None,
     Some(kind) => match scoped_witness_execution_outcome_from_wire(outcome_label.clone(), outcome_detail.clone()) {
     None => None,
-    Some(outcome) => Some(Rc::new(ScopedWitnessExecutionResult {
+    Some(outcome) => Some(Arc::new(ScopedWitnessExecutionResult {
     head_sha: head_sha.clone(),
     batch_id: batch_id.clone(),
     source_roots_digest: decoded_source_roots_digest.clone(),
@@ -965,9 +968,9 @@ pub fn scoped_witness_execution_result_from_columns(
 
 pub fn scoped_witness_execution_receipt_decode(
     text: String,
-) -> Rc<ScopedWitnessExecutionReceiptDecode> {
+) -> Arc<ScopedWitnessExecutionReceiptDecode> {
     {
-        let lines = Rc::new(
+        let lines = Arc::new(
             text.clone()
                 .split(&"\n".to_string())
                 .map(|s| s.to_string())
@@ -977,14 +980,14 @@ pub fn scoped_witness_execution_receipt_decode(
             || (lines.clone().first().cloned().as_deref()
                 != Some(scoped_witness_execution_receipt_header()).as_deref()))
         {
-            Rc::new(
+            Arc::new(
                 ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptRefused {
                     detail: "schema header absent or receipt has no rows".to_string(),
                 },
             )
         } else {
             {
-                let body = Rc::new(
+                let body = Arc::new(
                     lines
                         .clone()
                         .iter()
@@ -1001,7 +1004,7 @@ pub fn scoped_witness_execution_receipt_decode(
                     .as_deref()
                     == Some("".to_string()).as_deref())
                 {
-                    Rc::new(
+                    Arc::new(
                         body.clone()
                             .iter()
                             .cloned()
@@ -1012,24 +1015,24 @@ pub fn scoped_witness_execution_receipt_decode(
                     body.clone()
                 };
                 if ((rows.clone().len() as i64) == 0) {
-                    Rc::new(
+                    Arc::new(
                         ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptRefused {
                             detail: "receipt has no scoped witness execution result rows"
                                 .to_string(),
                         },
                     )
                 } else {
-                    rows.clone().iter().cloned().fold(Rc::new(ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptDecoded {
+                    rows.clone().iter().cloned().fold(Arc::new(ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptDecoded {
     rows: Rc::new(vec![]),
-}), |state: Rc<ScopedWitnessExecutionReceiptDecode>, line: String| match (*state).clone() {
-    ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptRefused { detail: detail, .. } => Rc::new(ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptRefused {
+}), |state: Arc<ScopedWitnessExecutionReceiptDecode>, line: String| match (*state).clone() {
+    ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptRefused { detail: detail, .. } => Arc::new(ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptRefused {
     detail: detail.clone(),
 }),
-    ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptDecoded { rows: rows, .. } => match scoped_witness_execution_result_from_columns(Rc::new(line.clone().split(&"\t".to_string()).map(|s| s.to_string()).collect::<Vec<_>>())) {
-    None => Rc::new(ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptRefused {
+    ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptDecoded { rows: rows, .. } => match scoped_witness_execution_result_from_columns(Arc::new(line.clone().split(&"\t".to_string()).map(|s| s.to_string()).collect::<Vec<_>>())) {
+    None => Arc::new(ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptRefused {
     detail: "malformed scoped witness execution result row".to_string(),
 }),
-    Some(row) => Rc::new(ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptDecoded {
+    Some(row) => Arc::new(ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptDecoded {
     rows: v1_rt::concat(rows.clone(), Rc::new(vec![row.clone()])),
 }),
 },
@@ -1062,8 +1065,8 @@ pub fn runnable_memory_class_eq(left: RunnableMemoryClass, right: RunnableMemory
 }
 
 pub fn runnable_resource_profile_eq(
-    left: Rc<RunnableResourceProfile>,
-    right: Rc<RunnableResourceProfile>,
+    left: Arc<RunnableResourceProfile>,
+    right: Arc<RunnableResourceProfile>,
 ) -> bool {
     ((((left.heavy_whole_tree_resolve.clone() == right.heavy_whole_tree_resolve.clone())
         && (left.spawns_host_compiler.clone() == right.spawns_host_compiler.clone()))
@@ -1071,8 +1074,8 @@ pub fn runnable_resource_profile_eq(
         && execution_mode_eq(left.execution_mode.clone(), right.execution_mode.clone()))
 }
 
-pub fn runnable_resource_profile_negligible() -> Rc<RunnableResourceProfile> {
-    Rc::new(RunnableResourceProfile {
+pub fn runnable_resource_profile_negligible() -> Arc<RunnableResourceProfile> {
+    Arc::new(RunnableResourceProfile {
         heavy_whole_tree_resolve: false,
         spawns_host_compiler: false,
         memory: runnable_memory_negligible(),
@@ -1085,8 +1088,8 @@ pub fn runnable_resource_profile(
     spawns_host_compiler: bool,
     memory: RunnableMemoryClass,
     execution_mode: ExecutionMode,
-) -> Rc<RunnableResourceProfile> {
-    Rc::new(RunnableResourceProfile {
+) -> Arc<RunnableResourceProfile> {
+    Arc::new(RunnableResourceProfile {
         heavy_whole_tree_resolve: heavy_whole_tree_resolve.clone(),
         spawns_host_compiler: spawns_host_compiler.clone(),
         memory: memory.clone(),
@@ -1094,18 +1097,18 @@ pub fn runnable_resource_profile(
     })
 }
 
-pub fn runnable_excludes_corpus_co_residence(profile: Rc<RunnableResourceProfile>) -> bool {
+pub fn runnable_excludes_corpus_co_residence(profile: Arc<RunnableResourceProfile>) -> bool {
     match profile.memory.clone() {
         RunnableMemoryClass::RunnableMemoryNegligible => false,
         RunnableMemoryClass::RunnableMemorySubstantial => true,
     }
 }
 
-pub fn runnable_heavy_whole_tree_resolve(profile: Rc<RunnableResourceProfile>) -> bool {
+pub fn runnable_heavy_whole_tree_resolve(profile: Arc<RunnableResourceProfile>) -> bool {
     profile.heavy_whole_tree_resolve.clone()
 }
 
-pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
+pub fn runnable_profile(r: Arc<Runnable>) -> Arc<RunnableResourceProfile> {
     match (*r.clone()).clone() {
         Runnable::RunnableSingleClaim { profile: p, .. } => p.clone(),
         Runnable::RunnableDiscoveryBatch { profile: p, .. } => p.clone(),
@@ -1118,26 +1121,26 @@ pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
     }
 }
 
-pub fn runnable_batch_clamp_source(r: Rc<Runnable>) -> Rc<RunnableBatchClampSource> {
+pub fn runnable_batch_clamp_source(r: Arc<Runnable>) -> Arc<RunnableBatchClampSource> {
     match (*r.clone()).clone() {
         Runnable::RunnableScopedWitnessBatch { batch: batch, .. } => {
-            Rc::new(RunnableBatchClampSource::RunnableOwnsBatchClamp {
+            Arc::new(RunnableBatchClampSource::RunnableOwnsBatchClamp {
                 clamp: batch.resource_profile.clone().clamp.clone(),
             })
         }
         Runnable::RunnableSingleClaim { .. } => {
-            Rc::new(RunnableBatchClampSource::RunnableUsesFloorPositionalClamp)
+            Arc::new(RunnableBatchClampSource::RunnableUsesFloorPositionalClamp)
         }
         Runnable::RunnableDiscoveryBatch { .. } => {
-            Rc::new(RunnableBatchClampSource::RunnableUsesFloorPositionalClamp)
+            Arc::new(RunnableBatchClampSource::RunnableUsesFloorPositionalClamp)
         }
         Runnable::RunnableKernelWorkload {
             fused_op_count: _, ..
-        } => Rc::new(RunnableBatchClampSource::RunnableUsesFloorPositionalClamp),
+        } => Arc::new(RunnableBatchClampSource::RunnableUsesFloorPositionalClamp),
     }
 }
 
-pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
+pub fn runnable_forbids_corpus_co_residence(r: Arc<Runnable>) -> bool {
     match (*r.clone()).clone() {
         Runnable::RunnableDiscoveryBatch { .. } => false,
         Runnable::RunnableScopedWitnessBatch { batch: batch, .. } => {
@@ -1191,19 +1194,19 @@ pub enum Runnable {
     RunnableSingleClaim {
         entry: String,
         function: String,
-        profile: Rc<RunnableResourceProfile>,
+        profile: Arc<RunnableResourceProfile>,
     },
     RunnableDiscoveryBatch {
-        source_roots: Rc<Vec<String>>,
-        scan_dirs: Rc<Vec<String>>,
-        explicit_entries: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
+        source_roots: Arc<Vec<String>>,
+        scan_dirs: Arc<Vec<String>>,
+        explicit_entries: Arc<Vec<Arc<ScheduleWitnessEntry>>>,
         node_frontier_selection: NodeFrontierSelection,
-        exclude_substrings: Rc<Vec<String>>,
-        discovery_scope_dirs: Rc<Vec<String>>,
-        profile: Rc<RunnableResourceProfile>,
+        exclude_substrings: Arc<Vec<String>>,
+        discovery_scope_dirs: Arc<Vec<String>>,
+        profile: Arc<RunnableResourceProfile>,
     },
     RunnableScopedWitnessBatch {
-        batch: Rc<ScopedWitnessBatch>,
+        batch: Arc<ScopedWitnessBatch>,
     },
     RunnableKernelWorkload {
         fused_op_count: i64,
@@ -1232,7 +1235,7 @@ pub fn on_success_runnable_disposition_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn on_success_runnable_disposition(runnable: Rc<Runnable>) -> OnSuccessRunnableDisposition {
+pub fn on_success_runnable_disposition(runnable: Arc<Runnable>) -> OnSuccessRunnableDisposition {
     match (*runnable.clone()).clone() {
         Runnable::RunnableDiscoveryBatch { .. } => {
             OnSuccessRunnableDisposition::OnSuccessDiscoveryRefused
@@ -1306,7 +1309,7 @@ pub enum PreWalkExecution {
     TypedClaimSubprocess {
         transport_entry: String,
         transport_function: String,
-        source_roots: Rc<Vec<String>>,
+        source_roots: Arc<Vec<String>>,
         claim_entry: String,
         claim_function: String,
     },
@@ -1330,7 +1333,7 @@ impl PreWalkExecution {
             } => __val.clone(),
         }
     }
-    pub fn source_roots(&self) -> Rc<Vec<String>> {
+    pub fn source_roots(&self) -> Arc<Vec<String>> {
         match self {
             PreWalkExecution::NoPreWalkExecution => panic!("no source_roots on unit variant"),
             PreWalkExecution::TypedClaimSubprocess {
@@ -1369,10 +1372,10 @@ pub fn pre_walk_execution_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WalkPlan<F: Clone> {
-    pub pre_walk_execution: Rc<PreWalkExecution>,
-    pub batches: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
+    pub pre_walk_execution: Arc<PreWalkExecution>,
+    pub batches: Arc<Vec<Arc<Vec<Arc<Runnable>>>>>,
     pub finalization: F,
-    pub on_success_stages: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
+    pub on_success_stages: Arc<Vec<Arc<Vec<Arc<Runnable>>>>>,
     pub ordinary_budget: Option<Millisecond>,
     pub on_success_budget: Option<Millisecond>,
     pub _phantom: std::marker::PhantomData<F>,
@@ -1405,7 +1408,7 @@ pub fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> bool {
     }
 }
 
-pub fn runnable_selection_applied(r: Rc<Runnable>) -> bool {
+pub fn runnable_selection_applied(r: Arc<Runnable>) -> bool {
     match (*r.clone()).clone() {
         Runnable::RunnableDiscoveryBatch {
             node_frontier_selection: sel,
@@ -1421,18 +1424,18 @@ pub fn runnable_selection_applied(r: Rc<Runnable>) -> bool {
     }
 }
 
-pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
+pub type Schedule = Arc<Vec<Arc<Vec<Arc<Runnable>>>>>;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RealizationPlan<S> {
-    pub target: Rc<ContentHash>,
-    pub objective: Rc<RealizationObjective>,
+    pub target: Arc<ContentHash>,
+    pub objective: Arc<RealizationObjective>,
     pub schedule: Schedule,
-    pub total: Rc<CostAccount<S>>,
+    pub total: Arc<CostAccount<S>>,
     pub _phantom: std::marker::PhantomData<S>,
 }
 
-pub fn runnable_step_label(r: Rc<Runnable>) -> String {
+pub fn runnable_step_label(r: Arc<Runnable>) -> String {
     match (*r.clone()).clone() {
         Runnable::RunnableSingleClaim { function: f, .. } => f.clone(),
         Runnable::RunnableDiscoveryBatch { .. } => "__discovery_corpus__".to_string(),
@@ -1445,7 +1448,7 @@ pub fn runnable_step_label(r: Rc<Runnable>) -> String {
     }
 }
 
-pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: String) -> bool {
+pub fn schedule_batch_contains_label(batch: Arc<Vec<Arc<Runnable>>>, target: String) -> bool {
     batch
         .clone()
         .iter()
@@ -1456,18 +1459,21 @@ pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: Strin
 }
 
 pub fn schedule_generates_same_batch_count<S>(
-    left: Rc<RealizationPlan<S>>,
-    right: Rc<RealizationPlan<S>>,
+    left: Arc<RealizationPlan<S>>,
+    right: Arc<RealizationPlan<S>>,
 ) -> bool {
     ((left.schedule.clone().len() as i64) == (right.schedule.clone().len() as i64))
 }
 
-pub fn schedule_witness_entry_eq(a: Rc<ScheduleWitnessEntry>, b: Rc<ScheduleWitnessEntry>) -> bool {
+pub fn schedule_witness_entry_eq(
+    a: Arc<ScheduleWitnessEntry>,
+    b: Arc<ScheduleWitnessEntry>,
+) -> bool {
     (((a.entry.clone() == b.entry.clone()) && (a.function.clone() == b.function.clone()))
         && witness_kind_eq(a.kind.clone(), b.kind.clone()))
 }
 
-pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> bool {
+pub fn string_list_eq(mut left: Arc<Vec<String>>, mut right: Arc<Vec<String>>) -> bool {
     loop {
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
             break false;
@@ -1482,9 +1488,9 @@ pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> 
                 } else {
                     {
                         let __tco_0 =
-                            Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                            Arc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
                         let __tco_1 =
-                            Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                            Arc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
                         left = __tco_0;
                         right = __tco_1;
                         continue;
@@ -1496,8 +1502,8 @@ pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> 
 }
 
 pub fn schedule_witness_entry_list_eq(
-    mut left: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
-    mut right: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
+    mut left: Arc<Vec<Arc<ScheduleWitnessEntry>>>,
+    mut right: Arc<Vec<Arc<ScheduleWitnessEntry>>>,
 ) -> bool {
     loop {
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
@@ -1510,8 +1516,8 @@ pub fn schedule_witness_entry_list_eq(
                     break false;
 } else {
                     {
-                        let __tco_0 = Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                        let __tco_0 = Arc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = Arc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 left = __tco_0;
 right = __tco_1;
 continue;
@@ -1522,7 +1528,7 @@ continue;
     }
 }
 
-pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
+pub fn runnable_eq(left: Arc<Runnable>, right: Arc<Runnable>) -> bool {
     match (*left.clone()).clone() {
         Runnable::RunnableSingleClaim {
             entry: le,
@@ -1603,8 +1609,8 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
 }
 
 pub fn runnable_batch_eq(
-    mut left: Rc<Vec<Rc<Runnable>>>,
-    mut right: Rc<Vec<Rc<Runnable>>>,
+    mut left: Arc<Vec<Arc<Runnable>>>,
+    mut right: Arc<Vec<Arc<Runnable>>>,
 ) -> bool {
     loop {
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
@@ -1617,8 +1623,8 @@ pub fn runnable_batch_eq(
                     break false;
 } else {
                     {
-                        let __tco_0 = Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                        let __tco_0 = Arc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = Arc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 left = __tco_0;
 right = __tco_1;
 continue;
@@ -1641,8 +1647,8 @@ pub fn schedule_eq(mut left: Schedule, mut right: Schedule) -> bool {
                     break false;
 } else {
                     {
-                        let __tco_0 = Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                        let __tco_0 = Arc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = Arc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 left = __tco_0;
 right = __tco_1;
 continue;
@@ -1654,7 +1660,7 @@ continue;
 }
 
 pub fn schedule_generates_identical_schedule<S>(
-    plan: Rc<RealizationPlan<S>>,
+    plan: Arc<RealizationPlan<S>>,
     schedule: Schedule,
 ) -> bool {
     schedule_eq(plan.schedule.clone(), schedule.clone())

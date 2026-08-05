@@ -17,7 +17,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn trait_derive_shape_note() -> String {
     thread_local! {
@@ -180,7 +180,7 @@ pub fn repr_grounding_derive_shape_has_trait(
 }
 
 pub fn repr_grounding_derive_completeness_predicate(
-    required: Rc<Vec<ReprGroundingDeriveTrait>>,
+    required: Arc<Vec<ReprGroundingDeriveTrait>>,
     shape: ReprGroundingDeriveElemShape,
 ) -> bool {
     {
@@ -195,13 +195,13 @@ pub fn repr_grounding_derive_completeness_predicate(
     }
 }
 
-pub fn record_derive_traits_heap() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new(vec![])).clone();
+pub fn record_derive_traits_heap() -> Arc<Vec<ReprGroundingDeriveTrait>> {
+    Arc::new({
+        let mut __cons_v = (*Arc::new({
+            let mut __cons_v = (*Arc::new({
+                let mut __cons_v = (*Arc::new({
+                    let mut __cons_v = (*Arc::new({
+                        let mut __cons_v = (*Arc::new(vec![])).clone();
                         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDeserialize);
                         __cons_v
                     }))
@@ -223,14 +223,14 @@ pub fn record_derive_traits_heap() -> Rc<Vec<ReprGroundingDeriveTrait>> {
     })
 }
 
-pub fn record_derive_traits_copy() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new({
-                            let mut __cons_v = (*Rc::new(vec![])).clone();
+pub fn record_derive_traits_copy() -> Arc<Vec<ReprGroundingDeriveTrait>> {
+    Arc::new({
+        let mut __cons_v = (*Arc::new({
+            let mut __cons_v = (*Arc::new({
+                let mut __cons_v = (*Arc::new({
+                    let mut __cons_v = (*Arc::new({
+                        let mut __cons_v = (*Arc::new({
+                            let mut __cons_v = (*Arc::new(vec![])).clone();
                             __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDeserialize);
                             __cons_v
                         }))
@@ -256,17 +256,17 @@ pub fn record_derive_traits_copy() -> Rc<Vec<ReprGroundingDeriveTrait>> {
     })
 }
 
-pub fn nullary_coproduct_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new({
-                            let mut __cons_v = (*Rc::new({
-                                let mut __cons_v = (*Rc::new({
-                                    let mut __cons_v = (*Rc::new({
-                                        let mut __cons_v = (*Rc::new(vec![])).clone();
+pub fn nullary_coproduct_derive_traits() -> Arc<Vec<ReprGroundingDeriveTrait>> {
+    Arc::new({
+        let mut __cons_v = (*Arc::new({
+            let mut __cons_v = (*Arc::new({
+                let mut __cons_v = (*Arc::new({
+                    let mut __cons_v = (*Arc::new({
+                        let mut __cons_v = (*Arc::new({
+                            let mut __cons_v = (*Arc::new({
+                                let mut __cons_v = (*Arc::new({
+                                    let mut __cons_v = (*Arc::new({
+                                        let mut __cons_v = (*Arc::new(vec![])).clone();
                                         __cons_v.insert(
                                             0,
                                             ReprGroundingDeriveTrait::ReprDeriveDeserialize,
@@ -308,16 +308,16 @@ pub fn nullary_coproduct_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
     })
 }
 
-pub fn symbol_wrapped_ord_carrier_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new({
-                            let mut __cons_v = (*Rc::new({
-                                let mut __cons_v = (*Rc::new({
-                                    let mut __cons_v = (*Rc::new(vec![])).clone();
+pub fn symbol_wrapped_ord_carrier_derive_traits() -> Arc<Vec<ReprGroundingDeriveTrait>> {
+    Arc::new({
+        let mut __cons_v = (*Arc::new({
+            let mut __cons_v = (*Arc::new({
+                let mut __cons_v = (*Arc::new({
+                    let mut __cons_v = (*Arc::new({
+                        let mut __cons_v = (*Arc::new({
+                            let mut __cons_v = (*Arc::new({
+                                let mut __cons_v = (*Arc::new({
+                                    let mut __cons_v = (*Arc::new(vec![])).clone();
                                     __cons_v
                                         .insert(0, ReprGroundingDeriveTrait::ReprDeriveDeserialize);
                                     __cons_v
@@ -352,21 +352,21 @@ pub fn symbol_wrapped_ord_carrier_derive_traits() -> Rc<Vec<ReprGroundingDeriveT
     })
 }
 
-pub fn fn_field_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new(vec![])).clone();
+pub fn fn_field_derive_traits() -> Arc<Vec<ReprGroundingDeriveTrait>> {
+    Arc::new({
+        let mut __cons_v = (*Arc::new(vec![])).clone();
         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
         __cons_v
     })
 }
 
-pub fn payload_coproduct_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new(vec![])).clone();
+pub fn payload_coproduct_derive_traits() -> Arc<Vec<ReprGroundingDeriveTrait>> {
+    Arc::new({
+        let mut __cons_v = (*Arc::new({
+            let mut __cons_v = (*Arc::new({
+                let mut __cons_v = (*Arc::new({
+                    let mut __cons_v = (*Arc::new({
+                        let mut __cons_v = (*Arc::new(vec![])).clone();
                         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDeserialize);
                         __cons_v
                     }))
@@ -388,16 +388,16 @@ pub fn payload_coproduct_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
     })
 }
 
-pub fn kernel_int_arithmetic_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new({
-                            let mut __cons_v = (*Rc::new({
-                                let mut __cons_v = (*Rc::new({
-                                    let mut __cons_v = (*Rc::new(vec![])).clone();
+pub fn kernel_int_arithmetic_traits() -> Arc<Vec<ReprGroundingDeriveTrait>> {
+    Arc::new({
+        let mut __cons_v = (*Arc::new({
+            let mut __cons_v = (*Arc::new({
+                let mut __cons_v = (*Arc::new({
+                    let mut __cons_v = (*Arc::new({
+                        let mut __cons_v = (*Arc::new({
+                            let mut __cons_v = (*Arc::new({
+                                let mut __cons_v = (*Arc::new({
+                                    let mut __cons_v = (*Arc::new(vec![])).clone();
                                     __cons_v
                                         .insert(0, ReprGroundingDeriveTrait::ReprDerivePartialOrd);
                                     __cons_v
@@ -476,33 +476,33 @@ pub struct PairCompletionFactor {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PairCompletionTerm {
-    pub factors: Rc<Vec<Rc<PairCompletionFactor>>>,
+    pub factors: Arc<Vec<Arc<PairCompletionFactor>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PairCompletionArm {
-    pub terms: Rc<Vec<Rc<PairCompletionTerm>>>,
+    pub terms: Arc<Vec<Arc<PairCompletionTerm>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PairCompletionBody {
     PairCompletionSumOfProducts {
-        pos: Rc<PairCompletionArm>,
-        neg: Rc<PairCompletionArm>,
+        pos: Arc<PairCompletionArm>,
+        neg: Arc<PairCompletionArm>,
     },
     PairCompletionNegatedAddend,
     PairCompletionCanonicalQuotient,
 }
 impl PairCompletionBody {
-    pub fn pos(&self) -> Rc<PairCompletionArm> {
+    pub fn pos(&self) -> Arc<PairCompletionArm> {
         match self {
             PairCompletionBody::PairCompletionSumOfProducts { pos: __val, .. } => __val.clone(),
             PairCompletionBody::PairCompletionNegatedAddend => panic!("no pos on unit variant"),
             PairCompletionBody::PairCompletionCanonicalQuotient => panic!("no pos on unit variant"),
         }
     }
-    pub fn neg(&self) -> Rc<PairCompletionArm> {
+    pub fn neg(&self) -> Arc<PairCompletionArm> {
         match self {
             PairCompletionBody::PairCompletionSumOfProducts { neg: __val, .. } => __val.clone(),
             PairCompletionBody::PairCompletionNegatedAddend => panic!("no neg on unit variant"),
@@ -514,34 +514,34 @@ impl PairCompletionBody {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PairCompletionOpRow {
     pub op: ReprGroundingDeriveTrait,
-    pub body: Rc<PairCompletionBody>,
+    pub body: Arc<PairCompletionBody>,
 }
 
 pub fn pair_completion_factor(
     operand: PairCompletionOperand,
     component: PairCompletionComponent,
-) -> Rc<PairCompletionFactor> {
-    Rc::new(PairCompletionFactor {
+) -> Arc<PairCompletionFactor> {
+    Arc::new(PairCompletionFactor {
         operand: operand.clone(),
         component: component.clone(),
     })
 }
 
-pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
+pub fn pair_completion_op_rows() -> Arc<Vec<Arc<PairCompletionOpRow>>> {
     Rc::new(vec![
-        Rc::new(PairCompletionOpRow {
+        Arc::new(PairCompletionOpRow {
             op: ReprGroundingDeriveTrait::ReprDeriveNeg,
-            body: Rc::new(PairCompletionBody::PairCompletionSumOfProducts {
-                pos: Rc::new(PairCompletionArm {
-                    terms: Rc::new(vec![Rc::new(PairCompletionTerm {
+            body: Arc::new(PairCompletionBody::PairCompletionSumOfProducts {
+                pos: Arc::new(PairCompletionArm {
+                    terms: Rc::new(vec![Arc::new(PairCompletionTerm {
                         factors: Rc::new(vec![pair_completion_factor(
                             PairCompletionOperand::PairCompletionSelf,
                             PairCompletionComponent::PairCompletionNeg,
                         )]),
                     })]),
                 }),
-                neg: Rc::new(PairCompletionArm {
-                    terms: Rc::new(vec![Rc::new(PairCompletionTerm {
+                neg: Arc::new(PairCompletionArm {
+                    terms: Rc::new(vec![Arc::new(PairCompletionTerm {
                         factors: Rc::new(vec![pair_completion_factor(
                             PairCompletionOperand::PairCompletionSelf,
                             PairCompletionComponent::PairCompletionPos,
@@ -550,18 +550,18 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
                 }),
             }),
         }),
-        Rc::new(PairCompletionOpRow {
+        Arc::new(PairCompletionOpRow {
             op: ReprGroundingDeriveTrait::ReprDeriveAdd,
-            body: Rc::new(PairCompletionBody::PairCompletionSumOfProducts {
-                pos: Rc::new(PairCompletionArm {
+            body: Arc::new(PairCompletionBody::PairCompletionSumOfProducts {
+                pos: Arc::new(PairCompletionArm {
                     terms: Rc::new(vec![
-                        Rc::new(PairCompletionTerm {
+                        Arc::new(PairCompletionTerm {
                             factors: Rc::new(vec![pair_completion_factor(
                                 PairCompletionOperand::PairCompletionSelf,
                                 PairCompletionComponent::PairCompletionPos,
                             )]),
                         }),
-                        Rc::new(PairCompletionTerm {
+                        Arc::new(PairCompletionTerm {
                             factors: Rc::new(vec![pair_completion_factor(
                                 PairCompletionOperand::PairCompletionRhs,
                                 PairCompletionComponent::PairCompletionPos,
@@ -569,15 +569,15 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
                         }),
                     ]),
                 }),
-                neg: Rc::new(PairCompletionArm {
+                neg: Arc::new(PairCompletionArm {
                     terms: Rc::new(vec![
-                        Rc::new(PairCompletionTerm {
+                        Arc::new(PairCompletionTerm {
                             factors: Rc::new(vec![pair_completion_factor(
                                 PairCompletionOperand::PairCompletionSelf,
                                 PairCompletionComponent::PairCompletionNeg,
                             )]),
                         }),
-                        Rc::new(PairCompletionTerm {
+                        Arc::new(PairCompletionTerm {
                             factors: Rc::new(vec![pair_completion_factor(
                                 PairCompletionOperand::PairCompletionRhs,
                                 PairCompletionComponent::PairCompletionNeg,
@@ -587,16 +587,16 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
                 }),
             }),
         }),
-        Rc::new(PairCompletionOpRow {
+        Arc::new(PairCompletionOpRow {
             op: ReprGroundingDeriveTrait::ReprDeriveSub,
-            body: Rc::new(PairCompletionBody::PairCompletionNegatedAddend),
+            body: Arc::new(PairCompletionBody::PairCompletionNegatedAddend),
         }),
-        Rc::new(PairCompletionOpRow {
+        Arc::new(PairCompletionOpRow {
             op: ReprGroundingDeriveTrait::ReprDeriveMul,
-            body: Rc::new(PairCompletionBody::PairCompletionSumOfProducts {
-                pos: Rc::new(PairCompletionArm {
+            body: Arc::new(PairCompletionBody::PairCompletionSumOfProducts {
+                pos: Arc::new(PairCompletionArm {
                     terms: Rc::new(vec![
-                        Rc::new(PairCompletionTerm {
+                        Arc::new(PairCompletionTerm {
                             factors: Rc::new(vec![
                                 pair_completion_factor(
                                     PairCompletionOperand::PairCompletionSelf,
@@ -608,7 +608,7 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
                                 ),
                             ]),
                         }),
-                        Rc::new(PairCompletionTerm {
+                        Arc::new(PairCompletionTerm {
                             factors: Rc::new(vec![
                                 pair_completion_factor(
                                     PairCompletionOperand::PairCompletionSelf,
@@ -622,9 +622,9 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
                         }),
                     ]),
                 }),
-                neg: Rc::new(PairCompletionArm {
+                neg: Arc::new(PairCompletionArm {
                     terms: Rc::new(vec![
-                        Rc::new(PairCompletionTerm {
+                        Arc::new(PairCompletionTerm {
                             factors: Rc::new(vec![
                                 pair_completion_factor(
                                     PairCompletionOperand::PairCompletionSelf,
@@ -636,7 +636,7 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
                                 ),
                             ]),
                         }),
-                        Rc::new(PairCompletionTerm {
+                        Arc::new(PairCompletionTerm {
                             factors: Rc::new(vec![
                                 pair_completion_factor(
                                     PairCompletionOperand::PairCompletionSelf,
@@ -652,9 +652,9 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
                 }),
             }),
         }),
-        Rc::new(PairCompletionOpRow {
+        Arc::new(PairCompletionOpRow {
             op: ReprGroundingDeriveTrait::ReprDeriveDiv,
-            body: Rc::new(PairCompletionBody::PairCompletionCanonicalQuotient),
+            body: Arc::new(PairCompletionBody::PairCompletionCanonicalQuotient),
         }),
     ])
 }
@@ -668,7 +668,7 @@ pub fn pair_completion_uses_rhs_dissolve_on() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn pair_completion_arm_uses_rhs(arm: Rc<PairCompletionArm>) -> bool {
+pub fn pair_completion_arm_uses_rhs(arm: Arc<PairCompletionArm>) -> bool {
     {
         let mut __found = false;
         for term in arm.terms.clone().iter().cloned() {
@@ -693,7 +693,7 @@ pub fn pair_completion_arm_uses_rhs(arm: Rc<PairCompletionArm>) -> bool {
     }
 }
 
-pub fn pair_completion_body_uses_rhs(body: Rc<PairCompletionBody>) -> bool {
+pub fn pair_completion_body_uses_rhs(body: Arc<PairCompletionBody>) -> bool {
     match (*body.clone()).clone() {
         PairCompletionBody::PairCompletionSumOfProducts { pos, neg, .. } => {
             (pair_completion_arm_uses_rhs(pos.clone()) || pair_completion_arm_uses_rhs(neg.clone()))
@@ -712,20 +712,20 @@ pub fn repr_grounding_group_completion_carrier_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn repr_grounding_group_completion_carrier_trigger() -> Rc<Disposition> {
+pub fn repr_grounding_group_completion_carrier_trigger() -> Arc<Disposition> {
     thread_local! {
-            static CACHED: Rc<Disposition> = {
-                Rc::new(Disposition::Scaffold {
+            static CACHED: Arc<Disposition> = {
+                Arc::new(Disposition::Scaffold {
         dissolves_to: ConstructionMechanism::SingleAuthority,
-        bind: Rc::new(DeclarationRef {
+        bind: Arc::new(DeclarationRef {
         module_path: "std.algebra".to_string(),
         decl_name: "Ring".to_string(),
-        field: Rc::new(DeclField::WholeDeclaration),
+        field: Arc::new(DeclField::WholeDeclaration),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<Disposition>| c.clone())
+    CACHED.with(|c: &Arc<Disposition>| c.clone())
 }
 
 pub fn repr_grounding_group_completion_carrier_dissolve_on() -> String {

@@ -17,31 +17,31 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
     thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+            static CACHED: Arc<ExternalAuthority> = {
+                Arc::new(ExternalAuthority {
+        uri: Arc::new(Uri {
         scheme: UriScheme::Https,
         locator: "github.com/opencontainers/image-spec/blob/main/descriptor.md".to_string(),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+    CACHED.with(|c: &Arc<ExternalAuthority>| c.clone())
 }
 
-pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
+pub fn extdeps_model_scope() -> Arc<ExternalModelScope> {
     thread_local! {
-            static CACHED: Rc<ExternalModelScope> = {
-                Rc::new(ExternalModelScope {
-        subject: Rc::new(ExternalSubjectRef {
-        declaration: Rc::new(DeclarationRef {
+            static CACHED: Arc<ExternalModelScope> = {
+                Arc::new(ExternalModelScope {
+        subject: Arc::new(ExternalSubjectRef {
+        declaration: Arc::new(DeclarationRef {
         module_path: "extdeps.container.oci.digest".to_string(),
         decl_name: "OciContentDigest".to_string(),
-        field: Rc::new(DeclField::WholeDeclaration),
+        field: Arc::new(DeclField::WholeDeclaration),
     }),
     }),
         first_citation: extdeps_external_authority_anchor(),
@@ -49,7 +49,7 @@ pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalModelScope>| c.clone())
+    CACHED.with(|c: &Arc<ExternalModelScope>| c.clone())
 }
 
 pub fn oci_content_digest_note() -> String {
@@ -191,12 +191,12 @@ pub struct OciOtherDigestBody {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OciContentDigest {
-    OciSha256Digest(Rc<Sha256Digest>),
-    OciSha512Digest(Rc<OciSha512DigestBody>),
-    OciOtherDigest(Rc<OciOtherDigestBody>),
+    OciSha256Digest(Arc<Sha256Digest>),
+    OciSha512Digest(Arc<OciSha512DigestBody>),
+    OciOtherDigest(Arc<OciOtherDigestBody>),
 }
 
-pub fn oci_content_digest_wire_algorithm(d: Rc<OciContentDigest>) -> String {
+pub fn oci_content_digest_wire_algorithm(d: Arc<OciContentDigest>) -> String {
     match (*d.clone()).clone() {
         OciContentDigest::OciSha256Digest(_) => "sha256".to_string(),
         OciContentDigest::OciSha512Digest(body) => "sha512".to_string(),
@@ -204,7 +204,7 @@ pub fn oci_content_digest_wire_algorithm(d: Rc<OciContentDigest>) -> String {
     }
 }
 
-pub fn oci_content_digest_encoded_hex(d: Rc<OciContentDigest>) -> String {
+pub fn oci_content_digest_encoded_hex(d: Arc<OciContentDigest>) -> String {
     match (*d.clone()).clone() {
         OciContentDigest::OciSha256Digest(digest) => digest.hex.clone(),
         OciContentDigest::OciSha512Digest(body) => body.hex.clone(),
@@ -212,7 +212,7 @@ pub fn oci_content_digest_encoded_hex(d: Rc<OciContentDigest>) -> String {
     }
 }
 
-pub fn render_oci_content_digest_wire(d: Rc<OciContentDigest>) -> String {
+pub fn render_oci_content_digest_wire(d: Arc<OciContentDigest>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             oci_content_digest_wire_algorithm(d.clone()),
@@ -231,16 +231,16 @@ pub struct OciWireDigestParts {
 pub fn oci_wire_digest_parts_from_split(
     algorithm: String,
     encoded: String,
-) -> Rc<OciWireDigestParts> {
-    Rc::new(OciWireDigestParts {
+) -> Arc<OciWireDigestParts> {
+    Arc::new(OciWireDigestParts {
         algorithm: algorithm.clone(),
         encoded: encoded.clone(),
     })
 }
 
-pub fn oci_wire_digest_parts(raw: String) -> Option<Rc<OciWireDigestParts>> {
+pub fn oci_wire_digest_parts(raw: String) -> Option<Arc<OciWireDigestParts>> {
     {
-        let parts = Rc::new(
+        let parts = Arc::new(
             raw.clone()
                 .split(&":".to_string())
                 .map(|s| s.to_string())
@@ -254,20 +254,20 @@ pub fn oci_wire_digest_parts(raw: String) -> Option<Rc<OciWireDigestParts>> {
     }
 }
 
-pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>> {
+pub fn parse_oci_content_digest_wire(raw: String) -> Option<Arc<OciContentDigest>> {
     match oci_wire_digest_parts(raw.clone()) {
         Some(parts) => {
             if (parts.algorithm.clone() == "sha256".to_string()) {
                 match sha256_hex_digest(parts.encoded.clone()) {
                     Some(digest) => {
-                        Some(Rc::new(OciContentDigest::OciSha256Digest(digest.clone())))
+                        Some(Arc::new(OciContentDigest::OciSha256Digest(digest.clone())))
                     }
                     None => None,
                 }
             } else {
                 if (parts.algorithm.clone() == "sha512".to_string()) {
                     if content_hash_validate_lower_hex_length(parts.encoded.clone(), 128) {
-                        Some(Rc::new(OciContentDigest::OciSha512Digest(Rc::new(
+                        Some(Arc::new(OciContentDigest::OciSha512Digest(Arc::new(
                             OciSha512DigestBody {
                                 hex: parts.encoded.clone(),
                             },
@@ -280,8 +280,8 @@ pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>
                         None
                     } else {
                         match oci_encoded_digest(parts.encoded.clone()) {
-                            Some(encoded) => Some(Rc::new(OciContentDigest::OciOtherDigest(
-                                Rc::new(OciOtherDigestBody {
+                            Some(encoded) => Some(Arc::new(OciContentDigest::OciOtherDigest(
+                                Arc::new(OciOtherDigestBody {
                                     algorithm: parts.algorithm.clone(),
                                     encoded: encoded.clone(),
                                 }),
@@ -296,13 +296,15 @@ pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>
     }
 }
 
-pub fn oci_sha256_content_digest(hex: String) -> Option<Rc<OciContentDigest>> {
+pub fn oci_sha256_content_digest(hex: String) -> Option<Arc<OciContentDigest>> {
     match sha256_hex_digest(hex.clone()) {
         Some(digest) => Some(oci_content_digest_from_validated_sha256(digest.clone())),
         None => None,
     }
 }
 
-pub fn oci_content_digest_from_validated_sha256(digest: Rc<Sha256Digest>) -> Rc<OciContentDigest> {
-    Rc::new(OciContentDigest::OciSha256Digest(digest.clone()))
+pub fn oci_content_digest_from_validated_sha256(
+    digest: Arc<Sha256Digest>,
+) -> Arc<OciContentDigest> {
+    Arc::new(OciContentDigest::OciSha256Digest(digest.clone()))
 }

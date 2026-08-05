@@ -27,7 +27,7 @@ pub use crate::v1_std_core::{Connective, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn trait_derive_emit_scope_note() -> String {
     thread_local! {
@@ -128,13 +128,13 @@ pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_dissolve_o
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist() -> Rc<Vec<String>> {
+pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist() -> Arc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
+        static CACHED: Arc<Vec<String>> = {
             Rc::new(vec!["std.keyed_row".to_string(), "std.keyed_roster".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<String>>| c.clone())
 }
 
 pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module(module_path: String) -> bool {
@@ -159,7 +159,7 @@ pub fn v1_trait_derive_refuse(message: String) -> String {
     )
 }
 
-pub fn v1_coproduct_all_variants_nullary(children: Rc<Vec<Rc<Node>>>) -> bool {
+pub fn v1_coproduct_all_variants_nullary(children: Arc<Vec<Arc<Node>>>) -> bool {
     {
         let mut __all = true;
         for v in children.clone().iter().cloned() {
@@ -173,8 +173,8 @@ pub fn v1_coproduct_all_variants_nullary(children: Rc<Vec<Rc<Node>>>) -> bool {
 }
 
 pub fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
-    children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    children: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> ReprGroundingDeriveElemShape {
     if v1_coproduct_all_variants_nullary(children.clone()) {
         ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy
@@ -184,8 +184,8 @@ pub fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
 }
 
 pub fn rust_nominal_identity_carrier_shape_eligible(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     ((((authored_name_at(source_indices.clone(), n.clone()) == "Symbol".to_string())
         && ((n.children.clone().len() as i64) == 0))
@@ -194,8 +194,8 @@ pub fn rust_nominal_identity_carrier_shape_eligible(
 }
 
 pub fn rust_symbol_wrapped_ord_carrier_shape_eligible(
-    children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    children: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     if ((children.clone().len() as i64) != 1) {
         false
@@ -211,8 +211,8 @@ pub fn rust_symbol_wrapped_ord_carrier_shape_eligible(
 }
 
 pub fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
-    children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    children: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> ReprGroundingDeriveElemShape {
     if rust_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone()) {
         ReprGroundingDeriveElemShape::ReprDeriveElemSymbolWrappedOrdCarrier
@@ -223,10 +223,10 @@ pub fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
 
 pub fn v1_emit_struct_derives(
     name: String,
-    children: Rc<Vec<Rc<Node>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    children: Arc<Vec<Arc<Node>>>,
+    shared_types: Arc<BTreeSet<String>>,
     has_fn_fields: bool,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     if has_fn_fields.clone() {
         rust_trait_derive_attr_from_traits(fn_field_derive_traits())
@@ -260,8 +260,8 @@ pub fn v1_emit_struct_derives(
 }
 
 pub fn v1_emit_enum_derives(
-    children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    children: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let shape = v1_repr_grounding_derive_elem_shape_from_coproduct_children(
@@ -305,8 +305,8 @@ pub fn v1_emit_enum_derives(
 
 pub fn v1_type_expr_contains_param_name(
     param_name: String,
-    type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_expr: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (authored_name_at(source_indices.clone(), type_expr.clone()) == param_name.clone()) {
@@ -332,10 +332,10 @@ pub fn v1_type_expr_contains_param_name(
 
 pub fn v1_generic_param_used_as_collection_element(
     param_name: String,
-    value_params: Rc<Vec<Rc<Node>>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    value_params: Arc<Vec<Arc<Node>>>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -369,8 +369,8 @@ pub fn v1_generic_param_used_as_collection_element(
 
 pub fn v1_generic_param_used_as_bare_value_param_type(
     param_name: String,
-    value_params: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    value_params: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -391,10 +391,10 @@ pub fn v1_generic_param_used_as_bare_value_param_type(
 
 pub fn v1_generic_param_used_in_value_param_type_surface(
     param_name: String,
-    value_params: Rc<Vec<Rc<Node>>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    value_params: Arc<Vec<Arc<Node>>>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -416,13 +416,13 @@ pub fn v1_generic_param_used_in_value_param_type_surface(
 
 pub fn v1_item_phantom_only_param_names(
     item_name: String,
-    item: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    Rc::new({
+    item: Arc<Node>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<String>> {
+    Arc::new({
         let mut __result = Vec::new();
-        for p in Rc::new({
+        for p in Arc::new({
             let mut __result = Vec::new();
             for p in item.params.clone().iter().cloned() {
                 __result.push(generic_param_name_at(p.clone(), source_indices.clone()));
@@ -443,7 +443,7 @@ pub fn v1_item_phantom_only_param_names(
     })
 }
 
-pub fn v1_phantom_only_param_names_contains(names: Rc<Vec<String>>, param_name: String) -> bool {
+pub fn v1_phantom_only_param_names_contains(names: Arc<Vec<String>>, param_name: String) -> bool {
     {
         let mut __found = false;
         for n in names.clone().iter().cloned() {
@@ -458,12 +458,12 @@ pub fn v1_phantom_only_param_names_contains(names: Rc<Vec<String>>, param_name: 
 
 pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
     param_name: String,
-    decl_params: Rc<Vec<Rc<Node>>>,
-    type_args: Rc<Vec<Rc<Node>>>,
-    phantom_slot_names: Rc<Vec<String>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    decl_params: Arc<Vec<Arc<Node>>>,
+    type_args: Arc<Vec<Arc<Node>>>,
+    phantom_slot_names: Arc<Vec<String>>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match decl_params.clone().first().cloned() {
@@ -492,7 +492,7 @@ pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
                     (here.clone()
                         || v1_declared_type_app_mentions_param_non_phantom_loop(
                             param_name.clone(),
-                            Rc::new(
+                            Arc::new(
                                 decl_params
                                     .clone()
                                     .iter()
@@ -500,7 +500,7 @@ pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
                                     .skip(1 as usize)
                                     .collect::<Vec<_>>(),
                             ),
-                            Rc::new(
+                            Arc::new(
                                 type_args
                                     .clone()
                                     .iter()
@@ -522,11 +522,11 @@ pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
 pub fn v1_declared_type_app_mentions_param_non_phantom(
     param_name: String,
     decl_name: String,
-    decl: Rc<Node>,
-    type_args: Rc<Vec<Rc<Node>>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    decl: Arc<Node>,
+    type_args: Arc<Vec<Arc<Node>>>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     v1_declared_type_app_mentions_param_non_phantom_loop(
         param_name.clone(),
@@ -546,10 +546,10 @@ pub fn v1_declared_type_app_mentions_param_non_phantom(
 
 pub fn v1_type_expr_mentions_param_non_phantom(
     param_name: String,
-    type_expr: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_expr: Arc<Node>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if v1_type_expr_is_bare_param(
@@ -613,14 +613,14 @@ pub fn v1_type_expr_mentions_param_non_phantom(
 }
 
 pub fn v1_fn_phantom_only_generic_param_names(
-    generic_param_names: Rc<Vec<String>>,
-    value_params: Rc<Vec<Rc<Node>>>,
-    ret: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    Rc::new({
+    generic_param_names: Arc<Vec<String>>,
+    value_params: Arc<Vec<Arc<Node>>>,
+    ret: Arc<Node>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<String>> {
+    Arc::new({
         let mut __result = Vec::new();
         for p in generic_param_names.clone().iter().cloned() {
             if (!{
@@ -654,8 +654,8 @@ pub fn v1_fn_phantom_only_generic_param_names(
 
 pub fn v1_type_expr_mentions_type_head(
     type_name: String,
-    type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_expr: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (authored_name_at(source_indices.clone(), type_expr.clone()) == type_name.clone()) {
@@ -681,17 +681,17 @@ pub fn v1_type_expr_mentions_type_head(
 
 pub fn v1_fn_generic_clone_bound_via_referenced_decl(
     param_name: String,
-    value_params: Rc<Vec<Rc<Node>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    clone_bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    value_params: Arc<Vec<Arc<Node>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    clone_bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
-        for decl_name in Rc::new(v1_rt::map_keys(&type_decl_items)).iter().cloned() {
+        for decl_name in Arc::new(v1_rt::map_keys(&type_decl_items)).iter().cloned() {
             if match v1_rt::map_get(&type_decl_items, decl_name.clone()) {
                 Some(decl) => {
-                    let decl_generics = Rc::new({
+                    let decl_generics = Arc::new({
                         let mut __result = Vec::new();
                         for p in decl.params.clone().iter().cloned() {
                             __result.push(generic_param_name_at(p.clone(), source_indices.clone()));
@@ -747,9 +747,9 @@ pub fn v1_fn_generic_clone_bound_via_referenced_decl(
 
 pub fn v1_fn_generic_clone_bound_via_bounded_container_element(
     param_name: String,
-    value_params: Rc<Vec<Rc<Node>>>,
-    clone_bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    value_params: Arc<Vec<Arc<Node>>>,
+    clone_bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -786,10 +786,10 @@ pub fn v1_type_param_needs_clone_bound(
     return_is_bare_generic: bool,
     ret_name: String,
     body_is_param_ref: bool,
-    value_params: Rc<Vec<Rc<Node>>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    value_params: Arc<Vec<Arc<Node>>>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let structural = (((((return_is_bare_generic.clone() && !body_is_param_ref.clone())
@@ -819,10 +819,10 @@ pub fn v1_type_param_needs_clone_bound(
 
 pub fn v1_fn_param_type_needs_clone_bound(
     param_name: String,
-    value_params: Rc<Vec<Rc<Node>>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    value_params: Arc<Vec<Arc<Node>>>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -867,16 +867,16 @@ pub fn v1_fn_param_type_needs_clone_bound(
 }
 
 pub fn v1_generic_params_needing_clone_bound(
-    generic_param_names: Rc<Vec<String>>,
-    value_params: Rc<Vec<Rc<Node>>>,
+    generic_param_names: Arc<Vec<String>>,
+    value_params: Arc<Vec<Arc<Node>>>,
     return_is_bare_generic: bool,
     ret_name: String,
     body_is_param_ref: bool,
-    ret: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    ret: Arc<Node>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<String>> {
     {
         let phantom_only = v1_fn_phantom_only_generic_param_names(
             generic_param_names.clone(),
@@ -886,7 +886,7 @@ pub fn v1_generic_params_needing_clone_bound(
             type_decl_items.clone(),
             source_indices.clone(),
         );
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
             for g in generic_param_names.clone().iter().cloned() {
                 if (v1_fn_param_wf_needs_clone(
@@ -924,8 +924,8 @@ pub fn v1_generic_params_needing_clone_bound(
 
 pub fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
     param_name: String,
-    type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_expr: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let name = authored_name_at(source_indices.clone(), type_expr.clone());
@@ -955,8 +955,8 @@ pub fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
 
 pub fn v1_item_type_param_needs_clone_bound_struct(
     param_name: String,
-    field_type_exprs: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    field_type_exprs: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -975,9 +975,9 @@ pub fn v1_item_type_param_needs_clone_bound_struct(
 }
 
 pub fn v1_wf_child_type_node(
-    ch: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+    ch: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Node> {
     {
         let resolved = child_type_node(ch.clone());
         if (authored_name_at(source_indices.clone(), resolved.clone()) != "".to_string()) {
@@ -990,8 +990,8 @@ pub fn v1_wf_child_type_node(
 
 pub fn v1_type_expr_is_bare_param(
     param_name: String,
-    type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_expr: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     (((authored_name_at(source_indices.clone(), type_expr.clone()) == param_name.clone())
         && (type_expr.connective.clone() == Connective::NoConnective))
@@ -1000,15 +1000,15 @@ pub fn v1_type_expr_is_bare_param(
 
 pub fn v1_type_expr_head_is_known(
     name: String,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
 ) -> bool {
     (is_container_type(name.clone()) || (v1_rt::map_get(&type_decl_items, name.clone()) != None))
 }
 
 pub fn v1_type_expr_clone_undecided_head(
-    type_expr: Rc<Node>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_expr: Arc<Node>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name = authored_name_at(source_indices.clone(), type_expr.clone());
@@ -1018,7 +1018,7 @@ pub fn v1_type_expr_clone_undecided_head(
             if v1_type_expr_head_is_known(name.clone(), type_decl_items.clone()) {
                 type_expr.children.clone().iter().cloned().fold(
                     "".to_string(),
-                    |acc: String, c: Rc<Node>| {
+                    |acc: String, c: Arc<Node>| {
                         if (acc.clone() != "".to_string()) {
                             acc.clone()
                         } else {
@@ -1039,10 +1039,10 @@ pub fn v1_type_expr_clone_undecided_head(
 
 pub fn v1_type_expr_clone_impl_needs_param(
     param_name: String,
-    type_expr: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_expr: Arc<Node>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name = authored_name_at(source_indices.clone(), type_expr.clone());
@@ -1090,12 +1090,12 @@ pub fn v1_type_expr_clone_impl_needs_param(
 
 pub fn v1_declared_type_app_clone_impl_needs_param_loop(
     param_name: String,
-    decl_params: Rc<Vec<Rc<Node>>>,
-    type_args: Rc<Vec<Rc<Node>>>,
-    phantom_slot_names: Rc<Vec<String>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    decl_params: Arc<Vec<Arc<Node>>>,
+    type_args: Arc<Vec<Arc<Node>>>,
+    phantom_slot_names: Arc<Vec<String>>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match decl_params.clone().first().cloned() {
@@ -1124,7 +1124,7 @@ pub fn v1_declared_type_app_clone_impl_needs_param_loop(
                     (here.clone()
                         || v1_declared_type_app_clone_impl_needs_param_loop(
                             param_name.clone(),
-                            Rc::new(
+                            Arc::new(
                                 decl_params
                                     .clone()
                                     .iter()
@@ -1132,7 +1132,7 @@ pub fn v1_declared_type_app_clone_impl_needs_param_loop(
                                     .skip(1 as usize)
                                     .collect::<Vec<_>>(),
                             ),
-                            Rc::new(
+                            Arc::new(
                                 type_args
                                     .clone()
                                     .iter()
@@ -1154,11 +1154,11 @@ pub fn v1_declared_type_app_clone_impl_needs_param_loop(
 pub fn v1_declared_type_app_clone_impl_needs_param(
     param_name: String,
     decl_name: String,
-    decl: Rc<Node>,
-    type_args: Rc<Vec<Rc<Node>>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    decl: Arc<Node>,
+    type_args: Arc<Vec<Arc<Node>>>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     v1_declared_type_app_clone_impl_needs_param_loop(
         param_name.clone(),
@@ -1178,12 +1178,12 @@ pub fn v1_declared_type_app_clone_impl_needs_param(
 
 pub fn v1_declared_arg_positions_need_clone_param(
     param_name: String,
-    decl_params: Rc<Vec<Rc<Node>>>,
-    type_args: Rc<Vec<Rc<Node>>>,
-    bound_params: Rc<BTreeSet<String>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    decl_params: Arc<Vec<Arc<Node>>>,
+    type_args: Arc<Vec<Arc<Node>>>,
+    bound_params: Arc<BTreeSet<String>>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match decl_params.clone().first().cloned() {
@@ -1204,7 +1204,7 @@ pub fn v1_declared_arg_positions_need_clone_param(
                     (here.clone()
                         || v1_declared_arg_positions_need_clone_param(
                             param_name.clone(),
-                            Rc::new(
+                            Arc::new(
                                 decl_params
                                     .clone()
                                     .iter()
@@ -1212,7 +1212,7 @@ pub fn v1_declared_arg_positions_need_clone_param(
                                     .skip(1 as usize)
                                     .collect::<Vec<_>>(),
                             ),
-                            Rc::new(
+                            Arc::new(
                                 type_args
                                     .clone()
                                     .iter()
@@ -1233,10 +1233,10 @@ pub fn v1_declared_arg_positions_need_clone_param(
 
 pub fn v1_type_expr_wf_needs_clone_param(
     param_name: String,
-    type_expr: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_expr: Arc<Node>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name = authored_name_at(source_indices.clone(), type_expr.clone());
@@ -1284,13 +1284,13 @@ pub fn v1_type_expr_wf_needs_clone_param(
     })
 }
 
-pub fn v1_item_field_type_exprs(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+pub fn v1_item_field_type_exprs(item: Arc<Node>) -> Arc<Vec<Arc<Node>>> {
     if is_coproduct_type(item.clone()) {
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
             for variant in item.children.clone().iter().cloned() {
                 __result.extend(
-                    (*Rc::new({
+                    (*Arc::new({
                         let mut __result = Vec::new();
                         for f in variant.children.clone().iter().cloned() {
                             __result.push(child_type_node(f.clone()));
@@ -1304,7 +1304,7 @@ pub fn v1_item_field_type_exprs(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
             __result
         })
     } else {
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
             for f in item.children.clone().iter().cloned() {
                 __result.push(child_type_node(f.clone()));
@@ -1316,10 +1316,10 @@ pub fn v1_item_field_type_exprs(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 
 pub fn v1_item_param_wf_needs_clone(
     param_name: String,
-    item: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -1341,11 +1341,11 @@ pub fn v1_item_param_wf_needs_clone(
 
 pub fn v1_fn_param_wf_needs_clone(
     param_name: String,
-    value_params: Rc<Vec<Rc<Node>>>,
-    ret: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    value_params: Arc<Vec<Arc<Node>>>,
+    ret: Arc<Node>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     ({
         let mut __found = false;
@@ -1372,13 +1372,13 @@ pub fn v1_fn_param_wf_needs_clone(
 }
 
 pub fn v1_item_clone_undecided_head(
-    item: Rc<Node>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     v1_item_field_type_exprs(item.clone()).iter().cloned().fold(
         "".to_string(),
-        |acc: String, te: Rc<Node>| {
+        |acc: String, te: Arc<Node>| {
             if (acc.clone() != "".to_string()) {
                 acc.clone()
             } else {
@@ -1394,15 +1394,15 @@ pub fn v1_item_clone_undecided_head(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CloneBoundRound {
-    pub bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    pub bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
     pub added: i64,
 }
 
 pub fn v1_clone_bound_round_add(
-    round: Rc<CloneBoundRound>,
+    round: Arc<CloneBoundRound>,
     type_name: String,
     param_name: String,
-) -> Rc<CloneBoundRound> {
+) -> Arc<CloneBoundRound> {
     {
         let current = match v1_rt::map_get(&round.bounds.clone(), type_name.clone()) {
             Some(s) => s.clone(),
@@ -1411,7 +1411,7 @@ pub fn v1_clone_bound_round_add(
         if v1_rt::set_contains(&current, param_name.clone()) {
             round.clone()
         } else {
-            Rc::new(CloneBoundRound {
+            Arc::new(CloneBoundRound {
                 bounds: v1_rt::rc_map_insert(
                     round.bounds.clone(),
                     type_name.clone(),
@@ -1424,15 +1424,15 @@ pub fn v1_clone_bound_round_add(
 }
 
 pub fn v1_clone_bound_round_for_item(
-    round: Rc<CloneBoundRound>,
+    round: Arc<CloneBoundRound>,
     type_name: String,
-    item: Rc<Node>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<CloneBoundRound> {
+    item: Arc<Node>,
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<CloneBoundRound> {
     item.params.clone().iter().cloned().fold(
         round.clone(),
-        |acc: Rc<CloneBoundRound>, p: Rc<Node>| {
+        |acc: Arc<CloneBoundRound>, p: Arc<Node>| {
             let param_name = generic_param_name_at(p.clone(), source_indices.clone());
             if v1_item_param_wf_needs_clone(
                 param_name.clone(),
@@ -1450,11 +1450,11 @@ pub fn v1_clone_bound_round_for_item(
 }
 
 pub fn v1_clone_bound_seed_for_item(
-    round: Rc<CloneBoundRound>,
+    round: Arc<CloneBoundRound>,
     type_name: String,
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<CloneBoundRound> {
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<CloneBoundRound> {
     if is_coproduct_type(item.clone()) {
         round
     } else {
@@ -1462,7 +1462,7 @@ pub fn v1_clone_bound_seed_for_item(
             let field_type_exprs = v1_item_field_type_exprs(item.clone());
             item.params.clone().iter().cloned().fold(
                 round,
-                |acc: Rc<CloneBoundRound>, p: Rc<Node>| {
+                |acc: Arc<CloneBoundRound>, p: Arc<Node>| {
                     let param_name = generic_param_name_at(p.clone(), source_indices.clone());
                     if v1_item_type_param_needs_clone_bound_struct(
                         param_name.clone(),
@@ -1480,22 +1480,22 @@ pub fn v1_clone_bound_seed_for_item(
 }
 
 pub fn v1_clone_bound_fixpoint_loop(
-    mut generic_type_names: Rc<Vec<String>>,
-    mut type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    mut bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    mut generic_type_names: Arc<Vec<String>>,
+    mut type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    mut bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
     mut remaining: i64,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
+    mut source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<HashMap<String, Arc<BTreeSet<String>>>> {
     loop {
         if (remaining.clone() <= 0) {
             break bounds;
         } else {
             let round = generic_type_names.clone().iter().cloned().fold(
-                Rc::new(CloneBoundRound {
+                Arc::new(CloneBoundRound {
                     bounds: bounds,
                     added: 0,
                 }),
-                |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
+                |acc: Arc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
                     &type_decl_items,
                     type_name.clone(),
                 ) {
@@ -1525,11 +1525,11 @@ pub fn v1_clone_bound_fixpoint_loop(
 }
 
 pub fn v1_generic_declared_type_names(
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-) -> Rc<Vec<String>> {
-    Rc::new({
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+) -> Arc<Vec<String>> {
+    Arc::new({
         let mut __result = Vec::new();
-        for n in Rc::new(v1_rt::map_keys(&type_decl_items)).iter().cloned() {
+        for n in Arc::new(v1_rt::map_keys(&type_decl_items)).iter().cloned() {
             if match v1_rt::map_get(&type_decl_items, n.clone()) {
                 Some(item) => ((item.params.clone().len() as i64) > 0),
                 None => false,
@@ -1542,17 +1542,17 @@ pub fn v1_generic_declared_type_names(
 }
 
 pub fn v1_clone_bounded_type_params(
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
+    type_decl_items: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<HashMap<String, Arc<BTreeSet<String>>>> {
     {
         let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
         let seeded = generic_type_names.clone().iter().cloned().fold(
-            Rc::new(CloneBoundRound {
-                bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+            Arc::new(CloneBoundRound {
+                bounds: v1_rt::rc_empty_map::<String, Arc<BTreeSet<String>>>(),
                 added: 0,
             }),
-            |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
+            |acc: Arc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
                 &type_decl_items,
                 type_name.clone(),
             ) {
@@ -1577,11 +1577,11 @@ pub fn v1_clone_bounded_type_params(
 
 pub fn v1_item_clone_bounded_param_names(
     item_name: String,
-    generic_param_names: Rc<Vec<String>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-) -> Rc<Vec<String>> {
+    generic_param_names: Arc<Vec<String>>,
+    bounds: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+) -> Arc<Vec<String>> {
     match v1_rt::map_get(&bounds, item_name.clone()) {
-        Some(s) => Rc::new({
+        Some(s) => Arc::new({
             let mut __result = Vec::new();
             for g in generic_param_names.clone().iter().cloned() {
                 if v1_rt::set_contains(&s, g.clone()) {
@@ -1595,15 +1595,15 @@ pub fn v1_item_clone_bounded_param_names(
 }
 
 pub fn v1_emit_type_params_with_clone_bounds(
-    params: Rc<Vec<Rc<Node>>>,
-    clone_param_names: Rc<Vec<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    params: Arc<Vec<Arc<Node>>>,
+    clone_param_names: Arc<Vec<String>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     if ((params.clone().len() as i64) == 0) {
         "".to_string()
     } else {
         {
-            let names = Rc::new({
+            let names = Arc::new({
                 let mut __result = Vec::new();
                 for p in params.clone().iter().cloned() {
                     __result.push({
@@ -1638,11 +1638,11 @@ pub fn v1_emit_type_params_with_clone_bounds(
 pub fn v1_emit_struct_from_capability_table(
     module_path: String,
     name: String,
-    children: Rc<Vec<Rc<Node>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    children: Arc<Vec<Arc<Node>>>,
+    shared_types: Arc<BTreeSet<String>>,
     has_fn_fields: bool,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<StructCapabilityEmit> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<StructCapabilityEmit> {
     {
         let derive_attr = v1_emit_struct_derives(
             name.clone(),
@@ -1662,7 +1662,7 @@ pub fn v1_emit_struct_from_capability_table(
             } else {
                 "".to_string()
             };
-        Rc::new(StructCapabilityEmit {
+        Arc::new(StructCapabilityEmit {
             derive_attr: derive_attr.clone(),
             impl_bodies: impl_bodies.clone(),
         })

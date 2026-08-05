@@ -9,7 +9,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn occurrence_binding_staged_adoption_scaffold_note() -> String {
     thread_local! {
@@ -31,35 +31,35 @@ pub fn occurrence_binding_staged_adoption_dissolve_on() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ContainmentPath<N: Clone> {
-    pub ancestors: Rc<Vec<N>>,
+    pub ancestors: Arc<Vec<N>>,
     pub terminal: N,
     pub _phantom: std::marker::PhantomData<N>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingOccurrence<N: Clone> {
-    pub containment: Rc<ContainmentPath<N>>,
+    pub containment: Arc<ContainmentPath<N>>,
     pub _phantom: std::marker::PhantomData<N>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingCandidate<N: Clone> {
-    pub containment: Rc<ContainmentPath<N>>,
+    pub containment: Arc<ContainmentPath<N>>,
     pub _phantom: std::marker::PhantomData<N>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceBinding<N: Clone> {
-    pub occurrence: Rc<BindingOccurrence<N>>,
-    pub candidate: Rc<BindingCandidate<N>>,
+    pub occurrence: Arc<BindingOccurrence<N>>,
+    pub candidate: Arc<BindingCandidate<N>>,
     pub _phantom: std::marker::PhantomData<N>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AmbiguousBindingCandidates<N: Clone> {
-    pub first: Rc<BindingCandidate<N>>,
-    pub second: Rc<BindingCandidate<N>>,
-    pub rest: Rc<Vec<Rc<BindingCandidate<N>>>>,
+    pub first: Arc<BindingCandidate<N>>,
+    pub second: Arc<BindingCandidate<N>>,
+    pub rest: Arc<Vec<Arc<BindingCandidate<N>>>>,
     pub _phantom: std::marker::PhantomData<N>,
 }
 
@@ -67,14 +67,14 @@ pub struct AmbiguousBindingCandidates<N: Clone> {
 #[serde(tag = "_variant")]
 pub enum OccurrenceBindingResult<N: Clone> {
     OccurrenceBound {
-        binding: Rc<OccurrenceBinding<N>>,
+        binding: Arc<OccurrenceBinding<N>>,
     },
     OccurrenceUnbound {
-        occurrence: Rc<BindingOccurrence<N>>,
+        occurrence: Arc<BindingOccurrence<N>>,
     },
     OccurrenceAmbiguous {
-        occurrence: Rc<BindingOccurrence<N>>,
-        candidates: Rc<AmbiguousBindingCandidates<N>>,
+        occurrence: Arc<BindingOccurrence<N>>,
+        candidates: Arc<AmbiguousBindingCandidates<N>>,
     },
 }
 
@@ -83,16 +83,16 @@ pub enum OccurrenceBindingResult<N: Clone> {
 pub enum OccurrenceBindingFoldState<N: Clone> {
     OccurrenceBindingFoldZero,
     OccurrenceBindingFoldOne {
-        first: Rc<BindingCandidate<N>>,
+        first: Arc<BindingCandidate<N>>,
     },
     OccurrenceBindingFoldMany {
-        first: Rc<BindingCandidate<N>>,
-        second: Rc<BindingCandidate<N>>,
-        rest_reversed: Rc<Vec<Rc<BindingCandidate<N>>>>,
+        first: Arc<BindingCandidate<N>>,
+        second: Arc<BindingCandidate<N>>,
+        rest_reversed: Arc<Vec<Arc<BindingCandidate<N>>>>,
     },
 }
 impl<N: Clone> OccurrenceBindingFoldState<N> {
-    pub fn first(&self) -> Rc<BindingCandidate<N>> {
+    pub fn first(&self) -> Arc<BindingCandidate<N>> {
         match self {
             OccurrenceBindingFoldState::OccurrenceBindingFoldZero => {
                 panic!("no first on unit variant")
@@ -108,35 +108,35 @@ impl<N: Clone> OccurrenceBindingFoldState<N> {
 }
 
 pub fn occurrence_binding_from_candidates<N: Clone>(
-    occurrence: Rc<BindingOccurrence<N>>,
-    candidates: Rc<Vec<Rc<BindingCandidate<N>>>>,
-) -> Rc<OccurrenceBindingResult<N>> {
+    occurrence: Arc<BindingOccurrence<N>>,
+    candidates: Arc<Vec<Arc<BindingCandidate<N>>>>,
+) -> Arc<OccurrenceBindingResult<N>> {
     {
         let state = candidates.clone().iter().cloned().fold(
-            Rc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldZero),
-            |state: Rc<OccurrenceBindingFoldState<N>>, candidate: Rc<BindingCandidate<N>>| {
+            Arc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldZero),
+            |state: Arc<OccurrenceBindingFoldState<N>>, candidate: Arc<BindingCandidate<N>>| {
                 match (*state).clone() {
                     OccurrenceBindingFoldState::OccurrenceBindingFoldZero => {
-                        Rc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldOne {
+                        Arc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldOne {
                             first: candidate.clone(),
                         })
                     }
                     OccurrenceBindingFoldState::OccurrenceBindingFoldOne {
                         first: first, ..
-                    } => Rc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldMany {
+                    } => Arc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldMany {
                         first: first.clone(),
                         second: candidate.clone(),
-                        rest_reversed: Rc::new(vec![]),
+                        rest_reversed: Arc::new(vec![]),
                     }),
                     OccurrenceBindingFoldState::OccurrenceBindingFoldMany {
                         first,
                         second,
                         rest_reversed,
                         ..
-                    } => Rc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldMany {
+                    } => Arc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldMany {
                         first: first.clone(),
                         second: second.clone(),
-                        rest_reversed: Rc::new({
+                        rest_reversed: Arc::new({
                             let mut __cons_v = (*rest_reversed.clone()).clone();
                             __cons_v.insert(0, candidate.clone());
                             __cons_v
@@ -147,13 +147,13 @@ pub fn occurrence_binding_from_candidates<N: Clone>(
         );
         match (*state.clone()).clone() {
             OccurrenceBindingFoldState::OccurrenceBindingFoldZero => {
-                Rc::new(OccurrenceBindingResult::OccurrenceUnbound {
+                Arc::new(OccurrenceBindingResult::OccurrenceUnbound {
                     occurrence: occurrence.clone(),
                 })
             }
             OccurrenceBindingFoldState::OccurrenceBindingFoldOne { first: first, .. } => {
-                Rc::new(OccurrenceBindingResult::OccurrenceBound {
-                    binding: Rc::new(OccurrenceBinding {
+                Arc::new(OccurrenceBindingResult::OccurrenceBound {
+                    binding: Arc::new(OccurrenceBinding {
                         occurrence: occurrence.clone(),
                         candidate: first.clone(),
                         _phantom: std::marker::PhantomData,
@@ -165,9 +165,9 @@ pub fn occurrence_binding_from_candidates<N: Clone>(
                 second,
                 rest_reversed,
                 ..
-            } => Rc::new(OccurrenceBindingResult::OccurrenceAmbiguous {
+            } => Arc::new(OccurrenceBindingResult::OccurrenceAmbiguous {
                 occurrence: occurrence.clone(),
-                candidates: Rc::new(AmbiguousBindingCandidates {
+                candidates: Arc::new(AmbiguousBindingCandidates {
                     first: first.clone(),
                     second: second.clone(),
                     rest: v1_rt::reverse(rest_reversed.clone()),

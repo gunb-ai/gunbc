@@ -33,7 +33,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn occurrence_binding_resolve_authority_note() -> String {
     thread_local! {
@@ -108,13 +108,13 @@ pub fn occurrence_category_binding_verdict_note() -> String {
 pub fn occurrence_category_binding_verdict(
     reference: OccurrenceCategory,
     declaration: OccurrenceCategory,
-) -> Rc<OccurrenceCategoryBindingVerdict> {
+) -> Arc<OccurrenceCategoryBindingVerdict> {
     match reference.clone() {
         OccurrenceCategory::TypeOccurrence => match declaration.clone() {
             OccurrenceCategory::TypeOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+                Arc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
             }
-            _ => Rc::new(
+            _ => Arc::new(
                 OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
                     reference: reference.clone(),
                     declaration: declaration.clone(),
@@ -123,15 +123,15 @@ pub fn occurrence_category_binding_verdict(
         },
         OccurrenceCategory::LexicalValueOccurrence => match declaration.clone() {
             OccurrenceCategory::LexicalValueOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+                Arc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
             }
             OccurrenceCategory::CallableOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+                Arc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
             }
             OccurrenceCategory::ConstructorOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+                Arc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
             }
-            _ => Rc::new(
+            _ => Arc::new(
                 OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
                     reference: reference.clone(),
                     declaration: declaration.clone(),
@@ -140,9 +140,9 @@ pub fn occurrence_category_binding_verdict(
         },
         OccurrenceCategory::CallableOccurrence => match declaration.clone() {
             OccurrenceCategory::CallableOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+                Arc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
             }
-            _ => Rc::new(
+            _ => Arc::new(
                 OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
                     reference: reference.clone(),
                     declaration: declaration.clone(),
@@ -151,9 +151,9 @@ pub fn occurrence_category_binding_verdict(
         },
         OccurrenceCategory::ConstructorOccurrence => match declaration.clone() {
             OccurrenceCategory::ConstructorOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+                Arc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
             }
-            _ => Rc::new(
+            _ => Arc::new(
                 OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
                     reference: reference.clone(),
                     declaration: declaration.clone(),
@@ -162,9 +162,9 @@ pub fn occurrence_category_binding_verdict(
         },
         OccurrenceCategory::FieldOccurrence => match declaration.clone() {
             OccurrenceCategory::FieldOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+                Arc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
             }
-            _ => Rc::new(
+            _ => Arc::new(
                 OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
                     reference: reference.clone(),
                     declaration: declaration.clone(),
@@ -173,9 +173,9 @@ pub fn occurrence_category_binding_verdict(
         },
         OccurrenceCategory::MethodOccurrence => match declaration.clone() {
             OccurrenceCategory::MethodOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+                Arc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
             }
-            _ => Rc::new(
+            _ => Arc::new(
                 OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
                     reference: reference.clone(),
                     declaration: declaration.clone(),
@@ -184,9 +184,9 @@ pub fn occurrence_category_binding_verdict(
         },
         OccurrenceCategory::NamespaceSegmentOccurrence => match declaration.clone() {
             OccurrenceCategory::NamespaceSegmentOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+                Arc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
             }
-            _ => Rc::new(
+            _ => Arc::new(
                 OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
                     reference: reference.clone(),
                     declaration: declaration.clone(),
@@ -197,9 +197,9 @@ pub fn occurrence_category_binding_verdict(
 }
 
 pub fn occurrence_containment_to_binding_path(
-    path: Rc<OccurrenceContainmentPath>,
-) -> Rc<ContainmentPath<OccurrenceId>> {
-    Rc::new(ContainmentPath {
+    path: Arc<OccurrenceContainmentPath>,
+) -> Arc<ContainmentPath<OccurrenceId>> {
+    Arc::new(ContainmentPath {
         ancestors: path.ancestors.clone(),
         terminal: path.terminal.clone(),
         _phantom: std::marker::PhantomData,
@@ -207,18 +207,18 @@ pub fn occurrence_containment_to_binding_path(
 }
 
 pub fn binding_occurrence_from_reference(
-    reference: Rc<ReferenceOccurrence>,
-) -> Rc<BindingOccurrence<OccurrenceId>> {
-    Rc::new(BindingOccurrence {
+    reference: Arc<ReferenceOccurrence>,
+) -> Arc<BindingOccurrence<OccurrenceId>> {
+    Arc::new(BindingOccurrence {
         containment: occurrence_containment_to_binding_path(reference.containment.clone()),
         _phantom: std::marker::PhantomData,
     })
 }
 
 pub fn binding_candidate_from_declaration(
-    declaration: Rc<DeclarationOccurrence>,
-) -> Rc<BindingCandidate<OccurrenceId>> {
-    Rc::new(BindingCandidate {
+    declaration: Arc<DeclarationOccurrence>,
+) -> Arc<BindingCandidate<OccurrenceId>> {
+    Arc::new(BindingCandidate {
         containment: occurrence_containment_to_binding_path(declaration.containment.clone()),
         _phantom: std::marker::PhantomData,
     })
@@ -226,55 +226,55 @@ pub fn binding_candidate_from_declaration(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceCandidatePopulationBuild {
-    pub candidates: Rc<Vec<Rc<BindingCandidate<OccurrenceId>>>>,
-    pub seen_candidate_ids: Rc<HashMap<i64, OccurrenceId>>,
-    pub refusal: Option<Rc<OccurrenceTransportRefusal>>,
+    pub candidates: Arc<Vec<Arc<BindingCandidate<OccurrenceId>>>>,
+    pub seen_candidate_ids: Arc<HashMap<i64, OccurrenceId>>,
+    pub refusal: Option<Arc<OccurrenceTransportRefusal>>,
 }
 
 pub fn binding_candidates_from_supplied_declarations(
-    validated: Rc<ValidatedOccurrenceTransport>,
-    reference: Rc<ReferenceOccurrence>,
-    supplied_candidates: Rc<Vec<OccurrenceId>>,
-) -> Rc<OccurrenceCandidatePopulationBuild> {
-    supplied_candidates.clone().iter().cloned().fold(Rc::new(OccurrenceCandidatePopulationBuild {
-    candidates: Rc::new(vec![]),
+    validated: Arc<ValidatedOccurrenceTransport>,
+    reference: Arc<ReferenceOccurrence>,
+    supplied_candidates: Arc<Vec<OccurrenceId>>,
+) -> Arc<OccurrenceCandidatePopulationBuild> {
+    supplied_candidates.clone().iter().cloned().fold(Arc::new(OccurrenceCandidatePopulationBuild {
+    candidates: Arc::new(vec![]),
     seen_candidate_ids: v1_rt::rc_empty_map::<i64, OccurrenceId>(),
     refusal: None,
-}), |build: Rc<OccurrenceCandidatePopulationBuild>, candidate_occurrence: OccurrenceId| match build.refusal.clone() {
+}), |build: Arc<OccurrenceCandidatePopulationBuild>, candidate_occurrence: OccurrenceId| match build.refusal.clone() {
     Some(_) => build.clone(),
     None => match v1_rt::map_get(&validated.entries_by_id.clone(), candidate_occurrence.value.clone()) {
-    None => Rc::new(OccurrenceCandidatePopulationBuild {
+    None => Arc::new(OccurrenceCandidatePopulationBuild {
     candidates: build.candidates.clone(),
     seen_candidate_ids: build.seen_candidate_ids.clone(),
-    refusal: Some(Rc::new(OccurrenceTransportRefusal::UnknownOccurrenceIdentity {
+    refusal: Some(Arc::new(OccurrenceTransportRefusal::UnknownOccurrenceIdentity {
     occurrence: candidate_occurrence.clone(),
 })),
 }),
     Some(entry) => match v1_rt::map_get(&build.seen_candidate_ids.clone(), candidate_occurrence.value.clone()) {
-    Some(_) => Rc::new(OccurrenceCandidatePopulationBuild {
+    Some(_) => Arc::new(OccurrenceCandidatePopulationBuild {
     candidates: build.candidates.clone(),
     seen_candidate_ids: build.seen_candidate_ids.clone(),
-    refusal: Some(Rc::new(OccurrenceTransportRefusal::DuplicateSuppliedCandidateIdentity {
+    refusal: Some(Arc::new(OccurrenceTransportRefusal::DuplicateSuppliedCandidateIdentity {
     occurrence: candidate_occurrence.clone(),
     diagnostic_span: entry.projection.clone().diagnostic_span.clone(),
 })),
 }),
     None => match v1_rt::map_get(&validated.declarations_by_id.clone(), candidate_occurrence.value.clone()) {
     None => match v1_rt::map_get(&validated.references_by_id.clone(), candidate_occurrence.value.clone()) {
-    Some(observed_reference) => Rc::new(OccurrenceCandidatePopulationBuild {
+    Some(observed_reference) => Arc::new(OccurrenceCandidatePopulationBuild {
     candidates: build.candidates.clone(),
     seen_candidate_ids: build.seen_candidate_ids.clone(),
-    refusal: Some(Rc::new(OccurrenceTransportRefusal::WrongOccurrenceRole {
+    refusal: Some(Arc::new(OccurrenceTransportRefusal::WrongOccurrenceRole {
     occurrence: candidate_occurrence.clone(),
     expected: OccurrenceRole::DeclarationRole,
     observed: OccurrenceRole::ReferenceRole,
     diagnostic_span: observed_reference.diagnostic_span.clone(),
 })),
 }),
-    None => Rc::new(OccurrenceCandidatePopulationBuild {
+    None => Arc::new(OccurrenceCandidatePopulationBuild {
     candidates: build.candidates.clone(),
     seen_candidate_ids: build.seen_candidate_ids.clone(),
-    refusal: Some(Rc::new(OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+    refusal: Some(Arc::new(OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
     diagnostic_span: entry.projection.clone().diagnostic_span.clone(),
 })),
 }),
@@ -282,12 +282,12 @@ pub fn binding_candidates_from_supplied_declarations(
     Some(declaration) => {
         let seen_candidate_ids = v1_rt::rc_map_insert(build.seen_candidate_ids.clone(), candidate_occurrence.value.clone(), candidate_occurrence.clone());
 match (*occurrence_category_binding_verdict(reference.category.clone(), declaration.category.clone())).clone() {
-    OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible => Rc::new(OccurrenceCandidatePopulationBuild {
+    OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible => Arc::new(OccurrenceCandidatePopulationBuild {
     candidates: v1_rt::concat(build.candidates.clone(), Rc::new(vec![binding_candidate_from_declaration(declaration.clone())])),
     seen_candidate_ids: seen_candidate_ids.clone(),
     refusal: None,
 }),
-    OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible { .. } => Rc::new(OccurrenceCandidatePopulationBuild {
+    OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible { .. } => Arc::new(OccurrenceCandidatePopulationBuild {
     candidates: build.candidates.clone(),
     seen_candidate_ids: seen_candidate_ids.clone(),
     refusal: None,
@@ -304,17 +304,17 @@ match (*occurrence_category_binding_verdict(reference.category.clone(), declarat
 #[serde(tag = "_variant")]
 pub enum OccurrenceReferenceBindingOutcome {
     OccurrenceReferenceBindingDecided {
-        result: Rc<OccurrenceBindingResult<OccurrenceId>>,
+        result: Arc<OccurrenceBindingResult<OccurrenceId>>,
     },
     OccurrenceReferenceBindingTransportRefused {
-        refusal: Rc<OccurrenceTransportRefusal>,
+        refusal: Arc<OccurrenceTransportRefusal>,
     },
 }
 
 pub fn reference_occurrence_by_id(
-    validated: Rc<ValidatedOccurrenceTransport>,
+    validated: Arc<ValidatedOccurrenceTransport>,
     occurrence: OccurrenceId,
-) -> Option<Rc<ReferenceOccurrence>> {
+) -> Option<Arc<ReferenceOccurrence>> {
     v1_rt::map_get(
         &validated.references_by_id.clone(),
         occurrence.value.clone(),
@@ -322,24 +322,24 @@ pub fn reference_occurrence_by_id(
 }
 
 pub fn resolve_reference_occurrence_binding_validated(
-    validated: Rc<ValidatedOccurrenceTransport>,
+    validated: Arc<ValidatedOccurrenceTransport>,
     occurrence: OccurrenceId,
-    supplied_candidates: Rc<Vec<OccurrenceId>>,
-) -> Rc<OccurrenceReferenceBindingOutcome> {
+    supplied_candidates: Arc<Vec<OccurrenceId>>,
+) -> Arc<OccurrenceReferenceBindingOutcome> {
     match v1_rt::map_get(&validated.entries_by_id.clone(), occurrence.value.clone()) {
         None => match reference_occurrence_by_id(validated.clone(), occurrence.clone()) {
-            Some(reference) => Rc::new(
+            Some(reference) => Arc::new(
                 OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
-                    refusal: Rc::new(
+                    refusal: Arc::new(
                         OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
                             diagnostic_span: reference.diagnostic_span.clone(),
                         },
                     ),
                 },
             ),
-            None => Rc::new(
+            None => Arc::new(
                 OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
-                    refusal: Rc::new(OccurrenceTransportRefusal::UnknownOccurrenceIdentity {
+                    refusal: Arc::new(OccurrenceTransportRefusal::UnknownOccurrenceIdentity {
                         occurrence: occurrence.clone(),
                     }),
                 },
@@ -350,9 +350,9 @@ pub fn resolve_reference_occurrence_binding_validated(
                 &validated.declarations_by_id.clone(),
                 occurrence.value.clone(),
             ) {
-                Some(observed_declaration) => Rc::new(
+                Some(observed_declaration) => Arc::new(
                     OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
-                        refusal: Rc::new(OccurrenceTransportRefusal::WrongOccurrenceRole {
+                        refusal: Arc::new(OccurrenceTransportRefusal::WrongOccurrenceRole {
                             occurrence: occurrence.clone(),
                             expected: OccurrenceRole::ReferenceRole,
                             observed: OccurrenceRole::DeclarationRole,
@@ -360,9 +360,9 @@ pub fn resolve_reference_occurrence_binding_validated(
                         }),
                     },
                 ),
-                None => Rc::new(
+                None => Arc::new(
                     OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
-                        refusal: Rc::new(
+                        refusal: Arc::new(
                             OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
                                 diagnostic_span: entry.projection.clone().diagnostic_span.clone(),
                             },
@@ -377,10 +377,10 @@ pub fn resolve_reference_occurrence_binding_validated(
                     supplied_candidates.clone(),
                 );
                 match build.refusal.clone() {
-    Some(refusal) => Rc::new(OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
+    Some(refusal) => Arc::new(OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
     refusal: refusal.clone(),
 }),
-    None => Rc::new(OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided {
+    None => Arc::new(OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided {
     result: occurrence_binding_from_candidates(binding_occurrence_from_reference(reference.clone()), build.candidates.clone()),
 }),
 }
@@ -390,14 +390,14 @@ pub fn resolve_reference_occurrence_binding_validated(
 }
 
 pub fn resolve_reference_occurrence_binding(
-    transport: Rc<OccurrenceTransport>,
+    transport: Arc<OccurrenceTransport>,
     occurrence: OccurrenceId,
-    supplied_candidates: Rc<Vec<OccurrenceId>>,
-) -> Rc<OccurrenceReferenceBindingOutcome> {
+    supplied_candidates: Arc<Vec<OccurrenceId>>,
+) -> Arc<OccurrenceReferenceBindingOutcome> {
     match (*occurrence_transport_validate(transport.clone())).clone() {
         OccurrenceTransportValidation::OccurrenceTransportRefused {
             refusal: refusal, ..
-        } => Rc::new(
+        } => Arc::new(
             OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
                 refusal: refusal.clone(),
             },

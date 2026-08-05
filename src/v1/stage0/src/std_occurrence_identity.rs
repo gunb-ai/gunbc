@@ -15,7 +15,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn occurrence_identity_scope_law() -> String {
     thread_local! {
@@ -49,8 +49,8 @@ pub struct AuthoredTokenOrdinalSpace {
     pub allocator: OccurrenceIdAllocator,
 }
 
-pub fn authored_token_ordinal_space_initial() -> Rc<AuthoredTokenOrdinalSpace> {
-    Rc::new(AuthoredTokenOrdinalSpace {
+pub fn authored_token_ordinal_space_initial() -> Arc<AuthoredTokenOrdinalSpace> {
+    Arc::new(AuthoredTokenOrdinalSpace {
         allocator: occurrence_id_allocator_initial(),
     })
 }
@@ -114,7 +114,7 @@ pub fn occurrence_containment_storage_projection_dissolve_on() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceContainmentPath {
-    pub ancestors: Rc<Vec<OccurrenceId>>,
+    pub ancestors: Arc<Vec<OccurrenceId>>,
     pub terminal: OccurrenceId,
 }
 
@@ -158,31 +158,31 @@ pub fn occurrence_category_module_scope_exposure_verdict_note() -> String {
 
 pub fn occurrence_category_module_scope_exposure_verdict(
     category: OccurrenceCategory,
-) -> Rc<OccurrenceCategoryModuleScopeExposureVerdict> {
+) -> Arc<OccurrenceCategoryModuleScopeExposureVerdict> {
     match category.clone() {
-        OccurrenceCategory::CallableOccurrence => Rc::new(
+        OccurrenceCategory::CallableOccurrence => Arc::new(
             OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeExposed,
         ),
-        OccurrenceCategory::TypeOccurrence => Rc::new(
+        OccurrenceCategory::TypeOccurrence => Arc::new(
             OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeExposed,
         ),
-        OccurrenceCategory::ConstructorOccurrence => Rc::new(
+        OccurrenceCategory::ConstructorOccurrence => Arc::new(
             OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeExposed,
         ),
-        OccurrenceCategory::NamespaceSegmentOccurrence => Rc::new(
+        OccurrenceCategory::NamespaceSegmentOccurrence => Arc::new(
             OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeExposed,
         ),
-        OccurrenceCategory::LexicalValueOccurrence => Rc::new(
+        OccurrenceCategory::LexicalValueOccurrence => Arc::new(
             OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeNotExposed {
                 category: category.clone(),
             },
         ),
-        OccurrenceCategory::FieldOccurrence => Rc::new(
+        OccurrenceCategory::FieldOccurrence => Arc::new(
             OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeNotExposed {
                 category: category.clone(),
             },
         ),
-        OccurrenceCategory::MethodOccurrence => Rc::new(
+        OccurrenceCategory::MethodOccurrence => Arc::new(
             OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeNotExposed {
                 category: category.clone(),
             },
@@ -203,41 +203,41 @@ pub enum OccurrenceRole {
 pub struct OccurrenceProjection {
     pub occurrence: OccurrenceId,
     pub authored_name: String,
-    pub diagnostic_span: Rc<SourceSpan>,
+    pub diagnostic_span: Arc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceIndexEntry {
-    pub projection: Rc<OccurrenceProjection>,
-    pub containment: Rc<OccurrenceContainmentPath>,
+    pub projection: Arc<OccurrenceProjection>,
+    pub containment: Arc<OccurrenceContainmentPath>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceIndex {
-    pub entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
+    pub entries: Arc<Vec<Arc<OccurrenceIndexEntry>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclarationOccurrence {
     pub occurrence: OccurrenceId,
-    pub containment: Rc<OccurrenceContainmentPath>,
+    pub containment: Arc<OccurrenceContainmentPath>,
     pub category: OccurrenceCategory,
-    pub diagnostic_span: Rc<SourceSpan>,
+    pub diagnostic_span: Arc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReferenceOccurrence {
     pub occurrence: OccurrenceId,
-    pub containment: Rc<OccurrenceContainmentPath>,
+    pub containment: Arc<OccurrenceContainmentPath>,
     pub category: OccurrenceCategory,
-    pub diagnostic_span: Rc<SourceSpan>,
+    pub diagnostic_span: Arc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceTransport {
-    pub index: Rc<OccurrenceIndex>,
-    pub declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
-    pub references: Rc<Vec<Rc<ReferenceOccurrence>>>,
+    pub index: Arc<OccurrenceIndex>,
+    pub declarations: Arc<Vec<Arc<DeclarationOccurrence>>>,
+    pub references: Arc<Vec<Arc<ReferenceOccurrence>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -246,93 +246,93 @@ pub struct OccurrenceIdentityAcceptanceLaw {
     pub required_receipt: String,
 }
 
-pub fn occurrence_identity_acceptance_law_rebuilt_reference() -> Rc<OccurrenceIdentityAcceptanceLaw>
+pub fn occurrence_identity_acceptance_law_rebuilt_reference() -> Arc<OccurrenceIdentityAcceptanceLaw>
 {
     thread_local! {
-        static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
+        static CACHED: Arc<OccurrenceIdentityAcceptanceLaw> = {
             serde_json::from_value(serde_json::json!({"id": "rebuilt-reference-identity-preservation", "required_receipt": "A production reference rebuild preserves the exact sidecar occurrence identity and containment path; dropping or reminting the occurrence must make the consumer RED."}))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<OccurrenceIdentityAcceptanceLaw>| c.clone())
+    CACHED.with(|c: &Arc<OccurrenceIdentityAcceptanceLaw>| c.clone())
 }
 
-pub fn occurrence_identity_acceptance_law_collector_dedupe() -> Rc<OccurrenceIdentityAcceptanceLaw>
+pub fn occurrence_identity_acceptance_law_collector_dedupe() -> Arc<OccurrenceIdentityAcceptanceLaw>
 {
     thread_local! {
-        static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
+        static CACHED: Arc<OccurrenceIdentityAcceptanceLaw> = {
             serde_json::from_value(serde_json::json!({"id": "one-occurrence-collector-dedupe", "required_receipt": "Two observations of one authored occurrence enter the collector once by exact occurrence identity, never by spelling, SourceSpan, or Node structure."}))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<OccurrenceIdentityAcceptanceLaw>| c.clone())
+    CACHED.with(|c: &Arc<OccurrenceIdentityAcceptanceLaw>| c.clone())
 }
 
 pub fn occurrence_identity_acceptance_law_distinct_occurrences(
-) -> Rc<OccurrenceIdentityAcceptanceLaw> {
+) -> Arc<OccurrenceIdentityAcceptanceLaw> {
     thread_local! {
-        static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
+        static CACHED: Arc<OccurrenceIdentityAcceptanceLaw> = {
             serde_json::from_value(serde_json::json!({"id": "structurally-equal-distinct-occurrences", "required_receipt": "Structurally equal and equally spelled authored occurrences with distinct IDs remain two collector entries."}))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<OccurrenceIdentityAcceptanceLaw>| c.clone())
+    CACHED.with(|c: &Arc<OccurrenceIdentityAcceptanceLaw>| c.clone())
 }
 
 pub fn occurrence_identity_acceptance_law_pattern_reachability(
-) -> Rc<OccurrenceIdentityAcceptanceLaw> {
+) -> Arc<OccurrenceIdentityAcceptanceLaw> {
     thread_local! {
-        static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
+        static CACHED: Arc<OccurrenceIdentityAcceptanceLaw> = {
             serde_json::from_value(serde_json::json!({"id": "pattern-declaration-reachability", "required_receipt": "Authoritative collection reaches every parser-minted pattern declaration occurrence, including nested pattern binders."}))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<OccurrenceIdentityAcceptanceLaw>| c.clone())
+    CACHED.with(|c: &Arc<OccurrenceIdentityAcceptanceLaw>| c.clone())
 }
 
-pub fn occurrence_identity_acceptance_law_parser_isolation() -> Rc<OccurrenceIdentityAcceptanceLaw>
+pub fn occurrence_identity_acceptance_law_parser_isolation() -> Arc<OccurrenceIdentityAcceptanceLaw>
 {
     thread_local! {
-        static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
+        static CACHED: Arc<OccurrenceIdentityAcceptanceLaw> = {
             serde_json::from_value(serde_json::json!({"id": "same-spelling-parser-declaration-isolation", "required_receipt": "Same-spelling declarations and references in sibling match arms, nested lets, lambdas, and parameters retain distinct authored identities and containment paths without overwrite."}))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<OccurrenceIdentityAcceptanceLaw>| c.clone())
+    CACHED.with(|c: &Arc<OccurrenceIdentityAcceptanceLaw>| c.clone())
 }
 
-pub fn occurrence_identity_acceptance_laws() -> Rc<Vec<Rc<OccurrenceIdentityAcceptanceLaw>>> {
+pub fn occurrence_identity_acceptance_laws() -> Arc<Vec<Arc<OccurrenceIdentityAcceptanceLaw>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<OccurrenceIdentityAcceptanceLaw>>> = {
+        static CACHED: Arc<Vec<Arc<OccurrenceIdentityAcceptanceLaw>>> = {
             Rc::new(vec![occurrence_identity_acceptance_law_rebuilt_reference(), occurrence_identity_acceptance_law_collector_dedupe(), occurrence_identity_acceptance_law_distinct_occurrences(), occurrence_identity_acceptance_law_pattern_reachability(), occurrence_identity_acceptance_law_parser_isolation()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<OccurrenceIdentityAcceptanceLaw>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<OccurrenceIdentityAcceptanceLaw>>>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OccurrenceTransportRefusal {
     MissingAuthoredOccurrenceIdentity {
-        diagnostic_span: Rc<SourceSpan>,
+        diagnostic_span: Arc<SourceSpan>,
     },
     DuplicateAuthoredOccurrenceIdentity {
         occurrence: OccurrenceId,
-        diagnostic_span: Rc<SourceSpan>,
+        diagnostic_span: Arc<SourceSpan>,
     },
     DuplicateSuppliedCandidateIdentity {
         occurrence: OccurrenceId,
-        diagnostic_span: Rc<SourceSpan>,
+        diagnostic_span: Arc<SourceSpan>,
     },
     InconsistentOccurrenceContainment {
         occurrence: OccurrenceId,
-        diagnostic_span: Rc<SourceSpan>,
+        diagnostic_span: Arc<SourceSpan>,
     },
     WrongOccurrenceRole {
         occurrence: OccurrenceId,
         expected: OccurrenceRole,
         observed: OccurrenceRole,
-        diagnostic_span: Rc<SourceSpan>,
+        diagnostic_span: Arc<SourceSpan>,
     },
     UnknownOccurrenceIdentity {
         occurrence: OccurrenceId,
@@ -378,8 +378,8 @@ pub fn occurrence_id_allocator_initial() -> OccurrenceIdAllocator {
     OccurrenceIdAllocator { next_id: 0 }
 }
 
-pub fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> Rc<OccurrenceIdAllocResult> {
-    Rc::new(OccurrenceIdAllocResult {
+pub fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> Arc<OccurrenceIdAllocResult> {
+    Arc::new(OccurrenceIdAllocResult {
         id: OccurrenceId {
             value: alloc.next_id.clone(),
         },
@@ -395,7 +395,7 @@ pub fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> bool {
 
 pub fn occurrence_id_allocator_advance_to(
     alloc: OccurrenceIdAllocator,
-    min_next: Rc<AuthoredTokenOrdinalSpace>,
+    min_next: Arc<AuthoredTokenOrdinalSpace>,
 ) -> OccurrenceIdAllocator {
     {
         let min_next_value = min_next.allocator.clone().next_id.clone();
@@ -411,14 +411,14 @@ pub fn occurrence_id_allocator_advance_to(
 
 pub fn authored_token_ordinal_space_from_allocator(
     alloc: OccurrenceIdAllocator,
-) -> Rc<AuthoredTokenOrdinalSpace> {
-    Rc::new(AuthoredTokenOrdinalSpace {
+) -> Arc<AuthoredTokenOrdinalSpace> {
+    Arc::new(AuthoredTokenOrdinalSpace {
         allocator: alloc.clone(),
     })
 }
 
-pub fn node_occurrence_identity_minted(id: OccurrenceId) -> Rc<NodeOccurrenceIdentity> {
-    Rc::new(NodeOccurrenceIdentity::OccurrenceMinted { id: id.clone() })
+pub fn node_occurrence_identity_minted(id: OccurrenceId) -> Arc<NodeOccurrenceIdentity> {
+    Arc::new(NodeOccurrenceIdentity::OccurrenceMinted { id: id.clone() })
 }
 
 pub fn occurrence_transport_validation_complexity_law() -> String {
@@ -431,15 +431,15 @@ pub fn occurrence_transport_validation_complexity_law() -> String {
 }
 
 pub fn occurrence_containment_matches_occurrence(
-    containment: Rc<OccurrenceContainmentPath>,
+    containment: Arc<OccurrenceContainmentPath>,
     occurrence: OccurrenceId,
 ) -> bool {
     (containment.terminal.clone().value.clone() == occurrence.value.clone())
 }
 
 pub fn occurrence_containment_paths_equal(
-    left: Rc<OccurrenceContainmentPath>,
-    right: Rc<OccurrenceContainmentPath>,
+    left: Arc<OccurrenceContainmentPath>,
+    right: Arc<OccurrenceContainmentPath>,
 ) -> bool {
     ((left.ancestors.clone() == right.ancestors.clone())
         && (left.terminal.clone().value.clone() == right.terminal.clone().value.clone()))
@@ -455,7 +455,7 @@ pub fn occurrence_containment_path_prefix_note() -> String {
 }
 
 pub fn occurrence_containment_path_contains_ancestor(
-    ancestors: Rc<Vec<OccurrenceId>>,
+    ancestors: Arc<Vec<OccurrenceId>>,
     target: OccurrenceId,
 ) -> bool {
     ancestors
@@ -468,8 +468,8 @@ pub fn occurrence_containment_path_contains_ancestor(
 }
 
 pub fn occurrence_containment_ancestors_as_list(
-    ancestors: Rc<Vec<OccurrenceId>>,
-) -> Rc<Vec<OccurrenceId>> {
+    ancestors: Arc<Vec<OccurrenceId>>,
+) -> Arc<Vec<OccurrenceId>> {
     v1_rt::reverse(
         ancestors
             .clone()
@@ -483,33 +483,33 @@ pub fn occurrence_containment_ancestors_as_list(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceIdListPrefixAcc {
-    pub path_remaining: Rc<Vec<OccurrenceId>>,
+    pub path_remaining: Arc<Vec<OccurrenceId>>,
     pub ok: bool,
 }
 
 pub fn occurrence_id_list_is_prefix_of(
-    prefix: Rc<Vec<OccurrenceId>>,
-    path: Rc<Vec<OccurrenceId>>,
+    prefix: Arc<Vec<OccurrenceId>>,
+    path: Arc<Vec<OccurrenceId>>,
 ) -> bool {
-    prefix.clone().iter().cloned().fold(Rc::new(OccurrenceIdListPrefixAcc {
+    prefix.clone().iter().cloned().fold(Arc::new(OccurrenceIdListPrefixAcc {
     path_remaining: path.clone(),
     ok: true,
-}), |acc: Rc<OccurrenceIdListPrefixAcc>, expected: OccurrenceId| if !acc.ok.clone() {
+}), |acc: Arc<OccurrenceIdListPrefixAcc>, expected: OccurrenceId| if !acc.ok.clone() {
         acc.clone()
     } else {
         if ((acc.path_remaining.clone().len() as i64) == 0) {
-            Rc::new(OccurrenceIdListPrefixAcc {
+            Arc::new(OccurrenceIdListPrefixAcc {
     path_remaining: Rc::new(vec![]),
     ok: false,
 })
         } else {
             if occurrence_id_eq(acc.path_remaining.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of occurrence_id_eq (empty Optional at runtime)"), expected.clone()) {
-                Rc::new(OccurrenceIdListPrefixAcc {
-    path_remaining: Rc::new(acc.path_remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()),
+                Arc::new(OccurrenceIdListPrefixAcc {
+    path_remaining: Arc::new(acc.path_remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()),
     ok: true,
 })
             } else {
-                Rc::new(OccurrenceIdListPrefixAcc {
+                Arc::new(OccurrenceIdListPrefixAcc {
     path_remaining: acc.path_remaining.clone(),
     ok: false,
 })
@@ -519,8 +519,8 @@ pub fn occurrence_id_list_is_prefix_of(
 }
 
 pub fn occurrence_containment_ancestors_are_prefix_of(
-    prefix_ancestors: Rc<Vec<OccurrenceId>>,
-    path_ancestors: Rc<Vec<OccurrenceId>>,
+    prefix_ancestors: Arc<Vec<OccurrenceId>>,
+    path_ancestors: Arc<Vec<OccurrenceId>>,
 ) -> bool {
     occurrence_id_list_is_prefix_of(
         occurrence_containment_ancestors_as_list(prefix_ancestors.clone()),
@@ -529,8 +529,8 @@ pub fn occurrence_containment_ancestors_are_prefix_of(
 }
 
 pub fn occurrence_containment_path_is_prefix_of(
-    prefix: Rc<OccurrenceContainmentPath>,
-    path: Rc<OccurrenceContainmentPath>,
+    prefix: Arc<OccurrenceContainmentPath>,
+    path: Arc<OccurrenceContainmentPath>,
 ) -> bool {
     if occurrence_containment_paths_equal(prefix.clone(), path.clone()) {
         true
@@ -551,19 +551,19 @@ pub fn occurrence_containment_path_is_prefix_of(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceTransportIndexBuild {
-    pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
-    pub refusal: Option<Rc<OccurrenceTransportRefusal>>,
+    pub entries_by_id: Arc<HashMap<i64, Arc<OccurrenceIndexEntry>>>,
+    pub refusal: Option<Arc<OccurrenceTransportRefusal>>,
 }
 
 pub fn occurrence_transport_index_build(
-    index: Rc<OccurrenceIndex>,
-) -> Rc<OccurrenceTransportIndexBuild> {
+    index: Arc<OccurrenceIndex>,
+) -> Arc<OccurrenceTransportIndexBuild> {
     index.entries.clone().iter().cloned().fold(
-        Rc::new(OccurrenceTransportIndexBuild {
-            entries_by_id: v1_rt::rc_empty_map::<i64, Rc<OccurrenceIndexEntry>>(),
+        Arc::new(OccurrenceTransportIndexBuild {
+            entries_by_id: v1_rt::rc_empty_map::<i64, Arc<OccurrenceIndexEntry>>(),
             refusal: None,
         }),
-        |build: Rc<OccurrenceTransportIndexBuild>, entry: Rc<OccurrenceIndexEntry>| match build
+        |build: Arc<OccurrenceTransportIndexBuild>, entry: Arc<OccurrenceIndexEntry>| match build
             .refusal
             .clone()
         {
@@ -572,9 +572,9 @@ pub fn occurrence_transport_index_build(
                 &build.entries_by_id.clone(),
                 entry.projection.clone().occurrence.clone().value.clone(),
             ) {
-                Some(existing) => Rc::new(OccurrenceTransportIndexBuild {
+                Some(existing) => Arc::new(OccurrenceTransportIndexBuild {
                     entries_by_id: build.entries_by_id.clone(),
-                    refusal: Some(Rc::new(
+                    refusal: Some(Arc::new(
                         OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
                             occurrence: existing.projection.clone().occurrence.clone(),
                             diagnostic_span: existing.projection.clone().diagnostic_span.clone(),
@@ -586,7 +586,7 @@ pub fn occurrence_transport_index_build(
                         entry.containment.clone(),
                         entry.projection.clone().occurrence.clone(),
                     ) {
-                        Rc::new(OccurrenceTransportIndexBuild {
+                        Arc::new(OccurrenceTransportIndexBuild {
                             entries_by_id: v1_rt::rc_map_insert(
                                 build.entries_by_id.clone(),
                                 entry.projection.clone().occurrence.clone().value.clone(),
@@ -595,9 +595,9 @@ pub fn occurrence_transport_index_build(
                             refusal: None,
                         })
                     } else {
-                        Rc::new(OccurrenceTransportIndexBuild {
+                        Arc::new(OccurrenceTransportIndexBuild {
                             entries_by_id: build.entries_by_id.clone(),
-                            refusal: Some(Rc::new(
+                            refusal: Some(Arc::new(
                                 OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
                                     occurrence: entry.projection.clone().occurrence.clone(),
                                     diagnostic_span: entry
@@ -617,40 +617,40 @@ pub fn occurrence_transport_index_build(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceTransportRoleIndexBuild {
-    pub declarations_by_id: Rc<HashMap<i64, Rc<DeclarationOccurrence>>>,
-    pub references_by_id: Rc<HashMap<i64, Rc<ReferenceOccurrence>>>,
-    pub refusal: Option<Rc<OccurrenceTransportRefusal>>,
+    pub declarations_by_id: Arc<HashMap<i64, Arc<DeclarationOccurrence>>>,
+    pub references_by_id: Arc<HashMap<i64, Arc<ReferenceOccurrence>>>,
+    pub refusal: Option<Arc<OccurrenceTransportRefusal>>,
 }
 
 pub fn occurrence_transport_role_index_build(
-    declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
-    references: Rc<Vec<Rc<ReferenceOccurrence>>>,
-) -> Rc<OccurrenceTransportRoleIndexBuild> {
+    declarations: Arc<Vec<Arc<DeclarationOccurrence>>>,
+    references: Arc<Vec<Arc<ReferenceOccurrence>>>,
+) -> Arc<OccurrenceTransportRoleIndexBuild> {
     {
         let declaration_build = declarations.clone().iter().cloned().fold(
-            Rc::new(OccurrenceTransportRoleIndexBuild {
-                declarations_by_id: v1_rt::rc_empty_map::<i64, Rc<DeclarationOccurrence>>(),
-                references_by_id: v1_rt::rc_empty_map::<i64, Rc<ReferenceOccurrence>>(),
+            Arc::new(OccurrenceTransportRoleIndexBuild {
+                declarations_by_id: v1_rt::rc_empty_map::<i64, Arc<DeclarationOccurrence>>(),
+                references_by_id: v1_rt::rc_empty_map::<i64, Arc<ReferenceOccurrence>>(),
                 refusal: None,
             }),
-            |build: Rc<OccurrenceTransportRoleIndexBuild>,
-             declaration: Rc<DeclarationOccurrence>| match build.refusal.clone() {
+            |build: Arc<OccurrenceTransportRoleIndexBuild>,
+             declaration: Arc<DeclarationOccurrence>| match build.refusal.clone() {
                 Some(_) => build.clone(),
                 None => match v1_rt::map_get(
                     &build.declarations_by_id.clone(),
                     declaration.occurrence.clone().value.clone(),
                 ) {
-                    Some(existing) => Rc::new(OccurrenceTransportRoleIndexBuild {
+                    Some(existing) => Arc::new(OccurrenceTransportRoleIndexBuild {
                         declarations_by_id: build.declarations_by_id.clone(),
                         references_by_id: build.references_by_id.clone(),
-                        refusal: Some(Rc::new(
+                        refusal: Some(Arc::new(
                             OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
                                 occurrence: existing.occurrence.clone(),
                                 diagnostic_span: existing.diagnostic_span.clone(),
                             },
                         )),
                     }),
-                    None => Rc::new(OccurrenceTransportRoleIndexBuild {
+                    None => Arc::new(OccurrenceTransportRoleIndexBuild {
                         declarations_by_id: v1_rt::rc_map_insert(
                             build.declarations_by_id.clone(),
                             declaration.occurrence.clone().value.clone(),
@@ -666,24 +666,24 @@ pub fn occurrence_transport_role_index_build(
             Some(_) => declaration_build,
             None => references.clone().iter().cloned().fold(
                 declaration_build,
-                |build: Rc<OccurrenceTransportRoleIndexBuild>,
-                 reference: Rc<ReferenceOccurrence>| match build.refusal.clone() {
+                |build: Arc<OccurrenceTransportRoleIndexBuild>,
+                 reference: Arc<ReferenceOccurrence>| match build.refusal.clone() {
                     Some(_) => build.clone(),
                     None => match v1_rt::map_get(
                         &build.references_by_id.clone(),
                         reference.occurrence.clone().value.clone(),
                     ) {
-                        Some(existing) => Rc::new(OccurrenceTransportRoleIndexBuild {
+                        Some(existing) => Arc::new(OccurrenceTransportRoleIndexBuild {
                             declarations_by_id: build.declarations_by_id.clone(),
                             references_by_id: build.references_by_id.clone(),
-                            refusal: Some(Rc::new(
+                            refusal: Some(Arc::new(
                                 OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
                                     occurrence: existing.occurrence.clone(),
                                     diagnostic_span: existing.diagnostic_span.clone(),
                                 },
                             )),
                         }),
-                        None => Rc::new(OccurrenceTransportRoleIndexBuild {
+                        None => Arc::new(OccurrenceTransportRoleIndexBuild {
                             declarations_by_id: build.declarations_by_id.clone(),
                             references_by_id: v1_rt::rc_map_insert(
                                 build.references_by_id.clone(),
@@ -700,12 +700,12 @@ pub fn occurrence_transport_role_index_build(
 }
 
 pub fn declaration_occurrence_refusal(
-    index_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
-    references_by_id: Rc<HashMap<i64, Rc<ReferenceOccurrence>>>,
-    declaration: Rc<DeclarationOccurrence>,
-) -> Option<Rc<OccurrenceTransportRefusal>> {
+    index_by_id: Arc<HashMap<i64, Arc<OccurrenceIndexEntry>>>,
+    references_by_id: Arc<HashMap<i64, Arc<ReferenceOccurrence>>>,
+    declaration: Arc<DeclarationOccurrence>,
+) -> Option<Arc<OccurrenceTransportRefusal>> {
     match v1_rt::map_get(&index_by_id, declaration.occurrence.clone().value.clone()) {
-        None => Some(Rc::new(
+        None => Some(Arc::new(
             OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
                 diagnostic_span: declaration.diagnostic_span.clone(),
             },
@@ -720,7 +720,7 @@ pub fn declaration_occurrence_refusal(
                     declaration.occurrence.clone().value.clone(),
                 ) {
                     Some(reference) => {
-                        Some(Rc::new(OccurrenceTransportRefusal::WrongOccurrenceRole {
+                        Some(Arc::new(OccurrenceTransportRefusal::WrongOccurrenceRole {
                             occurrence: declaration.occurrence.clone(),
                             expected: OccurrenceRole::DeclarationRole,
                             observed: OccurrenceRole::ReferenceRole,
@@ -730,7 +730,7 @@ pub fn declaration_occurrence_refusal(
                     None => None,
                 }
             } else {
-                Some(Rc::new(
+                Some(Arc::new(
                     OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
                         occurrence: declaration.occurrence.clone(),
                         diagnostic_span: declaration.diagnostic_span.clone(),
@@ -742,12 +742,12 @@ pub fn declaration_occurrence_refusal(
 }
 
 pub fn reference_occurrence_refusal(
-    index_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
-    declarations_by_id: Rc<HashMap<i64, Rc<DeclarationOccurrence>>>,
-    reference: Rc<ReferenceOccurrence>,
-) -> Option<Rc<OccurrenceTransportRefusal>> {
+    index_by_id: Arc<HashMap<i64, Arc<OccurrenceIndexEntry>>>,
+    declarations_by_id: Arc<HashMap<i64, Arc<DeclarationOccurrence>>>,
+    reference: Arc<ReferenceOccurrence>,
+) -> Option<Arc<OccurrenceTransportRefusal>> {
     match v1_rt::map_get(&index_by_id, reference.occurrence.clone().value.clone()) {
-        None => Some(Rc::new(
+        None => Some(Arc::new(
             OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
                 diagnostic_span: reference.diagnostic_span.clone(),
             },
@@ -762,7 +762,7 @@ pub fn reference_occurrence_refusal(
                     reference.occurrence.clone().value.clone(),
                 ) {
                     Some(declaration) => {
-                        Some(Rc::new(OccurrenceTransportRefusal::WrongOccurrenceRole {
+                        Some(Arc::new(OccurrenceTransportRefusal::WrongOccurrenceRole {
                             occurrence: reference.occurrence.clone(),
                             expected: OccurrenceRole::ReferenceRole,
                             observed: OccurrenceRole::DeclarationRole,
@@ -772,7 +772,7 @@ pub fn reference_occurrence_refusal(
                     None => None,
                 }
             } else {
-                Some(Rc::new(
+                Some(Arc::new(
                     OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
                         occurrence: reference.occurrence.clone(),
                         diagnostic_span: reference.diagnostic_span.clone(),
@@ -785,21 +785,21 @@ pub fn reference_occurrence_refusal(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ValidatedOccurrenceTransport {
-    pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
-    pub declarations_by_id: Rc<HashMap<i64, Rc<DeclarationOccurrence>>>,
-    pub references_by_id: Rc<HashMap<i64, Rc<ReferenceOccurrence>>>,
-    pub declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
-    pub references: Rc<Vec<Rc<ReferenceOccurrence>>>,
+    pub entries_by_id: Arc<HashMap<i64, Arc<OccurrenceIndexEntry>>>,
+    pub declarations_by_id: Arc<HashMap<i64, Arc<DeclarationOccurrence>>>,
+    pub references_by_id: Arc<HashMap<i64, Arc<ReferenceOccurrence>>>,
+    pub declarations: Arc<Vec<Arc<DeclarationOccurrence>>>,
+    pub references: Arc<Vec<Arc<ReferenceOccurrence>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OccurrenceTransportValidation {
     OccurrenceTransportValidated {
-        transport: Rc<ValidatedOccurrenceTransport>,
+        transport: Arc<ValidatedOccurrenceTransport>,
     },
     OccurrenceTransportRefused {
-        refusal: Rc<OccurrenceTransportRefusal>,
+        refusal: Arc<OccurrenceTransportRefusal>,
     },
 }
 
@@ -813,12 +813,12 @@ pub fn occurrence_transport_validation_authority_note() -> String {
 }
 
 pub fn occurrence_transport_validate(
-    transport: Rc<OccurrenceTransport>,
-) -> Rc<OccurrenceTransportValidation> {
+    transport: Arc<OccurrenceTransport>,
+) -> Arc<OccurrenceTransportValidation> {
     {
         let index_build = occurrence_transport_index_build(transport.index.clone());
         match index_build.refusal.clone() {
-            Some(refusal) => Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
+            Some(refusal) => Arc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
                 refusal: refusal.clone(),
             }),
             None => {
@@ -828,7 +828,7 @@ pub fn occurrence_transport_validate(
                 );
                 match role_index_build.refusal.clone() {
                     Some(refusal) => {
-                        Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
+                        Arc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
                             refusal: refusal.clone(),
                         })
                     }
@@ -836,7 +836,7 @@ pub fn occurrence_transport_validate(
                         let declaration_refusal =
                             transport.declarations.clone().iter().cloned().fold(
                                 None,
-                                |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal
+                                |refusal: _, declaration: Arc<DeclarationOccurrence>| match refusal
                                     .clone()
                                 {
                                     Some(_) => refusal.clone(),
@@ -848,16 +848,16 @@ pub fn occurrence_transport_validate(
                                 },
                             );
                         match declaration_refusal.clone() {
-                            Some(refusal) => {
-                                Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
+                            Some(refusal) => Arc::new(
+                                OccurrenceTransportValidation::OccurrenceTransportRefused {
                                     refusal: refusal.clone(),
-                                })
-                            }
+                                },
+                            ),
                             None => {
                                 let reference_refusal =
                                     transport.references.clone().iter().cloned().fold(
                                         None,
-                                        |refusal: _, reference: Rc<ReferenceOccurrence>| {
+                                        |refusal: _, reference: Arc<ReferenceOccurrence>| {
                                             match refusal.clone() {
                                                 Some(_) => refusal.clone(),
                                                 None => reference_occurrence_refusal(
@@ -869,11 +869,11 @@ pub fn occurrence_transport_validate(
                                         },
                                     );
                                 match reference_refusal.clone() {
-    Some(refusal) => Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
+    Some(refusal) => Arc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
     refusal: refusal.clone(),
 }),
-    None => Rc::new(OccurrenceTransportValidation::OccurrenceTransportValidated {
-    transport: Rc::new(ValidatedOccurrenceTransport {
+    None => Arc::new(OccurrenceTransportValidation::OccurrenceTransportValidated {
+    transport: Arc::new(ValidatedOccurrenceTransport {
     entries_by_id: index_build.entries_by_id.clone(),
     declarations_by_id: role_index_build.declarations_by_id.clone(),
     references_by_id: role_index_build.references_by_id.clone(),
@@ -892,8 +892,8 @@ pub fn occurrence_transport_validate(
 }
 
 pub fn occurrence_transport_refusal(
-    transport: Rc<OccurrenceTransport>,
-) -> Option<Rc<OccurrenceTransportRefusal>> {
+    transport: Arc<OccurrenceTransport>,
+) -> Option<Arc<OccurrenceTransportRefusal>> {
     match (*occurrence_transport_validate(transport.clone())).clone() {
         OccurrenceTransportValidation::OccurrenceTransportRefused {
             refusal: refusal, ..

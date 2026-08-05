@@ -11,7 +11,7 @@ pub use crate::v1_std_core::{build_newline_index, empty_intern_table};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn required_expr_newline_continuation_offline_recipe() -> String {
     thread_local! {
@@ -31,10 +31,10 @@ pub fn required_expr_newline_continuation_dissolve_on() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn newline_parse_ctx(file: String, source: String) -> Rc<ParseContext> {
-    Rc::new(ParseContext {
+pub fn newline_parse_ctx(file: String, source: String) -> Arc<ParseContext> {
+    Arc::new(ParseContext {
         source_indices: v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
             file.clone(),
             build_newline_index(file.clone(), source.clone()),
         ),

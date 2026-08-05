@@ -13,11 +13,11 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExternalAuthority {
-    pub uri: Rc<Uri>,
+    pub uri: Arc<Uri>,
 }
 
 pub fn external_model_scope_law() -> String {
@@ -40,7 +40,7 @@ pub fn external_subject_symbolic_identity_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExternalSubjectRef {
-    pub declaration: Rc<DeclarationRef>,
+    pub declaration: Arc<DeclarationRef>,
 }
 
 pub fn external_model_scope_revision_grain_note() -> String {
@@ -54,9 +54,9 @@ pub fn external_model_scope_revision_grain_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExternalModelScope {
-    pub subject: Rc<ExternalSubjectRef>,
-    pub first_citation: Rc<ExternalAuthority>,
-    pub further_citations: Rc<Vec<Rc<ExternalAuthority>>>,
+    pub subject: Arc<ExternalSubjectRef>,
+    pub first_citation: Arc<ExternalAuthority>,
+    pub further_citations: Arc<Vec<Arc<ExternalAuthority>>>,
 }
 
 pub fn external_model_scope_citations_shape_note() -> String {
@@ -69,15 +69,15 @@ pub fn external_model_scope_citations_shape_note() -> String {
 }
 
 pub fn external_model_scope_citations(
-    scope: Rc<ExternalModelScope>,
-) -> Rc<Vec<Rc<ExternalAuthority>>> {
+    scope: Arc<ExternalModelScope>,
+) -> Arc<Vec<Arc<ExternalAuthority>>> {
     v1_rt::concat(
         Rc::new(vec![scope.first_citation.clone()]),
         scope.further_citations.clone(),
     )
 }
 
-pub fn external_subject_ref_eq(a: Rc<ExternalSubjectRef>, b: Rc<ExternalSubjectRef>) -> bool {
+pub fn external_subject_ref_eq(a: Arc<ExternalSubjectRef>, b: Arc<ExternalSubjectRef>) -> bool {
     declaration_ref_eq(a.declaration.clone(), b.declaration.clone())
 }
 
@@ -92,8 +92,8 @@ pub fn fact_authority_override_ref_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FactAuthorityOverride {
-    pub fact: Rc<DeclarationRef>,
-    pub authority: Rc<ExternalAuthority>,
+    pub fact: Arc<DeclarationRef>,
+    pub authority: Arc<ExternalAuthority>,
 }
 
 pub fn external_model_scope_decision_kernel_note() -> String {
@@ -117,9 +117,9 @@ pub fn declared_scope_facts_note() -> String {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredScopeFacts {
     pub module: NonEmptyStr,
-    pub scope: Rc<ExternalModelScope>,
-    pub product_fact_subjects: Rc<Vec<Rc<ExternalSubjectRef>>>,
-    pub consumer_coverage_rows: Rc<Vec<Rc<DeclarationRef>>>,
+    pub scope: Arc<ExternalModelScope>,
+    pub product_fact_subjects: Arc<Vec<Arc<ExternalSubjectRef>>>,
+    pub consumer_coverage_rows: Arc<Vec<Arc<DeclarationRef>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -127,12 +127,12 @@ pub struct DeclaredScopeFacts {
 pub enum ScopeFinding {
     ForeignSubjectRow {
         module: NonEmptyStr,
-        declared: Rc<ExternalSubjectRef>,
-        foreign: Rc<ExternalSubjectRef>,
+        declared: Arc<ExternalSubjectRef>,
+        foreign: Arc<ExternalSubjectRef>,
     },
     ConsumerCoverageInUpstream {
         module: NonEmptyStr,
-        coverage_row: Rc<DeclarationRef>,
+        coverage_row: Arc<DeclarationRef>,
     },
 }
 impl ScopeFinding {
@@ -150,7 +150,7 @@ pub enum ScopeDecision {
     ScopeCoherent,
     ScopeIncoherent {
         finding_count: i64,
-        findings: Rc<Vec<Rc<ScopeFinding>>>,
+        findings: Arc<Vec<Arc<ScopeFinding>>>,
     },
 }
 impl ScopeDecision {
@@ -163,7 +163,7 @@ impl ScopeDecision {
             } => __val.clone(),
         }
     }
-    pub fn findings(&self) -> Rc<Vec<Rc<ScopeFinding>>> {
+    pub fn findings(&self) -> Arc<Vec<Arc<ScopeFinding>>> {
         match self {
             ScopeDecision::ScopeCoherent => panic!("no findings on unit variant"),
             ScopeDecision::ScopeIncoherent {
@@ -174,11 +174,11 @@ impl ScopeDecision {
 }
 
 pub fn external_model_scope_foreign_subject_findings(
-    m: Rc<DeclaredScopeFacts>,
-) -> Rc<Vec<Rc<ScopeFinding>>> {
-    Rc::new({
+    m: Arc<DeclaredScopeFacts>,
+) -> Arc<Vec<Arc<ScopeFinding>>> {
+    Arc::new({
         let mut __result = Vec::new();
-        for s in Rc::new({
+        for s in Arc::new({
             let mut __result = Vec::new();
             for s in m.product_fact_subjects.clone().iter().cloned() {
                 if !external_subject_ref_eq(s.clone(), m.scope.clone().subject.clone()) {
@@ -190,7 +190,7 @@ pub fn external_model_scope_foreign_subject_findings(
         .iter()
         .cloned()
         {
-            __result.push(Rc::new(ScopeFinding::ForeignSubjectRow {
+            __result.push(Arc::new(ScopeFinding::ForeignSubjectRow {
                 module: m.module.clone(),
                 declared: m.scope.clone().subject.clone(),
                 foreign: s.clone(),
@@ -201,12 +201,12 @@ pub fn external_model_scope_foreign_subject_findings(
 }
 
 pub fn external_model_scope_coverage_findings(
-    m: Rc<DeclaredScopeFacts>,
-) -> Rc<Vec<Rc<ScopeFinding>>> {
-    Rc::new({
+    m: Arc<DeclaredScopeFacts>,
+) -> Arc<Vec<Arc<ScopeFinding>>> {
+    Arc::new({
         let mut __result = Vec::new();
         for r in m.consumer_coverage_rows.clone().iter().cloned() {
-            __result.push(Rc::new(ScopeFinding::ConsumerCoverageInUpstream {
+            __result.push(Arc::new(ScopeFinding::ConsumerCoverageInUpstream {
                 module: m.module.clone(),
                 coverage_row: r.clone(),
             }));
@@ -215,7 +215,7 @@ pub fn external_model_scope_coverage_findings(
     })
 }
 
-pub fn external_model_scope_findings(m: Rc<DeclaredScopeFacts>) -> Rc<Vec<Rc<ScopeFinding>>> {
+pub fn external_model_scope_findings(m: Arc<DeclaredScopeFacts>) -> Arc<Vec<Arc<ScopeFinding>>> {
     v1_rt::concat(
         external_model_scope_foreign_subject_findings(m.clone()),
         external_model_scope_coverage_findings(m.clone()),
@@ -223,14 +223,14 @@ pub fn external_model_scope_findings(m: Rc<DeclaredScopeFacts>) -> Rc<Vec<Rc<Sco
 }
 
 pub fn external_model_scope_decision_of_findings(
-    findings: Rc<Vec<Rc<ScopeFinding>>>,
-) -> Rc<ScopeDecision> {
+    findings: Arc<Vec<Arc<ScopeFinding>>>,
+) -> Arc<ScopeDecision> {
     {
         let n = (findings.clone().len() as i64);
         if (n.clone() == 0) {
-            Rc::new(ScopeDecision::ScopeCoherent)
+            Arc::new(ScopeDecision::ScopeCoherent)
         } else {
-            Rc::new(ScopeDecision::ScopeIncoherent {
+            Arc::new(ScopeDecision::ScopeIncoherent {
                 finding_count: n.clone(),
                 findings: findings.clone(),
             })
@@ -238,16 +238,16 @@ pub fn external_model_scope_decision_of_findings(
     }
 }
 
-pub fn external_model_scope_decision(m: Rc<DeclaredScopeFacts>) -> Rc<ScopeDecision> {
+pub fn external_model_scope_decision(m: Arc<DeclaredScopeFacts>) -> Arc<ScopeDecision> {
     external_model_scope_decision_of_findings(external_model_scope_findings(m.clone()))
 }
 
 pub fn external_model_scope_portfolio_decision(
-    mods: Rc<Vec<Rc<DeclaredScopeFacts>>>,
-) -> Rc<ScopeDecision> {
+    mods: Arc<Vec<Arc<DeclaredScopeFacts>>>,
+) -> Arc<ScopeDecision> {
     external_model_scope_decision_of_findings(mods.clone().iter().cloned().fold(
         Rc::new(vec![]),
-        |acc: Rc<Vec<Rc<ScopeFinding>>>, m: Rc<DeclaredScopeFacts>| {
+        |acc: Arc<Vec<Arc<ScopeFinding>>>, m: Arc<DeclaredScopeFacts>| {
             v1_rt::concat(acc, external_model_scope_findings(m.clone()))
         },
     ))
@@ -265,19 +265,19 @@ pub fn downstream_support_roster_note() -> String {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DownstreamSupportRoster {
     pub module: NonEmptyStr,
-    pub coverage_rows: Rc<Vec<Rc<DeclarationRef>>>,
+    pub coverage_rows: Arc<Vec<Arc<DeclarationRef>>>,
 }
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
     thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+            static CACHED: Arc<ExternalAuthority> = {
+                Arc::new(ExternalAuthority {
+        uri: Arc::new(Uri {
         scheme: UriScheme::File,
         locator: "DESIGN.md#3-single-authority".to_string(),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+    CACHED.with(|c: &Arc<ExternalAuthority>| c.clone())
 }

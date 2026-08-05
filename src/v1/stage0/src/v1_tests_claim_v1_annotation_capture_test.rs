@@ -11,7 +11,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn v1_annotation_capture_offline_recipe() -> String {
     thread_local! {
@@ -94,7 +94,7 @@ pub fn src_url_in_string() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn captures(source: String) -> Rc<Vec<Rc<UnboundAnnotationCapture>>> {
+pub fn captures(source: String) -> Arc<Vec<Arc<UnboundAnnotationCapture>>> {
     tokenize_artifact(source.clone(), "probe.dag".to_string())
         .annotations
         .clone()
@@ -113,19 +113,19 @@ pub fn portable_projection_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn render_lexemes(caps: Rc<Vec<Rc<UnboundAnnotationCapture>>>) -> String {
+pub fn render_lexemes(caps: Arc<Vec<Arc<UnboundAnnotationCapture>>>) -> String {
     caps.clone().iter().cloned().fold(
         "".to_string(),
-        |acc: String, c: Rc<UnboundAnnotationCapture>| {
+        |acc: String, c: Arc<UnboundAnnotationCapture>| {
             v1_rt::concat(acc, v1_rt::concat("|".to_string(), c.lexeme.clone()))
         },
     )
 }
 
-pub fn render_placements(caps: Rc<Vec<Rc<UnboundAnnotationCapture>>>) -> String {
+pub fn render_placements(caps: Arc<Vec<Arc<UnboundAnnotationCapture>>>) -> String {
     caps.clone().iter().cloned().fold(
         "".to_string(),
-        |acc: String, c: Rc<UnboundAnnotationCapture>| {
+        |acc: String, c: Arc<UnboundAnnotationCapture>| {
             v1_rt::concat(
                 acc,
                 match c.placement.clone() {

@@ -30,7 +30,7 @@ pub use crate::v1_std_core::{Token, TokenShape};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn is_keyword_text(text: String) -> bool {
     match v1_rt::lookup(&dag_keyword_set(), text.clone()) {
@@ -39,9 +39,9 @@ pub fn is_keyword_text(text: String) -> bool {
     }
 }
 
-pub fn single_punct() -> Rc<HashMap<String, TokenShape>> {
+pub fn single_punct() -> Arc<HashMap<String, TokenShape>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, TokenShape>> = {
+        static CACHED: Arc<HashMap<String, TokenShape>> = {
             let mut __m = HashMap::new();
             __m.insert("(".to_string(), TokenShape::ShLParen);
             __m.insert(")".to_string(), TokenShape::ShRParen);
@@ -55,18 +55,18 @@ pub fn single_punct() -> Rc<HashMap<String, TokenShape>> {
             __m.insert("%".to_string(), TokenShape::ShPercent);
             __m.insert("/".to_string(), TokenShape::ShSlash);
             __m.insert("^".to_string(), TokenShape::ShCaret);
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, TokenShape>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, TokenShape>>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TokenizerState {
     pub pos: i64,
-    pub tokens: Rc<Vec<Rc<Token>>>,
-    pub annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
-    pub interp_depth: Rc<Vec<i64>>,
+    pub tokens: Arc<Vec<Arc<Token>>>,
+    pub annotations: Arc<Vec<Arc<UnboundAnnotationCapture>>>,
+    pub interp_depth: Arc<Vec<i64>>,
 }
 
 pub fn v1_scan_step_note() -> String {
@@ -82,12 +82,12 @@ pub fn v1_scan_step_note() -> String {
 #[serde(tag = "_variant")]
 pub enum ScanStep {
     ScannedToken {
-        result: Rc<ScanResult>,
+        result: Arc<ScanResult>,
     },
     ScannedAnnotation {
         pos: i64,
-        capture: Rc<UnboundAnnotationCapture>,
-        interp_depth: Rc<Vec<i64>>,
+        capture: Arc<UnboundAnnotationCapture>,
+        interp_depth: Arc<Vec<i64>>,
     },
 }
 
@@ -102,59 +102,59 @@ pub fn v1_tokenize_artifact_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct V1LexArtifact {
-    pub tokens: Rc<Vec<Rc<Token>>>,
-    pub annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
+    pub tokens: Arc<Vec<Arc<Token>>>,
+    pub annotations: Arc<Vec<Arc<UnboundAnnotationCapture>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TokPos {
     pub pos: i64,
-    pub interp_depth: Rc<Vec<i64>>,
+    pub interp_depth: Arc<Vec<i64>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScanResult {
     pub pos: i64,
-    pub token: Rc<Token>,
-    pub interp_depth: Rc<Vec<i64>>,
+    pub token: Arc<Token>,
+    pub interp_depth: Arc<Vec<i64>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceRef {
     pub file: String,
     pub text: String,
-    pub source_chars: Rc<Vec<i64>>,
+    pub source_chars: Arc<Vec<i64>>,
 }
 
-pub fn make_token(text: String, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<Token> {
-    Rc::new(Token {
+pub fn make_token(text: String, span: Arc<SourceSpan>, shape: TokenShape) -> Arc<Token> {
+    Arc::new(Token {
         text: text.clone(),
         span: span.clone(),
         shape: shape.clone(),
     })
 }
 
-pub fn source_char(source: Rc<SourceRef>, pos: i64) -> String {
+pub fn source_char(source: Arc<SourceRef>, pos: i64) -> String {
     v1_rt::from_code_point(source.source_chars.clone()[(pos.clone()) as usize].clone())
 }
 
-pub fn source_code_point(source: Rc<SourceRef>, pos: i64) -> i64 {
+pub fn source_code_point(source: Arc<SourceRef>, pos: i64) -> i64 {
     {
         let _ = v1_rt::record_source_chars_index_lookup();
         source.source_chars.clone()[(pos.clone()) as usize].clone()
     }
 }
 
-pub fn source_len(source: Rc<SourceRef>) -> i64 {
+pub fn source_len(source: Arc<SourceRef>) -> i64 {
     (source.source_chars.clone().len() as i64)
 }
 
-pub fn source_substring(source: Rc<SourceRef>, start: i64, end: i64) -> String {
+pub fn source_substring(source: Arc<SourceRef>, start: i64, end: i64) -> String {
     v1_rt::chars_to_string(&source.source_chars.clone(), start.clone(), end.clone())
 }
 
 pub fn source_scan_while(
-    mut source: Rc<SourceRef>,
+    mut source: Arc<SourceRef>,
     mut start: i64,
     mut pred: impl Fn(i64) -> bool + Clone,
 ) -> i64 {
@@ -175,7 +175,7 @@ pub fn source_scan_while(
     }
 }
 
-pub fn source_skip_ws(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
+pub fn source_skip_ws(mut source: Arc<SourceRef>, mut start: i64) -> i64 {
     loop {
         if (start.clone() >= source_len(source.clone())) {
             break start.clone();
@@ -194,7 +194,7 @@ pub fn source_skip_ws(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
     }
 }
 
-pub fn source_scan_to_eol(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
+pub fn source_scan_to_eol(mut source: Arc<SourceRef>, mut start: i64) -> i64 {
     loop {
         if (start.clone() >= source_len(source.clone())) {
             break source_len(source.clone());
@@ -212,15 +212,15 @@ pub fn source_scan_to_eol(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
     }
 }
 
-pub fn tokenize_artifact(source: String, file: String) -> Rc<V1LexArtifact> {
+pub fn tokenize_artifact(source: String, file: String) -> Arc<V1LexArtifact> {
     {
-        let c = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
-        let src = Rc::new(SourceRef {
+        let c = Arc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
+        let src = Arc::new(SourceRef {
             file: file.clone(),
             text: source.clone(),
             source_chars: c.clone(),
         });
-        let initial = Rc::new(TokPos {
+        let initial = Arc::new(TokPos {
             pos: 0,
             interp_depth: Rc::new(vec![]),
         });
@@ -236,7 +236,7 @@ pub fn tokenize_artifact(source: String, file: String) -> Rc<V1LexArtifact> {
             final_state.pos.clone(),
             final_state.pos.clone(),
         );
-        Rc::new(V1LexArtifact {
+        Arc::new(V1LexArtifact {
             tokens: v1_rt::rc_list_push(
                 final_state.tokens.clone(),
                 make_token("".to_string(), eof_span.clone(), TokenShape::ShEof),
@@ -246,7 +246,7 @@ pub fn tokenize_artifact(source: String, file: String) -> Rc<V1LexArtifact> {
     }
 }
 
-pub fn tokenize(source: String, file: String) -> Rc<Vec<Rc<Token>>> {
+pub fn tokenize(source: String, file: String) -> Arc<Vec<Arc<Token>>> {
     tokenize_artifact(source.clone(), file.clone())
         .tokens
         .clone()
@@ -261,7 +261,7 @@ pub fn v1_line_prefix_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn source_line_start(mut source: Rc<SourceRef>, mut pos: i64) -> i64 {
+pub fn source_line_start(mut source: Arc<SourceRef>, mut pos: i64) -> i64 {
     loop {
         if (pos.clone() <= 0) {
             break 0;
@@ -288,7 +288,7 @@ pub fn v1_blank_line_lookback_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn preceded_by_blank_line(source: Rc<SourceRef>, pos: i64) -> bool {
+pub fn preceded_by_blank_line(source: Arc<SourceRef>, pos: i64) -> bool {
     {
         let line_start = source_line_start(source.clone(), pos.clone());
         if (line_start.clone() <= 0) {
@@ -306,7 +306,7 @@ pub fn preceded_by_blank_line(source: Rc<SourceRef>, pos: i64) -> bool {
     }
 }
 
-pub fn line_prefix_is_indent_only(source: Rc<SourceRef>, pos: i64) -> bool {
+pub fn line_prefix_is_indent_only(source: Arc<SourceRef>, pos: i64) -> bool {
     advance_line_prefix_indent_only_text(
         true,
         source_substring(
@@ -317,12 +317,12 @@ pub fn line_prefix_is_indent_only(source: Rc<SourceRef>, pos: i64) -> bool {
     )
 }
 
-pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
+pub fn scan_next_token(source: Arc<SourceRef>, pos: Arc<TokPos>) -> Arc<ScanStep> {
     {
         let ch = source_code_point(source.clone(), pos.pos.clone());
         if (ch.clone() == 10) {
-            return Rc::new(ScanStep::ScannedToken {
-                result: Rc::new(ScanResult {
+            return Arc::new(ScanStep::ScannedToken {
+                result: Arc::new(ScanResult {
                     pos: (pos.pos.clone() + 1),
                     token: make_token(
                         "\n".to_string(),
@@ -341,9 +341,9 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
         if ((ch.clone() == 47) && (next_ch_for_comment.clone() == 47)) {
             {
                 let eol = source_scan_to_eol(source.clone(), pos.pos.clone());
-                return Rc::new(ScanStep::ScannedAnnotation {
+                return Arc::new(ScanStep::ScannedAnnotation {
                     pos: eol.clone(),
-                    capture: Rc::new(UnboundAnnotationCapture {
+                    capture: Arc::new(UnboundAnnotationCapture {
                         lexeme: source_substring(source.clone(), pos.pos.clone(), eol.clone()),
                         origin: make_file_span(source.file.clone(), pos.pos.clone(), eol.clone()),
                         placement: placement_from_line_prefix(line_prefix_is_indent_only(
@@ -365,11 +365,11 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
                 if (top.clone() == 0) {
                     {
                         let popped = drop_last(pos.interp_depth.clone());
-                        let cont_pos = Rc::new(TokPos {
+                        let cont_pos = Arc::new(TokPos {
                             pos: (pos.pos.clone() + 1),
                             interp_depth: popped.clone(),
                         });
-                        return Rc::new(ScanStep::ScannedToken {
+                        return Arc::new(ScanStep::ScannedToken {
                             result: scan_str_cont(
                                 source.clone(),
                                 cont_pos.clone(),
@@ -378,8 +378,8 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
                         });
                     }
                 } else {
-                    return Rc::new(ScanStep::ScannedToken {
-                        result: Rc::new(ScanResult {
+                    return Arc::new(ScanStep::ScannedToken {
+                        result: Arc::new(ScanResult {
                             pos: (pos.pos.clone() + 1),
                             token: make_token(
                                 "}".to_string(),
@@ -396,23 +396,23 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
                 }
             }
         }
-        Rc::new(ScanStep::ScannedToken {
+        Arc::new(ScanStep::ScannedToken {
             result: scan_token(source.clone(), pos.clone(), ch.clone()),
         })
     }
 }
 
 pub fn tokenize_loop(
-    mut source: Rc<SourceRef>,
-    mut tokens: Rc<Vec<Rc<Token>>>,
-    mut annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
-    mut pos: Rc<TokPos>,
+    mut source: Arc<SourceRef>,
+    mut tokens: Arc<Vec<Arc<Token>>>,
+    mut annotations: Arc<Vec<Arc<UnboundAnnotationCapture>>>,
+    mut pos: Arc<TokPos>,
     mut fuel: i64,
-) -> Rc<TokenizerState> {
+) -> Arc<TokenizerState> {
     loop {
         let s = skip_spaces(source.clone(), pos.clone());
         if (s.pos.clone() >= source_len(source.clone())) {
-            return Rc::new(TokenizerState {
+            return Arc::new(TokenizerState {
                 pos: s.pos.clone(),
                 tokens: tokens.clone(),
                 annotations: annotations.clone(),
@@ -427,7 +427,7 @@ pub fn tokenize_loop(
                 ..
             } => {
                 let __tco_0 = v1_rt::rc_list_push(annotations, capture.clone());
-                let __tco_1 = Rc::new(TokPos {
+                let __tco_1 = Arc::new(TokPos {
                     pos: next_pos.clone(),
                     interp_depth: depth.clone(),
                 });
@@ -439,7 +439,7 @@ pub fn tokenize_loop(
             }
             ScanStep::ScannedToken { result: result, .. } => {
                 let __tco_0 = v1_rt::rc_list_push(tokens, result.token.clone());
-                let __tco_1 = Rc::new(TokPos {
+                let __tco_1 = Arc::new(TokPos {
                     pos: result.pos.clone(),
                     interp_depth: result.interp_depth.clone(),
                 });
@@ -453,7 +453,7 @@ pub fn tokenize_loop(
     }
 }
 
-pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanResult> {
+pub fn scan_token(source: Arc<SourceRef>, pos: Arc<TokPos>, ch: i64) -> Arc<ScanResult> {
     {
         if (ch.clone() == 34) {
             return scan_string(source.clone(), pos.clone());
@@ -646,7 +646,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
                     make_file_span(source.file.clone(), pos.pos.clone(), (pos.pos.clone() + 1)),
                     TokenShape::ShLBrace,
                 );
-                return Rc::new(ScanResult {
+                return Arc::new(ScanResult {
                     pos: (pos.pos.clone() + 1),
                     token: tok.clone(),
                     interp_depth: new_depth.clone(),
@@ -660,7 +660,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
                     make_file_span(source.file.clone(), pos.pos.clone(), (pos.pos.clone() + 1)),
                     TokenShape::ShRBrace,
                 );
-                return Rc::new(ScanResult {
+                return Arc::new(ScanResult {
                     pos: (pos.pos.clone() + 1),
                     token: tok.clone(),
                     interp_depth: pos.interp_depth.clone(),
@@ -688,12 +688,12 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
 }
 
 pub fn emit(
-    pos: Rc<TokPos>,
+    pos: Arc<TokPos>,
     shape: TokenShape,
     text: String,
     len: i64,
     file: String,
-) -> Rc<ScanResult> {
+) -> Arc<ScanResult> {
     {
         let token = make_token(
             text.clone(),
@@ -704,7 +704,7 @@ pub fn emit(
             ),
             shape.clone(),
         );
-        Rc::new(ScanResult {
+        Arc::new(ScanResult {
             pos: (pos.pos.clone() + len.clone()),
             token: token.clone(),
             interp_depth: pos.interp_depth.clone(),
@@ -712,7 +712,7 @@ pub fn emit(
     }
 }
 
-pub fn scan_ident(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
+pub fn scan_ident(source: Arc<SourceRef>, pos: Arc<TokPos>) -> Arc<ScanResult> {
     {
         let end = source_scan_while(source.clone(), pos.pos.clone(), is_ident_char);
         let text = source_substring(source.clone(), pos.pos.clone(), end.clone());
@@ -730,7 +730,7 @@ pub fn scan_ident(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
             make_file_span(source.file.clone(), pos.pos.clone(), end.clone()),
             shape.clone(),
         );
-        Rc::new(ScanResult {
+        Arc::new(ScanResult {
             pos: end.clone(),
             token: token.clone(),
             interp_depth: pos.interp_depth.clone(),
@@ -738,7 +738,7 @@ pub fn scan_ident(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     }
 }
 
-pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
+pub fn scan_number(source: Arc<SourceRef>, pos: Arc<TokPos>) -> Arc<ScanResult> {
     {
         let int_end = source_scan_while(source.clone(), pos.pos.clone(), is_digit);
         if ((((int_end.clone() + 1) < source_len(source.clone()))
@@ -753,7 +753,7 @@ pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
                     make_file_span(source.file.clone(), pos.pos.clone(), frac_end.clone()),
                     TokenShape::ShLitFloat,
                 );
-                return Rc::new(ScanResult {
+                return Arc::new(ScanResult {
                     pos: frac_end.clone(),
                     token: token.clone(),
                     interp_depth: pos.interp_depth.clone(),
@@ -771,7 +771,7 @@ pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
             make_file_span(source.file.clone(), pos.pos.clone(), int_end.clone()),
             shape.clone(),
         );
-        Rc::new(ScanResult {
+        Arc::new(ScanResult {
             pos: int_end.clone(),
             token: token.clone(),
             interp_depth: pos.interp_depth.clone(),
@@ -782,12 +782,21 @@ pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum StringScanResult {
-    ClosedString { content: Rc<Vec<i64>>, end_pos: i64 },
-    InterpolationStart { content: Rc<Vec<i64>>, end_pos: i64 },
-    UnterminatedString { content: Rc<Vec<i64>>, end_pos: i64 },
+    ClosedString {
+        content: Arc<Vec<i64>>,
+        end_pos: i64,
+    },
+    InterpolationStart {
+        content: Arc<Vec<i64>>,
+        end_pos: i64,
+    },
+    UnterminatedString {
+        content: Arc<Vec<i64>>,
+        end_pos: i64,
+    },
 }
 impl StringScanResult {
-    pub fn content(&self) -> Rc<Vec<i64>> {
+    pub fn content(&self) -> Arc<Vec<i64>> {
         match self {
             StringScanResult::ClosedString { content: __val, .. } => __val.clone(),
             StringScanResult::InterpolationStart { content: __val, .. } => __val.clone(),
@@ -819,10 +828,10 @@ impl EscapeProcessResult {
 }
 
 pub fn make_processed_string_token(
-    content: Rc<Vec<i64>>,
-    span: Rc<SourceSpan>,
+    content: Arc<Vec<i64>>,
+    span: Arc<SourceSpan>,
     accepted_shape: TokenShape,
-) -> Rc<Token> {
+) -> Arc<Token> {
     match (*process_escapes(content.clone())).clone() {
         EscapeProcessResult::EscapesProcessed {
             text: processed, ..
@@ -835,7 +844,7 @@ pub fn make_processed_string_token(
     }
 }
 
-pub fn scan_string(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
+pub fn scan_string(source: Arc<SourceRef>, pos: Arc<TokPos>) -> Arc<ScanResult> {
     {
         let span_start = pos.pos.clone();
         let body_start = (pos.pos.clone() + 1);
@@ -853,7 +862,7 @@ pub fn scan_string(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
                     ),
                     TokenShape::ShLitStr,
                 );
-                Rc::new(ScanResult {
+                Arc::new(ScanResult {
                     pos: (end_pos.clone() + 1),
                     token: token.clone(),
                     interp_depth: pos.interp_depth.clone(),
@@ -871,10 +880,10 @@ pub fn scan_string(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
                     ),
                     TokenShape::ShStrBegin,
                 );
-                Rc::new(ScanResult {
+                Arc::new(ScanResult {
                     pos: (end_pos.clone() + 1),
                     token: token.clone(),
-                    interp_depth: Rc::new(v1_rt::append(pos.interp_depth.clone(), 0)),
+                    interp_depth: Arc::new(v1_rt::append(pos.interp_depth.clone(), 0)),
                 })
             }
             StringScanResult::UnterminatedString {
@@ -885,7 +894,7 @@ pub fn scan_string(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
                     make_file_span(source.file.clone(), span_start.clone(), end_pos.clone()),
                     TokenShape::ShUnknown,
                 );
-                Rc::new(ScanResult {
+                Arc::new(ScanResult {
                     pos: end_pos.clone(),
                     token: token.clone(),
                     interp_depth: pos.interp_depth.clone(),
@@ -895,7 +904,7 @@ pub fn scan_string(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     }
 }
 
-pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) -> Rc<ScanResult> {
+pub fn scan_str_cont(source: Arc<SourceRef>, pos: Arc<TokPos>, span_start: i64) -> Arc<ScanResult> {
     {
         let result = scan_string_body(source.clone(), pos.pos.clone(), Rc::new(vec![]));
         match (*result.clone()).clone() {
@@ -911,7 +920,7 @@ pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) ->
                     ),
                     TokenShape::ShStrEnd,
                 );
-                Rc::new(ScanResult {
+                Arc::new(ScanResult {
                     pos: (end_pos.clone() + 1),
                     token: token.clone(),
                     interp_depth: pos.interp_depth.clone(),
@@ -929,10 +938,10 @@ pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) ->
                     ),
                     TokenShape::ShStrMid,
                 );
-                Rc::new(ScanResult {
+                Arc::new(ScanResult {
                     pos: (end_pos.clone() + 1),
                     token: token.clone(),
-                    interp_depth: Rc::new(v1_rt::append(pos.interp_depth.clone(), 0)),
+                    interp_depth: Arc::new(v1_rt::append(pos.interp_depth.clone(), 0)),
                 })
             }
             StringScanResult::UnterminatedString {
@@ -943,7 +952,7 @@ pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) ->
                     make_file_span(source.file.clone(), span_start.clone(), end_pos.clone()),
                     TokenShape::ShUnknown,
                 );
-                Rc::new(ScanResult {
+                Arc::new(ScanResult {
                     pos: end_pos.clone(),
                     token: token.clone(),
                     interp_depth: pos.interp_depth.clone(),
@@ -954,20 +963,20 @@ pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) ->
 }
 
 pub fn scan_string_body(
-    mut source: Rc<SourceRef>,
+    mut source: Arc<SourceRef>,
     mut pos: i64,
-    mut acc: Rc<Vec<i64>>,
-) -> Rc<StringScanResult> {
+    mut acc: Arc<Vec<i64>>,
+) -> Arc<StringScanResult> {
     loop {
         if (pos.clone() >= source_len(source.clone())) {
-            break Rc::new(StringScanResult::UnterminatedString {
+            break Arc::new(StringScanResult::UnterminatedString {
                 content: acc.clone(),
                 end_pos: pos.clone(),
             });
         } else {
             let ch = source.source_chars.clone()[(pos.clone()) as usize].clone();
             if (ch.clone() == 34) {
-                break Rc::new(StringScanResult::ClosedString {
+                break Arc::new(StringScanResult::ClosedString {
                     content: acc.clone(),
                     end_pos: pos.clone(),
                 });
@@ -1004,7 +1013,7 @@ pub fn scan_string_body(
                             }
                         }
                     } else {
-                        break Rc::new(StringScanResult::UnterminatedString {
+                        break Arc::new(StringScanResult::UnterminatedString {
                             content: v1_rt::rc_list_push(acc.clone(), 92),
                             end_pos: (pos.clone() + 1),
                         });
@@ -1012,7 +1021,7 @@ pub fn scan_string_body(
                 } else {
                     if (ch.clone() == 123) {
                         if should_start_interpolation(source.clone(), pos.clone()) {
-                            break Rc::new(StringScanResult::InterpolationStart {
+                            break Arc::new(StringScanResult::InterpolationStart {
                                 content: acc.clone(),
                                 end_pos: pos.clone(),
                             });
@@ -1040,7 +1049,7 @@ pub fn scan_string_body(
     }
 }
 
-pub fn should_start_interpolation(source: Rc<SourceRef>, pos: i64) -> bool {
+pub fn should_start_interpolation(source: Arc<SourceRef>, pos: i64) -> bool {
     if ((pos.clone() + 1) >= source_len(source.clone())) {
         false
     } else {
@@ -1052,7 +1061,7 @@ pub fn should_start_interpolation(source: Rc<SourceRef>, pos: i64) -> bool {
     }
 }
 
-pub fn process_escapes(chars: Rc<Vec<i64>>) -> Rc<EscapeProcessResult> {
+pub fn process_escapes(chars: Arc<Vec<i64>>) -> Arc<EscapeProcessResult> {
     process_escapes_loop(chars.clone(), 0, Rc::new(vec![]))
 }
 
@@ -1065,7 +1074,7 @@ pub fn code_point_at_accessor_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn code_point_at(chars: Rc<Vec<i64>>, pos: i64) -> i64 {
+pub fn code_point_at(chars: Arc<Vec<i64>>, pos: i64) -> i64 {
     chars.clone()[(pos.clone()) as usize].clone()
 }
 
@@ -1147,7 +1156,7 @@ pub struct UnicodeEscape {
 }
 
 pub fn unicode_escape_at(
-    mut source: Rc<Vec<i64>>,
+    mut source: Arc<Vec<i64>>,
     mut pos: i64,
     mut digit_count: i64,
     mut value: i64,
@@ -1191,20 +1200,20 @@ pub fn unicode_escape_at(
 }
 
 pub fn process_escapes_loop(
-    mut source: Rc<Vec<i64>>,
+    mut source: Arc<Vec<i64>>,
     mut pos: i64,
-    mut acc: Rc<Vec<i64>>,
-) -> Rc<EscapeProcessResult> {
+    mut acc: Arc<Vec<i64>>,
+) -> Arc<EscapeProcessResult> {
     loop {
         if (pos.clone() >= (source.clone().len() as i64)) {
-            break Rc::new(EscapeProcessResult::EscapesProcessed {
+            break Arc::new(EscapeProcessResult::EscapesProcessed {
                 text: v1_rt::chars_to_string(&acc, 0, (acc.clone().len() as i64)),
             });
         } else {
             let ch = code_point_at(source.clone(), pos.clone());
             if (ch.clone() == 92) {
                 if ((pos.clone() + 1) >= (source.clone().len() as i64)) {
-                    break Rc::new(EscapeProcessResult::EscapeProcessingRefused {});
+                    break Arc::new(EscapeProcessResult::EscapeProcessingRefused {});
                 } else {
                     let next = code_point_at(source.clone(), (pos.clone() + 1));
                     if ((next.clone() == 120)
@@ -1221,7 +1230,7 @@ pub fn process_escapes_loop(
                                 continue;
                             }
                             None => {
-                                break Rc::new(EscapeProcessResult::EscapeProcessingRefused {});
+                                break Arc::new(EscapeProcessResult::EscapeProcessingRefused {});
                             }
                         }
                     } else {
@@ -1239,7 +1248,9 @@ pub fn process_escapes_loop(
                                     continue;
                                 }
                                 None => {
-                                    break Rc::new(EscapeProcessResult::EscapeProcessingRefused {});
+                                    break Arc::new(
+                                        EscapeProcessResult::EscapeProcessingRefused {},
+                                    );
                                 }
                             }
                         } else {
@@ -1285,7 +1296,9 @@ pub fn process_escapes_loop(
                                     continue;
                                 }
                                 None => {
-                                    break Rc::new(EscapeProcessResult::EscapeProcessingRefused {});
+                                    break Arc::new(
+                                        EscapeProcessResult::EscapeProcessingRefused {},
+                                    );
                                 }
                             }
                         }
@@ -1304,10 +1317,10 @@ pub fn process_escapes_loop(
     }
 }
 
-pub fn drop_last(stack: Rc<Vec<i64>>) -> Rc<Vec<i64>> {
+pub fn drop_last(stack: Arc<Vec<i64>>) -> Arc<Vec<i64>> {
     {
         let len = (stack.clone().len() as i64);
-        Rc::new(
+        Arc::new(
             stack
                 .clone()
                 .iter()
@@ -1318,27 +1331,30 @@ pub fn drop_last(stack: Rc<Vec<i64>>) -> Rc<Vec<i64>> {
         )
         .iter()
         .cloned()
-        .fold(Rc::new(vec![]), |result: Rc<Vec<i64>>, pair: (i64, i64)| {
-            if (pair.0.clone() < (len.clone() - 1)) {
-                Rc::new(v1_rt::append(result.clone(), pair.1.clone()))
-            } else {
-                result.clone()
-            }
-        })
+        .fold(
+            Rc::new(vec![]),
+            |result: Arc<Vec<i64>>, pair: (i64, i64)| {
+                if (pair.0.clone() < (len.clone() - 1)) {
+                    Arc::new(v1_rt::append(result.clone(), pair.1.clone()))
+                } else {
+                    result.clone()
+                }
+            },
+        )
     }
 }
 
-pub fn replace_last(stack: Rc<Vec<i64>>, value: i64) -> Rc<Vec<i64>> {
+pub fn replace_last(stack: Arc<Vec<i64>>, value: i64) -> Arc<Vec<i64>> {
     {
         let prefix = drop_last(stack.clone());
-        Rc::new(v1_rt::append(prefix.clone(), value.clone()))
+        Arc::new(v1_rt::append(prefix.clone(), value.clone()))
     }
 }
 
-pub fn skip_spaces(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<TokPos> {
+pub fn skip_spaces(source: Arc<SourceRef>, pos: Arc<TokPos>) -> Arc<TokPos> {
     {
         let p = source_skip_ws(source.clone(), pos.pos.clone());
-        Rc::new(TokPos {
+        Arc::new(TokPos {
             pos: p.clone(),
             interp_depth: pos.interp_depth.clone(),
         })

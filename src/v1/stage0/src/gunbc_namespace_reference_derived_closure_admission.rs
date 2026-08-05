@@ -29,7 +29,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -66,7 +66,7 @@ pub struct ReferenceDerivedClosureAcceptanceReceipt {
 #[serde(tag = "_variant")]
 pub enum ReferenceDerivedClosureAdmission {
     ReferenceDerivedClosureEstablished {
-        receipt: Rc<ReferenceDerivedClosureAcceptanceReceipt>,
+        receipt: Arc<ReferenceDerivedClosureAcceptanceReceipt>,
     },
     ReferenceDerivedClosureRefused {
         capability: ReferenceDerivedClosureCapability,
@@ -88,7 +88,7 @@ pub enum ReferenceDerivedClosureTrigger {
     P2aPoolIndependentDependencyProjection7515,
 }
 
-pub fn file_present(xs: Rc<Vec<String>>, wanted: String) -> bool {
+pub fn file_present(xs: Arc<Vec<String>>, wanted: String) -> bool {
     {
         let mut __found = false;
         for x in xs.clone().iter().cloned() {
@@ -103,10 +103,10 @@ pub fn file_present(xs: Rc<Vec<String>>, wanted: String) -> bool {
 
 pub fn established(
     capability: ReferenceDerivedClosureCapability,
-) -> Rc<ReferenceDerivedClosureAdmission> {
-    Rc::new(
+) -> Arc<ReferenceDerivedClosureAdmission> {
+    Arc::new(
         ReferenceDerivedClosureAdmission::ReferenceDerivedClosureEstablished {
-            receipt: Rc::new(ReferenceDerivedClosureAcceptanceReceipt {
+            receipt: Arc::new(ReferenceDerivedClosureAcceptanceReceipt {
                 capability: capability.clone(),
             }),
         },
@@ -116,8 +116,8 @@ pub fn established(
 pub fn refused(
     capability: ReferenceDerivedClosureCapability,
     failure: ReferenceDerivedClosureScenarioFailure,
-) -> Rc<ReferenceDerivedClosureAdmission> {
-    Rc::new(
+) -> Arc<ReferenceDerivedClosureAdmission> {
+    Arc::new(
         ReferenceDerivedClosureAdmission::ReferenceDerivedClosureRefused {
             capability: capability.clone(),
             failure: failure.clone(),
@@ -126,8 +126,8 @@ pub fn refused(
 }
 
 pub fn binding_outcome_from_resolution(
-    resolution: Rc<StructuralBindingResolution>,
-) -> Option<Rc<OccurrenceReferenceBindingOutcome>> {
+    resolution: Arc<StructuralBindingResolution>,
+) -> Option<Arc<OccurrenceReferenceBindingOutcome>> {
     match (*resolution.clone()).clone() {
         StructuralBindingResolution::StructuralBindingResolved {
             binding_outcome: binding_outcome,
@@ -138,8 +138,8 @@ pub fn binding_outcome_from_resolution(
 }
 
 pub fn assess_reference_binding_observation(
-    observation: Rc<ReferenceBindingObservation>,
-) -> Rc<ReferenceDerivedClosureAdmission> {
+    observation: Arc<ReferenceBindingObservation>,
+) -> Arc<ReferenceDerivedClosureAdmission> {
     match (*observation.clone()).clone() {
         ReferenceBindingObservation::SameFileNeighbourProductionRefused { gap: _, .. } => refused(
             ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible,

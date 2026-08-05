@@ -22,7 +22,7 @@ pub use crate::v1_std_core::{InternTable, NewlineIndex};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn v1_annotation_erasure_offline_recipe() -> String {
     thread_local! {
@@ -82,14 +82,14 @@ pub fn parse_in_scope(
     source: String,
     file: String,
     allocator: OccurrenceIdAllocator,
-    table: Rc<InternTable>,
-) -> Rc<ParseWithTableResult> {
+    table: Arc<InternTable>,
+) -> Arc<ParseWithTableResult> {
     parse_with_table_in_occurrence_scope(
         tokenize_artifact(source.clone(), file.clone())
             .tokens
             .clone(),
         v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
             file.clone(),
             build_newline_index(file.clone(), source.clone()),
         ),
@@ -107,7 +107,7 @@ pub fn scope_threading_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn first_then_second(first_source: String, second_source: String) -> Rc<ParseWithTableResult> {
+pub fn first_then_second(first_source: String, second_source: String) -> Arc<ParseWithTableResult> {
     {
         let first = parse_in_scope(
             first_source.clone(),
@@ -124,7 +124,7 @@ pub fn first_then_second(first_source: String, second_source: String) -> Rc<Pars
     }
 }
 
-pub fn first_only(first_source: String) -> Rc<ParseWithTableResult> {
+pub fn first_only(first_source: String) -> Arc<ParseWithTableResult> {
     parse_in_scope(
         first_source.clone(),
         "one.dag".to_string(),
@@ -142,7 +142,7 @@ pub fn identity_rendering_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn render_identities(transport: Rc<OccurrenceTransport>) -> String {
+pub fn render_identities(transport: Arc<OccurrenceTransport>) -> String {
     transport
         .index
         .clone()
@@ -152,7 +152,7 @@ pub fn render_identities(transport: Rc<OccurrenceTransport>) -> String {
         .cloned()
         .fold(
             "".to_string(),
-            |acc: String, entry: Rc<OccurrenceIndexEntry>| {
+            |acc: String, entry: Arc<OccurrenceIndexEntry>| {
                 v1_rt::concat(
                     acc,
                     v1_rt::concat(
@@ -264,7 +264,7 @@ pub fn slice_at_declaration(source: String, name: String) -> String {
             .cloned()
             .fold(
                 "<missing>".to_string(),
-                |acc: String, entry: Rc<OccurrenceIndexEntry>| {
+                |acc: String, entry: Arc<OccurrenceIndexEntry>| {
                     if (entry.projection.clone().authored_name.clone() == name.clone()) {
                         v1_rt::substring(
                             &source,

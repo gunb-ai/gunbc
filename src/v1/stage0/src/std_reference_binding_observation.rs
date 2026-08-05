@@ -33,7 +33,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn reference_binding_observation_note() -> String {
     thread_local! {
@@ -48,19 +48,19 @@ pub fn reference_binding_observation_note() -> String {
 #[serde(tag = "_variant")]
 pub enum StructuralBindingResolution {
     StructuralBindingResolved {
-        binding_outcome: Rc<OccurrenceReferenceBindingOutcome>,
+        binding_outcome: Arc<OccurrenceReferenceBindingOutcome>,
     },
     StructuralBindingIndexTransportRefused {
-        refusal: Rc<OccurrenceTransportRefusal>,
+        refusal: Arc<OccurrenceTransportRefusal>,
     },
     StructuralBindingIndexModulePathRefused {
-        refusal: Rc<OccurrenceModulePathIndexRefusal>,
+        refusal: Arc<OccurrenceModulePathIndexRefusal>,
     },
     StructuralBindingIndexExposureRefused {
-        refusal: Rc<DeclarationExposureIndexRefusal>,
+        refusal: Arc<DeclarationExposureIndexRefusal>,
     },
     StructuralBindingIndexAuthoredOrderRefused {
-        refusal: Rc<AuthoredOrderIndexRefusal>,
+        refusal: Arc<AuthoredOrderIndexRefusal>,
     },
     StructuralBindingIndexDeclarationBucketRefused {
         occurrence: OccurrenceId,
@@ -85,7 +85,7 @@ pub enum ReferenceBindingProductionGap {
 pub enum ReferenceBindingObservation {
     SameFileNeighbourObservation {
         neighbour: OccurrenceId,
-        resolution: Rc<StructuralBindingResolution>,
+        resolution: Arc<StructuralBindingResolution>,
     },
     SameFileNeighbourProductionRefused {
         gap: ReferenceBindingProductionGap,
@@ -93,14 +93,14 @@ pub enum ReferenceBindingObservation {
     SiblingBranchObservation {
         own_branch_declaration: OccurrenceId,
         sibling_branch_declaration: OccurrenceId,
-        resolution: Rc<StructuralBindingResolution>,
+        resolution: Arc<StructuralBindingResolution>,
     },
     SiblingBranchProductionRefused {
         gap: ReferenceBindingProductionGap,
     },
     LaterDeclarationObservation {
         later_declaration: OccurrenceId,
-        resolution: Rc<StructuralBindingResolution>,
+        resolution: Arc<StructuralBindingResolution>,
     },
     LaterDeclarationProductionRefused {
         gap: ReferenceBindingProductionGap,
@@ -108,30 +108,30 @@ pub enum ReferenceBindingObservation {
     DistinctHomonymObservation {
         first_declaration: OccurrenceId,
         second_declaration: OccurrenceId,
-        resolution: Rc<StructuralBindingResolution>,
+        resolution: Arc<StructuralBindingResolution>,
     },
     DistinctHomonymProductionRefused {
         gap: ReferenceBindingProductionGap,
     },
     RepeatedMentionDependencyObservation {
         provider_file: FilePath,
-        projected_dependencies: Rc<Vec<FilePath>>,
+        projected_dependencies: Arc<Vec<FilePath>>,
     },
     UnrelatedLoadedFileObservation {
         provider_file: FilePath,
         unrelated_loaded_file: FilePath,
-        projected_dependencies: Rc<Vec<FilePath>>,
+        projected_dependencies: Arc<Vec<FilePath>>,
     },
 }
 
 pub fn structural_binding_resolution_from_candidates(
-    transport: Rc<OccurrenceTransport>,
-    inputs: Rc<OccurrenceBindingCandidateInputs>,
-    reference: Rc<ReferenceOccurrence>,
-) -> Rc<StructuralBindingResolution> {
+    transport: Arc<OccurrenceTransport>,
+    inputs: Arc<OccurrenceBindingCandidateInputs>,
+    reference: Arc<ReferenceOccurrence>,
+) -> Arc<StructuralBindingResolution> {
     match (*occurrence_candidate_index_build(transport.clone(), inputs.clone())).clone() {
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady { index: index, .. } => {
-            Rc::new(StructuralBindingResolution::StructuralBindingResolved {
+            Arc::new(StructuralBindingResolution::StructuralBindingResolved {
                 binding_outcome: resolve_reference_occurrence_binding(
                     transport.clone(),
                     reference.occurrence.clone(),
@@ -142,7 +142,7 @@ pub fn structural_binding_resolution_from_candidates(
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexTransportRefused {
             refusal: refusal,
             ..
-        } => Rc::new(
+        } => Arc::new(
             StructuralBindingResolution::StructuralBindingIndexTransportRefused {
                 refusal: refusal.clone(),
             },
@@ -150,7 +150,7 @@ pub fn structural_binding_resolution_from_candidates(
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexModulePathRefused {
             refusal: refusal,
             ..
-        } => Rc::new(
+        } => Arc::new(
             StructuralBindingResolution::StructuralBindingIndexModulePathRefused {
                 refusal: refusal.clone(),
             },
@@ -158,7 +158,7 @@ pub fn structural_binding_resolution_from_candidates(
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexExposureRefused {
             refusal: refusal,
             ..
-        } => Rc::new(
+        } => Arc::new(
             StructuralBindingResolution::StructuralBindingIndexExposureRefused {
                 refusal: refusal.clone(),
             },
@@ -166,7 +166,7 @@ pub fn structural_binding_resolution_from_candidates(
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexAuthoredOrderRefused {
             refusal: refusal,
             ..
-        } => Rc::new(
+        } => Arc::new(
             StructuralBindingResolution::StructuralBindingIndexAuthoredOrderRefused {
                 refusal: refusal.clone(),
             },
@@ -174,7 +174,7 @@ pub fn structural_binding_resolution_from_candidates(
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexDeclarationBucketRefused {
             occurrence: occurrence,
             ..
-        } => Rc::new(
+        } => Arc::new(
             StructuralBindingResolution::StructuralBindingIndexDeclarationBucketRefused {
                 occurrence: occurrence.clone(),
             },

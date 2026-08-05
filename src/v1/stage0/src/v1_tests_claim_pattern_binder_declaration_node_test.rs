@@ -34,7 +34,7 @@ pub use crate::v1_std_core::{CompilerDiagnostic, ExprData, MatchPattern, Newline
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn pattern_binder_declaration_node_parser_transport_enrollment() -> String {
     thread_local! {
@@ -48,11 +48,11 @@ pub fn pattern_binder_declaration_node_parser_transport_enrollment() -> String {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ParsedFixturePattern {
-    ParsedFixturePatternReady { pattern: Rc<MatchPattern> },
+    ParsedFixturePatternReady { pattern: Arc<MatchPattern> },
     ParsedFixturePatternRefused,
 }
 impl ParsedFixturePattern {
-    pub fn pattern(&self) -> Rc<MatchPattern> {
+    pub fn pattern(&self) -> Arc<MatchPattern> {
         match self {
             ParsedFixturePattern::ParsedFixturePatternReady { pattern: __val, .. } => __val.clone(),
             ParsedFixturePattern::ParsedFixturePatternRefused => {
@@ -62,15 +62,15 @@ impl ParsedFixturePattern {
     }
 }
 
-pub fn parse_fixture_pattern(source: String) -> Rc<ParsedFixturePattern> {
+pub fn parse_fixture_pattern(source: String) -> Arc<ParsedFixturePattern> {
     {
         let file = "pattern-binder-declaration-node.dag".to_string();
         let index = build_newline_index(file.clone(), source.clone());
         let result = parse_pattern(
             token_stream_new(tokenize(source.clone(), file.clone())),
-            Rc::new(ParseContext {
+            Arc::new(ParseContext {
                 source_indices: v1_rt::rc_map_insert(
-                    v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                    v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
                     file.clone(),
                     index.clone(),
                 ),
@@ -82,15 +82,15 @@ pub fn parse_fixture_pattern(source: String) -> Rc<ParsedFixturePattern> {
             }),
         );
         match result.err.clone() {
-            Some(_) => Rc::new(ParsedFixturePattern::ParsedFixturePatternRefused),
-            None => Rc::new(ParsedFixturePattern::ParsedFixturePatternReady {
+            Some(_) => Arc::new(ParsedFixturePattern::ParsedFixturePatternRefused),
+            None => Arc::new(ParsedFixturePattern::ParsedFixturePatternReady {
                 pattern: result.pattern.clone(),
             }),
         }
     }
 }
 
-pub fn pattern_binder_named_count(pattern: Rc<MatchPattern>, name: String) -> i64 {
+pub fn pattern_binder_named_count(pattern: Arc<MatchPattern>, name: String) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*pattern.clone()).clone() {
             MatchPattern::Bind {
@@ -112,7 +112,7 @@ pub fn pattern_binder_named_count(pattern: Rc<MatchPattern>, name: String) -> i6
                 .clone()
                 .iter()
                 .cloned()
-                .fold(0, |count: i64, binding: Rc<Node>| {
+                .fold(0, |count: i64, binding: Arc<Node>| {
                     (count
                         + pattern_binder_named_count(
                             field_binding_pattern(binding.clone()),
@@ -132,24 +132,24 @@ pub fn parsed_pattern_has_one_binder(source: String, name: String) -> bool {
     }
 }
 
-pub fn transport_fixture_span() -> Rc<SourceSpan> {
-    Rc::new(SourceSpan {
+pub fn transport_fixture_span() -> Arc<SourceSpan> {
+    Arc::new(SourceSpan {
         file: "occurrence-transport-production.dag".to_string(),
         start: 7,
         end: 8,
     })
 }
 
-pub fn transport_fixture_path(occurrence: OccurrenceId) -> Rc<OccurrenceContainmentPath> {
-    Rc::new(OccurrenceContainmentPath {
+pub fn transport_fixture_path(occurrence: OccurrenceId) -> Arc<OccurrenceContainmentPath> {
+    Arc::new(OccurrenceContainmentPath {
         ancestors: Rc::new(vec![]),
         terminal: occurrence.clone(),
     })
 }
 
-pub fn transport_fixture_index_entry(occurrence: OccurrenceId) -> Rc<OccurrenceIndexEntry> {
-    Rc::new(OccurrenceIndexEntry {
-        projection: Rc::new(OccurrenceProjection {
+pub fn transport_fixture_index_entry(occurrence: OccurrenceId) -> Arc<OccurrenceIndexEntry> {
+    Arc::new(OccurrenceIndexEntry {
+        projection: Arc::new(OccurrenceProjection {
             occurrence: occurrence.clone(),
             authored_name: "same".to_string(),
             diagnostic_span: transport_fixture_span(),
@@ -158,8 +158,8 @@ pub fn transport_fixture_index_entry(occurrence: OccurrenceId) -> Rc<OccurrenceI
     })
 }
 
-pub fn transport_fixture_declaration(occurrence: OccurrenceId) -> Rc<DeclarationOccurrence> {
-    Rc::new(DeclarationOccurrence {
+pub fn transport_fixture_declaration(occurrence: OccurrenceId) -> Arc<DeclarationOccurrence> {
+    Arc::new(DeclarationOccurrence {
         occurrence: occurrence.clone(),
         containment: transport_fixture_path(occurrence.clone()),
         category: OccurrenceCategory::LexicalValueOccurrence,
@@ -167,8 +167,8 @@ pub fn transport_fixture_declaration(occurrence: OccurrenceId) -> Rc<Declaration
     })
 }
 
-pub fn transport_fixture_reference(occurrence: OccurrenceId) -> Rc<ReferenceOccurrence> {
-    Rc::new(ReferenceOccurrence {
+pub fn transport_fixture_reference(occurrence: OccurrenceId) -> Arc<ReferenceOccurrence> {
+    Arc::new(ReferenceOccurrence {
         occurrence: occurrence.clone(),
         containment: transport_fixture_path(occurrence.clone()),
         category: OccurrenceCategory::CallableOccurrence,
@@ -177,13 +177,13 @@ pub fn transport_fixture_reference(occurrence: OccurrenceId) -> Rc<ReferenceOccu
 }
 
 pub fn occurrence_index_has_name(
-    index: Rc<OccurrenceIndex>,
+    index: Arc<OccurrenceIndex>,
     occurrence: OccurrenceId,
     name: String,
 ) -> bool {
     index.entries.clone().iter().cloned().fold(
         false,
-        |found: bool, entry: Rc<OccurrenceIndexEntry>| {
+        |found: bool, entry: Arc<OccurrenceIndexEntry>| {
             (found
                 || ((entry.projection.clone().occurrence.clone().value.clone()
                     == occurrence.value.clone())
@@ -192,10 +192,10 @@ pub fn occurrence_index_has_name(
     )
 }
 
-pub fn lexical_declaration_count_named(transport: Rc<OccurrenceTransport>, name: String) -> i64 {
+pub fn lexical_declaration_count_named(transport: Arc<OccurrenceTransport>, name: String) -> i64 {
     transport.declarations.clone().iter().cloned().fold(
         0,
-        |total: i64, declaration: Rc<DeclarationOccurrence>| match declaration.category.clone() {
+        |total: i64, declaration: Arc<DeclarationOccurrence>| match declaration.category.clone() {
             OccurrenceCategory::LexicalValueOccurrence => {
                 if occurrence_index_has_name(
                     transport.index.clone(),
@@ -212,10 +212,10 @@ pub fn lexical_declaration_count_named(transport: Rc<OccurrenceTransport>, name:
     )
 }
 
-pub fn lexical_reference_count_named(transport: Rc<OccurrenceTransport>, name: String) -> i64 {
+pub fn lexical_reference_count_named(transport: Arc<OccurrenceTransport>, name: String) -> i64 {
     transport.references.clone().iter().cloned().fold(
         0,
-        |total: i64, reference: Rc<ReferenceOccurrence>| match reference.category.clone() {
+        |total: i64, reference: Arc<ReferenceOccurrence>| match reference.category.clone() {
             OccurrenceCategory::LexicalValueOccurrence => {
                 if occurrence_index_has_name(
                     transport.index.clone(),
@@ -232,10 +232,10 @@ pub fn lexical_reference_count_named(transport: Rc<OccurrenceTransport>, name: S
     )
 }
 
-pub fn type_reference_count_named(transport: Rc<OccurrenceTransport>, name: String) -> i64 {
+pub fn type_reference_count_named(transport: Arc<OccurrenceTransport>, name: String) -> i64 {
     transport.references.clone().iter().cloned().fold(
         0,
-        |total: i64, reference: Rc<ReferenceOccurrence>| match reference.category.clone() {
+        |total: i64, reference: Arc<ReferenceOccurrence>| match reference.category.clone() {
             OccurrenceCategory::TypeOccurrence => {
                 if occurrence_index_has_name(
                     transport.index.clone(),
@@ -285,7 +285,7 @@ pub fn w_shorthand_wrapper_and_declaration_roles_remain_distinct() -> bool {
                 (((bindings.clone().len() as i64) == 1)
                     && bindings.clone().iter().cloned().fold(
                         true,
-                        |ok: bool, wrapper: Rc<Node>| {
+                        |ok: bool, wrapper: Arc<Node>| {
                             ((ok && (wrapper.name.clone() == "shorthand_only".to_string()))
                                 && match (*field_binding_pattern(wrapper.clone())).clone() {
                                     MatchPattern::Bind {
@@ -320,7 +320,7 @@ pub fn w_let_initializer_retains_lexical_reference_category() -> bool {
         let parsed = parse_with_table(
             tokenize(source.clone(), file.clone()),
             v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
                 file.clone(),
                 build_newline_index(file.clone(), source.clone()),
             ),
@@ -350,7 +350,7 @@ pub fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> bool 
         let first = parse_with_table(
             tokenize(first_source.clone(), first_file.clone()),
             v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
                 first_file.clone(),
                 build_newline_index(first_file.clone(), first_source.clone()),
             ),
@@ -362,7 +362,7 @@ pub fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> bool 
         let second = parse_with_table(
             tokenize(second_source.clone(), second_file.clone()),
             v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
                 second_file.clone(),
                 build_newline_index(second_file.clone(), second_source.clone()),
             ),
@@ -377,7 +377,7 @@ pub fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> bool 
             .clone()
             .iter()
             .cloned()
-            .fold(true, |outer_ok: bool, left: Rc<OccurrenceIndexEntry>| {
+            .fold(true, |outer_ok: bool, left: Arc<OccurrenceIndexEntry>| {
                 (outer_ok
                     && second
                         .occurrence_transport
@@ -388,7 +388,7 @@ pub fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> bool 
                         .clone()
                         .iter()
                         .cloned()
-                        .fold(true, |inner_ok: bool, right: Rc<OccurrenceIndexEntry>| {
+                        .fold(true, |inner_ok: bool, right: Arc<OccurrenceIndexEntry>| {
                             (inner_ok
                                 && (left.projection.clone().occurrence.clone().value.clone()
                                     != right.projection.clone().occurrence.clone().value.clone()))
@@ -403,7 +403,7 @@ pub fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> bool 
             .clone()
             .iter()
             .cloned()
-            .fold(true, |ok: bool, entry: Rc<OccurrenceIndexEntry>| {
+            .fold(true, |ok: bool, entry: Arc<OccurrenceIndexEntry>| {
                 (ok && (entry.projection.clone().occurrence.clone().value.clone()
                     >= first.occurrence_allocator.clone().next_id.clone()))
             });
@@ -477,7 +477,7 @@ pub fn w_parse_error_preserves_authored_token_ordinal_space() -> bool {
         let parsed = parse_with_table(
             tokenize(source.clone(), file.clone()),
             v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
                 file.clone(),
                 build_newline_index(file.clone(), source.clone()),
             ),
@@ -502,9 +502,9 @@ pub fn w_production_frontend_accepts_valid_occurrence_transport() -> bool {
     {
         let result = resolve_frontend_occurrence_transport(
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-            Rc::new(OccurrenceTransport {
-                index: Rc::new(OccurrenceIndex {
+            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
+            Arc::new(OccurrenceTransport {
+                index: Arc::new(OccurrenceIndex {
                     entries: Rc::new(vec![]),
                 }),
                 declarations: Rc::new(vec![]),
@@ -520,9 +520,9 @@ pub fn w_production_frontend_refuses_missing_occurrence_identity() -> bool {
         let occurrence = OccurrenceId { value: 17 };
         let result = resolve_frontend_occurrence_transport(
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-            Rc::new(OccurrenceTransport {
-                index: Rc::new(OccurrenceIndex {
+            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
+            Arc::new(OccurrenceTransport {
+                index: Arc::new(OccurrenceIndex {
                     entries: Rc::new(vec![]),
                 }),
                 declarations: Rc::new(vec![transport_fixture_declaration(occurrence.clone())]),
@@ -555,9 +555,9 @@ pub fn w_production_frontend_refuses_duplicate_occurrence_identity() -> bool {
         let entry = transport_fixture_index_entry(occurrence.clone());
         let result = resolve_frontend_occurrence_transport(
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-            Rc::new(OccurrenceTransport {
-                index: Rc::new(OccurrenceIndex {
+            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
+            Arc::new(OccurrenceTransport {
+                index: Arc::new(OccurrenceIndex {
                     entries: Rc::new(vec![entry.clone(), entry.clone()]),
                 }),
                 declarations: Rc::new(vec![transport_fixture_declaration(occurrence.clone())]),
@@ -591,9 +591,9 @@ pub fn w_production_frontend_refuses_wrong_occurrence_role() -> bool {
         let occurrence = OccurrenceId { value: 29 };
         let result = resolve_frontend_occurrence_transport(
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-            Rc::new(OccurrenceTransport {
-                index: Rc::new(OccurrenceIndex {
+            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
+            Arc::new(OccurrenceTransport {
+                index: Arc::new(OccurrenceIndex {
                     entries: Rc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
                 }),
                 declarations: Rc::new(vec![transport_fixture_declaration(occurrence.clone())]),
@@ -631,10 +631,10 @@ pub fn w_production_frontend_refuses_index_terminal_mismatch() -> bool {
         let entry = transport_fixture_index_entry(occurrence.clone());
         let result = resolve_frontend_occurrence_transport(
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-            Rc::new(OccurrenceTransport {
-                index: Rc::new(OccurrenceIndex {
-                    entries: Rc::new(vec![Rc::new(OccurrenceIndexEntry {
+            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
+            Arc::new(OccurrenceTransport {
+                index: Arc::new(OccurrenceIndex {
+                    entries: Rc::new(vec![Arc::new(OccurrenceIndexEntry {
                         projection: entry.projection.clone(),
                         containment: transport_fixture_path(mismatched_terminal.clone()),
                     })]),
@@ -672,14 +672,14 @@ pub fn w_production_frontend_refuses_ancestor_path_mismatch() -> bool {
         let declaration = transport_fixture_declaration(occurrence.clone());
         let result = resolve_frontend_occurrence_transport(
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-            Rc::new(OccurrenceTransport {
-                index: Rc::new(OccurrenceIndex {
+            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
+            Arc::new(OccurrenceTransport {
+                index: Arc::new(OccurrenceIndex {
                     entries: Rc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
                 }),
-                declarations: Rc::new(vec![Rc::new(DeclarationOccurrence {
+                declarations: Rc::new(vec![Arc::new(DeclarationOccurrence {
                     occurrence: declaration.occurrence.clone(),
-                    containment: Rc::new(OccurrenceContainmentPath {
+                    containment: Arc::new(OccurrenceContainmentPath {
                         ancestors: Rc::new(vec![ancestor.clone()]),
                         terminal: occurrence.clone(),
                     }),
@@ -717,9 +717,9 @@ pub fn w_production_frontend_refuses_duplicate_declaration_rows() -> bool {
         let declaration = transport_fixture_declaration(occurrence.clone());
         let result = resolve_frontend_occurrence_transport(
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-            Rc::new(OccurrenceTransport {
-                index: Rc::new(OccurrenceIndex {
+            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
+            Arc::new(OccurrenceTransport {
+                index: Arc::new(OccurrenceIndex {
                     entries: Rc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
                 }),
                 declarations: Rc::new(vec![declaration.clone(), declaration.clone()]),
@@ -754,9 +754,9 @@ pub fn w_production_frontend_refuses_duplicate_reference_rows() -> bool {
         let reference = transport_fixture_reference(occurrence.clone());
         let result = resolve_frontend_occurrence_transport(
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-            Rc::new(OccurrenceTransport {
-                index: Rc::new(OccurrenceIndex {
+            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
+            Arc::new(OccurrenceTransport {
+                index: Arc::new(OccurrenceIndex {
                     entries: Rc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
                 }),
                 declarations: Rc::new(vec![]),

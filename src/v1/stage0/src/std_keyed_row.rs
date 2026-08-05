@@ -7,7 +7,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn keyed_row_note() -> String {
     thread_local! {
@@ -26,14 +26,14 @@ pub struct KeyedRow<K: Clone, V: Clone> {
 }
 
 pub fn keyed_row_find<K: Clone, V: Clone>(
-    rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
+    rows: Arc<Vec<Arc<KeyedRow<K, V>>>>,
     wanted_key: K,
     key_eq: impl Fn(K, K) -> bool + Clone,
-) -> Option<Rc<KeyedRow<K, V>>> {
+) -> Option<Arc<KeyedRow<K, V>>> {
     rows.clone()
         .iter()
         .cloned()
-        .fold(None, |acc: _, row: Rc<KeyedRow<K, V>>| {
+        .fold(None, |acc: _, row: Arc<KeyedRow<K, V>>| {
             if key_eq(row.row_key.clone(), wanted_key.clone()) {
                 Some(row.clone())
             } else {

@@ -21,7 +21,7 @@ use crate::v1_std_core::CompilerDiagnostic::SourceAnnotationRefused;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn annotation_bind_authority_note() -> String {
     thread_local! {
@@ -41,13 +41,13 @@ pub fn module_item_roster_source_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn entry_ancestor_depth(entry: Rc<OccurrenceIndexEntry>) -> i64 {
+pub fn entry_ancestor_depth(entry: Arc<OccurrenceIndexEntry>) -> i64 {
     (entry.containment.clone().ancestors.clone().len() as i64)
 }
 
 pub fn module_item_entries(
-    transport: Rc<OccurrenceTransport>,
-) -> Rc<Vec<Rc<OccurrenceIndexEntry>>> {
+    transport: Arc<OccurrenceTransport>,
+) -> Arc<Vec<Arc<OccurrenceIndexEntry>>> {
     transport
         .index
         .clone()
@@ -57,7 +57,7 @@ pub fn module_item_entries(
         .cloned()
         .fold(
             Rc::new(vec![]),
-            |acc: Rc<Vec<Rc<OccurrenceIndexEntry>>>, entry: Rc<OccurrenceIndexEntry>| {
+            |acc: Arc<Vec<Arc<OccurrenceIndexEntry>>>, entry: Arc<OccurrenceIndexEntry>| {
                 if (entry_ancestor_depth(entry.clone()) == 1) {
                     v1_rt::rc_list_push(acc.clone(), entry.clone())
                 } else {
@@ -77,13 +77,13 @@ pub fn subject_extent_derivation_note() -> String {
 }
 
 pub fn next_module_item_start(
-    items: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
+    items: Arc<Vec<Arc<OccurrenceIndexEntry>>>,
     after: i64,
     fallback: i64,
 ) -> i64 {
     items.clone().iter().cloned().fold(
         fallback.clone(),
-        |best: i64, entry: Rc<OccurrenceIndexEntry>| {
+        |best: i64, entry: Arc<OccurrenceIndexEntry>| {
             let start = entry
                 .projection
                 .clone()
@@ -101,14 +101,14 @@ pub fn next_module_item_start(
 }
 
 pub fn module_item_extent_end(
-    entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
+    entries: Arc<Vec<Arc<OccurrenceIndexEntry>>>,
     start: i64,
     limit: i64,
     own_end: i64,
 ) -> i64 {
     entries.clone().iter().cloned().fold(
         own_end.clone(),
-        |best: i64, entry: Rc<OccurrenceIndexEntry>| {
+        |best: i64, entry: Arc<OccurrenceIndexEntry>| {
             let entry_start = entry
                 .projection
                 .clone()
@@ -129,21 +129,21 @@ pub fn module_item_extent_end(
 }
 
 pub fn annotation_subjects(
-    transport: Rc<OccurrenceTransport>,
+    transport: Arc<OccurrenceTransport>,
     source_length: i64,
-) -> Rc<Vec<Rc<AnnotationSubject>>> {
+) -> Arc<Vec<Arc<AnnotationSubject>>> {
     {
         let entries = transport.index.clone().entries.clone();
         let items = module_item_entries(transport.clone());
         entries.clone().iter().cloned().fold(
             Rc::new(vec![]),
-            |acc: Rc<Vec<Rc<AnnotationSubject>>>, entry: Rc<OccurrenceIndexEntry>| {
+            |acc: Arc<Vec<Arc<AnnotationSubject>>>, entry: Arc<OccurrenceIndexEntry>| {
                 let depth = entry_ancestor_depth(entry.clone());
                 let span = entry.projection.clone().diagnostic_span.clone();
                 if (depth.clone() == 0) {
                     v1_rt::rc_list_push(
                         acc.clone(),
-                        Rc::new(AnnotationSubject {
+                        Arc::new(AnnotationSubject {
                             occurrence: entry.projection.clone().occurrence.clone(),
                             span: span.clone(),
                         }),
@@ -158,9 +158,9 @@ pub fn annotation_subjects(
                             );
                             v1_rt::rc_list_push(
                                 acc.clone(),
-                                Rc::new(AnnotationSubject {
+                                Arc::new(AnnotationSubject {
                                     occurrence: entry.projection.clone().occurrence.clone(),
-                                    span: Rc::new(SourceSpan {
+                                    span: Arc::new(SourceSpan {
                                         file: span.file.clone(),
                                         start: span.start.clone(),
                                         end: module_item_extent_end(
@@ -207,9 +207,9 @@ pub fn strip_line_comment_delimiter(lexeme: String) -> String {
 }
 
 pub fn normalize_dag_annotation(
-    capture: Rc<UnboundAnnotationCapture>,
-) -> Rc<NormalizedAnnotationCapture> {
-    Rc::new(NormalizedAnnotationCapture {
+    capture: Arc<UnboundAnnotationCapture>,
+) -> Arc<NormalizedAnnotationCapture> {
+    Arc::new(NormalizedAnnotationCapture {
         text: strip_line_comment_delimiter(capture.lexeme.clone()),
         origin: capture.origin.clone(),
         placement: capture.placement.clone(),
@@ -227,15 +227,15 @@ pub fn bind_annotations_note() -> String {
 }
 
 pub fn bind_annotations(
-    transport: Rc<OccurrenceTransport>,
-    captures: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
+    transport: Arc<OccurrenceTransport>,
+    captures: Arc<Vec<Arc<UnboundAnnotationCapture>>>,
     source_length: i64,
-) -> Rc<AnnotationAttachmentResult> {
+) -> Arc<AnnotationAttachmentResult> {
     attach_annotations(
         captures.clone().iter().cloned().fold(
             Rc::new(vec![]),
-            |acc: Rc<Vec<Rc<NormalizedAnnotationCapture>>>,
-             capture: Rc<UnboundAnnotationCapture>| {
+            |acc: Arc<Vec<Arc<NormalizedAnnotationCapture>>>,
+             capture: Arc<UnboundAnnotationCapture>| {
                 v1_rt::rc_list_push(acc, normalize_dag_annotation(capture.clone()))
             },
         ),
@@ -254,15 +254,15 @@ pub fn admit_source_annotations_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AdmittedSourceAnnotations {
-    pub graph: Rc<SourceAnnotationGraph>,
-    pub diagnostics: Rc<Vec<Rc<CompilerDiagnostic>>>,
+    pub graph: Arc<SourceAnnotationGraph>,
+    pub diagnostics: Arc<Vec<Arc<CompilerDiagnostic>>>,
 }
 
 pub fn admit_source_annotations(
-    transport: Rc<OccurrenceTransport>,
-    captures: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
+    transport: Arc<OccurrenceTransport>,
+    captures: Arc<Vec<Arc<UnboundAnnotationCapture>>>,
     source_length: i64,
-) -> Rc<AdmittedSourceAnnotations> {
+) -> Arc<AdmittedSourceAnnotations> {
     match (*admit_annotations(bind_annotations(
         transport.clone(),
         captures.clone(),
@@ -271,25 +271,25 @@ pub fn admit_source_annotations(
     .clone()
     {
         AnnotationAdmission::AnnotationsAdmitted { graph: graph, .. } => {
-            Rc::new(AdmittedSourceAnnotations {
+            Arc::new(AdmittedSourceAnnotations {
                 graph: graph.clone(),
                 diagnostics: Rc::new(vec![]),
             })
         }
         AnnotationAdmission::AnnotationsRefused {
             refusals: refusals, ..
-        } => Rc::new(AdmittedSourceAnnotations {
+        } => Arc::new(AdmittedSourceAnnotations {
             graph: source_annotation_graph_empty(),
             diagnostics: non_empty_refusals_all(refusals.clone())
                 .iter()
                 .cloned()
                 .fold(
                     Rc::new(vec![]),
-                    |acc: Rc<Vec<Rc<CompilerDiagnostic>>>,
-                     refusal: Rc<AnnotationAttachmentRefusal>| {
+                    |acc: Arc<Vec<Arc<CompilerDiagnostic>>>,
+                     refusal: Arc<AnnotationAttachmentRefusal>| {
                         v1_rt::rc_list_push(
                             acc,
-                            Rc::new(CompilerDiagnostic::SourceAnnotationRefused {
+                            Arc::new(CompilerDiagnostic::SourceAnnotationRefused {
                                 refusal: refusal.clone(),
                             }),
                         )

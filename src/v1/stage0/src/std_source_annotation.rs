@@ -13,7 +13,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn source_annotation_authority_note() -> String {
     thread_local! {
@@ -54,7 +54,7 @@ pub fn unbound_annotation_capture_note() -> String {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UnboundAnnotationCapture {
     pub lexeme: String,
-    pub origin: Rc<SourceSpan>,
+    pub origin: Arc<SourceSpan>,
     pub placement: AnnotationPlacement,
     pub preceded_by_blank_line: bool,
 }
@@ -72,7 +72,7 @@ pub fn source_annotation_debt_note() -> String {
 pub struct SourceAnnotationDebt {
     pub subject: OccurrenceId,
     pub text: String,
-    pub origin: Rc<SourceSpan>,
+    pub origin: Arc<SourceSpan>,
 }
 
 pub fn source_annotation_graph_note() -> String {
@@ -86,18 +86,18 @@ pub fn source_annotation_graph_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceAnnotationGraph {
-    pub rows: Rc<Vec<Rc<SourceAnnotationDebt>>>,
+    pub rows: Arc<Vec<Arc<SourceAnnotationDebt>>>,
 }
 
-pub fn source_annotation_graph_empty() -> Rc<SourceAnnotationGraph> {
-    Rc::new(SourceAnnotationGraph {
+pub fn source_annotation_graph_empty() -> Arc<SourceAnnotationGraph> {
+    Arc::new(SourceAnnotationGraph {
         rows: Rc::new(vec![]),
     })
 }
 
 pub fn source_annotation_graph_rows(
-    graph: Rc<SourceAnnotationGraph>,
-) -> Rc<Vec<Rc<SourceAnnotationDebt>>> {
+    graph: Arc<SourceAnnotationGraph>,
+) -> Arc<Vec<Arc<SourceAnnotationDebt>>> {
     graph.rows.clone()
 }
 
@@ -111,10 +111,10 @@ pub fn source_annotation_graph_concat_note() -> String {
 }
 
 pub fn source_annotation_graph_concat(
-    left: Rc<SourceAnnotationGraph>,
-    right: Rc<SourceAnnotationGraph>,
-) -> Rc<SourceAnnotationGraph> {
-    Rc::new(SourceAnnotationGraph {
+    left: Arc<SourceAnnotationGraph>,
+    right: Arc<SourceAnnotationGraph>,
+) -> Arc<SourceAnnotationGraph> {
+    Arc::new(SourceAnnotationGraph {
         rows: v1_rt::concat(left.rows.clone(), right.rows.clone()),
     })
 }
@@ -131,12 +131,12 @@ pub fn annotation_attachment_refusal_note() -> String {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum AnnotationAttachmentRefusal {
-    UnattachedAtScopeEnd { origin: Rc<SourceSpan> },
-    TrailingNotModeled { origin: Rc<SourceSpan> },
-    BodyGrainNotModeled { origin: Rc<SourceSpan> },
+    UnattachedAtScopeEnd { origin: Arc<SourceSpan> },
+    TrailingNotModeled { origin: Arc<SourceSpan> },
+    BodyGrainNotModeled { origin: Arc<SourceSpan> },
 }
 impl AnnotationAttachmentRefusal {
-    pub fn origin(&self) -> Rc<SourceSpan> {
+    pub fn origin(&self) -> Arc<SourceSpan> {
         match self {
             AnnotationAttachmentRefusal::UnattachedAtScopeEnd { origin: __val, .. } => {
                 __val.clone()
@@ -157,8 +157,8 @@ pub fn refusal_origin_note() -> String {
 }
 
 pub fn annotation_attachment_refusal_origin(
-    refusal: Rc<AnnotationAttachmentRefusal>,
-) -> Rc<SourceSpan> {
+    refusal: Arc<AnnotationAttachmentRefusal>,
+) -> Arc<SourceSpan> {
     match (*refusal.clone()).clone() {
         AnnotationAttachmentRefusal::UnattachedAtScopeEnd { origin: origin, .. } => origin.clone(),
         AnnotationAttachmentRefusal::TrailingNotModeled { origin: origin, .. } => origin.clone(),
@@ -175,7 +175,7 @@ pub fn refusal_message_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn annotation_attachment_refusal_message(refusal: Rc<AnnotationAttachmentRefusal>) -> String {
+pub fn annotation_attachment_refusal_message(refusal: Arc<AnnotationAttachmentRefusal>) -> String {
     match (*refusal.clone()).clone() {
     AnnotationAttachmentRefusal::UnattachedAtScopeEnd { origin: _, .. } => "source annotation names no subject: no module item follows it. Move it above the declaration it describes.".to_string(),
     AnnotationAttachmentRefusal::TrailingNotModeled { origin: _, .. } => "source annotation follows code on its own line. Trailing placement has no attachment rule yet; move it to its own line above the declaration.".to_string(),
@@ -187,10 +187,10 @@ pub fn annotation_attachment_refusal_message(refusal: Rc<AnnotationAttachmentRef
 #[serde(tag = "_variant")]
 pub enum AnnotationAttachment {
     AnnotationAttached {
-        row: Rc<SourceAnnotationDebt>,
+        row: Arc<SourceAnnotationDebt>,
     },
     AnnotationRefused {
-        refusal: Rc<AnnotationAttachmentRefusal>,
+        refusal: Arc<AnnotationAttachmentRefusal>,
     },
 }
 
@@ -205,36 +205,36 @@ pub fn annotation_admission_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NonEmptyAnnotationAttachmentRefusals {
-    pub head: Rc<AnnotationAttachmentRefusal>,
-    pub tail: Rc<Vec<Rc<AnnotationAttachmentRefusal>>>,
+    pub head: Arc<AnnotationAttachmentRefusal>,
+    pub tail: Arc<Vec<Arc<AnnotationAttachmentRefusal>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum AnnotationAdmission {
     AnnotationsAdmitted {
-        graph: Rc<SourceAnnotationGraph>,
+        graph: Arc<SourceAnnotationGraph>,
     },
     AnnotationsRefused {
-        refusals: Rc<NonEmptyAnnotationAttachmentRefusals>,
+        refusals: Arc<NonEmptyAnnotationAttachmentRefusals>,
     },
 }
 
 pub fn non_empty_refusals_all(
-    refusals: Rc<NonEmptyAnnotationAttachmentRefusals>,
-) -> Rc<Vec<Rc<AnnotationAttachmentRefusal>>> {
+    refusals: Arc<NonEmptyAnnotationAttachmentRefusals>,
+) -> Arc<Vec<Arc<AnnotationAttachmentRefusal>>> {
     v1_rt::concat(Rc::new(vec![refusals.head.clone()]), refusals.tail.clone())
 }
 
-pub fn admit_annotations(result: Rc<AnnotationAttachmentResult>) -> Rc<AnnotationAdmission> {
+pub fn admit_annotations(result: Arc<AnnotationAttachmentResult>) -> Arc<AnnotationAdmission> {
     match result.refusals.clone().first().cloned() {
-        None => Rc::new(AnnotationAdmission::AnnotationsAdmitted {
+        None => Arc::new(AnnotationAdmission::AnnotationsAdmitted {
             graph: result.graph.clone(),
         }),
-        Some(head) => Rc::new(AnnotationAdmission::AnnotationsRefused {
-            refusals: Rc::new(NonEmptyAnnotationAttachmentRefusals {
+        Some(head) => Arc::new(AnnotationAdmission::AnnotationsRefused {
+            refusals: Arc::new(NonEmptyAnnotationAttachmentRefusals {
                 head: head.clone(),
-                tail: Rc::new(
+                tail: Arc::new(
                     result
                         .refusals
                         .clone()
@@ -290,7 +290,7 @@ pub fn code_point_grain_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn advance_line_prefix_indent_only(previous: bool, code_points: Rc<Vec<i64>>) -> bool {
+pub fn advance_line_prefix_indent_only(previous: bool, code_points: Arc<Vec<i64>>) -> bool {
     code_points
         .clone()
         .iter()
@@ -307,7 +307,7 @@ pub fn advance_line_prefix_indent_only(previous: bool, code_points: Rc<Vec<i64>>
 pub fn advance_line_prefix_indent_only_text(previous: bool, lexeme: String) -> bool {
     advance_line_prefix_indent_only(
         previous.clone(),
-        Rc::new(lexeme.clone().chars().map(|c| c as i64).collect::<Vec<_>>()),
+        Arc::new(lexeme.clone().chars().map(|c| c as i64).collect::<Vec<_>>()),
     )
 }
 
@@ -331,7 +331,7 @@ pub fn annotation_subject_roster_note() -> String {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AnnotationSubject {
     pub occurrence: OccurrenceId,
-    pub span: Rc<SourceSpan>,
+    pub span: Arc<SourceSpan>,
 }
 
 pub fn normalized_annotation_capture_note() -> String {
@@ -346,7 +346,7 @@ pub fn normalized_annotation_capture_note() -> String {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NormalizedAnnotationCapture {
     pub text: String,
-    pub origin: Rc<SourceSpan>,
+    pub origin: Arc<SourceSpan>,
     pub placement: AnnotationPlacement,
     pub preceded_by_blank_line: bool,
 }
@@ -362,19 +362,19 @@ pub fn annotation_attachment_result_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AnnotationAttachmentResult {
-    pub graph: Rc<SourceAnnotationGraph>,
-    pub refusals: Rc<Vec<Rc<AnnotationAttachmentRefusal>>>,
+    pub graph: Arc<SourceAnnotationGraph>,
+    pub refusals: Arc<Vec<Arc<AnnotationAttachmentRefusal>>>,
 }
 
 pub fn annotation_attachment_result_graph(
-    result: Rc<AnnotationAttachmentResult>,
-) -> Rc<SourceAnnotationGraph> {
+    result: Arc<AnnotationAttachmentResult>,
+) -> Arc<SourceAnnotationGraph> {
     result.graph.clone()
 }
 
 pub fn annotation_attachment_result_refusals(
-    result: Rc<AnnotationAttachmentResult>,
-) -> Rc<Vec<Rc<AnnotationAttachmentRefusal>>> {
+    result: Arc<AnnotationAttachmentResult>,
+) -> Arc<Vec<Arc<AnnotationAttachmentRefusal>>> {
     result.refusals.clone()
 }
 
@@ -390,23 +390,23 @@ pub fn annotation_subject_pick_note() -> String {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AnnotationSubjectPick {
     pub contained: bool,
-    pub following: Option<Rc<AnnotationSubject>>,
+    pub following: Option<Arc<AnnotationSubject>>,
 }
 
 pub fn annotation_subject_pick(
-    subjects: Rc<Vec<Rc<AnnotationSubject>>>,
-    origin: Rc<SourceSpan>,
-) -> Rc<AnnotationSubjectPick> {
+    subjects: Arc<Vec<Arc<AnnotationSubject>>>,
+    origin: Arc<SourceSpan>,
+) -> Arc<AnnotationSubjectPick> {
     subjects.clone().iter().cloned().fold(
-        Rc::new(AnnotationSubjectPick {
+        Arc::new(AnnotationSubjectPick {
             contained: false,
             following: None,
         }),
-        |acc: Rc<AnnotationSubjectPick>, subject: Rc<AnnotationSubject>| {
+        |acc: Arc<AnnotationSubjectPick>, subject: Arc<AnnotationSubject>| {
             if ((origin.start.clone() >= subject.span.clone().start.clone())
                 && (origin.end.clone() <= subject.span.clone().end.clone()))
             {
-                Rc::new(AnnotationSubjectPick {
+                Arc::new(AnnotationSubjectPick {
                     contained: true,
                     following: acc.following.clone(),
                 })
@@ -415,7 +415,7 @@ pub fn annotation_subject_pick(
                     acc.clone()
                 } else {
                     match acc.following.clone() {
-                        None => Rc::new(AnnotationSubjectPick {
+                        None => Arc::new(AnnotationSubjectPick {
                             contained: acc.contained.clone(),
                             following: Some(subject.clone()),
                         }),
@@ -423,7 +423,7 @@ pub fn annotation_subject_pick(
                             if (subject.span.clone().start.clone()
                                 < best.span.clone().start.clone())
                             {
-                                Rc::new(AnnotationSubjectPick {
+                                Arc::new(AnnotationSubjectPick {
                                     contained: acc.contained.clone(),
                                     following: Some(subject.clone()),
                                 })
@@ -449,12 +449,14 @@ pub fn annotation_block_grouping_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AnnotationAttachAcc {
-    pub rows: Rc<Vec<Rc<SourceAnnotationDebt>>>,
-    pub refusals: Rc<Vec<Rc<AnnotationAttachmentRefusal>>>,
-    pub pending: Option<Rc<SourceAnnotationDebt>>,
+    pub rows: Arc<Vec<Arc<SourceAnnotationDebt>>>,
+    pub refusals: Arc<Vec<Arc<AnnotationAttachmentRefusal>>>,
+    pub pending: Option<Arc<SourceAnnotationDebt>>,
 }
 
-pub fn annotation_attach_flush(acc: Rc<AnnotationAttachAcc>) -> Rc<Vec<Rc<SourceAnnotationDebt>>> {
+pub fn annotation_attach_flush(
+    acc: Arc<AnnotationAttachAcc>,
+) -> Arc<Vec<Arc<SourceAnnotationDebt>>> {
     match acc.pending.clone() {
         None => acc.rows.clone(),
         Some(row) => v1_rt::rc_list_push(acc.rows.clone(), row.clone()),
@@ -462,16 +464,16 @@ pub fn annotation_attach_flush(acc: Rc<AnnotationAttachAcc>) -> Rc<Vec<Rc<Source
 }
 
 pub fn annotation_attach_step(
-    acc: Rc<AnnotationAttachAcc>,
-    capture: Rc<NormalizedAnnotationCapture>,
-    subjects: Rc<Vec<Rc<AnnotationSubject>>>,
-) -> Rc<AnnotationAttachAcc> {
+    acc: Arc<AnnotationAttachAcc>,
+    capture: Arc<NormalizedAnnotationCapture>,
+    subjects: Arc<Vec<Arc<AnnotationSubject>>>,
+) -> Arc<AnnotationAttachAcc> {
     if !annotation_placement_is_attachable(capture.placement.clone()) {
-        Rc::new(AnnotationAttachAcc {
+        Arc::new(AnnotationAttachAcc {
             rows: acc.rows.clone(),
             refusals: v1_rt::rc_list_push(
                 acc.refusals.clone(),
-                Rc::new(AnnotationAttachmentRefusal::TrailingNotModeled {
+                Arc::new(AnnotationAttachmentRefusal::TrailingNotModeled {
                     origin: capture.origin.clone(),
                 }),
             ),
@@ -481,11 +483,11 @@ pub fn annotation_attach_step(
         {
             let pick = annotation_subject_pick(subjects.clone(), capture.origin.clone());
             if pick.contained.clone() {
-                Rc::new(AnnotationAttachAcc {
+                Arc::new(AnnotationAttachAcc {
                     rows: acc.rows.clone(),
                     refusals: v1_rt::rc_list_push(
                         acc.refusals.clone(),
-                        Rc::new(AnnotationAttachmentRefusal::BodyGrainNotModeled {
+                        Arc::new(AnnotationAttachmentRefusal::BodyGrainNotModeled {
                             origin: capture.origin.clone(),
                         }),
                     ),
@@ -493,11 +495,11 @@ pub fn annotation_attach_step(
                 })
             } else {
                 match pick.following.clone() {
-                    None => Rc::new(AnnotationAttachAcc {
+                    None => Arc::new(AnnotationAttachAcc {
                         rows: acc.rows.clone(),
                         refusals: v1_rt::rc_list_push(
                             acc.refusals.clone(),
-                            Rc::new(AnnotationAttachmentRefusal::UnattachedAtScopeEnd {
+                            Arc::new(AnnotationAttachmentRefusal::UnattachedAtScopeEnd {
                                 origin: capture.origin.clone(),
                             }),
                         ),
@@ -509,16 +511,16 @@ pub fn annotation_attach_step(
                                 == subject.occurrence.clone().value.clone())
                                 && !capture.preceded_by_blank_line.clone())
                             {
-                                Rc::new(AnnotationAttachAcc {
+                                Arc::new(AnnotationAttachAcc {
                                     rows: acc.rows.clone(),
                                     refusals: acc.refusals.clone(),
-                                    pending: Some(Rc::new(SourceAnnotationDebt {
+                                    pending: Some(Arc::new(SourceAnnotationDebt {
                                         subject: open.subject.clone(),
                                         text: v1_rt::concat(
                                             open.text.clone(),
                                             v1_rt::concat("\n".to_string(), capture.text.clone()),
                                         ),
-                                        origin: Rc::new(SourceSpan {
+                                        origin: Arc::new(SourceSpan {
                                             file: open.origin.clone().file.clone(),
                                             start: open.origin.clone().start.clone(),
                                             end: capture.origin.clone().end.clone(),
@@ -526,10 +528,10 @@ pub fn annotation_attach_step(
                                     })),
                                 })
                             } else {
-                                Rc::new(AnnotationAttachAcc {
+                                Arc::new(AnnotationAttachAcc {
                                     rows: v1_rt::rc_list_push(acc.rows.clone(), open.clone()),
                                     refusals: acc.refusals.clone(),
-                                    pending: Some(Rc::new(SourceAnnotationDebt {
+                                    pending: Some(Arc::new(SourceAnnotationDebt {
                                         subject: subject.occurrence.clone(),
                                         text: capture.text.clone(),
                                         origin: capture.origin.clone(),
@@ -537,10 +539,10 @@ pub fn annotation_attach_step(
                                 })
                             }
                         }
-                        None => Rc::new(AnnotationAttachAcc {
+                        None => Arc::new(AnnotationAttachAcc {
                             rows: acc.rows.clone(),
                             refusals: acc.refusals.clone(),
-                            pending: Some(Rc::new(SourceAnnotationDebt {
+                            pending: Some(Arc::new(SourceAnnotationDebt {
                                 subject: subject.occurrence.clone(),
                                 text: capture.text.clone(),
                                 origin: capture.origin.clone(),
@@ -563,22 +565,22 @@ pub fn attach_annotations_note() -> String {
 }
 
 pub fn attach_annotations(
-    captures: Rc<Vec<Rc<NormalizedAnnotationCapture>>>,
-    subjects: Rc<Vec<Rc<AnnotationSubject>>>,
-) -> Rc<AnnotationAttachmentResult> {
+    captures: Arc<Vec<Arc<NormalizedAnnotationCapture>>>,
+    subjects: Arc<Vec<Arc<AnnotationSubject>>>,
+) -> Arc<AnnotationAttachmentResult> {
     {
         let acc = captures.clone().iter().cloned().fold(
-            Rc::new(AnnotationAttachAcc {
+            Arc::new(AnnotationAttachAcc {
                 rows: Rc::new(vec![]),
                 refusals: Rc::new(vec![]),
                 pending: None,
             }),
-            |acc: Rc<AnnotationAttachAcc>, capture: Rc<NormalizedAnnotationCapture>| {
+            |acc: Arc<AnnotationAttachAcc>, capture: Arc<NormalizedAnnotationCapture>| {
                 annotation_attach_step(acc, capture.clone(), subjects.clone())
             },
         );
-        Rc::new(AnnotationAttachmentResult {
-            graph: Rc::new(SourceAnnotationGraph {
+        Arc::new(AnnotationAttachmentResult {
+            graph: Arc::new(SourceAnnotationGraph {
                 rows: annotation_attach_flush(acc.clone()),
             }),
             refusals: acc.refusals.clone(),

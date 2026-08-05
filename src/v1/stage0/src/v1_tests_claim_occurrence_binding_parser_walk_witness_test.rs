@@ -50,7 +50,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn occurrence_binding_parser_walk_witness_note() -> String {
     thread_local! {
@@ -83,14 +83,14 @@ pub fn occurrence_binding_parser_walk_dissolve_on() -> String {
 #[serde(tag = "_variant")]
 pub enum ObcpwParsed {
     ObcpwParsedReady {
-        transport: Rc<OccurrenceTransport>,
-        inputs: Rc<OccurrenceBindingCandidateInputs>,
+        transport: Arc<OccurrenceTransport>,
+        inputs: Arc<OccurrenceBindingCandidateInputs>,
         module_path: NonEmptyStr,
     },
     ObcpwParsedRefused,
 }
 impl ObcpwParsed {
-    pub fn transport(&self) -> Rc<OccurrenceTransport> {
+    pub fn transport(&self) -> Arc<OccurrenceTransport> {
         match self {
             ObcpwParsed::ObcpwParsedReady {
                 transport: __val, ..
@@ -98,7 +98,7 @@ impl ObcpwParsed {
             ObcpwParsed::ObcpwParsedRefused => panic!("no transport on unit variant"),
         }
     }
-    pub fn inputs(&self) -> Rc<OccurrenceBindingCandidateInputs> {
+    pub fn inputs(&self) -> Arc<OccurrenceBindingCandidateInputs> {
         match self {
             ObcpwParsed::ObcpwParsedReady { inputs: __val, .. } => __val.clone(),
             ObcpwParsed::ObcpwParsedRefused => panic!("no inputs on unit variant"),
@@ -114,16 +114,16 @@ impl ObcpwParsed {
     }
 }
 
-pub fn obcpw_parse(file: String, source: String) -> Rc<ObcpwParsed> {
+pub fn obcpw_parse(file: String, source: String) -> Arc<ObcpwParsed> {
     match (*parse_authored_occurrence_binding_source(file.clone(), source.clone())).clone() {
         ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => {
-            Rc::new(ObcpwParsed::ObcpwParsedRefused)
+            Arc::new(ObcpwParsed::ObcpwParsedRefused)
         }
         ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
             transport,
             module_path,
             ..
-        } => Rc::new(ObcpwParsed::ObcpwParsedReady {
+        } => Arc::new(ObcpwParsed::ObcpwParsedReady {
             transport: transport.clone(),
             module_path: module_path.clone(),
             inputs: occurrence_binding_inputs_from_transport(
@@ -164,12 +164,12 @@ pub fn obcpw_greeter_source() -> String {
 }
 
 pub fn obcpw_declarations_named(
-    transport: Rc<OccurrenceTransport>,
+    transport: Arc<OccurrenceTransport>,
     name: String,
-) -> Rc<Vec<Rc<DeclarationOccurrence>>> {
+) -> Arc<Vec<Arc<DeclarationOccurrence>>> {
     transport.declarations.clone().iter().cloned().fold(
         Rc::new(vec![]),
-        |acc: Rc<Vec<Rc<DeclarationOccurrence>>>, declaration: Rc<DeclarationOccurrence>| {
+        |acc: Arc<Vec<Arc<DeclarationOccurrence>>>, declaration: Arc<DeclarationOccurrence>| {
             match index_entry_for_declaration(transport.clone(), declaration.clone()) {
                 None => acc.clone(),
                 Some(entry) => {
@@ -184,9 +184,9 @@ pub fn obcpw_declarations_named(
 }
 
 pub fn index_entry_for_declaration(
-    transport: Rc<OccurrenceTransport>,
-    declaration: Rc<DeclarationOccurrence>,
-) -> Option<Rc<OccurrenceIndexEntry>> {
+    transport: Arc<OccurrenceTransport>,
+    declaration: Arc<DeclarationOccurrence>,
+) -> Option<Arc<OccurrenceIndexEntry>> {
     transport
         .index
         .clone()
@@ -196,7 +196,7 @@ pub fn index_entry_for_declaration(
         .cloned()
         .fold(
             None,
-            |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
+            |found: _, entry: Arc<OccurrenceIndexEntry>| match found.clone() {
                 Some(_) => found.clone(),
                 None => match (entry.projection.clone().occurrence.clone().value.clone()
                     == declaration.occurrence.clone().value.clone())
@@ -209,12 +209,12 @@ pub fn index_entry_for_declaration(
 }
 
 pub fn obcpw_references_named(
-    transport: Rc<OccurrenceTransport>,
+    transport: Arc<OccurrenceTransport>,
     name: String,
-) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
+) -> Arc<Vec<Arc<ReferenceOccurrence>>> {
     transport.references.clone().iter().cloned().fold(
         Rc::new(vec![]),
-        |acc: Rc<Vec<Rc<ReferenceOccurrence>>>, reference: Rc<ReferenceOccurrence>| {
+        |acc: Arc<Vec<Arc<ReferenceOccurrence>>>, reference: Arc<ReferenceOccurrence>| {
             match index_entry_for_reference(transport.clone(), reference.clone()) {
                 None => acc.clone(),
                 Some(entry) => {
@@ -229,9 +229,9 @@ pub fn obcpw_references_named(
 }
 
 pub fn index_entry_for_reference(
-    transport: Rc<OccurrenceTransport>,
-    reference: Rc<ReferenceOccurrence>,
-) -> Option<Rc<OccurrenceIndexEntry>> {
+    transport: Arc<OccurrenceTransport>,
+    reference: Arc<ReferenceOccurrence>,
+) -> Option<Arc<OccurrenceIndexEntry>> {
     transport
         .index
         .clone()
@@ -241,7 +241,7 @@ pub fn index_entry_for_reference(
         .cloned()
         .fold(
             None,
-            |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
+            |found: _, entry: Arc<OccurrenceIndexEntry>| match found.clone() {
                 Some(_) => found.clone(),
                 None => match (entry.projection.clone().occurrence.clone().value.clone()
                     == reference.occurrence.clone().value.clone())
@@ -254,10 +254,10 @@ pub fn index_entry_for_reference(
 }
 
 pub fn obcpw_reference_binds_to_declaration(
-    transport: Rc<OccurrenceTransport>,
-    inputs: Rc<OccurrenceBindingCandidateInputs>,
-    reference: Rc<ReferenceOccurrence>,
-    declaration: Rc<DeclarationOccurrence>,
+    transport: Arc<OccurrenceTransport>,
+    inputs: Arc<OccurrenceBindingCandidateInputs>,
+    reference: Arc<ReferenceOccurrence>,
+    declaration: Arc<DeclarationOccurrence>,
 ) -> bool {
     match (*resolve_reference_binding_via_structural_candidates(
         transport.clone(),
@@ -277,10 +277,10 @@ pub fn obcpw_reference_binds_to_declaration(
 }
 
 pub fn obcpw_reference_with_occurrence(
-    reference: Rc<ReferenceOccurrence>,
+    reference: Arc<ReferenceOccurrence>,
     occurrence: OccurrenceId,
-) -> Rc<ReferenceOccurrence> {
-    Rc::new(ReferenceOccurrence {
+) -> Arc<ReferenceOccurrence> {
+    Arc::new(ReferenceOccurrence {
         occurrence: occurrence.clone(),
         containment: reference.containment.clone(),
         category: reference.category.clone(),
@@ -289,9 +289,9 @@ pub fn obcpw_reference_with_occurrence(
 }
 
 pub fn obcpw_reference_unbound_exactly(
-    transport: Rc<OccurrenceTransport>,
-    inputs: Rc<OccurrenceBindingCandidateInputs>,
-    reference: Rc<ReferenceOccurrence>,
+    transport: Arc<OccurrenceTransport>,
+    inputs: Arc<OccurrenceBindingCandidateInputs>,
+    reference: Arc<ReferenceOccurrence>,
 ) -> bool {
     match (*resolve_reference_binding_via_structural_candidates(
         transport.clone(),
@@ -309,9 +309,9 @@ pub fn obcpw_reference_unbound_exactly(
 }
 
 pub fn obcpw_unknown_occurrence_transport_refuses(
-    transport: Rc<OccurrenceTransport>,
-    inputs: Rc<OccurrenceBindingCandidateInputs>,
-    reference: Rc<ReferenceOccurrence>,
+    transport: Arc<OccurrenceTransport>,
+    inputs: Arc<OccurrenceBindingCandidateInputs>,
+    reference: Arc<ReferenceOccurrence>,
 ) -> bool {
     match (*resolve_reference_binding_via_structural_candidates(
         transport.clone(),
@@ -328,7 +328,7 @@ pub fn obcpw_unknown_occurrence_transport_refuses(
     }
 }
 
-pub fn obcpw_candidate_ids_distinct(candidates: Rc<Vec<OccurrenceId>>) -> bool {
+pub fn obcpw_candidate_ids_distinct(candidates: Arc<Vec<OccurrenceId>>) -> bool {
     match candidates.clone().first().cloned() {
         None => false,
         Some(first) => match v1_rt::reverse(candidates.clone()).first().cloned() {
@@ -563,17 +563,17 @@ pub fn parser_transport_scoped_identity_note() -> String {
 }
 
 pub fn obcpw_bound_providers_named(
-    transport: Rc<OccurrenceTransport>,
-    inputs: Rc<OccurrenceBindingCandidateInputs>,
+    transport: Arc<OccurrenceTransport>,
+    inputs: Arc<OccurrenceBindingCandidateInputs>,
     name: String,
-) -> Rc<Vec<Rc<BoundReferenceProvider>>> {
+) -> Arc<Vec<Arc<BoundReferenceProvider>>> {
     v1_rt::reverse(
         obcpw_references_named(transport.clone(), name.clone())
             .iter()
             .cloned()
             .fold(
                 Rc::new(vec![]),
-                |acc: _, reference: Rc<ReferenceOccurrence>| {
+                |acc: _, reference: Arc<ReferenceOccurrence>| {
                     match (*resolve_reference_binding_via_structural_candidates(
                         transport.clone(),
                         inputs.clone(),
@@ -626,7 +626,7 @@ pub fn parser_repeated_bindings_project_one_module_edge_holds() -> bool {
                             }
                             None => false,
                         })
-                        && match (*direct_module_dependencies_from_bound_population(Rc::new(
+                        && match (*direct_module_dependencies_from_bound_population(Arc::new(
                             BoundReferencePopulation::AllReferencesBound {
                                 providers: providers.clone(),
                             },
@@ -731,7 +731,7 @@ pub fn parser_production_call_binds_with_edge_holds() -> bool {
                                 provider.provider_module.clone(),
                                 module_path.clone(),
                             ))
-                            && match (*direct_module_dependencies_from_bound_population(Rc::new(
+                            && match (*direct_module_dependencies_from_bound_population(Arc::new(
                                 BoundReferencePopulation::AllReferencesBound {
                                     providers: Rc::new(vec![provider.clone()]),
                                 },
@@ -754,12 +754,12 @@ pub fn parser_production_call_binds_with_edge_holds() -> bool {
 }
 
 pub fn obcpw_declaration_for_occurrence(
-    transport: Rc<OccurrenceTransport>,
+    transport: Arc<OccurrenceTransport>,
     occurrence: OccurrenceId,
-) -> Option<Rc<DeclarationOccurrence>> {
+) -> Option<Arc<DeclarationOccurrence>> {
     transport.declarations.clone().iter().cloned().fold(
         None,
-        |found: _, declaration: Rc<DeclarationOccurrence>| match found.clone() {
+        |found: _, declaration: Arc<DeclarationOccurrence>| match found.clone() {
             Some(_) => found.clone(),
             None => {
                 match (declaration.occurrence.clone().value.clone() == occurrence.value.clone()) {
@@ -772,25 +772,25 @@ pub fn obcpw_declaration_for_occurrence(
 }
 
 pub fn obcpw_inputs_with_lexical_fn_a(
-    transport: Rc<OccurrenceTransport>,
-    inputs: Rc<OccurrenceBindingCandidateInputs>,
-) -> Rc<OccurrenceBindingCandidateInputs> {
+    transport: Arc<OccurrenceTransport>,
+    inputs: Arc<OccurrenceBindingCandidateInputs>,
+) -> Arc<OccurrenceBindingCandidateInputs> {
     match occurrence_id_for_authored_name(transport.clone(), "fn_a".to_string()) {
         None => inputs.clone(),
         Some(fn_a_id) => match obcpw_declaration_for_occurrence(transport.clone(), fn_a_id.clone())
         {
             None => inputs.clone(),
-            Some(fn_a_declaration) => Rc::new(OccurrenceBindingCandidateInputs {
+            Some(fn_a_declaration) => Arc::new(OccurrenceBindingCandidateInputs {
                 module_paths: inputs.module_paths.clone(),
                 authored_order_rows: inputs.authored_order_rows.clone(),
                 exposure_rows: v1_rt::reverse(inputs.exposure_rows.clone().iter().cloned().fold(
                     Rc::new(vec![]),
-                    |acc: _, row: Rc<DeclarationExposureRow>| {
+                    |acc: _, row: Arc<DeclarationExposureRow>| {
                         match (row.occurrence.clone().value.clone() == fn_a_id.value.clone()) {
                             true => v1_rt::concat(
-                                Rc::new(vec![Rc::new(DeclarationExposureRow {
+                                Rc::new(vec![Arc::new(DeclarationExposureRow {
                                     occurrence: row.occurrence.clone(),
-                                    exposure: Rc::new(DeclarationExposure::LexicalExposure {
+                                    exposure: Arc::new(DeclarationExposure::LexicalExposure {
                                         exposing_scope: fn_a_declaration.containment.clone(),
                                     }),
                                 })]),
@@ -806,17 +806,17 @@ pub fn obcpw_inputs_with_lexical_fn_a(
 }
 
 pub fn obcpw_inputs_without_fn_a_exposure(
-    transport: Rc<OccurrenceTransport>,
-    inputs: Rc<OccurrenceBindingCandidateInputs>,
-) -> Rc<OccurrenceBindingCandidateInputs> {
+    transport: Arc<OccurrenceTransport>,
+    inputs: Arc<OccurrenceBindingCandidateInputs>,
+) -> Arc<OccurrenceBindingCandidateInputs> {
     match occurrence_id_for_authored_name(transport.clone(), "fn_a".to_string()) {
         None => inputs.clone(),
-        Some(fn_a_id) => Rc::new(OccurrenceBindingCandidateInputs {
+        Some(fn_a_id) => Arc::new(OccurrenceBindingCandidateInputs {
             module_paths: inputs.module_paths.clone(),
             authored_order_rows: inputs.authored_order_rows.clone(),
             exposure_rows: v1_rt::reverse(inputs.exposure_rows.clone().iter().cloned().fold(
                 Rc::new(vec![]),
-                |acc: _, row: Rc<DeclarationExposureRow>| {
+                |acc: _, row: Arc<DeclarationExposureRow>| {
                     match (row.occurrence.clone().value.clone() == fn_a_id.value.clone()) {
                         true => acc.clone(),
                         false => v1_rt::concat(Rc::new(vec![row.clone()]), acc.clone()),
@@ -828,17 +828,17 @@ pub fn obcpw_inputs_without_fn_a_exposure(
 }
 
 pub fn obcpw_inputs_without_reference_authored_order(
-    transport: Rc<OccurrenceTransport>,
-    inputs: Rc<OccurrenceBindingCandidateInputs>,
-    reference: Rc<ReferenceOccurrence>,
-) -> Rc<OccurrenceBindingCandidateInputs> {
-    Rc::new(OccurrenceBindingCandidateInputs {
+    transport: Arc<OccurrenceTransport>,
+    inputs: Arc<OccurrenceBindingCandidateInputs>,
+    reference: Arc<ReferenceOccurrence>,
+) -> Arc<OccurrenceBindingCandidateInputs> {
+    Arc::new(OccurrenceBindingCandidateInputs {
         module_paths: inputs.module_paths.clone(),
         exposure_rows: inputs.exposure_rows.clone(),
         authored_order_rows: v1_rt::reverse(
             inputs.authored_order_rows.clone().iter().cloned().fold(
                 Rc::new(vec![]),
-                |acc: _, row: Rc<AuthoredOrderRow>| match (row.occurrence.clone().value.clone()
+                |acc: _, row: Arc<AuthoredOrderRow>| match (row.occurrence.clone().value.clone()
                     == reference.occurrence.clone().value.clone())
                 {
                     true => acc.clone(),

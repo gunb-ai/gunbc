@@ -11,7 +11,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn content_hash_family_constructor_note() -> String {
     thread_local! {
@@ -74,12 +74,12 @@ pub struct Sha1Digest {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ContentHash {
-    Fnv1a64(Rc<Fnv1a64Structural>),
-    Sha256Hash(Rc<Sha256Digest>),
-    Sha1Hash(Rc<Sha1Digest>),
+    Fnv1a64(Arc<Fnv1a64Structural>),
+    Sha256Hash(Arc<Sha256Digest>),
+    Sha1Hash(Arc<Sha1Digest>),
 }
 
-pub fn content_hash_family(hash: Rc<ContentHash>) -> HashFamily {
+pub fn content_hash_family(hash: Arc<ContentHash>) -> HashFamily {
     match (*hash.clone()).clone() {
         ContentHash::Fnv1a64(_) => HashFamily::Fnv1a64StructuralFamily,
         ContentHash::Sha256Hash(_) => HashFamily::Sha256Family,
@@ -87,8 +87,8 @@ pub fn content_hash_family(hash: Rc<ContentHash>) -> HashFamily {
     }
 }
 
-pub fn structural_content_hash(digest: String) -> Rc<Fnv1a64Structural> {
-    Rc::new(Fnv1a64Structural {
+pub fn structural_content_hash(digest: String) -> Arc<Fnv1a64Structural> {
+    Arc::new(Fnv1a64Structural {
         digest: digest.clone(),
     })
 }
@@ -100,7 +100,7 @@ pub fn content_hash_is_lower_hex_code_point(cp: i64) -> bool {
 pub fn content_hash_validate_lower_hex_syntax(text: String) -> bool {
     {
         let mut __all = true;
-        for c in Rc::new(text.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+        for c in Arc::new(text.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
             .iter()
             .cloned()
         {
@@ -118,23 +118,23 @@ pub fn content_hash_validate_lower_hex_length(text: String, expected_hex_digits:
         && content_hash_validate_lower_hex_syntax(text.clone()))
 }
 
-pub fn sha256_hex_digest(hex: String) -> Option<Rc<Sha256Digest>> {
+pub fn sha256_hex_digest(hex: String) -> Option<Arc<Sha256Digest>> {
     if content_hash_validate_lower_hex_length(hex.clone(), 64) {
-        Some(Rc::new(Sha256Digest { hex: hex.clone() }))
+        Some(Arc::new(Sha256Digest { hex: hex.clone() }))
     } else {
         None
     }
 }
 
-pub fn sha1_hex_digest(hex: String) -> Option<Rc<Sha1Digest>> {
+pub fn sha1_hex_digest(hex: String) -> Option<Arc<Sha1Digest>> {
     if content_hash_validate_lower_hex_length(hex.clone(), 40) {
-        Some(Rc::new(Sha1Digest { hex: hex.clone() }))
+        Some(Arc::new(Sha1Digest { hex: hex.clone() }))
     } else {
         None
     }
 }
 
-pub fn fnv1a64_structural_hex_digest(hex: String) -> Option<Rc<Fnv1a64Structural>> {
+pub fn fnv1a64_structural_hex_digest(hex: String) -> Option<Arc<Fnv1a64Structural>> {
     if content_hash_validate_lower_hex_length(hex.clone(), 16) {
         Some(structural_content_hash(hex.clone()))
     } else {
@@ -142,37 +142,37 @@ pub fn fnv1a64_structural_hex_digest(hex: String) -> Option<Rc<Fnv1a64Structural
     }
 }
 
-pub fn as_content_hash_structural(structural: Rc<Fnv1a64Structural>) -> Rc<ContentHash> {
-    Rc::new(ContentHash::Fnv1a64(structural.clone()))
+pub fn as_content_hash_structural(structural: Arc<Fnv1a64Structural>) -> Arc<ContentHash> {
+    Arc::new(ContentHash::Fnv1a64(structural.clone()))
 }
 
-pub fn as_content_hash_cryptographic(digest: Rc<Sha256Digest>) -> Rc<ContentHash> {
-    Rc::new(ContentHash::Sha256Hash(digest.clone()))
+pub fn as_content_hash_cryptographic(digest: Arc<Sha256Digest>) -> Arc<ContentHash> {
+    Arc::new(ContentHash::Sha256Hash(digest.clone()))
 }
 
-pub fn as_content_hash_sha1(digest: Rc<Sha1Digest>) -> Rc<ContentHash> {
-    Rc::new(ContentHash::Sha1Hash(digest.clone()))
+pub fn as_content_hash_sha1(digest: Arc<Sha1Digest>) -> Arc<ContentHash> {
+    Arc::new(ContentHash::Sha1Hash(digest.clone()))
 }
 
-pub fn content_hash_of_value(value: String) -> Rc<ContentHash> {
+pub fn content_hash_of_value(value: String) -> Arc<ContentHash> {
     as_content_hash_structural(content_hash_atom(value.clone()))
 }
 
-pub fn content_hash_from_structural_digest(digest: String) -> Option<Rc<ContentHash>> {
+pub fn content_hash_from_structural_digest(digest: String) -> Option<Arc<ContentHash>> {
     match fnv1a64_structural_hex_digest(digest.clone()) {
         Some(structural) => Some(as_content_hash_structural(structural.clone())),
         None => None,
     }
 }
 
-pub fn content_hash_atom(value: String) -> Rc<Fnv1a64Structural> {
+pub fn content_hash_atom(value: String) -> Arc<Fnv1a64Structural> {
     structural_content_hash(v1_rt::atom_identity_hash(value.clone()))
 }
 
 pub fn content_hash_combine_structural(
-    left: Rc<Fnv1a64Structural>,
-    right: Rc<Fnv1a64Structural>,
-) -> Rc<Fnv1a64Structural> {
+    left: Arc<Fnv1a64Structural>,
+    right: Arc<Fnv1a64Structural>,
+) -> Arc<Fnv1a64Structural> {
     structural_content_hash(v1_rt::hash_combine(
         left.digest.clone(),
         right.digest.clone(),
@@ -181,27 +181,27 @@ pub fn content_hash_combine_structural(
 
 pub fn content_hash_tagged_structural(
     tag: String,
-    payload: Rc<Fnv1a64Structural>,
-) -> Rc<Fnv1a64Structural> {
+    payload: Arc<Fnv1a64Structural>,
+) -> Arc<Fnv1a64Structural> {
     content_hash_combine_structural(content_hash_atom(tag.clone()), payload.clone())
 }
 
-pub fn content_hash_tagged(tag: String, payload: Rc<Fnv1a64Structural>) -> Rc<ContentHash> {
+pub fn content_hash_tagged(tag: String, payload: Arc<Fnv1a64Structural>) -> Arc<ContentHash> {
     as_content_hash_structural(content_hash_tagged_structural(tag.clone(), payload.clone()))
 }
 
 pub fn content_hash_eq_structural(
-    left: Rc<Fnv1a64Structural>,
-    right: Rc<Fnv1a64Structural>,
+    left: Arc<Fnv1a64Structural>,
+    right: Arc<Fnv1a64Structural>,
 ) -> bool {
     (left.digest.clone() == right.digest.clone())
 }
 
-pub fn content_hash_eq_cryptographic(left: Rc<Sha256Digest>, right: Rc<Sha256Digest>) -> bool {
+pub fn content_hash_eq_cryptographic(left: Arc<Sha256Digest>, right: Arc<Sha256Digest>) -> bool {
     (left.hex.clone() == right.hex.clone())
 }
 
-pub fn content_hash_eq_sha1(left: Rc<Sha1Digest>, right: Rc<Sha1Digest>) -> bool {
+pub fn content_hash_eq_sha1(left: Arc<Sha1Digest>, right: Arc<Sha1Digest>) -> bool {
     (left.hex.clone() == right.hex.clone())
 }
 
@@ -225,8 +225,8 @@ pub fn content_hash_comparison_note() -> String {
 }
 
 pub fn compare_content_hash(
-    left: Rc<ContentHash>,
-    right: Rc<ContentHash>,
+    left: Arc<ContentHash>,
+    right: Arc<ContentHash>,
 ) -> ContentHashComparison {
     match (*left.clone()).clone() {
         ContentHash::Fnv1a64(left_structural) => match (*right.clone()).clone() {
@@ -265,7 +265,7 @@ pub fn compare_content_hash(
     }
 }
 
-pub fn serialize_content_hash(hash: Rc<ContentHash>) -> String {
+pub fn serialize_content_hash(hash: Arc<ContentHash>) -> String {
     match (*hash.clone()).clone() {
         ContentHash::Fnv1a64(s) => s.digest.clone(),
         ContentHash::Sha256Hash(d) => sha256_digest_wire_form(d.clone()),
@@ -273,7 +273,7 @@ pub fn serialize_content_hash(hash: Rc<ContentHash>) -> String {
     }
 }
 
-pub fn sha256_digest_wire_form(digest: Rc<Sha256Digest>) -> String {
+pub fn sha256_digest_wire_form(digest: Arc<Sha256Digest>) -> String {
     Rc::new(vec!["sha256:".to_string(), digest.hex.clone()]).join(&"".to_string())
 }
 

@@ -20,15 +20,15 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub type InterfaceHash = Rc<Fnv1a64Structural>;
+pub type InterfaceHash = Arc<Fnv1a64Structural>;
 
-pub type ModuleKey = Rc<Fnv1a64Structural>;
+pub type ModuleKey = Arc<Fnv1a64Structural>;
 
-pub type SignatureFingerprint = Rc<Fnv1a64Structural>;
+pub type SignatureFingerprint = Arc<Fnv1a64Structural>;
 
-pub type TypedModuleKey = Rc<Fnv1a64Structural>;
+pub type TypedModuleKey = Arc<Fnv1a64Structural>;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -62,40 +62,40 @@ pub enum ExportKind {
 pub struct ExportEntry {
     pub name: NonEmptyStr,
     pub kind: ExportKind,
-    pub contract: Rc<InterfaceContract>,
+    pub contract: Arc<InterfaceContract>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InterfaceSummary {
     pub module_path: NonEmptyStr,
-    pub exports: Rc<Vec<Rc<ExportEntry>>>,
+    pub exports: Arc<Vec<Arc<ExportEntry>>>,
     pub interface_hash: InterfaceHash,
 }
 
-pub fn interface_summary_v0_dissolution_trigger() -> Rc<Disposition> {
+pub fn interface_summary_v0_dissolution_trigger() -> Arc<Disposition> {
     thread_local! {
-            static CACHED: Rc<Disposition> = {
-                Rc::new(Disposition::Scaffold {
+            static CACHED: Arc<Disposition> = {
+                Arc::new(Disposition::Scaffold {
         dissolves_to: ConstructionMechanism::SingleAuthority,
-        bind: Rc::new(DeclarationRef {
+        bind: Arc::new(DeclarationRef {
         module_path: "std.interface_summary".to_string(),
         decl_name: "export_entry_fingerprint".to_string(),
-        field: Rc::new(DeclField::WholeDeclaration),
+        field: Arc::new(DeclField::WholeDeclaration),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<Disposition>| c.clone())
+    CACHED.with(|c: &Arc<Disposition>| c.clone())
 }
 
-pub fn signature_contract(signature: Rc<Fnv1a64Structural>) -> Rc<InterfaceContract> {
-    Rc::new(InterfaceContract::SignatureContract {
+pub fn signature_contract(signature: Arc<Fnv1a64Structural>) -> Arc<InterfaceContract> {
+    Arc::new(InterfaceContract::SignatureContract {
         signature: signature.clone(),
     })
 }
 
-pub fn contract_absent() -> Rc<InterfaceContract> {
-    Rc::new(InterfaceContract::ContractAbsent)
+pub fn contract_absent() -> Arc<InterfaceContract> {
+    Arc::new(InterfaceContract::ContractAbsent)
 }
 
 pub fn export_kind_tag(kind: ExportKind) -> String {
@@ -107,7 +107,7 @@ pub fn export_kind_tag(kind: ExportKind) -> String {
     }
 }
 
-pub fn export_entry_fingerprint(entry: Rc<ExportEntry>) -> Rc<Fnv1a64Structural> {
+pub fn export_entry_fingerprint(entry: Arc<ExportEntry>) -> Arc<Fnv1a64Structural> {
     match (*entry.contract.clone()).clone() {
         InterfaceContract::ContractAbsent => content_hash_tagged_structural(
             "export".to_string(),
@@ -132,22 +132,22 @@ pub fn export_entry_fingerprint(entry: Rc<ExportEntry>) -> Rc<Fnv1a64Structural>
     }
 }
 
-pub fn interface_summary_rollup(exports: Rc<Vec<Rc<ExportEntry>>>) -> Rc<Fnv1a64Structural> {
+pub fn interface_summary_rollup(exports: Arc<Vec<Arc<ExportEntry>>>) -> Arc<Fnv1a64Structural> {
     exports.clone().iter().cloned().fold(
         content_hash_atom("interface-summary-v0".to_string()),
-        |acc: Rc<Fnv1a64Structural>, entry: Rc<ExportEntry>| {
+        |acc: Arc<Fnv1a64Structural>, entry: Arc<ExportEntry>| {
             content_hash_combine_structural(acc, export_entry_fingerprint(entry.clone()))
         },
     )
 }
 
 pub fn module_key(
-    source_hash: Rc<Fnv1a64Structural>,
-    direct_import_interface_hashes: Rc<Vec<Rc<Fnv1a64Structural>>>,
-) -> Rc<Fnv1a64Structural> {
+    source_hash: Arc<Fnv1a64Structural>,
+    direct_import_interface_hashes: Arc<Vec<Arc<Fnv1a64Structural>>>,
+) -> Arc<Fnv1a64Structural> {
     direct_import_interface_hashes.clone().iter().cloned().fold(
         content_hash_tagged_structural("module-key-source".to_string(), source_hash.clone()),
-        |acc: Rc<Fnv1a64Structural>, import_hash: Rc<Fnv1a64Structural>| {
+        |acc: Arc<Fnv1a64Structural>, import_hash: Arc<Fnv1a64Structural>| {
             content_hash_tagged_structural(
                 "module-key-import".to_string(),
                 content_hash_combine_structural(acc, import_hash.clone()),
@@ -176,9 +176,9 @@ pub fn typed_module_key_v1_seed_bridge_note() -> String {
 }
 
 pub fn typed_module_key(
-    interface_key: Rc<Fnv1a64Structural>,
-    compiler_identity: Rc<Fnv1a64Structural>,
-) -> Rc<Fnv1a64Structural> {
+    interface_key: Arc<Fnv1a64Structural>,
+    compiler_identity: Arc<Fnv1a64Structural>,
+) -> Arc<Fnv1a64Structural> {
     content_hash_tagged_structural(
         "typed-module-compiler".to_string(),
         content_hash_combine_structural(interface_key.clone(), compiler_identity.clone()),

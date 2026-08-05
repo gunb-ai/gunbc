@@ -8,7 +8,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -31,7 +31,7 @@ impl DeclField {
 pub struct DeclarationRef {
     pub module_path: NonEmptyStr,
     pub decl_name: NonEmptyStr,
-    pub field: Rc<DeclField>,
+    pub field: Arc<DeclField>,
 }
 
 pub fn decl_ref_constructor_authority_note() -> String {
@@ -43,11 +43,11 @@ pub fn decl_ref_constructor_authority_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn decl_ref(module_path: String, decl_name: String) -> Rc<DeclarationRef> {
-    Rc::new(DeclarationRef {
+pub fn decl_ref(module_path: String, decl_name: String) -> Arc<DeclarationRef> {
+    Arc::new(DeclarationRef {
         module_path: module_path.clone(),
         decl_name: decl_name.clone(),
-        field: Rc::new(DeclField::WholeDeclaration),
+        field: Arc::new(DeclField::WholeDeclaration),
     })
 }
 
@@ -55,11 +55,11 @@ pub fn decl_field_ref(
     module_path: String,
     decl_name: String,
     field_name: String,
-) -> Rc<DeclarationRef> {
-    Rc::new(DeclarationRef {
+) -> Arc<DeclarationRef> {
+    Arc::new(DeclarationRef {
         module_path: module_path.clone(),
         decl_name: decl_name.clone(),
-        field: Rc::new(DeclField::NamedField {
+        field: Arc::new(DeclField::NamedField {
             field_name: field_name.clone(),
         }),
     })

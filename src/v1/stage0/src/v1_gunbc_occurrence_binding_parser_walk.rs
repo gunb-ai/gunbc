@@ -41,7 +41,7 @@ pub use crate::v1_std_core::{build_newline_index, empty_intern_table};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn occurrence_binding_parser_walk_authority_note() -> String {
     thread_local! {
@@ -56,13 +56,13 @@ pub fn occurrence_binding_parser_walk_authority_note() -> String {
 #[serde(tag = "_variant")]
 pub enum ParsedOccurrenceBindingSource {
     ParsedOccurrenceBindingSourceReady {
-        transport: Rc<OccurrenceTransport>,
+        transport: Arc<OccurrenceTransport>,
         module_path: NonEmptyStr,
     },
     ParsedOccurrenceBindingSourceRefused,
 }
 impl ParsedOccurrenceBindingSource {
-    pub fn transport(&self) -> Rc<OccurrenceTransport> {
+    pub fn transport(&self) -> Arc<OccurrenceTransport> {
         match self {
             ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
                 transport: __val,
@@ -89,21 +89,21 @@ impl ParsedOccurrenceBindingSource {
 pub fn parse_authored_occurrence_binding_source(
     file: String,
     source: String,
-) -> Rc<ParsedOccurrenceBindingSource> {
+) -> Arc<ParsedOccurrenceBindingSource> {
     {
         let index = build_newline_index(file.clone(), source.clone());
         let parsed = parse_with_table(
             tokenize(source.clone(), file.clone()),
             v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
                 file.clone(),
                 index.clone(),
             ),
             empty_intern_table(),
         );
         match parse_with_table_ready_module_path(parsed.clone()) {
-            None => Rc::new(ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused),
-            Some(module_path) => Rc::new(
+            None => Arc::new(ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused),
+            Some(module_path) => Arc::new(
                 ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
                     transport: parsed.occurrence_transport.clone(),
                     module_path: module_path.clone(),
@@ -123,17 +123,17 @@ pub fn declaration_exposure_from_containment_note() -> String {
 }
 
 pub fn occurrence_containment_parent_scope(
-    ancestors: Rc<Vec<OccurrenceId>>,
-) -> Option<Rc<OccurrenceContainmentPath>> {
+    ancestors: Arc<Vec<OccurrenceId>>,
+) -> Option<Arc<OccurrenceContainmentPath>> {
     {
         let __fm = v1_rt::reverse(ancestors.clone());
         if __fm.is_empty() {
             None
         } else {
             let parent_terminal = (*__fm)[0].clone();
-            let parent_ancestors_reversed: Rc<Vec<_>> =
-                Rc::new((*__fm).iter().skip(1).cloned().collect());
-            Some(Rc::new(OccurrenceContainmentPath {
+            let parent_ancestors_reversed: Arc<Vec<_>> =
+                Arc::new((*__fm).iter().skip(1).cloned().collect());
+            Some(Arc::new(OccurrenceContainmentPath {
                 ancestors: v1_rt::reverse(parent_ancestors_reversed.clone()),
                 terminal: parent_terminal.clone(),
             }))
@@ -143,24 +143,24 @@ pub fn occurrence_containment_parent_scope(
 
 pub fn declaration_exposure_from_containment(
     module_path: String,
-    containment: Rc<OccurrenceContainmentPath>,
-) -> Rc<DeclarationExposure> {
+    containment: Arc<OccurrenceContainmentPath>,
+) -> Arc<DeclarationExposure> {
     {
         let __fm = containment.ancestors.clone();
         if __fm.is_empty() {
-            Rc::new(DeclarationExposure::ModuleExposure {
+            Arc::new(DeclarationExposure::ModuleExposure {
                 module: module_path.clone(),
             })
         } else {
-            Rc::new(DeclarationExposure::ModuleExposure {
+            Arc::new(DeclarationExposure::ModuleExposure {
                 module: module_path.clone(),
             })
         }
     }
 }
 
-pub fn authored_order_row_from_entry(entry: Rc<OccurrenceIndexEntry>) -> Rc<AuthoredOrderRow> {
-    Rc::new(AuthoredOrderRow {
+pub fn authored_order_row_from_entry(entry: Arc<OccurrenceIndexEntry>) -> Arc<AuthoredOrderRow> {
+    Arc::new(AuthoredOrderRow {
         occurrence: entry.projection.clone().occurrence.clone(),
         ordinal: AuthoredTokenOrdinal {
             value: entry
@@ -185,9 +185,9 @@ pub fn occurrence_binding_inputs_accumulator_note() -> String {
 
 pub fn occurrence_binding_inputs_from_transport(
     module_path: String,
-    transport: Rc<OccurrenceTransport>,
-) -> Rc<OccurrenceBindingCandidateInputs> {
-    Rc::new(OccurrenceBindingCandidateInputs {
+    transport: Arc<OccurrenceTransport>,
+) -> Arc<OccurrenceBindingCandidateInputs> {
+    Arc::new(OccurrenceBindingCandidateInputs {
         module_paths: v1_rt::reverse(
             transport
                 .index
@@ -198,9 +198,9 @@ pub fn occurrence_binding_inputs_from_transport(
                 .cloned()
                 .fold(
                     Rc::new(vec![]),
-                    |acc: _, entry: Rc<OccurrenceIndexEntry>| {
+                    |acc: _, entry: Arc<OccurrenceIndexEntry>| {
                         v1_rt::concat(
-                            Rc::new(vec![Rc::new(OccurrenceModulePathRow {
+                            Rc::new(vec![Arc::new(OccurrenceModulePathRow {
                                 occurrence: entry.projection.clone().occurrence.clone(),
                                 module_path: module_path.clone(),
                             })]),
@@ -211,9 +211,9 @@ pub fn occurrence_binding_inputs_from_transport(
         ),
         exposure_rows: v1_rt::reverse(transport.declarations.clone().iter().cloned().fold(
             Rc::new(vec![]),
-            |acc: _, declaration: Rc<DeclarationOccurrence>| {
+            |acc: _, declaration: Arc<DeclarationOccurrence>| {
                 v1_rt::concat(
-                    Rc::new(vec![Rc::new(DeclarationExposureRow {
+                    Rc::new(vec![Arc::new(DeclarationExposureRow {
                         occurrence: declaration.occurrence.clone(),
                         exposure: declaration_exposure_from_containment(
                             module_path.clone(),
@@ -234,7 +234,7 @@ pub fn occurrence_binding_inputs_from_transport(
                 .cloned()
                 .fold(
                     Rc::new(vec![]),
-                    |acc: _, entry: Rc<OccurrenceIndexEntry>| {
+                    |acc: _, entry: Arc<OccurrenceIndexEntry>| {
                         v1_rt::concat(
                             Rc::new(vec![authored_order_row_from_entry(entry.clone())]),
                             acc,
@@ -258,16 +258,16 @@ pub fn structural_binding_walk_refusal_note() -> String {
 #[serde(tag = "_variant")]
 pub enum StructuralBindingIndexRefusal {
     StructuralBindingTransportRefusal {
-        refusal: Rc<OccurrenceTransportRefusal>,
+        refusal: Arc<OccurrenceTransportRefusal>,
     },
     StructuralBindingModulePathRefusal {
-        refusal: Rc<OccurrenceModulePathIndexRefusal>,
+        refusal: Arc<OccurrenceModulePathIndexRefusal>,
     },
     StructuralBindingExposureRefusal {
-        refusal: Rc<DeclarationExposureIndexRefusal>,
+        refusal: Arc<DeclarationExposureIndexRefusal>,
     },
     StructuralBindingAuthoredOrderRefusal {
-        refusal: Rc<AuthoredOrderIndexRefusal>,
+        refusal: Arc<AuthoredOrderIndexRefusal>,
     },
     StructuralBindingDeclarationBucketRefusal {
         occurrence: OccurrenceId,
@@ -278,23 +278,23 @@ pub enum StructuralBindingIndexRefusal {
 #[serde(tag = "_variant")]
 pub enum StructuralBindingWalk {
     StructuralBindingWalkReady {
-        population: Rc<BoundReferencePopulation>,
+        population: Arc<BoundReferencePopulation>,
     },
     StructuralBindingWalkRefused {
-        refusal: Rc<StructuralBindingIndexRefusal>,
+        refusal: Arc<StructuralBindingIndexRefusal>,
     },
 }
 
 pub fn structural_binding_walk(
-    transport: Rc<OccurrenceTransport>,
-    inputs: Rc<OccurrenceBindingCandidateInputs>,
-) -> Rc<StructuralBindingWalk> {
+    transport: Arc<OccurrenceTransport>,
+    inputs: Arc<OccurrenceBindingCandidateInputs>,
+) -> Arc<StructuralBindingWalk> {
     match (*occurrence_candidate_index_build(transport.clone(), inputs.clone())).clone() {
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexTransportRefused {
             refusal: refusal,
             ..
-        } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
-            refusal: Rc::new(
+        } => Arc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
+            refusal: Arc::new(
                 StructuralBindingIndexRefusal::StructuralBindingTransportRefusal {
                     refusal: refusal.clone(),
                 },
@@ -303,8 +303,8 @@ pub fn structural_binding_walk(
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexModulePathRefused {
             refusal: refusal,
             ..
-        } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
-            refusal: Rc::new(
+        } => Arc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
+            refusal: Arc::new(
                 StructuralBindingIndexRefusal::StructuralBindingModulePathRefusal {
                     refusal: refusal.clone(),
                 },
@@ -313,8 +313,8 @@ pub fn structural_binding_walk(
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexExposureRefused {
             refusal: refusal,
             ..
-        } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
-            refusal: Rc::new(
+        } => Arc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
+            refusal: Arc::new(
                 StructuralBindingIndexRefusal::StructuralBindingExposureRefusal {
                     refusal: refusal.clone(),
                 },
@@ -323,8 +323,8 @@ pub fn structural_binding_walk(
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexAuthoredOrderRefused {
             refusal: refusal,
             ..
-        } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
-            refusal: Rc::new(
+        } => Arc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
+            refusal: Arc::new(
                 StructuralBindingIndexRefusal::StructuralBindingAuthoredOrderRefusal {
                     refusal: refusal.clone(),
                 },
@@ -333,15 +333,15 @@ pub fn structural_binding_walk(
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexDeclarationBucketRefused {
             occurrence: occurrence,
             ..
-        } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
-            refusal: Rc::new(
+        } => Arc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
+            refusal: Arc::new(
                 StructuralBindingIndexRefusal::StructuralBindingDeclarationBucketRefusal {
                     occurrence: occurrence.clone(),
                 },
             ),
         }),
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady { index: index, .. } => {
-            Rc::new(StructuralBindingWalk::StructuralBindingWalkReady {
+            Arc::new(StructuralBindingWalk::StructuralBindingWalkReady {
                 population: bound_reference_population_from_projections(
                     resolve_all_references_via_structural_candidates(
                         transport.clone(),
@@ -355,9 +355,9 @@ pub fn structural_binding_walk(
 }
 
 pub fn reference_named(
-    transport: Rc<OccurrenceTransport>,
+    transport: Arc<OccurrenceTransport>,
     name: String,
-) -> Option<Rc<ReferenceOccurrence>> {
+) -> Option<Arc<ReferenceOccurrence>> {
     match references_named(transport.clone(), name.clone())
         .first()
         .cloned()
@@ -368,12 +368,12 @@ pub fn reference_named(
 }
 
 pub fn references_named(
-    transport: Rc<OccurrenceTransport>,
+    transport: Arc<OccurrenceTransport>,
     name: String,
-) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
+) -> Arc<Vec<Arc<ReferenceOccurrence>>> {
     transport.references.clone().iter().cloned().fold(
         Rc::new(vec![]),
-        |acc: Rc<Vec<Rc<ReferenceOccurrence>>>, reference: Rc<ReferenceOccurrence>| {
+        |acc: Arc<Vec<Arc<ReferenceOccurrence>>>, reference: Arc<ReferenceOccurrence>| {
             match index_entry_for_occurrence(transport.clone(), reference.occurrence.clone()) {
                 None => acc.clone(),
                 Some(entry) => {
@@ -388,12 +388,12 @@ pub fn references_named(
 }
 
 pub fn declarations_named(
-    transport: Rc<OccurrenceTransport>,
+    transport: Arc<OccurrenceTransport>,
     name: String,
-) -> Rc<Vec<Rc<DeclarationOccurrence>>> {
+) -> Arc<Vec<Arc<DeclarationOccurrence>>> {
     transport.declarations.clone().iter().cloned().fold(
         Rc::new(vec![]),
-        |acc: Rc<Vec<Rc<DeclarationOccurrence>>>, declaration: Rc<DeclarationOccurrence>| {
+        |acc: Arc<Vec<Arc<DeclarationOccurrence>>>, declaration: Arc<DeclarationOccurrence>| {
             match index_entry_for_occurrence(transport.clone(), declaration.occurrence.clone()) {
                 None => acc.clone(),
                 Some(entry) => {
@@ -408,9 +408,9 @@ pub fn declarations_named(
 }
 
 pub fn index_entry_for_occurrence(
-    transport: Rc<OccurrenceTransport>,
+    transport: Arc<OccurrenceTransport>,
     occurrence: OccurrenceId,
-) -> Option<Rc<OccurrenceIndexEntry>> {
+) -> Option<Arc<OccurrenceIndexEntry>> {
     transport
         .index
         .clone()
@@ -420,7 +420,7 @@ pub fn index_entry_for_occurrence(
         .cloned()
         .fold(
             None,
-            |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
+            |found: _, entry: Arc<OccurrenceIndexEntry>| match found.clone() {
                 Some(_) => found.clone(),
                 None => match (entry.projection.clone().occurrence.clone().value.clone()
                     == occurrence.value.clone())
@@ -433,7 +433,7 @@ pub fn index_entry_for_occurrence(
 }
 
 pub fn occurrence_id_for_authored_name(
-    transport: Rc<OccurrenceTransport>,
+    transport: Arc<OccurrenceTransport>,
     name: String,
 ) -> Option<OccurrenceId> {
     match transport
@@ -445,7 +445,7 @@ pub fn occurrence_id_for_authored_name(
         .cloned()
         .fold(
             None,
-            |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
+            |found: _, entry: Arc<OccurrenceIndexEntry>| match found.clone() {
                 Some(_) => found.clone(),
                 None => match (entry.projection.clone().authored_name.clone() == name.clone()) {
                     true => Some(entry.projection.clone().occurrence.clone()),

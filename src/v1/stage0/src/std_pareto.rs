@@ -12,7 +12,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -111,7 +111,7 @@ pub fn tally_verdict(t: DominanceTally) -> DominanceVerdict {
     }
 }
 
-pub fn dominance_of_comparisons(comparisons: Rc<Vec<AxisComparison>>) -> DominanceVerdict {
+pub fn dominance_of_comparisons(comparisons: Arc<Vec<AxisComparison>>) -> DominanceVerdict {
     tally_verdict(comparisons.clone().iter().cloned().fold(
         DominanceTally {
             saw_better: false,
@@ -157,7 +157,7 @@ pub fn verdict_is_incomparable(v: DominanceVerdict) -> bool {
     }
 }
 
-pub fn any_dominates(verdicts: Rc<Vec<DominanceVerdict>>) -> bool {
+pub fn any_dominates(verdicts: Arc<Vec<DominanceVerdict>>) -> bool {
     verdicts
         .clone()
         .iter()
@@ -167,7 +167,7 @@ pub fn any_dominates(verdicts: Rc<Vec<DominanceVerdict>>) -> bool {
         })
 }
 
-pub fn on_pareto_front(verdicts: Rc<Vec<DominanceVerdict>>) -> bool {
+pub fn on_pareto_front(verdicts: Arc<Vec<DominanceVerdict>>) -> bool {
     !any_dominates(verdicts.clone())
 }
 

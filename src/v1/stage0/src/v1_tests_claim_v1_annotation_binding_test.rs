@@ -27,7 +27,7 @@ pub use crate::v1_std_core::{build_newline_index, empty_intern_table};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn v1_annotation_binding_offline_recipe() -> String {
     thread_local! {
@@ -92,13 +92,13 @@ pub fn trailing_source() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn transport_of(source: String) -> Rc<OccurrenceTransport> {
+pub fn transport_of(source: String) -> Arc<OccurrenceTransport> {
     parse_with_table(
         tokenize_artifact(source.clone(), "probe.dag".to_string())
             .tokens
             .clone(),
         v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
             "probe.dag".to_string(),
             build_newline_index("probe.dag".to_string(), source.clone()),
         ),
@@ -108,7 +108,7 @@ pub fn transport_of(source: String) -> Rc<OccurrenceTransport> {
     .clone()
 }
 
-pub fn bound(source: String) -> Rc<AnnotationAttachmentResult> {
+pub fn bound(source: String) -> Arc<AnnotationAttachmentResult> {
     bind_annotations(
         transport_of(source.clone()),
         tokenize_artifact(source.clone(), "probe.dag".to_string())
@@ -127,7 +127,7 @@ pub fn name_lookup_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn name_of(transport: Rc<OccurrenceTransport>, id: OccurrenceId) -> String {
+pub fn name_of(transport: Arc<OccurrenceTransport>, id: OccurrenceId) -> String {
     transport
         .index
         .clone()
@@ -137,7 +137,7 @@ pub fn name_of(transport: Rc<OccurrenceTransport>, id: OccurrenceId) -> String {
         .cloned()
         .fold(
             "<unresolved>".to_string(),
-            |acc: String, entry: Rc<OccurrenceIndexEntry>| {
+            |acc: String, entry: Arc<OccurrenceIndexEntry>| {
                 if (entry.projection.clone().occurrence.clone().value.clone() == id.value.clone()) {
                     entry.projection.clone().authored_name.clone()
                 } else {
@@ -155,7 +155,7 @@ pub fn render(source: String) -> String {
             .cloned()
             .fold(
                 "".to_string(),
-                |acc: String, row: Rc<SourceAnnotationDebt>| {
+                |acc: String, row: Arc<SourceAnnotationDebt>| {
                     v1_rt::concat(
                         acc,
                         v1_rt::concat(
@@ -171,14 +171,14 @@ pub fn render(source: String) -> String {
     }
 }
 
-pub fn count_body_grain(refusals: Rc<Vec<Rc<AnnotationAttachmentRefusal>>>) -> i64 {
+pub fn count_body_grain(refusals: Arc<Vec<Arc<AnnotationAttachmentRefusal>>>) -> i64 {
     refusals
         .clone()
         .iter()
         .cloned()
         .fold(
             0,
-            |n: i64, refusal: Rc<AnnotationAttachmentRefusal>| match (*refusal.clone()).clone() {
+            |n: i64, refusal: Arc<AnnotationAttachmentRefusal>| match (*refusal.clone()).clone() {
                 AnnotationAttachmentRefusal::BodyGrainNotModeled { origin: _, .. } => {
                     (n.clone() + 1)
                 }
@@ -188,14 +188,14 @@ pub fn count_body_grain(refusals: Rc<Vec<Rc<AnnotationAttachmentRefusal>>>) -> i
         )
 }
 
-pub fn count_trailing(refusals: Rc<Vec<Rc<AnnotationAttachmentRefusal>>>) -> i64 {
+pub fn count_trailing(refusals: Arc<Vec<Arc<AnnotationAttachmentRefusal>>>) -> i64 {
     refusals
         .clone()
         .iter()
         .cloned()
         .fold(
             0,
-            |n: i64, refusal: Rc<AnnotationAttachmentRefusal>| match (*refusal.clone()).clone() {
+            |n: i64, refusal: Arc<AnnotationAttachmentRefusal>| match (*refusal.clone()).clone() {
                 AnnotationAttachmentRefusal::BodyGrainNotModeled { origin: _, .. } => n.clone(),
                 AnnotationAttachmentRefusal::TrailingNotModeled { origin: _, .. } => {
                     (n.clone() + 1)
@@ -218,7 +218,7 @@ pub fn w_leading_prose_attaches_to_the_type_it_precedes() -> bool {
         rows.clone()
             .iter()
             .cloned()
-            .fold(false, |found: bool, row: Rc<SourceAnnotationDebt>| {
+            .fold(false, |found: bool, row: Arc<SourceAnnotationDebt>| {
                 (found
                     || ((name_of(transport.clone(), row.subject.clone()) == "Thing".to_string())
                         && (row.text.clone() == "about Thing".to_string())))
@@ -273,7 +273,7 @@ pub fn admission_gate_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn admitted(source: String) -> Rc<AdmittedSourceAnnotations> {
+pub fn admitted(source: String) -> Arc<AdmittedSourceAnnotations> {
     admit_source_annotations(
         transport_of(source.clone()),
         tokenize_artifact(source.clone(), "probe.dag".to_string())
