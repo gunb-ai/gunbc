@@ -73,3 +73,11 @@ data gunbc_managed_compile_pool_slice: NonEmptyStr = "gunbc-compile-pool.slice" 
 data belt_spawn_workdir_env_var_note: String = "The ONE authority for the environment variable that carries a belt tick's spawn root, homed here for the same reason as the compile-pool slice name above: it is a fact about how a HOST is laid out and it has TWO consumers on opposite sides of a boundary, so neither may own it. gunbc.roadmap_belt_actuate READS it in belt_run_once_cli; gunbc.live_deploy.emit WRITES it as the Environment= line of the belt unit it installs. A literal in either place is the same string in two files, and the failure it produces is silent rather than loud: the writer and the reader would simply stop meeting, the reader would refuse for a missing variable, and nothing would say which of the two spellings was wrong.\\n\\nHoming it in either consumer would also drag one into the other's closure. The deploy emitter needs exactly one string from the belt; importing gunbc.roadmap_belt_actuate to get it would put the belt's whole implementation — tmux, git worktrees, the Claude provider preflight — behind every emission of a deploy script, for a name. That is the coupling this module exists to prevent."
 
 data belt_spawn_workdir_env_var: NonEmptyStr = "GUNBC_BELT_SPAWN_WORKDIR" as NonEmptyStr
+
+data srv1_provider_runtime_layout_note: String = "srv1 provider-runtime paths under /opt/gunbc/provider-runtime. release_root holds immutable package/exec content; mutable Codex state is separate in codex-state; evidence_root stores private content-addressed wire bytes (SHA-512 hex filenames) for provider account-standing captures."
+
+data srv1_codex_runtime_release_root: FilePath = "/opt/gunbc/provider-runtime/codex" as FilePath
+
+data srv1_codex_runtime_mutable_state_root: FilePath = "/opt/gunbc/provider-runtime/codex-state" as FilePath
+
+data srv1_provider_wire_evidence_root: FilePath = "/opt/gunbc/provider-runtime/evidence" as FilePath
