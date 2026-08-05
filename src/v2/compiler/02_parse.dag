@@ -6,8 +6,17 @@ import v2.compiler.parse_engine_hooks {
   parse_engine_match_arm_stmt_body_production
 }
 import v2.compiler.parse_diagnostic {
+  NonEmptyParseStageDiagnostics,
+  non_empty_parse_stage_diagnostics_from_overlap_roster,
   parse_overlap_residue_stage_diagnostic_at,
   parse_stage_diagnostic_core
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
 }
 import v2.std.diagnostic {
   Accepted,
@@ -277,6 +286,7 @@ type ParseTable = ParseTableRealization
 type PreparedModeledGrammar {
   validated: ValidatedGrammarRoot
   analysis: GrammarFirstAnalysis
+  overlap_residue_stage: Optional<NonEmptyParseStageDiagnostics>
 }
 
 type PreparedGrammar
@@ -1730,7 +1740,11 @@ fn grammar_validate_and_analyze(root: GrammarRoot, at: Locus) -> Outcome<Prepare
           Accepted {
             value: PreparedModeledGrammar {
               validated: ValidatedGrammarRoot { root: root },
-              analysis: analysis
+              analysis: analysis,
+              overlap_residue_stage: non_empty_parse_stage_diagnostics_from_overlap_roster(
+                at: at,
+                roster: ambiguity_roster
+              )
             },
             diagnostics: grammar_overlap_residue_diagnostics(at: at, roster: ambiguity_roster)
           }
