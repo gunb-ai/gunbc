@@ -4912,34 +4912,29 @@ fn witness_row_cost_migration_threshold_ms_via_authority(
 }
 
 /// Single-authority projection, mirroring `witness_row_cost_exceeds_basis_via_authority`:
-/// the verdict — `witness_row_cost_migration_verdict` then `witness_row_cost_migration_verdict_is_mandatory`
-/// — is decided entirely in `.dag`; Rust only plumbs the `observed` Value through two authority
-/// calls and reads back the resulting Bool. No `>=` comparison lives in this seed.
+/// the threshold comparison lives entirely in `.dag`'s `witness_row_cost_migration_verdict`.
+/// Rust reads back the returned `MigrationDisclosureVerdict` coproduct's tag only — the same
+/// `Value::Variant { variant_name, .. }` inspection this file already uses elsewhere (e.g. the
+/// `Empty` tag check) — rather than adding a second `.dag` Bool-dissolution wrapper around the
+/// verdict (review 48438: a dissolving predicate is itself a duplicate decision surface).
 fn witness_row_cost_migration_verdict_via_authority(
     ctx: &InterpContext,
     observed_ms: u128,
 ) -> Result<bool, String> {
     let observed = millisecond_value(ctx, observed_ms)?;
-    let verdict = match run_in_context_with_args(
+    match run_in_context_with_args(
         ctx,
         "witness_row_cost_migration_verdict",
         &[(Some("observed".to_string()), observed)],
         false,
     ) {
-        Ok(v) => v,
-        Err(e) => return Err(format!("witness_row_cost_migration_verdict: {e}")),
-    };
-    match run_in_context_with_args(
-        ctx,
-        "witness_row_cost_migration_verdict_is_mandatory",
-        &[(Some("v".to_string()), verdict)],
-        false,
-    ) {
-        Ok(Value::Bool(b)) => Ok(b),
+        Ok(Value::Variant { variant_name, .. }) => {
+            Ok(ctx.sym_eq(variant_name, "MandatoryMigration"))
+        }
         Ok(other) => Err(format!(
-            "witness_row_cost_migration_verdict_is_mandatory returned {other}, expected Bool (fail-closed)"
+            "witness_row_cost_migration_verdict returned {other}, expected MigrationDisclosureVerdict variant (fail-closed)"
         )),
-        Err(e) => Err(format!("witness_row_cost_migration_verdict_is_mandatory: {e}")),
+        Err(e) => Err(format!("witness_row_cost_migration_verdict: {e}")),
     }
 }
 
@@ -4984,17 +4979,18 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
         for result in &rec.results {
             for row in &result.witness_row_costs {
                 let observed = row.2 / 1_000_000;
-                let is_mandatory =
-                    match witness_row_cost_migration_verdict_via_authority(&ctx, observed) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            eprintln!(
+                let is_mandatory = match witness_row_cost_migration_verdict_via_authority(
+                    &ctx, observed,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
                                 "claim_executor: migration verdict refused for {}::{}: {e} — walk fails closed here",
                                 row.0, row.1
                             );
-                            return false;
-                        }
-                    };
+                        return false;
+                    }
+                };
                 let verdict = if is_mandatory {
                     mandatory_count += 1;
                     worst.push((observed, row.0.clone(), row.1.clone()));

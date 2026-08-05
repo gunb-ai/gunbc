@@ -124,26 +124,20 @@ fn witness_row_cost_migration_verdict(observed: Millisecond) -> MigrationDisclos
   }
 }
 
-fn witness_row_cost_migration_verdict_is_mandatory(v: MigrationDisclosureVerdict) -> Bool {
-  match v {
-    MandatoryMigration { observed: _, threshold: _ } => true
-    BelowMigrationThreshold => false
-  }
-}
-
 fn witness_row_cost_receipt_row_migration_verdict(row: WitnessCostReceiptRow) -> MigrationDisclosureVerdict {
   witness_row_cost_migration_verdict(observed: nanosecond_to_millisecond_floor(n: row.eval))
 }
 
 fn witness_row_cost_mandatory_migration_rows(rows: List<WitnessCostReceiptRow>) -> List<WitnessCostReceiptRow> {
   filter(rows, row =>
-    witness_row_cost_migration_verdict_is_mandatory(
-      v: witness_row_cost_receipt_row_migration_verdict(row: row)
-    )
+    match witness_row_cost_receipt_row_migration_verdict(row: row) {
+      MandatoryMigration { observed: _, threshold: _ } => true
+      BelowMigrationThreshold => false
+    }
   )
 }
 
-fn witness_row_cost_mandatory_migration_count(rows: List<WitnessCostReceiptRow>) -> Nat {
+fn witness_row_cost_mandatory_migration_count(rows: List<WitnessCostReceiptRow>) -> Int {
   length(xs: witness_row_cost_mandatory_migration_rows(rows: rows))
 }
 

@@ -11,10 +11,11 @@ import gunbc.witness_row_cost {
 }
 import std.logic { Bool }
 import std.nat { Nat }
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, Int }
 import std.measure { millisecond, millisecond_count, millisecond_to_nanosecond }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.observation { Done }
+import v2.std.algebra { count_where, for_all }
 import v2.std.text { String }
 
 data witness_row_cost_migration_disclosure_note: String = "Executing consumer for the mandatory-migration disclosure (gunbc.witness_row_cost). THE PAIR IS THE PROOF, per the drift comparator's own discipline: a synthetic row at-or-above the derived threshold MUST produce MandatoryMigration, and a row comfortably below MUST NOT — either alone is satisfiable by a broken comparator. The derivation itself is pinned so the 500ms figure can never silently drift from the fast-lane authority: this test asserts the threshold IS gunbc_ci_fast_lane_eval_budget_ms()/10, never a hand-typed 500 literal."
@@ -68,8 +69,8 @@ fn rows_filter_and_count_agree_and_are_located_holds() -> Bool {
   ]
   let mandatory = witness_row_cost_mandatory_migration_rows(rows: rows)
   witness_row_cost_mandatory_migration_count(rows: rows) == 2 &&
-    count(mandatory) == 2 &&
-    fold(mandatory, init: true, f: (acc, row) => acc && row.declaration.decl_name != ("fast_row" as NonEmptyStr))
+    count_where(xs: mandatory, predicate: row => true) == 2 &&
+    for_all(xs: mandatory, predicate: row => row.declaration.decl_name != ("fast_row" as NonEmptyStr))
 }
 
 fn zero_over_threshold_rows_counts_zero_holds() -> Bool {
