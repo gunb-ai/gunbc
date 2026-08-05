@@ -67,9 +67,51 @@ type WitnessSeam {
   consumer: String
 }
 
+data witness_cost_clock_note: String = "Which clock the duration carrier names (operator msg_e24f4cab, 2026-08-04): run_claim_timed builds performance receipts from wall_nanos (performance_receipt_from_witness) while the per-witness eval budget gate consumes thread CPU nanos (budget_completion_outcome). Both cross as std.measure Millisecond — without the clock tag a stored figure is not comparable to a threshold. claim_batch receipt logs cited on MeasuredAtExactSubject rows are WitnessCostWallEval unless re-measured on ThreadCpu."
+
+type WitnessCostClock
+  = WitnessCostWallEval
+  | WitnessCostThreadCpuEval
+
+fn witness_cost_clock_eq(a: WitnessCostClock, b: WitnessCostClock) -> Bool {
+  match a {
+    WitnessCostWallEval => match b {
+      WitnessCostWallEval => true
+      WitnessCostThreadCpuEval => false
+    }
+    WitnessCostThreadCpuEval => match b {
+      WitnessCostThreadCpuEval => true
+      WitnessCostWallEval => false
+    }
+  }
+}
+
+type WitnessCostBasis
+  = MeasuredAtExactSubject {
+      clock: WitnessCostClock,
+      duration: Millisecond,
+      receipt: String
+    }
+  | EstimatedFromSiblingClass {
+      clock: WitnessCostClock,
+      source_witness: String,
+      basis: String
+    }
+
+type ScheduledWitnessEnvelope {
+  cadence: String
+  wall_budget: Millisecond
+  max_staleness: String
+}
+
 type WitnessSpan
   = SpanUndeclared
   | SpanSeams { seams: List<WitnessSeam> }
+  | SpanEnrolled {
+      seams: List<WitnessSeam>,
+      cost_basis: WitnessCostBasis,
+      envelope: ScheduledWitnessEnvelope
+    }
 
 fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> Bool {
   match a {

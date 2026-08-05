@@ -67,6 +67,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "extdeps_units_iec_80000_13",
         "extdeps_units_iso8601",
         "std_occurrence_identity",
+        "std_source_annotation",
         "v1_std_core"
       ],
       reexport_packages: [

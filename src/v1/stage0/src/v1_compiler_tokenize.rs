@@ -2,8 +2,16 @@
 // Source module: v1.compiler.tokenize
 
 use self::EscapeProcessResult::*;
+use self::ScanStep::*;
 use self::StringScanResult::*;
 pub use crate::extdeps_languages_dag_syntax::dag_keyword_set;
+use crate::std_source_annotation::AnnotationPlacement::{
+    LeadingAfterLineIndent, TrailingAfterSemanticToken,
+};
+pub use crate::std_source_annotation::{
+    advance_line_prefix_indent_only_text, placement_from_line_prefix,
+};
+pub use crate::std_source_annotation::{AnnotationPlacement, UnboundAnnotationCapture};
 pub use crate::std_types::SourceSpan;
 pub use crate::std_unicode_types::unicode_scalar;
 pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
@@ -57,7 +65,45 @@ pub fn single_punct() -> Rc<HashMap<String, TokenShape>> {
 pub struct TokenizerState {
     pub pos: i64,
     pub tokens: Rc<Vec<Rc<Token>>>,
+    pub annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
     pub interp_depth: Rc<Vec<i64>>,
+}
+
+pub fn v1_scan_step_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "scan_next_token used to return exactly one Token, which encoded the assumption that every lexeme becomes one. An annotation breaks that: it consumes source and produces NO semantic token. Rather than smuggle it through as a token the parser must filter — the TokenRule mistake DESIGN 4c names — the scan result becomes a sum, and the caller decides which accumulator it lands in.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ScanStep {
+    ScannedToken {
+        result: Rc<ScanResult>,
+    },
+    ScannedAnnotation {
+        pos: i64,
+        capture: Rc<UnboundAnnotationCapture>,
+        interp_depth: Rc<Vec<i64>>,
+    },
+}
+
+pub fn v1_tokenize_artifact_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "tokenize keeps returning List<Token> and is the SEMANTIC PROJECTION, so every existing caller (compile.dag, the parser, the Rust seed tests) is untouched by construction. tokenize_artifact is the authored result. The projection direction is one-way on purpose: a semantic consumer cannot reach annotation text.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct V1LexArtifact {
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -166,7 +212,7 @@ pub fn source_scan_to_eol(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
     }
 }
 
-pub fn tokenize(source: String, file: String) -> Rc<Vec<Rc<Token>>> {
+pub fn tokenize_artifact(source: String, file: String) -> Rc<V1LexArtifact> {
     {
         let c = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
         let src = Rc::new(SourceRef {
@@ -181,6 +227,7 @@ pub fn tokenize(source: String, file: String) -> Rc<Vec<Rc<Token>>> {
         let final_state = tokenize_loop(
             src.clone(),
             Rc::new(vec![]),
+            Rc::new(vec![]),
             initial.clone(),
             (source_len(src.clone()) + 1),
         );
@@ -189,26 +236,128 @@ pub fn tokenize(source: String, file: String) -> Rc<Vec<Rc<Token>>> {
             final_state.pos.clone(),
             final_state.pos.clone(),
         );
-        v1_rt::rc_list_push(
-            final_state.tokens.clone(),
-            make_token("".to_string(), eof_span.clone(), TokenShape::ShEof),
-        )
+        Rc::new(V1LexArtifact {
+            tokens: v1_rt::rc_list_push(
+                final_state.tokens.clone(),
+                make_token("".to_string(), eof_span.clone(), TokenShape::ShEof),
+            ),
+            annotations: final_state.annotations.clone(),
+        })
     }
 }
 
-pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
+pub fn tokenize(source: String, file: String) -> Rc<Vec<Rc<Token>>> {
+    tokenize_artifact(source.clone(), file.clone())
+        .tokens
+        .clone()
+}
+
+pub fn v1_line_prefix_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The seed reads the PHYSICAL LINE PREFIX directly instead of threading a `have I seen a semantic token` flag. It can, because it holds the whole source and an index: source_line_start walks back to just after the previous line feed, and the shared std.source_annotation fold then judges the slice between there and the annotation.\n\nThis is the same rule the modeled lexer applies, not a second one — that lexer walks lexemes and so must thread the state forward, while this one can look back. Only the way each obtains the code points differs. Removing the flag also removes the failure it invited: the flag was set by token CATEGORY, which is wrong for any grammar whose tokens may themselves contain line feeds.\n\nThe backward walk stops at the previous line feed, so it costs one line, not one file.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn source_line_start(mut source: Rc<SourceRef>, mut pos: i64) -> i64 {
+    loop {
+        if (pos.clone() <= 0) {
+            break 0;
+        } else {
+            if (source_code_point(source.clone(), (pos.clone() - 1)) == 10) {
+                break pos.clone();
+            } else {
+                {
+                    let __tco_0 = (pos - 1);
+                    pos = __tco_0;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+pub fn v1_blank_line_lookback_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Whether a blank line precedes the annotation, observed here because it cannot be observed later — the whitespace between two captures is consumed before the parser sees anything, so by attachment time two adjacent comment lines and two blocks separated by a blank line are indistinguishable.\n\nThe previous line is the text between the line start before this one and this line's start. It is blank exactly when that text is indentation only, which is the SAME predicate placement uses, so a blank line and an indent-only prefix are one concept read at two positions rather than two spellings of whitespace. An annotation on the first line of a file has no previous line and is not preceded by one. The walk is bounded by one line.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn preceded_by_blank_line(source: Rc<SourceRef>, pos: i64) -> bool {
+    {
+        let line_start = source_line_start(source.clone(), pos.clone());
+        if (line_start.clone() <= 0) {
+            false
+        } else {
+            advance_line_prefix_indent_only_text(
+                true,
+                source_substring(
+                    source.clone(),
+                    source_line_start(source.clone(), (line_start.clone() - 1)),
+                    (line_start.clone() - 1),
+                ),
+            )
+        }
+    }
+}
+
+pub fn line_prefix_is_indent_only(source: Rc<SourceRef>, pos: i64) -> bool {
+    advance_line_prefix_indent_only_text(
+        true,
+        source_substring(
+            source.clone(),
+            source_line_start(source.clone(), pos.clone()),
+            pos.clone(),
+        ),
+    )
+}
+
+pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
     {
         let ch = source_code_point(source.clone(), pos.pos.clone());
         if (ch.clone() == 10) {
-            return Rc::new(ScanResult {
-                pos: (pos.pos.clone() + 1),
-                token: make_token(
-                    "\n".to_string(),
-                    make_file_span(source.file.clone(), pos.pos.clone(), (pos.pos.clone() + 1)),
-                    TokenShape::ShNewline,
-                ),
-                interp_depth: pos.interp_depth.clone(),
+            return Rc::new(ScanStep::ScannedToken {
+                result: Rc::new(ScanResult {
+                    pos: (pos.pos.clone() + 1),
+                    token: make_token(
+                        "\n".to_string(),
+                        make_file_span(source.file.clone(), pos.pos.clone(), (pos.pos.clone() + 1)),
+                        TokenShape::ShNewline,
+                    ),
+                    interp_depth: pos.interp_depth.clone(),
+                }),
             });
+        }
+        let next_ch_for_comment = if ((pos.pos.clone() + 1) < source_len(source.clone())) {
+            source_code_point(source.clone(), (pos.pos.clone() + 1))
+        } else {
+            0
+        };
+        if ((ch.clone() == 47) && (next_ch_for_comment.clone() == 47)) {
+            {
+                let eol = source_scan_to_eol(source.clone(), pos.pos.clone());
+                return Rc::new(ScanStep::ScannedAnnotation {
+                    pos: eol.clone(),
+                    capture: Rc::new(UnboundAnnotationCapture {
+                        lexeme: source_substring(source.clone(), pos.pos.clone(), eol.clone()),
+                        origin: make_file_span(source.file.clone(), pos.pos.clone(), eol.clone()),
+                        placement: placement_from_line_prefix(line_prefix_is_indent_only(
+                            source.clone(),
+                            pos.pos.clone(),
+                        )),
+                        preceded_by_blank_line: preceded_by_blank_line(
+                            source.clone(),
+                            pos.pos.clone(),
+                        ),
+                    }),
+                    interp_depth: pos.interp_depth.clone(),
+                });
+            }
         }
         if ((ch.clone() == 125) && ((pos.interp_depth.clone().len() as i64) > 0)) {
             {
@@ -220,32 +369,43 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult>
                             pos: (pos.pos.clone() + 1),
                             interp_depth: popped.clone(),
                         });
-                        return scan_str_cont(source.clone(), cont_pos.clone(), pos.pos.clone());
+                        return Rc::new(ScanStep::ScannedToken {
+                            result: scan_str_cont(
+                                source.clone(),
+                                cont_pos.clone(),
+                                pos.pos.clone(),
+                            ),
+                        });
                     }
                 } else {
-                    return Rc::new(ScanResult {
-                        pos: (pos.pos.clone() + 1),
-                        token: make_token(
-                            "}".to_string(),
-                            make_file_span(
-                                source.file.clone(),
-                                pos.pos.clone(),
-                                (pos.pos.clone() + 1),
+                    return Rc::new(ScanStep::ScannedToken {
+                        result: Rc::new(ScanResult {
+                            pos: (pos.pos.clone() + 1),
+                            token: make_token(
+                                "}".to_string(),
+                                make_file_span(
+                                    source.file.clone(),
+                                    pos.pos.clone(),
+                                    (pos.pos.clone() + 1),
+                                ),
+                                TokenShape::ShRBrace,
                             ),
-                            TokenShape::ShRBrace,
-                        ),
-                        interp_depth: replace_last(pos.interp_depth.clone(), (top.clone() - 1)),
+                            interp_depth: replace_last(pos.interp_depth.clone(), (top.clone() - 1)),
+                        }),
                     });
                 }
             }
         }
-        scan_token(source.clone(), pos.clone(), ch.clone())
+        Rc::new(ScanStep::ScannedToken {
+            result: scan_token(source.clone(), pos.clone(), ch.clone()),
+        })
     }
 }
 
 pub fn tokenize_loop(
     mut source: Rc<SourceRef>,
     mut tokens: Rc<Vec<Rc<Token>>>,
+    mut annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
     mut pos: Rc<TokPos>,
     mut fuel: i64,
 ) -> Rc<TokenizerState> {
@@ -255,21 +415,40 @@ pub fn tokenize_loop(
             return Rc::new(TokenizerState {
                 pos: s.pos.clone(),
                 tokens: tokens.clone(),
+                annotations: annotations.clone(),
                 interp_depth: s.interp_depth.clone(),
             });
         }
-        let result = scan_next_token(source.clone(), s.clone());
-        {
-            let __tco_0 = v1_rt::rc_list_push(tokens, result.token.clone());
-            let __tco_1 = Rc::new(TokPos {
-                pos: result.pos.clone(),
-                interp_depth: result.interp_depth.clone(),
-            });
-            let __tco_2 = (fuel - 1);
-            tokens = __tco_0;
-            pos = __tco_1;
-            fuel = __tco_2;
-            continue;
+        match (*scan_next_token(source.clone(), s.clone())).clone() {
+            ScanStep::ScannedAnnotation {
+                pos: next_pos,
+                capture,
+                interp_depth: depth,
+                ..
+            } => {
+                let __tco_0 = v1_rt::rc_list_push(annotations, capture.clone());
+                let __tco_1 = Rc::new(TokPos {
+                    pos: next_pos.clone(),
+                    interp_depth: depth.clone(),
+                });
+                let __tco_2 = (fuel - 1);
+                annotations = __tco_0;
+                pos = __tco_1;
+                fuel = __tco_2;
+                continue;
+            }
+            ScanStep::ScannedToken { result: result, .. } => {
+                let __tco_0 = v1_rt::rc_list_push(tokens, result.token.clone());
+                let __tco_1 = Rc::new(TokPos {
+                    pos: result.pos.clone(),
+                    interp_depth: result.interp_depth.clone(),
+                });
+                let __tco_2 = (fuel - 1);
+                tokens = __tco_0;
+                pos = __tco_1;
+                fuel = __tco_2;
+                continue;
+            }
         }
     }
 }
