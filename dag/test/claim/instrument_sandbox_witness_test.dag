@@ -7,21 +7,28 @@ import gunbc.roadmap_serve {
 }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import gunbc.roadmap_instrument_sandbox {
-  instrument_sandbox_page, instrument_css, instrument_rules,
-  instrument_emission_root_css, audition_card_class, audition_emission_var,
+  instrument_sandbox_page, instrument_css, instrument_css_at_role,
+  instrument_emission_root_css_for, audition_card_class, audition_emission_var,
+  audition_subject_key, audition_subject_role, live_program_view_result,
 }
 import gunbc.design.instrument_audition {
-  AuditionRestrained, AuditionExpressive, AuditionHero, audition_intensities,
+  AuditionIntensity, AuditionRestrained, AuditionExpressive, AuditionHero, audition_intensities,
+  AuditionAdmission, AuditionAdmitted, AuditionEmissionRefused,
+  AuditionAttractionOutsideEnvelope, AuditionDisplacementOverBudget, admit_audition,
 }
 import gunbc.design.instrument_physical { preference_default, instrument_displacement_px }
-import gunbc.design.theme { day_theme, night_theme }
+import gunbc.design.salience {
+  SalienceRole, SalienceFocal, SalienceSupporting, SalienceGround, salience_key,
+}
+import gunbc.roadmap_program_view {
+  V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused, V1DeletionProgramView,
+}
 import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, GET, media_type_wire_label }
-import extdeps.languages.html { HtmlEmitResult, EmitOk, EmitRejected, try_serialize_html_source }
-import gunbc.v1_deletion_plan { v1_exit_finish_lines }
+import extdeps.cloud.gcp.gcp { GcpProjectId }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data instrument_sandbox_witness_note: String = "The /sandbox/instrument path exists and renders REAL derived facts, which is the difference between this page and a picture of one. The discriminating content is V0's own claim text — it is authored in gunbc.v1_deletion_plan and nowhere else, so a page that fabricated its subjects could not contain it; the Why mode's refusal cause, which no fabricated surface would print; and the emission vars, which must be present under BOTH theme selectors because a glow pinned to one projection would go dark on the toggle. The RED that keeps the last one honest is that the emission var name appears in the day block, the data-theme block and the prefers-color-scheme block, not merely somewhere in the stylesheet."
+data instrument_sandbox_witness_note: String = "RESHAPED AROUND THE PRODUCTION JOINS, because the first set proved less than it claimed (review finding, 2026-08-05). Three of its claims were substring theatre: the role witness searched the page for the words focal / supporting / ground / critical, which any page mentioning salience contains whether or not a single role was derived; the theme-block helper checked that one variable existed somewhere and that three selectors existed somewhere, never that the variable appeared INSIDE each block; and the press witness equated one translateY rule with a realized CRT glitch. Worst of all, nothing tested the property that turned out to be broken — that a REFUSED audition cannot paint. The claims below hold the joins instead: the served role is the one the projection derived, emission is present exactly when the admission grants it and absent at every refusing role, the emission variable occurs inside all three theme blocks by position, and the page reads the live derived view rather than an authored list."
 
 fn fixture_request(path: String) -> ServeHttpRequest {
   ServeHttpRequest { method: GET, path: path, body: "" }
@@ -36,92 +43,141 @@ fn served() -> ServeHttpResponse {
   )
 }
 
+fn emission_var_ref(i: AuditionIntensity) -> String {
+  concat("--", concat(audition_emission_var(i: i), ":"))
+}
+
+fn emission_is_none_for(role: SalienceRole, i: AuditionIntensity) -> Bool {
+  string_contains(
+    s: instrument_emission_root_css_for(role: role),
+    pattern: concat(emission_var_ref(i: i), " none"),
+  )
+}
+
+fn admission_grants(role: SalienceRole, i: AuditionIntensity) -> Bool {
+  match admit_audition(i: i, role: role, subject_key: audition_subject_key()) {
+    AuditionAdmitted { intensity, emission, attraction, displacement_px } => true
+    AuditionEmissionRefused { intensity, grant } => false
+    AuditionAttractionOutsideEnvelope { intensity } => false
+    AuditionDisplacementOverBudget { intensity, total_px, max_px } => false
+  }
+}
+
 fn witness_the_instrument_path_serves_html() -> Bool {
   let r = served()
   r.status == 200
     && media_type_wire_label(m: r.content_type) == "text/html; charset=utf-8"
-    && string_contains(s: r.body, pattern: "gunbc — instrument")
+    && string_contains(s: r.body, pattern: "gunbc — instrument study")
+    && string_contains(s: r.body, pattern: "lang=\"en\"")
+    && string_contains(s: r.body, pattern: "width=device-width")
 }
 
-fn witness_the_page_renders_v0s_own_claim_text() -> Bool {
+data study_not_instrument_note: String = "The page must not describe itself as the operable instrument, and the header must not carry controls it cannot operate. Both are checked, because both were true of the first cut."
+
+fn witness_the_page_calls_itself_a_study_and_carries_no_dead_controls() -> Bool {
   let r = served()
-  string_contains(s: r.body, pattern: "Compiler fixed point")
-    && string_contains(s: r.body, pattern: "v1-emitter-fixed-point")
-    && string_contains(
-         s: r.body,
-         pattern: "Matching the old compiler byte for byte is deliberately not the goal.",
-       )
+  string_contains(s: r.body, pattern: "instrument — static study")
+    && !string_contains(s: r.body, pattern: "theme-toggle")
+    && !string_contains(s: r.body, pattern: "sound-toggle")
 }
 
-fn witness_red_the_why_mode_prints_its_refusal_not_a_rationale() -> Bool {
+data derived_role_witness_note: String = "The load-bearing claim: the role the audition is admitted at is the one the projection derived for the selected subject, not a literal."
+
+fn witness_the_served_role_is_the_derived_one() -> Bool {
+  salience_key(role: audition_subject_role()) == salience_key(role: SalienceFocal)
+    && audition_subject_key() == "compiler-fixed-point"
+}
+
+fn witness_emission_is_present_exactly_when_the_admission_grants_it() -> Bool {
+  let role = audition_subject_role()
+  admission_grants(role: role, i: AuditionExpressive)
+    && admission_grants(role: role, i: AuditionHero)
+    && !emission_is_none_for(role: role, i: AuditionExpressive)
+    && !emission_is_none_for(role: role, i: AuditionHero)
+    && emission_is_none_for(role: role, i: AuditionRestrained)
+}
+
+data refused_cannot_paint_note: String = "THE CONTROL THE FIRST WITNESS SET DID NOT HAVE. Render the same study at a role the register refuses emission for; no emission may appear in the emitted CSS at all. This is the property that was actually broken — the glow painted while the verdict printed refused underneath it — so it is the one claim here whose failure would have caught the original defect."
+
+fn witness_red_a_refused_audition_paints_nothing() -> Bool {
+  !admission_grants(role: SalienceSupporting, i: AuditionHero)
+    && !admission_grants(role: SalienceGround, i: AuditionHero)
+    && emission_is_none_for(role: SalienceSupporting, i: AuditionRestrained)
+    && emission_is_none_for(role: SalienceSupporting, i: AuditionExpressive)
+    && emission_is_none_for(role: SalienceSupporting, i: AuditionHero)
+    && emission_is_none_for(role: SalienceGround, i: AuditionHero)
+    && !string_contains(s: instrument_css_at_role(role: SalienceSupporting), pattern: "0 0 20px")
+    && !string_contains(s: instrument_css_at_role(role: SalienceSupporting), pattern: "0 0 48px")
+}
+
+data block_position_note: String = "Occurrence INSIDE each theme block, not merely somewhere in the stylesheet: the CSS is split on the two later block selectors and the variable is required in every resulting piece. The first version asserted the variable existed and the selectors existed, which one hand-written block would have satisfied while the toggle silently did nothing."
+
+fn last_segment(s: String, marker: String) -> String {
+  fold(split(s: s, sep: marker), init: "", f: (acc, part) => part)
+}
+
+fn first_segment(s: String, marker: String) -> String {
+  fold(split(s: s, sep: marker), init: "", f: (acc, part) => if acc == "" { part } else { acc })
+}
+
+fn witness_the_emission_var_occurs_inside_every_theme_block() -> Bool {
+  let css = instrument_emission_root_css_for(role: audition_subject_role())
+  let v = emission_var_ref(i: AuditionHero)
+  let day_block = first_segment(s: css, marker: ":root[data-theme=")
+  let media_block = last_segment(s: css, marker: "@media (prefers-color-scheme:")
+  let alt_block = first_segment(s: last_segment(s: css, marker: ":root[data-theme="), marker: "@media")
+  string_contains(s: day_block, pattern: v)
+    && string_contains(s: alt_block, pattern: v)
+    && string_contains(s: media_block, pattern: v)
+    && string_contains(s: media_block, pattern: ":root:not([data-theme])")
+}
+
+data live_world_note: String = "The page reads the world V0 derives, live. If the projection refuses, the page renders the located causes rather than a smaller program."
+
+fn witness_the_page_reads_the_live_derived_program_view() -> Bool {
+  match live_program_view_result() {
+    ProgramViewDerived { view } => count(view.finish_lines) == 4 && count(view.fronts) > 0
+    ProgramViewRefused { causes } => false
+  }
+}
+
+fn witness_the_page_renders_real_remaining_and_constraint_readings() -> Bool {
   let r = served()
-  string_contains(s: r.body, pattern: "why · compiler-fixed-point — refused:")
-    && string_contains(s: r.body, pattern: "no rationale carrier exists for a v1 finish line")
+  string_contains(s: r.body, pattern: "program / remaining")
+    && string_contains(s: r.body, pattern: "outcome / status")
+    && string_contains(s: r.body, pattern: "node / why")
+    && string_contains(s: r.body, pattern: "open fronts")
 }
 
-fn witness_the_page_carries_derived_roles_for_every_finish_line() -> Bool {
+data evidence_refusal_note: String = "Evidence depth refuses, and unlike the previous Why refusal this one is real: gunbc.roadmap_program_view records that the verification-receipt join is test-only, so no carrier can answer it yet. The witness pins the cause text so a future reader can tell this refusal from the fabricated one it replaced."
+
+fn witness_red_evidence_depth_refuses_with_its_real_cause() -> Bool {
   let r = served()
-  string_contains(s: r.body, pattern: "focal")
-    && string_contains(s: r.body, pattern: "supporting")
-    && string_contains(s: r.body, pattern: "ground")
-    && string_contains(s: r.body, pattern: "critical")
-    && string_contains(s: r.body, pattern: "active-refusals")
-    && count(v1_exit_finish_lines()) == 4
+  string_contains(s: r.body, pattern: "evidence / status — unavailable:")
+    && string_contains(s: r.body, pattern: "verification-receipt join is test-only")
 }
 
-fn witness_all_three_audition_cards_render_with_their_verdicts() -> Bool {
+data press_is_a_press_note: String = "The press specimen is asserted as what it is — a bounded translation on a focusable control — and explicitly NOT as a realized CRT glitch. The keyboard claim is the one that matters: the specimen is a button, so it is reachable without a pointer."
+
+fn witness_the_press_specimen_is_a_bounded_translation_on_a_focusable_control() -> Bool {
   let r = served()
-  count(audition_intensities) == 3
-    && string_contains(s: r.body, pattern: audition_card_class(i: AuditionRestrained))
-    && string_contains(s: r.body, pattern: audition_card_class(i: AuditionExpressive))
-    && string_contains(s: r.body, pattern: audition_card_class(i: AuditionHero))
-    && string_contains(s: r.body, pattern: "admitted · enclosure displacement")
-}
-
-fn emission_var_in_all_three_theme_blocks(name: String) -> Bool {
-  let css = instrument_emission_root_css()
-  let var_decl = concat("--", concat(name, ":"))
-  string_contains(s: css, pattern: var_decl)
-    && string_contains(s: css, pattern: concat(":root[data-theme=\"", night_theme.name))
-    && string_contains(s: css, pattern: "@media (prefers-color-scheme:")
-    && string_contains(s: css, pattern: ":root:not([data-theme])")
-}
-
-fn witness_emission_is_emitted_under_every_theme_selector() -> Bool {
-  emission_var_in_all_three_theme_blocks(name: audition_emission_var(i: AuditionExpressive))
-    && emission_var_in_all_three_theme_blocks(name: audition_emission_var(i: AuditionHero))
-}
-
-fn witness_red_the_restrained_variant_emits_no_glow() -> Bool {
-  string_contains(
-    s: instrument_emission_root_css(),
-    pattern: concat("--", concat(audition_emission_var(i: AuditionRestrained), ": none")),
-  )
-}
-
-fn witness_the_impulse_glitch_is_a_real_press_response() -> Bool {
   let css = instrument_css()
   string_contains(s: css, pattern: ".instrument-frame:active")
     && string_contains(s: css, pattern: "translateY(-3px)")
+    && string_contains(s: r.body, pattern: "<button")
+    && string_contains(s: r.body, pattern: "impulse transient")
     && instrument_displacement_px(p: preference_default) == 6
-}
-
-fn witness_red_the_page_renders_the_impulse_admission_matrix() -> Bool {
-  let r = served()
-  string_contains(s: r.body, pattern: "host-accelerometer")
-    && string_contains(s: r.body, pattern: "availability-unknown → refused (availability-unknown)")
-    && string_contains(s: r.body, pattern: "permission-denied → refused (permission-denied)")
-    && string_contains(s: r.body, pattern: "present → admitted")
 }
 
 test fn instrument_sandbox_keystone_holds() -> Bool {
   witness_the_instrument_path_serves_html()
-    && witness_the_page_renders_v0s_own_claim_text()
-    && witness_red_the_why_mode_prints_its_refusal_not_a_rationale()
-    && witness_the_page_carries_derived_roles_for_every_finish_line()
-    && witness_all_three_audition_cards_render_with_their_verdicts()
-    && witness_emission_is_emitted_under_every_theme_selector()
-    && witness_red_the_restrained_variant_emits_no_glow()
-    && witness_the_impulse_glitch_is_a_real_press_response()
-    && witness_red_the_page_renders_the_impulse_admission_matrix()
+    && witness_the_page_calls_itself_a_study_and_carries_no_dead_controls()
+    && witness_the_served_role_is_the_derived_one()
+    && witness_emission_is_present_exactly_when_the_admission_grants_it()
+    && witness_red_a_refused_audition_paints_nothing()
+    && witness_the_emission_var_occurs_inside_every_theme_block()
+    && witness_the_page_reads_the_live_derived_program_view()
+    && witness_the_page_renders_real_remaining_and_constraint_readings()
+    && witness_red_evidence_depth_refuses_with_its_real_cause()
+    && witness_the_press_specimen_is_a_bounded_translation_on_a_focusable_control()
 }

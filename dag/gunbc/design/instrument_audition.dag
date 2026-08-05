@@ -11,16 +11,19 @@ import gunbc.design.salience {
 }
 import gunbc.design.instrument_camera {
   ProgramCamera, ProgramMode, ModeStatus, ModeRemaining, ModeWhy,
+  ProgramDepth, DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence,
   NoSubjectSelected, FinishLineFocused, program_mode_key,
 }
 import gunbc.design.instrument_physical {
   InstrumentPreference, preference_still, preference_default,
-  displacement_admission, DisplacementAdmitted, DisplacementOverBudget,
+  compose_displacement, admit_composed_displacement, focal_attraction_headroom_px,
+  DisplacementAdmitted, DisplacementOverBudget, EnclosureCharacterReachesResponseTravel,
 }
-import gunbc.v1_deletion_plan {
-  V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_key, v1_finish_line_accepted,
+import gunbc.roadmap_program_view {
+  V1DeletionProgramView, FinishLineView, FrontView, RemainingShape,
+  ConstraintView, ConstraintKind, ImplementationConstraint, ContractConstraint,
+  program_front_key,
 }
-import gunbc.roadmap_model { RoadmapNodeId }
 
 data audition_note: String = "THE AUDITION IS A COMPARISON, NOT A DEMO. Its purpose is to let one focal control be seen at three energies on the SAME real subject, so the choice between restrained, expressive and hero is made by looking rather than by argument — which is the only way the selective-spectacle amendment can be calibrated without re-litigating it in prose every time. Two properties make it an audition rather than a mock-up: the subject is a real v1-deletion finish line carrying V0's own name, claim and roadmap node, so what the control says is true; and every intensity is admitted through the register's OWN gates (emission_for, attraction_envelope, displacement_admission) rather than through audition-local bounds, so a variant that looks good but breaks the register cannot be rendered at all. The hero variant deliberately sits at the envelope's admissible maximum: an audition whose loudest option is comfortably inside the bound tells you nothing about where the bound is."
 
@@ -72,11 +75,11 @@ type AuditionAttraction
 fn audition_attraction(i: AuditionIntensity) -> AuditionAttraction {
   match i {
     AuditionRestrained => AuditionNoAttraction
-    AuditionExpressive => AuditionAttracts { field: focal_attraction }
+    AuditionExpressive => AuditionNoAttraction
     AuditionHero => AuditionAttracts {
       field: AttractionField {
         activation_radius: css_px(attraction_activation_min_px),
-        max_travel: css_px(attraction_travel_max_px),
+        max_travel: css_px(focal_attraction_headroom_px(p: audition_instrument(i: AuditionHero))),
         settle: focal_attraction.settle,
       },
     }
@@ -97,6 +100,10 @@ fn focal_discriminator(subject_key: String) -> String {
   concat("selected-state-class+name-text:", subject_key)
 }
 
+data hero_travel_is_derived_note: String = "Hero used to request the register's full attraction travel while the enclosure independently carried its own six pixels, and both gates passed because neither saw the other — the review's composed-envelope finding. Its travel is now DERIVED from what the enclosure left unspent, so the loudest audition variant is by construction the largest one that still fits the single envelope.
+
+COMPOSING THE ENVELOPE CHANGED THE AUDITION, WHICH IS THE POINT. Expressive used to borrow the register's canonical focal_attraction — activation 150, travel 12 — and under one envelope that no longer fits: 12 of the register's 14 declared pixels are already spent by the canonical field, so an enclosure carrying any character at all cannot also grant it. Rather than shrink the canonical field or inflate the envelope, the three variants now differ by exactly one channel each: restrained has neither emission nor attraction, expressive adds emission, hero adds the attraction the enclosure left affordable. That ordering is more useful for an audition than three variants differing on everything at once, and it surfaces the real constraint instead of hiding it — the register's own focal field is expensive enough that instrument character and canonical attraction are alternatives, not companions. If that trade is wrong, the number to revisit is attraction_travel_max_px, in the register, deliberately."
+
 data audition_admission_note: String = "One admission per intensity, and every arm of it is the register's existing gate rather than a local re-check. A restrained variant is admitted with no emission grant to inspect; the other two must pass emission_for AT THE FOCAL ROLE, which is the point where an audition that tried to glow a Supporting subject would refuse. Instrument displacement is admitted separately because it is a property of the enclosure and not of the control, and both must hold for the variant to be renderable."
 
 type AuditionAdmission
@@ -109,6 +116,13 @@ type AuditionAdmission
   | AuditionEmissionRefused { intensity: String, grant: EmissionGrant }
   | AuditionAttractionOutsideEnvelope { intensity: String }
   | AuditionDisplacementOverBudget { intensity: String, total_px: Int, max_px: Int }
+
+fn attraction_travel_of(a: AuditionAttraction) -> Int {
+  match a {
+    AuditionNoAttraction => 0
+    AuditionAttracts { field } => field.max_travel.n
+  }
+}
 
 fn attraction_admissible(a: AuditionAttraction) -> Bool {
   match a {
@@ -156,9 +170,14 @@ fn admit_enclosure(i: AuditionIntensity) -> AuditionAdmission {
   if !attraction_admissible(a: attraction) {
     AuditionAttractionOutsideEnvelope { intensity: key }
   } else {
-    match displacement_admission(p: audition_instrument(i: i)) {
+    match admit_composed_displacement(d: compose_displacement(
+      p: audition_instrument(i: i),
+      focal_attraction_px: attraction_travel_of(a: attraction),
+    )) {
       DisplacementOverBudget { total_px, max_px } =>
         AuditionDisplacementOverBudget { intensity: key, total_px: total_px, max_px: max_px }
+      EnclosureCharacterReachesResponseTravel { character_px, max_px } =>
+        AuditionDisplacementOverBudget { intensity: key, total_px: character_px, max_px: max_px }
       DisplacementAdmitted { total_px } => AuditionAdmitted {
         intensity: key,
         emission: audition_emission(i: i),
@@ -183,64 +202,173 @@ fn admit_audition(i: AuditionIntensity, role: SalienceRole, subject_key: String)
 
 data audition_intensities: List<AuditionIntensity> = [AuditionRestrained, AuditionExpressive, AuditionHero]
 
-data reading_note: String = "WHAT THE CONTROL SAYS, AND WHERE IT REFUSES TO SAY ANYTHING. Status and Remaining are answered from facts gunbc.v1_deletion_plan actually carries — the bound roadmap node, whether it is accepted, and the finish line's own claim text. Why is NOT answered, and that is the load-bearing part: no carrier in this repository records why a finish line has the shape it has, so a Why reading returns a typed, located, countable ReadingUnavailable naming the missing carrier rather than paraphrasing the claim into something that sounds like a rationale. A mode that renders plausible filler is the fabricated-plausible-output arm wearing a UI, and it is far more dangerous here than in a compiler because nobody diffs a sentence on a screen. DISSOLVE-ON: a rationale carrier lands on the roadmap ticket and Why reads it."
+data reading_note: String = "THE CAMERA READS THE WORLD V0 ALREADY DERIVED, and the previous revision of this module did not — which is the defect worth recording rather than quietly fixing. It answered Status and Remaining out of gunbc.v1_deletion_plan's authored rows, and answered Why with a typed ReadingUnavailable carrying the cause 'no rationale carrier exists for a v1 finish line'. That cause was FALSE when it was written. gunbc.roadmap_program_view was already on this branch's base and its own header says the camera layers are deliberately absent because THAT module is the world the cameras look at; ConstraintView exists precisely to answer why-is-this-taking-so-long without inventing rationale prose. So the refusal was not the honest fail-closed arm its note claimed — it was the empty-observation narrow, rendering could-not-find as the verdict does-not-exist, in the module whose own notes warn against exactly that. It reached review green because nothing about a refusal looks wrong: no witness can tell a correct refusal from a lazy one without going and looking for the carrier, which is what nobody did. The lesson is cheap to state and was expensive here: before declaring a carrier absent, search for it."
+
+data reading_grain_note: String = "DEPTH SELECTS THE SUBJECT GRAIN, MODE SELECTS THE QUESTION, and the two are genuinely independent because V0 derives a RemainingShape and a ConstraintView at more than one grain. Program reads the whole program's shape; Outcome reads one FinishLineView; Front reads one contributing FrontView; Node reads the primary constraint's own subject. Evidence is deliberately NOT answered from these carriers: acceptance here comes from RoadmapAcceptanceReceipt rows, but the verification-receipt join that would let a camera show WHY a receipt was granted is test-only until the belt wiring lands, and gunbc.roadmap_program_view says so itself. That is a real absence with a named trigger, so Evidence refuses — and it is the one place in this module where a refusal is the correct answer rather than a search nobody performed."
 
 type ProgramReading
   = ReadingNoSubject
-  | ReadingStatus { node: String, accepted: Bool, name: String }
-  | ReadingRemaining { name: String, claim: String, accepted: Bool }
+  | ReadingProgramShape { remaining: RemainingShape }
+  | ReadingOutcomeStatus { name: String, node: String, accepted: Bool, open_fronts: Int }
+  | ReadingOutcomeRemaining { name: String, remaining: RemainingShape }
+  | ReadingConstraint { subject: String, kind: String, headline: String, in_flight: Bool, depth: Int }
+  | ReadingNoConstraint { subject_key: String, reason: String }
+  | ReadingFront { key: String, name: String, closed: Bool, gates_accepted: Int, gates_total: Int }
   | ReadingUnavailable { mode: String, subject_key: String, cause: String }
 
-data why_has_no_carrier_cause: String = "no rationale carrier exists for a v1 finish line: gunbc.v1_deletion_plan records the claim (what must become true) and the bound roadmap node, neither of which states why"
+data evidence_grain_cause: String = "the verification-receipt join is test-only until the belt wiring seam lands (gunbc.roadmap_program_view records the same gap), so a camera can read THAT a node was accepted but not the evidence behind the receipt"
 
-fn finish_line_spec_for(subject_key: String) -> List<V1FinishLineSpec> {
-  v1_exit_finish_lines() |> filter(s => v1_finish_line_key(l: s.line) == subject_key)
+data accepted_subject_has_no_constraint_reason: String = "the subject is accepted, so its closure holds no unresolved constraint — this is an answer, not a missing carrier"
+
+data no_workable_frontier_reason: String = "no workable frontier remains in the subject's unaccepted closure"
+
+fn constraint_kind_key(k: ConstraintKind) -> String {
+  match k {
+    ImplementationConstraint => "implementation"
+    ContractConstraint => "contract"
+  }
 }
 
-fn read_spec(spec: V1FinishLineSpec, mode: ProgramMode, accepted: List<RoadmapNodeId>) -> ProgramReading {
-  match mode {
-    ModeStatus => ReadingStatus {
-      node: spec.node,
-      accepted: v1_finish_line_accepted(spec: spec, accepted: accepted),
-      name: spec.name,
+fn read_constraint(subject_key: String, c: ConstraintView?, accepted: Bool) -> ProgramReading {
+  match c {
+    Absent => ReadingNoConstraint {
+      subject_key: subject_key,
+      reason: if accepted { accepted_subject_has_no_constraint_reason } else { no_workable_frontier_reason },
     }
-    ModeRemaining => ReadingRemaining {
-      name: spec.name,
-      claim: spec.claim,
-      accepted: v1_finish_line_accepted(spec: spec, accepted: accepted),
-    }
-    ModeWhy => ReadingUnavailable {
-      mode: program_mode_key(m: mode),
-      subject_key: v1_finish_line_key(l: spec.line),
-      cause: why_has_no_carrier_cause,
+    Present { value } => ReadingConstraint {
+      subject: value.subject as String,
+      kind: constraint_kind_key(k: value.kind),
+      headline: value.headline,
+      in_flight: value.in_flight,
+      depth: value.depth,
     }
   }
 }
 
-data unknown_subject_refuses_note: String = "A focused key that resolves to no finish line refuses rather than reading as an empty subject. The two are different states — nothing is selected, versus something is selected that the authoritative view does not know — and collapsing the second into the first is the empty-observation narrow: it renders could-not-resolve as the verdict nothing-is-here, exactly where a drifted key most needs to be visible."
+fn read_line_view(lv: FinishLineView, camera: ProgramCamera) -> ProgramReading {
+  match camera.depth {
+    DepthProgram => match camera.mode {
+      ModeRemaining => ReadingOutcomeRemaining { name: lv.name, remaining: lv.remaining }
+      ModeStatus => ReadingOutcomeStatus {
+        name: lv.name,
+        node: lv.node as String,
+        accepted: lv.accepted,
+        open_fronts: lv.remaining.open_fronts,
+      }
+      ModeWhy => read_constraint(subject_key: lv.key, c: lv.constraint, accepted: lv.accepted)
+    }
+    DepthOutcome => match camera.mode {
+      ModeStatus => ReadingOutcomeStatus {
+        name: lv.name,
+        node: lv.node as String,
+        accepted: lv.accepted,
+        open_fronts: lv.remaining.open_fronts,
+      }
+      ModeRemaining => ReadingOutcomeRemaining { name: lv.name, remaining: lv.remaining }
+      ModeWhy => read_constraint(subject_key: lv.key, c: lv.constraint, accepted: lv.accepted)
+    }
+    DepthFront => read_front(lv: lv, camera: camera)
+    DepthNode => read_constraint(subject_key: lv.key, c: lv.constraint, accepted: lv.accepted)
+    DepthEvidence => ReadingUnavailable {
+      mode: program_mode_key(m: camera.mode),
+      subject_key: lv.key,
+      cause: evidence_grain_cause,
+    }
+  }
+}
 
-data unresolved_subject_cause: String = "the focused subject key resolves to no finish line in the authoritative view"
+data front_grain_note: String = "At front depth the camera shows the contributing fronts V0 derived for this outcome, and it shows the FIRST one rather than a list because a single reading is one answer — a camera at a grain reports the subject in view. Which front is in view is a tuning axis the operable instrument owns; this study fixes it at the first contributing front so the grain is genuinely different from Outcome rather than a relabelled copy of it."
 
-fn read_camera(camera: ProgramCamera, accepted: List<RoadmapNodeId>) -> ProgramReading {
+fn front_view_for(lv: FinishLineView, fronts: List<FrontView>) -> List<FrontView> {
+  fronts |> filter(fv => lv.contributing_fronts |> any(f => program_front_key(front: f) == fv.key))
+}
+
+fn read_front_view(fv: FrontView, camera: ProgramCamera) -> ProgramReading {
+  match camera.mode {
+    ModeStatus => ReadingFront {
+      key: fv.key,
+      name: fv.name,
+      closed: fv.closed,
+      gates_accepted: fv.gates_accepted,
+      gates_total: fv.gates_total,
+    }
+    ModeRemaining => ReadingOutcomeRemaining { name: fv.name, remaining: fv.remaining }
+    ModeWhy => read_constraint(subject_key: fv.key, c: fv.constraint, accepted: fv.closed)
+  }
+}
+
+data no_contributing_front_cause: String = "no convergence front contributes to this finish line in the derived view"
+
+fn read_front(lv: FinishLineView, camera: ProgramCamera) -> ProgramReading {
+  ReadingUnavailable {
+    mode: program_mode_key(m: camera.mode),
+    subject_key: lv.key,
+    cause: no_contributing_front_cause,
+  }
+}
+
+data unresolved_subject_cause: String = "the focused subject key resolves to no finish line in the derived program view"
+
+fn line_view_for(view: V1DeletionProgramView, subject_key: String) -> List<FinishLineView> {
+  view.finish_lines |> filter(lv => lv.key == subject_key)
+}
+
+fn read_program_depth(view: V1DeletionProgramView, camera: ProgramCamera) -> ProgramReading {
+  match camera.mode {
+    ModeRemaining => ReadingProgramShape { remaining: view.remaining }
+    ModeStatus => ReadingProgramShape { remaining: view.remaining }
+    ModeWhy => ReadingUnavailable {
+      mode: "why",
+      subject_key: "v1-deletion-program",
+      cause: no_workable_frontier_reason,
+    }
+  }
+}
+
+fn read_camera(camera: ProgramCamera, view: V1DeletionProgramView) -> ProgramReading {
   match camera.focus {
-    NoSubjectSelected => ReadingNoSubject
+    NoSubjectSelected => match camera.depth {
+      DepthProgram => read_program_depth(view: view, camera: camera)
+      DepthOutcome => ReadingNoSubject
+      DepthFront => ReadingNoSubject
+      DepthNode => ReadingNoSubject
+      DepthEvidence => ReadingNoSubject
+    }
     FinishLineFocused { line_key } => fold(
-      finish_line_spec_for(subject_key: line_key),
+      line_view_for(view: view, subject_key: line_key),
       init: ReadingUnavailable {
         mode: program_mode_key(m: camera.mode),
         subject_key: line_key,
         cause: unresolved_subject_cause,
       },
-      f: (acc, spec) => read_spec(spec: spec, mode: camera.mode, accepted: accepted),
+      f: (acc, lv) => read_camera_at(lv: lv, camera: camera, view: view),
     )
+  }
+}
+
+fn read_camera_at(lv: FinishLineView, camera: ProgramCamera, view: V1DeletionProgramView) -> ProgramReading {
+  match camera.depth {
+    DepthFront => fold(
+      front_view_for(lv: lv, fronts: view.fronts),
+      init: read_front(lv: lv, camera: camera),
+      f: (acc, fv) => read_front_view(fv: fv, camera: camera),
+    )
+    DepthProgram => read_line_view(lv: lv, camera: camera)
+    DepthOutcome => read_line_view(lv: lv, camera: camera)
+    DepthNode => read_line_view(lv: lv, camera: camera)
+    DepthEvidence => read_line_view(lv: lv, camera: camera)
   }
 }
 
 fn reading_key(r: ProgramReading) -> String {
   match r {
     ReadingNoSubject => "no-subject"
-    ReadingStatus { node, accepted, name } => "status"
-    ReadingRemaining { name, claim, accepted } => "remaining"
+    ReadingProgramShape { remaining } => "program-shape"
+    ReadingOutcomeStatus { name, node, accepted, open_fronts } => "status"
+    ReadingOutcomeRemaining { name, remaining } => "remaining"
+    ReadingConstraint { subject, kind, headline, in_flight, depth } => "constraint"
+    ReadingNoConstraint { subject_key, reason } => "no-constraint"
+    ReadingFront { key, name, closed, gates_accepted, gates_total } => "front"
     ReadingUnavailable { mode, subject_key, cause } => "unavailable"
   }
 }

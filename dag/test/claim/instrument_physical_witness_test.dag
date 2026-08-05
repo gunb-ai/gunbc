@@ -3,14 +3,18 @@ module test.claim.instrument_physical_witness
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int, List }
 import gunbc.design.instrument_physical {
-  InstrumentChannel, OpticalJitter, VerticalShift, BuoyantDrift, ImpulseGlitch,
+  InstrumentChannel, ChannelOpticalJitter, ChannelVerticalShift, ChannelBuoyantDrift, ChannelImpulseGlitch,
   channel_key, channel_may_carry_domain_fact,
-  ImpulseGlitchDuration, GlitchOff, GlitchShort, GlitchPersistent,
+  ImpulseGlitchDuration, ImpulseOff, ImpulseBrief, ImpulseLong,
   glitch_duration_key, glitch_is_armed, glitch_settle,
   ChannelAmplitude, ChannelDisabled, ChannelAmplitudePx, amplitude_px,
   InstrumentPreference, preference_still, preference_default, channel_amplitude,
   instrument_displacement_px, instrument_displacement_max_px,
-  DisplacementAdmission, DisplacementAdmitted, DisplacementOverBudget, displacement_admission,
+  ComposedVisualDisplacement, compose_displacement, admit_composed_displacement,
+  composed_total_px, focal_attraction_headroom_px,
+  DisplacementAdmission, DisplacementAdmitted, DisplacementOverBudget,
+  EnclosureCharacterReachesResponseTravel, displacement_admission,
+  channel_behaviour_axis, channel_provenance, channel_is_cited_precedent,
   PhysicalImpulseSource, SyntheticImpulse, HostAccelerometer, HostDeviceMotion,
   impulse_source_key,
   SensorAvailability, SensorPresent, SensorAbsent, SensorPermissionNotRequested,
@@ -19,6 +23,7 @@ import gunbc.design.instrument_physical {
   ImpulseAdmission, ImpulseAdmitted, ImpulseSourceUnavailable, ImpulseChannelDisabled,
   admit_impulse,
 }
+import gunbc.design.reference_instrument { behaviour_axis_key }
 import gunbc.design.instrument_audition {
   AuditionIntensity, AuditionRestrained, AuditionExpressive, AuditionHero,
   audition_intensity_key, audition_intensities,
@@ -26,23 +31,16 @@ import gunbc.design.instrument_audition {
   AuditionAttraction, AuditionNoAttraction, AuditionAttracts, audition_attraction,
   AuditionAdmission, AuditionAdmitted, AuditionEmissionRefused,
   AuditionAttractionOutsideEnvelope, AuditionDisplacementOverBudget, admit_audition,
-  ProgramReading, ReadingNoSubject, ReadingStatus, ReadingRemaining, ReadingUnavailable,
-  read_camera, reading_key,
 }
-import gunbc.design.instrument_camera {
-  ProgramCamera, camera_initial, camera_select, camera_set_mode, focus_finish_line,
-  FocusSubject, FinishLineFocused, ModeStatus, ModeRemaining, ModeWhy,
-}
+
 import gunbc.design.salience {
   SalienceRole, SalienceFocal, SalienceSupporting, attraction_travel_max_px,
 }
-import gunbc.v1_deletion_plan {
-  CompilerFixedPoint, InterpreterDeleted, v1_exit_finish_lines, v1_finish_line_key,
-}
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data instrument_physical_witness_note: String = "The physical-character amendment and the focal audition, each law with the control that reds it. The load-bearing pair: no instrument channel may carry a domain fact (total and constantly false, so a meaningful fifth channel cannot be added silently), and the COMPOSED displacement of every channel together stays below the register's existing attraction travel — the bound that makes instrument character structurally unable to imitate a real response. The audition's three intensities are admitted through the register's own emission, attraction and displacement gates rather than local bounds, and the ModeWhy mode's typed refusal is witnessed as a refusal rather than as text, because the entire point of that arm is that it does not fabricate a rationale nobody wrote."
+data instrument_physical_witness_note: String = "The physical-character amendment and the focal audition, each law with the control that reds it. Three of these claims exist because a review found the corresponding hole: an amplitude was a signed Int so two channels could cancel and pass the budget; the enclosure and the focal plate were admitted by SEPARATE gates so each passed while the plate moved farther than either bound described; and the composed law said below while the arithmetic admitted equality. The reading claims that used to live here moved to the sandbox witness when the camera was rewired to read gunbc.roadmap_program_view instead of authored rows."
 
 fn preference_over_budget() -> InstrumentPreference {
   InstrumentPreference {
@@ -50,23 +48,23 @@ fn preference_over_budget() -> InstrumentPreference {
     vertical_shift: ChannelAmplitudePx { px: 6 },
     buoyant_drift: ChannelAmplitudePx { px: 6 },
     impulse_glitch: ChannelAmplitudePx { px: 6 },
-    glitch_duration: GlitchPersistent,
+    glitch_duration: ImpulseLong,
   }
 }
 
 fn witness_no_instrument_channel_may_carry_a_domain_fact() -> Bool {
-  !channel_may_carry_domain_fact(c: OpticalJitter)
-    && !channel_may_carry_domain_fact(c: VerticalShift)
-    && !channel_may_carry_domain_fact(c: BuoyantDrift)
-    && !channel_may_carry_domain_fact(c: ImpulseGlitch)
+  !channel_may_carry_domain_fact(c: ChannelOpticalJitter)
+    && !channel_may_carry_domain_fact(c: ChannelVerticalShift)
+    && !channel_may_carry_domain_fact(c: ChannelBuoyantDrift)
+    && !channel_may_carry_domain_fact(c: ChannelImpulseGlitch)
 }
 
 fn witness_every_channel_off_position_is_total() -> Bool {
   instrument_displacement_px(p: preference_still) == 0
-    && amplitude_px(a: channel_amplitude(p: preference_still, c: OpticalJitter)) == 0
-    && amplitude_px(a: channel_amplitude(p: preference_still, c: VerticalShift)) == 0
-    && amplitude_px(a: channel_amplitude(p: preference_still, c: BuoyantDrift)) == 0
-    && amplitude_px(a: channel_amplitude(p: preference_still, c: ImpulseGlitch)) == 0
+    && amplitude_px(a: channel_amplitude(p: preference_still, c: ChannelOpticalJitter)) == 0
+    && amplitude_px(a: channel_amplitude(p: preference_still, c: ChannelVerticalShift)) == 0
+    && amplitude_px(a: channel_amplitude(p: preference_still, c: ChannelBuoyantDrift)) == 0
+    && amplitude_px(a: channel_amplitude(p: preference_still, c: ChannelImpulseGlitch)) == 0
     && !glitch_is_armed(g: preference_still.glitch_duration)
 }
 
@@ -76,6 +74,7 @@ fn witness_composed_displacement_stays_under_the_register_attraction_travel() ->
     && match displacement_admission(p: preference_default) {
          DisplacementAdmitted { total_px } => total_px == 6
          DisplacementOverBudget { total_px, max_px } => false
+         EnclosureCharacterReachesResponseTravel { character_px, max_px } => false
        }
 }
 
@@ -83,18 +82,10 @@ fn witness_red_four_legal_channels_can_sum_to_an_illegal_instrument() -> Bool {
   match displacement_admission(p: preference_over_budget()) {
     DisplacementOverBudget { total_px, max_px } =>
       total_px == 24 && max_px == attraction_travel_max_px
+    EnclosureCharacterReachesResponseTravel { character_px, max_px } =>
+      character_px == 18 && max_px == attraction_travel_max_px
     DisplacementAdmitted { total_px } => false
   }
-}
-
-fn witness_glitch_vocabulary_is_the_cited_three_with_a_decaying_persistent() -> Bool {
-  glitch_duration_key(g: GlitchOff) == "off"
-    && glitch_duration_key(g: GlitchShort) == "short"
-    && glitch_duration_key(g: GlitchPersistent) == "persistent"
-    && !glitch_is_armed(g: GlitchOff)
-    && glitch_is_armed(g: GlitchShort)
-    && glitch_is_armed(g: GlitchPersistent)
-    && glitch_settle(g: GlitchPersistent).duration_ms > glitch_settle(g: GlitchShort).duration_ms
 }
 
 fn witness_only_a_present_sensor_delivers_impulses() -> Bool {
@@ -187,58 +178,63 @@ fn witness_red_the_restrained_baseline_still_renders_at_a_supporting_role() -> B
   }
 }
 
-fn witness_status_and_remaining_read_the_real_v0_facts() -> Bool {
-  let c = camera_select(c: camera_initial, f: focus_finish_line(l: CompilerFixedPoint))
-  let status = read_camera(camera: c, accepted: [])
-  let remaining = read_camera(camera: camera_set_mode(c: c, m: ModeRemaining), accepted: [])
-  match status {
-    ReadingStatus { node, accepted, name } =>
-      node == "v1-emitter-fixed-point" && !accepted && name == "Compiler fixed point"
-    ReadingNoSubject => false
-    ReadingRemaining { name, claim, accepted } => false
-    ReadingUnavailable { mode, subject_key, cause } => false
-  }
-  && match remaining {
-    ReadingRemaining { name, claim, accepted } =>
-      name == "Compiler fixed point" && claim.length() > 0 && !accepted
-    ReadingNoSubject => false
-    ReadingStatus { node, accepted, name } => false
-    ReadingUnavailable { mode, subject_key, cause } => false
+data composed_envelope_note: String = "The three holes the review found in the first displacement model, each with the control that would have caught it: signed amplitudes could cancel, the prose said below while the check admitted equality, and the enclosure and the focal plate were bounded by separate gates that could not see each other."
+
+fn witness_red_enclosure_and_attraction_cannot_pass_separately() -> Bool {
+  match admit_composed_displacement(d: compose_displacement(
+    p: preference_default,
+    focal_attraction_px: attraction_travel_max_px,
+  )) {
+    DisplacementOverBudget { total_px, max_px } =>
+      total_px == 6 + attraction_travel_max_px && max_px == attraction_travel_max_px
+    DisplacementAdmitted { total_px } => false
+    EnclosureCharacterReachesResponseTravel { character_px, max_px } => false
   }
 }
 
-fn witness_acceptance_comes_from_the_authoritative_view_not_the_instrument() -> Bool {
-  let c = camera_select(c: camera_initial, f: focus_finish_line(l: InterpreterDeleted))
-  match read_camera(camera: c, accepted: ["v1-interpreter-delete"]) {
-    ReadingStatus { node, accepted, name } => accepted && node == "v1-interpreter-delete"
-    ReadingNoSubject => false
-    ReadingRemaining { name, claim, accepted } => false
-    ReadingUnavailable { mode, subject_key, cause } => false
+fn witness_the_headroom_is_what_the_enclosure_left_unspent() -> Bool {
+  focal_attraction_headroom_px(p: preference_default) == attraction_travel_max_px - 6
+    && match admit_composed_displacement(d: compose_displacement(
+         p: preference_default,
+         focal_attraction_px: focal_attraction_headroom_px(p: preference_default),
+       )) {
+         DisplacementAdmitted { total_px } => total_px == attraction_travel_max_px
+         DisplacementOverBudget { total_px, max_px } => false
+         EnclosureCharacterReachesResponseTravel { character_px, max_px } => false
+       }
+}
+
+fn witness_red_enclosure_character_alone_may_not_reach_response_travel() -> Bool {
+  match admit_composed_displacement(d: ComposedVisualDisplacement {
+    enclosure_character_px: attraction_travel_max_px,
+    focal_attraction_px: 0,
+    impulse_transient_px: 0,
+  }) {
+    EnclosureCharacterReachesResponseTravel { character_px, max_px } =>
+      character_px == attraction_travel_max_px && max_px == attraction_travel_max_px
+    DisplacementAdmitted { total_px } => false
+    DisplacementOverBudget { total_px, max_px } => false
   }
 }
 
-fn witness_red_the_why_mode_refuses_instead_of_fabricating_a_rationale() -> Bool {
-  let c = camera_set_mode(
-    c: camera_select(c: camera_initial, f: focus_finish_line(l: CompilerFixedPoint)),
-    m: ModeWhy,
-  )
-  match read_camera(camera: c, accepted: []) {
-    ReadingUnavailable { mode, subject_key, cause } =>
-      mode == "why" && subject_key == "compiler-fixed-point" && cause.length() > 0
-    ReadingNoSubject => false
-    ReadingStatus { node, accepted, name } => false
-    ReadingRemaining { name, claim, accepted } => false
-  }
+data provenance_edge_witness_note: String = "The provenance is an edge now, so it is checkable: three channels resolve to axes cited on a real product declaration, and the drift resolves to an axis this repository originated. A prose paragraph could not be asked either question."
+
+fn witness_channel_provenance_is_a_typed_edge() -> Bool {
+  channel_is_cited_precedent(c: ChannelOpticalJitter)
+    && channel_is_cited_precedent(c: ChannelVerticalShift)
+    && channel_is_cited_precedent(c: ChannelImpulseGlitch)
+    && !channel_is_cited_precedent(c: ChannelBuoyantDrift)
+    && behaviour_axis_key(a: channel_behaviour_axis(c: ChannelBuoyantDrift)) == "buoyant-drift"
+    && behaviour_axis_key(a: channel_behaviour_axis(c: ChannelOpticalJitter)) == "optical-instability"
 }
 
-fn witness_red_a_drifted_subject_key_refuses_rather_than_reading_empty() -> Bool {
-  let c = ProgramCamera {
-    depth: camera_initial.depth,
-    mode: ModeStatus,
-    focus: FinishLineFocused { line_key: "no-such-finish-line" },
-  }
-  reading_key(r: read_camera(camera: c, accepted: [])) == "unavailable"
-    && reading_key(r: read_camera(camera: camera_initial, accepted: [])) == "no-subject"
+data local_vocabulary_note: String = "The transient names are ours and say so; the cited Persistent behaviour is a latch we do not model, so no arm claims it."
+
+fn witness_the_transient_vocabulary_is_local_and_decaying() -> Bool {
+  glitch_duration_key(g: ImpulseOff) == "off"
+    && glitch_duration_key(g: ImpulseBrief) == "brief"
+    && glitch_duration_key(g: ImpulseLong) == "long"
+    && glitch_settle(g: ImpulseLong).duration_ms > glitch_settle(g: ImpulseBrief).duration_ms
 }
 
 test fn instrument_physical_keystone_holds() -> Bool {
@@ -246,7 +242,6 @@ test fn instrument_physical_keystone_holds() -> Bool {
     && witness_every_channel_off_position_is_total()
     && witness_composed_displacement_stays_under_the_register_attraction_travel()
     && witness_red_four_legal_channels_can_sum_to_an_illegal_instrument()
-    && witness_glitch_vocabulary_is_the_cited_three_with_a_decaying_persistent()
     && witness_only_a_present_sensor_delivers_impulses()
     && witness_red_an_uninterrogated_sensor_stays_distinct_from_a_missing_one()
     && witness_the_synthetic_source_auditions_on_a_machine_with_no_sensor()
@@ -256,8 +251,9 @@ test fn instrument_physical_keystone_holds() -> Bool {
     && witness_the_restrained_baseline_requests_no_emission_and_no_attraction()
     && witness_red_the_same_audition_refuses_at_a_supporting_role()
     && witness_red_the_restrained_baseline_still_renders_at_a_supporting_role()
-    && witness_status_and_remaining_read_the_real_v0_facts()
-    && witness_acceptance_comes_from_the_authoritative_view_not_the_instrument()
-    && witness_red_the_why_mode_refuses_instead_of_fabricating_a_rationale()
-    && witness_red_a_drifted_subject_key_refuses_rather_than_reading_empty()
+    && witness_red_enclosure_and_attraction_cannot_pass_separately()
+    && witness_the_headroom_is_what_the_enclosure_left_unspent()
+    && witness_red_enclosure_character_alone_may_not_reach_response_travel()
+    && witness_channel_provenance_is_a_typed_edge()
+    && witness_the_transient_vocabulary_is_local_and_decaying()
 }
