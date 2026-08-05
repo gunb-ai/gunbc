@@ -5417,6 +5417,22 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
     let mut mandatory_count = 0usize;
     let mut worst: Vec<(u128, String, String)> = Vec::new();
     let mut observation_absent_count = 0usize;
+    // Distinct from `observation_absent_count` (a row that never ran at all): this counts
+    // rows that DID run but whose outcome is not the plain-`Done` shape this seed call site
+    // can compare (review 48906: folding TimedOut/Refused/Failed rows into
+    // `BelowMigrationThreshold` fabricates a "comfortably fast" verdict for a row that was
+    // never actually measured against the threshold). Mirrors
+    // `witness_row_cost_measurement_unavailable_count` in `.dag`. A `TimedOut` row's
+    // censored lower bound (`MandatoryMigrationCensored`) is NOT reconstructed here: the
+    // seed's flattened `(entry, function, eval_nanos, .., outcome_variant, detail)` tuple
+    // discards the `TimedOut` basis/elapsed fields at the `project_witness_cost_receipt`
+    // seam (`cli_run.rs`'s generic `Value::Variant { variant_name, .. }` fallback arm), so
+    // there is no elapsed figure left to compare against the migration threshold here —
+    // it is disclosed as unavailable rather than fabricated. Dissolve-on: witness
+    // realization plumbs `WitnessCostReceiptRow.outcome`'s full fields through this seam so
+    // the seed can call `witness_row_cost_receipt_row_migration_verdict` directly instead of
+    // re-deriving a Millisecond-only subset of it.
+    let mut measurement_unavailable_count = 0usize;
     for rec in batch_records {
         let n = rec.batch_index + 1;
         for result in &rec.results {
@@ -5432,6 +5448,18 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
                     observation_absent_count += 1;
                     body.push_str(&format!(
                         "{n}\t{}\t{}\t\t{threshold_ms}\tObservationAbsent\n",
+                        row.0, row.1
+                    ));
+                    continue;
+                }
+                // Only a completed (`Done`) row has a real, comparable wall-clock eval; any
+                // other outcome (TimedOut, Refused, Failed, ...) is a row this seed cannot
+                // yet compare (see the dissolve-on note above) and must disclose as
+                // unavailable rather than silently score as below-threshold.
+                if row.5 != "Done" {
+                    measurement_unavailable_count += 1;
+                    body.push_str(&format!(
+                        "{n}\t{}\t{}\t\t{threshold_ms}\tMigrationMeasurementUnavailable\n",
                         row.0, row.1
                     ));
                     continue;
@@ -5482,7 +5510,7 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
         return false;
     }
     eprintln!(
-        "[receipt] floor witness row-cost migration disclosure: mandatory_migration={mandatory_count} observation_absent={observation_absent_count} threshold_ms={threshold_ms} (TSV: {})",
+        "[receipt] floor witness row-cost migration disclosure: mandatory_migration={mandatory_count} observation_absent={observation_absent_count} measurement_unavailable={measurement_unavailable_count} threshold_ms={threshold_ms} (TSV: {})",
         path.display()
     );
     true
