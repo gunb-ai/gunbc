@@ -17,7 +17,7 @@ import v1.std.core {
 
   CardOptional,
   error_type,
-  fn_admit_callers
+  DeclRefCoords, fn_admit_callers, decl_ref_coords_label
 }
 
 import std.algebra {
@@ -231,9 +231,9 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             variant_provenance: empty_map()
           } }
         } else {
-          match fn_admit_callers(n: node) {
-            Present { value: admitted } =>
-              if admitted |> any(a => a == type_env.module_path) {
+          match fn_admit_callers(n: node, source_indices: type_env.source_indices) {
+            Present { value: permitted } =>
+              if permitted |> any(p => p.module_path == type_env.module_path) {
                 let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
                 FuncSigResolved { sig: ResolvedFuncSig {
                   name: name,
@@ -244,7 +244,11 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
                   variant_provenance: empty_map()
                 } }
               } else {
-                FuncSigCallerNotAdmitted { function_name: name, owner_module_path: bd.owner_module_path, admitted: admitted }
+                FuncSigCallerNotAdmitted {
+                  function_name: name,
+                  owner_module_path: bd.owner_module_path,
+                  admitted: permitted |> map(p => decl_ref_coords_label(coords: p))
+                }
               }
             Absent =>
               let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
