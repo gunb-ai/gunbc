@@ -106,7 +106,48 @@ fn program_map_member(map: Map<String, Bool>, id: String) -> Bool {
 }
 
 fn program_node_index(nodes: List<RoadmapNode>) -> Map<String, RoadmapNode> {
-  nodes |> fold(init: empty_map(), f: (acc, n) => map_insert(acc, n.node as String, n))
+  program_nodes_acc(nodes: nodes).by_id
+}
+
+type ProgramNodeAcc {
+  by_id: Map<String, RoadmapNode>
+  duplicate_ids: List<RoadmapNodeId>
+}
+
+fn program_node_acc_init() -> ProgramNodeAcc {
+  ProgramNodeAcc { by_id: empty_map(), duplicate_ids: [] }
+}
+
+fn program_node_acc_has_duplicate(acc: ProgramNodeAcc, id: String) -> Bool {
+  acc.duplicate_ids |> any(d => (d as String) == id)
+}
+
+fn program_node_acc_insert(acc: ProgramNodeAcc, n: RoadmapNode) -> ProgramNodeAcc {
+  let id = n.node as String
+  match map_get(acc.by_id, id) {
+    Present { value: _ } =>
+      ProgramNodeAcc {
+        by_id: acc.by_id,
+        duplicate_ids: if program_node_acc_has_duplicate(acc: acc, id: id) {
+          acc.duplicate_ids
+        } else {
+          concat(acc.duplicate_ids, [n.node])
+        },
+      }
+    Absent =>
+      ProgramNodeAcc {
+        by_id: map_insert(acc.by_id, id, n),
+        duplicate_ids: acc.duplicate_ids,
+      }
+  }
+}
+
+fn program_nodes_acc(nodes: List<RoadmapNode>) -> ProgramNodeAcc {
+  nodes |> fold(init: program_node_acc_init(), f: program_node_acc_insert)
+}
+
+fn program_duplicate_node_causes(acc: ProgramNodeAcc) -> List<ProgramViewRefusalCause> {
+  acc.duplicate_ids |> map(id => DuplicateProgramNodeId { node: id })
 }
 
 fn program_find_node_indexed(
@@ -549,6 +590,7 @@ type ProgramViewRefusalCause
   = FinishLineNodeUnresolved { line_key: String, node: RoadmapNodeId }
   | FrontGateUnresolved { front_key: String, gate: RoadmapNodeId }
   | DuplicateAcceptanceReceipt { node: RoadmapNodeId }
+  | DuplicateProgramNodeId { node: RoadmapNodeId }
 
 fn program_duplicate_receipt_causes(
   receipts: List<RoadmapAcceptanceReceipt>,
@@ -560,6 +602,7 @@ fn program_duplicate_receipt_causes(
       DuplicateAcceptanceReceipt { node } => (node as String) == id
       FinishLineNodeUnresolved { line_key: _, node: _ } => false
       FrontGateUnresolved { front_key: _, gate: _ } => false
+      DuplicateProgramNodeId { node: _ } => false
     }) {
       acc
     } else {
@@ -580,7 +623,7 @@ type V1ProgramViewResult
   = ProgramViewDerived { view: V1DeletionProgramView }
   | ProgramViewRefused { causes: List<ProgramViewRefusalCause> }
 
-data program_view_refusal_note: String = "IDENTITY RESOLUTION IS A WALL, NOT A FILTER. A finish-line node or front gate that names no declared node is a modeling defect — the requirements' misspelled-R1 red control — and the projection REFUSES with every located cause rather than deriving around the hole: a silently smaller front would zero the defect's frequency and misreport every count downstream, the absorbing-fallback shape DESIGN section 5 forbids. Duplicate live receipts for one node are the same class: DuplicateAcceptanceReceipt refuses the whole projection rather than silently picking one row. The causes list carries all failures, not the first, so one repair round sees the whole population."
+data program_view_refusal_note: String = "IDENTITY RESOLUTION IS A WALL, NOT A FILTER. A finish-line node or front gate that names no declared node is a modeling defect — the requirements' misspelled-R1 red control — and the projection REFUSES with every located cause rather than deriving around the hole: a silently smaller front would zero the defect's frequency and misreport every count downstream, the absorbing-fallback shape DESIGN section 5 forbids. Duplicate live receipts for one node and duplicate declared node ids are the same class: DuplicateAcceptanceReceipt and DuplicateProgramNodeId refuse the whole projection rather than silently picking one row or last-wins merging into a map. The causes list carries all failures, not the first, so one repair round sees the whole population."
 
 fn program_view(
   lines: List<V1FinishLineSpec>,
@@ -598,12 +641,14 @@ fn program_view(
     fs.gates
       |> filter(g => !(ids |> any(id => id == (g as String))))
       |> map(g => FrontGateUnresolved { front_key: program_front_key(front: fs.front), gate: g })))
-  let duplicate_causes = program_duplicate_receipt_causes(receipts: receipts)
-  let causes = concat(concat(line_causes, gate_causes), duplicate_causes)
+  let duplicate_receipt_causes = program_duplicate_receipt_causes(receipts: receipts)
+  let node_acc = program_nodes_acc(nodes: nodes)
+  let duplicate_node_causes = program_duplicate_node_causes(acc: node_acc)
+  let causes = concat(concat(concat(line_causes, gate_causes), duplicate_receipt_causes), duplicate_node_causes)
   if count(causes) > 0 {
     ProgramViewRefused { causes: causes }
   } else {
-    let node_index = program_node_index(nodes: nodes)
+    let node_index = node_acc.by_id
     let graph = roadmap_dependency_graph(edges: edges)
     let reverse_adj = reverse_adjacency(names: ids, graph: graph)
     let parent_index = program_parent_index(edges: edges)

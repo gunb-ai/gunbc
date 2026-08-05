@@ -7,36 +7,28 @@ import gunbc.roadmap_model {
   NodeSizing, Sized, Unsized, IntricacyLow, VolumeSmall, ManualAcceptance, PrsMerged,
 }
 import gunbc.roadmap_status {
-  RoadmapItem, TicketLine, DerivableLine, TicketFields, TicketUpdate,
+  TicketLine, DerivableLine, TicketFields,
   RedControlExecuted, HandbackDelivered, Signoff, Unsigned,
 }
 import gunbc.roadmap_execution_contract {
-  WorkItemExecutionContract, ExecutionContractUnspecified, ExecutionContract,
+  ExecutionContractUnspecified, ExecutionContract,
   CargoFmtValidation,
 }
 import gunbc.v1_deletion_plan { V1FinishLineSpec, CompilerFixedPoint }
 import gunbc.roadmap_program_view {
   V1ConvergenceFront, NamespacePDeriveFront, V2GenerationFront,
   ConvergenceFrontSpec, program_front_key,
-  ObligationState, ObligationAccepted, ObligationStartable,
-  ObligationDependencyHeld, ObligationContractHeld,
-  NodeStanding, RemainingShape, ConstraintView, ConstraintKind,
+  RemainingShape, ConstraintView, ConstraintKind,
   ImplementationConstraint, ContractConstraint,
   ProposedPlane, ProposedCarrierAbsent,
-  FinishLineView, FrontView, V1DeletionProgramView,
+  FinishLineView, V1DeletionProgramView,
   V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused,
   ProgramViewRefusalCause, FinishLineNodeUnresolved, FrontGateUnresolved,
-  DuplicateAcceptanceReceipt,
-  program_view, v1_program_view,
+  DuplicateAcceptanceReceipt, DuplicateProgramNodeId,
+  program_view,
 }
-import gunbc.roadmap_authority {
-  declared_roadmap_nodes, declared_roadmap_edges, roadmap_acceptance_receipts,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-data roadmap_program_view_witness_note: String = "The V0 red controls from the program-navigation requirements (operator, 2026-08-02), executed on PLANTED fixtures so every oracle is independently authored rather than copied from the live tree (the DESIGN section 5 oracle rule): (1) collapsing a chain link changes the derived sequential depth — accepting the fixture root drops the planted depth four to three, so a hand-collapsed tail cannot survive unnoticed; (2) a misspelled finish-line node or front gate REFUSES the whole projection with every located cause, never a silently smaller view; (3+6) a node whose line carries merged pull requests but no acceptance receipt is not accepted — and even an AUTHORED receipt row for a ticketless node cannot accept it, because the criteria digest has nothing to match; (4) a node with a bound closing contract and no receipt stays unaccepted — contract existence is not completion; (5) the proposed plane is a single-arm type carrying nothing, so a proposed node in any plane is unwritable by construction and the witness pins the arm. The live joins assert identity-grain facts only: the real finish lines and gates resolve, each line's contributing-front set is exactly the derived membership over the authored edges, and the accepted-iff-no-constraint implication holds in both directions — no live count is pinned, so ordinary progress never reds these rows."
+data roadmap_program_view_witness_note: String = "SMALL SYNTHETIC BUSINESS WITNESSES for gunbc.roadmap_program_view (operator verdict 2026-08-05): every oracle is PLANTED on a hand-authored fixture graph — never copied from the live roadmap tree (DESIGN section 5). Covers acceptance algebra (receipt moves primary constraint; accepted mid-chain collapses depth), dependency hold (unmet parents block startability), duplicate receipt and duplicate node identity refusal, in-flight overlay, merged-PR and contract non-acceptance, misspelled finish-line/gate refusal, proposed-plane absence, and derived front/constraint facts on the fixture. Live-corpus wiring — that the real roadmap authority projects and every finish line and gate resolves — is ONE separately classified receipt in test.claim.roadmap_program_view_live_corpus_receipt (falsifier substrate long lane), not counted here."
 
 fn fx_ticket(headline: String) -> TicketFields {
   TicketFields {
@@ -51,6 +43,28 @@ fn fx_ticket(headline: String) -> TicketFields {
     updates: [],
     authored_on: "2026-08-02",
     last_verified_on: "2026-08-02",
+  }
+}
+
+fn fx_node_custom(
+  id: String,
+  headline: String,
+  bound: Bool,
+  sized: Bool,
+) -> RoadmapNode {
+  RoadmapNode {
+    identity: concat("fx_", id) as RoadmapNodeIdentity,
+    node: id as RoadmapNodeId,
+    line: TicketLine { done: false, ticket: fx_ticket(headline: headline) },
+    carriers: [],
+    sizing: if sized {
+      Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance }
+    } else { Unsized },
+    execution: if bound {
+      ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] }
+    } else { ExecutionContractUnspecified },
+    owner: "fixture",
+    signoff: Unsigned,
   }
 }
 
@@ -259,6 +273,7 @@ test fn witness_red_misspelled_identities_refuse_with_located_causes() -> Bool {
           line_key == "compiler-fixed-point" && (node as String) == "fline-typo"
         FrontGateUnresolved { front_key: _, gate: _ } => false
         DuplicateAcceptanceReceipt { node: _ } => false
+        DuplicateProgramNodeId { node: _ } => false
       })
     ProgramViewDerived { view: _ } => false
   }
@@ -269,6 +284,7 @@ test fn witness_red_misspelled_identities_refuse_with_located_causes() -> Bool {
           front_key == "v2-generation" && (gate as String) == "fd-typo"
         FinishLineNodeUnresolved { line_key: _, node: _ } => false
         DuplicateAcceptanceReceipt { node: _ } => false
+        DuplicateProgramNodeId { node: _ } => false
       })
     ProgramViewDerived { view: _ } => false
   }
@@ -292,8 +308,46 @@ test fn witness_red_duplicate_receipts_refuse_projection() -> Bool {
           DuplicateAcceptanceReceipt { node } => (node as String) == "fa"
           FinishLineNodeUnresolved { line_key: _, node: _ } => false
           FrontGateUnresolved { front_key: _, gate: _ } => false
+          DuplicateProgramNodeId { node: _ } => false
         })
     ProgramViewDerived { view: _ } => false
+  }
+}
+
+test fn witness_red_duplicate_node_ids_refuse_projection() -> Bool {
+  let conflicting_fb = fx_node_custom(
+    id: "fb",
+    headline: "Conflicting fixture identity for fb",
+    bound: false,
+    sized: false,
+  )
+  match program_view(
+    lines: fx_lines(),
+    fronts: fx_fronts(),
+    nodes: concat(fx_nodes(), [conflicting_fb]),
+    edges: fx_edges(),
+    receipts: [],
+    in_flight: [],
+  ) {
+    ProgramViewRefused { causes } =>
+      count(causes) == 1
+        && all(causes, c => match c {
+          DuplicateProgramNodeId { node } => (node as String) == "fb"
+          FinishLineNodeUnresolved { line_key: _, node: _ } => false
+          FrontGateUnresolved { front_key: _, gate: _ } => false
+          DuplicateAcceptanceReceipt { node: _ } => false
+        })
+    ProgramViewDerived { view: _ } => false
+  }
+}
+
+test fn witness_unmet_parents_block_startability() -> Bool {
+  match fx_line_view(receipts: [], in_flight: []) {
+    Absent => false
+    Present { value: lv } =>
+      lv.remaining.dependency_held == 3
+        && lv.remaining.startable_now == 2
+        && !lv.accepted
   }
 }
 
@@ -346,59 +400,11 @@ test fn witness_proposed_plane_carries_nothing_by_construction() -> Bool {
   }
 }
 
-fn live_view() -> V1ProgramViewResult {
-  v1_program_view(
-    nodes: declared_roadmap_nodes(),
-    edges: declared_roadmap_edges(),
-    receipts: roadmap_acceptance_receipts(),
-    in_flight: [],
-  )
-}
-
-data live_view_cached: V1ProgramViewResult = live_view()
-
-fn live_line_front_keys(view: V1DeletionProgramView, line_key: String) -> List<String> {
-  fold(view.finish_lines, init: [], f: (acc, lv) =>
-    if lv.key == line_key {
-      lv.contributing_fronts |> map(c => program_front_key(front: c))
-    } else { acc })
-}
-
-test fn witness_live_program_view_derives_and_gates_resolve() -> Bool {
-  match live_view_cached {
-    ProgramViewDerived { view } =>
-      count(view.finish_lines) == 4 && count(view.fronts) == 5
-    ProgramViewRefused { causes: _ } => false
-  }
-}
-
-fn live_front_keys_are(view: V1DeletionProgramView, line_key: String, expected: List<String>) -> Bool {
-  live_line_front_keys(view: view, line_key: line_key) == expected
-}
-
-test fn witness_live_contributing_fronts_are_the_derived_sets() -> Bool {
-  match live_view_cached {
-    ProgramViewDerived { view } =>
-      live_front_keys_are(view: view, line_key: "compiler-fixed-point",
-        expected: [ "namespace-pderive", "v2-generation" ])
-        && live_front_keys_are(view: view, line_key: "interpreter-deleted",
-          expected: [ "namespace-pderive", "v2-generation", "materialization-cutover" ])
-        && live_front_keys_are(view: view, line_key: "products-v1-free",
-          expected: [ "namespace-pderive", "v2-generation", "honest-frontier", "materialization-cutover" ])
-        && live_front_keys_are(view: view, line_key: "zero-hand-maintained-rust",
-          expected: [ "namespace-pderive", "v2-generation", "honest-frontier", "materialization-cutover", "test-migration-tail" ])
-    ProgramViewRefused { causes: _ } => false
-  }
-}
-
-test fn witness_live_every_front_contributes_to_some_line() -> Bool {
-  match live_view_cached {
-    ProgramViewDerived { view } =>
-      all(view.fronts, fv =>
-        any(view.finish_lines, lv =>
-          lv.contributing_fronts |> any(c => program_front_key(front: c) == fv.key)))
-    ProgramViewRefused { causes: _ } => false
-  }
+test fn witness_fixture_every_front_contributes_to_some_line() -> Bool {
+  let view = fx_derived(receipts: [], in_flight: [])
+  all(view.fronts, fv =>
+    any(view.finish_lines, lv =>
+      lv.contributing_fronts |> any(c => program_front_key(front: c) == fv.key)))
 }
 
 fn probe_constraint_iff(lv: FinishLineView) -> Bool {
@@ -408,10 +414,7 @@ fn probe_constraint_iff(lv: FinishLineView) -> Bool {
   }
 }
 
-test fn witness_live_constraint_present_iff_line_unaccepted() -> Bool {
-  match live_view_cached {
-    ProgramViewDerived { view } =>
-      all(view.finish_lines, lv => probe_constraint_iff(lv: lv))
-    ProgramViewRefused { causes: _ } => false
-  }
+test fn witness_fixture_constraint_present_iff_line_unaccepted() -> Bool {
+  let view = fx_derived(receipts: [], in_flight: [])
+  all(view.finish_lines, lv => probe_constraint_iff(lv: lv))
 }
