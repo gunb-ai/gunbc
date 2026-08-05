@@ -369,7 +369,7 @@ fn rust_host_string_op_fn_emit(name: String) -> String? {
     ) }
   } else if name == "string_head" {
     Present { value: concat(
-      "pub fn string_head(s: String) -> Rc<CharResult> {\n",
+      "pub fn string_head(s: String) -> Arc<CharResult> {\n",
       "    match s.chars().next() {\n",
       "        Some(c) => Arc::new(CharResult::CharFound { value: Box::new(c as i64) }),\n",
       "        None => Arc::new(CharResult::CharAbsent),\n",
@@ -378,7 +378,7 @@ fn rust_host_string_op_fn_emit(name: String) -> String? {
     ) }
   } else if name == "string_tail" {
     Present { value: concat(
-      "pub fn string_tail(s: String) -> Rc<ListTailResult<Char>> {\n",
+      "pub fn string_tail(s: String) -> Arc<ListTailResult<Char>> {\n",
       "    let mut __it = s.chars();\n",
       "    match __it.next() {\n",
       "        Some(_) => Arc::new(ListTailResult::TailFound { tail: Arc::new(__it.map(|c| c as i64).collect::<Vec<i64>>()) }),\n",
@@ -388,7 +388,7 @@ fn rust_host_string_op_fn_emit(name: String) -> String? {
     ) }
   } else if name == "fold_source" {
     Present { value: concat(
-      "pub fn fold_source<R: Clone>(src: String, algebra: Rc<SourceFold<R>>) -> R {\n",
+      "pub fn fold_source<R: Clone>(src: String, algebra: Arc<SourceFold<R>>) -> R {\n",
       "    let mut __acc = (algebra.init)(src.clone());\n",
       "    for _ in src.chars() {\n",
       "        __acc = if (algebra.is_done)(__acc.clone()) { __acc } else { (algebra.step)(__acc) };\n",
@@ -526,7 +526,8 @@ fn rust_witness_parent_leaf(parent: String) -> Bool {
 data rust_witness_variant_arm_names_note: String = "Holds/Violates literals below are the two arms of std.witness.Witness<C> (dag/std/witness.dag) — not minted nicknames. Pattern position routes via variant_pattern_qualified_path like any other modeled enum; construction turbofish here keys type-arg resolution off the modeled arm names only."
 
 fn rust_peel_one_rc_type_node(type_node: Node, source_indices: Map<String, NewlineIndex>) -> Node {
-  if qualified_last_segment(name: type_node.name) != "Rc" {
+  let seg = qualified_last_segment(name: type_node.name)
+  if seg != "Rc" && seg != "Arc" {
     type_node
   } else {
     match type_node.children |> first {
@@ -545,7 +546,8 @@ fn rust_peel_one_rc_type_node(type_node: Node, source_indices: Map<String, Newli
 }
 
 fn rust_peel_all_rc_type_node(type_node: Node, source_indices: Map<String, NewlineIndex>) -> Node {
-  if qualified_last_segment(name: type_node.name) == "Rc" {
+  let seg = qualified_last_segment(name: type_node.name)
+  if seg == "Rc" || seg == "Arc" {
     rust_peel_all_rc_type_node(type_node: rust_peel_one_rc_type_node(type_node: type_node, source_indices: source_indices), source_indices: source_indices)
   } else {
     type_node
@@ -1025,7 +1027,7 @@ fn rust_fn_sig_leaf_name(source_indices: Map<String, NewlineIndex>, n: Node) -> 
 
 data alias_rhs_qualified_name_routing_note: String = "Construction wall for the dotted-render class. A namespace-QUALIFIED name in a type position (post-PR 6848 resolution) arrives from authored_name_at as the full dotted spelling, e.g. std.algebra.FreeMonoid. Every routing lookup on this path — alias_rhs_rust_qualify_module_filename via lookup_item, rust_seed_host_container_base, alias_base_is_zero_param_decl, is_parametric_opaque_type_base, shared_types — is keyed on the BARE declared name, so a dotted spelling matched nothing, def_mod fell back to the local module, and the else arm rendered the dotted string VERBATIM into Rust. That is not valid Rust: rustc reports 'expected one of !, (, +, ::, ;, <, or where, found .', a PARSE error, which then masks every later error in the module.
 
-Measured blast radius before the fix: the emitted 04_infer closure (50 files) contained exactly ONE such line — 'pub type List<T> = std.algebra.FreeMonoid<T>' in v2_std_collection.rs — and that single line blocked 4 of 5 self-host flip candidates, because std.collection sits in essentially every deep-module closure. The control that proves the fault is qualified-specific is the very next declaration: 'type Set<T> = PointwisePower<T>' (BARE) already routed correctly to Rc<crate::v2_std_algebra::PointwisePower<T>>.
+Measured blast radius before the fix: the emitted 04_infer closure (50 files) contained exactly ONE such line — 'pub type List<T> = std.algebra.FreeMonoid<T>' in v2_std_collection.rs — and that single line blocked 4 of 5 self-host flip candidates, because std.collection sits in essentially every deep-module closure. The control that proves the fault is qualified-specific is the very next declaration: 'type Set<T> = PointwisePower<T>' (BARE) already routed correctly to Arc<crate::v2_std_algebra::PointwisePower<T>>.
 
 Fix: route on the TERMINAL segment via qualified_last_segment (v1.std.core, the existing authority — a qualified name IS a containment path, and its last segment is the declared name the registry knows). Not a string dot-to-colon rewrite: that would FABRICATE a path from the spelling instead of RESOLVING the declaration, and would silently produce a wrong path whenever the qualifier does not match the defining module. Because qualified_last_segment is the identity on an unqualified name, every bare name renders exactly as before — the seed stays byte-identical by construction, which is why this lands with regen_divergence_count=0 rather than merely hoping for it.
 
@@ -4522,7 +4524,7 @@ fn emit_prelude(imported_names: List<String>, local_type_names: List<String>) ->
   let base = concat(
     "use im::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
     "use crate::v1_rt::\{VecCompat, VecJoin\};\n",
-    "use std::rc::Rc;\n",
+    "use std::sync::Arc;\n",
     "use crate::v1_rt;")
   let wrapper_use = "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;"
   concat(base, wrapper_use)
@@ -7149,9 +7151,9 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
         if kv_type_str != "" {
           concat("v1_rt::rc_empty_map::<", kv_type_str, ">()")
         } else {
-          "Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */"
+          rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
         }
-      _ => "Rc::new(HashMap::new()) /* BRIDGE: empty_map return type unresolved */"
+      _ => rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map return type unresolved */")
     }
   } else if func == "empty_set" {
     match inferred {
@@ -7388,7 +7390,7 @@ fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry:
     ind1, "for ", emit_ident(name: variable, target: Rust), " in ", iter_str, " {\n",
     ind2, "__collect.push(", body_str, ");\n",
     ind1, "}\n",
-    ind1, "Rc::new(__collect)\n",
+    ind1, rust_shared_wrap_ctor(inner_expr: "__collect"), "\n",
     ind0, "}")
 }
 
@@ -7520,7 +7522,7 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
       let bd = lambda_body(texpr: lambda_expr)
       let pn = lambda_expr.children |> skip(1)
 
-      let safe_acc_type = if acc_type_str == "Rc<Vec<()>>" || acc_type_str == "Vec<()>" || acc_type_str == "Option<()>" { "_" } else { acc_type_str }
+      let safe_acc_type = if acc_type_str == "Arc<Vec<()>>" || acc_type_str == "Vec<()>" || acc_type_str == "Option<()>" { "_" } else { acc_type_str }
       let fallback_types = ps |> enumerate |> map(pair =>
         if pair.first == 0 { safe_acc_type } else { elem_type_str }
       )
@@ -7670,10 +7672,10 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
             if kv_type_str != "" {
               concat("v1_rt::rc_empty_map::<", kv_type_str, ">()")
             } else {
-              "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */"
+              rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: fold empty_map value type unresolved */")
             }
           } else if init_func == "empty_map" {
-            "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */"
+            rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: fold empty_map accumulator type unresolved */")
           } else if init_func == "empty_set" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
             emit_rust_empty_set_expr(set_type: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
           } else if init_func == "empty_set" {
@@ -7734,9 +7736,9 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
   let a_clone = apply_type_template1(template: sharing.clone_value, arg0: "a")
   let b_clone = apply_type_template1(template: sharing.clone_value, arg0: "b")
   if elem_type_str == "_" {
-    concat("Rc::new({ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })")
+    rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
   } else {
-    concat("Rc::new({ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })")
+    rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
   }
 }
 
@@ -7776,10 +7778,10 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
             let p = emit_ident(name: dag_name, target: Rust)
             let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: arg_value(n: a).children |> skip(1))
             let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-            concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", iter_str, " { __result.push(", body_str, "); } __result })")
-          _ => concat("Rc::new(", iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>())")
+            rust_shared_wrap_ctor(inner_expr: concat("{ let mut __result = Vec::new(); for ", p, " in ", iter_str, " { __result.push(", body_str, "); } __result }"))
+          _ => rust_shared_wrap_ctor(inner_expr: concat(iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>()"))
         }
-      Absent => concat("Rc::new(", iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>())")
+      Absent => rust_shared_wrap_ctor(inner_expr: concat(iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>()"))
     }
   }
 }
@@ -8084,7 +8086,7 @@ fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summ
 }
 
 fn freemonoid_tail_let_from_fm(tail_bind: String) -> String {
-  if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect()); ") }
+  if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Arc<Vec<_>> = Arc::new((*__fm).iter().skip(1).cloned().collect()); ") }
 }
 
 fn freemonoid_empty_branch_body(empty_arm: Node?, catchall: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -10051,7 +10053,7 @@ fn emit_shell_channel_expr(channel: String, is_optional: Bool) -> String {
   let base = if channel == "exit_success" { "output.status.success()" }
     else if channel == "stderr" { "stderr.clone()" }
     else if channel == "stdout_lines" {
-      "Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())"
+      rust_shared_wrap_ctor(inner_expr: "stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()")
     }
     else { "stdout.clone()" }
   if is_optional { concat("Some(", base, ")") } else { base }
@@ -10151,12 +10153,12 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   } else {
     render_rust_type_with_applied_binding(n: render_type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices)
   }
-  let ty_str = if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" {
+  let ty_str = if raw_ty_str == "BoundedLattice" || raw_ty_str == "Arc<BoundedLattice>" {
     match field_value_by_name(record: value, field_name: "top", source_indices: scope.type_env.source_indices) {
       Present { value: top_value } =>
         let top_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: top_value))
         if top_type_name == "" { raw_ty_str }
-        else if raw_ty_str == "Rc<BoundedLattice>" { concat("Rc<BoundedLattice<", top_type_name, ">>") }
+        else if raw_ty_str == "Arc<BoundedLattice>" { concat("Arc<BoundedLattice<", top_type_name, ">>") }
         else { concat("BoundedLattice<", top_type_name, ">") }
       Absent => raw_ty_str
     }
@@ -10259,9 +10261,9 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
             } else { "" }
           Absent => ""
         }
-        concat("            Rc::new(BoundedLattice {\n",
-          "                meet: Rc::new(", meet_str, "),\n",
-          "                join: Rc::new(", join_str, "),\n",
+        concat("            Arc::new(BoundedLattice {\n",
+          "                meet: Arc::new(", meet_str, "),\n",
+          "                join: Arc::new(", join_str, "),\n",
           "                top: ", top_str, ",\n",
           "                bottom: ", bottom_str, ",\n",
           phantom_line,
@@ -10285,7 +10287,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
           let inserts_str = inserts |> join(separator: "\n")
           concat("            let mut __m = HashMap::new();\n",
             inserts_str, "\n",
-            "            Rc::new(__m)")
+            "            Arc::new(__m)")
         _ =>
           let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           concat("            ", val_str)
@@ -10303,8 +10305,8 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
           }
         _ => value_inferred_type_is_rc_wrapped(value: value, shared_types: shared_types, scope: scope, emit_info: emit_info)
       }
-      let wrap_start = if needs_rc && !is_already_wrapped { "Rc::new(" } else { "" }
-      let wrap_end = if needs_rc && !is_already_wrapped { ")" } else { "" }
+      let wrap_start = if needs_rc && !is_already_wrapped { rust_shared_wrap_ctor_prefix() } else { "" }
+      let wrap_end = if needs_rc && !is_already_wrapped { rust_shared_wrap_ctor_suffix() } else { "" }
       concat("            ", wrap_start, val_str, wrap_end)
     }
   }
@@ -10644,7 +10646,7 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, cr
     let core_mod = module_to_filename(name: "v1.std.core")
     concat(base,
       "\nuse im::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
-      "use std::rc::Rc;\n",
+      "use std::sync::Arc;\n",
       "use ", crate_name, "::", pipeline_mod, ";\n",
       "use ", crate_name, "::", pipeline_mod, "::PipelineResult;\n",
       "use ", crate_name, "::", core_mod, "::", "{",
@@ -10838,11 +10840,11 @@ fn emit_compile_match_arm(crate_name: String) -> String {
     "                let skipped_moduleless = cli_run::moduleless_dag_entry_paths(&entry_files);\n",
     "                cli_run::report_moduleless_dag_entry_skips(&skipped_moduleless);\n",
     "\n",
-    "                let mut seen: HashMap<String, Rc<", pipeline_mod, "::SourceFile>> = HashMap::new();\n",
+    "                let mut seen: HashMap<String, Arc<", pipeline_mod, "::SourceFile>> = HashMap::new();\n",
     "                let mut entry_for_queue = Vec::new();\n",
     "                for (path, content) in &entry_files {\n",
     "                    if let Some(mod_path) = extract_module_path(content) {\n",
-    "                        let source = Rc::new(", pipeline_mod, "::SourceFile {\n",
+    "                        let source = Arc::new(", pipeline_mod, "::SourceFile {\n",
     "                            path: path.clone(),\n",
     "                            content: content.clone(),\n",
     "                        });\n",
@@ -10856,7 +10858,7 @@ fn emit_compile_match_arm(crate_name: String) -> String {
     "                    if extract_module_path(&content).is_none() { continue; }\n",
     "                    let already_there = resolved.iter().any(|s| s.path == path);\n",
     "                    if !already_there {\n",
-    "                        resolved.push(Rc::new(", pipeline_mod, "::SourceFile { path, content }));\n",
+    "                        resolved.push(Arc::new(", pipeline_mod, "::SourceFile { path, content }));\n",
     "                    }\n",
     "                }\n",
     "                eprintln!(\"resolved {} sources (transitive import closure)\", resolved.len());\n",
@@ -10871,7 +10873,7 @@ fn emit_compile_match_arm(crate_name: String) -> String {
     "                    let content = std::fs::read_to_string(path)\n",
     "                        .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n",
     "                    let filename = path.file_name().unwrap().to_string_lossy().to_string();\n",
-    "                    sources.push(Rc::new(", pipeline_mod, "::SourceFile {\n",
+    "                    sources.push(Arc::new(", pipeline_mod, "::SourceFile {\n",
     "                        path: filename,\n",
     "                        content,\n",
     "                    }));\n",
@@ -10885,7 +10887,7 @@ fn emit_compile_match_arm(crate_name: String) -> String {
     "            };\n",
     "\n",
     "            if render_targets.len() == 1 {\n",
-    "                let result = ", pipeline_mod, "::compile_sources(Rc::new(sources), render_targets[0].1.clone());\n",
+    "                let result = ", pipeline_mod, "::compile_sources(Arc::new(sources), render_targets[0].1.clone());\n",
     "                write_output_files(&output_dir, &result);\n",
     "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", result.files.len(), result.diagnostics.len());\n",
     "                render_diagnostics(&result);\n",
@@ -10897,7 +10899,7 @@ fn emit_compile_match_arm(crate_name: String) -> String {
     "                    std::process::exit(1);\n",
     "                }\n",
     "            } else {\n",
-    "                let resolved = ", pipeline_mod, "::compile_to_resolved(Rc::new(sources));\n",
+    "                let resolved = ", pipeline_mod, "::compile_to_resolved(Arc::new(sources));\n",
     "                let mut any_hard_errors = false;\n",
     "                let mut any_empty = false;\n",
     "                let mut total_files = 0usize;\n",
@@ -11136,8 +11138,8 @@ fn emit_resolve_transitively_fn(crate_name: String, pipeline_mod: String) -> Str
     "fn resolve_transitively_with_seen(\n",
     "    entry_sources: Vec<(String, String)>,\n",
     "    index: &HashMap<String, std::path::PathBuf>,\n",
-    "    mut seen: HashMap<String, Rc<", crate_name, "::", pipeline_mod, "::SourceFile>>,\n",
-    ") -> Vec<Rc<", crate_name, "::", pipeline_mod, "::SourceFile>> {\n",
+    "    mut seen: HashMap<String, Arc<", crate_name, "::", pipeline_mod, "::SourceFile>>,\n",
+    ") -> Vec<Arc<", crate_name, "::", pipeline_mod, "::SourceFile>> {\n",
     "    let mut queue: Vec<(String, String)> = entry_sources;\n",
     "\n",
     "    while let Some((_path, content)) = queue.pop() {\n",
@@ -11151,7 +11153,7 @@ fn emit_resolve_transitively_fn(crate_name: String, pipeline_mod: String) -> Str
     "                    .unwrap_or_else(|e| panic!(\"failed to read imported module '{}' at {:?}: {}\",\n",
     "                        module_path, file_path, e));\n",
     "                let rel_path = file_path.to_string_lossy().to_string();\n",
-    "                let source = Rc::new(", crate_name, "::", pipeline_mod, "::SourceFile {\n",
+    "                let source = Arc::new(", crate_name, "::", pipeline_mod, "::SourceFile {\n",
     "                    path: rel_path.clone(),\n",
     "                    content: file_content.clone(),\n",
     "                });\n",
@@ -11176,7 +11178,7 @@ fn emit_main_diagnostic_fns(crate_name: String) -> String {
     "        return;\n",
     "    }\n",
     "\n",
-    "    let index_map: HashMap<String, Rc<NewlineIndex>> = result\n",
+    "    let index_map: HashMap<String, Arc<NewlineIndex>> = result\n",
     "        .newline_indices\n",
     "        .iter()\n",
     "        .map(|idx| (idx.file.clone(), idx.clone()))\n",
@@ -11191,7 +11193,7 @@ fn emit_main_diagnostic_fns(crate_name: String) -> String {
     "\n",
     "fn render_one_diagnostic(\n",
     "    d: &", crate_name, "::", core_mod, "::ErrorNode,\n",
-    "    index_map: &HashMap<String, Rc<NewlineIndex>>,\n",
+    "    index_map: &HashMap<String, Arc<NewlineIndex>>,\n",
     "    indent: &str,\n",
     ") {\n",
     "    let severity = \"error\";\n",
