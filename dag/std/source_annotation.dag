@@ -13,10 +13,12 @@ type AnnotationPlacement
 
 data unbound_annotation_capture_note: String = "What a tokenizer produces before any structural subject is known — hence UNBOUND. It is the shape that crosses the lexer-to-parser seam, and it deliberately carries no subject and no identity: binding is the parser's job, and minting an identity here would draw from the semantic occurrence allocator.
 
-WHY THIS LIVES IN std RATHER THAN IN A TOKENIZER: the v1 seed tokenizer cannot import v2 modules, so a capture shape declared inside either realization forces the other to mint a second spelling of one concept. v2's lexing module additionally carries an annotation_class Symbol on its own capture row because that lexer is generic over many languages with many annotation syntaxes; the v1 .dag tokenizer has exactly one, so it uses this shape directly. That is a real difference in what the two realizations must distinguish, not a fork — and both converge on SourceAnnotationDebt once a subject is known, which is the row that actually persists."
+WHY THIS LIVES IN std RATHER THAN IN A TOKENIZER: the v1 seed tokenizer cannot import v2 modules, so a capture shape declared inside either realization forces the other to mint a second spelling of one concept. v2's lexing module additionally carries an annotation_class Symbol on its own capture row because that lexer is generic over many languages with many annotation syntaxes; the v1 .dag tokenizer has exactly one, so it uses this shape directly. That is a real difference in what the two realizations must distinguish, not a fork — and both converge on SourceAnnotationDebt once a subject is known, which is the row that actually persists.
+
+THE FIELD IS `lexeme`, NOT `text`, AND THE DISTINCTION IS LOAD-BEARING. A capture carries RAW SYNTAX exactly as it appeared, delimiter included: the lexer reports what it saw, and the language-specific attachment realization owns normalization into SourceAnnotationDebt.text. Naming it `text` while storing a `//`-prefixed lexeme would make the two indistinguishable at the type level, and the failure is not hypothetical — if one realization strips the delimiter and another does not, parse then render then parse either doubles the delimiter or silently changes annotation content, and the D-C round-trip control is what would catch it. Every realization capturing into this field stores raw; every realization reading it for durable text strips."
 
 type UnboundAnnotationCapture {
-  text: String
+  lexeme: String
   origin: SourceSpan
   placement: AnnotationPlacement
 }

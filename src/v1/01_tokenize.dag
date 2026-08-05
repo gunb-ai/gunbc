@@ -158,7 +158,7 @@ fn scan_next_token(source: SourceRef, pos: TokPos, line_has_semantic_token: Bool
     return ScannedAnnotation {
       pos: eol,
       capture: UnboundAnnotationCapture {
-        text: source_substring(source: source, start: pos.pos, end: eol),
+        lexeme: source_substring(source: source, start: pos.pos, end: eol),
         origin: make_file_span(file: source.file, start: pos.pos, end: eol),
         placement: if line_has_semantic_token { TrailingAfterSemanticToken } else { LeadingAfterLineIndent }
       },
