@@ -12000,15 +12000,12 @@ mod tests {
 
     #[test]
     fn take_group_observation_attaches_only_to_rostered_subject() {
-        let subjects: ObligationSubjectSet = [(
-            "fixture.dag".to_string(),
-            "rostered_fn".to_string(),
-        )]
-        .into_iter()
-        .collect();
-        let observation = Some(ResolveRealizationObservation::ColdResolvePerformed {
-            resolve_nanos: 42,
-        });
+        let subjects: ObligationSubjectSet =
+            [("fixture.dag".to_string(), "rostered_fn".to_string())]
+                .into_iter()
+                .collect();
+        let observation =
+            Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 42 });
         let mut attached = false;
         assert!(take_group_observation_for_claim(
             Some(&subjects),
