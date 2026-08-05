@@ -333,6 +333,8 @@ pub fn v1_type_expr_contains_param_name(
 pub fn v1_generic_param_used_as_collection_element(
     param_name: String,
     value_params: Rc<Vec<Rc<Node>>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -343,9 +345,11 @@ pub fn v1_generic_param_used_as_collection_element(
                 (is_container_type(authored_name_at(source_indices.clone(), te.clone())) && {
                     let mut __found = false;
                     for c in te.children.clone().iter().cloned() {
-                        if v1_type_expr_contains_param_name(
+                        if v1_type_expr_mentions_param_non_phantom(
                             param_name.clone(),
-                            c.clone(),
+                            v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                            bounds.clone(),
+                            type_decl_items.clone(),
                             source_indices.clone(),
                         ) {
                             __found = true;
@@ -388,14 +392,18 @@ pub fn v1_generic_param_used_as_bare_value_param_type(
 pub fn v1_generic_param_used_in_value_param_type_surface(
     param_name: String,
     value_params: Rc<Vec<Rc<Node>>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
         for vp in value_params.clone().iter().cloned() {
-            if v1_type_expr_contains_param_name(
+            if v1_type_expr_mentions_param_non_phantom(
                 param_name.clone(),
                 param_node_type_expr(vp.clone()),
+                bounds.clone(),
+                type_decl_items.clone(),
                 source_indices.clone(),
             ) {
                 __found = true;
@@ -404,6 +412,244 @@ pub fn v1_generic_param_used_in_value_param_type_surface(
         }
         __found
     }
+}
+
+pub fn v1_item_phantom_only_param_names(
+    item_name: String,
+    item: Rc<Node>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in Rc::new({
+            let mut __result = Vec::new();
+            for p in item.params.clone().iter().cloned() {
+                __result.push(generic_param_name_at(p.clone(), source_indices.clone()));
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            if match v1_rt::map_get(&bounds, item_name.clone()) {
+                Some(s) => !v1_rt::set_contains(&s, p.clone()),
+                None => true,
+            } {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+}
+
+pub fn v1_phantom_only_param_names_contains(names: Rc<Vec<String>>, param_name: String) -> bool {
+    {
+        let mut __found = false;
+        for n in names.clone().iter().cloned() {
+            if (n.clone() == param_name.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
+    param_name: String,
+    decl_params: Rc<Vec<Rc<Node>>>,
+    type_args: Rc<Vec<Rc<Node>>>,
+    phantom_slot_names: Rc<Vec<String>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match decl_params.clone().first().cloned() {
+            None => false,
+            Some(decl_param) => match type_args.clone().first().cloned() {
+                None => false,
+                Some(type_arg) => {
+                    let slot_name =
+                        generic_param_name_at(decl_param.clone(), source_indices.clone());
+                    let arg_expr = v1_wf_child_type_node(type_arg.clone(), source_indices.clone());
+                    let slot_is_phantom = v1_phantom_only_param_names_contains(
+                        phantom_slot_names.clone(),
+                        slot_name.clone(),
+                    );
+                    let here = if slot_is_phantom.clone() {
+                        false
+                    } else {
+                        v1_type_expr_mentions_param_non_phantom(
+                            param_name.clone(),
+                            arg_expr.clone(),
+                            bounds.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        )
+                    };
+                    (here.clone()
+                        || v1_declared_type_app_mentions_param_non_phantom_loop(
+                            param_name.clone(),
+                            Rc::new(
+                                decl_params
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            Rc::new(
+                                type_args
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            phantom_slot_names.clone(),
+                            bounds.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        ))
+                }
+            },
+        }
+    })
+}
+
+pub fn v1_declared_type_app_mentions_param_non_phantom(
+    param_name: String,
+    decl_name: String,
+    decl: Rc<Node>,
+    type_args: Rc<Vec<Rc<Node>>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    v1_declared_type_app_mentions_param_non_phantom_loop(
+        param_name.clone(),
+        decl.params.clone(),
+        type_args.clone(),
+        v1_item_phantom_only_param_names(
+            decl_name.clone(),
+            decl.clone(),
+            bounds.clone(),
+            source_indices.clone(),
+        ),
+        bounds.clone(),
+        type_decl_items.clone(),
+        source_indices.clone(),
+    )
+}
+
+pub fn v1_type_expr_mentions_param_non_phantom(
+    param_name: String,
+    type_expr: Rc<Node>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if v1_type_expr_is_bare_param(
+            param_name.clone(),
+            type_expr.clone(),
+            source_indices.clone(),
+        ) {
+            true
+        } else {
+            {
+                let name = authored_name_at(source_indices.clone(), type_expr.clone());
+                if (is_container_type(name.clone()) && {
+                    let mut __found = false;
+                    for c in type_expr.children.clone().iter().cloned() {
+                        if v1_type_expr_mentions_param_non_phantom(
+                            param_name.clone(),
+                            v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                            bounds.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }) {
+                    true
+                } else {
+                    match v1_rt::map_get(&type_decl_items, name.clone()) {
+                        Some(decl) => v1_declared_type_app_mentions_param_non_phantom(
+                            param_name.clone(),
+                            name.clone(),
+                            decl.clone(),
+                            type_expr.children.clone(),
+                            bounds.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        ),
+                        None => {
+                            let mut __found = false;
+                            for c in type_expr.children.clone().iter().cloned() {
+                                if v1_type_expr_mentions_param_non_phantom(
+                                    param_name.clone(),
+                                    v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                                    bounds.clone(),
+                                    type_decl_items.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        }
+                    }
+                }
+            }
+        }
+    })
+}
+
+pub fn v1_fn_phantom_only_generic_param_names(
+    generic_param_names: Rc<Vec<String>>,
+    value_params: Rc<Vec<Rc<Node>>>,
+    ret: Rc<Node>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in generic_param_names.clone().iter().cloned() {
+            if (!{
+                let mut __found = false;
+                for vp in value_params.clone().iter().cloned() {
+                    if v1_type_expr_mentions_param_non_phantom(
+                        p.clone(),
+                        param_node_type_expr(vp.clone()),
+                        bounds.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    ) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } && !v1_type_expr_mentions_param_non_phantom(
+                p.clone(),
+                ret.clone(),
+                bounds.clone(),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            )) {
+                __result.push(p);
+            }
+        }
+        __result
+    })
 }
 
 pub fn v1_type_expr_mentions_type_head(
@@ -541,6 +787,8 @@ pub fn v1_type_param_needs_clone_bound(
     ret_name: String,
     body_is_param_ref: bool,
     value_params: Rc<Vec<Rc<Node>>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -549,6 +797,8 @@ pub fn v1_type_param_needs_clone_bound(
             || v1_generic_param_used_as_collection_element(
                 param_name.clone(),
                 value_params.clone(),
+                bounds.clone(),
+                type_decl_items.clone(),
                 source_indices.clone(),
             ))
             || v1_generic_param_used_as_bare_value_param_type(
@@ -559,6 +809,8 @@ pub fn v1_type_param_needs_clone_bound(
             || v1_generic_param_used_in_value_param_type_surface(
                 param_name.clone(),
                 value_params.clone(),
+                bounds.clone(),
+                type_decl_items.clone(),
                 source_indices.clone(),
             ));
         structural
@@ -584,6 +836,7 @@ pub fn v1_fn_param_type_needs_clone_bound(
                 ) || v1_type_expr_clone_impl_needs_param(
                     param_name.clone(),
                     te.clone(),
+                    bounds.clone(),
                     type_decl_items.clone(),
                     source_indices.clone(),
                 )) || v1_type_expr_wf_needs_clone_param(
@@ -624,35 +877,49 @@ pub fn v1_generic_params_needing_clone_bound(
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for g in generic_param_names.clone().iter().cloned() {
-            if ((v1_type_param_needs_clone_bound(
-                g.clone(),
-                return_is_bare_generic.clone(),
-                ret_name.clone(),
-                body_is_param_ref.clone(),
-                value_params.clone(),
-                source_indices.clone(),
-            ) || v1_fn_param_wf_needs_clone(
-                g.clone(),
-                value_params.clone(),
-                ret.clone(),
-                bounds.clone(),
-                type_decl_items.clone(),
-                source_indices.clone(),
-            )) || v1_fn_param_type_needs_clone_bound(
-                g.clone(),
-                value_params.clone(),
-                bounds.clone(),
-                type_decl_items.clone(),
-                source_indices.clone(),
-            )) {
-                __result.push(g);
+    {
+        let phantom_only = v1_fn_phantom_only_generic_param_names(
+            generic_param_names.clone(),
+            value_params.clone(),
+            ret.clone(),
+            bounds.clone(),
+            type_decl_items.clone(),
+            source_indices.clone(),
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for g in generic_param_names.clone().iter().cloned() {
+                if (v1_fn_param_wf_needs_clone(
+                    g.clone(),
+                    value_params.clone(),
+                    ret.clone(),
+                    bounds.clone(),
+                    type_decl_items.clone(),
+                    source_indices.clone(),
+                ) || (!v1_phantom_only_param_names_contains(phantom_only.clone(), g.clone())
+                    && (v1_type_param_needs_clone_bound(
+                        g.clone(),
+                        return_is_bare_generic.clone(),
+                        ret_name.clone(),
+                        body_is_param_ref.clone(),
+                        value_params.clone(),
+                        bounds.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    ) || v1_fn_param_type_needs_clone_bound(
+                        g.clone(),
+                        value_params.clone(),
+                        bounds.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    ))))
+                {
+                    __result.push(g);
+                }
             }
-        }
-        __result
-    })
+            __result
+        })
+    }
 }
 
 pub fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
@@ -773,6 +1040,7 @@ pub fn v1_type_expr_clone_undecided_head(
 pub fn v1_type_expr_clone_impl_needs_param(
     param_name: String,
     type_expr: Rc<Node>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -788,13 +1056,23 @@ pub fn v1_type_expr_clone_impl_needs_param(
             if ((type_expr.children.clone().len() as i64) == 0) {
                 false
             } else {
-                if ((type_expr.children.clone().len() as i64) > 0) {
-                    {
+                match v1_rt::map_get(&type_decl_items, name.clone()) {
+                    Some(decl) => v1_declared_type_app_clone_impl_needs_param(
+                        param_name.clone(),
+                        name.clone(),
+                        decl.clone(),
+                        type_expr.children.clone(),
+                        bounds.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    ),
+                    None => {
                         let mut __found = false;
                         for c in type_expr.children.clone().iter().cloned() {
                             if v1_type_expr_clone_impl_needs_param(
                                 param_name.clone(),
                                 v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                                bounds.clone(),
                                 type_decl_items.clone(),
                                 source_indices.clone(),
                             ) {
@@ -804,12 +1082,98 @@ pub fn v1_type_expr_clone_impl_needs_param(
                         }
                         __found
                     }
-                } else {
-                    false
                 }
             }
         }
     })
+}
+
+pub fn v1_declared_type_app_clone_impl_needs_param_loop(
+    param_name: String,
+    decl_params: Rc<Vec<Rc<Node>>>,
+    type_args: Rc<Vec<Rc<Node>>>,
+    phantom_slot_names: Rc<Vec<String>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match decl_params.clone().first().cloned() {
+            None => false,
+            Some(decl_param) => match type_args.clone().first().cloned() {
+                None => false,
+                Some(type_arg) => {
+                    let slot_name =
+                        generic_param_name_at(decl_param.clone(), source_indices.clone());
+                    let arg_expr = v1_wf_child_type_node(type_arg.clone(), source_indices.clone());
+                    let slot_is_phantom = v1_phantom_only_param_names_contains(
+                        phantom_slot_names.clone(),
+                        slot_name.clone(),
+                    );
+                    let here = if slot_is_phantom.clone() {
+                        false
+                    } else {
+                        v1_type_expr_clone_impl_needs_param(
+                            param_name.clone(),
+                            arg_expr.clone(),
+                            bounds.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        )
+                    };
+                    (here.clone()
+                        || v1_declared_type_app_clone_impl_needs_param_loop(
+                            param_name.clone(),
+                            Rc::new(
+                                decl_params
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            Rc::new(
+                                type_args
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            phantom_slot_names.clone(),
+                            bounds.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        ))
+                }
+            },
+        }
+    })
+}
+
+pub fn v1_declared_type_app_clone_impl_needs_param(
+    param_name: String,
+    decl_name: String,
+    decl: Rc<Node>,
+    type_args: Rc<Vec<Rc<Node>>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    v1_declared_type_app_clone_impl_needs_param_loop(
+        param_name.clone(),
+        decl.params.clone(),
+        type_args.clone(),
+        v1_item_phantom_only_param_names(
+            decl_name.clone(),
+            decl.clone(),
+            bounds.clone(),
+            source_indices.clone(),
+        ),
+        bounds.clone(),
+        type_decl_items.clone(),
+        source_indices.clone(),
+    )
 }
 
 pub fn v1_declared_arg_positions_need_clone_param(
@@ -817,6 +1181,7 @@ pub fn v1_declared_arg_positions_need_clone_param(
     decl_params: Rc<Vec<Rc<Node>>>,
     type_args: Rc<Vec<Rc<Node>>>,
     bound_params: Rc<BTreeSet<String>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -832,6 +1197,7 @@ pub fn v1_declared_arg_positions_need_clone_param(
                     ) && v1_type_expr_clone_impl_needs_param(
                         param_name.clone(),
                         v1_wf_child_type_node(type_arg.clone(), source_indices.clone()),
+                        bounds.clone(),
                         type_decl_items.clone(),
                         source_indices.clone(),
                     ));
@@ -855,6 +1221,7 @@ pub fn v1_declared_arg_positions_need_clone_param(
                                     .collect::<Vec<_>>(),
                             ),
                             bound_params.clone(),
+                            bounds.clone(),
                             type_decl_items.clone(),
                             source_indices.clone(),
                         ))
@@ -905,6 +1272,7 @@ pub fn v1_type_expr_wf_needs_clone_param(
                                 decl.params.clone(),
                                 type_expr.children.clone(),
                                 bound_params.clone(),
+                                bounds.clone(),
                                 type_decl_items.clone(),
                                 source_indices.clone(),
                             ))
