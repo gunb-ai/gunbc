@@ -28,6 +28,7 @@ import test.fixture.scaffold_retirement.specimens {
   planted_non_disposition_specimen_qn,
   planted_named_field_dissolution_specimen_qn,
 }
+import gunbc.ci_layer_roots { falsifier_substrate_long_lane_rows }
 import v2.std.decl_index { decl_facts }
 import v2.std.algebra { length, count_where }
 import v2.std.collection { Absent, Present }
@@ -38,9 +39,14 @@ test fn scaffold_retirement_pilot_domain_limit_is_declared() -> Bool {
   pilot_domain_limit() == 15
 }
 
+fn scaffold_long_lane_contains(f: String) -> Bool {
+  any(falsifier_substrate_long_lane_rows, row =>
+    row.entry == scaffold_retirement_long_lane_entry && row.function == f)
+}
+
 test fn scaffold_retirement_long_lane_execution_receipt_is_declared() -> Bool {
   scaffold_retirement_long_lane_entry == "dag/test/claim/long/scaffold_retirement_pilot_witness_test.dag"
-    && length(xs: scaffold_retirement_long_witness_function_roster) == 8
+    && all(scaffold_retirement_long_witness_function_roster, f => scaffold_long_lane_contains(f: f))
 }
 
 test fn fixture_decl_facts_marshal_surfaces_dissolves_to_variant_atom() -> Bool {
