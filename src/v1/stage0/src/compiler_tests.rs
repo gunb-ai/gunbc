@@ -563,7 +563,6 @@ mod compiler_tests {
                     "direct declaration with reordered named args must ADMIT, got: {:?}",
                     direct_reordered.diagnostics
                 );
-
                 // 2. Higher-order callback declared left/right, applied positionally -> ADMIT
                 let hof_positional = compile_one(
                     "hof_positional.dag",
@@ -574,7 +573,6 @@ mod compiler_tests {
                     "positional function-value application must ADMIT, got: {:?}",
                     hof_positional.diagnostics
                 );
-
                 // 3. Higher-order named application without labeled function type -> REFUSE
                 let named_on_value = compile_one(
                     "named_on_value.dag",
@@ -593,7 +591,6 @@ mod compiler_tests {
                         && crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())),
                     "CallNamedArgOnFunctionValue must BLOCK"
                 );
-
                 // 4. Wrong higher-order arity -> REFUSE
                 let wrong_arity = compile_one(
                     "wrong_arity.dag",
@@ -607,7 +604,6 @@ mod compiler_tests {
                     "surplus args on function-value call must REFUSE, got: {:?}",
                     wrong_arity.diagnostics
                 );
-
                 // 5. Swapped positional callback arguments -> semantic RED (compile admits; order matters)
                 let semantic = compile_one(
                     "semantic_swap.dag",
@@ -650,6 +646,38 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("function_value_named_application_controls_witness panicked");
+    }
+
+    #[test]
+    fn function_value_field_method_known_hole_probe() {
+        // KNOWN-HOLE PROBE (not a desired-behavior control): coverage path (1) in
+        // function_value_named_application_wall_note. cfg.callback(a:, b:) parses as
+        // ExprMethodCall (make_call_expr on ExprFieldAccess), bypasses BOTH the
+        // body_locals wall and #7519 direct_call_shape_diags. Today it compiles clean
+        // with named actuals on a record-field function value. When the method-call
+        // argument-label wall lands, this probe must FLIP (refusal) and become a
+        // permanent regression control per DESIGN §4b(4).
+        let field_named = crate::v1_compiler_compile::compile_sources(
+            std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                crate::v1_compiler_compile::SourceFile {
+                    path: "field_method_named_hole.dag".to_string(),
+                    content: "module field_method_named_hole\ntype Cfg { callback: fn(Int, Int) -> Bool }\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn witness() -> Bool { host(Cfg { callback: cmp }) }\nfn host(cfg: Cfg) -> Bool { cfg.callback(a: 1, b: 2) }\n".to_string(),
+                }
+            )]),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        assert!(
+            field_named.diagnostics.is_empty(),
+            "KNOWN HOLE today: field-held fn via method syntax with named actuals must compile clean until the method-call label wall lands, got: {:?}",
+            field_named.diagnostics
+        );
+        assert!(
+            !field_named.diagnostics.iter().any(|d| matches!(
+                *d.diagnostic,
+                crate::v1_std_core::CompilerDiagnostic::CallNamedArgOnFunctionValue { .. }
+            )),
+            "this path is ExprMethodCall — CallNamedArgOnFunctionValue must not fire here"
+        );
     }
 
     #[test]
