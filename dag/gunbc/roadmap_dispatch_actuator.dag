@@ -149,6 +149,11 @@ import gunbc.roadmap_execution_contract {
   execution_capability_label,
   execution_contract_validation_summary,
 }
+import gunbc.roadmap_verification_receipt {
+  exact_verification_receipt_basename,
+  current_verification_selection_basename,
+  verification_directory_segment,
+}
 import gunbc.roadmap_provider_events {
   codex_provider_event_projection_args,
 }
@@ -708,9 +713,7 @@ fn dispatch_attempt_publication_receipt_path_for_instance(
 
 data publication_receipt_has_no_current_alias_note: String = "EVERY OTHER RECEIPT ON THIS ROW HAS A `current` SPELLING AND THIS ONE DELIBERATELY DOES NOT. The alias exists so a reader that knows only a node can find the live attempt's evidence without first reading the attempt key. Publication cannot be reached that way: its address contains the head, and a reader that does not know the head has no path to build regardless of which attempt directory it starts from.\\n\\nSo the alias would buy nothing and cost the thing this lane is for. A reader holding a head already had to establish it, and establishing a head means reading the attempt - at which point the attempt-keyed path is available and the alias is a second spelling of it. Keeping it would have made the symlink an alternative route to a file whose identity is a head, which is how a receipt for one attempt gets read as evidence for another."
 
-data verification_receipt_is_head_addressed_note: String = "VERIFICATION AND PUBLICATION SHARE THE HEAD GRAIN. One implementation attempt may be verified at head A, receive findings, and be verified again at head B. An attempt-level file would either overwrite A or let A's verdict stand for B. The verification directory therefore mirrors publication: attempt/<attempt>/verification/<head_sha>.json, with no current alias because a reader that has not observed the head cannot name the verification subject. DISSOLVE-ON: the two legacy attempt-level paths below lose their last belt consumers and delete."
-
-data verification_receipt_directory_segment: String = "verification"
+data verification_receipt_is_head_addressed_note: String = "VERIFICATION AND PUBLICATION SHARE THE HEAD × WINDOW GRAIN. One implementation attempt may be verified at head A under window W1 and again at the same head under window W2 after the target branch advances. Attempt-level files would either overwrite A or let A's verdict stand for B. The verification directory therefore mirrors publication at the finer grain: attempt/<attempt>/verification/<head>.<window_identity>.json for immutable receipts, plus a mutable current-selection pointer at verification/<head>.current-selection.json that names which window identity is selected for dashboard observation. DISSOLVE-ON: the legacy attempt-level validation-receipt.json path deletes once its last belt consumer is gone."
 
 fn dispatch_attempt_verification_dir_for_instance(
   instance: HostDashboardInstance,
@@ -723,11 +726,54 @@ fn dispatch_attempt_verification_dir_for_instance(
       node_id: node_id,
       attempt_key: attempt_key,
     ),
-    "/verification",
+    "/",
+    verification_directory_segment,
   ], "")
 }
 
 fn dispatch_attempt_verification_receipt_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+  window_identity_hex: String,
+) -> String {
+  join([
+    dispatch_attempt_verification_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/",
+    exact_verification_receipt_basename(
+      head_sha: head_sha,
+      window_identity_hex: window_identity_hex,
+    ),
+  ], "")
+}
+
+fn dispatch_attempt_diff_window_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+  window_identity_hex: String,
+) -> String {
+  join([
+    dispatch_attempt_verification_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/",
+    head_sha,
+    ".",
+    window_identity_hex,
+    ".diff-window.json",
+  ], "")
+}
+
+fn dispatch_attempt_verification_current_selection_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
   attempt_key: String,
@@ -740,8 +786,7 @@ fn dispatch_attempt_verification_receipt_path_for_instance(
       attempt_key: attempt_key,
     ),
     "/",
-    head_sha,
-    ".json",
+    current_verification_selection_basename(head_sha: head_sha),
   ], "")
 }
 

@@ -122,11 +122,18 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolve_on: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall"
   ),
   known_red_probe(
-    entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_acceptance_test.dag",
-    f: "witness_v2_emitter_direct_rust_door_closing_contract_holds",
+    entry: "src/v2/test/claim/schedule_occurrence_multiplicity_test.dag",
+    f: "direct_rust_door_group_root_is_scheduled_exactly_once",
     kind: CorpusWitnessKind,
-    reason: "closing validation for roadmap node v2-emitter-direct-rust-door — RED BY EXECUTION on branch head (claim_batch FAIL: ingest-path assess_written_source_independent_of_seed_emitter does not establish WrittenSourceIndependentOfSeedEmitter; closing_contract_holds frontier nonzero). Wet fixture path reaches CargoGreen separately; this row stays until closing_contract_holds greens, then deletes per v2_emitter_direct_rust_door_contract_dissolution_note.",
-    dissolve_on: "witness_v2_emitter_direct_rust_door_closing_contract_holds greens by execution with frontier zero — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent direct-rust-door regression wall"
+    reason: "RED BY EXECUTION at 2, and the 2 is a MACHINERY DEFICIT, not a rostering mistake. An expensive AND known-red witness cannot be expressed in one batch today: select_discovery_batch_budgets arms the 180s ceiling only for a batch whose explicit entries intersect falsifier_substrate_long_lane_entries, and that roster IS batch 6, so a known-red root earns its budget by ALSO joining the long batch. Known-red-only would BudgetExceed at 5s and go red for the wrong reason, masking the real red; long-lane-only would fail a batch that expects green. Both are worse than a counted red, so the duplicate is declared here rather than papered over. Its sibling multiplicity_counter_discriminates_a_planted_duplicate is green and proves the counter can fail, so this row is a real measurement rather than a constant.",
+    dissolve_on: "the witness-lifecycle split separates the execution-requirement/budget authority from the batch roster, so a root can declare a long budget without joining a second batch — then this root drops to one occurrence, this witness greens, and this row deletes"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag",
+    f: "direct_rust_door_production_group_closing_expectation_holds",
+    kind: CorpusWitnessKind,
+    reason: "THE canonical closing validation for roadmap node v2-emitter-direct-rust-door, RED BY EXECUTION. Say the location claim exactly: ONE production implementation authority, ONE production walk per group construction, TWO scheduled group constructions today, and the IN-MEMORY group locates EmissionRejected while the SCHEDULED executor receipt remains an unlocated Bool. Inside that group the observation stops at EmissionRejected, so the four artifact leaves report LeafNotReached carrying that stage while the missing-rule leaf is green. That one green leaf is what proves the red is located rather than uniform — for a consumer holding the group, not for anyone reading the falsifier receipt. It replaces three superseded rows deleted in the same change, whose fold answered SeedEmitterRequiredForWrittenSource for BOTH a rejected pipeline and a seed-dependent artifact. Not relaxable: the only edit that may green it is making the real inferred tree survive emission.",
+    dissolve_on: "every leaf reaches LeafEstablished by execution — this row deletes in the completing change, promoting the unchanged group root to ordinary DiscoverySelection as the lane's permanent regression wall"
   ),
   known_red_probe(
     entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",

@@ -1,0 +1,7 @@
+module test.fixture.scaffold_disposition_census.pool.decoy_nullary
+
+type DecoyNullaryDisposition
+  = Scaffold
+  | Retired
+
+data decoy_nullary_scaffold_specimen: DecoyNullaryDisposition = Scaffold
