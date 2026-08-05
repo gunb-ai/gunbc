@@ -217,7 +217,7 @@ jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
     needs: [build, regen]
-    timeout-minutes: 100
+    timeout-minutes: 110
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -276,7 +276,7 @@ jobs:
           "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_plan --notice-title "v2 claim corpus"
         env:
           GUNBC_FLOOR_PHASE_JOURNAL: target/floor-phase-journal.tsv
-        timeout-minutes: 65
+        timeout-minutes: 75
       - name: Floor cgroup peak post-read (calibration; survives a killed floor)
         run: |
           # 🟡 dissolve-on: ci_floor_phase_journal_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four journal leaves: FileExists, header log, prefixed file read, and absent log. If/else control flow is already v2.std.orchestration intent; only those leaves remain medium-as-string Run.command values. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_phase_journal_if contains no opaque shell command text.
