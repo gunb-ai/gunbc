@@ -110,12 +110,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "per-witness declared cost envelopes subsume test/claim/long/ dir grain (long_lane_exclusion_note trigger), or falsifier_substrate_long_lane enrolls rows with measured eval under gunbc_ci_fast_lane_witness_eval_budget; row deletes when per-PR discovery runs them"
   },
   WitnessExclusionRow {
-    pattern: "long/v1_complexity_capability_census_resolution_test.dag",
-    classification: OfflineLocalRecipe,
-    reason: "C0(b1) capability-census citation hygiene (operator review 2026-08-05): exact DeclarationRef resolution for the roster pays a decl_facts + module_declaration_facts scan over a pool that must include src/v1, because half of every row's citations point into v1.compiler.complexity — the module the census is about. Measured: census_every_declaration_ref_resolves_exactly ~22s eval, the rest ~0.1s each. STATED PLAINLY: per-PR CI does not execute these witnesses, so green CI says nothing about this roster's citations unless the recipe below ran; the fast structural half lives in dag/test/claim/v1_complexity_capability_census_witness_test.dag and does run per-PR. The EXECUTING eviction control does NOT live here: it imports v1.compiler.complexity, and that import does not resolve under the floor's compile-clean scope for a dag/ entry (measured — this file failed compile-clean at its import line while the resolution census, which reaches v1 through decl_facts POOL ROOTS rather than an import, compiles fine). It is homed at src/v2/test/manual/v1_complexity_eviction_hazard_test.dag beside the existing v1-importing precedent. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag --functions census_every_declaration_ref_resolves_exactly,census_absent_declaration_refuses,census_absent_module_refuses,census_prose_only_name_does_not_resolve,census_resolved_identity_carries_observed_path,census_shared_substrate_carrier_resolves,census_complexity_admission_predicate_is_vacuous_by_execution",
-    dissolve_on: "per-witness declared cost envelopes subsume test/claim/long/ dir grain (long_lane_exclusion_note trigger) — this row is one of the residents that trigger prices; or C0(b2)'s derived declaration population replaces the authored roster and its resolution census is enrolled with a measured envelope"
-  },
-  WitnessExclusionRow {
     pattern: "impossible_bug",
     classification: OfflineLocalRecipe,
     reason: excl_predates_per_row_reason,
@@ -803,6 +797,11 @@ data v1_claim_scoped_witness_entries: List<ScheduleWitnessEntry> = [
   },
   ScheduleWitnessEntry {
     entry: "src/v1/tests/claim/caret_parse_smoke_test.dag",
+    function: "",
+    kind: CorpusWitnessKind,
+  },
+  ScheduleWitnessEntry {
+    entry: "src/v1/tests/claim/v1_complexity_eviction_hazard_test.dag",
     function: "",
     kind: CorpusWitnessKind,
   },
