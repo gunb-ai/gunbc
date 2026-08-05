@@ -141,8 +141,8 @@ use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousReference, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
     CallPositionalDeficit, CallPositionalSurplus, FieldNotFound, FrontierOccurrenceBudgetExceeded,
     InternalError, MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound,
-    MissingField, ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch, UnresolvedType,
-    VariantCollision,
+    MissingField, ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch,
+    UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -185,13 +185,13 @@ pub use crate::v1_std_core::{
     make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
     make_interp_part_node, make_named_expr_node, make_param_node, make_span, make_text_part_node,
     make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver,     module_imports, module_items, module_node, no_span, node_name_span, none_type,
+    method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
     param_node_default_value, param_node_name_at, param_node_type_expr,
-    preserve_outer_optional_cardinality,
-    qualified_last_segment, record_lit_expr_optional, record_lit_named_field_value_optional,
-    record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
-    slice_end, slice_start, string_type, type_name_compatible, unaryop_operand, unit_type,
-    with_optional_cardinality, with_required_cardinality,
+    preserve_outer_optional_cardinality, qualified_last_segment, record_lit_expr_optional,
+    record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
+    resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
+    type_name_compatible, unaryop_operand, unit_type, with_optional_cardinality,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
@@ -2695,7 +2695,29 @@ pub fn direct_call_shape_diags(
             } else {
                 Rc::new(vec![])
             };
-        v1_rt::concat(unknown_label_diags.clone(), surplus_diags.clone())
+        let arity_scan = scan_call_shape_arity(
+            sig_params.clone(),
+            typed_args.clone(),
+            positional_args.clone(),
+            source_indices.clone(),
+        );
+        let deficit_diags = match arity_scan.deficit_param.clone() {
+            Some(missing_param) => Rc::new(vec![make_error_node(
+                Rc::new(CompilerDiagnostic::CallPositionalDeficit {
+                    callee: func_name.clone(),
+                    parameter: authored_name_at(source_indices.clone(), missing_param.clone()),
+                    supplied: arity_scan.supplied_count,
+                    required: arity_scan.required_count,
+                    span: call_span.clone(),
+                }),
+                module_name.clone(),
+            )]),
+            None => Rc::new(vec![]),
+        };
+        v1_rt::concat(
+            unknown_label_diags.clone(),
+            v1_rt::concat(surplus_diags.clone(), deficit_diags),
+        )
     }
 }
 
@@ -5361,6 +5383,7 @@ pub fn infer_expr_body(
                                 typed_args.clone(),
                                 scope.type_env.clone(),
                                 scope.module_name.clone(),
+                                span.clone(),
                             );
                             let arg_compat_diags =
                                 if module_skips_direct_call_arg_check(scope.module_name.clone()) {

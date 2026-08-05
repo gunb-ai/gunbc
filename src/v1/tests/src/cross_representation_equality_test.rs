@@ -170,6 +170,7 @@ fn takes_tag(tag: Bool) -> Bool { tag }
 
 fn bad_label() -> Bool { takes_tag(nope: true) }
 fn surplus_positional() -> Bool { takes_tag(true, true) }
+fn deficit_positional() -> Bool { takes_tag(true) }
 "#;
 
 const CALL_CONTRACT_GOOD_SOURCE: &str = r#"
@@ -201,6 +202,7 @@ fn call_shape_diagnostic_msgs(resolved: &ResolvedPipelineResult) -> Vec<String> 
                 *d.diagnostic,
                 CompilerDiagnostic::CallArgumentNameUnknown { .. }
                     | CompilerDiagnostic::CallPositionalSurplus { .. }
+                    | CompilerDiagnostic::CallPositionalDeficit { .. }
                     | CompilerDiagnostic::CallNamedArgOnFunctionValue { .. }
             )
         })
@@ -214,6 +216,7 @@ fn assert_call_shape_diags_block(resolved: &ResolvedPipelineResult) {
             *d.diagnostic,
             CompilerDiagnostic::CallArgumentNameUnknown { .. }
                 | CompilerDiagnostic::CallPositionalSurplus { .. }
+                | CompilerDiagnostic::CallPositionalDeficit { .. }
                 | CompilerDiagnostic::CallNamedArgOnFunctionValue { .. }
         )
     }) {
@@ -252,6 +255,13 @@ fn application_site_contract_mismatch_refuses() {
             .any(|m| m.contains("takes_tag") && m.contains("too many positional")),
         "surplus_positional must refuse at compile time — the interpreter refuses the same \
          call (too many positional arguments); got {shape_msgs:?}"
+    );
+    assert!(
+        shape_msgs
+            .iter()
+            .any(|m| m.contains("takes_tag") && m.contains("missing required argument")),
+        "deficit_positional must refuse at compile time — the interpreter refuses the same \
+         call (missing required argument); got {shape_msgs:?}"
     );
     assert_call_shape_diags_block(&resolved);
 }

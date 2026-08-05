@@ -2057,6 +2057,35 @@ fn call_function_inner(
         }
     }
 
+    let required_count = fn_node
+        .params
+        .iter()
+        .filter(|p| param_node_default_value((*p).clone()).is_none())
+        .count();
+    let supplied_required = fn_node
+        .params
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| {
+            param_node_default_value((*p).clone()).is_none()
+                && bindings.contains_key(&ctx.sym(&all_param_names[*i]))
+        })
+        .count();
+    for (i, param) in fn_node.params.iter().enumerate() {
+        let pname = &all_param_names[i];
+        if param_node_default_value(param.clone()).is_none()
+            && !bindings.contains_key(&ctx.sym(pname))
+        {
+            return Err(InterpError::CallContractMismatch {
+                callee: fn_node.name.clone(),
+                detail: format!(
+                    "missing required argument '{}' ({} of {} required argument(s) supplied)",
+                    pname, supplied_required, required_count
+                ),
+            });
+        }
+    }
+
     let call_env = Env::extend(&lexical_base_env(env), bindings);
     #[cfg(any(test, feature = "interp_test_witness"))]
     record_call_env_depth(&call_env);

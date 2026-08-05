@@ -514,6 +514,15 @@ mod compiler_tests {
                     "a positional argument beyond the declared positional parameters must refuse — the interpreter refuses the same call (too many positional arguments), got: {:?}",
                     surplus.diagnostics
                 );
+                let deficit = compile_one(
+                    "deficit.dag",
+                    "module deficit\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(1) }\n",
+                );
+                assert!(
+                    deficit.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallPositionalDeficit { .. })),
+                    "a call supplying fewer required arguments than declared must refuse — the interpreter refuses the same call (missing required argument), got: {:?}",
+                    deficit.diagnostics
+                );
                 // POSITIVE CONTROLS at ZERO diagnostics of any severity (the filtering
                 // lesson of codex review 45357: asserting only the absence of the
                 // blocking variant lets an advisory pass unnoticed). Correct labels,
