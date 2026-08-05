@@ -2567,7 +2567,6 @@ pub fn call_arg_bound_param_at(
     idx: i64,
     typed_args: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    declared_names: Rc<Vec<String>>,
     positionally_eligible_names: Rc<Vec<String>>,
 ) -> Option<String> {
     Rc::new(
@@ -2836,7 +2835,6 @@ pub fn direct_call_shape_diags(
                             pair.0.clone(),
                             typed_args.clone(),
                             source_indices.clone(),
-                            declared_names.clone(),
                             positionally_eligible_names.clone(),
                         );
                         match current_bound.clone() {
@@ -2860,7 +2858,6 @@ pub fn direct_call_shape_diags(
                                                 other.0.clone(),
                                                 typed_args.clone(),
                                                 source_indices.clone(),
-                                                declared_names.clone(),
                                                 positionally_eligible_names.clone(),
                                             )
                                             .as_deref()
