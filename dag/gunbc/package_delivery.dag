@@ -1396,7 +1396,7 @@ type CodexRuntimeMaterialization
   | CodexRuntimeReleaseRefused {
       cause: NonEmptyStr
     }
-  | CodexRuntimeReleaseReuseMismatch {
+  | CodexRuntimeMaterializationReuseMismatch {
       existing_root: FilePath
       cause: NonEmptyStr
     }
@@ -1427,7 +1427,7 @@ fn codex_runtime_materialization_refusal_reason(
       Present { value: "codex admitted-package-set identity observation refused" as NonEmptyStr }
     CodexRuntimeReceiptObservationRefused { cause } => Present { value: cause }
     CodexRuntimeReleaseRefused { cause } => Present { value: cause }
-    CodexRuntimeReleaseReuseMismatch { existing_root: _, cause } => Present { value: cause }
+    CodexRuntimeMaterializationReuseMismatch { existing_root: _, cause } => Present { value: cause }
   }
 }
 
@@ -1639,7 +1639,7 @@ fn finish_codex_runtime_materialization_after_install(
                                       existing_root,
                                       cause,
                                     } =>
-                                      CodexRuntimeReleaseReuseMismatch {
+                                      CodexRuntimeMaterializationReuseMismatch {
                                         existing_root: existing_root,
                                         cause: cause,
                                       }

@@ -243,14 +243,14 @@ test fn account_ready_wire_status_is_not_turn_started_or_dispatch_accepted() -> 
   }
   let status = codex_press_outcome_wire_status(outcome: outcome)
   let caption = codex_press_outcome_operator_caption(outcome: outcome)
+  let ready_ok = status == "account_ready"
+    && status != "turn_started"
+    && status != "accepted"
+    && status != "spawned"
+    && caption == "account ready"
+    && caption != "turn started"
   match evidence.classification {
-    AccountStandingReady =>
-      status == "account_ready"
-        && status != "turn_started"
-        && status != "accepted"
-        && status != "spawned"
-        && caption == "account ready"
-        && caption != "turn started"
+    AccountStandingReady => ready_ok
     _ => false
   }
 }
@@ -289,28 +289,29 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
       "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{}}}\n",
     ),
   )
-  match login.classification {
-    AccountStandingLoginRequired =>
-      match quota.classification {
-        AccountStandingQuotaReached =>
-          match ok.classification {
-            AccountStandingReady =>
-              match missing.classification {
-                AccountStandingInitializeMissing =>
-                  match incomplete.classification {
-                    AccountStandingIncomplete =>
-                      account_standing_projection(classification: ok.classification)
-                        == "initialize_ok; account_read_ok; rate_limits_observed"
-                    _ => false
-                  }
-                _ => false
-              }
-            _ => false
-          }
-        _ => false
-      }
+  let login_ok = match login.classification {
+    AccountStandingLoginRequired => true
     _ => false
   }
+  let quota_ok = match quota.classification {
+    AccountStandingQuotaReached => true
+    _ => false
+  }
+  let ready_ok = match ok.classification {
+    AccountStandingReady => true
+    _ => false
+  }
+  let missing_ok = match missing.classification {
+    AccountStandingInitializeMissing => true
+    _ => false
+  }
+  let incomplete_ok = match incomplete.classification {
+    AccountStandingIncomplete => true
+    _ => false
+  }
+  let projected = account_standing_projection(classification: ok.classification)
+  let projection_ok = projected == "initialize_ok; account_read_ok; rate_limits_observed"
+  login_ok && quota_ok && ready_ok && missing_ok && incomplete_ok && projection_ok
 }
 
 test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
