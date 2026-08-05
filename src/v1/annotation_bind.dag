@@ -6,6 +6,7 @@ import std.occurrence_identity {
   OccurrenceTransport
 }
 import std.source_annotation {
+  AnnotationAttachmentRefusal,
   AnnotationAttachmentResult,
   AnnotationSubject,
   AnnotationsAdmitted,
