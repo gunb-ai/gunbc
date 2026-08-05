@@ -26,7 +26,7 @@ import extdeps.instrument.pip_boy_3000 {
 import extdeps.instrument.pip_boy_3000_mk_v {
   pip_boy_mk_v_manufacturer,
   PipBoyMkVCapability, DisplayColourSelection, DisplayBrightness,
-  QuickNightViewBrightness, DemoMode, Clock, Alarm, AlarmSnooze, FmRadio,
+  QuickNightViewBrightness, DemoMode, MkVClock, Alarm, AlarmSnooze, FmRadio,
   pip_boy_mk_v_capabilities, pip_boy_mk_v_capability_label,
   pip_boy_mk_v_licensing_statement,
 }
