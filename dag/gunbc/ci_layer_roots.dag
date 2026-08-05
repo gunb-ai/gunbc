@@ -1254,7 +1254,7 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "witness_production_admissions_close_contract_holds",
     reason: "v2_emitter_direct_rust_door_acceptance_admissions runs both production folds including ingest-path written-source assessment; exceeds 5s fast-lane budget. Closing frontier nonzero until ingest-path establishes WrittenSourceIndependentOfSeedEmitter (functional gap, not slowness alone)",
     dissolve_on: "production admissions close with frontier zero AND eval lands under gunbc_ci_fast_lane_witness_eval_budget — then re-enrolls per-PR discovery"
-  }
+  },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_every_declaration_ref_resolves_exactly",
