@@ -93,7 +93,7 @@ fn parse_href_scheme(url: String) -> ParsedHrefScheme {
   }
 }
 
-data uri_component_encode_authority_note: String = "RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1) realized by extdeps.uri uri_percent_encode_* over UriUnicodeScalar / UriUtf8Octet. RFC 3986 section 3.3 path grammar is cited at extdeps.uri_path extdeps_external_authority_anchor — same specification, distinct section facts, no parallel section module. UriUnicodeScalar { cp } is the raw carrier; UriValidatedScalar { admitted_cp: Int where unicode_scalar } is minted only by uri_unicode_scalar_construction and is not structurally interchangeable with UriUnicodeScalar. uri_percent_encode_admitted_scalar_wire accepts UriValidatedScalar only."
+data uri_component_encode_authority_note: String = "RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1) realized by extdeps.uri uri_percent_encode_* over UriUnicodeScalar / UriUtf8Octet. RFC 3986 section 3.3 path grammar is cited at extdeps.uri_path extdeps_external_authority_anchor — same specification, distinct section facts, no parallel section module. UriUnicodeScalar { cp } is the raw carrier; UriValidatedScalar is sole_constructor with admitted_cp: Int and is minted only by uri_validated_scalar_construction (scalar-range and surrogate checks live in that constructor). uri_percent_encode_admitted_scalar_wire accepts UriValidatedScalar only."
 
 type UriHexNibble
   = UriNibble0
@@ -119,7 +119,12 @@ type UriHexNibbleConstruction
 
 type UriUnicodeScalar { cp: Int }
 
-type UriValidatedScalar { admitted_cp: Int where unicode_scalar }
+type UriValidatedScalar sole_constructor { admitted_cp: Int }
+
+type UriValidatedScalarConstruction
+  = UriValidatedScalarConstructed(UriValidatedScalar)
+  | UriValidatedScalarSurrogateRefused { cp: Int }
+  | UriValidatedScalarOutOfRangeRefused { cp: Int }
 
 type UriUnicodeScalarConstruction
   = UriUnicodeScalarConstructed(UriValidatedScalar)
@@ -220,15 +225,26 @@ fn uri_hex_nibble_wire(nibble: UriHexNibble) -> String {
   }
 }
 
-fn uri_unicode_scalar_construction(cp: Int) -> UriUnicodeScalarConstruction {
+fn uri_validated_scalar_construction(cp: Int) -> UriValidatedScalarConstruction {
   if cp < 0 {
-    UriUnicodeScalarOutOfRangeRefused { cp: cp }
+    UriValidatedScalarOutOfRangeRefused { cp: cp }
   } else if cp > unicode_scalar_max_code_point {
-    UriUnicodeScalarOutOfRangeRefused { cp: cp }
+    UriValidatedScalarOutOfRangeRefused { cp: cp }
   } else if cp >= unicode_surrogate_first_code_point && cp <= unicode_surrogate_last_code_point {
-    UriUnicodeScalarSurrogateRefused { cp: cp }
+    UriValidatedScalarSurrogateRefused { cp: cp }
   } else {
-    UriUnicodeScalarConstructed(UriValidatedScalar { admitted_cp: cp })
+    UriValidatedScalarConstructed(UriValidatedScalar { admitted_cp: cp })
+  }
+}
+
+fn uri_unicode_scalar_construction(cp: Int) -> UriUnicodeScalarConstruction {
+  match uri_validated_scalar_construction(cp: cp) {
+    UriValidatedScalarSurrogateRefused { cp: c } =>
+      UriUnicodeScalarSurrogateRefused { cp: c }
+    UriValidatedScalarOutOfRangeRefused { cp: c } =>
+      UriUnicodeScalarOutOfRangeRefused { cp: c }
+    UriValidatedScalarConstructed(scalar) =>
+      UriUnicodeScalarConstructed(scalar)
   }
 }
 
