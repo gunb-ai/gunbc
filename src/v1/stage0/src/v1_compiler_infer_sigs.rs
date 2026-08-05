@@ -128,9 +128,18 @@ pub fn func_sig_lookup_outcome_note() -> String {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum FuncSigLookup {
-    FuncSigResolved { sig: Rc<ResolvedFuncSig> },
+    FuncSigResolved {
+        sig: Rc<ResolvedFuncSig>,
+    },
     FuncSigUnresolved,
-    FuncSigAmbiguous { candidates: Rc<Vec<String>> },
+    FuncSigAmbiguous {
+        candidates: Rc<Vec<String>>,
+    },
+    FuncSigCallerNotAdmitted {
+        function_name: String,
+        owner_module_path: String,
+        admitted: Rc<Vec<String>>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
