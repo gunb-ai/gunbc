@@ -72,9 +72,25 @@ Method: run named witnesses per candidate head via
 direct_rust_door contract shape; **#7776 ruled out** (landed after first WitnessRed
 window).
 
-### 4a. Bisect receipt (executed 2026-08-04)
+### 4a. Bisect receipt (executed 2026-08-04/05)
 
-*(Pending completion of per-commit witness runs — see session commit message.)*
+Method: fresh `claim_batch` build at each candidate head (stale Aug-2 binary ruled out
+for dispatch-layer changes). Parent-before-candidate test per still-bat-561.
+
+| SHA | Commit | Fresh build | `fn_wf` | `closing_contract` | `production_admissions` | `written_source` |
+|---|---|---|---|---|---|---|
+| `7237024035` | parent of #7682 (#7594 publisher) | yes | **FAIL** | **FAIL** | **FAIL** | **FAIL** |
+| `44126ca1de` | **#7682 dispatch authority** | yes | **FAIL** | **FAIL** | **FAIL** | **FAIL** |
+
+**#7682 ruled OUT:** all four tested witnesses already fail at parent `7237024035` with a
+binary built at that head. The first WitnessRed *falsifier window* coincides with #7682 as
+HEAD, but witness redness predates it — likely enrollment or cadence visibility, not this
+commit introducing the failure.
+
+Earlier boundary (`76ef121ec4`, last BudgetExceeded window head): measurement pending.
+
+**Next candidates** (after #7682 ruled out): `0b6b99315f`, `b12027cd94`, then remaining
+commits before `7237024035`.
 
 ---
 
