@@ -149,7 +149,6 @@ pub mod wt_common;
 pub mod v1_interpreter_dispatch_generated;
 pub mod cli_run;
 pub mod coproduct_reflection;
-pub mod data_initializer_identity;
 pub mod memory_governor;
 pub mod module_path_index;
 pub mod recorded_fixture;
