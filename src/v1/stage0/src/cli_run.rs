@@ -3963,6 +3963,215 @@ pub fn selection_control_skip_label_for_ci() -> Result<String, SelectionControlS
     }
 }
 
+// ---------------------------------------------------------------------------
+// Class B import-closure gate affected-set skip (#7835).
+//
+// `run_class_b_import_closure_gate` costs ~2.3 min wall per cold run; skip when the
+// merge-base diff is provably disjoint from the gate's input closure (declared-import
+// pool ∪ witness layer ∪ perturbation fixtures ∪ gate transport modules). Same shape as
+// regen_floor_skip_label_for_ci / selection_control_skip_label_for_ci: skip only on a
+// non-empty diff proven disjoint; run on empty diff, departed non-docs paths, and any
+// observation/closure failure (fail-closed). Gated to pull_request events — push-to-main
+// runs the full gate as the cold control.
+// ---------------------------------------------------------------------------
+
+pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
+pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_transport.dag";
+pub const CLASS_B_BINDING_REL: &str = "dag/gunbc/declared_import_closure_binding.dag";
+pub const CLASS_B_OVERLAY_REL: &str = "dag/gunbc/class_b_import_closure_overlay.dag";
+pub const CLASS_B_FIXTURES_PREFIX: &str = "fixtures/class_b_import_closure";
+
+pub const CLASS_B_DECLARED_POOL_ROOTS: &[&str] = &[
+    "dag/std",
+    "dag/extdeps",
+    "src/v2/extdeps/languages",
+    "src/v2/std",
+];
+
+pub const CLASS_B_WITNESS_LAYER_ROOTS: &[&str] = &["dag", "src/v2"];
+
+pub const CLASS_B_GATE_INPUT_ENTRIES: &[&str] = &[
+    CLASS_B_ENTRY_REL,
+    CLASS_B_TRANSPORT_REL,
+    CLASS_B_BINDING_REL,
+    CLASS_B_OVERLAY_REL,
+];
+
+pub const CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL: &str = "class_b_gate_not_affected_skip";
+pub const RUN_CLASS_B_GATE_LABEL: &str = "run_class_b_gate";
+
+fn class_b_pool_source_roots(workspace: &Path, pool_roots: &[&str]) -> Vec<PathBuf> {
+    pool_roots
+        .iter()
+        .map(|rel| workspace.join(rel))
+        .collect()
+}
+
+fn import_closure_dag_files(
+    workspace: &Path,
+    source_roots: &[PathBuf],
+    seed_entries: &[&str],
+) -> Result<HashSet<String>, String> {
+    let index = selection_control_module_index(source_roots)?;
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut queue: Vec<String> = Vec::new();
+    for rel in seed_entries {
+        let path = workspace.join(rel);
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("read declared Class B gate entry {rel}: {e}"))?;
+        seen.insert(normalize_repo_path(rel));
+        queue.push(content);
+    }
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            let Some(candidates) = index.get(&module_path) else {
+                continue;
+            };
+            for path in candidates {
+                let rel = normalize_repo_path(&regen_workspace_relpath(path, workspace));
+                if !seen.insert(rel) {
+                    continue;
+                }
+                let file_content = std::fs::read_to_string(path)
+                    .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
+                queue.push(file_content);
+            }
+        }
+    }
+    Ok(seen)
+}
+
+fn collect_repo_files_under_prefix(
+    workspace: &Path,
+    prefix: &str,
+    seen: &mut HashSet<String>,
+) -> Result<(), String> {
+    let root = workspace.join(prefix);
+    if !root.exists() {
+        return Err(format!("Class B fixture prefix does not exist: {prefix}"));
+    }
+    fn walk(dir: &Path, workspace: &Path, seen: &mut HashSet<String>) -> Result<(), String> {
+        for entry in std::fs::read_dir(dir).map_err(|e| format!("read_dir {}: {e}", dir.display()))?
+        {
+            let entry = entry.map_err(|e| format!("read_dir entry: {e}"))?;
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, workspace, seen)?;
+            } else if path.is_file() {
+                seen.insert(normalize_repo_path(&regen_workspace_relpath(&path, workspace)));
+            }
+        }
+        Ok(())
+    }
+    walk(&root, workspace, seen)
+}
+
+/// Every workspace-relative path whose content can change `run_class_b_import_closure_gate`'s
+/// verdict: witness-layer import closure of the gate transport modules (rows 3–4 wide pool),
+/// declared-import-pool closure of the subject entry (rows 1–2 minimal pool), perturbation
+/// fixtures, sorted.
+pub fn class_b_import_closure_input_sources(workspace: &Path) -> Result<Vec<String>, String> {
+    let witness_roots = class_b_pool_source_roots(workspace, CLASS_B_WITNESS_LAYER_ROOTS);
+    let pool_roots = class_b_pool_source_roots(workspace, CLASS_B_DECLARED_POOL_ROOTS);
+    let mut seen = import_closure_dag_files(
+        workspace,
+        &witness_roots,
+        CLASS_B_GATE_INPUT_ENTRIES,
+    )?;
+    seen.extend(import_closure_dag_files(
+        workspace,
+        &pool_roots,
+        &[CLASS_B_ENTRY_REL],
+    )?);
+    collect_repo_files_under_prefix(workspace, CLASS_B_FIXTURES_PREFIX, &mut seen)?;
+    let mut result: Vec<String> = seen.into_iter().collect();
+    result.sort();
+    Ok(result)
+}
+
+fn class_b_path_affects_gate(changed: &str, dag_closure: &HashSet<String>) -> bool {
+    let p = normalize_repo_path(changed);
+    if p.starts_with("src/v1/") {
+        return true;
+    }
+    if p.starts_with("fixtures/class_b_import_closure/") || p == "fixtures/class_b_import_closure"
+    {
+        return true;
+    }
+    if p == "Cargo.lock"
+        || p == "Cargo.toml"
+        || p.ends_with("/Cargo.toml")
+        || p == "rust-toolchain.toml"
+        || p == "rust-toolchain"
+        || p == ".cargo/config.toml"
+        || p == ".cargo/config"
+    {
+        return true;
+    }
+    dag_closure.contains(&p)
+}
+
+/// CI skip label for the Class B gate inside `source_root_ingest_gate_passes`.
+pub fn class_b_import_closure_gate_skip_label_for_ci() -> String {
+    if std::env::var("GITHUB_EVENT_NAME").ok().as_deref() != Some("pull_request") {
+        eprintln!("class B gate skip: not pull_request — run gate (cold control)");
+        return RUN_CLASS_B_GATE_LABEL.to_string();
+    }
+    let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
+        Ok(v) => v,
+        Err(msg) => {
+            eprintln!("class B gate skip: diff observation failed ({msg}) — run gate");
+            return RUN_CLASS_B_GATE_LABEL.to_string();
+        }
+    };
+    if changed_paths.is_empty() {
+        eprintln!("class B gate skip: empty diff — run gate (fail-closed cold control)");
+        return RUN_CLASS_B_GATE_LABEL.to_string();
+    }
+    if let Some(gone) = departed_paths.iter().find(|p| {
+        let n = normalize_repo_path(p);
+        !n.starts_with("docs/")
+    }) {
+        eprintln!(
+            "class B gate skip: departed non-docs path in diff ({}) — run gate (current-tree closure cannot see deletions)",
+            normalize_repo_path(gone)
+        );
+        return RUN_CLASS_B_GATE_LABEL.to_string();
+    }
+    let workspace = workspace_root();
+    let dag_closure: HashSet<String> = match class_b_import_closure_input_sources(&workspace) {
+        Ok(sources) => sources.into_iter().collect(),
+        Err(msg) => {
+            eprintln!("class B gate skip: input-closure computation failed ({msg}) — run gate");
+            return RUN_CLASS_B_GATE_LABEL.to_string();
+        }
+    };
+    match changed_paths
+        .iter()
+        .find(|p| class_b_path_affects_gate(p, &dag_closure))
+    {
+        Some(example) => {
+            eprintln!(
+                "class B gate skip: diff intersects Class B gate inputs (e.g. {}) — run gate",
+                normalize_repo_path(example)
+            );
+            RUN_CLASS_B_GATE_LABEL.to_string()
+        }
+        None => {
+            eprintln!(
+                "class B gate skip: {} changed path(s), none intersect the Class B gate input closure (declared-import pool ∪ witness layer ∪ fixtures ∪ src/v1/** ∪ Cargo/toolchain) — gate verdict provably unchanged (push-to-main runs gate unconditionally as cold control)",
+                changed_paths.len()
+            );
+            CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL.to_string()
+        }
+    }
+}
+
+/// Builtin backing `class_b_import_closure_gate_not_affected_skip` in the transport gate.
+pub fn class_b_import_closure_gate_not_affected_skip_for_ci() -> bool {
+    class_b_import_closure_gate_skip_label_for_ci() == CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL
+}
+
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     // Falsifier cold-control arm: force the whole-tree compile before any diff observation.
     // Widen-to-more-checking only — this env can never skip or narrow the gate, so it is a
@@ -34804,6 +35013,85 @@ mod witness_layer_roots_compile_clean_tests {
                 assert_eq!(
                     regen_floor_skip_label_for_ci(),
                     REGEN_NOT_AFFECTED_SKIP_LABEL
+                );
+            });
+        });
+    }
+
+    /// Class B gate skip: unrelated path outside the gate input closure skips on pull_request.
+    #[test]
+    fn class_b_gate_skip_skips_on_unrelated_path() {
+        const UNRELATED: &str = "src/v2/lens/machine_shape.dag";
+        let closure = class_b_import_closure_input_sources(&workspace_root())
+            .expect("Class B gate closure must compute");
+        assert!(
+            !closure.iter().any(|p| p == UNRELATED),
+            "{UNRELATED} entered the Class B gate input closure — choose a new skip subject"
+        );
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    &format!("M\\000{UNRELATED}\\000"),
+                );
+                assert_eq!(
+                    class_b_import_closure_gate_skip_label_for_ci(),
+                    CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL
+                );
+            });
+        });
+    }
+
+    /// Class B gate skip: touching the subject entry runs the gate.
+    #[test]
+    fn class_b_gate_skip_runs_on_subject_entry() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    &format!("M\\000{CLASS_B_ENTRY_REL}\\000"),
+                );
+                assert_eq!(
+                    class_b_import_closure_gate_skip_label_for_ci(),
+                    RUN_CLASS_B_GATE_LABEL
+                );
+            });
+        });
+    }
+
+    /// Class B gate skip: departed non-docs path runs the gate.
+    #[test]
+    fn class_b_gate_skip_runs_on_departed_dag_path() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "D\\000src/v2/lens/machine_shape.dag\\000",
+                );
+                assert_eq!(
+                    class_b_import_closure_gate_skip_label_for_ci(),
+                    RUN_CLASS_B_GATE_LABEL
+                );
+            });
+        });
+    }
+
+    /// Class B gate skip: non-pull_request always runs (cold control).
+    #[test]
+    fn class_b_gate_skip_runs_on_push_event() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "push");
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "M\\000src/v2/lens/machine_shape.dag\\000",
+                );
+                assert_eq!(
+                    class_b_import_closure_gate_skip_label_for_ci(),
+                    RUN_CLASS_B_GATE_LABEL
                 );
             });
         });

@@ -11521,6 +11521,10 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
+            arm "free_call.class_b_import_closure_gate_not_affected_skip" { "class_b_import_closure_gate_not_affected_skip" } => Ok(Some(Value::Bool(
+                crate::cli_run::class_b_import_closure_gate_not_affected_skip_for_ci(),
+            ))),
+
             arm "free_call.witness_layer_roots_compile_clean_check" { "witness_layer_roots_compile_clean_check" } => Ok(Some(Value::Bool(
                 crate::cli_run::witness_layer_roots_compile_clean_check(),
             ))),
