@@ -423,6 +423,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_substrate_long_lane_dissolve
   },
   WitnessExclusionRow {
+    pattern: "long/v1_complexity_capability_census_resolution_test.dag",
+    classification: FalsifierSubstrateLongLane,
+    reason: excl_substrate_long_lane_reason,
+    dissolve_on: excl_substrate_long_lane_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "fallback_arm_census_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
@@ -1175,6 +1181,48 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     reason: "v2_emitter_direct_rust_door_acceptance_admissions runs both production folds including ingest-path written-source assessment; exceeds 5s fast-lane budget. Closing frontier nonzero until ingest-path establishes WrittenSourceIndependentOfSeedEmitter (functional gap, not slowness alone)",
     dissolve_on: "production admissions close with frontier zero AND eval lands under gunbc_ci_fast_lane_witness_eval_budget — then re-enrolls per-PR discovery"
   }
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
+    function: "census_every_declaration_ref_resolves_exactly",
+    reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
+    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
+    function: "census_absent_declaration_refuses",
+    reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
+    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
+    function: "census_absent_module_refuses",
+    reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
+    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
+    function: "census_prose_only_name_does_not_resolve",
+    reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
+    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
+    function: "census_resolved_identity_carries_observed_path",
+    reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
+    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
+    function: "census_shared_substrate_carrier_resolves",
+    reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
+    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
+    function: "census_complexity_admission_predicate_is_vacuous_by_execution",
+    reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
+    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+  },
 ]
 
 fn falsifier_substrate_long_lane_entries() -> List<ScheduleWitnessEntry> {

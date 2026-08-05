@@ -6,28 +6,50 @@ import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, decl_ref }
 
 data v1_complexity_capability_census_note: String = "C0(b1) of the v2 complexity capability parity program: a REVIEWED capability roster over src/v1/complexity.dag, with every citation carried as a typed DeclarationRef that resolves through the single resolution authority rather than as a name matched by substring. It is deliberately NOT the closed capability denominator — that is C0(b2), the declaration-to-capability totality slice, which derives the population from DeclFact instead of authoring it. This module states the difference rather than blurring it (operator review, 2026-08-05): what is proven here is that the authored rows are well-formed, exactly cited, and disposition-partitioned; what is NOT proven here is that no capability is missing."
 
-data c0_scope_note: String = "Scope, stated so the title cannot overclaim. PROVEN by this carrier and its witnesses: every row carries a typed DeclarationRef; every ref resolves to exactly one declaration through v2.std.decl_ref_resolution (long lane, which pays the decl_facts scan); capability identity is a closed coproduct so duplicate keys are unrepresentable rather than merely checked; every disposition arm lands in exactly one work-state partition, with a controlled fixture for every arm including the uninhabited ones. NOT PROVEN: declaration-grain completeness. A 27th capability omitted from the roster would not be detected here, and no assertion in this lane should be read as claiming otherwise."
+data c0_scope_note: String = "Scope, stated so the title cannot overclaim. PROVEN by this carrier and its witnesses: every row carries a typed DeclarationRef; every ref resolves to exactly one declaration through v2.std.decl_ref_resolution (long lane, which pays the decl_facts scan); capability identity is a closed coproduct, so an identity OUTSIDE the vocabulary is unrepresentable — but the roster is a List, so the same identity CAN appear twice and distinctness is VALIDATED by an executing witness, not constructed (claim narrowed on operator review 2026-08-05: the earlier 'duplicates are unrepresentable' was too strong). C0(b2)'s derived declaration population supplies the construction wall this list cannot; every disposition arm lands in exactly one work-state partition, with a controlled fixture for every arm including the uninhabited ones. NOT PROVEN: declaration-grain completeness. A 27th capability omitted from the roster would not be detected here, and no assertion in this lane should be read as claiming otherwise."
 
 data v1_declaration_counting_method_note: String = "Method identity for the declaration count, which two notes reported differently (operator review, 2026-08-05). Over src/v1/complexity.dag at this revision: 171 counts top-level `fn` declarations only; 201 counts `fn` + `type` + `data` + `let`; 26 are `type` and 4 are `data`. Both figures are correct under their own method and neither was wrong — what was missing is the method, without which the two numbers read as a contradiction. This note is the method authority; a figure quoted without one is not quotable. C0(b2) derives its denominator from DeclFact rather than from either grep, at which point this note is superseded by the derived population."
 
-data c0_authority_ruling_note: String = "C0(a) AUTHORITY RULING — SIGNED by the operator 2026-08-05. The semantic split below is approved and no sibling cost taxonomy may be created. v2.lens.cost is the single migration authority for cost and size expressions, discrete work, work/span, output-size and peak-space expressions, and semantic effect demand. v2.lens.complexity carries asymptotic projection and complexity-class comparison, and nothing else. std.realization_schedule carries physical and resource projections and scheduling accounts. v1.compiler.complexity is the legacy oracle, parity source, and deletion target. NUANCE CARRIED WITH THE SIGNATURE: v2.lens.cost is the authority's CURRENT IDENTITY, not necessarily its permanent namespace — its WallNow classification already raises whether a construction should live under v2.lens.*, and any later move to a shared or non-lens home must be an ATOMIC RELOCATION with every consumer repointed in the same motion. A second live authority is never an acceptable intermediate state. CostAuthorityModule below is the typed carrier of this ruling, so a row's destination is drawn from the signed vocabulary rather than spelled freehand."
+data c0_authority_ruling_note: String = "C0(a) AUTHORITY RULING — SIGNED by the operator 2026-08-05. The semantic split below is approved and no sibling cost taxonomy may be created. v2.lens.cost is the single migration authority for cost and size expressions, discrete work, work/span, output-size and peak-space expressions, and semantic effect demand. v2.lens.complexity carries asymptotic projection and complexity-class comparison, and nothing else. std.realization_schedule carries physical and resource projections and scheduling accounts. v1.compiler.complexity is the legacy oracle, parity source, and deletion target. NUANCE CARRIED WITH THE SIGNATURE: v2.lens.cost is the authority's CURRENT IDENTITY, not necessarily its permanent namespace — its WallNow classification already raises whether a construction should live under v2.lens.*, and any later move to a shared or non-lens home must be an ATOMIC RELOCATION with every consumer repointed in the same motion. A second live authority is never an acceptable intermediate state. The ruling is carried by THREE typed axes below, not one: CostProgramRole says what each module IS (including the legacy oracle), CostMigrationDestination says where owed work may LAND (the legacy oracle absent by construction, so migrating into the deletion target is unrepresentable), and CapabilityFactProducer says WHO produces the facts. An earlier revision fused all three into a single CostAuthorityModule enum, which made 'migrate into v1.compiler.complexity' writable and forced parser-progress to name the cost lens as its producer against its own explanation (operator review 2026-08-05)."
 
-type CostAuthorityModule
-  = V2LensCost
-  | V2LensComplexity
-  | StdRealizationSchedule
-  | V1CompilerComplexity
+type CostProgramRole
+  = RoleMigrationAuthority
+  | RoleAsymptoticProjection
+  | RoleRealizationAccounts
+  | RoleLegacyOracle
 
-data cost_authority_module_note: String = "The closed destination vocabulary fixed by the signed C0(a) ruling. A migration row selects its destination from these four and cannot spell a module that the ruling did not name — which is the difference between a routing field that is merely non-empty and one that is grounded. Adding a fifth arm is a visible amendment to a signed ruling, not an edit to a string."
+data cost_program_role_note: String = "The four ROLES the signed C0(a) ruling assigns. This axis says what a module IS in the program, and it deliberately includes the legacy oracle, because naming v1.compiler.complexity's role is part of the ruling. It is NOT the migration-destination axis: the two were one enum in the previous revision, which made 'migrate into the legacy oracle' a writable row (operator review 2026-08-05). Splitting them makes that state unrepresentable rather than merely unlikely."
 
-fn cost_authority_module_path(m: CostAuthorityModule) -> String {
-  match m {
-    V2LensCost => "v2.lens.cost"
-    V2LensComplexity => "v2.lens.complexity"
-    StdRealizationSchedule => "std.realization_schedule"
-    V1CompilerComplexity => "v1.compiler.complexity"
+fn cost_program_role_module_path(r: CostProgramRole) -> String {
+  match r {
+    RoleMigrationAuthority => "v2.lens.cost"
+    RoleAsymptoticProjection => "v2.lens.complexity"
+    RoleRealizationAccounts => "std.realization_schedule"
+    RoleLegacyOracle => "v1.compiler.complexity"
   }
 }
+
+type CostMigrationDestination
+  = MigrateToV2LensCost
+  | MigrateToV2LensComplexity
+  | MigrateToStdRealizationSchedule
+
+data cost_migration_destination_note: String = "Where owed work LANDS. The legacy oracle is absent by construction: v1.compiler.complexity is the deletion target, so a row routing migration INTO it is not a mistake to catch but a state with no constructor. This is the §5 move the previous revision missed by reusing one enum for role and destination."
+
+fn cost_migration_destination_module_path(d: CostMigrationDestination) -> String {
+  match d {
+    MigrateToV2LensCost => "v2.lens.cost"
+    MigrateToV2LensComplexity => "v2.lens.complexity"
+    MigrateToStdRealizationSchedule => "std.realization_schedule"
+  }
+}
+
+type CapabilityFactProducer
+  = FactsFromCostLens
+  | FactsFromV2Parser
+  | FactsFromSharedSubstrate
+
+data capability_fact_producer_note: String = "WHO produces the facts, which is a third axis the previous revision fused into destination. The live specimen that forced the split: parser-progress facts are produced by the v2 PARSER and joined through std.termination, not computed by the cost lens — yet with one enum the row had to name v2.lens.cost as though the lens produced them, contradicting the row's own explanation. Producer and destination are now independent, so a capability whose facts come from elsewhere can still land its accounting in the cost authority."
 
 type ParityPhase
   = ParityC1ExpressionAuthority
@@ -54,7 +76,6 @@ type ComplexityCapabilityId
   | CertaintyAxis
   | ConcreteInputEvaluation
   | InterproceduralSummaryMemo
-  | SummaryEviction
   | CallGraphAndScc
   | DescentEvidenceVocabulary
   | CostBoundVocabulary
@@ -62,7 +83,6 @@ type ComplexityCapabilityId
   | DescentDerivationWalkers
   | RecursionPatternClassification
   | ParserProgressFactProduction
-  | ParserProgressV1Walker
   | CollectionMethodCostShapes
   | StructuralBoundReport
   | CostExpressionRendering
@@ -70,6 +90,19 @@ type ComplexityCapabilityId
   | CostAccountSpaceBridge
 
 data complexity_capability_id_note: String = "Capability identity as a closed coproduct rather than a string key. This is a construction answer to a property the previous revision only validated: two rows cannot share an identity, because an identity is a variant and a roster carrying one twice is caught at the identity join rather than by comparing spellings. It also gives cross-capability edges an exact target — RetirementOwed names the capability that supersedes it, and that name is checkable rather than prose. C0(b2) will join this set against the derived declaration population; until then, the set is authored and its completeness is explicitly unproven."
+
+type V1ComplexityResidueId
+  = SummaryEvictionHazard
+  | ParserProgressV1WalkerRealization
+
+data v1_complexity_residue_note: String = "Legacy residues are NOT semantic capabilities and must not inflate the capability population as peer variants (operator review 2026-08-05). A hazard is a defective realization of a capability that survives beside it; a legacy realization is an implementation the program retires once its replacement executes. Both belong to a capability rather than standing next to one, which is exactly the distinction C0(b2)'s declaration classification needs when it assigns AuthorityOf / HelperOf / LegacyHazardOf / LegacyRealizationOf."
+
+type V1ComplexityInventoryItem
+  = SemanticCapabilityItem { capability: ComplexityCapabilityId }
+  | LegacyHazardItem { hazard: V1ComplexityResidueId, of_capability: ComplexityCapabilityId }
+  | LegacyRealizationItem { realization: V1ComplexityResidueId, of_capability: ComplexityCapabilityId }
+
+data v1_complexity_inventory_item_note: String = "One inventory row is one of three things, and the two residue arms carry the capability they belong to as a typed edge — so a hazard or a legacy realization can never float free of the capability it qualifies. The semantic capability population is exactly the SemanticCapabilityItem rows; counting inventory rows and counting capabilities are now different questions with different answers, which is the honesty the previous revision lacked when SummaryEviction and ParserProgressV1Walker sat as peers beside real capabilities."
 
 type RetirementTrigger
   = RetiresWhenReplacementExecutes { replacement: ComplexityCapabilityId }
@@ -80,15 +113,15 @@ data disposition_states_note: String = "Six arms across two work-states, correct
 type ComplexityCapabilityDisposition
   = CompleteInV2 { carrier: DeclarationRef, note: NonEmptyStr }
   | IntegrationOwed { substrate_carrier: DeclarationRef, phase: ParityPhase, note: NonEmptyStr }
-  | MigrationOwed { destination: CostAuthorityModule, phase: ParityPhase, note: NonEmptyStr }
+  | MigrationOwed { destination: CostMigrationDestination, producer: CapabilityFactProducer, phase: ParityPhase, note: NonEmptyStr }
   | SupersededByBetterModel { superseded_by: DeclarationRef, note: NonEmptyStr }
   | RetirementOwed { trigger: RetirementTrigger, note: NonEmptyStr }
   | Retired { reason: NonEmptyStr }
 
 data disposition_construction_note: String = "Every arm's routing metadata is a typed identity, not a non-empty string. A destination is a CostAuthorityModule drawn from the signed ruling; a phase is a ParityPhase; a retirement trigger names the superseding capability as a ComplexityCapabilityId; a carrier is a DeclarationRef that resolves through v2.std.decl_ref_resolution. The previous revision claimed non-empty payloads made an unjustified disposition unwritable — the operator's correction is exact: a non-empty string proves only that someone typed something. What is unwritable now is a row routed to a module the ruling never named, or to a phase that does not exist, or citing a declaration that does not resolve."
 
-type V1ComplexityCapability {
-  capability: ComplexityCapabilityId
+type V1ComplexityInventoryRow {
+  item: V1ComplexityInventoryItem
   v1_carrier: DeclarationRef
   disposition: ComplexityCapabilityDisposition
 }
@@ -97,8 +130,8 @@ fn v1_ref(decl_name: String) -> DeclarationRef {
   decl_ref(module_path: "v1.compiler.complexity", decl_name: decl_name)
 }
 
-data asymptotic_class_and_dominance: V1ComplexityCapability = V1ComplexityCapability {
-  capability: AsymptoticClassAndDominance,
+data asymptotic_class_and_dominance: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: AsymptoticClassAndDominance },
   v1_carrier: v1_ref(decl_name: "classify_complexity"),
   disposition: CompleteInV2 {
     carrier: decl_ref(module_path: "v2.lens.cost", decl_name: "asymptotic_class_of_cost"),
@@ -106,8 +139,8 @@ data asymptotic_class_and_dominance: V1ComplexityCapability = V1ComplexityCapabi
   }
 }
 
-data polynomial_degree_reading: V1ComplexityCapability = V1ComplexityCapability {
-  capability: PolynomialDegreeReading,
+data polynomial_degree_reading: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: PolynomialDegreeReading },
   v1_carrier: v1_ref(decl_name: "cost_expr_degree"),
   disposition: CompleteInV2 {
     carrier: decl_ref(module_path: "v2.lens.cost", decl_name: "add_polynomial_degree"),
@@ -115,128 +148,128 @@ data polynomial_degree_reading: V1ComplexityCapability = V1ComplexityCapability 
   }
 }
 
-data size_expression_algebra: V1ComplexityCapability = V1ComplexityCapability {
-  capability: SizeExpressionAlgebra,
+data size_expression_algebra: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: SizeExpressionAlgebra },
   v1_carrier: v1_ref(decl_name: "SizeExpr"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: ParityC1ExpressionAuthority,
     note: "v1 carries SizeConst/SizeVar/SizeLen/SizeAdd/SizeMax; v2 carries only SizeVariable { source: Node } with no algebra over it. Per parity section 6 the String-keyed SizeVar and SizeLen re-ground onto exact identities rather than carrying their String leaves across." as NonEmptyStr
   }
 }
 
-data cost_expression_algebra: V1ComplexityCapability = V1ComplexityCapability {
-  capability: CostExpressionAlgebra,
+data cost_expression_algebra: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: CostExpressionAlgebra },
   v1_carrier: v1_ref(decl_name: "CostExpr"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: ParityC1ExpressionAuthority,
     note: "Verified against both carriers: v2's SymbolicCost has no Max constructor, no binder-carrying Sum, and no extern arm. Per the signed ruling SymbolicCost stays as the normalized asymptotic projection of the richer CostExpr — one authority at two levels of detail, never two competing cost types. Operator ruling 2026-08-05: this migration belongs to parity C1, not to the generic seed-shrink lane; seed deletion CONSUMES the migrated authority, it does not decide its semantics." as NonEmptyStr
   }
 }
 
-data bounded_summation: V1ComplexityCapability = V1ComplexityCapability {
-  capability: BoundedSummation,
+data bounded_summation: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: BoundedSummation },
   v1_carrier: v1_ref(decl_name: "cost_loop"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: ParityC1ExpressionAuthority,
     note: "CostSum { binder, upper, body } expresses the element-dependent fold body, which v2's SumCost { lhs, rhs } cannot represent because it carries no binder. This is the shape an exact per-element count needs and the sibling note names it a prerequisite for its own C2." as NonEmptyStr
   }
 }
 
-data retained_max_expression: V1ComplexityCapability = V1ComplexityCapability {
-  capability: RetainedMaxExpression,
+data retained_max_expression: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: RetainedMaxExpression },
   v1_carrier: v1_ref(decl_name: "cost_conditional"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: ParityC1ExpressionAuthority,
     note: "v2's symbolic_max is a lattice join that collapses eagerly to the dominating arm; v1's CostMax is retained. The distinction is load-bearing for exact-at-input evaluation: an eagerly collapsed max has already discarded the arm a known condition would select, so a retained Max is what makes charging only the taken arm expressible without changing the existing fold's meaning for current consumers." as NonEmptyStr
   }
 }
 
-data work_and_span: V1ComplexityCapability = V1ComplexityCapability {
-  capability: WorkAndSpan,
+data work_and_span: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: WorkAndSpan },
   v1_carrier: v1_ref(decl_name: "cost_par"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: ParityC2SummaryRestored,
     note: "v1 carries both axes with cost_seq and cost_par as composition laws; v2 carries neither. Operator ruling 2026-08-05: span stays in C2 and is NOT deferred — deferring it would create an incomplete summary immediately and would prevent derived and measured parallel composition from agreeing, since std.realization_measurement already models that asymmetry on the measured side." as NonEmptyStr
   }
 }
 
-data output_size_derivation: V1ComplexityCapability = V1ComplexityCapability {
-  capability: OutputSizeDerivation,
+data output_size_derivation: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: OutputSizeDerivation },
   v1_carrier: v1_ref(decl_name: "collection_output"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: ParityC2SummaryRestored,
     note: "v1's output_size is Map<String, CostExpr> keyed by an output name with a single 'result' convention; the String key re-grounds onto a modeled output identity. Deriving how large a result is as a function of input size has no v2 counterpart at all." as NonEmptyStr
   }
 }
 
-data peak_space_derivation: V1ComplexityCapability = V1ComplexityCapability {
-  capability: PeakSpaceDerivation,
+data peak_space_derivation: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: PeakSpaceDerivation },
   v1_carrier: v1_ref(decl_name: "derive_peak_space"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: ParityC2SummaryRestored,
     note: "peak_space is space_of(work) plus the retained output term, set only at the finalized summary. v1 leaves it absent on intermediate and error summaries — a counted unknown-space frontier rather than a fabricated bound — and that fail-closed posture is what the migrated form must preserve." as NonEmptyStr
   }
 }
 
-data space_time_duality: V1ComplexityCapability = V1ComplexityCapability {
-  capability: SpaceTimeDuality,
+data space_time_duality: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: SpaceTimeDuality },
   v1_carrier: v1_ref(decl_name: "space_of"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: ParityC2SummaryRestored,
     note: "The dual that makes peak space derivable from work rather than separately modeled: sequential steps release so time's sum becomes space's max, concurrent steps co-reside so time's max becomes space's sum, and a fold's iterations release so the summation collapses to its body's peak. Migrating peak space without the dual would re-derive space independently, which is the redundancy the dual removes." as NonEmptyStr
   }
 }
 
-data certainty_axis: V1ComplexityCapability = V1ComplexityCapability {
-  capability: CertaintyAxis,
+data certainty_axis: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: CertaintyAxis },
   v1_carrier: v1_ref(decl_name: "Certainty"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: ParityC2SummaryRestored,
     note: "Recording whether a derived bound is proven or conservative is genuinely needed and absent from v2. Its FORM is constrained: parity section 6 rules that it reconciles with the existing DescentEvidence and measurement bases rather than being minted as a third confidence vocabulary. Migrating the axis is owed; minting the enum is not." as NonEmptyStr
   }
 }
 
-data concrete_input_evaluation: V1ComplexityCapability = V1ComplexityCapability {
-  capability: ConcreteInputEvaluation,
+data concrete_input_evaluation: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: ConcreteInputEvaluation },
   v1_carrier: v1_ref(decl_name: "eval_cost_expr_concrete"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: DiscreteCostC1Valuation,
     note: "CENSUS CORRECTION to the sibling note's correction 1, which said no environment binding a size variable to a value existed anywhere in the tree. The seed has one: eval_size_expr_concrete and eval_cost_expr_concrete take env: Map<String, Int> and return Int?, refusing with Absent on CostUnknown / CostExtern / CostLog rather than fabricating a number. The accurate claim is narrower and more useful — the seam is absent from V2, and v1's is String-keyed with a limited evaluation and refusal surface, so C1 inherits a refusal posture to preserve and a key to re-ground rather than a blank page." as NonEmptyStr
   }
 }
 
-data interprocedural_summary_memo: V1ComplexityCapability = V1ComplexityCapability {
-  capability: InterproceduralSummaryMemo,
+data interprocedural_summary_memo: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: InterproceduralSummaryMemo },
   v1_carrier: v1_ref(decl_name: "get_or_compute_summary"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: ParityC4Interprocedural,
     note: "CostInternTable memoizes a summary per function so it is reused across call sites; its Map<String, ComplexitySummary> re-grounds onto declaration-keyed identity. See SummaryEviction for the fail-open arm that must not migrate with it." as NonEmptyStr
   }
 }
 
-data summary_eviction: V1ComplexityCapability = V1ComplexityCapability {
-  capability: SummaryEviction,
+data summary_eviction: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: InterproceduralSummaryMemo },
   v1_carrier: v1_ref(decl_name: "evict_summary"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: ParityC4Interprocedural,
     note: "CENSUS HAZARD. evict_summary does not remove an entry — it overwrites it with a zero-work, zero-span, Proven summary, so a later lookup on an evicted function returns 'costs nothing, proven' rather than 'not computed'. That is the state-space conflation this repository names and the zero-for-unmodelled arm the sibling note's honesty states forbid. The eviction capability may migrate; this realization may not. The migrated form removes the entry or refuses, and the discriminating control executes the seed behavior rather than matching its source text." as NonEmptyStr
   }
 }
 
-data call_graph_and_scc: V1ComplexityCapability = V1ComplexityCapability {
-  capability: CallGraphAndScc,
+data call_graph_and_scc: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: CallGraphAndScc },
   v1_carrier: v1_ref(decl_name: "build_scc_index"),
   disposition: IntegrationOwed {
     substrate_carrier: decl_ref(module_path: "std.graph", decl_name: "graph_multi_node_scc_members"),
@@ -245,8 +278,8 @@ data call_graph_and_scc: V1ComplexityCapability = V1ComplexityCapability {
   }
 }
 
-data descent_evidence_vocabulary: V1ComplexityCapability = V1ComplexityCapability {
-  capability: DescentEvidenceVocabulary,
+data descent_evidence_vocabulary: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: DescentEvidenceVocabulary },
   v1_carrier: v1_ref(decl_name: "construct_termination_proof"),
   disposition: IntegrationOwed {
     substrate_carrier: decl_ref(module_path: "std.termination", decl_name: "DescentEvidence"),
@@ -255,8 +288,8 @@ data descent_evidence_vocabulary: V1ComplexityCapability = V1ComplexityCapabilit
   }
 }
 
-data cost_bound_vocabulary: V1ComplexityCapability = V1ComplexityCapability {
-  capability: CostBoundVocabulary,
+data cost_bound_vocabulary: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: CostBoundVocabulary },
   v1_carrier: v1_ref(decl_name: "extract_shrink_factor"),
   disposition: IntegrationOwed {
     substrate_carrier: decl_ref(module_path: "std.induction", decl_name: "derive_bound"),
@@ -265,8 +298,8 @@ data cost_bound_vocabulary: V1ComplexityCapability = V1ComplexityCapability {
   }
 }
 
-data lowering_target_vocabulary: V1ComplexityCapability = V1ComplexityCapability {
-  capability: LoweringTargetVocabulary,
+data lowering_target_vocabulary: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: LoweringTargetVocabulary },
   v1_carrier: v1_ref(decl_name: "proof_to_call_pattern"),
   disposition: IntegrationOwed {
     substrate_carrier: decl_ref(module_path: "std.computation", decl_name: "lower_call_pattern"),
@@ -275,38 +308,38 @@ data lowering_target_vocabulary: V1ComplexityCapability = V1ComplexityCapability
   }
 }
 
-data descent_derivation_walkers: V1ComplexityCapability = V1ComplexityCapability {
-  capability: DescentDerivationWalkers,
+data descent_derivation_walkers: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: DescentDerivationWalkers },
   v1_carrier: v1_ref(decl_name: "collect_descent_vars"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: ParityC4Interprocedural,
     note: "What is genuinely seed-local: the walkers that PRODUCE the shared vocabulary by traversing the v1 AST — collect_descent_vars, classify_self_call_evidence, all_self_calls_descend and their neighbours, each threading a source index. They do not port; they are re-expressed as a fold over the closed v2 Node kernel, which is why the ruling says not to port the seed module wholesale. With the integration rows above discharging the vocabulary, C4's real surface is this derivation layer plus the interprocedural memo." as NonEmptyStr
   }
 }
 
-data recursion_pattern_classification: V1ComplexityCapability = V1ComplexityCapability {
-  capability: RecursionPatternClassification,
+data recursion_pattern_classification: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: RecursionPatternClassification },
   v1_carrier: v1_ref(decl_name: "classify_recursion_pattern"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: ParityC4Interprocedural,
     note: "Selects a LoweringTarget from a function body and its termination proof, against which bounded_recursive_cost charges the per-iteration cost. The target vocabulary is shared; the classifier is a v1-AST walker and migrates with the derivation layer." as NonEmptyStr
   }
 }
 
-data parser_progress_fact_production: V1ComplexityCapability = V1ComplexityCapability {
-  capability: ParserProgressFactProduction,
+data parser_progress_fact_production: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: ParserProgressFactProduction },
   v1_carrier: v1_ref(decl_name: "collect_parser_progress_edges"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: ParityC4Interprocedural,
     note: "OPERATOR RULING 2026-08-05 — the semantic capability SURVIVES: parser recursion advances token position, cycles carry strict descent, and depth derives from input. Those are facts a v2 parser plus std.termination integration must produce. This row replaces the previous DispositionDeferred row, which the ruling resolved; deferral is no longer a disposition this census can express." as NonEmptyStr
   }
 }
 
-data parser_progress_v1_walker: V1ComplexityCapability = V1ComplexityCapability {
-  capability: ParserProgressV1Walker,
+data parser_progress_v1_walker: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: LegacyRealizationItem { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction },
   v1_carrier: v1_ref(decl_name: "parser_state_expr_progress"),
   disposition: RetirementOwed {
     trigger: RetiresWhenReplacementExecutes { replacement: ParserProgressFactProduction },
@@ -314,57 +347,58 @@ data parser_progress_v1_walker: V1ComplexityCapability = V1ComplexityCapability 
   }
 }
 
-data collection_method_cost_shapes: V1ComplexityCapability = V1ComplexityCapability {
-  capability: CollectionMethodCostShapes,
+data collection_method_cost_shapes: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: CollectionMethodCostShapes },
   v1_carrier: v1_ref(decl_name: "cost_of_method_by_shape"),
   disposition: MigrationOwed {
-    destination: V2LensCost,
+    destination: MigrateToV2LensCost,
     phase: ParityC2SummaryRestored,
     note: "Charges a collection method by its CostShape and CollectionSizeEffect, resolving a callback's own cost into the per-element body. The shape vocabulary is shared substrate; the dispatch is keyed on v1's MethodSemantics, so the migrated form derives the shape from the closed Node kernel's Loop and fold seam rather than from a method-name table." as NonEmptyStr
   }
 }
 
-data structural_bound_report: V1ComplexityCapability = V1ComplexityCapability {
-  capability: StructuralBoundReport,
+data structural_bound_report: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: StructuralBoundReport },
   v1_carrier: v1_ref(decl_name: "analyze_structural_bounds"),
   disposition: MigrationOwed {
-    destination: V2LensComplexity,
+    destination: MigrateToV2LensComplexity,
     phase: ParityC6LiveConsumers,
     note: "The consumer-facing surface — ComplexityViolation, StructuralBoundResult, ComplexityReport — turning derived summaries into locatable findings. C6 needs this shape because lens_contract_complexity is AuditOnly with no consumer witness today, and a mode flip without a consumer is the inert-lens lie." as NonEmptyStr
   }
 }
 
-data cost_expression_rendering: V1ComplexityCapability = V1ComplexityCapability {
-  capability: CostExpressionRendering,
+data cost_expression_rendering: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: CostExpressionRendering },
   v1_carrier: v1_ref(decl_name: "format_cost_class"),
   disposition: MigrationOwed {
-    destination: V2LensComplexity,
+    destination: MigrateToV2LensComplexity,
     phase: ParityC6LiveConsumers,
     note: "simplify_cost, normalize_asymptotic and format_cost_class render a cost expression for a diagnostic. Presentation grain and low priority, but absent from v2, and a report nobody can read is not a consumer. Gated on C1 because it renders the richer algebra." as NonEmptyStr
   }
 }
 
-data size_variable_legend: V1ComplexityCapability = V1ComplexityCapability {
-  capability: SizeVariableLegend,
+data size_variable_legend: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: SizeVariableLegend },
   v1_carrier: v1_ref(decl_name: "build_legend"),
   disposition: MigrationOwed {
-    destination: V2LensComplexity,
+    destination: MigrateToV2LensComplexity,
     phase: ParityC6LiveConsumers,
     note: "Assigns short display names to size variables so a multi-variable bound reads compactly. Migrates as a rendering projection over grounded identities, never by re-introducing String-keyed size variables to make rendering easy." as NonEmptyStr
   }
 }
 
-data cost_account_space_bridge: V1ComplexityCapability = V1ComplexityCapability {
-  capability: CostAccountSpaceBridge,
+data cost_account_space_bridge: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
+  item: SemanticCapabilityItem { capability: CostAccountSpaceBridge },
   v1_carrier: v1_ref(decl_name: "cost_account_space_from_summary"),
   disposition: MigrationOwed {
-    destination: StdRealizationSchedule,
+    destination: MigrateToStdRealizationSchedule,
+    producer: FactsFromCostLens,
     phase: ParityC5RealizationBridge,
     note: "CENSUS FINDING and the receipt behind the CostBasis ruling. The seed function's note says it fills CostAccount.space with a Derived basis; it returns a bare ByteSize?, constructs no CostAccount, and the seed does not import std.realization_schedule, while CostBasis is Predicted | Measured with no Derived arm. OPERATOR RULING 2026-08-05: the three evidence classes Derived | PredictedFromCalibration | Measured are approved, applied PER RESOURCE AXIS rather than once per account — one account may legitimately carry time PredictedFromCalibration, space Derived and power Measured, which a record-level basis cannot represent honestly." as NonEmptyStr
   }
 }
 
-data v1_complexity_capability_roster: List<V1ComplexityCapability> = [
+data v1_complexity_inventory_roster: List<V1ComplexityInventoryRow> = [
   asymptotic_class_and_dominance,
   polynomial_degree_reading,
   size_expression_algebra,
@@ -402,18 +436,18 @@ type CapabilityWorkKind
 
 data capability_work_kind_note: String = "The projection the previous revision got wrong. Three of the six arms owe no further parity work (CompleteInV2, SupersededByBetterModel, Retired); the other three owe DIFFERENT KINDS of work, and collapsing integration into 'discharged' is what understated C4. Every arm maps to exactly one kind, so the partition is total by construction and a newly added arm cannot silently fall outside it."
 
-fn capability_work_kind(c: V1ComplexityCapability) -> CapabilityWorkKind {
+fn capability_work_kind(c: V1ComplexityInventoryRow) -> CapabilityWorkKind {
   match c.disposition {
     CompleteInV2 { carrier: _, note: _ } => NoWorkOwed
     SupersededByBetterModel { superseded_by: _, note: _ } => NoWorkOwed
     Retired { reason: _ } => NoWorkOwed
     IntegrationOwed { substrate_carrier: _, phase: _, note: _ } => IntegrationWork
-    MigrationOwed { destination: _, phase: _, note: _ } => MigrationWork
+    MigrationOwed { destination: _, producer: _, phase: _, note: _ } => MigrationWork
     RetirementOwed { trigger: _, note: _ } => RetirementWork
   }
 }
 
-fn capability_work_owed(c: V1ComplexityCapability) -> Bool {
+fn capability_work_owed(c: V1ComplexityInventoryRow) -> Bool {
   match capability_work_kind(c: c) {
     NoWorkOwed => false
     IntegrationWork => true
@@ -424,18 +458,18 @@ fn capability_work_owed(c: V1ComplexityCapability) -> Bool {
 
 data capability_cited_carrier_note: String = "Returns the destination citation for the arms that carry one. Retired and RetirementOwed cite no destination declaration by construction — a retirement names a trigger, not a carrier — and return Absent. Absent here means 'this arm cites no declaration by construction', never 'the declaration could not be resolved'; the two are different states and the resolution witness must not conflate them."
 
-fn capability_cited_carrier(c: V1ComplexityCapability) -> DeclarationRef? {
+fn capability_cited_carrier(c: V1ComplexityInventoryRow) -> DeclarationRef? {
   match c.disposition {
     CompleteInV2 { carrier: r, note: _ } => Present { value: r }
     IntegrationOwed { substrate_carrier: r, phase: _, note: _ } => Present { value: r }
     SupersededByBetterModel { superseded_by: r, note: _ } => Present { value: r }
-    MigrationOwed { destination: _, phase: _, note: _ } => none
+    MigrationOwed { destination: _, producer: _, phase: _, note: _ } => none
     RetirementOwed { trigger: _, note: _ } => none
     Retired { reason: _ } => none
   }
 }
 
-fn capability_all_declaration_refs(rows: List<V1ComplexityCapability>) -> List<DeclarationRef> {
+fn capability_all_declaration_refs(rows: List<V1ComplexityInventoryRow>) -> List<DeclarationRef> {
   fold(rows, init: [], f: (acc, c) =>
     match capability_cited_carrier(c: c) {
       Present { value: r } => list_snoc_item(xs: list_snoc_item(xs: acc, item: c.v1_carrier), item: r)
@@ -443,9 +477,71 @@ fn capability_all_declaration_refs(rows: List<V1ComplexityCapability>) -> List<D
     })
 }
 
-fn capability_work_count(rows: List<V1ComplexityCapability>, kind: CapabilityWorkKind) -> Nat {
+fn capability_work_count(rows: List<V1ComplexityInventoryRow>, kind: CapabilityWorkKind) -> Nat {
   fold(rows, init: 0, f: (acc, c) =>
     if capability_work_kind(c: c) == kind { acc + 1 } else { acc })
 }
 
 data census_reads_note: String = "The derived reads this census supports, none of them stored: how much of the program is already complete, how much owes INTEGRATION of substrate v2 has not consumed, how much owes MIGRATION out of the seed, and how much owes RETIREMENT once a replacement executes. The integration figure is the one the previous revision hid inside 'discharged', and it is the number that makes C4's size honest."
+
+data inventory_identity_note: String = "Identity distinctness is VALIDATED here, not constructed — stated plainly because the previous revision claimed the stronger property. A closed coproduct constrains WHICH identities may exist; it does not stop a List from carrying one twice. inventory_item_key projects each row's identity to a comparable key (a residue's key includes the capability it qualifies, so the same hazard against two different capabilities is two identities, which is correct), and the witness folds a seen-map over it. When C0(b2) derives the population from DeclFact the distinctness becomes a property of the derivation rather than of an authored list, and this validation retires with the list."
+
+fn complexity_capability_key(c: ComplexityCapabilityId) -> String {
+  match c {
+    AsymptoticClassAndDominance => "asymptotic-class-and-dominance"
+    PolynomialDegreeReading => "polynomial-degree-reading"
+    SizeExpressionAlgebra => "size-expression-algebra"
+    CostExpressionAlgebra => "cost-expression-algebra"
+    BoundedSummation => "bounded-summation"
+    RetainedMaxExpression => "retained-max-expression"
+    WorkAndSpan => "work-and-span"
+    OutputSizeDerivation => "output-size-derivation"
+    PeakSpaceDerivation => "peak-space-derivation"
+    SpaceTimeDuality => "space-time-duality"
+    CertaintyAxis => "certainty-axis"
+    ConcreteInputEvaluation => "concrete-input-evaluation"
+    InterproceduralSummaryMemo => "interprocedural-summary-memo"
+    CallGraphAndScc => "call-graph-and-scc"
+    DescentEvidenceVocabulary => "descent-evidence-vocabulary"
+    CostBoundVocabulary => "cost-bound-vocabulary"
+    LoweringTargetVocabulary => "lowering-target-vocabulary"
+    DescentDerivationWalkers => "descent-derivation-walkers"
+    RecursionPatternClassification => "recursion-pattern-classification"
+    ParserProgressFactProduction => "parser-progress-fact-production"
+    CollectionMethodCostShapes => "collection-method-cost-shapes"
+    StructuralBoundReport => "structural-bound-report"
+    CostExpressionRendering => "cost-expression-rendering"
+    SizeVariableLegend => "size-variable-legend"
+    CostAccountSpaceBridge => "cost-account-space-bridge"
+  }
+}
+
+fn complexity_residue_key(r: V1ComplexityResidueId) -> String {
+  match r {
+    SummaryEvictionHazard => "summary-eviction-hazard"
+    ParserProgressV1WalkerRealization => "parser-progress-v1-walker-realization"
+  }
+}
+
+fn inventory_item_key(item: V1ComplexityInventoryItem) -> String {
+  match item {
+    SemanticCapabilityItem { capability: c } => concat_str(a: "capability:", b: complexity_capability_key(c: c))
+    LegacyHazardItem { hazard: h, of_capability: c } =>
+      concat_str(a: concat_str(a: "hazard:", b: complexity_residue_key(r: h)), b: concat_str(a: "@", b: complexity_capability_key(c: c)))
+    LegacyRealizationItem { realization: r, of_capability: c } =>
+      concat_str(a: concat_str(a: "realization:", b: complexity_residue_key(r: r)), b: concat_str(a: "@", b: complexity_capability_key(c: c)))
+  }
+}
+
+fn inventory_row_is_semantic_capability(row: V1ComplexityInventoryRow) -> Bool {
+  match row.item {
+    SemanticCapabilityItem { capability: _ } => true
+    LegacyHazardItem { hazard: _, of_capability: _ } => false
+    LegacyRealizationItem { realization: _, of_capability: _ } => false
+  }
+}
+
+fn inventory_semantic_capability_count() -> Nat {
+  fold(v1_complexity_inventory_roster, init: 0, f: (acc, r) =>
+    if inventory_row_is_semantic_capability(row: r) { acc + 1 } else { acc })
+}
