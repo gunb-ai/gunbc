@@ -429,6 +429,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_substrate_long_lane_dissolve
   },
   WitnessExclusionRow {
+    pattern: "long/v1_complexity_decl_classification_totality_test.dag",
+    classification: FalsifierSubstrateLongLane,
+    reason: excl_substrate_long_lane_reason,
+    dissolve_on: excl_substrate_long_lane_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "fallback_arm_census_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
@@ -1222,6 +1228,36 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "census_complexity_admission_predicate_is_vacuous_by_execution",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
     dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
+    function: "w_population_and_roster_counts_match",
+    reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
+    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
+    function: "w_every_population_declaration_is_classified",
+    reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
+    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
+    function: "w_every_classification_row_matches_population",
+    reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
+    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
+    function: "w_no_stale_classification_rows",
+    reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
+    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
+    function: "w_derived_population_is_nonempty",
+    reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
+    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
   },
 ]
 
