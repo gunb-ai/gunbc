@@ -9087,15 +9087,13 @@ mod tests {
             expected_obligations: vec![
                 TransportedObligation {
                     identity: "CompileAnchorWholeTree".to_string(),
-                    entry: "dag/tools/floor_effect_gate_witness.dag".to_string(),
-                    function: "dag_compile_clean_gate_passes".to_string(),
+                    entry: TEST_COMPILE_ANCHOR_OBLIGATION_ENTRY.to_string(),
+                    function: TEST_COMPILE_ANCHOR_OBLIGATION_FUNCTION.to_string(),
                 },
                 TransportedObligation {
                     identity: "NativeBundleEscapingEntry".to_string(),
-                    entry:
-                        "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag"
-                            .to_string(),
-                    function: "native_selected_logic_production_spec".to_string(),
+                    entry: TEST_NATIVE_BUNDLE_OBLIGATION_ENTRY.to_string(),
+                    function: TEST_NATIVE_BUNDLE_OBLIGATION_FUNCTION.to_string(),
                 },
             ],
         }
@@ -9126,6 +9124,33 @@ mod tests {
         rest[..end].to_string()
     }
 
+    fn dag_record_string_field(source: &str, data_name: &str, field: &str) -> String {
+        let marker = format!("data {data_name}:");
+        let start = source
+            .find(&marker)
+            .unwrap_or_else(|| panic!("data row {data_name} not found in authority source"));
+        let slice = &source[start..];
+        let field_marker = format!("{field}: \"");
+        let fstart = slice
+            .find(&field_marker)
+            .unwrap_or_else(|| panic!("field {field} not found on data row {data_name}"))
+            + field_marker.len();
+        let rest = &slice[fstart..];
+        let end = rest
+            .find('"')
+            .expect("unterminated string field in authority source");
+        rest[..end].to_string()
+    }
+
+    // Test-only mirror of gunbc.ci_materialization obligation subject rows. Production
+    // parses transported obligations from WalkPlan.finalization; this module is the
+    // checkable drift receipt (review 48261 / 48570).
+    const TEST_COMPILE_ANCHOR_OBLIGATION_ENTRY: &str = "dag/tools/floor_effect_gate_witness.dag";
+    const TEST_COMPILE_ANCHOR_OBLIGATION_FUNCTION: &str = "dag_compile_clean_gate_passes";
+    const TEST_NATIVE_BUNDLE_OBLIGATION_ENTRY: &str =
+        "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag";
+    const TEST_NATIVE_BUNDLE_OBLIGATION_FUNCTION: &str = "native_selected_logic_production_spec";
+
     /// Seed-retained walk-memo provider id must track the `.dag` authority row.
     #[test]
     fn floor_entry_walk_memo_provider_id_matches_dag_authority() {
@@ -9133,6 +9158,44 @@ mod tests {
         assert_eq!(
             dag_string_data_literal(&floor_materialization, "floor_entry_walk_memo_provider_id"),
             FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID,
+        );
+    }
+
+    /// Test-only obligation-subject literals must track gunbc.ci_materialization authority rows.
+    #[test]
+    fn floor_resolve_obligation_seed_constants_match_dag_authority() {
+        let ci_materialization = dag_source_from_repo("dag/gunbc/ci_materialization.dag");
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "compile_anchor_obligation_subject",
+                "entry"
+            ),
+            TEST_COMPILE_ANCHOR_OBLIGATION_ENTRY,
+        );
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "compile_anchor_obligation_subject",
+                "function"
+            ),
+            TEST_COMPILE_ANCHOR_OBLIGATION_FUNCTION,
+        );
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "native_bundle_obligation_subject",
+                "entry"
+            ),
+            TEST_NATIVE_BUNDLE_OBLIGATION_ENTRY,
+        );
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "native_bundle_obligation_subject",
+                "function"
+            ),
+            TEST_NATIVE_BUNDLE_OBLIGATION_FUNCTION,
         );
     }
 
