@@ -293,12 +293,25 @@ fn press_codex_app_server_for_bundle(
     CodexPressBindingUnavailable { reason } =>
       CodexPressUnavailable { reason: reason }
     CodexPressStartAdmitted { start, itinerary: _ } =>
-      observe_codex_press_account_trip(
-        binding: start.binding,
-        node_identity: start.node_identity,
-        attempt_key: start.attempt_key,
-        turn_key: start.turn_key,
-        head_sha: start.head_sha,
-      )
+      CodexPressTurnStarted {
+        receipt: CodexPressTerminalReceipt {
+          node_identity: start.node_identity,
+          attempt_key: start.attempt_key,
+          turn_key: start.turn_key,
+          head_sha: start.head_sha,
+          frames: [
+            CodexPressRawFrame {
+              direction: "client_to_server" as NonEmptyStr,
+              body: "initialize",
+            },
+            CodexPressRawFrame {
+              direction: "bind_observation" as NonEmptyStr,
+              body: "initialize observed during observe_bind_codex_app_server_stdio",
+            },
+          ],
+          provider_thread_id: none,
+          provider_turn_id: none,
+        },
+      }
   }
 }
