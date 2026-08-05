@@ -653,14 +653,23 @@ test fn canonical_probe_resolution_refuses_duplicate_population() -> Bool {
   canonical_probe_row_resolution_refuses_duplicate_population()
 }
 
+// known_v1_migration_gap_ids below names sole_ctor_mint_fn_hole_probe: its own row's declared
+// expectation does not yet hold (sole_constructor_probe_scope_note,
+// sole_constructor_mint_fn_hole_still_compile_clean) — a tracked open compile gap from #7790,
+// never a retired Rust dark-suite witness — so its absence from every disposition is named here,
+// not silently unaccounted for in either direction of the join.
 test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
   let dispositions = guarantee_probe_dark_suite_dispositions()
   let disposition_probes: List<GuaranteeProbeId> = dispositions
     |> flat_map(d => match d {
-      MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: probes, rust_retained_until: gate } =>
-        if (gate as String) == "gap-analysis-sec-11-item-9-finite-classification" { probes } else { [] }
+      MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: probes, rust_retained_until: _ } => probes
     })
   let disposition_probe_ids: List<String> = disposition_probes |> map(p => p as String)
+  let dispositions_name_the_finite_classification_gate = dispositions
+    |> all(d => match d {
+      MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: _, rust_retained_until: gate } =>
+        (gate as String) == "gap-analysis-sec-11-item-9-finite-classification"
+    })
   let disposed_ids_are_sound = disposition_probes
     |> all(p => match resolve_canonical_probe_row(wanted: p) {
       ProbeRowResolved { row: _ } => true
@@ -669,10 +678,6 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
     })
   let disposed_ids_have_no_internal_duplicates =
     distinct_string_count(values: disposition_probe_ids) == count(disposition_probe_ids)
-  // sole_ctor_mint_fn_hole_probe is not a migrated dark-suite witness: its own row's stated
-  // expectation does not yet hold (sole_constructor_probe_scope_note, sole_constructor_mint_fn_hole_still_compile_clean)
-  // — a tracked open compile gap from #7790, never a retired Rust witness — so it is named here
-  // rather than silently absent from either direction of the join.
   let known_v1_migration_gap_ids: List<String> = [sole_ctor_mint_fn_hole_probe as String]
   let known_gaps_are_not_disposed = known_v1_migration_gap_ids
     |> all(gap => !string_list_contains(xs: disposition_probe_ids, wanted: gap))
@@ -685,6 +690,7 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
     })
   disposed_ids_are_sound
     && disposed_ids_have_no_internal_duplicates
+    && dispositions_name_the_finite_classification_gate
     && known_gaps_are_not_disposed
     && every_v1_compile_probe_is_disposed_or_a_named_gap
 }
