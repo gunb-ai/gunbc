@@ -195,6 +195,7 @@ src/v1/stage0/src/v1_tests_claim_occurrence_binding_parser_walk_witness_test.rs 
 src/v1/stage0/src/v1_tests_claim_occurrence_identity_debt_receipt_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_pattern_binder_declaration_node_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_required_expr_newline_continuation_test.rs merge=generated-artifact
+src/v1/stage0/src/v1_tests_claim_v1_annotation_capture_test.rs merge=generated-artifact
 src/v1/stage0/src/wt_a.rs merge=generated-artifact
 src/v1/stage0/src/wt_b.rs merge=generated-artifact
 src/v1/stage0/src/wt_common.rs merge=generated-artifact
