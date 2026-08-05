@@ -12,7 +12,7 @@ import v1.compiler.parse { parse_with_table_in_occurrence_scope, ParseWithTableR
 import v1.std.core { build_newline_index, empty_intern_table, InternTable, NewlineIndex }
 import v1.compiler.dag_collect_support { dag_node_surface_fingerprint }
 
-data v1_annotation_erasure_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/debug/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_erasure_test.dag --functions w_occurrence_identities_equal_in_the_annotated_module,w_occurrence_identities_equal_in_a_LATER_module,w_later_module_control_shifts_when_a_declaration_is_added,w_annotation_graph_differs_between_the_two_sources,w_declaration_provenance_still_reads_correctly_after_byte_shift,w_bare_source_provenance_control"
+data v1_annotation_erasure_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/debug/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_erasure_test.dag --functions w_occurrence_identities_equal_in_the_annotated_module,w_occurrence_identities_equal_in_a_later_module,w_later_module_control_shifts_when_a_declaration_is_added,w_annotation_graph_differs_between_the_two_sources,w_declaration_provenance_still_reads_correctly_after_byte_shift,w_bare_source_provenance_control"
 
 data v1_annotation_erasure_note: String = "The erasure controls: the same program written with and without prose must be the SAME PROGRAM. Each claim pairs an annotated source with a byte-different but semantically identical bare source and asserts a semantic fact is unchanged, or asserts the authored fact IS changed.
 
@@ -98,7 +98,7 @@ test fn w_occurrence_identities_equal_in_the_annotated_module() -> Bool {
 
 data later_module_proof_note: String = "Proof (2), the one the ruling singled out. The SECOND module is byte-identical in both runs; only the first differs, and only by prose. If capturing an annotation drew even one identity from the shared allocator, the second module's identities would all be offset by that amount and this equality would fail."
 
-test fn w_occurrence_identities_equal_in_a_LATER_module() -> Bool {
+test fn w_occurrence_identities_equal_in_a_later_module() -> Bool {
   render_identities(transport: first_then_second(first_source: annotated_first, second_source: later_module).occurrence_transport) ==
     render_identities(transport: first_then_second(first_source: bare_first, second_source: later_module).occurrence_transport)
 }

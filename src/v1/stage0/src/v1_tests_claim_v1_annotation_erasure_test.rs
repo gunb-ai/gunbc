@@ -27,7 +27,7 @@ use std::rc::Rc;
 pub fn v1_annotation_erasure_offline_recipe() -> String {
     thread_local! {
         static CACHED: String = {
-            "OFFLINE LOCAL RECIPE: target/debug/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_erasure_test.dag --functions w_occurrence_identities_equal_in_the_annotated_module,w_occurrence_identities_equal_in_a_LATER_module,w_later_module_control_shifts_when_a_declaration_is_added,w_annotation_graph_differs_between_the_two_sources,w_declaration_provenance_still_reads_correctly_after_byte_shift,w_bare_source_provenance_control".to_string()
+            "OFFLINE LOCAL RECIPE: target/debug/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_erasure_test.dag --functions w_occurrence_identities_equal_in_the_annotated_module,w_occurrence_identities_equal_in_a_later_module,w_later_module_control_shifts_when_a_declaration_is_added,w_annotation_graph_differs_between_the_two_sources,w_declaration_provenance_still_reads_correctly_after_byte_shift,w_bare_source_provenance_control".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -203,7 +203,7 @@ pub fn later_module_proof_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn w_occurrence_identities_equal_in_a__l_a_t_e_r_module() -> bool {
+pub fn w_occurrence_identities_equal_in_a_later_module() -> bool {
     (render_identities(
         first_then_second(annotated_first(), later_module())
             .occurrence_transport
