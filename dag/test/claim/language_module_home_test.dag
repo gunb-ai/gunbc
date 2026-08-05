@@ -10,6 +10,7 @@ import gunbc.language_module_home {
   every_flat_module_is_on_the_frontier,
   module_home_admitted,
   module_at_canonical_home,
+  added_language_paths_refused,
   FlatModuleOnFrontier,
   FlatModuleRefused,
   ModuleAtCanonicalHome,
@@ -132,4 +133,49 @@ test fn a_placement_refusal_carries_the_expected_prefix() -> Bool {
       ModuleAtCanonicalHome { file_path: _, canonical_prefix: _ } => false
     }
   })
+}
+
+data gate_predicate_note: String = "The gate predicate's controls, including the one that matters most in practice: THIS PR's own twenty-five added subject carriers must be ADMITTED. A wall that refuses the change introducing it is not a wall, it is a self-inflicted outage, and the only way to know is to run the real added-path list through the real predicate rather than reason about it."
+
+test fn this_changes_own_carriers_are_admitted() -> Bool {
+  (added_language_paths_refused(added: [
+    "dag/extdeps/languages/c/subject.dag",
+    "dag/extdeps/languages/go/subject.dag",
+    "dag/extdeps/languages/jsx/subject.dag",
+    "dag/extdeps/languages/spice/subject.dag",
+    "dag/extdeps/languages/markdown/subject.dag",
+    "dag/extdeps/simulators/ngspice/subject.dag"
+  ]) |> count) == 0
+}
+
+test fn red_a_new_flat_language_module_is_refused_by_the_gate_predicate() -> Bool {
+  (added_language_paths_refused(added: ["dag/extdeps/languages/haskell_emit.dag"]) |> count) == 1
+}
+
+test fn red_a_new_undeclared_target_directory_is_refused() -> Bool {
+  (added_language_paths_refused(added: ["dag/extdeps/languages/haskell/emit.dag"]) |> count) == 1
+}
+
+test fn an_unregistered_target_directory_is_admitted() -> Bool {
+  (added_language_paths_refused(added: [
+    "dag/extdeps/languages/gpu/wgsl/emit.dag",
+    "dag/extdeps/languages/simd/kernel.dag"
+  ]) |> count) == 0
+}
+
+test fn the_four_legacy_flat_modules_stay_admitted() -> Bool {
+  (added_language_paths_refused(added: [
+    "dag/extdeps/languages/html.dag",
+    "dag/extdeps/languages/html_fragment.dag",
+    "dag/extdeps/languages/markdown.dag",
+    "dag/extdeps/languages/react_jsx.dag"
+  ]) |> count) == 0
+}
+
+test fn paths_outside_the_language_root_are_not_judged_here() -> Bool {
+  (added_language_paths_refused(added: [
+    "dag/std/algebra.dag",
+    "dag/extdeps/git.dag",
+    "src/v2/extdeps/languages/bash_build.dag"
+  ]) |> count) == 0
 }

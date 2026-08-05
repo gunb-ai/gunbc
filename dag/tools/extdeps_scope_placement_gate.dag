@@ -9,6 +9,7 @@ import extdeps.git {
   TwoDot, ThreeDot, git_diff_name_status_parse,
 }
 import extdeps.git
+import gunbc.language_module_home { added_language_paths_refused }
 import gunbc.extdeps_scope_frontier {
   scope_carrier_paths, scope_machinery_exempt_paths,
   legacy_extdeps_scope_frontier_manifest_path, parse_frontier_manifest,
@@ -148,6 +149,32 @@ fn scope_placement_freeze_verdict(observation: DiffAddedObservation) -> ProcessE
   }
 }
 
+data language_module_home_arm_note: String = "The language-module homing arm (operator requirement, 2026-08-05). It reuses the SAME merge-base added-path observation the membership arm already reads — one diff, two questions — rather than taking a second reading of git, because which base answers which question is already settled above and a second observation would be a second authority for one fact. It refuses on the same DiffObserveFailed and DiffParseTruncated arms for the same reason: an unreadable diff must never report a clean tree. WHY IT LIVES IN THIS GATE rather than beside the rows it enforces: gunbc.language_module_home holds the decision functions and this file holds the per-PR execution, exactly the split gunbc.extdeps_scope_frontier and this gate already use. Without this arm the homing rosters would have been a predicate nothing calls — the coverage-by-illusion tier DESIGN section 6 names, where an inert lens is itself a lie."
+
+fn language_module_home_verdict(observation: DiffAddedObservation) -> ProcessExit {
+  match observation {
+    DiffObserveFailed => exit_failure(
+      reason: "extdeps scope placement gate: git.Core.DiffNameStatus(origin/main...HEAD) failed for the language-module homing arm — refusing, never skipping (DESIGN section 5)"
+    )
+    DiffParseTruncated => exit_failure(
+      reason: "extdeps scope placement gate: merge-base diff parse truncated for the language-module homing arm — refusing, never skipping (DESIGN section 5)"
+    )
+    AddedPathsObserved { paths: added } => {
+      let refused = added_language_paths_refused(added: added)
+      if (refused |> count) > 0 {
+        exit_failure(
+          reason: concat(
+            "extdeps scope placement gate: THIS CHANGE adds file(s) under dag/extdeps/languages/ that are in none of gunbc.language_module_home's rosters — a target-specific module must live under its target's declared canonical_prefix, a directory whose target is unregistered must be declared as one, and the four legacy flat modules are an exact frozen frontier that may only shrink: ",
+            join(refused, ", ")
+          )
+        )
+      } else {
+        ExitSuccess
+      }
+    }
+  }
+}
+
 fn scope_placement_gate_verdict(
   change_observation: DiffAddedObservation,
   freeze_observation: DiffAddedObservation,
@@ -159,7 +186,13 @@ fn scope_placement_gate_verdict(
       let freeze = scope_placement_freeze_verdict(observation: freeze_observation)
       match freeze {
         ExitFailure { code: _, reason: _ } => freeze
-        ExitSuccess => manifest_remove_only_verdict()
+        ExitSuccess => {
+          let homing = language_module_home_verdict(observation: change_observation)
+          match homing {
+            ExitFailure { code: _, reason: _ } => homing
+            ExitSuccess => manifest_remove_only_verdict()
+          }
+        }
       }
     }
   }
