@@ -19,6 +19,8 @@ import v2.std.data_initializer_identity {
 data disposition_scaffold_qn: String = "test.fixture.decl_facts_reflection.specimens.disposition_scaffold"
 data local_a_scaffold_qn: String = "test.fixture.decl_facts_reflection.specimens.local_a_scaffold"
 data local_b_scaffold_qn: String = "test.fixture.decl_facts_reflection.specimens.local_b_scaffold"
+data local_a_shared_nullary_qn: String = "test.fixture.decl_facts_reflection.specimens.local_a_shared_nullary"
+data local_b_shared_nullary_qn: String = "test.fixture.decl_facts_reflection.specimens.local_b_shared_nullary"
 data terminal_specimen_qn: String = "test.fixture.decl_facts_reflection.specimens.terminal_specimen"
 data mechanism_single_authority_qn: String = "test.fixture.decl_facts_reflection.specimens.mechanism_single_authority"
 data mechanism_realization_dispatch_qn: String = "test.fixture.decl_facts_reflection.specimens.mechanism_realization_dispatch"
@@ -40,6 +42,26 @@ test fn decl_facts_reflection_two_unrelated_scaffold_arms_do_not_alias() -> Bool
             Present { value: va } =>
               match variant_b {
                 Present { value: vb } => va == "Scaffold" && vb == "Scaffold" && pa != pb
+                Absent => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn decl_facts_reflection_two_unrelated_shared_nullary_arms_do_not_alias() -> Bool {
+  match decl_facts_reflection_resolved_nullary_parent(qn: local_a_shared_nullary_qn) {
+    Present { value: pa } =>
+      match decl_facts_reflection_resolved_nullary_parent(qn: local_b_shared_nullary_qn) {
+        Present { value: pb } =>
+          match decl_facts_reflection_resolved_nullary_variant_name(qn: local_a_shared_nullary_qn) {
+            Present { value: va } =>
+              match decl_facts_reflection_resolved_nullary_variant_name(qn: local_b_shared_nullary_qn) {
+                Present { value: vb } =>
+                  va == "SharedNullary" && vb == "SharedNullary" && pa != pb
                 Absent => false
               }
             Absent => false

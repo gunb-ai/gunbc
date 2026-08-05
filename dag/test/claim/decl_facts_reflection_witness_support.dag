@@ -115,17 +115,9 @@ fn decl_facts_reflection_projection_variant_label_optional(node: Node) -> Option
 fn decl_facts_reflection_decl_field_variant_name(qn: String) -> Optional<String> {
   match decl_facts_reflection_field_projection(qn: qn, field: "bind") {
     Present { value: bind_projection } =>
-      match projection_kind_lexeme_optional(node: bind_projection) {
-        Present { value: kind } =>
-          if kind == "DataInitializerPlainRecordProjection" {
-            match record_field_projection_optional(record: bind_projection, label: "field") {
-              Present { value: field_projection } =>
-                decl_facts_reflection_projection_variant_label_optional(node: field_projection)
-              Absent => optional_absent()
-            }
-          } else {
-            optional_absent()
-          }
+      match record_field_projection_optional(record: bind_projection, label: "field") {
+        Present { value: field_projection } =>
+          decl_facts_reflection_projection_variant_label_optional(node: field_projection)
         Absent => optional_absent()
       }
     Absent => optional_absent()

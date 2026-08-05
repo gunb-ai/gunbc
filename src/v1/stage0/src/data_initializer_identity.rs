@@ -163,6 +163,23 @@ impl CorpusTypeCatalog {
         }
     }
 
+    fn coproduct_def_node(
+        &self,
+        entry: &TypeCatalogEntry,
+    ) -> Result<Rc<Node>, TypeResolutionFailure> {
+        if entry.item.connective == Connective::Disj {
+            return Ok(entry.item.clone());
+        }
+        if let Some(inferred) = entry.item.inferred.as_ref() {
+            if let InferredNode::Resolved { node, .. } = inferred.as_ref() {
+                if node.connective == Connective::Disj {
+                    return Ok(node.clone());
+                }
+            }
+        }
+        Err(TypeResolutionFailure::Missing)
+    }
+
     fn resolve_variant_in_parent(
         &self,
         parent_qualified: &str,
@@ -172,11 +189,9 @@ impl CorpusTypeCatalog {
             .types_by_qualified
             .get(parent_qualified)
             .ok_or(TypeResolutionFailure::Missing)?;
-        if entry.item.connective != Connective::Disj {
-            return Err(TypeResolutionFailure::Missing);
-        }
+        let coproduct = self.coproduct_def_node(entry)?;
         if !has_child_named(
-            entry.item.clone(),
+            coproduct.clone(),
             variant_name.to_string(),
             entry.source_indices.clone(),
         ) {
@@ -251,7 +266,7 @@ impl CorpusTypeCatalog {
         Err(TypeResolutionFailure::Missing)
     }
 
-    pub fn resolve_constructor_identity(
+    fn resolve_constructor_identity(
         &self,
         importing_module: &str,
         declared_type_bare: &str,
@@ -644,7 +659,16 @@ fn marshal_field_initializer_projection(
                             msg: format!("nested record catalog entry missing for `{parent_qn}`"),
                         }
                     })?;
-                    if entry.item.connective == Connective::Disj {
+                    if entry.item.connective == Connective::Conj {
+                        marshal_plain_record_projection(
+                            ctx,
+                            field_value,
+                            expected_field_type,
+                            importing_module,
+                            catalog,
+                            si,
+                        )
+                    } else if catalog.coproduct_def_node(entry).is_ok() {
                         marshal_record_initializer_projection(
                             ctx,
                             field_value,
@@ -752,6 +776,10 @@ fn marshal_record_initializer_projection(
     ))
 }
 
+fn nullary_variant_spelling(name: &str) -> bool {
+    name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+}
+
 fn resolve_expr_value_identity(
     node: &Rc<Node>,
     expected_type_bare: &str,
@@ -767,7 +795,23 @@ fn resolve_expr_value_identity(
         );
     }
     if matches!(node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
+        let variant_name = record_lit_type_name_at(node.clone(), si.clone()).unwrap_or_default();
+        if !variant_name.is_empty() && node.children.is_empty() {
+            return catalog.resolve_variant_value_identity(
+                importing_module,
+                expected_type_bare,
+                &variant_name,
+            );
+        }
         return DataInitializerValueResolution::NotVariantValue;
+    }
+    let authored = authored_name_at(si.clone(), node.clone());
+    if nullary_variant_spelling(&authored) && node.children.is_empty() {
+        let resolution =
+            catalog.resolve_variant_value_identity(importing_module, expected_type_bare, &authored);
+        if !matches!(resolution, DataInitializerValueResolution::NotVariantValue) {
+            return resolution;
+        }
     }
     if matches!(node.expr_data.as_ref(), ExprData::ExprLiteral { .. }) {
         return DataInitializerValueResolution::NotVariantValue;
@@ -855,11 +899,186 @@ mod tests {
     }
 
     #[test]
+    fn scaffold_bind_field_type_resolves() {
+        let catalog = CorpusTypeCatalog::build_for_pool(&["dag".to_string()]);
+        let got = catalog
+            .field_type_name_in_variant("std.disposition.Disposition", "Scaffold", "bind")
+            .expect("bind field type");
+        assert_eq!(got, "DeclarationRef");
+    }
+
+    #[test]
     fn declaration_ref_field_type_resolves() {
         let catalog = CorpusTypeCatalog::build_for_pool(&["dag".to_string()]);
         let got = catalog
             .field_type_name_in_record("std.decl_ref.DeclarationRef", "field")
             .expect("field type");
         assert_eq!(got, "DeclField");
+    }
+
+    #[test]
+    fn decl_field_whole_declaration_variant_resolves() {
+        let catalog = CorpusTypeCatalog::build_for_pool(&["dag".to_string()]);
+        let resolution = catalog.resolve_variant_value_identity(
+            "test.fixture.decl_facts_reflection.specimens",
+            "DeclField",
+            "WholeDeclaration",
+        );
+        match resolution {
+            DataInitializerValueResolution::Resolved(v) => {
+                assert_eq!(v.parent_qualified_name, "std.decl_ref.DeclField");
+                assert_eq!(v.variant_name, "WholeDeclaration");
+            }
+            other => panic!("expected Resolved WholeDeclaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn disposition_scaffold_bind_field_value_shape() {
+        use crate::cli_run::workspace_root;
+        use crate::module_path_index::parsed_dag_file::parse_dag_file;
+        use crate::v1_compiler_compile::compile_to_resolved;
+        use crate::v1_interpreter::{ExecutionMode, InterpContext};
+        use crate::v1_std_core::{
+            authored_name_at, field_init_node_name_at, field_init_node_value, SourceFile,
+        };
+        use im::vector;
+        use std::rc::Rc;
+
+        let path = workspace_root()
+            .join("dag/test/fixture/decl_facts_reflection/specimens.dag");
+        let parsed = parse_dag_file(&path).expect("parse specimens");
+        let si = parsed.source_indices.clone();
+        let item = parsed
+            .items
+            .iter()
+            .find(|i| authored_name_at(si.clone(), i.clone()) == "disposition_scaffold")
+            .expect("disposition_scaffold item");
+        let body = item.body.as_ref().expect("body");
+        for child in body.children.iter() {
+            let fname = field_init_node_name_at(child.clone(), si.clone());
+            if fname != "bind" {
+                continue;
+            }
+            let val = field_init_node_value(child.clone());
+            assert!(
+                val.children.is_empty(),
+                "bind field value should be nullary WholeDeclaration, children={}",
+                val.children.len()
+            );
+            assert_eq!(
+                authored_name_at(si.clone(), val.clone()),
+                "WholeDeclaration"
+            );
+        }
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        let result = compile_to_resolved(Rc::new(vector![Rc::new(SourceFile {
+            path: path.to_string_lossy().into_owned(),
+            content,
+        })]));
+        let graph = result.graph.as_ref().expect("graph");
+        let ctx = InterpContext::new(graph, result.source_indices.clone(), ExecutionMode::Hermetic);
+        let catalog = CorpusTypeCatalog::build_for_pool(&["dag".to_string(), "src/v2".to_string()]);
+        let projection = marshal_data_initializer_projection(
+            &ctx,
+            item,
+            "test.fixture.decl_facts_reflection.specimens.disposition_scaffold",
+            "disposition_scaffold",
+            &catalog,
+            &si,
+        )
+        .expect("marshal projection");
+        let bind_projection = projection_named_child(&projection, "bind").expect("bind projection");
+        let field_projection =
+            projection_named_child(&bind_projection, "field").expect("field projection");
+        let field_kind = projection_kind_lexeme(&field_projection).expect("field kind");
+        assert!(
+            field_kind == "ResolvedVariantValueProjection"
+                || field_kind == "DataInitializerRecordProjection",
+            "unexpected field projection kind: {field_kind}"
+        );
+        let variant = projection_variant_label(&field_projection).expect("field variant label");
+        assert_eq!(variant, "WholeDeclaration");
+    }
+
+    fn projection_children(projection: &Value) -> Option<Vec<Value>> {
+        match projection {
+            Value::Record { fields, .. } => {
+                fields
+                    .iter()
+                    .find(|(k, _)| k.as_str() == "children")
+                    .and_then(|(_, v)| match v {
+                        Value::List(items) => Some(items.clone()),
+                        _ => None,
+                    })
+            }
+            _ => None,
+        }
+    }
+
+    fn projection_named_child(projection: &Value, label: &str) -> Option<Value> {
+        for edge in projection_children(projection)? {
+            if let Value::Record { fields, .. } = edge {
+                let edge_label = fields.iter().find(|(k, _)| k.as_str() == "label");
+                let target = fields.iter().find(|(k, _)| k.as_str() == "target");
+                if let (
+                    Some((_, Value::Variant { fields: label_fields, .. })),
+                    Some((_, target)),
+                ) = (edge_label, target)
+                {
+                    let name = label_fields
+                        .iter()
+                        .find(|(k, _)| k.as_str() == "name")
+                        .and_then(|(_, v)| match v {
+                            Value::Str(s) => Some(s.as_str()),
+                            _ => None,
+                        });
+                    if name == Some(label) {
+                        return Some(target.clone());
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn projection_kind_lexeme(projection: &Value) -> Option<String> {
+        let kind = projection_named_child(projection, "kind")?;
+        projection_atom_lexeme(&kind)
+    }
+
+    fn projection_atom_lexeme(node: &Value) -> Option<String> {
+        match node {
+            Value::Record { fields, .. } => {
+                let connective = projection_named_child(node, "connective")?;
+                match connective {
+                    Value::Variant { fields, .. } => fields
+                        .iter()
+                        .find(|(k, _)| k.as_str() == "identity")
+                        .and_then(|(_, v)| match v {
+                            Value::Str(s) => Some(s.clone()),
+                            _ => None,
+                        }),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn projection_variant_label(projection: &Value) -> Option<String> {
+        let kind = projection_kind_lexeme(projection)?;
+        if kind == "ResolvedVariantValueProjection" {
+            projection_named_child(projection, "variant_name")
+                .and_then(|n| projection_atom_lexeme(&n))
+        } else if kind == "DataInitializerRecordProjection" {
+            let ctor = projection_named_child(projection, "constructor_identity")?;
+            let variant = projection_named_child(&ctor, "constructor")?;
+            projection_named_child(&variant, "variant_name")
+                .and_then(|n| projection_atom_lexeme(&n))
+        } else {
+            None
+        }
     }
 }

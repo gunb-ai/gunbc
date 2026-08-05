@@ -12,10 +12,12 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
 
 type LocalCarrierA
   = Scaffold { tag: String }
+  | SharedNullary
   | OtherA
 
 type LocalCarrierB
   = Scaffold { tag: String }
+  | SharedNullary
   | OtherB
 
 data whole_declaration_anchor: String = "anchor"
@@ -45,6 +47,10 @@ data terminal_specimen: Disposition = Terminal { reason: "witness-terminal" }
 data local_a_scaffold: LocalCarrierA = Scaffold { tag: "carrier-a" }
 
 data local_b_scaffold: LocalCarrierB = Scaffold { tag: "carrier-b" }
+
+data local_a_shared_nullary: LocalCarrierA = SharedNullary
+
+data local_b_shared_nullary: LocalCarrierB = SharedNullary
 
 data mechanism_single_authority: ConstructionMechanism = SingleAuthority
 
