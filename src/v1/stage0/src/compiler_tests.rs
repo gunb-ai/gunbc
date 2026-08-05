@@ -1125,7 +1125,7 @@ mod compiler_tests {
                 assert!(
                     ok_result.diagnostics.iter().all(|d| !matches!(
                         d.diagnostic,
-                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused { .. }
+                        crate::v1_std_core::CompilerDiagnostic::ConstructorReferenceAdmissionViolation { .. }
                     )),
                     "listed caller should compile clean, got: {:?}",
                     ok_result.diagnostics
@@ -1137,12 +1137,12 @@ mod compiler_tests {
                 let admission_errors: Vec<_> = bad_result.diagnostics.iter()
                     .filter(|d| matches!(
                         d.diagnostic,
-                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused { .. }
+                        crate::v1_std_core::CompilerDiagnostic::ConstructorReferenceAdmissionViolation { .. }
                     ))
                     .collect();
                 assert!(
                     !admission_errors.is_empty(),
-                    "expected ConstructorCallAdmissionRefused for unlisted caller, got: {:?}",
+                    "expected ConstructorReferenceAdmissionViolation for unlisted caller, got: {:?}",
                     bad_result.diagnostics
                 );
                 assert!(
