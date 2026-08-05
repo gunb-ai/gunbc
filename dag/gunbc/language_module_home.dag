@@ -77,6 +77,12 @@ type FlatModuleVerdict
   = FlatModuleOnFrontier { file_path: String, moves_to: String }
   | FlatModuleRefused { file_path: String }
 
+type HomedModuleVerdict
+  = ModuleAtCanonicalHome { file_path: String, canonical_prefix: String }
+  | ModuleOutsideItsHome { file_path: String, expected_prefix: String }
+
+data placement_check_is_not_identity_note: String = "THE PREFIX IS CHECKED AGAINST A DECLARED PAIRING, NEVER USED TO DERIVE ONE, and the distinction is the whole of the operator's fusion warning. module_at_canonical_home takes a target's home row and asks whether a file the caller has ALREADY associated with that target sits at its address. The target arrives as a DeclarationRef; the prefix answers only 'is this placed correctly', never 'which target is this'. There is deliberately no function here that maps a path to a target, because that function is what would make position compete with the symbolic key — a module misfiled under another target's directory must be REFUSED, not silently reclassified as belonging to the directory it sits in. That is also why the refusal carries the EXPECTED prefix rather than a discovered one: the expectation comes from the declared home, so the diagnostic points at the declaration a reader can check. WHY THIS EXISTS AT ALL, honestly: an earlier revision of this module walled only flat modules, on the mistaken premise that std carries no prefix predicate. It does — starts_with is a registered PrimitiveContract in std.primitives with a template row in std.algebra and live production use — and the gap that premise left was real: a flat module was refused while a target-specific module filed under the WRONG target's directory was never consulted. The operator's law is that a target-specific module outside its canonical prefix refuses, which is this arm, not only the flat one."
+
 data flat_module_refusal_note: String = "THE WALL, AND WHY ITS FAILURE ARM REFUSES RATHER THAN WIDENS. A flat language module is admitted ONLY by exact membership in the frontier above; anything else is FlatModuleRefused carrying the offending path, which is typed and located rather than a Bool. There is no arm that admits an unrecognised flat module, no allowance keyed on a name pattern, and no toggle — the three shapes DESIGN section 5 rules out. The consequence intended: a new target-specific module authored flat beside the target directories cannot land, so the population this frontier freezes can only shrink. A module inside a target directory is not a flat module and is never consulted here, which is the whole point — the wall constrains where NEW surfaces go without touching the twenty-five directories D0 created."
 
 fn classify_flat_module(file_path: String) -> FlatModuleVerdict {
@@ -102,6 +108,21 @@ fn flat_module_admitted(file_path: String) -> Bool {
 
 fn every_flat_module_is_on_the_frontier(walked_flat_paths: List<String>) -> Bool {
   all(walked_flat_paths, p => flat_module_admitted(file_path: p))
+}
+
+fn module_at_canonical_home(file_path: String, home: LanguageTargetHome) -> HomedModuleVerdict {
+  if starts_with(s: file_path, prefix: home.canonical_prefix) {
+    ModuleAtCanonicalHome { file_path: file_path, canonical_prefix: home.canonical_prefix }
+  } else {
+    ModuleOutsideItsHome { file_path: file_path, expected_prefix: home.canonical_prefix }
+  }
+}
+
+fn module_home_admitted(file_path: String, home: LanguageTargetHome) -> Bool {
+  match module_at_canonical_home(file_path: file_path, home: home) {
+    ModuleAtCanonicalHome { file_path: _, canonical_prefix: _ } => true,
+    ModuleOutsideItsHome { file_path: _, expected_prefix: _ } => false
+  }
 }
 
 fn legacy_flat_module_count() -> Int {

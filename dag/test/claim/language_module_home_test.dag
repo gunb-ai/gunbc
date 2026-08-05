@@ -8,8 +8,12 @@ import gunbc.language_module_home {
   flat_module_admitted,
   classify_flat_module,
   every_flat_module_is_on_the_frontier,
+  module_home_admitted,
+  module_at_canonical_home,
   FlatModuleOnFrontier,
-  FlatModuleRefused
+  FlatModuleRefused,
+  ModuleAtCanonicalHome,
+  ModuleOutsideItsHome
 }
 
 data witness_note: String = "The pure decision half of the language-module homing wall. These execute against the declared frontier and never touch the disk; the live walk that produces a real flat-path list is the wet half, per language_module_home_maximum_conclusion. The RED controls below are the reason this file is worth its lines: an exact-membership wall is trivially green if the membership test is wrong in the permissive direction, so each admitting assertion is paired with one that must refuse."
@@ -82,4 +86,50 @@ test fn every_frontier_row_carries_a_dissolution_trigger() -> Bool {
 
 test fn every_declared_home_carries_a_canonical_prefix() -> Bool {
   all(language_target_homes, h => h.canonical_prefix != "")
+}
+
+data placement_arm_note: String = "The placement arm, which the flat-module arm alone did not cover: a target-specific module filed under ANOTHER target's directory is not flat, so the frontier never consults it, and only a prefix check against the declared home refuses it. THE PAIR BELOW IS DELIBERATELY STATED AS TWO OPPOSED ASSERTIONS ON ONE PATH, because the interesting property is relational rather than absolute: dag/extdeps/languages/html/verilog_emit.dag is ADMITTED under the HTML home and REFUSED under the Markdown home, which is precisely what it means for placement to be judged against a declared pairing instead of read off the directory. An earlier revision asserted only that SOME declared home refuses the path; that is true of almost any input and would have stayed green against a broken predicate, so it was a control in name only."
+
+test fn a_module_under_its_declared_home_is_admitted() -> Bool {
+  all(language_target_homes, h =>
+    module_home_admitted(file_path: h.canonical_prefix + "emit.dag", home: h)
+  )
+}
+
+fn home_with_prefix(prefix: String) -> Bool {
+  fold(language_target_homes, init: false, f: fn(acc, h) {
+    acc || h.canonical_prefix == prefix
+  })
+}
+
+test fn the_two_homes_this_pair_relies_on_exist() -> Bool {
+  home_with_prefix(prefix: "dag/extdeps/languages/html/")
+    && home_with_prefix(prefix: "dag/extdeps/languages/markdown/")
+}
+
+test fn one_path_is_admitted_under_its_home_and_refused_under_another() -> Bool {
+  fold(language_target_homes, init: true, f: fn(acc, h) {
+    if h.canonical_prefix == "dag/extdeps/languages/html/" {
+      acc && module_home_admitted(file_path: "dag/extdeps/languages/html/verilog_emit.dag", home: h)
+    } else {
+      if h.canonical_prefix == "dag/extdeps/languages/markdown/" {
+        acc && !module_home_admitted(file_path: "dag/extdeps/languages/html/verilog_emit.dag", home: h)
+      } else { acc }
+    }
+  })
+}
+
+test fn red_a_flat_module_is_outside_every_declared_home() -> Bool {
+  all(language_target_homes, h =>
+    !module_home_admitted(file_path: "dag/extdeps/languages/markdown.dag", home: h)
+  )
+}
+
+test fn a_placement_refusal_carries_the_expected_prefix() -> Bool {
+  fold(language_target_homes, init: false, f: fn(acc, h) {
+    acc || match module_at_canonical_home(file_path: "dag/std/algebra.dag", home: h) {
+      ModuleOutsideItsHome { file_path: _, expected_prefix: p } => p == h.canonical_prefix,
+      ModuleAtCanonicalHome { file_path: _, canonical_prefix: _ } => false
+    }
+  })
 }
