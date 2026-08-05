@@ -374,7 +374,7 @@ data app_registration_observation: ObservationProducer = ObservationProducerAbse
 }
 
 data installation_observation: ObservationProducer = ObservationProducerAbsent {
-  required_observation: "GET /app/installations/{installation_id}"
+  required_observation: "GET /app/installations/ by installation id"
 }
 
 data signer_fingerprint_observation: ObservationProducer = ObservationProducerAbsent {

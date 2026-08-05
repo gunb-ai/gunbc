@@ -147,9 +147,27 @@ type PullRequestOrigin
   | ForkedRepositoryOrigin
   | OriginNotApplicable
 
+type RepositoryVisibility
+  = PublicRepository
+  | PrivateRepository
+
 type ActionsRepositoryPolicyObservation
   = ActionsRepositoryPolicyUnobserved
-  | ActionsRepositoryPolicyObserved { send_write_tokens_to_fork_pull_requests: Bool }
+  | ActionsRepositoryPolicyObserved {
+      visibility: RepositoryVisibility
+      send_write_tokens_to_fork_pull_requests: Bool
+    }
+
+fn fork_write_tokens_reachable(policy: ActionsRepositoryPolicyObservation) -> Bool {
+  match policy {
+    ActionsRepositoryPolicyUnobserved => false
+    ActionsRepositoryPolicyObserved { visibility, send_write_tokens_to_fork_pull_requests: allowed } =>
+      match visibility {
+        PublicRepository => false
+        PrivateRepository => allowed
+      }
+  }
+}
 
 type EffectiveActionsJobGrant {
   workflow: DeclarationRef
@@ -246,8 +264,12 @@ fn fork_write_verdict(grant: EffectiveActionsJobGrant) -> ForkWriteVerdict {
     OriginNotApplicable => ForkWriteNotApplicable
     ForkedRepositoryOrigin => match grant.repository_policy {
       ActionsRepositoryPolicyUnobserved => ForkWritePolicyUnobserved
-      ActionsRepositoryPolicyObserved { send_write_tokens_to_fork_pull_requests: allowed } =>
-        if allowed { ForkWriteAllowed } else { ForkWriteDowngradedToRead }
+      ActionsRepositoryPolicyObserved { visibility: _, send_write_tokens_to_fork_pull_requests: _ } =>
+        if fork_write_tokens_reachable(policy: grant.repository_policy) {
+          ForkWriteAllowed
+        } else {
+          ForkWriteDowngradedToRead
+        }
     }
   }
 }
