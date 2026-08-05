@@ -3,59 +3,96 @@ module gunbc.ci_floor_population_settlement_receipt
 import std.types { Bool, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond, millisecond_count, measure_add }
-import std.content_hash { Sha256Digest, Sha256DigestHex }
-import gunbc.ci_floor_population_evidence { LocalCiEvidenceSubjectWire }
+import std.content_hash { Sha256Digest, Sha256DigestHex, Sha1Digest, Sha1DigestHex }
+import gunbc.ci_floor_population_evidence {
+  LocalCiEvidenceSubject,
+  LocalCiEvidenceSubjectWire,
+  LocalSubjectObserved,
+  LocalSubjectRefused,
+  UploadedEvidenceBinding,
+  local_subject_from_wire,
+}
+import gunbc.merge_admission_subject { WalkAttemptId }
+import extdeps.git.object_store {
+  GitObjectId,
+  GitSha1ObjectId,
+  git_object_id_wire_hex,
+}
 
-data ci_floor_population_settlement_receipt_note: String = "ONE SUBJECT-BOUND SETTLEMENT from an exact uploaded floor-evidence artifact joined to the completed GitHub Actions job timestamps (#7785 review). Floor walls/native counts come from the attempt artifact; exclusive CI-job populations and ci_job_wall come from Actions step started_at/completed_at on the same run/attempt/job. MechanismEvidenceSettle and PopulationReconciliation are DERIVED in gunbc.ci_floor_population_reconcile — never re-authored beside this receipt. Identity binds source_head/tested commits, tree, Actions run/attempt/job, walk_attempt, manifest_body_digest, and uploaded_artifact_digest. Harvested from Actions run 30987560453 attempt 1 job ci (artifact ci-floor-population-receipts-30987560453-1-ci). Warm-hit stays Open: the banked control is same-process MultiEntryIndex reuse, not a two-process TYPECHECK_COMPUTE_COUNT receipt. Actions timestamps are second-grain (sub-second steps may read 0ms)."
+data ci_floor_population_settlement_receipt_note: String = "ONE DATED BANKED SETTLEMENT for Actions run 30987560453 attempt 1 job ci (#7785 closeout). Not the moving PR head — re-banking the current tip into source cannot terminate. Floor walls/native counts come from the attempt artifact; exclusive CI-job populations come from Actions step started_at/completed_at. Raw one-time inputs: docs/plans/receipts/ci-floor-settlement-30987560453/. MechanismEvidenceSettle and PopulationReconciliation are DERIVED in gunbc.ci_floor_population_reconcile. Warm-hit stays Open (same-process control is not a two-process proof). Actions timestamps are second-grain."
 
 type ColdAdmissionBaselineReceipt {
   dated_subject: NonEmptyStr,
   wall: Millisecond,
 }
 
+type AdmissionCaptureOutcome
+  = CaptureCompleted {}
+
+type AdmissionStageOutcome
+  = StagePassed {}
+
 type BankedAdmissionObservation {
   capture_wall: Millisecond,
   on_success_stage1_wall: Millisecond,
   on_success_stage2_wall: Millisecond,
+  capture_outcome: AdmissionCaptureOutcome,
+  stage1_outcome: AdmissionStageOutcome,
+  stage2_outcome: AdmissionStageOutcome,
+}
+
+type AdmissionExecutionStanding
+  = ExecutedAndAdmitted {}
+  | AdmissionExecutionOpen { owed: NonEmptyStr }
+  | AdmissionExecutionNotDelivered { reason: NonEmptyStr }
+
+type AdmissionCostStanding
+  = Improved {
+      baseline: Millisecond,
+      observed: Millisecond,
+      recovered: Millisecond
+    }
+  | CostNotImproved {
+      baseline: Millisecond,
+      observed: Millisecond
+    }
+  | AdmissionCostOpen { owed: NonEmptyStr }
+
+type AdmissionStanding {
+  execution: AdmissionExecutionStanding,
+  cost: AdmissionCostStanding,
 }
 
 type BankedNativeTransitionObservation {
   selected_witness_count: Nat,
   native_count: Nat,
+  interpreted_count: Nat,
   fallback_count: Nat,
   unavailable_count: Nat,
-  verdict: NonEmptyStr,
+  transition_verdict: NonEmptyStr,
+  planted_red_equivalent: Bool,
 }
 
 type WarmHitStanding
   = WarmHitOpenCrossProcessReceiptAbsent {}
 
 type BankedExclusiveElapsed {
-  checkout_setup_ms: Nat,
-  release_bin_transfer_ms: Nat,
-  floor_wrapper_ms: Nat,
-  post_floor_observation_ms: Nat,
-  receipt_upload_ms: Nat,
-  ci_job_wall_ms: Nat,
+  checkout_setup: Millisecond,
+  release_bin_transfer: Millisecond,
+  floor_wrapper: Millisecond,
+  post_floor_observation: Millisecond,
+  receipt_upload: Millisecond,
+  ci_job_wall: Millisecond,
 }
 
 type CiFloorPopulationSettlementReceipt {
-  source_head_commit: NonEmptyStr,
-  tested_commit: NonEmptyStr,
-  tested_tree: NonEmptyStr,
-  github_run_id: NonEmptyStr,
-  github_run_attempt: NonEmptyStr,
-  job_key: NonEmptyStr,
-  walk_attempt: NonEmptyStr,
-  manifest_body_digest: Sha256Digest,
-  uploaded_artifact_name: NonEmptyStr,
-  uploaded_artifact_digest: Sha256Digest,
+  subject: LocalCiEvidenceSubject,
+  uploaded: UploadedEvidenceBinding,
   cold_admission_baseline: ColdAdmissionBaselineReceipt,
   admission: BankedAdmissionObservation,
   native_transition: BankedNativeTransitionObservation,
   warm_hit: WarmHitStanding,
   exclusive_job: BankedExclusiveElapsed,
-  subject_wire: LocalCiEvidenceSubjectWire,
 }
 
 fn cold_admission_baseline_197130ms() -> ColdAdmissionBaselineReceipt {
@@ -65,81 +102,141 @@ fn cold_admission_baseline_197130ms() -> ColdAdmissionBaselineReceipt {
   }
 }
 
-fn exact_head_subject_wire() -> LocalCiEvidenceSubjectWire {
-  LocalCiEvidenceSubjectWire {
-    github_run_id: Present { value: "30987560453" },
-    github_run_attempt: Present { value: "1" },
-    github_job_key: Present { value: "ci" },
-    tested_commit: Present { value: "fa1a09e01b039310f516c207af4218f5e3301d2a" },
-    source_head_commit: Present { value: "1e85e017f1bb1c8df3c0c8d98f124bdc422c6ca2" },
-    tested_tree: Present { value: "4b2eaa2b4c35a9a02367841f16c8e1a9c0cfc4fb" },
-    walk_attempt_id: Present { value: "30987560453-1-ci" },
+fn banked_sha1(hex40: String) -> GitObjectId {
+  GitSha1ObjectId {
+    digest: Sha1Digest { hex: hex40 as Sha1DigestHex }
   }
 }
 
-fn exact_head_exclusive_job_elapsed() -> BankedExclusiveElapsed {
-  BankedExclusiveElapsed {
-    checkout_setup_ms: 6000,
-    release_bin_transfer_ms: 8000,
-    floor_wrapper_ms: 2821000,
-    post_floor_observation_ms: 0,
-    receipt_upload_ms: 1000,
-    ci_job_wall_ms: 2840000,
-  }
-}
-
-fn exact_head_floor_population_settlement_receipt() -> CiFloorPopulationSettlementReceipt {
-  CiFloorPopulationSettlementReceipt {
-    source_head_commit: "1e85e017f1bb1c8df3c0c8d98f124bdc422c6ca2" as NonEmptyStr,
-    tested_commit: "fa1a09e01b039310f516c207af4218f5e3301d2a" as NonEmptyStr,
-    tested_tree: "4b2eaa2b4c35a9a02367841f16c8e1a9c0cfc4fb" as NonEmptyStr,
+fn banked_run_30987560453_subject() -> LocalCiEvidenceSubject {
+  LocalCiEvidenceSubject {
     github_run_id: "30987560453" as NonEmptyStr,
     github_run_attempt: "1" as NonEmptyStr,
-    job_key: "ci" as NonEmptyStr,
-    walk_attempt: "30987560453-1-ci" as NonEmptyStr,
-    manifest_body_digest: Sha256Digest {
+    github_job_key: "ci" as NonEmptyStr,
+    tested_commit: banked_sha1(hex40: "fa1a09e01b039310f516c207af4218f5e3301d2a"),
+    source_head_commit: banked_sha1(hex40: "1e85e017f1bb1c8df3c0c8d98f124bdc422c6ca2"),
+    tested_tree: banked_sha1(hex40: "4b2eaa2b4c35a9a02367841f16c8e1a9c0cfc4fb"),
+    walk_attempt_id: "30987560453-1-ci" as WalkAttemptId,
+  }
+}
+
+fn banked_run_30987560453_subject_wire() -> LocalCiEvidenceSubjectWire {
+  local_ci_evidence_subject_to_wire(s: banked_run_30987560453_subject())
+}
+
+fn local_ci_evidence_subject_to_wire(s: LocalCiEvidenceSubject) -> LocalCiEvidenceSubjectWire {
+  LocalCiEvidenceSubjectWire {
+    github_run_id: Present { value: s.github_run_id as String },
+    github_run_attempt: Present { value: s.github_run_attempt as String },
+    github_job_key: Present { value: s.github_job_key as String },
+    tested_commit: Present { value: git_object_id_wire_hex(oid: s.tested_commit) as String },
+    source_head_commit: Present { value: git_object_id_wire_hex(oid: s.source_head_commit) as String },
+    tested_tree: Present { value: git_object_id_wire_hex(oid: s.tested_tree) as String },
+    walk_attempt_id: Present { value: s.walk_attempt_id as String },
+  }
+}
+
+fn banked_run_30987560453_uploaded() -> UploadedEvidenceBinding {
+  UploadedEvidenceBinding {
+    local_manifest_digest: Sha256Digest {
       hex: "0aa11df5abc0de1b6db90061841cb49cf0a7b4003ae9a13a652c2b1faccbaf61" as Sha256DigestHex,
     },
     uploaded_artifact_name: "ci-floor-population-receipts-30987560453-1-ci" as NonEmptyStr,
     uploaded_artifact_digest: Sha256Digest {
       hex: "b288522496f70e147aa0ce2dc842ce93fb7239ced99fb7140f5abb1f57282bd2" as Sha256DigestHex,
     },
+  }
+}
+
+fn banked_run_30987560453_exclusive_elapsed() -> BankedExclusiveElapsed {
+  BankedExclusiveElapsed {
+    checkout_setup: millisecond(count: 6000),
+    release_bin_transfer: millisecond(count: 8000),
+    floor_wrapper: millisecond(count: 2821000),
+    post_floor_observation: millisecond(count: 0),
+    receipt_upload: millisecond(count: 1000),
+    ci_job_wall: millisecond(count: 2840000),
+  }
+}
+
+fn banked_run_30987560453_settlement_receipt() -> CiFloorPopulationSettlementReceipt {
+  CiFloorPopulationSettlementReceipt {
+    subject: banked_run_30987560453_subject(),
+    uploaded: banked_run_30987560453_uploaded(),
     cold_admission_baseline: cold_admission_baseline_197130ms(),
     admission: BankedAdmissionObservation {
       capture_wall: millisecond(count: 105802),
       on_success_stage1_wall: millisecond(count: 12073),
       on_success_stage2_wall: millisecond(count: 549),
+      capture_outcome: CaptureCompleted {},
+      stage1_outcome: StagePassed {},
+      stage2_outcome: StagePassed {},
     },
     native_transition: BankedNativeTransitionObservation {
       selected_witness_count: 3,
       native_count: 0,
+      interpreted_count: 3,
       fallback_count: 3,
       unavailable_count: 3,
-      verdict: "fallback:native_realization_refused" as NonEmptyStr,
+      transition_verdict: "fallback:native_realization_refused" as NonEmptyStr,
+      planted_red_equivalent: false,
     },
     warm_hit: WarmHitOpenCrossProcessReceiptAbsent {},
-    exclusive_job: exact_head_exclusive_job_elapsed(),
-    subject_wire: exact_head_subject_wire(),
+    exclusive_job: banked_run_30987560453_exclusive_elapsed(),
   }
 }
 
-fn banked_admission_observed_total_ms(r: CiFloorPopulationSettlementReceipt) -> Millisecond {
+fn banked_admission_observed_total(r: CiFloorPopulationSettlementReceipt) -> Millisecond {
   measure_add(
     a: measure_add(a: r.admission.capture_wall, b: r.admission.on_success_stage1_wall),
     b: r.admission.on_success_stage2_wall
   )
 }
 
-fn banked_admission_total_matches_review_arithmetic(r: CiFloorPopulationSettlementReceipt) -> Bool {
-  millisecond_count(m: banked_admission_observed_total_ms(r: r)) == 118424
-}
-
-fn banked_admission_recovery_ms(r: CiFloorPopulationSettlementReceipt) -> Nat {
+fn banked_admission_recovery(r: CiFloorPopulationSettlementReceipt) -> Nat {
   let baseline = millisecond_count(m: r.cold_admission_baseline.wall)
-  let observed = millisecond_count(m: banked_admission_observed_total_ms(r: r))
+  let observed = millisecond_count(m: banked_admission_observed_total(r: r))
   if baseline < observed {
     0 as Nat
   } else {
     baseline - observed
+  }
+}
+
+fn admission_standing_from_settlement_receipt(
+  r: CiFloorPopulationSettlementReceipt
+) -> AdmissionStanding {
+  let observed = banked_admission_observed_total(r: r)
+  let baseline = r.cold_admission_baseline.wall
+  let execution = match r.admission.capture_outcome {
+    CaptureCompleted {} => match r.admission.stage1_outcome {
+      StagePassed {} => match r.admission.stage2_outcome {
+        StagePassed {} => ExecutedAndAdmitted {}
+      }
+    }
+  }
+  let cost = if millisecond_count(m: observed) <= millisecond_count(m: baseline) {
+    Improved {
+      baseline: baseline,
+      observed: observed,
+      recovered: millisecond(count: banked_admission_recovery(r: r))
+    }
+  } else {
+    CostNotImproved { baseline: baseline, observed: observed }
+  }
+  AdmissionStanding { execution: execution, cost: cost }
+}
+
+fn banked_admission_total_matches_review_arithmetic(r: CiFloorPopulationSettlementReceipt) -> Bool {
+  millisecond_count(m: banked_admission_observed_total(r: r)) == 118424
+    && banked_admission_recovery(r: r) == 78706
+}
+
+fn banked_subject_round_trips_wire(r: CiFloorPopulationSettlementReceipt) -> Bool {
+  match local_subject_from_wire(w: banked_run_30987560453_subject_wire()) {
+    LocalSubjectObserved { subject } =>
+      (subject.github_run_id as String) == (r.subject.github_run_id as String)
+        && (subject.walk_attempt_id as String) == (r.subject.walk_attempt_id as String)
+    LocalSubjectRefused { cause: _, wire: _ } => false
   }
 }

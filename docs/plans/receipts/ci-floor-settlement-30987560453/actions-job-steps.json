@@ -1,0 +1,90 @@
+{
+  "completed_at": "2026-08-05T09:28:38Z",
+  "started_at": "2026-08-05T08:41:18Z",
+  "steps": [
+    {
+      "completed_at": "2026-08-05T08:41:21Z",
+      "conclusion": "success",
+      "name": "Set up job",
+      "started_at": "2026-08-05T08:41:19Z"
+    },
+    {
+      "completed_at": "2026-08-05T08:41:23Z",
+      "conclusion": "success",
+      "name": "Checkout",
+      "started_at": "2026-08-05T08:41:21Z"
+    },
+    {
+      "completed_at": "2026-08-05T08:41:23Z",
+      "conclusion": "success",
+      "name": "Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA",
+      "started_at": "2026-08-05T08:41:23Z"
+    },
+    {
+      "completed_at": "2026-08-05T08:41:25Z",
+      "conclusion": "success",
+      "name": "Setup Rust (floor gate toolchain \u2014 batch-4 emit_host/self_host gates need cargo/rustfmt; no isolated rustup)",
+      "started_at": "2026-08-05T08:41:23Z"
+    },
+    {
+      "completed_at": "2026-08-05T08:41:31Z",
+      "conclusion": "success",
+      "name": "Download release-bins artifact",
+      "started_at": "2026-08-05T08:41:25Z"
+    },
+    {
+      "completed_at": "2026-08-05T08:41:33Z",
+      "conclusion": "success",
+      "name": "Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)",
+      "started_at": "2026-08-05T08:41:31Z"
+    },
+    {
+      "completed_at": "2026-08-05T08:41:33Z",
+      "conclusion": "success",
+      "name": "Floor cgroup peak pre-read (calibration; reset if permitted)",
+      "started_at": "2026-08-05T08:41:33Z"
+    },
+    {
+      "completed_at": "2026-08-05T09:28:34Z",
+      "conclusion": "success",
+      "name": "gunbc ci (.dag witnesses + gates)",
+      "started_at": "2026-08-05T08:41:33Z"
+    },
+    {
+      "completed_at": "2026-08-05T09:28:34Z",
+      "conclusion": "success",
+      "name": "Floor cgroup peak post-read (calibration; survives a killed floor)",
+      "started_at": "2026-08-05T09:28:34Z"
+    },
+    {
+      "completed_at": "2026-08-05T09:28:34Z",
+      "conclusion": "success",
+      "name": "Finalize CI floor population evidence (always)",
+      "started_at": "2026-08-05T09:28:34Z"
+    },
+    {
+      "completed_at": "2026-08-05T09:28:35Z",
+      "conclusion": "success",
+      "name": "Upload CI floor population receipts (always)",
+      "started_at": "2026-08-05T09:28:34Z"
+    },
+    {
+      "completed_at": "2026-08-05T09:28:35Z",
+      "conclusion": "success",
+      "name": "Post Setup Rust (floor gate toolchain \u2014 batch-4 emit_host/self_host gates need cargo/rustfmt; no isolated rustup)",
+      "started_at": "2026-08-05T09:28:35Z"
+    },
+    {
+      "completed_at": "2026-08-05T09:28:36Z",
+      "conclusion": "success",
+      "name": "Post Checkout",
+      "started_at": "2026-08-05T09:28:35Z"
+    },
+    {
+      "completed_at": "2026-08-05T09:28:37Z",
+      "conclusion": "success",
+      "name": "Complete job",
+      "started_at": "2026-08-05T09:28:36Z"
+    }
+  ]
+}

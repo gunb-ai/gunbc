@@ -1,6 +1,6 @@
 module gunbc.ci_floor_population_reconcile
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond, millisecond_count, measure_add, basis_point, basis_point_count }
 import gunbc.ci_floor_population_evidence { LocalCiEvidenceSubjectWire, local_subject_wire_incomplete }
@@ -8,7 +8,17 @@ import gunbc.ci_floor_population_settlement_receipt {
   CiFloorPopulationSettlementReceipt,
   WarmHitOpenCrossProcessReceiptAbsent,
   BankedExclusiveElapsed,
-  exact_head_floor_population_settlement_receipt,
+  BankedNativeTransitionObservation,
+  AdmissionStanding,
+  ExecutedAndAdmitted,
+  AdmissionExecutionOpen,
+  AdmissionExecutionNotDelivered,
+  Improved,
+  CostNotImproved,
+  AdmissionCostOpen,
+  admission_standing_from_settlement_receipt,
+  banked_run_30987560453_settlement_receipt,
+  local_ci_evidence_subject_to_wire,
 }
 
 type MechanismEvidenceSettle
@@ -289,17 +299,51 @@ fn native_fleet_settle_from_transition_counts(
       Absent => MissingArtifactOpen { owed: "native-selected-witness-transition-receipt.tsv fallback_count" as NonEmptyStr }
       Present { value: fallback } => match selected_count {
         Absent => MissingArtifactOpen { owed: "native-selected-witness-transition-receipt.tsv selected_count" as NonEmptyStr }
-        Present { value: selected } => {
-          if selected == 0 {
-            NotDelivered { reason: "selected_count is zero" as NonEmptyStr }
-          } else if native == selected && fallback == 0 {
-            Delivered {}
-          } else {
-            NotDelivered { reason: "native_count != selected_count or fallback_count != 0" as NonEmptyStr }
-          }
-        }
+        Present { value: selected } =>
+          native_fleet_settle_from_transition_observation(
+            o: BankedNativeTransitionObservation {
+              selected_witness_count: selected,
+              native_count: native,
+              interpreted_count: 0,
+              fallback_count: fallback,
+              unavailable_count: 0,
+              transition_verdict: "accepted" as NonEmptyStr,
+              planted_red_equivalent: true,
+            }
+          )
       }
     }
+  }
+}
+
+fn native_fleet_settle_from_transition_observation(
+  o: BankedNativeTransitionObservation
+) -> MechanismEvidenceSettle {
+  if o.selected_witness_count == 0 {
+    NotDelivered { reason: "selected_count is zero" as NonEmptyStr }
+  } else if o.native_count == o.selected_witness_count
+    && o.interpreted_count == 0
+    && o.fallback_count == 0
+    && o.unavailable_count == 0
+    && (o.transition_verdict as String) == "accepted"
+    && o.planted_red_equivalent
+  {
+    Delivered {}
+  } else {
+    NotDelivered { reason: o.transition_verdict }
+  }
+}
+
+fn admission_settle_from_standing(s: AdmissionStanding) -> MechanismEvidenceSettle {
+  match s.execution {
+    ExecutedAndAdmitted {} => match s.cost {
+      Improved { baseline: _, observed: _, recovered: _ } => Delivered {}
+      CostNotImproved { baseline: _, observed: _ } =>
+        NotDelivered { reason: "capture+stamp+gate exceeds cold_admission_baseline_wall" as NonEmptyStr }
+      AdmissionCostOpen { owed } => MissingArtifactOpen { owed: owed }
+    }
+    AdmissionExecutionOpen { owed } => MissingArtifactOpen { owed: owed }
+    AdmissionExecutionNotDelivered { reason } => NotDelivered { reason: reason }
   }
 }
 
@@ -317,11 +361,11 @@ fn exclusive_populations_from_banked_elapsed(
 ) -> CiJobExclusivePopulations {
   CiJobExclusivePopulations {
     subject: subject,
-    checkout_setup: ObservedExclusiveWall { wall: millisecond(count: e.checkout_setup_ms) },
-    release_bin_transfer: ObservedExclusiveWall { wall: millisecond(count: e.release_bin_transfer_ms) },
-    floor_wrapper_elapsed: ObservedExclusiveWall { wall: millisecond(count: e.floor_wrapper_ms) },
-    post_floor_observation: ObservedExclusiveWall { wall: millisecond(count: e.post_floor_observation_ms) },
-    receipt_upload: ObservedExclusiveWall { wall: millisecond(count: e.receipt_upload_ms) },
+    checkout_setup: ObservedExclusiveWall { wall: e.checkout_setup },
+    release_bin_transfer: ObservedExclusiveWall { wall: e.release_bin_transfer },
+    floor_wrapper_elapsed: ObservedExclusiveWall { wall: e.floor_wrapper },
+    post_floor_observation: ObservedExclusiveWall { wall: e.post_floor_observation },
+    receipt_upload: ObservedExclusiveWall { wall: e.receipt_upload },
   }
 }
 
@@ -330,10 +374,10 @@ fn exclusive_job_reconciliation_from_settlement_receipt(
 ) -> PopulationReconciliation {
   reconcile_ci_job_populations(
     populations: exclusive_populations_from_banked_elapsed(
-      subject: r.subject_wire,
+      subject: local_ci_evidence_subject_to_wire(s: r.subject),
       e: r.exclusive_job
     ),
-    ci_job: millisecond(count: r.exclusive_job.ci_job_wall_ms)
+    ci_job: r.exclusive_job.ci_job_wall
   )
 }
 
@@ -344,27 +388,13 @@ fn current_exclusive_job_reconciliation() -> PopulationReconciliation {
 fn admission_settle_from_settlement_receipt(
   r: CiFloorPopulationSettlementReceipt
 ) -> MechanismEvidenceSettle {
-  admission_settle_from_stage_walls(
-    capture: r.admission.capture_wall,
-    stage1: Present { value: r.admission.on_success_stage1_wall },
-    stage2: Present { value: r.admission.on_success_stage2_wall },
-    cold_baseline: r.cold_admission_baseline.wall
-  )
+  admission_settle_from_standing(s: admission_standing_from_settlement_receipt(r: r))
 }
 
 fn native_fleet_settle_from_settlement_receipt(
   r: CiFloorPopulationSettlementReceipt
 ) -> MechanismEvidenceSettle {
-  match native_fleet_settle_from_transition_counts(
-    native_count: Present { value: r.native_transition.native_count },
-    fallback_count: Present { value: r.native_transition.fallback_count },
-    selected_count: Present { value: r.native_transition.selected_witness_count }
-  ) {
-    Delivered {} => Delivered {}
-    MissingArtifactOpen { owed } => MissingArtifactOpen { owed: owed }
-    NotDelivered { reason: _ } =>
-      NotDelivered { reason: r.native_transition.verdict }
-  }
+  native_fleet_settle_from_transition_observation(o: r.native_transition)
 }
 
 fn warm_hit_settle_from_settlement_receipt(
@@ -379,7 +409,7 @@ fn warm_hit_settle_from_settlement_receipt(
 }
 
 fn current_settlement_receipt() -> CiFloorPopulationSettlementReceipt {
-  exact_head_floor_population_settlement_receipt()
+  banked_run_30987560453_settlement_receipt()
 }
 
 fn current_admission_settle() -> MechanismEvidenceSettle {

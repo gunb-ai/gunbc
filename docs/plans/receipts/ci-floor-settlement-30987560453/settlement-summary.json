@@ -1,0 +1,49 @@
+{
+  "run_id": "30987560453",
+  "run_attempt": 1,
+  "job_key": "ci",
+  "source_head_commit": "1e85e017f1bb1c8df3c0c8d98f124bdc422c6ca2",
+  "tested_commit": "fa1a09e01b039310f516c207af4218f5e3301d2a",
+  "tested_tree": "4b2eaa2b4c35a9a02367841f16c8e1a9c0cfc4fb",
+  "walk_attempt": "30987560453-1-ci",
+  "uploaded_artifact_name": "ci-floor-population-receipts-30987560453-1-ci",
+  "uploaded_artifact_digest_sha256": "b288522496f70e147aa0ce2dc842ce93fb7239ced99fb7140f5abb1f57282bd2",
+  "manifest_body_digest_sha256": "0aa11df5abc0de1b6db90061841cb49cf0a7b4003ae9a13a652c2b1faccbaf61",
+  "admission": {
+    "capture_ms": 105802,
+    "stage1_ms": 12073,
+    "stage2_ms": 549,
+    "observed_total_ms": 118424,
+    "baseline_ms": 197130,
+    "recovered_ms": 78706,
+    "capture_outcome": "completed",
+    "stage1_outcome": "passed",
+    "stage2_outcome": "passed",
+    "execution": "ExecutedAndAdmitted",
+    "cost": "Improved"
+  },
+  "native": {
+    "selected": 3,
+    "native": 0,
+    "interpreted": 3,
+    "fallback": 3,
+    "unavailable": 3,
+    "verdict": "fallback:native_realization_refused",
+    "planted_red_equivalent": false,
+    "settle": "NotDelivered"
+  },
+  "warm_hit": "OpenCrossProcessExecutionReceiptAbsent",
+  "exclusive_job": {
+    "checkout_setup_ms": 6000,
+    "release_bin_transfer_ms": 8000,
+    "floor_wrapper_ms": 2821000,
+    "post_floor_observation_ms": 0,
+    "receipt_upload_ms": 1000,
+    "ci_job_wall_ms": 2840000,
+    "classified_ms": 2836000,
+    "unattributed_ms": 4000,
+    "attribution_ratio_basis_points": 9985,
+    "reconcile": "Reconciled"
+  },
+  "derivation": "exclusive_ms = completed_at - started_at (second-grain Actions timestamps); classified = sum(exclusive); reconciled iff unattributed*10000 <= ci_job*500"
+}

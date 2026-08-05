@@ -168,7 +168,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "gunbc.ci_floor_population_reconcile", decl_name: "current_admission_settle", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_floor_population_reconcile", decl_name: "current_native_fleet_settle", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_floor_population_reconcile", decl_name: "current_warm_hit_settle", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.ci_floor_population_settlement_receipt", decl_name: "exact_head_floor_population_settlement_receipt", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.ci_floor_population_settlement_receipt", decl_name: "banked_run_30987560453_settlement_receipt", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_workflow", decl_name: "ci_floor_population_receipts_upload_step", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_floor_population_evidence", decl_name: "LocalCiEvidenceSubject", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_floor_population_receipt_registry", decl_name: "FloorReceiptLocator", field: WholeDeclaration },

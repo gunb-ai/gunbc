@@ -28,9 +28,13 @@ import gunbc.ci_floor_population_reconcile {
   current_exclusive_job_reconciliation,
 }
 import gunbc.ci_floor_population_settlement_receipt {
-  banked_admission_observed_total_ms,
-  banked_admission_recovery_ms,
+  banked_admission_observed_total,
+  banked_admission_recovery,
   banked_admission_total_matches_review_arithmetic,
+  banked_subject_round_trips_wire,
+  admission_standing_from_settlement_receipt,
+  ExecutedAndAdmitted,
+  Improved,
 }
 
 test fn witness_subject_a_missing_exclusive_observations() -> Bool {
@@ -116,9 +120,21 @@ test fn red_just_over_five_percent_must_not_floor_to_pass() -> Bool {
 
 test fn witness_admission_settled_delivered_from_banked_artifact() -> Bool {
   let r = current_settlement_receipt()
+  let standing = admission_standing_from_settlement_receipt(r: r)
   banked_admission_total_matches_review_arithmetic(r: r)
-    && banked_admission_recovery_ms(r: r) == 78706
-    && millisecond_count(m: banked_admission_observed_total_ms(r: r)) == 118424
+    && banked_admission_recovery(r: r) == 78706
+    && millisecond_count(m: banked_admission_observed_total(r: r)) == 118424
+    && banked_subject_round_trips_wire(r: r)
+    && match standing.execution {
+      ExecutedAndAdmitted {} => match standing.cost {
+        Improved { baseline: b, observed: o, recovered: rec } =>
+          millisecond_count(m: b) == 197130
+            && millisecond_count(m: o) == 118424
+            && millisecond_count(m: rec) == 78706
+        _ => false
+      }
+      _ => false
+    }
     && match current_admission_settle() {
       Delivered {} => true
       _ => false
@@ -156,7 +172,7 @@ test fn witness_native_settled_not_delivered_from_banked_artifact() -> Bool {
   }
 }
 
-test fn witness_native_delivered_when_native_equals_selected() -> Bool {
+test fn witness_native_delivered_when_full_transition_accepted() -> Bool {
   match native_fleet_settle_from_transition_counts(
     native_count: Present { value: 3 },
     fallback_count: Present { value: 0 },
@@ -193,7 +209,7 @@ test fn witness_warm_hit_delivered_when_skip_proven() -> Bool {
   }
 }
 
-test fn witness_exact_head_exclusive_job_reconciles_within_five_percent() -> Bool {
+test fn witness_banked_run_exclusive_job_reconciles_within_five_percent() -> Bool {
   match current_exclusive_job_reconciliation() {
     Reconciled { classified_wall: c, unattributed_wall: u, attribution_ratio_basis_points: bp } =>
       millisecond_count(m: c) == 2836000
@@ -203,7 +219,7 @@ test fn witness_exact_head_exclusive_job_reconciles_within_five_percent() -> Boo
   }
 }
 
-test fn red_exact_head_must_not_remain_missing_exclusive() -> Bool {
+test fn red_banked_run_must_not_remain_missing_exclusive() -> Bool {
   match current_exclusive_job_reconciliation() {
     MissingRequiredObservation { owed: _ } => false
     _ => true

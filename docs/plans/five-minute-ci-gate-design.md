@@ -43,14 +43,14 @@ Registered as roadmap edges where noted; order is binding for dispatch.
 
 | step | work | disposition |
 |---|---|---|
-| 1 | Finish **#7522** (`warm-merge-admission`) with real net wall receipt and stage profile | **MERGED** — banked settlement `admission_settle=DeliveredAdmissionNet` / `current_admission_settle=Delivered` from exact artifact run `30987560453` (118424ms vs 197130ms baseline) |
+| 1 | Finish **#7522** (`warm-merge-admission`) with real net wall receipt and stage profile | **MERGED** — banked settlement `banked_run_30987560453` / `current_admission_settle=Delivered` from run `30987560453` (118424ms vs 197130ms baseline) |
 | 2 | Merge **#7599** once controls and reviews clear | **MERGED** — typed receipt `native_at_small_scale_transition_receipt` |
 | 3 | **Immediately** cut over a bounded production witness population to the native execution kind | **MERGED enrollment (#7671)** — banked settlement `native_fleet_settle=NotDeliveredNativeRealizationRefused` / `current_native_fleet_settle=NotDelivered` (selected=3 native=0 fallback=3; `fallback:native_realization_refused`) |
 | 4 | Continue **#7534** as shared materialization substrate — no default CI savings credited until ordinary invocations consume it | **MERGED opt-in** — `warm_hit_settle=OpenCrossProcessExecutionReceiptAbsent` until a true two-process TYPECHECK_COMPUTE_COUNT control executes |
 | 5 | Union program **closed** per #7533; assembly observation remains a compiler candidate only | **CLOSED** / `compiler_next_measured_target=PerEntryAssembly` (not end-to-end dominant) |
 | 6 | This program (`five-minute-ci-gate`) makes the bare-minimum-computation contract and this graph explicit; five minutes stays the distress checkpoint (Stage C bound), never the completion criterion | this registration · `gunbc.ci_cost_arc_closeout_receipt` · `gunbc.ci_floor_population_reconcile` |
 
-**Terminal sequence (operator 2026-08-04; settlement update #7785):** #7760 banks the typed affected-CI audit and exposes `unattributed_ci_wall`. **PR2** persists floor population receipts and banks `gunbc.ci_floor_population_settlement_receipt` from the exact uploaded artifact joined to Actions job-step timestamps (admission Delivered; native NotDelivered; warm-hit Open; exclusive job wall Reconciled at ~99.85% on run 30987560453). **PR3** attacks the largest reconciled preparation term inside the floor wrapper (shared entry-view only if assembly dominates). **PR4** streams that term or commits to module-grain persistent materialization. **Freeze** entry-view / width-2 / broad native / retention / union / exact-tree consumers until PR2 answers the denominator.
+**Terminal sequence (operator 2026-08-04; settlement update #7785):** #7760 banks the typed affected-CI audit and exposes `unattributed_ci_wall`. **PR2** persists floor population receipts and banks `banked_run_30987560453_settlement_receipt` from the uploaded artifact joined to Actions job-step timestamps (admission Delivered; native NotDelivered; warm-hit Open; exclusive job wall Reconciled at ~99.85% on run 30987560453; raw pack `docs/plans/receipts/ci-floor-settlement-30987560453/`). **PR3** attacks the largest reconciled preparation term inside the floor wrapper (shared entry-view only if assembly dominates). **PR4** streams that term or commits to module-grain persistent materialization. **Freeze** entry-view / width-2 / broad native / retention / union / exact-tree consumers until PR2 answers the denominator.
 
 **Materialization hierarchy** (step 4 feeds step 3, not a parallel fork):
 
@@ -130,10 +130,10 @@ at full altitude. Claimed-not-verified figures are typed separately.
 
 | claim | status | trigger |
 |---|---|---|
-| #7522 net admission vs 197.13s | **Delivered** — `gunbc.ci_floor_population_settlement_receipt` / `current_admission_settle=Delivered` (118424ms vs 197130ms; run 30987560453) | Re-harvest on current-main exact head after PR2 merge bar |
-| #7671 fleet native_count/fallback_count | **NotDelivered** — selected=3 native=0 fallback=3; `fallback:native_realization_refused` | Production native path that executes selected witnesses natively |
-| #7534 warm-hit skips semantic recompute | `warm_hit_settle=OpenCrossProcessExecutionReceiptAbsent` | Two-process control: Process A cold+publish+exit; Process B hit with TYPECHECK_COMPUTE_COUNT==0 |
-| CI-job unattributed remainder | **Reconciled** on exact-head subject — exclusive Actions steps classify 2836000/2840000 ms (~99.85%); nested floor diagnostics remain non-exclusive | Re-harvest on current-main tip; automate join as durable harvester (second-grain Actions timestamps) |
+| #7522 net admission vs 197.13s | **Delivered** — `banked_run_30987560453_settlement_receipt` / `current_admission_settle=Delivered` (execution=ExecutedAndAdmitted, cost=Improved 118424ms vs 197130ms; run 30987560453) | External per-run settlement artifact (do not re-bank moving PR tip into source) |
+| #7671 fleet native_count/fallback_count | **NotDelivered** — selected=3 native=0 interpreted=3 fallback=3 unavailable=3; `fallback:native_realization_refused`; planted_red_equivalent=false | Production native path: selected>0, native==selected, interpreted/fallback/unavailable==0, verdict accepted, planted_red_equivalent |
+| #7534 warm-hit skips semantic recompute | `warm_hit_settle=OpenCrossProcessExecutionReceiptAbsent` | Two-process control: Process A cold+publish+exit; Process B hit with TYPECHECK_COMPUTE_COUNT==0 (materialization follow-up, not #7785) |
+| CI-job unattributed remainder | **Reconciled** on banked run 30987560453 — exclusive Actions steps classify 2836000/2840000 ms (~99.85%); raw inputs under `docs/plans/receipts/ci-floor-settlement-30987560453/` | Recurring harvester is an operational follow-up; second-grain Actions timestamps |
 | native bundle timing ratios | claimed-not-verified (#7599 body) | committed receipt artifact or fleet rerun |
 
 **Not verified in tree (omitted from authority):** #6663 158.2s→61.6s, #7029
