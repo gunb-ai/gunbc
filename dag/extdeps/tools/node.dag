@@ -20,9 +20,9 @@ data node_cli_tool: CliTool = CliTool {
   installable_via: [SourceApt { package: package_nodejs }],
 }
 
-data node_cli_version_observation_note: String = "Observed node --version is recorded on CodexBuildToolchainReceipt beside npm.Cli.Version so the ambient toolchain that performed offline ci is attributable. min_version = none is not a materialization receipt."
+data node_cli_version_observation_note: String = "Observed node --version is recorded on CodexBuildToolchainReceipt beside npm.Cli.Version so the ambient toolchain that performed offline ci is attributable. Service is named nodejs.Cli (not node.Cli) because bare `node` is the substrate Node primitive — a §3 nickname collision that made Version unresolvable (Primitive() receiver). min_version = none is not a materialization receipt."
 
-service node.Cli {
+service nodejs.Cli {
   operation Version {
     input {}
     output {
