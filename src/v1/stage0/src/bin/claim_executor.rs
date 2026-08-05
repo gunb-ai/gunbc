@@ -10243,10 +10243,16 @@ mod tests {
         }
     }
 
+    /// A discovery batch that actually discovers something. `scan_dirs` is non-empty
+    /// deliberately: `group_batch_units` emits a `BatchUnit::Discovery` only when the batch
+    /// has scan dirs or explicit entries, because empty-and-empty is defined to mean zero
+    /// witness-corpus nodes (the regen spec's shape, DESIGN "Building & checks"). A fixture
+    /// with both empty is therefore not a discovery batch at all, and asserting that it
+    /// produces a discovery unit asserts against the spec.
     fn discovery() -> Runnable {
         Runnable::DiscoveryBatch {
             source_roots: vec!["src/v2".to_string()],
-            scan_dirs: vec![],
+            scan_dirs: vec!["dag/test/claim".to_string()],
             explicit_entries: vec![],
             native_bundle_entries: vec![],
             node_frontier_selection: NodeFrontierSelectionMode::Applied,
@@ -10874,10 +10880,8 @@ mod tests {
     /// were emitted the receipt could not say which. A census taken from a selection-applied
     /// per-PR run would have counted skipped rows as fast ones.
     fn witness_row_cost_receipt_distinguishes_unexecuted_from_sub_millisecond() {
-        let base = std::env::temp_dir().join(format!(
-            "gunbc-row-cost-collision-{}",
-            std::process::id()
-        ));
+        let base =
+            std::env::temp_dir().join(format!("gunbc-row-cost-collision-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         assert!(write_witness_row_cost_receipt_at(
             &base,
@@ -10907,7 +10911,11 @@ mod tests {
             cost_cols(skipped),
             "premise: the two rows are indistinguishable on cost alone"
         );
-        assert_eq!(cost_cols(executed).0, "0", "both floor to a zero eval column");
+        assert_eq!(
+            cost_cols(executed).0,
+            "0",
+            "both floor to a zero eval column"
+        );
 
         // ...and are nonetheless distinguishable, which is the whole point. This is the
         // discriminating assertion: it goes RED if the outcome column is dropped again,

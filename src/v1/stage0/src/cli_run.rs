@@ -13058,7 +13058,10 @@ mod budget_completion_tests {
             9_000_000,
             4_000_000,
         );
-        assert_eq!(receipt.wall_nanos, 9_000_000, "wall is the measurement basis");
+        assert_eq!(
+            receipt.wall_nanos, 9_000_000,
+            "wall is the measurement basis"
+        );
         assert_eq!(receipt.cpu_nanos, 4_000_000, "cpu is the enforcement basis");
         assert_ne!(
             receipt.wall_nanos, receipt.cpu_nanos,
