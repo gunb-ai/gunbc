@@ -254,13 +254,28 @@ fn exemplar_camera() -> ProgramCamera {
   camera_select(c: camera_initial, f: focus_finish_line(l: CompilerFixedPoint))
 }
 
-fn live_program_view_result() -> V1ProgramViewResult {
-  v1_program_view(
-    nodes: declared_roadmap_nodes(),
-    edges: declared_roadmap_edges(),
-    receipts: roadmap_acceptance_receipts(),
-    in_flight: [],
-  )
+data live_view_two_refusal_sources_note: String = "TWO INDEPENDENT WAYS THE LIVE WORLD CAN FAIL TO ARRIVE, flattened to located text exactly once. gunbc.roadmap_authority's roadmap_acceptance_receipts is a PROJECTION (#7791 receipt-continuity work), not a list — it can refuse before the program view is ever attempted — and gunbc.roadmap_program_view can then refuse on its own causes. Forwarding the first as the second was not available and would have been the fabrication this page exists to avoid: a receipts-projection refusal is not a ProgramViewRefusalCause, and inventing one would put a cause in front of the reader that the model never produced. So this carrier keeps both sources and renders either as its own located line. The page's contract is unchanged — refuse loudly with the causes named, never draw a smaller program. Found by execution rather than by typecheck: passing the projection straight into v1_program_view compiled clean and failed at runtime with 'fold expects a list, got Variant', so the List-versus-coproduct swap at a call site is a class the substrate does not currently wall."
+
+type LiveProgramView
+  = LiveViewDerived { view: V1DeletionProgramView }
+  | LiveViewRefused { causes: List<String> }
+
+fn live_program_view_result() -> LiveProgramView {
+  match roadmap_acceptance_receipts() {
+    RoadmapAcceptanceReceiptsProjectionRefused { detail } =>
+      LiveViewRefused { causes: [join(["acceptance receipts unavailable: ", detail], "")] }
+    RoadmapAcceptanceReceiptsProjected { receipts } =>
+      match v1_program_view(
+        nodes: declared_roadmap_nodes(),
+        edges: declared_roadmap_edges(),
+        receipts: receipts,
+        in_flight: [],
+      ) {
+        ProgramViewDerived { view } => LiveViewDerived { view: view }
+        ProgramViewRefused { causes } =>
+          LiveViewRefused { causes: map(causes, c => refusal_cause_text(c: c)) }
+      }
+  }
 }
 
 fn program_depths() -> List<ProgramDepth> { [DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence] }
@@ -376,10 +391,10 @@ fn refusal_cause_text(c: ProgramViewRefusalCause) -> String {
 
 fn reading_rows() -> Fragment {
   match live_program_view_result() {
-    ProgramViewRefused { causes } => el("div", concat(
+    LiveViewRefused { causes } => el("div", concat(
       [ el_class("div", instrument_refusal_class, [ txt("program view refused — the page draws nothing rather than a smaller program") ]) ],
-      map(causes, c => el_class("div", instrument_refusal_class, [ txt(refusal_cause_text(c: c)) ])))) 
-    ProgramViewDerived { view } =>
+      map(causes, c => el_class("div", instrument_refusal_class, [ txt(c) ]))))
+    LiveViewDerived { view } =>
       el("div", flat_map(program_depths(), d => depth_readings(view: view, d: d)))
   }
 }
