@@ -655,6 +655,13 @@ fn hoist_call_arg_string_literal_edges(
     }
 }
 
+fn should_emit_nullary_variant_value_atom(binding_kind: Option<&Rc<VarBindingKind>>) -> bool {
+    matches!(
+        binding_kind,
+        Some(bk) if matches!(bk.as_ref(), VarBindingKind::VariantValueBinding { .. })
+    )
+}
+
 fn marshal_generic(
     ctx: &InterpContext,
     node: &Rc<Node>,
@@ -664,12 +671,23 @@ fn marshal_generic(
     let name = node_authored_name(node, si);
     let mut edges: Vec<Value> = Vec::with_capacity(node.children.len() + 1);
     let mut refs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    if node_references_param(node, &name, param_names) {
+    if matches!(node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) && !name.is_empty() {
+        // Outer record-constructor SPELLING (OuterRecordConstructorLexeme) from ExprRecordLit
+        // authored name — not resolved parent-variant identity; see
+        // `v2.std.decl_facts_skeleton` `decl_facts_outer_record_constructor_lexeme_authority_note`.
+        edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    } else if node_references_param(node, &name, param_names) {
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
     } else if matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) && !name.is_empty() {
         // G2 live-read call reachability: callee atoms make cross-fn carrier chains
         // visible in the fn-arrow skeleton (docs/plans/live-read-witness-classification-design.md P1).
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    } else if !name.is_empty() {
+        if let ExprData::ExprVar { binding_kind } = node.expr_data.as_ref() {
+            if should_emit_nullary_variant_value_atom(binding_kind.as_ref()) {
+                edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+            }
+        }
     }
     if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
         edges.push(literal_edge);
@@ -1104,6 +1122,7 @@ fn marshal_decl_fact_node(
     item: &Rc<Node>,
     kind: ItemKind,
     si: &SourceIndices,
+    qualified_name: &str,
 ) -> InterpResult<Value> {
     match kind {
         ItemKind::TypeItem => concept_decl_node(ctx, si, item),
@@ -1111,10 +1130,13 @@ fn marshal_decl_fact_node(
             Ok(fn_arrow_output_skeleton(ctx, si, item).unwrap_or_else(|| unit_type_node(ctx)))
         }
         ItemKind::DataItem => {
-            if let Some(body) = item.body.as_ref() {
-                Ok(marshal_fn_body_skeleton(ctx, body, &[], si))
+            if ctx.lookup_typed_item(qualified_name).is_some() {
+                crate::data_initializer_identity::marshal_data_initializer_projection(
+                    ctx,
+                    qualified_name,
+                )
             } else {
-                Ok(unit_type_node(ctx))
+                Ok(crate::data_initializer_identity::typechecked_subject_absent_projection(ctx))
             }
         }
         _ => Ok(unit_type_node(ctx)),
@@ -1207,13 +1229,19 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
     let facts = decl_facts_for_roots(pool_roots);
     let mut rows = Vec::with_capacity(facts.len());
     for fact in facts {
-        let node = marshal_decl_fact_node(ctx, &fact.node, fact.kind, &fact.source_indices)
-            .map_err(|e| InterpError::TypeError {
-                msg: format!(
-                    "decl_facts: failed to marshal `{}` ({:?}) in `{}`: {e}",
-                    fact.qualified_name, fact.kind, fact.rel_path
-                ),
-            })?;
+        let node = marshal_decl_fact_node(
+            ctx,
+            &fact.node,
+            fact.kind,
+            &fact.source_indices,
+            &fact.qualified_name,
+        )
+        .map_err(|e| InterpError::TypeError {
+            msg: format!(
+                "decl_facts: failed to marshal `{}` ({:?}) in `{}`: {e}",
+                fact.qualified_name, fact.kind, fact.rel_path
+            ),
+        })?;
         rows.push(Value::Record {
             type_name: ctx.sym("DeclFact"),
             fields: Rc::new(sorted_fields(vec![

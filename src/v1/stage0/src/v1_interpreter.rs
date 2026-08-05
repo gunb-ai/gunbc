@@ -16,6 +16,7 @@ use crate::cli_run::value_to_wire_json;
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
+use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_rt;
 use crate::v1_rt::{
@@ -1366,6 +1367,7 @@ pub struct InterpContext {
     pub modules: Rc<im::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub emit_graph_info: Rc<EmitGraphInfo>,
     fn_nodes: HashMap<String, Rc<Node>>,
     ambiguous_bare_function_names: std::collections::HashSet<String>,
     service_ops: HashMap<String, ServiceOp>,
@@ -1601,6 +1603,7 @@ impl InterpContext {
             modules: graph.modules.clone(),
             item_registry: graph.item_registry.clone(),
             source_indices,
+            emit_graph_info: graph.emit_graph_info.clone(),
             fn_nodes,
             ambiguous_bare_function_names,
             service_ops,
@@ -1730,6 +1733,19 @@ impl InterpContext {
 
     fn lookup_fn(&self, name: &str) -> Option<&Rc<Node>> {
         self.fn_nodes.get(name)
+    }
+
+    pub fn lookup_typed_item(&self, qualified_name: &str) -> Option<Rc<Node>> {
+        self.fn_nodes.get(qualified_name).cloned()
+    }
+
+    pub fn resolved_graph(&self) -> ResolvedGraph {
+        ResolvedGraph {
+            modules: self.modules.clone(),
+            item_registry: self.item_registry.clone(),
+            diagnostics: Rc::new(im::Vector::new()),
+            emit_graph_info: self.emit_graph_info.clone(),
+        }
     }
 
     /// Report identity from the exact fn_nodes entry used by lookup_fn. The
