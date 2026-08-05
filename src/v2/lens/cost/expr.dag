@@ -1,0 +1,141 @@
+module v2.lens.cost.expr
+
+import std.decl_ref { DeclarationRef }
+import v2.lens.cost {
+  ConstantCost,
+  LinearCost,
+  LogCost,
+  ProductCost,
+  SizeVariable,
+  SumCost,
+  SymbolicCost,
+  UnknownCost,
+  constant_cost,
+  linear_in_node,
+  symbolic_max,
+  symbolic_product,
+  symbolic_sequential,
+  unit_cost,
+  zero_cost
+}
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v2.std.nat { Nat, Succ, Zero }
+import v2.std.node { Node }
+
+data cost_expr_authority_note: String = "C1 (v2-complexity-capability-parity): SizeExpr and CostExpr are the single richer expression authority in v2.lens.cost. SymbolicCost is their normalized asymptotic projection via normalize_cost_expr_to_symbolic — one authority with two levels of detail, never two competing cost types. Grounded identities per parity note section 6: SizeVariableRef and SizeCollectionLength replace v1 string-keyed SizeVar/SizeLen; CostEffect replaces CostExtern; CostUnknown carries a typed Diagnostic instead of a free-text reason. The blocking cost_lens fold over SymbolicCost is unchanged until C2 routes summaries through CostExpr."
+
+type SizeExpr
+  = SizeConst { value: Nat }
+  | SizeVariableRef { variable: SizeVariable }
+  | SizeCollectionLength { collection: Node }
+  | SizeAdd { left: SizeExpr, right: SizeExpr }
+  | SizeMax { left: SizeExpr, right: SizeExpr }
+
+type CostExpr
+  = CostConst { value: Nat }
+  | CostAdd { left: CostExpr, right: CostExpr }
+  | CostMul { left: CostExpr, right: CostExpr }
+  | CostMax { left: CostExpr, right: CostExpr }
+  | CostSum { binder: SizeVariable, upper: SizeExpr, body: CostExpr }
+  | CostLog { base: Nat, argument: SizeExpr }
+  | CostEffect { operation: DeclarationRef }
+  | CostUnknown { diagnostic: Diagnostic }
+
+fn size_const(value: Nat) -> SizeExpr {
+  SizeConst { value: value }
+}
+
+fn size_of_variable(variable: SizeVariable) -> SizeExpr {
+  SizeVariableRef { variable: variable }
+}
+
+fn size_of_collection(collection: Node) -> SizeExpr {
+  SizeCollectionLength { collection: collection }
+}
+
+fn cost_const(value: Nat) -> CostExpr {
+  CostConst { value: value }
+}
+
+data cost_expr_log_argument_ungrounded_diagnostic: Diagnostic = Diagnostic {
+  reason: ^cost_expr_log_argument_ungrounded_reason,
+  at: Textual { file: ^cost_expr_authority_virtual_file, extent: WholeFile },
+  correction: Unavailable { reason: AmbiguousIntent }
+}
+
+data cost_expr_effect_unmodeled_diagnostic: Diagnostic = Diagnostic {
+  reason: ^cost_expr_effect_unmodeled_reason,
+  at: Textual { file: ^cost_expr_authority_virtual_file, extent: WholeFile },
+  correction: Unavailable { reason: AmbiguousIntent }
+}
+
+fn cost_loop_expr(binder: SizeVariable, iterations: SizeExpr, body: CostExpr) -> CostExpr {
+  match body {
+    CostConst { value: Zero } => CostConst { value: Zero }
+    _ => CostSum { binder: binder, upper: iterations, body: body }
+  }
+}
+
+fn normalize_size_expr_to_symbolic_bound(size: SizeExpr) -> SymbolicCost {
+  match size {
+    SizeConst { value: Zero } => zero_cost()
+    SizeConst { value: Succ { prev: Zero } } => unit_cost()
+    SizeConst { value: _ } => unit_cost()
+    SizeVariableRef { variable: v } => LinearCost { variable: v }
+    SizeCollectionLength { collection: c } => linear_in_node(n: c)
+    SizeAdd { left: l, right: r } =>
+      symbolic_sequential(
+        a: normalize_size_expr_to_symbolic_bound(size: l),
+        b: normalize_size_expr_to_symbolic_bound(size: r)
+      )
+    SizeMax { left: l, right: r } =>
+      symbolic_max(
+        a: normalize_size_expr_to_symbolic_bound(size: l),
+        b: normalize_size_expr_to_symbolic_bound(size: r)
+      )
+  }
+}
+
+fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> SymbolicCost {
+  match expr {
+    CostConst { value: Zero } => zero_cost()
+    CostConst { value: Succ { prev: Zero } } => unit_cost()
+    CostConst { value: v } => constant_cost(value: v)
+    CostAdd { left: l, right: r } =>
+      symbolic_sequential(
+        a: normalize_cost_expr_to_symbolic(expr: l),
+        b: normalize_cost_expr_to_symbolic(expr: r)
+      )
+    CostMul { left: l, right: r } =>
+      symbolic_product(
+        a: normalize_cost_expr_to_symbolic(expr: l),
+        b: normalize_cost_expr_to_symbolic(expr: r)
+      )
+    CostMax { left: l, right: r } =>
+      symbolic_max(
+        a: normalize_cost_expr_to_symbolic(expr: l),
+        b: normalize_cost_expr_to_symbolic(expr: r)
+      )
+    CostSum { binder: _, upper: u, body: bd } =>
+      symbolic_product(
+        a: normalize_size_expr_to_symbolic_bound(size: u),
+        b: normalize_cost_expr_to_symbolic(expr: bd)
+      )
+    CostLog { base: _, argument: a } =>
+      match a {
+        SizeVariableRef { variable: v } => LogCost { variable: v }
+        SizeCollectionLength { collection: c } =>
+          LogCost { variable: SizeVariable { source: c } }
+        _ => UnknownCost { diagnostic: cost_expr_log_argument_ungrounded_diagnostic }
+      }
+    CostEffect { operation: _ } =>
+      UnknownCost { diagnostic: cost_expr_effect_unmodeled_diagnostic }
+    CostUnknown { diagnostic: d } => UnknownCost { diagnostic: d }
+  }
+}
