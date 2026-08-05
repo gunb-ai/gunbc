@@ -1,0 +1,361 @@
+module std.source_annotation
+
+import std.types { String, SourceSpan, List, Bool }
+import std.occurrence_identity { OccurrenceId }
+
+data source_annotation_authority_note: String = "The language-agnostic authority for source annotations, per DESIGN 4c. It names no .dag syntax and no lexical rule: a realization decides what its annotation syntax looks like and routes it through its own annotation channel, then lands rows of THIS shape. Both the v1 seed tokenizer and the v2 modeled tokenizer import from here rather than each minting a placement enum, because two spellings of one concept is the nicknaming defect this whole lane exists to remove."
+
+data annotation_placement_note: String = "Placement is OBSERVED at capture, not reconstructed later, because it cannot be reconstructed later. Whitespace and line structure are consumed before the parser sees anything, so once they are gone `fn a() -> Int { 1 } // text` followed by `fn b()` leaves residue identical to a leading annotation on b — two opposite meanings, one byte pattern. LeadingAfterLineIndent means only indentation preceded the annotation on its line; TrailingAfterSemanticToken means a semantic token did. Only the leading form is eligible for attachment in the first realization; trailing refuses until its attachment rule is separately modeled."
+
+type AnnotationPlacement
+  = LeadingAfterLineIndent
+  | TrailingAfterSemanticToken
+
+data unbound_annotation_capture_note: String = "What a tokenizer produces before any structural subject is known — hence UNBOUND. It is the shape that crosses the lexer-to-parser seam, and it deliberately carries no subject and no identity: binding is the parser's job, and minting an identity here would draw from the semantic occurrence allocator.
+
+WHY THIS LIVES IN std RATHER THAN IN A TOKENIZER: the v1 seed tokenizer cannot import v2 modules, so a capture shape declared inside either realization forces the other to mint a second spelling of one concept. v2's lexing module additionally carries an annotation_class Symbol on its own capture row because that lexer is generic over many languages with many annotation syntaxes; the v1 .dag tokenizer has exactly one, so it uses this shape directly. That is a real difference in what the two realizations must distinguish, not a fork — and both converge on SourceAnnotationDebt once a subject is known, which is the row that actually persists.
+
+THE FIELD IS `lexeme`, NOT `text`, AND THE DISTINCTION IS LOAD-BEARING. A capture carries RAW SYNTAX exactly as it appeared, delimiter included: the lexer reports what it saw, and the language-specific attachment realization owns normalization into SourceAnnotationDebt.text. Naming it `text` while storing a `//`-prefixed lexeme would make the two indistinguishable at the type level, and the failure is not hypothetical — if one realization strips the delimiter and another does not, parse then render then parse either doubles the delimiter or silently changes annotation content, and the D-C round-trip control is what would catch it. Every realization capturing into this field stores raw; every realization reading it for durable text strips."
+
+type UnboundAnnotationCapture {
+  lexeme: String
+  origin: SourceSpan
+  placement: AnnotationPlacement
+  preceded_by_blank_line: Bool
+}
+
+data source_annotation_debt_note: String = "Every inhabitant is MODELING DEBT — that is the type's standing law, not a field on it. A comment is prose that the executable model does not currently represent, retained honestly rather than deleted or promoted. There is deliberately no rationale variant: a permanent category with no authoring path, no distinct consumer, and no lifecycle would be speculative vocabulary, and offered early every unmodeled invariant acquires a why-prefix and declares itself permanent. A second population earns its own carrier when migration produces one and its consumer is modeled.
+
+NOTE WHAT IS ABSENT: this row has no identity of its own. Giving an annotation an OccurrenceId would draw from the graph-scoped semantic occurrence allocator, so inserting a comment could shift the identities of declarations later in the same source and in later-parsed modules — the exact hazard DESIGN 4c forbids. `subject` REFERS to a semantic occurrence; it never mints one. Multiplicity and source order are carried by the ordered graph below, not by per-row ids, and a dedicated SourceAnnotationId arrives only when a real consumer must address one annotation independently."
+
+type SourceAnnotationDebt {
+  subject: OccurrenceId
+  text: String
+  origin: SourceSpan
+}
+
+data source_annotation_graph_note: String = "An ORDERED sequence, because order and multiplicity are the whole of an annotation's identity here. Two annotations with the same text on the same subject are two annotations, and the one written first is written first — a set would silently merge them and a map would need the per-row key this carrier deliberately does not have. Consecutive leading lines group into one block at attachment, so a block is one row whose text carries its own line breaks, not N rows a consumer must re-associate."
+
+type SourceAnnotationGraph {
+  rows: List<SourceAnnotationDebt>
+}
+
+fn source_annotation_graph_empty() -> SourceAnnotationGraph {
+  SourceAnnotationGraph { rows: [] }
+}
+
+fn source_annotation_graph_rows(graph: SourceAnnotationGraph) -> List<SourceAnnotationDebt> {
+  graph.rows
+}
+
+data source_annotation_graph_concat_note: String = "Joins the graphs of separately parsed sources, preserving order. It exists so a consumer accumulating across a compilation never reaches into `rows` to append — the ordered-sequence law lives with the carrier, and a caller that rebuilt the record itself would be free to sort, dedupe, or reverse it and silently lose the multiplicity the order encodes."
+
+fn source_annotation_graph_concat(
+  left: SourceAnnotationGraph,
+  right: SourceAnnotationGraph
+) -> SourceAnnotationGraph {
+  SourceAnnotationGraph { rows: concat(left.rows, right.rows) }
+}
+
+data annotation_attachment_refusal_note: String = "Refusals are typed and located rather than dropped, because a dropped annotation is indistinguishable from a source that never carried one — the empty-observation narrow DESIGN names. UnattachedAtScopeEnd is the pending-block-at-EOF case: prose that names no subject. TrailingNotModeled and BodyGrainNotModeled are the two deliberate first-cut narrowings; each names what would have to be modeled to admit it, so neither reads as an oversight."
+
+type AnnotationAttachmentRefusal
+  = UnattachedAtScopeEnd { origin: SourceSpan }
+  | TrailingNotModeled { origin: SourceSpan }
+  | BodyGrainNotModeled { origin: SourceSpan }
+
+data refusal_origin_note: String = "Every refusal carries where it happened, so a diagnostic reporting one does not need to carry a second copy of the span beside it. A consumer asks this rather than storing the origin again — a duplicated span is a second representation that can disagree with the first."
+
+fn annotation_attachment_refusal_origin(refusal: AnnotationAttachmentRefusal) -> SourceSpan {
+  match refusal {
+    UnattachedAtScopeEnd { origin: origin } => origin
+    TrailingNotModeled { origin: origin } => origin
+    BodyGrainNotModeled { origin: origin } => origin
+  }
+}
+
+data refusal_message_note: String = "The human-facing sentence for each refusal, single-authored here beside the variants so a new refusal cannot be added without one. Each says what was seen and what would have to be modeled to admit it, because the reader's next question after `this is refused` is always `then where do I put it`."
+
+fn annotation_attachment_refusal_message(refusal: AnnotationAttachmentRefusal) -> String {
+  match refusal {
+    UnattachedAtScopeEnd { origin: _ } =>
+      "source annotation names no subject: no module item follows it. Move it above the declaration it describes."
+    TrailingNotModeled { origin: _ } =>
+      "source annotation follows code on its own line. Trailing placement has no attachment rule yet; move it to its own line above the declaration."
+    BodyGrainNotModeled { origin: _ } =>
+      "source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes."
+  }
+}
+
+type AnnotationAttachment
+  = AnnotationAttached { row: SourceAnnotationDebt }
+  | AnnotationRefused { refusal: AnnotationAttachmentRefusal }
+
+data annotation_admission_note: String = "The gate between analysing attachment and CONTINUING with it. AnnotationAttachmentResult is an analysis surface — it reports what attached and what did not, and a reader may legitimately inspect both. But a caller that takes `graph` from that record and carries on has done exactly what admitting `//` and discarding the capture would have done: the prose is dropped and compilation proceeds as though the source never carried it.
+
+WHAT THIS ACTUALLY GUARANTEES, AT ITS HONEST RUNG. Both production v1 frontend paths route through this function, and on that path a refusal withholds the graph entirely and blocks emitted output. That is a ROUTING INVARIANT enforced by every caller using one seam — it is NOT a construction impossibility. `AnnotationAttachmentResult` is a plain record and `annotation_attachment_result_graph` returns its graph without consulting admission, so a newly written caller could bypass this and nothing would stop it.
+
+The two fail differently, and the distinction is why this paragraph exists rather than a stronger-sounding one. A routing invariant holds while every caller goes through the seam and breaks SILENTLY the first time one does not; an impossibility cannot break, because the bypass has no representation. Calling the first the second is the rung inflation DESIGN 4b names as worse than sitting low, since an inflated class never ranks for climbing.
+
+NEXT-RUNG TRIGGER, and it is small and known: make the bypass unrepresentable — remove the unadmitted graph accessor and seal the result carrier so a graph can only be obtained through admission — landed with a discriminating control proving a bypass does not compile. Until that exists, this is a mechanically preventive wall on the production path, not a language-level guarantee.
+
+The refusal payload is a NON-EMPTY carrier, which does make `refused, with nothing to report` unwritable rather than merely unlikely — a refusal arm holding an empty list would be a silent success wearing a refusal's name.
+
+This is deliberately all-or-nothing per compilation unit. A partial admission — take the rows that bound, ignore the ones that did not — is the absorbing fallback in its authored form: the deficit's frequency drops to zero, nothing counts it, and the unattachable prose quietly stops existing."
+
+type NonEmptyAnnotationAttachmentRefusals {
+  head: AnnotationAttachmentRefusal
+  tail: List<AnnotationAttachmentRefusal>
+}
+
+type AnnotationAdmission
+  = AnnotationsAdmitted { graph: SourceAnnotationGraph }
+  | AnnotationsRefused { refusals: NonEmptyAnnotationAttachmentRefusals }
+
+fn non_empty_refusals_all(
+  refusals: NonEmptyAnnotationAttachmentRefusals
+) -> List<AnnotationAttachmentRefusal> {
+  concat([refusals.head], refusals.tail)
+}
+
+fn admit_annotations(result: AnnotationAttachmentResult) -> AnnotationAdmission {
+  match first(result.refusals) {
+    Absent => AnnotationsAdmitted { graph: result.graph }
+    Present { value: head } =>
+      AnnotationsRefused {
+        refusals: NonEmptyAnnotationAttachmentRefusals {
+          head: head,
+          tail: skip(result.refusals, 1),
+        },
+      }
+  }
+}
+
+data annotation_eligible_placement_note: String = "The first realization admits leading annotations only, and this is the single predicate that says so. A realization asking whether to attach consults this rather than re-deciding, so widening the admitted grain later is one edit here plus the attachment rule it enables, never a sweep over every call site."
+
+fn annotation_placement_is_attachable(placement: AnnotationPlacement) -> Bool {
+  match placement {
+    LeadingAfterLineIndent => true
+    TrailingAfterSemanticToken => false
+  }
+}
+
+data line_prefix_authority_note: String = "Placement is decided by the PHYSICAL LINE PREFIX — the raw text between the last line feed and the annotation — and never by which lexical category the preceding lexeme belonged to.
+
+The category guess is wrong, and a real grammar disproves it. Deciding `leading` by `no semantic token seen on this line yet` assumes line boundaries live in trivia; the Python model's own token lexemes include `):\\n    `, which ENDS on a fresh line carrying only indentation, and `\\n    if `, which ends on a fresh line carrying semantic text. An annotation after the first is leading and after the second is trailing, yet a category rule classifies both as trailing because in both cases the last thing consumed was a semantic token. Any grammar whose tokens may span lines breaks the same way.
+
+So the state is `line prefix is indent only`, advanced by the RAW TEXT of every consumed lexeme regardless of category. One fold expresses the whole rule: a line feed resets the prefix to empty (vacuously indent-only), and every character after it must be indentation for the prefix to stay so. A lexeme with no line feed therefore preserves the previous state only while it is itself indentation, and a lexeme containing one is judged entirely by what follows its LAST line feed — both cases the fold produces without a special arm. An empty lexeme preserves the state.
+
+A lexer that walks lexemes threads this forward; a lexer with random access to the source feeds it the raw slice it consumed between steps. Both consume THIS function, because two spellings of one placement rule would let the realizations disagree about the same source."
+
+fn code_point_is_line_feed(cp: Int) -> Bool {
+  cp == 10
+}
+
+fn code_point_is_indent(cp: Int) -> Bool {
+  cp == 32 || cp == 9
+}
+
+data code_point_grain_note: String = "The rule is stated over CODE POINTS, not over a String, because the two realizations do not share a string representation: the seed's String is a host string while the modeled compiler's is already a sequence of code points. Taking the sequence as the parameter puts the one representation-specific step — how to get code points out of whatever this realization calls a lexeme — at each call site, and keeps the rule itself single-authored. The text-shaped convenience below exists for host-string callers and is the same fold, never a second rule."
+
+fn advance_line_prefix_indent_only(previous: Bool, code_points: List<Int>) -> Bool {
+  fold(
+    code_points,
+    init: previous,
+    f: (acc, cp) =>
+      if code_point_is_line_feed(cp: cp) { true } else { acc && code_point_is_indent(cp: cp) }
+  )
+}
+
+fn advance_line_prefix_indent_only_text(previous: Bool, lexeme: String) -> Bool {
+  advance_line_prefix_indent_only(previous: previous, code_points: chars(s: lexeme))
+}
+
+fn placement_from_line_prefix(indent_only: Bool) -> AnnotationPlacement {
+  if indent_only { LeadingAfterLineIndent } else { TrailingAfterSemanticToken }
+}
+
+data annotation_subject_roster_note: String = "What a realization offers as attachable subjects, and deliberately NOT DeclarationOccurrence. Two reasons, both structural. First, this module would otherwise depend on the whole occurrence transport to express a rule that needs exactly two facts per subject — an identity to refer to and a span to compare against. Second, the roster IS where the module-item narrowing lives: a realization admitting only module-scope declarations supplies only those, and widening to a finer grain later is a change in what the caller enumerates, not a change to the fold. The occurrence is REFERRED to, never minted; every id in a roster was already allocated by the semantic parser before attachment runs."
+
+type AnnotationSubject {
+  occurrence: OccurrenceId
+  span: SourceSpan
+}
+
+data normalized_annotation_capture_note: String = "The capture after the realization has stripped its delimiter and before a subject is known. It exists as a distinct type from UnboundAnnotationCapture precisely because the `lexeme` versus `text` distinction is load-bearing: normalization is language-specific and happens exactly once, at the boundary between the realization's capture and this shared fold, so the fold can never be handed raw syntax by accident. A realization that forgot to strip would have to construct this type to call at all, and the field name is what tells it."
+
+type NormalizedAnnotationCapture {
+  text: String
+  origin: SourceSpan
+  placement: AnnotationPlacement
+  preceded_by_blank_line: Bool
+}
+
+data annotation_attachment_result_note: String = "Both halves of the outcome, because either alone is a lie. The graph alone hides that prose was dropped; the refusals alone hide what was kept. A consumer reading only `graph` still gets a correct graph — it simply is not entitled to conclude the source carried nothing else, and the refusal list is what makes that conclusion checkable rather than assumed."
+
+type AnnotationAttachmentResult {
+  graph: SourceAnnotationGraph
+  refusals: List<AnnotationAttachmentRefusal>
+}
+
+fn annotation_attachment_result_graph(result: AnnotationAttachmentResult) -> SourceAnnotationGraph {
+  result.graph
+}
+
+fn annotation_attachment_result_refusals(result: AnnotationAttachmentResult) -> List<AnnotationAttachmentRefusal> {
+  result.refusals
+}
+
+data annotation_subject_pick_note: String = "Resolves one capture against the subject roster in a single pass, answering both questions the attachment rule asks: is the capture INSIDE some subject (body grain, refused), and what is the nearest subject STARTING AFTER it (its leading subject). Containment is checked before proximity because the two overlap — prose inside a function body always has some later declaration after it, and picking that one would silently reattach body commentary to the next unrelated declaration. That is the specific misattachment BodyGrainNotModeled exists to prevent, and checking proximity first would produce a plausible wrong answer rather than a refusal.
+
+The roster is scanned rather than indexed, so resolution is captures times subjects. That is a join without a sorted index, not a copied accumulator, and it is bounded by one source's declarations. DISSOLVE-ON: a span-ordered subject index exists on the parse artifact; then the nearest-following pick becomes a lookup and this fold reads it."
+
+type AnnotationSubjectPick {
+  contained: Bool
+  following: AnnotationSubject?
+}
+
+fn annotation_subject_pick(
+  subjects: List<AnnotationSubject>,
+  origin: SourceSpan
+) -> AnnotationSubjectPick {
+  fold(
+    subjects,
+    init: AnnotationSubjectPick { contained: false, following: none },
+    f: (acc, subject) =>
+      if origin.start >= subject.span.start && origin.end <= subject.span.end {
+        AnnotationSubjectPick { contained: true, following: acc.following }
+      } else if subject.span.start < origin.end {
+        acc
+      } else {
+        match acc.following {
+          Absent =>
+            AnnotationSubjectPick { contained: acc.contained, following: Present { value: subject } }
+          Present { value: best } =>
+            if subject.span.start < best.span.start {
+              AnnotationSubjectPick { contained: acc.contained, following: Present { value: subject } }
+            } else {
+              acc
+            }
+        }
+      }
+  )
+}
+
+data annotation_block_grouping_note: String = "A BLANK LINE SPLITS A BLOCK. Two facts decide grouping — same following subject, and physical adjacency — and both are required.
+
+An earlier revision used same-subject alone and claimed those captures were `by construction consecutive`. They are not. Two comment lines directly above a declaration and two comment BLOCKS separated by a blank line above the SAME declaration both resolve to that one subject, so same-subject alone merged them into a single row joined by a single newline and the blank line ceased to exist. That is not a formatting nicety: the authored structure is gone, and once a renderer exists it would render one block where the author wrote two, permanently.
+
+Adjacency cannot be recovered here — the fold sees spans, not source, and the whitespace between two captures was consumed by the lexer — so it is OBSERVED at capture, exactly like placement and for exactly the same reason. `preceded_by_blank_line` is that observation, and this fold reads it rather than re-deriving it.
+
+The merged row's text carries its own line breaks and its origin spans first capture start to last capture end, so a block is addressable as one authored unit. `pending` holds the block still being extended; it is flushed when a capture resolves to a different subject, when a capture opens a new block after a blank line, and once more at the end."
+
+type AnnotationAttachAcc {
+  rows: List<SourceAnnotationDebt>
+  refusals: List<AnnotationAttachmentRefusal>
+  pending: SourceAnnotationDebt?
+}
+
+fn annotation_attach_flush(acc: AnnotationAttachAcc) -> List<SourceAnnotationDebt> {
+  match acc.pending {
+    Absent => acc.rows
+    Present { value: row } => list_push(acc.rows, row)
+  }
+}
+
+fn annotation_attach_step(
+  acc: AnnotationAttachAcc,
+  capture: NormalizedAnnotationCapture,
+  subjects: List<AnnotationSubject>
+) -> AnnotationAttachAcc {
+  if !annotation_placement_is_attachable(placement: capture.placement) {
+    AnnotationAttachAcc {
+      rows: acc.rows,
+      refusals: list_push(acc.refusals, TrailingNotModeled { origin: capture.origin }),
+      pending: acc.pending,
+    }
+  } else {
+    let pick = annotation_subject_pick(subjects: subjects, origin: capture.origin)
+    if pick.contained {
+      AnnotationAttachAcc {
+        rows: acc.rows,
+        refusals: list_push(acc.refusals, BodyGrainNotModeled { origin: capture.origin }),
+        pending: acc.pending,
+      }
+    } else {
+      match pick.following {
+        Absent =>
+          AnnotationAttachAcc {
+            rows: acc.rows,
+            refusals: list_push(acc.refusals, UnattachedAtScopeEnd { origin: capture.origin }),
+            pending: acc.pending,
+          }
+        Present { value: subject } =>
+          match acc.pending {
+            Present { value: open } =>
+              if open.subject.value == subject.occurrence.value && !capture.preceded_by_blank_line {
+                AnnotationAttachAcc {
+                  rows: acc.rows,
+                  refusals: acc.refusals,
+                  pending: Present {
+                    value: SourceAnnotationDebt {
+                      subject: open.subject,
+                      text: concat(open.text, concat("\n", capture.text)),
+                      origin: SourceSpan {
+                        file: open.origin.file,
+                        start: open.origin.start,
+                        end: capture.origin.end,
+                      },
+                    },
+                  },
+                }
+              } else {
+                AnnotationAttachAcc {
+                  rows: list_push(acc.rows, open),
+                  refusals: acc.refusals,
+                  pending: Present {
+                    value: SourceAnnotationDebt {
+                      subject: subject.occurrence,
+                      text: capture.text,
+                      origin: capture.origin,
+                    },
+                  },
+                }
+              }
+            Absent =>
+              AnnotationAttachAcc {
+                rows: acc.rows,
+                refusals: acc.refusals,
+                pending: Present {
+                  value: SourceAnnotationDebt {
+                    subject: subject.occurrence,
+                    text: capture.text,
+                    origin: capture.origin,
+                  },
+                },
+              }
+          }
+      }
+    }
+  }
+}
+
+data attach_annotations_note: String = "The single attachment authority both realizations call. It is a PURE FOLD over captures and an already-allocated subject roster: it reads occurrence identities and never mints one, so inserting, editing, or deleting a comment cannot shift any declaration's identity here or in any later-parsed module. That property is not a convention this function happens to honor — there is no allocator in scope for it to violate.
+
+Captures must arrive in source order, which is the order the lexer produced them; the block grouping above is the only thing that depends on it."
+
+fn attach_annotations(
+  captures: List<NormalizedAnnotationCapture>,
+  subjects: List<AnnotationSubject>
+) -> AnnotationAttachmentResult {
+  let acc = fold(
+    captures,
+    init: AnnotationAttachAcc { rows: [], refusals: [], pending: none },
+    f: (acc, capture) =>
+      annotation_attach_step(acc: acc, capture: capture, subjects: subjects)
+  )
+  AnnotationAttachmentResult {
+    graph: SourceAnnotationGraph { rows: annotation_attach_flush(acc: acc) },
+    refusals: acc.refusals,
+  }
+}

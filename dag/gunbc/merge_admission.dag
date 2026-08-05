@@ -30,9 +30,13 @@ import gunbc.commit_workflow {
   CommitCheckEnrollment, CommitCheckKind,
   CommitSpecGate, CommitWitnessClaim, CommitCargoFmtCheck,
 }
+import std.measure { millisecond_count }
 import std.realization_schedule {
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, NativeBundleWitnessKind,
-  WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams,
+  WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams, SpanEnrolled,
+  WitnessCostBasis, WitnessCostClock, WitnessCostWallEval, WitnessCostThreadCpuEval,
+  MeasuredAtExactSubject, EstimatedFromSiblingClass, witness_cost_clock_eq,
+  ScheduledWitnessEnvelope,
 }
 import gunbc.ci_gate {
   Gate,
@@ -151,6 +155,50 @@ fn witness_seam_content_hash(seam: WitnessSeam) -> ContentHash {
   as_content_hash_structural(structural: witness_seam_content_hash_structural(seam: seam))
 }
 
+fn witness_cost_clock_content_hash_structural(clock: WitnessCostClock) -> Fnv1a64Structural {
+  match clock {
+    WitnessCostWallEval => content_hash_atom(value: "WitnessCostWallEval")
+    WitnessCostThreadCpuEval => content_hash_atom(value: "WitnessCostThreadCpuEval")
+  }
+}
+
+fn witness_cost_basis_content_hash_structural(basis: WitnessCostBasis) -> Fnv1a64Structural {
+  match basis {
+    MeasuredAtExactSubject { clock, duration, receipt } =>
+      content_hash_combine_structural(
+        left: content_hash_combine_structural(
+          left: witness_cost_clock_content_hash_structural(clock: clock),
+          right: content_hash_tagged_structural(
+            tag: "MeasuredAtExactSubject",
+            payload: content_hash_atom(value: receipt)
+          )
+        ),
+        right: content_hash_atom(value: concat("", millisecond_count(m: duration)))
+      )
+    EstimatedFromSiblingClass { clock, source_witness, basis } =>
+      content_hash_combine_structural(
+        left: content_hash_combine_structural(
+          left: witness_cost_clock_content_hash_structural(clock: clock),
+          right: content_hash_tagged_structural(
+            tag: "EstimatedFromSiblingClass",
+            payload: content_hash_atom(value: source_witness)
+          )
+        ),
+        right: content_hash_atom(value: basis)
+      )
+  }
+}
+
+fn scheduled_witness_envelope_content_hash_structural(envelope: ScheduledWitnessEnvelope) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_combine_structural(
+      left: content_hash_atom(value: envelope.cadence),
+      right: content_hash_atom(value: concat("", millisecond_count(m: envelope.wall_budget)))
+    ),
+    right: content_hash_atom(value: envelope.max_staleness)
+  )
+}
+
 fn witness_span_content_hash_structural(span: WitnessSpan) -> Fnv1a64Structural {
   match span {
     SpanUndeclared => content_hash_atom(value: "SpanUndeclared")
@@ -161,6 +209,19 @@ fn witness_span_content_hash_structural(span: WitnessSpan) -> Fnv1a64Structural 
           witness_seam_content_hash_structural(seam: seam)
         )
       })
+    SpanEnrolled { seams, cost_basis, envelope } =>
+      content_hash_combine_structural(
+        left: content_hash_combine_structural(
+          left: fold(seams, init: content_hash_atom(value: "SpanEnrolled"), f: fn(acc, seam) {
+            content_hash_combine_structural(
+              acc,
+              witness_seam_content_hash_structural(seam: seam)
+            )
+          }),
+          right: witness_cost_basis_content_hash_structural(basis: cost_basis)
+        ),
+        right: scheduled_witness_envelope_content_hash_structural(envelope: envelope)
+      )
   }
 }
 
