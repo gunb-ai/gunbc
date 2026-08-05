@@ -536,6 +536,37 @@ mod compiler_tests {
     }
 
     #[test]
+    fn call_deficit_red_witness() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let compile_one = |path: &str, content: &str| {
+                    crate::v1_compiler_compile::compile_sources(
+                        std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                            crate::v1_compiler_compile::SourceFile {
+                                path: path.to_string(),
+                                content: content.to_string(),
+                            }
+                        )]),
+                        crate::v1_compiler_artifact::RenderTarget::Rust,
+                    )
+                };
+                let deficit = compile_one(
+                    "deficit.dag",
+                    "module deficit\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(1) }\n",
+                );
+                assert!(
+                    deficit.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallPositionalDeficit { .. })),
+                    "a call supplying fewer required arguments than declared must refuse — the interpreter refuses the same call (missing required argument), got: {:?}",
+                    deficit.diagnostics
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("call_deficit_red_witness panicked");
+    }
+
+    #[test]
     fn call_shape_duplicate_wall_witness() {
         // DISCRIMINATING RED for the duplicate-label half of
         // call-missing-and-duplicate-wall (roadmap rn_EXUHLON5V24YU7Z4XLJFWEZO33,
@@ -609,6 +640,35 @@ mod compiler_tests {
                         if detail.contains("supplied more than once") => {}
                     other => panic!(
                         "the runtime authority must refuse a duplicate-label call with CallContractMismatch{{detail: \"argument 'a' supplied more than once\"}}, never silently overwrite the earlier binding, got: {:?}",
+                        other
+                    ),
+                }
+                // Runtime authority, NAMED-THEN-POSITIONAL shape (review 48817): a named
+                // actual and a later positional actual can resolve to the SAME declared
+                // parameter (`two(a: 1, 2)` — the named `a` binds param `a`, and the lone
+                // positional value fills positional slot 0, whose declared name is also
+                // `a`). The positional insert branch used to skip the collision check the
+                // named branch already had, so this call silently overwrote `a` and
+                // succeeded. Single-parameter fixture again, deliberately: a second
+                // declared param would go unbound regardless of whether the duplicate
+                // check fires, producing an unrelated "missing required argument" error
+                // that would mask the true defect (the same false-discriminator this
+                // file's named+named check above already guards against).
+                let resolved_np = crate::v1_compiler_compile::compile_to_resolved(
+                    std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                        crate::v1_compiler_compile::SourceFile {
+                            path: "duplicate_named_then_positional_rt.dag".to_string(),
+                            content: "module duplicate_named_then_positional_rt\nfn two(a: Int) -> Int { a }\nfn f() -> Int { two(a: 1, 2) }\n".to_string(),
+                        }
+                    )]),
+                );
+                let graph_np = resolved_np.graph.clone().expect("named-then-positional duplicate fixture must resolve — it is a runtime-authority probe, not a compile-seam one");
+                let run_np = crate::v1_interpreter::run(&graph_np, resolved_np.source_indices.clone(), "f");
+                match &run_np {
+                    Err(crate::v1_interpreter::InterpError::CallContractMismatch { detail, .. })
+                        if detail.contains("supplied more than once") => {}
+                    other => panic!(
+                        "a named actual and a later positional actual resolving to the same declared parameter must refuse with CallContractMismatch{{detail: \"argument 'a' supplied more than once\"}}, never silently overwrite, got: {:?}",
                         other
                     ),
                 }

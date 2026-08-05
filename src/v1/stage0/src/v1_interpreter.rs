@@ -2040,7 +2040,20 @@ fn call_function_inner(
                 }
                 bindings.insert(ctx.sym(name), val.clone());
             } else if positional_idx < param_names.len() {
-                bindings.insert(ctx.sym(&param_names[positional_idx]), val.clone());
+                // A positional actual is keyed by its resolved declared parameter, exactly as
+                // the named branch above is — so a positional actual filling a parameter an
+                // earlier named actual already bound (`two(a: 1, 2)` against `fn two(a, b)`,
+                // where the positional slot 0's declared name is `a`, already bound by the
+                // named actual) must refuse the same way, not silently overwrite last-write-wins
+                // (DESIGN §5 fail-closed; review 48817).
+                let pname = &param_names[positional_idx];
+                if bindings.contains_key(&ctx.sym(pname)) {
+                    return Err(InterpError::CallContractMismatch {
+                        callee: fn_node.name.clone(),
+                        detail: format!("argument '{}' supplied more than once", pname),
+                    });
+                }
+                bindings.insert(ctx.sym(pname), val.clone());
                 positional_idx += 1;
             } else {
                 // The pre-existing `else if` guard dropped surplus positional arguments on the
