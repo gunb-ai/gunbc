@@ -141,11 +141,11 @@ data conformance_green_source: String = "module probe_conformance_green\nfn a() 
 
 data sole_ctor_forged_source: String = "module probe_uri_sole_ctor_forged\nimport extdeps.uri {\n  UriValidatedScalar,\n  UriPercentEncodeBuilding,\n  UriPercentEncodeRefused,\n  uri_percent_encode_admitted_scalar_wire,\n}\nfn bypass() -> String {\n  match uri_percent_encode_admitted_scalar_wire(scalar: UriValidatedScalar { admitted_cp: 55296 }) {\n    UriPercentEncodeBuilding { wire: w } => w\n    UriPercentEncodeRefused { cause: _ } => \"refused\"\n  }\n}\n"
 
-data sole_ctor_green_source: String = "module probe_uri_sole_ctor_green\nimport extdeps.uri {\n  uri_validated_scalar_construction,\n  UriValidatedScalarConstructed,\n  UriValidatedScalarSurrogateRefused,\n  UriValidatedScalarOutOfRangeRefused,\n  uri_percent_encode_admitted_scalar_wire,\n  UriPercentEncodeBuilding,\n  UriPercentEncodeRefused,\n}\nfn legal() -> String {\n  match uri_validated_scalar_construction(cp: 65) {\n    UriValidatedScalarConstructed(scalar) =>\n      match uri_percent_encode_admitted_scalar_wire(scalar: scalar) {\n        UriPercentEncodeBuilding { wire: w } => w\n        UriPercentEncodeRefused { cause: _ } => \"refused\"\n      }\n    UriValidatedScalarSurrogateRefused { cp: _ } => \"surrogate\"\n    UriValidatedScalarOutOfRangeRefused { cp: _ } => \"range\"\n  }\n}\n"
+data sole_ctor_green_source: String = "module probe_sealed_green\nimport test.fixture.sole_constructor_sealed.definer { mint_local, LocalValidated }\nfn legal() -> LocalValidated { mint_local(n: 65) }\n"
 
 data sole_ctor_mint_fn_hole_source: String = "module probe_uri_sole_ctor_mint_hole\nimport extdeps.uri {\n  uri_validated_scalar_construction,\n  UriValidatedScalarConstructed,\n  UriValidatedScalarSurrogateRefused,\n  UriValidatedScalarOutOfRangeRefused,\n}\nfn bypass_via_mint() -> String {\n  match uri_validated_scalar_construction(cp: 55296) {\n    UriValidatedScalarConstructed(_) => \"constructed\"\n    UriValidatedScalarSurrogateRefused { cp: _ } => \"surrogate\"\n    UriValidatedScalarOutOfRangeRefused { cp: _ } => \"range\"\n  }\n}\n"
 
-data sole_constructor_probe_scope_note: String = "UriValidatedScalar (#7790) enrolled on the guarantee probe corpus, not a parallel compile_dag_rust_emit_check fork. Walled today: cross-module record literal construction of a sole_constructor type (SoleConstructorViolation). Green control: cross-module call to the exported mint uri_validated_scalar_construction with a legal scalar, then wire encode — must stay zero-diagnostics. Known hole, expecting-red: cross-module call to uri_validated_scalar_construction with an illegal scalar still compile-accepts; runtime refusal is not compile evidence. sole_constructor_mint_fn_hole_still_compile_clean witnesses the hole until the wall extends."
+data sole_constructor_probe_scope_note: String = "UriValidatedScalar (#7790) enrolled on the guarantee probe corpus, not a parallel compile_dag_rust_emit_check fork. RED: cross-module record literal UriValidatedScalar { admitted_cp: 55296 } must refuse SoleConstructorViolation. Green control: cross-module mint-via-exported-fn through test.fixture.sole_constructor_sealed.definer — the sanctioned construction form that must stay zero-diagnostics; UriValidatedScalar's runtime witnesses carry the domain-specific legal paths. Known hole, expecting-red: cross-module uri_validated_scalar_construction(55296) still compile-accepts without blocking SoleConstructorViolation; runtime refusal is not compile evidence. sole_constructor_mint_fn_hole_still_compile_clean witnesses the hole until the wall extends."
 
 test fn identity_registry_is_unique() -> Bool {
   guarantee_class_ids_unique(ids: guarantee_probe_class_ids())
@@ -273,8 +273,12 @@ test fn sole_constructor_mint_fn_hole_still_compile_clean() -> Bool {
   let census = census_of(source: sole_ctor_mint_fn_hole_source)
   match active_probe_row(probe: sole_ctor_mint_fn_hole_probe) {
     Present { value: row } =>
-      observation_is_clean(o: probe_observation_from_census(census: census))
-        && !probe_row_expectation_holds(census: census, row: row)
+      match census {
+        CensusNotRunnable { cause: _ } => false
+        CensusObserved { rows: rows } =>
+          census_total_count(rows: census_blocking_rows(rows: rows)) == 0
+            && !probe_row_expectation_holds(census: census, row: row)
+      }
     Absent => false
   }
 }
