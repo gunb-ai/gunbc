@@ -43,9 +43,20 @@ import v2.std.algebra { any, contains, fold_list, length, list_snoc_item, Empty 
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import gunbc.commit_workflow {
+  commit_gate_roster,
+  project_ci_floor_witness_entries,
+  project_falsifier_witness_entries
+}
+import gunbc.witness_deferral_freeze {
+  FrozenPathDeferral,
+  frozen_path_deferrals,
+  frozen_path_deferral_covers_in
+}
 import std.witness_admission {
   WitnessConsumerCadence,
-  WitnessAdmissionRefusal,
+  WitnessExecutionStanding,
+  FrozenBaselineStanding,
   DiscoverySelection,
   FalsifierSelfHostWet,
   FalsifierRehomedBinWet,
@@ -55,8 +66,14 @@ import std.witness_admission {
   OfflineLocalRecipe,
   FixtureExplicitRoster,
   NoConsumer,
-  WitnessAdmissionHolds,
-  UnexecutedDeferredWitness
+  WitnessHasExecutingConsumer,
+  LegacyFrozenPathDeferral,
+  UnexecutedDeferredWitness,
+  UnclassifiedPathDeferral,
+  FrozenBaselineDebtAllowed,
+  FrozenBaselineDebtShrank,
+  FrozenBaselineDebtGrew,
+  FrozenBaselineDebtStale
 }
 
 fn schedule_row_matches(
@@ -165,20 +182,145 @@ fn witness_consumer_cadence_for_row(
   }
 }
 
-fn witness_admission_refusal_for_row(
+data witness_path_policy_admission_wall_note: String = "THE ARM THIS WALL CLOSED, and why it needed a wall rather than a stronger reconciliation. witness_consumer_cadence_for_row answers WHICH policy claims a row; this function answers whether that policy is an admissible answer, and until 2026-08-04 it conflated the two by refusing only NoConsumer. So OfflineLocalRecipe — the verdict a broad directory pattern produces — was accepted unconditionally, and moving a file under such a directory both removed it from per-PR discovery and satisfied admission. The exact-admission authority already forbids exactly this shape: explicit_witness_admission_cadence_executes refuses OfflineLocalRecipe on an admission row so that an admission cannot execute nowhere. The path side now meets the same bar, with the frozen legacy population (gunbc.witness_deferral_freeze) as the only exemption and that exemption itself joined by identity in both directions.
+
+READING ORDER IS LOAD-BEARING. The explicit rosters are consulted FIRST and are total for the rows they cover, so this path-policy fold decides only rows no roster claims — the same precedence witness_row_excluded_two_kinds_note states for exclusion. One consequence is deliberate and is NOT closed here: consumer_for_explicit_rosters maps a falsifier_self_host_wet row to OfflineLocalRecipe while falsifier_self_host_wet_cadence_active is false, and that reaches WitnessHasExecutingConsumer through the explicit arm. That is the same shape one layer in — a declared cadence that currently executes nothing — but it is a counted roster with a named owner and a dated trigger (falsifier_self_host_wet_build_verification_cadence_note) rather than a directory admitting silently, so it is adjacent scope, named here so it is not mistaken for covered."
+
+fn witness_path_policy_execution_standing_in(
+  entry: String,
+  function: String,
+  excluded_from_discovery: Bool,
+  offline: List<String>,
+  fixture: List<String>,
+  frozen: List<FrozenPathDeferral>
+) -> WitnessExecutionStanding {
+  if !excluded_from_discovery {
+    WitnessHasExecutingConsumer { cadence: DiscoverySelection }
+  } else if path_matches_any_substring(path: entry, subs: offline) {
+    if frozen_path_deferral_covers_in(rows: frozen, entry: entry, function: function) {
+      LegacyFrozenPathDeferral { entry: entry, function: function }
+    } else {
+      UnclassifiedPathDeferral { entry: entry, function: function }
+    }
+  } else if path_matches_any_substring(path: entry, subs: fixture) {
+    WitnessHasExecutingConsumer { cadence: FixtureExplicitRoster }
+  } else {
+    UnexecutedDeferredWitness { entry: entry, function: function }
+  }
+}
+
+fn witness_path_policy_execution_standing(
   entry: String,
   function: String,
   excluded_from_discovery: Bool
-) -> WitnessAdmissionRefusal {
-  match witness_consumer_cadence_for_row(
+) -> WitnessExecutionStanding {
+  witness_path_policy_execution_standing_in(
     entry: entry,
     function: function,
-    excluded_from_discovery: excluded_from_discovery
-  ) {
+    excluded_from_discovery: excluded_from_discovery,
+    offline: witness_admission_offline_exclusion_substrings(),
+    fixture: witness_admission_fixture_exclusion_substrings(),
+    frozen: frozen_path_deferrals
+  )
+}
+
+data commit_roster_enrollment_is_a_consumer_note: String = "THE THIRD SOURCE OF AN EXECUTING CONSUMER, and the one consumer_for_explicit_rosters does not see. commit_gate_roster carries CommitWitnessClaim rows at check_fn grain; project_ci_floor_witness_entries and project_falsifier_witness_entries turn them into explicit entries that RUN, and explicit rows merge after discovery with no exclusion filter — so an enrolled witness under an offline path executes even though the path excludes it. gunbc.ci_layer_roots enforcement_coverage_exclusion_note records the same fact from the other direction: offlining such a witness required TWO edits, the exclusion row AND the deletion of its enrollment, because teaching exclusions to veto the roster would have made a second authority.
+
+WHY IT IS CHECKED HERE RATHER THAN FOLDED INTO THE CADENCE. WitnessConsumerCadence has no arm for an enrollment-surface consumer, and minting one would ripple through every total match over it (v2.lens.enforcement.inventory, the admission witness suite) for a fact the admission fold is the only reader of today. So the cadence projection continues to answer WHICH PATH POLICY classifies a row, and this fold answers WHETHER ANYTHING EXECUTES IT, which is the question admission actually asks. DISSOLVE-ON: the arm lands on WitnessConsumerCadence, or v2.workflow.ci_placement Placement supersedes the surface tag as the witness-scheduling authority (the dissolve-on falsifier_cadence_surface_note already names, blocked on per-row warm-cost receipts).
+
+MEASURED COST OF THE OMISSION, which is why this is a correctness fix rather than an extension: 31 identities in the frozen population are enrolled on GithubActionsCiJob today. Without this check the wall would refuse witnesses that already run — a fail-closed FALSE POSITIVE, which is still a wrong answer, and it would have landed on an unrelated lane as a surprise red."
+
+fn witness_commit_roster_enrolled(entry: String, function: String) -> Bool {
+  schedule_contains_entry(
+    xs: project_ci_floor_witness_entries(roster: commit_gate_roster),
+    entry: entry,
+    function: function
+  )
+    || schedule_contains_entry(
+      xs: project_falsifier_witness_entries(roster: commit_gate_roster),
+      entry: entry,
+      function: function
+    )
+}
+
+fn witness_execution_standing_for_row(
+  entry: String,
+  function: String,
+  excluded_from_discovery: Bool
+) -> WitnessExecutionStanding {
+  let explicit = consumer_for_explicit_rosters(entry: entry, function: function)
+  match explicit {
     NoConsumer =>
-      UnexecutedDeferredWitness { entry: entry, function: function }
-    _ => WitnessAdmissionHolds
+      if witness_commit_roster_enrolled(entry: entry, function: function) {
+        WitnessHasExecutingConsumer { cadence: DiscoverySelection }
+      } else {
+        witness_path_policy_execution_standing(
+          entry: entry,
+          function: function,
+          excluded_from_discovery: excluded_from_discovery
+        )
+      }
+    _ => WitnessHasExecutingConsumer { cadence: explicit }
   }
+}
+
+data witness_coverage_versus_floor_gate_note: String = "THE TWO GATES, and why they must not be one function. witness_has_executing_consumer is the COVERAGE question — is this behavior actually exercised anywhere — and it admits exactly one arm, so a frozen legacy row answers NO and every downstream reader of coverage gets no rather than an admission success. witness_floor_admission_holds is the MIGRATION RATCHET — may the floor proceed with this row today — and it additionally tolerates LegacyFrozenPathDeferral while the baseline axis holds, so the tree stays green through the migration without anything claiming the frozen population executes. Collapsing them is precisely the defect this split repaired: the first shape returned one success arm for both and then read the green gate as evidence of coverage."
+
+fn witness_has_executing_consumer(standing: WitnessExecutionStanding) -> Bool {
+  match standing {
+    WitnessHasExecutingConsumer { cadence: _ } => true
+    LegacyFrozenPathDeferral { entry: _, function: _ } => false
+    UnclassifiedPathDeferral { entry: _, function: _ } => false
+    UnexecutedDeferredWitness { entry: _, function: _ } => false
+  }
+}
+
+fn frozen_baseline_permits_legacy_debt(baseline: FrozenBaselineStanding) -> Bool {
+  match baseline {
+    FrozenBaselineDebtAllowed => true
+    FrozenBaselineDebtShrank => true
+    FrozenBaselineDebtGrew { added_count: _ } => false
+    FrozenBaselineDebtStale { stale_count: _ } => false
+  }
+}
+
+fn witness_floor_admission_holds(
+  standing: WitnessExecutionStanding,
+  baseline: FrozenBaselineStanding
+) -> Bool {
+  match standing {
+    WitnessHasExecutingConsumer { cadence: _ } => true
+    LegacyFrozenPathDeferral { entry: _, function: _ } =>
+      frozen_baseline_permits_legacy_debt(baseline: baseline)
+    UnclassifiedPathDeferral { entry: _, function: _ } => false
+    UnexecutedDeferredWitness { entry: _, function: _ } => false
+  }
+}
+
+data frozen_path_deferral_staleness_note: String = "THE SECOND DIRECTION OF THE JOIN, without which the freeze rots into a permission slip. A frozen row records that one exact (entry, function) was already path-deferred when the wall landed; if that witness leaves the tree — file deleted, test decl renamed, or its path no longer matching any OfflineLocalRecipe pattern — the row survives as a standing exemption for an identity nothing checks, and the next witness to take that name inherits it. So a frozen identity absent from the discovered path-deferred population REFUSES. The discovered population is supplied by the caller rather than read here, because the live walk is the host's (its source roots decide what exists) and this fold is the mechanism the fixture witnesses exercise: identity join, not count equality — a size comparison would go green on any pair of compensating edits."
+
+fn frozen_path_deferral_row_functions_all_discovered(
+  row: FrozenPathDeferral,
+  discovered: List<ScheduleWitnessEntry>
+) -> Bool {
+  !any(
+    xs: row.functions,
+    predicate: fn(name) {
+      !schedule_contains_entry(xs: discovered, entry: row.entry, function: name)
+    }
+  )
+}
+
+fn frozen_path_deferrals_all_discovered(
+  rows: List<FrozenPathDeferral>,
+  discovered: List<ScheduleWitnessEntry>
+) -> Bool {
+  !any(
+    xs: rows,
+    predicate: fn(row) {
+      !frozen_path_deferral_row_functions_all_discovered(row: row, discovered: discovered)
+    }
+  )
 }
 
 data witness_row_excluded_two_kinds_note: String = "A witness row leaves per-PR discovery for one of exactly two reasons, and they are different kinds of fact. EXACT ADMISSION: this (entry, function) has its own row on gunbc.explicit_witness_admission naming the cadence that executes it — decided at function grain, so a sibling is untouched. PATH POLICY: the entry sits under a directory- or file-wide substring rule in witness_exclusion_frontier — decided at path grain, and deliberately so, because `test/claim/long/ is the long-test home` is a statement about a place rather than about any one function. Exact admission is checked FIRST and is total for the functions it covers; path policy applies only to functions with no admission. That ordering is what lets a path-offline file legitimately contain an exact-admitted function without either fact restating the other, and it is why the two must not share a representation."
@@ -188,18 +330,35 @@ fn witness_row_excluded_from_discovery(entry: String, function: String) -> Bool 
     || path_matches_any_substring(path: entry, subs: witness_exclusion_substrings())
 }
 
-fn witness_admission_holds_for_row(entry: String, function: String) -> Bool {
-  match witness_admission_refusal_for_row(
+fn witness_execution_standing_for_live_row(
+  entry: String,
+  function: String
+) -> WitnessExecutionStanding {
+  witness_execution_standing_for_row(
     entry: entry,
     function: function,
     excluded_from_discovery: witness_row_excluded_from_discovery(
       entry: entry,
       function: function
     )
-  ) {
-    WitnessAdmissionHolds => true
-    UnexecutedDeferredWitness { entry: _, function: _ } => false
-  }
+  )
+}
+
+fn witness_has_executing_consumer_for_row(entry: String, function: String) -> Bool {
+  witness_has_executing_consumer(
+    standing: witness_execution_standing_for_live_row(entry: entry, function: function)
+  )
+}
+
+fn witness_floor_admission_holds_for_row(
+  entry: String,
+  function: String,
+  baseline: FrozenBaselineStanding
+) -> Bool {
+  witness_floor_admission_holds(
+    standing: witness_execution_standing_for_live_row(entry: entry, function: function),
+    baseline: baseline
+  )
 }
 
 fn witness_admission_manifest_entry_key(entry: String, function: String) -> String {

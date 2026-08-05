@@ -2,7 +2,7 @@ module v2.test.claim.witness_admission_test
 
 import v2.workflow.witness_admission {
   witness_consumer_cadence_for_row,
-  witness_admission_holds_for_row,
+  witness_has_executing_consumer_for_row,
   witness_admission_explicit_consumer_manifest,
   witness_admission_manifest_covers_row
 }
@@ -55,7 +55,7 @@ test fn witness_synthetic_orphan_has_no_consumer_holds() -> Bool {
 }
 
 test fn witness_synthetic_orphan_admission_red_holds() -> Bool {
-  !witness_admission_holds_for_row(
+  !witness_has_executing_consumer_for_row(
     entry: synthetic_orphan_entry,
     function: synthetic_orphan_fn
   )

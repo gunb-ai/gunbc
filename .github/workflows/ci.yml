@@ -516,7 +516,7 @@ jobs:
             exit 0
           else
             CHANGED_ARTIFACTS=$(git diff --cached --name-only)
-            git commit -m "chore: regenerate drifted generated artifacts (ci auto-heal)"
+            git commit --no-verify -m "chore: regenerate drifted generated artifacts (ci auto-heal)"
             HEALED_HEAD=$(git rev-parse HEAD)
             git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}
             echo "HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS"
