@@ -1078,6 +1078,13 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "crate_layout_witnesses"
     ]
   },
+  FrozenPathDeferral {
+    entry: "src/v2/test/claim/self_host/rust_test_fixtures_import_closure_stripped_witness_test.dag",
+    functions: [
+      "stripped_import_closure_refuses_binding",
+      "stripped_with_ambient_pool_coincidence_or_refuse"
+    ]
+  },
   FrozenPathDeferral { entry: "src/v2/test/manual/grounding_lens_whole_tree_test.dag", functions: ["grounding_lens_whole_tree_witnesses"] },
   FrozenPathDeferral {
     entry: "src/v2/test/manual/ownership_movable_test.dag",

@@ -13,7 +13,7 @@ import v2.std.text { String }
 data class_b_transport_note: String = "Executing consumer for the Class B import-closure witness (#6985). Rows 1-2 run on the baseline pool; rows 3-4 derive the stripped entry overlay from the live rust_test_fixtures.dag at execution time inside rust_test_fixtures_import_closure_stripped_witness_test.dag (gunbc.class_b_import_closure_overlay). The small perturbation fixtures remain checked-in authored overlays under fixtures/class_b_import_closure/perturbation_overlay/."
 
 data class_b_witness_entry: String = "dag/test/claim/rust_test_fixtures_import_closure_witness_test.dag"
-data class_b_stripped_witness_entry: String = "dag/test/claim/rust_test_fixtures_import_closure_stripped_witness_test.dag"
+data class_b_stripped_witness_entry: String = "src/v2/test/claim/self_host/rust_test_fixtures_import_closure_stripped_witness_test.dag"
 
 func run_class_b_import_closure_gate() -> Bool {
   let root = git.Inspect.Toplevel()

@@ -213,10 +213,10 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "the crate-layout artifact moves to host-driven generation with the index supplied at the boundary; the hand rows, the parity witness, and this row delete together"
   },
   WitnessExclusionRow {
-    pattern: "rust_test_fixtures_import_closure_stripped_witness_test.dag",
+    pattern: "self_host/rust_test_fixtures_import_closure_stripped_witness_test.dag",
     classification: OfflineLocalRecipe,
-    reason: "transport-run Class B stripped-overlay rows (#6985): rows 3-4 derive the stripped rust_test_fixtures entry from the live file via Filesystem.Read/Write and shell.Mktemp inside gunbc.class_b_import_closure_overlay; hermetic discovery refuses those host effects. Executing consumer is v2.workflow.class_b_import_closure_transport via source_root_ingest_gate (class_b_stripped_transport_exclusion_note).",
-    dissolve_on: "mock_response coverage lands for the overlay materialization host effects AND assertions are re-checked under a fixed mock; or bare-reference closure binding becomes construction-backed repo-wide and this witness deletes with the Class B block"
+    reason: "transport-run Class B stripped-overlay rows (#6985): rows 3-4 derive the stripped rust_test_fixtures entry from the live file via Filesystem.Read/Write and shell.Mktemp inside gunbc.class_b_import_closure_overlay; consumed by v2.workflow.class_b_import_closure_transport via source_root_ingest_gate (class_b_stripped_transport_exclusion_note). File lives under src/v2/test/claim/self_host/ outside witness_discovery_scan_dirs.",
+    dissolve_on: "bare-reference closure binding becomes construction-backed repo-wide and this witness deletes with the Class B block"
   },
   WitnessExclusionRow {
     pattern: "unified_test_claim_substrate_equivalence.dag",
@@ -857,7 +857,7 @@ data witness_exclusion_single_authority_reconciliation_note: String = "Single-au
 
 data witness_admission_offline_note: String = "Phase 0(b) admission invariant (module-identity-storage-binding): operator-ruled OFFLINE exclusion substrings whose witness rows carry OfflineLocalRecipe consumers — documented local recipes in the paired exclusion notes (wet_integration_offline_note, enforcement_coverage_exclusion_note, accumulator_copy_roster_gate_exclusion_note, identity_captured_navigation_roster_gate_exclusion_note, lever_a_local_receipt_witness_exclusion_note, compiler_frontier_per_module_probe_exclusion_note, long_lane_exclusion_note). Dissolves when each row graduates to a scheduled CI consumer or deletes."
 
-data class_b_stripped_transport_exclusion_note: String = "dag/test/claim/rust_test_fixtures_import_closure_stripped_witness_test.dag is excluded from hermetic discovery and consumed by v2.workflow.class_b_import_closure_transport (run_class_b_import_closure_gate, reached from source_root_ingest_gate). Rows 1-2 stay discovery-enrolled in rust_test_fixtures_import_closure_witness_test.dag; rows 3-4 derive the stripped overlay from the live rust_test_fixtures.dag at execution time (no checked-in corpus copy). Local recipe: gunbc run --source-root src/v2 --source-root dag --entry src/v2/workflow/class_b_import_closure_transport.dag --function run_class_b_import_closure_gate --claim-run"
+data class_b_stripped_transport_exclusion_note: String = "src/v2/test/claim/self_host/rust_test_fixtures_import_closure_stripped_witness_test.dag is outside witness_discovery_scan_dirs and consumed by v2.workflow.class_b_import_closure_transport (run_class_b_import_closure_gate, reached from source_root_ingest_gate) — the same transport-run posture as self_host/crate_layout_witness_test.dag. Rows 1-2 stay discovery-enrolled in dag/test/claim/rust_test_fixtures_import_closure_witness_test.dag; rows 3-4 derive the stripped overlay from the live rust_test_fixtures.dag at execution time (no checked-in corpus copy). Local recipe: gunbc run --source-root src/v2 --source-root dag --entry src/v2/workflow/class_b_import_closure_transport.dag --function run_class_b_import_closure_gate --claim-run"
 
 data crate_layout_transport_exclusion_note: String = "self_host/crate_layout_witness_test.dag is excluded from hermetic discovery and consumed by v2.workflow.module_binding_supply_transport (run_module_binding_supply_gate, reached from source_root_ingest_gate) — the same posture as its siblings program_assembly/real_ingest_test.dag and self_host/compiler_closure_emit_from_ingest_test.dag, which are transport-run for the same reason.
 
