@@ -3,12 +3,35 @@ module gunbc.language_module_home
 import std.types { String, Bool, List }
 import std.decl_ref { DeclarationRef }
 import gunbc.language_target_registry {
+  gnu_bash_subject_ref,
+  c_language_subject_ref,
+  cpp_language_subject_ref,
+  css_language_subject_ref,
+  dag_subject_ref,
+  ecmascript_language_subject_ref,
+  go_language_subject_ref,
   html_language_subject_ref,
+  java_language_subject_ref,
+  json_format_subject_ref,
   jsx_language_subject_ref,
-  commonmark_format_subject_ref
+  kotlin_language_subject_ref,
+  lean_language_subject_ref,
+  llvm_ir_language_subject_ref,
+  commonmark_format_subject_ref,
+  ptx_language_subject_ref,
+  python_language_subject_ref,
+  riscv_isa_subject_ref,
+  rust_language_subject_ref,
+  spice_netlist_language_subject_ref,
+  swift_language_subject_ref,
+  typescript_language_subject_ref,
+  verilog_language_subject_ref,
+  webassembly_language_subject_ref,
+  yaml_format_subject_ref,
+  ngspice_simulator_subject_ref
 }
 
-data language_module_home_law: String = "WHERE A TARGET'S SURFACES LIVE IS ORGANIZATIONAL POLICY, NEVER IDENTITY (operator verdict relayed 2026-08-05, and the framing is load-bearing). DeclarationRef remains the single identity authority for a language target; a canonical_prefix says where that target's modules SHOULD be stored and decides nothing about what the target IS. The two must not fuse, because a path prefix is exactly the kind of positional fact that would start competing with the symbolic key if it ever became a discriminant — the same class DESIGN section 3 rules on when it says paths are discriminators, not gospel, and that a citation names a symbol rather than a position. THAT IS WHY canonical_prefix IS DECLARED AND NEVER COMPUTED AGAINST: the wall below decides membership by EXACT path equality against a finite roster, so no prefix match is ever performed on a module path and the prefix string cannot silently become the thing that answers 'which target is this'. It is the address a move should land at, carried so the obligation is readable, not a predicate. THE DEFECT THIS ADDRESSES: dag/extdeps/languages was meant to mean one directory per target holding that target's subject and its surfaces. D0 created twenty-five such directories, and four flat modules still sit directly beside them, so the directory currently means 'a subject-only island beside flat siblings' instead. react_jsx is the one that matters on principle rather than tidiness: that module implements JSX serialization while naming React, and D0's registry just separated those two subjects — JSX is registered as its own target with its own citation and React is not a target at all — so the fused flat path preserves a naming defect this repository's own registry has already exposed."
+data language_module_home_law: String = "WHERE A TARGET'S SURFACES LIVE IS ORGANIZATIONAL POLICY, NEVER IDENTITY (operator verdict relayed 2026-08-05, and the framing is load-bearing). DeclarationRef remains the single identity authority for a language target; a canonical_prefix says where that target's modules SHOULD be stored and decides nothing about what the target IS. The two must not fuse, because a path prefix is exactly the kind of positional fact that would start competing with the symbolic key if it ever became a discriminant — the same class DESIGN section 3 rules on when it says paths are discriminators, not gospel, and that a citation names a symbol rather than a position. WHAT KEEPS THEM SEPARATE IS THE DIRECTION THE PREFIX IS READ, not the absence of a prefix check. A prefix is matched against a home the CALLER SUPPLIES, to answer 'is this file where its declared target says it should be'. Nothing here maps a path to a target: there is deliberately no function that takes a path and returns whose it is, because that function is what would make position compete with the symbolic key. A module misfiled under another target's directory is therefore REFUSED, never silently reclassified as belonging to the directory it happens to sit in. AN EARLIER REVISION OF THIS SENTENCE SAID THE WALL PERFORMS NO PREFIX MATCH AT ALL, and that was true of the mechanism but only because the mechanism was incomplete: it decided by exact equality over the flat roster alone, which left a target-specific module filed under the WRONG target's directory unreachable — not flat, so never consulted. The premise behind that narrowing was also false, namely that std carries no prefix predicate; starts_with is a registered PrimitiveContract in std.primitives with a template row in std.algebra and live production use, verified two-sided by execution. The narrowing was a rationalised gap, which is worse than a wrong fact because a wrong fact gets caught. THE DEFECT THIS ADDRESSES: dag/extdeps/languages was meant to mean one directory per target holding that target's subject and its surfaces. D0 created twenty-five such directories, and four flat modules still sit directly beside them, so the directory currently means 'a subject-only island beside flat siblings' instead. react_jsx is the one that matters on principle rather than tidiness: that module implements JSX serialization while naming React, and D0's registry just separated those two subjects — JSX is registered as its own target with its own citation and React is not a target at all — so the fused flat path preserves a naming defect this repository's own registry has already exposed."
 
 data language_module_home_scope_note: String = "WHAT THIS MODULE DOES AND DELIBERATELY DOES NOT DO. IT DOES: declare the canonical home for each target that currently has misfiled surfaces, carry the four legacy flat modules as an EXACT finite frontier with a dissolution trigger each, and supply the pure decision function that refuses a NEW flat language module. IT DOES NOT: move any file, edit any importer, or touch src/v2. The operator was explicit that the full migration is not required inside the D0 citation change, and the src/v2 pass — src/v2/extdeps/languages is entirely flat, with bash alone spread across six modules — is a large namespace operation that belongs in its own change. WHY THE MOVES ARE NOT MADE HERE, and this is a mechanical reason rather than a scheduling preference: all four flat modules are rows of the FROZEN legacy manifest in gunbc.extdeps_scope_frontier. Moving one deletes its manifest row and creates an ADDED dag/extdeps path, and the frontier law states that an added file's only landing states are scope carrier or genuine machinery — it cannot rejoin the frozen manifest. So each move would force its surface module to adopt an extdeps_model_scope and spell a second literal ExternalAuthority for an upstream whose subject carrier D0 just authored. Whether one upstream may be cited once and shared, or must be re-declared per module, is the exact question currently escalated to the operator in extdeps.posix.shell_command_language posix_authority_duplication_note, unresolved. Performing the moves inside this change would answer it unilaterally, in four places, as a side effect of tidying directories. The homing obligation is therefore recorded and walled; the migration waits on that ruling."
 
@@ -19,16 +42,126 @@ type LanguageTargetHome {
 
 data language_target_homes: List<LanguageTargetHome> = [
   LanguageTargetHome {
+    target: gnu_bash_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/bash/"
+  },
+  LanguageTargetHome {
+    target: c_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/c/"
+  },
+  LanguageTargetHome {
+    target: cpp_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/cpp/"
+  },
+  LanguageTargetHome {
+    target: css_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/css/"
+  },
+  LanguageTargetHome {
+    target: dag_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/dag/"
+  },
+  LanguageTargetHome {
+    target: ecmascript_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/ecmascript/"
+  },
+  LanguageTargetHome {
+    target: go_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/go/"
+  },
+  LanguageTargetHome {
     target: html_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/html/"
+  },
+  LanguageTargetHome {
+    target: java_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/java/"
+  },
+  LanguageTargetHome {
+    target: json_format_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/json/"
+  },
+  LanguageTargetHome {
+    target: jsx_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/jsx/"
+  },
+  LanguageTargetHome {
+    target: kotlin_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/kotlin/"
+  },
+  LanguageTargetHome {
+    target: lean_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/lean/"
+  },
+  LanguageTargetHome {
+    target: llvm_ir_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/llvm_ir/"
   },
   LanguageTargetHome {
     target: commonmark_format_subject_ref,
     canonical_prefix: "dag/extdeps/languages/markdown/"
   },
   LanguageTargetHome {
-    target: jsx_language_subject_ref,
-    canonical_prefix: "dag/extdeps/languages/jsx/"
+    target: ptx_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/ptx/"
+  },
+  LanguageTargetHome {
+    target: python_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/python/"
+  },
+  LanguageTargetHome {
+    target: riscv_isa_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/riscv/"
+  },
+  LanguageTargetHome {
+    target: rust_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/rust/"
+  },
+  LanguageTargetHome {
+    target: spice_netlist_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/spice/"
+  },
+  LanguageTargetHome {
+    target: swift_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/swift/"
+  },
+  LanguageTargetHome {
+    target: typescript_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/typescript/"
+  },
+  LanguageTargetHome {
+    target: verilog_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/verilog/"
+  },
+  LanguageTargetHome {
+    target: webassembly_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/wasm/"
+  },
+  LanguageTargetHome {
+    target: yaml_format_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/yaml/"
+  },
+  LanguageTargetHome {
+    target: ngspice_simulator_subject_ref,
+    canonical_prefix: "dag/extdeps/simulators/ngspice/"
+  }
+]
+
+type LanguageDirectoryWithoutRegisteredTarget {
+  prefix: String
+  reason: String
+}
+
+data unregistered_target_directory_note: String = "DIRECTORIES UNDER languages/ WHOSE TARGET D0 NEVER REGISTERED, declared so the wall admits them instead of refusing legitimate work. These are NOT homes — a home carries a DeclarationRef and these have no registered subject to carry — and saying so is the point: the gate must not refuse a file under dag/extdeps/languages/gpu/ merely because WGSL is absent from the registry. Enumerated by walking the live tree against the home roster on 2026-08-05: three directories were uncovered, and dag/ turned out to have a registered target after all (the project-grounded .dag language), leaving these two. THEY ARE ALSO A REGISTRY FINDING, which is the more useful reading: each names a language this repository carries surfaces for and has no cited subject declaration for, so they are candidates for the same treatment D0 gave the other twenty-five rather than permanent exceptions. That is why each row states what the directory is for rather than merely naming it."
+
+data unregistered_target_directories: List<LanguageDirectoryWithoutRegisteredTarget> = [
+  LanguageDirectoryWithoutRegisteredTarget {
+    prefix: "dag/extdeps/languages/gpu/",
+    reason: "holds a wgsl subtree; WGSL is a W3C shading language with its own upstream and no registered subject in this repository, so it has no home row to be checked against"
+  },
+  LanguageDirectoryWithoutRegisteredTarget {
+    prefix: "dag/extdeps/languages/simd/",
+    reason: "holds a SIMD kernel surface; the kernel vocabulary has no single independently governed upstream identified for it and no registered subject, so it has no home row to be checked against"
   }
 ]
 
@@ -108,6 +241,38 @@ fn flat_module_admitted(file_path: String) -> Bool {
 
 fn every_flat_module_is_on_the_frontier(walked_flat_paths: List<String>) -> Bool {
   all(walked_flat_paths, p => flat_module_admitted(file_path: p))
+}
+
+data language_root_prefix: String = "dag/extdeps/languages/"
+
+data added_path_admission_note: String = "THE GATE PREDICATE — what the per-PR wall actually calls, and why it is shaped as an admission rather than a flatness test. A path added under languages/ is ADMITTED if it sits inside some declared target home, inside a declared directory whose target is unregistered, or is one of the four exact legacy frontier rows. Everything else under that root REFUSES. The shape matters: there is no function here that decides whether a path is 'flat', because deciding that from a string means segment-splitting the path and then reasoning about what the segment denotes, which is one short step from reading a target off a directory name — the fusion this module exists to avoid. Admission against declared rosters gets the same outcome with the identity question never asked. THE CONSEQUENCE, and it is now real rather than intended: a new module authored directly in dag/extdeps/languages/ is in none of the three rosters, so tools.extdeps_scope_placement_gate refuses the change. The population the frontier freezes can only shrink. A NEW TARGET DIRECTORY ALSO REFUSES UNTIL ITS HOME IS DECLARED, and that is deliberate rather than incidental: adding a target's surfaces without saying where that target lives is the state this wall exists to prevent, and the fix is one declared row in the same change."
+
+fn path_under_any_declared_home(file_path: String) -> Bool {
+  fold(language_target_homes, init: false, f: fn(acc, h) {
+    acc || starts_with(s: file_path, prefix: h.canonical_prefix)
+  })
+}
+
+fn path_under_unregistered_target_directory(file_path: String) -> Bool {
+  fold(unregistered_target_directories, init: false, f: fn(acc, d) {
+    acc || starts_with(s: file_path, prefix: d.prefix)
+  })
+}
+
+fn added_language_path_admitted(file_path: String) -> Bool {
+  if starts_with(s: file_path, prefix: language_root_prefix) {
+    path_under_any_declared_home(file_path: file_path)
+      || path_under_unregistered_target_directory(file_path: file_path)
+      || flat_module_admitted(file_path: file_path)
+  } else {
+    true
+  }
+}
+
+fn added_language_paths_refused(added: List<String>) -> List<String> {
+  fold(added, init: [], f: fn(acc, p) {
+    if added_language_path_admitted(file_path: p) { acc } else { concat(acc, [p]) }
+  })
 }
 
 fn module_at_canonical_home(file_path: String, home: LanguageTargetHome) -> HomedModuleVerdict {
