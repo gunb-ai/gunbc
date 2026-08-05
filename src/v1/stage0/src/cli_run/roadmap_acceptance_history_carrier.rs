@@ -28,7 +28,7 @@ enum JsonEvent {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(tag = "variant", rename_all = "snake_case")]
+#[serde(tag = "variant", rename_all = "snake_case", deny_unknown_fields)]
 enum JsonAcceptanceRevocationDisposition {
     AcceptanceNodeReopensActiveFrontier,
 }
