@@ -2028,6 +2028,16 @@ fn call_function_inner(
                         ),
                     });
                 }
+                // A duplicate caller label silently overwrote the earlier binding via
+                // HashMap::insert, so the earlier argument's evaluated value vanished
+                // unlocatably (DESIGN §5: the compile-side wall must not report a fact the
+                // runtime keeps quiet about). Refuse instead of taking the last value.
+                if bindings.contains_key(&ctx.sym(name)) {
+                    return Err(InterpError::CallContractMismatch {
+                        callee: fn_node.name.clone(),
+                        detail: format!("argument '{}' supplied more than once", name),
+                    });
+                }
                 bindings.insert(ctx.sym(name), val.clone());
             } else if positional_idx < param_names.len() {
                 bindings.insert(ctx.sym(&param_names[positional_idx]), val.clone());
