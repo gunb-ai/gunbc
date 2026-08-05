@@ -7858,9 +7858,8 @@ fn replay_floor_wet_witness_row_outcomes_from_receipt(path: &Path) -> Result<usi
 
 fn replay_ordinary_floor_wet_witness_row_outcomes() {
     let path = Path::new(FLOOR_WET_WITNESS_ROW_OUTCOME_RECEIPT_PATH);
-    match collect_wet_witness_row_outcome_replay_lines(path) {
-        Ok(lines) => {
-            let count = lines.len();
+    match replay_floor_wet_witness_row_outcomes_from_receipt(path) {
+        Ok(count) => {
             eprintln!(
                 "[wet-witness-row-outcome] coordinator replayed {count} row(s) from {}",
                 path.display()
@@ -7870,9 +7869,10 @@ fn replay_ordinary_floor_wet_witness_row_outcomes() {
                 "completed",
                 &format!("row_count={count} path={}", path.display()),
             );
-            for line in lines {
-                eprintln!("{line}");
-                append_floor_phase_journal("wet-witness-row-outcome-replay", "row", &line);
+            if let Ok(lines) = collect_wet_witness_row_outcome_replay_lines(path) {
+                for line in lines {
+                    append_floor_phase_journal("wet-witness-row-outcome-replay", "row", &line);
+                }
             }
         }
         Err(msg) if path.exists() => {
