@@ -7,6 +7,7 @@ import gunbc.ci_spec {
   RegenVerifyGate
 }
 import tools.ci_gates { exit_ok, run_spec_gate }
+<<<<<<< HEAD
 import tools.extdeps_scope_placement_gate {
   scope_placement_failure_receipt,
   scope_placement_failure_reason,
@@ -35,6 +36,12 @@ fn extdeps_scope_placement_gate_failure_receipt_companion_name() -> String {
     Absent => ""
   }
 }
+=======
+import tools.extdeps_scope_placement_gate { scope_placement_failure_receipt }
+import tools.generated_artifact_gate { generated_artifact_drift_failure_receipt }
+
+data floor_gate_failure_receipt_note: String = "claim_executor derives a failure-receipt companion from a Bool witness's own name and evaluates it in THIS entry's context, so the companion must be declared here beside the witness it explains — not only in the gate module that builds the reason. Naming is mechanical: <witness>_passes yields <witness>_failure_receipt. Placement and generated-artifact drift carry located reasons today; the other gates keep the bare Bool until each has a located reason worth projecting."
+>>>>>>> 9fb1c6740c5 (Surface generated-artifact drift failure path and run it first in cheap batch.)
 
 func emit_host_gate_passes() -> Bool {
   tools.ci_gates.exit_ok(e: run_spec_gate(g: EmitHostGate))
@@ -54,6 +61,10 @@ func dag_compile_clean_gate_passes() -> Bool {
 
 func generated_artifact_drift_gate_passes() -> Bool {
   tools.ci_gates.exit_ok(e: run_spec_gate(g: GeneratedArtifactDriftGate))
+}
+
+func generated_artifact_drift_gate_failure_receipt() -> String {
+  tools.generated_artifact_gate.generated_artifact_drift_failure_receipt()
 }
 
 func extdeps_scope_placement_gate_passes() -> Bool {
