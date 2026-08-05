@@ -15374,7 +15374,7 @@ pub fn local_binding_for_item(
                             uses: Rc::new(vec![]),
                             body: None,
                             transport: None,
-                            properties: Rc::new(vec![]),
+                            properties: item.properties.clone(),
                             type_annotation: item.type_annotation.clone(),
                             is_self_recursive: false,
                             has_non_tail_self_call: false,

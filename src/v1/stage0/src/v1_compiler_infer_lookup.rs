@@ -188,10 +188,23 @@ pub fn func_decl_binding_for_call(
     name: String,
 ) -> Option<Rc<BorrowedCensusDecl>> {
     match lookup_binding_by_name_local(type_env.clone(), name.clone()) {
-        Some(binding) => Some(Rc::new(BorrowedCensusDecl {
-            owner_module_path: type_env.module_path.clone(),
-            node: binding.resolved.clone(),
-        })),
+        Some(binding) => {
+            let owner_module_path =
+                match v1_rt::map_get(&type_env.str_bindings.clone(), name.clone()) {
+                    Some(_) => type_env.module_path.clone(),
+                    None => match func_decl_owner_module(func_env.clone(), name.clone()) {
+                        Some(owner) => owner.clone(),
+                        None => match borrowed_census_decl(type_env.clone(), name.clone()) {
+                            Some(bd) => bd.owner_module_path.clone(),
+                            None => type_env.module_path.clone(),
+                        },
+                    },
+                };
+            Some(Rc::new(BorrowedCensusDecl {
+                owner_module_path: owner_module_path.clone(),
+                node: binding.resolved.clone(),
+            }))
+        }
         None => match borrowed_census_decl(type_env.clone(), name.clone()) {
             Some(bd) => Some(bd.clone()),
             None => match func_decl_owner_module(func_env.clone(), name.clone()) {
