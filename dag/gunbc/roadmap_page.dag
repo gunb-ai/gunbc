@@ -22,7 +22,7 @@ import gunbc.roadmap_authority {
   accepted_roadmap_node_ids_projection,
   AcceptedRoadmapNodeIdsProjected, AcceptedRoadmapNodeIdsProjectionRefused,
   declared_roadmap_nodes,
-  ClosingContractTaskPair, closing_contract_task_pairs, closing_contract_family_claim,
+  ClosingContractTaskPair, closing_contract_task_pairs_for_accepted, closing_contract_family_claim,
 }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges }
 import gunbc.roadmap_component {
@@ -770,8 +770,8 @@ fn live_work_family_decls() -> List<WorkFamilyDecl> {
   [ WorkFamilyDecl { id: closing_contract_family_id(), claim: closing_contract_family_claim } ]
 }
 
-fn live_work_family_members() -> List<WorkFamilyMemberFact> {
-  closing_contract_task_pairs() |> map(p => WorkFamilyMemberFact {
+fn live_work_family_members_for_accepted(accepted: List<RoadmapNodeId>) -> List<WorkFamilyMemberFact> {
+  closing_contract_task_pairs_for_accepted(accepted: accepted) |> map(p => WorkFamilyMemberFact {
     family_id: closing_contract_family_id(),
     task_node: p.task.node as String,
     subject: p.subject,
@@ -798,7 +798,7 @@ fn daily_workspace_view_of_for_accepted(
     program: Present { value: v1_exit_program_progress_view_for_accepted(accepted_ids: accepted_ids, ready_count: ready_count) },
     observation: observation,
     families: live_work_family_decls(),
-    members: live_work_family_members())
+    members: live_work_family_members_for_accepted(accepted: accepted_ids))
 }
 
 fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> DailyWorkspaceView {

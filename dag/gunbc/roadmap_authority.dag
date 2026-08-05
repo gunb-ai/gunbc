@@ -2141,28 +2141,50 @@ type ClosingContractTaskPair {
   subject: String
 }
 
-fn closing_contract_task_pairs() -> List<ClosingContractTaskPair> {
+type ClosingContractTaskPairsProjection
+  = ClosingContractTaskPairsProjected { pairs: List<ClosingContractTaskPair> }
+  | ClosingContractTaskPairsProjectionRefused { detail: String }
+
+type ClosingContractTaskEdgesProjection
+  = ClosingContractTaskEdgesProjected { edges: List<RoadmapEdge> }
+  | ClosingContractTaskEdgesProjectionRefused { detail: String }
+
+fn closing_contract_task_pairs_for_accepted(accepted: List<RoadmapNodeId>) -> List<ClosingContractTaskPair> {
+  startable_nodes_missing_closing_contract_for_accepted(accepted: accepted)
+    |> map(n => ClosingContractTaskPair {
+      task: closing_contract_task_for(n: n),
+      subject: ticket_headline_of(n: n),
+    })
+}
+
+fn closing_contract_task_pairs_projection() -> ClosingContractTaskPairsProjection {
   match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
+    AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
+      ClosingContractTaskPairsProjectionRefused { detail: detail }
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      startable_nodes_missing_closing_contract_for_accepted(accepted: accepted)
-        |> map(n => ClosingContractTaskPair {
-          task: closing_contract_task_for(n: n),
-          subject: ticket_headline_of(n: n),
-        })
+      ClosingContractTaskPairsProjected {
+        pairs: closing_contract_task_pairs_for_accepted(accepted: accepted),
+      }
   }
 }
 
-fn closing_contract_task_nodes() -> List<RoadmapNode> {
-  closing_contract_task_pairs() |> map(p => p.task)
+fn closing_contract_task_edges_projection() -> ClosingContractTaskEdgesProjection {
+  match accepted_roadmap_node_ids_projection() {
+    AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
+      ClosingContractTaskEdgesProjectionRefused { detail: detail }
+    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+      ClosingContractTaskEdgesProjected {
+        edges: closing_contract_task_edges_for_accepted(accepted: accepted),
+      }
+  }
 }
 
-fn closing_contract_task_edges() -> List<RoadmapEdge> {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      closing_contract_task_edges_for_accepted(accepted: accepted)
-  }
+fn closing_contract_task_edges_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapEdge> {
+  startable_nodes_missing_closing_contract_for_accepted(accepted: accepted)
+    |> map(n => RoadmapEdge {
+      child: n.node,
+      parent: concat(n.node as String, "-closing-contract") as RoadmapNodeId,
+    })
 }
 
 fn active_roadmap_edges_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapEdge> {
@@ -2184,14 +2206,6 @@ data roadmap_focus_selection_note: String = "THE ONE ROW THAT SETS THE VIEW. Foc
 data roadmap_focus_selection: RoadmapFocus = FocusOnOwners {
   label: "the v1 deletion lane + the guarantee-ladder climbs",
   owners: ["self-host", "compiler-guarantee"],
-}
-
-fn closing_contract_task_edges_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapEdge> {
-  startable_nodes_missing_closing_contract_for_accepted(accepted: accepted)
-    |> map(n => RoadmapEdge {
-      child: n.node,
-      parent: concat(n.node as String, "-closing-contract") as RoadmapNodeId,
-    })
 }
 
 fn projected_roadmap_nodes_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
