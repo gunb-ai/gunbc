@@ -1,0 +1,130 @@
+module extdeps.physics.bach_et_al_2013_double_slit
+
+import std.types { String, List }
+import std.integer { NonNegativeInt }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doi.org/10.1088/1367-2630/15/3/033018"
+  }
+}
+
+type BachEtAl2013DoubleSlitExperiment
+  = BachEtAl2013DoubleSlit {}
+
+data bach_et_al_2013_double_slit: BachEtAl2013DoubleSlitExperiment = BachEtAl2013DoubleSlit {}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.physics.bach_et_al_2013_double_slit",
+      decl_name: "bach_et_al_2013_double_slit",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.physics.bach_et_al_2013_double_slit.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data bach_et_al_2013_citation_note: String = "Cited upstream: Bach, R., Pope, D., Liou, S.-H. and Batelaan, H., 'Controlled double-slit electron diffraction', New Journal of Physics volume 15, article 033018, 2013 (doi 10.1088/1367-2630/15/3/033018). arXiv:1210.6243. WHAT THIS MODULE OWNS: Bach et al. 2013 apparatus vocabulary and source-grounded categorical and buildup observation rows."
+
+data abstract_observed_distributions_note: String = "Abstract verbatim: By placing a movable mask in front of a double-slit to control the transmission through the individual slits, probability distributions for single- and double-slit arrangements were observed."
+
+data figures_one_and_two_normalized_distributions_note: String = "Figures 1 and 2 present normalized probability distributions; the paper sums frames then normalizes."
+
+data slit_mask_control_not_which_path_readout_note: String = "Bach et al. 2013 controlled which slits were open via the movable mask; the cited experiment did not perform a which-path distinguishability readout condition."
+
+data slit_mask_note: String = "Mask can block slit 1, slit 2, both, or neither (figure caption). BothSlitsBlocked is an apparatus configuration only — not an arrival observation."
+
+type SlitMaskConfiguration
+  = BothSlitsOpen
+  | SlitOneOpen
+  | SlitTwoOpen
+  | BothSlitsBlocked
+
+data single_electron_rate_note: String = "Paper states roughly one detected electron per second and only one electron in the apparatus at a time."
+
+data trial_versus_ensemble_grain_note: String = "Trial grain: one localized detection event. Ensemble grain: accumulated buildup panels and summed normalized distributions."
+
+type BachDistributionObservation
+  = SlitOneSingleSlitDiffractionObserved
+  | SlitTwoSingleSlitDiffractionObserved
+  | BothSlitsDoubleSlitDiffractionObserved
+
+data bach_slit_one_single_slit_diffraction_observed: BachDistributionObservation = SlitOneSingleSlitDiffractionObserved
+
+data bach_slit_two_single_slit_diffraction_observed: BachDistributionObservation = SlitTwoSingleSlitDiffractionObserved
+
+data bach_both_slits_double_slit_diffraction_observed: BachDistributionObservation = BothSlitsDoubleSlitDiffractionObserved
+
+data bach_distribution_observations: List<BachDistributionObservation> = [
+  bach_slit_one_single_slit_diffraction_observed,
+  bach_slit_two_single_slit_diffraction_observed,
+  bach_both_slits_double_slit_diffraction_observed,
+]
+
+type PatternStatus
+  = PatternNotYetDiscernible
+  | PatternDiscernible
+  | PatternClearlyVisible
+
+type Figure3BuildupPanel
+  = Figure3PanelA
+  | Figure3PanelB
+  | Figure3PanelC
+  | Figure3PanelD
+  | Figure3PanelE
+
+type BachBuildupObservationRow {
+  apparatus: BachEtAl2013DoubleSlitExperiment
+  figure_3_panel: Figure3BuildupPanel
+  detected_electrons: NonNegativeInt
+  pattern_status: PatternStatus
+}
+
+data bach_buildup_2_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  figure_3_panel: Figure3PanelA,
+  detected_electrons: 2,
+  pattern_status: PatternNotYetDiscernible,
+}
+
+data bach_buildup_7_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  figure_3_panel: Figure3PanelB,
+  detected_electrons: 7,
+  pattern_status: PatternNotYetDiscernible,
+}
+
+data bach_buildup_209_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  figure_3_panel: Figure3PanelC,
+  detected_electrons: 209,
+  pattern_status: PatternNotYetDiscernible,
+}
+
+data bach_buildup_1004_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  figure_3_panel: Figure3PanelD,
+  detected_electrons: 1004,
+  pattern_status: PatternDiscernible,
+}
+
+data bach_buildup_6235_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  figure_3_panel: Figure3PanelE,
+  detected_electrons: 6235,
+  pattern_status: PatternClearlyVisible,
+}
+
+data bach_buildup_observations: List<BachBuildupObservationRow> = [
+  bach_buildup_2_electrons,
+  bach_buildup_7_electrons,
+  bach_buildup_209_electrons,
+  bach_buildup_1004_electrons,
+  bach_buildup_6235_electrons,
+]

@@ -1,0 +1,449 @@
+module gunbc.bach_double_slit_observation
+
+import std.types { Bool, Int, List }
+import std.integer { NonNegativeInt }
+import extdeps.physics.bach_et_al_2013_double_slit {
+  BachEtAl2013DoubleSlitExperiment,
+  bach_et_al_2013_double_slit,
+  BachDistributionObservation,
+  bach_distribution_observations,
+  BachBuildupObservationRow,
+  bach_buildup_observations,
+  Figure3BuildupPanel,
+  Figure3PanelA,
+  Figure3PanelB,
+  Figure3PanelC,
+  Figure3PanelD,
+  Figure3PanelE,
+  PatternStatus,
+  PatternNotYetDiscernible,
+  PatternDiscernible,
+  PatternClearlyVisible,
+  SlitOneSingleSlitDiffractionObserved,
+  SlitTwoSingleSlitDiffractionObserved,
+  BothSlitsDoubleSlitDiffractionObserved,
+}
+
+data bach_observation_layer_note: String = "Observing-layer receipts for Bach et al. 2013. Buildup progression derives structural properties from extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_observations — sole population authority, no parallel copy."
+
+data bach_distribution_canonical_sequence_note: String = "Distribution gate checks that observations match the cited canonical sequence (slit-one, slit-two, both-open) via total bach_distribution_observation_rank — not completeness over the BachDistributionObservation coproduct. A fourth variant left unobserved still passes; the literal length 3 tracks the three known variants, not a derived coproduct arity."
+
+data bach_raw_count_additivity_not_evaluable_note: String = "Derived from cited Bach figures 1–2 (normalized distributions only): raw matched-exposure per-band arrival triplet N_both = N_slit_one + N_slit_two is not evaluable from this source."
+
+data bach_which_path_evidence_requirement_unsatisfied_note: String = "Derived from cited Bach slit-mask control (not a which-path readout): which-path distinguishability evidence requirement is unsatisfied for this source."
+
+data which_path_coverage_obligation_note: String = "Which-path distinguishability evidence is absent from cited Bach et al. 2013; obligation recorded here per DESIGN section 3."
+
+data bach_quantitative_path_additivity_gap_note: String = "Authored coverage gap (explicit gap rung, not a derived readiness verdict): bach_raw_count_additivity_not_evaluable_note grounds why no raw triplet exists to evaluate."
+
+data bach_which_path_evidence_gap_note: String = "Authored coverage gap (explicit gap rung, not a derived readiness verdict): bach_which_path_evidence_requirement_unsatisfied_note grounds why which-path evidence is absent."
+
+data bach_raw_count_triplet_coverage_dissolve_on: String = "DISSOLVE-ON: extdeps carries raw matched-exposure arrival rows at a grain that supports left, right, and both counts under one exposure identity; then bach_quantitative_path_additivity_gap may gain a positive cited counterpart."
+
+data bach_which_path_evidence_dissolve_on: String = "DISSOLVE-ON: a cited upstream authority for which-path distinguishability evidence lands; then bach_which_path_evidence_gap may gain a positive cited counterpart."
+
+type BachRawCountPathAdditivityGap
+  = BachRawCountTripletCoverageAbsent {}
+
+type BachWhichPathEvidenceGap
+  = BachWhichPathAuthorityAbsent {}
+
+fn bach_quantitative_path_additivity_gap() -> BachRawCountPathAdditivityGap {
+  BachRawCountTripletCoverageAbsent {}
+}
+
+fn bach_which_path_evidence_gap() -> BachWhichPathEvidenceGap {
+  BachWhichPathAuthorityAbsent {}
+}
+
+fn bach_buildup_row_is_cited_apparatus(row: BachBuildupObservationRow) -> Bool {
+  row.apparatus == bach_et_al_2013_double_slit
+}
+
+fn figure_3_panel_rank(panel: Figure3BuildupPanel) -> Int {
+  match panel {
+    Figure3PanelA => 0
+    Figure3PanelB => 1
+    Figure3PanelC => 2
+    Figure3PanelD => 3
+    Figure3PanelE => 4
+  }
+}
+
+fn bach_pattern_status_rank(status: PatternStatus) -> Int {
+  match status {
+    PatternNotYetDiscernible => 0
+    PatternDiscernible => 1
+    PatternClearlyVisible => 2
+  }
+}
+
+fn bach_pattern_status_never_regresses_from(
+  previous: PatternStatus,
+  next: PatternStatus,
+) -> Bool {
+  bach_pattern_status_rank(status: next) >= bach_pattern_status_rank(status: previous)
+}
+
+type StrictIncreaseFoldAcc {
+  previous_count: NonNegativeInt
+  has_previous: Bool
+  valid: Bool
+}
+
+fn fold_strict_increase_count(
+  acc: StrictIncreaseFoldAcc,
+  row: BachBuildupObservationRow,
+) -> StrictIncreaseFoldAcc {
+  if !acc.valid {
+    acc
+  } else {
+    if acc.has_previous {
+      if row.detected_electrons > acc.previous_count {
+        StrictIncreaseFoldAcc {
+          previous_count: row.detected_electrons,
+          has_previous: true,
+          valid: true,
+        }
+      } else {
+        StrictIncreaseFoldAcc {
+          previous_count: row.detected_electrons,
+          has_previous: true,
+          valid: false,
+        }
+      }
+    } else {
+      StrictIncreaseFoldAcc {
+        previous_count: row.detected_electrons,
+        has_previous: true,
+        valid: true,
+      }
+    }
+  }
+}
+
+fn bach_buildup_counts_strictly_increase(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  let folded = fold(
+    rows,
+    init: StrictIncreaseFoldAcc {
+      previous_count: 0,
+      has_previous: false,
+      valid: true,
+    },
+    f: fn(acc, row) {
+      fold_strict_increase_count(acc: acc, row: row)
+    },
+  )
+  folded.valid && folded.has_previous
+}
+
+type PatternStatusMonotonicFoldAcc {
+  previous_status: PatternStatus
+  has_previous: Bool
+  valid: Bool
+}
+
+fn fold_pattern_status_monotonic(
+  acc: PatternStatusMonotonicFoldAcc,
+  row: BachBuildupObservationRow,
+) -> PatternStatusMonotonicFoldAcc {
+  if !acc.valid {
+    acc
+  } else {
+    if acc.has_previous {
+      if bach_pattern_status_never_regresses_from(
+        previous: acc.previous_status,
+        next: row.pattern_status,
+      ) {
+        PatternStatusMonotonicFoldAcc {
+          previous_status: row.pattern_status,
+          has_previous: true,
+          valid: true,
+        }
+      } else {
+        PatternStatusMonotonicFoldAcc {
+          previous_status: row.pattern_status,
+          has_previous: true,
+          valid: false,
+        }
+      }
+    } else {
+      PatternStatusMonotonicFoldAcc {
+        previous_status: row.pattern_status,
+        has_previous: true,
+        valid: true,
+      }
+    }
+  }
+}
+
+fn bach_buildup_pattern_status_never_regresses(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  let folded = fold(
+    rows,
+    init: PatternStatusMonotonicFoldAcc {
+      previous_status: PatternNotYetDiscernible,
+      has_previous: false,
+      valid: true,
+    },
+    f: fn(acc, row) {
+      fold_pattern_status_monotonic(acc: acc, row: row)
+    },
+  )
+  folded.valid && folded.has_previous
+}
+
+type DiscernibleBeforeClearlyVisibleAcc {
+  seen_discernible: Bool
+  valid: Bool
+}
+
+fn fold_discernible_before_clearly_visible(
+  acc: DiscernibleBeforeClearlyVisibleAcc,
+  row: BachBuildupObservationRow,
+) -> DiscernibleBeforeClearlyVisibleAcc {
+  if !acc.valid {
+    acc
+  } else {
+    match row.pattern_status {
+      PatternClearlyVisible =>
+        if acc.seen_discernible {
+          DiscernibleBeforeClearlyVisibleAcc {
+            seen_discernible: acc.seen_discernible,
+            valid: true,
+          }
+        } else {
+          DiscernibleBeforeClearlyVisibleAcc {
+            seen_discernible: acc.seen_discernible,
+            valid: false,
+          }
+        }
+      PatternDiscernible =>
+        DiscernibleBeforeClearlyVisibleAcc {
+          seen_discernible: true,
+          valid: true,
+        }
+      PatternNotYetDiscernible =>
+        acc
+    }
+  }
+}
+
+fn bach_buildup_discernible_precedes_clearly_visible(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  let folded = fold(
+    rows,
+    init: DiscernibleBeforeClearlyVisibleAcc {
+      seen_discernible: false,
+      valid: true,
+    },
+    f: fn(acc, row) {
+      fold_discernible_before_clearly_visible(acc: acc, row: row)
+    },
+  )
+  folded.valid
+}
+
+type LastBuildupRowAcc
+  = LastBuildupRowAbsent
+  | LastBuildupRowPresent { row: BachBuildupObservationRow }
+
+fn fold_track_last_buildup_row(
+  acc: LastBuildupRowAcc,
+  row: BachBuildupObservationRow,
+) -> LastBuildupRowAcc {
+  LastBuildupRowPresent { row: row }
+}
+
+fn bach_buildup_final_row_clearly_visible(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  match fold(
+    rows,
+    init: LastBuildupRowAbsent,
+    f: fn(acc, row) {
+      fold_track_last_buildup_row(acc: acc, row: row)
+    },
+  ) {
+    LastBuildupRowPresent { row: final_row } =>
+      final_row.pattern_status == PatternClearlyVisible
+    LastBuildupRowAbsent => false
+  }
+}
+
+fn bach_buildup_all_rows_cited_apparatus(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  rows |> all(row => bach_buildup_row_is_cited_apparatus(row: row))
+}
+
+type PanelSequenceFoldAcc {
+  expected_rank: Int
+  valid: Bool
+}
+
+fn fold_panel_sequence(
+  acc: PanelSequenceFoldAcc,
+  row: BachBuildupObservationRow,
+) -> PanelSequenceFoldAcc {
+  if !acc.valid {
+    acc
+  } else {
+    let rank = figure_3_panel_rank(panel: row.figure_3_panel)
+    if rank == acc.expected_rank {
+      PanelSequenceFoldAcc {
+        expected_rank: acc.expected_rank + 1,
+        valid: true,
+      }
+    } else {
+      PanelSequenceFoldAcc {
+        expected_rank: acc.expected_rank,
+        valid: false,
+      }
+    }
+  }
+}
+
+fn bach_buildup_panels_are_figure_3_a_through_e_once(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  let folded = fold(
+    rows,
+    init: PanelSequenceFoldAcc {
+      expected_rank: 0,
+      valid: true,
+    },
+    f: fn(acc, row) {
+      fold_panel_sequence(acc: acc, row: row)
+    },
+  )
+  folded.valid && folded.expected_rank == 5 && (rows |> count) == 5
+}
+
+fn bach_buildup_source_shape_holds_for(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  bach_buildup_all_rows_cited_apparatus(rows: rows)
+    && bach_buildup_panels_are_figure_3_a_through_e_once(rows: rows)
+}
+
+fn bach_buildup_progression_holds_for(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  bach_buildup_source_shape_holds_for(rows: rows)
+    && bach_buildup_counts_strictly_increase(rows: rows)
+    && bach_buildup_pattern_status_never_regresses(rows: rows)
+    && bach_buildup_discernible_precedes_clearly_visible(rows: rows)
+    && bach_buildup_final_row_clearly_visible(rows: rows)
+}
+
+fn bach_cited_buildup_progression_holds() -> Bool {
+  bach_buildup_progression_holds_for(rows: bach_buildup_observations)
+}
+
+fn bach_distribution_observation_rank(
+  observation: BachDistributionObservation,
+) -> Int {
+  match observation {
+    SlitOneSingleSlitDiffractionObserved => 0
+    SlitTwoSingleSlitDiffractionObserved => 1
+    BothSlitsDoubleSlitDiffractionObserved => 2
+  }
+}
+
+type DistributionObservationSequenceFoldAcc {
+  expected_rank: Int
+  valid: Bool
+}
+
+fn fold_distribution_observation_sequence(
+  acc: DistributionObservationSequenceFoldAcc,
+  observation: BachDistributionObservation,
+) -> DistributionObservationSequenceFoldAcc {
+  if !acc.valid {
+    acc
+  } else {
+    let rank = bach_distribution_observation_rank(observation: observation)
+    if rank == acc.expected_rank {
+      DistributionObservationSequenceFoldAcc {
+        expected_rank: acc.expected_rank + 1,
+        valid: true,
+      }
+    } else {
+      DistributionObservationSequenceFoldAcc {
+        expected_rank: acc.expected_rank,
+        valid: false,
+      }
+    }
+  }
+}
+
+fn bach_distribution_observations_match_canonical_sequence_for(
+  observations: List<BachDistributionObservation>,
+) -> Bool {
+  let folded = fold(
+    observations,
+    init: DistributionObservationSequenceFoldAcc {
+      expected_rank: 0,
+      valid: true,
+    },
+    f: fn(acc, observation) {
+      fold_distribution_observation_sequence(acc: acc, observation: observation)
+    },
+  )
+  folded.valid && folded.expected_rank == 3 && (observations |> count) == 3
+}
+
+fn bach_cited_distribution_observations_match_canonical_sequence() -> Bool {
+  bach_distribution_observations_match_canonical_sequence_for(
+    observations: bach_distribution_observations,
+  )
+}
+
+fn bach_double_slit_interference_evidence_holds() -> Bool {
+  bach_cited_buildup_progression_holds()
+    && bach_cited_distribution_observations_match_canonical_sequence()
+}
+
+fn bach_double_slit_interference_evidence_rejects_for_distribution(
+  observations: List<BachDistributionObservation>,
+) -> Bool {
+  !bach_cited_buildup_progression_holds()
+    || !bach_distribution_observations_match_canonical_sequence_for(
+      observations: observations,
+    )
+}
+
+fn bach_buildup_progression_rejects_non_increasing_counts(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  !bach_buildup_counts_strictly_increase(rows: rows)
+}
+
+fn bach_buildup_progression_rejects_status_regression(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  !bach_buildup_pattern_status_never_regresses(rows: rows)
+}
+
+fn bach_buildup_progression_rejects_missing_discernible_before_clearly_visible(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  !bach_buildup_discernible_precedes_clearly_visible(rows: rows)
+}
+
+fn bach_buildup_progression_rejects_final_not_clearly_visible(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  !bach_buildup_final_row_clearly_visible(rows: rows)
+}
+
+fn bach_buildup_progression_rejects_wrong_panel_order(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  !bach_buildup_panels_are_figure_3_a_through_e_once(rows: rows)
+}

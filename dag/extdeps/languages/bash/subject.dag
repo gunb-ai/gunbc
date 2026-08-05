@@ -21,6 +21,8 @@ type GnuBash
 
 data gnu_bash: GnuBash = GnuBashShell
 
+data scope_alias_note: String = "The scope is declared under a UNIQUE name and extdeps_model_scope is its alias, rather than the other way round. Two reasons, both load-bearing. The mandated tag name is identical in every extdeps carrier, and .dag has no import aliasing, so a consumer that needs to reference two carriers' scopes at once — the conformance join in gunbc.shell_target_conformance, or any witness comparing this subject to another — cannot import both under the tag name. And a uniquely named canonical declaration is what a symbolic citation can point AT (DESIGN section 3 cite-the-symbol): 'extdeps_model_scope' names forty different things across the corpus and therefore names none of them."
+
 data gnu_bash_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -32,7 +34,5 @@ data gnu_bash_model_scope: ExternalModelScope = ExternalModelScope {
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
-
-data gnu_bash_mandated_scope_name_scaffold_note: String = "DECLARED SCAFFOLD — the shared explanation and both dissolution triggers live once at gunbc.language_subject_scope_scaffold mandated_scope_name_scaffold, and are deliberately not repeated inside an upstream subject carrier (cursor review 48122)."
 
 data extdeps_model_scope: ExternalModelScope = gnu_bash_model_scope
