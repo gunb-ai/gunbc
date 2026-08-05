@@ -16,14 +16,15 @@
 //! `#[ignore]`d per the `route_a_emit_fresh_cargo_green_test.rs` precedent, and per the explicit
 //! ruling that a cargo subprocess must never sit in the per-PR CI discovery lane.
 //!
-//! ENROLLMENT: NOT the falsifier cadence -- executes only by hand today
+//! ENROLLMENT: this check IS the `falsifier_self_host_wet` class (cargo build, process
+//! execution, real gunbc emit -- `gunbc.ci_layer_roots` `falsifier_self_host_wet_note`), but
+//! that lane's cadence is dark today (`falsifier_self_host_wet_cadence_active` is false in
+//! `src/v2/compiler/self_host/wet_receipt_enrollment.dag`), so this file executes only by hand
 //! (`cargo test --release -p v1-compiler --test interpreter_dispatch_bijection_real_roster_red --
-//! --ignored`). The falsifier cadence's enrollment axis (`gunbc.commit_workflow`
-//! `CommitWitnessClaim`/`CommitSpecGate`, `bare_deenrollment_wall_note`) models only .dag-sourced
-//! witnesses; it has no member kind for a hand-authored Rust `#[test]`. This is a declared,
-//! named gap, not a silent one -- see `gunbc.commit_workflow`
-//! `rust_level_evidence_enrollment_axis_gap_note` for the full accounting and dissolution
-//! trigger. Do not read this test's presence in the tree as "enrolled on the falsifier cadence".
+//! --ignored`) -- the same dark-lane state as `artifact_store_fs_witness_test.dag` and
+//! `direct_rust_door_write_compile_witness_test.dag`. See `gunbc.ci_layer_roots`
+//! `dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note` for the full accounting
+//! and shared dissolution trigger. Do not read this test's presence in the tree as "enrolled".
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
