@@ -21,7 +21,9 @@ import v2.std.node { Symbol }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 
-data frontier_nonempty_carrier_pattern_note: String = "NonEmptySymbolChain and NonEmptyGrammarChoiceAmbiguityRows join NonEmptyDiagnostics and NonEmptyProcessNodeIds as hand-rolled nonempty carriers beside the generic NonEmptyList refinement (fixture-only today). Counted here so the pattern is visible rather than silently repeated."
+data frontier_nonempty_carrier_pattern_note: String = "NonEmptySymbolChain and NonEmptyGrammarChoiceAmbiguityRows join NonEmptyDiagnostics and NonEmptyProcessNodeIds as hand-rolled nonempty carriers beside the generic NonEmptyList refinement (fixture-only today). Counted here so the pattern is visible rather than silently repeated. Dissolve triggers: non_empty_symbol_chain_dissolve_trigger (this module); NonEmptyGrammarChoiceAmbiguityRows trigger on v2.std.grammar_choice_ambiguity."
+
+data non_empty_symbol_chain_dissolve_trigger: String = "migrate_when_nonempty_list_refinement_promoted — NonEmptySymbolChain dissolves into NonEmptyList<Symbol> when the refinement is promoted from v2.test.claim.manual.refinement_nonempty_list to std."
 
 data frontier_fixture_cemented_producer_note: String = "FixtureCemented is forward-declared for the fixture-free self-host bar; inhabited by the behavioral-equivalence probe when it detects injected fixtures cementing greens (e.g. add_arrow_eval_allocate_literal, pick-lit hardcoding) — not by frontier_classify_rejection_reason (assemble/emit stage only)."
 
