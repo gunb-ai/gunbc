@@ -13,11 +13,17 @@
 # workflow wrote the body once at first red and thereafter only appended a
 # throttled heartbeat comment, so the body — the thing a human actually reads —
 # froze while the failure changed underneath it. Receipt: #7737 sat open for ~30h
-# describing a BudgetExceeded kill on witness_committed_is_fixed_point that had
-# stopped occurring at 2026-08-03T17:53, while the live failure was WitnessRed on
-# five entirely different witnesses; recovering the real failing set meant
-# downloading a two-hour run log and grepping it. An open issue reads as an
-# accurate live description of the current state, so a stale one is worse than
+# with a body describing a BudgetExceeded kill on witness_committed_is_fixed_point
+# that had stopped occurring at 2026-08-03T17:53, while the live failure was
+# WitnessRed on entirely different witnesses. Precisely: the alerting MECHANISM was
+# working — the 2026-08-04T12:31 heartbeat comment does name the current failing set
+# — so this is not missed alerting. What failed is that the two things a reader
+# meets first, the title and the body, described a resolved failure, while the
+# current one was only in a comment that may be up to 20h old and sits below the
+# fold. Worse, the class transition itself never announced anything: BudgetExceeded
+# -> WitnessRed is a different incident with a different remedy, and it was absorbed
+# into an unchanged "Still red". An open issue reads as an accurate live description
+# of the current state, so a stale one is worse than
 # none. The body is therefore rewritten every red window (body edits do not
 # notify, so this costs no noise), and the failing set plus its failure class is
 # carried as a signature: a red that CHANGES CLASS is a different incident from a
