@@ -8,7 +8,9 @@ import gunbc.floor_component_receipt {
   floor_component_row_is_done,
   floor_component_row_of,
   floor_component_row_of_failure_mode,
-  floor_component_transition_outcome
+  floor_component_transition_outcome,
+  ModeNoFailure,
+  ModeWitnessRed
 }
 import std.realization_schedule { SelectionApplied }
 import std.observation { Done, Refused, Failed, TimedOut, Skipped, Final }
@@ -335,7 +337,8 @@ fn falsifier_witness_row(index: Nat, done: Bool) -> FloorComponentRow {
     selection: SelectionApplied,
     witnesses: 0,
     outcome: if done { Done } else { Failed { error: "synthetic red" as NonEmptyStr, output: "" } },
-    wall: millisecond(count: 0)
+    wall: millisecond(count: 0),
+    failure_mode: if done { ModeNoFailure } else { ModeWitnessRed }
   )
 }
 
