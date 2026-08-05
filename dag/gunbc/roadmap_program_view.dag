@@ -105,10 +105,6 @@ fn program_map_member(map: Map<String, Bool>, id: String) -> Bool {
   }
 }
 
-fn program_node_index(nodes: List<RoadmapNode>) -> Map<String, RoadmapNode> {
-  program_nodes_acc(nodes: nodes).by_id
-}
-
 type ProgramNodeAcc {
   by_id: Map<String, RoadmapNode>
   duplicate_ids: List<RoadmapNodeId>
