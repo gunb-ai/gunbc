@@ -85,7 +85,7 @@ for mod in "${MODULES[@]}"; do
   tail -n +2 "$SURVEY_DIR/tmp_row.tsv" >> "$TSV"
 done
 
-if failures -ne 0; then
+if [[ failures -ne 0 ]]; then
   echo "survey refused: $failures module probe(s) failed — TSV not promoted to manifest" >&2
   exit 1
 fi
