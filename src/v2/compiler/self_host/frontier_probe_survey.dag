@@ -22,7 +22,7 @@ import v2.compiler.self_host.frontier_probe_types {
   frontier_probe_policy_revision
 }
 import std.realization_schedule { scoped_witness_exact_head_text_holds }
-import std.content_hash { ContentHash, ContentHashComparison, Fnv1a64, Fnv1a64Structural, compare_content_hash, ContentHashEqual }
+import std.content_hash { ContentHash, compare_content_hash, ContentHashEqual }
 import v2.compiler.name_resolve { Admission }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.std.algebra { fold_list, length }
