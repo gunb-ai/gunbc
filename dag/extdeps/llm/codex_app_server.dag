@@ -61,3 +61,11 @@ fn codex_app_server_initialize_request_line() -> NonEmptyStr {
     "\{\"clientInfo\":\{\"name\":\"gunbc\",\"title\":\"gunbc\",\"version\":\"0\"\},\"capabilities\":\{\}\}\}",
   ) as NonEmptyStr
 }
+
+fn codex_app_server_account_read_request_line() -> NonEmptyStr {
+  "\{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"account/read\",\"params\":\{\}\}" as NonEmptyStr
+}
+
+fn codex_app_server_rate_limits_read_request_line() -> NonEmptyStr {
+  "\{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"account/rateLimits/read\",\"params\":\{\}\}" as NonEmptyStr
+}
