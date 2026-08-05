@@ -13,6 +13,16 @@
 //! and drives a real `cargo build`, following the one existing precedent for this pattern in the
 //! tree (`cssl_seed_linked_closure_assembly.rs`'s `deliberate-red` cargo-subprocess controls). It
 //! does not touch the real dispatch generator or `v1_interpreter.rs`.
+//!
+//! Not `#[ignore]`d, unlike the sibling `interpreter_dispatch_bijection_real_roster_red.rs`
+//! (review 48433): that file's tests clone the real workspace and regenerate through the real
+//! `gunbc` pipeline before a real `cargo build` of `v1-compiler` (~192s/test), so they are
+//! `#[ignore]`d for cost, not because a cargo subprocess must never sit in per-PR CI discovery --
+//! neither `cargo test` nor `cargo nextest` runs in per-PR CI at all (nextest removed 2026-07-11,
+//! DESIGN.md `commit_gate_rust_suite_removed_disposition`; the local suite is the only consumer
+//! either way). The fixtures here are a dependency-free temp-dir crate (no crates.io download, no
+//! network) and build in a few seconds each, so leaving them in the default local `cargo test`
+//! run is cheap and keeps the claim-A discriminator exercised without opt-in.
 
 use std::fs;
 use std::path::PathBuf;
