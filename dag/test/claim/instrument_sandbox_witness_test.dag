@@ -43,6 +43,14 @@ fn served() -> ServeHttpResponse {
   )
 }
 
+fn last_segment(s: String, marker: String) -> String {
+  fold(split(s: s, sep: marker), init: "", f: (acc, part) => part)
+}
+
+fn first_segment(s: String, marker: String) -> String {
+  fold(split(s: s, sep: marker), init: "", f: (acc, part) => if acc == "" { part } else { acc })
+}
+
 fn emission_var_ref(i: AuditionIntensity) -> String {
   concat("--", concat(audition_emission_var(i: i), ":"))
 }
@@ -72,13 +80,18 @@ fn witness_the_instrument_path_serves_html() -> Bool {
     && string_contains(s: r.body, pattern: "width=device-width")
 }
 
-data study_not_instrument_note: String = "The page must not describe itself as the operable instrument, and the header must not carry controls it cannot operate. Both are checked, because both were true of the first cut."
+data study_not_instrument_note: String = "The page must not describe itself as the operable instrument, and the header must not carry controls it cannot operate. The dead-control claim is checked against the MARKUP, not the whole document: the register stylesheet is inlined in a style element and legitimately contains .theme-toggle and .sound-toggle rules, so searching the raw body for those words finds the CSS and reds on a page that has no such buttons. The first version of this claim did exactly that and was wrong for a reason worth keeping — a negative substring assertion over a document that embeds its own stylesheet is testing the stylesheet."
+
+fn body_markup(r: ServeHttpResponse) -> String {
+  last_segment(s: r.body, marker: "</style>")
+}
 
 fn witness_the_page_calls_itself_a_study_and_carries_no_dead_controls() -> Bool {
   let r = served()
+  let markup = body_markup(r: r)
   string_contains(s: r.body, pattern: "instrument — static study")
-    && !string_contains(s: r.body, pattern: "theme-toggle")
-    && !string_contains(s: r.body, pattern: "sound-toggle")
+    && !string_contains(s: markup, pattern: "theme-toggle")
+    && !string_contains(s: markup, pattern: "sound-toggle")
 }
 
 data derived_role_witness_note: String = "The load-bearing claim: the role the audition is admitted at is the one the projection derived for the selected subject, not a literal."
@@ -112,14 +125,6 @@ fn witness_red_a_refused_audition_paints_nothing() -> Bool {
 
 data block_position_note: String = "Occurrence INSIDE each theme block, not merely somewhere in the stylesheet: the CSS is split on the two later block selectors and the variable is required in every resulting piece. The first version asserted the variable existed and the selectors existed, which one hand-written block would have satisfied while the toggle silently did nothing."
 
-fn last_segment(s: String, marker: String) -> String {
-  fold(split(s: s, sep: marker), init: "", f: (acc, part) => part)
-}
-
-fn first_segment(s: String, marker: String) -> String {
-  fold(split(s: s, sep: marker), init: "", f: (acc, part) => if acc == "" { part } else { acc })
-}
-
 fn witness_the_emission_var_occurs_inside_every_theme_block() -> Bool {
   let css = instrument_emission_root_css_for(role: audition_subject_role())
   let v = emission_var_ref(i: AuditionHero)
@@ -147,6 +152,15 @@ fn witness_the_page_renders_real_remaining_and_constraint_readings() -> Bool {
     && string_contains(s: r.body, pattern: "outcome / status")
     && string_contains(s: r.body, pattern: "node / why")
     && string_contains(s: r.body, pattern: "open fronts")
+}
+
+data front_grain_witness_note: String = "The claim review 48579 found missing: the front grain renders the FIRST contributing front. The oracle is independent of the code under test — V0 derives the exemplar's contributing set as namespace-pderive then v2-generation, so the page must name the first front's own title and must NOT name the second's. A last-wins fold renders the second, which is exactly what the page did before the fix, so this claim reds on the real defect rather than on a restatement of the fix. Reading the rendered name rather than the selection function is deliberate: the defect was in what the page showed."
+
+fn witness_the_front_grain_shows_the_first_contributing_front() -> Bool {
+  let r = served()
+  string_contains(s: r.body, pattern: "front / status")
+    && string_contains(s: r.body, pattern: "Namespace / P-derive")
+    && !string_contains(s: body_markup(r: r), pattern: "V2 generation and admission")
 }
 
 data evidence_refusal_note: String = "Evidence depth refuses, and unlike the previous Why refusal this one is real: gunbc.roadmap_program_view records that the verification-receipt join is test-only, so no carrier can answer it yet. The witness pins the cause text so a future reader can tell this refusal from the fabricated one it replaced."
@@ -178,6 +192,7 @@ test fn instrument_sandbox_keystone_holds() -> Bool {
     && witness_the_emission_var_occurs_inside_every_theme_block()
     && witness_the_page_reads_the_live_derived_program_view()
     && witness_the_page_renders_real_remaining_and_constraint_readings()
+    && witness_the_front_grain_shows_the_first_contributing_front()
     && witness_red_evidence_depth_refuses_with_its_real_cause()
     && witness_the_press_specimen_is_a_bounded_translation_on_a_focusable_control()
 }

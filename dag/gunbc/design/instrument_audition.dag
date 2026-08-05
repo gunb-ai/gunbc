@@ -277,10 +277,17 @@ fn read_line_view(lv: FinishLineView, camera: ProgramCamera) -> ProgramReading {
   }
 }
 
-data front_grain_note: String = "At front depth the camera shows the contributing fronts V0 derived for this outcome, and it shows the FIRST one rather than a list because a single reading is one answer — a camera at a grain reports the subject in view. Which front is in view is a tuning axis the operable instrument owns; this study fixes it at the first contributing front so the grain is genuinely different from Outcome rather than a relabelled copy of it."
+data front_grain_note: String = "At front depth the camera shows the contributing fronts V0 derived for this outcome, and it shows the FIRST one rather than a list because a single reading is one answer — a camera at a grain reports the subject in view. Which front is in view is a tuning axis the operable instrument owns; this study fixes it at the first contributing front so the grain is genuinely different from Outcome rather than a relabelled copy of it.
+
+FIRST IS ENFORCED BY THE FOLD, NOT PROMISED BY THIS PARAGRAPH (review finding 48579, 2026-08-05). The first cut folded the contributing fronts with a step that ignored its accumulator, so the LAST match won while this note said first — and it was not hypothetical: the exemplar subject contributes to namespace-pderive and then v2-generation, so the study rendered the wrong front. A fold whose step drops acc is a last-wins selection wearing a first-wins comment, and nothing caught it because no witness read the front grain at all. Selection is now a separate take-first over the list, so the reading step cannot express a preference between candidates, and witness_the_front_grain_shows_the_first_contributing_front reads the rendered key."
 
 fn front_view_for(lv: FinishLineView, fronts: List<FrontView>) -> List<FrontView> {
   fronts |> filter(fv => lv.contributing_fronts |> any(f => program_front_key(front: f) == fv.key))
+}
+
+fn first_front_view(lv: FinishLineView, fronts: List<FrontView>) -> List<FrontView> {
+  fold(front_view_for(lv: lv, fronts: fronts), init: [],
+    f: (acc, fv) => if count(acc) == 0 { [fv] } else { acc })
 }
 
 fn read_front_view(fv: FrontView, camera: ProgramCamera) -> ProgramReading {
@@ -313,6 +320,11 @@ fn line_view_for(view: V1DeletionProgramView, subject_key: String) -> List<Finis
   view.finish_lines |> filter(lv => lv.key == subject_key)
 }
 
+fn first_line_view(view: V1DeletionProgramView, subject_key: String) -> List<FinishLineView> {
+  fold(line_view_for(view: view, subject_key: subject_key), init: [],
+    f: (acc, lv) => if count(acc) == 0 { [lv] } else { acc })
+}
+
 fn read_program_depth(view: V1DeletionProgramView, camera: ProgramCamera) -> ProgramReading {
   match camera.mode {
     ModeRemaining => ReadingProgramShape { remaining: view.remaining }
@@ -335,7 +347,7 @@ fn read_camera(camera: ProgramCamera, view: V1DeletionProgramView) -> ProgramRea
       DepthEvidence => ReadingNoSubject
     }
     FinishLineFocused { line_key } => fold(
-      line_view_for(view: view, subject_key: line_key),
+      first_line_view(view: view, subject_key: line_key),
       init: ReadingUnavailable {
         mode: program_mode_key(m: camera.mode),
         subject_key: line_key,
@@ -349,7 +361,7 @@ fn read_camera(camera: ProgramCamera, view: V1DeletionProgramView) -> ProgramRea
 fn read_camera_at(lv: FinishLineView, camera: ProgramCamera, view: V1DeletionProgramView) -> ProgramReading {
   match camera.depth {
     DepthFront => fold(
-      front_view_for(lv: lv, fronts: view.fronts),
+      first_front_view(lv: lv, fronts: view.fronts),
       init: read_front(lv: lv, camera: camera),
       f: (acc, fv) => read_front_view(fv: fv, camera: camera),
     )
