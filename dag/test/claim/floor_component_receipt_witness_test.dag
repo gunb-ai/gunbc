@@ -4,6 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond }
+import std.observation { ClockBasis, CpuClock, WallClock }
 import gunbc.floor_component_receipt {
   FloorComponentRow,
   FloorControlState,
@@ -34,6 +35,7 @@ fn fcr_control_row_with(outcome_tag: NonEmptyStr, detail: NonEmptyStr) -> FloorC
     witnesses: 5217,
     outcome_tag: outcome_tag,
     detail: detail,
+    basis: WallClock,
     budget: millisecond(count: 0),
     elapsed: millisecond(count: 0),
     shown_failures: 0,
@@ -52,6 +54,7 @@ fn fcr_silent_pick_row() -> FloorComponentRow? {
     witnesses: 1,
     outcome_tag: "refused" as NonEmptyStr,
     detail: fcr_silent_pick_diagnostic,
+    basis: WallClock,
     budget: millisecond(count: 0),
     elapsed: millisecond(count: 0),
     shown_failures: 0,
@@ -68,6 +71,7 @@ fn fcr_timed_out_row() -> FloorComponentRow? {
     witnesses: 1,
     outcome_tag: "timed_out" as NonEmptyStr,
     detail: "unused by the TimedOut arm" as NonEmptyStr,
+    basis: WallClock,
     budget: millisecond(count: 900000),
     elapsed: millisecond(count: 900766),
     shown_failures: 0,
@@ -84,6 +88,7 @@ fn fcr_expect_red_row(index: Nat) -> FloorComponentRow? {
     witnesses: 6,
     outcome_tag: "done" as NonEmptyStr,
     detail: "expect_red still-red OK" as NonEmptyStr,
+    basis: WallClock,
     budget: millisecond(count: 0),
     elapsed: millisecond(count: 0),
     shown_failures: 0,
@@ -193,6 +198,7 @@ test fn fcr_red_control_unknown_tags_fail_closed() -> Bool {
     witnesses: 1,
     outcome_tag: "probably_fine" as NonEmptyStr,
     detail: "d" as NonEmptyStr,
+    basis: WallClock,
     budget: millisecond(count: 0),
     elapsed: millisecond(count: 0),
     shown_failures: 0,
@@ -206,6 +212,7 @@ test fn fcr_red_control_unknown_tags_fail_closed() -> Bool {
     witnesses: 1,
     outcome_tag: "done" as NonEmptyStr,
     detail: "d" as NonEmptyStr,
+    basis: WallClock,
     budget: millisecond(count: 0),
     elapsed: millisecond(count: 0),
     shown_failures: 0,
@@ -285,6 +292,7 @@ fn fcr_unreached_control_row(selection_tag: NonEmptyStr) -> FloorComponentRow? {
     witnesses: 0,
     outcome_tag: "skipped" as NonEmptyStr,
     detail: "batch not reached — an earlier batch failed under the stop policy" as NonEmptyStr,
+    basis: WallClock,
     budget: millisecond(count: 0),
     elapsed: millisecond(count: 0),
     shown_failures: 0,

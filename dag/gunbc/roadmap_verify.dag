@@ -255,6 +255,12 @@ fn verify_base_node_id(
   node_id: String,
 ) -> VerificationOutcome {
   match belt_lookup_node(node_id: node_id) {
+    AuthorityProjectionRefused { detail: detail } =>
+      VerificationRefused {
+        node_id: node_id,
+        label: "authority-projection" as NonEmptyStr,
+        reason: detail,
+      }
     NodeMissing => VerificationNodeNotFound { node_id: node_id }
     NodeFound { node: node } =>
       verify_base_before_dispatch(instance: instance, node: node)

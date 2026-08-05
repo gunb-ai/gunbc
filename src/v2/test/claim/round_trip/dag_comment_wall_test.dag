@@ -52,3 +52,25 @@ test fn dag_block_comment_is_fail_closed() -> Bool {
 test fn slash_slash_inside_string_literal_accepted() -> Bool {
   slash_slash_in_string() == "https://example.com"
 }
+
+data dag_comment_wall_recut_note: String = "THE WALL'S MEANING CHANGED, AND THESE ROWS ARE WHERE THAT IS STATED. It used to assert that comment SYNTAX is unwritable. It now asserts DESIGN 4c's actual rule: prose is not forbidden, unclassified prose is.
+
+Nothing above was edited, because nothing above became wrong — the line probe's comment is TRAILING and the block probe's syntax is still unmodeled, so both still refuse. But they refuse for a different reason than they used to: the annotation channel captures the lexeme and attachment then refuses it with a typed, located diagnostic, where before the tokenizer failed to produce a token at all. A reader who assumes those two probes still prove `// is a parse error` would be wrong, and would conclude the feature had not landed.
+
+What distinguishes the new rule from the old one is the POSITIVE control below: a leading annotation above a module item now compiles through the same production path that refuses the other three. Without it, every probe in this file is a refusal, and a wall that only ever says no is indistinguishable from one that rejects everything."
+
+test fn dag_leading_annotation_above_a_module_item_compiles() -> Bool {
+  dag_comment_wall_probe_compiles(
+    source: "module comment_wall_leading\n\n// prose about the probe\nfn probe() -> Bool { true }\n",
+    path: "src/comment_wall_leading.rs"
+  )
+}
+
+data body_grain_still_refused_note: String = "Body-grain prose stays refused, and this is the discriminating partner of the row above: the two sources differ ONLY in whether the comment sits above the declaration or inside its body, so acceptance cannot be coming from the comment being ignored — an ignored comment would make both compile."
+
+test fn dag_annotation_inside_a_body_is_still_refused() -> Bool {
+  !dag_comment_wall_probe_compiles(
+    source: "module comment_wall_body\n\nfn probe() -> Bool {\n  // prose inside the body\n  true\n}\n",
+    path: "src/comment_wall_body.rs"
+  )
+}

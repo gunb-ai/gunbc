@@ -2057,6 +2057,76 @@ fn call_function_inner(
         }
     }
 
+    let caller_label_matches_param = |param_name: &str, arg_label: &str| {
+        param_name == arg_label
+            || param_name == "_"
+            || param_name
+                .strip_prefix('_')
+                .is_some_and(|stripped| stripped == arg_label)
+    };
+    let param_supplied_at_call = |pname: &str| {
+        if bindings.contains_key(&ctx.sym(pname)) {
+            return true;
+        }
+        for (opt_name, _) in args.iter() {
+            if let Some(label) = opt_name {
+                if caller_label_matches_param(pname, label) {
+                    return true;
+                }
+            }
+        }
+        false
+    };
+
+    let required_count = fn_node
+        .params
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| {
+            param_node_default_value((*p).clone()).is_none()
+                && match p.children.first() {
+                    Some(type_expr) => {
+                        authored_name_at(ctx.si(), type_expr.clone()) != all_param_names[*i]
+                    }
+                    None => false,
+                }
+        })
+        .count();
+    let supplied_required = fn_node
+        .params
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| {
+            param_node_default_value((*p).clone()).is_none()
+                && match p.children.first() {
+                    Some(type_expr) => {
+                        authored_name_at(ctx.si(), type_expr.clone()) != all_param_names[*i]
+                    }
+                    None => false,
+                }
+                && param_supplied_at_call(&all_param_names[*i])
+        })
+        .count();
+    for (i, param) in fn_node.params.iter().enumerate() {
+        let pname = &all_param_names[i];
+        let is_value_param = match param.children.first() {
+            Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != *pname,
+            None => false,
+        };
+        if is_value_param
+            && param_node_default_value(param.clone()).is_none()
+            && !param_supplied_at_call(pname)
+        {
+            return Err(InterpError::CallContractMismatch {
+                callee: fn_node.name.clone(),
+                detail: format!(
+                    "missing required argument '{}' ({} of {} required argument(s) supplied)",
+                    pname, supplied_required, required_count
+                ),
+            });
+        }
+    }
+
     let call_env = Env::extend(&lexical_base_env(env), bindings);
     #[cfg(any(test, feature = "interp_test_witness"))]
     record_call_env_depth(&call_env);
@@ -10232,6 +10302,30 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(variant))
             },
 
+            arm "free_call.parse_roadmap_acceptance_event_history_jsonl" { "parse_roadmap_acceptance_event_history_jsonl" } => {
+                let text = expect_str(
+                    $positional.first().copied(),
+                    "parse_roadmap_acceptance_event_history_jsonl text",
+                )?;
+                crate::cli_run::roadmap_acceptance_history_carrier::parse_roadmap_acceptance_event_history_jsonl_builtin(
+                    &text,
+                    $ctx,
+                )
+                .map(Some)
+            },
+
+            arm "free_call.project_roadmap_acceptance_event_history_from_authority_text_host" { "project_roadmap_acceptance_event_history_from_authority_text_host" } => {
+                let authority_text = expect_str(
+                    $positional.first().copied(),
+                    "project_roadmap_acceptance_event_history_from_authority_text_host authority_text",
+                )?;
+                crate::cli_run::project_roadmap_acceptance_event_history_from_authority_text_builtin(
+                    &authority_text,
+                    $ctx,
+                )
+                .map(Some)
+            },
+
             // DECLARED SCAFFOLD supplying gunbc.stage0_emit_plan with SOURCE identities only.
             // It parses cli_run::regen_input_sources through the module-binding authority path;
             // it never observes EmitResult. Dissolve-on: generated_artifact_gate accepts a
@@ -11245,6 +11339,13 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::extdeps_external_authority_live_roster_module_count(),
             ))),
 
+            arm "free_call.seed_runner_bool_false_failure_detail" { "seed_runner_bool_false_failure_detail" } => {
+                let witness = expect_str($positional.first().copied(), $name)?;
+                Ok(Some(Value::Str(crate::cli_run::seed_runner_bool_false_failure_detail(
+                    $ctx, &witness,
+                ))))
+            },
+
             arm "free_call.doc_graph_orphan_count" { "doc_graph_orphan_count" } => {
                 let extra_roots = expect_str_list($positional.first().copied(), $name)?;
                 Ok(Some(Value::Int(crate::cli_run::doc_graph_orphan_count(
@@ -11797,7 +11898,20 @@ pub fn fold_caller_snapshot() -> Vec<(String, u64, u64, u64, &'static str)> {
 /// HashMap/HashSet write, per call. dissolve-on: the residual-hunt work item
 /// closes (adhoc-c328b166-bca) -- delete these recorders and their call
 /// sites, they are not a permanent profiler.
+#[cfg(any(test, feature = "test_hooks"))]
+static FORCE_FORENSICS_FOR_TEST: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(any(test, feature = "test_hooks"))]
+pub fn set_call_frequency_forensics_for_test(enabled: bool) {
+    FORCE_FORENSICS_FOR_TEST.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn residual_hunt_forensics_enabled() -> bool {
+    #[cfg(any(test, feature = "test_hooks"))]
+    if FORCE_FORENSICS_FOR_TEST.load(std::sync::atomic::Ordering::Relaxed) {
+        return true;
+    }
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok())
 }
@@ -11930,6 +12044,7 @@ fn record_call_frequency(func_name: &str) {
         "parse_table_lookup",
         "parse_table_insert",
         "parse_choice_residue_backtrack",
+        "uri_percent_encode_scalar_fragment",
     ];
     let Some(key) = WATCHLIST.iter().find(|w| **w == func_name) else {
         return;

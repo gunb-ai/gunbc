@@ -2,7 +2,8 @@ module v2.lens.registry
 
 
 type LensIdV0
-  = Complexity
+  = ComplexityDerivedKernel
+  | ComplexityOptimality
   | Cost
   | Parallelism
   | EffectEnumeration
@@ -80,8 +81,13 @@ data lens_owned_fn_registry_v0: List<LensOwnedFnV0> = [
   lens_owned_fn_llvm_instruction_cost
 ]
 
-data lens_registry_v0_complexity: LensRegistryEntryV0 = {
-  lens_id: Complexity
+data lens_registry_v0_complexity_derived_kernel: LensRegistryEntryV0 = {
+  lens_id: ComplexityDerivedKernel
+  module_path: Bound { path: "v2.lens.complexity" }
+}
+
+data lens_registry_v0_complexity_optimality: LensRegistryEntryV0 = {
+  lens_id: ComplexityOptimality
   module_path: Bound { path: "v2.lens.complexity" }
 }
 
@@ -366,7 +372,8 @@ data lens_registry_v0_roster_registry: LensRegistryEntryV0 = {
 }
 
 data lens_registry_v0: List<LensRegistryEntryV0> = [
-  lens_registry_v0_complexity,
+  lens_registry_v0_complexity_derived_kernel,
+  lens_registry_v0_complexity_optimality,
   lens_registry_v0_cost,
   lens_registry_v0_parallelism,
   lens_registry_v0_effect_enumeration,
@@ -427,8 +434,12 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
 
 fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
   match left {
-    Complexity => match right {
-      Complexity => true
+    ComplexityDerivedKernel => match right {
+      ComplexityDerivedKernel => true
+      _ => false
+    }
+    ComplexityOptimality => match right {
+      ComplexityOptimality => true
       _ => false
     }
     Cost => match right {

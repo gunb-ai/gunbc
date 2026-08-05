@@ -1,0 +1,34 @@
+module extdeps.languages.markdown.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "spec.commonmark.org/"
+  }
+}
+
+data commonmark_format_subject_note: String = "COMMONMARK, cited to the CommonMark Spec (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched index gives the CommonMark Spec at version 0.31.2, released 28 January 2024, maintained by John MacFarlane. WHY THE SUBJECT IS COMMONMARK AND NOT 'MARKDOWN': Markdown has no single governing specification — the original 2004 Perl implementation left many constructs undefined, which is the reason CommonMark exists — so 'Markdown' names a family, not an independently governed upstream. This repository's markdown surface must therefore state WHICH dialect it implements; CommonMark is the one with a testable specification, and registering it under that name rather than the family name is the DESIGN section 3 move of citing the real upstream instead of a convenient nickname."
+
+type CommonMark
+  = | CommonMarkTarget
+
+data commonmark_format: CommonMark = CommonMarkTarget
+
+data commonmark_format_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.markdown.subject",
+      decl_name: "commonmark_format",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = commonmark_format_model_scope

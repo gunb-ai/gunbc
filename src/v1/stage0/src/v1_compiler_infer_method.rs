@@ -333,6 +333,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "extdeps_external_authority_live_roster_module_count".to_string(),
             int_type(),
         );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "seed_runner_bool_false_failure_detail".to_string(),
+            string_type(),
+        );
         let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_orphan_count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -465,6 +470,16 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "parse_stage0_cargo_manifest_bins".to_string(),
             type_variable_node("cargo_manifest_bin_parse".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "parse_roadmap_acceptance_event_history_jsonl".to_string(),
+            type_variable_node("roadmap_acceptance_event_history_parse".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "project_roadmap_acceptance_event_history_from_authority_text_host".to_string(),
+            type_variable_node("roadmap_acceptance_history_projection".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

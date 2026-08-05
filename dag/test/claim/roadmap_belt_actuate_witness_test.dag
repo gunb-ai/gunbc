@@ -26,6 +26,7 @@ import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
 import extdeps.github.github { GitHubUser, User, Repository }
 import std.types { CommitSha }
 import std.content_hash { content_hash_atom }
+import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified,
   gunbc_claim_execution_contract,
@@ -85,14 +86,15 @@ import gunbc.roadmap_belt_actuate {
   VerifyRecorded,
   VerifyWriteFailed,
   VerifyEvidenceUnreadable,
+  VerifyRefused,
   belt_dispatch_node_for_instance,
   belt_stop_node_for_instance,
   BeltStopResult, StopDisabled,
-  BeltNodeLookup, NodeFound, NodeMissing,
+  BeltNodeLookup, NodeFound, NodeMissing, AuthorityProjectionRefused,
   belt_find_node_in,
   belt_node_session_live,
   BeltDispatchResult, DispatchSpawned, DispatchAlreadyLive, DispatchDisabled, DispatchNodeNotFound,
-  DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchSpawnFailed,
+  DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
   belt_dispatch_result_ok,
   belt_dispatch_status_label,
   belt_dispatch_result_json_value,
@@ -139,7 +141,10 @@ import gunbc.roadmap_verification_receipt {
   VerificationSubjectObserved,
   VerificationSubjectUnobserved,
   VerificationReceiptAbsent,
+  SelectionAbsent,
+  SelectionObserved,
 }
+import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -416,6 +421,7 @@ fn is_node_found(l: BeltNodeLookup) -> Bool {
   match l {
     NodeFound { node: _ } => true
     NodeMissing => false
+    AuthorityProjectionRefused { detail: _ } => false
   }
 }
 
@@ -444,6 +450,7 @@ fn found_owner(l: BeltNodeLookup) -> String {
   match l {
     NodeFound { node: n } => n.owner
     NodeMissing => ""
+    AuthorityProjectionRefused { detail: _ } => ""
   }
 }
 
@@ -498,6 +505,7 @@ test fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
     && belt_dispatch_status_label(r: DispatchNodeNotFound { node_id: "a" }) == "node_not_found"
     && belt_dispatch_status_label(r: DispatchNodeAlreadyDone { node_id: "a" }) == "already_done_signed_off"
     && belt_dispatch_status_label(r: DispatchObserveRefused { node_id: "a", reason: "x" }) == "observe_refused"
+    && belt_dispatch_status_label(r: DispatchAuthorityRefused { node_id: "a", detail: "x" }) == "authority_refused"
     && belt_dispatch_status_label(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x" }) == "spawn_failed"
 }
 
@@ -522,13 +530,14 @@ fn band_key_for_label(label: String) -> String {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 7
+  belt_dispatch_label_band_rows().length() == 8
     && band_key_for_label(label: "spawned") == "ok"
     && band_key_for_label(label: "already_live") == "ok"
     && band_key_for_label(label: "disabled") == "fail"
     && band_key_for_label(label: "node_not_found") == "fail"
     && band_key_for_label(label: "already_done_signed_off") == "fail"
     && band_key_for_label(label: "observe_refused") == "loud"
+    && band_key_for_label(label: "authority_refused") == "loud"
     && band_key_for_label(label: "spawn_failed") == "loud"
 }
 
@@ -551,7 +560,7 @@ test fn witness_label_band_cover_reds_on_missing_row() -> Bool {
 data d4_exemplar_reconcile_note: String = "D4: belt_dispatch_result_exemplars is a HAND roster (one exemplar per BeltDispatchResult arm), enrolled DeclaredFrontier in gunbc.roster_registry. belt_dispatch_status_label's total match walls an 8th VARIANT at compile time, but nothing ties the exemplar LIST to the variant set — a missed exemplar silently narrows belt_dispatch_all_status_labels AND the component wire-total that reads it, while the live server emits the unmodeled label. This reconciles the exemplar-derived label set against the independent wire-contract pin (the same seven labels witness_dispatch_status_labels_pin_wire_contract pins), and the RED control proves a missing-variant list reds. Dissolves when inhabitance enumeration or the serve-JSON total match replaces the hand list."
 
 fn d4_wire_contract_labels() -> List<String> {
-  ["spawned", "already_live", "disabled", "node_not_found", "already_done_signed_off", "observe_refused", "spawn_failed"]
+  ["spawned", "already_live", "disabled", "node_not_found", "already_done_signed_off", "observe_refused", "authority_refused", "spawn_failed"]
 }
 
 fn d4_exemplars_reconcile(exemplars: List<BeltDispatchResult>) -> Bool {
@@ -812,6 +821,7 @@ fn fixture_verification_subject(node_id: String) -> VerificationSubject {
     attempt_key: "feedfacefeedface",
     branch: join(["dispatch/", node_id, "-afeedfacefeedface"], "") as NonEmptyStr,
     head_sha: fixture_verification_head,
+    change_window_identity: git_diff_window_absent_identity(),
   }
 }
 
@@ -832,6 +842,10 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     validation_summary: "gunbc run --claim-run",
     verification_subject: VerificationSubjectObserved {
       subject: fixture_verification_subject(node_id: node_id),
+    },
+    verification_selection: SelectionObserved {
+      head: fixture_verification_head,
+      window_identity: git_diff_window_absent_identity(),
     },
     verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
@@ -883,6 +897,7 @@ test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool 
         && (string_contains(s: reason, pattern: "exact head")
             || string_contains(s: reason, pattern: "no node"))
     VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+    VerifyRefused { node_id: _, cause: _ } => false
     VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
     VerifyWriteFailed { node_id: _, detail: _ } => false
   }
@@ -908,6 +923,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       verification_subject: VerificationSubjectUnobserved {
         reason: "fixture verification subject not established",
       },
+      verification_selection: SelectionAbsent,
       verification_source: VerificationReceiptAbsent,
       publication_subject: PublicationSubjectObserved {
         subject: PublicationSubject {
@@ -931,6 +947,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
     VerifyDeferred { node_id: _, reason } =>
       string_contains(s: reason, pattern: "agent obligation is not satisfied")
     VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+    VerifyRefused { node_id: _, cause: _ } => false
     VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
     VerifyWriteFailed { node_id: _, detail: _ } => false
   }
