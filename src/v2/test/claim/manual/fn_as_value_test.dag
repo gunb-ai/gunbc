@@ -8,7 +8,7 @@ fn add(a: Int, b: Int) -> Int { a + b }
 
 fn use_via_binding() -> Int {
   let f = add
-  f(a: 2, b: 3)
+  f(2, 3)
 }
 
 test fn fn_item_bound_and_called_via_first_class_reference() -> Bool {
