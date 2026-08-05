@@ -90,7 +90,7 @@ type ComplexityCapabilityId
   | SizeVariableLegend
   | CostAccountSpaceBridge
 
-data complexity_capability_id_note: String = "Capability identity as a closed coproduct rather than a string key. This is a construction answer to a property the previous revision only validated: two rows cannot share an identity, because an identity is a variant and a roster carrying one twice is caught at the identity join rather than by comparing spellings. It also gives cross-capability edges an exact target — RetirementOwed names the capability that supersedes it, and that name is checkable rather than prose. C0(b2) will join this set against the derived declaration population; until then, the set is authored and its completeness is explicitly unproven."
+data complexity_capability_id_note: String = "Capability identity as a closed coproduct rather than a string key. What this buys is exact: an identity OUTSIDE the vocabulary is unrepresentable, and cross-capability edges get a checkable target rather than prose — RetirementOwed names the capability that supersedes it as a variant, not a spelling. What it does NOT buy is distinctness: a List can carry the same variant twice, so inventory_identity_keys_distinct VALIDATES that and says so (operator review 2026-08-05 corrected the earlier overclaim).  C0(b2) will join this set against the derived declaration population; until then, the set is authored and its completeness is explicitly unproven."
 
 type V1ComplexityResidueId
   = SummaryEvictionHazard
@@ -119,7 +119,7 @@ type ComplexityCapabilityDisposition
   | RetirementOwed { trigger: RetirementTrigger, note: NonEmptyStr }
   | Retired { reason: NonEmptyStr }
 
-data disposition_construction_note: String = "Every arm's routing metadata is a typed identity, not a non-empty string. A destination is a CostAuthorityModule drawn from the signed ruling; a phase is a ParityPhase; a retirement trigger names the superseding capability as a ComplexityCapabilityId; a carrier is a DeclarationRef that resolves through v2.std.decl_ref_resolution. The previous revision claimed non-empty payloads made an unjustified disposition unwritable — the operator's correction is exact: a non-empty string proves only that someone typed something. What is unwritable now is a row routed to a module the ruling never named, or to a phase that does not exist, or citing a declaration that does not resolve."
+data disposition_construction_note: String = "Every arm's routing metadata is a typed identity, not a non-empty string. A destination is a CostMigrationDestination drawn from the signed ruling (the legacy oracle is absent from that vocabulary, so a row migrating INTO v1.compiler.complexity cannot be written); a phase is a ParityPhase; a retirement trigger names the superseding capability as a ComplexityCapabilityId; a carrier is a DeclarationRef that resolves through v2.std.decl_ref_resolution. The previous revision claimed non-empty payloads made an unjustified disposition unwritable — the operator's correction is exact: a non-empty string proves only that someone typed something. What is unwritable now is a row routed to a module the ruling never named, or to a phase that does not exist, or citing a declaration that does not resolve."
 
 type V1ComplexityInventoryRow {
   item: V1ComplexityInventoryItem
@@ -546,11 +546,11 @@ fn complexity_residue_key(r: V1ComplexityResidueId) -> String {
 
 fn inventory_item_key(item: V1ComplexityInventoryItem) -> String {
   match item {
-    SemanticCapabilityItem { capability: c } => concat(a: "capability:", b: complexity_capability_key(c: c))
+    SemanticCapabilityItem { capability: c } => concat("capability:", complexity_capability_key(c: c))
     LegacyHazardItem { hazard: h, of_capability: c } =>
-      concat(a: concat(a: "hazard:", b: complexity_residue_key(r: h)), b: concat(a: "@", b: complexity_capability_key(c: c)))
+      concat(concat("hazard:", complexity_residue_key(r: h)), concat("@", complexity_capability_key(c: c)))
     LegacyRealizationItem { realization: r, of_capability: c } =>
-      concat(a: concat(a: "realization:", b: complexity_residue_key(r: r)), b: concat(a: "@", b: complexity_capability_key(c: c)))
+      concat(concat("realization:", complexity_residue_key(r: r)), concat("@", complexity_capability_key(c: c)))
   }
 }
 
@@ -571,6 +571,30 @@ fn inventory_row_semantic_capability(row: V1ComplexityInventoryRow) -> Complexit
 }
 
 fn inventory_semantic_capability_count() -> Nat {
+  fold(v1_complexity_inventory_roster, init: 0, f: fn(acc, r) {
+    if inventory_row_is_semantic_capability(row: r) { acc + 1 } else { acc }
+  })
+}
+
+fn inventory_residue_count() -> Nat {
   fold(v1_complexity_inventory_roster, init: 0, f: (acc, r) =>
-    if inventory_row_is_semantic_capability(row: r) { acc + 1 } else { acc })
+    if inventory_row_is_semantic_capability(row: r) { acc } else { acc + 1 })
+}
+
+fn inventory_identity_keys() -> List<String> {
+  fold(v1_complexity_inventory_roster, init: [], f: fn(acc, r) {
+    concat(acc, [inventory_item_key(item: r.item)])
+  })
+}
+
+fn key_occurrence_count(keys: List<String>, k: String) -> Nat {
+  fold(keys, init: 0, f: (n, other) => if other == k { n + 1 } else { n })
+}
+
+fn keys_are_distinct(keys: List<String>) -> Bool {
+  fold(keys, init: true, f: (ok, k) => ok && key_occurrence_count(keys: keys, k: k) == 1)
+}
+
+fn inventory_identity_keys_distinct() -> Bool {
+  keys_are_distinct(keys: inventory_identity_keys())
 }
