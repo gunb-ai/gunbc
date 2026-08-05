@@ -39,7 +39,7 @@ import std.witness_admission {
 
 data witness_layer_roots: List<String> = ["dag", "src/v2"]
 
-data frontier_probe_witness_measure_receipt_note: String = "Measured durations cited on commit_gate SpanEnrolled cost_basis rows are WitnessCostWallEval: claim_batch performance receipts use wall_nanos (performance_receipt_from_witness), not the thread-CPU nanos that budget_completion_outcome gates on (operator msg_e24f4cab). Do not compare these figures to the per-witness eval CPU budget without stating the clock."
+data frontier_probe_witness_measure_receipt_note: String = "Measured durations cited on commit_gate SpanEnrolled cost_basis rows are WallClock: claim_batch performance receipts use wall_nanos (performance_receipt_from_witness), not the thread-CPU nanos that budget_completion_outcome gates on (operator msg_e24f4cab). Do not compare these figures to the per-witness eval CPU budget without stating the clock. The arm is named in std.measure ClockBasis, which is the single clock-basis authority; this sentence said WitnessCostWallEval until 2026-08-05, naming a second carrier that std.realization_schedule declared for one day and that witness_cost_clock_note records the dissolution of. The advice the sentence gives is exactly what the surviving carrier now enforces rather than advises: witness_row_cost_verdict answers BasisClockMismatch instead of comparing across clocks."
 
 data frontier_probe_witness_measure_receipt_read_failure: String = "target/frontier-probe-survey/matrix_readthrough_claim_batch_receipt.log"
 
