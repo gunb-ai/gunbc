@@ -449,6 +449,81 @@ test fn no_current_selection_projects_verify_pending() -> Bool {
   )
 }
 
+test fn unobservable_worktree_head_projects_verify_refused() -> Bool {
+  live_verify_progress_state(
+    selection: SelectionUnaddressable {
+      cause: "the attempt worktree head could not be observed",
+    },
+  ) == "refused"
+}
+
+test fn selection_document_for_expected_head_naming_another_head_is_malformed() -> Bool {
+  match current_verification_selection_decode_document(
+    selection_path: join(
+      [
+        "/attempt/recut-a/verification/",
+        current_verification_selection_basename(head_sha: fixture_head as String),
+      ],
+      "",
+    ),
+    expected_head_sha: fixture_head as String,
+    content: current_verification_selection_json(
+      selection: CurrentVerificationSelection {
+        head_sha: fixture_other_head,
+        change_window_identity: fixture_window_w1,
+      },
+    ),
+  ) {
+    SelectionMalformed { cause } =>
+      string_contains(s: cause, pattern: "different head")
+    SelectionObserved { head: _, window_identity: _ } => false
+    SelectionAbsent => false
+    SelectionUnreadable { cause: _ } => false
+    SelectionUnaddressable { cause: _ } => false
+  }
+}
+
+test fn mismatched_selection_cannot_address_the_other_heads_receipt() -> Bool {
+  let selection = current_verification_selection_decode_document(
+    selection_path: join(
+      [
+        "/attempt/recut-a/verification/",
+        current_verification_selection_basename(head_sha: fixture_head as String),
+      ],
+      "",
+    ),
+    expected_head_sha: fixture_head as String,
+    content: current_verification_selection_json(
+      selection: CurrentVerificationSelection {
+        head_sha: fixture_other_head,
+        change_window_identity: fixture_window_w2,
+      },
+    ),
+  )
+  let other_receipt_basename = exact_verification_receipt_basename(
+    head_sha: fixture_other_head as String,
+    window_identity_hex: git_diff_window_identity_hex(identity: fixture_window_w2),
+  )
+  match selection {
+    SelectionMalformed { cause: _ } =>
+      match belt_verification_receipt_source(
+        instance: srv1_live_dashboard_instance(),
+        node_id: fixture_node_id(),
+        attempt_key: "feedfacefeedface",
+        selection: selection,
+      ) {
+        VerificationReceiptUnreadable { detail } =>
+          !string_contains(s: detail, pattern: other_receipt_basename)
+        VerificationReceiptAbsent => false
+        VerificationReceiptPresent { text: _ } => false
+      }
+    SelectionObserved { head: _, window_identity: _ } => false
+    SelectionAbsent => false
+    SelectionUnreadable { cause: _ } => false
+    SelectionUnaddressable { cause: _ } => false
+  }
+}
+
 test fn unreadable_current_selection_projects_verify_refused() -> Bool {
   let state = live_verify_progress_state(
     selection: SelectionUnreadable {
