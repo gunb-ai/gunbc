@@ -709,6 +709,27 @@ fn witness_exclusion_patterns(rows: List<WitnessExclusionRow>) -> List<String> {
   fold(rows, init: [], f: fn(acc, row) { concat(acc, [row.pattern]) })
 }
 
+fn witness_exclusion_row_waits_on_wet_lane_undarken(row: WitnessExclusionRow) -> Bool {
+  string_contains(s: row.dissolve_on, pattern: "falsifier_self_host_wet_cadence_active")
+    || (row.dissolve_on == excl_wet_integration_dissolve)
+}
+
+fn falsifier_self_host_wet_dark_lane_waiting_patterns() -> List<String> {
+  witness_exclusion_patterns(
+    rows: fold(
+      witness_exclusion_frontier,
+      init: [],
+      f: fn(acc, row) {
+        if witness_exclusion_row_waits_on_wet_lane_undarken(row: row) { concat(acc, [row]) } else { acc }
+      }
+    )
+  )
+}
+
+fn falsifier_self_host_wet_dark_lane_population() -> Int {
+  falsifier_self_host_wet_dark_lane_waiting_patterns().length()
+}
+
 fn witness_exclusion_substrings() -> List<String> {
   witness_exclusion_patterns(rows: witness_exclusion_frontier)
 }
