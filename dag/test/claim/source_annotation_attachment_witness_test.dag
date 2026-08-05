@@ -58,6 +58,16 @@ fn leading(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
     text: text,
     origin: probe_span(start: start, end: end),
     placement: LeadingAfterLineIndent,
+    preceded_by_blank_line: false,
+  }
+}
+
+fn leading_after_blank(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
+  NormalizedAnnotationCapture {
+    text: text,
+    origin: probe_span(start: start, end: end),
+    placement: LeadingAfterLineIndent,
+    preceded_by_blank_line: true,
   }
 }
 
@@ -66,6 +76,7 @@ fn trailing(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
     text: text,
     origin: probe_span(start: start, end: end),
     placement: TrailingAfterSemanticToken,
+    preceded_by_blank_line: false,
   }
 }
 
@@ -207,4 +218,32 @@ test fn w_no_captures_yields_an_empty_graph_and_no_refusals() -> Bool {
   let result = attach_annotations(captures: [], subjects: subjects())
   row_count(graph: annotation_attachment_result_graph(result: result)) == 0 &&
     (annotation_attachment_result_refusals(result: result) |> count) == 0
+}
+
+data blank_line_split_note: String = "THE discriminating pair for block adjacency. Both cases send two leading captures resolving to the SAME subject, and differ only in whether the second was preceded by a blank line. Adjacent captures merge into one row; separated captures stay two rows.
+
+Without the second claim the model would be untested exactly where it was wrong: same-subject-only grouping passes the first case and silently fails the second, producing one row where the author wrote two blocks. Asserting the rendered rows rather than a count is what makes the failure legible — a merge shows up as `alpha\nbeta` in a single row instead of two rows."
+
+test fn w_blank_line_splits_one_block_into_two() -> Bool {
+  let result = attach_annotations(
+    captures: [
+      leading(text: "alpha", start: 10, end: 20),
+      leading_after_blank(text: "beta", start: 30, end: 40)
+    ],
+    subjects: subjects()
+  )
+  let graph = annotation_attachment_result_graph(result: result)
+  row_count(graph: graph) == 2 && render_rows(graph: graph) == "|7:alpha|7:beta"
+}
+
+test fn w_adjacent_captures_still_merge_into_one_block() -> Bool {
+  let result = attach_annotations(
+    captures: [
+      leading(text: "alpha", start: 10, end: 20),
+      leading(text: "beta", start: 30, end: 40)
+    ],
+    subjects: subjects()
+  )
+  let graph = annotation_attachment_result_graph(result: result)
+  row_count(graph: graph) == 1 && render_rows(graph: graph) == "|7:alpha\nbeta"
 }

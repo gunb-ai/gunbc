@@ -160,3 +160,17 @@ test fn w_the_same_prose_without_the_refusal_is_admitted() -> Bool {
   let a = admitted(source: header_source)
   (source_annotation_graph_rows(graph: a.graph) |> count) == 1 && (a.diagnostics |> count) == 0
 }
+
+data end_to_end_blank_line_note: String = "The blank-line ruling proven on REAL source through the real lexer, not on synthetic capture rows. The synthetic pair proves the fold honours the flag; this proves the v1 lexer actually observes it, which is the half that cannot be checked by constructing captures by hand."
+
+data two_adjacent_blocks_source: String = "module p.q\n\n// first line\n// second line\ndata alpha: String = \"a\"\n"
+
+data two_separated_blocks_source: String = "module p.q\n\n// first block\n\n// second block\ndata alpha: String = \"a\"\n"
+
+test fn w_adjacent_comment_lines_form_one_block() -> Bool {
+  render(source: two_adjacent_blocks_source) == "|alpha=first line\nsecond line"
+}
+
+test fn w_blank_line_separated_comments_form_two_blocks() -> Bool {
+  render(source: two_separated_blocks_source) == "|alpha=first block|alpha=second block"
+}

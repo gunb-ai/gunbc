@@ -135,6 +135,7 @@ fn normalize_dag_annotation(capture: UnboundAnnotationCapture) -> NormalizedAnno
     text: strip_line_comment_delimiter(lexeme: capture.lexeme),
     origin: capture.origin,
     placement: capture.placement,
+    preceded_by_blank_line: capture.preceded_by_blank_line,
   }
 }
 

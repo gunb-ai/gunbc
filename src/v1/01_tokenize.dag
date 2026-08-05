@@ -155,6 +155,26 @@ fn source_line_start(source: SourceRef, pos: Int) -> Int {
   }
 }
 
+data v1_blank_line_lookback_note: String = "Whether a blank line precedes the annotation, observed here because it cannot be observed later — the whitespace between two captures is consumed before the parser sees anything, so by attachment time two adjacent comment lines and two blocks separated by a blank line are indistinguishable.
+
+The previous line is the text between the line start before this one and this line's start. It is blank exactly when that text is indentation only, which is the SAME predicate placement uses, so a blank line and an indent-only prefix are one concept read at two positions rather than two spellings of whitespace. An annotation on the first line of a file has no previous line and is not preceded by one. The walk is bounded by one line."
+
+fn preceded_by_blank_line(source: SourceRef, pos: Int) -> Bool {
+  let line_start = source_line_start(source: source, pos: pos)
+  if line_start <= 0 {
+    false
+  } else {
+    advance_line_prefix_indent_only_text(
+      previous: true,
+      lexeme: source_substring(
+        source: source,
+        start: source_line_start(source: source, pos: line_start - 1),
+        end: line_start - 1
+      )
+    )
+  }
+}
+
 fn line_prefix_is_indent_only(source: SourceRef, pos: Int) -> Bool {
   advance_line_prefix_indent_only_text(
     previous: true,
@@ -183,7 +203,8 @@ fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanStep {
       capture: UnboundAnnotationCapture {
         lexeme: source_substring(source: source, start: pos.pos, end: eol),
         origin: make_file_span(file: source.file, start: pos.pos, end: eol),
-        placement: placement_from_line_prefix(indent_only: line_prefix_is_indent_only(source: source, pos: pos.pos))
+        placement: placement_from_line_prefix(indent_only: line_prefix_is_indent_only(source: source, pos: pos.pos)),
+        preceded_by_blank_line: preceded_by_blank_line(source: source, pos: pos.pos)
       },
       interp_depth: pos.interp_depth
     }

@@ -279,6 +279,33 @@ pub fn source_line_start(mut source: Rc<SourceRef>, mut pos: i64) -> i64 {
     }
 }
 
+pub fn v1_blank_line_lookback_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Whether a blank line precedes the annotation, observed here because it cannot be observed later — the whitespace between two captures is consumed before the parser sees anything, so by attachment time two adjacent comment lines and two blocks separated by a blank line are indistinguishable.\n\nThe previous line is the text between the line start before this one and this line's start. It is blank exactly when that text is indentation only, which is the SAME predicate placement uses, so a blank line and an indent-only prefix are one concept read at two positions rather than two spellings of whitespace. An annotation on the first line of a file has no previous line and is not preceded by one. The walk is bounded by one line.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn preceded_by_blank_line(source: Rc<SourceRef>, pos: i64) -> bool {
+    {
+        let line_start = source_line_start(source.clone(), pos.clone());
+        if (line_start.clone() <= 0) {
+            false
+        } else {
+            advance_line_prefix_indent_only_text(
+                true,
+                source_substring(
+                    source.clone(),
+                    source_line_start(source.clone(), (line_start.clone() - 1)),
+                    (line_start.clone() - 1),
+                ),
+            )
+        }
+    }
+}
+
 pub fn line_prefix_is_indent_only(source: Rc<SourceRef>, pos: i64) -> bool {
     advance_line_prefix_indent_only_text(
         true,
@@ -323,6 +350,10 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
                             source.clone(),
                             pos.pos.clone(),
                         )),
+                        preceded_by_blank_line: preceded_by_blank_line(
+                            source.clone(),
+                            pos.pos.clone(),
+                        ),
                     }),
                     interp_depth: pos.interp_depth.clone(),
                 });

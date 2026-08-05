@@ -56,6 +56,7 @@ pub struct UnboundAnnotationCapture {
     pub lexeme: String,
     pub origin: Rc<SourceSpan>,
     pub placement: AnnotationPlacement,
+    pub preceded_by_blank_line: bool,
 }
 
 pub fn source_annotation_debt_note() -> String {
@@ -196,7 +197,7 @@ pub enum AnnotationAttachment {
 pub fn annotation_admission_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "The gate between analysing attachment and CONTINUING with it. AnnotationAttachmentResult is an analysis surface — it reports what attached and what did not, and a reader may legitimately inspect both. But a caller free to take `graph` from that record and carry on has done exactly what admitting `//` and discarding the capture would have done: the prose is dropped and compilation proceeds as though the source never carried it.\n\nSo the only path from an attachment result to a graph that flows onward is through here, and it refuses whenever anything refused. The refusal payload is a NON-EMPTY carrier, which is what makes `refused, with nothing to report` unwritable rather than merely unlikely — a refusal arm holding an empty list would be a silent success wearing a refusal's name.\n\nThis is deliberately all-or-nothing per compilation unit. A partial admission — take the rows that bound, ignore the ones that did not — is the absorbing fallback in its authored form: the deficit's frequency drops to zero, nothing counts it, and the unattachable prose quietly stops existing.".to_string()
+            "The gate between analysing attachment and CONTINUING with it. AnnotationAttachmentResult is an analysis surface — it reports what attached and what did not, and a reader may legitimately inspect both. But a caller that takes `graph` from that record and carries on has done exactly what admitting `//` and discarding the capture would have done: the prose is dropped and compilation proceeds as though the source never carried it.\n\nWHAT THIS ACTUALLY GUARANTEES, AT ITS HONEST RUNG. Both production v1 frontend paths route through this function, and on that path a refusal withholds the graph entirely and blocks emitted output. That is a ROUTING INVARIANT enforced by every caller using one seam — it is NOT a construction impossibility. `AnnotationAttachmentResult` is a plain record and `annotation_attachment_result_graph` returns its graph without consulting admission, so a newly written caller could bypass this and nothing would stop it.\n\nThe two fail differently, and the distinction is why this paragraph exists rather than a stronger-sounding one. A routing invariant holds while every caller goes through the seam and breaks SILENTLY the first time one does not; an impossibility cannot break, because the bypass has no representation. Calling the first the second is the rung inflation DESIGN 4b names as worse than sitting low, since an inflated class never ranks for climbing.\n\nNEXT-RUNG TRIGGER, and it is small and known: make the bypass unrepresentable — remove the unadmitted graph accessor and seal the result carrier so a graph can only be obtained through admission — landed with a discriminating control proving a bypass does not compile. Until that exists, this is a mechanically preventive wall on the production path, not a language-level guarantee.\n\nThe refusal payload is a NON-EMPTY carrier, which does make `refused, with nothing to report` unwritable rather than merely unlikely — a refusal arm holding an empty list would be a silent success wearing a refusal's name.\n\nThis is deliberately all-or-nothing per compilation unit. A partial admission — take the rows that bound, ignore the ones that did not — is the absorbing fallback in its authored form: the deficit's frequency drops to zero, nothing counts it, and the unattachable prose quietly stops existing.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -347,6 +348,7 @@ pub struct NormalizedAnnotationCapture {
     pub text: String,
     pub origin: Rc<SourceSpan>,
     pub placement: AnnotationPlacement,
+    pub preceded_by_blank_line: bool,
 }
 
 pub fn annotation_attachment_result_note() -> String {
@@ -439,7 +441,7 @@ pub fn annotation_subject_pick(
 pub fn annotation_block_grouping_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Grouping is DERIVED from attachment rather than decided by a separate adjacency pass, and that is why no line arithmetic appears here. Consecutive leading captures that resolve to the same subject are by construction the run of prose immediately preceding it, so `resolved to the same subject` already means `one block` — a separate `are these lines adjacent` test would need the newline structure the lexer consumed, and would be a second, weaker way of deciding a question attachment has already answered.\n\nThe merged row's text carries its own line breaks and its origin spans first capture start to last capture end, so the block is addressable as one authored unit. `pending` holds the block still being extended; it is flushed when a capture resolves to a different subject and once more at the end.".to_string()
+            "A BLANK LINE SPLITS A BLOCK. Two facts decide grouping — same following subject, and physical adjacency — and both are required.\n\nAn earlier revision used same-subject alone and claimed those captures were `by construction consecutive`. They are not. Two comment lines directly above a declaration and two comment BLOCKS separated by a blank line above the SAME declaration both resolve to that one subject, so same-subject alone merged them into a single row joined by a single newline and the blank line ceased to exist. That is not a formatting nicety: the authored structure is gone, and once a renderer exists it would render one block where the author wrote two, permanently.\n\nAdjacency cannot be recovered here — the fold sees spans, not source, and the whitespace between two captures was consumed by the lexer — so it is OBSERVED at capture, exactly like placement and for exactly the same reason. `preceded_by_blank_line` is that observation, and this fold reads it rather than re-deriving it.\n\nThe merged row's text carries its own line breaks and its origin spans first capture start to last capture end, so a block is addressable as one authored unit. `pending` holds the block still being extended; it is flushed when a capture resolves to a different subject, when a capture opens a new block after a blank line, and once more at the end.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -503,8 +505,9 @@ pub fn annotation_attach_step(
                     }),
                     Some(subject) => match acc.pending.clone() {
                         Some(open) => {
-                            if (open.subject.clone().value.clone()
+                            if ((open.subject.clone().value.clone()
                                 == subject.occurrence.clone().value.clone())
+                                && !capture.preceded_by_blank_line.clone())
                             {
                                 Rc::new(AnnotationAttachAcc {
                                     rows: acc.rows.clone(),

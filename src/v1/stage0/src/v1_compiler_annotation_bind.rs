@@ -213,6 +213,7 @@ pub fn normalize_dag_annotation(
         text: strip_line_comment_delimiter(capture.lexeme.clone()),
         origin: capture.origin.clone(),
         placement: capture.placement.clone(),
+        preceded_by_blank_line: capture.preceded_by_blank_line.clone(),
     })
 }
 

@@ -307,3 +307,38 @@ pub fn w_the_same_prose_without_the_refusal_is_admitted() -> bool {
             && ((a.diagnostics.clone().len() as i64) == 0))
     }
 }
+
+pub fn end_to_end_blank_line_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The blank-line ruling proven on REAL source through the real lexer, not on synthetic capture rows. The synthetic pair proves the fold honours the flag; this proves the v1 lexer actually observes it, which is the half that cannot be checked by constructing captures by hand.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn two_adjacent_blocks_source() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "module p.q\n\n// first line\n// second line\ndata alpha: String = \"a\"\n".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn two_separated_blocks_source() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "module p.q\n\n// first block\n\n// second block\ndata alpha: String = \"a\"\n".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn w_adjacent_comment_lines_form_one_block() -> bool {
+    (render(two_adjacent_blocks_source()) == "|alpha=first line\nsecond line".to_string())
+}
+
+pub fn w_blank_line_separated_comments_form_two_blocks() -> bool {
+    (render(two_separated_blocks_source()) == "|alpha=first block|alpha=second block".to_string())
+}

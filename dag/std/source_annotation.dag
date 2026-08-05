@@ -21,6 +21,7 @@ type UnboundAnnotationCapture {
   lexeme: String
   origin: SourceSpan
   placement: AnnotationPlacement
+  preceded_by_blank_line: Bool
 }
 
 data source_annotation_debt_note: String = "Every inhabitant is MODELING DEBT — that is the type's standing law, not a field on it. A comment is prose that the executable model does not currently represent, retained honestly rather than deleted or promoted. There is deliberately no rationale variant: a permanent category with no authoring path, no distinct consumer, and no lifecycle would be speculative vocabulary, and offered early every unmodeled invariant acquires a why-prefix and declares itself permanent. A second population earns its own carrier when migration produces one and its consumer is modeled.
@@ -187,6 +188,7 @@ type NormalizedAnnotationCapture {
   text: String
   origin: SourceSpan
   placement: AnnotationPlacement
+  preceded_by_blank_line: Bool
 }
 
 data annotation_attachment_result_note: String = "Both halves of the outcome, because either alone is a lie. The graph alone hides that prose was dropped; the refusals alone hide what was kept. A consumer reading only `graph` still gets a correct graph — it simply is not entitled to conclude the source carried nothing else, and the refusal list is what makes that conclusion checkable rather than assumed."
@@ -240,9 +242,13 @@ fn annotation_subject_pick(
   )
 }
 
-data annotation_block_grouping_note: String = "Grouping is DERIVED from attachment rather than decided by a separate adjacency pass, and that is why no line arithmetic appears here. Consecutive leading captures that resolve to the same subject are by construction the run of prose immediately preceding it, so `resolved to the same subject` already means `one block` — a separate `are these lines adjacent` test would need the newline structure the lexer consumed, and would be a second, weaker way of deciding a question attachment has already answered.
+data annotation_block_grouping_note: String = "A BLANK LINE SPLITS A BLOCK. Two facts decide grouping — same following subject, and physical adjacency — and both are required.
 
-The merged row's text carries its own line breaks and its origin spans first capture start to last capture end, so the block is addressable as one authored unit. `pending` holds the block still being extended; it is flushed when a capture resolves to a different subject and once more at the end."
+An earlier revision used same-subject alone and claimed those captures were `by construction consecutive`. They are not. Two comment lines directly above a declaration and two comment BLOCKS separated by a blank line above the SAME declaration both resolve to that one subject, so same-subject alone merged them into a single row joined by a single newline and the blank line ceased to exist. That is not a formatting nicety: the authored structure is gone, and once a renderer exists it would render one block where the author wrote two, permanently.
+
+Adjacency cannot be recovered here — the fold sees spans, not source, and the whitespace between two captures was consumed by the lexer — so it is OBSERVED at capture, exactly like placement and for exactly the same reason. `preceded_by_blank_line` is that observation, and this fold reads it rather than re-deriving it.
+
+The merged row's text carries its own line breaks and its origin spans first capture start to last capture end, so a block is addressable as one authored unit. `pending` holds the block still being extended; it is flushed when a capture resolves to a different subject, when a capture opens a new block after a blank line, and once more at the end."
 
 type AnnotationAttachAcc {
   rows: List<SourceAnnotationDebt>
@@ -287,7 +293,7 @@ fn annotation_attach_step(
         Present { value: subject } =>
           match acc.pending {
             Present { value: open } =>
-              if open.subject.value == subject.occurrence.value {
+              if open.subject.value == subject.occurrence.value && !capture.preceded_by_blank_line {
                 AnnotationAttachAcc {
                   rows: acc.rows,
                   refusals: acc.refusals,
