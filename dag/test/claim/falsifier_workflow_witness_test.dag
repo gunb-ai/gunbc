@@ -149,7 +149,7 @@ data main_floor_population_upload_step_name: String = "Upload CI floor populatio
 data compile_clean_cold_control_step_name: String = "compile-clean whole-tree cold control (scoped-PR admission counterpart)"
 
 test fn main_floor_population_upload_before_cold_controls() -> Bool {
-  let steps = falsifier_job_steps()
+  let steps = falsifier_floor_job_steps()
   let floor = step_index_of(steps: steps, name: "affected-set falsifier (predict-only cold run)")
   let upload = step_index_of(steps: steps, name: main_floor_population_upload_step_name)
   let cold = step_index_of(steps: steps, name: compile_clean_cold_control_step_name)
