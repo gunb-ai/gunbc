@@ -64,7 +64,6 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_verification_dir_for_instance,
   dispatch_attempt_diff_window_path_for_instance,
   dispatch_attempt_verification_current_selection_path_for_instance,
-  verification_receipt_directory_segment,
   dispatch_attempt_publication_receipt_path_for_instance,
   dispatch_attempt_publication_dir_for_instance,
   dispatch_attempt_state_path_for_instance,
@@ -225,11 +224,17 @@ import gunbc.roadmap_verification_receipt {
   current_verification_selection_observe,
   exact_verification_receipt_source_read,
   exact_verification_receipt_basename,
+  exact_verification_address_for,
+  ExactVerificationAddress,
   verification_receipt_file_source_from_exact,
   belt_verification_decision,
   BeltVerificationRun,
   BeltVerificationDefer,
   BeltVerificationRefuse,
+  BeltVerificationEvidenceUnreadable,
+  VerificationSelectionPublishOutcome,
+  VerificationSelectionPublished,
+  VerificationSelectionPublishRefused,
   verification_directory_segment,
 }
 import extdeps.github.github { Repository }
@@ -2217,6 +2222,12 @@ fn belt_verify_outcome_json(o: BeltVerifyOutcome) -> JsonValue {
         json_kv(key: "outcome", value: json_string(s: "evidence-unreadable")),
         json_kv(key: "detail", value: json_string(s: detail)),
       ])
+    VerifyRefused { node_id, cause } =>
+      json_object(members: [
+        json_kv(key: "node", value: json_string(s: node_id)),
+        json_kv(key: "outcome", value: json_string(s: "refused")),
+        json_kv(key: "detail", value: json_string(s: cause)),
+      ])
   }
 }
 
@@ -2228,6 +2239,7 @@ fn belt_tick_verify_recorded_count(t: BeltTickResult) -> Int {
     VerifyDeferred { node_id: _, reason: _ } => false
     VerifyWriteFailed { node_id: _, detail: _ } => false
     VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+    VerifyRefused { node_id: _, cause: _ } => false
   }))
 }
 
@@ -2237,6 +2249,7 @@ fn belt_tick_verify_write_failed_count(t: BeltTickResult) -> Int {
     VerifyEvidenceUnreadable { node_id: _, detail: _ } => true
     VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
     VerifyDeferred { node_id: _, reason: _ } => false
+    VerifyRefused { node_id: _, cause: _ } => false
   }))
 }
 
@@ -2698,7 +2711,7 @@ fn belt_publish_current_verification_selection(
   node_id: RoadmapNodeId,
   attempt_key: String,
   subject: VerificationSubject,
-) -> BeltExecOutcome {
+) -> VerificationSelectionPublishOutcome {
   let path = dispatch_attempt_verification_current_selection_path_for_instance(
     instance: instance,
     node_id: node_id,
@@ -2715,14 +2728,12 @@ fn belt_publish_current_verification_selection(
     ),
   )
   if write.success {
-    ExecOk { stdout: path }
+    VerificationSelectionPublished { path: path }
   } else {
-    ExecRefused {
-      program: "current-selection",
-      reason: join([
-        "the belt could not publish the current verification selection at ",
-        path,
-        ": ",
+    VerificationSelectionPublishRefused {
+      path: path,
+      cause: join([
+        "the belt could not publish the current verification selection: ",
         write.error,
       ], ""),
     }
@@ -2736,12 +2747,17 @@ fn belt_verification_selection_observe(
   head_sha: String,
 ) -> CurrentVerificationSelectionObservation {
   current_verification_selection_observe(
-    selection_path: dispatch_attempt_verification_current_selection_path_for_instance(
+    attempt_dir: dispatch_attempt_state_path_for_instance(
       instance: instance,
       node_id: node_id,
       attempt_key: attempt_key,
-      head_sha: head_sha,
     ),
+    verification_dir: dispatch_attempt_verification_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    head_sha: head_sha,
   )
 }
 
@@ -2800,33 +2816,25 @@ fn belt_verification_receipt_source_for_selection(
   head_sha: String,
   window_identity_hex: String,
 ) -> VerificationReceiptFileSource {
-  let attempt_dir = dispatch_attempt_state_path_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: attempt_key,
-  )
-  let verification_dir = dispatch_attempt_verification_dir_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: attempt_key,
-  )
-  let receipt_basename = exact_verification_receipt_basename(
-    head_sha: head_sha,
-    window_identity_hex: window_identity_hex,
-  )
-  let receipt_path = dispatch_attempt_verification_receipt_path_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: attempt_key,
+  let address = exact_verification_address_for(
+    attempt_dir: dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    verification_dir: dispatch_attempt_verification_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
     head_sha: head_sha,
     window_identity_hex: window_identity_hex,
   )
   verification_receipt_file_source_from_exact(
     source: exact_verification_receipt_source_read(
-      attempt_dir: attempt_dir,
-      verification_dir: verification_dir,
-      receipt_basename: receipt_basename,
-      receipt_path: receipt_path,
+      attempt_dir: address.attempt_dir,
+      verification_dir: address.verification_dir,
+      receipt_basename: address.receipt_basename,
     ),
   )
 }
@@ -2862,64 +2870,6 @@ fn belt_verification_receipt_source(
         head_sha: head as String,
         window_identity_hex: window_identity.digest as String,
       )
-  }
-}
-
-fn belt_verification_subject_observation_for_attempt(
-  instance: HostDashboardInstance,
-  node_id: String,
-  attempt_key: String,
-) -> VerificationSubjectObservation {
-  match belt_lookup_node(node_id: node_id) {
-    AuthorityProjectionRefused { detail: detail } =>
-      VerificationSubjectUnobserved {
-        reason: concat("roadmap authority projection refused: ", detail),
-      }
-    NodeMissing =>
-      VerificationSubjectUnobserved {
-        reason: "the roadmap authority declares no node with this id, so there is no verification subject",
-      }
-    NodeFound { node } => {
-      let node_id_typed = node_id as RoadmapNodeId
-      let worktree = dispatch_worktree_path_for_instance(
-        instance: instance,
-        node_id: node_id_typed,
-        attempt_key: attempt_key,
-      )
-      let head = belt_worktree_head_observe(
-        instance: instance,
-        worktree: worktree,
-      )
-      match head {
-        WorktreeHeadUnobserved { reason } =>
-          VerificationSubjectUnobserved { reason: reason }
-        WorktreeHeadObserved { revision: revision } =>
-          if trim(dispatch_branch_name(
-            node_id: node_id_typed,
-            attempt_key: attempt_key,
-          )) == "" {
-            VerificationSubjectUnobserved {
-              reason: "the attempt has no branch name, so there is no verification subject to construct",
-            }
-          } else {
-            belt_verification_subject_from_selection(
-              node: node,
-              attempt_key: attempt_key,
-              branch: dispatch_branch_name(
-                node_id: node_id_typed,
-                attempt_key: attempt_key,
-              ),
-              head: revision as CommitSha,
-              selection: belt_verification_selection_observe(
-                instance: instance,
-                node_id: node_id_typed,
-                attempt_key: attempt_key,
-                head_sha: revision as String,
-              ),
-            )
-          }
-      }
-    }
   }
 }
 
@@ -3003,20 +2953,40 @@ fn belt_workflow_progress_for_attempt_ref(
       branch: branch,
       head: head,
     )
-    let verification_subject = belt_verification_subject_observation_for_attempt(
-      instance: instance,
-      node_id: attempt.node_id,
-      attempt_key: current_key,
-    )
-    let verification_selection = match verification_subject {
-      VerificationSubjectObserved { subject: observed } =>
+    let verification_selection = match head {
+      WorktreeHeadUnobserved { reason: _ } => SelectionAbsent
+      WorktreeHeadObserved { revision: revision } =>
         belt_verification_selection_observe(
           instance: instance,
           node_id: node_id,
           attempt_key: current_key,
-          head_sha: observed.head_sha as String,
+          head_sha: revision as String,
         )
-      VerificationSubjectUnobserved { reason: _ } => SelectionAbsent
+    }
+    let verification_subject = match belt_lookup_node(node_id: attempt.node_id) {
+      NodeMissing =>
+        VerificationSubjectUnobserved {
+          reason: "the roadmap authority declares no node with this id, so there is no verification subject",
+        }
+      NodeFound { node } =>
+        match head {
+          WorktreeHeadUnobserved { reason } =>
+            VerificationSubjectUnobserved { reason: reason }
+          WorktreeHeadObserved { revision: revision } =>
+            if trim(branch) == "" {
+              VerificationSubjectUnobserved {
+                reason: "the attempt has no branch name, so there is no verification subject to construct",
+              }
+            } else {
+              belt_verification_subject_from_selection(
+                node: node,
+                attempt_key: current_key,
+                branch: branch,
+                head: revision as CommitSha,
+                selection: verification_selection,
+              )
+            }
+        }
     }
     let publication_receipt = belt_publication_receipt_source(
       instance: instance,
@@ -3081,6 +3051,7 @@ type BeltVerifyOutcome
     }
   | VerifyWriteFailed { node_id: String, detail: String }
   | VerifyEvidenceUnreadable { node_id: String, detail: String }
+  | VerifyRefused { node_id: String, cause: String }
 
 data belt_read_or_empty_scope_note: String = "review 45271, and the scope of this collapse is now deliberate rather than incidental. Reducing a read to `\"\"` conflates absent with unreadable, which is only safe where BOTH branches take the same action. That holds for the PIN reads below — an absent identity and an unreadable one both leave pin_recorded false, and the gate refuses either way, actuating nothing — so the distinction would change the message and not the behaviour. It did NOT hold for the receipt-presence read, which gated whether to RUN the validation and OVERWRITE the evidence: there, absent means run and unreadable means stop, so the collapse let an I/O fault regenerate a verdict against a worktree that may have moved. That seam no longer uses this function; it reads with status preserved and decodes."
 
@@ -3559,57 +3530,53 @@ fn belt_verify_attempt_for_instance(
                     let identity_hex = git_diff_window_identity_hex(
                       identity: subject.change_window_identity,
                     )
+                    let address = exact_verification_address_for(
+                      attempt_dir: dispatch_attempt_state_path_for_instance(
+                        instance: instance,
+                        node_id: node_id,
+                        attempt_key: progress.attempt_key,
+                      ),
+                      verification_dir: dispatch_attempt_verification_dir_for_instance(
+                        instance: instance,
+                        node_id: node_id,
+                        attempt_key: progress.attempt_key,
+                      ),
+                      head_sha: head_sha,
+                      window_identity_hex: identity_hex,
+                    )
                     match belt_publish_current_verification_selection(
                       instance: instance,
                       node_id: node_id,
                       attempt_key: progress.attempt_key,
                       subject: subject,
                     ) {
-                      ExecRefused { program: _, reason } =>
-                        VerifyEvidenceUnreadable {
+                      VerificationSelectionPublishRefused { path: _, cause } =>
+                        VerifyRefused {
                           node_id: progress.node_id,
-                          detail: join([
+                          cause: join([
                             "verification refused before running because the current selection could not be published: ",
-                            reason,
+                            cause,
                           ], ""),
                         }
-                      ExecFailed { program: _, exit_code: _, stderr: _ } =>
-                        VerifyEvidenceUnreadable {
-                          node_id: progress.node_id,
-                          detail: "verification refused before running because publishing the current selection failed",
-                        }
-                      ExecOk { stdout: _ } => {
+                      VerificationSelectionPublished { path: _ } => {
                         let exact_source = exact_verification_receipt_source_read(
-                          attempt_dir: dispatch_attempt_state_path_for_instance(
-                            instance: instance,
-                            node_id: node_id,
-                            attempt_key: progress.attempt_key,
-                          ),
-                          verification_dir: dispatch_attempt_verification_dir_for_instance(
-                            instance: instance,
-                            node_id: node_id,
-                            attempt_key: progress.attempt_key,
-                          ),
-                          receipt_basename: exact_verification_receipt_basename(
-                            head_sha: head_sha,
-                            window_identity_hex: identity_hex,
-                          ),
-                          receipt_path: dispatch_attempt_verification_receipt_path_for_instance(
-                            instance: instance,
-                            node_id: node_id,
-                            attempt_key: progress.attempt_key,
-                            head_sha: head_sha,
-                            window_identity_hex: identity_hex,
-                          ),
+                          attempt_dir: address.attempt_dir,
+                          verification_dir: address.verification_dir,
+                          receipt_basename: address.receipt_basename,
                         )
                         match belt_verification_decision(
                           expected: subject,
                           source: exact_source,
                         ) {
-                          BeltVerificationRefuse { reason } =>
+                          BeltVerificationEvidenceUnreadable { reason } =>
                             VerifyEvidenceUnreadable {
                               node_id: progress.node_id,
                               detail: reason,
+                            }
+                          BeltVerificationRefuse { reason } =>
+                            VerifyRefused {
+                              node_id: progress.node_id,
+                              cause: reason,
                             }
                           BeltVerificationDefer { reason } =>
                             VerifyDeferred {
@@ -3913,6 +3880,7 @@ fn belt_verify_pass_outcome_from(outcomes: List<BeltVerifyOutcome>) -> BeltPassO
     VerifyDeferred { node_id: nid, reason: _ } => nid == ""
     VerifyWriteFailed { node_id: _, detail: _ } => false
     VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+    VerifyRefused { node_id: _, cause: _ } => false
     VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
   })
   if count(ledger_refusals) > 0 {
@@ -3927,15 +3895,31 @@ fn belt_verify_pass_outcome_from(outcomes: List<BeltVerifyOutcome>) -> BeltPassO
       VerifyWriteFailed { node_id: _, detail: _ } => true
       VerifyEvidenceUnreadable { node_id: _, detail: _ } => true
       VerifyDeferred { node_id: _, reason: _ } => false
+      VerifyRefused { node_id: _, cause: _ } => false
       VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
     }) {
       BeltPassFailed { reason: "one or more verification outcomes could not be recorded" }
     } else {
-      if count(outcomes) > 0
+      let verification_refusals = outcomes |> filter(o => match o {
+        VerifyRefused { node_id: _, cause: _ } => true
+        VerifyWriteFailed { node_id: _, detail: _ } => false
+        VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+        VerifyDeferred { node_id: _, reason: _ } => false
+        VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
+      })
+      if count(verification_refusals) > 0 {
+        match verification_refusals.first() {
+          Present { value: VerifyRefused { node_id: _, cause: r } } =>
+            BeltPassRefused { reason: r }
+          _ =>
+            BeltPassRefused { reason: "verification refused on one or more attempts" }
+        }
+      } else if count(outcomes) > 0
         && all(outcomes, o => match o {
           VerifyDeferred { node_id: nid, reason: _ } => nid != ""
           VerifyWriteFailed { node_id: _, detail: _ } => false
           VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+          VerifyRefused { node_id: _, cause: _ } => false
           VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
         }) {
         BeltPassDeferred {

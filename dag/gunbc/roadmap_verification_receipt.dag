@@ -102,6 +102,10 @@ type CurrentVerificationSelectionObservation
       window_identity: Fnv1a64Structural,
     }
 
+type VerificationSelectionPublishOutcome
+  = VerificationSelectionPublished { path: String }
+  | VerificationSelectionPublishRefused { path: String, cause: String }
+
 data verification_directory_segment: String = "verification"
 
 data exact_verification_receipt_absence_note: String = "Positive absence only: ExactVerificationReceiptAbsent means a successful listing of verification/ proved the exact basename is not present. A failed list or read never collapses to absent."
@@ -130,6 +134,7 @@ type BeltVerificationDecision
   = BeltVerificationRun
   | BeltVerificationDefer { reason: String }
   | BeltVerificationRefuse { reason: String }
+  | BeltVerificationEvidenceUnreadable { reason: String }
 
 fn verification_listing_names_entry(listing: String, name: String) -> Bool {
   string_contains(
@@ -147,6 +152,38 @@ fn exact_verification_receipt_basename(
 
 fn current_verification_selection_basename(head_sha: String) -> String {
   join([head_sha, ".current-selection.json"], "")
+}
+
+type ExactVerificationAddress {
+  attempt_dir: String
+  verification_dir: String
+  selection_basename: String
+  selection_path: String
+  receipt_basename: String
+  receipt_path: String
+}
+
+fn exact_verification_address_for(
+  attempt_dir: String,
+  verification_dir: String,
+  head_sha: String,
+  window_identity_hex: String,
+) -> ExactVerificationAddress {
+  let selection_basename = current_verification_selection_basename(
+    head_sha: head_sha,
+  )
+  let receipt_basename = exact_verification_receipt_basename(
+    head_sha: head_sha,
+    window_identity_hex: window_identity_hex,
+  )
+  ExactVerificationAddress {
+    attempt_dir: attempt_dir,
+    verification_dir: verification_dir,
+    selection_basename: selection_basename,
+    selection_path: join([verification_dir, "/", selection_basename], ""),
+    receipt_basename: receipt_basename,
+    receipt_path: join([verification_dir, "/", receipt_basename], ""),
+  }
 }
 
 fn current_verification_selection_json(
@@ -224,13 +261,17 @@ fn verification_receipt_v1_decode(receipt: String) -> LegacyExactHeadVerificatio
                           match verification_verdict_decode(doc: verdict_doc) {
                             Absent => none
                             Present { value: verdict } =>
-                              Present {
-                                value: LegacyExactHeadVerificationReceipt {
-                                  subject: subject,
-                                  oracle_identity: oracle_identity,
-                                  executions: [],
-                                  verdict: verdict,
-                                },
+                              match verification_executions_decode(doc: doc) {
+                                Absent => none
+                                Present { value: executions } =>
+                                  Present {
+                                    value: LegacyExactHeadVerificationReceipt {
+                                      subject: subject,
+                                      oracle_identity: oracle_identity,
+                                      executions: executions,
+                                      verdict: verdict,
+                                    },
+                                  }
                               }
                           }
                       }
@@ -242,75 +283,117 @@ fn verification_receipt_v1_decode(receipt: String) -> LegacyExactHeadVerificatio
 }
 
 fn current_verification_selection_observe(
-  selection_path: String,
+  attempt_dir: String,
+  verification_dir: String,
+  head_sha: String,
 ) -> CurrentVerificationSelectionObservation {
-  let read = Filesystem.Read(path: selection_path)
-  if !read.success {
-    if string_contains(s: read.error, pattern: "No such file")
-      || string_contains(s: read.error, pattern: "not found") {
-      SelectionAbsent
-    } else {
+  let attempt_listing = Filesystem.List(path: attempt_dir)
+  if !attempt_listing.success {
+    SelectionUnreadable {
+      cause: join([
+        "the attempt state directory could not be listed, so whether a current verification selection exists was not established: ",
+        attempt_dir,
+        " (",
+        attempt_listing.error,
+        ")",
+      ], ""),
+    }
+  } else if !verification_listing_names_entry(
+    listing: attempt_listing.entries,
+    name: verification_directory_segment,
+  ) {
+    SelectionAbsent
+  } else {
+    let verification_listing = Filesystem.List(path: verification_dir)
+    if !verification_listing.success {
       SelectionUnreadable {
         cause: join([
-          "the current verification selection could not be read: ",
-          selection_path,
+          "the verification directory was named by the attempt listing but could not itself be listed: ",
+          verification_dir,
           " (",
-          read.error,
+          verification_listing.error,
           ")",
         ], ""),
       }
-    }
-  } else {
-    match parse_json(s: read.content) {
-      Absent =>
-        SelectionMalformed {
-          cause: join([
-            "the current verification selection at ",
-            selection_path,
-            " is not one complete JSON value",
-          ], ""),
-        }
-      Present { value: doc } =>
-        match verification_receipt_string_member(doc: doc, key: "schema") {
-          VerificationReceiptMemberUnreadable { reason: r } =>
-            SelectionMalformed { cause: r }
-          VerificationReceiptMemberRead { value: schema } =>
-            if schema != (current_verification_selection_schema as String) {
+    } else {
+      let selection_basename = current_verification_selection_basename(
+        head_sha: head_sha,
+      )
+      if !verification_listing_names_entry(
+        listing: verification_listing.entries,
+        name: selection_basename,
+      ) {
+        SelectionAbsent
+      } else {
+        let selection_path = join(
+          [verification_dir, "/", selection_basename],
+          "",
+        )
+        let read = Filesystem.Read(path: selection_path)
+        if !read.success {
+          SelectionUnreadable {
+            cause: join([
+              "the current verification selection was listed and then could not be read: ",
+              selection_path,
+              " (",
+              read.error,
+              ")",
+            ], ""),
+          }
+        } else {
+          match parse_json(s: read.content) {
+            Absent =>
               SelectionMalformed {
                 cause: join([
-                  "current verification selection schema is ",
-                  schema,
-                  ", not ",
-                  current_verification_selection_schema as String,
+                  "the current verification selection at ",
+                  selection_path,
+                  " is not one complete JSON value",
                 ], ""),
               }
-            } else {
-              match verification_receipt_string_member(doc: doc, key: "head_sha") {
+            Present { value: doc } =>
+              match verification_receipt_string_member(doc: doc, key: "schema") {
                 VerificationReceiptMemberUnreadable { reason: r } =>
                   SelectionMalformed { cause: r }
-                VerificationReceiptMemberRead { value: head_wire } =>
-                  match verification_receipt_string_member(
-                    doc: doc,
-                    key: "change_window_identity",
-                  ) {
-                    VerificationReceiptMemberUnreadable { reason: r } =>
-                      SelectionMalformed { cause: r }
-                    VerificationReceiptMemberRead { value: window_wire } =>
-                      match fnv1a64_structural_hex_digest(hex: window_wire) {
-                        Absent =>
-                          SelectionMalformed {
-                            cause: "current verification selection change_window_identity is not readable",
-                          }
-                        Present { value: window_identity } =>
-                          SelectionObserved {
-                            head: head_wire as CommitSha,
-                            window_identity: window_identity,
-                          }
-                      }
+                VerificationReceiptMemberRead { value: schema } =>
+                  if schema != (current_verification_selection_schema as String) {
+                    SelectionMalformed {
+                      cause: join([
+                        "current verification selection schema is ",
+                        schema,
+                        ", not ",
+                        current_verification_selection_schema as String,
+                      ], ""),
+                    }
+                  } else {
+                    match verification_receipt_string_member(doc: doc, key: "head_sha") {
+                      VerificationReceiptMemberUnreadable { reason: r } =>
+                        SelectionMalformed { cause: r }
+                      VerificationReceiptMemberRead { value: head_wire } =>
+                        match verification_receipt_string_member(
+                          doc: doc,
+                          key: "change_window_identity",
+                        ) {
+                          VerificationReceiptMemberUnreadable { reason: r } =>
+                            SelectionMalformed { cause: r }
+                          VerificationReceiptMemberRead { value: window_wire } =>
+                            match fnv1a64_structural_hex_digest(hex: window_wire) {
+                              Absent =>
+                                SelectionMalformed {
+                                  cause: "current verification selection change_window_identity is not readable",
+                                }
+                              Present { value: window_identity } =>
+                                SelectionObserved {
+                                  head: head_wire as CommitSha,
+                                  window_identity: window_identity,
+                                }
+                            }
+                        }
+                    }
                   }
               }
-            }
+          }
         }
+      }
     }
   }
 }
@@ -319,8 +402,8 @@ fn exact_verification_receipt_source_read(
   attempt_dir: String,
   verification_dir: String,
   receipt_basename: String,
-  receipt_path: String,
 ) -> ExactVerificationReceiptSource {
+  let receipt_path = join([verification_dir, "/", receipt_basename], "")
   let attempt_listing = Filesystem.List(path: attempt_dir)
   if !attempt_listing.success {
     ExactVerificationReceiptUnreadable {
@@ -450,7 +533,7 @@ fn belt_verification_decision(
   match source {
     ExactVerificationReceiptAbsent => BeltVerificationRun
     ExactVerificationReceiptUnreadable { detail } =>
-      BeltVerificationRefuse { reason: detail }
+      BeltVerificationEvidenceUnreadable { reason: detail }
     ExactVerificationReceiptPresent { text } =>
       match verification_receipt_text_classify(receipt: text) {
         VerificationReceiptTextUndecodable { reason } =>
@@ -1031,6 +1114,50 @@ fn verification_validation_execution_decode(
               }
           }
       }
+  }
+}
+
+fn verification_executions_decode(doc: JsonValue) -> List<ValidationExecution>? {
+  match json_object_unique_member(v: doc, key: "executions") {
+    JsonMemberFound { value: executions_value } =>
+      match executions_value {
+        JsonArray { elements } => {
+          let parsed = map(
+            elements,
+            e => verification_validation_execution_decode(doc: e),
+          )
+          let readable = filter(parsed, x => match x {
+            Present { value: _ } => true
+            Absent => false
+          })
+          if count(readable) == count(elements) {
+            Present {
+              value: map(
+                readable,
+                x => match x {
+                  Present { value: v } => v
+                  Absent =>
+                    ValidationExecution {
+                      validation: CargoFmtValidation,
+                      command: ModeledValidationCommand {
+                        label: "decode-placeholder" as NonEmptyStr,
+                        program: "/dev/null" as FilePath,
+                        args: [],
+                      },
+                      exit_code: 0,
+                      stdout: "",
+                      stderr: "",
+                    }
+                },
+              ),
+            }
+          } else {
+            none
+          }
+        }
+        _ => none
+      }
+    _ => none
   }
 }
 
