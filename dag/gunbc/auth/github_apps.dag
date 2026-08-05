@@ -96,9 +96,9 @@ type ObservedGitHubAppSigner {
 
 type SignerCustody
   = SignerCustodyObserved { signer: ObservedGitHubAppSigner }
-  | SignerMaterialAvailabilityUnobserved { app: DeclaredGitHubApp }
+  | SignerMaterialAvailabilityUnobserved
   | SignerMaterialAvailableForImport { source: SecretRef }
-  | SignerKeyGenerationRequired { app: DeclaredGitHubApp }
+  | SignerKeyGenerationRequired
   | SignerReadbackFailed { detail: NonEmptyStr }
 
 fn app_key_settings_locator(app: DeclaredGitHubApp) -> Uri {
@@ -111,9 +111,7 @@ fn app_key_settings_locator(app: DeclaredGitHubApp) -> Uri {
   }
 }
 
-data gunbai_bot_signer_custody: SignerCustody = SignerMaterialAvailabilityUnobserved {
-  app: gunbai_bot_declared
-}
+data gunbai_bot_signer_custody: SignerCustody = SignerMaterialAvailabilityUnobserved
 
 fn signer_seals_app(signer: ObservedGitHubAppSigner, app: DeclaredGitHubApp) -> Bool {
   signer.app_id.value == app.app_id.value
@@ -157,10 +155,10 @@ type ObservedAppRegistration
   | AppRegistrationReadbackUnavailable
 
 fn registration_missing_permissions(
-  requested: List<GitHubAppPermission>,
+  requested: List<ObservedGitHubPermission>,
   required: List<GitHubAppPermission>
 ) -> List<GitHubAppPermission> {
-  filter(required, r => match permission_access_in(perms: requested, name: r.name) {
+  filter(required, r => match observed_access_for(perms: requested, axis: r.name) {
     Absent => true
     Present { value: held } => !permission_access_at_least(held: held, requested: r.access)
   })
@@ -187,10 +185,11 @@ fn permission_set_duplicate(perms: List<GitHubAppPermission>) -> GitHubPermissio
   }
 }
 
-fn registration_permission_rows(registration: ObservedAppRegistration) -> List<GitHubAppPermission> {
+fn registration_duplicate_observed_name(registration: ObservedAppRegistration) -> ObservedGitHubPermissionName? {
   match registration {
-    AppRegistrationReadbackUnavailable => []
-    AppRegistrationReadback { app_id: _, requested_permissions } => requested_permissions
+    AppRegistrationReadbackUnavailable => none
+    AppRegistrationReadback { app_id: _, requested_permissions } =>
+      first_duplicated_observed_permission(perms: requested_permissions)
   }
 }
 
@@ -207,23 +206,12 @@ fn first_duplicate_permission_name(
   observed: ObservedInstallation,
   required: List<GitHubAppPermission>
 ) -> ObservedGitHubPermissionName? {
-  let candidates = [
-    required,
-    registration_permission_rows(registration: registration)
-  ]
-  let authored_duplicate = fold_list(
-    xs: candidates,
-    empty: none,
-    cons: fn(found, perms) {
-      match found {
-        Present { value: v } => Present { value: v }
-        Absent => permission_set_duplicate(perms: perms)
-      }
-    }
-  )
-  match authored_duplicate {
+  match permission_set_duplicate(perms: required) {
     Present { value: axis } => Present { value: observed_permission_name(axis: axis) }
-    Absent => installation_duplicate_observed_name(observed: observed)
+    Absent => match registration_duplicate_observed_name(registration: registration) {
+      Present { value: n } => Present { value: n }
+      Absent => installation_duplicate_observed_name(observed: observed)
+    }
   }
 }
 
@@ -261,11 +249,11 @@ fn sealed_control_plane_state(
   reason: NonEmptyStr
 ) -> GitHubAppControlPlaneState {
   match custody {
-    SignerMaterialAvailabilityUnobserved { app: _ } =>
+    SignerMaterialAvailabilityUnobserved =>
       SignerCustodyUnresolved { app: app, custody: custody }
     SignerMaterialAvailableForImport { source: _ } =>
       SignerCustodyUnresolved { app: app, custody: custody }
-    SignerKeyGenerationRequired { app: _ } =>
+    SignerKeyGenerationRequired =>
       SignerCustodyUnresolved { app: app, custody: custody }
     SignerReadbackFailed { detail: _ } =>
       SignerCustodyUnresolved { app: app, custody: custody }
@@ -339,11 +327,12 @@ type ActionOwner
 
 type GitHubAppMachineAction
   = DiscoverSignerMaterial { app: DeclaredGitHubApp }
+  | BindObservationProducer { required_observation: RequiredObservation }
   | ImportSignerKeyVersion { app: DeclaredGitHubApp, source: SecretRef }
   | ReReadSignerCustody { app: DeclaredGitHubApp }
   | ReadBackAppRegistration { app: DeclaredGitHubApp }
   | ReadBackInstallation { app: DeclaredGitHubApp }
-  | RepairPermissionObservation { app: DeclaredGitHubApp, duplicate: GitHubPermissionAxis }
+  | RepairPermissionObservation { app: DeclaredGitHubApp, duplicate: ObservedGitHubPermissionName }
 
 type GitHubAppOperatorAction
   = ApplyAppPermissionChange
@@ -355,8 +344,13 @@ type ControlPlanePostcondition
   | InstallationHoldsPermissions { accept: List<GitHubAppPermission> }
   | AppHasRegisteredSigningKey { app: DeclaredGitHubApp }
 
+type RequiredObservation
+  = AppRegistrationReadbackObservation
+  | InstallationReadbackObservation
+  | SignerFingerprintObservation
+
 type ObservationProducer
-  = ObservationProducerAbsent { required_observation: NonEmptyStr }
+  = ObservationProducerAbsent { required_observation: RequiredObservation }
   | ObservationProducerBound { producer: DeclarationRef }
 
 type GitHubAppNextAction
@@ -370,15 +364,36 @@ type GitHubAppNextAction
     }
 
 data app_registration_observation: ObservationProducer = ObservationProducerAbsent {
-  required_observation: "GET /app installation and registration readback"
+  required_observation: AppRegistrationReadbackObservation
 }
 
 data installation_observation: ObservationProducer = ObservationProducerAbsent {
-  required_observation: "GET /app/installations/ by installation id"
+  required_observation: InstallationReadbackObservation
 }
 
 data signer_fingerprint_observation: ObservationProducer = ObservationProducerAbsent {
-  required_observation: "GET /app registered public key fingerprints"
+  required_observation: SignerFingerprintObservation
+}
+
+fn operator_packet_or_producer_binding(
+  action: GitHubAppOperatorAction,
+  locator: Uri,
+  postcondition: ControlPlanePostcondition,
+  observation: ObservationProducer
+) -> GitHubAppNextAction {
+  match observation {
+    ObservationProducerAbsent { required_observation } =>
+      MachineActionRequired {
+        action: BindObservationProducer { required_observation: required_observation }
+      }
+    ObservationProducerBound { producer: _ } =>
+      OperatorActionRequired {
+        action: action,
+        locator: locator,
+        postcondition: postcondition,
+        observation: observation
+      }
+  }
 }
 
 fn control_plane_next_action(state: GitHubAppControlPlaneState) -> GitHubAppNextAction {
@@ -393,34 +408,34 @@ fn control_plane_next_action(state: GitHubAppControlPlaneState) -> GitHubAppNext
         MachineActionRequired { action: ReReadSignerCustody { app: app } }
       SignerCustodyObserved { signer: _ } =>
         MachineActionRequired { action: ReReadSignerCustody { app: app } }
-      SignerKeyGenerationRequired { app: key_app } =>
-        OperatorActionRequired {
+      SignerKeyGenerationRequired =>
+        operator_packet_or_producer_binding(
           action: GenerateAppSigningKey,
-          locator: app_key_settings_locator(app: key_app),
-          postcondition: AppHasRegisteredSigningKey { app: key_app },
+          locator: app_key_settings_locator(app: app),
+          postcondition: AppHasRegisteredSigningKey { app: app },
           observation: signer_fingerprint_observation
-        }
-      SignerMaterialAvailabilityUnobserved { app: unobserved_app } =>
-        MachineActionRequired { action: DiscoverSignerMaterial { app: unobserved_app } }
+        )
+      SignerMaterialAvailabilityUnobserved =>
+        MachineActionRequired { action: DiscoverSignerMaterial { app: app } }
     }
     AppRegistrationUnobserved { app } =>
       MachineActionRequired { action: ReadBackAppRegistration { app: app } }
     InstallationUnobserved { app, reason: _ } =>
       MachineActionRequired { action: ReadBackInstallation { app: app } }
     AppRegistrationPermissionMissing { request } =>
-      OperatorActionRequired {
+      operator_packet_or_producer_binding(
         action: ApplyAppPermissionChange,
         locator: request.settings_locator,
         postcondition: AppRegistrationRequestsPermissions { add: request.add },
         observation: app_registration_observation
-      }
+      )
     InstallationPermissionApprovalPending { request } =>
-      OperatorActionRequired {
+      operator_packet_or_producer_binding(
         action: AcceptInstallationPermissions,
         locator: request.installation_locator,
         postcondition: InstallationHoldsPermissions { accept: request.accept },
         observation: installation_observation
-      }
+      )
   }
 }
 
