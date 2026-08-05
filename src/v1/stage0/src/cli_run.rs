@@ -4001,10 +4001,7 @@ pub const CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL: &str = "class_b_gate_not_affecte
 pub const RUN_CLASS_B_GATE_LABEL: &str = "run_class_b_gate";
 
 fn class_b_pool_source_roots(workspace: &Path, pool_roots: &[&str]) -> Vec<PathBuf> {
-    pool_roots
-        .iter()
-        .map(|rel| workspace.join(rel))
-        .collect()
+    pool_roots.iter().map(|rel| workspace.join(rel)).collect()
 }
 
 fn import_closure_dag_files(
@@ -4051,14 +4048,17 @@ fn collect_repo_files_under_prefix(
         return Err(format!("Class B fixture prefix does not exist: {prefix}"));
     }
     fn walk(dir: &Path, workspace: &Path, seen: &mut HashSet<String>) -> Result<(), String> {
-        for entry in std::fs::read_dir(dir).map_err(|e| format!("read_dir {}: {e}", dir.display()))?
+        for entry in
+            std::fs::read_dir(dir).map_err(|e| format!("read_dir {}: {e}", dir.display()))?
         {
             let entry = entry.map_err(|e| format!("read_dir entry: {e}"))?;
             let path = entry.path();
             if path.is_dir() {
                 walk(&path, workspace, seen)?;
             } else if path.is_file() {
-                seen.insert(normalize_repo_path(&regen_workspace_relpath(&path, workspace)));
+                seen.insert(normalize_repo_path(&regen_workspace_relpath(
+                    &path, workspace,
+                )));
             }
         }
         Ok(())
@@ -4073,11 +4073,7 @@ fn collect_repo_files_under_prefix(
 pub fn class_b_import_closure_input_sources(workspace: &Path) -> Result<Vec<String>, String> {
     let witness_roots = class_b_pool_source_roots(workspace, CLASS_B_WITNESS_LAYER_ROOTS);
     let pool_roots = class_b_pool_source_roots(workspace, CLASS_B_DECLARED_POOL_ROOTS);
-    let mut seen = import_closure_dag_files(
-        workspace,
-        &witness_roots,
-        CLASS_B_GATE_INPUT_ENTRIES,
-    )?;
+    let mut seen = import_closure_dag_files(workspace, &witness_roots, CLASS_B_GATE_INPUT_ENTRIES)?;
     seen.extend(import_closure_dag_files(
         workspace,
         &pool_roots,
@@ -4094,8 +4090,7 @@ fn class_b_path_affects_gate(changed: &str, dag_closure: &HashSet<String>) -> bo
     if p.starts_with("src/v1/") {
         return true;
     }
-    if p.starts_with("fixtures/class_b_import_closure/") || p == "fixtures/class_b_import_closure"
-    {
+    if p.starts_with("fixtures/class_b_import_closure/") || p == "fixtures/class_b_import_closure" {
         return true;
     }
     if p == "Cargo.lock"
