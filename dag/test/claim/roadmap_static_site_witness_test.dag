@@ -65,24 +65,6 @@ test fn witness_artifact_digests_are_content_hashes() -> Bool {
   )
 }
 
-fn witness_healthz_body_json_well_formed() -> Bool {
-  witness_healthz_body_json_well_formed_for(body: roadmap_site_healthz_body())
-}
-
-fn witness_healthz_body_json_well_formed_for(body: String) -> Bool {
-  starts_with(s: body, prefix: "{")
-    && ends_with(s: body, suffix: "}}")
-    && !ends_with(s: body, suffix: "}}}")
-}
-
-fn witness_healthz_perturbed_body_fails_well_formed() -> Bool {
-  !witness_healthz_body_json_well_formed_for(body: concat(roadmap_site_healthz_body(), "}"))
-}
-
-fn witness_healthz_body_extra_brace_perturb_red() -> Bool {
-  ends_with(s: concat(roadmap_site_healthz_body(), "}"), suffix: "}}}")
-}
-
 test fn witness_healthz_route_json_ok() -> Bool {
   roadmap_site_surface_readiness_group_holds()
 }
