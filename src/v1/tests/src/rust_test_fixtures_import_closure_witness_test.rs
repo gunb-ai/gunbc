@@ -1,10 +1,29 @@
 //! Class B closure control for `rust_test_fixtures` (#7811 follow-on).
 //!
-//! Proves `src/v2/extdeps/languages/rust_test_fixtures.dag` binds
-//! `v2.extdeps.languages.rust` through its **declared import-edge closure** —
-//! not pool membership coincidence. Each arm compiles on a fresh isolated
-//! index (no process resolve-store warm hit). Full-file typecheck on import-only
-//! closure is out of scope; the witness targets the Class B binding axis only.
+//! **LOCAL/DEV EVIDENCE ONLY — does NOT discharge the DESIGN #6985 Class B block.**
+//! The block stays in force until this property is asserted by an executing floor witness.
+//!
+//! Why not merge-path enforcing: the v1-compiler-tests suite is compile-only in CI
+//! (`cargo check -p v1-compiler-tests --tests` — compile gate; no test execution), per the
+//! 2026-07-11 nextest removal ruling (`gunbc.commit_workflow`
+//! `commit_gate_rust_suite_removed_disposition`). These five tests are never executed on
+//! the merge path; CI only type-checks that they compile.
+//!
+//! What this witness does prove when run locally: `rust_test_fixtures` binds
+//! `v2.extdeps.languages.rust` through its **declared import-edge closure** — not pool
+//! membership coincidence. `import_closure_live` path-set queries alone do **not**
+//! discharge Class B; binding-source classification (`ListedImport` vs `PoolCoincidence`)
+//! on a narrow-closure compile is the axis. Production loaders widen via
+//! `extend_with_reference_closure`; this witness deliberately skips that widening.
+//!
+//! **Typed gap (dissolve-on):** merge-path enforcement requires (1) register
+//! `classify_unlisted_import_binding_source` (production `cli_run.rs`, not test-gated)
+//! through the `04_method.dag` builtin pattern (`compile_dag_diagnostic_census` precedent —
+//! coproduct result, inherits PrimitiveDefinition identity-join dissolution trigger);
+//! (2) wet transport for primary-precedence overlay fixtures (`module_binding_supply_transport`
+//! pattern); (3) enrollment in `gunbc.ci_spec` discovery or scoped/falsifier batch.
+//! This control becomes merge-path enforcing when binding-source classification is
+//! reachable from an executing floor witness — not before.
 
 use std::collections::BTreeMap;
 use std::fs;
