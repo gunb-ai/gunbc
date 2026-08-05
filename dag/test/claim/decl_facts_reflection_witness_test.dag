@@ -1,0 +1,168 @@
+module test.claim.decl_facts_reflection_witness_test
+
+import v2.std.decl_facts_skeleton {
+  decl_facts_nullary_variant_value_identity_note,
+  decl_facts_outer_record_constructor_lexeme_authority_note,
+  skeleton_contains_marshal_atom_lexeme,
+  skeleton_contains_nullary_variant_value_lexeme,
+  skeleton_contains_outer_record_constructor_lexeme,
+  skeleton_marshal_atom_lexeme_count,
+  skeleton_outer_record_constructor_lexeme_count,
+  skeleton_nullary_variant_value_lexeme_count,
+}
+import test.fixture.decl_facts_reflection.witness_support {
+  decl_facts_reflection_fixture_facts,
+  decl_fact_skeleton_for_qualified_name,
+}
+import v2.std.collection { Absent, Present }
+import v2.std.algebra { length }
+
+data decl_facts_reflection_witness_note: String = "decl_facts exact initializer constructor identity: outer ExprRecordLit constructor spelling and nullary variant VALUE spellings surface as marshal atoms in parse-only data-init skeletons. Parent-coproduct resolution remains open — see decl_facts_nullary_variant_value_identity_note."
+
+data qn_planted_scaffold_specimen: String = "test.fixture.decl_facts_reflection.specimens.planted_scaffold_specimen"
+data qn_planted_terminal_specimen: String = "test.fixture.decl_facts_reflection.specimens.planted_terminal_specimen"
+data qn_planted_nullary_disposition_specimen: String = "test.fixture.decl_facts_reflection.specimens.planted_nullary_disposition_specimen"
+data qn_planted_named_field_ref_specimen: String = "test.fixture.decl_facts_reflection.specimens.planted_named_field_ref_specimen"
+data qn_planted_plain_int_specimen: String = "test.fixture.decl_facts_reflection.specimens.planted_plain_int_specimen"
+data qn_uses_param_only: String = "test.fixture.decl_facts_reflection.specimens.uses_param_only"
+data qn_uses_local: String = "test.fixture.decl_facts_reflection.specimens.uses_local"
+
+test fn w_fixture_pool_decl_facts_nonempty() -> Bool {
+  length(xs: decl_facts_reflection_fixture_facts()) > 0
+}
+
+test fn w_outer_record_constructor_scaffold_lexeme_surfaces() -> Bool {
+  match decl_fact_skeleton_for_qualified_name(
+    facts: decl_facts_reflection_fixture_facts(),
+    qn: qn_planted_scaffold_specimen
+  ) {
+    Present { value: skeleton } =>
+      skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "Scaffold")
+        && skeleton_outer_record_constructor_lexeme_count(node: skeleton, lexeme: "Scaffold") == 1
+    Absent => false
+  }
+}
+
+test fn w_outer_record_constructor_terminal_lexeme_surfaces() -> Bool {
+  match decl_fact_skeleton_for_qualified_name(
+    facts: decl_facts_reflection_fixture_facts(),
+    qn: qn_planted_terminal_specimen
+  ) {
+    Present { value: skeleton } =>
+      skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "Terminal")
+    Absent => false
+  }
+}
+
+test fn w_nullary_variant_value_surfaces_in_scaffold_dissolves_to() -> Bool {
+  match decl_fact_skeleton_for_qualified_name(
+    facts: decl_facts_reflection_fixture_facts(),
+    qn: qn_planted_scaffold_specimen
+  ) {
+    Present { value: skeleton } =>
+      skeleton_contains_nullary_variant_value_lexeme(node: skeleton, lexeme: "SingleAuthority")
+        && skeleton_nullary_variant_value_lexeme_count(node: skeleton, lexeme: "SingleAuthority") == 1
+    Absent => false
+  }
+}
+
+test fn w_nullary_variant_value_surfaces_top_level_disposition_arm() -> Bool {
+  match decl_fact_skeleton_for_qualified_name(
+    facts: decl_facts_reflection_fixture_facts(),
+    qn: qn_planted_nullary_disposition_specimen
+  ) {
+    Present { value: skeleton } =>
+      skeleton_contains_nullary_variant_value_lexeme(node: skeleton, lexeme: "SingleAuthority")
+        && skeleton_nullary_variant_value_lexeme_count(node: skeleton, lexeme: "SingleAuthority") == 1
+    Absent => false
+  }
+}
+
+test fn w_declaration_ref_bind_fields_surface_in_scaffold_specimen() -> Bool {
+  match decl_fact_skeleton_for_qualified_name(
+    facts: decl_facts_reflection_fixture_facts(),
+    qn: qn_planted_scaffold_specimen
+  ) {
+    Present { value: skeleton } =>
+      skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "DeclarationRef")
+        && skeleton_contains_marshal_atom_lexeme(
+          node: skeleton,
+          lexeme: "test.fixture.decl_facts_reflection.specimens"
+        )
+        && skeleton_contains_marshal_atom_lexeme(node: skeleton, lexeme: "planted_scaffold_specimen")
+        && skeleton_contains_nullary_variant_value_lexeme(node: skeleton, lexeme: "WholeDeclaration")
+    Absent => false
+  }
+}
+
+test fn w_named_field_declaration_ref_surfaces() -> Bool {
+  match decl_fact_skeleton_for_qualified_name(
+    facts: decl_facts_reflection_fixture_facts(),
+    qn: qn_planted_named_field_ref_specimen
+  ) {
+    Present { value: skeleton } =>
+      skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "NamedField")
+        && skeleton_contains_marshal_atom_lexeme(node: skeleton, lexeme: "dissolves_to")
+    Absent => false
+  }
+}
+
+test fn w_plain_int_specimen_has_no_coproduct_constructor_lexemes() -> Bool {
+  match decl_fact_skeleton_for_qualified_name(
+    facts: decl_facts_reflection_fixture_facts(),
+    qn: qn_planted_plain_int_specimen
+  ) {
+    Present { value: skeleton } =>
+      !skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "Scaffold")
+        && !skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "Terminal")
+        && !skeleton_contains_marshal_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
+        && !skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "DeclarationRef")
+    Absent => false
+  }
+}
+
+test fn w_fn_body_param_reference_does_not_gain_constructor_lexemes() -> Bool {
+  match decl_fact_skeleton_for_qualified_name(
+    facts: decl_facts_reflection_fixture_facts(),
+    qn: qn_uses_param_only
+  ) {
+    Present { value: skeleton } =>
+      !skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "Scaffold")
+        && !skeleton_contains_marshal_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
+        && !skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "DeclarationRef")
+    Absent => false
+  }
+}
+
+test fn w_fn_body_local_bindings_do_not_gain_constructor_lexemes() -> Bool {
+  match decl_fact_skeleton_for_qualified_name(
+    facts: decl_facts_reflection_fixture_facts(),
+    qn: qn_uses_local
+  ) {
+    Present { value: skeleton } =>
+      !skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "Scaffold")
+        && !skeleton_contains_marshal_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
+        && !skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "DeclarationRef")
+    Absent => false
+  }
+}
+
+test fn w_identity_note_names_uppercase_leaf_convention() -> Bool {
+  string_contains(
+    s: decl_facts_nullary_variant_value_identity_note,
+    pattern: "uppercase-first spelling",
+  ) && string_contains(
+    s: decl_facts_nullary_variant_value_identity_note,
+    pattern: "WholeDeclaration",
+  )
+}
+
+test fn w_authority_note_names_constructor_lexeme_not_parent_resolution() -> Bool {
+  string_contains(
+    s: decl_facts_outer_record_constructor_lexeme_authority_note,
+    pattern: "OuterRecordConstructorLexeme",
+  ) && string_contains(
+    s: decl_facts_outer_record_constructor_lexeme_authority_note,
+    pattern: "Parent coproduct resolution",
+  )
+}

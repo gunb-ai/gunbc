@@ -1,0 +1,29 @@
+module test.fixture.decl_facts_reflection.witness_support
+
+import std.types { List, String }
+import v2.std.decl_index { DeclFact, decl_facts }
+import v2.std.decl_facts_skeleton {
+  DeclFactQualifiedNameResolution,
+  DeclFactResolvedUnique,
+  resolve_decl_fact_by_qualified_name,
+  decl_fact_skeleton_for_resolution,
+}
+import v2.std.collection { Absent, Present }
+import v2.std.node { Node }
+
+fn decl_facts_reflection_fixture_roots() -> List<String> {
+  ["dag/test/fixture/decl_facts_reflection"]
+}
+
+fn decl_facts_reflection_fixture_facts() -> List<DeclFact> {
+  decl_facts(pool_roots: decl_facts_reflection_fixture_roots())
+}
+
+fn decl_fact_skeleton_for_qualified_name(facts: List<DeclFact>, qn: String) -> Node? {
+  match decl_fact_skeleton_for_resolution(
+    resolution: resolve_decl_fact_by_qualified_name(facts: facts, qn: qn)
+  ) {
+    Present { value: skeleton } => Present { value: skeleton }
+    Absent => Absent
+  }
+}

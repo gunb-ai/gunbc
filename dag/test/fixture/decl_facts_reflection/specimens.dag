@@ -1,0 +1,39 @@
+module test.fixture.decl_facts_reflection.specimens
+
+import std.types { String, Int }
+import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+
+data planted_scaffold_specimen: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "test.fixture.decl_facts_reflection.specimens",
+    decl_name: "planted_scaffold_specimen",
+    field: WholeDeclaration
+  }
+}
+
+data planted_terminal_specimen: Disposition = Terminal {
+  reason: "fixture terminal arm"
+}
+
+data planted_nullary_disposition_specimen: Disposition = SingleAuthority
+
+data planted_named_field_ref_specimen: DeclarationRef = DeclarationRef {
+  module_path: "test.fixture.decl_facts_reflection.specimens",
+  decl_name: "planted_scaffold_specimen",
+  field: NamedField { field_name: "dissolves_to" }
+}
+
+data planted_plain_int_specimen: Int = 42
+
+data planted_plain_string_specimen: String = "hello"
+
+fn uses_param_only(x: Int) -> Int {
+  x
+}
+
+fn uses_local(y: Int) -> Int {
+  let z = y
+  z
+}
