@@ -1,0 +1,48 @@
+module v2.test.long.direct_rust_door_production_group
+
+import v2.compiler.self_host.candidate_generation {
+  ArtifactProduced,
+  AssemblyRejected,
+  EmissionRejected,
+  InferenceRejected,
+  ProducerReceiptRejected,
+}
+import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
+  direct_rust_door_leaf_established,
+  direct_rust_door_production_group,
+  direct_rust_door_production_group_holds,
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data direct_rust_door_production_group_test_note: String = "LONG lane (5s rule): each witness here walks the real ingest-assemble-infer-emit path. MEASURED COST DISCIPLINE — one production walk per witness, no cross-witness reuse exists yet, so this file is deliberately held to four functions rather than one per postcondition; the four group postconditions share a SINGLE walk inside direct_rust_door_production_group. A seven-function discrimination set was executed once at abaa23e5d3 to locate the failing stage (assembly true-negative, inference true-negative, emission POSITIVE, producer-receipt true-negative, artifact true-negative — exactly one arm, so the set discriminated) and then trimmed to the two stage rows that carry standing value. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/direct_rust_door_production_group_test.dag --functions <csv>"
+
+test fn direct_rust_door_production_stops_at_emission() -> Bool {
+  match direct_rust_door_production_group().emission {
+    AssemblyRejected { diagnostics: _ } => false
+    InferenceRejected { diagnostics: _ } => false
+    EmissionRejected { diagnostics: _ } => true
+    ProducerReceiptRejected { diagnostics: _ } => false
+    ArtifactProduced { artifact: _ } => false
+  }
+}
+
+test fn direct_rust_door_production_reaches_artifact() -> Bool {
+  match direct_rust_door_production_group().emission {
+    AssemblyRejected { diagnostics: _ } => false
+    InferenceRejected { diagnostics: _ } => false
+    EmissionRejected { diagnostics: _ } => false
+    ProducerReceiptRejected { diagnostics: _ } => false
+    ArtifactProduced { artifact: _ } => true
+  }
+}
+
+test fn direct_rust_door_missing_rule_leaf_established() -> Bool {
+  direct_rust_door_leaf_established(
+    leaf: direct_rust_door_production_group().missing_translation_rule_refusal
+  )
+}
+
+test fn direct_rust_door_production_group_closing_expectation_holds() -> Bool {
+  direct_rust_door_production_group_holds(group: direct_rust_door_production_group())
+}
