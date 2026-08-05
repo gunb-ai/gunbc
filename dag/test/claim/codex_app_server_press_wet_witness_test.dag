@@ -2,7 +2,7 @@ module test.claim.codex_app_server_press_wet_witness_test
 
 import extdeps.filesystem.filesystem_io
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.types { Bool, String, FilePath, List }
+import std.types { Bool, String, FilePath }
 import gunbc.package_delivery {
   codex_runtime_lock_path,
   codex_runtime_manifest_path,
@@ -13,31 +13,28 @@ import gunbc.codex_app_server_press {
   press_codex_app_server_for_bundle,
   codex_press_specimen_node_identity,
   codex_press_outcome_wire_status,
+  codex_press_outcome_operator_caption,
   CodexPressAccountReady,
   CodexPressLoginRequired,
   CodexPressUnavailable,
   CodexPressRefused,
-  CodexPressRawFrame,
 }
 import gunbc.codex_runtime_bundle { codex_bundle_executable_path }
 import extdeps.shell
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data witness_note: String = "WET: materialize content-addressed Codex runtime, then press through held-open initialize → account/read → account/rateLimits/read. Accepts turn_started (account standing ok) OR typed login_required / quota press_refused. Receipt frames must stay redacted (no email/token bytes). Excluded from hermetic discovery."
+data witness_note: String = "WET: materialize content-addressed Codex runtime, then observe account standing via initialize → account/read → account/rateLimits/read. Accepts account_ready OR typed login_required / quota press_refused. Must NEVER claim turn_started. Standing summaries are redacted projections, not raw NDJSON. Excluded from hermetic discovery."
 
 fn committed_codex_lock_text() -> String {
   filesystem_read(path: codex_runtime_lock_path as String).content
 }
 
-fn frames_are_redacted(frames: List<CodexPressRawFrame>) -> Bool {
-  all(frames, f => {
-    let body = f.body
-    body.contains("@") == false
-      && body.contains("access_token") == false
-      && body.contains("refresh_token") == false
-      && body.contains("email") == false
-  })
+fn standing_is_redacted(redacted: String) -> Bool {
+  redacted.contains("@") == false
+    && redacted.contains("access_token") == false
+    && redacted.contains("refresh_token") == false
+    && redacted.contains("email") == false
 }
 
 fn press_account_trip_outcome_is_attributable(status: String, reason: String) -> Bool {
@@ -52,7 +49,7 @@ fn press_account_trip_outcome_is_attributable(status: String, reason: String) ->
   }
 }
 
-test fn press_account_trip_yields_turn_or_typed_refusal_with_redacted_frames() -> Bool {
+test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started() -> Bool {
   match materialize_codex_runtime_bundle(
     lock_text: committed_codex_lock_text(),
     manifest_src: codex_runtime_manifest_path as FilePath,
@@ -67,27 +64,35 @@ test fn press_account_trip_yields_turn_or_typed_refusal_with_redacted_frames() -
           bundle: bundle,
           node_identity: codex_press_specimen_node_identity,
           attempt_key: "wet-account-trip-1",
-          turn_key: "wet-account-trip-1-turn-1",
+          turn_key: "wet-account-trip-1-turn-pending",
           workspace_root: "/tmp" as FilePath,
           head_sha: "wet",
         ) {
-          CodexPressAccountReady { receipt } =>
-            codex_press_outcome_wire_status(
+          CodexPressAccountReady { receipt } => {
+            let status = codex_press_outcome_wire_status(
               outcome: CodexPressAccountReady { receipt: receipt },
-            ) == "account_ready"
-              && frames_are_redacted(frames: receipt.frames)
-              && any(receipt.frames, f => (f.body as String).contains("account_read_ok"))
-          CodexPressLoginRequired { reason, frames } =>
+            )
+            let caption = codex_press_outcome_operator_caption(
+              outcome: CodexPressAccountReady { receipt: receipt },
+            )
+            status == "account_ready"
+              && status != "turn_started"
+              && caption == "account ready"
+              && caption != "turn started"
+              && standing_is_redacted(redacted: receipt.standing.redacted_standing)
+              && receipt.standing.redacted_standing.contains("account_read_ok")
+          }
+          CodexPressLoginRequired { reason, standing } =>
             codex_press_outcome_wire_status(
-              outcome: CodexPressLoginRequired { reason: reason, frames: frames },
+              outcome: CodexPressLoginRequired { reason: reason, standing: standing },
             ) == "login_required"
-              && frames_are_redacted(frames: frames)
-          CodexPressRefused { reason, frames } =>
+              && standing_is_redacted(redacted: standing.redacted_standing)
+          CodexPressRefused { reason, standing } =>
             press_account_trip_outcome_is_attributable(
               status: "press_refused",
               reason: reason as String,
             )
-              && frames_are_redacted(frames: frames)
+              && standing_is_redacted(redacted: standing.redacted_standing)
               && (
                 (reason as String).contains("quota")
                   || (reason as String).contains("incomplete")

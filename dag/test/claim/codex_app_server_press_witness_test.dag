@@ -21,10 +21,12 @@ import gunbc.codex_app_server_press {
   admit_codex_press_start_projected,
   CodexPressStartAdmitted,
   codex_press_method_itinerary,
+  codex_press_account_trip_methods,
   codex_press_specimen_node_identity,
   codex_press_outcome_wire_status,
   codex_press_outcome_operator_caption,
   redact_press_stdout_for_receipt,
+  account_standing_summary,
   CodexPressAccountReady,
   CodexPressLoginRequired,
   CodexPressRefused,
@@ -44,10 +46,11 @@ import extdeps.llm.codex_app_server {
   CodexAppServerStdio,
   CodexAppServerInitialize,
   CodexAppServerTurnStart,
+  CodexAppServerAccountRateLimitsRead,
   codex_app_server_method_wire_name,
 }
 
-data witness_note: String = "Hermetic press carriers: itinerary + projected stdio binding + AttemptKey/TurnKey Start + terminal/cause adjudication RED. Live JSON-RPC turn execution is the wet slice."
+data witness_note: String = "Hermetic press carriers: account-trip itinerary (3) vs turn-target itinerary (5) + projected stdio binding + AttemptKey Start + terminal/cause adjudication RED. AccountReady is standing only — never turn_started. Live JSON-RPC turn execution remains open."
 
 data fixture_digest_hex: String = "c86dec3d635d6bfd980084080eaf4caeb8e8093210eebc5833921ab2b1b754172e8422d39207a0fc9cea989ab557df11138309e630b10d75d094e8eb762b4547"
 
@@ -83,7 +86,7 @@ fn fixture_bundle_from_digest(digest: Sha512Digest) -> CodexRuntimeBundle {
   }
 }
 
-test fn press_itinerary_is_five_steps_starting_with_initialize() -> Bool {
+test fn press_turn_target_itinerary_is_five_steps_starting_with_initialize() -> Bool {
   let steps = codex_press_method_itinerary()
   match steps.first() {
     Present { value: step } =>
@@ -93,6 +96,20 @@ test fn press_itinerary_is_five_steps_starting_with_initialize() -> Bool {
       }
     Absent => false
   }
+}
+
+test fn press_account_trip_itinerary_is_three_steps_without_turn_start() -> Bool {
+  let steps = codex_press_account_trip_methods()
+  count(steps) == 3
+    && match steps.last() {
+      Present { value: last } =>
+        match last {
+          CodexAppServerAccountRateLimitsRead => true
+          CodexAppServerTurnStart => false
+          _ => false
+        }
+      Absent => false
+    }
 }
 
 test fn press_itinerary_wire_names_match_generated_schema() -> Bool {
@@ -132,7 +149,7 @@ test fn stdio_binding_derives_from_runtime_bundle() -> Bool {
   }
 }
 
-test fn press_start_names_attempt_turn_and_binding() -> Bool {
+test fn press_start_admits_account_trip_not_turn_itinerary() -> Bool {
   match fixture_digest() {
     Absent => false
     Present { value: digest } =>
@@ -146,9 +163,8 @@ test fn press_start_names_attempt_turn_and_binding() -> Bool {
       ) {
         CodexPressStartAdmitted { start, itinerary } =>
           (start.attempt_key as String) == "attempt-fixture-1"
-            && start.turn_key == "turn-fixture-1"
             && (start.node_identity as String) == "codex-app-server-press-vertical"
-            && count(itinerary) == 5
+            && count(itinerary) == 3
         _ => false
       }
   }
@@ -191,25 +207,25 @@ test fn failed_unclassified_cannot_authorize_recovery() -> Bool {
     && automatic_recovery_authorized(disposition: classified_retryable) == false
 }
 
-test fn press_outcome_wire_status_is_not_dispatch_accepted() -> Bool {
-  match fixture_digest() {
-    Absent => false
-    Present { value: digest } => {
-      let outcome = CodexPressAccountReady {
-        receipt: CodexAccountStandingReceipt {
-          node_identity: codex_press_specimen_node_identity,
-          attempt_key: "a",
-          turn_key: "t",
-          head_sha: "h",
-          frames: [],
-          provider_thread_id: none,
-          provider_turn_id: none,
-        },
-      }
-      let status = codex_press_outcome_wire_status(outcome: outcome)
-      status == "account_ready" && status != "accepted" && status != "spawned"
-    }
+test fn account_ready_wire_status_is_not_turn_started_or_dispatch_accepted() -> Bool {
+  let standing = account_standing_summary(
+    redacted: "initialize_ok; account_read_ok; rate_limits_observed",
+  )
+  let outcome = CodexPressAccountReady {
+    receipt: CodexAccountStandingReceipt {
+      node_identity: codex_press_specimen_node_identity,
+      attempt_key: "a",
+      standing: standing,
+    },
   }
+  let status = codex_press_outcome_wire_status(outcome: outcome)
+  let caption = codex_press_outcome_operator_caption(outcome: outcome)
+  status == "account_ready"
+    && status != "turn_started"
+    && status != "accepted"
+    && status != "spawned"
+    && caption == "account ready"
+    && caption != "turn started"
 }
 
 test fn account_trip_redaction_classifies_login_quota_and_ok() -> Bool {
@@ -232,18 +248,23 @@ test fn account_trip_redaction_classifies_login_quota_and_ok() -> Bool {
 test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
   let outcome = CodexPressRefused {
     reason: "codex quota exhausted at account/rateLimits/read" as NonEmptyStr,
-    frames: [],
+    standing: account_standing_summary(
+      redacted: "initialize_ok; account_read_ok; rate_limits_quota_reached",
+    ),
   }
   codex_press_outcome_wire_status(outcome: outcome) == "press_refused"
     && codex_press_outcome_operator_caption(outcome: outcome) == "quota exhausted"
     && codex_press_outcome_wire_status(outcome: outcome) != "accepted"
+    && codex_press_outcome_wire_status(outcome: outcome) != "turn_started"
 }
 
-test fn login_required_wire_status_is_not_accepted() -> Bool {
+test fn login_required_wire_status_is_not_accepted_or_turn_started() -> Bool {
   let outcome = CodexPressLoginRequired {
     reason: "codex app-server account trip requires login" as NonEmptyStr,
-    frames: [],
+    standing: account_standing_summary(redacted: "initialize_ok; login_required"),
   }
   codex_press_outcome_wire_status(outcome: outcome) == "login_required"
     && codex_press_outcome_wire_status(outcome: outcome) != "accepted"
+    && codex_press_outcome_wire_status(outcome: outcome) != "turn_started"
+    && codex_press_outcome_operator_caption(outcome: outcome) == "login required"
 }
