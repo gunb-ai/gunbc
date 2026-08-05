@@ -31,38 +31,38 @@ fn owner_may_write_domain_fact(o: StateOwner) -> Bool {
   }
 }
 
-data depth_note: String = "The semantic camera's one axis, ordered outermost to innermost. It is a DEPTH, not a zoom: each position is a discrete detent with its own subject grain, so there is no continuous scale and no arbitrary pan. History is deliberately absent — a mode that cannot be answered from a real historical projection would be a fabricated affordance, and the directive names it as out of scope until one exists."
+data depth_note: String = "The semantic camera's one axis, ordered outermost to innermost. The variants carry a Depth stem because a bare-name identifier is a corpus-wide name in this substrate, not a module-local one — an unprefixed Node variant would have collided head-on with the substrate's own Node type, which is the nicknaming violation before it is ever a resolution hazard. It is a DEPTH, not a zoom: each position is a discrete detent with its own subject grain, so there is no continuous scale and no arbitrary pan. History is deliberately absent — a mode that cannot be answered from a real historical projection would be a fabricated affordance, and the directive names it as out of scope until one exists."
 
 type ProgramDepth
-  = Program
-  | Outcome
-  | Front
-  | Node
-  | Evidence
+  = DepthProgram
+  | DepthOutcome
+  | DepthFront
+  | DepthNode
+  | DepthEvidence
 
 fn program_depth_key(d: ProgramDepth) -> String {
   match d {
-    Program => "program"
-    Outcome => "outcome"
-    Front => "front"
-    Node => "node"
-    Evidence => "evidence"
+    DepthProgram => "program"
+    DepthOutcome => "outcome"
+    DepthFront => "front"
+    DepthNode => "node"
+    DepthEvidence => "evidence"
   }
 }
 
 fn program_depth_index(d: ProgramDepth) -> Int {
   match d {
-    Program => 0
-    Outcome => 1
-    Front => 2
-    Node => 3
-    Evidence => 4
+    DepthProgram => 0
+    DepthOutcome => 1
+    DepthFront => 2
+    DepthNode => 3
+    DepthEvidence => 4
   }
 }
 
 data depth_ordering_note: String = "program_depth_index exists so a detent crossing is DERIVED rather than authored: one wheel threshold or one arrow key moves the index by exactly one, and the dial's rendered position is the index. Authoring a per-pair transition table would be the same ordering said twice."
 
-data depth_detent_step_note: String = "A depth change crosses AT MOST ONE detent, by construction: step_depth takes a direction, not a target, so no caller can jump Program to Evidence in one gesture and no continuous zoom can exist. Clamping at the ends is deliberate and is not an absorbing fallback — the request is fully answered ('you are already at the outermost detent'), nothing is widened, and a caller that wants to know whether it moved compares the returned depth."
+data depth_detent_step_note: String = "A depth change crosses AT MOST ONE detent, by construction: step_depth takes a direction, not a target, so no caller can jump from the outermost detent to the innermost in one gesture and no continuous zoom can exist. Clamping at the ends is deliberate and is not an absorbing fallback — the request is fully answered ('you are already at the outermost detent'), nothing is widened, and a caller that wants to know whether it moved compares the returned depth."
 
 type DepthStep
   = Inward
@@ -71,32 +71,32 @@ type DepthStep
 fn step_depth(d: ProgramDepth, step: DepthStep) -> ProgramDepth {
   match step {
     Inward => match d {
-      Program => Outcome
-      Outcome => Front
-      Front => Node
-      Node => Evidence
-      Evidence => Evidence
+      DepthProgram => DepthOutcome
+      DepthOutcome => DepthFront
+      DepthFront => DepthNode
+      DepthNode => DepthEvidence
+      DepthEvidence => DepthEvidence
     }
     Outward => match d {
-      Program => Program
-      Outcome => Program
-      Front => Outcome
-      Node => Front
-      Evidence => Node
+      DepthProgram => DepthProgram
+      DepthOutcome => DepthProgram
+      DepthFront => DepthOutcome
+      DepthNode => DepthFront
+      DepthEvidence => DepthNode
     }
   }
 }
 
 type ProgramMode
-  = Status
-  | Remaining
-  | Why
+  = ModeStatus
+  | ModeRemaining
+  | ModeWhy
 
 fn program_mode_key(m: ProgramMode) -> String {
   match m {
-    Status => "status"
-    Remaining => "remaining"
-    Why => "why"
+    ModeStatus => "status"
+    ModeRemaining => "remaining"
+    ModeWhy => "why"
   }
 }
 
@@ -127,11 +127,11 @@ type ProgramCamera {
   focus: FocusSubject
 }
 
-data camera_opens_outermost_note: String = "The instrument opens at the outermost depth in Status with nothing selected — no subject is preselected, because a preselected subject is a claim about what matters that the program did not make."
+data camera_opens_outermost_note: String = "The instrument opens at the outermost depth in Status mode with nothing selected — no subject is preselected, because a preselected subject is a claim about what matters that the program did not make."
 
 data camera_initial: ProgramCamera = ProgramCamera {
-  depth: Program,
-  mode: Status,
+  depth: DepthProgram,
+  mode: ModeStatus,
   focus: NoSubjectSelected,
 }
 

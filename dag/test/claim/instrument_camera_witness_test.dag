@@ -5,9 +5,9 @@ import std.types { String, Bool, Int, List }
 import gunbc.design.instrument_camera {
   StateOwner, AuthoritativeProgramView, LocalInstrumentState, InstrumentObservation,
   RendererEphemera, state_owner_key, owner_may_write_domain_fact,
-  ProgramDepth, Program, Outcome, Front, Node, Evidence,
+  ProgramDepth, DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence,
   program_depth_key, program_depth_index, DepthStep, Inward, Outward, step_depth,
-  ProgramMode, Status, Remaining, Why, program_mode_key,
+  ProgramMode, ModeStatus, ModeRemaining, ModeWhy, program_mode_key,
   FocusSubject, NoSubjectSelected, FinishLineFocused, focus_subject_key,
   focus_finish_line, focus_subject_eq,
   ProgramCamera, camera_initial, camera_step_depth, camera_set_mode, camera_select,
@@ -58,26 +58,26 @@ fn witness_camera_opens_outermost_with_nothing_selected() -> Bool {
 }
 
 fn witness_depth_crosses_exactly_one_detent() -> Bool {
-  program_depth_index(d: step_depth(d: Program, step: Inward)) == program_depth_index(d: Program) + 1
-    && program_depth_index(d: step_depth(d: Outcome, step: Inward)) == program_depth_index(d: Outcome) + 1
-    && program_depth_index(d: step_depth(d: Front, step: Inward)) == program_depth_index(d: Front) + 1
-    && program_depth_index(d: step_depth(d: Node, step: Inward)) == program_depth_index(d: Node) + 1
-    && program_depth_index(d: step_depth(d: Evidence, step: Outward)) == program_depth_index(d: Evidence) - 1
-    && program_depth_index(d: step_depth(d: Node, step: Outward)) == program_depth_index(d: Node) - 1
+  program_depth_index(d: step_depth(d: DepthProgram, step: Inward)) == program_depth_index(d: DepthProgram) + 1
+    && program_depth_index(d: step_depth(d: DepthOutcome, step: Inward)) == program_depth_index(d: DepthOutcome) + 1
+    && program_depth_index(d: step_depth(d: DepthFront, step: Inward)) == program_depth_index(d: DepthFront) + 1
+    && program_depth_index(d: step_depth(d: DepthNode, step: Inward)) == program_depth_index(d: DepthNode) + 1
+    && program_depth_index(d: step_depth(d: DepthEvidence, step: Outward)) == program_depth_index(d: DepthEvidence) - 1
+    && program_depth_index(d: step_depth(d: DepthNode, step: Outward)) == program_depth_index(d: DepthNode) - 1
 }
 
 fn witness_red_depth_clamps_at_both_ends_instead_of_wrapping() -> Bool {
-  program_depth_key(d: step_depth(d: Evidence, step: Inward)) == "evidence"
-    && program_depth_key(d: step_depth(d: Program, step: Outward)) == "program"
+  program_depth_key(d: step_depth(d: DepthEvidence, step: Inward)) == "evidence"
+    && program_depth_key(d: step_depth(d: DepthProgram, step: Outward)) == "program"
 }
 
 fn witness_camera_moves_carry_the_subject_unchanged() -> Bool {
   let c = camera_on(l: InterpreterDeleted)
   camera_preserves_subject_across_depth(c: c, step: Inward)
     && camera_preserves_subject_across_depth(c: c, step: Outward)
-    && camera_preserves_subject_across_mode(c: c, m: Why)
-    && camera_preserves_subject_across_mode(c: c, m: Remaining)
-    && focus_subject_key(f: camera_set_mode(c: c, m: Why).focus) == "interpreter-deleted"
+    && camera_preserves_subject_across_mode(c: c, m: ModeWhy)
+    && camera_preserves_subject_across_mode(c: c, m: ModeRemaining)
+    && focus_subject_key(f: camera_set_mode(c: c, m: ModeWhy).focus) == "interpreter-deleted"
 }
 
 fn witness_selecting_the_selected_subject_clears_it() -> Bool {

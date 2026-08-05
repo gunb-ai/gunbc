@@ -27,8 +27,8 @@ import gunbc.design.salience {
   attraction_travel_max_px,
 }
 import gunbc.design.instrument_camera {
-  ProgramCamera, ProgramDepth, Program, Outcome, Front, Node, Evidence,
-  ProgramMode, Status, Remaining, Why, program_depth_key, program_depth_index,
+  ProgramCamera, ProgramDepth, DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence,
+  ProgramMode, ModeStatus, ModeRemaining, ModeWhy, program_depth_key, program_depth_index,
   program_mode_key, camera_initial, camera_select, camera_set_mode, focus_finish_line,
   StateOwner, AuthoritativeProgramView, LocalInstrumentState, InstrumentObservation,
   RendererEphemera, state_owner_key, owner_may_write_domain_fact,
@@ -210,8 +210,8 @@ fn exemplar_camera() -> ProgramCamera {
   camera_select(c: camera_initial, f: focus_finish_line(l: CompilerFixedPoint))
 }
 
-fn program_depths() -> List<ProgramDepth> { [Program, Outcome, Front, Node, Evidence] }
-fn program_modes() -> List<ProgramMode> { [Status, Remaining, Why] }
+fn program_depths() -> List<ProgramDepth> { [DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence] }
+fn program_modes() -> List<ProgramMode> { [ModeStatus, ModeRemaining, ModeWhy] }
 
 fn depth_cell(d: ProgramDepth) -> Fragment {
   cell(s: join([to_string(program_depth_index(d: d)), " · ", program_depth_key(d: d)], ""))
