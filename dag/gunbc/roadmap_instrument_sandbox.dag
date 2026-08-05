@@ -359,12 +359,18 @@ fn depth_readings(view: V1DeletionProgramView, d: ProgramDepth) -> List<Fragment
   map(program_modes(), m => reading_at(view: view, d: d, m: m))
 }
 
+data refusal_cause_arms_note: String = "TOTAL OVER V0's REFUSAL COPRODUCT, and the totality is load-bearing rather than tidy. The page's whole contract when the projection refuses is that it draws the LOCATED causes instead of a smaller program, so a cause this page could not name would be a cause the reader never sees — the empty-observation narrow, one layer out. The duplicate arms arrived from PR #7822 and the compiler refused this match until they were handled, which is the construction wall working across a merge: nobody had to notice that V0 grew two refusal shapes, because an Accepted program could not be built without them."
+
 fn refusal_cause_text(c: ProgramViewRefusalCause) -> String {
   match c {
     FinishLineNodeUnresolved { line_key, node } =>
       join(["finish line ", line_key, " names no declared node: ", node as String], "")
     FrontGateUnresolved { front_key, gate } =>
       join(["front ", front_key, " names no declared gate: ", gate as String], "")
+    DuplicateAcceptanceReceipt { node } =>
+      join(["node ", node as String, " carries more than one acceptance receipt"], "")
+    DuplicateProgramNodeId { node } =>
+      join(["node id ", node as String, " is declared more than once"], "")
   }
 }
 
