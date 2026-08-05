@@ -2,9 +2,8 @@ module gunbc.roadmap_program_view
 
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId, RoadmapAcceptanceReceipt,
-  receipt_evidence_complete, node_criteria_digest,
+  receipt_matches_node,
 }
-import std.content_hash { Fnv1a64Structural, content_hash_eq_structural }
 import gunbc.roadmap_execution_contract { contract_has_closing_validation }
 import gunbc.roadmap_focus { roadmap_dependency_graph }
 import gunbc.roadmap_status { line_ticket }
@@ -135,53 +134,14 @@ fn program_receipt_counts(receipts: List<RoadmapAcceptanceReceipt>) -> Map<Strin
   receipts |> fold(init: empty_map(), f: program_receipt_count_step)
 }
 
-fn program_receipt_criteria_digest_map(
-  node_index: Map<String, RoadmapNode>,
-  receipts: List<RoadmapAcceptanceReceipt>,
-) -> Map<String, Fnv1a64Structural> {
-  receipts |> fold(init: empty_map(), f: (acc, r) => {
-    let id = r.node as String
-    match map_get(acc, id) {
-      Present { value: _ } => acc
-      Absent =>
-        match program_find_node_indexed(index: node_index, id: r.node) {
-          Present { value: n } =>
-            match node_criteria_digest(rn: n) {
-              Present { value: d } => map_insert(acc, id, d)
-              Absent => acc
-            }
-          Absent => acc
-        }
-    }
-  })
-}
-
-fn program_receipt_matches_indexed(
-  r: RoadmapAcceptanceReceipt,
-  rn: RoadmapNode,
-  criteria_digests: Map<String, Fnv1a64Structural>,
-) -> Bool {
-  r.node == rn.node
-    && receipt_evidence_complete(r: r)
-    && match map_get(criteria_digests, r.node as String) {
-      Present { value: d } =>
-        content_hash_eq_structural(left: d, right: r.criteria_digest)
-      Absent => false
-    }
-}
-
 fn program_accepted_ids(
   node_index: Map<String, RoadmapNode>,
   receipts: List<RoadmapAcceptanceReceipt>,
-  criteria_digests: Map<String, Fnv1a64Structural>,
 ) -> List<String> {
   receipts
     |> filter(r =>
       match program_find_node_indexed(index: node_index, id: r.node) {
-        Present { value: n } =>
-          program_receipt_matches_indexed(
-            r: r, rn: n, criteria_digests: criteria_digests,
-          )
+        Present { value: n } => receipt_matches_node(r: r, rn: n)
         Absent => false
       })
     |> map(r => r.node as String)
@@ -644,17 +604,10 @@ fn program_view(
     ProgramViewRefused { causes: causes }
   } else {
     let node_index = program_node_index(nodes: nodes)
-    let criteria_digests = program_receipt_criteria_digest_map(
-      node_index: node_index, receipts: receipts,
-    )
     let graph = roadmap_dependency_graph(edges: edges)
     let reverse_adj = reverse_adjacency(names: ids, graph: graph)
     let parent_index = program_parent_index(edges: edges)
-    let accepted = program_accepted_ids(
-      node_index: node_index,
-      receipts: receipts,
-      criteria_digests: criteria_digests,
-    )
+    let accepted = program_accepted_ids(node_index: node_index, receipts: receipts)
     let accepted_map = program_member_map(ids: accepted)
     let in_flight_map = program_member_map(ids: in_flight)
     let scope_ids = program_union_scope_ids(reverse_adj: reverse_adj, lines: lines, fronts: fronts)

@@ -275,6 +275,28 @@ test fn witness_red_misspelled_identities_refuse_with_located_causes() -> Bool {
   line_refused && gate_refused
 }
 
+test fn witness_red_duplicate_receipts_refuse_projection() -> Bool {
+  let n = fx_node(id: "fa", bound: true, sized: true)
+  let duplicate_receipts = [ fx_receipt_for(n: n), fx_receipt_for(n: n) ]
+  match program_view(
+    lines: fx_lines(),
+    fronts: fx_fronts(),
+    nodes: fx_nodes(),
+    edges: fx_edges(),
+    receipts: duplicate_receipts,
+    in_flight: [],
+  ) {
+    ProgramViewRefused { causes } =>
+      count(causes) == 1
+        && all(causes, c => match c {
+          DuplicateAcceptanceReceipt { node } => (node as String) == "fa"
+          FinishLineNodeUnresolved { line_key: _, node: _ } => false
+          FrontGateUnresolved { front_key: _, gate: _ } => false
+        })
+    ProgramViewDerived { view: _ } => false
+  }
+}
+
 test fn witness_red_merged_prs_and_contracts_do_not_accept() -> Bool {
   let bogus_receipt = RoadmapAcceptanceReceipt {
     node: "fe" as RoadmapNodeId,
