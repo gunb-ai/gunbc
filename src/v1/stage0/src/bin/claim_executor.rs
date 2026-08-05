@@ -11885,7 +11885,10 @@ mod tests {
     #[test]
     fn stream_excerpt_keeps_the_tail_bounded_and_marks_truncation() {
         assert_eq!(stream_excerpt(b""), "<empty>");
-        assert_eq!(stream_excerpt(b"error: no such command\n"), "error: no such command");
+        assert_eq!(
+            stream_excerpt(b"error: no such command\n"),
+            "error: no such command"
+        );
         let long: Vec<u8> = std::iter::repeat(b'x')
             .take(4000)
             .chain(b"THE ACTUAL ERROR".iter().copied())
@@ -11893,7 +11896,11 @@ mod tests {
         let excerpt = stream_excerpt(&long);
         assert!(excerpt.contains("THE ACTUAL ERROR"), "tail was dropped");
         assert!(excerpt.starts_with('…'), "truncation was not marked");
-        assert!(excerpt.len() < 1400, "excerpt is unbounded: {}", excerpt.len());
+        assert!(
+            excerpt.len() < 1400,
+            "excerpt is unbounded: {}",
+            excerpt.len()
+        );
     }
 
     #[test]

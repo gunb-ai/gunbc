@@ -13552,3 +13552,46 @@ mod resolve_host_tool_program_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod process_termination_tests {
+    use super::process_termination_label;
+
+    /// The host transport observes a child; a child killed by a signal has NO exit
+    /// code. The seed used to render `.code().unwrap_or(-1)` for both, so an
+    /// OOM-killed cargo build and a process that chose to exit -1 produced the same
+    /// bytes. This is the discriminating control for that split: the same raw wait
+    /// status that carries a signal must never render as an exit.
+    #[cfg(unix)]
+    #[test]
+    fn signal_death_is_not_flattened_to_an_exit_code() {
+        use std::os::unix::process::ExitStatusExt;
+        use std::process::ExitStatus;
+
+        // Raw wait status encoding: low 7 bits are the terminating signal, and
+        // `code()` is None for those. 9 = SIGKILL (the OOM-killer's signal),
+        // 11 = SIGSEGV.
+        for signal in [9, 11] {
+            let status = ExitStatus::from_raw(signal);
+            assert_eq!(status.code(), None, "expected a signalled status");
+            assert_eq!(
+                process_termination_label(&status),
+                format!("signal {signal}")
+            );
+            assert!(
+                !process_termination_label(&status).contains("exit"),
+                "signal {signal} rendered as an exit"
+            );
+        }
+
+        // An ordinary exit still reports its code: status >> 8 is the exit code.
+        assert_eq!(
+            process_termination_label(&ExitStatus::from_raw(0)),
+            "exit 0"
+        );
+        assert_eq!(
+            process_termination_label(&ExitStatus::from_raw(101 << 8)),
+            "exit 101"
+        );
+    }
+}
