@@ -11,6 +11,7 @@ import std.content_hash {
   as_content_hash_cryptographic,
 }
 import extdeps.pin { CrossFamilyIdentityIncomparable }
+import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
@@ -39,7 +40,9 @@ import gunbc.roadmap_verification_receipt {
   verification_receipt_decode,
   VerificationReceiptDecoded,
   VerificationReceiptUndecodable,
+  SelectionObserved,
 }
+import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap_model { RoadmapNodeIdentity }
 import extdeps.version { VersionIdentity }
 import gunbc.roadmap_execution_contract {
@@ -714,6 +717,7 @@ fn verify_fixture_subject() -> VerificationSubject {
     attempt_key: "feedfacefeedface",
     branch: "dispatch/v1-emitter-fixed-point-afeedfacefeedface" as NonEmptyStr,
     head_sha: verify_fixture_head,
+    change_window_identity: git_diff_window_absent_identity(),
   }
 }
 
@@ -734,6 +738,10 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
     validation_summary: "gunbc run --claim-run",
     verification_subject: VerificationSubjectObserved {
       subject: verify_fixture_subject(),
+    },
+    verification_selection: SelectionObserved {
+      head: verify_fixture_head,
+      window_identity: git_diff_window_absent_identity(),
     },
     verification_source: if receipt == "" {
       VerificationReceiptAbsent

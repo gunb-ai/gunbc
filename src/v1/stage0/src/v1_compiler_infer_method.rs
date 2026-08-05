@@ -333,6 +333,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "extdeps_external_authority_live_roster_module_count".to_string(),
             int_type(),
         );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "seed_runner_bool_false_failure_detail".to_string(),
+            string_type(),
+        );
         let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_orphan_count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
