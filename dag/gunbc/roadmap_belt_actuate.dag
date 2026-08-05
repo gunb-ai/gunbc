@@ -2843,7 +2843,6 @@ fn belt_verification_receipt_source(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
   attempt_key: String,
-  subject: VerificationSubjectObservation,
   selection: CurrentVerificationSelectionObservation,
 ) -> VerificationReceiptFileSource {
   match selection {
@@ -3029,7 +3028,6 @@ fn belt_workflow_progress_for_attempt_ref(
         instance: instance,
         node_id: node_id,
         attempt_key: current_key,
-        subject: verification_subject,
         selection: verification_selection,
       ),
       publication_subject: publication_subject,
