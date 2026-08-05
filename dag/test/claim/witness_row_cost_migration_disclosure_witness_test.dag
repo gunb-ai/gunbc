@@ -3,10 +3,15 @@ module test.claim.witness_row_cost_migration_disclosure
 import gunbc.witness_row_cost {
   BelowMigrationThreshold,
   MandatoryMigration,
+  MandatoryMigrationCensored,
   MigrationMeasurementUnavailable,
   WitnessCostReceiptRow,
+  PerPrDiscoveryRoute,
+  OrdinaryWitnessMigrationSubject,
+  per_pr_discovery_route_ordinary,
   witness_row_cost_migration_threshold_ms,
   witness_row_cost_migration_verdict,
+  witness_row_cost_receipt_row_migration_verdict,
   witness_row_cost_mandatory_migration_rows,
   witness_row_cost_mandatory_migration_count,
   witness_row_cost_measurement_unavailable_rows,
@@ -17,7 +22,7 @@ import std.nat { Nat }
 import std.types { NonEmptyStr, List, Int }
 import std.measure { millisecond, millisecond_count, millisecond_to_nanosecond }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.observation { Done, observation_durations_wall }
+import std.observation { Done, TimedOut, WallClock, CpuClock, ClockBasis, observation_durations_wall }
 import v2.std.algebra { count_where, for_all }
 import v2.std.text { String }
 
@@ -30,11 +35,12 @@ fn authored_threshold_is_500ms_holds() -> Bool {
 fn at_threshold_is_mandatory_migration_holds() -> Bool {
   let v = witness_row_cost_migration_verdict(observed: millisecond(count: witness_row_cost_migration_threshold_ms()))
   match v {
-    MandatoryMigration { observed: o, threshold: t } =>
+    MandatoryMigration { observed_wall: o, threshold: t } =>
       millisecond_count(m: o) == witness_row_cost_migration_threshold_ms() &&
       millisecond_count(m: t) == witness_row_cost_migration_threshold_ms()
+    MandatoryMigrationCensored { lower_bound_wall: _, cause: _ } => false
     BelowMigrationThreshold => false
-    MigrationMeasurementUnavailable => false
+    MigrationMeasurementUnavailable { cause: _ } => false
   }
 }
 
@@ -42,8 +48,9 @@ fn just_below_threshold_is_not_mandatory_holds() -> Bool {
   let v = witness_row_cost_migration_verdict(observed: millisecond(count: witness_row_cost_migration_threshold_ms() - 1))
   match v {
     BelowMigrationThreshold => true
-    MandatoryMigration { observed: _, threshold: _ } => false
-    MigrationMeasurementUnavailable => false
+    MandatoryMigration { observed_wall: _, threshold: _ } => false
+    MandatoryMigrationCensored { lower_bound_wall: _, cause: _ } => false
+    MigrationMeasurementUnavailable { cause: _ } => false
   }
 }
 
@@ -111,6 +118,78 @@ fn unavailable_rows_are_counted_separately_from_mandatory_holds() -> Bool {
     )
 }
 
+fn sample_row_timed_out(name: String, basis: ClockBasis, elapsed_ms: Nat) -> WitnessCostReceiptRow {
+  WitnessCostReceiptRow {
+    entry: "dag/test/claim/witness_row_cost_migration_disclosure_witness_test.dag" as NonEmptyStr,
+    declaration: sample_decl(name: name),
+    eval: [],
+    resolve: millisecond_to_nanosecond(m: millisecond(count: 1)),
+    warm: millisecond_to_nanosecond(m: millisecond(count: 1)),
+    outcome: TimedOut { basis: basis, budget: millisecond(count: elapsed_ms), elapsed: millisecond(count: elapsed_ms) }
+  }
+}
+
+// The censoring distinction (still-bat-561 relayed ruling): a killed witness's recorded elapsed is a
+// LOWER BOUND, never an exact cost. At or above threshold it is certainly migration territory but must
+// be labeled censored, not folded into an exact MandatoryMigration; below threshold it proves nothing
+// about the true cost and must land in MigrationMeasurementUnavailable, never BelowMigrationThreshold.
+fn censored_row_at_or_above_threshold_is_censored_not_exact_holds() -> Bool {
+  let row = sample_row_timed_out(name: "killed_over_row", basis: WallClock, elapsed_ms: 900000)
+  match witness_row_cost_receipt_row_migration_verdict(row: row) {
+    MandatoryMigrationCensored { lower_bound_wall: lb, cause: _ } =>
+      millisecond_count(m: lb) == 900000
+    MandatoryMigration { observed_wall: _, threshold: _ } => false
+    BelowMigrationThreshold => false
+    MigrationMeasurementUnavailable { cause: _ } => false
+  }
+}
+
+fn censored_row_below_threshold_is_unavailable_not_below_holds() -> Bool {
+  let row = sample_row_timed_out(name: "killed_under_row", basis: WallClock, elapsed_ms: 10)
+  match witness_row_cost_receipt_row_migration_verdict(row: row) {
+    MigrationMeasurementUnavailable { cause: _ } => true
+    BelowMigrationThreshold => false
+    MandatoryMigration { observed_wall: _, threshold: _ } => false
+    MandatoryMigrationCensored { lower_bound_wall: _, cause: _ } => false
+  }
+}
+
+// A cpu-clock TimedOut row is not a wall-clock censoring at all — the outcome names a different cap,
+// so this row's wall figure is simply unmeasured, exactly like a row that never ran.
+fn censored_row_on_cpu_clock_is_unavailable_holds() -> Bool {
+  let row = sample_row_timed_out(name: "killed_cpu_row", basis: CpuClock, elapsed_ms: 900000)
+  match witness_row_cost_receipt_row_migration_verdict(row: row) {
+    MigrationMeasurementUnavailable { cause: _ } => true
+    MandatoryMigrationCensored { lower_bound_wall: _, cause: _ } => false
+    MandatoryMigration { observed_wall: _, threshold: _ } => false
+    BelowMigrationThreshold => false
+  }
+}
+
+fn censored_over_threshold_row_counts_as_mandatory_holds() -> Bool {
+  let rows: List<WitnessCostReceiptRow> = [
+    sample_row(name: "fast_row", eval_ms: 12),
+    sample_row_timed_out(name: "killed_over_row", basis: WallClock, elapsed_ms: 900000)
+  ]
+  witness_row_cost_mandatory_migration_count(rows: rows) == 1 &&
+    witness_row_cost_measurement_unavailable_count(rows: rows) == 0 &&
+    for_all(
+      xs: witness_row_cost_mandatory_migration_rows(rows: rows),
+      predicate: row => row.declaration.decl_name == ("killed_over_row" as NonEmptyStr)
+    )
+}
+
+// route: PerPrDiscoveryRoute — the ordinary route is a concrete, constructible value grounded in
+// existing CommitWorkflowSurface / NodeFrontierSelection authorities, never an orphan enum.
+fn ordinary_route_is_constructible_and_located_holds() -> Bool {
+  let subject = OrdinaryWitnessMigrationSubject {
+    entry: "dag/test/claim/witness_row_cost_migration_disclosure_witness_test.dag" as NonEmptyStr,
+    declaration: sample_decl(name: "routed_row"),
+    route: per_pr_discovery_route_ordinary()
+  }
+  subject.entry == ("dag/test/claim/witness_row_cost_migration_disclosure_witness_test.dag" as NonEmptyStr)
+}
+
 test fn witness_row_cost_migration_disclosure_holds() -> Bool {
   authored_threshold_is_500ms_holds()
     && at_threshold_is_mandatory_migration_holds()
@@ -118,4 +197,9 @@ test fn witness_row_cost_migration_disclosure_holds() -> Bool {
     && rows_filter_and_count_agree_and_are_located_holds()
     && zero_over_threshold_rows_counts_zero_holds()
     && unavailable_rows_are_counted_separately_from_mandatory_holds()
+    && censored_row_at_or_above_threshold_is_censored_not_exact_holds()
+    && censored_row_below_threshold_is_unavailable_not_below_holds()
+    && censored_row_on_cpu_clock_is_unavailable_holds()
+    && censored_over_threshold_row_counts_as_mandatory_holds()
+    && ordinary_route_is_constructible_and_located_holds()
 }
