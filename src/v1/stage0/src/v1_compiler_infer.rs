@@ -2561,45 +2561,85 @@ pub fn scan_call_shape_arity(
     typed_args: Rc<Vec<Rc<Node>>>,
     positional_args: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> CallShapeArityScan {
-    let mut st = CallShapeArityScan {
-        positional_slot: 0,
-        required_count: 0,
-        supplied_count: 0,
-        deficit_param: None,
-    };
-    for param in sig_params.iter().cloned() {
-        if st.deficit_param.is_some() {
-            break;
-        }
-        if param_is_generic_decl(param.clone(), source_indices.clone()) {
-            continue;
-        }
-        if param_node_default_value(param.clone()).is_some() {
-            continue;
-        }
-        let param_name = authored_name_at(source_indices.clone(), param.clone());
-        let named_supplied = typed_args.clone().iter().cloned().any(|ta| {
-            match arg_name_at(ta.clone(), source_indices.clone()) {
-                Some(label) => call_arg_label_matches_param(param_name.clone(), label),
-                None => false,
-            }
-        });
-        st.required_count += 1;
-        if named_supplied {
-            st.supplied_count += 1;
-        } else if param_binds_positionally(param.clone(), source_indices.clone()) {
-            if (st.positional_slot as usize) < positional_args.len() {
-                st.positional_slot += 1;
-                st.supplied_count += 1;
+) -> Rc<CallShapeArityScan> {
+    sig_params.clone().iter().cloned().fold(
+        Rc::new(CallShapeArityScan {
+            positional_slot: 0,
+            required_count: 0,
+            supplied_count: 0,
+            deficit_param: None,
+        }),
+        |st: Rc<CallShapeArityScan>, param: Rc<Node>| {
+            if (st.deficit_param.clone() != None) {
+                st.clone()
             } else {
-                st.deficit_param = Some(param);
+                if param_is_generic_decl(param.clone(), source_indices.clone()) {
+                    st.clone()
+                } else {
+                    if (param_node_default_value(param.clone()) != None) {
+                        st.clone()
+                    } else {
+                        {
+                            let param_name =
+                                authored_name_at(source_indices.clone(), param.clone());
+                            let named_supplied = {
+                                let mut __found = false;
+                                for ta in typed_args.clone().iter().cloned() {
+                                    if match arg_name_at(ta.clone(), source_indices.clone()) {
+                                        Some(label) => call_arg_label_matches_param(
+                                            param_name.clone(),
+                                            label.clone(),
+                                        ),
+                                        None => false,
+                                    } {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            };
+                            let next_required = (st.required_count.clone() + 1);
+                            if named_supplied.clone() {
+                                Rc::new(CallShapeArityScan {
+                                    positional_slot: st.positional_slot.clone(),
+                                    required_count: next_required.clone(),
+                                    supplied_count: (st.supplied_count.clone() + 1),
+                                    deficit_param: None,
+                                })
+                            } else {
+                                if param_binds_positionally(param.clone(), source_indices.clone()) {
+                                    if (st.positional_slot.clone()
+                                        < (positional_args.clone().len() as i64))
+                                    {
+                                        Rc::new(CallShapeArityScan {
+                                            positional_slot: (st.positional_slot.clone() + 1),
+                                            required_count: next_required.clone(),
+                                            supplied_count: (st.supplied_count.clone() + 1),
+                                            deficit_param: None,
+                                        })
+                                    } else {
+                                        Rc::new(CallShapeArityScan {
+                                            positional_slot: st.positional_slot.clone(),
+                                            required_count: next_required.clone(),
+                                            supplied_count: st.supplied_count.clone(),
+                                            deficit_param: Some(param.clone()),
+                                        })
+                                    }
+                                } else {
+                                    Rc::new(CallShapeArityScan {
+                                        positional_slot: st.positional_slot.clone(),
+                                        required_count: next_required.clone(),
+                                        supplied_count: st.supplied_count.clone(),
+                                        deficit_param: Some(param.clone()),
+                                    })
+                                }
+                            }
+                        }
+                    }
+                }
             }
-        } else {
-            st.deficit_param = Some(param);
-        }
-    }
-    st
+        },
+    )
 }
 
 pub fn direct_call_shape_diags(
@@ -2709,8 +2749,8 @@ pub fn direct_call_shape_diags(
                 Rc::new(CompilerDiagnostic::CallPositionalDeficit {
                     callee: func_name.clone(),
                     parameter: authored_name_at(source_indices.clone(), missing_param.clone()),
-                    supplied: arity_scan.supplied_count,
-                    required: arity_scan.required_count,
+                    supplied: arity_scan.supplied_count.clone(),
+                    required: arity_scan.required_count.clone(),
                     span: call_span.clone(),
                 }),
                 module_name.clone(),
@@ -2719,7 +2759,7 @@ pub fn direct_call_shape_diags(
         };
         v1_rt::concat(
             unknown_label_diags.clone(),
-            v1_rt::concat(surplus_diags.clone(), deficit_diags),
+            v1_rt::concat(surplus_diags.clone(), deficit_diags.clone()),
         )
     }
 }

@@ -514,15 +514,6 @@ mod compiler_tests {
                     "a positional argument beyond the declared positional parameters must refuse — the interpreter refuses the same call (too many positional arguments), got: {:?}",
                     surplus.diagnostics
                 );
-                let deficit = compile_one(
-                    "deficit.dag",
-                    "module deficit\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(1) }\n",
-                );
-                assert!(
-                    deficit.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallPositionalDeficit { .. })),
-                    "a call supplying fewer required arguments than declared must refuse — the interpreter refuses the same call (missing required argument), got: {:?}",
-                    deficit.diagnostics
-                );
                 // POSITIVE CONTROLS at ZERO diagnostics of any severity (the filtering
                 // lesson of codex review 45357: asserting only the absence of the
                 // blocking variant lets an advisory pass unnoticed). Correct labels,
@@ -542,6 +533,37 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("call_shape_wall_witness panicked");
+    }
+
+    #[test]
+    fn call_deficit_red_witness() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let compile_one = |path: &str, content: &str| {
+                    crate::v1_compiler_compile::compile_sources(
+                        std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                            crate::v1_compiler_compile::SourceFile {
+                                path: path.to_string(),
+                                content: content.to_string(),
+                            }
+                        )]),
+                        crate::v1_compiler_artifact::RenderTarget::Rust,
+                    )
+                };
+                let deficit = compile_one(
+                    "deficit.dag",
+                    "module deficit\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(1) }\n",
+                );
+                assert!(
+                    deficit.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallPositionalDeficit { .. })),
+                    "a call supplying fewer required arguments than declared must refuse — the interpreter refuses the same call (missing required argument), got: {:?}",
+                    deficit.diagnostics
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("call_deficit_red_witness panicked");
     }
 
     #[test]

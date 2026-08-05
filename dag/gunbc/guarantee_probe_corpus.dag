@@ -267,7 +267,7 @@ fn guarantee_probe_dark_suite_dispositions() -> List<DarkSuiteWitnessDisposition
   [
     MigratedToEnrolledDagProbe {
       rust_witness: "call_shape_wall_witness" as NonEmptyStr,
-      dag_probes: [call_mislabel_red_probe, call_surplus_red_probe, call_deficit_red_probe, call_shape_green_probe],
+      dag_probes: [call_deficit_red_probe, call_shape_green_probe, call_mislabel_red_probe, call_surplus_red_probe],
       rust_retained_until: "gap-analysis-sec-11-item-9-finite-classification" as NonEmptyStr,
     },
     MigratedToEnrolledDagProbe {
@@ -310,6 +310,12 @@ type ProbeRowResolution
 fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
   [
     GuaranteeProbeRow {
+      probe: call_deficit_red_probe,
+      class: call_label_surplus_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "CallPositionalDeficit" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
       probe: call_shape_green_probe,
       class: call_label_surplus_class,
       path: v1_compile_rust_path_id,
@@ -326,12 +332,6 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       class: call_label_surplus_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "CallPositionalSurplus" as NonEmptyStr },
-    },
-    GuaranteeProbeRow {
-      probe: call_deficit_red_probe,
-      class: call_label_surplus_class,
-      path: v1_compile_rust_path_id,
-      expectation: ExpectBlockingRefusal { diagnostic_class: "CallPositionalDeficit" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: conformance_green_probe,
