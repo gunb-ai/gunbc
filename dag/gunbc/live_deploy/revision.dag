@@ -54,8 +54,15 @@ fn deploy_target_queue_group_after_drain(target: DeploymentTarget) -> String {
 
 data deploy_target_lease_note: String = "THE LEASE IS THE ACTUAL MUTUAL-EXCLUSION AUTHORITY and it spans the whole cutover, not one phase of it. Monotonicity alone does not close the observe-then-mutate race: two callers can both observe blue active, both classify their own candidate as an Advance from that same active revision, and both prepare the idle green slot with different trees. So the lease is acquired BEFORE the route observation and held through the final routed-identity readback — an exclusion boundary that ends at the route flip lets the next caller mutate the host while this one is still proving readiness, which is the same race one phase later."
 
+data deploy_target_lease_dir_note: String = "THE LEASE DIRECTORY IS DECLARED BESIDE THE LOCK PATH for the same reason the receipt directory is: the launcher has to CREATE the directory before flock can open the file inside it, so both facts are needed and recovering one from the other by splitting a string would be a second, weaker spelling of something already known exactly."
+
+data deploy_target_lease_dir: FilePath = "/var/lib/gunbc/deploy-lease" as FilePath
+
 fn deploy_target_lease_path(target: DeploymentTarget) -> FilePath {
-  concat(concat("/var/lib/gunbc/deploy-lease/", deploy_target_key(target: target)), ".lock") as FilePath
+  join(
+    [deploy_target_lease_dir as String, "/", deploy_target_key(target: target), ".lock"],
+    ""
+  ) as FilePath
 }
 
 data deploy_slot_revision_receipt_note: String = "THE ACTIVE REVISION IS READ FROM THE ROUTED SLOT, so the receipt is keyed PER SLOT rather than being one global file keyed by a service unit. Under blue/green a crash can land between preparing a slot, flipping the route, and updating a global marker, so a single marker can describe a tree that is not the one being served. Per-slot receipts make the PUBLIC ROUTE select the authority: whichever slot the route points at is by definition the one serving the public, and its receipt is the revision the public is getting. A half-prepared idle slot cannot mislead the next run, because nothing reads the idle slot's receipt to decide.\\n\\nIT LIVES OUTSIDE THE RSYNCED TREE, and that placement is load-bearing rather than tidy. A marker inside repo_root is destroyed by the very `rsync --delete` whose outcome it describes, so after a partial or interrupted sync the record would describe a tree that was never fully written — the state the guard exists to detect becomes the state it cannot see. Keeping it beside the destination means it is written ONLY after the slot has restarted and its surface has been read back, so a crash mid-deploy leaves the previous revision recorded and the next run correctly classifies the incomplete slot as still-at-the-old-revision rather than trusting a marker a failed run had already advanced.\\n\\n🟡 dissolve-on: the served process publishing the immutable identity it was launched with, so the active revision is read from the RUNNING process rather than from a file beside it. A file states what the last successful writer intended; only the process can state what is actually bound. Until then readiness's existing surface-digest equality is what ties the receipt to the running graph, and this file is the weaker of the two facts."

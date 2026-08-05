@@ -165,6 +165,28 @@ fn live_deploy_record_slot_revision(
   )
 }
 
+data crash_prefix_invariant_note: String = "THE RECEIPT IS WRITTEN BEFORE THE ROUTE FLIPS, AND THE ORDER IS THE SAFETY PROPERTY (operator ruling 2026-08-05). An earlier revision flipped first and recorded after, which leaves a real crash window: the route points at candidate C while C's slot receipt is missing or still names an older A. The run goes red, but the ROUTE DOES NOT ROLL BACK — so a later candidate B reads A, concludes A→B is an advance, and moves the public service BACKWARD from C to B. Monotonicity is defeated by the very receipt that is supposed to establish it.\\n\\nThe fix follows from what the receipt actually means. It describes the VERIFIED CONTENTS OF A SLOT, not the fact that the route currently selects that slot. So it can be written as soon as the slot is prepared and verified, and it must be, because that is the last moment at which failing costs nothing: a failed record before the flip leaves an accurately-labelled idle slot and the old slot still routed, and the decision only ever reads the ROUTED slot.\\n\\nTHE CRASH-PREFIX INVARIANT this establishes, for every prefix of the cutover: either the public route points at the old verified slot, or it points at a candidate slot whose recorded revision matches what it serves. The flip-before-record order violated it immediately."
+
+data verified_recorded_candidate_note: String = "ROUTING TO A SLOT WHOSE IDENTITY IS NOT DURABLY RECORDED IS UNWRITABLE, because the route mutation takes this rather than a bare spec. RevisionAdvance alone is not enough — it says the deploy was admitted, not that the slot now carries the revision it was admitted to serve. This is the second half of the same construction move: the admission gates the cutover, and this gates the flip inside it.\\n\\nIt is `sole_constructor` for the same reason RevisionAdvance is: the only place one can be built is immediately after a converged record, so it cannot be assembled by a caller who skipped that step."
+
+type VerifiedRecordedCandidate sole_constructor {
+  admission: RevisionAdvance
+  slot: DeploymentSpec
+  revision: CommitSha
+}
+
+fn live_deploy_flip_route_to_recorded_candidate(
+  recorded: VerifiedRecordedCandidate,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_apply_mutation_via_transport(
+    spec: deployment_route_spec(spec: recorded.slot),
+    transport: transport,
+    access: access,
+  )
+}
+
 fn live_deploy_blue_green_cutover_with_selection(
   selection: BlueGreenSlotSelection,
   admission: RevisionAdvance,
@@ -183,22 +205,26 @@ fn live_deploy_blue_green_cutover_with_selection(
       if !reconciliation_converged(r: candidate) {
         candidate
       } else {
-        let flip = live_deploy_apply_mutation_via_transport(
-          spec: deployment_route_spec(spec: idle),
+        let recorded = live_deploy_record_slot_revision(
+          spec: idle,
+          revision: admission.to,
           transport: transport,
           access: access,
         )
-        if !reconciliation_converged(r: flip) {
-          flip
+        if !reconciliation_converged(r: recorded) {
+          recorded
         } else {
-          let recorded = live_deploy_record_slot_revision(
-            spec: idle,
-            revision: admission.to,
+          let flip = live_deploy_flip_route_to_recorded_candidate(
+            recorded: VerifiedRecordedCandidate {
+              admission: admission,
+              slot: idle,
+              revision: admission.to,
+            },
             transport: transport,
             access: access,
           )
-          if !reconciliation_converged(r: recorded) {
-            recorded
+          if !reconciliation_converged(r: flip) {
+            flip
           } else {
             let teardown = live_deploy_retract_via_transport(
               spec: deployment_retiring_slot_spec(spec: active),
@@ -715,34 +741,50 @@ fn live_deploy_retract_wet_with_access(access: DeployAccess) -> ProcessExit {
   }
 }
 
-data leased_inner_entries_note: String = "THESE ARE THE INNER ENTRIES AND THEY ARE NOT THE PUBLIC ONES. Each runs UNDER the exclusive lease, invoked by the launcher below as the command flock wraps, and each takes its candidate as a parameter — so neither can be reached from CI or by an operator without the lock, because neither is what the workflow or the operator recipe names.\\n\\nThey remain callable in principle, which is the honest statement of what flock(2) gives: an ADVISORY lock excludes only callers that take it. That is why the launcher is the named public entry and these carry the `_leased` suffix — the obligation 'every public mutation entry routes through the leased launcher' is discharged by there being exactly two public entries and both being launchers, not by these being unreachable."
+data leased_inner_entries_note: String = "THE INNER ENTRIES RUN UNDER THE LEASE AND ARE NOT THE PUBLIC ONES. Each is invoked by a launcher as the command flock wraps; the public entries below are all launchers and perform no deployment effect themselves.\\n\\nTHERE IS NO OPERATOR INNER APPLY ENTRY, and its absence is deliberate rather than an omission (operator ruling 2026-08-05). An earlier revision declared one. Its outer launcher correctly refused, because a lease taken locally cannot cover SSH mutations — but the inner entry itself remained directly callable and reached the SSH actuator having obtained no lease at all, so the refusal guarded the front door while the back door stayed open. Since no legitimate caller for it exists until a session-scoped remote lock does, it is DELETED rather than left present-and-unreferenced: an unreferenced entry that reaches a mutating actuator is a wall with a hole beside it.\\n\\nThe CI inner entries remain callable in principle, which is the honest statement of what flock(2) gives — an advisory lock excludes only callers that take it. That residual is named in gunbc.live_deploy.lease lease_advisory_obligation_note with its next-rung trigger."
 
 func live_deploy_apply_srv1_leased_wet(candidate: String) -> ProcessExit {
   live_deploy_wet_with_access_for_candidate(access: ci_deploy_srv1_access, candidate: candidate)
 }
 
-func live_deploy_apply_srv1_operator_leased_wet(candidate: String) -> ProcessExit {
-  live_deploy_wet_with_access_for_candidate(access: ci_deploy_srv1_operator_access, candidate: candidate)
+func live_deploy_retract_srv1_leased_wet() -> ProcessExit {
+  live_deploy_retract_wet_with_access(access: ci_deploy_srv1_access)
 }
+
+data public_entries_are_all_launchers_note: String = "EVERY PUBLIC MUTATION ENTRY LAUNCHES UNDER THE LEASE — APPLY AND RETRACT ALIKE. Retract was outside the lock until the operator caught it: it mutates the same slot, units, files and route-adjacent domain an apply does, so an unleased retract could race a cutover while the apply process believed it held exclusive ownership. The carrier note claiming full coverage was false the whole time it said so.\\n\\nThe operator entries pass their SSH transport into the launcher, which refuses on the coordination-coverage admission rather than on a transport name. They therefore refuse today and become admissible the moment a transport can honestly report a session-lifetime lock on the mutated host — with no edit to a policy match."
 
 func live_deploy_apply_srv1_wet() -> ProcessExit {
   live_deploy_launch_under_lease(
     inner_function: live_deploy_apply_srv1_leased_entry_function,
-    transport: ci_deploy_srv1_access.transport,
+    operation: LeasedApply { candidate: CandidateRelease { revision: "" as CommitSha } },
+    target_host: srv1_deploy_target_host,
+    mutation_transport: ci_deploy_srv1_access.transport,
   )
 }
 
 func live_deploy_apply_srv1_operator_wet() -> ProcessExit {
   live_deploy_launch_under_lease(
-    inner_function: live_deploy_apply_srv1_operator_leased_entry_function,
-    transport: ci_deploy_srv1_operator_access.transport,
+    inner_function: live_deploy_apply_srv1_leased_entry_function,
+    operation: LeasedApply { candidate: CandidateRelease { revision: "" as CommitSha } },
+    target_host: srv1_deploy_target_host,
+    mutation_transport: ci_deploy_srv1_operator_access.transport,
   )
 }
 
 func live_deploy_retract_srv1_wet() -> ProcessExit {
-  live_deploy_retract_wet_with_access(access: ci_deploy_srv1_access)
+  live_deploy_launch_under_lease(
+    inner_function: live_deploy_retract_srv1_leased_entry_function,
+    operation: LeasedRetract,
+    target_host: srv1_deploy_target_host,
+    mutation_transport: ci_deploy_srv1_access.transport,
+  )
 }
 
 func live_deploy_retract_srv1_operator_wet() -> ProcessExit {
-  live_deploy_retract_wet_with_access(access: ci_deploy_srv1_operator_access)
+  live_deploy_launch_under_lease(
+    inner_function: live_deploy_retract_srv1_leased_entry_function,
+    operation: LeasedRetract,
+    target_host: srv1_deploy_target_host,
+    mutation_transport: ci_deploy_srv1_operator_access.transport,
+  )
 }

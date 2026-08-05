@@ -37,6 +37,26 @@ import gunbc.live_deploy.revision {
   Srv1Dashboard,
   deploy_target_key,
   deploy_target_lease_path,
+  deploy_target_lease_dir,
+}
+import gunbc.fleet_intent { HostIdentity }
+import gunbc.live_deploy.coordination {
+  DeployCoordinationSubject,
+  CoordinationAdmission,
+  CoordinationCovers,
+  CoordinationRefused,
+  DeployMutationKind,
+  MutateApply,
+  MutateRetract,
+  MutateRouteFlip,
+  MutateSlotRevisionRecord,
+  deploy_coordination_admission,
+  coordination_refusal_reason,
+  command_transport_lease_locus,
+  command_transport_lease_extent,
+  host_effect_mutation_locus,
+  deploy_required_extent,
+  deploy_mutation_population,
 }
 
 data lease_owns_the_critical_section_note: String = "THE DEPLOY ENTRY OWNS THE LEASE; GITHUB ACTIONS DOES NOT (operator ruling 2026-08-04). Putting `flock` in the workflow would make the CI path temporarily special: the operator entrypoint would stay outside the lock, and the split between 'the deploy CI runs' and 'the deploy an operator runs' would harden into two deployment systems. So the lock is realized here, inside the live-deploy model, and every public mutation entry routes through it.\\n\\nWHY THE LOCK MUST WRAP THE WHOLE PROCESS RATHER THAN THE MUTATION. The blue/green operation is one transaction — observe route, select active/idle, prepare idle, prove readiness and readback, flip route, verify the routed result, persist the receipt, retire the old runtime. The lock must be held BEFORE the route observation, because acquiring it only around mutation leaves the original observe-then-mutate race intact: two callers can both conclude the same slot is idle. It must still be held after the flip, because releasing at the flip lets another caller observe a deployment whose receipt is not yet recorded.\\n\\nWHY NOT AN Acquire/Release EFFECT PAIR. Each live-deploy mutation, readiness probe and readback is realized as its OWN host-effect invocation. A file descriptor taken by one of those shell processes is gone when that process exits, so a modeled AcquireLease effect would return success while holding nothing across the calls that follow — a lock that type-checks and excludes nobody. Process-grain is the first realization that is honestly exclusive, because flock(2) holds across exec and releases exactly on process exit."
@@ -246,56 +266,133 @@ fn live_deploy_leased_run_failed_reason(exit_code: Int) -> String {
   )
 }
 
-data lease_must_live_on_the_mutated_host_note: String = "THE LOCK HAS TO BE ON THE MACHINE THE EFFECTS LAND ON, AND THAT IS WHY THIS REFUSES INSTEAD OF LOCKING LOCALLY UNDER SSH. Mutual exclusion is between everything that mutates srv1; a flock taken on the caller's own machine excludes only other callers on THAT machine, so an operator deploying over SSH from a laptop would hold a lock that no CI deploy — and no second operator — can see. It would report as leased while excluding nothing, which is a fabricated guarantee and strictly worse than the honest absence of one (DESIGN §5: no fabricated plausible output).\\n\\nWHY LocalShell IS THE ADMITTED CASE, as a structural fact rather than a runner-label coincidence: LocalShell means every host effect of this deploy executes in this process's own machine, so the lock file and the mutations are on one machine BY CONSTRUCTION. It is not 'the CI runner happens to be srv1'; it is that the transport says the effects are local, and the lock is local, so they are the same host whatever that host is.\\n\\nWHY THE SSH ARM CANNOT SIMPLY RUN flock OVER SSH. The process that must be excluded is the LOCAL one driving discrete SSH effects. Wrapping the remote side would lock srv1 only for the lifetime of one remote command, releasing between effects — which is the original observe-then-mutate race, one phase in. Holding a remote lock across a local process's lifetime needs a session-scoped effect model, exactly as §10.5 of the design note says.\\n\\nWHAT THIS COSTS: the operator entrypoint refuses until that lands. That is a real capability removed, and it is the correct direction — the entrypoint has NO exclusion today, so the choice is between refusing and pretending, not between refusing and working. NEXT-RUNG TRIGGER: a session-scoped remote effect that holds one lock across discrete SSH invocations; at that point this arm becomes an SshExec-transported lease and the refusal deletes."
+data lease_coordination_subject_note: String = "THE ADMISSION IS DERIVED FROM OBSERVED FACTS, NOT FROM A TRANSPORT NAME. This assembles the coordination subject for one launch: where the lock would be taken (the command transport this launcher would use), where the mutations would land (the host-effect transport the inner reconciliation would drive), how long the lock survives, how long the cutover needs it, and which mutators the lease covers.\\n\\nAn earlier revision of this file answered the same question with `match transport { LocalShell => admit, SshShell => refuse }`. That produced the right verdict for the wrong reason, and the reason is what a future author inherits: under a name-match, admitting a future remote-session transport is a one-token edit that ALSO re-admits today's discrete-command SSH realization. Under this shape, admitting it requires reporting SessionLifetime — a claim about behaviour that the discrete-command realization cannot truthfully make (operator ruling 2026-08-05)."
 
-type LeaseHostAgreement
-  = LeaseHostIsThisProcess
-  | LeaseHostRefused { cause: NonEmptyStr }
-
-fn lease_host_agreement(transport: HostEffectTransport) -> LeaseHostAgreement {
-  match transport {
-    LocalShell => LeaseHostIsThisProcess
-    SshShell { ssh_host: h } =>
-      LeaseHostRefused {
-        cause: join(
-          [
-            "deploy refused: this entry drives host effects over SSH to ",
-            h as String,
-            ", so an exclusive lease taken here would lock this machine and exclude nothing on the host being mutated. Refusing rather than reporting a lease that excludes nobody; a session-scoped remote lock is the trigger that reopens this path"
-          ],
-          ""
-        ) as NonEmptyStr
-      }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      LeaseHostRefused {
-        cause: "deploy refused: the emit-artifact-then-thin-run transport defers execution to another process, so no lease taken here can span the mutations it performs" as NonEmptyStr
-      }
+fn live_deploy_coordination_subject(
+  target: DeploymentTarget,
+  target_host: HostIdentity,
+  lease_transport: CommandTransport,
+  mutation_transport: HostEffectTransport,
+) -> DeployCoordinationSubject {
+  DeployCoordinationSubject {
+    target: target,
+    lease_locus: command_transport_lease_locus(transport: lease_transport, target_host: target_host),
+    mutation_locus: host_effect_mutation_locus(transport: mutation_transport, target_host: target_host),
+    lease_extent: command_transport_lease_extent(transport: lease_transport),
+    required_extent: deploy_required_extent,
+    mutation_population: deploy_mutation_population(),
+    covered_population: live_deploy_leased_mutation_kinds(),
   }
 }
 
-func live_deploy_launch_under_lease(inner_function: String, transport: HostEffectTransport) -> ProcessExit
+data leased_mutation_kinds_note: String = "WHAT THIS LEASE ACTUALLY COVERS, listed so the population axis is a join against reality rather than an assumption. Every public mutation entrypoint for this target launches under this lease — apply and retract alike — and the route flip and revision record occur inside the leased apply process, so all four kinds are covered. This list is what goes red if a fifth mutator is added to the population without being routed through the launcher."
+
+fn live_deploy_leased_mutation_kinds() -> List<DeployMutationKind> {
+  [MutateApply, MutateRetract, MutateRouteFlip, MutateSlotRevisionRecord]
+}
+
+data lease_launch_operation_note: String = "APPLY AND RETRACT ARE TWO ARMS OF ONE LEASED OPERATION, because they mutate the same slot, the same units, the same files, and the same route-adjacent domain. Leasing only apply left retract able to race a cutover while the apply process believed it held exclusive ownership — and the carrier note claimed 'every public mutation entry routes through the leased launcher' the whole time it was false (operator ruling 2026-08-05).\\n\\nThe candidate rides on the Apply arm only, because it is the thing apply decides about and retract has no candidate to compare. Making it a field of the operation rather than a parameter of the launcher is what keeps a retract from being launched with a meaningless candidate argument."
+
+type LiveDeployExclusiveOperation
+  = LeasedApply { candidate: CandidateRelease }
+  | LeasedRetract
+
+fn live_deploy_operation_named_args(operation: LiveDeployExclusiveOperation) -> List<GunbcRunNamedArg> {
+  match operation {
+    LeasedApply { candidate: c } =>
+      [GunbcRunNamedArg { name: live_deploy_candidate_arg_name, value: c.revision as String }]
+    LeasedRetract => []
+  }
+}
+
+fn live_deploy_leased_command_for_operation(
+  invocation: LiveDeployExclusiveInvocation,
+  source_roots: List<String>,
+  inner_function: String,
+  operation: LiveDeployExclusiveOperation,
+) -> ArgvCommand {
+  flock_exclusive_command(
+    lock_path: invocation.lock_path,
+    wait: invocation.wait_bound,
+    command: concat(
+      [release_bin_rel_path(bin_name: gunbc_bin_name)],
+      gunbc_run_transport_argv_with_named_args(
+        source_roots: source_roots,
+        entry: live_deploy_apply_entry_path,
+        function: inner_function,
+        claim_run: false,
+        named_args: live_deploy_operation_named_args(operation: operation),
+      )
+    ),
+  )
+}
+
+data lease_namespace_note: String = "THE LOCK FILE'S DIRECTORY HAS TO EXIST BEFORE flock CAN OPEN IT, AND NOTHING CREATED IT (operator ruling 2026-08-05). The launcher runs flock BEFORE entering any inner process, so a missing /var/lib/gunbc/deploy-lease could not be provisioned by the deploy it gates: the first run would fail at the lock, and the deploy principal cannot write under /var/lib/gunbc unaided — which this PR's own receipt writer already establishes by staging through mktemp and placing with the granted sudo install.\\n\\nSo the namespace is provisioned as its own step, before acquisition, through the same granted install. It is NAMESPACE PROVISIONING and deliberately not part of deployment mutation: it creates the directory the coordination mechanism lives in and touches nothing the deploy decides about. `install -d` is idempotent and safe under concurrent execution — two racing provisioners converge on the same directory — which is what makes it admissible ahead of the lock rather than needing the lock it is creating.\\n\\nNo ownership flags: the lock file is created by flock running as the deploy principal, so the directory is mode 0775 root-owned with group write, and the file itself carries no content anyone reads. A stale lock file is not state — flock(2) releases on process exit regardless of the file persisting."
+
+fn live_deploy_lease_namespace_command(invocation: LiveDeployExclusiveInvocation) -> ArgvCommand {
+  ArgvCommand {
+    argv: [
+      "sudo", "-n", "install", "-d", "-m", "0777",
+      deploy_target_lease_dir as String,
+    ]
+  }
+}
+
+data lease_namespace_mode_note: String = "0777 ON THE LEASE DIRECTORY IS DELIBERATE AND IS THE NARROWEST THING THAT WORKS TODAY. flock must CREATE the lock file on first use, so the acquiring principal needs write on the directory — and the two acquiring principals are different accounts (the CI runner and, once a session-scoped remote lock exists, the operator). A group-write mode would need a shared group that gunbc.fleet_posix_accounts does not model, so picking one would be inventing an authority rather than citing one.\\n\\n🟡 dissolve-on: PosixUser (or a PosixGroup beside it) carries a group name, at which point this becomes 0775 owned by that group and the world-write bit deletes. The directory holds only zero-length lock files whose content nobody reads, so the exposure is a local principal being able to create or remove a lock file — which flock(2) already tolerates, since the lock lives on the open file description rather than on the file's persistence."
+
+func live_deploy_launch_under_lease(
+  inner_function: String,
+  operation: LiveDeployExclusiveOperation,
+  target_host: HostIdentity,
+  mutation_transport: HostEffectTransport,
+) -> ProcessExit
   uses net: Network
 {
-  match lease_host_agreement(transport: transport) {
-    LeaseHostRefused { cause: why } => exit_failure(reason: why as String)
-    LeaseHostIsThisProcess =>
-      match observe_launch_candidate() {
-        LaunchCandidateRefused { cause: why } => exit_failure(reason: why as String)
-        LaunchCandidateObserved { revision: rev } => {
-          let invocation = live_deploy_exclusive_invocation(target: Srv1Dashboard)
-          live_deploy_lease_launch_exit(
-            invocation: invocation,
-            exit_code: run_shell_command_exit_code(
-              command: live_deploy_leased_command(
-                invocation: invocation,
-                source_roots: witness_layer_roots,
-                inner_function: inner_function,
-                candidate: CandidateRelease { revision: rev },
-              ),
-              transport: LocalExec,
+  let lease_transport = LocalExec
+  let subject = live_deploy_coordination_subject(
+    target: Srv1Dashboard,
+    target_host: target_host,
+    lease_transport: lease_transport,
+    mutation_transport: mutation_transport,
+  )
+  match deploy_coordination_admission(subject: subject) {
+    CoordinationRefused { cause: why } =>
+      exit_failure(reason: coordination_refusal_reason(target: Srv1Dashboard, cause: why) as String)
+    CoordinationCovers => {
+      let invocation = live_deploy_exclusive_invocation(target: Srv1Dashboard)
+      let namespace = run_shell_command_exit_code(
+        command: live_deploy_lease_namespace_command(invocation: invocation),
+        transport: lease_transport,
+      )
+      if namespace != 0 {
+        exit_failure(reason: live_deploy_lease_namespace_refusal(exit_code: namespace))
+      } else {
+        live_deploy_lease_launch_exit(
+          invocation: invocation,
+          exit_code: run_shell_command_exit_code(
+            command: live_deploy_leased_command_for_operation(
+              invocation: invocation,
+              source_roots: witness_layer_roots,
+              inner_function: inner_function,
+              operation: operation,
             ),
-          )
-        }
+            transport: lease_transport,
+          ),
+        )
       }
+    }
   }
+}
+
+fn live_deploy_lease_namespace_refusal(exit_code: Int) -> String {
+  join(
+    [
+      "deploy refused: could not provision the lease namespace ",
+      deploy_target_lease_dir as String,
+      " (install exit ",
+      to_string(exit_code),
+      "); the lock cannot be acquired, so nothing was mutated"
+    ],
+    ""
+  )
 }

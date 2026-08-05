@@ -1,0 +1,260 @@
+module gunbc.live_deploy.coordination
+
+import std.types { String, List, NonEmptyStr, Bool }
+import gunbc.fleet_intent { HostIdentity }
+import gunbc.host_effect {
+  HostEffectTransport,
+  LocalShell,
+  SshShell,
+  EmitArtifactThenThinRun,
+}
+import extdeps.exec.command { CommandTransport, LocalExec, SshExec }
+import gunbc.live_deploy.revision { DeploymentTarget, deploy_target_key }
+
+data coordination_coverage_note: String = "THE FAILURE CLASS THIS MODULE EXISTS FOR IS COORDINATION-COVERAGE MISMATCH (operator ruling 2026-08-05): a coordination mechanism is valid only when its resource identity, execution locus, lifetime, participant population, and outcome partition COVER the effects it claims to coordinate. Every one of those is an axis on which a lock can be present, well-formed, and still protect nothing.\\n\\nTHIS REPLACES A POLICY MATCH, AND THE REPLACEMENT IS THE POINT. The first repair of the SSH defect was `match transport { LocalShell => admit, SshShell => refuse }` — correct in its verdict and wrong in its form, because the safety property was encoded as a list of transport NAMES. Under that shape a future remote-session transport becomes admissible by someone editing `SshShell => false` to `SshShell => true`, which would also re-admit today's discrete-command SSH realization: the edit that adds the safe case cannot be distinguished from the edit that admits the unsafe one.\\n\\nSo transports PROJECT OBSERVATIONS and this module DECIDES. A transport says where its effects land and how long a lock taken through it survives; coverage is then derived by comparing those facts against what the operation requires. A future transport becomes admissible by supplying the right behavioural facts — never by being added to an allow-list.\\n\\nTHE AXES ARE SEPARATE BECAUSE THEY FAIL SEPARATELY, and this PR's own history is the evidence: a lock on the wrong HOST (locus), a lock spanning one command instead of the whole cutover (extent), and apply leased while retract bypassed it (population) are three distinct defects that a single Bool would have collapsed into one indistinguishable 'is it locked' question."
+
+data execution_locus_note: String = "WHERE THE EFFECTS ACTUALLY LAND, as an observation rather than a transport name. CurrentHost means the effects execute in this process's own machine, so a lock taken by this process is on the same host as the mutations BY CONSTRUCTION — that is the structural fact, not 'the CI runner happens to be srv1'. NamedHost means the effects land on a different, named machine, so a lock taken here is on the wrong one.\\n\\nDeferredExecution is separate from both because the effects are handed to ANOTHER process to run later: there is no interval during which this process could hold anything covering them. ExecutionLocusUnobserved is the fail-closed arm — 'I could not determine where these effects land' is not 'they land here', and collapsing them is the ⊥-as-ignorance-read-as-⊥-as-answer shape DESIGN §5 forbids."
+
+type ExecutionLocus
+  = CurrentHost { host: HostIdentity }
+  | NamedHost { host: HostIdentity }
+  | DeferredExecution
+  | ExecutionLocusUnobserved
+
+data coordination_extent_note: String = "HOW LONG A LOCK TAKEN THROUGH THIS MECHANISM SURVIVES. OneCommand is a lock that exists only for the duration of a single invocation — `ssh host flock ... cmd` releases the moment that command returns, so a caller performing several such invocations holds nothing between them. ProcessLifetime is flock(2)'s actual guarantee for a wrapped process: held across exec, released exactly on process exit including abnormal exit. SessionLifetime is the not-yet-built arm where one remote session holds a lock across many discrete remote effects.\\n\\nThe ordering matters and is deliberately NOT a numeric comparison: a required extent is satisfied by a provided one only when the provided arm's guarantee contains the required interval, which coordination_extent_covers states as a total fold rather than leaving each caller to compare enum positions."
+
+type CoordinationExtent
+  = OneCommand
+  | ProcessLifetime
+  | SessionLifetime
+
+data mutation_kind_note: String = "THE POPULATION AXIS: every kind of change that touches this target's coordinated resources. A retract mutates the same slot, units and files an apply does, so a coordination mechanism covering only Apply leaves a real mutator outside the lock — which is exactly the state this PR shipped before the operator caught it (the carrier note claimed 'every public mutation entry routes through the leased launcher' while both retract entries did not).\\n\\nRouteFlip and SlotRevisionRecord are listed as their own kinds even though today they occur only inside an Apply, because the population question is 'what can change these resources', not 'what entrypoints exist'. A future entrypoint that flips the route alone would be a new participant, and it has to appear here to be checked."
+
+type DeployMutationKind
+  = MutateApply
+  | MutateRetract
+  | MutateRouteFlip
+  | MutateSlotRevisionRecord
+
+fn deploy_mutation_kind_key(kind: DeployMutationKind) -> String {
+  match kind {
+    MutateApply => "apply"
+    MutateRetract => "retract"
+    MutateRouteFlip => "route-flip"
+    MutateSlotRevisionRecord => "slot-revision-record"
+  }
+}
+
+data coordination_subject_note: String = "ONE VALUE CARRYING BOTH SIDES OF EVERY AXIS, so coverage is a comparison rather than a judgement. The lease side and the mutation side are named separately on purpose: the whole class of defect here is the two silently differing while a lock is genuinely held, well-formed, and useless."
+
+type DeployCoordinationSubject {
+  target: DeploymentTarget
+  lease_locus: ExecutionLocus
+  mutation_locus: ExecutionLocus
+  lease_extent: CoordinationExtent
+  required_extent: CoordinationExtent
+  mutation_population: List<DeployMutationKind>
+  covered_population: List<DeployMutationKind>
+}
+
+type CoordinationRefusalCause
+  = CoordinationLocusMismatch { lease_host: String, mutation_host: String }
+  | CoordinationExtentTooShort
+  | MutationEntrypointUncovered { kind: String }
+  | CoordinationLocusUnobserved
+
+type CoordinationAdmission
+  = CoordinationCovers
+  | CoordinationRefused { cause: CoordinationRefusalCause }
+
+data locus_agreement_note: String = "TWO LOCI AGREE ONLY WHEN BOTH NAME THE SAME MACHINE AND THE LEASE'S IS THE ONE THIS PROCESS IS ON. A lease locus of NamedHost is never agreement even when it names the same host as the mutations, because a lock this process takes locally does not become a lock on that machine by naming it — that is the fabrication being ruled out. Deferred and unobserved loci refuse on both sides."
+
+fn execution_locus_host_text(locus: ExecutionLocus) -> String {
+  match locus {
+    CurrentHost { host: h } => concat("this process's own host (", concat(h as String, ")"))
+    NamedHost { host: h } => concat("remote host ", h as String)
+    DeferredExecution => "a deferred executor"
+    ExecutionLocusUnobserved => "an unobserved locus"
+  }
+}
+
+fn coordination_locus_covers(lease: ExecutionLocus, mutation: ExecutionLocus) -> CoordinationAdmission {
+  match lease {
+    ExecutionLocusUnobserved => CoordinationRefused { cause: CoordinationLocusUnobserved }
+    DeferredExecution => CoordinationRefused { cause: CoordinationLocusUnobserved }
+    NamedHost { host: _ } =>
+      CoordinationRefused {
+        cause: CoordinationLocusMismatch {
+          lease_host: execution_locus_host_text(locus: lease),
+          mutation_host: execution_locus_host_text(locus: mutation),
+        }
+      }
+    CurrentHost { host: lease_host } =>
+      match mutation {
+        ExecutionLocusUnobserved => CoordinationRefused { cause: CoordinationLocusUnobserved }
+        DeferredExecution =>
+          CoordinationRefused {
+            cause: CoordinationLocusMismatch {
+              lease_host: execution_locus_host_text(locus: lease),
+              mutation_host: execution_locus_host_text(locus: mutation),
+            }
+          }
+        NamedHost { host: _ } =>
+          CoordinationRefused {
+            cause: CoordinationLocusMismatch {
+              lease_host: execution_locus_host_text(locus: lease),
+              mutation_host: execution_locus_host_text(locus: mutation),
+            }
+          }
+        CurrentHost { host: mutation_host } =>
+          if lease_host == mutation_host {
+            CoordinationCovers
+          } else {
+            CoordinationRefused {
+              cause: CoordinationLocusMismatch {
+                lease_host: execution_locus_host_text(locus: lease),
+                mutation_host: execution_locus_host_text(locus: mutation),
+              }
+            }
+          }
+      }
+  }
+}
+
+data extent_covers_note: String = "A PROVIDED EXTENT COVERS A REQUIRED ONE WHEN ITS INTERVAL CONTAINS THE REQUIRED INTERVAL. OneCommand covers only OneCommand. ProcessLifetime covers a single command and a whole local process, but NOT a session spanning discrete remote effects — a local process's flock says nothing about a remote machine's state between SSH invocations. SessionLifetime covers all three. Written as a total fold rather than an ordering on positions, so adding an arm forces a decision instead of inheriting a comparison."
+
+fn coordination_extent_covers(provided: CoordinationExtent, required: CoordinationExtent) -> Bool {
+  match provided {
+    OneCommand =>
+      match required {
+        OneCommand => true
+        ProcessLifetime => false
+        SessionLifetime => false
+      }
+    ProcessLifetime =>
+      match required {
+        OneCommand => true
+        ProcessLifetime => true
+        SessionLifetime => false
+      }
+    SessionLifetime =>
+      match required {
+        OneCommand => true
+        ProcessLifetime => true
+        SessionLifetime => true
+      }
+  }
+}
+
+data population_completeness_note: String = "EVERY MUTATOR MUST BE COVERED, and the check is an identity join over the population rather than a count. A count would green when one mutator was added and another dropped in the same change, which is the failure the DESIGN §5 oracle rule names: completeness is an identity join, not a count equality."
+
+fn coordination_population_covers(
+  mutation_population: List<DeployMutationKind>,
+  covered: List<DeployMutationKind>,
+) -> CoordinationAdmission {
+  match filter(mutation_population, k => !any(covered, c => c == k)) {
+    [] => CoordinationCovers
+    uncovered =>
+      match list_head(xs: uncovered) {
+        HeadAbsent => CoordinationCovers
+        HeadFound { value: k } =>
+          CoordinationRefused {
+            cause: MutationEntrypointUncovered { kind: deploy_mutation_kind_key(kind: k) }
+          }
+      }
+  }
+}
+
+data admission_conjunction_note: String = "THE AXES CONJOIN AND THE FIRST REFUSAL WINS, so a subject failing on two axes reports the one a reader should act on first: an unobserved or mismatched locus makes the extent question moot, and both make the population question moot. Nothing is widened — every arm that is not full coverage is a typed, located refusal."
+
+fn deploy_coordination_admission(subject: DeployCoordinationSubject) -> CoordinationAdmission {
+  match coordination_locus_covers(lease: subject.lease_locus, mutation: subject.mutation_locus) {
+    CoordinationRefused { cause: why } => CoordinationRefused { cause: why }
+    CoordinationCovers =>
+      if !coordination_extent_covers(provided: subject.lease_extent, required: subject.required_extent) {
+        CoordinationRefused { cause: CoordinationExtentTooShort }
+      } else {
+        coordination_population_covers(
+          mutation_population: subject.mutation_population,
+          covered: subject.covered_population,
+        )
+      }
+  }
+}
+
+data transport_projection_note: String = "TRANSPORTS PROJECT FACTS; THEY DO NOT DECIDE POLICY. Each arm answers only 'where do effects driven through me land' and 'how long does a lock taken through me survive', and the admission above derives coverage from those answers. That is what lets a future remote-session transport become admissible by reporting SessionLifetime on a NamedHost lease locus, without anyone editing a match arm from refuse to admit — and it is why re-admitting today's discrete-command SSH realization would require claiming a lifetime it does not have, which is a lie about behaviour rather than a policy edit."
+
+fn host_effect_mutation_locus(transport: HostEffectTransport, target_host: HostIdentity) -> ExecutionLocus {
+  match transport {
+    LocalShell => CurrentHost { host: target_host }
+    SshShell { ssh_host: h } => NamedHost { host: h as String as HostIdentity }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => DeferredExecution
+  }
+}
+
+fn command_transport_lease_locus(transport: CommandTransport, target_host: HostIdentity) -> ExecutionLocus {
+  match transport {
+    LocalExec => CurrentHost { host: target_host }
+    SshExec { ssh_target: h } => NamedHost { host: h as String as HostIdentity }
+  }
+}
+
+data lease_extent_projection_note: String = "flock(2) HOLDS ACROSS exec AND RELEASES ON PROCESS EXIT, so a locally wrapped process gives ProcessLifetime — the whole inner reconciliation, including abnormal exit. The same flock reached over SSH gives only OneCommand: the remote shell exits when that invocation returns, releasing the lock, so a caller performing several discrete remote effects holds nothing between them. That is a fact about the realization, not a policy about SSH, and it is why the extent axis refuses the remote-flock spelling independently of the locus axis."
+
+fn command_transport_lease_extent(transport: CommandTransport) -> CoordinationExtent {
+  match transport {
+    LocalExec => ProcessLifetime
+    SshExec { ssh_target: _ } => OneCommand
+  }
+}
+
+data deploy_required_extent_note: String = "THE CUTOVER REQUIRES ProcessLifetime because it is one transaction across several host effects — observe the route, prepare and verify the idle slot, record its revision, flip the route, verify the routed result, retire the old runtime. A mechanism covering any single one of those leaves the others unguarded, which is the original observe-then-mutate race displaced by one phase rather than removed."
+
+data deploy_required_extent: CoordinationExtent = ProcessLifetime
+
+data deploy_mutation_population_note: String = "THE FULL POPULATION OF MUTATORS FOR THIS TARGET. Apply and Retract are public entrypoints; RouteFlip and SlotRevisionRecord occur inside an Apply today and are listed because the question is what can change the coordinated resources, not what entrypoints happen to exist. A new entrypoint performing any of these has to be covered before the admission greens."
+
+fn deploy_mutation_population() -> List<DeployMutationKind> {
+  [MutateApply, MutateRetract, MutateRouteFlip, MutateSlotRevisionRecord]
+}
+
+fn coordination_refusal_reason(target: DeploymentTarget, cause: CoordinationRefusalCause) -> NonEmptyStr {
+  let prefix = concat("deploy refused on target ", concat(deploy_target_key(target: target), ": "))
+  match cause {
+    CoordinationLocusMismatch { lease_host: lh, mutation_host: mh } =>
+      join(
+        [
+          prefix,
+          "an exclusive lease taken on ", lh,
+          " cannot serialize mutations that land on ", mh,
+          ". Refusing rather than reporting a lease that excludes nobody"
+        ],
+        ""
+      ) as NonEmptyStr
+    CoordinationExtentTooShort =>
+      join(
+        [
+          prefix,
+          "the lease survives only one command while the cutover spans several host effects, so another mutator can act between them. Refusing rather than holding a lock that lapses mid-transaction"
+        ],
+        ""
+      ) as NonEmptyStr
+    MutationEntrypointUncovered { kind: k } =>
+      join(
+        [
+          prefix,
+          "the mutation kind '", k,
+          "' can change this target's resources but is not covered by the lease, so a lease held by another mutator does not exclude it"
+        ],
+        ""
+      ) as NonEmptyStr
+    CoordinationLocusUnobserved =>
+      join(
+        [
+          prefix,
+          "the execution locus of the lease or of the mutations could not be observed. 'I could not determine where these effects land' is not 'they land here'"
+        ],
+        ""
+      ) as NonEmptyStr
+  }
+}
