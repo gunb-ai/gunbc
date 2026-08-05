@@ -8,7 +8,7 @@ import v2.std.algebra { ListTailResult, TailAbsent, TailFound, fold_list, is_emp
 import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_source, string_head, string_is_empty, string_tail }
 import v2.std.nat { Nat, nat_lte, nat_gte }
 import v2.std.logic { Bool }
-import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken }
+import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken, advance_line_prefix_indent_only, placement_from_line_prefix }
 import v2.std.compilers.lexing {
   AnnotationRule,
   BlockCommentTextChar,
@@ -417,21 +417,13 @@ fn lex_try_rules(rules: List<CompiledLexRule>, source: String) -> LexRuleApply {
   )
 }
 
-data lexeme_opens_new_line_note: String = "Trivia is where a line ends, so trivia is where the line-state flag resets. A trivia lexeme carrying a line feed means whatever follows begins a fresh line, and an annotation appearing there is LEADING. Without this reset the flag would stay set from the previous line's last token, and every leading annotation after the first declaration would be misread as trailing."
-
-fn lexeme_contains_line_feed(lexeme: String) -> Bool {
-  fold_list(
-    xs: lexeme,
-    empty: false,
-    cons: fn(acc, c) { acc || c == 10 }
-  )
-}
+data line_prefix_state_note: String = "The walk carries `line_prefix_indent_only` and advances it with the raw text of EVERY consumed lexeme — token, trivia, and annotation alike — through the shared std.source_annotation authority. It is not a `has a semantic token appeared on this line` flag, and the difference is not cosmetic: a token lexeme may itself contain line feeds, so a grammar whose tokens span lines has line boundaries INSIDE tokens rather than only in trivia. Resetting on trivia alone misclassifies every annotation following such a token."
 
 type LexWalkAcc {
   remaining: String
   tokens: List<Token>
   annotations: List<UnboundSourceAnnotation>
-  line_has_semantic_token: Bool
+  line_prefix_indent_only: Bool
   pos: Int
   done: Bool
   error: Bool
@@ -444,7 +436,7 @@ fn lex_walk_init(src: String, file: Symbol, rules: LexRuleSet) -> LexWalkAcc {
     remaining: src,
     tokens: std.algebra.Empty,
     annotations: std.algebra.Empty,
-    line_has_semantic_token: false,
+    line_prefix_indent_only: true,
     pos: 0,
     done: false,
     error: false,
@@ -464,7 +456,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
         remaining: acc.remaining,
         tokens: acc.tokens,
         annotations: acc.annotations,
-        line_has_semantic_token: acc.line_has_semantic_token,
+        line_prefix_indent_only: acc.line_prefix_indent_only,
         pos: acc.pos,
         done: true,
         error: false,
@@ -478,7 +470,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
             remaining: acc.remaining,
             tokens: acc.tokens,
             annotations: acc.annotations,
-            line_has_semantic_token: acc.line_has_semantic_token,
+            line_prefix_indent_only: acc.line_prefix_indent_only,
             pos: acc.pos,
             done: true,
             error: true,
@@ -492,7 +484,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 remaining: acc.remaining,
                 tokens: acc.tokens,
                 annotations: acc.annotations,
-                line_has_semantic_token: acc.line_has_semantic_token,
+                line_prefix_indent_only: acc.line_prefix_indent_only,
                 pos: acc.pos,
                 done: true,
                 error: true,
@@ -504,7 +496,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 remaining: remaining,
                 tokens: acc.tokens,
                 annotations: acc.annotations,
-                line_has_semantic_token: if lexeme_contains_line_feed(lexeme: lexeme) { false } else { acc.line_has_semantic_token },
+                line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
                 pos: acc.pos + length(xs: lexeme),
                 done: false,
                 error: false,
@@ -519,7 +511,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 remaining: acc.remaining,
                 tokens: acc.tokens,
                 annotations: acc.annotations,
-                line_has_semantic_token: acc.line_has_semantic_token,
+                line_prefix_indent_only: acc.line_prefix_indent_only,
                 pos: acc.pos,
                 done: true,
                 error: true,
@@ -540,7 +532,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                   tail: acc.tokens
                 },
                 annotations: acc.annotations,
-                line_has_semantic_token: true,
+                line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
                 pos: acc.pos + length(xs: lexeme),
                 done: false,
                 error: false,
@@ -555,7 +547,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 remaining: acc.remaining,
                 tokens: acc.tokens,
                 annotations: acc.annotations,
-                line_has_semantic_token: acc.line_has_semantic_token,
+                line_prefix_indent_only: acc.line_prefix_indent_only,
                 pos: acc.pos,
                 done: true,
                 error: true,
@@ -570,14 +562,14 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                   head: UnboundSourceAnnotation {
                     annotation_class: class,
                     lexeme: lexeme,
-                    placement: if acc.line_has_semantic_token { TrailingAfterSemanticToken } else { LeadingAfterLineIndent },
+                    placement: placement_from_line_prefix(indent_only: acc.line_prefix_indent_only),
                     file: acc.file,
                     start: acc.pos,
                     end: acc.pos + length(xs: lexeme)
                   },
                   tail: acc.annotations
                 },
-                line_has_semantic_token: acc.line_has_semantic_token,
+                line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
                 pos: acc.pos + length(xs: lexeme),
                 done: false,
                 error: false,

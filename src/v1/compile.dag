@@ -20,13 +20,10 @@ import v1.std.core {
   foreach_variable_at, expr_method_name_at, InternTable, empty_intern_table, pre_intern_tokens
 }
 
-import v1.compiler.annotation_bind { bind_annotations }
+import v1.compiler.annotation_bind { admit_source_annotations }
 import std.source_annotation {
-  AnnotationAttachmentRefusal,
   SourceAnnotationGraph,
   UnboundAnnotationCapture,
-  annotation_attachment_result_graph,
-  annotation_attachment_result_refusals,
   source_annotation_graph_concat,
   source_annotation_graph_empty
 }
@@ -111,7 +108,6 @@ type FrontendResult {
   intern_table: InternTable
   occurrence_transport: OccurrenceTransport
   annotations: SourceAnnotationGraph
-  annotation_refusals: List<AnnotationAttachmentRefusal>
 }
 
 type FrontendOccurrenceResolution {
@@ -126,7 +122,7 @@ type FrontendAccum {
   intern_table: InternTable
   occurrence_allocator: OccurrenceIdAllocator
   annotations: SourceAnnotationGraph
-  annotation_refusals: List<AnnotationAttachmentRefusal>
+  annotation_diagnostics: List<ErrorNode>
 }
 
 data frontend_prepared_authored_note: String = "Carries the AUTHORED lexical result, not only the semantic tokens. `tokens` is what pre-interning and parsing consume, unchanged; `annotations` is what the annotation channel captured on the same pass, and `source_length` is what the binder needs to bound the last module item's extent.
@@ -1020,7 +1016,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     intern_table: intern_table,
     occurrence_allocator: occurrence_id_allocator_initial(),
     annotations: source_annotation_graph_empty(),
-    annotation_refusals: [],
+    annotation_diagnostics: [],
   }, f: (acc, p) =>
     let parsed = parse_with_table_in_occurrence_scope(
       tokens: p.tokens,
@@ -1032,7 +1028,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
       intern_table: acc.intern_table,
       occurrence_allocator: acc.occurrence_allocator
     )
-    let bound = bind_annotations(
+    let bound = admit_source_annotations(
       transport: parsed.occurrence_transport,
       captures: p.annotations,
       source_length: p.source_length
@@ -1050,13 +1046,10 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
       newline_indices: list_push(acc.newline_indices, p.newline_index),
       intern_table: parsed.intern_table,
       occurrence_allocator: parsed.occurrence_allocator,
-      annotations: source_annotation_graph_concat(
-        left: acc.annotations,
-        right: annotation_attachment_result_graph(result: bound)
-      ),
-      annotation_refusals: concat(
-        acc.annotation_refusals,
-        annotation_attachment_result_refusals(result: bound)
+      annotations: source_annotation_graph_concat(left: acc.annotations, right: bound.graph),
+      annotation_diagnostics: concat(
+        acc.annotation_diagnostics,
+        bound.diagnostics |> map(d => make_error_node(diagnostic: d, module_name: p.newline_index.file))
       ),
     }
   )
@@ -1077,12 +1070,11 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   )
   FrontendResult {
     graph: resolution.graph,
-    diagnostics: concat(parse_diagnostics, resolution.diagnostics),
+    diagnostics: concat(concat(parse_diagnostics, resolution.diagnostics), parsed.annotation_diagnostics),
     newline_indices: newline_indices,
     intern_table: parsed.intern_table,
     occurrence_transport: occurrence_transport,
-    annotations: parsed.annotations,
-    annotation_refusals: parsed.annotation_refusals
+    annotations: parsed.annotations
   }
 }
 
@@ -1092,7 +1084,6 @@ type CensusFillParse {
   diagnostics: List<ErrorNode>
   occurrence_transport: OccurrenceTransport
   annotations: SourceAnnotationGraph
-  annotation_refusals: List<AnnotationAttachmentRefusal>
 }
 
 data parse_census_fill_note: String = "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped."
@@ -1116,7 +1107,7 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
     intern_table: intern_table,
     occurrence_allocator: occurrence_id_allocator_initial(),
     annotations: source_annotation_graph_empty(),
-    annotation_refusals: [],
+    annotation_diagnostics: [],
   }, f: (acc, p) =>
     let parsed = parse_with_table_in_occurrence_scope(
       tokens: p.tokens,
@@ -1128,7 +1119,7 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
       intern_table: acc.intern_table,
       occurrence_allocator: acc.occurrence_allocator
     )
-    let bound = bind_annotations(
+    let bound = admit_source_annotations(
       transport: parsed.occurrence_transport,
       captures: p.annotations,
       source_length: p.source_length
@@ -1146,13 +1137,10 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
       newline_indices: list_push(acc.newline_indices, p.newline_index),
       intern_table: parsed.intern_table,
       occurrence_allocator: parsed.occurrence_allocator,
-      annotations: source_annotation_graph_concat(
-        left: acc.annotations,
-        right: annotation_attachment_result_graph(result: bound)
-      ),
-      annotation_refusals: concat(
-        acc.annotation_refusals,
-        annotation_attachment_result_refusals(result: bound)
+      annotations: source_annotation_graph_concat(left: acc.annotations, right: bound.graph),
+      annotation_diagnostics: concat(
+        acc.annotation_diagnostics,
+        bound.diagnostics |> map(d => make_error_node(diagnostic: d, module_name: p.newline_index.file))
       ),
     }
   )
@@ -1163,14 +1151,13 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
       module_occurrence_input_node(input: input)
     ),
     newline_indices: parsed.newline_indices,
-    diagnostics: collect_diagnostics(parse_results: parse_results),
+    diagnostics: concat(collect_diagnostics(parse_results: parse_results), parsed.annotation_diagnostics),
     occurrence_transport: merge_occurrence_transports(
       transports: module_inputs |> map(input =>
         module_occurrence_input_transport(input: input)
       )
     ),
     annotations: parsed.annotations,
-    annotation_refusals: parsed.annotation_refusals,
   }
 }
 

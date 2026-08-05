@@ -8,10 +8,17 @@ import std.occurrence_identity {
 import std.source_annotation {
   AnnotationAttachmentResult,
   AnnotationSubject,
+  AnnotationsAdmitted,
+  AnnotationsRefused,
   NormalizedAnnotationCapture,
+  SourceAnnotationGraph,
   UnboundAnnotationCapture,
-  attach_annotations
+  admit_annotations,
+  attach_annotations,
+  non_empty_refusals_all,
+  source_annotation_graph_empty
 }
+import v1.std.core { CompilerDiagnostic, SourceAnnotationRefused }
 
 data annotation_bind_authority_note: String = "The .dag realization of annotation attachment: it turns what the tokenizer captured into subject-bound rows by calling std.source_annotation.attach_annotations. Everything here is either .dag-specific — what the comment delimiter looks like, how a module item is recognized in this parser's transport — or a projection of facts the parser already produced. The RULE itself is not here; a second copy of the rule beside the shared one is the fork this lane exists to prevent.
 
@@ -145,4 +152,35 @@ fn bind_annotations(
     ),
     subjects: annotation_subjects(transport: transport, source_length: source_length)
   )
+}
+
+data admit_source_annotations_note: String = "THE single seam both production frontend paths use. front_end_sources and parse_census_fill_sources call this one function rather than each repeating normalize-roster-attach-admit, so the two cannot drift into disagreeing about whether a given file's prose is admissible — a drift that would be invisible, because the census path and the compile path would simply produce different graphs for the same source.
+
+Refusal is a BLOCKING diagnostic, not a note carried alongside a successful result. Unclassified prose stops the line: the graph is withheld entirely and every refusal is reported at its own span. Admitting the attachable rows while dropping the rest is the shape DESIGN forbids — the dropped prose would be uncounted, and a source that lost half its commentary would compile exactly like one that never had it."
+
+type AdmittedSourceAnnotations {
+  graph: SourceAnnotationGraph
+  diagnostics: List<CompilerDiagnostic>
+}
+
+fn admit_source_annotations(
+  transport: OccurrenceTransport,
+  captures: List<UnboundAnnotationCapture>,
+  source_length: Int
+) -> AdmittedSourceAnnotations {
+  match admit_annotations(
+    result: bind_annotations(transport: transport, captures: captures, source_length: source_length)
+  ) {
+    AnnotationsAdmitted { graph: graph } =>
+      AdmittedSourceAnnotations { graph: graph, diagnostics: [] }
+    AnnotationsRefused { refusals: refusals } =>
+      AdmittedSourceAnnotations {
+        graph: source_annotation_graph_empty(),
+        diagnostics: fold(
+          non_empty_refusals_all(refusals: refusals),
+          init: [],
+          f: (acc, refusal) => list_push(acc, SourceAnnotationRefused { refusal: refusal })
+        ),
+      }
+  }
 }

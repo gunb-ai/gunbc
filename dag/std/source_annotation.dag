@@ -63,9 +63,66 @@ type AnnotationAttachmentRefusal
   | TrailingNotModeled { origin: SourceSpan }
   | BodyGrainNotModeled { origin: SourceSpan }
 
+data refusal_origin_note: String = "Every refusal carries where it happened, so a diagnostic reporting one does not need to carry a second copy of the span beside it. A consumer asks this rather than storing the origin again — a duplicated span is a second representation that can disagree with the first."
+
+fn annotation_attachment_refusal_origin(refusal: AnnotationAttachmentRefusal) -> SourceSpan {
+  match refusal {
+    UnattachedAtScopeEnd { origin: origin } => origin
+    TrailingNotModeled { origin: origin } => origin
+    BodyGrainNotModeled { origin: origin } => origin
+  }
+}
+
+data refusal_message_note: String = "The human-facing sentence for each refusal, single-authored here beside the variants so a new refusal cannot be added without one. Each says what was seen and what would have to be modeled to admit it, because the reader's next question after `this is refused` is always `then where do I put it`."
+
+fn annotation_attachment_refusal_message(refusal: AnnotationAttachmentRefusal) -> String {
+  match refusal {
+    UnattachedAtScopeEnd { origin: _ } =>
+      "source annotation names no subject: no module item follows it. Move it above the declaration it describes."
+    TrailingNotModeled { origin: _ } =>
+      "source annotation follows code on its own line. Trailing placement has no attachment rule yet; move it to its own line above the declaration."
+    BodyGrainNotModeled { origin: _ } =>
+      "source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes."
+  }
+}
+
 type AnnotationAttachment
   = AnnotationAttached { row: SourceAnnotationDebt }
   | AnnotationRefused { refusal: AnnotationAttachmentRefusal }
+
+data annotation_admission_note: String = "The gate between analysing attachment and CONTINUING with it. AnnotationAttachmentResult is an analysis surface — it reports what attached and what did not, and a reader may legitimately inspect both. But a caller free to take `graph` from that record and carry on has done exactly what admitting `//` and discarding the capture would have done: the prose is dropped and compilation proceeds as though the source never carried it.
+
+So the only path from an attachment result to a graph that flows onward is through here, and it refuses whenever anything refused. The refusal payload is a NON-EMPTY carrier, which is what makes `refused, with nothing to report` unwritable rather than merely unlikely — a refusal arm holding an empty list would be a silent success wearing a refusal's name.
+
+This is deliberately all-or-nothing per compilation unit. A partial admission — take the rows that bound, ignore the ones that did not — is the absorbing fallback in its authored form: the deficit's frequency drops to zero, nothing counts it, and the unattachable prose quietly stops existing."
+
+type NonEmptyAnnotationAttachmentRefusals {
+  head: AnnotationAttachmentRefusal
+  tail: List<AnnotationAttachmentRefusal>
+}
+
+type AnnotationAdmission
+  = AnnotationsAdmitted { graph: SourceAnnotationGraph }
+  | AnnotationsRefused { refusals: NonEmptyAnnotationAttachmentRefusals }
+
+fn non_empty_refusals_all(
+  refusals: NonEmptyAnnotationAttachmentRefusals
+) -> List<AnnotationAttachmentRefusal> {
+  concat([refusals.head], refusals.tail)
+}
+
+fn admit_annotations(result: AnnotationAttachmentResult) -> AnnotationAdmission {
+  match first(result.refusals) {
+    Absent => AnnotationsAdmitted { graph: result.graph }
+    Present { value: head } =>
+      AnnotationsRefused {
+        refusals: NonEmptyAnnotationAttachmentRefusals {
+          head: head,
+          tail: skip(result.refusals, 1),
+        },
+      }
+  }
+}
 
 data annotation_eligible_placement_note: String = "The first realization admits leading annotations only, and this is the single predicate that says so. A realization asking whether to attach consults this rather than re-deciding, so widening the admitted grain later is one edit here plus the attachment rule it enables, never a sweep over every call site."
 
@@ -74,6 +131,41 @@ fn annotation_placement_is_attachable(placement: AnnotationPlacement) -> Bool {
     LeadingAfterLineIndent => true
     TrailingAfterSemanticToken => false
   }
+}
+
+data line_prefix_authority_note: String = "Placement is decided by the PHYSICAL LINE PREFIX — the raw text between the last line feed and the annotation — and never by which lexical category the preceding lexeme belonged to.
+
+The category guess is wrong, and a real grammar disproves it. Deciding `leading` by `no semantic token seen on this line yet` assumes line boundaries live in trivia; the Python model's own token lexemes include `):\\n    `, which ENDS on a fresh line carrying only indentation, and `\\n    if `, which ends on a fresh line carrying semantic text. An annotation after the first is leading and after the second is trailing, yet a category rule classifies both as trailing because in both cases the last thing consumed was a semantic token. Any grammar whose tokens may span lines breaks the same way.
+
+So the state is `line prefix is indent only`, advanced by the RAW TEXT of every consumed lexeme regardless of category. One fold expresses the whole rule: a line feed resets the prefix to empty (vacuously indent-only), and every character after it must be indentation for the prefix to stay so. A lexeme with no line feed therefore preserves the previous state only while it is itself indentation, and a lexeme containing one is judged entirely by what follows its LAST line feed — both cases the fold produces without a special arm. An empty lexeme preserves the state.
+
+A lexer that walks lexemes threads this forward; a lexer with random access to the source feeds it the raw slice it consumed between steps. Both consume THIS function, because two spellings of one placement rule would let the realizations disagree about the same source."
+
+fn code_point_is_line_feed(cp: Int) -> Bool {
+  cp == 10
+}
+
+fn code_point_is_indent(cp: Int) -> Bool {
+  cp == 32 || cp == 9
+}
+
+data code_point_grain_note: String = "The rule is stated over CODE POINTS, not over a String, because the two realizations do not share a string representation: the seed's String is a host string while the modeled compiler's is already a sequence of code points. Taking the sequence as the parameter puts the one representation-specific step — how to get code points out of whatever this realization calls a lexeme — at each call site, and keeps the rule itself single-authored. The text-shaped convenience below exists for host-string callers and is the same fold, never a second rule."
+
+fn advance_line_prefix_indent_only(previous: Bool, code_points: List<Int>) -> Bool {
+  fold(
+    code_points,
+    init: previous,
+    f: (acc, cp) =>
+      if code_point_is_line_feed(cp: cp) { true } else { acc && code_point_is_indent(cp: cp) }
+  )
+}
+
+fn advance_line_prefix_indent_only_text(previous: Bool, lexeme: String) -> Bool {
+  advance_line_prefix_indent_only(previous: previous, code_points: chars(s: lexeme))
+}
+
+fn placement_from_line_prefix(indent_only: Bool) -> AnnotationPlacement {
+  if indent_only { LeadingAfterLineIndent } else { TrailingAfterSemanticToken }
 }
 
 data annotation_subject_roster_note: String = "What a realization offers as attachable subjects, and deliberately NOT DeclarationOccurrence. Two reasons, both structural. First, this module would otherwise depend on the whole occurrence transport to express a rule that needs exactly two facts per subject — an identity to refer to and a span to compare against. Second, the roster IS where the module-item narrowing lives: a realization admitting only module-scope declarations supplies only those, and widening to a finer grain later is a change in what the caller enumerates, not a change to the fold. The occurrence is REFERRED to, never minted; every id in a roster was already allocated by the semantic parser before attachment runs."

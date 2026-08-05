@@ -12,7 +12,7 @@ import std.source_annotation {
   annotation_attachment_result_refusals,
   source_annotation_graph_rows
 }
-import v1.compiler.annotation_bind { bind_annotations, strip_line_comment_delimiter }
+import v1.compiler.annotation_bind { AdmittedSourceAnnotations, admit_source_annotations, bind_annotations, strip_line_comment_delimiter }
 import v1.compiler.tokenize { tokenize_artifact }
 import v1.compiler.parse { parse_with_table }
 import v1.std.core { build_newline_index, empty_intern_table }
@@ -136,4 +136,26 @@ test fn w_delimiter_normalization_keeps_authored_indentation() -> Bool {
   strip_line_comment_delimiter(lexeme: "// plain") == "plain" &&
     strip_line_comment_delimiter(lexeme: "//   indented") == "  indented" &&
     strip_line_comment_delimiter(lexeme: "//tight") == "tight"
+}
+
+data admission_gate_note: String = "The P0 wall, by execution: unclassified prose does not ride along inside a successful result. A source whose only annotation is trailing yields NO graph rows and at least one blocking diagnostic, while the same source with the prose moved above the declaration yields the row and no diagnostic. The pair is what distinguishes a wall from a filter — a filter would have produced the admissible rows either way."
+
+fn admitted(source: String) -> AdmittedSourceAnnotations {
+  admit_source_annotations(
+    transport: transport_of(source: source),
+    captures: tokenize_artifact(source: source, file: "probe.dag").annotations,
+    source_length: string_length(s: source)
+  )
+}
+
+data mixed_source: String = "module p.q\n\n// good prose\ndata alpha: String = \"a\" // stray trailing\n"
+
+test fn w_a_single_refusal_withholds_the_entire_graph() -> Bool {
+  let a = admitted(source: mixed_source)
+  (source_annotation_graph_rows(graph: a.graph) |> count) == 0 && (a.diagnostics |> count) == 1
+}
+
+test fn w_the_same_prose_without_the_refusal_is_admitted() -> Bool {
+  let a = admitted(source: header_source)
+  (source_annotation_graph_rows(graph: a.graph) |> count) == 1 && (a.diagnostics |> count) == 0
 }
