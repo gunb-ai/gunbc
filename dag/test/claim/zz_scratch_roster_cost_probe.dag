@@ -1,0 +1,42 @@
+module zz_scratch_roster_cost_probe
+
+import std.types { String, Int, List, Bool }
+import std.keyed_roster { keyed_roster_build, KeyedRosterBuild }
+import std.keyed_row { KeyedRow }
+
+fn grow(xs: List<String>, tag: String) -> List<String> {
+  concat(xs, map(xs, s => join([tag, s], "")))
+}
+
+fn keys_32() -> List<String> {
+  grow(xs: grow(xs: grow(xs: grow(xs: grow(xs: ["a"], tag: "b"), tag: "c"), tag: "d"), tag: "e"), tag: "f")
+}
+
+fn keys_256() -> List<String> {
+  grow(xs: grow(xs: grow(xs: keys_32(), tag: "g"), tag: "h"), tag: "i")
+}
+
+fn keys_512() -> List<String> {
+  grow(xs: keys_256(), tag: "j")
+}
+
+fn build_over(keys: List<String>) -> Bool {
+  let rows = map(keys, k => KeyedRow { row_key: k, row_value: 1 })
+  match keyed_roster_build(incomings: rows, key_eq: fn(a, b) { a == b }) {
+    KeyedRosterBuilt { rows: built } => count(built) == count(keys)
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
+}
+
+fn probe_32() -> Bool { build_over(keys: keys_32()) }
+fn probe_256() -> Bool { build_over(keys: keys_256()) }
+fn probe_512() -> Bool { build_over(keys: keys_512()) }
+fn probe_sizes() -> List<Int> { [count(keys_32()), count(keys_256()), count(keys_512())] }
+
+fn keysonly_32() -> Int { count(keys_32()) }
+fn keysonly_256() -> Int { count(keys_256()) }
+fn keysonly_512() -> Int { count(keys_512()) }
+
+fn keys_1024() -> List<String> { grow(xs: keys_512(), tag: "k") }
+fn probe_1024() -> Bool { build_over(keys: keys_1024()) }
+fn keysonly_1024() -> Int { count(keys_1024()) }
