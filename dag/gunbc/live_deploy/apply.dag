@@ -56,7 +56,7 @@ import gunbc.ci_deploy_target_host {
   DeployTargetHostObservation,
   deploy_target_ssh_proof_structurally_valid,
 }
-import v2.std.collection { Present, Absent, Optional }
+import v2.std.collection { Present, Absent }
 import std.access { AccessDecision, Permit, Deny }
 import gunbc.host_effect {
   HostEffect,
@@ -151,7 +151,7 @@ fn tailscale_serve_status_read(transport: HostEffectTransport) -> TailscaleServe
 
 data blue_green_cutover_order_note: String = "Operator-signed 2026-08-01: straight to blue/green, no socket-activation interim. Tailscale's currently routed root Proxy selects active and idle from the two declared HostDashboardInstance slots. The candidate mutation is the slot footprint only; its existing readiness path polls /healthz until the digest proves it serves THIS source tree and then performs the deeper roadmap asset readback. Only after both converge does the route-only spec replay the scoped root endpoint toward the candidate. Old-slot retirement is route-free and runtime-only: it stops the old serve unit and belt timer but preserves the reusable slot files, worktrees, and published attempt evidence. Full retract remains a distinct operator action with the empty-directory refusal wall. Every pre-flip refusal returns before route mutation, leaving the old process mapped and serving; a post-flip retirement failure leaves the new process mapped, so absence is not a failure arm."
 
-data cutover_requires_the_admission_note: String = "THE ADMISSION IS A PARAMETER, WHICH IS WHY THIS IS A WALL AND NOT A CHECK. RevisionAdvance is `sole_constructor` in gunbc.live_deploy.revision, so the only values of that type in the corpus come out of decide_deploy_for_observation's Advance arm. A caller that wants to run this cutover has to have obtained one, and it cannot forge one from here — so 'mutate without deciding' does not typecheck rather than being forbidden by a convention someone has to remember.\\n\\nThe token is CONSUMED, not merely accepted: the receipt written after the flip carries admission.to, so the revision recorded for the routed slot is the one the decision admitted rather than whatever the caller happened to be holding. An admission that were only a permission slip would leave the two free to disagree, which is the same gap the global tree-sync selector opened between the tree a run believed it deployed and the tree it actually did.\\n\\nWHY THE RECEIPT WRITE IS INSIDE THE CONVERGED PATH AND NOT AFTER IT. A slot that serves a revision it did not record is invisible to the NEXT deploy's decision, which would then read the previous revision and classify a genuine advance as unrelated or superseded. So a failed record fails the deploy — loudly, on the run that caused it — instead of leaving a silent gap for a later run to trip over. It also closes the bootstrap arm honestly: AdvanceFromUnrecordedSlot cannot become the permanent state of the system without every deploy going red first."
+data cutover_requires_the_admission_note: String = "THE ADMISSION IS A PARAMETER, WHICH IS WHY THIS IS A WALL AND NOT A CHECK. RevisionAdvance is `sole_constructor` in gunbc.live_deploy.revision, so the only values of that type in the corpus come out of decide_deploy_for_observation's Advance arm. A caller that wants to run this cutover has to have obtained one, and it cannot forge one from here — so 'mutate without deciding' does not typecheck rather than being forbidden by a convention someone has to remember.\\n\\nThe token is CONSUMED, not merely accepted: the RecordCandidateRevision stage writes admission.to, so the revision recorded for the slot the route is about to select is the one the decision admitted rather than whatever the caller happened to be holding. An admission that were only a permission slip would leave the two free to disagree, which is the same gap the global tree-sync selector opened between the tree a run believed it deployed and the tree it actually did.\\n\\nWHY THE RECEIPT WRITE IS A CUTOVER STAGE AND NOT A POSTSCRIPT. A slot that serves a revision it did not record is invisible to the NEXT deploy's decision, which would then read the previous revision and classify a genuine advance as unrelated or superseded. So a failed record fails the deploy — loudly, on the run that caused it — instead of leaving a silent gap for a later run to trip over. Its position relative to the flip is the separate crash-prefix property recorded below."
 
 fn live_deploy_record_slot_revision(
   spec: DeploymentSpec,
@@ -206,9 +206,15 @@ data live_deploy_cutover_stage_order: List<CutoverStage> = [
   RetireActiveSlot,
 ]
 
+data route_outcome_is_its_own_coproduct_note: String = "NOT Optional<Reconciliation>. 'The route was never flipped' and 'the flip failed' are different states with different remedies — the first means the stage order does not publish at all and the deploy must refuse; the second is an ordinary non-converged stage the fold already short-circuits on and reports. Collapsing both onto Absent would be the state-space conflation DESIGN's failure-mode list names, and it would also make the refusal below unable to say which one happened."
+
+type CutoverRouteOutcome
+  = RouteNotFlipped
+  | RoutePublished { reconciliation: Reconciliation<HostEffectIntent, HostEffectEvidence> }
+
 type CutoverProgress {
   last: Reconciliation<HostEffectIntent, HostEffectEvidence>
-  flip: Optional<Reconciliation<HostEffectIntent, HostEffectEvidence>>
+  flip: CutoverRouteOutcome
 }
 
 fn live_deploy_run_cutover_stage(
@@ -252,6 +258,16 @@ fn live_deploy_run_cutover_stage(
   }
 }
 
+fn cutover_flip_if_converged(
+  result: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+) -> CutoverRouteOutcome {
+  if reconciliation_converged(r: result) {
+    RoutePublished { reconciliation: result }
+  } else {
+    RouteNotFlipped
+  }
+}
+
 fn live_deploy_run_cutover_stages(
   stages: List<CutoverStage>,
   active: DeploymentSpec,
@@ -265,7 +281,7 @@ fn live_deploy_run_cutover_stages(
       evidence: ShellEffectApplied { exit_code: 0, stdout: "cutover: no stage executed yet" },
       applied: live_deploy_preflight_intent(access: access),
     },
-    flip: Absent,
+    flip: RouteNotFlipped,
   }
   let progress = fold(
     stages,
@@ -286,7 +302,7 @@ fn live_deploy_run_cutover_stages(
           FlipRouteToCandidate =>
             CutoverProgress {
               last: result,
-              flip: if reconciliation_converged(r: result) { Present { value: result } } else { Absent },
+              flip: cutover_flip_if_converged(result: result),
             }
           PrepareCandidateSlot => CutoverProgress { last: result, flip: acc.flip }
           RecordCandidateRevision => CutoverProgress { last: result, flip: acc.flip }
@@ -298,8 +314,8 @@ fn live_deploy_run_cutover_stages(
     progress.last
   } else {
     match progress.flip {
-      Present { value: flipped } => flipped
-      Absent =>
+      RoutePublished { reconciliation: flipped } => flipped
+      RouteNotFlipped =>
         NotConverged {
           reason: "blue/green cutover refused: the stage order completed without flipping the route, so nothing was published",
           applied: live_deploy_preflight_intent(access: access),

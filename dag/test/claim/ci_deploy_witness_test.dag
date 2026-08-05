@@ -22,6 +22,11 @@ import gunbc.live_deploy.revision {
   DeployedRevisionRecorded,
   DeployedRevisionUnrecorded,
   DeployedRevisionUnreadable,
+  DeployDecision,
+  Advance,
+  Keep,
+  Refuse,
+  decide_deploy_for_observation,
 }
 import gunbc.live_deploy.coordination {
   DeployCoordinationSubject,
@@ -87,7 +92,15 @@ import gunbc.live_deploy.intent {
   live_deploy_slot_revision_read_script,
   live_deploy_slot_revision_record_script,
 }
-import gunbc.live_deploy.apply { parse_slot_revision_stdout }
+import gunbc.live_deploy.apply {
+  parse_slot_revision_stdout,
+  CutoverStage,
+  PrepareCandidateSlot,
+  RecordCandidateRevision,
+  FlipRouteToCandidate,
+  RetireActiveSlot,
+  live_deploy_cutover_stage_order,
+}
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.host_effect {
   HostEffectTransport,
@@ -746,4 +759,154 @@ test fn the_probe_argv_is_the_modeled_flock_command() -> Bool {
          live_deploy_lease_probe_command(invocation: inv, inner: outer).argv,
          "--nonblock"
        )
+}
+
+data crash_prefix_control_note: String = "THE CRASH-PREFIX CONTROL, FOLDING THE ACTUATOR'S OWN STAGE ORDER (operator merge condition 2026-08-05). gunbc.live_deploy.apply crash_prefix_invariant_note states a property of every prefix of the cutover; until this ran, that property was prose beside a nested if/else, which is the specification-without-execution shape DESIGN §5 names — the claim would have stayed true-looking after someone reverted the order.\\n\\nSo the actuator now folds live_deploy_cutover_stage_order and this folds the SAME row. The invariant is: at every prefix, the ROUTED slot's recorded revision equals what that slot serves — because the next deploy reads exactly the routed slot's receipt and nothing else. Reverting to flip-before-record edits the row, and the first test below reds.\\n\\nTHE RED IS THE HISTORICAL DEFECT, NOT A SYNTHETIC ONE. The rejected order is authored here because a control needs something to discriminate against, and the second test proves it actually violates the invariant rather than merely differing. The third carries it through the REAL decision function to the harm: a routed slot serving C while its receipt still says stale authorizes a later, OLDER candidate as an advance, so the public dashboard moves backward — and the same candidate against the landed order's final world is Keep. That is the whole reason the order is a safety property and not a preference."
+
+data crash_sha_stale: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data crash_sha_next: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data crash_sha_candidate: CommitSha = "cccccccccccccccccccccccccccccccccccccccc"
+
+type PrefixWorld {
+  routed_is_candidate: Bool
+  old_recorded: CommitSha
+  old_serves: CommitSha
+  candidate_recorded: CommitSha
+  candidate_serves: CommitSha
+}
+
+data crash_prefix_initial_world: PrefixWorld = PrefixWorld {
+  routed_is_candidate: false,
+  old_recorded: crash_sha_stale,
+  old_serves: crash_sha_stale,
+  candidate_recorded: crash_sha_stale,
+  candidate_serves: crash_sha_stale,
+}
+
+fn crash_prefix_apply_stage(w: PrefixWorld, stage: CutoverStage) -> PrefixWorld {
+  match stage {
+    PrepareCandidateSlot =>
+      PrefixWorld {
+        routed_is_candidate: w.routed_is_candidate,
+        old_recorded: w.old_recorded,
+        old_serves: w.old_serves,
+        candidate_recorded: w.candidate_recorded,
+        candidate_serves: crash_sha_candidate,
+      }
+    RecordCandidateRevision =>
+      PrefixWorld {
+        routed_is_candidate: w.routed_is_candidate,
+        old_recorded: w.old_recorded,
+        old_serves: w.old_serves,
+        candidate_recorded: crash_sha_candidate,
+        candidate_serves: w.candidate_serves,
+      }
+    FlipRouteToCandidate =>
+      PrefixWorld {
+        routed_is_candidate: true,
+        old_recorded: w.old_recorded,
+        old_serves: w.old_serves,
+        candidate_recorded: w.candidate_recorded,
+        candidate_serves: w.candidate_serves,
+      }
+    RetireActiveSlot => w
+  }
+}
+
+fn routed_receipt_matches_service(w: PrefixWorld) -> Bool {
+  if w.routed_is_candidate {
+    w.candidate_recorded == w.candidate_serves
+  } else {
+    w.old_recorded == w.old_serves
+  }
+}
+
+type PrefixTrace {
+  current: PrefixWorld
+  holds: List<Bool>
+}
+
+fn crash_prefix_trace(stages: List<CutoverStage>) -> PrefixTrace {
+  fold(
+    stages,
+    init: PrefixTrace {
+      current: crash_prefix_initial_world,
+      holds: [routed_receipt_matches_service(w: crash_prefix_initial_world)],
+    },
+    f: (acc, stage) => {
+      let next = crash_prefix_apply_stage(w: acc.current, stage: stage)
+      PrefixTrace {
+        current: next,
+        holds: concat(acc.holds, [routed_receipt_matches_service(w: next)]),
+      }
+    }
+  )
+}
+
+data crash_prefix_rejected_order: List<CutoverStage> = [
+  PrepareCandidateSlot,
+  FlipRouteToCandidate,
+  RecordCandidateRevision,
+  RetireActiveSlot,
+]
+
+test fn every_prefix_of_the_landed_cutover_order_holds_the_receipt_invariant() -> Bool {
+  let trace = crash_prefix_trace(stages: live_deploy_cutover_stage_order)
+  count(trace.holds) == count(live_deploy_cutover_stage_order) + 1
+    && all(trace.holds, h => h)
+    && trace.current.routed_is_candidate
+    && trace.current.candidate_recorded == crash_sha_candidate
+}
+
+test fn the_flip_before_record_order_violates_the_receipt_invariant() -> Bool {
+  let trace = crash_prefix_trace(stages: crash_prefix_rejected_order)
+  count(trace.holds) == count(crash_prefix_rejected_order) + 1
+    && any(trace.holds, h => !h)
+    && count(crash_prefix_rejected_order) == count(live_deploy_cutover_stage_order)
+}
+
+data crash_prefix_harm_note: String = "The two decisions below differ only in which revision the ROUTED slot's receipt names, which is the only thing the crash window changes. Both are the same real fold over the same later candidate."
+
+fn decision_for_routed_receipt(recorded: CommitSha, candidate: CommitSha) -> DeployDecision {
+  decide_deploy_for_observation(
+    observed: DeployedRevisionRecorded { revision: recorded },
+    candidate: candidate,
+    deployed_is_ancestor_of_candidate: crash_linear_is_ancestor(earlier: recorded, later: candidate),
+    candidate_is_ancestor_of_deployed: crash_linear_is_ancestor(earlier: candidate, later: recorded),
+  )
+}
+
+fn crash_revision_index(sha: CommitSha) -> Int {
+  if sha == crash_sha_stale { 0 }
+  else { if sha == crash_sha_next { 1 } else { if sha == crash_sha_candidate { 2 } else { 0 - 1 } } }
+}
+
+fn crash_linear_is_ancestor(earlier: CommitSha, later: CommitSha) -> Bool {
+  let i = crash_revision_index(sha: earlier)
+  let j = crash_revision_index(sha: later)
+  i >= 0 && j >= 0 && i <= j
+}
+
+test fn the_violated_prefix_authorizes_a_backward_public_move() -> Bool {
+  let crashed = crash_prefix_trace(stages: crash_prefix_rejected_order)
+  let landed = crash_prefix_trace(stages: live_deploy_cutover_stage_order)
+  let crashed_at_flip = crash_prefix_apply_stage(
+    w: crash_prefix_apply_stage(w: crash_prefix_initial_world, stage: PrepareCandidateSlot),
+    stage: FlipRouteToCandidate,
+  )
+  !routed_receipt_matches_service(w: crashed_at_flip)
+    && crashed_at_flip.candidate_serves == crash_sha_candidate
+    && crashed_at_flip.candidate_recorded == crash_sha_stale
+    && match decision_for_routed_receipt(recorded: crashed_at_flip.candidate_recorded, candidate: crash_sha_next) {
+         Advance { admission: adm } => adm.to == crash_sha_next
+         Keep { reason: _ } => false
+         Refuse { cause: _ } => false
+       }
+    && match decision_for_routed_receipt(recorded: landed.current.candidate_recorded, candidate: crash_sha_next) {
+         Keep { reason: _ } => true
+         Advance { admission: _ } => false
+         Refuse { cause: _ } => false
+       }
+    && any(crashed.holds, h => !h)
+    && all(landed.holds, h => h)
 }
