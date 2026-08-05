@@ -9,10 +9,10 @@ use v1_compiler::cli_run::{
     discover_source_root_reads_for_entry, emit_source_ref_dag_for_path,
     emit_source_root_ingest_manifest, parse_source_root_entry_admission, resolve_entry_graph,
 };
+use v1_compiler::std_content_hash::{content_hash_atom, content_hash_combine_structural};
 use v1_compiler::v1_interpreter::{
     self, free_monoid_symbol_value_to_dotted_string, ExecutionMode, InterpContext, Value,
 };
-use v1_compiler::std_content_hash::{content_hash_atom, content_hash_combine_structural};
 
 const PROBE_ENTRY: &str = "src/v2/test/claim/long/compiler_frontier_probe_entry_test.dag";
 const PROBE_RECEIPT_FN: &str = "frontier_probe_entry_receipt";
@@ -908,6 +908,7 @@ fn load_probe_rows_from_tsv(path: &Path) -> Result<Vec<ProbeReceiptRow>, String>
             blocker_variant: parts[7].to_string(),
             located_stage: parts[8].to_string(),
             located_reason: parts[9].to_string(),
+            detail: "FrontierProbeDetailAbsent".to_string(),
             probe_error: if parts.len() > 10 && !parts[10].is_empty() {
                 Some(parts[10].to_string())
             } else {
