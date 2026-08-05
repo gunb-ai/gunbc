@@ -465,7 +465,7 @@ fn observe_codex_npm_runtime_target() -> CodexNpmRuntimeTargetObservation {
   }
 }
 
-data codex_exact_platform_lock_key_note: String = "FIRST PROFILE PRODUCT POLICY — not a general npm resolver. Exactly one wrapper lock-node plus exactly one (os,cpu)→platform lock-node. Empty-edge roster is not treated as a resolved dependency graph."
+data codex_exact_platform_lock_key_note: String = "FIRST PROFILE PRODUCT POLICY — not a general npm resolver. Exactly one wrapper lock-node plus exactly one (os,cpu)→platform lock-node via exact-cardinality lookup. Empty-edge roster is not treated as a resolved dependency graph. Non-optional metadata on the platform row is not separately gated here — the exact key already selects the intended package."
 
 fn codex_platform_lock_path_key(target: CodexNpmRuntimeTarget) -> NonEmptyStr? {
   if (target.os as String) == "linux" && (target.cpu as String) == "arm64" {
