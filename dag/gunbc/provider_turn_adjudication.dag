@@ -2,7 +2,7 @@ module gunbc.provider_turn_adjudication
 
 import std.types { Bool, NonEmptyStr, String }
 
-data provider_turn_adjudication_note: String = "Terminal disposition and native cause are distinct axes (provider-control-interface-audit §3.2). A turn may be terminally failed while its cause stays unclassified; unknown cause MUST NOT authorize automatic recovery. Wire event classification lands with the JSON-AST reader — this module owns the adjudication law, not fabricated protocol shapes."
+data provider_turn_adjudication_note: String = "Terminal disposition and native cause are distinct axes (provider-control-interface-audit §3.2). A turn may be terminally failed while its cause stays unclassified. Automatic recovery is OUT OF SCOPE for this press specimen: no native decoder, retry budget, retry-after, previous-attempt set, or loop control exists yet — classified RetryableTransient MUST NOT authorize recovery. Cross-provider recovery is explicitly deferred."
 
 type ProviderCauseClass
   = QuotaExhausted
@@ -32,17 +32,7 @@ fn automatic_recovery_authorized(disposition: ProviderTurnDisposition) -> Bool {
   match disposition {
     ProviderTurnCompleted => false
     ProviderTurnNotObserved => false
-    ProviderTurnFailed { cause } =>
-      match cause {
-        ProviderNativeCauseUnknown { evidence: _ } => false
-        ProviderNativeCauseClassified { class, evidence: _ } =>
-          match class {
-            RetryableTransient => true
-            QuotaExhausted => false
-            AuthenticationRequired => false
-            NonRetryableRejected => false
-          }
-      }
+    ProviderTurnFailed { cause: _ } => false
   }
 }
 

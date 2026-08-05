@@ -32,7 +32,14 @@ import gunbc.package_delivery {
   PackageArchiveDigestMismatch,
   codex_map_uname_to_npm_target,
   CodexNpmRuntimeTargetObserved,
-  codex_target_required_registry_nodes,
+  select_codex_exact_target_closure,
+  CodexExactTargetClosureSelected,
+  admit_codex_selected_node,
+  CodexSelectedNodeInstallScriptRefused,
+  CodexSelectedNodeAdmitted,
+  admit_codex_registry_artifact_locator,
+  CodexRegistryLocatorAdmitted,
+  CodexRegistryLocatorRefused,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
