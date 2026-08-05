@@ -14,6 +14,8 @@ import v2.compiler.self_host.direct_rust_door_observation {
   DirectRustDoorSourceProduced,
   EmittedSourceMismatch,
   WrongProducer,
+  direct_rust_door_observation_establishes,
+  direct_rust_door_observation_is_candidate_rejection,
   project_direct_rust_door_observation,
 }
 import v2.compiler.self_host.direct_rust_door_fixture {
@@ -373,4 +375,26 @@ test fn projection_establishes_on_a_fully_good_artifact() -> Bool {
     DirectRustDoorSourceProduced => true
     _ => false
   }
+}
+
+test fn observation_establishes_only_on_source_produced() -> Bool {
+  let good = project_direct_rust_door_observation(
+    group: group_of(emission: planted_artifact_with_source(source_text: direct_rust_door_expected_source))
+  )
+  let stopped = project_direct_rust_door_observation(
+    group: group_of(emission: EmissionRejected { diagnostics: planted_diag() })
+  )
+  direct_rust_door_observation_establishes(o: good)
+    && !direct_rust_door_observation_establishes(o: stopped)
+}
+
+test fn observation_candidate_rejection_names_only_the_emission_stop() -> Bool {
+  let stopped = project_direct_rust_door_observation(
+    group: group_of(emission: EmissionRejected { diagnostics: planted_diag() })
+  )
+  let assembly = project_direct_rust_door_observation(
+    group: group_of(emission: AssemblyRejected { diagnostics: planted_diag() })
+  )
+  direct_rust_door_observation_is_candidate_rejection(o: stopped)
+    && !direct_rust_door_observation_is_candidate_rejection(o: assembly)
 }
