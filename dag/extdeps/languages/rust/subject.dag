@@ -24,13 +24,13 @@ data rust_language_subject_note: String = "THE RUST LANGUAGE, cited to The Rust 
 type Rust
   = | RustTarget
 
-data rust_language: Rust = RustTarget
+data rust_language_subject: Rust = RustTarget
 
 data rust_language_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.languages.rust.subject",
-      decl_name: "rust_language",
+      decl_name: "rust_language_subject",
       field: WholeDeclaration
     }
   },

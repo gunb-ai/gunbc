@@ -24,13 +24,13 @@ data typescript_language_subject_note: String = "TYPESCRIPT, AND THE FINDING THA
 type TypeScript
   = | TypeScriptTarget
 
-data typescript_language: TypeScript = TypeScriptTarget
+data typescript_language_subject: TypeScript = TypeScriptTarget
 
 data typescript_language_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.languages.typescript.subject",
-      decl_name: "typescript_language",
+      decl_name: "typescript_language_subject",
       field: WholeDeclaration
     }
   },

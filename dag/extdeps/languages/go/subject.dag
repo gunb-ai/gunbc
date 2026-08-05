@@ -17,13 +17,13 @@ data go_language_subject_note: String = "GO, cited to The Go Programming Languag
 type Go
   = | GoTarget
 
-data go_language: Go = GoTarget
+data go_language_subject: Go = GoTarget
 
 data go_language_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.languages.go.subject",
-      decl_name: "go_language",
+      decl_name: "go_language_subject",
       field: WholeDeclaration
     }
   },

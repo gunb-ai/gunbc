@@ -24,13 +24,13 @@ data python_language_subject_note: String = "PYTHON, cited to The Python Languag
 type Python
   = | PythonTarget
 
-data python_language: Python = PythonTarget
+data python_language_subject: Python = PythonTarget
 
 data python_language_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.languages.python.subject",
-      decl_name: "python_language",
+      decl_name: "python_language_subject",
       field: WholeDeclaration
     }
   },

@@ -17,13 +17,13 @@ data yaml_format_subject_note: String = "YAML, cited to the YAML 1.2.2 specifica
 type Yaml
   = | YamlTarget
 
-data yaml_format: Yaml = YamlTarget
+data yaml_format_subject: Yaml = YamlTarget
 
 data yaml_format_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.languages.yaml.subject",
-      decl_name: "yaml_format",
+      decl_name: "yaml_format_subject",
       field: WholeDeclaration
     }
   },
