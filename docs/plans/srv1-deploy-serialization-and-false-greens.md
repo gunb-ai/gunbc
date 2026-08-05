@@ -370,7 +370,7 @@ Review of head `b7c36b7` (2026-08-05). Every item below is closed in the same do
 
 **P1 — the wet probe could false-green.** An unrelated holder acquiring between steps A and B makes B's *outer* `flock` return 111 without ever running the nested attempt; if that holder exits before C, the probe observes 0/111/0 and passes having established nothing about self-contention. Step B now writes a marker after acquiring and before the nested attempt, and the outcome requires both the marker and the conflict code. Step D additionally requires the lock object to be a directory whose parent this principal cannot write — at its real rung: this proves *this* principal cannot replace it, not that no principal can.
 
-Deploy witnesses: 58 green by execution at this head.
+Deploy witnesses: 58 green by execution at head `b7c36b7`. (§10.8 supersedes this round's P0; the count at the current head is 59.)
 
 ### 10.8 Third operator review: the grounding withdrawal, and four narrowed claims
 
