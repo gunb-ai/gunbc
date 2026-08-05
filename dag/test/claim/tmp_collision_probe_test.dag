@@ -1,6 +1,0 @@
-module test.claim.tmp_collision_probe
-
-import extdeps.clock { Clock }
-import extdeps.instrument.pip_boy_3000_mk_v { pip_boy_mk_v_capabilities }
-
-test fn probe() -> Bool { count(pip_boy_mk_v_capabilities) == 8 }
