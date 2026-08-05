@@ -15,7 +15,7 @@ fn keyed_row_find<K, V>(
   key_eq: fn(K, K) -> Bool,
 ) -> KeyedRow<K, V>? {
   fold(rows, init: none, f: fn(acc, row) {
-    if key_eq(a: row.row_key, b: wanted_key) {
+    if key_eq(row.row_key, wanted_key) {
       Present { value: row }
     } else {
       acc
