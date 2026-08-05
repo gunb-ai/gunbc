@@ -12948,6 +12948,15 @@ pub fn append_failure_receipt_companion_loudness(
 /// Production claim_executor / discovery-summary Bool(false) detail rendering.
 /// Exposed to `.dag` witnesses via `seed_runner_bool_false_failure_detail` so CI can
 /// exercise the same `append_failure_receipt_companion_loudness` path the floor runner uses.
+///
+/// HAND-RUST DISPOSITION (DESIGN §7 seed-shrinks-toward-zero; review 48788). DEFERRED seed
+/// retention: one new builtin arm routing witness loudness through the existing
+/// `append_failure_receipt_companion_loudness` / `gunbc.test_module_hygiene.failure_receipt_companion`
+/// stack — no parallel naming authority. Lane: **v1 exit** (zero hand-maintained Rust).
+/// ROADMAP row: "Get hand-written Rust in this repository down to zero"
+/// (authority `dag/gunbc/v1_deletion_plan.dag`). Dissolution trigger: deleted with
+/// `claim_executor` when witness execution leaves the seed runner; witnesses then call the
+/// loudness projection directly without this bridge.
 pub fn seed_runner_bool_false_failure_detail(
     ctx: &v1_interpreter::InterpContext,
     witness_function: &str,
