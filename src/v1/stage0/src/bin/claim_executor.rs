@@ -3616,7 +3616,7 @@ fn run_discovery_batch_node(
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
-            resolve_realization: None,
+                    resolve_realization: None,
                 }
             }
         }
