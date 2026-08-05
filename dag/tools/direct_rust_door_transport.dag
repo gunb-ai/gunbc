@@ -2,10 +2,11 @@ module tools.direct_rust_door_transport
 
 import extdeps.cargo_build
 import extdeps.shell
-import v2.compiler.self_host.candidate_generation {
-  advance_written_provenanced_rust_artifact_cargo_green,
-  mint_written_provenanced_rust_artifact,
-  written_provenanced_rust_artifact_ok
+import v2.compiler.self_host.fixture_synthetic_emission {
+  advance_written_synthetic_emitted_artifact_cargo_green,
+  mint_written_synthetic_emitted_artifact_from_fixture_inferred,
+  written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification,
+  written_synthetic_emitted_artifact_ok
 }
 import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_inferred_tree,
@@ -17,7 +18,9 @@ import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
-data direct_rust_door_transport_note: String = "Lane B wet transport realization: mint_written_provenanced_rust_artifact is the sole write_rust_workspace authority (Cargo.toml + src/lib.rs via Filesystem.Write inside candidate_generation); this smoke calls it on the direct_rust_door inferred-tree fixture, then advance_written_provenanced_rust_artifact_cargo_green only after cargo.Build.BuildManifest executes — SourceProduced at mint, CargoGreen only after compile evidence (qualification ladder; no later qualification before its evidence)."
+data direct_rust_door_fixture_lane_tag: String = "direct_rust_door_fixture_containment"
+
+data direct_rust_door_transport_note: String = "Lane B wet transport realization (wise-ram-22 PR1 containment): mint_written_synthetic_emitted_artifact_from_fixture_inferred is the sole fixture write authority; FixtureCargoGreen only after cargo.Build.BuildManifest executes. No mint_written_provenanced_rust_artifact and no ProducerEmissionReceipt on this path."
 
 fn direct_rust_door_compile_workspace(workspace_dir: String) -> Bool {
   let build = cargo.Build.BuildManifest(
@@ -32,22 +35,26 @@ fn direct_rust_door_compile_workspace(workspace_dir: String) -> Bool {
 fn run_direct_rust_door_emit_write_compile_smoke() -> Bool {
   let dir = shell.Mktemp.Dir()
   let src_dir = shell.Mkdir.Parents(path: concat(dir.path, "/src"))
-  let pipeline_ok = match mint_written_provenanced_rust_artifact(
+  let pipeline_ok = match mint_written_synthetic_emitted_artifact_from_fixture_inferred(
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
-    workspace_dir: dir.path
+    workspace_dir: dir.path,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag
   ) {
     Accepted { value: written, diagnostics: _ } =>
       let compile_ok =
-        written_provenanced_rust_artifact_ok(written: written)
+        written_synthetic_emitted_artifact_ok(written: written)
           && direct_rust_door_compile_workspace(workspace_dir: dir.path)
-      match advance_written_provenanced_rust_artifact_cargo_green(
+      match advance_written_synthetic_emitted_artifact_cargo_green(
         written: written,
         cargo_green: compile_ok
       ) {
         Present { value: cargo_written } =>
-          written_provenanced_rust_artifact_ok(written: cargo_written)
+          written_synthetic_emitted_artifact_ok(written: cargo_written)
+            && written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
+              written: cargo_written
+            )
         Absent => false
       }
     Rejected { diagnostics: _ } => false

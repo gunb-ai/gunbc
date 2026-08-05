@@ -54,8 +54,10 @@ test fn contract_exists_clause_delivered() -> Bool {
   clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "contract-exists-and-can-fail")
 }
 
-test fn warm_hit_clause_partially_delivered_not_falsely_green() -> Bool {
-  clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "warm-hit-skips-semantic-recompute") == false
+data warm_hit_clause_delivered_note: String = "RENAMED from warm_hit_clause_partially_delivered_not_falsely_green (DESIGN §4b(4) — an expecting-red probe that greens when its wall lands flips to a permanent regression control, it does not retire). cross_process_hit_skips_semantic_recompute now lands and greens (v1_compiler_tests.resolve_cross_process_cache_test), so the clause reached Delivered; this test's assertion flips from false to true and the test itself becomes the regression control catching a future silent revert."
+
+test fn warm_hit_clause_delivered() -> Bool {
+  clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "warm-hit-skips-semantic-recompute")
 }
 
 test fn refusal_clause_delivered() -> Bool {
