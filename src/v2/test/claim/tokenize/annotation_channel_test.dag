@@ -1,0 +1,175 @@
+module v2.test.tokenize.annotation_channel
+
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.std.algebra { fold_list, length }
+import std.source_annotation { LeadingAfterLineIndent, TrailingAfterSemanticToken }
+import v2.std.compilers.lexing {
+  AnnotationRule, TokenRule, TriviaRule, LexPattern,
+  LexRuleSet, LexArtifact,
+  CharClassPattern, LiteralPattern, OneOrMorePattern, RepeatPattern, SequencePattern, EmptyPattern,
+  IdentContinueChar, LineCommentTextChar, WhitespaceChar,
+  lex_artifact_annotations, lex_artifact_semantic_tokens, UnboundSourceAnnotation, symbol_lexeme,
+  token_stream_all
+}
+import v2.compiler.tokenize {
+  LexRuleAnnotation, LexRuleToken, LexRuleTrivia, LexRuleNoMatch,
+  lex_try_rule, lex_walk, lex_walk_artifact
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data annotation_channel_witness_note: String = "The exhaustiveness arms added to lex_match_thunk_claims prove only that a new variant was handled; they never CONSTRUCT an AnnotationRule, so they establish nothing about whether the third channel works. These do: every claim below routes real source through the real walk and asserts where the lexeme landed. Pre-regen by design — the whole point is evidence before a long regen cycle, so nothing here needs a rebuilt stage0."
+
+fn annotation_pattern() -> LexPattern {
+  SequencePattern {
+    left: LiteralPattern { text: "//" },
+    right: RepeatPattern { element: CharClassPattern { class: LineCommentTextChar } }
+  }
+}
+
+fn test_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() },
+      TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+      TokenRule { token_class: ^ident, pattern: OneOrMorePattern { element: CharClassPattern { class: IdentContinueChar } } }
+    ]
+  }
+}
+
+data no_fabricated_artifact_note: String = "There is deliberately no `Rejected => empty artifact` arm. Such a fallback makes refusal indistinguishable from success on a clean source: `captures none` would pass because lexing FAILED, and a token-equivalence claim would degenerate into comparing two fabricated empties to each other. Every reader below renders the Outcome itself, so a refusal produces a string no expectation matches — the claim fails loudly instead of passing vacuously."
+
+fn annotation_count_rendered(source: String) -> String {
+  match lex_walk_artifact(source: source, file: ^probe, rules: test_rules()) {
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      to_string(length(xs: lex_artifact_annotations(artifact: a)))
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "REFUSED"
+  }
+}
+
+data token_identity_note: String = "Renders the semantic stream as an exact ordered (class, lexeme) sequence rather than a count or a concatenation. A count admits a leaked annotation that REPLACES another token while preserving cardinality; a concatenation admits any reordering that preserves total text. The identity sequence admits neither."
+
+fn token_identity(source: String) -> String {
+  match lex_walk_artifact(source: source, file: ^probe, rules: test_rules()) {
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      fold_list(
+        xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: a)),
+        empty: "",
+        cons: fn(acc, t) { concat(acc, concat("|", concat(symbol_lexeme(sym: t.class), concat(":", t.lexeme)))) }
+      )
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "REFUSED"
+  }
+}
+
+fn annotations_of(source: String) -> List<UnboundSourceAnnotation> {
+  match lex_walk_artifact(source: source, file: ^probe, rules: test_rules()) {
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } => lex_artifact_annotations(artifact: a)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => []
+  }
+}
+
+test fn annotation_rule_routes_to_the_annotation_arm() -> Bool {
+  match lex_try_rule(rule: AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() }, source: "// hi") {
+    LexRuleAnnotation { class: c, lexeme: _, remaining: _ } => c == ^line_comment
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+    LexRuleTrivia { lexeme: _, remaining: _ } => false
+    LexRuleNoMatch => false
+  }
+}
+
+test fn walk_captures_the_annotation() -> Bool {
+  annotation_count_rendered(source: "a\n// note\nb\n") == "1"
+}
+
+data identity_non_vacuity_note: String = "The equality is anchored by a control rather than by a transcribed literal. A rendering that collapsed every stream to one constant — the failure mode a count or a fabricated empty already showed is real here — would satisfy the equality and prove nothing, so the second conjunct requires the SAME rendering to distinguish two streams that differ only in one token's text. Pinning an exact expected string instead would assert the class symbol's spelling, which is not what this claim is about."
+
+test fn semantic_tokens_are_unchanged_by_the_annotation() -> Bool {
+  token_identity(source: "a\n// note\nb\n") == token_identity(source: "a\nb\n") &&
+    token_identity(source: "a\nb\n") != token_identity(source: "a\nc\n")
+}
+
+test fn leading_and_trailing_placements_differ() -> Bool {
+  let leading = annotations_of(source: "a\n// note\n")
+  let trailing = annotations_of(source: "a // note\n")
+  let l = leading |> first()
+  let t = trailing |> first()
+  match l {
+    Present { value: lv } =>
+      match t {
+        Present { value: tv } =>
+          lv.placement == LeadingAfterLineIndent && tv.placement == TrailingAfterSemanticToken
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn annotation_at_eof_is_still_captured() -> Bool {
+  annotation_count_rendered(source: "a\n// trailing at eof") == "1"
+}
+
+test fn zero_width_annotation_rule_refuses_rather_than_looping() -> Bool {
+  match lex_walk_artifact(
+    source: "a",
+    file: ^probe,
+    rules: LexRuleSet { rules: [ AnnotationRule { annotation_class: ^empty_ann, pattern: EmptyPattern } ] }
+  ) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn source_without_annotations_captures_none() -> Bool {
+  annotation_count_rendered(source: "a\nb\n") == "0"
+}
+
+test fn lex_walk_projection_drops_annotations_but_keeps_tokens() -> Bool {
+  match lex_walk(source: "a\n// note\nb\n", file: ^probe, rules: test_rules()) {
+    v2.std.diagnostic.Accepted { value: stream, diagnostics: _ } =>
+      fold_list(
+        xs: token_stream_all(stream: stream),
+        empty: "",
+        cons: fn(acc, t) { concat(acc, concat("|", concat(symbol_lexeme(sym: t.class), concat(":", t.lexeme)))) }
+      ) == token_identity(source: "a\nb\n")
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+  }
+}
+
+data line_spanning_token_note: String = "The two discriminators the category rule fails. Both use a TOKEN whose own lexeme contains a line feed — the shape the Python model actually has — so the line boundary lives inside a semantic token rather than in trivia.
+
+After `):\n    ` the annotation begins a fresh line carrying only indentation, so it is LEADING. After `\n    if ` the annotation follows semantic text on its line, so it is TRAILING. A rule that resets only on trivia, or that sets `a semantic token appeared` after every token, calls both TRAILING and cannot tell them apart. These pin the physical-line reading before placement becomes a parser input."
+
+fn line_spanning_rules(token_text: String) -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() },
+      TokenRule { token_class: ^spanning, pattern: LiteralPattern { text: token_text } }
+    ]
+  }
+}
+
+fn placement_after_spanning_token(token_text: String) -> String {
+  match lex_walk_artifact(source: concat(token_text, "// note"), file: ^probe, rules: line_spanning_rules(token_text: token_text)) {
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      fold_list(
+        xs: lex_artifact_annotations(artifact: a),
+        empty: "",
+        cons: fn(acc, ann) {
+          concat(acc, match ann.placement {
+            LeadingAfterLineIndent => "LEADING"
+            TrailingAfterSemanticToken => "TRAILING"
+          })
+        }
+      )
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "REFUSED"
+  }
+}
+
+test fn token_ending_on_a_fresh_indented_line_makes_the_next_annotation_leading() -> Bool {
+  placement_after_spanning_token(token_text: "):\n    ") == "LEADING"
+}
+
+test fn token_ending_with_semantic_text_on_its_line_makes_the_next_annotation_trailing() -> Bool {
+  placement_after_spanning_token(token_text: "\n    if ") == "TRAILING"
+}

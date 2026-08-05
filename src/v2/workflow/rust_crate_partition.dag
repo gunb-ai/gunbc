@@ -220,6 +220,7 @@ fn stage0_std_core_modules() -> List<String> {
       "extdeps_units_iec_80000_13",
       "extdeps_units_iso8601",
       "std_occurrence_identity",
+      "std_source_annotation",
       "v1_std_core"
     ])
 }
@@ -386,6 +387,9 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "extdeps_languages_python_syntax", to: "std_syntax"),
     stage0_module_dag_edge(from: "extdeps_languages_rust_syntax", to: "std_syntax"),
     stage0_module_dag_edge(from: "extdeps_languages_rust_emit", to: "std_trait_derive_shape"),
+    stage0_module_dag_edge(from: "std_source_annotation", to: "std_types"),
+    stage0_module_dag_edge(from: "std_source_annotation", to: "std_occurrence_identity"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_source_annotation"),
     stage0_module_dag_edge(from: "v1_std_core", to: "std_algebra"),
     stage0_module_dag_edge(from: "v1_std_core", to: "std_induction"),
     stage0_module_dag_edge(from: "v1_std_core", to: "std_syntax"),
