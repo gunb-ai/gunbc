@@ -1,0 +1,311 @@
+module gunbc.language_target_registry
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Bool, Int, List, String }
+import extdeps.languages.bash.subject { gnu_bash_model_scope }
+import std.language_target_identity {
+  TargetGrounding,
+  ExternalGrounding,
+  ProjectGrounding,
+  TargetDisposition,
+  TargetActive,
+  TargetParked,
+  TargetDecisionPending,
+  TargetMaintenanceOnly,
+  TargetGovernedByContracts,
+  registration_subject,
+  LanguageTargetProjection,
+  LanguageIdLookup,
+  LanguageIdResolved,
+  LanguageIdUnregistered,
+  LanguageIdAmbiguous,
+  display_name_for_subject,
+  language_id_to_subject,
+  projection_subject_is_registered,
+  LanguageTargetSurfaceAuthority,
+  StdLanguageCatalogue,
+  TargetModelDeclaration,
+  EmitHostExecution,
+  TargetVocabulary,
+  RuntimeChecker,
+  LegacyFrontier,
+  LanguageTargetRegistration,
+  LanguageTargetSurfaceLocus,
+  SurfaceDeclaration,
+  SurfaceModule,
+  LanguageTargetSurfaceRow,
+  LanguageTargetJoinViolation,
+  language_target_join_violations,
+  identified_row_count,
+  missing_identity_violation_count,
+  integrity_violation_count,
+  declared_population_accounting_exact,
+  registry_integrity_clean,
+  count_rows,
+}
+
+data language_target_registry_totality_law: String = "NO INVISIBLE REMAINDER (operator requirement C, 2026-08-04). This registry may not read as complete because a few specimen rows exist. Every target-bearing surface this repository currently carries is EITHER joined to a registered subject OR appears here as an exact row with no identity, which the join kernel then reports in the missing-identity class. A surface that is simply absent from these lists is the one state the wall cannot see, which is why the population definition below is declared rather than implied, and why the TargetVocabulary rows carry an explicit scaffold note rather than a silent transcription. The registry today registers THREE subjects — Bash, externally grounded, plus the .dag language and the controlled-English medium, project-grounded — while the census carries forty surfaces, so most rows below are deliberately unidentified. That is the honest starting state, not a defect in the wall. WHAT 'ACCOUNTED FOR' NOW MEANS PRECISELY (corrected 2026-08-04, review relayed through the operator): the accounting is an EXACT equality, identified rows plus reported missing-identity rows equals the census, and it is separate from the integrity wall that requires zero unknown-target, ambiguous, duplicate-subject and duplicate-locus violations. The single predicate these replace summed both classes and compared them with a <=, which stayed green with malformed input present and would have stayed green against an empty violation list."
+
+data language_target_registry_vocabulary_scaffold_note: String = "DECLARED SCAFFOLD, with its dissolution trigger — the TargetVocabulary rows below are HAND-DECLARED, and they were meant to be derived. The intent was to read v2.lens.realization_vocabulary_containment's target_ast_vocab_modules and target_ast_vocab_module_prefixes directly, so a module added to the lens would appear here automatically as an unidentified surface and the second-hardcoded-roster fork would close by construction. THAT IMPORT DOES NOT COMPILE TODAY, and the blocker is not in this module: the lens fails to resolve fold_list and list_snoc_item from v2.std.algebra even when compiled from its OWN source root as the entry — measured 2026-08-04. That is the Class B pool-membership defect DESIGN's import-strip open thread describes: a module's bare cross-module references resolve only when some unrelated import elsewhere in the assembled closure has already dragged the target into the pool, so the lens resolves inside the whole-corpus compile and not in a narrow closure. Transcribing the two lists here would be the workaround DESIGN section 5 forbids — an unmarked second representation of the very roster this registry exists to unfork — so they are declared as a counted scaffold instead. DISSOLVE-ON: the lens resolves under a narrow closure (Class B fix), at which point these rows become the fold over its lists; and ultimately the reverse direction, the lens deriving its confined set FROM this registry, which is the prerequisite edge from the support-registry obligation to the no-new-debt-gate obligation in the governing strategy contract, and is not done here. Those obligations are identified in a private strategy overlay rather than in this repository, so they are described by role and not named — publishing an overlay identifier is an explicit act under that repository's opt-in-public model, and it has not been authorised."
+
+data language_target_registry_population_definition: String = "Target-bearing surfaces enumerated from six declared authorities: (1) StdLanguageCatalogue — std.languages Language rows; (2) TargetModelDeclaration — committed TargetModel-bearing language modules; (3) EmitHostExecution — tools.emit_host_transport per-language smoke fns; (4) TargetVocabulary — the confined module list and prefix list v2.lens.realization_vocabulary_containment enforces; (5) RuntimeChecker — external toolchains a support claim would execute against; (6) LegacyFrontier — gunbc.plans.language_target_self_host_frontier's prose rows. ALL SIX authorities are HAND-DECLARED at this revision — authority 4 was intended to be derived and is a counted scaffold with a stated trigger (language_target_registry_vocabulary_scaffold_note); nothing in this module is derived from the live tree. GRAIN, because it decides whether a row can be checked: a locus is either a real module path or a declared PREFIX over several (the extdeps.languages family paths cover multiple modules each, and v2.workflow.bash is a prefix over two, matching the containment lens's own grain). Distinguishing a legitimate prefix from a path that names nothing requires testing exact-match and prefix-match separately — the instrument fierce-heron-301 used to find three phantom rows among nine legitimate ones (2026-08-04). AND THE PREFIX MUST BE A STRING PREFIX, NOT A NAMESPACE ONE, which is not a quibble: a full sweep of this census on 2026-08-04 reported v2.workflow.bash as naming nothing when prefix was read as namespace containment, because the two modules under it are v2.workflow.bash_command_fold_serialize and v2.workflow.bash_emit — siblings sharing a name stem, not children of a v2.workflow.bash namespace. The containment lens confines by string prefix, so the census must match that grain or it manufactures phantoms out of the lens's real rows. Under the corrected instrument the census has zero phantoms."
+
+data language_target_registry_maximum_conclusion: String = "MAXIMUM CONCLUSION — what a green accounting or integrity check here does and does not establish. IT ESTABLISHES: every surface in the declared population above is accounted for, each either joined to a registered subject or reported as an exact unidentified row, and that no malformed join input is present; IT DOES NOT ESTABLISH that the declared population is COMPLETE with respect to the repository. All six authorities are hand-declared, so a target-bearing surface nobody wrote a row for is invisible to every assertion over this module — the failure mode loyal-ant-382 measured at 43 percent under-selection on a text-keyed census and this session reproduced at 100 percent on the ShellCommand sink. NOR DOES IT ESTABLISH THAT A DECLARED ROW NAMES A REAL SURFACE: three census rows were found on 2026-08-04 to be file paths transcribed as module paths, naming modules that do not exist, and no assertion in this module could have caught them because the population is the thing being asserted over. Closing both directions needs a Node-tree observer deriving the population from the real module tree, which is the residue-census obligation and is NOT built here. No count in this module may be quoted as a corpus claim."
+
+data registry_revision_note: String = "WHY THERE IS NO PINNED REVISION STAMP HERE, removed rather than corrected (2026-08-04). An earlier revision of this module carried language_target_registry_subject_revision as a hand-written commit SHA, on the reasoning that a row set without its revision is a measurement pretending to be a standing fact. The reasoning was right and the mechanism was self-defeating in two ways. FIRST, IT WAS ALREADY FALSE: the stamp named the commit current when it was typed, and the row set then changed in four subsequent commits — including the one taking the registry from one target to three — so the declaration asserted an enumeration that had not held for some time. A review approved it as anchored honestly, which is the tell that a stale stamp reads as provenance rather than as the claim it actually is. SECOND, AND DECISIVELY, IT CANNOT BE FIXED BY UPDATING: pinning the SHA of the commit that contains the pin is self-referential, so any such stamp is stale by at least one commit BY CONSTRUCTION, and each update re-copies a number from the tree — the measure() == measure() collapse DESIGN section 5 names. The rows ARE anchored, by the thing that already anchors them: git records exactly which revision this file held which rows, at line grain, without anyone maintaining it. A second hand-kept representation of that fact is the section 3 duplication this registry exists to remove, applied to the registry itself."
+
+data bash_subject_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.languages.bash.subject",
+  decl_name: "gnu_bash",
+  field: WholeDeclaration
+}
+
+data d0_population_blocker_note: String = "D0 — THE COMPLETE TARGET UNIVERSE — IS NOT REGISTERED HERE, AND THE REASON IS THE CONSTRUCTION WALL ITSELF. A registration derives its subject from a REQUIRED TargetGrounding, so an ungrounded target is unwritable (target_grounding_law). External grounding is an ExternalModelScope, and a scope carries at least one real upstream citation by construction. Therefore registering TypeScript, C, C++, Verilog, SPICE, Python, Go, Java, Kotlin, Swift, LLVM IR, WebAssembly, PTX, machine code, Lean, SQL, HTML, CSS, ECMAScript, JSON, YAML and Markdown requires FIRST authoring one cited subject declaration each — the same file this branch created for Bash — because NONE of them has one today. That is the measured state, not an obstacle invented here: Bash was uncited until this branch, and the same sweep that found it found no subject declaration for any other target. Registering them without grounding would mean either fabricating citations or reopening the wall, and both are refused. The .dag language and controlled English take ProjectGrounding instead and need no external citation; both are ALREADY REGISTERED in this module, so what remains for D0 is exactly the external population. SIZING, so the remaining work is countable rather than vague: roughly twenty external subject declarations, each a new dag/extdeps scope carrier requiring its own roster enrollment, each needing a citation verified against the real upstream rather than recalled. That population is in flight on the stacked D0 branch. DISSOLVE-ON: those subjects land and this note deletes with the rows it explains."
+
+data project_grounded_targets_note: String = "The two PROJECT-grounded targets, and they are here for a reason beyond being cheap: ProjectGrounding had zero inhabitants, so an entire arm of the grounding coproduct was unexercised. These are also the two rows that could not have existed under a universal external subject carrier — the .dag language and the controlled-English medium are this project's OWN targets, with no independently governed upstream to cite, and forcing them through an external scope would have made them claim a governance they do not have. Their authority declarations are real and symbolic: dag_item_forms is the .dag surface-form authority, FormalSentence the controlled-English one. Neither carries an extdeps_model_scope and neither should. They are also now PROJECTABLE, which they were not while the join key was an external subject reference — the neutral DeclarationRef key is what lets one projection roster span both grounding arms instead of silently serving only external targets."
+
+data registered_language_targets: List<LanguageTargetRegistration> = [
+  LanguageTargetRegistration {
+    grounding: ExternalGrounding { scope: gnu_bash_model_scope },
+    disposition: TargetActive
+  },
+  LanguageTargetRegistration {
+    grounding: ProjectGrounding {
+      authority: DeclarationRef {
+        module_path: "extdeps.languages.dag.syntax",
+        decl_name: "dag_item_forms",
+        field: WholeDeclaration
+      }
+    },
+    disposition: TargetActive
+  },
+  LanguageTargetRegistration {
+    grounding: ProjectGrounding {
+      authority: DeclarationRef {
+        module_path: "v2.extdeps.languages.english",
+        decl_name: "FormalSentence",
+        field: WholeDeclaration
+      }
+    },
+    disposition: TargetParked {
+      reason: "controlled-English medium: bounded formal-subset profile, P3 priority; registered so the strategy row stays visible while implementation has not begun"
+    }
+  }
+]
+
+data dag_subject_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.languages.dag.syntax",
+  decl_name: "dag_item_forms",
+  field: WholeDeclaration
+}
+
+data english_subject_ref: DeclarationRef = DeclarationRef {
+  module_path: "v2.extdeps.languages.english",
+  decl_name: "FormalSentence",
+  field: WholeDeclaration
+}
+
+fn registered_target_count() -> Int {
+  fold(registered_language_targets, init: 0, f: fn(a, _r) { a + 1 })
+}
+
+fn unidentified_decl_row(
+  authority: LanguageTargetSurfaceAuthority,
+  module_path: String,
+  decl_name: String
+) -> LanguageTargetSurfaceRow {
+  LanguageTargetSurfaceRow {
+    authority: authority,
+    surface: SurfaceDeclaration {
+      ref: DeclarationRef {
+        module_path: module_path,
+        decl_name: decl_name,
+        field: WholeDeclaration
+      }
+    },
+    target: none
+  }
+}
+
+fn unidentified_module_row(
+  authority: LanguageTargetSurfaceAuthority,
+  module_path: String
+) -> LanguageTargetSurfaceRow {
+  LanguageTargetSurfaceRow {
+    authority: authority,
+    surface: SurfaceModule { module_path: module_path },
+    target: none
+  }
+}
+
+data std_language_catalogue_rows: List<LanguageTargetSurfaceRow> = [
+  unidentified_decl_row(authority: StdLanguageCatalogue, module_path: "std.languages", decl_name: "rust_language"),
+  unidentified_decl_row(authority: StdLanguageCatalogue, module_path: "std.languages", decl_name: "go_language"),
+  unidentified_decl_row(authority: StdLanguageCatalogue, module_path: "std.languages", decl_name: "python_language"),
+  unidentified_decl_row(authority: StdLanguageCatalogue, module_path: "std.languages", decl_name: "typescript_language"),
+]
+
+data emit_host_execution_rows: List<LanguageTargetSurfaceRow> = [
+  unidentified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_rust_smoke"),
+  unidentified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_python_smoke"),
+  unidentified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_go_smoke"),
+  unidentified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_ts_smoke"),
+  unidentified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_c_smoke"),
+  unidentified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_node_http_serve_smoke"),
+]
+
+data target_model_declaration_rows: List<LanguageTargetSurfaceRow> = [
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.rust"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.typescript"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.python"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.go"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.c"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.html"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.css"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.json"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.yaml"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.markdown"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.lean"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.react_jsx"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.cpp"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.verilog"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.wasm"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.llvm_ir"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.ptx"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.java"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.kotlin"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.swift"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.machine_code"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.ecmascript"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.english"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.formats.spice"),
+]
+
+data runtime_checker_rows_note: String = "PHANTOM PATHS, CORRECTED (fierce-heron-301, 2026-08-04). These two rows previously read extdeps.rust.cargo and extdeps.python.interpreter with invented decl_names 'cargo' and 'python_interpreter'. Both were FILE PATHS transcribed as module paths: the files are dag/extdeps/rust/cargo.dag and dag/extdeps/python/python.dag, and the modules they declare are extdeps.cargo and extdeps.python. The decl_names named nothing either, so the rows are now at MODULE grain rather than carrying a fabricated declaration. This is the same class as the deleted revision stamp and the DESIGN ts_* count that opened this session — a hand-carried string that looks derived from something real, sitting in an authority, wrong and unfalsifiable by reading it. THE ROWS STAY UNIDENTIFIED, AND THAT IS PENDING RATHER THAN PRINCIPLED: the review's ruling is correct that a checker row's target answers which target the surface REALIZES, not whether the tool IS the language — so cargo belongs to Rust and the interpreter to Python, exactly as run_rust_smoke does. Neither Rust nor Python has a registered subject yet, so binding them here would name an unregistered target and the integrity wall would refuse it, correctly. DISSOLVE-ON: the D0 external subject population lands and these two rows bind."
+
+data runtime_checker_rows: List<LanguageTargetSurfaceRow> = [
+  unidentified_module_row(authority: RuntimeChecker, module_path: "extdeps.cargo"),
+  unidentified_module_row(authority: RuntimeChecker, module_path: "extdeps.python"),
+]
+
+data legacy_frontier_rows: List<LanguageTargetSurfaceRow> = [
+  unidentified_module_row(authority: LegacyFrontier, module_path: "gunbc.plans.language_target_self_host_frontier"),
+]
+
+fn identified_module_row(
+  authority: LanguageTargetSurfaceAuthority,
+  module_path: String,
+  subject: DeclarationRef
+) -> LanguageTargetSurfaceRow {
+  LanguageTargetSurfaceRow {
+    authority: authority,
+    surface: SurfaceModule { module_path: module_path },
+    target: Present { value: subject }
+  }
+}
+
+data bash_join_demonstration_note: String = "The two Bash vocabulary rows below are IDENTIFIED, and they are the registry's only live join today. They matter more than the count: they show the wall distinguishing an accounted-for surface from an unidentified one on REAL rows rather than on fixtures, so a green here is not the vacuous green of a census in which nothing is registered at all. Everything else is unidentified because Bash is the only registered subject any census SURFACE currently names — three subjects are registered, and the other two are targets whose surfaces this census does not yet enumerate at joinable grain, which is a gap in the population rather than in the mechanism."
+
+data target_vocabulary_rows: List<LanguageTargetSurfaceRow> = [
+  unidentified_module_row(authority: TargetVocabulary, module_path: "extdeps.languages.typescript.program"),
+  identified_module_row(authority: TargetVocabulary, module_path: "v2.extdeps.languages.bash", subject: bash_subject_ref),
+  identified_module_row(authority: TargetVocabulary, module_path: "v2.workflow.bash", subject: bash_subject_ref),
+]
+
+data language_target_surface_census: List<LanguageTargetSurfaceRow> = concat(
+  concat(
+    concat(std_language_catalogue_rows, emit_host_execution_rows),
+    concat(target_model_declaration_rows, runtime_checker_rows)
+  ),
+  concat(legacy_frontier_rows, target_vocabulary_rows)
+)
+
+data language_target_projection_note: String = "Requirement D, and the rows it makes concrete. Projections are authored only where a compatibility surface actually needs one, so projection count trailing registration count is expected rather than a gap. Bash carries: GNU Bash, .sh/.bash, and legacy_language_id ABSENT — because std.languages has rust, go, python and typescript rows and NO bash row. That absence is the finding, not an omission in this file: the target this repository emits most has never had an entry in the catalogue that was the closest thing to a language key in the tree, which is precisely why a LanguageId could never have served as the identity. legacy_frontier_label carries the name the prose self-host frontier used, so the superseded table's rows can be joined to canonical subjects as they migrate rather than being matched by eye. THE .dag PROJECTION IS THE DISCRIMINATING ONE: a project-grounded target could not be projected at all while the join key was an external subject reference, so its presence here is the executable evidence that the neutral key actually spans both grounding arms rather than the change merely typechecking."
+
+data language_target_projections: List<LanguageTargetProjection> = [
+  LanguageTargetProjection {
+    subject: bash_subject_ref,
+    display_name: "GNU Bash",
+    file_extensions: [".sh", ".bash"],
+    legacy_language_id: none,
+    legacy_frontier_label: Present { value: "bash" }
+  },
+  LanguageTargetProjection {
+    subject: dag_subject_ref,
+    display_name: "dag",
+    file_extensions: [".dag"],
+    legacy_language_id: none,
+    legacy_frontier_label: Present { value: "dag" }
+  }
+]
+
+fn bash_display_name() -> String? {
+  display_name_for_subject(subject: bash_subject_ref, projections: language_target_projections)
+}
+
+fn dag_display_name() -> String? {
+  display_name_for_subject(subject: dag_subject_ref, projections: language_target_projections)
+}
+
+fn english_display_name() -> String? {
+  display_name_for_subject(subject: english_subject_ref, projections: language_target_projections)
+}
+
+fn lookup_language_id(language_id: String) -> LanguageIdLookup {
+  language_id_to_subject(language_id: language_id, projections: language_target_projections)
+}
+
+fn every_projection_subject_is_registered() -> Bool {
+  fold(language_target_projections, init: true, f: fn(acc, p) {
+    acc && projection_subject_is_registered(projection: p, registry: registered_language_targets)
+  })
+}
+
+fn language_target_registry_violations() -> List<LanguageTargetJoinViolation> {
+  language_target_join_violations(
+    rows: language_target_surface_census,
+    registry: registered_language_targets
+  )
+}
+
+fn surface_census_row_count() -> Int {
+  count_rows(rows: language_target_surface_census)
+}
+
+fn identified_surface_count() -> Int {
+  identified_row_count(
+    rows: language_target_surface_census,
+    registry: registered_language_targets
+  )
+}
+
+fn unidentified_surface_count() -> Int {
+  missing_identity_violation_count(vs: language_target_registry_violations())
+}
+
+fn registry_integrity_violation_count() -> Int {
+  integrity_violation_count(vs: language_target_registry_violations())
+}
+
+data accounting_wall_note: String = "THE RATCHET: every census row is accounted for — joined to a registered subject, or reported by name in the missing-identity class — as an EXACT equality with no third state. A row naming an unregistered subject falls in neither class and breaks the sum; a violation detector that regressed to reporting nothing drops the remainder to zero while the census stays put and breaks it too. This is the ratchet direction the operator separated from completion: it makes the remainder VISIBLE and COUNTED, and is explicitly NOT evidence that any target is complete. It is also NOT the integrity wall — that is a separate predicate, because summing the two classes is exactly what made the previous single check undiscriminating."
+
+fn registry_accounting_total() -> Bool {
+  declared_population_accounting_exact(
+    rows: language_target_surface_census,
+    registry: registered_language_targets
+  )
+}
+
+data integrity_wall_note: String = "THE ADMISSION WALL, separate from the ratchet above and required to be exactly zero: no census row may name a subject no registration carries, no surface may be joined to two disagreeing targets, no subject may be registered twice, no locus may appear twice in the census, and no subject may carry two projections. Unlike the accounting ratchet — whose nonzero remainder is the honest starting state — every one of these is malformed input rather than unfinished work, so the correct population for all five is zero now and forever."
+
+fn registry_integrity_holds() -> Bool {
+  registry_integrity_clean(
+    rows: language_target_surface_census,
+    registry: registered_language_targets,
+    projections: language_target_projections
+  )
+}
+
+fn target_vocabulary_row_count() -> Int {
+  count_rows(rows: target_vocabulary_rows)
+}
