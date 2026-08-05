@@ -834,7 +834,7 @@ fn observe_npm_cli_version() -> NonEmptyStr? {
 }
 
 fn observe_node_cli_version() -> NonEmptyStr? {
-  let observed = node.Cli.Version()
+  let observed = nodejs.Cli.Version()
   if observed.success == false {
     none
   } else {
