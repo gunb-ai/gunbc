@@ -3,27 +3,100 @@ module v2.workflow.class_b_import_closure_transport
 import extdeps.git
 import extdeps.shell
 import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.class_b_import_closure_overlay {
+  class_b_entry_rel,
+  class_b_materialize_stripped_entry_overlay
+}
+import gunbc.declared_import_closure_binding {
+  DeclaredImportClosureBindingObservation,
+  binding_refuses,
+  row4_pool_coincidence_or_refuse
+}
 import std.logic { Bool }
+import std.types { String, List, NonEmptyStr }
 import tools.host_prelude {
   ClaimRun,
   run_gunbc_claims
 }
-import v2.std.text { String }
 
-data class_b_transport_note: String = "Executing consumer for the Class B import-closure witness (#6985). Rows 1-2 run on the baseline pool; rows 3-4 derive the stripped entry overlay from the live rust_test_fixtures.dag at execution time inside rust_test_fixtures_import_closure_stripped_witness_test.dag (gunbc.class_b_import_closure_overlay). The small perturbation fixtures remain checked-in authored overlays under fixtures/class_b_import_closure/perturbation_overlay/."
+data class_b_transport_note: String = "Executing consumer for the Class B import-closure witness (#6985). Rows 1-2 are discovery-enrolled test fns in dag/test/claim/rust_test_fixtures_import_closure_witness_test.dag and are replayed here via run_gunbc_claims. Rows 3-4 are ordinary funcs in THIS module — the gate's own assertions, not discovered test fns needing exclusion plus re-admission. The stripped overlay is derived at execution time via gunbc.class_b_import_closure_overlay; perturbation fixtures remain checked-in under fixtures/class_b_import_closure/perturbation_overlay/."
 
 data class_b_witness_entry: String = "dag/test/claim/rust_test_fixtures_import_closure_witness_test.dag"
-data class_b_stripped_witness_entry: String = "src/v2/test/claim/self_host/rust_test_fixtures_import_closure_stripped_witness_test.dag"
+data class_b_consumer_module: String = "v2.extdeps.languages.rust_test"
+data class_b_symbol: String = "rust_selection_policy_node"
+data class_b_perturbation_overlay_rel: String = "fixtures/class_b_import_closure/perturbation_overlay"
+data class_b_overlay_template: String = "/target/class_b_stripped_XXXXXX"
+
+fn class_b_observe_with_overlay(
+  pool_roots: List<String>
+) -> DeclaredImportClosureBindingObservation {
+  observe_declared_import_closure_symbol_binding(
+    pool_roots: pool_roots,
+    entry_path: class_b_entry_rel,
+    consumer_module: class_b_consumer_module,
+    symbol: class_b_symbol
+  )
+}
+
+func class_b_observe_with_derived_stripped_overlay(
+  include_perturbation: Bool
+) -> DeclaredImportClosureBindingObservation {
+  let root = git.Inspect.Toplevel()
+  let target = shell.Mkdir.Parents(path: concat(root.path, "/target"))
+  if target.success {
+    let overlay = shell.Mktemp.DirWithTemplate(
+      template: concat(root.path, class_b_overlay_template)
+    )
+    if overlay.success {
+      let materialized = class_b_materialize_stripped_entry_overlay(
+        root: root.path,
+        overlay_dir: overlay.path
+      )
+      let pool_roots = if include_perturbation {
+        concat([overlay.path, class_b_perturbation_overlay_rel], witness_layer_roots)
+      } else {
+        concat([overlay.path], witness_layer_roots)
+      }
+      let observed = if materialized {
+        class_b_observe_with_overlay(pool_roots: pool_roots)
+      } else {
+        BindingNotRunnable { cause: "class_b_materialize_stripped_entry_overlay refused" as NonEmptyStr }
+      }
+      let cleaned = shell.Remove.RecursiveForce(path: overlay.path)
+      if cleaned.success {
+        observed
+      } else {
+        BindingNotRunnable { cause: "class_b overlay cleanup refused" as NonEmptyStr }
+      }
+    } else {
+      BindingNotRunnable { cause: "class_b overlay mktemp refused" as NonEmptyStr }
+    }
+  } else {
+    BindingNotRunnable { cause: "class_b overlay target mkdir refused" as NonEmptyStr }
+  }
+}
+
+func class_b_stripped_import_closure_refuses_binding() -> Bool {
+  binding_refuses(
+    obs: class_b_observe_with_derived_stripped_overlay(include_perturbation: false)
+  )
+}
+
+func class_b_stripped_with_ambient_pool_coincidence_or_refuse() -> Bool {
+  row4_pool_coincidence_or_refuse(
+    obs: class_b_observe_with_derived_stripped_overlay(include_perturbation: true)
+  )
+}
 
 func run_class_b_import_closure_gate() -> Bool {
-  let root = git.Inspect.Toplevel()
-  run_gunbc_claims(
+  let discovery_rows = run_gunbc_claims(
     source_roots: witness_layer_roots,
     claims: [
       ClaimRun { entry: class_b_witness_entry, function: "declared_import_closure_lists_rust_import" },
-      ClaimRun { entry: class_b_witness_entry, function: "ambient_pool_provider_preserves_listed_import" },
-      ClaimRun { entry: class_b_stripped_witness_entry, function: "stripped_import_closure_refuses_binding" },
-      ClaimRun { entry: class_b_stripped_witness_entry, function: "stripped_with_ambient_pool_coincidence_or_refuse" }
+      ClaimRun { entry: class_b_witness_entry, function: "ambient_pool_provider_preserves_listed_import" }
     ]
   )
+  discovery_rows
+    && class_b_stripped_import_closure_refuses_binding()
+    && class_b_stripped_with_ambient_pool_coincidence_or_refuse()
 }
