@@ -151,7 +151,7 @@ type ObservedInstallation
   | InstallationReadbackUnavailable { cause: InstallationReadbackCause }
 
 type ObservedAppRegistration
-  = AppRegistrationReadback { app_id: GitHubAppId, requested_permissions: List<GitHubAppPermission> }
+  = AppRegistrationReadback { app_id: GitHubAppId, requested_permissions: List<ObservedGitHubPermission> }
   | AppRegistrationReadbackUnavailable
 
 fn registration_missing_permissions(
@@ -349,9 +349,13 @@ type RequiredObservation
   | InstallationReadbackObservation
   | SignerFingerprintObservation
 
+type BoundObservationProducer {
+  producer: DeclarationRef
+}
+
 type ObservationProducer
   = ObservationProducerAbsent { required_observation: RequiredObservation }
-  | ObservationProducerBound { producer: DeclarationRef }
+  | ObservationProducerBound { bound: BoundObservationProducer }
 
 type GitHubAppNextAction
   = NoActionRequired
@@ -360,7 +364,7 @@ type GitHubAppNextAction
       action: GitHubAppOperatorAction
       locator: Uri
       postcondition: ControlPlanePostcondition
-      observation: ObservationProducer
+      readback: BoundObservationProducer
     }
 
 data app_registration_observation: ObservationProducer = ObservationProducerAbsent {
@@ -386,12 +390,12 @@ fn operator_packet_or_producer_binding(
       MachineActionRequired {
         action: BindObservationProducer { required_observation: required_observation }
       }
-    ObservationProducerBound { producer: _ } =>
+    ObservationProducerBound { bound } =>
       OperatorActionRequired {
         action: action,
         locator: locator,
         postcondition: postcondition,
-        observation: observation
+        readback: bound
       }
   }
 }
@@ -443,7 +447,7 @@ fn next_action_owner(action: GitHubAppNextAction) -> ActionOwner {
   match action {
     NoActionRequired => MachineOwner
     MachineActionRequired { action: _ } => MachineOwner
-    OperatorActionRequired { action: _, locator: _, postcondition: _, observation: _ } => OperatorOwner
+    OperatorActionRequired { action: _, locator: _, postcondition: _, readback: _ } => OperatorOwner
   }
 }
 
