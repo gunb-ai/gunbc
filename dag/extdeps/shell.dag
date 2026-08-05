@@ -213,6 +213,16 @@ service shell.Chmod {
       nonzero => String "chmod -R u+w failed"
     }
   }
+
+  operation RecursiveReadOnly {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "-R", "a-w", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod -R a-w failed"
+    }
+  }
 }
 
 service shell.Copy {

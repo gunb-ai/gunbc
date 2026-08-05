@@ -20,6 +20,25 @@ data npm_cli_tool: CliTool = CliTool {
   installable_via: [SourceApt { package: package_npm }],
 }
 
+data npm_cli_version_observation_note: String = "min_version = none is NOT a materialization receipt. Observed npm --version is recorded on CodexRuntimeBundleReceipt so the toolchain that performed offline ci is attributable."
+
+service npm.Cli {
+  operation Version {
+    input {}
+    output {
+      version: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["npm", "--version"] }
+    exit {
+      0 => Unit "npm CLI version printed"
+      nonzero => String "npm --version failed"
+    }
+  }
+}
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
