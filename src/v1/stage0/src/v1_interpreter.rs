@@ -435,6 +435,55 @@ pub(crate) fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
     Value::List(Rc::new(items.into()))
 }
 
+/// Project an observed child-process status onto `std.process` `ProcessTermination`.
+///
+/// A signalled process has no exit code, so it gets the signal arm rather than a
+/// fabricated integer: the seed used to render `.code().unwrap_or(-1)` for both, which
+/// made a runner OOM-kill indistinguishable from a process that chose to exit -1.
+/// `ProcessTerminationUnobserved` is unreachable from an `ExitStatus` (having one means
+/// the process ran); it is the arm a caller supplies when the spawn itself refused.
+pub(crate) fn process_termination_value(
+    status: &std::process::ExitStatus,
+    ctx: &InterpContext,
+) -> Value {
+    let termination = |variant: &str, field: &str, value: i64| Value::Variant {
+        type_name: ctx.sym("ProcessTermination"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(vec![(ctx.sym(field), Value::Int(value))]),
+    };
+    if let Some(code) = status.code() {
+        return termination("ProcessExited", "code", i64::from(code));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return termination("ProcessSignaled", "signal", i64::from(signal));
+        }
+    }
+    Value::Variant {
+        type_name: ctx.sym("ProcessTermination"),
+        variant_name: ctx.sym("ProcessTerminationUnobserved"),
+        fields: Rc::new(Vec::new()),
+    }
+}
+
+/// Human-facing rendering of a termination for a build log line. Kept beside the
+/// projection above so the two spellings of one observation cannot drift.
+pub(crate) fn process_termination_label(status: &std::process::ExitStatus) -> String {
+    if let Some(code) = status.code() {
+        return format!("exit {code}");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return format!("signal {signal}");
+        }
+    }
+    "termination unobserved".to_string()
+}
+
 fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
     Value::Map(Rc::new(entries))
 }
@@ -9966,7 +10015,7 @@ fn emit_host_run_transport_cached_in_workspace(
 
     let transport_result = |phase: &str,
                             success: bool,
-                            exit_code: i64,
+                            termination: Value,
                             stdout: &[u8],
                             stderr: &[u8],
                             build_log: Vec<Value>,
@@ -9982,7 +10031,7 @@ fn emit_host_run_transport_cached_in_workspace(
             fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("phase"), Value::Str(phase.to_string())),
                 (ctx.sym("success"), Value::Bool(success)),
-                (ctx.sym("exit_code"), Value::Int(exit_code)),
+                (ctx.sym("termination"), termination),
                 (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
                 (
                     ctx.sym("artifact_lookup_nanos"),
@@ -10040,14 +10089,17 @@ fn emit_host_run_transport_cached_in_workspace(
         let compile_started = std::time::Instant::now();
         for argv in build_argvs {
             let out = run_command(argv)?;
-            let code = out.status.code().map(i64::from).unwrap_or(-1);
-            build_log.push(Value::Str(format!("{} -> exit {code}", argv.join(" "))));
+            build_log.push(Value::Str(format!(
+                "{} -> {}",
+                argv.join(" "),
+                process_termination_label(&out.status)
+            )));
             if !out.status.success() {
                 build_log.push(Value::Str(String::from_utf8_lossy(&out.stderr).to_string()));
                 return Ok(transport_result(
                     "build",
                     false,
-                    code,
+                    process_termination_value(&out.status, ctx),
                     &out.stdout,
                     &out.stderr,
                     build_log,
@@ -10062,8 +10114,11 @@ fn emit_host_run_transport_cached_in_workspace(
         let native_started = std::time::Instant::now();
         let out = run_command(run_argv)?;
         let native_execution_nanos = native_started.elapsed().as_nanos();
-        let code = out.status.code().map(i64::from).unwrap_or(-1);
-        build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
+        build_log.push(Value::Str(format!(
+            "{} -> {}",
+            run_argv.join(" "),
+            process_termination_label(&out.status)
+        )));
         if out.status.success() {
             std::fs::write(&ready_marker, b"1").map_err(|e| InterpError::TypeError {
                 msg: format!("emit_host_run_transport_cached: ready marker write failed: {e}"),
@@ -10079,7 +10134,7 @@ fn emit_host_run_transport_cached_in_workspace(
         return Ok(transport_result(
             "run",
             out.status.success(),
-            code,
+            process_termination_value(&out.status, ctx),
             &out.stdout,
             &out.stderr,
             build_log,
@@ -10092,13 +10147,16 @@ fn emit_host_run_transport_cached_in_workspace(
     let native_started = std::time::Instant::now();
     let out = run_command(run_argv)?;
     let native_execution_nanos = native_started.elapsed().as_nanos();
-    let code = out.status.code().map(i64::from).unwrap_or(-1);
     let mut build_log: Vec<Value> = Vec::new();
-    build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
+    build_log.push(Value::Str(format!(
+        "{} -> {}",
+        run_argv.join(" "),
+        process_termination_label(&out.status)
+    )));
     Ok(transport_result(
         "run_cached",
         out.status.success(),
-        code,
+        process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
@@ -10158,7 +10216,7 @@ fn emit_host_run_transport_in_workspace(
 
     let transport_result = |phase: &str,
                             success: bool,
-                            exit_code: i64,
+                            termination: Value,
                             stdout: &[u8],
                             stderr: &[u8],
                             build_log: Vec<Value>,
@@ -10172,7 +10230,7 @@ fn emit_host_run_transport_in_workspace(
             fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("phase"), Value::Str(phase.to_string())),
                 (ctx.sym("success"), Value::Bool(success)),
-                (ctx.sym("exit_code"), Value::Int(exit_code)),
+                (ctx.sym("termination"), termination),
                 (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
                 (
                     ctx.sym("stdout_octets"),
@@ -10200,14 +10258,17 @@ fn emit_host_run_transport_in_workspace(
     let mut build_log: Vec<Value> = Vec::new();
     for argv in build_argvs {
         let out = run_command(argv)?;
-        let code = out.status.code().map(i64::from).unwrap_or(-1);
-        build_log.push(Value::Str(format!("{} -> exit {code}", argv.join(" "))));
+        build_log.push(Value::Str(format!(
+            "{} -> {}",
+            argv.join(" "),
+            process_termination_label(&out.status)
+        )));
         if !out.status.success() {
             build_log.push(Value::Str(String::from_utf8_lossy(&out.stderr).to_string()));
             return Ok(transport_result(
                 "build",
                 false,
-                code,
+                process_termination_value(&out.status, ctx),
                 &out.stdout,
                 &out.stderr,
                 build_log,
@@ -10217,12 +10278,15 @@ fn emit_host_run_transport_in_workspace(
     }
 
     let out = run_command(run_argv)?;
-    let code = out.status.code().map(i64::from).unwrap_or(-1);
-    build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
+    build_log.push(Value::Str(format!(
+        "{} -> {}",
+        run_argv.join(" "),
+        process_termination_label(&out.status)
+    )));
     Ok(transport_result(
         "run",
         out.status.success(),
-        code,
+        process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
