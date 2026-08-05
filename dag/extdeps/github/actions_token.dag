@@ -39,7 +39,7 @@ data app_permissions_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
-fn axis_actions_scope_name(axis: GitHubPermissionAxis) -> NonEmptyStr? {
+fn axis_actions_permissions_key(axis: GitHubPermissionAxis) -> NonEmptyStr? {
   match axis {
     ActionsAxis => Present { value: "actions" }
     ArtifactMetadataAxis => Present { value: "artifact-metadata" }
