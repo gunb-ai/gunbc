@@ -60,7 +60,8 @@ import v2.compiler.self_host.frontier_probe_types {
   frontier_blocker_class_matches,
   frontier_probe_blocker_rank,
   frontier_probe_located_stage_for_blocker,
-  frontier_located_reason_is_stale_knowledge_attributed
+  frontier_located_reason_is_stale_knowledge_attributed,
+  frontier_probe_receipt_module_path
 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
@@ -1255,7 +1256,7 @@ fn compiler_frontier_roster_matches_survey_holds(survey: List<FrontierProbeRecei
     empty: true,
     cons: fn(ok, receipt) {
       ok && compiler_frontier_row_for_path_matches_probe(
-        target: receipt.module_path,
+        target: frontier_probe_receipt_module_path(receipt: receipt),
         receipt: receipt
       )
     }
