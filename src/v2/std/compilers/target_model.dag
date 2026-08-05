@@ -517,7 +517,7 @@ fn apply_emit_spelling_transform(
   transform: fn(String) -> String,
   spelling: String
 ) -> String {
-  transform(spelling: spelling)
+  transform(spelling)
 }
 
 fn bound_token_spelling_from_model(
