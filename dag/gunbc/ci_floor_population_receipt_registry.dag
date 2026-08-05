@@ -8,12 +8,17 @@ type FloorPopulationReceiptKind
   | BatchWall {}
   | CompileCleanWall {}
   | Component {}
+  | NativeTransition {}
+  | OnSuccessStage1 {}
+  | OnSuccessStage2 {}
+  | OnSuccessMaterialization {}
+  | WorkerObservation {}
+  | WorkerTerminal {}
+  | PopulationReceiptManifest {}
   | Resolve {}
   | SelectionDegradation {}
   | Materialization {}
-  | OnSuccessMaterialization {}
   | PopulationBudgetRefusal {}
-  | NativeTransition {}
   | GateWarmCost {}
   | WitnessRowCost {}
   | WetWitnessRowOutcome {}
@@ -21,10 +26,6 @@ type FloorPopulationReceiptKind
   | CompileCleanCostDrift {}
   | CompileCleanCost {}
   | ScopedWitnessExecution {}
-  | WorkerObservation {}
-  | WorkerTerminal {}
-  | AttemptDirectory {}
-  | PopulationReceiptManifest {}
 
 type FloorPopulationReceiptProducerPhase
   = BeforeFloor {}
@@ -34,18 +35,18 @@ type FloorPopulationReceiptProducerPhase
   | OptionalWorker {}
 
 type FloorReceiptLocator
-  = ExactReceiptFile { path: NonEmptyStr }
+  = ExactRelative { relative_path: NonEmptyStr }
   | ReceiptFamily {
-      directory: NonEmptyStr,
+      relative_directory: NonEmptyStr,
       filename_prefix: NonEmptyStr,
       filename_suffix: NonEmptyStr
     }
-  | AttemptReceiptDirectory { root_prefix: NonEmptyStr }
 
 type FloorPopulationReceiptRegistryRow {
   kind: FloorPopulationReceiptKind,
   locator: FloorReceiptLocator,
   producer_phase: FloorPopulationReceiptProducerPhase,
+  journal_phase: NonEmptyStr,
   required_for_settlement: Bool,
 }
 
@@ -56,7 +57,7 @@ type RegistryWellFormedVerdict
   | MissingRequiredKind { kind_label: NonEmptyStr }
   | UnknownObservedPath { path: NonEmptyStr }
 
-data ci_floor_population_receipt_registry_note: String = "Expected receipt identities and producer phases only (operator ruling on #7785): FloorReceiptLocator is the typed coproduct (ExactReceiptFile | ReceiptFamily | AttemptReceiptDirectory) — path spelling no longer decides meaning. Subject/manifest/standing live in gunbc.ci_floor_population_evidence. Dissolve-on: attempt-scoped exact root target/floor-evidence/<walk-attempt>/ retires Family/AttemptDirectory locators."
+data ci_floor_population_receipt_registry_note: String = "Expected receipt identities relative to FloorEvidenceRoot = target/floor-evidence/<WalkAttemptId>/ (operator ruling on #7785). FloorReceiptLocator is ExactRelative or ReceiptFamily under that root — never a global target/floor-* scrape. required_for_settlement marks the subset write_floor_receipt must observe atomically."
 
 fn floor_population_receipt_kind_label(kind: FloorPopulationReceiptKind) -> String {
   match kind {
@@ -64,12 +65,17 @@ fn floor_population_receipt_kind_label(kind: FloorPopulationReceiptKind) -> Stri
     BatchWall {} => "BatchWall"
     CompileCleanWall {} => "CompileCleanWall"
     Component {} => "Component"
+    NativeTransition {} => "NativeTransition"
+    OnSuccessStage1 {} => "OnSuccessStage1"
+    OnSuccessStage2 {} => "OnSuccessStage2"
+    OnSuccessMaterialization {} => "OnSuccessMaterialization"
+    WorkerObservation {} => "WorkerObservation"
+    WorkerTerminal {} => "WorkerTerminal"
+    PopulationReceiptManifest {} => "PopulationReceiptManifest"
     Resolve {} => "Resolve"
     SelectionDegradation {} => "SelectionDegradation"
     Materialization {} => "Materialization"
-    OnSuccessMaterialization {} => "OnSuccessMaterialization"
     PopulationBudgetRefusal {} => "PopulationBudgetRefusal"
-    NativeTransition {} => "NativeTransition"
     GateWarmCost {} => "GateWarmCost"
     WitnessRowCost {} => "WitnessRowCost"
     WetWitnessRowOutcome {} => "WetWitnessRowOutcome"
@@ -77,10 +83,6 @@ fn floor_population_receipt_kind_label(kind: FloorPopulationReceiptKind) -> Stri
     CompileCleanCostDrift {} => "CompileCleanCostDrift"
     CompileCleanCost {} => "CompileCleanCost"
     ScopedWitnessExecution {} => "ScopedWitnessExecution"
-    WorkerObservation {} => "WorkerObservation"
-    WorkerTerminal {} => "WorkerTerminal"
-    AttemptDirectory {} => "AttemptDirectory"
-    PopulationReceiptManifest {} => "PopulationReceiptManifest"
   }
 }
 
@@ -96,145 +98,101 @@ fn floor_population_receipt_producer_phase_label(phase: FloorPopulationReceiptPr
 
 fn floor_receipt_locator_upload_pattern(locator: FloorReceiptLocator) -> String {
   match locator {
-    ExactReceiptFile { path } => path as String
-    ReceiptFamily { directory, filename_prefix, filename_suffix } =>
+    ExactRelative { relative_path } => relative_path as String
+    ReceiptFamily { relative_directory, filename_prefix, filename_suffix } =>
       concat(
-        concat(directory as String, "/"),
+        concat(relative_directory as String, "/"),
         concat(concat(filename_prefix as String, "*"), filename_suffix as String)
       )
-    AttemptReceiptDirectory { root_prefix } => concat(root_prefix as String, "*/")
   }
 }
 
-fn exact(path: String) -> FloorReceiptLocator {
-  ExactReceiptFile { path: path as NonEmptyStr }
+fn exact_rel(path: String) -> FloorReceiptLocator {
+  ExactRelative { relative_path: path as NonEmptyStr }
 }
 
 fn ci_floor_population_receipt_registry() -> List<FloorPopulationReceiptRegistryRow> {
   [
     FloorPopulationReceiptRegistryRow {
       kind: PopulationReceiptManifest {},
-      locator: exact(path: "target/floor-population-receipt-manifest.tsv"),
+      locator: exact_rel(path: "manifest.tsv"),
       producer_phase: AfterFloorAlways {},
+      journal_phase: "AfterFloorAlways" as NonEmptyStr,
       required_for_settlement: true
     },
     FloorPopulationReceiptRegistryRow {
       kind: PhaseJournal {},
-      locator: exact(path: "target/floor-phase-journal.tsv"),
+      locator: exact_rel(path: "phase-journal.tsv"),
       producer_phase: DuringFloor {},
+      journal_phase: "DuringFloor" as NonEmptyStr,
       required_for_settlement: true
     },
     FloorPopulationReceiptRegistryRow {
       kind: BatchWall {},
-      locator: exact(path: "target/floor-batch-wall-receipt.txt"),
+      locator: exact_rel(path: "receipts/batch-wall.txt"),
       producer_phase: DuringFloor {},
+      journal_phase: "batch-wall-receipt" as NonEmptyStr,
       required_for_settlement: true
     },
     FloorPopulationReceiptRegistryRow {
       kind: CompileCleanWall {},
-      locator: exact(path: "target/floor-compile-clean-wall-receipt.txt"),
+      locator: exact_rel(path: "receipts/compile-clean-wall.txt"),
       producer_phase: DuringFloor {},
+      journal_phase: "compile-clean-wall-receipt" as NonEmptyStr,
       required_for_settlement: true
     },
     FloorPopulationReceiptRegistryRow {
       kind: Component {},
-      locator: exact(path: "target/floor-component-receipt.json"),
+      locator: exact_rel(path: "receipts/component.json"),
       producer_phase: DuringFloor {},
+      journal_phase: "floor-component-receipt" as NonEmptyStr,
       required_for_settlement: true
-    },
-    FloorPopulationReceiptRegistryRow {
-      kind: Resolve {},
-      locator: exact(path: "target/floor-resolve-receipt.txt"),
-      producer_phase: DuringFloor {},
-      required_for_settlement: false
-    },
-    FloorPopulationReceiptRegistryRow {
-      kind: SelectionDegradation {},
-      locator: exact(path: "target/floor-selection-degradation-receipt.txt"),
-      producer_phase: DuringFloor {},
-      required_for_settlement: false
-    },
-    FloorPopulationReceiptRegistryRow {
-      kind: Materialization {},
-      locator: exact(path: "target/floor-materialization-receipt.txt"),
-      producer_phase: DuringFloor {},
-      required_for_settlement: false
-    },
-    FloorPopulationReceiptRegistryRow {
-      kind: PopulationBudgetRefusal {},
-      locator: exact(path: "target/floor-population-budget-refusal.txt"),
-      producer_phase: DuringFloor {},
-      required_for_settlement: false
     },
     FloorPopulationReceiptRegistryRow {
       kind: NativeTransition {},
-      locator: exact(path: "target/native-selected-witness-transition-receipt.tsv"),
+      locator: exact_rel(path: "receipts/native-transition.tsv"),
       producer_phase: DuringFloor {},
+      journal_phase: "native-transition-receipt" as NonEmptyStr,
       required_for_settlement: true
     },
     FloorPopulationReceiptRegistryRow {
-      kind: GateWarmCost {},
-      locator: exact(path: "target/floor-gate-warm-cost-receipt.tsv"),
-      producer_phase: DuringFloor {},
-      required_for_settlement: false
+      kind: OnSuccessStage1 {},
+      locator: exact_rel(path: "stages/1/receipt.tsv"),
+      producer_phase: OnSuccessStage {},
+      journal_phase: "on-success-stage-1" as NonEmptyStr,
+      required_for_settlement: true
     },
     FloorPopulationReceiptRegistryRow {
-      kind: WitnessRowCost {},
-      locator: exact(path: "target/floor-witness-row-cost-receipt.tsv"),
-      producer_phase: DuringFloor {},
-      required_for_settlement: false
+      kind: OnSuccessStage2 {},
+      locator: exact_rel(path: "stages/2/receipt.tsv"),
+      producer_phase: OnSuccessStage {},
+      journal_phase: "on-success-stage-2" as NonEmptyStr,
+      required_for_settlement: true
     },
     FloorPopulationReceiptRegistryRow {
-      kind: WetWitnessRowOutcome {},
-      locator: exact(path: "target/floor-wet-witness-row-outcome-receipt.tsv"),
-      producer_phase: DuringFloor {},
-      required_for_settlement: false
-    },
-    FloorPopulationReceiptRegistryRow {
-      kind: WitnessRowCostDrift {},
-      locator: exact(path: "target/floor-witness-row-cost-drift-receipt.tsv"),
-      producer_phase: DuringFloor {},
-      required_for_settlement: false
-    },
-    FloorPopulationReceiptRegistryRow {
-      kind: CompileCleanCostDrift {},
-      locator: exact(path: "target/floor-compile-clean-cost-drift-receipt.tsv"),
-      producer_phase: DuringFloor {},
-      required_for_settlement: false
-    },
-    FloorPopulationReceiptRegistryRow {
-      kind: CompileCleanCost {},
-      locator: exact(path: "target/floor-compile-clean-cost-receipt.tsv"),
-      producer_phase: DuringFloor {},
-      required_for_settlement: false
-    },
-    FloorPopulationReceiptRegistryRow {
-      kind: ScopedWitnessExecution {},
-      locator: exact(path: "target/scoped-witness-execution-receipt.tsv"),
-      producer_phase: DuringFloor {},
-      required_for_settlement: false
+      kind: OnSuccessMaterialization {},
+      locator: exact_rel(path: "receipts/on-success-materialization.txt"),
+      producer_phase: OnSuccessStage {},
+      journal_phase: "on-success-materialization" as NonEmptyStr,
+      required_for_settlement: true
     },
     FloorPopulationReceiptRegistryRow {
       kind: WorkerObservation {},
-      locator: exact(path: "target/floor-worker-observation-receipt.tsv"),
+      locator: exact_rel(path: "workers/observation.tsv"),
       producer_phase: OptionalWorker {},
+      journal_phase: "coordinator-observation" as NonEmptyStr,
       required_for_settlement: false
     },
     FloorPopulationReceiptRegistryRow {
       kind: WorkerTerminal {},
       locator: ReceiptFamily {
-        directory: "target" as NonEmptyStr,
-        filename_prefix: "floor-worker-terminal-" as NonEmptyStr,
+        relative_directory: "workers" as NonEmptyStr,
+        filename_prefix: "terminal-" as NonEmptyStr,
         filename_suffix: ".tsv" as NonEmptyStr
       },
       producer_phase: OptionalWorker {},
+      journal_phase: "OptionalWorker" as NonEmptyStr,
       required_for_settlement: false
-    },
-    FloorPopulationReceiptRegistryRow {
-      kind: AttemptDirectory {},
-      locator: AttemptReceiptDirectory { root_prefix: "target/floor-attempt-" as NonEmptyStr },
-      producer_phase: OnSuccessStage {},
-      required_for_settlement: true
     },
   ]
 }
@@ -247,7 +205,9 @@ fn settlement_required_kind_labels() -> List<String> {
     "CompileCleanWall",
     "Component",
     "NativeTransition",
-    "AttemptDirectory",
+    "OnSuccessStage1",
+    "OnSuccessStage2",
+    "OnSuccessMaterialization",
   ]
 }
 
@@ -260,31 +220,57 @@ fn ci_floor_population_receipt_registry_kind_labels() -> List<String> {
   ci_floor_population_receipt_registry() |> map(r => floor_population_receipt_kind_label(kind: r.kind))
 }
 
-fn ci_floor_population_receipts_upload_paths() -> String {
-  ci_floor_population_receipt_registry_paths() |> join(separator: "\n")
+fn ci_floor_population_receipts_upload_paths_for_attempt(attempt_id: String) -> String {
+  let root = concat("target/floor-evidence/", attempt_id)
+  ci_floor_population_receipt_registry_paths()
+    |> map(p => concat(concat(root, "/"), p))
+    |> join(separator: "\n")
+}
+
+fn ci_floor_population_receipts_upload_glob() -> String {
+  "target/floor-evidence/*"
 }
 
 fn ci_floor_population_receipt_registry_row_count() -> Nat {
   length(xs: ci_floor_population_receipt_registry())
 }
 
+fn ci_floor_population_receipt_registry_fingerprint() -> String {
+  ci_floor_population_receipt_registry()
+    |> map(r => concat(
+      concat(floor_population_receipt_kind_label(kind: r.kind), "|"),
+      concat(
+        concat(floor_receipt_locator_upload_pattern(locator: r.locator), "|"),
+        concat(
+          concat(floor_population_receipt_producer_phase_label(phase: r.producer_phase), "|"),
+          concat(
+            concat(r.journal_phase as String, "|"),
+            if r.required_for_settlement { "1" } else { "0" }
+          )
+        )
+      )
+    ))
+    |> join(separator: "\n")
+}
+
+fn ci_floor_population_receipts_upload_paths() -> String {
+  ci_floor_population_receipts_upload_glob()
+}
+
 fn string_list_contains_exact(xs: List<String>, needle: String) -> Bool {
   xs |> any(x => x == needle)
 }
 
-fn registry_locator_matches_path(path: String, locator: FloorReceiptLocator) -> Bool {
+fn registry_locator_matches_relpath(path: String, locator: FloorReceiptLocator) -> Bool {
   match locator {
-    ExactReceiptFile { path: p } => path == (p as String)
-    ReceiptFamily { directory, filename_prefix, filename_suffix } => {
-      let dir = concat(directory as String, "/")
+    ExactRelative { relative_path } => path == (relative_path as String)
+    ReceiptFamily { relative_directory, filename_prefix, filename_suffix } => {
+      let dir = concat(relative_directory as String, "/")
       string_contains(s: path, pattern: dir)
         && string_contains(s: path, pattern: filename_prefix as String)
         && string_contains(s: path, pattern: filename_suffix as String)
         && !(string_contains(s: path, pattern: "*"))
     }
-    AttemptReceiptDirectory { root_prefix } =>
-      string_contains(s: path, pattern: root_prefix as String)
-        && !(string_contains(s: path, pattern: "*"))
   }
 }
 
@@ -346,7 +332,7 @@ fn ci_floor_population_receipt_registry_well_formed() -> RegistryWellFormedVerdi
 fn observe_path_against_registry(path: NonEmptyStr) -> RegistryWellFormedVerdict {
   let p = path as String
   let matched = ci_floor_population_receipt_registry()
-    |> any(r => registry_locator_matches_path(path: p, locator: r.locator))
+    |> any(r => registry_locator_matches_relpath(path: p, locator: r.locator))
   if matched {
     RegistryWellFormed { row_count: 1 }
   } else {
@@ -357,14 +343,16 @@ fn observe_path_against_registry(path: NonEmptyStr) -> RegistryWellFormedVerdict
 fn planted_duplicate_kind_rows() -> List<FloorPopulationReceiptRegistryRow> {
   let row = FloorPopulationReceiptRegistryRow {
     kind: PhaseJournal {},
-    locator: exact(path: "target/floor-phase-journal.tsv"),
+    locator: exact_rel(path: "phase-journal.tsv"),
     producer_phase: DuringFloor {},
+    journal_phase: "DuringFloor" as NonEmptyStr,
     required_for_settlement: true
   }
   let dup = FloorPopulationReceiptRegistryRow {
     kind: PhaseJournal {},
-    locator: exact(path: "target/floor-phase-journal-dup.tsv"),
+    locator: exact_rel(path: "phase-journal-dup.tsv"),
     producer_phase: DuringFloor {},
+    journal_phase: "DuringFloor" as NonEmptyStr,
     required_for_settlement: true
   }
   [row, dup]
@@ -373,14 +361,16 @@ fn planted_duplicate_kind_rows() -> List<FloorPopulationReceiptRegistryRow> {
 fn planted_duplicate_path_rows() -> List<FloorPopulationReceiptRegistryRow> {
   let row = FloorPopulationReceiptRegistryRow {
     kind: PhaseJournal {},
-    locator: exact(path: "target/floor-phase-journal.tsv"),
+    locator: exact_rel(path: "phase-journal.tsv"),
     producer_phase: DuringFloor {},
+    journal_phase: "DuringFloor" as NonEmptyStr,
     required_for_settlement: true
   }
   let dup = FloorPopulationReceiptRegistryRow {
     kind: BatchWall {},
-    locator: exact(path: "target/floor-phase-journal.tsv"),
+    locator: exact_rel(path: "phase-journal.tsv"),
     producer_phase: DuringFloor {},
+    journal_phase: "batch-wall-receipt" as NonEmptyStr,
     required_for_settlement: true
   }
   [row, dup]

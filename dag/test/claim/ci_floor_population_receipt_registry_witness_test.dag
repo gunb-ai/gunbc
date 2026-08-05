@@ -10,7 +10,9 @@ import gunbc.ci_floor_population_receipt_registry {
   ci_floor_population_receipt_registry_kind_labels,
   ci_floor_population_receipt_registry_paths,
   ci_floor_population_receipt_registry_well_formed,
+  ci_floor_population_receipt_registry_fingerprint,
   ci_floor_population_receipts_upload_paths,
+  ci_floor_population_receipts_upload_glob,
   registry_rows_well_formed,
   planted_duplicate_kind_rows,
   planted_duplicate_path_rows,
@@ -26,46 +28,28 @@ fn expected_registry_kind_labels() -> List<String> {
     "BatchWall",
     "CompileCleanWall",
     "Component",
-    "Resolve",
-    "SelectionDegradation",
-    "Materialization",
-    "PopulationBudgetRefusal",
     "NativeTransition",
-    "GateWarmCost",
-    "WitnessRowCost",
-    "WetWitnessRowOutcome",
-    "WitnessRowCostDrift",
-    "CompileCleanCostDrift",
-    "CompileCleanCost",
-    "ScopedWitnessExecution",
+    "OnSuccessStage1",
+    "OnSuccessStage2",
+    "OnSuccessMaterialization",
     "WorkerObservation",
     "WorkerTerminal",
-    "AttemptDirectory",
   ]
 }
 
 fn expected_registry_paths() -> List<String> {
   [
-    "target/floor-population-receipt-manifest.tsv",
-    "target/floor-phase-journal.tsv",
-    "target/floor-batch-wall-receipt.txt",
-    "target/floor-compile-clean-wall-receipt.txt",
-    "target/floor-component-receipt.json",
-    "target/floor-resolve-receipt.txt",
-    "target/floor-selection-degradation-receipt.txt",
-    "target/floor-materialization-receipt.txt",
-    "target/floor-population-budget-refusal.txt",
-    "target/native-selected-witness-transition-receipt.tsv",
-    "target/floor-gate-warm-cost-receipt.tsv",
-    "target/floor-witness-row-cost-receipt.tsv",
-    "target/floor-wet-witness-row-outcome-receipt.tsv",
-    "target/floor-witness-row-cost-drift-receipt.tsv",
-    "target/floor-compile-clean-cost-drift-receipt.tsv",
-    "target/floor-compile-clean-cost-receipt.tsv",
-    "target/scoped-witness-execution-receipt.tsv",
-    "target/floor-worker-observation-receipt.tsv",
-    "target/floor-worker-terminal-*.tsv",
-    "target/floor-attempt-*/",
+    "manifest.tsv",
+    "phase-journal.tsv",
+    "receipts/batch-wall.txt",
+    "receipts/compile-clean-wall.txt",
+    "receipts/component.json",
+    "receipts/native-transition.tsv",
+    "stages/1/receipt.tsv",
+    "stages/2/receipt.tsv",
+    "receipts/on-success-materialization.txt",
+    "workers/observation.tsv",
+    "workers/terminal-*.tsv",
   ]
 }
 
@@ -85,7 +69,7 @@ fn list_string_eq(left: List<String>, right: List<String>) -> Bool {
 test fn witness_registry_well_formed_exact_identities() -> Bool {
   match ci_floor_population_receipt_registry_well_formed() {
     RegistryWellFormed { row_count } =>
-      row_count == 20
+      row_count == 11
         && list_string_eq(
           left: ci_floor_population_receipt_registry_kind_labels(),
           right: expected_registry_kind_labels()
@@ -94,26 +78,30 @@ test fn witness_registry_well_formed_exact_identities() -> Bool {
           left: ci_floor_population_receipt_registry_paths(),
           right: expected_registry_paths()
         )
-        && ci_floor_population_receipt_registry_row_count() == 20
+        && ci_floor_population_receipt_registry_row_count() == 11
     _ => false
   }
 }
 
-test fn witness_upload_paths_derived_from_registry() -> Bool {
-  let paths = ci_floor_population_receipts_upload_paths()
-  string_contains(s: paths, pattern: "target/floor-population-receipt-manifest.tsv")
-    && string_contains(s: paths, pattern: "target/floor-gate-warm-cost-receipt.tsv")
-    && string_contains(s: paths, pattern: "target/floor-worker-observation-receipt.tsv")
-    && string_contains(s: paths, pattern: "target/scoped-witness-execution-receipt.tsv")
-    && string_contains(s: paths, pattern: "target/floor-attempt-*/")
+test fn witness_upload_paths_are_attempt_scoped_glob() -> Bool {
+  ci_floor_population_receipts_upload_paths() == "target/floor-evidence/*"
+    && ci_floor_population_receipts_upload_glob() == "target/floor-evidence/*"
 }
 
 test fn witness_required_kinds_pinned() -> Bool {
   let required = settlement_required_kind_labels()
-  length(xs: required) == 7
+  length(xs: required) == 9
     && string_list_contains_exact(xs: required, needle: "PopulationReceiptManifest")
-    && string_list_contains_exact(xs: required, needle: "AttemptDirectory")
+    && string_list_contains_exact(xs: required, needle: "OnSuccessStage1")
+    && string_list_contains_exact(xs: required, needle: "OnSuccessMaterialization")
     && string_list_contains_exact(xs: required, needle: "NativeTransition")
+}
+
+test fn witness_registry_fingerprint_stable() -> Bool {
+  let fp = ci_floor_population_receipt_registry_fingerprint()
+  string_contains(s: fp, pattern: "PhaseJournal|phase-journal.tsv|DuringFloor|DuringFloor|1")
+    && string_contains(s: fp, pattern: "OnSuccessStage2|stages/2/receipt.tsv|OnSuccessStage|on-success-stage-2|1")
+    && string_contains(s: fp, pattern: "WorkerTerminal|workers/terminal-*.tsv|OptionalWorker|OptionalWorker|0")
 }
 
 test fn witness_planted_duplicate_kind_refuses() -> Bool {
@@ -125,24 +113,24 @@ test fn witness_planted_duplicate_kind_refuses() -> Bool {
 
 test fn witness_planted_duplicate_path_refuses() -> Bool {
   match registry_rows_well_formed(rows: planted_duplicate_path_rows()) {
-    DuplicatePath { path } => (path as String) == "target/floor-phase-journal.tsv"
+    DuplicatePath { path } => (path as String) == "phase-journal.tsv"
     _ => false
   }
 }
 
 test fn witness_unknown_observed_path_refuses() -> Bool {
-  match observe_path_against_registry(path: "target/not-a-registered-receipt.txt" as NonEmptyStr) {
-    UnknownObservedPath { path } => (path as String) == "target/not-a-registered-receipt.txt"
+  match observe_path_against_registry(path: "not-a-registered-receipt.txt" as NonEmptyStr) {
+    UnknownObservedPath { path } => (path as String) == "not-a-registered-receipt.txt"
     _ => false
   }
 }
 
 test fn witness_registered_path_and_wildcard_accept() -> Bool {
-  match observe_path_against_registry(path: "target/floor-phase-journal.tsv" as NonEmptyStr) {
+  match observe_path_against_registry(path: "phase-journal.tsv" as NonEmptyStr) {
     RegistryWellFormed { row_count: _ } =>
-      match observe_path_against_registry(path: "target/floor-worker-terminal-0-abc.tsv" as NonEmptyStr) {
+      match observe_path_against_registry(path: "workers/terminal-0-abc.tsv" as NonEmptyStr) {
         RegistryWellFormed { row_count: _ } =>
-          match observe_path_against_registry(path: "target/floor-attempt-run1/on-success-stage-1-receipt.tsv" as NonEmptyStr) {
+          match observe_path_against_registry(path: "stages/1/receipt.tsv" as NonEmptyStr) {
             RegistryWellFormed { row_count: _ } => true
             _ => false
           }

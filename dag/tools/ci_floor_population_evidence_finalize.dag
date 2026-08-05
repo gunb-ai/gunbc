@@ -1,29 +1,29 @@
 module tools.ci_floor_population_evidence_finalize
 
-import gunbc.cli_invoke { release_bin_rel_path }
+import std.types { String }
+import gunbc.cli_invoke { release_bin_rel_path, claim_executor_bin_name }
 import gunbc.ci_floor_population_evidence {
-  floor_evidence_manifest_path,
   floor_evidence_manifest_schema,
+  floor_evidence_root_prefix,
 }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
 
-data ci_floor_population_evidence_finalize_note: String = "Thin transport for floor-evidence finalize (operator ruling on #7785): GitHub Actions RunStep may remain shell because the foreign executor requires a payload, but the payload is only framing — already-built claim_executor --finalize-floor-evidence. Semantic construction lives in gunbc.ci_floor_population_evidence + the seed native realization. Dissolve-on: seed flag deleted when finalize is a WitnessBin-invoked SelfEmitted module with no rediscovery."
+data ci_floor_population_evidence_finalize_note: String = "Thin transport for floor-evidence finalize (operator ruling on #7785): GitHub Actions RunStep may remain shell because the foreign executor requires a payload, but the payload is typed ArgvCommand rendered once — claim_executor --finalize-floor-evidence at checkout cwd. Semantic construction lives in gunbc.ci_floor_population_evidence + the seed native realization. Dissolve-on: seed flag deleted when finalize is a WitnessBin-invoked SelfEmitted module."
 
-data finalize_floor_evidence_seed_scaffold: String = "SEED-RETAINED: claim_executor --finalize-floor-evidence implements typed locator expansion, phase-journal standing join, and local-subject header without artifact_digest. Rediscovery of target/floor-* is interim until receipt producers emit ReceiptWriteObservation fragments at write time."
+fn finalize_floor_evidence_argv() -> ArgvCommand {
+  ArgvCommand {
+    argv: [release_bin_rel_path(bin_name: claim_executor_bin_name), "--finalize-floor-evidence"]
+  }
+}
 
 fn finalize_floor_evidence_invoke_shell() -> String {
-  concat(
-    "set -euo pipefail\nROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\n\"$ROOT/",
-    concat(
-      release_bin_rel_path(bin_name: "claim_executor"),
-      "\" --finalize-floor-evidence\n"
-    )
-  )
+  shell_command_render(command: finalize_floor_evidence_argv())
 }
 
-fn finalize_floor_evidence_manifest_path() -> String {
-  floor_evidence_manifest_path
-}
-
-fn finalize_floor_evidence_schema() -> String {
+fn finalize_floor_evidence_manifest_schema() -> String {
   floor_evidence_manifest_schema
+}
+
+fn finalize_floor_evidence_upload_glob() -> String {
+  concat(floor_evidence_root_prefix, "/*")
 }

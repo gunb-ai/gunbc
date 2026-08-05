@@ -1,17 +1,26 @@
 module gunbc.ci_floor_population_evidence
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, NonEmptyStr, String, FilePath }
 import std.nat { Nat }
 import std.content_hash { Sha256Digest }
-import extdeps.git.object_store { GitObjectId }
-import gunbc.merge_admission_subject { WalkAttemptId }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import gunbc.merge_admission_subject { WalkAttemptId, walk_attempt_id }
 import gunbc.ci_floor_population_receipt_registry {
   FloorPopulationReceiptKind,
   FloorPopulationReceiptProducerPhase,
   FloorReceiptLocator,
+  ci_floor_population_receipt_registry_fingerprint,
 }
 
-data ci_floor_population_evidence_note: String = "Attempt-scoped floor-evidence sink/finalizer authority (operator ruling on #7785): LocalCiEvidenceSubject is known before upload (no artifact digest). UploadedEvidenceBinding is a post-upload join. ManifestObservationStanding is derived from registry + phase journal + receipt observations — never from shell category heuristics. Dissolve-on for seed finalize: claim_executor --finalize-floor-evidence is an interim native realization of tools.ci_floor_population_evidence_finalize; producers writing ReceiptWriteObservation at write time retire rediscovery."
+data ci_floor_population_evidence_note: String = "Attempt-scoped floor-evidence sink (operator ruling on #7785): evidence lives under target/floor-evidence/<WalkAttemptId>/. LocalCiEvidenceSubject has no uploaded-artifact digest. Settlement-required writers go through write_floor_receipt (native seed) and emit ReceiptWriteObservation fragments; finalize joins only that root. Seed finalizer is Scaffold with fingerprint pairing against ci_floor_population_receipt_registry_fingerprint."
+
+data floor_evidence_root_prefix: String = "target/floor-evidence"
+
+fn floor_evidence_root(attempt: WalkAttemptId) -> String {
+  concat(concat(floor_evidence_root_prefix, "/"), attempt as String)
+}
 
 type LocalCiEvidenceSubjectWire {
   github_run_id: String?,
@@ -31,51 +40,63 @@ type LocalCiEvidenceSubject {
   walk_attempt_id: WalkAttemptId,
 }
 
+type LocalSubjectObservation
+  = LocalSubjectObserved { subject: LocalCiEvidenceSubject }
+  | LocalSubjectRefused { wire: LocalCiEvidenceSubjectWire, cause: NonEmptyStr }
+
 type UploadedEvidenceBinding {
   local_manifest_digest: Sha256Digest,
   uploaded_artifact_name: NonEmptyStr,
   uploaded_artifact_digest: Sha256Digest,
 }
 
+type FloorPhaseStandingExact
+  = PhaseNotReached {}
+  | PhaseEntered {}
+  | PhaseCompleted {}
+  | PhaseRefused {}
+  | PhaseInterrupted {}
+  | PhaseStandingUnknown {}
+
 type ManifestObservationStanding
-  = ObservedPresent { size_bytes: Nat, content_digest: NonEmptyStr }
+  = ObservedPresent { size_bytes: Nat, content_digest: Sha256Digest }
   | MissingBeforeProducerReached {}
   | MissingAfterProducerReached {}
   | ProducerInterrupted { detail: NonEmptyStr }
   | NotApplicable { reason: NonEmptyStr }
+  | LegacyRediscovered { detail: NonEmptyStr }
 
 type ReceiptWriteObservation {
   kind: FloorPopulationReceiptKind,
   locator: FloorReceiptLocator,
-  observed_path: NonEmptyStr,
+  observed_path: FilePath,
   size_bytes: Nat,
-  content_digest: NonEmptyStr,
+  content_digest: Sha256Digest,
   producer_phase: FloorPopulationReceiptProducerPhase,
+  attempt_id: WalkAttemptId,
 }
-
-type FloorPhaseJournalSummary
-  = JournalAbsent {}
-  | JournalEmpty {}
-  | JournalPresent { row_count: Nat, saw_during_floor: Bool, saw_interrupted: Bool }
 
 type FloorEvidenceManifestRow {
   kind: FloorPopulationReceiptKind,
   expected_pattern: NonEmptyStr,
-  observed_path: NonEmptyStr?,
+  observed_path: FilePath?,
   standing: ManifestObservationStanding,
   producer_phase: FloorPopulationReceiptProducerPhase,
 }
 
 type FloorEvidenceManifest {
   schema: NonEmptyStr,
-  subject: LocalCiEvidenceSubjectWire,
+  subject: LocalSubjectObservation,
   rows: List<FloorEvidenceManifestRow>,
-  local_manifest_path: NonEmptyStr,
+  local_manifest_path: FilePath,
+  registry_fingerprint: NonEmptyStr,
 }
 
-data floor_evidence_manifest_schema: String = "gunbc.ci_floor_population_receipt_manifest.v3"
+data floor_evidence_manifest_schema: String = "gunbc.ci_floor_population_receipt_manifest.v4"
 
-data floor_evidence_manifest_path: String = "target/floor-population-receipt-manifest.tsv"
+fn floor_evidence_manifest_relpath(attempt: WalkAttemptId) -> String {
+  concat(floor_evidence_root(attempt: attempt), "/manifest.tsv")
+}
 
 fn local_subject_wire_incomplete() -> LocalCiEvidenceSubjectWire {
   LocalCiEvidenceSubjectWire {
@@ -88,20 +109,45 @@ fn local_subject_wire_incomplete() -> LocalCiEvidenceSubjectWire {
   }
 }
 
-fn local_subject_wire_fields_present(w: LocalCiEvidenceSubjectWire) -> Bool {
-  match w.github_run_id {
-    Absent => false
-    Present { value: run } => !(run == "") && match w.github_run_attempt {
-      Absent => false
-      Present { value: attempt } => !(attempt == "") && match w.github_job_key {
-        Absent => false
-        Present { value: job } => !(job == "") && match w.head_commit {
-          Absent => false
-          Present { value: head } => !(head == "") && match w.tested_tree {
-            Absent => false
-            Present { value: tree } => !(tree == "") && match w.walk_attempt_id {
-              Absent => false
-              Present { value: walk } => !(walk == "")
+fn nonempty_opt(raw: String?) -> NonEmptyStr? {
+  match raw {
+    Absent => none
+    Present { value: s } => if s == "" { none } else { Present { value: s as NonEmptyStr } }
+  }
+}
+
+fn local_subject_from_wire(w: LocalCiEvidenceSubjectWire) -> LocalSubjectObservation {
+  match nonempty_opt(raw: w.github_run_id) {
+    Absent => LocalSubjectRefused { wire: w, cause: "missing-github_run_id" as NonEmptyStr }
+    Present { value: run_id } => match nonempty_opt(raw: w.github_run_attempt) {
+      Absent => LocalSubjectRefused { wire: w, cause: "missing-github_run_attempt" as NonEmptyStr }
+      Present { value: run_attempt } => match nonempty_opt(raw: w.github_job_key) {
+        Absent => LocalSubjectRefused { wire: w, cause: "missing-github_job_key" as NonEmptyStr }
+        Present { value: job } => match nonempty_opt(raw: w.head_commit) {
+          Absent => LocalSubjectRefused { wire: w, cause: "missing-head_commit" as NonEmptyStr }
+          Present { value: head_raw } => match nonempty_opt(raw: w.tested_tree) {
+            Absent => LocalSubjectRefused { wire: w, cause: "missing-tested_tree" as NonEmptyStr }
+            Present { value: tree_raw } => match nonempty_opt(raw: w.walk_attempt_id) {
+              Absent => LocalSubjectRefused { wire: w, cause: "missing-walk_attempt_id" as NonEmptyStr }
+              Present { value: walk_raw } => match git_object_id_from_untagged_hex(hex: head_raw as String) {
+                Absent => LocalSubjectRefused { wire: w, cause: "invalid-head_commit" as NonEmptyStr }
+                Present { value: head } => match git_object_id_from_untagged_hex(hex: tree_raw as String) {
+                  Absent => LocalSubjectRefused { wire: w, cause: "invalid-tested_tree" as NonEmptyStr }
+                  Present { value: tree } => match walk_attempt_id(raw: walk_raw as String) {
+                    Absent => LocalSubjectRefused { wire: w, cause: "invalid-walk_attempt_id" as NonEmptyStr }
+                    Present { value: walk } => LocalSubjectObserved {
+                      subject: LocalCiEvidenceSubject {
+                        github_run_id: run_id,
+                        github_run_attempt: run_attempt,
+                        github_job_key: job,
+                        head_commit: head,
+                        tested_tree: tree,
+                        walk_attempt_id: walk,
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -110,50 +156,64 @@ fn local_subject_wire_fields_present(w: LocalCiEvidenceSubjectWire) -> Bool {
   }
 }
 
-fn standing_from_journal_and_presence(
-  present: Bool,
+fn standing_join_missing(
   optional_worker: Bool,
-  journal: FloorPhaseJournalSummary
+  phase_standing: FloorPhaseStandingExact
 ) -> ManifestObservationStanding {
-  if present {
-    ObservedPresent { size_bytes: 0, content_digest: "pending" as NonEmptyStr }
-  } else if optional_worker {
-    NotApplicable { reason: "optional-worker-receipt-absent" as NonEmptyStr }
-  } else {
-    match journal {
-      JournalAbsent {} => MissingBeforeProducerReached {}
-      JournalEmpty {} => MissingBeforeProducerReached {}
-      JournalPresent { row_count: _, saw_during_floor: true, saw_interrupted: true } =>
-        ProducerInterrupted { detail: "phase-journal-interrupted" as NonEmptyStr }
-      JournalPresent { row_count: _, saw_during_floor: true, saw_interrupted: false } =>
-        MissingAfterProducerReached {}
-      JournalPresent { row_count: _, saw_during_floor: false, saw_interrupted: _ } =>
+  match phase_standing {
+    PhaseNotReached {} => {
+      if optional_worker {
+        NotApplicable { reason: "optional-worker-phase-not-reached" as NonEmptyStr }
+      } else {
         MissingBeforeProducerReached {}
+      }
+    }
+    PhaseEntered {} => MissingAfterProducerReached {}
+    PhaseCompleted {} => MissingAfterProducerReached {}
+    PhaseRefused {} => MissingAfterProducerReached {}
+    PhaseInterrupted {} => ProducerInterrupted { detail: "phase-journal-interrupted" as NonEmptyStr }
+    PhaseStandingUnknown {} => {
+      if optional_worker {
+        NotApplicable { reason: "optional-worker-phase-unknown" as NonEmptyStr }
+      } else {
+        MissingBeforeProducerReached {}
+      }
     }
   }
 }
 
-fn standing_label(standing: ManifestObservationStanding) -> String {
-  match standing {
-    ObservedPresent { size_bytes: _, content_digest: _ } => "ObservedPresent"
-    MissingBeforeProducerReached {} => "MissingBeforeProducerReached"
-    MissingAfterProducerReached {} => "MissingAfterProducerReached"
-    ProducerInterrupted { detail: _ } => "ProducerInterrupted"
-    NotApplicable { reason: _ } => "NotApplicable"
+fn red_stage_never_reached_is_before_not_after() -> Bool {
+  match standing_join_missing(optional_worker: false, phase_standing: PhaseNotReached {}) {
+    MissingBeforeProducerReached {} => true
+    _ => false
   }
 }
 
-fn red_blank_artifact_digest_forbidden_on_local_subject() -> Bool {
-  true
-}
-
-fn red_shell_category_heuristic_forbidden() -> Bool {
-  match standing_from_journal_and_presence(
-    present: false,
-    optional_worker: false,
-    journal: JournalPresent { row_count: 3, saw_during_floor: true, saw_interrupted: false }
-  ) {
+fn red_stage_completed_missing_receipt_is_after() -> Bool {
+  match standing_join_missing(optional_worker: false, phase_standing: PhaseCompleted {}) {
     MissingAfterProducerReached {} => true
     _ => false
   }
+}
+
+fn red_interrupted_is_producer_interrupted() -> Bool {
+  match standing_join_missing(optional_worker: false, phase_standing: PhaseInterrupted {}) {
+    ProducerInterrupted { detail: _ } => true
+    _ => false
+  }
+}
+
+data finalize_floor_evidence_seed_deferral: String = "TRIGGER: claim_executor --finalize-floor-evidence consumes a generated projection of gunbc.ci_floor_population_receipt_registry (emitted Rust rows or registry wire) and write_floor_receipt observation fragments; the hand ROWS mirror and rediscovery path delete. Latest bound: ROADMAP v1-zero-hand-maintained-rust. Fingerprint pairing ci_floor_population_receipt_registry_fingerprint ↔ FLOOR_EVIDENCE_REGISTRY_FINGERPRINT is the interim drift wall."
+
+data finalize_floor_evidence_seed_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_floor_population_evidence",
+    decl_name: "finalize_floor_evidence_seed_deferral",
+    field: WholeDeclaration
+  }
+}
+
+fn registry_fingerprint_authority() -> NonEmptyStr {
+  ci_floor_population_receipt_registry_fingerprint() as NonEmptyStr
 }

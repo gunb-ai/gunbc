@@ -1,66 +1,97 @@
 module test.claim.ci_floor_population_evidence_witness
 
 import std.types { Bool }
+import std.disposition { Scaffold }
 import gunbc.ci_floor_population_evidence {
   MissingAfterProducerReached,
   MissingBeforeProducerReached,
   NotApplicable,
-  JournalAbsent,
-  JournalPresent,
+  ProducerInterrupted,
+  PhaseNotReached,
+  PhaseEntered,
+  PhaseCompleted,
+  PhaseInterrupted,
+  LocalSubjectRefused,
+  standing_join_missing,
+  local_subject_from_wire,
   local_subject_wire_incomplete,
-  local_subject_wire_fields_present,
-  standing_from_journal_and_presence,
-  red_blank_artifact_digest_forbidden_on_local_subject,
-  red_shell_category_heuristic_forbidden,
+  red_stage_never_reached_is_before_not_after,
+  red_stage_completed_missing_receipt_is_after,
+  red_interrupted_is_producer_interrupted,
   floor_evidence_manifest_schema,
+  floor_evidence_root,
+  finalize_floor_evidence_seed_scaffold,
+  registry_fingerprint_authority,
 }
+import gunbc.merge_admission_subject { walk_attempt_id }
 
 test fn witness_local_subject_incomplete_refuses() -> Bool {
-  !local_subject_wire_fields_present(w: local_subject_wire_incomplete())
+  match local_subject_from_wire(w: local_subject_wire_incomplete()) {
+    LocalSubjectRefused { wire: _, cause: _ } => true
+    _ => false
+  }
 }
 
-test fn witness_local_subject_has_no_artifact_digest_field() -> Bool {
-  red_blank_artifact_digest_forbidden_on_local_subject()
+test fn witness_stage_never_reached_is_before_not_after() -> Bool {
+  red_stage_never_reached_is_before_not_after()
 }
 
-test fn witness_missing_after_producer_reached_from_journal() -> Bool {
-  red_shell_category_heuristic_forbidden()
+test fn witness_stage_completed_missing_is_after() -> Bool {
+  red_stage_completed_missing_receipt_is_after()
 }
 
-test fn witness_optional_worker_absent_is_not_applicable() -> Bool {
-  match standing_from_journal_and_presence(
-    present: false,
-    optional_worker: true,
-    journal: JournalAbsent {}
-  ) {
+test fn witness_interrupted_is_producer_interrupted() -> Bool {
+  red_interrupted_is_producer_interrupted()
+}
+
+test fn witness_optional_worker_not_reached_is_not_applicable() -> Bool {
+  match standing_join_missing(optional_worker: true, phase_standing: PhaseNotReached {}) {
     NotApplicable { reason: _ } => true
     _ => false
   }
 }
 
-test fn witness_missing_before_producer_when_journal_absent() -> Bool {
-  match standing_from_journal_and_presence(
-    present: false,
-    optional_worker: false,
-    journal: JournalAbsent {}
-  ) {
-    MissingBeforeProducerReached {} => true
+test fn witness_phase_entered_missing_is_after() -> Bool {
+  match standing_join_missing(optional_worker: false, phase_standing: PhaseEntered {}) {
+    MissingAfterProducerReached {} => true
     _ => false
   }
 }
 
-test fn witness_manifest_schema_is_v3() -> Bool {
-  floor_evidence_manifest_schema == "gunbc.ci_floor_population_receipt_manifest.v3"
+test fn witness_manifest_schema_is_v4() -> Bool {
+  floor_evidence_manifest_schema == "gunbc.ci_floor_population_receipt_manifest.v4"
 }
 
-test fn red_journal_present_must_not_say_not_reached() -> Bool {
-  match standing_from_journal_and_presence(
-    present: false,
-    optional_worker: false,
-    journal: JournalPresent { row_count: 2, saw_during_floor: true, saw_interrupted: false }
-  ) {
+test fn witness_evidence_root_attempt_scoped() -> Bool {
+  match walk_attempt_id(raw: "attempt-a") {
+    Present { value: a } => floor_evidence_root(attempt: a) == "target/floor-evidence/attempt-a"
+    Absent => false
+  }
+}
+
+test fn witness_seed_scaffold_is_disposition() -> Bool {
+  match finalize_floor_evidence_seed_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_registry_fingerprint_authority_nonempty() -> Bool {
+  !(registry_fingerprint_authority() as String == "")
+}
+
+test fn red_phase_completed_must_not_say_before() -> Bool {
+  match standing_join_missing(optional_worker: false, phase_standing: PhaseCompleted {}) {
     MissingBeforeProducerReached {} => false
     MissingAfterProducerReached {} => true
+    _ => true
+  }
+}
+
+test fn red_interrupted_must_not_say_missing_after() -> Bool {
+  match standing_join_missing(optional_worker: false, phase_standing: PhaseInterrupted {}) {
+    MissingAfterProducerReached {} => false
+    ProducerInterrupted { detail: _ } => true
     _ => true
   }
 }
