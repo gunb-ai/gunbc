@@ -105,6 +105,24 @@ fn program_map_member(map: Map<String, Bool>, id: String) -> Bool {
   }
 }
 
+type ProgramIdDedupeAcc {
+  seen: Map<String, Bool>
+  ids: List<String>
+}
+
+fn program_dedupe_ids(xs: List<String>) -> List<String> {
+  fold(xs, init: ProgramIdDedupeAcc { seen: empty_map(), ids: [] }, f: (acc, x) =>
+    if program_map_member(map: acc.seen, id: x) {
+      acc
+    } else {
+      ProgramIdDedupeAcc {
+        seen: map_insert(acc.seen, x, true),
+        ids: acc.ids |> list_push(x),
+      }
+    }
+  ).ids
+}
+
 type ProgramNodeAcc {
   by_id: Map<String, RoadmapNode>
   duplicate_ids: List<RoadmapNodeId>
@@ -436,11 +454,6 @@ fn program_union_scope_ids(
     fold(fs.gates, init: [], f: (gate_acc, g) => concat(gate_acc,
       program_ancestors_or_self(reverse_adj: reverse_adj, id: g as String)))))
   program_dedupe_ids(concat(line_scope, front_scope))
-}
-
-fn program_dedupe_ids(xs: List<String>) -> List<String> {
-  fold(xs, init: [], f: (acc, x) =>
-    if acc |> any(a => a == x) { acc } else { concat(acc, [x]) })
 }
 
 fn program_ancestors_or_self(
