@@ -1647,18 +1647,23 @@ struct ClaimResult {
     resolve_realization: Option<ResolveRealizationObservation>,
 }
 
-/// Observation emitted where the executor actually decides cold vs shared reuse.
+/// Hand-Rust mirror of `gunbc.ci_materialization` `ResolveRealization` (variant names
+/// must match exactly; dissolve-on: witness-realization P4 executor cutover decodes
+/// modeled `.dag` observations at reuse sites instead of re-authoring them).
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ResolveRealizationObservation {
     ColdResolvePerformed {
         resolve_nanos: u128,
     },
-    SharedResolveSatisfied {
+    SatisfiedFromSharedPool {
         computation_identity: String,
         provider_id: String,
-        provider_receipt: String,
     },
 }
+
+/// Receipt disposition tags — must match `ResolveRealization` variant names exactly.
+const RESOLVE_REALIZATION_DISPOSITION_COLD: &str = "ColdResolvePerformed";
+const RESOLVE_REALIZATION_DISPOSITION_WARM: &str = "SatisfiedFromSharedPool";
 
 /// Per-entry walk memo provider — grain distinct from index-build `process_shared_index`.
 /// Authority: `gunbc.floor_materialization` `floor_entry_walk_memo_provider_id`;
@@ -2677,10 +2682,9 @@ fn run_memo_shared_claims(
     let group_resolve_observation = if fresh_resolve {
         Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos })
     } else {
-        Some(ResolveRealizationObservation::SharedResolveSatisfied {
+        Some(ResolveRealizationObservation::SatisfiedFromSharedPool {
             computation_identity: format!("entry-closure:{entry}:{execution_mode:?}"),
             provider_id: FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID.to_string(),
-            provider_receipt: FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID.to_string(),
         })
     };
     let ctx = memo.get(&memo_key).expect("memo populated above");
@@ -5399,7 +5403,7 @@ fn observation_to_obligation_line(
             }
             Ok(ResolveObligationLine {
                 identity: obl.identity.clone(),
-                disposition: "cold_resolve_performed",
+                disposition: RESOLVE_REALIZATION_DISPOSITION_COLD,
                 resolve_nanos: *resolve_nanos,
                 provider_id: None,
                 computation_identity: None,
@@ -5407,23 +5411,19 @@ fn observation_to_obligation_line(
                 function: obl.function.clone(),
             })
         }
-        ResolveRealizationObservation::SharedResolveSatisfied {
+        ResolveRealizationObservation::SatisfiedFromSharedPool {
             computation_identity,
             provider_id,
-            provider_receipt,
         } => {
-            if provider_id.is_empty()
-                || provider_receipt.is_empty()
-                || provider_id != provider_receipt
-            {
+            if provider_id.is_empty() {
                 return Err(format!(
-                    "floor resolve warm disposition without provider receipt: {}",
+                    "floor resolve warm disposition without provider id: {}",
                     obl.identity
                 ));
             }
             Ok(ResolveObligationLine {
                 identity: obl.identity.clone(),
-                disposition: "satisfied_from_shared_pool",
+                disposition: RESOLVE_REALIZATION_DISPOSITION_WARM,
                 resolve_nanos: result.resolve_nanos,
                 provider_id: Some(provider_id.clone()),
                 computation_identity: Some(computation_identity.clone()),
@@ -5496,7 +5496,7 @@ fn append_resolve_obligation_receipt_body(
     let obligations = derive_resolve_obligation_receipts(fin, batch_records)?;
     let cold_resolves_total = obligations
         .iter()
-        .filter(|o| o.disposition == "cold_resolve_performed")
+        .filter(|o| o.disposition == RESOLVE_REALIZATION_DISPOSITION_COLD)
         .count();
     let unattributed_physical_resolves = count_unattributed_physical_resolves(fin, batch_records);
     body.push_str(&format!("obligations_total={}\n", obligations.len()));
@@ -9058,10 +9058,9 @@ mod tests {
                 resolve_nanos: nanos as u128,
             })
         } else {
-            Some(ResolveRealizationObservation::SharedResolveSatisfied {
+            Some(ResolveRealizationObservation::SatisfiedFromSharedPool {
                 computation_identity: "entry-closure:fixture".to_string(),
                 provider_id: FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID.to_string(),
-                provider_receipt: FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID.to_string(),
             })
         }
     }
@@ -9197,10 +9196,9 @@ mod tests {
                     budget_refusal: None,
                     selection_degradation: None,
                     resolve_realization: Some(
-                        ResolveRealizationObservation::SharedResolveSatisfied {
+                        ResolveRealizationObservation::SatisfiedFromSharedPool {
                             computation_identity: format!("entry-closure:{anchor_entry}:Hermetic"),
                             provider_id: FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID.to_string(),
-                            provider_receipt: FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID.to_string(),
                         },
                     ),
                 }],
@@ -9255,7 +9253,7 @@ mod tests {
         assert!(
             !refusals
                 .iter()
-                .any(|m| m.contains("warm disposition without provider receipt")),
+                .any(|m| m.contains("warm disposition without provider")),
             "warm native with provider must not refuse: {refusals:?}"
         );
     }
@@ -9265,16 +9263,15 @@ mod tests {
         let fin = test_floor_finalization();
         let mut records = obligation_finalization_records(3, 0);
         records[0].results[1].resolve_realization =
-            Some(ResolveRealizationObservation::SharedResolveSatisfied {
+            Some(ResolveRealizationObservation::SatisfiedFromSharedPool {
                 computation_identity: "entry-closure:fixture".to_string(),
                 provider_id: String::new(),
-                provider_receipt: FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID.to_string(),
             });
         let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
         assert!(
             refusals
                 .iter()
-                .any(|m| m.contains("warm disposition without provider receipt")),
+                .any(|m| m.contains("warm disposition without provider id")),
             "fabricated warm without provider must refuse: {refusals:?}"
         );
     }
