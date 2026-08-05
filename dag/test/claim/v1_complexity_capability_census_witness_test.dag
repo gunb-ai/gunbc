@@ -57,6 +57,7 @@ import gunbc.v1_complexity_capability_census {
   inventory_item_key,
   inventory_row_is_semantic_capability,
   inventory_semantic_capability_count,
+  inventory_residue_count,
   inventory_identity_keys,
   inventory_identity_keys_distinct,
   keys_are_distinct,
@@ -257,13 +258,14 @@ test fn w_parser_progress_producer_differs_from_its_destination() -> Bool {
   }
 }
 
-data w_residues_are_not_capabilities_note: String = "The operator's peer-inflation finding, pinned. SummaryEviction and ParserProgressV1Walker previously sat as variants of the capability vocabulary, so counting capabilities counted two things that are not capabilities. They are now residue items carrying the capability they belong to. This asserts the semantic population is strictly smaller than the inventory, that the two residue rows are not semantic, and that each names its owning capability."
+data w_residues_are_not_capabilities_note: String = "The operator's peer-inflation finding, pinned. SummaryEviction and ParserProgressV1Walker previously sat as variants of the capability vocabulary, so counting capabilities counted two things that are not capabilities. They are now residue items carrying the capability they belong to. ORACLE SHAPE, stated because an earlier revision of this very test got it wrong: the population assertion is the IDENTITY JOIN semantic + residues == rows, with both terms derived — not semantic + 2 == rows, whose literal 2 was measured from the same tree it checks and would have needed a manual edit the first time a third residue landed. DESIGN §5 names that shape a change detector. The identity-grained half — WHICH rows are residues and which capability each belongs to — is asserted separately below, where naming them is the point rather than a count."
 
 test fn w_legacy_residues_are_not_semantic_capabilities() -> Bool {
   let rows = length(xs: v1_complexity_inventory_roster)
   let semantic = inventory_semantic_capability_count()
+  let residues = inventory_residue_count()
   semantic < rows &&
-  semantic + 2 == rows &&
+  semantic + residues == rows &&
   !inventory_row_is_semantic_capability(row: summary_eviction) &&
   !inventory_row_is_semantic_capability(row: parser_progress_v1_walker) &&
   (match summary_eviction.item {

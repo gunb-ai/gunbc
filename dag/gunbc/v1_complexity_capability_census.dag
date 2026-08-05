@@ -566,6 +566,11 @@ fn inventory_semantic_capability_count() -> Nat {
   })
 }
 
+fn inventory_residue_count() -> Nat {
+  fold(v1_complexity_inventory_roster, init: 0, f: (acc, r) =>
+    if inventory_row_is_semantic_capability(row: r) { acc } else { acc + 1 })
+}
+
 fn inventory_identity_keys() -> List<String> {
   fold(v1_complexity_inventory_roster, init: [], f: fn(acc, r) {
     concat(acc, [inventory_item_key(item: r.item)])
