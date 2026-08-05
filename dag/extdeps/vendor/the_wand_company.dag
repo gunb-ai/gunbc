@@ -1,0 +1,37 @@
+module extdeps.vendor.the_wand_company
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/The_Wand_Company"
+  }
+}
+
+data issuing_party_compliance_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.thewandcompany.com/pip-boy-3000-manual/"
+  }
+}
+
+data the_wand_company: Vendor<Hardware> = Vendor { legal_name: "The Wand Company Limited" }
+
+data legal_name_grain_note: String = "The registered form is grounded, and the grounding arrived by fixing a read path rather than by finding a new source. An earlier revision carried the bare trading name and declared that no source stated a suffix — true only because the manuals were unreadable to a refused fetcher. Both product manuals carry the same compliance block: 'Issuing Party: The Wand Company Limited, 3 Laundress Lane, Cambridge CB2 1SD, UK'. The address is deliberately not modeled: no consumer needs it, and a registered office is a fact with its own lifecycle."
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.the_wand_company",
+      decl_name: "the_wand_company",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [issuing_party_compliance_authority]
+}
