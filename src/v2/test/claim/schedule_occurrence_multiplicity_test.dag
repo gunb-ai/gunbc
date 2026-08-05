@@ -4,53 +4,65 @@ import gunbc.ci_layer_roots {
   falsifier_substrate_long_lane_entries,
   known_red_probe_roster
 }
-import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
-import v2.std.algebra { fold_list, length, filter }
+import std.realization_schedule {
+  CorpusWitnessKind,
+  ScheduleWitnessEntry,
+  schedule_witness_entry_eq
+}
+import v2.std.algebra { filter, length }
 import v2.std.collection { List }
+import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.integer { Int }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data schedule_occurrence_multiplicity_note: String = "THE MULTIPLICITY WALL for scheduled witness functions. A witness enrolled in two rosters is APPENDED to the falsifier plan twice, so its cost is paid twice while its receipt count reads as one lane each — the composition claim 'this expensive root executes once' is decided HERE, at schedule grain, not inside the function that walks the pipeline once per call. The direct-rust-door group root is the first subject: it is the lane's only production walk, and this row reds if any change re-enrolls it in a second roster. This is deliberately an identity join over enrollment rosters, never a count of rows: a count would go green if one duplicate were added while an unrelated row was deleted."
+data schedule_occurrence_multiplicity_note: String = "THE MULTIPLICITY WALL for scheduled witnesses. A witness enrolled in two rosters is APPENDED to the falsifier plan twice, so its cost is paid twice while each lane's receipt reads as one — the claim 'this expensive root executes once' is decided HERE, at schedule grain, and NOT by the fact that one function walks the pipeline once per call. IDENTITY GRAIN IS THE WHOLE POINT: this joins the exact ScheduleWitnessEntry through std.realization_schedule schedule_witness_entry_eq (entry, function, kind), never a bare function-name match. A name join answers about the wrong subject — two unrelated modules may legitimately spell a function the same way — and it would report duplicate ENROLLMENT where only name reuse existed."
 
-data multiplicity_subject_direct_rust_door: String = "direct_rust_door_production_group_closing_expectation_holds"
-
-fn schedule_entry_function_occurrences(
-  entries: List<ScheduleWitnessEntry>,
-  f: String
-) -> Int {
-  length(xs: entries |> filter(e => e.function == f))
+data multiplicity_subject_direct_rust_door: ScheduleWitnessEntry = ScheduleWitnessEntry {
+  entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag",
+  function: "direct_rust_door_production_group_closing_expectation_holds",
+  kind: CorpusWitnessKind
 }
 
-fn total_scheduled_occurrences(f: String) -> Int {
-  let long_lane = schedule_entry_function_occurrences(entries: falsifier_substrate_long_lane_entries(), f: f)
-  let known_red = schedule_entry_function_occurrences(entries: known_red_probe_roster(), f: f)
+fn schedule_entry_occurrences(
+  entries: List<ScheduleWitnessEntry>,
+  subject: ScheduleWitnessEntry
+) -> Int {
+  length(xs: entries |> filter(e => schedule_witness_entry_eq(a: e, b: subject)))
+}
+
+fn total_scheduled_occurrences(subject: ScheduleWitnessEntry) -> Int {
+  let long_lane = schedule_entry_occurrences(entries: falsifier_substrate_long_lane_entries(), subject: subject)
+  let known_red = schedule_entry_occurrences(entries: known_red_probe_roster(), subject: subject)
   long_lane + known_red
 }
 
 test fn direct_rust_door_group_root_is_scheduled_exactly_once() -> Bool {
-  total_scheduled_occurrences(f: multiplicity_subject_direct_rust_door) == 1
+  total_scheduled_occurrences(subject: multiplicity_subject_direct_rust_door) == 1
 }
 
+data multiplicity_control_note: String = "The planted RED duplicates the SAME EXACT entry, which is what makes it a control for duplicate ENROLLMENT. An earlier version planted two rows sharing one function name across DIFFERENT entries; that proved only name multiplicity, and under the exact-identity join this wall now performs it would have counted zero. The second conjunct asserts exactly that: a same-name-different-entry row contributes ZERO occurrences of the subject — the distinction a name join could not make."
+
 test fn multiplicity_counter_discriminates_a_planted_duplicate() -> Bool {
-  let planted = [
+  let exact_duplicate = [
+    multiplicity_subject_direct_rust_door,
+    multiplicity_subject_direct_rust_door,
+  ]
+  let same_name_other_entry = [
     ScheduleWitnessEntry {
-      entry: "a.dag",
-      function: multiplicity_subject_direct_rust_door,
-      kind: CorpusWitnessKind
-    },
-    ScheduleWitnessEntry {
-      entry: "b.dag",
-      function: multiplicity_subject_direct_rust_door,
+      entry: "some/other/entry.dag",
+      function: "direct_rust_door_production_group_closing_expectation_holds",
       kind: CorpusWitnessKind
     },
   ]
-  schedule_entry_function_occurrences(
-    entries: planted,
-    f: multiplicity_subject_direct_rust_door
+  schedule_entry_occurrences(
+    entries: exact_duplicate,
+    subject: multiplicity_subject_direct_rust_door
   ) == 2
-    && schedule_entry_function_occurrences(entries: planted, f: "absent_function") == 0
+    && schedule_entry_occurrences(
+      entries: same_name_other_entry,
+      subject: multiplicity_subject_direct_rust_door
+    ) == 0
 }

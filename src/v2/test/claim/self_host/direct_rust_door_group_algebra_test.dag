@@ -72,7 +72,7 @@ import v2.std.node { Symbol }
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
-data direct_rust_door_group_algebra_note: String = "FAST lane: discriminates the direct-rust-door group ALGEBRA over PLANTED observations, paying ZERO production walks — no ingest, assemble, infer, or emit runs here. This is the cheap half of the composition pilot: the one canonical heavy root in long/direct_rust_door_production_group_test.dag establishes what production actually does, and these controls establish what the group does with any observation it is handed. Splitting them is what keeps the expensive walk at exactly one occurrence while the group's behaviour stays fully discriminated."
+data direct_rust_door_group_algebra_note: String = "FAST lane: discriminates the direct-rust-door group ALGEBRA over PLANTED observations, paying ZERO production walks — no ingest, assemble, infer, or emit runs here. This is the cheap half of the composition pilot: the one canonical heavy root in long/direct_rust_door_production_group_test.dag establishes what production actually does, and these controls establish what the group does with any observation it is handed. Splitting them is what keeps the expensive walk to ONE PER GROUP CONSTRUCTION while the group behaviour stays fully discriminated. That is a claim about the walk per construction and about there being ONE production implementation authority --- it is NOT a claim about the schedule, which today constructs the group TWICE because an expensive-and-known-red root must join two rosters to earn its budget. schedule_occurrence_multiplicity_test measures that and reds at 2."
 
 fn planted_emission_rejected() -> ProvenancedRustEmissionObservation {
   EmissionRejected {
@@ -397,4 +397,20 @@ test fn observation_candidate_rejection_names_only_the_emission_stop() -> Bool {
   )
   direct_rust_door_observation_is_candidate_rejection(o: stopped)
     && !direct_rust_door_observation_is_candidate_rejection(o: assembly)
+}
+
+test fn seed_reachable_closure_refuses_the_seed_absence_leaf() -> Bool {
+  let g = group_of(
+    emission: planted_artifact(
+      source_text: direct_rust_door_expected_source,
+      producer: V1SeedEmitter,
+      closure: RealizedEmitterClosure {
+        emitter_module_paths: ["v1.compile", "v1.compiler.emit_rust"]
+      },
+      qualifications: source_produced_qualifications
+    )
+  )
+  leaf_refused(leaf: direct_rust_door_seed_emitter_absence_leaf(group: g))
+    && leaf_refused(leaf: direct_rust_door_producer_identity_leaf(group: g))
+    && !leaf_refused(leaf: direct_rust_door_source_fidelity_leaf(group: g))
 }
