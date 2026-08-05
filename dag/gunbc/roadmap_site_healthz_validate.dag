@@ -4,7 +4,7 @@ import extdeps.languages.json.grammar { json_text_trim_trailing_lf }
 import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.roadmap_site_surface_expect {
   roadmap_site_healthz_json_string_parses,
-  roadmap_site_healthz_surface_is_current as expect_healthz_surface_is_current,
+  roadmap_site_healthz_surface_is_current,
 }
 import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle }
 
@@ -20,10 +20,10 @@ fn roadmap_site_healthz_surface_is_current_for_bundle(
   bundle: RoadmapSiteSurfaceBundle,
   observed_body: String,
 ) -> Bool {
-  expect_healthz_surface_is_current(bundle: bundle, observed_body: observed_body)
+  roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: observed_body)
 }
 
-fn roadmap_site_healthz_surface_is_current(observed_body: String) -> Bool {
+fn roadmap_site_healthz_surface_is_current_from_observed_body(observed_body: String) -> Bool {
   let bundle = materialize_live_roadmap_site_surface_bundle()
   roadmap_site_healthz_surface_is_current_for_bundle(bundle: bundle, observed_body: observed_body)
 }
