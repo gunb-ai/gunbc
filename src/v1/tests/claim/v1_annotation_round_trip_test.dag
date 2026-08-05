@@ -270,7 +270,7 @@ fn bypassed_row_count(source: String) -> Int {
   source_annotation_graph_rows(
     graph: annotation_attachment_result_graph(
       result: bind_annotations(
-        transport: parsed.transport,
+        transport: parsed.parse.occurrence_transport,
         captures: parsed.artifact.annotations,
         source_length: string_length(s: source)
       )
@@ -319,40 +319,82 @@ test fn w_same_text_same_position_different_declaration_disagrees() -> Bool {
 
 data two_declaration_note: String = "The control the single-declaration fixtures could not provide: two declarations each carrying their own prose. It asserts the blocks are selected PER SUBJECT — alpha's rendering contains alpha's text and not beta's — which is what the typed one-subject carrier exists to guarantee and what a bare row list silently got wrong.
 
-BETA IS RENDERED ABOVE `data beta`, NOT ABOVE THE SHARED `data alpha`, and the difference is the whole claim. An earlier cut reused declaration_text for both subjects, so beta's expected rendering was literally `// about beta` above `data alpha` — a string that shows beta's TEXT was selected while quietly reattaching it to a declaration named alpha. Round-tripping that would have proved the renderer can move prose from one subject to another and still agree with itself. Each subject now round trips against its OWN declaration, so the arm says what its name says: each declaration keeps its own prose."
+BETA IS RENDERED ABOVE `data beta`, NOT ABOVE THE SHARED `data alpha`, and the difference is the whole claim. An earlier cut reused declaration_text for both subjects, so beta's expected rendering was literally `// about beta` above `data alpha` — a string that shows beta's TEXT was selected while quietly REATTACHING it to a declaration named alpha. Text selection is the weaker claim; the arm's name promises the stronger one.
+
+So each rendering is reparsed and the prose is read back THROUGH ITS SUBJECT: beta's rendering must bind `// about beta` to the subject named beta. The old form is kept as the RED control, executed rather than described — rendering beta's blocks above `data alpha` and asserting that the reparse binds beta's prose to ALPHA. That is the misattachment the arm exists to exclude, so it is asserted to happen in the wrong form rather than merely avoided in the right one.
+
+WHY THIS ARM DOES NOT USE round_trip_is_evidence: the fixture carries two subjects and any single rendering reproduces one, so `before` has two rows and `after` has one and the round trip correctly disagrees. Per-subject reattachment is the claim here; whole-source survival is what the single-declaration arms above prove."
 
 data two_decl_source: String = "module rt\n\n// about alpha\ndata alpha: String = \"a\"\n\n// about beta\ndata beta: String = \"b\"\n"
 
 data beta_declaration_text: String = "data beta: String = \"b\"\n"
 
-test fn w_each_declaration_keeps_its_own_prose() -> Bool {
-  let parsed = parsed_of(source: two_decl_source)
-  admitted_row_count(source: two_decl_source) == 2 &&
-    rendered_source_for_parsed(parsed: parsed, subject_name: "alpha", decl: declaration_text) ==
-      "module rt\n\n// about alpha\ndata alpha: String = \"a\"\n" &&
-    rendered_source_for_parsed(parsed: parsed, subject_name: "beta", decl: beta_declaration_text) ==
-      "module rt\n\n// about beta\ndata beta: String = \"b\"\n" &&
-    round_trip_is_evidence_for(before: parsed, subject_name: "alpha", decl: declaration_text) &&
-    round_trip_is_evidence_for(before: parsed, subject_name: "beta", decl: beta_declaration_text)
+fn reattached_block_text(rendered: String, name: String) -> String {
+  let parsed = parsed_of(source: rendered)
+  match subject_named_in(parsed: parsed, name: name) {
+    Absent => ""
+    Present { value: subject } =>
+      match subject_annotation_blocks_for(graph: parsed.admitted.graph, subject: subject) {
+        Absent => ""
+        Present { value: blocks } => render_subject_annotation_blocks(blocks: blocks)
+      }
+  }
 }
 
-data parse_error_control_note: String = "THE ARM THAT PROVES THE PARSE GATE, and it is built the same way as the admission-routing arm above: assert the bypass would have passed, then assert the gate refuses. The fixture's valid prefix carries prose and a declaration; its trailing declaration is truncated after `=`, so the parser errors while the annotation channel — lexical, and upstream of the failure — still yields an attached, admitted row.
+test fn w_each_declaration_keeps_its_own_prose() -> Bool {
+  let parsed = parsed_of(source: two_decl_source)
+  let alpha_rendered = rendered_source_for_parsed(parsed: parsed, subject_name: "alpha", decl: declaration_text)
+  let beta_rendered = rendered_source_for_parsed(parsed: parsed, subject_name: "beta", decl: beta_declaration_text)
+  admitted_row_count(source: two_decl_source) == 2 &&
+    alpha_rendered == "module rt\n\n// about alpha\ndata alpha: String = \"a\"\n" &&
+    beta_rendered == "module rt\n\n// about beta\ndata beta: String = \"b\"\n" &&
+    reattached_block_text(rendered: alpha_rendered, name: "alpha") == "// about alpha" &&
+    reattached_block_text(rendered: beta_rendered, name: "beta") == "// about beta" &&
+    reattached_block_text(
+      rendered: rendered_source_for_parsed(parsed: parsed, subject_name: "beta", decl: declaration_text),
+      name: "alpha"
+    ) == "// about beta"
+}
 
-Both halves are asserted because only the pair is discriminating. `parse_is_clean` must be false and the admitted graph must still be NONEMPTY: that is what shows the gate is doing the refusing rather than the source having no prose to carry. Without the gate, the renderer would reproduce only the annotated subject, the malformed tail would vanish, the rendered source would parse clean, and the rows would agree — a round trip that reports the graph survived a trip whose second leg silently repaired the input."
+data parse_error_control_note: String = "THE ARM THAT PROVES THE PARSE GATE, and it is tested AT ITS OWN SEAM rather than end to end, because the end-to-end interleaving is not reachable with any fixture tried.
+
+MEASURED FIRST, then built accordingly. Five malformed shapes were probed — trailing garbage token, a declaration truncated after `=`, an unclosed `fn` parameter list, an unclosed `type` body, a stray `)` — and in every one the parse errors AND the annotation admission refuses, with an EMPTY graph. So the hypothesised false green (parse errors, annotations admit cleanly, renderer drops the malformed tail, rows agree) has no fixture in this tree today: admission refuses first, because a failed parse yields no module items for the capture to attach to. Reporting the end-to-end arm as proof of the parse gate would therefore have been the inert-check tier — an arm that greens whether or not the gate exists.
+
+So the gate is discriminated where it actually lives, by a forged value that differs from a working one in EXACTLY the parse health and nothing else. Getting that minimal is the whole difficulty, and the first attempt failed its own mutation test: swapping in the malformed source's entire ParseWithTableResult also swapped its OCCURRENCE TRANSPORT, so the good graph's subject ids no longer resolved and the projection refused for the wrong reason — the arm greened with the gate deleted. What is forged now is only `result`, the error-and-module pair; the transport, intern table, allocator and admitted graph all stay the clean source's. Delete the gate and the arm reds, because the only remaining reason to refuse is the one under test.
+
+That is a lesson about controls, not about this gate: a synthetic input that perturbs more than the property under test proves the wrong thing while looking like proof.
+
+WHY THE GATE STAYS despite having no reachable end-to-end case: `annotations admit only when the parse succeeded` is a coupling in today's attachment implementation, not a property this witness is entitled to assume. The gate is the property stating its own precondition instead of inheriting it from a neighbour."
 
 data malformed_tail_source: String = "module rt\n\n// good prose\ndata alpha: String = \"a\"\n\ndata beta: String =\n"
 
-fn admitted_graph_row_count_ignoring_parse(source: String) -> Int {
-  source_annotation_graph_rows(graph: parsed_of(source: source).admitted.graph) |> count
-}
-
 test fn w_a_parse_error_is_not_evidence() -> Bool {
-  let parsed = parsed_of(source: malformed_tail_source)
-  !parse_is_clean(parsed: parsed) &&
-    parse_is_clean(parsed: parsed_of(source: two_decl_source)) &&
-    admitted_graph_row_count_ignoring_parse(source: malformed_tail_source) > 0 &&
+  let good = parsed_of(source: alpha_named_source)
+  let bad = parsed_of(source: malformed_tail_source)
+  parse_is_clean(parsed: good) &&
+    !parse_is_clean(parsed: bad) &&
     admitted_row_count(source: malformed_tail_source) == (0 - 1) &&
-    !round_trip_is_evidence(source: malformed_tail_source, subject_name: "alpha")
+    !round_trip_is_evidence(source: malformed_tail_source, subject_name: "alpha") &&
+    match keyed_rows_of(parsed: good) {
+      Absent => false
+      Present { value: rows } =>
+        (rows |> count) > 0 &&
+          match keyed_rows_of(
+            parsed: ParsedSource {
+              artifact: good.artifact,
+              parse: ParseWithTableResult {
+                result: bad.parse.result,
+                intern_table: good.parse.intern_table,
+                occurrence_allocator: good.parse.occurrence_allocator,
+                occurrence_transport: good.parse.occurrence_transport,
+              },
+              admitted: good.admitted,
+            }
+          ) {
+            Absent => true
+            Present { value: _ } => false
+          }
+    }
 }
 
 data duplicate_name_note: String = "The control for the authored-name uniqueness refusal. Two module items share the name `alpha`, so `the subject called alpha` has no answer — and the resolver must say so rather than folding to whichever match traversal reaches last. The arm pins that the SAME source resolves a uniquely named sibling normally, so the Absent is the duplicate refusing and not the lookup being broken."
@@ -396,3 +438,4 @@ test fn w_mixed_subject_rows_cannot_reach_the_renderer() -> Bool {
       }
   }
 }
+
