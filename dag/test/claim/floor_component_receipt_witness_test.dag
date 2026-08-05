@@ -4,7 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond }
-import std.observation { ClockBasis, CpuClock, WallClock }
+import std.measure { ClockBasis, CpuClock, WallClock }
 import gunbc.floor_component_receipt {
   FloorComponentRow,
   FloorControlState,
