@@ -439,3 +439,16 @@ test fn a_lease_is_admitted_only_where_the_effects_are_local() -> Bool {
     LeaseHostIsThisProcess => false
   }
 }
+
+data shared_parent_has_no_owner_flags_note: String = "THE SHARED PARENT MUST NOT CARRY OWNERSHIP FLAGS, asserted rather than left to the next author's memory (review 48335). /var/lib/gunbc/deploy-revision is shared by every slot, so an `install -d -o <service_user>` there takes its owner from whichever slot happens to be deploying — idempotent only while all slots share one user, which is a coincidence of two values rather than a fact. The per-slot FILE keeps its owner flags, so this witness has to distinguish the two commands rather than simply banning `-o` from the script."
+
+test fn the_shared_receipt_parent_is_created_without_owner_flags() -> Bool {
+  let script = live_deploy_slot_revision_record_script(
+    spec: deploy_target_blue_slot(target: Srv1Dashboard),
+    revision: witness_candidate_sha,
+  )
+  let dir = deploy_slot_revision_receipt_dir as String
+  contains_substring(haystack: script, needle: concat("install -d -m 0755 '", concat(dir, "'")))
+    && !contains_substring(haystack: script, needle: concat("install -d -m 0755 -o", ""))
+    && contains_substring(haystack: script, needle: "install -m 0644 -o ")
+}

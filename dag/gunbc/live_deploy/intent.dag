@@ -101,6 +101,8 @@ fn live_deploy_slot_revision_read_script(spec: DeploymentSpec) -> String {
   )
 }
 
+data slot_revision_shared_parent_ownership_note: String = "THE SHARED PARENT IS CREATED WITHOUT -o/-g, AND THAT IS WHAT MAKES A SECOND SLOT USER UNWRITABLE RATHER THAN MERELY UNLIKELY (review 48335). An earlier revision created /var/lib/gunbc/deploy-revision with `-o <service_user> -g <service_user>`, taken from whichever slot happened to be writing. Both slots share a service user today, so it was idempotent — and that agreement was a coincidence of two values, not a fact. A future slot with a different service_user would have made each deploy re-chown the SHARED parent to its own user, so the two slots would fight over a directory neither of them owns in any meaningful sense.\\n\\nThe repair is to notice the ownership was never needed. The file is placed by `sudo install` running as root, so root does not need the directory to belong to the service user in order to write into it; the service user only ever READS the receipt, which mode 0755 on the directory and 0644 on the file already permit. Dropping the flags removes the contention by construction instead of leaving a note asking the next author to remember — which is the same shape as the existing shared-prefix coupling marker on /opt/gunbc, resolved rather than recorded.\\n\\nThe FILE keeps -o/-g because it is per-slot, so no two writers contend for it, and because the dissolve-on for this receipt has the served process eventually publishing its own identity — at which point the service user is the writer."
+
 data slot_revision_record_grants_note: String = "THE WRITE STAYS INSIDE THE SIX NOPASSWD GRANTS (gunbc.fleet_posix_accounts fleet_posix_ci_runner_sudo_grants — apt-get, install, visudo, systemctl, tailscale, rm). The deploy principal is the unprivileged CI-runner account and /var/lib/gunbc is not writable by it, so the receipt is staged into a mktemp file the runner owns and then placed with the GRANTED install, which also creates the parent directory with ownership at creation rather than a chown fixup. That is the same construction emit_deploy_principal_note records for every other deploy-owned path: the wrongly-owned intermediate state is unwritable rather than corrected afterwards.\\n\\nThe staged file is removed on the success path only. A failed install leaves it behind under the runner's own temp directory, which is the correct trade: `rm -f` after a failure would run under `set -e` having already lost the exit status, and a stray temp file is a diagnosable residue while a swallowed failure is not."
 
 fn live_deploy_slot_revision_record_script(spec: DeploymentSpec, revision: CommitSha) -> String {
@@ -112,8 +114,7 @@ fn live_deploy_slot_revision_record_script(spec: DeploymentSpec, revision: Commi
       "# routed-slot revision receipt write (gunbc.live_deploy.revision deploy_slot_revision_receipt_path)\n",
       "_gunbc_receipt_stage=\"$(mktemp)\"\n",
       "printf '%s' ", sh_single_quote(s: revision as String), " > \"$_gunbc_receipt_stage\"\n",
-      "sudo -n install -d -m 0755 -o ", spec.service.service_user as String,
-      " -g ", spec.service.service_user as String, " ", sh_single_quote(s: dir), "\n",
+      "sudo -n install -d -m 0755 ", sh_single_quote(s: dir), "\n",
       "sudo -n install -m 0644 -o ", spec.service.service_user as String,
       " -g ", spec.service.service_user as String,
       " \"$_gunbc_receipt_stage\" ", sh_single_quote(s: path), "\n",

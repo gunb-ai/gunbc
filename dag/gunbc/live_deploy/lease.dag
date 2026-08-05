@@ -4,6 +4,7 @@ import std.types { String, List, Int, Duration, FilePath, NonEmptyStr, CommitSha
 import extdeps.linux.flock {
   FlockWaitBound,
   FlockWaitSeconds,
+  FlockFailImmediately,
   flock_exclusive_command,
   flock_exit_is_lock_conflict,
   flock_exit_is_launcher_failure,

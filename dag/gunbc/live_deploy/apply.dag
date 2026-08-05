@@ -67,6 +67,8 @@ import gunbc.host_effect {
   LiveDeployRetract,
   LiveDeployEnsureDependency,
   LiveDeployDigestReadback,
+  LiveDeploySlotRevisionRead,
+  LiveDeploySlotRevisionRecord,
   DeployAccessPreflight,
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
