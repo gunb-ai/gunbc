@@ -35,6 +35,10 @@ import gunbc.live_deploy.lease {
   LeaseConflict,
   LeaseLauncherFailed,
   LeaseAcquiredExit,
+  lease_host_agreement,
+  LeaseHostAgreement,
+  LeaseHostIsThisProcess,
+  LeaseHostRefused,
 }
 import gunbc.live_deploy.intent {
   slot_revision_unrecorded_token,
@@ -43,6 +47,14 @@ import gunbc.live_deploy.intent {
 }
 import gunbc.live_deploy.apply { parse_slot_revision_stdout }
 import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.host_effect {
+  HostEffectTransport,
+  LocalShell,
+  SshShell,
+  EmitArtifactThenThinRun,
+  BootstrapFragment,
+  ThinInvocation,
+}
 import v2.std.algebra { list_head, ListHeadResult, HeadFound, HeadAbsent }
 import extdeps.linux.flock {
   flock_conflict_exit_code,
@@ -58,6 +70,7 @@ import gunbc.ci_workflow {
 }
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
+  ci_deploy_srv1_operator_access,
   deploy_access_is_local_apply,
   deploy_access_check,
   deploy_access_sudo_miss_reason,
@@ -389,5 +402,40 @@ fn contains_substring_from(haystack: String, needle: String, index: Int) -> Bool
     } else {
       contains_substring_from(haystack: haystack, needle: needle, index: index + 1)
     }
+  }
+}
+
+data lease_host_agreement_note: String = "THE LEASE MUST LOCK THE MACHINE THE EFFECTS LAND ON, AND THIS IS THE PAIR THAT PROVES THE TWO TRANSPORTS ARE TREATED DIFFERENTLY. The CI access is LocalShell — every host effect executes in the launcher's own machine, so the lock file and the mutations are on one host by construction and the lease is real. The operator access drives effects over SSH, so a flock taken in the launcher would lock the CALLER's machine and exclude nothing on srv1: a lease that reports success while excluding nobody, which is worse than none.\\n\\nThis is the discriminating pair rather than a single assertion because either half alone is satisfiable by a mistake. Admitting both would ship the fabricated lease; refusing both would disable the deploy entirely and still look 'safe'."
+
+test fn the_ci_transport_is_local_and_the_operator_transport_is_not() -> Bool {
+  match ci_deploy_srv1_access.transport {
+    LocalShell => true
+    SshShell { ssh_host: _ } => false
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
+  }
+  && match ci_deploy_srv1_operator_access.transport {
+    SshShell { ssh_host: _ } => true
+    LocalShell => false
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
+  }
+}
+
+test fn a_lease_is_admitted_only_where_the_effects_are_local() -> Bool {
+  match lease_host_agreement(transport: ci_deploy_srv1_access.transport) {
+    LeaseHostIsThisProcess => true
+    LeaseHostRefused { cause: _ } => false
+  }
+  && match lease_host_agreement(transport: ci_deploy_srv1_operator_access.transport) {
+    LeaseHostRefused { cause: _ } => true
+    LeaseHostIsThisProcess => false
+  }
+  && match lease_host_agreement(
+       transport: EmitArtifactThenThinRun {
+         bootstrap: BootstrapFragment { script: "" },
+         invocation: ThinInvocation { argv: [] },
+       }
+     ) {
+    LeaseHostRefused { cause: _ } => true
+    LeaseHostIsThisProcess => false
   }
 }

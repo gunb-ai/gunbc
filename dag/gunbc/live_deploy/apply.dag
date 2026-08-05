@@ -724,11 +724,17 @@ func live_deploy_apply_srv1_operator_leased_wet(candidate: String) -> ProcessExi
 }
 
 func live_deploy_apply_srv1_wet() -> ProcessExit {
-  live_deploy_launch_under_lease(inner_function: live_deploy_apply_srv1_leased_entry_function)
+  live_deploy_launch_under_lease(
+    inner_function: live_deploy_apply_srv1_leased_entry_function,
+    transport: ci_deploy_srv1_access.transport,
+  )
 }
 
 func live_deploy_apply_srv1_operator_wet() -> ProcessExit {
-  live_deploy_launch_under_lease(inner_function: live_deploy_apply_srv1_operator_leased_entry_function)
+  live_deploy_launch_under_lease(
+    inner_function: live_deploy_apply_srv1_operator_leased_entry_function,
+    transport: ci_deploy_srv1_operator_access.transport,
+  )
 }
 
 func live_deploy_retract_srv1_wet() -> ProcessExit {

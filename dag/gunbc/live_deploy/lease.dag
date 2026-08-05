@@ -18,6 +18,12 @@ import v2.std.collection { Present, Absent }
 import gunbc.command_runner { run_shell_command_exit_code }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.output_policy { ExpectSuccess }
+import gunbc.host_effect {
+  HostEffectTransport,
+  LocalShell,
+  SshShell,
+  EmitArtifactThenThinRun,
+}
 import extdeps.git.inspect
 import gunbc.cli_invoke {
   GunbcRunNamedArg,
@@ -239,25 +245,56 @@ fn live_deploy_leased_run_failed_reason(exit_code: Int) -> String {
   )
 }
 
-func live_deploy_launch_under_lease(inner_function: String) -> ProcessExit
+data lease_must_live_on_the_mutated_host_note: String = "THE LOCK HAS TO BE ON THE MACHINE THE EFFECTS LAND ON, AND THAT IS WHY THIS REFUSES INSTEAD OF LOCKING LOCALLY UNDER SSH. Mutual exclusion is between everything that mutates srv1; a flock taken on the caller's own machine excludes only other callers on THAT machine, so an operator deploying over SSH from a laptop would hold a lock that no CI deploy — and no second operator — can see. It would report as leased while excluding nothing, which is a fabricated guarantee and strictly worse than the honest absence of one (DESIGN §5: no fabricated plausible output).\\n\\nWHY LocalShell IS THE ADMITTED CASE, as a structural fact rather than a runner-label coincidence: LocalShell means every host effect of this deploy executes in this process's own machine, so the lock file and the mutations are on one machine BY CONSTRUCTION. It is not 'the CI runner happens to be srv1'; it is that the transport says the effects are local, and the lock is local, so they are the same host whatever that host is.\\n\\nWHY THE SSH ARM CANNOT SIMPLY RUN flock OVER SSH. The process that must be excluded is the LOCAL one driving discrete SSH effects. Wrapping the remote side would lock srv1 only for the lifetime of one remote command, releasing between effects — which is the original observe-then-mutate race, one phase in. Holding a remote lock across a local process's lifetime needs a session-scoped effect model, exactly as §10.5 of the design note says.\\n\\nWHAT THIS COSTS: the operator entrypoint refuses until that lands. That is a real capability removed, and it is the correct direction — the entrypoint has NO exclusion today, so the choice is between refusing and pretending, not between refusing and working. NEXT-RUNG TRIGGER: a session-scoped remote effect that holds one lock across discrete SSH invocations; at that point this arm becomes an SshExec-transported lease and the refusal deletes."
+
+type LeaseHostAgreement
+  = LeaseHostIsThisProcess
+  | LeaseHostRefused { cause: NonEmptyStr }
+
+fn lease_host_agreement(transport: HostEffectTransport) -> LeaseHostAgreement {
+  match transport {
+    LocalShell => LeaseHostIsThisProcess
+    SshShell { ssh_host: h } =>
+      LeaseHostRefused {
+        cause: join(
+          [
+            "deploy refused: this entry drives host effects over SSH to ",
+            h as String,
+            ", so an exclusive lease taken here would lock this machine and exclude nothing on the host being mutated. Refusing rather than reporting a lease that excludes nobody; a session-scoped remote lock is the trigger that reopens this path"
+          ],
+          ""
+        ) as NonEmptyStr
+      }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      LeaseHostRefused {
+        cause: "deploy refused: the emit-artifact-then-thin-run transport defers execution to another process, so no lease taken here can span the mutations it performs" as NonEmptyStr
+      }
+  }
+}
+
+func live_deploy_launch_under_lease(inner_function: String, transport: HostEffectTransport) -> ProcessExit
   uses net: Network
 {
-  match observe_launch_candidate() {
-    LaunchCandidateRefused { cause: why } => exit_failure(reason: why as String)
-    LaunchCandidateObserved { revision: rev } => {
-      let invocation = live_deploy_exclusive_invocation(target: Srv1Dashboard)
-      live_deploy_lease_launch_exit(
-        invocation: invocation,
-        exit_code: run_shell_command_exit_code(
-          command: live_deploy_leased_command(
+  match lease_host_agreement(transport: transport) {
+    LeaseHostRefused { cause: why } => exit_failure(reason: why as String)
+    LeaseHostIsThisProcess =>
+      match observe_launch_candidate() {
+        LaunchCandidateRefused { cause: why } => exit_failure(reason: why as String)
+        LaunchCandidateObserved { revision: rev } => {
+          let invocation = live_deploy_exclusive_invocation(target: Srv1Dashboard)
+          live_deploy_lease_launch_exit(
             invocation: invocation,
-            source_roots: witness_layer_roots,
-            inner_function: inner_function,
-            candidate: CandidateRelease { revision: rev },
-          ),
-          transport: LocalExec,
-        ),
-      )
-    }
+            exit_code: run_shell_command_exit_code(
+              command: live_deploy_leased_command(
+                invocation: invocation,
+                source_roots: witness_layer_roots,
+                inner_function: inner_function,
+                candidate: CandidateRelease { revision: rev },
+              ),
+              transport: LocalExec,
+            ),
+          )
+        }
+      }
   }
 }
