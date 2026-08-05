@@ -4974,10 +4974,26 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
         String::from("batch\tentry\tfunction\tobserved_eval_ms\tthreshold_ms\tverdict\n");
     let mut mandatory_count = 0usize;
     let mut worst: Vec<(u128, String, String)> = Vec::new();
+    let mut observation_absent_count = 0usize;
     for rec in batch_records {
         let n = rec.batch_index + 1;
         for result in &rec.results {
             for row in &result.witness_row_costs {
+                // A selection-skipped row's eval is a synthesized 0 (§5 — never a real
+                // measurement), not a comfortably-fast witness: reporting it as
+                // BelowMigrationThreshold would be the same fabricated-zero-reads-as-healthy
+                // shape review 43261/43274 already root-caused for the drift comparator's
+                // WithinBasis arm (merry-raven-690 / still-bat-561, 7820A's ObservationAbsent).
+                // Disjoint from the population this gate counts: located separately, never
+                // silently folded into BelowMigrationThreshold.
+                if row.5 == "selection-skipped" {
+                    observation_absent_count += 1;
+                    body.push_str(&format!(
+                        "{n}\t{}\t{}\t\t{threshold_ms}\tObservationAbsent\n",
+                        row.0, row.1
+                    ));
+                    continue;
+                }
                 let observed = row.2 / 1_000_000;
                 let is_mandatory = match witness_row_cost_migration_verdict_via_authority(
                     &ctx, observed,
@@ -5024,7 +5040,7 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
         return false;
     }
     eprintln!(
-        "[receipt] floor witness row-cost migration disclosure: mandatory_migration={mandatory_count} threshold_ms={threshold_ms} (TSV: {})",
+        "[receipt] floor witness row-cost migration disclosure: mandatory_migration={mandatory_count} observation_absent={observation_absent_count} threshold_ms={threshold_ms} (TSV: {})",
         path.display()
     );
     true
