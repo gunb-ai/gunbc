@@ -26,7 +26,7 @@ import gunbc.v1_complexity_capability_census {
   ParityPhase,
   ParityC1ExpressionAuthority,
   ParityC4Interprocedural,
-  RetirementTrigger,
+  CapabilityRetirementTrigger,
   RetiresWhenReplacementExecutes,
   RetiresWithSeedDeletion,
   V1ComplexityInventoryRow,

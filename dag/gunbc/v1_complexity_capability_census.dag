@@ -104,7 +104,9 @@ type V1ComplexityInventoryItem
 
 data v1_complexity_inventory_item_note: String = "One inventory row is one of three things, and the two residue arms carry the capability they belong to as a typed edge — so a hazard or a legacy realization can never float free of the capability it qualifies. The semantic capability population is exactly the SemanticCapabilityItem rows; counting inventory rows and counting capabilities are now different questions with different answers, which is the honesty the previous revision lacked when SummaryEviction and ParserProgressV1Walker sat as peers beside real capabilities."
 
-type RetirementTrigger
+data capability_retirement_trigger_naming_note: String = "NAMED CapabilityRetirementTrigger, not RetirementTrigger, and the reason is a §3 finding this census caught in itself. A bare RetirementTrigger ALREADY EXISTS in the tree as a VARIANT — gunbc.stage0_rust_lifecycle_totality LifecycleTotalityUnderivedAxis, and again in gunbc.stage0_rust_honest_frontier_projection. Declaring a top-level type of that name shadowed the variant and broke lifecycle_totality_counts_retirement_trigger_as_underived_axis with an undefined-variable refusal, in CI, on a module this PR never touched. TWO THINGS FOLLOW, and the second matters more. First, the collision is accidental homonymy, not a §3 fork: theirs is an AXIS LABEL for a fact the stage0 rust lifecycle cannot yet derive, mine is the TRIGGER CARRIER that discharges a capability retirement obligation — different subjects, so unifying them would be the false-unification error, not the fix. Second, and explicitly: this census does NOT discharge lifecycle_totality_retirement_trigger_dissolve_on. That row waits for a RetirementTrigger carrier in gunbc.stage0_rust_source_lifecycle_scaffold for the stage0 rust source lifecycle subject. Nothing here satisfies it, and a future reader finding a modeled retirement trigger in this module must not close that row against this one."
+
+type CapabilityRetirementTrigger
   = RetiresWhenReplacementExecutes { replacement: ComplexityCapabilityId }
   | RetiresWithSeedDeletion
 
@@ -115,7 +117,7 @@ type ComplexityCapabilityDisposition
   | IntegrationOwed { substrate_carrier: DeclarationRef, phase: ParityPhase, note: NonEmptyStr }
   | MigrationOwed { destination: CostMigrationDestination, producer: CapabilityFactProducer, phase: ParityPhase, note: NonEmptyStr }
   | SupersededByBetterModel { superseded_by: DeclarationRef, note: NonEmptyStr }
-  | RetirementOwed { trigger: RetirementTrigger, note: NonEmptyStr }
+  | RetirementOwed { trigger: CapabilityRetirementTrigger, note: NonEmptyStr }
   | Retired { reason: NonEmptyStr }
 
 data disposition_construction_note: String = "Every arm's routing metadata is a typed identity, not a non-empty string. A destination is a CostMigrationDestination drawn from the signed ruling (the legacy oracle is absent from that vocabulary, so a row migrating INTO v1.compiler.complexity cannot be written); a phase is a ParityPhase; a retirement trigger names the superseding capability as a ComplexityCapabilityId; a carrier is a DeclarationRef that resolves through v2.std.decl_ref_resolution. The previous revision claimed non-empty payloads made an unjustified disposition unwritable — the operator's correction is exact: a non-empty string proves only that someone typed something. What is unwritable now is a row routed to a module the ruling never named, or to a phase that does not exist, or citing a declaration that does not resolve."
