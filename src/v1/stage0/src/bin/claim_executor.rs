@@ -4753,10 +4753,45 @@ fn write_gate_warm_cost_receipt_at(
 }
 
 /// Per-witness cost receipt (Piece #5 spine): one row per discovery witness preserving
-/// `(entry, function, eval_ms, resolve_ms)` identity — the grain falsifier_cadence_surface_note
-/// requires before per-row placement is admissible. The complete machine-readable record is
-/// the TSV file; rendered streams may project a subset later (W2 ruling: one record, two
-/// projections). Fail-closed on write error.
+/// `(entry, function, eval_wall_ms, resolve_ms)` identity — the grain
+/// falsifier_cadence_surface_note requires before per-row placement is admissible. The
+/// complete machine-readable record is the TSV file; rendered streams may project a subset
+/// later (W2 ruling: one record, two projections). Fail-closed on write error.
+///
+/// TWO COLUMN CORRECTIONS (2026-08-05), both cases of a column that could not say what it
+/// meant:
+///
+/// 1. `eval_ms` -> `eval_wall_ms`. The figure is and always was WALL, while the fast-lane
+///    cap that kills these rows is enforced on THREAD CPU, so the old name invited a
+///    threshold built on this file to select a different population than the cap kills.
+///    Renaming is the honest half; the *enforced* quantity still does not appear here at
+///    all, because these rows project through `std.observation.ObservationEvent`, which
+///    carries wall and rss but no cpu. See `v1_interpreter::WITNESS_COST_CLOCK_BASIS_NOTE`
+///    for the bound that makes this narrower than it sounds (eval is single-threaded, so
+///    wall bounds cpu above: a row under the cap on wall is provably under on cpu) and for
+///    the std change that would close it.
+///
+/// 2. `outcome` and `detail` are now EMITTED rather than dropped. The row tuple always
+///    carried them; the writer discarded the last two fields. Because `discovery_claim_result`
+///    pushes selection-skipped rows into this same receipt with zero timings, a `0` in the
+///    eval column meant "never executed" OR "ran in under a millisecond" and the file could
+///    not distinguish them — the empty-observation narrow, in an artifact whose whole
+///    purpose is per-row cost. A census taken from a selection-applied per-PR run would have
+///    counted skipped rows as fast ones.
+///
+///    Note the `.dag` model was never wrong here: `WitnessCostReceiptRow` already carries
+///    `outcome` and the projection witness already matches on it. Only this writer dropped
+///    it — the model/realization fork, not a modeling gap.
+///
+/// 3. An absent measurement now renders as `unmeasured`, not `0`. Emitting the outcome column
+///    made the two cases *decidable*, but the number itself was still fabricated, and
+///    `std.observation`'s `observation_measured_note` rules on exactly this: "A renderer
+///    projecting MeasuredUnavailable prints the cause; it never prints 0 and never omits the
+///    field, because a silently omitted number is the same fabrication one layer up." An
+///    executed witness may legitimately measure 0 ms, and those rows keep their `0`; a row
+///    that never ran has no cost to report and now says so. The cell is deliberately
+///    non-numeric so a consumer reaching for a number fails loudly rather than counting an
+///    unexecuted row as a fast one.
 fn write_witness_row_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_log: bool) -> bool {
     write_witness_row_cost_receipt_at(
         std::path::Path::new("target"),
@@ -4765,23 +4800,84 @@ fn write_witness_row_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_l
     )
 }
 
+/// Rendering for a timing cell whose measurement does not exist. Deliberately NOT a number,
+/// so a consumer that reaches for one fails loudly instead of counting an unexecuted row as a
+/// fast one — the failure mode this receipt had while the cell said `0`.
+const UNMEASURED_CELL: &str = "unmeasured";
+
+/// Whether a row's timings are absent rather than measured. Keyed on the same
+/// `selection-skipped` outcome spelling `discovery_claim_result` writes and
+/// `wet_witness_row_outcome_label` already dispatches on, rather than inferring absence from
+/// the numbers — inferring it from a zero is precisely the conflation being closed.
+fn row_measurement_is_absent(outcome_variant: &str) -> bool {
+    outcome_variant == "selection-skipped"
+}
+
+/// What the drift wire may say about one row, decided BEFORE any comparison runs.
+///
+/// The fail-open this closes was not a bad comparison — it was comparing at all. A row that
+/// never executed floored to `observed = 0`, and 0 never exceeds a basis, so the comparator
+/// returned `WithinBasis`: a positive claim that the row met its cost basis, from a
+/// measurement that does not exist, and one that could never fail. Deciding comparability
+/// first makes that verdict unreachable rather than merely unlikely.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DriftRowDisposition {
+    /// No measurement exists — nothing to judge. Mirror of `BasisAbsent`.
+    ObservationAbsent,
+    /// A measurement exists but no basis to judge it against.
+    BasisAbsent,
+    /// Both present: the only state in which a verdict is meaningful.
+    Comparable,
+}
+
+fn drift_row_disposition(outcome_variant: &str, has_basis: bool) -> DriftRowDisposition {
+    // Order is load-bearing: absence of the OBSERVATION wins over presence of a basis. The
+    // defect was precisely a row that had a basis and no measurement being treated as
+    // comparable because its fabricated zero looked like one.
+    if row_measurement_is_absent(outcome_variant) {
+        DriftRowDisposition::ObservationAbsent
+    } else if has_basis {
+        DriftRowDisposition::Comparable
+    } else {
+        DriftRowDisposition::BasisAbsent
+    }
+}
+
 fn write_witness_row_cost_receipt_at(
     base: &std::path::Path,
     batch_records: &[BatchRecord],
     emit_full_tsv_log: bool,
 ) -> bool {
-    let mut body = String::from("batch\tentry\tfunction\teval_ms\tresolve_ms\twarm_ms\n");
+    let mut body = String::from(
+        "batch\tentry\tfunction\teval_wall_ms\tresolve_ms\twarm_ms\toutcome\tdetail\n",
+    );
     let mut row_count = 0usize;
     for rec in batch_records {
         let n = rec.batch_index + 1;
         for result in &rec.results {
             for row in &result.witness_row_costs {
-                let eval_ms = row.2 / 1_000_000;
-                let resolve_ms = row.3 / 1_000_000;
-                let warm_ms = row.4 / 1_000_000;
+                // A row that never executed has no cost to report. Printing `0` for it would
+                // be the fabricated zero std.observation's `observation_measured_note`
+                // forbids in as many words: "A renderer projecting MeasuredUnavailable prints
+                // the cause; it never prints 0 and never omits the field." So the timing
+                // columns render as UNMEASURED and the cause rides in outcome/detail, rather
+                // than a real measurement of zero standing in for the absence of one.
+                //
+                // Note the two are genuinely different facts here: an executed witness may
+                // legitimately measure 0 ms (sub-millisecond), and those rows keep their `0`.
+                let cells = if row_measurement_is_absent(&row.5) {
+                    format!("{UNMEASURED_CELL}\t{UNMEASURED_CELL}\t{UNMEASURED_CELL}")
+                } else {
+                    format!(
+                        "{}\t{}\t{}",
+                        row.2 / 1_000_000,
+                        row.3 / 1_000_000,
+                        row.4 / 1_000_000
+                    )
+                };
                 body.push_str(&format!(
-                    "{n}\t{}\t{}\t{eval_ms}\t{resolve_ms}\t{warm_ms}\n",
-                    row.0, row.1
+                    "{n}\t{}\t{}\t{cells}\t{}\t{}\n",
+                    row.0, row.1, row.5, row.6
                 ));
                 row_count += 1;
             }
@@ -5013,12 +5109,38 @@ fn write_witness_row_cost_drift_receipt_at(
         String::from("batch\tentry\tfunction\tobserved_eval_ms\tbasis_eval_ms\tverdict\trun_ref\n");
     let mut drift_count = 0usize;
     let mut basis_absent_count = 0usize;
+    let mut observation_absent_count = 0usize;
     for rec in batch_records {
         let n = rec.batch_index + 1;
         for result in &rec.results {
             for row in &result.witness_row_costs {
-                let observed = row.2 / 1_000_000;
+                // A row that never executed has no observation to compare. Flooring it to 0
+                // and running the comparator produced `WithinBasis` — a POSITIVE verdict that
+                // the row met its cost basis, derived entirely from a measurement that does
+                // not exist, and one that can never fail because 0 never exceeds anything.
+                // That is the fabricated zero of the sibling receipt promoted into a verdict,
+                // and it fails open: the drift wire silently passed unexecuted rows.
+                //
+                // `ObservationAbsent` is the mirror of the `BasisAbsent` arm already below —
+                // there a measurement exists with no basis to judge it, here a basis exists
+                // with no measurement to judge. Neither is a comparison, and neither is
+                // reported as one. Counted, so the population is visible rather than absorbed.
                 let key = (row.0.clone(), row.1.clone());
+                if drift_row_disposition(&row.5, basis.contains_key(&key))
+                    == DriftRowDisposition::ObservationAbsent
+                {
+                    observation_absent_count += 1;
+                    let basis_cell = basis
+                        .get(&key)
+                        .map(|b| b.eval_ms_basis.to_string())
+                        .unwrap_or_default();
+                    body.push_str(&format!(
+                        "{n}\t{}\t{}\t{UNMEASURED_CELL}\t{basis_cell}\tObservationAbsent\t\n",
+                        row.0, row.1
+                    ));
+                    continue;
+                }
+                let observed = row.2 / 1_000_000;
                 match basis.get(&key) {
                     None => {
                         basis_absent_count += 1;
@@ -5058,7 +5180,7 @@ fn write_witness_row_cost_drift_receipt_at(
         }
     }
     eprintln!(
-        "[witness-row-cost-drift] basis_absent={basis_absent_count} drift_exceeded={drift_count}"
+        "[witness-row-cost-drift] basis_absent={basis_absent_count} observation_absent={observation_absent_count} drift_exceeded={drift_count}"
     );
     for line in body.lines() {
         eprintln!("[witness-row-cost-drift] {line}");
@@ -5072,7 +5194,7 @@ fn write_witness_row_cost_drift_receipt_at(
         return false;
     }
     eprintln!(
-        "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} drift_exceeded={drift_count} (TSV: {})",
+        "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} observation_absent={observation_absent_count} drift_exceeded={drift_count} (TSV: {})",
         path.display()
     );
     true
@@ -11222,10 +11344,16 @@ mod tests {
         }
     }
 
+    /// A discovery batch that actually discovers something. `scan_dirs` is non-empty
+    /// deliberately: `group_batch_units` emits a `BatchUnit::Discovery` only when the batch
+    /// has scan dirs or explicit entries, because empty-and-empty is defined to mean zero
+    /// witness-corpus nodes (the regen spec's shape, DESIGN "Building & checks"). A fixture
+    /// with both empty is therefore not a discovery batch at all, and asserting that it
+    /// produces a discovery unit asserts against the spec.
     fn discovery() -> Runnable {
         Runnable::DiscoveryBatch {
             source_roots: vec!["src/v2".to_string()],
-            scan_dirs: vec![],
+            scan_dirs: vec!["dag/test/claim".to_string()],
             explicit_entries: vec![],
             native_bundle_entries: vec![],
             node_frontier_selection: NodeFrontierSelectionMode::Applied,
@@ -11796,6 +11924,196 @@ mod tests {
         assert_ne!(passed_line, skipped_line);
         assert_ne!(failed_line, skipped_line);
         let _ = fs::remove_dir_all(&base);
+    }
+
+    /// Fixture for the row-cost receipt: one row that EXECUTED in under a millisecond and
+    /// one row that was NEVER EXECUTED. Both floor to `0` in the millisecond eval column,
+    /// which is precisely the collision the receipt has to survive.
+    fn zero_eval_collision_records() -> Vec<BatchRecord> {
+        vec![BatchRecord {
+            batch_index: 0,
+            wall_nanos: 0,
+            clamp_ms: None,
+            unit_count: 2,
+            label: "collision".to_string(),
+            selection_tag: "applied",
+            is_wet: false,
+            results: vec![ClaimResult {
+                function: "discovery-corpus".to_string(),
+                entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
+                ok: true,
+                detail: String::new(),
+                wall_nanos: 0,
+                resolve_nanos: 0,
+                corpus_resolve_nanos: 0,
+                corpus_eval_nanos: 0,
+                corpus_witnesses: 2,
+                witness_row_costs: vec![
+                    // Executed, sub-millisecond: 500_000ns / 1_000_000 == 0.
+                    (
+                        "dag/test/claim/fast_test.dag".to_string(),
+                        "ran_in_under_a_millisecond".to_string(),
+                        500_000,
+                        0,
+                        0,
+                        "Done".to_string(),
+                        String::new(),
+                    ),
+                    // Never executed: pushed by `discovery_claim_result` with zero timings.
+                    (
+                        "dag/test/claim/skipped_test.dag".to_string(),
+                        "never_executed_at_all".to_string(),
+                        0,
+                        0,
+                        0,
+                        "selection-skipped".to_string(),
+                        "affected-set".to_string(),
+                    ),
+                ],
+                budget_refusal: None,
+                selection_degradation: None,
+            }],
+        }]
+    }
+
+    #[test]
+    /// The empty-observation narrow, closed at the artifact: a `0` in the eval column means
+    /// "ran in under a millisecond" OR "was never run", and before the outcome/detail columns
+    /// were emitted the receipt could not say which. A census taken from a selection-applied
+    /// per-PR run would have counted skipped rows as fast ones.
+    fn witness_row_cost_receipt_distinguishes_unexecuted_from_sub_millisecond() {
+        let base =
+            std::env::temp_dir().join(format!("gunbc-row-cost-collision-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        assert!(write_witness_row_cost_receipt_at(
+            &base,
+            &zero_eval_collision_records(),
+            false
+        ));
+        let path = base.join("floor-witness-row-cost-receipt.tsv");
+        let body = fs::read_to_string(&path).unwrap();
+
+        let executed = body
+            .lines()
+            .find(|l| l.contains("ran_in_under_a_millisecond"))
+            .expect("executed row");
+        let skipped = body
+            .lines()
+            .find(|l| l.contains("never_executed_at_all"))
+            .expect("skipped row");
+
+        let cost_cols = |line: &str| {
+            let f: Vec<&str> = line.split('\t').collect();
+            (f[3].to_string(), f[4].to_string(), f[5].to_string())
+        };
+
+        // The executed row measured genuinely-zero milliseconds (500_000ns floors to 0). That
+        // is a real measurement and must survive as the number it is.
+        assert_eq!(
+            cost_cols(executed),
+            ("0".to_string(), "0".to_string(), "0".to_string()),
+            "a sub-millisecond row measured 0 and must report 0: {executed}"
+        );
+
+        // The unexecuted row has NO measurement and must not fabricate one — the
+        // std.observation observation_measured_note rule applied at the renderer: never print
+        // 0 for an absent measurement, never omit the field.
+        let absent = cost_cols(skipped);
+        assert_eq!(
+            absent,
+            (
+                UNMEASURED_CELL.to_string(),
+                UNMEASURED_CELL.to_string(),
+                UNMEASURED_CELL.to_string()
+            ),
+            "an unexecuted row must report absence, not a zero: {skipped}"
+        );
+        for cell in [&absent.0, &absent.1, &absent.2] {
+            assert!(
+                cell.parse::<u128>().is_err(),
+                "an absent measurement must not parse as a number, or a census counts an \
+                 unexecuted row as a fast one: {cell}"
+            );
+        }
+
+        // Discriminating on cost alone — false before this landed, and the assertion that
+        // goes RED if a fabricated zero ever returns.
+        assert_ne!(
+            cost_cols(executed),
+            absent,
+            "executed and unexecuted must differ in the cost columns themselves"
+        );
+
+        // The typed disposition still rides beside the number, so the cause stays recoverable
+        // rather than being merely signalled by absence.
+        assert!(
+            executed.contains("\tDone\t"),
+            "executed row must carry its outcome: {executed}"
+        );
+        assert!(
+            skipped.contains("\tselection-skipped\t"),
+            "unexecuted row must say so: {skipped}"
+        );
+
+        // The eval column is WALL and must say so: the fast-lane cap that kills these rows
+        // is enforced on thread CPU, so a bare `eval_ms` invites a threshold built on this
+        // file to select a different population than the cap kills.
+        //
+        // Compared at COLUMN grain rather than by substring. A substring test is answering a
+        // question about column names with a question about characters, and the two only
+        // coincide by accident: `\teval_ms` happens not to occur inside `\teval_wall_ms`
+        // (review 48405 read it as though it did, which is a fair thing to misread and reason
+        // enough not to write it that way). Splitting on tabs asks the question directly.
+        let header: Vec<&str> = body.lines().next().expect("header").split('\t').collect();
+        assert!(
+            header.contains(&"eval_wall_ms"),
+            "eval column must name its clock: {header:?}"
+        );
+        assert!(
+            !header.contains(&"eval_ms"),
+            "the clock-ambiguous spelling must not return: {header:?}"
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    /// A row that never executed must not receive a verdict about its cost. Flooring it to 0
+    /// and running the comparator yields `WithinBasis` — a positive claim that the row met
+    /// its basis, from a measurement that does not exist, and one that can NEVER fail because
+    /// 0 never exceeds anything. That is a fail-open verdict, not a conservative default.
+    fn drift_comparator_refuses_to_judge_an_unexecuted_row() {
+        // THE DISCRIMINATING CASE: a basis EXISTS, so the comparator has everything it needs
+        // to emit a verdict — and must still refuse, because the observation does not exist.
+        // Before this, that row floored to 0, compared as `0 <= basis`, and reported
+        // `WithinBasis`: a verdict that could never fail, about a row that never ran.
+        assert_eq!(
+            drift_row_disposition("selection-skipped", true),
+            DriftRowDisposition::ObservationAbsent,
+            "an unexecuted row with a basis present must still refuse a verdict"
+        );
+        assert_eq!(
+            drift_row_disposition("selection-skipped", false),
+            DriftRowDisposition::ObservationAbsent,
+            "absence of the observation outranks absence of the basis"
+        );
+
+        // The two states that ARE meaningful stay reachable — this is not a blanket refusal.
+        assert_eq!(
+            drift_row_disposition("Done", true),
+            DriftRowDisposition::Comparable,
+            "an executed row with a basis is the only comparable state"
+        );
+        assert_eq!(
+            drift_row_disposition("Done", false),
+            DriftRowDisposition::BasisAbsent
+        );
+        // An executed row that measured genuinely-zero milliseconds is a real measurement and
+        // must remain comparable — the whole point is that 0-because-fast and
+        // 0-because-never-ran are different facts.
+        assert_eq!(
+            drift_row_disposition("Failed", true),
+            DriftRowDisposition::Comparable
+        );
     }
 
     #[test]
