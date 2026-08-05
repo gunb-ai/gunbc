@@ -2,9 +2,6 @@ module test.claim.v1_complexity_capability_census_witness_test
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
-import v2.lens.complexity { complexity_variables_admits, complexity_variables_vacuous_validation }
-import v2.std.refinement { VacuousValidation, VacuousAdmits, vacuous_admits_marker }
-import v2.lens.cost { SizeVariable }
 import gunbc.v1_complexity_capability_census {
   ComplexityCapabilityId,
   ComplexityCapabilityDisposition,
@@ -48,7 +45,9 @@ import gunbc.v1_complexity_capability_census {
   asymptotic_class_and_dominance,
 }
 
-data witness_note: String = "FAST-LANE structural hygiene for the C0(b1) capability roster. Exact DeclarationRef resolution against live decl_facts is deliberately NOT here — it costs a full witness-layer decl_facts scan and would breach the 5s fast-lane budget, the same reason test.claim.cited_symbol_resolution_witness_test keeps its resolution census in the long lane. That census is this roster's companion in test.claim.long.v1_complexity_capability_census_resolution_test. What this file proves is what is cheap and structural: every arm lands in exactly one work-state, EVERY arm has a controlled fixture including the ones no row inhabits, routing metadata is drawn from typed vocabularies, and the constant-true admission predicate is vacuous by execution."
+data witness_note: String = "FAST-LANE structural hygiene for the C0(b1) capability roster. Exact DeclarationRef resolution against live decl_facts is deliberately NOT here — it costs a full witness-layer decl_facts scan and would breach the 5s fast-lane budget, the same reason test.claim.cited_symbol_resolution_witness_test keeps its resolution census in the long lane. That census is this roster's companion in test.claim.long.v1_complexity_capability_census_resolution_test. What this file proves is what is cheap and structural: every arm lands in exactly one work-state, EVERY arm has a controlled fixture including the ones no row inhabits, and routing metadata is drawn from typed vocabularies. The vacuity control moved to the long-lane companion with the lens imports it needed — see closure_cost_note."
+
+data closure_cost_note: String = "COST FINDING, measured on this PR (2026-08-05). An earlier revision of this file imported v2.lens.complexity, v2.lens.cost and v2.std.refinement to execute the vacuity control. No other witness under dag/test/claim imports them, so this file was the FIRST to drag the v2 lens closure into the per-PR witness layer — and the floor measured the consequence on an unrelated witness: roadmap_program_view_witness_test witness_live_constraint_present_iff_line_unaccepted ran 3901.9ms on green main and 5019ms on this PR, breaching the 5s fast-lane budget without its own semantic work changing. The lens imports moved to the long-lane companion with the control that needed them. Recorded rather than silently fixed because it is a measured instance of this program's own subject: a per-witness cost that is invisible until it lands on somebody else's budget, and a wall-clock threshold that reports the victim rather than the cause."
 
 data green_by_vacancy_note: String = "The operator finding this file exists to answer. The previous revision's exhaustiveness check was green only because no row inhabited the DeliberatelyRetired arm — a check that would have failed the first time that declared arm was used. Fixtures below inhabit ALL SIX arms independently of the roster, so the partition is proven total over the type rather than over today's row set. Retired and SupersededByBetterModel have no roster row at all; they are proven here and nowhere else."
 
@@ -224,11 +223,4 @@ test fn w_cited_carrier_absence_is_structural_not_a_lookup_failure() -> Bool {
     Present { value: r } => (r.module_path as String) == "v2.lens.cost"
     Absent => false
   }
-}
-
-data w_admission_predicate_is_vacuous_note: String = "CENSUS FINDING, strengthened per operator review. The previous control asserted only that complexity_variables_admits EXISTS, which a real implementation would satisfy just as well — it established nothing. This uses the tree's own typed admission instead of a text match: v2.lens.complexity declares complexity_variables_vacuous_validation as a VacuousValidation carrying vacuous_admits_marker, which IS the module stating that its predicate admits everything, and the predicate is executed on the empty list beside it. A real refinement would carry the ordinary Validation alone; the day the vacuous carrier is dropped, this reds and the finding is restated. Synthesizing a rejected input is not available as a control here precisely because the predicate rejects nothing — that is the finding."
-
-test fn w_complexity_admission_predicate_is_vacuous_by_execution() -> Bool {
-  complexity_variables_admits(xs: []) &&
-  complexity_variables_vacuous_validation.vacuous == vacuous_admits_marker
 }
