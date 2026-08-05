@@ -15501,6 +15501,65 @@ fn witness_cost_string_field(
     }
 }
 
+/// Read ONE clock out of a row's tagged eval durations, through the authored projection.
+///
+/// The row's `eval` term is a `List<TimedMeasurement>` — every clock the occurrence was
+/// measured on, each tagged — so the seed cannot reach for "the duration" any more, and that
+/// is the point: which clock it wants is now a thing it has to say. It says it by calling
+/// `std.observation.observation_duration_of`, the same projection every `.dag` consumer uses,
+/// rather than walking the list here. A local walk would be a second copy of the lookup,
+/// including its ambiguity refusal, and the two would drift.
+///
+/// Returns `None` for a clock the producer did not sample, distinguished from a clock it
+/// sampled as zero. `MeasuredUnavailable` carries its cause and this returns `None` rather
+/// than `0`, which is the same `observation_measured_note` discipline the TSV's `unmeasured`
+/// cell keeps: a number that does not exist must not render as a small one.
+fn witness_cost_clock_nanos(
+    ctx: &v1_interpreter::InterpContext,
+    durations: &v1_interpreter::Value,
+    basis_constructor: &str,
+) -> Result<Option<u128>, String> {
+    use v1_interpreter::Value;
+    let basis = v1_interpreter::run_in_context_with_args(ctx, basis_constructor, &[], false)
+        .map_err(|e| format!("[witness-row-cost] REFUSED: {basis_constructor} failed: {e}"))?;
+    let measured = v1_interpreter::run_in_context_with_args(
+        ctx,
+        "observation_duration_of",
+        &[
+            (Some("durations".to_string()), durations.clone()),
+            (Some("basis".to_string()), basis),
+        ],
+        false,
+    )
+    .map_err(|e| {
+        format!("[witness-row-cost] REFUSED: observation_duration_of({basis_constructor}) failed: {e}")
+    })?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = measured
+    else {
+        return Err(
+            "[witness-row-cost] REFUSED: observation_duration_of returned a non-Measured value"
+                .to_string(),
+        );
+    };
+    if ctx.sym_eq(variant_name, "MeasuredUnavailable") {
+        return Ok(None);
+    }
+    if !ctx.sym_eq(variant_name, "MeasuredValue") {
+        return Err(format!(
+            "[witness-row-cost] REFUSED: observation_duration_of returned unknown variant {}",
+            ctx.resolve(variant_name)
+        ));
+    }
+    let value = ctx.field(&fields, "value").cloned().ok_or_else(|| {
+        "[witness-row-cost] REFUSED: MeasuredValue lacks its Nanosecond".to_string()
+    })?;
+    witness_cost_nanosecond_count(ctx, value, basis_constructor).map(Some)
+}
+
 fn witness_cost_nanosecond_count(
     ctx: &v1_interpreter::InterpContext,
     value: v1_interpreter::Value,
@@ -15801,10 +15860,23 @@ pub fn project_witness_cost_receipt(
                     )
                 }
             };
+            // The receipt's cost column is WALL — the clock the witness threshold is stated
+            // on (operator ruling 2026-08-05) — and it is now SAID rather than assumed. The
+            // authored projection already refuses a witness whose wall figure is
+            // unavailable, so `None` here would mean the row reached this point without the
+            // one measurement the receipt exists to carry; that refuses rather than
+            // defaulting.
+            let eval_wall_nanos = witness_cost_clock_nanos(&ctx, &eval, "clock_basis_wall")?
+                .ok_or_else(|| {
+                    format!(
+                        "[witness-row-cost] REFUSED: projected row {row_entry}::{function} \
+                         carries no wall duration"
+                    )
+                })?;
             projected_rows.push((
                 row_entry,
                 function,
-                witness_cost_nanosecond_count(&ctx, eval, "eval")?,
+                eval_wall_nanos,
                 witness_cost_nanosecond_count(&ctx, resolve, "resolve")?,
                 witness_cost_nanosecond_count(&ctx, warm, "warm")?,
                 outcome,
