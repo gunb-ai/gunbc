@@ -1,0 +1,51 @@
+module v1.tests.claim.roster_probe_scratch
+
+import std.types { String, List, NonEmptyStr }
+import std.occurrence_identity {
+  DeclarationOccurrence,
+  OccurrenceCategory,
+  LexicalValueOccurrence,
+  TypeOccurrence,
+  CallableOccurrence,
+  ConstructorOccurrence,
+  NamespaceSegmentOccurrence,
+  FieldOccurrence,
+  MethodOccurrence,
+}
+import v1.gunbc.occurrence_binding_parser_walk {
+  ParsedOccurrenceBindingSourceRefused,
+  ParsedOccurrenceBindingSourceReady,
+  parse_authored_occurrence_binding_source,
+}
+
+data probe_source: String = "module p.q\n\ndata alpha: String = \"a\"\n\ntype Thing {\n  f: String\n}\n\nfn go(x: String) -> String {\n  let y = x\n  y\n}\n"
+
+fn category_name(c: OccurrenceCategory) -> String {
+  match c {
+    LexicalValueOccurrence => "Lexical"
+    TypeOccurrence => "Type"
+    CallableOccurrence => "Callable"
+    ConstructorOccurrence => "Ctor"
+    NamespaceSegmentOccurrence => "Ns"
+    FieldOccurrence => "Field"
+    MethodOccurrence => "Method"
+  }
+}
+
+fn render_decl(d: DeclarationOccurrence) -> String {
+  concat(
+    concat(concat("\n  id=", to_string(d.occurrence.value)), concat(" cat=", category_name(c: d.category))),
+    concat(
+      concat(" anc=", to_string(count(d.containment.ancestors))),
+      concat(concat(" span=", to_string(d.diagnostic_span.start)), concat("..", to_string(d.diagnostic_span.end)))
+    )
+  )
+}
+
+fn probe() -> String {
+  match parse_authored_occurrence_binding_source(file: "probe.dag", source: probe_source) {
+    ParsedOccurrenceBindingSourceRefused => "REFUSED"
+    ParsedOccurrenceBindingSourceReady { transport: t, module_path: _ } =>
+      fold(t.declarations, init: "DECLS:", f: (acc, d) => concat(acc, render_decl(d: d)))
+  }
+}
