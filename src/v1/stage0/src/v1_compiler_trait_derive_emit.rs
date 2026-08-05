@@ -781,6 +781,15 @@ pub fn v1_fn_generic_clone_bound_via_bounded_container_element(
     }
 }
 
+pub fn surface_trigger_removed_from_fn_structural_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Two over-broad Clone arms were removed from fn generic binding (2026-08-04), both collapsing fn_wf_no_trigger_negative_control: (1) v1_generic_param_used_in_value_param_type_surface from v1_type_param_needs_clone_bound; (2) v1_type_expr_clone_impl_needs_param from v1_fn_param_type_needs_clone_bound — occurrence-in-tau answers whether tau: Clone needs P, not whether a fn taking tau needs P: Clone. Bare param, WF naming of an already-bounded declared type, referenced-decl, and bounded container element remain. Keyed-roster Clone stays on the module allowlist; dissolve-on for that allowlist is unchanged.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn v1_type_param_needs_clone_bound(
     param_name: String,
     return_is_bare_generic: bool,
@@ -792,7 +801,7 @@ pub fn v1_type_param_needs_clone_bound(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let structural = (((((return_is_bare_generic.clone() && !body_is_param_ref.clone())
+        let structural = ((((return_is_bare_generic.clone() && !body_is_param_ref.clone())
             && (param_name.clone() == ret_name.clone()))
             || v1_generic_param_used_as_collection_element(
                 param_name.clone(),
@@ -804,13 +813,6 @@ pub fn v1_type_param_needs_clone_bound(
             || v1_generic_param_used_as_bare_value_param_type(
                 param_name.clone(),
                 value_params.clone(),
-                source_indices.clone(),
-            ))
-            || v1_generic_param_used_in_value_param_type_surface(
-                param_name.clone(),
-                value_params.clone(),
-                bounds.clone(),
-                type_decl_items.clone(),
                 source_indices.clone(),
             ));
         structural
@@ -829,17 +831,11 @@ pub fn v1_fn_param_type_needs_clone_bound(
         for vp in value_params.clone().iter().cloned() {
             if {
                 let te = param_node_type_expr(vp.clone());
-                ((((v1_type_expr_is_bare_param(
+                (((v1_type_expr_is_bare_param(
                     param_name.clone(),
                     te.clone(),
                     source_indices.clone(),
-                ) || v1_type_expr_clone_impl_needs_param(
-                    param_name.clone(),
-                    te.clone(),
-                    bounds.clone(),
-                    type_decl_items.clone(),
-                    source_indices.clone(),
-                )) || v1_type_expr_wf_needs_clone_param(
+                ) || v1_type_expr_wf_needs_clone_param(
                     param_name.clone(),
                     te.clone(),
                     bounds.clone(),
