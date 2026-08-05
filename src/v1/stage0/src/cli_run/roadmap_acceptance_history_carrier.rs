@@ -20,11 +20,17 @@ enum JsonEvent {
     },
     AcceptanceRevoked {
         exact_prior_receipt: JsonReceipt,
-        disposition: String,
+        disposition: JsonAcceptanceRevocationDisposition,
         reason: String,
         revoked_by: String,
         revoked_on: String,
     },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "variant", rename_all = "snake_case")]
+enum JsonAcceptanceRevocationDisposition {
+    AcceptanceNodeReopensActiveFrontier,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,6 +64,9 @@ enum JsonHandback {
     },
 }
 
+// Seed duplicate of std.content_hash lower_hex_16 / Fnv1a64StructuralDigestHex refinement.
+// Dissolves when v1_compiler.cli_run roadmap_acceptance_history_carrier hollowing lands
+// (roadmap_acceptance_event_history_jsonl_parser_seed_scaffold in gunbc.roadmap_acceptance_history_carrier).
 fn validate_hex16(digest: &str, field: &str) -> Result<(), String> {
     if digest.len() != 16
         || !digest
@@ -166,9 +175,15 @@ fn event_value(event: JsonEvent, ctx: &InterpContext) -> Result<Value, String> {
             revoked_by,
             revoked_on,
         } => {
-            if disposition != "AcceptanceNodeReopensActiveFrontier" {
-                return Err(format!("unsupported revocation disposition: {disposition}"));
-            }
+            let disposition_value = match disposition {
+                JsonAcceptanceRevocationDisposition::AcceptanceNodeReopensActiveFrontier => {
+                    Value::Variant {
+                        type_name: ctx.sym("AcceptanceRevocationDisposition"),
+                        variant_name: ctx.sym("AcceptanceNodeReopensActiveFrontier"),
+                        fields: Rc::new(Vec::new()),
+                    }
+                }
+            };
             Value::Variant {
                 type_name: ctx.sym("RoadmapAcceptanceEvent"),
                 variant_name: ctx.sym("AcceptanceRevoked"),
@@ -177,14 +192,7 @@ fn event_value(event: JsonEvent, ctx: &InterpContext) -> Result<Value, String> {
                         ctx.sym("exact_prior_receipt"),
                         receipt_value(exact_prior_receipt, ctx)?,
                     ),
-                    (
-                        ctx.sym("disposition"),
-                        Value::Variant {
-                            type_name: ctx.sym("AcceptanceRevocationDisposition"),
-                            variant_name: ctx.sym("AcceptanceNodeReopensActiveFrontier"),
-                            fields: Rc::new(Vec::new()),
-                        },
-                    ),
+                    (ctx.sym("disposition"), disposition_value),
                     (ctx.sym("reason"), Value::Str(reason)),
                     (ctx.sym("revoked_by"), Value::Str(revoked_by)),
                     (ctx.sym("revoked_on"), Value::Str(revoked_on)),

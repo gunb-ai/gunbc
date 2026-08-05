@@ -227,6 +227,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "parse_roadmap_acceptance_event_history_jsonl",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -235,6 +236,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "project_roadmap_acceptance_event_history_from_authority_text_host",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {

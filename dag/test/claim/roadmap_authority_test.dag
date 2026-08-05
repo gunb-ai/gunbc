@@ -7,8 +7,8 @@ import gunbc.roadmap_authority {
   roadmap_authority_for,
   declared_roadmap_nodes,
   declared_roadmap_edges,
-  active_roadmap_nodes,
-  active_roadmap_edges,
+  active_roadmap_nodes_for_accepted,
+  active_roadmap_edges_for_accepted,
   roadmap_acceptance_receipts,
   roadmap_acceptance_event_history_load,
   RoadmapAcceptanceEventHistoryLoaded,
@@ -105,8 +105,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn nodes() -> List<RoadmapNode> { declared_roadmap_nodes() }
 fn edges() -> List<RoadmapEdge> { declared_roadmap_edges() }
-fn active_nodes() -> List<RoadmapNode> { active_roadmap_nodes() }
-fn active_edges() -> List<RoadmapEdge> { active_roadmap_edges() }
+fn active_nodes() -> List<RoadmapNode> {
+  match live_accepted_node_ids() {
+    Present { value: accepted } => active_roadmap_nodes_for_accepted(accepted: accepted)
+    Absent => []
+  }
+}
+fn active_edges() -> List<RoadmapEdge> {
+  match live_accepted_node_ids() {
+    Present { value: accepted } => active_roadmap_edges_for_accepted(accepted: accepted)
+    Absent => []
+  }
+}
 
 fn live_accepted_node_ids() -> List<RoadmapNodeId>? {
   match accepted_roadmap_node_ids_projection() {

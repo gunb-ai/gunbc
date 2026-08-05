@@ -2031,25 +2031,39 @@ fn active_roadmap_nodes_for_accepted(accepted: List<RoadmapNodeId>) -> List<Road
   declared_roadmap_nodes() |> filter(n => !(accepted |> any(a => a == n.node)))
 }
 
-fn active_roadmap_nodes() -> List<RoadmapNode> {
+type ActiveRoadmapNodesProjection
+  = ActiveRoadmapNodesProjected { nodes: List<RoadmapNode> }
+  | ActiveRoadmapNodesProjectionRefused { detail: String }
+
+type ActiveRoadmapEdgesProjection
+  = ActiveRoadmapEdgesProjected { edges: List<RoadmapEdge> }
+  | ActiveRoadmapEdgesProjectionRefused { detail: String }
+
+fn active_roadmap_nodes_projection() -> ActiveRoadmapNodesProjection {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      active_roadmap_nodes_for_accepted(accepted: accepted)
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
+      ActiveRoadmapNodesProjected {
+        nodes: active_roadmap_nodes_for_accepted(accepted: accepted),
+      }
+    AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
+      ActiveRoadmapNodesProjectionRefused { detail: detail }
   }
 }
 
-data closing_contract_task_projection_boundary_note: String = "The derived tasks are added at the PROJECTION, not to active_roadmap_nodes. Folding them into the active set reded witness_active_set_is_declared_minus_accepted and witness_accepted_parent_discharges_active_dependency, and those witnesses are right: 'active = declared minus accepted' is a law about the AUTHORITY, and a derived projection row is not a declared deliverable. Keeping the law intact is also what makes the derivation safe — the authority stays exactly what someone authored, and the frontier view is a function of it."
-
-fn projected_roadmap_nodes() -> List<RoadmapNode> {
-  concat(active_roadmap_nodes(), closing_contract_task_nodes())
+fn active_roadmap_edges_projection() -> ActiveRoadmapEdgesProjection {
+  match accepted_roadmap_node_ids_projection() {
+    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+      ActiveRoadmapEdgesProjected {
+        edges: active_roadmap_edges_for_accepted(accepted: accepted),
+      }
+    AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
+      ActiveRoadmapEdgesProjectionRefused { detail: detail }
+  }
 }
 
-fn projected_roadmap_edges() -> List<RoadmapEdge> {
-  concat(active_roadmap_edges(), closing_contract_task_edges())
-}
+data closing_contract_task_projection_boundary_note: String = "The derived tasks are added at the PROJECTION, not to active_roadmap_nodes_for_accepted. Folding them into the active set reded witness_active_set_is_declared_minus_accepted and witness_accepted_parent_discharges_active_dependency, and those witnesses are right: 'active = declared minus accepted' is a law about the AUTHORITY, and a derived projection row is not a declared deliverable. Keeping the law intact is also what makes the derivation safe — the authority stays exactly what someone authored, and the frontier view is a function of it."
 
-data closing_contract_task_naming_correction_note: String = "THESE ARE CLOSING-CONTRACT TASKS, NOT ACCEPTANCE TASKS, and the earlier name caused a real category error. The projection computes active AND ExecutionContractUnspecified AND every-prerequisite-accepted, which is the set of nodes whose completion nothing can yet CHECK. Authoring that check is contract work. Acceptance is a separate, later, operator act on work already done and verified.\n\nThe old name made those two look like one state, and a node can be in any of several: blocked on unaccepted prerequisites; missing a closing contract; dispatchable; implemented but verification-red; implemented and green, awaiting operator acceptance; accepted. v2-emitter-producer-provenance is the specimen that exposed it — it is BOUND, so it never appears in this projection, while what it actually needs is acceptance of landed work. A projection named for acceptance that structurally cannot surface the thing needing acceptance is misnamed, so it was renamed to startable_nodes_missing_closing_contract.\n\nKNOWN GAP, recorded rather than papered over: a derived task is itself built with ExecutionContractUnspecified, and dispatch refuses an unspecified contract. So the belt cannot dispatch these rows — the target waits on a contract, and the contract-authoring row has no contract of its own. Manual child spawning works around it; end-to-end dispatch does not. Closing it wants ONE parameterized ClosingContractAuthoring kind whose completion predicate is reusable across every target (target now carries exactly one contract, with at least one validation, every referenced validation resolves, a planted failure shows the validation can reject, and the contract names the same target identity) rather than ten bespoke meta-witnesses. Not landed here; this note is its trigger."
+data closing_contract_task_naming_correction_note: String = "THESE ARE CLOSING-CONTRACT TASKS, NOT ACCEPTANCE TASKS, and the earlier name caused a real category error. The projection computes active AND ExecutionContractUnspecified AND every-prerequisite-accepted, which is the set of nodes whose completion nothing can yet CHECK. Authoring that check is contract work. Acceptance is a separate, later, operator act on work already done and verified.\n\nThe old name made those two look like one state, and a node can be in any of several: blocked on unaccepted prerequisites; missing a closing contract; dispatchable; implemented but verification-red; implemented and green, awaiting operator acceptance; accepted. v2-emitter-producer-provenance is the specimen that exposed it — it is BOUND, so it never appears in this projection, while what it actually needs is acceptance of landed work. A projection named for acceptance that structurally cannot surface the thing needing acceptance is misnamed, so it was renamed to startable_nodes_missing_closing_contract_for_accepted.\n\nKNOWN GAP, recorded rather than papered over: a derived task is itself built with ExecutionContractUnspecified, and dispatch refuses an unspecified contract. So the belt cannot dispatch these rows — the target waits on a contract, and the contract-authoring row has no contract of its own. Manual child spawning works around it; end-to-end dispatch does not. Closing it wants ONE parameterized ClosingContractAuthoring kind whose completion predicate is reusable across every target (target now carries exactly one contract, with at least one validation, every referenced validation resolves, a planted failure shows the validation can reject, and the contract names the same target identity) rather than ten bespoke meta-witnesses. Not landed here; this note is its trigger."
 
 data closing_contract_task_derivation_note: String = "CLOSING-CONTRACT TASKS ARE DERIVED, NOT AUTHORED (operator ruling 2026-07-29: 'you shouldn't need to manually maintain that stuff — the relationship should be inferred from one side or the other'). The first cut hand-wrote four acceptance nodes and four edges, and one had to be hand-removed within minutes because pderive-typesafe-nullary-reflection was already accepted: a new prerequisite on completed work retroactively un-satisfies it, which witness_accepted_parents_precede_dependents caught. That is the hand-maintained-count failure this repository refuses everywhere else — two things that must be kept in step, drifting the moment either side moves.\n\nThe relationship is a FUNCTION of the node: startable (every prerequisite accepted) AND unbound (ExecutionContractUnspecified) means its closing validation does not exist, so authoring that validation is the work that unblocks it. Nothing else needs saying. An accepted node leaves the active set and its task disappears; a node that gains a contract stops being unbound and its task disappears; a node whose prerequisite lands becomes startable and its task appears. No cleanup step exists because there is nothing to clean.\n\nThe frontier is deliberately STARTABLE-only rather than every unbound node. A terminus like v1-zero-hand-maintained-rust is unbound too, but surfacing a closing-contract task for work whose prerequisites are years out is noise that would bury the four rows that matter today.\n\nOn identity: a derived row takes a deterministic id from its target rather than a minted one, and that is consistent with the identity law rather than an exception to it. The law governs declared DELIVERABLES, which must survive rename and reordering. A closing-contract task is a projection of a frontier state — it has no history to preserve, it exists exactly while its target lacks a contract, and if the target's slug changes it is honestly a different task."
 
@@ -2058,14 +2072,6 @@ fn node_is_startable_for_accepted(n: RoadmapNode, accepted: List<RoadmapNodeId>)
     roadmap_parent_ids(edges: declared_roadmap_edges(), node: n.node),
     p => accepted |> any(a => a == (p as String)),
   )
-}
-
-fn node_is_startable(n: RoadmapNode) -> Bool {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => false
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      node_is_startable_for_accepted(n: n, accepted: accepted)
-  }
 }
 
 data node_closing_validation_defork_note: String = "This used to answer the binding question locally, and its answer differed from the verifier's: any ExecutionContract counted as bound here, while an empty validation list counted as UNBOUND in gunbc.roadmap_verify and refused in gunbc.roadmap_dispatch_environment. It now reads the single authority, so a node bound to a contract that closes nothing keeps its acceptance task instead of vanishing from the frontier while remaining unverifiable."
@@ -2095,14 +2101,6 @@ fn startable_nodes_missing_closing_contract_for_accepted(accepted: List<RoadmapN
     |> filter(n => !(accepted |> any(a => a == n.node)))
     |> filter(n => node_lacks_closing_validation(n: n))
     |> filter(n => node_is_startable_for_accepted(n: n, accepted: accepted))
-}
-
-fn startable_nodes_missing_closing_contract() -> List<RoadmapNode> {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      startable_nodes_missing_closing_contract_for_accepted(accepted: accepted)
-  }
 }
 
 fn closing_contract_task_for(n: RoadmapNode) -> RoadmapNode {
@@ -2144,10 +2142,15 @@ type ClosingContractTaskPair {
 }
 
 fn closing_contract_task_pairs() -> List<ClosingContractTaskPair> {
-  startable_nodes_missing_closing_contract() |> map(n => ClosingContractTaskPair {
-    task: closing_contract_task_for(n: n),
-    subject: ticket_headline_of(n: n),
-  })
+  match accepted_roadmap_node_ids_projection() {
+    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
+    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+      startable_nodes_missing_closing_contract_for_accepted(accepted: accepted)
+        |> map(n => ClosingContractTaskPair {
+          task: closing_contract_task_for(n: n),
+          subject: ticket_headline_of(n: n),
+        })
+  }
 }
 
 fn closing_contract_task_nodes() -> List<RoadmapNode> {
@@ -2155,24 +2158,16 @@ fn closing_contract_task_nodes() -> List<RoadmapNode> {
 }
 
 fn closing_contract_task_edges() -> List<RoadmapEdge> {
-  startable_nodes_missing_closing_contract()
-    |> map(n => RoadmapEdge {
-      child: n.node,
-      parent: concat(n.node as String, "-closing-contract") as RoadmapNodeId,
-    })
+  match accepted_roadmap_node_ids_projection() {
+    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
+    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+      closing_contract_task_edges_for_accepted(accepted: accepted)
+  }
 }
 
 fn active_roadmap_edges_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapEdge> {
   declared_roadmap_edges() |> filter(e =>
     !(accepted |> any(a => a == e.child)) && !(accepted |> any(a => a == e.parent)))
-}
-
-fn active_roadmap_edges() -> List<RoadmapEdge> {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      active_roadmap_edges_for_accepted(accepted: accepted)
-  }
 }
 
 fn preamble() -> List<MarkdownBlock> {
@@ -2311,39 +2306,16 @@ fn roadmap_authority_for(focus: RoadmapFocus) -> RoadmapDocument {
 }
 
 fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
-  RoadmapSection {
-    title: "Active deliverables — dependency order",
-    elements: concat(
-      [
-        section_prose(content: "The graph has eleven lanes: SCM compatibility · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · hermetic toolchain · compiler-guarantee (the DESIGN §4b ladder climbs; rung STATE lives in the guarantee claims carrier and is emitted, never restated in tickets — [gap analysis](docs/plans/compiler-guarantee-recovery-gap-analysis.md)). The three independent SCM R0 models, the separate P−1 evidence carrier, R1 compatibility-shape extraction, and P0 user-contract/landing spine are accepted; the operator-authored P1 proof-kernel node is active and fail-closed pending its first discriminating closing validation, while P2 and later product lanes remain parked. The toolchain pin model is an independent root. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
-      ],
-      concat(
-        if focus_is_active(focus: focus) {
-          [section_prose(content: focus_notice(
-            focus: focus,
-            nodes: projected_roadmap_nodes(),
-            edges: projected_roadmap_edges(),
-          ))]
-        } else {
-          []
-        },
-        [
-          section_group(
-            label: "",
-            nodes: focus_visible_nodes(
-              focus: focus,
-              nodes: projected_roadmap_nodes(),
-              edges: projected_roadmap_edges(),
-            ),
-            edges: focus_visible_edges(
-              focus: focus,
-              nodes: projected_roadmap_nodes(),
-              edges: projected_roadmap_edges(),
-            )
-          ),
+  match roadmap_authority_projection() {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      RoadmapSection {
+        title: "Active deliverables — dependency order",
+        elements: [
+          section_prose(content: concat("roadmap acceptance projection refused: ", detail)),
         ],
-      ),
-    ),
+      }
+    RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
+      active_section_for_acceptance(focus: focus, accepted: accepted)
   }
 }
 

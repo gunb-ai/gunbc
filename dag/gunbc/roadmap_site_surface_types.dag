@@ -16,20 +16,15 @@ type RoadmapSiteSurfaceArtifact {
 }
 
 type RoadmapSiteSurfaceBundle {
-  acceptance_identity: Fnv1a64Structural
-  authority_identity: Fnv1a64Structural
+  subject_identity: Fnv1a64Structural
+  producer_identity: Fnv1a64Structural
+  bundle_identity: Fnv1a64Structural
   roadmap_md: RoadmapSiteSurfaceArtifact
   dispatch_json: RoadmapSiteSurfaceArtifact
   daily_html: RoadmapSiteSurfaceArtifact
   full_html: RoadmapSiteSurfaceArtifact
   dispatch_js: RoadmapSiteSurfaceArtifact
   healthz_body: String
-}
-
-type RecordedRoadmapSiteSurfaceBundle {
-  subject: String
-  producer_digest: Fnv1a64Structural
-  bundle: RoadmapSiteSurfaceBundle
 }
 
 type LiveRoadmapSiteSurfaceBundle {
@@ -39,4 +34,4 @@ type LiveRoadmapSiteSurfaceBundle {
 
 data roadmap_site_surface_subject: String = "gunbc.roadmap_static_site/live-tree"
 
-data roadmap_site_surface_bundle_schema_note: String = "ONE semantic snapshot per operation: acceptance observed once, authority projected once, surface rendered once, healthz serialized once. RoadmapSiteSurfaceBundle is the retained carrier every readiness witness and production healthz path evaluates — member predicates take the bundle as an argument and cannot re-invoke filesystem, Git, authority projection, or rendering producers."
+data roadmap_site_surface_bundle_schema_note: String = "ONE semantic snapshot per operation: authority projected once, surface rendered once, healthz serialized once. subject_identity hashes acceptance plus roadmap/dispatch document bodies (or the exact typed refusal detail). producer_identity names the observe/render implementation. bundle_identity joins the five served-artifact digests. RoadmapSiteSurfaceBundle is the retained carrier every readiness witness and production healthz path evaluates — member predicates take the bundle as an argument and cannot re-invoke filesystem, Git, authority projection, or rendering producers."

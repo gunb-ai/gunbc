@@ -1,9 +1,6 @@
 module gunbc.roadmap_site_surface_witness
 
-import gunbc.roadmap_site_surface_observe {
-  live_roadmap_site_surface_bundle,
-  recorded_roadmap_site_surface_bundle,
-}
+import gunbc.roadmap_site_surface_observe { live_roadmap_site_surface_bundle }
 import gunbc.roadmap_site_surface_expect {
   healthz_round_trip_receipt_holds,
   fresh_surface_read_grounds,
@@ -12,16 +9,6 @@ import gunbc.roadmap_site_surface_expect {
   healthz_route_json_ok,
 }
 import std.realization_reconcile {
-  ShowEffectiveRead,
-  ReadObserved,
-  ReadAbsent,
-  Grounding,
-  Grounds,
-  DoesNotGround,
-  Reconciliation,
-  Converged,
-  NotConverged,
-  reconcile_grounded,
   reconciliation_converged,
 }
 import gunbc.live_deploy.readiness {
@@ -31,6 +18,8 @@ import gunbc.live_deploy.readiness {
   show_healthz_read_fixture_healthy,
   service_ready_apply_effect,
   ground_service_ready_from_healthz_with_bundle,
+  Grounds,
+  DoesNotGround,
 }
 import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle }
 
@@ -74,22 +63,11 @@ fn service_ready_once_converges_on_healthy_fixture_for_bundle(bundle: RoadmapSit
 fn roadmap_site_surface_readiness_group_holds() -> Bool {
   let live = live_roadmap_site_surface_bundle()
   let bundle = live.bundle
-  let recorded = recorded_roadmap_site_surface_bundle(bundle: bundle)
-  recorded.subject == live.subject
-    && recorded.producer_digest == bundle.authority_identity
-    && healthz_round_trip_receipt_holds(bundle: bundle)
+  healthz_round_trip_receipt_holds(bundle: bundle)
     && fresh_surface_read_grounds_for_bundle(bundle: bundle)
     && stale_surface_read_does_not_ground_for_bundle(bundle: bundle)
     && reconcile_grounds_healthy_fixture_read_for_bundle(bundle: bundle)
     && service_ready_once_converges_on_healthy_fixture_for_bundle(bundle: bundle)
     && healthz_surface_tolerates_transport_trailing_lf(bundle: bundle)
     && healthz_route_json_ok(bundle: bundle)
-}
-
-fn live_roadmap_site_surface_bundle_matches_recorded_carrier() -> Bool {
-  let live = live_roadmap_site_surface_bundle()
-  let recorded = recorded_roadmap_site_surface_bundle(bundle: live.bundle)
-  recorded.subject == live.subject
-    && recorded.producer_digest == live.bundle.authority_identity
-    && recorded.bundle.healthz_body == live.bundle.healthz_body
 }

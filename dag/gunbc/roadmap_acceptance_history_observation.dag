@@ -1,5 +1,7 @@
 module gunbc.roadmap_acceptance_history_observation
 
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import extdeps.git.inspect
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
@@ -187,12 +189,21 @@ fn acceptance_history_integrity_holds_from_prior_observation_with_prior(
     AcceptanceHistoryIntegrityHolds => true
     AcceptanceHistoryIntegrityRefusedReplay => false
     AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
-    AcceptanceHistoryIntegrityRefusedPriorPrefix => false
+    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
     AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
   }
 }
 
-data roadmap_acceptance_history_sealed_compat_note: String = "Merge-base roadmap_authority.dag still calls acceptance_history_integrity_holds_from_prior_observation with sealed_event_count and sealed_chain_digest until this branch merges. The bootstrap overlay compiles that authority text against the workspace; these parameters are ignored because sealed-prefix pinning dissolved on the JSONL carrier path."
+data roadmap_acceptance_history_sealed_compat_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap_acceptance_history_observation",
+    decl_name: "acceptance_history_integrity_holds_from_prior_observation",
+    field: WholeDeclaration,
+  }
+}
+
+data roadmap_acceptance_history_sealed_compat_note: String = "Merge-base roadmap_authority.dag still calls acceptance_history_integrity_holds_from_prior_observation with sealed_event_count and sealed_chain_digest until this branch merges. The bootstrap overlay compiles that authority text against the workspace; these parameters are ignored because sealed-prefix pinning dissolved on the JSONL carrier path. Dissolution trigger (countable): delete roadmap_acceptance_history_sealed_compat_scaffold and the 6-arg acceptance_history_integrity_holds_from_prior_observation wrapper when merge-base no longer references sealed_event_count (workspace authored caller count today: 0; remaining consumer is bootstrap overlay compile of pre-merge authority text only)."
 
 fn acceptance_history_integrity_holds_from_prior_observation(
   observation: RoadmapAcceptanceHistoryPriorObservation,

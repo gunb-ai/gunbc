@@ -196,7 +196,7 @@ type AcceptanceHistoryIntegrityVerdict
   | AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation {
       receipt: RoadmapAcceptanceReceipt,
     }
-  | AcceptanceHistoryIntegrityRefusedPriorPrefix
+  | AcceptanceHistoryIntegrityRefusedPriorPrefix { index: Int }
   | AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: String }
 
 fn red_control_evidence_eq(a: RedControlEvidence, b: RedControlEvidence) -> Bool {
@@ -464,6 +464,33 @@ fn drop_first_acceptance_event(events: List<RoadmapAcceptanceEvent>) -> List<Roa
   ).rest
 }
 
+fn acceptance_history_prior_prefix_mismatch_index_at(
+  prior: List<RoadmapAcceptanceEvent>,
+  current: List<RoadmapAcceptanceEvent>,
+  index: Int,
+) -> Int {
+  if count(prior) == 0 {
+    index
+  } else if count(current) == 0 {
+    index
+  } else if !acceptance_event_eq(a: first(prior), b: first(current)) {
+    index
+  } else {
+    acceptance_history_prior_prefix_mismatch_index_at(
+      prior: drop_first_acceptance_event(events: prior),
+      current: drop_first_acceptance_event(events: current),
+      index: index + 1,
+    )
+  }
+}
+
+fn acceptance_history_prior_prefix_mismatch_index(
+  prior: List<RoadmapAcceptanceEvent>,
+  current: List<RoadmapAcceptanceEvent>,
+) -> Int {
+  acceptance_history_prior_prefix_mismatch_index_at(prior: prior, current: current, index: 0)
+}
+
 fn acceptance_history_extends_prior(
   prior: List<RoadmapAcceptanceEvent>,
   current: List<RoadmapAcceptanceEvent>,
@@ -553,7 +580,12 @@ fn acceptance_history_integrity_verdict(
   prior_history: List<RoadmapAcceptanceEvent>,
 ) -> AcceptanceHistoryIntegrityVerdict {
   if count(prior_history) > 0 && !acceptance_history_extends_prior(prior: prior_history, current: history) {
-    AcceptanceHistoryIntegrityRefusedPriorPrefix
+    AcceptanceHistoryIntegrityRefusedPriorPrefix {
+      index: acceptance_history_prior_prefix_mismatch_index(
+        prior: prior_history,
+        current: history,
+      ),
+    }
   } else {
     match replay_acceptance_history(events: history) {
       Absent => AcceptanceHistoryIntegrityRefusedReplay
@@ -595,7 +627,7 @@ fn acceptance_history_integrity_holds(
     AcceptanceHistoryIntegrityHolds => true
     AcceptanceHistoryIntegrityRefusedReplay => false
     AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
-    AcceptanceHistoryIntegrityRefusedPriorPrefix => false
+    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
     AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
   }
 }
