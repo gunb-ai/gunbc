@@ -543,6 +543,6 @@ fn witness_cost_seed_timed_out_event(
     entry: entry,
     declaration: witness_cost_seed_declaration(module_path: module_path, function: function),
     eval: eval,
-    outcome: TimedOut { budget: budget, elapsed: elapsed }
+    outcome: TimedOut { basis: _, budget: budget, elapsed: elapsed }
   )
 }

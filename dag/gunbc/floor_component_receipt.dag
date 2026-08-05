@@ -150,7 +150,7 @@ fn floor_component_outcome_of_tag(
   else if (tag as String) == "refused" { Present { value: Refused { diagnostic: detail } } }
   else if (tag as String) == "failed" { Present { value: Failed { error: detail, output: "" } } }
   else if (tag as String) == "timed_out" {
-    Present { value: TimedOut { budget: budget, elapsed: elapsed } }
+    Present { value: TimedOut { basis: _, budget: budget, elapsed: elapsed } }
   }
   else if (tag as String) == "skipped" { Present { value: Skipped { reason: detail } } }
   else if (tag as String) == "final" { Present { value: Final { shown_failures: shown_failures } } }
@@ -184,7 +184,7 @@ fn floor_component_outcome_tag(o: ObservationOutcome) -> String {
     Done => "done"
     Refused { diagnostic: _ } => "refused"
     Failed { error: _, output: _ } => "failed"
-    TimedOut { budget: _, elapsed: _ } => "timed_out"
+    TimedOut { basis: _, budget: _, elapsed: _ } => "timed_out"
     Skipped { reason: _ } => "skipped"
     Final { shown_failures: _ } => "final"
   }
@@ -198,7 +198,7 @@ fn floor_component_outcome_members(o: ObservationOutcome) -> List<JsonKeyValue> 
       json_kv(key: "error", value: json_string(s: e as String)),
       json_kv(key: "output", value: json_string(s: out))
     ]
-    TimedOut { budget: b, elapsed: el } => [
+    TimedOut { basis: _, budget: b, elapsed: el } => [
       json_kv(key: "budget_ms", value: json_int(n: millisecond_count(m: b))),
       json_kv(key: "elapsed_ms", value: json_int(n: millisecond_count(m: el)))
     ]
@@ -359,7 +359,7 @@ fn floor_component_row_is_done(row: FloorComponentRow) -> Bool {
         Done => true
         Refused { diagnostic: _ } => false
         Failed { error: _, output: _ } => false
-        TimedOut { budget: _, elapsed: _ } => false
+        TimedOut { basis: _, budget: _, elapsed: _ } => false
         Skipped { reason: _ } => false
         Final { shown_failures: n } => n == 0
       }

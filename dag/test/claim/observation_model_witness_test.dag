@@ -388,7 +388,7 @@ test fn w_attention_availability_precedence_and_causes_hold() -> Bool {
   let refused = obs_event(transition: Concluded { outcome: Refused { diagnostic: "policy" as NonEmptyStr } }, wall_ms: 1)
   let failed = obs_event(transition: Concluded { outcome: Failed { error: "broken" as NonEmptyStr, output: "" } }, wall_ms: 1)
   let timed_out = obs_event(
-    transition: Concluded { outcome: TimedOut { budget: millisecond(count: 1), elapsed: millisecond(count: 2) } },
+    transition: Concluded { outcome: TimedOut { basis: _, budget: millisecond(count: 1), elapsed: millisecond(count: 2) } },
     wall_ms: 2
   )
   let done = obs_event(transition: Concluded { outcome: Done }, wall_ms: 500)
@@ -442,7 +442,7 @@ test fn w_attention_strict_facade_equals_measured_value_projection() -> Bool {
     obs_event(transition: Concluded { outcome: Refused { diagnostic: "policy" as NonEmptyStr } }, wall_ms: 1),
     obs_event(transition: Concluded { outcome: Failed { error: "broken" as NonEmptyStr, output: "" } }, wall_ms: 1),
     obs_event(
-      transition: Concluded { outcome: TimedOut { budget: millisecond(count: 1), elapsed: millisecond(count: 2) } },
+      transition: Concluded { outcome: TimedOut { basis: _, budget: millisecond(count: 1), elapsed: millisecond(count: 2) } },
       wall_ms: 2
     ),
     obs_event(transition: Concluded { outcome: Skipped { reason: "unaffected" as NonEmptyStr } }, wall_ms: 1),

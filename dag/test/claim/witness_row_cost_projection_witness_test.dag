@@ -104,7 +104,7 @@ fn two_events_project_one_exact_tsv_row_holds() -> Bool {
           Done => true
           Refused { diagnostic: _ } => false
           Failed { error: _, output: _ } => false
-          TimedOut { budget: _, elapsed: _ } => false
+          TimedOut { basis: _, budget: _, elapsed: _ } => false
           Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
@@ -200,7 +200,7 @@ fn refused_outcome_distinct_from_failed_in_projection_holds() -> Bool {
           Refused { diagnostic: d } => d == ("typed refuse" as NonEmptyStr)
           Failed { error: _, output: _ } => false
           Done => false
-          TimedOut { budget: _, elapsed: _ } => false
+          TimedOut { basis: _, budget: _, elapsed: _ } => false
           Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
@@ -210,7 +210,7 @@ fn refused_outcome_distinct_from_failed_in_projection_holds() -> Bool {
           Failed { error: e, output: _ } => e == ("boom" as NonEmptyStr)
           Refused { diagnostic: _ } => false
           Done => false
-          TimedOut { budget: _, elapsed: _ } => false
+          TimedOut { basis: _, budget: _, elapsed: _ } => false
           Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
@@ -397,7 +397,7 @@ fn native_seed_events_preserve_order_outcome_and_perturbation_holds() -> Bool {
           Refused { diagnostic: d } => d == ("typed refusal" as NonEmptyStr)
           Done => false
           Failed { error: _, output: _ } => false
-          TimedOut { budget: _, elapsed: _ } => false
+          TimedOut { basis: _, budget: _, elapsed: _ } => false
           Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
@@ -407,7 +407,7 @@ fn native_seed_events_preserve_order_outcome_and_perturbation_holds() -> Bool {
           Failed { error: e, output: _ } => e == ("runtime failure" as NonEmptyStr)
           Done => false
           Refused { diagnostic: _ } => false
-          TimedOut { budget: _, elapsed: _ } => false
+          TimedOut { basis: _, budget: _, elapsed: _ } => false
           Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
@@ -487,7 +487,7 @@ fn seed_timed_out_event_carries_the_pair_and_is_not_failed_holds() -> Bool {
       count(rows) == 1 &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          TimedOut { budget: b, elapsed: e } =>
+          TimedOut { basis: _, budget: b, elapsed: e } =>
             millisecond_count(m: b) == 900000 && millisecond_count(m: e) == 900001
           Done => false
           Refused { diagnostic: _ } => false
@@ -520,7 +520,7 @@ fn timed_out_red_control_is_neither_done_nor_failed_holds() -> Bool {
           Done => false
           Failed { error: _, output: _ } => false
           Refused { diagnostic: _ } => false
-          TimedOut { budget: _, elapsed: _ } => true
+          TimedOut { basis: _, budget: _, elapsed: _ } => true
           Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }

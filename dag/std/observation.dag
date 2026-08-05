@@ -201,13 +201,28 @@ type Measured<T>
 
 data observation_measured_note: String = "Absence of a measurement is a NAMED state carrying its cause, never a fabricated zero (DESIGN section 5). This mirrors the discipline the floor heartbeat already keeps in the seed: an unreadable cgroup field prints unreadable and refuses to invent a number. A renderer projecting MeasuredUnavailable prints the cause; it never prints 0 and never omits the field, because a silently omitted number is the same fabrication one layer up."
 
+type ClockBasis
+  = CpuClock
+  | WallClock
+
+data observation_clock_basis_note: String = "WHICH CLOCK a duration was read from, carried as data rather than spelled in a field name (operator ruling 2026-08-05). The defect this closes is not recording one clock instead of two — recording BOTH is correct — it is a duration whose meaning lives only in the name of the field holding it. A figure called wall_nanos and a figure called cpu_nanos are two magnitudes that compare, add and threshold as if they were the same quantity, and nothing in the type stops it: the fast-lane cap is enforced on CPU while every cost receipt recorded wall, and four sessions spent an evening comparing 1005 against 5004, 2507 against 5003 and 7944 against 5018 -- every number correct, only the bases differing, and no test could have caught any of it. THE REPO ALREADY RULED ON THIS SHAPE one magnitude over: extdeps.pricing.object_storage byte_basis_note opens with 'the unit word is not the unit' and resolves vendor GB-vs-GiB ambiguity with a typed ByteBasis on the row, never a second field named gibibytes beside one named gigabytes. This is that resolution for clocks. TWO ARMS AND NOT THREE, deliberately, and this is where it DIVERGES from ByteBasis: ByteBasisUnstated exists because vendors publish rates without saying which byte they mean, so the ambiguity is an external fact we can only record. A clock basis is never external -- this repository takes its own measurements and always knows which clock it read -- so an Unstated arm would model an absence that cannot occur here, and an uninhabited arm is its own defect. Failing to READ a clock is a different fact and is carried by Measured on the value, not by a third basis."
+
+type TimedMeasurement {
+  basis: ClockBasis
+  elapsed: Measured<Nanosecond>
+}
+
+data observation_timed_measurement_note: String = "One duration, tagged with the clock it came from. THE BASIS IS NOT OPTIONAL AND THE VALUE IS: you always know which clock you tried to read, and you may fail to read it. So basis is a plain ClockBasis while elapsed is Measured, which keeps the cause of an unreadable clock (observation_measured_note: never a fabricated zero, never a silently omitted field) without inventing a basis nobody observed. The inverse shape -- Measured<TimedMeasurement> -- was rejected because an Unavailable arm would then carry no basis, so a failed CPU read and a failed wall read would be indistinguishable."
+
 type ObservationOutcome
   = Done
   | Refused { diagnostic: NonEmptyStr }
   | Failed { error: NonEmptyStr, output: String }
-  | TimedOut { budget: Millisecond, elapsed: Millisecond }
+  | TimedOut { basis: ClockBasis, budget: Millisecond, elapsed: Millisecond }
   | Skipped { reason: NonEmptyStr }
   | Final { shown_failures: Nat }
+
+data observation_timed_out_basis_note: String = "TimedOut names the clock its cap was enforced on, so a crossing says WHICH cap it crossed. Before this, budget and elapsed were two bare magnitudes and a reader could not tell a CPU fail-stop from a wall ceiling -- the live specimen being a 5000ms CPU eval budget and a 600000ms wall receipt budget, both surfacing as TimedOut with no way to distinguish them. ONE basis governs BOTH fields rather than each carrying its own: a budget and the elapsed figure compared against it must be on the same clock or the comparison is meaningless, so two independently-based fields would make the incoherent state representable. Same reason the seed's BudgetKind sits beside the pair rather than inside each half."
 
 data observation_refused_distinct_note: String = "Refused is DISTINCT from Failed, and this is the point of the sum, not a nicety. A typed refusal is the house's fail-closed spine (DESIGN section 5): the line stopped deliberately, located, with a diagnostic — the stopped line the operator is meant to analyse. A failure is the process breaking. The reference implementation studied for this lane conflates them behind one red glyph, which is exactly how a deliberate refusal reads as a crash and a crash reads as policy. They get different glyphs and different rendering; a renderer that maps both to one symbol is a regression the presentation census reds."
 
@@ -290,7 +305,7 @@ fn observation_outcome_is_anomaly(o: ObservationOutcome) -> Bool {
     Done => false
     Refused { diagnostic: _ } => true
     Failed { error: _, output: _ } => true
-    TimedOut { budget: _, elapsed: _ } => true
+    TimedOut { basis: _, budget: _, elapsed: _ } => true
     Skipped { reason: _ } => false
     Final { shown_failures: _ } => false
   }
@@ -396,7 +411,7 @@ fn observation_outcome_class(o: ObservationOutcome) -> ObservationEventClass {
     Done => ClassDone
     Refused { diagnostic: _ } => ClassRefused
     Failed { error: _, output: _ } => ClassFailed
-    TimedOut { budget: _, elapsed: _ } => ClassTimedOut
+    TimedOut { basis: _, budget: _, elapsed: _ } => ClassTimedOut
     Skipped { reason: _ } => ClassSkipped
     Final { shown_failures: _ } => ClassFinal
   }

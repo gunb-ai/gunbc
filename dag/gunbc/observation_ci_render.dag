@@ -268,7 +268,7 @@ fn ci_outcome_text(o: ObservationOutcome) -> String {
     Done => "done"
     Refused { diagnostic: d } => concat("refused: ", d)
     Failed { error: e, output: _ } => concat("failed: ", e)
-    TimedOut { budget: b, elapsed: e } =>
+    TimedOut { basis: _, budget: b, elapsed: e } =>
       concat("timed out after ", concat(ci_human_duration(d: e), concat(" (budget ", concat(ci_human_duration(d: b), ")"))))
     Skipped { reason: r } => concat("skipped: ", r)
     Final { shown_failures: n } => concat("finished with ", concat(to_string(n), " problems shown"))
