@@ -140,7 +140,10 @@ import gunbc.roadmap_verification_receipt {
   VerificationSubjectObserved,
   VerificationSubjectUnobserved,
   VerificationReceiptAbsent,
+  SelectionAbsent,
+  SelectionObserved,
 }
+import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -839,6 +842,10 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     verification_subject: VerificationSubjectObserved {
       subject: fixture_verification_subject(node_id: node_id),
     },
+    verification_selection: SelectionObserved {
+      head: fixture_verification_head,
+      window_identity: git_diff_window_absent_identity(),
+    },
     verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
       subject: PublicationSubject {
@@ -914,6 +921,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       verification_subject: VerificationSubjectUnobserved {
         reason: "fixture verification subject not established",
       },
+      verification_selection: SelectionAbsent,
       verification_source: VerificationReceiptAbsent,
       publication_subject: PublicationSubjectObserved {
         subject: PublicationSubject {

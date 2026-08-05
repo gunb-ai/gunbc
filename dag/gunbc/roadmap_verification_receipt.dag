@@ -1238,22 +1238,22 @@ fn verification_receipt_decode(receipt: String) -> VerificationReceiptDecode {
 }
 
 type VerificationReceiptTextDecode
-  = VerificationReceiptTextExactHead { receipt: VerificationReceipt }
-  | VerificationReceiptTextLegacy { verdict_key: String }
-  | VerificationReceiptTextUndecodable { reason: String }
+  = VerificationReceiptDecodeExactHead { receipt: VerificationReceipt }
+  | VerificationReceiptDecodeLegacy { verdict_key: String }
+  | VerificationReceiptDecodeUndecodable { reason: String }
 
 fn verification_receipt_text_decode(receipt: String) -> VerificationReceiptTextDecode {
   match verification_receipt_text_classify(receipt: receipt) {
     VerificationReceiptTextV2 { receipt } =>
-      VerificationReceiptTextExactHead { receipt: receipt }
+      VerificationReceiptDecodeExactHead { receipt: receipt }
     VerificationReceiptTextV1ExactHead { legacy: _ } =>
-      VerificationReceiptTextUndecodable {
+      VerificationReceiptDecodeUndecodable {
         reason: "v1 exact-head receipt cannot be decoded through the legacy text-decode alias; use verification_receipt_text_classify",
       }
     VerificationReceiptTextLegacyAttempt { verdict_key } =>
-      VerificationReceiptTextLegacy { verdict_key: verdict_key }
+      VerificationReceiptDecodeLegacy { verdict_key: verdict_key }
     VerificationReceiptTextUndecodable { reason } =>
-      VerificationReceiptTextUndecodable { reason: reason }
+      VerificationReceiptDecodeUndecodable { reason: reason }
   }
 }
 

@@ -211,10 +211,6 @@ import gunbc.roadmap_verification_receipt {
   verification_receipt_decode,
   VerificationReceiptDecoded,
   VerificationReceiptUndecodable,
-  verification_receipt_text_decode,
-  VerificationReceiptTextExactHead,
-  VerificationReceiptTextLegacy,
-  VerificationReceiptTextUndecodable,
   verification_subject_match,
   VerificationSubjectMatches,
   VerificationSubjectDiffers,
@@ -2697,72 +2693,6 @@ fn belt_publication_receipt_source(
   }
 }
 
-fn belt_verification_subject_for(
-  node: RoadmapNode,
-  attempt_key: String,
-  branch: String,
-  head: WorktreeHeadObservation,
-  change_window_identity: Fnv1a64Structural,
-) -> VerificationSubjectObservation {
-  match head {
-    WorktreeHeadUnobserved { reason } =>
-      VerificationSubjectUnobserved {
-        reason: join([
-          "verification is adjudicated against an exact head and this attempt has none: ",
-          reason,
-        ], ""),
-      }
-    WorktreeHeadObserved { revision } =>
-      if trim(branch) == "" {
-        VerificationSubjectUnobserved {
-          reason: "the attempt has no branch name, so there is no verification subject to construct",
-        }
-      } else {
-        match node_criteria_digest(rn: node) {
-          Absent =>
-            VerificationSubjectUnobserved {
-              reason: "this roadmap node has no criteria digest, so the verification subject cannot be constructed",
-            }
-          Present { value: criteria_digest } =>
-            VerificationSubjectObserved {
-              subject: VerificationSubject {
-                node_identity: node.identity,
-                criteria_digest: criteria_digest,
-                attempt_key: attempt_key,
-                branch: branch as NonEmptyStr,
-                head_sha: revision as CommitSha,
-                change_window_identity: change_window_identity,
-              },
-            }
-        }
-      }
-  }
-}
-
-fn belt_verification_window_identity_for_attempt(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-  node: RoadmapNode,
-  partial_subject: VerificationSubject,
-  worktree: String,
-) -> Fnv1a64Structural {
-  if worktree == "" || !execution_contract_needs_diff_window(contract: node.execution) {
-    git_diff_window_absent_identity()
-  } else {
-    match belt_prepare_diff_window_for_verification(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-      subject: partial_subject,
-      worktree: worktree,
-    ) {
-      GitDiffWindowPrepared { path: _, window: window } => window.window_identity
-      GitDiffWindowPrepareRefused { cause: _ } => git_diff_window_absent_identity()
-    }
-  }
-}
-
 fn belt_publish_current_verification_selection(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -2910,7 +2840,7 @@ fn belt_verification_receipt_source(
 ) -> VerificationReceiptFileSource {
   match selection {
     SelectionAbsent => VerificationReceiptAbsent
-    SelectionUnreadable { cause: _ } =>
+    SelectionUnreadable { cause } =>
       VerificationReceiptUnreadable {
         detail: join([
           "the current verification selection could not be read, so the exact receipt path was not established: ",
@@ -3028,6 +2958,7 @@ fn belt_workflow_progress_for_attempt_ref(
       verification_subject: VerificationSubjectUnobserved {
         reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
       },
+      verification_selection: SelectionAbsent,
       verification_source: VerificationReceiptAbsent,
       publication_subject: PublicationSubjectUnobserved {
         reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
@@ -3557,127 +3488,135 @@ fn belt_verify_attempt_for_instance(
             reason: "the roadmap authority declares no node with this id, so there is no contract to verify against",
           }
         NodeFound { node } => {
-          let verification_subject = belt_verification_subject_observation_for_attempt(
-            instance: instance,
-            node_id: progress.node_id,
+          let branch = dispatch_branch_name(
+            node_id: node_id,
             attempt_key: progress.attempt_key,
           )
-          match verification_subject {
-            VerificationSubjectUnobserved { reason } =>
-              VerifyDeferred { node_id: progress.node_id, reason: reason }
-            VerificationSubjectObserved { subject: partial_subject } => {
-              let worktree = belt_verify_detached_worktree(
-                instance: instance,
-                node_id: node_id,
-                attempt_key: progress.attempt_key,
-                head_sha: partial_subject.head_sha as String,
-              )
-              let prepared_window = if worktree != ""
-                && execution_contract_needs_diff_window(contract: node.execution) {
-                Present {
-                  value: belt_prepare_diff_window_for_verification(
-                    instance: instance,
-                    node_id: node_id,
-                    attempt_key: progress.attempt_key,
-                    subject: partial_subject,
-                    worktree: worktree,
-                  ),
-                }
-              } else {
-                none
-              }
-              match prepared_window {
-                Present { value: GitDiffWindowPrepareRefused { cause: cause } } =>
-                  belt_verify_run_and_persist(
-                    instance: instance,
-                    node: node,
-                    progress: progress,
-                    subject: belt_verification_subject_with_window(
-                      subject: partial_subject,
-                      window_identity: git_diff_window_absent_identity(),
-                    ),
-                    diff_window_path: none,
-                    change_window_refusal: Present { value: cause },
-                  )
-                _ => {
-                  let subject = match prepared_window {
-                    Present { value: GitDiffWindowPrepared { path: _, window: window } } =>
-                      belt_verification_subject_with_window(
-                        subject: partial_subject,
-                        window_identity: window.window_identity,
-                      )
-                    Absent =>
-                      belt_verification_subject_with_window(
-                        subject: partial_subject,
-                        window_identity: git_diff_window_absent_identity(),
-                      )
-                    Present { value: GitDiffWindowPrepareRefused { cause: _ } } =>
-                      belt_verification_subject_with_window(
-                        subject: partial_subject,
-                        window_identity: git_diff_window_absent_identity(),
-                      )
-                  }
-                  let identity_hex = git_diff_window_identity_hex(
-                    identity: subject.change_window_identity,
-                  )
-                  let receipt_path = dispatch_attempt_verification_receipt_path_for_instance(
-                    instance: instance,
-                    node_id: node_id,
-                    attempt_key: progress.attempt_key,
-                    head_sha: subject.head_sha as String,
-                    window_identity_hex: identity_hex,
-                  )
-                  let receipt_read = Filesystem.Read(path: receipt_path)
-                  if !receipt_read.success {
-                    VerifyEvidenceUnreadable {
+          if trim(branch) == "" {
+            VerifyDeferred {
+              node_id: progress.node_id,
+              reason: "the attempt has no branch name, so there is no verification subject to construct",
+            }
+          } else {
+            let attempt_worktree = dispatch_worktree_path_for_instance(
+              instance: instance,
+              node_id: node_id,
+              attempt_key: progress.attempt_key,
+            )
+            match belt_worktree_head_observe(
+              instance: instance,
+              worktree: attempt_worktree,
+            ) {
+              WorktreeHeadUnobserved { reason } =>
+                VerifyDeferred { node_id: progress.node_id, reason: reason }
+              WorktreeHeadObserved { revision: revision } => {
+                let head_sha = revision as String
+                let worktree = belt_verify_detached_worktree(
+                  instance: instance,
+                  node_id: node_id,
+                  attempt_key: progress.attempt_key,
+                  head_sha: head_sha,
+                )
+                match node_criteria_digest(rn: node) {
+                  Absent =>
+                    VerifyDeferred {
                       node_id: progress.node_id,
-                      detail: join([
-                        "a verification receipt for this head and window identity could not be read: ",
-                        receipt_path,
-                        " (",
-                        receipt_read.error,
-                        ")",
-                      ], ""),
+                      reason: "this roadmap node has no criteria digest, so the verification subject cannot be constructed",
                     }
-                  } else {
-                    match verification_receipt_text_decode(receipt: receipt_read.content) {
-                      VerificationReceiptTextUndecodable { reason } =>
+                  Present { value: criteria_digest } => {
+                    let partial_subject = VerificationSubject {
+                      node_identity: node.identity,
+                      criteria_digest: criteria_digest,
+                      attempt_key: progress.attempt_key,
+                      branch: branch as NonEmptyStr,
+                      head_sha: revision as CommitSha,
+                      change_window_identity: git_diff_window_absent_identity(),
+                    }
+                    let prepared_window = if worktree != ""
+                      && execution_contract_needs_diff_window(contract: node.execution) {
+                      Present {
+                        value: belt_prepare_diff_window_for_verification(
+                          instance: instance,
+                          node_id: node_id,
+                          attempt_key: progress.attempt_key,
+                          subject: partial_subject,
+                          worktree: worktree,
+                        ),
+                      }
+                    } else {
+                      none
+                    }
+                    let subject = match prepared_window {
+                      Present { value: GitDiffWindowPrepared { path: _, window: window } } =>
+                        belt_verification_subject_with_window(
+                          subject: partial_subject,
+                          window_identity: window.window_identity,
+                        )
+                      Present { value: GitDiffWindowPrepareRefused { cause: _ } } =>
+                        partial_subject
+                      Absent => partial_subject
+                    }
+                    let identity_hex = git_diff_window_identity_hex(
+                      identity: subject.change_window_identity,
+                    )
+                    match belt_publish_current_verification_selection(
+                      instance: instance,
+                      node_id: node_id,
+                      attempt_key: progress.attempt_key,
+                      subject: subject,
+                    ) {
+                      ExecRefused { program: _, reason } =>
                         VerifyEvidenceUnreadable {
                           node_id: progress.node_id,
                           detail: join([
-                            "a verification receipt for this head and window identity could not be decoded: ",
+                            "verification refused before running because the current selection could not be published: ",
                             reason,
                           ], ""),
                         }
-                      VerificationReceiptTextLegacy { verdict_key: _ } =>
-                        belt_verify_run_and_persist(
-                          instance: instance,
-                          node: node,
-                          progress: progress,
-                          subject: subject,
-                          diff_window_path: if execution_contract_needs_diff_window(
-                            contract: node.execution,
-                          ) {
-                            Present {
-                              value: dispatch_attempt_diff_window_path_for_instance(
-                                instance: instance,
-                                node_id: node_id,
-                                attempt_key: progress.attempt_key,
-                                head_sha: subject.head_sha as String,
-                                window_identity_hex: identity_hex,
-                              ),
-                            }
-                          } else {
-                            none
-                          },
-                          change_window_refusal: none,
+                      ExecFailed { program: _, exit_code: _, stderr: _ } =>
+                        VerifyEvidenceUnreadable {
+                          node_id: progress.node_id,
+                          detail: "verification refused before running because publishing the current selection failed",
+                        }
+                      ExecOk { stdout: _ } => {
+                        let exact_source = exact_verification_receipt_source_read(
+                          attempt_dir: dispatch_attempt_state_path_for_instance(
+                            instance: instance,
+                            node_id: node_id,
+                            attempt_key: progress.attempt_key,
+                          ),
+                          verification_dir: dispatch_attempt_verification_dir_for_instance(
+                            instance: instance,
+                            node_id: node_id,
+                            attempt_key: progress.attempt_key,
+                          ),
+                          receipt_basename: exact_verification_receipt_basename(
+                            head_sha: head_sha,
+                            window_identity_hex: identity_hex,
+                          ),
+                          receipt_path: dispatch_attempt_verification_receipt_path_for_instance(
+                            instance: instance,
+                            node_id: node_id,
+                            attempt_key: progress.attempt_key,
+                            head_sha: head_sha,
+                            window_identity_hex: identity_hex,
+                          ),
                         )
-                      VerificationReceiptTextExactHead { receipt } =>
-                        match verification_subject_match(
+                        match belt_verification_decision(
                           expected: subject,
-                          found: receipt.subject,
+                          source: exact_source,
                         ) {
-                          VerificationSubjectDiffers { field: _, expected: _, found: _ } =>
+                          BeltVerificationRefuse { reason } =>
+                            VerifyEvidenceUnreadable {
+                              node_id: progress.node_id,
+                              detail: reason,
+                            }
+                          BeltVerificationDefer { reason } =>
+                            VerifyDeferred {
+                              node_id: progress.node_id,
+                              reason: reason,
+                            }
+                          BeltVerificationRun =>
                             belt_verify_run_and_persist(
                               instance: instance,
                               node: node,
@@ -3691,53 +3630,23 @@ fn belt_verify_attempt_for_instance(
                                     instance: instance,
                                     node_id: node_id,
                                     attempt_key: progress.attempt_key,
-                                    head_sha: subject.head_sha as String,
+                                    head_sha: head_sha,
                                     window_identity_hex: identity_hex,
                                   ),
                                 }
                               } else {
                                 none
                               },
-                              change_window_refusal: none,
+                              change_window_refusal: match prepared_window {
+                                Present {
+                                  value: GitDiffWindowPrepareRefused { cause: cause },
+                                } =>
+                                  Present { value: cause }
+                                _ => none
+                              },
                             )
-                          VerificationSubjectMatches =>
-                            if validation_verdict_key(verdict: receipt.verdict) == "not_run" {
-                              belt_verify_run_and_persist(
-                                instance: instance,
-                                node: node,
-                                progress: progress,
-                                subject: subject,
-                                diff_window_path: if execution_contract_needs_diff_window(
-                                  contract: node.execution,
-                                ) {
-                                  Present {
-                                    value: dispatch_attempt_diff_window_path_for_instance(
-                                      instance: instance,
-                                      node_id: node_id,
-                                      attempt_key: progress.attempt_key,
-                                      head_sha: subject.head_sha as String,
-                                      window_identity_hex: identity_hex,
-                                    ),
-                                  }
-                                } else {
-                                  none
-                                },
-                                change_window_refusal: none,
-                              )
-                            } else {
-                              VerifyDeferred {
-                                node_id: progress.node_id,
-                                reason: join([
-                                  "an exact-head verification verdict is already recorded for this attempt at ",
-                                  subject.head_sha as String,
-                                  " with window identity ",
-                                  identity_hex,
-                                  ": ",
-                                  validation_verdict_key(verdict: receipt.verdict),
-                                ], ""),
-                              }
-                            }
                         }
+                      }
                     }
                   }
                 }
