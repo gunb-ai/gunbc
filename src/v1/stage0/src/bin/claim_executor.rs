@@ -4604,6 +4604,19 @@ fn write_witness_row_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_l
     )
 }
 
+/// Rendering for a timing cell whose measurement does not exist. Deliberately NOT a number,
+/// so a consumer that reaches for one fails loudly instead of counting an unexecuted row as a
+/// fast one — the failure mode this receipt had while the cell said `0`.
+const UNMEASURED_CELL: &str = "unmeasured";
+
+/// Whether a row's timings are absent rather than measured. Keyed on the same
+/// `selection-skipped` outcome spelling `discovery_claim_result` writes and
+/// `wet_witness_row_outcome_label` already dispatches on, rather than inferring absence from
+/// the numbers — inferring it from a zero is precisely the conflation being closed.
+fn row_measurement_is_absent(outcome_variant: &str) -> bool {
+    outcome_variant == "selection-skipped"
+}
+
 fn write_witness_row_cost_receipt_at(
     base: &std::path::Path,
     batch_records: &[BatchRecord],
@@ -4617,11 +4630,27 @@ fn write_witness_row_cost_receipt_at(
         let n = rec.batch_index + 1;
         for result in &rec.results {
             for row in &result.witness_row_costs {
-                let eval_wall_ms = row.2 / 1_000_000;
-                let resolve_ms = row.3 / 1_000_000;
-                let warm_ms = row.4 / 1_000_000;
+                // A row that never executed has no cost to report. Printing `0` for it would
+                // be the fabricated zero std.observation's `observation_measured_note`
+                // forbids in as many words: "A renderer projecting MeasuredUnavailable prints
+                // the cause; it never prints 0 and never omits the field." So the timing
+                // columns render as UNMEASURED and the cause rides in outcome/detail, rather
+                // than a real measurement of zero standing in for the absence of one.
+                //
+                // Note the two are genuinely different facts here: an executed witness may
+                // legitimately measure 0 ms (sub-millisecond), and those rows keep their `0`.
+                let cells = if row_measurement_is_absent(&row.5) {
+                    format!("{UNMEASURED_CELL}\t{UNMEASURED_CELL}\t{UNMEASURED_CELL}")
+                } else {
+                    format!(
+                        "{}\t{}\t{}",
+                        row.2 / 1_000_000,
+                        row.3 / 1_000_000,
+                        row.4 / 1_000_000
+                    )
+                };
                 body.push_str(&format!(
-                    "{n}\t{}\t{}\t{eval_wall_ms}\t{resolve_ms}\t{warm_ms}\t{}\t{}\n",
+                    "{n}\t{}\t{}\t{cells}\t{}\t{}\n",
                     row.0, row.1, row.5, row.6
                 ));
                 row_count += 1;
@@ -10900,26 +10929,50 @@ mod tests {
             .find(|l| l.contains("never_executed_at_all"))
             .expect("skipped row");
 
-        // Both really do collide on every cost column — this is the premise, asserted rather
-        // than assumed, so the test still means something if the fixture timings change.
         let cost_cols = |line: &str| {
             let f: Vec<&str> = line.split('\t').collect();
             (f[3].to_string(), f[4].to_string(), f[5].to_string())
         };
+
+        // The executed row measured genuinely-zero milliseconds (500_000ns floors to 0). That
+        // is a real measurement and must survive as the number it is.
         assert_eq!(
             cost_cols(executed),
-            cost_cols(skipped),
-            "premise: the two rows are indistinguishable on cost alone"
-        );
-        assert_eq!(
-            cost_cols(executed).0,
-            "0",
-            "both floor to a zero eval column"
+            ("0".to_string(), "0".to_string(), "0".to_string()),
+            "a sub-millisecond row measured 0 and must report 0: {executed}"
         );
 
-        // ...and are nonetheless distinguishable, which is the whole point. This is the
-        // discriminating assertion: it goes RED if the outcome column is dropped again,
-        // because then the two lines differ only in their entry/function identity.
+        // The unexecuted row has NO measurement and must not fabricate one — the
+        // std.observation observation_measured_note rule applied at the renderer: never print
+        // 0 for an absent measurement, never omit the field.
+        let absent = cost_cols(skipped);
+        assert_eq!(
+            absent,
+            (
+                UNMEASURED_CELL.to_string(),
+                UNMEASURED_CELL.to_string(),
+                UNMEASURED_CELL.to_string()
+            ),
+            "an unexecuted row must report absence, not a zero: {skipped}"
+        );
+        for cell in [&absent.0, &absent.1, &absent.2] {
+            assert!(
+                cell.parse::<u128>().is_err(),
+                "an absent measurement must not parse as a number, or a census counts an \
+                 unexecuted row as a fast one: {cell}"
+            );
+        }
+
+        // Discriminating on cost alone — false before this landed, and the assertion that
+        // goes RED if a fabricated zero ever returns.
+        assert_ne!(
+            cost_cols(executed),
+            absent,
+            "executed and unexecuted must differ in the cost columns themselves"
+        );
+
+        // The typed disposition still rides beside the number, so the cause stays recoverable
+        // rather than being merely signalled by absence.
         assert!(
             executed.contains("\tDone\t"),
             "executed row must carry its outcome: {executed}"
@@ -10927,11 +10980,6 @@ mod tests {
         assert!(
             skipped.contains("\tselection-skipped\t"),
             "unexecuted row must say so: {skipped}"
-        );
-        assert_ne!(
-            executed.split('\t').nth(6),
-            skipped.split('\t').nth(6),
-            "outcome column must separate executed from unexecuted"
         );
 
         // The eval column is WALL and must say so: the fast-lane cap that kills these rows
