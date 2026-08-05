@@ -4,7 +4,7 @@ import std.types { NonEmptyStr }
 import v2.std.decl_index { DeclFact, DataItem }
 import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
 
-data scaffold_disposition_census_oracle_note: String = "Independently authored expected-classification oracle for the exact scaffold disposition census (adhoc-220d7fd9-374). Authored against the sibling specimens.dag/decoys.dag fixture pool BEFORE any classifier exists -- these rows are the oracle a future classifier must match, not a measurement of what it currently produces (DESIGN 'a literal copied from the current tree is not an oracle' / 'completeness is an identity join, not a count equality'). The four states are fixed: NonDisposition, Terminal, ScaffoldDecoded, ScaffoldDecodeRefused -- every data declaration in the pool lands in exactly one, and Terminal is a genuine outcome, never folded into ScaffoldDecodeRefused."
+data scaffold_disposition_census_oracle_note: String = "Independently authored expected-classification oracle for the exact scaffold disposition census (adhoc-220d7fd9-374). Authored against the sibling pool/ fixture pool (specimens.dag, decoy_record.dag, decoy_nullary.dag) BEFORE any classifier exists -- these rows are the oracle a future classifier must match, not a measurement of what it currently produces (DESIGN 'a literal copied from the current tree is not an oracle' / 'completeness is an identity join, not a count equality'). The four states are fixed: NonDisposition, Terminal, ScaffoldDecoded, ScaffoldDecodeRefused -- every data declaration in the pool lands in exactly one, and Terminal is a genuine outcome, never folded into ScaffoldDecodeRefused."
 
 data scaffold_disposition_census_fixture_pool_roots: List<String> = [
   "dag/test/fixture/scaffold_disposition_census/pool"
@@ -39,12 +39,12 @@ data scaffold_disposition_census_expected_rows: List<ExpectedScaffoldCensusRow> 
     rationale: "declared type ConstructionMechanism, the Scaffold-arm PAYLOAD type, not Disposition itself -- adjacent but distinct authority" as NonEmptyStr
   },
   ExpectedScaffoldCensusRow {
-    qualified_name: "test.fixture.scaffold_disposition_census.pool.decoys.decoy_record_scaffold_specimen",
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.decoy_record.decoy_record_scaffold_specimen",
     expected_state: NonDisposition,
     rationale: "declared type DecoyRecordDisposition, whose record arm is spelled Scaffold but is not std.disposition.Scaffold -- proves spelling is not type identity" as NonEmptyStr
   },
   ExpectedScaffoldCensusRow {
-    qualified_name: "test.fixture.scaffold_disposition_census.pool.decoys.decoy_nullary_scaffold_specimen",
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.decoy_nullary.decoy_nullary_scaffold_specimen",
     expected_state: NonDisposition,
     rationale: "declared type DecoyNullaryDisposition, whose nullary arm is spelled Scaffold but is not std.disposition.Scaffold" as NonEmptyStr
   },
