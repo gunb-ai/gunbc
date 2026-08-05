@@ -15532,7 +15532,9 @@ fn witness_cost_clock_nanos(
         false,
     )
     .map_err(|e| {
-        format!("[witness-row-cost] REFUSED: observation_duration_of({basis_constructor}) failed: {e}")
+        format!(
+            "[witness-row-cost] REFUSED: observation_duration_of({basis_constructor}) failed: {e}"
+        )
     })?;
     let Value::Variant {
         variant_name,
