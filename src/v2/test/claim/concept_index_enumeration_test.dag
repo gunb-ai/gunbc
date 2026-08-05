@@ -177,21 +177,5 @@ test fn witness_coproduct_arms_live() -> Bool {
   )
 }
 
-fn coproduct_arms_parse_only_holds() -> Bool {
-  parse_only_concept_matches(
-    target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessCoproduct",
-    short_name: "ConceptIndexWitnessCoproduct",
-    field_count: 2,
-    check: fn(fields) {
-      fields_contains(fields: fields, fname: "NullaryArm", tname: "coproduct_nullary_payload")
-        && fields_contains(
-          fields: fields,
-          fname: "NamedFieldArm",
-          tname: "{ alpha: String, beta: Bool }"
-        )
-    }
-  )
-}
-
 data coproduct_arms_parse_only_long_lane_note: String = "witness_coproduct_arms_parse_only rehomed to src/v2/test/claim/long/concept_index_enumeration_coproduct_parse_only_witness_test.dag (operator 5s rule, PR #7756 CI run 31017039134): parse_only_concept_matches over src/v2/test/claim exceeded 6065ms thread-CPU against the 5000ms fast-lane budget on a corpus grown by unrelated modules — the witness-evidence-lifecycle design receipt class (docs/plans/witness-evidence-lifecycle-design.md). Enrollment: falsifier_substrate_long_lane_rows, nightly falsifier batch 6."
 
