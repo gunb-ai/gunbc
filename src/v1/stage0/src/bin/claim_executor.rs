@@ -11851,6 +11851,51 @@ mod tests {
         );
     }
 
+    /// A signalled process must not borrow an exit code it does not have. The seed
+    /// rendered `.code().unwrap_or(-1)` for every leg before this, which made a runner
+    /// OOM-kill read exactly like a process that chose to exit -1.
+    #[test]
+    fn native_leg_signal_death_is_not_rendered_as_an_exit_code() {
+        assert_eq!(
+            ProcessTermination::Signaled(9).located(),
+            "killed by signal 9"
+        );
+        assert_eq!(ProcessTermination::Exited(101).located(), "exited 101");
+        assert_eq!(
+            ProcessTermination::Unobserved.located(),
+            "termination unobserved"
+        );
+        // The discriminating half: no termination renders as the old fabricated -1,
+        // and the signal arm shares no rendering with any exit arm.
+        for termination in [
+            ProcessTermination::Signaled(9),
+            ProcessTermination::Signaled(11),
+            ProcessTermination::Unobserved,
+        ] {
+            assert!(
+                !termination.located().contains("exited"),
+                "{termination:?} rendered as an exit"
+            );
+        }
+    }
+
+    /// The excerpt is the TAIL: cargo writes its error last and a panic writes its
+    /// message last, so a head-anchored excerpt would reliably carry the least useful
+    /// bytes. It is bounded so one refusal cannot flood the floor's result stream.
+    #[test]
+    fn stream_excerpt_keeps_the_tail_bounded_and_marks_truncation() {
+        assert_eq!(stream_excerpt(b""), "<empty>");
+        assert_eq!(stream_excerpt(b"error: no such command\n"), "error: no such command");
+        let long: Vec<u8> = std::iter::repeat(b'x')
+            .take(4000)
+            .chain(b"THE ACTUAL ERROR".iter().copied())
+            .collect();
+        let excerpt = stream_excerpt(&long);
+        assert!(excerpt.contains("THE ACTUAL ERROR"), "tail was dropped");
+        assert!(excerpt.starts_with('…'), "truncation was not marked");
+        assert!(excerpt.len() < 1400, "excerpt is unbounded: {}", excerpt.len());
+    }
+
     #[test]
     fn grouping_preserves_every_claim_exactly_once() {
         // Verdict preservation: no claim dropped, duplicated, or invented — grouping only reorders
