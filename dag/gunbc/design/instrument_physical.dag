@@ -1,0 +1,287 @@
+module gunbc.design.instrument_physical
+
+import std.types { String, Bool, Int, List }
+import std.integer { Nat }
+import gunbc.design.material { TimingToken, respond_fast, restore_gentle }
+import gunbc.design.salience { attraction_travel_max_px }
+import gunbc.design.reference_instrument {
+  InstrumentBehaviourAxis, OpticalInstability, RestingOffsetCalibration,
+  ImpulseGlitch, BuoyantDrift, AxisProvenance, axis_provenance, axis_is_originated,
+}
+
+data physical_character_note: String = "THE ENCLOSING INSTRUMENT MAY HAVE PHYSICAL CHARACTER; THE CAUSAL WORLD MAY NOT. This is the register amendment the audition needs, and the line it draws is the whole content: still-until-touched governs the SUBJECTS — a roadmap node, a finish line, an operation never moves without a cause — while the instrument ENCLOSING them is a physical object whose glass, phosphor and chassis have their own idle behaviour. A CRT that sits perfectly still is not restraint, it is a picture of a CRT. So drift, jitter, vertical shift and impulse glitch are admitted HERE and nowhere else, under three conditions that make them incapable of lying: every effect displaces or perturbs the instrument's own presentation layer and can carry no domain fact; every effect is preference-controlled and its off position is total; and the composed displacement is bounded below the register's existing attraction travel, so instrument character can never move a subject as far as a real response does. The reference precedent travels as a typed edge into gunbc.design.reference_instrument rather than as prose here — see provenance_edge_note and channel_behaviour_axis below."
+
+data preference_off_is_total_note: String = "EVERY CHANNEL'S OFF POSITION IS TOTAL, and that is a construction property rather than a promise: instrument_displacement_px returns zero for a disabled channel by matching the preference, so a realization reading the composed budget receives no displacement to apply. There is no global escape hatch and no 'reduced' middle mode that leaves a residue — a channel is off or it is at its declared amplitude."
+
+type InstrumentChannel
+  = ChannelOpticalJitter
+  | ChannelVerticalShift
+  | ChannelBuoyantDrift
+  | ChannelImpulseGlitch
+
+fn channel_key(c: InstrumentChannel) -> String {
+  match c {
+    ChannelOpticalJitter => "optical-jitter"
+    ChannelVerticalShift => "vertical-shift"
+    ChannelBuoyantDrift => "buoyant-drift"
+    ChannelImpulseGlitch => "impulse-glitch"
+  }
+}
+
+data channel_carries_no_domain_fact_note: String = "The predicate the whole amendment rests on, stated over the channel set rather than per site: NO instrument channel may carry a domain fact. It is total and constantly false because that is the claim — if a fifth channel is ever added that DOES carry meaning, this match forces the author to write the arm and a reviewer sees a true in a function whose name says there should not be one. That is cheaper and louder than a lens over the same set."
+
+fn channel_may_carry_domain_fact(c: InstrumentChannel) -> Bool {
+  match c {
+    ChannelOpticalJitter => false
+    ChannelVerticalShift => false
+    ChannelBuoyantDrift => false
+    ChannelImpulseGlitch => false
+  }
+}
+
+data glitch_vocabulary_note: String = "WE ADOPTED THE UPSTREAM'S WORD AND CHANGED ITS MEANING, WHICH IS WORSE THAN NOT ADOPTING IT (review finding, 2026-08-05). The first cut declared GlitchOff / GlitchShort / GlitchPersistent and claimed the set was taken verbatim from the cited Pip-Boy 3000's Glitch-on-tap setting — then defined Persistent as a slightly longer decay. The upstream word does not mean that. A persistent glitch on the reference device is a LATCHED out-of-sync display state that stays wrong until a later tap reseats it, which is precisely the unnecessary tactile detail that makes the thing read as equipment rather than as a themed screen. Redefining a cited word to mean the nearest thing we had implemented is nicknaming pointed at the upstream: a reader who trusts the adoption claim gets a fact that is false about the device.
+
+So the local vocabulary now says what it actually does. ImpulseOff and ImpulseBrief and ImpulseLong are transient decays of our own, named as ours. The cited Persistent behaviour is NOT adopted and is not silently approximated by ImpulseLong — it is a distinct interaction (latch, hold, reseat on a later impulse) that this study does not model. DISSOLVE-ON: a latched glitch state lands with the operable instrument, at which point it carries the upstream's own word because it will finally mean the same thing. The cited rows themselves live in extdeps.instrument.pip_boy_3000 and are referenced below rather than restated."
+
+type ImpulseGlitchDuration
+  = ImpulseOff
+  | ImpulseBrief
+  | ImpulseLong
+
+fn glitch_duration_key(g: ImpulseGlitchDuration) -> String {
+  match g {
+    ImpulseOff => "off"
+    ImpulseBrief => "brief"
+    ImpulseLong => "long"
+  }
+}
+
+data latched_glitch_not_modelled_note: String = "The gap left by the correction above, stated so it is countable rather than forgotten: no arm of this type latches. Every value here decays on the settle timing, so an impulse cannot leave the display in a wrong state that a later impulse reseats. That is a missing INTERACTION, not a missing duration, which is why lengthening ImpulseLong would not close it."
+
+fn glitch_is_armed(g: ImpulseGlitchDuration) -> Bool {
+  match g {
+    ImpulseOff => false
+    ImpulseBrief => true
+    ImpulseLong => true
+  }
+}
+
+fn glitch_settle(g: ImpulseGlitchDuration) -> TimingToken {
+  match g {
+    ImpulseOff => respond_fast
+    ImpulseBrief => respond_fast
+    ImpulseLong => restore_gentle
+  }
+}
+
+data amplitude_note: String = "AN AMPLITUDE IS A NONNEGATIVE MAGNITUDE, and the first cut got this wrong in a way worth recording: the field was a bare Int and the composed total was a signed sum, so a large positive disturbance could be CANCELLED by a negative one and the pair admitted under the ceiling. That is the budget defeating itself — the review finding that caught it is the same shape as an accounting check that nets debits against credits and reports zero exposure. The carrier is now std.integer Nat, so a negative amplitude has no literal that constructs it rather than a guard that catches it downstream. A resting offset that genuinely points somewhere — a vertical calibration, say — is a direction plus a magnitude and is a different fact from this one; it is not modelled here and must not be smuggled in as a negative amplitude. Amplitudes stay px-denominated integers matching the register's existing attraction bounds: there is no CssLength here and therefore no unit straddle to guard, which is the honest reason this module carries no unit-comparability refusal while gunbc.design.salience does."
+
+type ChannelAmplitude
+  = ChannelDisabled
+  | ChannelAmplitudePx { px: Nat }
+
+fn amplitude_px(a: ChannelAmplitude) -> Int {
+  match a {
+    ChannelDisabled => 0
+    ChannelAmplitudePx { px } => px
+  }
+}
+
+type InstrumentPreference {
+  optical_jitter: ChannelAmplitude
+  vertical_shift: ChannelAmplitude
+  buoyant_drift: ChannelAmplitude
+  impulse_glitch: ChannelAmplitude
+  glitch_duration: ImpulseGlitchDuration
+}
+
+data preference_still_note: String = "The all-off preference is a real, reachable configuration and not a degraded one: an instrument with every channel disabled is exactly the register's prior still surface, so the amendment strictly adds a lane rather than changing what the quiet setting produces."
+
+data preference_still: InstrumentPreference = InstrumentPreference {
+  optical_jitter: ChannelDisabled,
+  vertical_shift: ChannelDisabled,
+  buoyant_drift: ChannelDisabled,
+  impulse_glitch: ChannelDisabled,
+  glitch_duration: ImpulseOff,
+}
+
+data preference_default_note: String = "The shipped default is deliberately restrained rather than the reference product's full character: one px of optical jitter and two of buoyant drift are perceptible as life without being perceptible as motion, vertical shift is off because a rolling frame reads as a fault rather than as character, and the impulse glitch is armed at short because it only ever fires on a real physical impulse."
+
+data preference_default: InstrumentPreference = InstrumentPreference {
+  optical_jitter: ChannelAmplitudePx { px: 1 },
+  vertical_shift: ChannelDisabled,
+  buoyant_drift: ChannelAmplitudePx { px: 2 },
+  impulse_glitch: ChannelAmplitudePx { px: 3 },
+  glitch_duration: ImpulseBrief,
+}
+
+fn channel_amplitude(p: InstrumentPreference, c: InstrumentChannel) -> ChannelAmplitude {
+  match c {
+    ChannelOpticalJitter => p.optical_jitter
+    ChannelVerticalShift => p.vertical_shift
+    ChannelBuoyantDrift => p.buoyant_drift
+    ChannelImpulseGlitch => p.impulse_glitch
+  }
+}
+
+data displacement_budget_note: String = "ONE ENVELOPE OVER EVERYTHING THAT MOVES THE PLATE. The first cut bounded the four enclosure channels against the register's attraction travel and stopped there, which left the exact hole the review found: the focal plate's own attraction was admitted by a SEPARATE gate that could not see the enclosure, so a hero control could request the full attraction travel while the enclosure independently carried its whole character budget, each gate passing while the plate visibly moved farther than either bound describes. Two gates that each see half the motion do not bound the motion. So the envelope is now composed over every positional contribution at once — enclosure character, focal attraction, and the impulse transient — and the sub-budgets have to fit inside it rather than beside it.
+
+TWO RULES, STATED ONCE SO THE PROSE AND THE ARITHMETIC CANNOT DISAGREE (the review's second finding: the note said 'below' while the check refused only on strictly greater, so equality was quietly admissible). Rule one: the COMPOSED total may spend the envelope fully — admitted at or below, refused strictly above — because the envelope IS the register's declared maximum plate travel and a budget you may not spend to its stated limit is a mislabelled budget. Rule two: enclosure character ALONE must stay strictly below the envelope, because character that reaches the full travel of a real focal response is exactly the imitation the amendment exists to prevent. The first rule is an ordinary ceiling; the second is the one that carries the safety claim, and they differ deliberately."
+
+data instrument_displacement_max_px: Int = attraction_travel_max_px
+
+fn instrument_displacement_px(p: InstrumentPreference) -> Int {
+  amplitude_px(a: p.optical_jitter) +
+    amplitude_px(a: p.vertical_shift) +
+    amplitude_px(a: p.buoyant_drift) +
+    amplitude_px(a: p.impulse_glitch)
+}
+
+data composed_displacement_note: String = "Every positional contribution the register can grant a single subject, carried as nonnegative magnitudes so the sum cannot cancel. focal_attraction_px is the plate travel a focal control may be granted; it is zero for a subject with no attraction. The record has no direction field on purpose: a direction would let two contributions be argued to oppose, which is how a composed budget gets talked out of being composed."
+
+type ComposedVisualDisplacement {
+  enclosure_character_px: Nat
+  focal_attraction_px: Nat
+  impulse_transient_px: Nat
+}
+
+fn composed_total_px(d: ComposedVisualDisplacement) -> Int {
+  d.enclosure_character_px + d.focal_attraction_px + d.impulse_transient_px
+}
+
+type DisplacementAdmission
+  = DisplacementAdmitted { total_px: Int }
+  | DisplacementOverBudget { total_px: Int, max_px: Int }
+  | EnclosureCharacterReachesResponseTravel { character_px: Int, max_px: Int }
+
+fn compose_displacement(p: InstrumentPreference, focal_attraction_px: Nat) -> ComposedVisualDisplacement {
+  ComposedVisualDisplacement {
+    enclosure_character_px: amplitude_px(a: p.optical_jitter) +
+      amplitude_px(a: p.vertical_shift) +
+      amplitude_px(a: p.buoyant_drift),
+    focal_attraction_px: focal_attraction_px,
+    impulse_transient_px: amplitude_px(a: p.impulse_glitch),
+  }
+}
+
+data enclosure_character_px_note: String = "Character is the IDLE contribution — jitter, shift, drift — and deliberately excludes the impulse transient, because the impulse only fires on a real physical cause and is therefore not the thing that could be mistaken for an unprompted response. The transient still counts against the composed total, since a transient that overruns the envelope is still a plate leaving its declared travel."
+
+fn admit_composed_displacement(d: ComposedVisualDisplacement) -> DisplacementAdmission {
+  let total = composed_total_px(d: d)
+  if d.enclosure_character_px >= instrument_displacement_max_px {
+    EnclosureCharacterReachesResponseTravel {
+      character_px: d.enclosure_character_px,
+      max_px: instrument_displacement_max_px,
+    }
+  } else if total > instrument_displacement_max_px {
+    DisplacementOverBudget { total_px: total, max_px: instrument_displacement_max_px }
+  } else {
+    DisplacementAdmitted { total_px: total }
+  }
+}
+
+data focal_attraction_headroom_note: String = "The travel a focal control may still be granted once the enclosure has spent its share — DERIVED, so an audition cannot silently keep its old number when the enclosure's default changes, and cannot author an attraction that overruns the composed envelope FOR ANY PREFERENCE THE ENVELOPE ADMITS. That qualifier is the honest limit of the claim and it is stated because the first version of this note omitted it (self-audit, 2026-08-05). The subtraction is total on Int, not on Nat: a preference whose channels sum past instrument_displacement_max_px yields a NEGATIVE headroom, and the composed record's focal_attraction_px is a Nat whose refinement is not re-checked on a computed value, so the sign-cancellation class this module closed at the field is still reachable through the derived path. It is not reached today — preference_default spends 6 of 14 — and the configuration that would reach it is already refused by displacement_admission's EnclosureCharacterReachesResponseTravel arm, so the residual risk is that a caller reads headroom WITHOUT consulting that admission first. Rung: mechanically preventable, not structurally guaranteed; the ceiling is structural impossibility and the gap is one function's return type. NEXT-RUNG TRIGGER (DESIGN 4b, no untracked stall): headroom returns a typed HeadroomAvailable { px: Nat } | HeadroomUnavailable coproduct rather than a bare Int, so a caller cannot obtain a number at all when the enclosure has overspent — at which point this paragraph collapses back to the one-sentence construction claim it originally made."
+
+fn focal_attraction_headroom_px(p: InstrumentPreference) -> Int {
+  instrument_displacement_max_px - instrument_displacement_px(p: p)
+}
+
+fn displacement_admission(p: InstrumentPreference) -> DisplacementAdmission {
+  admit_composed_displacement(d: compose_displacement(p: p, focal_attraction_px: 0))
+}
+
+data provenance_edge_note: String = "THE PROVENANCE IS A TYPED EDGE NOW, NOT A PARAGRAPH. The first cut described the Pip-Boy precedent in prose and carried a DISSOLVE-ON saying the citation edge would arrive when the reference join reached main. It has (gunbc.design.reference_instrument, merged), so the prose is replaced by the edge it promised: every channel names the agnostic behaviour axis it inhabits, and that axis carries its own provenance — cited on a real declaration inside a product module, or originated here. Nothing in this module restates what the upstream shipped; it points at the join that does. ChannelBuoyantDrift resolving to an OriginatedHere axis is the case that makes the edge worth having: the drift is OURS, no reference product realizes it, and the edge says so rather than letting a reader assume the whole set was borrowed."
+
+fn channel_behaviour_axis(c: InstrumentChannel) -> InstrumentBehaviourAxis {
+  match c {
+    ChannelOpticalJitter => OpticalInstability
+    ChannelVerticalShift => RestingOffsetCalibration
+    ChannelBuoyantDrift => BuoyantDrift
+    ChannelImpulseGlitch => ImpulseGlitch
+  }
+}
+
+fn channel_provenance(c: InstrumentChannel) -> AxisProvenance {
+  axis_provenance(a: channel_behaviour_axis(c: c))
+}
+
+fn channel_is_cited_precedent(c: InstrumentChannel) -> Bool {
+  !axis_is_originated(axis: channel_behaviour_axis(c: c))
+}
+
+data impulse_source_note: String = "NOT ANCHORED TO A BROWSER (operator standing directive: focus on the vision, then work backwards to what is available). An accelerometer is a HOST capability, so the variants name the capability and not the runtime that exposes it — HostAccelerometer and HostDeviceMotion are equally inhabited by a browser sensor API, a desktop application's platform binding, or a physical enclosure's own hardware, and choosing a desktop realization later adds a binding row rather than editing this coproduct. SyntheticImpulse is not a fallback for a missing sensor: it is the audition path, an authored impulse that lets the glitch be designed, reviewed and witnessed on a machine that has no accelerometer at all, which is every CI runner."
+
+type PhysicalImpulseSource
+  = SyntheticImpulse
+  | HostAccelerometer
+  | HostDeviceMotion
+
+fn impulse_source_key(s: PhysicalImpulseSource) -> String {
+  match s {
+    SyntheticImpulse => "synthetic"
+    HostAccelerometer => "host-accelerometer"
+    HostDeviceMotion => "host-device-motion"
+  }
+}
+
+data sensor_availability_note: String = "FIVE STATES, BECAUSE THE THREE THAT GET COLLAPSED ARE THE ONES THAT MATTER. A sensor that is absent, one that exists but has not been asked for, one whose permission was refused, and one we could not interrogate are four different worlds with four different remedies, and every one of them is routinely flattened into a single falsy 'no sensor' — the empty-observation narrow, rendering could-not-observe as the verdict nothing-is-there. SensorAvailabilityUnknown is therefore NOT a synonym for absent: sensor_may_deliver_impulses admits only SensorPresent, so an uninterrogated sensor delivers nothing while remaining visibly distinct from one that is genuinely missing, and a surface can honestly say which."
+
+type SensorAvailability
+  = SensorPresent
+  | SensorAbsent
+  | SensorPermissionNotRequested
+  | SensorPermissionDenied
+  | SensorAvailabilityUnknown
+
+fn sensor_availability_key(a: SensorAvailability) -> String {
+  match a {
+    SensorPresent => "present"
+    SensorAbsent => "absent"
+    SensorPermissionNotRequested => "permission-not-requested"
+    SensorPermissionDenied => "permission-denied"
+    SensorAvailabilityUnknown => "availability-unknown"
+  }
+}
+
+fn sensor_may_deliver_impulses(a: SensorAvailability) -> Bool {
+  match a {
+    SensorPresent => true
+    SensorAbsent => false
+    SensorPermissionNotRequested => false
+    SensorPermissionDenied => false
+    SensorAvailabilityUnknown => false
+  }
+}
+
+data impulse_admission_note: String = "An impulse is admitted only when its SOURCE is available and the glitch channel is armed, and the refusal says which of the two failed rather than returning a bare false. The synthetic source is always available because it is authored input, which is what keeps the audition runnable on hardware that has no sensor — and it is a source in its own right rather than a simulation of one, so nothing here pretends a reading occurred."
+
+type ImpulseAdmission
+  = ImpulseAdmitted { source: String, settle: TimingToken }
+  | ImpulseSourceUnavailable { source: String, availability: String }
+  | ImpulseChannelDisabled { source: String }
+
+fn source_availability(s: PhysicalImpulseSource, sensor: SensorAvailability) -> SensorAvailability {
+  match s {
+    SyntheticImpulse => SensorPresent
+    HostAccelerometer => sensor
+    HostDeviceMotion => sensor
+  }
+}
+
+fn admit_impulse(
+  p: InstrumentPreference,
+  s: PhysicalImpulseSource,
+  sensor: SensorAvailability,
+) -> ImpulseAdmission {
+  let availability = source_availability(s: s, sensor: sensor)
+  if !sensor_may_deliver_impulses(a: availability) {
+    ImpulseSourceUnavailable {
+      source: impulse_source_key(s: s),
+      availability: sensor_availability_key(a: availability),
+    }
+  } else if amplitude_px(a: p.impulse_glitch) == 0 || !glitch_is_armed(g: p.glitch_duration) {
+    ImpulseChannelDisabled { source: impulse_source_key(s: s) }
+  } else {
+    ImpulseAdmitted { source: impulse_source_key(s: s), settle: glitch_settle(g: p.glitch_duration) }
+  }
+}

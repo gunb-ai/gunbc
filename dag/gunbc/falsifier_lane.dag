@@ -4,12 +4,12 @@ import std.types { String, NonEmptyStr, Bool, List, list_length }
 import std.nat { Nat }
 import gunbc.floor_component_receipt {
   FloorComponentRow,
+  ModeUnrecorded,
   floor_component_row_index,
   floor_component_row_is_done,
   floor_component_row_of,
   floor_component_row_of_failure_mode,
-  floor_component_transition_outcome,
-  ModeUnrecorded
+  floor_component_transition_outcome
 }
 import std.realization_schedule { SelectionApplied }
 import std.observation { Done, Refused, Failed, TimedOut, Skipped, Final }
