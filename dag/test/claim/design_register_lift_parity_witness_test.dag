@@ -6,6 +6,7 @@ import gunbc.site.moodboard { moodboard_css, moodboard_html, moodboard_digest }
 import gunbc.site.accent_study { accent_study_html }
 import gunbc.roadmap_style { roadmap_css }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.cloud.gcp.gcp { GcpProjectId }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
