@@ -6,9 +6,9 @@ fn closure_stub_v2_std_integer_source() -> String {
   concat(
     "// Generated closure stub — dissolve-on: derive from emitted ref set\n",
     "// Source module: v2.std.integer (closure projection; std_algebra + std_nat only)\n\n",
-    "use std::rc::Rc;\n",
+    "use std::sync::Arc;\n",
     "use crate::std_algebra::GroupCompletion;\n",
     "use crate::std_nat::Nat;\n\n",
-    "pub type Int = GroupCompletion<Rc<Nat>>;\n"
+    "pub type Int = GroupCompletion<Arc<Nat>>;\n"
   )
 }
