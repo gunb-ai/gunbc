@@ -2963,6 +2963,10 @@ fn belt_workflow_progress_for_attempt_ref(
         )
     }
     let verification_subject = match belt_lookup_node(node_id: attempt.node_id) {
+      AuthorityProjectionRefused { detail: detail } =>
+        VerificationSubjectUnobserved {
+          reason: concat("roadmap authority projection refused: ", detail),
+        }
       NodeMissing =>
         VerificationSubjectUnobserved {
           reason: "the roadmap authority declares no node with this id, so there is no verification subject",
