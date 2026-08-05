@@ -1,0 +1,5 @@
+module test.fixture.decl_facts_reflection.globally_unique_carrier
+
+type GloballyUniqueWitnessArm
+  = OnlyArm
+  | UnusedGloballyUniqueVariant

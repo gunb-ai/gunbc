@@ -1483,3 +1483,118 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
         )]),
     }
 }
+
+#[cfg(test)]
+mod parse_only_uppercase_variant_regression_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
+    use crate::v1_std_core::{
+        empty_node_list, make_named_expr_node, ExprData, SourceSpan, VarBindingKind,
+    };
+
+    use super::marshal_generic;
+
+    fn test_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn dummy_span() -> Rc<SourceSpan> {
+        Rc::new(SourceSpan {
+            file: "test.dag".to_string(),
+            start: 0,
+            end: 1,
+        })
+    }
+
+    fn uppercase_var_without_binding() -> Rc<crate::v1_std_core::Node> {
+        make_named_expr_node(
+            "SharedArm".to_string(),
+            Rc::new(ExprData::ExprVar { binding_kind: None }),
+            empty_node_list(),
+            None,
+            dummy_span(),
+            dummy_span(),
+        )
+    }
+
+    fn uppercase_var_with_variant_binding() -> Rc<crate::v1_std_core::Node> {
+        make_named_expr_node(
+            "SharedArm".to_string(),
+            Rc::new(ExprData::ExprVar {
+                binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
+                    parent_enum: "Parent".to_string(),
+                })),
+            }),
+            empty_node_list(),
+            None,
+            dummy_span(),
+            dummy_span(),
+        )
+    }
+
+    fn skeleton_children_len(ctx: &InterpContext, skel: &Value) -> usize {
+        match skel {
+            Value::Record { fields, .. } => {
+                let children_key = ctx.sym("children");
+                fields
+                    .iter()
+                    .find(|(k, _)| *k == children_key)
+                    .map(|(_, v)| match v {
+                        Value::List(items) => items.len(),
+                        _ => 0,
+                    })
+                    .unwrap_or(0)
+            }
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn uppercase_nullary_without_variant_binding_emits_no_parse_only_skeleton_atom() {
+        let ctx = test_ctx();
+        let si = ctx.source_indices();
+        let (skel, _) = marshal_generic(&ctx, &uppercase_var_without_binding(), &[], &si);
+        assert_eq!(
+            skeleton_children_len(&ctx, &skel),
+            0,
+            "capitalization alone must not mint a variant-value skeleton atom"
+        );
+    }
+
+    #[test]
+    fn infer_stamped_variant_binding_still_emits_parse_only_skeleton_atom() {
+        let ctx = test_ctx();
+        let si = ctx.source_indices();
+        let (skel, _) = marshal_generic(&ctx, &uppercase_var_with_variant_binding(), &[], &si);
+        assert_eq!(
+            skeleton_children_len(&ctx, &skel),
+            1,
+            "infer-stamped VariantValueBinding must still emit the skeleton atom"
+        );
+    }
+
+    #[test]
+    fn capitalization_heuristic_not_used_on_parse_only_path() {
+        let source = include_str!("coproduct_reflection.rs");
+        let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+        assert!(
+            !production.contains("is_uppercase_variant_spelling"),
+            "parse-only skeleton path must not reintroduce capitalization classification"
+        );
+        assert!(
+            production.contains("should_emit_nullary_variant_value_atom"),
+            "parse-only skeleton must gate on infer-stamped VariantValueBinding only"
+        );
+    }
+}

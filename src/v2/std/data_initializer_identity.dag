@@ -156,6 +156,48 @@ fn decl_fact_optional_by_qualified_name(qn: String, facts: List<DeclFact>) -> Op
   }
 }
 
+fn decl_fact_lookup_is_missing(lookup: DeclFactLookup) -> Bool {
+  match lookup {
+    DeclFactMissing => true
+    _ => false
+  }
+}
+
+fn decl_fact_lookup_is_unique(lookup: DeclFactLookup) -> Bool {
+  match lookup {
+    DeclFactUnique { fact: _ } => true
+    _ => false
+  }
+}
+
+fn decl_fact_lookup_is_ambiguous(lookup: DeclFactLookup) -> Bool {
+  match lookup {
+    DeclFactAmbiguous { candidates: _ } => true
+    _ => false
+  }
+}
+
+fn decl_fact_lookup_candidate_count(lookup: DeclFactLookup) -> Int {
+  match lookup {
+    DeclFactAmbiguous { candidates: cands } => length(xs: cands)
+    _ => 0
+  }
+}
+
+fn data_initializer_is_constructor_resolution_refused_projection(node: Node) -> Bool {
+  match projection_kind_lexeme_optional(node: node) {
+    Present { value: k } => k == "DataInitializerConstructorResolutionRefusedProjection"
+    Absent => false
+  }
+}
+
+fn data_initializer_is_typechecked_subject_absent_projection(node: Node) -> Bool {
+  match projection_kind_lexeme_optional(node: node) {
+    Present { value: k } => k == "DataInitializerTypecheckedSubjectAbsentProjection"
+    Absent => false
+  }
+}
+
 fn data_initializer_is_record_projection(node: Node) -> Bool {
   match projection_kind_lexeme_optional(node: node) {
     Present { value: k } => k == "DataInitializerRecordProjection"
