@@ -11,7 +11,7 @@ import std.realization_schedule {
   ScheduleWitnessEntry,
   schedule_witness_entry_eq
 }
-import v2.std.algebra { filter, fold, length }
+import v2.std.algebra { filter, fold_list, length }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -58,13 +58,13 @@ fn runnable_subject_occurrences(runnable: Runnable, subject: ScheduleWitnessEntr
 }
 
 fn batch_subject_occurrences(batch: List<Runnable>, subject: ScheduleWitnessEntry) -> Int {
-  fold(batch, init: 0, f: fn(acc, runnable) {
+  fold_list(xs: batch, empty: 0, cons: fn(acc, runnable) {
     acc + runnable_subject_occurrences(runnable: runnable, subject: subject)
   })
 }
 
 fn scheduled_occurrences(subject: ScheduleWitnessEntry) -> Int {
-  fold(gunbc_falsifier_ordinary_batches(), init: 0, f: fn(acc, batch) {
+  fold_list(xs: gunbc_falsifier_ordinary_batches(), empty: 0, cons: fn(acc, batch) {
     acc + batch_subject_occurrences(batch: batch, subject: subject)
   })
 }

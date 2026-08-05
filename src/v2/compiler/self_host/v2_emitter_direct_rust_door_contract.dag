@@ -160,14 +160,79 @@ fn direct_rust_door_production_group() -> DirectRustDoorProductionGroup {
   )
 }
 
-fn direct_rust_door_artifact_leaf(
-  emission: ProvenancedRustEmissionObservation,
+data direct_rust_door_artifact_leaf_result_note: String = "TWO result carriers, because the ARTIFACT axes and the PIPELINE axis answer different questions. Once an artifact exists, an artifact-grain axis can only establish or refuse — there is no third state, and giving it one would mean a consumer inside the ArtifactProduced arm has to handle a variant that arm cannot produce. The first such consumer did exactly that and mapped the unreachable variant onto a domain cause (a source mismatch, a wrong producer), so a future break in the invariant would have reported a defect that did not occur — the state-space laundering this whole group exists to remove. DirectRustDoorArtifactLeafResult is therefore the narrow carrier assessed against an artifact, and DirectRustDoorLeafResult is the wide one carrying the additional LeafNotReached that only a pre-artifact stage can produce. Widening happens in exactly one place, direct_rust_door_artifact_leaf, where the stage that stopped is in hand."
+
+type DirectRustDoorArtifactLeafResult
+  = ArtifactLeafEstablished
+  | ArtifactLeafRefused { cause: Symbol }
+
+fn direct_rust_door_artifact_assessment(
+  artifact: ProvenancedRustArtifact,
   holds: fn(ProvenancedRustArtifact) -> Bool,
   refusal_cause: Symbol
+) -> DirectRustDoorArtifactLeafResult {
+  if holds(artifact) {
+    ArtifactLeafEstablished
+  } else {
+    ArtifactLeafRefused { cause: refusal_cause }
+  }
+}
+
+fn direct_rust_door_source_fidelity_assessment(
+  artifact: ProvenancedRustArtifact
+) -> DirectRustDoorArtifactLeafResult {
+  direct_rust_door_artifact_assessment(
+    artifact: artifact,
+    holds: fn(a) { a.source.carried == direct_rust_door_expected_source },
+    refusal_cause: direct_rust_door_source_mismatch_cause
+  )
+}
+
+fn direct_rust_door_producer_identity_assessment(
+  artifact: ProvenancedRustArtifact
+) -> DirectRustDoorArtifactLeafResult {
+  direct_rust_door_artifact_assessment(
+    artifact: artifact,
+    holds: fn(a) { provenanced_rust_artifact_producer_is_v2_interpreted(artifact: a) },
+    refusal_cause: direct_rust_door_wrong_producer_cause
+  )
+}
+
+fn direct_rust_door_seed_emitter_absence_assessment(
+  artifact: ProvenancedRustArtifact
+) -> DirectRustDoorArtifactLeafResult {
+  direct_rust_door_artifact_assessment(
+    artifact: artifact,
+    holds: fn(a) { provenanced_rust_artifact_seed_emitter_unreachable(artifact: a) },
+    refusal_cause: direct_rust_door_declared_closure_seed_cause
+  )
+}
+
+fn direct_rust_door_source_produced_assessment(
+  artifact: ProvenancedRustArtifact
+) -> DirectRustDoorArtifactLeafResult {
+  direct_rust_door_artifact_assessment(
+    artifact: artifact,
+    holds: fn(a) {
+      emission_qualifications_list_contains(
+        xs: a.producer_receipt.qualifications,
+        wanted: SourceProduced
+      )
+    },
+    refusal_cause: direct_rust_door_source_produced_missing_cause
+  )
+}
+
+fn direct_rust_door_artifact_leaf(
+  emission: ProvenancedRustEmissionObservation,
+  assess: fn(ProvenancedRustArtifact) -> DirectRustDoorArtifactLeafResult
 ) -> DirectRustDoorLeafResult {
   match emission {
     ArtifactProduced { artifact: a } =>
-      if holds(a) { LeafEstablished } else { LeafRefused { cause: refusal_cause } }
+      match assess(a) {
+        ArtifactLeafEstablished => LeafEstablished
+        ArtifactLeafRefused { cause: c } => LeafRefused { cause: c }
+      }
     AssemblyRejected { diagnostics: _ } =>
       LeafNotReached { cause: direct_rust_door_leaf_not_reached_assembly }
     InferenceRejected { diagnostics: _ } =>
@@ -184,8 +249,7 @@ fn direct_rust_door_source_fidelity_leaf(
 ) -> DirectRustDoorLeafResult {
   direct_rust_door_artifact_leaf(
     emission: group.emission,
-    holds: fn(a) { a.source.carried == direct_rust_door_expected_source },
-    refusal_cause: direct_rust_door_source_mismatch_cause
+    assess: fn(a) { direct_rust_door_source_fidelity_assessment(artifact: a) }
   )
 }
 
@@ -194,8 +258,7 @@ fn direct_rust_door_producer_identity_leaf(
 ) -> DirectRustDoorLeafResult {
   direct_rust_door_artifact_leaf(
     emission: group.emission,
-    holds: fn(a) { provenanced_rust_artifact_producer_is_v2_interpreted(artifact: a) },
-    refusal_cause: direct_rust_door_wrong_producer_cause
+    assess: fn(a) { direct_rust_door_producer_identity_assessment(artifact: a) }
   )
 }
 
@@ -204,8 +267,7 @@ fn direct_rust_door_seed_emitter_absence_leaf(
 ) -> DirectRustDoorLeafResult {
   direct_rust_door_artifact_leaf(
     emission: group.emission,
-    holds: fn(a) { provenanced_rust_artifact_seed_emitter_unreachable(artifact: a) },
-    refusal_cause: direct_rust_door_declared_closure_seed_cause
+    assess: fn(a) { direct_rust_door_seed_emitter_absence_assessment(artifact: a) }
   )
 }
 
@@ -214,13 +276,7 @@ fn direct_rust_door_source_produced_leaf(
 ) -> DirectRustDoorLeafResult {
   direct_rust_door_artifact_leaf(
     emission: group.emission,
-    holds: fn(a) {
-      emission_qualifications_list_contains(
-        xs: a.producer_receipt.qualifications,
-        wanted: SourceProduced
-      )
-    },
-    refusal_cause: direct_rust_door_source_produced_missing_cause
+    assess: fn(a) { direct_rust_door_source_produced_assessment(artifact: a) }
   )
 }
 

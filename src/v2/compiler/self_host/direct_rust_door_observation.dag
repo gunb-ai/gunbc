@@ -8,25 +8,19 @@ import v2.compiler.self_host.candidate_generation {
   ProducerReceiptRejected,
 }
 import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
-  DirectRustDoorLeafResult,
+  ArtifactLeafEstablished,
+  ArtifactLeafRefused,
   DirectRustDoorProductionGroup,
-  LeafEstablished,
-  LeafNotReached,
-  LeafRefused,
-  direct_rust_door_producer_identity_leaf,
-  direct_rust_door_seed_emitter_absence_leaf,
-  direct_rust_door_source_fidelity_leaf,
-  direct_rust_door_source_produced_leaf,
+  direct_rust_door_producer_identity_assessment,
+  direct_rust_door_seed_emitter_absence_assessment,
+  direct_rust_door_source_fidelity_assessment,
+  direct_rust_door_source_produced_assessment,
 }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
 data direct_rust_door_observation_note: String = "PURE FIRST-FAILURE PROJECTION of the canonical direct-door production group. This module used to run its own ingest-assemble-infer-mint composition, which made it a SECOND production authority answering the same question as the group — two folds, two schedule occurrences, one fact. It now takes an ALREADY-BUILT group and computes nothing expensive: there is deliberately no zero-argument entrypoint here, because one would recompute the group and silently reopen the duplicate walk this consolidation closed. A caller that wants this vocabulary supplies the group it already holds. The nine DirectRustDoorObservation variants are preserved verbatim so no consumer had to change."
-
-data direct_rust_door_observation_arm_order_note: String = "ARM ORDER IS LOAD-BEARING and the reason it was load-bearing is now DISSOLVED (operator review 2026-08-04, discharged 2026-08-05). The original hazard: provenanced_rust_artifact_seed_independent is a CONJUNCTION over producer identity AND seed absence, so testing it first made WrongProducer unreachable — a wrong producer failed the conjunction and got reported as SeedEmitterReachable, naming a cause that did not hold. The conjuncts are now separate predicates behind separate leaves (producer_identity, seed_emitter_absence), so each arm consumes its OWN fact and neither can absorb the other. Ordering here is retained only to keep the first-failure vocabulary stable for consumers; correctness no longer depends on it. That discharges this note's own dissolve-on, which read: seed independence exposes its two conjuncts separately and each arm consumes its own predicate."
-
-data direct_rust_door_observation_arm_split_scaffold_note: String = "SCAFFOLD RETIRED (was: CandidateRejected vs ReceiptRefused discriminated by comparing a head diagnostic reason against a Symbol, because mint returned one Outcome with no structural way to tell which boundary refused). The group's ProvenancedRustEmissionObservation now carries the refusing STAGE structurally, so both arms derive from the observation's own variant rather than from symbol identity. The dissolve-on named production stage carriers gaining a boundary tag; the stage-located observation is that tag."
 
 data direct_rust_door_observation_measured_note: String = "MEASURED 2026-08-04 on main, and unchanged by the consolidation: assembly ACCEPTS, inference ACCEPTS, mint over the hand-authored fixture inferred tree ACCEPTS, and mint over the real infer(assemble(ingest)) REJECTS. Every stage passes in isolation; only the real composition fails, at emission."
 
@@ -49,23 +43,19 @@ fn project_direct_rust_door_observation(
     InferenceRejected { diagnostics: ds } => InferenceRefused { reason: ds.head.reason }
     EmissionRejected { diagnostics: ds } => CandidateRejected { reason: ds.head.reason }
     ProducerReceiptRejected { diagnostics: ds } => ReceiptRefused { reason: ds.head.reason }
-    ArtifactProduced { artifact: _ } =>
-      match direct_rust_door_source_fidelity_leaf(group: group) {
-        LeafRefused { cause: _ } => EmittedSourceMismatch
-        LeafNotReached { cause: _ } => EmittedSourceMismatch
-        LeafEstablished =>
-          match direct_rust_door_producer_identity_leaf(group: group) {
-            LeafRefused { cause: _ } => WrongProducer
-            LeafNotReached { cause: _ } => WrongProducer
-            LeafEstablished =>
-              match direct_rust_door_seed_emitter_absence_leaf(group: group) {
-                LeafRefused { cause: _ } => SeedEmitterReachable
-                LeafNotReached { cause: _ } => SeedEmitterReachable
-                LeafEstablished =>
-                  match direct_rust_door_source_produced_leaf(group: group) {
-                    LeafRefused { cause: _ } => SourceProducedQualificationMissing
-                    LeafNotReached { cause: _ } => SourceProducedQualificationMissing
-                    LeafEstablished => DirectRustDoorSourceProduced
+    ArtifactProduced { artifact: a } =>
+      match direct_rust_door_source_fidelity_assessment(artifact: a) {
+        ArtifactLeafRefused { cause: _ } => EmittedSourceMismatch
+        ArtifactLeafEstablished =>
+          match direct_rust_door_producer_identity_assessment(artifact: a) {
+            ArtifactLeafRefused { cause: _ } => WrongProducer
+            ArtifactLeafEstablished =>
+              match direct_rust_door_seed_emitter_absence_assessment(artifact: a) {
+                ArtifactLeafRefused { cause: _ } => SeedEmitterReachable
+                ArtifactLeafEstablished =>
+                  match direct_rust_door_source_produced_assessment(artifact: a) {
+                    ArtifactLeafRefused { cause: _ } => SourceProducedQualificationMissing
+                    ArtifactLeafEstablished => DirectRustDoorSourceProduced
                   }
               }
           }

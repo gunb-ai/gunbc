@@ -96,6 +96,25 @@ type RealizedEmitterClosure {
   emitter_module_paths: List<String>
 }
 
+data behavioral_probe_binding_note: String = "A behavioral probe is a witness that COMPILES the emitted Rust, RUNS it, and COMPARES behavior against the seed. Carrying it as a bare pair of strings made every receipt claim one existed, because there is no unbound spelling of a String pair: an author with no such witness has to write something, and whatever is written becomes the subject that ProducerEmissionExecutedGreenReceipt matching and the BehavioralEquivalent advance later consume. That is the fabricated-plausible-output failure (DESIGN section 5) at the receipt's own self-description. BehavioralProbeUnbound is therefore a real state, not a null: a receipt that has produced source and nothing more says so, and binding becomes meaningful only where an actual compile/run/compare seam exists. The direct Rust door is exactly that case — it observes ingest through emission and stops, so it binds nothing. Dissolve-on: the ProducerEmissionOracleRow and ProducerEmissionExecutedGreenReceipt pairs migrate onto this carrier too, at which point the executed-verdict match keys on a binding rather than on two strings that may name no witness."
+
+type BehavioralProbeBinding
+  = BehavioralProbeUnbound
+  | BehavioralProbeBound { entry: String, function: String }
+
+fn behavioral_probe_binding_eq(left: BehavioralProbeBinding, right: BehavioralProbeBinding) -> Bool {
+  match left {
+    BehavioralProbeUnbound => match right {
+      BehavioralProbeUnbound => true
+      BehavioralProbeBound { entry: _, function: _ } => false
+    }
+    BehavioralProbeBound { entry: le, function: lf } => match right {
+      BehavioralProbeUnbound => false
+      BehavioralProbeBound { entry: re, function: rf } => (le == re) && (lf == rf)
+    }
+  }
+}
+
 type ProducerEmissionReceipt {
   module_path: String
   module_source_digest: Hash
@@ -105,8 +124,7 @@ type ProducerEmissionReceipt {
   rust_target_model_digest: Hash
   emitted_source_digest: Hash
   build_result: EmissionBuildResult
-  behavioral_probe_entry: String
-  behavioral_probe_function: String
+  behavioral_probe: BehavioralProbeBinding
   realized_closure: RealizedEmitterClosure
 }
 
@@ -272,8 +290,7 @@ fn advance_producer_emission_receipt_cargo_green(
       producer: prior.producer,
       qualifications: cargo_green_qualifications,
       build_result: BuildGreen,
-      behavioral_probe_entry: prior.behavioral_probe_entry,
-      behavioral_probe_function: prior.behavioral_probe_function,
+      behavioral_probe: prior.behavioral_probe,
       realized_closure: prior.realized_closure
     )
   }
@@ -292,8 +309,7 @@ fn advance_producer_emission_receipt_behavioral_equivalent(
       producer: prior.producer,
       qualifications: behavioral_equivalent_with_cargo_qualifications,
       build_result: BuildGreen,
-      behavioral_probe_entry: prior.behavioral_probe_entry,
-      behavioral_probe_function: prior.behavioral_probe_function,
+      behavioral_probe: prior.behavioral_probe,
       realized_closure: prior.realized_closure
     )
   }
@@ -311,8 +327,7 @@ fn mint_producer_emission_receipt(
   producer: EmitterProducer,
   qualifications: List<EmissionQualification>,
   build_result: EmissionBuildResult,
-  behavioral_probe_entry: String,
-  behavioral_probe_function: String,
+  behavioral_probe: BehavioralProbeBinding,
   realized_closure: RealizedEmitterClosure
 ) -> Optional<ProducerEmissionReceipt> {
   match emitter_producer_mint_admission(producer: producer, closure: realized_closure) {
@@ -333,8 +348,7 @@ fn mint_producer_emission_receipt(
         rust_target_model_digest: symbol_identity_digest(sym: ^rust_target_model_digest_scaffold),
         emitted_source_digest: scaffold_digest_for_module_path(module_path: module_path),
         build_result: build_result,
-        behavioral_probe_entry: behavioral_probe_entry,
-        behavioral_probe_function: behavioral_probe_function,
+        behavioral_probe: behavioral_probe,
         realized_closure: realized_closure
       }
     )
@@ -423,8 +437,10 @@ fn producer_emission_canonical_receipt_for_executed_verdict(
       producer: V1SeedEmitter,
       qualifications: behavioral_equivalent_qualifications,
       build_result: BuildGreen,
-      behavioral_probe_entry: row.behavioral_probe_entry,
-      behavioral_probe_function: row.behavioral_probe_function,
+      behavioral_probe: BehavioralProbeBound {
+        entry: row.behavioral_probe_entry,
+        function: row.behavioral_probe_function
+      },
       realized_closure: cssl_harness_realized_closure
     ) {
       Present { value: receipt } =>
@@ -453,8 +469,10 @@ fn producer_emission_receipt_from_oracle_row(
     producer: V1SeedEmitter,
     qualifications: behavioral_equivalent_qualifications,
     build_result: producer_emission_build_result_for_oracle_row(row: row),
-    behavioral_probe_entry: row.behavioral_probe_entry,
-    behavioral_probe_function: row.behavioral_probe_function,
+    behavioral_probe: BehavioralProbeBound {
+      entry: row.behavioral_probe_entry,
+      function: row.behavioral_probe_function
+    },
     realized_closure: cssl_harness_realized_closure
   )
 }
@@ -628,8 +646,7 @@ fn producer_emission_receipt_eq(left: ProducerEmissionReceipt, right: ProducerEm
     && (left.rust_target_model_digest == right.rust_target_model_digest)
     && (left.emitted_source_digest == right.emitted_source_digest)
     && emission_build_result_eq(left: left.build_result, right: right.build_result)
-    && (left.behavioral_probe_entry == right.behavioral_probe_entry)
-    && (left.behavioral_probe_function == right.behavioral_probe_function)
+    && behavioral_probe_binding_eq(left: left.behavioral_probe, right: right.behavioral_probe)
     && realized_closure_eq(left: left.realized_closure, right: right.realized_closure)
 }
 
@@ -941,8 +958,7 @@ fn fabricated_v1_seed_producer_receipt(module_path: String) -> ProducerEmissionR
     rust_target_model_digest: symbol_identity_digest(sym: ^rust_target_model_digest_scaffold),
     emitted_source_digest: scaffold_digest_for_module_path(module_path: module_path),
     build_result: BuildGreen,
-    behavioral_probe_entry: "fabricated",
-    behavioral_probe_function: "fabricated",
+    behavioral_probe: BehavioralProbeBound { entry: "fabricated", function: "fabricated" },
     realized_closure: cssl_harness_realized_closure
   }
 }
@@ -957,8 +973,7 @@ fn fabricated_v2_interpreted_producer_receipt(module_path: String) -> ProducerEm
     rust_target_model_digest: symbol_identity_digest(sym: ^rust_target_model_digest_scaffold),
     emitted_source_digest: scaffold_digest_for_module_path(module_path: module_path),
     build_result: BuildGreen,
-    behavioral_probe_entry: "fabricated",
-    behavioral_probe_function: "fabricated",
+    behavioral_probe: BehavioralProbeBound { entry: "fabricated", function: "fabricated" },
     realized_closure: cssl_harness_realized_closure
   }
 }
@@ -971,8 +986,7 @@ fn mint_v2_interpreted_receipt_with_seed_closure_refuses(
     producer: V2EmitterInterpreted,
     qualifications: behavioral_equivalent_qualifications,
     build_result: BuildGreen,
-    behavioral_probe_entry: "fabricated",
-    behavioral_probe_function: "fabricated",
+    behavioral_probe: BehavioralProbeBound { entry: "fabricated", function: "fabricated" },
     realized_closure: cssl_harness_realized_closure
   ) {
     Absent => true
