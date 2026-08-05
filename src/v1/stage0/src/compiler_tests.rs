@@ -536,6 +536,37 @@ mod compiler_tests {
     }
 
     #[test]
+    fn call_deficit_red_witness() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let compile_one = |path: &str, content: &str| {
+                    crate::v1_compiler_compile::compile_sources(
+                        std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                            crate::v1_compiler_compile::SourceFile {
+                                path: path.to_string(),
+                                content: content.to_string(),
+                            }
+                        )]),
+                        crate::v1_compiler_artifact::RenderTarget::Rust,
+                    )
+                };
+                let deficit = compile_one(
+                    "deficit.dag",
+                    "module deficit\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(1) }\n",
+                );
+                assert!(
+                    deficit.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallPositionalDeficit { .. })),
+                    "a call supplying fewer required arguments than declared must refuse — the interpreter refuses the same call (missing required argument), got: {:?}",
+                    deficit.diagnostics
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("call_deficit_red_witness panicked");
+    }
+
+    #[test]
     fn function_value_named_application_controls_witness() {
         // Operator-required controls for higher-order named application (P0).
         // Direct declaration calls keep named args; function-value calls are positional-only.

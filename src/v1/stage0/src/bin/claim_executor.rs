@@ -1935,14 +1935,11 @@ fn claim_result_for_outcome(
         ClaimOutcome::Fail => ClaimResult {
             detail: {
                 let mut detail = "returned Bool(false)".to_string();
-                if let Some(companion) = v1_compiler::cli_run::failure_receipt_companion(&function)
-                {
-                    let receipt = v1_compiler::cli_run::run_claim_failure_receipt(ctx, &companion);
-                    if !receipt.is_empty() {
-                        detail.push_str(" | ");
-                        detail.push_str(&receipt);
-                    }
-                }
+                v1_compiler::cli_run::append_failure_receipt_companion_loudness(
+                    &mut detail,
+                    ctx,
+                    &function,
+                );
                 detail
             },
             function,
