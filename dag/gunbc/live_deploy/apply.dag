@@ -10,7 +10,7 @@ import gunbc.live_deploy.spec {
   deployment_route_spec,
   deployment_plan_listen_port,
 }
-import std.types { String, NonEmptyStr, CommitSha, Bool, GitRef }
+import std.types { String, NonEmptyStr, CommitSha, Bool, GitRef, List }
 import std.content_hash { sha1_hex_digest }
 import gunbc.live_deploy.revision {
   DeploymentTarget,
@@ -56,7 +56,7 @@ import gunbc.ci_deploy_target_host {
   DeployTargetHostObservation,
   deploy_target_ssh_proof_structurally_valid,
 }
-import v2.std.collection { Present, Absent }
+import v2.std.collection { Present, Absent, Optional }
 import std.access { AccessDecision, Permit, Deny }
 import gunbc.host_effect {
   HostEffect,
@@ -191,6 +191,123 @@ fn live_deploy_flip_route_to_recorded_candidate(
   )
 }
 
+data cutover_stage_order_is_one_authority_note: String = "THE ORDER IS DATA THE ACTUATOR READS, NOT NESTING A CONTROL CAN ONLY DESCRIBE. crash_prefix_invariant_note above states a property of every PREFIX of this sequence, and the operator's merge condition on it was that the control EXECUTE. A hermetic witness over a re-typed copy of the order would not execute anything about this module: reverting the actuator to flip-before-record would leave such a witness green, which is the specification-without-execution shape DESIGN §5 names, one level up from the model it is supposed to guard.\\n\\nSo the ordering is lifted out of the if/else chain into the row below, the fold consumes it, and the prefix control folds the SAME row. Reverting the order now means editing the row, and the control reds. That is also the §2 reading: one fact, one place, two consumers — the actuator and its proof — rather than the order living once in control flow and once in prose.\\n\\nWHAT THE FOLD PRESERVES EXACTLY. Short-circuit on the first non-converged stage, and on full convergence report the FLIP's reconciliation rather than the retirement's, because retirement is route-free runtime cleanup whose intent is not what the deploy accomplished. A stage order that never flips is refused rather than reported converged: an empty or flip-less order would otherwise return the seed and read as a successful deploy that mutated nothing, which is the absorbing fallback §5 forbids."
+
+type CutoverStage
+  = PrepareCandidateSlot
+  | RecordCandidateRevision
+  | FlipRouteToCandidate
+  | RetireActiveSlot
+
+data live_deploy_cutover_stage_order: List<CutoverStage> = [
+  PrepareCandidateSlot,
+  RecordCandidateRevision,
+  FlipRouteToCandidate,
+  RetireActiveSlot,
+]
+
+type CutoverProgress {
+  last: Reconciliation<HostEffectIntent, HostEffectEvidence>
+  flip: Optional<Reconciliation<HostEffectIntent, HostEffectEvidence>>
+}
+
+fn live_deploy_run_cutover_stage(
+  stage: CutoverStage,
+  active: DeploymentSpec,
+  idle: DeploymentSpec,
+  admission: RevisionAdvance,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match stage {
+    PrepareCandidateSlot =>
+      live_deploy_apply_via_transport(
+        spec: deployment_slot_spec(spec: idle),
+        transport: transport,
+        access: access,
+      )
+    RecordCandidateRevision =>
+      live_deploy_record_slot_revision(
+        spec: idle,
+        revision: admission.to,
+        transport: transport,
+        access: access,
+      )
+    FlipRouteToCandidate =>
+      live_deploy_flip_route_to_recorded_candidate(
+        recorded: VerifiedRecordedCandidate {
+          admission: admission,
+          slot: idle,
+          revision: admission.to,
+        },
+        transport: transport,
+        access: access,
+      )
+    RetireActiveSlot =>
+      live_deploy_retract_via_transport(
+        spec: deployment_retiring_slot_spec(spec: active),
+        transport: transport,
+        access: access,
+      )
+  }
+}
+
+fn live_deploy_run_cutover_stages(
+  stages: List<CutoverStage>,
+  active: DeploymentSpec,
+  idle: DeploymentSpec,
+  admission: RevisionAdvance,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let seed = CutoverProgress {
+    last: Converged {
+      evidence: ShellEffectApplied { exit_code: 0, stdout: "cutover: no stage executed yet" },
+      applied: live_deploy_preflight_intent(access: access),
+    },
+    flip: Absent,
+  }
+  let progress = fold(
+    stages,
+    init: seed,
+    f: (acc, stage) =>
+      if !reconciliation_converged(r: acc.last) {
+        acc
+      } else {
+        let result = live_deploy_run_cutover_stage(
+          stage: stage,
+          active: active,
+          idle: idle,
+          admission: admission,
+          transport: transport,
+          access: access,
+        )
+        match stage {
+          FlipRouteToCandidate =>
+            CutoverProgress {
+              last: result,
+              flip: if reconciliation_converged(r: result) { Present { value: result } } else { Absent },
+            }
+          PrepareCandidateSlot => CutoverProgress { last: result, flip: acc.flip }
+          RecordCandidateRevision => CutoverProgress { last: result, flip: acc.flip }
+          RetireActiveSlot => CutoverProgress { last: result, flip: acc.flip }
+        }
+      }
+  )
+  if !reconciliation_converged(r: progress.last) {
+    progress.last
+  } else {
+    match progress.flip {
+      Present { value: flipped } => flipped
+      Absent =>
+        NotConverged {
+          reason: "blue/green cutover refused: the stage order completed without flipping the route, so nothing was published",
+          applied: live_deploy_preflight_intent(access: access),
+        }
+    }
+  }
+}
+
 fn live_deploy_blue_green_cutover_with_selection(
   selection: BlueGreenSlotSelection,
   admission: RevisionAdvance,
@@ -200,46 +317,15 @@ fn live_deploy_blue_green_cutover_with_selection(
   match selection {
     BlueGreenSlotSelectionRefused { reason } =>
       NotConverged { reason: reason, applied: live_deploy_preflight_intent(access: access) }
-    BlueGreenSlotsSelected { active, idle } => {
-      let candidate = live_deploy_apply_via_transport(
-        spec: deployment_slot_spec(spec: idle),
+    BlueGreenSlotsSelected { active, idle } =>
+      live_deploy_run_cutover_stages(
+        stages: live_deploy_cutover_stage_order,
+        active: active,
+        idle: idle,
+        admission: admission,
         transport: transport,
         access: access,
       )
-      if !reconciliation_converged(r: candidate) {
-        candidate
-      } else {
-        let recorded = live_deploy_record_slot_revision(
-          spec: idle,
-          revision: admission.to,
-          transport: transport,
-          access: access,
-        )
-        if !reconciliation_converged(r: recorded) {
-          recorded
-        } else {
-          let flip = live_deploy_flip_route_to_recorded_candidate(
-            recorded: VerifiedRecordedCandidate {
-              admission: admission,
-              slot: idle,
-              revision: admission.to,
-            },
-            transport: transport,
-            access: access,
-          )
-          if !reconciliation_converged(r: flip) {
-            flip
-          } else {
-            let teardown = live_deploy_retract_via_transport(
-              spec: deployment_retiring_slot_spec(spec: active),
-              transport: transport,
-              access: access,
-            )
-            if reconciliation_converged(r: teardown) { flip } else { teardown }
-          }
-        }
-      }
-    }
   }
 }
 
