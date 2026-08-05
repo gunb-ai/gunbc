@@ -169,6 +169,34 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     kind: ExecutionWitnessKind,
     reason: "SelfEmitted wet behavioral receipt, red on assemble (same cargo/shim closure refuse class as its parse_engine_hooks peer; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble. This is the row whose file-grain pairing forced the documented workaround: the file's sibling declared_source_refs_complete_holds is offline, so classifying the FILE QuarantineProbeExpectRed would have orphaned it and the file was downgraded to OfflineLocalRecipe in prose instead. At exact grain the receipt is admitted here and the sibling keeps the file's path policy, with neither fact restating the other.",
     dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
+    f: "witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds",
+    kind: CorpusWitnessKind,
+    reason: "Admitted RED (review 48255): retired 0==0 policy-oracle equality — live FixtureDerived mint sites not discoverable in entry closure until G2 marshal exposes callee atoms. Owner: witness-evidence-lifecycle / marshal frontier.",
+    dissolve_on: "G2 fn-arrow marshal exposes live fixture mint callees in fn_arrow_decl_facts_live entry closure, known_fixture_origin_mint_surface_count_in_scope() > 0, witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds greens, and this row deletes — re-enroll with closed-subject expected population or monotone debt contract, never a tree-copied literal"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
+    f: "witness_live_structural_fixture_mint_site_discovered_reds",
+    kind: CorpusWitnessKind,
+    reason: "Admitted RED: G2 fn-arrow marshal yields empty skeleton for live structural_red_control_mint_site_probe mint body today — classifier cannot discover the exact FixtureDerived SourceProduced row. Owner: witness-evidence-lifecycle / call-occurrence derivation frontier.",
+    dissolve_on: "live structural_red_control_mint_site_probe body exposes mint callee atoms in fn_arrow_decl_facts_live output, structural_red_control_live_fixture_mint_site_discovered returns true for the test fixture qualified name without a taught qualified-name pin, this witness greens, and this row deletes"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
+    f: "witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
+    kind: CorpusWitnessKind,
+    reason: "Admitted RED: generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact at fn-arrow skeleton grain; G2 marshal prunes that ExprCall today. Owner: witness-evidence-lifecycle lane.",
+    dissolve_on: "G2 fn-arrow marshal exposes mint_provenanced_rust_artifact on generate_provenanced_rust_candidate_from_ingest, ingest_mint_surface_discovered_in_live_scope() is true, witness_ingest_mint_surface_requires_call_occurrence_frontier_reds greens, and this row deletes"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
+    f: "witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
+    kind: CorpusWitnessKind,
+    reason: "Admitted RED: direct-door smoke is outside witness entry import closure without roster imports — repository-wide discovery requires call-occurrence substrate. Owner: witness-evidence-lifecycle lane.",
+    dissolve_on: "whole-tree or call-occurrence substrate includes direct-door smoke without witness-import roster, this witness greens, and this row deletes"
   )
 ]
 
