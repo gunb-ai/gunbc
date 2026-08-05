@@ -3,10 +3,8 @@ module gunbc.heal_push_plan
 import std.types { NonEmptyStr, String, List }
 import extdeps.github.app { GitHubPermissionAxis, permission_name_eq }
 import extdeps.github.effect {
-  GitHubEffect,
-  AdvanceRepositoryBranch,
-  GitBranchRef,
   RepositoryPath,
+  advance_branch_required_permissions,
   is_workflow_projection_path
 }
 import extdeps.github.actions_token { workflows_permission_name }
@@ -22,8 +20,8 @@ import gunbc.auth.github_credential {
   CredentialDeclaredAccessInvalid,
   CredentialGrantNotObserved,
   CredentialSubjectMismatch,
-  credential_authorizes,
-  unsatisfied_capabilities,
+  credential_authorizes_required,
+  unsatisfied_capabilities_for_required,
   PushBindingResolution,
   PushBindingResolved,
   PushCredentialBindingMissing,
@@ -39,20 +37,9 @@ import gunbc.generated_artifact {
   artifact_path,
   committed_generated_artifacts
 }
-import gunbc.repository { gunbc_repository }
-
-data heal_branch_placeholder: GitBranchRef = GitBranchRef { name: "refs/heads/attempt" }
 
 fn artifact_repository_path(a: GeneratedArtifact) -> RepositoryPath {
   RepositoryPath { value: artifact_path(a: a) }
-}
-
-fn advance_branch_effect(paths: List<RepositoryPath>) -> GitHubEffect {
-  AdvanceRepositoryBranch {
-    repository: gunbc_repository,
-    branch: heal_branch_placeholder,
-    changed_paths: paths
-  }
 }
 
 fn artifact_push_authorized(
@@ -60,10 +47,10 @@ fn artifact_push_authorized(
   authority: GitHubCredentialAuthority,
   control_plane: GitHubAppControlPlaneState
 ) -> Bool {
-  credential_authorizes(
+  credential_authorizes_required(
     authority: authority,
     control_plane: control_plane,
-    effect: advance_branch_effect(paths: [artifact_repository_path(a: a)])
+    required: advance_branch_required_permissions(paths: [artifact_repository_path(a: a)])
   )
 }
 
@@ -156,10 +143,10 @@ fn refusal_failure_population(
   control_plane: GitHubAppControlPlaneState
 ) -> List<HealPushFailure> {
   fold_list(
-    xs: unsatisfied_capabilities(
+    xs: unsatisfied_capabilities_for_required(
       authority: authority,
       control_plane: control_plane,
-      effect: advance_branch_effect(paths: paths)
+      required: advance_branch_required_permissions(paths: paths)
     ),
     empty: no_heal_push_failures,
     cons: fn(acc, c) {

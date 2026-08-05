@@ -124,14 +124,18 @@ data organization_self_hosted_runners_write: GitHubAppPermission = GitHubAppPerm
   access: AppAccessWrite
 }
 
+fn advance_branch_required_permissions(paths: List<RepositoryPath>) -> List<GitHubAppPermission> {
+  if any_workflow_projection_path(paths: paths) {
+    [contents_write, workflows_write]
+  } else {
+    [contents_write]
+  }
+}
+
 fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPermission> {
   match effect {
     AdvanceRepositoryBranch { repository: _, branch: _, changed_paths } =>
-      if any_workflow_projection_path(paths: changed_paths) {
-        [contents_write, workflows_write]
-      } else {
-        [contents_write]
-      }
+      advance_branch_required_permissions(paths: changed_paths)
     DispatchWorkflow { repository: _, workflow: _, subject: _ } =>
       [actions_write]
     RegisterOrganizationRunner { organization: _ } =>

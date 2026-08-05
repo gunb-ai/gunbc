@@ -62,6 +62,7 @@ import extdeps.github.actions_token {
   axis_allowed_actions_access,
   actions_access_set_admits,
   actions_token_can_carry,
+  permission_level_access,
   effective_actions_grant
 }
 import extdeps.github.effect {
@@ -264,6 +265,21 @@ test fn witness_permissions_key_table_matches_cited_vocabulary() -> Bool {
     && !actions_token_can_carry(name: WorkflowsAxis)
     && !actions_token_can_carry(name: AdministrationAxis)
     && !actions_token_can_carry(name: OrganizationSelfHostedRunnersAxis)
+}
+
+test fn witness_two_access_vocabularies_differ_only_by_the_absence_level() -> Bool {
+  match permission_level_access(level: PermRead) {
+    Absent => false
+    Present { value: a } => match a { AppAccessRead => true  _ => false }
+  }
+    && match permission_level_access(level: PermWrite) {
+      Absent => false
+      Present { value: a } => match a { AppAccessWrite => true  _ => false }
+    }
+    && match permission_level_access(level: PermNone) {
+      Absent => true
+      Present { value: _ } => false
+    }
 }
 
 test fn witness_cited_access_levels_are_not_uniformly_read_write() -> Bool {

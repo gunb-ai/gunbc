@@ -142,15 +142,21 @@ fn observed_permission_name_eq(a: ObservedGitHubPermissionName, b: ObservedGitHu
   a.wire_name == b.wire_name
 }
 
+fn observed_name_is_axis(name: ObservedGitHubPermissionName, axis: GitHubPermissionAxis) -> Bool {
+  match permission_axis_from_wire(name: name.wire_name) {
+    Absent => false
+    Present { value: observed_axis } => observed_axis == axis
+  }
+}
+
 fn observed_access_for(
   perms: List<ObservedGitHubPermission>,
   axis: GitHubPermissionAxis
 ) -> GitHubAppPermissionAccess? {
-  let wanted = observed_permission_name(axis: axis)
   fold(perms, init: none, f: fn(found, p) {
     match found {
       Present { value: v } => Present { value: v }
-      Absent => if observed_permission_name_eq(a: p.name, b: wanted) { Present { value: p.access } } else { none }
+      Absent => if observed_name_is_axis(name: p.name, axis: axis) { Present { value: p.access } } else { none }
     }
   })
 }
@@ -191,7 +197,7 @@ fn permission_access_at_least(
 }
 
 fn permission_name_eq(a: GitHubPermissionAxis, b: GitHubPermissionAxis) -> Bool {
-  permission_axis_wire_name(axis: a) == permission_axis_wire_name(axis: b)
+  a == b
 }
 
 type GitHubAppPermissionSetAdmission
