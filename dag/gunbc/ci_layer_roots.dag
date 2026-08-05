@@ -1118,12 +1118,6 @@ data falsifier_substrate_long_lane_note: String = "Nightly falsifier batch 6 (te
 
 data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
   SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/direct_rust_door_observation_test.dag",
-    function: "direct_rust_door_observation_is_candidate_rejected",
-    reason: "12.7-15.1s measured eval per witness (wise-ram-22, 2026-08-04, four runs at --eval-budget-ms 900000): observe_direct_rust_door_provenance runs the real ingest-assemble-infer-mint path. The cost is fixture-shaped pipeline depth, not corpus breadth — the cost partition attributes ~79 percent to load_bare_edge_index, a corpus-wide index memoized per MultiEntryIndex that a single-entry harness pays in full and that amortizes across a real batch, so the witness's own work is roughly the 5s typecheck plus eval remainder",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery — or this witness becomes stale because DirectRustDoorSourceProduced becomes reachable (containment lane PR D) - it asserts a CURRENT state, so it must be deleted or re-aimed in the change that fixes the source path, not left asserting a false negative; or the witness-evidence-lifecycle program lands per-witness declared execution requirements and route derives from those rather than from this file's directory (docs/plans/witness-evidence-lifecycle-design.md), at which point this row and the test/claim/long dir grain dissolve together"
-  },
-  SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
     function: "wave1_gate1_d_census_subsumption_witness_holds",
     reason: "134526ms measured witness wall on a cold run (27x a 5s fast-lane budget, test-decomposition-wcf-cut.md Class C, merry-ibex-306 2026-07-25): the fn builds 10 ingested_fixture_arrows fixtures through a real tokenize->parse_module->normalize->resolve pass each, across two aggregator checks (well-formedness, behavior-kind) — genuine corpus breadth, not a fixture-shaped defect. The mechanism-only sibling (self_host/wave1_gate1_d_mvp_subsumption_witness_test.dag table_fixture check_fns, measured eval_self=0.000ms) is already covered by the source-root *_test.dag discovery walk (gunbc.commit_workflow wave1_gate1_d_census_class_c_split_note) — no explicit per-PR roster row for it",
@@ -1250,6 +1244,12 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
   },
   SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag",
+    function: "direct_rust_door_production_group_closing_expectation_holds",
+    reason: "INTEGRATION OBSERVATION, NOT ORDINARY BUSINESS-LOGIC COVERAGE, and an OPEN COST DEFECT — not a routed row (operator witness-cost policy 2026-08-05). It executes the real compiler pipeline (ingest, assemble, infer, emit) inside the witness. MEASURED at this PR's final head, and the CLOCK IS NAMED because the two in play select different populations (witness_row_cost_clock_basis_note): eval WALL 13490ms; witness-entry resolve WALL 41691ms; summed exclusive stage partition 73427ms over 2 spans, a THIRD denominator covering every resolve the process ran and not partitionable against either wall figure. Host: local aarch64 dev box, 128 CPUs, 125 GiB, warm target dir. eval THREAD CPU is NOT reported: claim_batch instruments eval wall only, so no cpu figure exists for this row and none is invented here. That matters in exactly one direction. Eval is single-threaded, so cpu is bounded above by wall and a wall figure UNDER the fast-lane cap proves cpu under it; an OVER-cap wall figure like this one proves nothing about cpu, so if the 500ms mandatory-migration threshold is read on cpu then the 27x multiplier is NOT established by this measurement. If it is read on wall, 13490ms is about 27x over. Either reading leaves the SHAPE unacceptable — a witness that reconstructs the whole compiler pipeline per evaluation — and that is the defect, independent of which clock adjudicates the multiplier. Long-lane placement is NOT its remedy and does not discharge the defect; neither does the reduction from four production walks to one, which corrected repetition only. The 5000ms figure is the executor fail-stop protecting the run, never a health bar, and CI contention would explain a threshold crossing but not this shape. Ordinary leaf semantics are already sub-millisecond over planted observations in v2.test.self_host.direct_rust_door_group_algebra; what remains unmigrated is the REAL observation, which is still reconstructed per evaluation instead of materialized once under its subject identity. Owner: the semantic-result materialization slice.",
+    dissolve_on: "REPLACEMENT PLAN, two independent triggers and BOTH must fire. (1) COST: the production observation is materialized once under its subject identity (source, target, evaluator, harness) and every leaf plus the recursive parent becomes a sub-500ms pure witness over that materialized result, at which point this row leaves the long lane entirely rather than being re-budgeted. (2) SEMANTICS: the ingest-path inferred tree survives emission and every leaf reaches LeafEstablished, at which point the paired known_red row deletes. Neither trigger substitutes for the other: greening the semantics while the walk stays 12s leaves an unacceptable witness shape, and materializing while emission still refuses leaves the lane red."
+  },
+  SubstrateLongLaneRow {
     entry: "dag/test/claim/long/generated_artifact_drift_fixed_point_witness_test.dag",
     function: "witness_committed_is_fixed_point",
     reason: "ReadsLiveTree fixed-point receipt: reads every committed artifact from disk and asserts artifact_generate reproduces bytes byte-for-byte. Its input is therefore the live tree rather than its own source, so its eval cost is not bounded by anything the fast lane can see — that is what disqualifies it from the fast lane, independent of any single measurement. Measured 1005ms warm on srv_fleet_arm64 (witness_row_cost_basis) and 5004ms in falsifier discovery-corpus batch 1 (run 30550328673, BudgetExceeded); those two figures differ in CLOCK (wall receipt vs CPU kill path), host, head and route at once, so the gap is an observation and not a diagnosis. WHY they differ is adjudicated once, in fixed_point_witness_long_lane_note (dag/test/claim/generated_artifact_drift_test.dag), NOT here: this field carries the enrollment fact and that note carries the cause, so the two cannot drift (DESIGN 3 — the earlier text of this field duplicated the diagnosis and both copies said host contention, which is false on a thread-CPU clock; corrected 2026-08-04)",
@@ -1262,34 +1262,16 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
   },
   SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/direct_rust_door_emission_witness_test.dag",
-    function: "witness_direct_rust_door_provenanced_artifact_holds",
-    reason: "Lane B ingest-assemble-infer-emit provenance witness exceeded 5000ms fast-lane budget on PR CI (c80605a): generate_provenanced_rust_candidate_from_ingest runs full parse/normalize/resolve/infer/emit closure — eval-budget routing only",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery"
-  },
-  SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     function: "witness_production_qualification_origin_probe_admission_holds",
     reason: "production_qualification_origin_probe_admission_holds() walks fn_arrow_decl_facts_live() and exceeded 5000ms fast-lane budget on PR CI (d3fb2fed): eval-budget routing only — planted closed-subject witnesses stay per-PR discovery",
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery"
   },
   SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_acceptance_test.dag",
-    function: "witness_v2_emitter_direct_rust_door_closing_contract_holds",
-    reason: "same ingest-path closure cost as direct_rust_door emission long witness (exceeds 5s fast-lane budget). Witness REDs by execution: ingest-path assess_written_source_independent_of_seed_emitter does not establish WrittenSourceIndependentOfSeedEmitter — functional gap tracked on explicit_witness_admission known_red row; long-lane enrollment is eval-budget routing only",
-    dissolve_on: "witness_v2_emitter_direct_rust_door_closing_contract_holds greens with frontier zero (known_red row deletes per v2_emitter_direct_rust_door_contract_dissolution_note) AND eval lands under gunbc_ci_fast_lane_witness_eval_budget — then re-enrolls per-PR discovery"
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_contract_test.dag",
-    function: "witness_written_source_assessment_establishes_on_fixture",
-    reason: "production assess_written_source_independent_of_seed_emitter runs ingest-path emit and exceeds 5s fast-lane budget. Ingest-path does not yet establish WrittenSourceIndependentOfSeedEmitter (functional gap on closing-contract path, not slowness alone)",
-    dissolve_on: "assess_written_source_independent_of_seed_emitter establishes WrittenSourceIndependentOfSeedEmitter on fixture AND eval lands under gunbc_ci_fast_lane_witness_eval_budget — then re-enrolls per-PR discovery"
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_contract_test.dag",
-    function: "witness_production_admissions_close_contract_holds",
-    reason: "v2_emitter_direct_rust_door_acceptance_admissions runs both production folds including ingest-path written-source assessment; exceeds 5s fast-lane budget. Closing frontier nonzero until ingest-path establishes WrittenSourceIndependentOfSeedEmitter (functional gap, not slowness alone)",
-    dissolve_on: "production admissions close with frontier zero AND eval lands under gunbc_ci_fast_lane_witness_eval_budget — then re-enrolls per-PR discovery"
+    entry: "dag/test/claim/roadmap_program_view_witness_test.dag",
+    function: "witness_live_constraint_present_iff_line_unaccepted",
+    reason: "live_view() joins declared roadmap nodes, edges, receipts, and finish-line specs — measured ~3074ms cold locally but flaked at 5004ms in falsifier discovery-corpus batch 3 under host contention when ~6663 witnesses share the floor (run 30960560941, BudgetExceeded). Not caused by PR #7762 diff; borderline over the 5s fast-lane budget",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/roadmap_program_view_witness_test.dag",
@@ -1308,6 +1290,12 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "live_roadmap_program_view_corpus_projection_receipt",
     reason: "LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822): exercises the full declared roadmap closure through gunbc.roadmap_program_view — evidentiary wiring receipt enrolled on the corpus/integration lane for its integration role, not because eval cost exceeds the per-PR business budget. Business algebra stays on planted fixtures in roadmap_program_view_witness_test.dag",
     dissolve_on: "replaced by a cheaper structural wiring receipt that covers the same live-authority join, or live roadmap projection integration receipts become unnecessary"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/concept_index_enumeration_coproduct_parse_only_witness_test.dag",
+    function: "witness_coproduct_arms_parse_only",
+    reason: "parse_only_concept_matches over src/v2/test/claim exceeded 6065ms thread-CPU on PR CI run 31017039134 (3850ms measured basis, witness_row_cost_basis.tsv) — corpus-breadth cost grows with unrelated modules in the pool (docs/plans/witness-evidence-lifecycle-design.md receipt class); eval-budget routing only",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or the witness-evidence-lifecycle program derives per-witness execution requirements and this row dissolves with test/claim/long/ dir grain"
   }
 ]
 
