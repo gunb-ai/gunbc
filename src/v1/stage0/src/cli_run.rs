@@ -3971,8 +3971,9 @@ pub fn selection_control_skip_label_for_ci() -> Result<String, SelectionControlS
 // pool ∪ witness layer ∪ perturbation fixtures ∪ gate transport modules). Same shape as
 // regen_floor_skip_label_for_ci / selection_control_skip_label_for_ci: skip only on a
 // non-empty diff proven disjoint; run on empty diff, departed non-docs paths, and any
-// observation/closure failure (fail-closed). Gated to pull_request events — push-to-main
-// runs the full gate as the cold control.
+// observation/closure failure (fail-closed — regen shape: still RUN the gate, but the two
+// failure arms carry grep-countable labels distinct from structural run_class_b_gate).
+// Gated to pull_request events — push-to-main runs the full gate as the cold control.
 // ---------------------------------------------------------------------------
 
 pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
@@ -3999,6 +4000,13 @@ pub const CLASS_B_GATE_INPUT_ENTRIES: &[&str] = &[
 
 pub const CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL: &str = "class_b_gate_not_affected_skip";
 pub const RUN_CLASS_B_GATE_LABEL: &str = "run_class_b_gate";
+/// Grep-countable run-arm markers for failure paths that still execute the gate (regen shape:
+/// fail-closed by running, not by widening). Distinct from structural `run_class_b_gate` arms
+/// so routine closure/diff failures are observable in job logs (loyal-ram-550 #7835).
+pub const RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL: &str =
+    "run_class_b_gate:diff_observation_failed";
+pub const RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL: &str =
+    "run_class_b_gate:input_closure_failed";
 
 fn class_b_pool_source_roots(workspace: &Path, pool_roots: &[&str]) -> Vec<PathBuf> {
     pool_roots.iter().map(|rel| workspace.join(rel)).collect()
@@ -4115,8 +4123,10 @@ pub fn class_b_import_closure_gate_skip_label_for_ci() -> String {
     let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
         Ok(v) => v,
         Err(msg) => {
-            eprintln!("class B gate skip: diff observation failed ({msg}) — run gate");
-            return RUN_CLASS_B_GATE_LABEL.to_string();
+            eprintln!(
+                "[{RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL}] class B gate skip: diff observation failed ({msg}) — run gate"
+            );
+            return RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL.to_string();
         }
     };
     if changed_paths.is_empty() {
@@ -4137,8 +4147,10 @@ pub fn class_b_import_closure_gate_skip_label_for_ci() -> String {
     let dag_closure: HashSet<String> = match class_b_import_closure_input_sources(&workspace) {
         Ok(sources) => sources.into_iter().collect(),
         Err(msg) => {
-            eprintln!("class B gate skip: input-closure computation failed ({msg}) — run gate");
-            return RUN_CLASS_B_GATE_LABEL.to_string();
+            eprintln!(
+                "[{RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL}] class B gate skip: input-closure computation failed ({msg}) — run gate"
+            );
+            return RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL.to_string();
         }
     };
     match changed_paths
