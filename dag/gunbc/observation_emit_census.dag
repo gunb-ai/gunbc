@@ -174,6 +174,7 @@ data observation_emit_roster: List<CensusedEmitSite> = [
   assembly_split_site,
   witness_row_cost_site,
   witness_row_cost_drift_site,
+  witness_row_cost_migration_disclosure_site,
   selection_degradation_site
 ]
 
@@ -186,7 +187,7 @@ data observation_emit_roster_completeness_disposition: Disposition = Scaffold {
   }
 }
 
-data observation_emit_roster_completeness_note: String = "Roster is bidirectional: every rostered marker must still exist in the seed, AND every known live tag family born after the initial snapshot must appear on the roster (operator finding 3, run 30142403230). Frontier count = 9 (floor-drain, gate-warm-cost, receipt, file, resolve-split, assembly-split, witness-row-cost, witness-row-cost-drift, selection-degradation). Six families MigratedToObservation. The unmarked eprintln sites remain the per-print completeness scaffold."
+data observation_emit_roster_completeness_note: String = "Roster is bidirectional: every rostered marker must still exist in the seed, AND every known live tag family born after the initial snapshot must appear on the roster (operator finding 3, run 30142403230). Frontier count = 10 (floor-drain, gate-warm-cost, receipt, file, resolve-split, assembly-split, witness-row-cost, witness-row-cost-drift, witness-row-cost-migration-disclosure, selection-degradation). Six families MigratedToObservation. The unmarked eprintln sites remain the per-print completeness scaffold."
 
 fn emit_site_is_frontier(site: CensusedEmitSite) -> Bool {
   match site.disposition {
