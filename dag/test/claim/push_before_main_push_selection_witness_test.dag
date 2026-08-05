@@ -11,6 +11,7 @@ import gunbc.diff_baseline {
   PushBeforeSha,
   BaselineSelected,
   BaselineRefused,
+  BaselineSourceConflict,
   resolve_diff_baseline
 }
 import gunbc.repo_identity { gunbc_merge_target_ref, gunbc_default_remote_name }
@@ -69,7 +70,8 @@ fn planted_main_push_baseline_resolution() -> DiffBaselineResolution {
       event_name: "push",
       base_ref: none,
       push_before: Present { value: PushBeforeSha { sha: planted_before_sha } },
-      head_sha: Present { value: planted_head_sha }
+      head_sha: Present { value: planted_head_sha },
+      diff_window: none
     },
     push_parent_ref: gunbc_merge_target_ref,
     default_remote_name: gunbc_default_remote_name
@@ -81,6 +83,7 @@ test fn witness_main_push_resolves_push_before_not_parent() -> Bool {
     BaselineSelected { baseline: PushBefore { ref: ref } } =>
       (ref as String) == planted_before_sha
     BaselineRefused { reason: _ } => false
+    BaselineSourceConflict { window_detail: _, override_ref: _ } => false
     BaselineSelected { baseline: _ } => false
   }
 }
