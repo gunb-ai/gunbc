@@ -16,7 +16,12 @@ import gunbc.generated_artifact {
   classify_heal_repair_paths, path_requires_author_commit,
   registry_contains
 }
-import gunbc.generated_artifact_emit { ArtifactGenerated, ArtifactGenerationRefused, artifact_generate, artifact_extra_valid }
+import gunbc.generated_artifact_emit { artifact_extra_valid }
+import gunbc.generated_artifact_observation {
+  GeneratedArtifactObservation, GeneratedArtifactObserved, GeneratedArtifactObservationRefused,
+  assess_generated_artifact_observation, assess_generated_artifact_population,
+  first_failing_observation_path, first_failing_diagnostic_path
+}
 import gunbc.os_install { srv3_autoinstall_spec, fleet_autoinstall_specs, srv3_install_server_spec, fleet_install_server_specs }
 import gunbc.gitignore_emit { path_is_ignored }
 import gunbc.plan_registry { all_plans }
@@ -25,27 +30,94 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
+data pure_perturb_control_note: String = "P0 (operator-directed, 2026-08-05): the former per-artifact live perturb loop called artifact_generate three times per committed artifact just to prove generated != generated + suffix — a GENERIC string-inequality fact, re-proved once per generator, that never touched a real committed byte (DESIGN section 6: do not test that the processor does math well). Deleted. The pure leaf (assess_generated_artifact_observation) and pure group (assess_generated_artifact_population) policies in gunbc.generated_artifact_observation are exercised below with tiny CONSTRUCTED receipts — no producer call, no Filesystem, no artifact_generate — covering clean, drift, generation-refusal, committed-read-refusal, extra-validation-refusal and group-identity (missing/duplicate/unknown) verdicts. The one remaining LIVE fact — every registered committed artifact observed exactly once, byte-clean, against real disk state — is the production drift gate itself (dag/tools/generated_artifact_gate.dag, run_generated_artifact_drift_gate_body), which now calls the live producer exactly once per artifact per run; its byte-for-byte fixed point is additionally isolated at dag/test/claim/long/generated_artifact_drift_fixed_point_witness_test.dag."
+
 data perturb: String = "\n# gunbc-generated-artifact-drift-receipt-perturb"
 
-fn artifact_drifted(a: GeneratedArtifact, committed: String) -> Bool {
-  match artifact_generate(a: a) {
-    ArtifactGenerationRefused { reason: _ } => true
-    ArtifactGenerated { content } => !(committed == content)
-  }
+fn constructed_clean(a: GeneratedArtifact, content: String) -> GeneratedArtifactObservation {
+  GeneratedArtifactObserved { artifact: a, path: "fixture/path", generated_content: content, committed_content: content, extra_validation: true }
 }
 
-fn artifact_red_receipt(a: GeneratedArtifact) -> Bool {
-  match artifact_generate(a: a) {
-    ArtifactGenerationRefused { reason: _ } => false
-    ArtifactGenerated { content } =>
-      !artifact_drifted(a: a, committed: content)
-        && artifact_drifted(a: a, committed: concat(content, perturb))
-  }
+test fn witness_pure_leaf_clean_when_bytes_match_and_extra_valid_holds() -> Bool {
+  assess_generated_artifact_observation(o: constructed_clean(CiYamlArtifact, "same bytes"))
 }
 
-test fn witness_per_artifact_red_receipts() -> Bool {
+test fn witness_pure_leaf_drifts_on_perturbed_committed_bytes() -> Bool {
+  !assess_generated_artifact_observation(o: GeneratedArtifactObserved {
+    artifact: CiYamlArtifact, path: "fixture/path", generated_content: "same bytes", committed_content: concat("same bytes", perturb), extra_validation: true
+  })
+}
+
+test fn witness_pure_leaf_refuses_on_generation_refusal() -> Bool {
+  !assess_generated_artifact_observation(o: GeneratedArtifactObservationRefused {
+    artifact: CiYamlArtifact, path: "fixture/path", cause: "generation refused: boom"
+  })
+}
+
+test fn witness_pure_leaf_refuses_on_committed_read_refusal() -> Bool {
+  !assess_generated_artifact_observation(o: GeneratedArtifactObservationRefused {
+    artifact: CiYamlArtifact, path: "fixture/path", cause: "committed read failed: no such file"
+  })
+}
+
+test fn witness_pure_leaf_refuses_on_extra_validation_failure() -> Bool {
+  !assess_generated_artifact_observation(o: GeneratedArtifactObserved {
+    artifact: CiYamlArtifact, path: "fixture/path", generated_content: "same bytes", committed_content: "same bytes", extra_validation: false
+  })
+}
+
+test fn witness_pure_group_passes_when_every_expected_identity_observed_once_and_clean() -> Bool {
+  assess_generated_artifact_population(
+    expected: [CiYamlArtifact, GitignoreArtifact],
+    observations: [constructed_clean(CiYamlArtifact, "a"), constructed_clean(GitignoreArtifact, "b")]
+  )
+}
+
+test fn witness_pure_group_refuses_on_missing_identity() -> Bool {
+  !assess_generated_artifact_population(
+    expected: [CiYamlArtifact, GitignoreArtifact],
+    observations: [constructed_clean(CiYamlArtifact, "a")]
+  )
+}
+
+test fn witness_pure_group_refuses_on_duplicate_identity() -> Bool {
+  !assess_generated_artifact_population(
+    expected: [CiYamlArtifact],
+    observations: [constructed_clean(CiYamlArtifact, "a"), constructed_clean(CiYamlArtifact, "a")]
+  )
+}
+
+test fn witness_pure_group_refuses_on_unknown_identity() -> Bool {
+  !assess_generated_artifact_population(
+    expected: [CiYamlArtifact],
+    observations: [constructed_clean(CiYamlArtifact, "a"), constructed_clean(GitignoreArtifact, "b")]
+  )
+}
+
+test fn witness_pure_group_refuses_when_a_retained_leaf_is_dirty() -> Bool {
+  !assess_generated_artifact_population(
+    expected: [CiYamlArtifact],
+    observations: [GeneratedArtifactObserved { artifact: CiYamlArtifact, path: "fixture/path", generated_content: "a", committed_content: "b", extra_validation: true }]
+  )
+}
+
+test fn witness_first_failing_observation_path_names_the_dirty_leaf() -> Bool {
+  first_failing_observation_path(observations: [
+    constructed_clean(GitignoreArtifact, "a"),
+    GeneratedArtifactObserved { artifact: CiYamlArtifact, path: "dirty/path", generated_content: "a", committed_content: "b", extra_validation: true }
+  ]) == "dirty/path"
+}
+
+test fn witness_first_failing_observation_path_empty_when_all_leaves_clean() -> Bool {
+  first_failing_observation_path(observations: [constructed_clean(CiYamlArtifact, "a")]) == ""
+}
+
+test fn witness_first_failing_diagnostic_path_falls_back_to_missing_identity() -> Bool {
+  first_failing_diagnostic_path(expected: [CiYamlArtifact], observations: []) == artifact_path(a: CiYamlArtifact)
+}
+
+test fn witness_committed_registry_nonempty() -> Bool {
   count(committed_generated_artifacts()) > 0
-    && all(committed_generated_artifacts(), a => artifact_red_receipt(a: a))
 }
 
 data fixed_point_witness_long_lane_note: String = "witness_committed_is_fixed_point and witness_committed_fixed_point_red_control rehomed to dag/test/claim/long/generated_artifact_drift_fixed_point_witness_test.dag (operator 5-second rule, 2026-08-03): measured 1005ms warm but flaked at 5004ms in falsifier discovery-corpus under host contention — see generated_artifact_drift_fixed_point_long_note there. The drift gate run_generated_artifact_drift_gate_body still reads the same bytes as one conjunct; the long-lane witness ISOLATES the fixed-point property as a separately-falsifiable claim with its own RED control."
