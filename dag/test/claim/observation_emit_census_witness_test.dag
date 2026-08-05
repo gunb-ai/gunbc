@@ -26,6 +26,7 @@ import gunbc.observation_emit_census {
   assembly_split_site,
   witness_row_cost_site,
   witness_row_cost_drift_site,
+  witness_row_cost_migration_disclosure_site,
   selection_degradation_site,
 }
 
@@ -115,7 +116,7 @@ test fn w_shell_has_migrated() -> Bool {
   string_contains(s: emit_site_dissolve_on(site: shell_site), pattern: "render_shell_effect_")
 }
 
-data w_post_snapshot_live_tags_are_rostered_bidirectional_note: String = "Operator finding 3 (run 30142403230): hygiene is bidirectional — growth tags born after the initial census snapshot must appear on the roster, not only the reverse (rostered markers still exist). Extended for #7205 resolve/assembly split tags and #7284 witness-row-cost / witness-row-cost-drift."
+data w_post_snapshot_live_tags_are_rostered_bidirectional_note: String = "Operator finding 3 (run 30142403230): hygiene is bidirectional — growth tags born after the initial census snapshot must appear on the roster, not only the reverse (rostered markers still exist). Extended for #7205 resolve/assembly split tags, #7284 witness-row-cost / witness-row-cost-drift, and the migration-disclosure gate's own [witness-row-cost-migration-disclosure] marker."
 
 test fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
   census_marker_present(site: floor_drain_site) &&
@@ -134,6 +135,8 @@ test fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
   emit_site_is_frontier(site: witness_row_cost_site) &&
   census_marker_present(site: witness_row_cost_drift_site) &&
   emit_site_is_frontier(site: witness_row_cost_drift_site) &&
+  census_marker_present(site: witness_row_cost_migration_disclosure_site) &&
+  emit_site_is_frontier(site: witness_row_cost_migration_disclosure_site) &&
   census_marker_present(site: selection_degradation_site) &&
   emit_site_is_frontier(site: selection_degradation_site)
 }

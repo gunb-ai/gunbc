@@ -34,6 +34,23 @@ import gunbc.roadmap_execution_contract {
   ExecutionContract,
   ExecutionContractUnspecified,
 }
+import gunbc.git_diff_change_window {
+  ChangeWindowPreparationRefusal,
+  ChangeWindowMergeBaseRefused,
+  ChangeWindowTargetGenerationRefused,
+  ChangeWindowHeadObjectIdRefused,
+  ChangeWindowPersistenceRefused,
+  GitMergeBaseObservation,
+  GitMergeBaseObserved,
+  GitMergeBaseProgramUnavailable,
+  GitMergeBaseExecutionFailed,
+  GitMergeBaseOutputMalformed,
+  GitTargetGenerationObservation,
+  GitTargetGenerationObserved,
+  GitTargetGenerationProgramUnavailable,
+  GitTargetGenerationExecutionFailed,
+  GitTargetGenerationOutputMalformed,
+}
 import extdeps.languages.json.parse {
   parse_json,
   json_object_unique_member,
@@ -366,6 +383,9 @@ type ValidationRefusalCause
       program: String,
       reason: String,
     }
+  | ValidationChangeWindowRefused {
+      cause: ChangeWindowPreparationRefusal,
+    }
 
 data validation_not_run_note: String = "review 45271. ValidationNotRun exists so that the ABSENCE of a receipt stops being a state the verification seam has to interpret. The seam previously asked `is the receipt text empty` and got `\"\"` from three different worlds — no file, an unreadable file, and an empty one — then RAN THE VALIDATION AND OVERWROTE whatever was there. Absent and unreadable have opposite correct actions (run it; stop and do not touch the evidence), so collapsing them let an I/O fault regenerate a verdict against a worktree the agent may have moved since. The fix is construction rather than a better classifier, because the Filesystem.Read surface exposes no typed absence and deciding it from an error string would be a guess: dispatch WRITES this verdict beside the attempt during state initialization, exactly as it already writes an empty provider-events.jsonl so that stream's absence is meaningful. After that, a receipt is always present, so a failed read is unambiguously a fault and refuses. The Verify lamp reads this as pending — which makes its pending state evidence-backed rather than inferred from nothing."
 
@@ -572,6 +592,49 @@ fn validation_oracle_gate(
   }
 }
 
+fn change_window_preparation_refusal_detail(cause: ChangeWindowPreparationRefusal) -> String {
+  match cause {
+    ChangeWindowMergeBaseRefused { observation: observation } =>
+      match observation {
+        GitMergeBaseProgramUnavailable { program, reason } =>
+          join([program, " was not available to observe merge-base: ", reason], "")
+        GitMergeBaseExecutionFailed { program, exit_code, stdout, stderr } =>
+          join([
+            program,
+            " merge-base observation failed (exit ",
+            to_string(exit_code),
+            "): ",
+            stderr,
+          ], "")
+        GitMergeBaseOutputMalformed { stdout } =>
+          join(["merge-base observation returned malformed stdout: ", stdout], "")
+        GitMergeBaseObserved { target: _, target_generation: _, base: _, head: _ } =>
+          "unreachable merge-base observed arm in refusal detail"
+      }
+    ChangeWindowTargetGenerationRefused { observation: observation } =>
+      match observation {
+        GitTargetGenerationProgramUnavailable { program, reason } =>
+          join([program, " was not available to read target generation: ", reason], "")
+        GitTargetGenerationExecutionFailed { program, exit_code, stdout, stderr } =>
+          join([
+            program,
+            " target-generation observation failed (exit ",
+            to_string(exit_code),
+            "): ",
+            stderr,
+          ], "")
+        GitTargetGenerationOutputMalformed { stdout } =>
+          join(["target-generation observation returned malformed stdout: ", stdout], "")
+        GitTargetGenerationObserved { generation: _ } =>
+          "unreachable target-generation observed arm in refusal detail"
+      }
+    ChangeWindowHeadObjectIdRefused { head_hex } =>
+      join(["verification subject head is not a valid git object id: ", head_hex], "")
+    ChangeWindowPersistenceRefused { path, cause } =>
+      join(["git diff window receipt could not be written at ", concat(path, ": "), cause], "")
+  }
+}
+
 fn validation_refusal_cause_key(cause: ValidationRefusalCause) -> String {
   match cause {
     ValidationContractUnspecified => "contract-unspecified"
@@ -590,6 +653,7 @@ fn validation_refusal_cause_key(cause: ValidationRefusalCause) -> String {
     ValidationPinReceiptUnreadable { detail: _ } => "pin-receipt-unreadable"
     ValidationCommandUnrealized => "command-unrealized"
     ValidationCommandRefused { program: _, reason: _ } => "command-refused"
+    ValidationChangeWindowRefused { cause: _ } => "change-window-refused"
   }
 }
 
@@ -650,6 +714,77 @@ fn validation_refusal_cause_detail(cause: ValidationRefusalCause) -> String {
       "the declared validation has no host capability realization, so no command exists to run"
     ValidationCommandRefused { program, reason } =>
       join([program, ": ", reason], "")
+    ValidationChangeWindowRefused { cause } =>
+      change_window_preparation_refusal_detail(cause: cause)
+  }
+}
+
+fn validation_refusal_cause_decode(
+  cause_kind: String,
+  cause_detail: String,
+) -> ValidationRefusalCause? {
+  if cause_kind == "contract-unspecified" {
+    Present { value: ValidationContractUnspecified }
+  } else if cause_kind == "command-unrealized" {
+    Present { value: ValidationCommandUnrealized }
+  } else if cause_kind == "pin-receipt-unreadable" {
+    Present {
+      value: ValidationPinReceiptUnreadable { detail: cause_detail },
+    }
+  } else if cause_kind == "command-refused" {
+    Present {
+      value: ValidationCommandRefused {
+        program: "unknown",
+        reason: cause_detail,
+      },
+    }
+  } else if cause_kind == "change-window-refused" {
+    Present {
+      value: ValidationChangeWindowRefused {
+        cause: ChangeWindowPersistenceRefused {
+          path: "",
+          cause: cause_detail,
+        },
+      },
+    }
+  } else if cause_kind == "oracle-unpinnable" {
+    Present {
+      value: ValidationOracleUnpinnable {
+        validation_label: "unknown",
+        reason: cause_detail,
+      },
+    }
+  } else if cause_kind == "oracle-missing" {
+    Present {
+      value: ValidationOracleMissing {
+        entry: "unknown",
+        function: "unknown",
+        detail: cause_detail,
+      },
+    }
+  } else if cause_kind == "oracle-ambiguous" {
+    Present {
+      value: ValidationOracleAmbiguous {
+        entry: "unknown",
+        function: "unknown",
+        declaration_count: 0,
+      },
+    }
+  } else if cause_kind == "oracle-unpinned-dependency" {
+    Present {
+      value: ValidationOracleUnpinnedDependency {
+        entry: "unknown",
+        imports: [],
+      },
+    }
+  } else if cause_kind == "oracle-pin-unrecorded" {
+    Present {
+      value: ValidationOraclePinUnrecorded {
+        channel: cause_detail as NonEmptyStr as VersionIdentity,
+      },
+    }
+  } else {
+    none
   }
 }
 

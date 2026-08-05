@@ -8,13 +8,22 @@ import v2.compiler.source_authority {
   SourceRootManifestElided,
   SourceRootRowsMissing
 }
+import std.algebra { FreeMonoid }
 import std.content_hash { ContentHash }
+import v2.std.grammar_choice_ambiguity {
+  GrammarChoiceAmbiguityRow,
+  NonEmptyGrammarChoiceAmbiguityRows
+}
 import v2.std.optional { Optional }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
+
+data frontier_nonempty_carrier_pattern_note: String = "NonEmptySymbolChain and NonEmptyGrammarChoiceAmbiguityRows join NonEmptyDiagnostics and NonEmptyProcessNodeIds as hand-rolled nonempty carriers beside the generic NonEmptyList refinement (fixture-only today). Counted here so the pattern is visible rather than silently repeated. Dissolve triggers: non_empty_symbol_chain_dissolve_trigger (this module); NonEmptyGrammarChoiceAmbiguityRows trigger on v2.std.grammar_choice_ambiguity."
+
+data non_empty_symbol_chain_dissolve_trigger: String = "migrate_when_nonempty_list_refinement_promoted — NonEmptySymbolChain dissolves into NonEmptyList<Symbol> when the refinement is promoted from v2.test.claim.manual.refinement_nonempty_list to std."
 
 data frontier_fixture_cemented_producer_note: String = "FixtureCemented is forward-declared for the fixture-free self-host bar; inhabited by the behavioral-equivalence probe when it detects injected fixtures cementing greens (e.g. add_arrow_eval_allocate_literal, pick-lit hardcoding) — not by frontier_classify_rejection_reason (assemble/emit stage only)."
 
@@ -56,12 +65,69 @@ type FrontierProbeDetail
 
 data frontier_probe_detail_note: String = "Survey receipts carry structural probe detail beside the reason symbol. MissingModule holds the QualifiedName sought (not only its dotted projection). SourceRootManifestElidedProbe records inline-manifest elision when the inline carrier cannot supply the closure. FrontierProbeClosurePopulationRefused records entry-binding and closure-population identity failures (duplicate refs, count mismatch, entry not exactly once). FrontierProbeCoverageRefused preserves the original SourceRootCoverage arm. SourceRefReadRefused carries the filesystem error string without fabricating missing-vs-unreadable. SourceRefContentHashMismatch carries expected and observed ContentHash beside the ref."
 
+type NonEmptySymbolChain {
+  head: Symbol
+  tail: FreeMonoid<Symbol>
+}
+
+type AssembleRejectionCause
+  = GrammarChoiceOverlap { rows: NonEmptyGrammarChoiceAmbiguityRows }
+  | MaskedAssembleRefusal {
+      overlap_evidence: NonEmptyGrammarChoiceAmbiguityRows,
+      remaining_chain: NonEmptySymbolChain
+    }
+  | MaskedAssembleRefusalWithoutEvidence {
+      remaining_chain: NonEmptySymbolChain
+    }
+  | AssembleMissingModule { requested: QualifiedName }
+  | MissingModuleIdentityUnavailable
+  | OtherAssembleRefusal { reason: Symbol }
+
+type FrontierProbeAssembleDetail
+  = NoFrontierProbeDetail
+  | AssembleRejectionDetail {
+      rejection_chain: NonEmptySymbolChain,
+      cause: AssembleRejectionCause
+    }
+
+data frontier_probe_overlap_detail_note: String = "AssembleRejectionDetail binds only parse-stage-carried evidence — never a global grammar roster. GrammarChoiceOverlap rows are extracted from ParseDiagnosticEvidence on the parse-stage diagnostic carrier. When overlap residue heads a chain with a nonempty tail and carries evidence, cause is MaskedAssembleRefusal; when the tail is nonempty but evidence is absent, MaskedAssembleRefusalWithoutEvidence preserves remaining_chain without absorbing into OtherAssembleRefusal. AssembleMissingModule in assemble_detail awaits parse-stage ModuleRootMissingEvidence; FrontierProbeDetail.MissingModule (#7762) is the structural resolve_module_not_found authority on detail. MissingModuleIdentityUnavailable remains when assemble cause cannot bind parse-stage evidence. Emit-stage receipts use NoFrontierProbeDetail."
+
 type FrontierProbeReceipt {
   module_path: String
   blocker_class: FrontierBlockerClass
   located_stage: FrontierProbeStage
   located_reason: Symbol
   detail: FrontierProbeDetail
+  assemble_detail: FrontierProbeAssembleDetail
+}
+
+fn frontier_probe_receipt_module_path(receipt: FrontierProbeReceipt) -> String {
+  receipt.module_path
+}
+
+fn frontier_probe_receipt_blocker_class(receipt: FrontierProbeReceipt) -> FrontierBlockerClass {
+  receipt.blocker_class
+}
+
+fn frontier_probe_receipt_located_reason(receipt: FrontierProbeReceipt) -> Symbol {
+  receipt.located_reason
+}
+
+fn frontier_probe_receipt_without_assemble_detail(
+  module_path: String,
+  blocker: FrontierBlockerClass,
+  located_stage: FrontierProbeStage,
+  located_reason: Symbol,
+  detail: FrontierProbeDetail
+) -> FrontierProbeReceipt {
+  FrontierProbeReceipt {
+    module_path: module_path,
+    blocker_class: blocker,
+    located_stage: located_stage,
+    located_reason: located_reason,
+    detail: detail,
+    assemble_detail: NoFrontierProbeDetail
+  }
 }
 
 fn frontier_blocker_is_name_resolution_reason(reason: Symbol) -> Bool {
