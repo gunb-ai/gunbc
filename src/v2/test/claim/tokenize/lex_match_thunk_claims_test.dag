@@ -29,6 +29,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   ) {
     LexRuleTrivia { lexeme: lex, remaining: _ } => is_empty(xs: lex)
     LexRuleNoMatch => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
 
@@ -38,6 +39,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   ) {
     LexRuleTrivia { lexeme: _, remaining: rem } => is_empty(xs: rem) == false
     LexRuleNoMatch => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
   let r2_reject = match lex_try_rule(
@@ -45,6 +47,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
     source: str_abc
   ) {
     LexRuleNoMatch => true
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleTrivia { lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
@@ -56,6 +59,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   ) {
     LexRuleTrivia { lexeme: _, remaining: _ } => true
     LexRuleNoMatch => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
   let r3_reject = match lex_try_rule(
@@ -63,6 +67,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
     source: str_fna
   ) {
     LexRuleNoMatch => true
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleTrivia { lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
@@ -74,6 +79,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   ) {
     LexRuleTrivia { lexeme: _, remaining: _ } => true
     LexRuleNoMatch => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
   let r4_reject = match lex_try_rule(
@@ -81,6 +87,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
     source: str_bc
   ) {
     LexRuleNoMatch => true
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleTrivia { lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
@@ -92,6 +99,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   ) {
     LexRuleTrivia { lexeme: _, remaining: _ } => true
     LexRuleNoMatch => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
   let r5_reject = match lex_try_rule(
@@ -99,6 +107,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
     source: str_abc
   ) {
     LexRuleNoMatch => true
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleTrivia { lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
@@ -113,6 +122,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   ) {
     LexRuleTrivia { lexeme: _, remaining: _ } => true
     LexRuleNoMatch => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
   let r6_reject = match lex_try_rule(
@@ -123,6 +133,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
     source: str_ac
   ) {
     LexRuleNoMatch => true
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleTrivia { lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
@@ -137,6 +148,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   ) {
     LexRuleTrivia { lexeme: _, remaining: _ } => true
     LexRuleNoMatch => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
   let r7_right_wins = match lex_try_rule(
@@ -148,6 +160,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   ) {
     LexRuleTrivia { lexeme: _, remaining: _ } => true
     LexRuleNoMatch => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
   let r7_both_reject = match lex_try_rule(
@@ -158,6 +171,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
     source: str_123
   ) {
     LexRuleNoMatch => true
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleTrivia { lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
@@ -169,6 +183,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   ) {
     LexRuleTrivia { lexeme: _, remaining: _ } => true
     LexRuleNoMatch => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
   let r8_no_match = match lex_try_rule(
@@ -177,6 +192,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   ) {
     LexRuleTrivia { lexeme: lex, remaining: _ } => is_empty(xs: lex)
     LexRuleNoMatch => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
   let r8 = r8_match && r8_no_match
@@ -187,6 +203,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   ) {
     LexRuleTrivia { lexeme: _, remaining: rem } => is_empty(xs: rem) == false
     LexRuleNoMatch => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
   let r9_zero_width_guard = match lex_try_rule(
@@ -195,6 +212,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   ) {
     LexRuleTrivia { lexeme: lex, remaining: _ } => is_empty(xs: lex)
     LexRuleNoMatch => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
   let r9 = r9_multi && r9_zero_width_guard
@@ -205,6 +223,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   ) {
     LexRuleTrivia { lexeme: _, remaining: _ } => true
     LexRuleNoMatch => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
   let r10_reject = match lex_try_rule(
@@ -212,6 +231,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
     source: str_b
   ) {
     LexRuleNoMatch => true
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleTrivia { lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
@@ -227,6 +247,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   ) {
     LexRuleTrivia { lexeme: _, remaining: rem } => is_empty(xs: rem)
     LexRuleNoMatch => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
   let r11_reject = match lex_try_rule(
@@ -238,6 +259,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
     source: str_block_comment_extra_star
   ) {
     LexRuleNoMatch => true
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleTrivia { lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
