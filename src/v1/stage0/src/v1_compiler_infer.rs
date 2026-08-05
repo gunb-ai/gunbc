@@ -138,11 +138,11 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousReference, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
-    CallPositionalSurplus, FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
-    MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
-    ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch, UnresolvedType,
-    VariantCollision,
+    AmbiguousReference, CallArgumentDuplicate, CallArgumentNameUnknown,
+    CallNamedArgOnFunctionValue, CallPositionalSurplus, FieldNotFound,
+    FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
+    MethodExistenceUndecided, MethodNotFound, MissingField, ReceiverTypeUnestablished,
+    SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -2547,6 +2547,52 @@ pub fn param_binds_positionally(
     }
 }
 
+pub fn call_arg_bound_param_at_binding_key_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Runtime (v1_interpreter.rs call_function_inner) keys `bindings` differently per argument form: a NAMED actual is inserted under its own literal caller label (`bindings.insert(ctx.sym(name), ...)` — the raw label, never resolved through the underscore idiom to a declared name), while a POSITIONAL actual is inserted under the declared name it fills by running positional index (`bindings.insert(ctx.sym(&param_names[positional_idx]), ...)`). Two named actuals therefore collide only when they carry the SAME literal label, and a positional-then-named collision (`one(1, a: 2)`) only when the named label equals the positional slot's declared name (found by review 48724). Resolving a named actual's key through declared_names via call_arg_label_matches_param (the prior form of this function) is a DIFFERENT and wrong key: filter-then-first picks whichever declared param the caller-label test hits first in declaration order, and an underscore-named param (`_: Edge`) matches ANY label unconditionally, so a later exact-named actual (`child:` against declared `child`) could be shadowed into colliding with an unrelated earlier underscore-idiom actual (`e:` against declared `_`) even though the runtime keys them apart as \"e\" and \"child\" — the false positive measured live at src/v2/std/cardinality.dag's termination_proof_fold_step(acc:, e:, child:) call against fn termination_proof_fold_step(acc, _: Edge, child), which compiled clean before this correction and fails at this wall after it without the fix.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn call_arg_bound_param_at(
+    idx: i64,
+    typed_args: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    declared_names: Rc<Vec<String>>,
+    positionally_eligible_names: Rc<Vec<String>>,
+) -> Option<String> {
+    Rc::new(
+        typed_args
+            .clone()
+            .iter()
+            .cloned()
+            .take((idx.clone() + 1) as usize)
+            .collect::<Vec<_>>(),
+    )
+    .iter()
+    .cloned()
+    .fold(
+        (None, 0),
+        |acc: (Option<()>, i64), ta: Rc<Node>| match arg_name_at(ta.clone(), source_indices.clone())
+        {
+            Some(label) => (Some(label.clone()), acc.1.clone()),
+            None => (
+                positionally_eligible_names
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(acc.1.clone() as usize)
+                    .next(),
+                (acc.1.clone() + 1),
+            ),
+        },
+    )
+    .0
+    .clone()
+}
+
 pub fn direct_call_shape_diags(
     func_name: String,
     sig_params: Rc<Vec<Rc<Node>>>,
@@ -2559,6 +2605,24 @@ pub fn direct_call_shape_diags(
         let declared_names = Rc::new({
             let mut __result = Vec::new();
             for p in sig_params.clone().iter().cloned() {
+                __result.push(authored_name_at(source_indices.clone(), p.clone()));
+            }
+            __result
+        });
+        let positionally_eligible_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in Rc::new({
+                let mut __result = Vec::new();
+                for p in sig_params.clone().iter().cloned() {
+                    if param_binds_positionally(p.clone(), source_indices.clone()) {
+                        __result.push(p);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
                 __result.push(authored_name_at(source_indices.clone(), p.clone()));
             }
             __result
@@ -2642,62 +2706,6 @@ pub fn direct_call_shape_diags(
             } else {
                 Rc::new(vec![])
             };
-        // Mirrors src/v1/04_infer.dag call_arg_bound_param_at / duplicate_label_diags
-        // (cursor review 48724 / 48732; corrected 2026-08-05 against the live
-        // src/v2/std/cardinality.dag false positive): v1_interpreter.rs
-        // call_function_inner keys `bindings` DIFFERENTLY per argument form — a
-        // NAMED actual is inserted under its own literal caller label
-        // (`bindings.insert(ctx.sym(name), ..)`, never resolved through the
-        // underscore idiom), while a POSITIONAL actual is inserted under the
-        // declared name it fills by running positional index
-        // (`bindings.insert(ctx.sym(&param_names[positional_idx]), ..)`). Two named
-        // actuals collide only when they carry the SAME literal label; a
-        // positional-then-named collision (`one(1, a: 2)`) only when the named
-        // label equals the positional slot's declared name. Resolving a named
-        // actual's key through declared_names (matching it against every declared
-        // param name, underscore idiom included) is a DIFFERENT and wrong key: an
-        // underscore-named param (`_: Edge`) matches ANY label unconditionally, so
-        // an unrelated later exact-named actual could be shadowed into colliding
-        // with an earlier underscore-idiom actual even though the runtime keys
-        // them apart — measured live at
-        // termination_proof_fold_step(acc: acc, e: e, child: child) against
-        // fn termination_proof_fold_step(acc, _: Edge, child), which the prior
-        // form of this closure wrongly flagged as a duplicate on `child`.
-        let positionally_eligible_names = Rc::new({
-            let mut __result = Vec::new();
-            for p in sig_params.clone().iter().cloned() {
-                if param_binds_positionally(p.clone(), source_indices.clone()) {
-                    __result.push(authored_name_at(source_indices.clone(), p.clone()));
-                }
-            }
-            __result
-        });
-        let call_arg_bound_param_at = |idx: i64,
-                                       typed_args: Rc<Vec<Rc<Node>>>,
-                                       source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-                                       _declared_names: Rc<Vec<String>>,
-                                       positionally_eligible_names: Rc<Vec<String>>|
-         -> Option<String> {
-            let mut bound: Option<String> = None;
-            let mut pos: i64 = 0;
-            for ta in typed_args.clone().iter().cloned().take((idx + 1) as usize) {
-                match arg_name_at(ta.clone(), source_indices.clone()) {
-                    Some(label) => {
-                        bound = Some(label);
-                    }
-                    None => {
-                        bound = positionally_eligible_names
-                            .clone()
-                            .iter()
-                            .cloned()
-                            .skip(pos as usize)
-                            .next();
-                        pos += 1;
-                    }
-                }
-            }
-            bound
-        };
         let duplicate_label_diags = Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new(
@@ -2722,7 +2730,7 @@ pub fn direct_call_shape_diags(
                                 declared_names.clone(),
                                 positionally_eligible_names.clone(),
                             );
-                            let earlier_dup = current_bound.is_some() && {
+                            let earlier_dup = ((current_bound.clone() != None) && {
                                 let mut __found = false;
                                 for other in Rc::new(
                                     typed_args
@@ -2736,21 +2744,23 @@ pub fn direct_call_shape_diags(
                                 .iter()
                                 .cloned()
                                 {
-                                    if (other.0.clone() < pair.0.clone())
+                                    if ((other.0.clone() < pair.0.clone())
                                         && (call_arg_bound_param_at(
                                             other.0.clone(),
                                             typed_args.clone(),
                                             source_indices.clone(),
                                             declared_names.clone(),
                                             positionally_eligible_names.clone(),
-                                        ) == current_bound)
+                                        )
+                                        .as_deref()
+                                            == current_bound.clone().as_deref()))
                                     {
                                         __found = true;
                                         break;
                                     }
                                 }
                                 __found
-                            };
+                            });
                             if earlier_dup.clone() {
                                 Rc::new(vec![make_error_node(
                                     Rc::new(CompilerDiagnostic::CallArgumentDuplicate {
