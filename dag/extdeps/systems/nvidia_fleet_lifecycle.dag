@@ -1,7 +1,7 @@
 module extdeps.systems.nvidia_fleet_lifecycle
 
 import std.types { NonEmptyStr, String, List, Int, Bool }
-import std.types { Timestamp }
+import std.types { Timestamp, Milliseconds }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -70,7 +70,7 @@ type FleetLifecycleEnvelope {
   host: NonEmptyStr
   status: FleetLifecycleStatus
   rc: Int
-  duration_ms: Int
+  duration_ms: Milliseconds
   summary: NonEmptyStr
   warnings: List<NonEmptyStr>
   artifacts: List<ArtifactPointer>

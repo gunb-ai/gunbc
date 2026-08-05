@@ -38,24 +38,24 @@ import gunbc.dgx_spark_procurement {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data dgx_spark_witness_note: String = "SPARK-0 green-by-execution proof. The RED control (w_red_admission_without_evidence_refuses) is the deliverable per the brief: constructing a DgxSparkDeployment from vendor catalog data plus procurement intent alone, with no FleetLifecycleEnvelope, must REFUSE -- physical binding evidence (a real device_identity.py observation) is absent, and catalog+intent can never substitute for it. w_admission_with_real_evidence_succeeds is the positive control proving the same function admits once that evidence is supplied, so the RED control is proven to be a real discriminator and not a permanently-broken function."
+data dgx_spark_witness_note: String = "SPARK-0 green-by-execution proof. The RED control (w_red_admission_without_evidence_refuses) is the deliverable per the brief: constructing a DgxSparkDeployment from vendor catalog data plus procurement intent alone, with no FleetLifecycleEnvelope, must REFUSE -- physical binding evidence (a real device_identity.py observation) is absent, and catalog+intent can never substitute for it. w_admission_with_real_evidence_succeeds is the positive control proving the same function admits once that evidence is supplied, so the RED control is proven to be a real discriminator and not a permanently-broken function. w_red_admission_with_wrong_tool_evidence_refuses is a second RED control (review 49032): presence of ANY FleetLifecycleEnvelope is not sufficient -- an envelope from a different tool (spark_updatectl.py, an UpdateControl observation) must also REFUSE, proving the wall discriminates on evidence identity, not mere presence."
 
-fn w_catalog_row_nests_gpu_from_grounded_authority() -> Bool {
+test fn w_catalog_row_nests_gpu_from_grounded_authority() -> Bool {
   nvidia_dgx_spark_1tb_catalog.gpu.model == nvidia_gb10_gpu_catalog.model
     && nvidia_dgx_spark_1tb_catalog.gpu.model == "GB10 Blackwell GPU"
 }
 
-fn w_two_skus_differ_only_in_storage_capacity() -> Bool {
+test fn w_two_skus_differ_only_in_storage_capacity() -> Bool {
   nvidia_dgx_spark_1tb_catalog.model == nvidia_dgx_spark_4tb_catalog.model
     && nvidia_dgx_spark_1tb_catalog.soc_model == nvidia_dgx_spark_4tb_catalog.soc_model
     && nvidia_dgx_spark_1tb_catalog.storage_capacity != nvidia_dgx_spark_4tb_catalog.storage_capacity
 }
 
-fn w_heterogeneous_cpu_core_count_derives_to_twenty() -> Bool {
+test fn w_heterogeneous_cpu_core_count_derives_to_twenty() -> Bool {
   integrated_compute_system_cpu_core_count(row: nvidia_dgx_spark_4tb_catalog) == 20
 }
 
-fn w_fleet_lifecycle_operation_class_distinguishes_collector_and_controller() -> Bool {
+test fn w_fleet_lifecycle_operation_class_distinguishes_collector_and_controller() -> Bool {
   match fleet_lifecycle_operation_class(op: DeviceIdentity) {
     Collector => true
     Controller => false
@@ -66,17 +66,17 @@ fn w_fleet_lifecycle_operation_class_distinguishes_collector_and_controller() ->
     }
 }
 
-fn w_only_the_controller_requires_a_change_window() -> Bool {
+test fn w_only_the_controller_requires_a_change_window() -> Bool {
   !fleet_lifecycle_requires_change_window(op: DeviceIdentity)
     && fleet_lifecycle_requires_change_window(op: UpdateControl)
 }
 
-fn w_tool_names_match_the_cited_page() -> Bool {
+test fn w_tool_names_match_the_cited_page() -> Bool {
   fleet_lifecycle_operation_tool_name(op: DeviceIdentity) == "device_identity.py"
     && fleet_lifecycle_operation_tool_name(op: UpdateControl) == "spark_updatectl.py"
 }
 
-fn w_procurement_intent_reserves_two_identities_not_enrolled() -> Bool {
+test fn w_procurement_intent_reserves_two_identities_not_enrolled() -> Bool {
   dgx_spark_procurement_intent.unit_count == 2
     && dgx_spark_procurement_intent.reserved_identities == [srv5_reserved, srv6_reserved]
 }
@@ -106,7 +106,7 @@ fn synthetic_device_identity_envelope() -> FleetLifecycleEnvelope {
   }
 }
 
-fn w_admission_with_real_evidence_succeeds() -> Bool {
+test fn w_admission_with_real_evidence_succeeds() -> Bool {
   match admit_dgx_spark_deployment(
     identity: srv5_reserved,
     catalog: nvidia_dgx_spark_4tb_catalog,
@@ -114,5 +114,30 @@ fn w_admission_with_real_evidence_succeeds() -> Bool {
   ) {
     DgxSparkDeploymentAdmitted { deployment: d } => d.identity == srv5_reserved
     DgxSparkDeploymentRefused { reason: _ } => false
+  }
+}
+
+fn synthetic_wrong_tool_envelope() -> FleetLifecycleEnvelope {
+  FleetLifecycleEnvelope {
+    tool: "spark_updatectl.py",
+    ts: "2026-08-05T00:00:00Z",
+    host: "srv5",
+    status: StatusOk,
+    rc: 0,
+    duration_ms: 42,
+    summary: "synthetic wrong-tool envelope: an UpdateControl observation, not a DeviceIdentity one",
+    warnings: [],
+    artifacts: [],
+  }
+}
+
+test fn w_red_admission_with_wrong_tool_evidence_refuses() -> Bool {
+  match admit_dgx_spark_deployment(
+    identity: srv5_reserved,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    identity_observation: Present { value: synthetic_wrong_tool_envelope() },
+  ) {
+    DgxSparkDeploymentRefused { reason: _ } => true
+    DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
