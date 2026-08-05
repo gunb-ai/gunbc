@@ -19,6 +19,7 @@ import std.observation {
   AttentionBasis,
   observation_dwell_threshold,
   PsiPressure,
+  observation_durations_wall,
 }
 import gunbc.observation_ci_render {
   RenderedLine,
@@ -84,9 +85,7 @@ fn observation_crawl_after_block() -> String {
     ci_render_line(line: ci_event_line(event: ObservationEvent {
       subject: crawl_entry(),
       transition: Concluded { outcome: Done },
-      wall: MeasuredValue {
-        value: millisecond_to_nanosecond(m: millisecond(count: 230))
-      },
+      durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 230))),
       rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
     }, basis: crawl_basis()), tier: Emoji),
     ci_collapsed_summary(green_count: 213),

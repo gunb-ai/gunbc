@@ -8,6 +8,7 @@ import extdeps.http.server { media_type_wire_label }
 import extdeps.tools.curl { curl_localhost_bounded_get_argv_prefix }
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
+import gunbc.roadmap_site_surface_witness { roadmap_site_surface_readiness_group_holds }
 import gunbc.roadmap_static_site {
   roadmap_site_static_allocation,
   roadmap_site_text_artifacts,
@@ -64,33 +65,8 @@ test fn witness_artifact_digests_are_content_hashes() -> Bool {
   )
 }
 
-fn witness_healthz_body_json_well_formed() -> Bool {
-  witness_healthz_body_json_well_formed_for(body: roadmap_site_healthz_body())
-}
-
-fn witness_healthz_body_json_well_formed_for(body: String) -> Bool {
-  starts_with(s: body, prefix: "{")
-    && ends_with(s: body, suffix: "}}")
-    && !ends_with(s: body, suffix: "}}}")
-}
-
-fn witness_healthz_perturbed_body_fails_well_formed() -> Bool {
-  !witness_healthz_body_json_well_formed_for(body: concat(roadmap_site_healthz_body(), "}"))
-}
-
-fn witness_healthz_body_extra_brace_perturb_red() -> Bool {
-  ends_with(s: concat(roadmap_site_healthz_body(), "}"), suffix: "}}}")
-}
-
 test fn witness_healthz_route_json_ok() -> Bool {
-  let body = roadmap_site_healthz_body()
-  witness_healthz_body_json_well_formed()
-    && witness_healthz_perturbed_body_fails_well_formed()
-    && witness_healthz_body_extra_brace_perturb_red()
-    && string_contains(s: body, pattern: "\"status\": \"ok\"")
-    && string_contains(s: body, pattern: roadmap_site_roadmap_url_path)
-    && string_contains(s: body, pattern: roadmap_site_dispatch_url_path)
-    && media_type_wire_label(m: roadmap_site_healthz_route().content_type) == "application/json; charset=utf-8"
+  roadmap_site_surface_readiness_group_holds()
 }
 
 test fn witness_static_site_route_authority_paths_locked() -> Bool {

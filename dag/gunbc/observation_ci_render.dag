@@ -81,6 +81,8 @@ import std.observation {
   MemoryBudget,
   AdmissionWindow,
   MaturationReserve,
+  observation_wall,
+  clock_basis_label,
 }
 
 data observation_ci_render_note: String = "P1 of the progress-and-observation lane: the CI-log renderer, built first because the CI log is where the pain lives. Append-only, no repaint — a GitHub Actions log cannot be redrawn, so every line is final when written. This module PROJECTS the std.observation event vocabulary into lines; it computes no facts of its own and holds no telemetry source. Every number it prints arrives in an event or a heartbeat sample that the process already had (law 5), which is why the flagship acceptance can replay a captured run: the renderer is a pure function of the stream."
@@ -268,8 +270,20 @@ fn ci_outcome_text(o: ObservationOutcome) -> String {
     Done => "done"
     Refused { diagnostic: d } => concat("refused: ", d)
     Failed { error: e, output: _ } => concat("failed: ", e)
-    TimedOut { budget: b, elapsed: e } =>
-      concat("timed out after ", concat(ci_human_duration(d: e), concat(" (budget ", concat(ci_human_duration(d: b), ")"))))
+    TimedOut { basis: k, budget: b, elapsed: e } =>
+      concat(
+        "timed out after ",
+        concat(
+          ci_human_duration(d: e),
+          concat(
+            " ",
+            concat(
+              clock_basis_label(b: k) as String,
+              concat(" (budget ", concat(ci_human_duration(d: b), concat(" ", concat(clock_basis_label(b: k) as String, ")"))))
+            )
+          )
+        )
+      )
     Skipped { reason: r } => concat("skipped: ", r)
     Final { shown_failures: n } => concat("finished with ", concat(to_string(n), " problems shown"))
   }
@@ -301,7 +315,7 @@ fn ci_event_line_at_attention(event: ObservationEvent, attention: AttentionLevel
     Concluded { outcome: o } =>
       RenderedLine {
         glyph: presentation.glyph,
-        text: concat(subject, concat(" ", concat(ci_outcome_text(o: o), ci_duration_suffix(wall: event.wall)))),
+        text: concat(subject, concat(" ", concat(ci_outcome_text(o: o), ci_duration_suffix(wall: observation_wall(event: event))))),
         attention: attention
       }
   }

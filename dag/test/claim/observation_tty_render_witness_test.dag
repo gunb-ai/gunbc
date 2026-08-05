@@ -45,6 +45,8 @@ import std.observation {
   MemoryBudget,
   RemainingBounded,
   RemainingUnknown,
+  observation_durations_wall,
+  observation_durations_wall_unavailable,
 }
 import gunbc.observation_tty_render {
   PreambleFields,
@@ -119,7 +121,7 @@ test fn w_refusal_never_repaints_away() -> Bool {
   let refusal = ObservationEvent {
     subject: tty_entry_subject(),
     transition: Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as NonEmptyStr } },
-    wall: MeasuredValue { value: nanosecond(count: 2472000000000) },
+    durations: observation_durations_wall(elapsed: nanosecond(count: 2472000000000)),
     rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
   }
   match tty_event_emission_under(event: refusal, basis: MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
@@ -132,7 +134,7 @@ test fn w_same_event_drives_both_surfaces() -> Bool {
   let event = ObservationEvent {
     subject: tty_entry_subject(),
     transition: Concluded { outcome: Done },
-    wall: MeasuredValue { value: nanosecond(count: 230000000) },
+    durations: observation_durations_wall(elapsed: nanosecond(count: 230000000)),
     rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
   }
   match tty_event_emission_under(event: event, basis: MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
@@ -147,7 +149,7 @@ test fn w_unavailable_basis_refuses_with_exact_cause() -> Bool {
   let event = ObservationEvent {
     subject: tty_entry_subject(),
     transition: Concluded { outcome: Done },
-    wall: MeasuredValue { value: nanosecond(count: 230000000) },
+    durations: observation_durations_wall(elapsed: nanosecond(count: 230000000)),
     rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
   }
   match tty_event_emission_under(event: event, basis: MeasuredUnavailable { cause: cause }, cap: tty_cap()) {
@@ -160,7 +162,7 @@ test fn w_clean_final_appends_even_when_ambient() -> Bool {
   let event = ObservationEvent {
     subject: tty_entry_subject(),
     transition: Concluded { outcome: Final { shown_failures: 0 } },
-    wall: MeasuredValue { value: nanosecond(count: 230000000) },
+    durations: observation_durations_wall(elapsed: nanosecond(count: 230000000)),
     rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
   }
   match tty_event_emission_under(event: event, basis: MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
@@ -173,7 +175,7 @@ test fn w_routine_begin_overwrites_on_addressable_tty() -> Bool {
   let event = ObservationEvent {
     subject: tty_entry_subject(),
     transition: Begin,
-    wall: MeasuredUnavailable { cause: "not started" as NonEmptyStr },
+    durations: observation_durations_wall_unavailable(cause: "not started" as NonEmptyStr),
     rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
   }
   match tty_event_emission_under(event: event, basis: MeasuredUnavailable { cause: "basis absent" as NonEmptyStr }, cap: tty_cap()) {
@@ -186,7 +188,7 @@ test fn w_tty_strict_facade_equals_measured_value_projection() -> Bool {
   let event = ObservationEvent {
     subject: tty_entry_subject(),
     transition: Concluded { outcome: Done },
-    wall: MeasuredValue { value: nanosecond(count: 230000000) },
+    durations: observation_durations_wall(elapsed: nanosecond(count: 230000000)),
     rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
   }
   let strict = tty_event_emission(event: event, basis: tty_basis(), cap: tty_cap())
@@ -200,7 +202,7 @@ test fn w_nonaddressable_routine_composes_to_plain_append_wire() -> Bool {
   let event = ObservationEvent {
     subject: tty_entry_subject(),
     transition: Begin,
-    wall: MeasuredUnavailable { cause: "not started" as NonEmptyStr },
+    durations: observation_durations_wall_unavailable(cause: "not started" as NonEmptyStr),
     rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
   }
   match tty_event_emission_under(event: event, basis: MeasuredValue { value: tty_basis() }, cap: pipe_cap()) {
@@ -228,7 +230,7 @@ test fn w_addressable_refusal_persists_via_exact_closed_append_wire() -> Bool {
   let event = ObservationEvent {
     subject: tty_entry_subject(),
     transition: Concluded { outcome: Refused { diagnostic: "policy" as NonEmptyStr } },
-    wall: MeasuredUnavailable { cause: "clock absent" as NonEmptyStr },
+    durations: observation_durations_wall_unavailable(cause: "clock absent" as NonEmptyStr),
     rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
   }
   match tty_event_emission_under(event: event, basis: MeasuredUnavailable { cause: "basis absent" as NonEmptyStr }, cap: tty_cap()) {

@@ -1,0 +1,34 @@
+module extdeps.languages.ptx.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "docs.nvidia.com/cuda/parallel-thread-execution/"
+  }
+}
+
+data ptx_language_subject_note: String = "PTX, cited to the NVIDIA Parallel Thread Execution ISA (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched document is titled 'Parallel Thread Execution ISA Version 9.3', published by NVIDIA, and describes PTX as 'a low-level parallel thread execution virtual machine and instruction set architecture' that is 'a stable ISA that spans multiple GPU generations'. PTX is a VIRTUAL ISA translated at install time to a target-specific instruction set, which is why it is a language-target subject here and not a machine architecture subject — the physical GPU ISA it lowers to is a different upstream fact."
+
+type Ptx
+  = | PtxTarget
+
+data ptx_language: Ptx = PtxTarget
+
+data ptx_language_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.ptx.subject",
+      decl_name: "ptx_language",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = ptx_language_model_scope

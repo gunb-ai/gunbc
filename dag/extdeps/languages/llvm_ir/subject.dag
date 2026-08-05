@@ -1,0 +1,34 @@
+module extdeps.languages.llvm_ir.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "llvm.org/docs/LangRef.html"
+  }
+}
+
+data llvm_ir_language_subject_note: String = "LLVM IR, cited to the LLVM Language Reference Manual (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched document is titled 'LLVM Language Reference Manual' and self-describes as 'a reference manual for the LLVM assembly language', documenting the human-readable notation of LLVM's three equivalent forms (in-memory IR, bitcode, assembly). SUBJECT SCOPE: the intermediate representation as documented by the LLVM project. LLVM IR is explicitly NOT a stable standard across releases, which is why the subject carries no revision — per external_model_scope_revision_grain_note a specific LLVM release is a fact on a release row, not a property of this subject."
+
+type LlvmIr
+  = | LlvmIrTarget
+
+data llvm_ir_language: LlvmIr = LlvmIrTarget
+
+data llvm_ir_language_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.llvm_ir.subject",
+      decl_name: "llvm_ir_language",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = llvm_ir_language_model_scope
