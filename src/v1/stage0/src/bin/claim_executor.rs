@@ -1858,6 +1858,10 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
 ///
 /// The alternative was to leave the reason discarded, which is the DESIGN §5 trap this whole
 /// PR exists to close — a refusal that cannot be located is not a refusal anyone can act on.
+///
+/// `resolve_realization` is acquisition evidence from the resolve seam; every outcome arm
+/// preserves it when present so a semantic witness failure cannot fabricate a missing-
+/// realization refusal at finalization.
 fn claim_result_for_outcome(
     ctx: &InterpContext,
     function: String,
@@ -1907,7 +1911,7 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
-            resolve_realization: None,
+            resolve_realization,
         },
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
@@ -1922,7 +1926,7 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
-            resolve_realization: None,
+            resolve_realization,
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
             function,
@@ -1937,7 +1941,7 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
-            resolve_realization: None,
+            resolve_realization,
         },
         ClaimOutcome::TimedOut {
             elapsed_ms,
@@ -1970,7 +1974,7 @@ fn claim_result_for_outcome(
                 kind,
             }),
             selection_degradation: None,
-            resolve_realization: None,
+            resolve_realization,
         },
     }
 }
@@ -2243,7 +2247,7 @@ fn run_native_bundle_unit(
     execution_mode: ExecutionMode,
 ) -> ClaimResult {
     let started = Instant::now();
-    let fail = |detail: String| ClaimResult {
+    let fail_before_resolve = |detail: String| ClaimResult {
         function: selector_function.clone(),
         entry: entry.clone(),
         ok: false,
@@ -2259,23 +2263,42 @@ fn run_native_bundle_unit(
         resolve_realization: None,
     };
     if execution_mode != ExecutionMode::Wet {
-        return fail(
+        return fail_before_resolve(
             "NativeBundle handler requires Wet execution_mode (typed envelope refusal)".to_string(),
         );
     }
     let resolve_started = Instant::now();
     let (graph, indices) = match resolve_entry_graph(source_roots, &entry) {
         Ok(v) => v,
-        Err(e) => return fail(format!("native bundle selector resolve refusal: {e}")),
+        Err(e) => {
+            return fail_before_resolve(format!("native bundle selector resolve refusal: {e}"))
+        }
     };
     let resolve_nanos = resolve_started.elapsed().as_nanos();
+    let resolve_observation =
+        || Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos });
+    let fail_after_resolve = |detail: String| ClaimResult {
+        function: selector_function.clone(),
+        entry: entry.clone(),
+        ok: false,
+        detail,
+        wall_nanos: started.elapsed().as_nanos(),
+        resolve_nanos,
+        corpus_resolve_nanos: 0,
+        corpus_eval_nanos: 0,
+        corpus_witnesses: 3,
+        witness_row_costs: Vec::new(),
+        budget_refusal: None,
+        selection_degradation: None,
+        resolve_realization: resolve_observation(),
+    };
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
     let primary = match run_in_context(&ctx, &selector_function, false)
         .map_err(|e| e.to_string())
         .and_then(|v| native_bundle_spec_from_value(&v, &ctx))
     {
         Ok(spec) => spec,
-        Err(e) => return fail(format!("native bundle selector refusal: {e}")),
+        Err(e) => return fail_after_resolve(format!("native bundle selector refusal: {e}")),
     };
     let planted = run_in_context(&ctx, "native_selected_logic_planted_red_spec", false)
         .map_err(|e| e.to_string())
@@ -2389,7 +2412,7 @@ fn run_native_bundle_unit(
         primary.bundle_count, primary.shard_count, primary.bundle_identity
     );
     if let Err(e) = write_native_transition_receipt(&receipt) {
-        return fail(e);
+        return fail_after_resolve(e);
     }
     eprintln!("[native-selected-bundle] {}", receipt.replace('\n', " "));
     ClaimResult {
@@ -9110,6 +9133,54 @@ mod tests {
         assert_eq!(
             dag_string_data_literal(&floor_materialization, "floor_entry_walk_memo_provider_id"),
             FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID,
+        );
+    }
+
+    /// Resolve realization is acquisition evidence: a semantic witness failure must not
+    /// discard the observation recorded when resolve succeeded.
+    #[test]
+    fn claim_result_for_outcome_preserves_resolve_realization_on_semantic_failure() {
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dag/tools/floor_effect_gate_witness.dag")
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) =
+            resolve_entry_graph(&source_roots, &entry).expect("resolve compile-anchor entry");
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let observation =
+            Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 42 });
+        let result = claim_result_for_outcome(
+            &ctx,
+            "dag_compile_clean_gate_passes".to_string(),
+            entry,
+            ClaimOutcome::NotBool {
+                got: "unit".to_string(),
+            },
+            1,
+            42,
+            observation.clone(),
+        );
+        assert!(!result.ok);
+        assert_eq!(result.resolve_realization, observation);
+    }
+
+    #[test]
+    fn floor_finalization_preserves_resolve_evidence_when_business_claim_fails() {
+        let fin = test_floor_finalization();
+        let mut records = obligation_finalization_records(5, 3);
+        records[0].results[0].ok = false;
+        records[0].results[0].detail = "returned Bool(false)".to_string();
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
+        assert!(
+            !refusals.iter().any(|m| {
+                m.contains("missing realization observation") || m.contains("count law unevaluable")
+            }),
+            "semantic witness failure must not fabricate missing resolve evidence: {refusals:?}"
         );
     }
 
