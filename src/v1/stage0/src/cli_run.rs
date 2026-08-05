@@ -7256,18 +7256,12 @@ pub struct MultiEntryIndex {
     /// (ordered typed-module content keys ⊕ compiler identity).
     rewired_modules_memo:
         RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<TypedModule>>>>>,
-    /// `build_global_bare_variant_locals` keyed by a digest of `global_bare`.
+    /// `build_global_bare_variant_locals` keyed by a digest of `global_bare` (see
+    /// `entry_view_global_bare_variant_base_memo_key_note`).
     global_bare_variant_base_memo: RefCell<
         std::collections::HashMap<
             String,
             Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>>,
-        >,
-    >,
-    /// `build_type_name_export_index` keyed by `rewire_semantic_input_identity`.
-    type_name_export_index_memo: RefCell<
-        std::collections::HashMap<
-            String,
-            Rc<HashMap<String, Rc<v1_compiler_infer::TypeNameExportFacts>>>,
         >,
     >,
     /// Counted fallbacks when a shared-view memo refuses (must be zero on acceptance).
@@ -7452,7 +7446,6 @@ fn new_multi_entry_index_shell(
         root_assembly_env_memo: RefCell::new(std::collections::HashMap::new()),
         rewired_modules_memo: RefCell::new(std::collections::HashMap::new()),
         global_bare_variant_base_memo: RefCell::new(std::collections::HashMap::new()),
-        type_name_export_index_memo: RefCell::new(std::collections::HashMap::new()),
         entry_view_assembly_fallbacks: Cell::new(0),
     }
 }
@@ -11838,18 +11831,65 @@ pub fn entry_view_assembly_fallback_count_for_test(index: &MultiEntryIndex) -> u
     index.entry_view_assembly_fallbacks.get()
 }
 
+fn entry_view_global_bare_variant_base_memo_key_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Key completeness for `global_bare_variant_base_memo` (PR B entry-view assembly). \
+             `build_global_bare_variant_locals` branches only on (a) unique vs ambiguous and \
+             (b) for unique rows: owner.connective == Disj AND has_child_named(owner, name, \
+             source_indices). Ambiguous arm: collapsed to the flat tag `ambiguous` — \
+             key-complete because the fold never inserts for ambiguous bindings (`_ => acc`). \
+             Unique arm: digest carries `unique:{module_path}:eligible:{bool}` where eligible \
+             is exactly the predicate the builder reads (not an unexplained widening). Within one \
+             MultiEntryIndex, `note_source_hash` is insert-if-absent so each file's content is \
+             fixed for the index lifetime; paired with module-path collision honesty at index \
+             build, `module_path` in `GlobalBareUniqueBinding` identifies the owner node those \
+             two predicates inspect. Witness: entry_view_assembly_memo_witness_test \
+             `global_bare_variant_base_digest_distinguishes_variant_eligibility` (RED if \
+             eligibility diverges but digest does not).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+fn entry_view_rewire_semantic_input_identity_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Key completeness for `rewired_modules_memo`. `rewire_semantic_input_identity` hashes \
+             the ordered typed-module content keys plus `transform_content_digest()`; it does \
+             NOT hash `source_indices` separately. The three rewire passes take \
+             `source_indices`, but every use is keyed off module nodes whose typed results are \
+             already pinned by `typed_module_content_key` — and that key's `source_hash` term is \
+             recorded insert-if-absent from the same `SourceFile.content` that `build_newline_index` \
+             projects into `NewlineIndex` (see `note_source_hash`). So for a fixed content-key \
+             vector, `source_indices` is a function of content already in the key, not an \
+             independent input. Witness: entry_view_assembly_memo_witness_test \
+             `rewire_semantic_input_identity_ignores_source_indices_path_representation`.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 fn global_bare_semantic_digest(
     global_bare: &Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
+    let _ = entry_view_global_bare_variant_base_memo_key_note();
     let mut keys: Vec<&String> = global_bare.keys().collect();
     keys.sort_unstable();
-    let mut acc = v1_rt::atom_identity_hash("entry-view-global-bare-v1".to_string());
+    let mut acc = v1_rt::atom_identity_hash("entry-view-global-bare-v2".to_string());
     for key in keys {
         acc = v1_rt::hash_combine(acc, v1_rt::atom_identity_hash(key.clone()));
         if let Some(state) = global_bare.get(key) {
             let state_tag = match state.as_ref() {
-                GlobalBareLookupState::GlobalBareUniqueBinding { module_path, .. } => {
-                    format!("unique:{module_path}")
+                GlobalBareLookupState::GlobalBareUniqueBinding {
+                    module_path,
+                    binding,
+                } => {
+                    let owner = binding.resolved.clone();
+                    let eligible = owner.connective == Connective::Disj
+                        && has_child_named(owner, key.clone(), source_indices.clone());
+                    format!("unique:{module_path}:eligible:{eligible}")
                 }
                 GlobalBareLookupState::GlobalBareAmbiguousBinding { .. } => "ambiguous".to_string(),
             };
@@ -11859,13 +11899,27 @@ fn global_bare_semantic_digest(
     acc
 }
 
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn global_bare_semantic_digest_for_test(
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    global_bare_semantic_digest(&global_bare, source_indices)
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn rewire_semantic_input_identity_for_test(module_content_keys: &[String]) -> String {
+    let _ = entry_view_rewire_semantic_input_identity_note();
+    rewire_semantic_input_identity(module_content_keys)
+}
+
 fn global_bare_variant_base_cached(
     index: &MultiEntryIndex,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     slot: impl FnOnce(u128),
 ) -> Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>> {
-    let digest = global_bare_semantic_digest(&global_bare);
+    let digest = global_bare_semantic_digest(&global_bare, source_indices.clone());
     if let Some(hit) = index.global_bare_variant_base_memo.borrow().get(&digest) {
         return hit.clone();
     }
@@ -11965,6 +12019,7 @@ fn root_assembly_env_for(
 }
 
 fn rewire_semantic_input_identity(module_content_keys: &[String]) -> String {
+    let _ = entry_view_rewire_semantic_input_identity_note();
     let mut acc = v1_rt::atom_identity_hash("entry-view-rewire-v1".to_string());
     for key in module_content_keys {
         acc = v1_rt::hash_combine(acc, v1_rt::atom_identity_hash(key.clone()));
@@ -11981,19 +12036,6 @@ fn rewire_typed_modules_cached(
     if let Some(hit) = index.rewired_modules_memo.borrow().get(rewire_identity) {
         return hit.clone();
     }
-    let type_name_index = {
-        let mut memo = index.type_name_export_index_memo.borrow_mut();
-        if let Some(hit) = memo.get(rewire_identity) {
-            hit.clone()
-        } else {
-            let built = v1_compiler_infer::build_type_name_export_index(Rc::new(
-                modules.iter().cloned().collect::<im::Vector<_>>(),
-            ));
-            memo.insert(rewire_identity.to_string(), built.clone());
-            built
-        }
-    };
-    let _ = type_name_index;
     let rewire_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
