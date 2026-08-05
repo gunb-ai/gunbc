@@ -2,13 +2,14 @@ module gunbc.roadmap_program_view
 
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId, RoadmapAcceptanceReceipt,
-  node_accepted, roadmap_parent_ids,
+  roadmap_parent_ids,
+  receipts_for_node, receipt_matches_node,
 }
 import gunbc.roadmap_execution_contract { contract_has_closing_validation }
 import gunbc.roadmap_focus { roadmap_dependency_graph }
 import gunbc.roadmap_status { line_ticket }
 import gunbc.v1_deletion_plan { V1FinishLine, V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_key }
-import std.graph { graph_reverse_reachable_members }
+import std.graph { reverse_adjacency }
 
 data roadmap_program_view_doc: String = "THE PROGRAM-NAVIGATION PROJECTION AUTHORITY, V0 (operator requirements 2026-08-02): the derived model that answers, for one program, what are we doing / where are we exactly / how much remains / why is it taking this long — before any renderer exists. Every fact here is DERIVED: topology from the roadmap authority's RoadmapEdge rows, acceptance from RoadmapAcceptanceReceipt rows only (a merged pull request accepts nothing — gunbc.roadmap_model node_accepted is the single wall), startability from parents x acceptance, in-flight from caller-supplied observations, and the proposed plane from a carrier that does not exist yet and is therefore typed absent rather than scraped from planning prose. The module is PURE and parameterized — it imports no live authority data — so every derivation is provable on planted fixtures and the six red controls from the requirements execute against synthetic graphs instead of pinning tree-copied measurements (the DESIGN section 5 oracle rule). The one heuristic-shaped choice, tie-breaking the primary constraint, is declared: ties resolve to declaration order, which is the authority's own authored order, never a hidden score. What this V0 deliberately does not model, each with its trigger: decision-held work (needs a typed operator-decision marker on the node; today a decision node is only prose), evidence-refusal constraints (needs the verification-receipt join — gunbc.roadmap_verification_receipt is test-only until the belt wiring seam lands), and proposed-graph overlays (needs a typed proposal carrier; see proposed_plane_note). The camera layers — depth, mode, tuning — are the V1 interaction seam and are deliberately absent here: this module is the world those cameras look at, per the presentation seam design's law that the graph is the world and the UI is a camera."
 
@@ -94,21 +95,36 @@ type NodeStanding {
   unsized: Bool
 }
 
+fn program_find_node(nodes: List<RoadmapNode>, id: RoadmapNodeId) -> RoadmapNode? {
+  fold(nodes, init: none, f: (acc, n) =>
+    if (n.node as String) == (id as String) {
+      Present { value: n }
+    } else {
+      acc
+    })
+}
+
 fn program_accepted_ids(nodes: List<RoadmapNode>, receipts: List<RoadmapAcceptanceReceipt>) -> List<String> {
-  nodes
-    |> filter(n => node_accepted(receipts: receipts, rn: n))
-    |> map(n => n.node as String)
+  receipts
+    |> filter(r =>
+      count(receipts_for_node(receipts: receipts, id: r.node)) == 1
+        && match program_find_node(nodes: nodes, id: r.node) {
+          Present { value: n } => receipt_matches_node(r: r, rn: n)
+          Absent => false
+        })
+    |> map(r => r.node as String)
 }
 
 fn program_node_standing(
   n: RoadmapNode,
-  edges: List<RoadmapEdge>,
+  parent_index: Map<String, List<String>>,
   accepted: List<String>,
   in_flight: List<String>,
 ) -> NodeStanding {
   let id = n.node as String
-  let unmet = roadmap_parent_ids(edges: edges, node: n.node)
-    |> filter(p => !(accepted |> any(a => a == (p as String))))
+  let unmet = program_parent_ids_index(index: parent_index, node: id)
+    |> filter(p => !(accepted |> any(a => a == p)))
+    |> map(p => p as RoadmapNodeId)
   let state = if accepted |> any(a => a == id) {
     ObligationAccepted
   } else {
@@ -197,6 +213,20 @@ fn program_int_max(a: Int, b: Int) -> Int {
   if a > b { a } else { b }
 }
 
+fn program_depth_lookup_map(depths: Map<String, Int>, id: String) -> Int {
+  match map_get(depths, id) {
+    Present { value: d } => d
+    Absent => 0
+  }
+}
+
+fn program_depth_rows(depth_map: Map<String, Int>, ids: List<String>) -> List<DepthRow> {
+  ids |> map(id => DepthRow {
+    id: id,
+    depth: program_depth_lookup_map(depths: depth_map, id: id),
+  })
+}
+
 fn program_depth_lookup(rows: List<DepthRow>, id: String) -> Int {
   fold(rows, init: 0, f: (acc, r) => if r.id == id { r.depth } else { acc })
 }
@@ -205,7 +235,171 @@ fn program_depth_weight(accepted: List<String>, id: String) -> Int {
   if accepted |> any(a => a == id) { 0 } else { 1 }
 }
 
+fn program_parent_index_step(
+  acc: Map<String, List<String>>,
+  edge: RoadmapEdge,
+) -> Map<String, List<String>> {
+  let child = edge.child as String
+  let parent = edge.parent as String
+  match map_get(acc, child) {
+    Present { value: parents } => map_insert(acc, child, concat(parents, [parent]))
+    Absent => map_insert(acc, child, [parent])
+  }
+}
+
+fn program_parent_index(edges: List<RoadmapEdge>) -> Map<String, List<String>> {
+  edges |> fold(init: empty_map(), f: program_parent_index_step)
+}
+
+fn program_parent_ids_index(index: Map<String, List<String>>, node: String) -> List<String> {
+  match map_get(index, node) {
+    Present { value: parents } => parents
+    Absent => []
+  }
+}
+
+type ProgramDfsAcc {
+  visited: Set<String>
+  members: List<String>
+}
+
+fn program_dfs_collect(
+  node: String,
+  reverse_adj: Map<String, List<String>>,
+  acc: ProgramDfsAcc,
+) -> ProgramDfsAcc {
+  if set_contains(acc.visited, node) {
+    acc
+  } else {
+    let next_visited = set_insert(acc.visited, node)
+    let next_members = concat(acc.members, [node])
+    let neighbors = match map_get(reverse_adj, node) {
+      Present { value: ns } => ns
+      Absent => []
+    }
+    neighbors |> fold(
+      init: ProgramDfsAcc { visited: next_visited, members: next_members },
+      f: (inner, neighbor) => program_dfs_collect(node: neighbor, reverse_adj: reverse_adj, acc: inner),
+    )
+  }
+}
+
+fn program_reverse_reachable_members(
+  reverse_adj: Map<String, List<String>>,
+  start: String,
+) -> List<String> {
+  let reached = program_dfs_collect(
+    node: start,
+    reverse_adj: reverse_adj,
+    acc: ProgramDfsAcc { visited: empty_set(), members: [] },
+  )
+  reached.members |> filter(member => member != start)
+}
+
 fn program_relax_once(
+  depth_map: Map<String, Int>,
+  ids: List<String>,
+  parent_index: Map<String, List<String>>,
+  accepted: List<String>,
+) -> Map<String, Int> {
+  ids |> fold(init: empty_map(), f: (acc, id) => {
+    let depth = program_depth_weight(accepted: accepted, id: id) +
+      fold(
+        program_parent_ids_index(index: parent_index, node: id),
+        init: 0,
+        f: (pacc, p) => program_int_max(
+          a: pacc,
+          b: program_depth_lookup_map(depths: depth_map, id: p),
+        ),
+      )
+    map_insert(acc, id, depth)
+  })
+}
+
+fn program_depths_equal_map(
+  a: Map<String, Int>,
+  b: Map<String, Int>,
+  ids: List<String>,
+) -> Bool {
+  all(ids, id => program_depth_lookup_map(depths: a, id: id) == program_depth_lookup_map(depths: b, id: id))
+}
+
+fn program_relax_to_fixpoint(
+  depth_map: Map<String, Int>,
+  ids: List<String>,
+  parent_index: Map<String, List<String>>,
+  accepted: List<String>,
+  remaining_passes: Int,
+) -> Map<String, Int> {
+  if remaining_passes <= 0 {
+    depth_map
+  } else {
+    let next = program_relax_once(
+      depth_map: depth_map,
+      ids: ids,
+      parent_index: parent_index,
+      accepted: accepted,
+    )
+    if program_depths_equal_map(a: next, b: depth_map, ids: ids) {
+      next
+    } else {
+      program_relax_to_fixpoint(
+        depth_map: next,
+        ids: ids,
+        parent_index: parent_index,
+        accepted: accepted,
+        remaining_passes: remaining_passes - 1,
+      )
+    }
+  }
+}
+
+fn program_sequential_depth_map(
+  ids: List<String>,
+  parent_index: Map<String, List<String>>,
+  accepted: List<String>,
+) -> Map<String, Int> {
+  let init = ids |> fold(init: empty_map(), f: (acc, id) =>
+    map_insert(acc, id, program_depth_weight(accepted: accepted, id: id)))
+  program_relax_to_fixpoint(
+    depth_map: init,
+    ids: ids,
+    parent_index: parent_index,
+    accepted: accepted,
+    remaining_passes: count(ids),
+  )
+}
+
+fn program_depths_equal(a: List<DepthRow>, b: List<DepthRow>) -> Bool {
+  count(a) == count(b)
+    && all(a, r => program_depth_lookup(rows: b, id: r.id) == r.depth)
+}
+
+fn program_relax_to_fixpoint_rows(
+  rows: List<DepthRow>,
+  ids: List<String>,
+  edges: List<RoadmapEdge>,
+  accepted: List<String>,
+  remaining_passes: Int,
+) -> List<DepthRow> {
+  if remaining_passes <= 0 {
+    rows
+  } else {
+    let next = program_relax_once_rows(
+      rows: rows, ids: ids, edges: edges, accepted: accepted,
+    )
+    if program_depths_equal(a: next, b: rows) {
+      next
+    } else {
+      program_relax_to_fixpoint_rows(
+        rows: next, ids: ids, edges: edges, accepted: accepted,
+        remaining_passes: remaining_passes - 1,
+      )
+    }
+  }
+}
+
+fn program_relax_once_rows(
   rows: List<DepthRow>,
   ids: List<String>,
   edges: List<RoadmapEdge>,
@@ -222,33 +416,6 @@ fn program_relax_once(
   })
 }
 
-fn program_depths_equal(a: List<DepthRow>, b: List<DepthRow>) -> Bool {
-  count(a) == count(b)
-    && all(a, r => program_depth_lookup(rows: b, id: r.id) == r.depth)
-}
-
-fn program_relax_to_fixpoint(
-  rows: List<DepthRow>,
-  ids: List<String>,
-  edges: List<RoadmapEdge>,
-  accepted: List<String>,
-  remaining_passes: Int,
-) -> List<DepthRow> {
-  if remaining_passes <= 0 {
-    rows
-  } else {
-    let next = program_relax_once(rows: rows, ids: ids, edges: edges, accepted: accepted)
-    if program_depths_equal(a: next, b: rows) {
-      next
-    } else {
-      program_relax_to_fixpoint(
-        rows: next, ids: ids, edges: edges, accepted: accepted,
-        remaining_passes: remaining_passes - 1,
-      )
-    }
-  }
-}
-
 fn program_sequential_depths(
   ids: List<String>,
   edges: List<RoadmapEdge>,
@@ -258,7 +425,7 @@ fn program_sequential_depths(
     id: id,
     depth: program_depth_weight(accepted: accepted, id: id),
   })
-  program_relax_to_fixpoint(
+  program_relax_to_fixpoint_rows(
     rows: init, ids: ids, edges: edges, accepted: accepted,
     remaining_passes: count(ids),
   )
@@ -270,16 +437,11 @@ fn program_dedupe_ids(xs: List<String>) -> List<String> {
 }
 
 fn program_ancestors_or_self(
-  ids: List<String>,
-  edges: List<RoadmapEdge>,
+  reverse_adj: Map<String, List<String>>,
   id: String,
 ) -> List<String> {
   concat(
-    graph_reverse_reachable_members(
-      names: ids,
-      graph: roadmap_dependency_graph(edges: edges),
-      start: id,
-    ),
+    program_reverse_reachable_members(reverse_adj: reverse_adj, start: id),
     [id],
   )
 }
@@ -319,7 +481,7 @@ fn program_constraint_take(acc: ConstraintView?, depth: Int) -> Bool {
 
 fn program_constraint_of(
   s: NodeStanding,
-  depths: List<DepthRow>,
+  depth_map: Map<String, Int>,
   nodes: List<RoadmapNode>,
 ) -> ConstraintView {
   ConstraintView {
@@ -332,18 +494,21 @@ fn program_constraint_of(
     },
     headline: program_node_headline(nodes: nodes, id: s.node as String),
     in_flight: s.in_flight,
-    depth: program_depth_lookup(rows: depths, id: s.node as String),
+    depth: program_depth_lookup_map(depths: depth_map, id: s.node as String),
   }
 }
 
 fn program_constraint_step(
   acc: ConstraintView?,
   s: NodeStanding,
-  depths: List<DepthRow>,
+  depth_map: Map<String, Int>,
   nodes: List<RoadmapNode>,
 ) -> ConstraintView? {
-  if program_constraint_take(acc: acc, depth: program_depth_lookup(rows: depths, id: s.node as String)) {
-    Present { value: program_constraint_of(s: s, depths: depths, nodes: nodes) }
+  if program_constraint_take(
+    acc: acc,
+    depth: program_depth_lookup_map(depths: depth_map, id: s.node as String),
+  ) {
+    Present { value: program_constraint_of(s: s, depth_map: depth_map, nodes: nodes) }
   } else {
     acc
   }
@@ -352,7 +517,7 @@ fn program_constraint_step(
 fn program_primary_constraint(
   scope: List<String>,
   standings: List<NodeStanding>,
-  depths: List<DepthRow>,
+  depth_map: Map<String, Int>,
   nodes: List<RoadmapNode>,
 ) -> ConstraintView? {
   let candidates = standings
@@ -364,7 +529,7 @@ fn program_primary_constraint(
       ObligationDependencyHeld { unmet: _ } => false
     })
   fold(candidates, init: none, f: (acc, s) =>
-    program_constraint_step(acc: acc, s: s, depths: depths, nodes: nodes))
+    program_constraint_step(acc: acc, s: s, depth_map: depth_map, nodes: nodes))
 }
 
 type ProposedPlane
@@ -434,26 +599,52 @@ fn program_view(
   if count(causes) > 0 {
     ProgramViewRefused { causes: causes }
   } else {
+    let graph = roadmap_dependency_graph(edges: edges)
+    let reverse_adj = reverse_adjacency(names: ids, graph: graph)
+    let parent_index = program_parent_index(edges: edges)
     let accepted = program_accepted_ids(nodes: nodes, receipts: receipts)
-    let depths = program_sequential_depths(ids: ids, edges: edges, accepted: accepted)
+    let depth_map = program_sequential_depth_map(
+      ids: ids,
+      parent_index: parent_index,
+      accepted: accepted,
+    )
+    let depths = program_depth_rows(depth_map: depth_map, ids: ids)
     let standings = nodes |> map(n =>
-      program_node_standing(n: n, edges: edges, accepted: accepted, in_flight: in_flight))
+      program_node_standing(
+        n: n,
+        parent_index: parent_index,
+        accepted: accepted,
+        in_flight: in_flight,
+      ))
     let front_views = fronts |> map(fs => program_front_view(
-      spec: fs, ids: ids, edges: edges, accepted: accepted,
-      standings: standings, depths: depths, nodes: nodes))
+      spec: fs,
+      reverse_adj: reverse_adj,
+      accepted: accepted,
+      standings: standings,
+      depth_map: depth_map,
+      nodes: nodes))
     let line_views = lines |> map(l => program_finish_line_view(
-      l: l, fronts: fronts, front_views: front_views, ids: ids, edges: edges,
-      accepted: accepted, standings: standings, depths: depths, nodes: nodes))
+      l: l,
+      fronts: fronts,
+      front_views: front_views,
+      reverse_adj: reverse_adj,
+      accepted: accepted,
+      standings: standings,
+      depth_map: depth_map,
+      nodes: nodes))
     let program_scope = program_dedupe_ids(
       fold(lines, init: [], f: (acc, l) => concat(acc,
-        program_ancestors_or_self(ids: ids, edges: edges, id: l.node as String))))
+        program_ancestors_or_self(reverse_adj: reverse_adj, id: l.node as String))))
     ProgramViewDerived { view: V1DeletionProgramView {
       finish_lines: line_views,
       fronts: front_views,
       remaining: program_shape_counts(
         standings: standings |> filter(s => program_scope |> any(id => id == (s.node as String))),
         sequential_depth: fold(lines, init: 0, f: (acc, l) =>
-          program_int_max(a: acc, b: program_depth_lookup(rows: depths, id: l.node as String))),
+          program_int_max(
+            a: acc,
+            b: program_depth_lookup_map(depths: depth_map, id: l.node as String),
+          )),
         open_fronts: count(front_views |> filter(fv => !fv.closed)),
       ),
       proposed: ProposedCarrierAbsent,
@@ -463,16 +654,15 @@ fn program_view(
 
 fn program_front_view(
   spec: ConvergenceFrontSpec,
-  ids: List<String>,
-  edges: List<RoadmapEdge>,
+  reverse_adj: Map<String, List<String>>,
   accepted: List<String>,
   standings: List<NodeStanding>,
-  depths: List<DepthRow>,
+  depth_map: Map<String, Int>,
   nodes: List<RoadmapNode>,
 ) -> FrontView {
   let scope = program_dedupe_ids(
     fold(spec.gates, init: [], f: (acc, g) => concat(acc,
-      program_ancestors_or_self(ids: ids, edges: edges, id: g as String))))
+      program_ancestors_or_self(reverse_adj: reverse_adj, id: g as String))))
   let gates_accepted = count(spec.gates |> filter(g => accepted |> any(a => a == (g as String))))
   let closed = gates_accepted == count(spec.gates)
   FrontView {
@@ -487,11 +677,18 @@ fn program_front_view(
     remaining: program_shape_counts(
       standings: standings |> filter(s => scope |> any(id => id == (s.node as String))),
       sequential_depth: fold(spec.gates, init: 0, f: (acc, g) =>
-        program_int_max(a: acc, b: program_depth_lookup(rows: depths, id: g as String))),
+        program_int_max(
+          a: acc,
+          b: program_depth_lookup_map(depths: depth_map, id: g as String),
+        )),
       open_fronts: if closed { 0 } else { 1 },
     ),
     constraint: program_primary_constraint(
-      scope: scope, standings: standings, depths: depths, nodes: nodes),
+      scope: scope,
+      standings: standings,
+      depth_map: depth_map,
+      nodes: nodes,
+    ),
   }
 }
 
@@ -501,14 +698,13 @@ fn program_finish_line_view(
   l: V1FinishLineSpec,
   fronts: List<ConvergenceFrontSpec>,
   front_views: List<FrontView>,
-  ids: List<String>,
-  edges: List<RoadmapEdge>,
+  reverse_adj: Map<String, List<String>>,
   accepted: List<String>,
   standings: List<NodeStanding>,
-  depths: List<DepthRow>,
+  depth_map: Map<String, Int>,
   nodes: List<RoadmapNode>,
 ) -> FinishLineView {
-  let scope = program_ancestors_or_self(ids: ids, edges: edges, id: l.node as String)
+  let scope = program_ancestors_or_self(reverse_adj: reverse_adj, id: l.node as String)
   let contributing = fronts
     |> filter(fs => fs.gates |> any(g => scope |> any(id => id == (g as String))))
     |> map(fs => fs.front)
@@ -523,13 +719,18 @@ fn program_finish_line_view(
     contributing_fronts: contributing,
     remaining: program_shape_counts(
       standings: standings |> filter(s => scope |> any(id => id == (s.node as String))),
-      sequential_depth: program_depth_lookup(rows: depths, id: l.node as String),
+      sequential_depth: program_depth_lookup_map(depths: depth_map, id: l.node as String),
       open_fronts: count(front_views
         |> filter(fv => !fv.closed)
         |> filter(fv => contributing |> any(c => program_front_key(front: c) == fv.key))),
     ),
     constraint: if line_accepted { none } else {
-      program_primary_constraint(scope: scope, standings: standings, depths: depths, nodes: nodes)
+      program_primary_constraint(
+        scope: scope,
+        standings: standings,
+        depth_map: depth_map,
+        nodes: nodes,
+      )
     },
   }
 }
