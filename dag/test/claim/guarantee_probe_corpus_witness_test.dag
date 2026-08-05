@@ -135,7 +135,7 @@ data call_duplicate_mixed_red_source: String = "module probe_call_duplicate_mixe
 
 data call_duplicate_named_then_positional_red_source: String = "module probe_call_duplicate_named_then_positional\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(a: 1, 2) }\n"
 
-data call_duplicate_green_source: String = "module probe_call_duplicate_green\nfn two(a: Int, b: Int) -> Int { a + b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn distinct() -> Int { two(a: 1, b: 2) }\nfn reordered() -> Int { two(b: 2, a: 1) }\nfn positional() -> Int { two(1, 2) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\n"
+data call_duplicate_green_source: String = "module probe_call_duplicate_green\nfn two(a: Int, b: Int) -> Int { a + b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn distinct() -> Int { two(a: 1, b: 2) }\nfn reordered() -> Int { two(b: 2, a: 1) }\nfn positional() -> Int { two(1, 2) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\nfn two_unused(keep: Int, _: Int, _: Int) -> Int { keep }\nfn two_anon_positional_direct() -> Int { two_unused(7, 8, 9) }\ntype Claimer { claim: fn(Int, Int, Int) -> Int }\nfn two_anon_positional_via_field(p: Claimer) -> Int { p.claim(7, 8, 9) }\n"
 
 data method_missing_source: String = "module probe_method_red\nfn f(xs: List<Int>) -> List<Int> { xs |> filter_map(x => x) }\nfn g(xs: List<Int>) -> Bool { xs |> starts_with(\"x\") }\nfn h(xs: List<Int>) -> String { xs |> to_upper() }\n"
 
@@ -238,6 +238,14 @@ test fn call_duplicate_green_control_has_zero_diagnostics() -> Bool {
     Present { value: row } =>
       probe_row_expectation_holds(census: census_of(source: call_duplicate_green_source), row: row)
     Absent => false
+  }
+}
+
+test fn call_duplicate_two_anonymous_positional_params_never_collide() -> Bool {
+  let census = census_of(source: call_duplicate_green_source)
+  match census_any_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
+    Present { value: n } => n == 0
+    Absent => true
   }
 }
 
