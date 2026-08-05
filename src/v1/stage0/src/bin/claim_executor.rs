@@ -5457,14 +5457,6 @@ fn count_unattributed_physical_resolves(
     fin: &FloorFinalization,
     batch_records: &[BatchRecord],
 ) -> u64 {
-    let obligation_subjects: std::collections::HashSet<(String, String)> = fin
-        .expected_obligations
-        .iter()
-        .map(|o| (o.entry.clone(), o.function.clone()))
-        .collect();
-    // Entry-grain memo sharing: co-resident functions on a rostered obligation entry
-    // share one cold resolve; only the first function in the coalesced group carries
-    // resolve_nanos > 0 (e.g. cheap gates before compile-clean on floor_effect_gate_witness).
     let obligation_entries: std::collections::HashSet<String> = fin
         .expected_obligations
         .iter()
@@ -5476,9 +5468,6 @@ fn count_unattributed_physical_resolves(
             if result.resolve_nanos == 0 {
                 continue;
             }
-            if obligation_subjects.contains(&(result.entry.clone(), result.function.clone())) {
-                continue;
-            }
             if obligation_entries.contains(&result.entry) {
                 continue;
             }
@@ -5486,6 +5475,41 @@ fn count_unattributed_physical_resolves(
         }
     }
     count
+}
+
+fn obligation_entry_duplicate_cold_resolves(
+    fin: &FloorFinalization,
+    batch_records: &[BatchRecord],
+) -> Vec<(String, u64)> {
+    let obligation_entries: std::collections::HashSet<String> = fin
+        .expected_obligations
+        .iter()
+        .map(|o| o.entry.clone())
+        .collect();
+    let mut cold_per_entry: std::collections::HashMap<String, u64> =
+        std::collections::HashMap::new();
+    for rec in batch_records {
+        for result in &rec.results {
+            if result.resolve_nanos == 0 {
+                continue;
+            }
+            if !obligation_entries.contains(&result.entry) {
+                continue;
+            }
+            *cold_per_entry.entry(result.entry.clone()).or_insert(0) += 1;
+        }
+    }
+    obligation_entries
+        .into_iter()
+        .filter_map(|entry| {
+            let count = cold_per_entry.get(&entry).copied().unwrap_or(0);
+            if count > 1 {
+                Some((entry, count))
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 fn append_resolve_obligation_receipt_body(
@@ -6002,6 +6026,12 @@ fn validate_floor_finalization(
         refusals.push(format!(
             "floor resolve unattributed physical resolve(s): {unattributed} result(s) with \
              resolve_nanos > 0 outside every transported obligation entry"
+        ));
+    }
+    for (entry, count) in obligation_entry_duplicate_cold_resolves(fin, batch_records) {
+        refusals.push(format!(
+            "floor resolve duplicate cold on obligation entry {entry}: {count} physical \
+             resolve(s) with resolve_nanos > 0 (expected at most 1 per rostered entry)"
         ));
     }
     match derive_resolve_obligation_receipts(fin, batch_records) {
@@ -9242,6 +9272,64 @@ mod tests {
                 .iter()
                 .any(|m| m.contains("floor resolve obligation missing")),
             "warm compile-clean must satisfy anchor obligation: {refusals:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_refuses_duplicate_cold_on_obligation_entry() {
+        let fin = test_floor_finalization();
+        let anchor_entry = "dag/tools/floor_effect_gate_witness.dag";
+        let records = vec![BatchRecord {
+            batch_index: 0,
+            wall_nanos: 0,
+            clamp_ms: None,
+            unit_count: 0,
+            label: "memo-regression".to_string(),
+            selection_tag: "fixture",
+            is_wet: false,
+            results: vec![
+                ClaimResult {
+                    function: "cheap_claim_pool_gate_passes".to_string(),
+                    entry: anchor_entry.to_string(),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: 9,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
+                    budget_refusal: None,
+                    selection_degradation: None,
+                    resolve_realization: Some(
+                        ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 9 },
+                    ),
+                },
+                ClaimResult {
+                    function: "dag_compile_clean_gate_passes".to_string(),
+                    entry: anchor_entry.to_string(),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: 7,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
+                    budget_refusal: None,
+                    selection_degradation: None,
+                    resolve_realization: Some(
+                        ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 7 },
+                    ),
+                },
+            ],
+        }];
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
+        assert!(
+            refusals
+                .iter()
+                .any(|m| m.contains("duplicate cold on obligation entry")),
+            "second cold on rostered entry must refuse: {refusals:?}"
         );
     }
 
