@@ -1,0 +1,111 @@
+module gunbc.language_module_home
+
+import std.types { String, Bool, List }
+import std.decl_ref { DeclarationRef }
+import gunbc.language_target_registry {
+  html_language_subject_ref,
+  jsx_language_subject_ref,
+  commonmark_format_subject_ref
+}
+
+data language_module_home_law: String = "WHERE A TARGET'S SURFACES LIVE IS ORGANIZATIONAL POLICY, NEVER IDENTITY (operator verdict relayed 2026-08-05, and the framing is load-bearing). DeclarationRef remains the single identity authority for a language target; a canonical_prefix says where that target's modules SHOULD be stored and decides nothing about what the target IS. The two must not fuse, because a path prefix is exactly the kind of positional fact that would start competing with the symbolic key if it ever became a discriminant — the same class DESIGN section 3 rules on when it says paths are discriminators, not gospel, and that a citation names a symbol rather than a position. THAT IS WHY canonical_prefix IS DECLARED AND NEVER COMPUTED AGAINST: the wall below decides membership by EXACT path equality against a finite roster, so no prefix match is ever performed on a module path and the prefix string cannot silently become the thing that answers 'which target is this'. It is the address a move should land at, carried so the obligation is readable, not a predicate. THE DEFECT THIS ADDRESSES: dag/extdeps/languages was meant to mean one directory per target holding that target's subject and its surfaces. D0 created twenty-five such directories, and four flat modules still sit directly beside them, so the directory currently means 'a subject-only island beside flat siblings' instead. react_jsx is the one that matters on principle rather than tidiness: that module implements JSX serialization while naming React, and D0's registry just separated those two subjects — JSX is registered as its own target with its own citation and React is not a target at all — so the fused flat path preserves a naming defect this repository's own registry has already exposed."
+
+data language_module_home_scope_note: String = "WHAT THIS MODULE DOES AND DELIBERATELY DOES NOT DO. IT DOES: declare the canonical home for each target that currently has misfiled surfaces, carry the four legacy flat modules as an EXACT finite frontier with a dissolution trigger each, and supply the pure decision function that refuses a NEW flat language module. IT DOES NOT: move any file, edit any importer, or touch src/v2. The operator was explicit that the full migration is not required inside the D0 citation change, and the src/v2 pass — src/v2/extdeps/languages is entirely flat, with bash alone spread across six modules — is a large namespace operation that belongs in its own change. WHY THE MOVES ARE NOT MADE HERE, and this is a mechanical reason rather than a scheduling preference: all four flat modules are rows of the FROZEN legacy manifest in gunbc.extdeps_scope_frontier. Moving one deletes its manifest row and creates an ADDED dag/extdeps path, and the frontier law states that an added file's only landing states are scope carrier or genuine machinery — it cannot rejoin the frozen manifest. So each move would force its surface module to adopt an extdeps_model_scope and spell a second literal ExternalAuthority for an upstream whose subject carrier D0 just authored. Whether one upstream may be cited once and shared, or must be re-declared per module, is the exact question currently escalated to the operator in extdeps.posix.shell_command_language posix_authority_duplication_note, unresolved. Performing the moves inside this change would answer it unilaterally, in four places, as a side effect of tidying directories. The homing obligation is therefore recorded and walled; the migration waits on that ruling."
+
+type LanguageTargetHome {
+  target: DeclarationRef
+  canonical_prefix: String
+}
+
+data language_target_homes: List<LanguageTargetHome> = [
+  LanguageTargetHome {
+    target: html_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/html/"
+  },
+  LanguageTargetHome {
+    target: commonmark_format_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/markdown/"
+  },
+  LanguageTargetHome {
+    target: jsx_language_subject_ref,
+    canonical_prefix: "dag/extdeps/languages/jsx/"
+  }
+]
+
+data legacy_flat_module_note: String = "THE EXACT FINITE FRONTIER. Four rows, enumerated by walking dag/extdeps/languages for files sitting directly in it rather than in a target directory, verified against the live tree on 2026-08-05 rather than transcribed from a report. Each row names the file as it exists today, the target whose surface it implements, and the address a move should land at. The roster is EXACT and the wall reads it by equality, so this is not a prefix or a pattern: a flat module absent from these four rows refuses. That is what makes the frontier finite rather than a category that can quietly grow — the failure mode the scope frontier's own frozen manifest exists to prevent, applied one directory down."
+
+type LegacyLanguageModuleHome {
+  file_path: String
+  module_path: String
+  target: DeclarationRef
+  moves_to: String
+  dissolves_on: String
+}
+
+data legacy_language_module_homes: List<LegacyLanguageModuleHome> = [
+  LegacyLanguageModuleHome {
+    file_path: "dag/extdeps/languages/html.dag",
+    module_path: "extdeps.languages.html",
+    target: html_language_subject_ref,
+    moves_to: "dag/extdeps/languages/html/medium.dag",
+    dissolves_on: "a typed move receipt records the file at its canonical address and this row deletes"
+  },
+  LegacyLanguageModuleHome {
+    file_path: "dag/extdeps/languages/html_fragment.dag",
+    module_path: "extdeps.languages.html_fragment",
+    target: html_language_subject_ref,
+    moves_to: "dag/extdeps/languages/html/fragment.dag",
+    dissolves_on: "a typed move receipt records the file at its canonical address and this row deletes"
+  },
+  LegacyLanguageModuleHome {
+    file_path: "dag/extdeps/languages/markdown.dag",
+    module_path: "extdeps.languages.markdown",
+    target: commonmark_format_subject_ref,
+    moves_to: "dag/extdeps/languages/markdown/commonmark_emit.dag",
+    dissolves_on: "a typed move receipt records the file at its canonical address and this row deletes"
+  },
+  LegacyLanguageModuleHome {
+    file_path: "dag/extdeps/languages/react_jsx.dag",
+    module_path: "extdeps.languages.react_jsx",
+    target: jsx_language_subject_ref,
+    moves_to: "dag/extdeps/languages/jsx/emit.dag",
+    dissolves_on: "a typed move receipt records the file at its canonical address and this row deletes; the module name drops React, which names a framework this repository does not target, in favour of the JSX subject D0 registered"
+  }
+]
+
+type FlatModuleVerdict
+  = FlatModuleOnFrontier { file_path: String, moves_to: String }
+  | FlatModuleRefused { file_path: String }
+
+data flat_module_refusal_note: String = "THE WALL, AND WHY ITS FAILURE ARM REFUSES RATHER THAN WIDENS. A flat language module is admitted ONLY by exact membership in the frontier above; anything else is FlatModuleRefused carrying the offending path, which is typed and located rather than a Bool. There is no arm that admits an unrecognised flat module, no allowance keyed on a name pattern, and no toggle — the three shapes DESIGN section 5 rules out. The consequence intended: a new target-specific module authored flat beside the target directories cannot land, so the population this frontier freezes can only shrink. A module inside a target directory is not a flat module and is never consulted here, which is the whole point — the wall constrains where NEW surfaces go without touching the twenty-five directories D0 created."
+
+fn classify_flat_module(file_path: String) -> FlatModuleVerdict {
+  fold(
+    legacy_language_module_homes,
+    init: FlatModuleRefused { file_path: file_path },
+    f: fn(acc, r) {
+      if r.file_path == file_path {
+        FlatModuleOnFrontier { file_path: r.file_path, moves_to: r.moves_to }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn flat_module_admitted(file_path: String) -> Bool {
+  match classify_flat_module(file_path: file_path) {
+    FlatModuleOnFrontier { file_path: _, moves_to: _ } => true,
+    FlatModuleRefused { file_path: _ } => false
+  }
+}
+
+fn every_flat_module_is_on_the_frontier(walked_flat_paths: List<String>) -> Bool {
+  all(walked_flat_paths, p => flat_module_admitted(file_path: p))
+}
+
+fn legacy_flat_module_count() -> Int {
+  fold(legacy_language_module_homes, init: 0, f: fn(acc, r) { acc + 1 })
+}
+
+data language_module_home_maximum_conclusion: String = "MAXIMUM CONCLUSION — what a green check here establishes and what it cannot. IT ESTABLISHES that every flat language module named by the caller is an exact frontier row, so a new flat module refuses. IT DOES NOT ESTABLISH that the four rows are the complete flat population of the live tree: the walk that produces the caller's list is the wet half, and the pure decision function above cannot see the disk. The same grain split the scope frontier states about itself applies here for the same reason, and the honest reading is that this module gates the DIRECTION of change rather than certifying the current tree. NOR DOES IT ESTABLISH that any target's surfaces are complete or correctly grouped — only that a target-specific module is not authored flat. The construction-side end state is the same one the module-identity-versus-storage lane names: when a module's home is derived from the containment tree rather than declared beside it, this frontier and its wall both delete."
