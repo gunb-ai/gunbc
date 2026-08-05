@@ -31,14 +31,14 @@ import gunbc.generated_artifact {
   author_commit_required_committed_artifact_paths,
   CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, artifact_path
 }
-import gunbc.ci_workflow_expressions { ci_regen_heal_if }
+import gunbc.ci_workflow_expressions { ci_regen_heal_if, ci_floor_upstream_clean_if }
 import extdeps.github.actions {
   Job, Workflow, WorkflowPermissions, PermissionLevel, PermWrite, PermRead,
   WorkflowDispatch, Push, PullRequest, Schedule, WorkflowCall, MergeGroup,
   Step, UsesStep, RunStep
 }
 
-data ci_heal_job_witness_note: String = "Green-by-execution proof that the CI auto-heal job is wired correctly, over the actual Job/Workflow model (not a grep). contents_write_is_scoped_to_heal_only pins least privilege. heal_job_needs_build_not_ci prevents heal from depending on ci. heal_commit_scope_is_auto_push_eligible_only: staging is auto_push_eligible_committed_artifact_paths() only — workflow YAML is AuthorCommitRequired and must never be git add'd. heal_workflow_drift_is_author_commit_required: detects drift, packages repair artifact, emits HealAuthorCommitRequired with regen command, never stages workflow paths. heal_author_commit_upload_step_enrolled: upload-artifact publishes heal-author-commit-required/ when workflow drift exists."
+data ci_heal_job_witness_note: String = "Green-by-execution proof that the CI auto-heal job is wired correctly, over the actual Job/Workflow model (not a grep). contents_write_is_scoped_to_heal_only pins least privilege. heal_job_needs_build_not_ci prevents heal from depending on ci. floor_job_waits_on_the_heal_preflight and floor_job_still_runs_when_heal_is_skipped are one pair and must be read together: the first pins that the expensive floor does not start until the heal preflight has reported, the second pins the expression that keeps that from deleting main's cold control. They are separated because the dangerous edit is not removing the dependency - it is KEEPING the dependency while simplifying the condition. A job whose needs include a skipped job is skipped by default, and heal is pull_request-only, so replacing the condition with success(), or dropping it as redundant, silently stops the floor from running on every push to main, on merge_group, and on workflow_dispatch, while every pull_request stays green and nothing anywhere reports a change. That is the failure this pair exists to catch, which is why the second test refuses success() by name rather than only asserting equality. heal_commit_scope_is_auto_push_eligible_only: staging is auto_push_eligible_committed_artifact_paths() only — workflow YAML is AuthorCommitRequired and must never be git add'd. heal_workflow_drift_is_author_commit_required: detects drift, packages repair artifact, emits HealAuthorCommitRequired with regen command, never stages workflow paths. heal_author_commit_upload_step_enrolled: upload-artifact publishes heal-author-commit-required/ when workflow drift exists."
 
 fn perm_is_write(p: PermissionLevel) -> Bool {
   match p { PermWrite => true  _ => false }
@@ -94,6 +94,23 @@ test fn heal_job_enrolled_in_ci_workflow() -> Bool {
 
 test fn heal_job_needs_build_not_ci() -> Bool {
   ci_heal_generated_artifacts_job().needs == ["build"]
+}
+
+test fn floor_job_waits_on_the_heal_preflight() -> Bool {
+  any(ci_job().needs, n => n == "heal_generated_artifacts")
+    && any(ci_job().needs, n => n == "build")
+    && any(ci_job().needs, n => n == "regen")
+}
+
+test fn floor_job_still_runs_when_heal_is_skipped() -> Bool {
+  match ci_job().if_condition {
+    Present { value: s } =>
+      (s == ci_floor_upstream_clean_if)
+        && string_contains(s: s, pattern: "!failure()")
+        && string_contains(s: s, pattern: "!cancelled()")
+        && !string_contains(s: s, pattern: "success()")
+    Absent => false
+  }
 }
 
 test fn heal_job_runs_on_pr_only() -> Bool {

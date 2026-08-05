@@ -216,8 +216,9 @@ jobs:
         timeout-minutes: 15
   ci:
     runs-on: [self-hosted, linux, arm64]
-    needs: [build, regen]
+    needs: [build, regen, heal_generated_artifacts]
     timeout-minutes: 100
+    if: "!failure() && !cancelled()"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
