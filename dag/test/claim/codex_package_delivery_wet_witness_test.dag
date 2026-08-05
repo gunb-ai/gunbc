@@ -107,10 +107,20 @@ test fn materialize_codex_runtime_bundle_produces_native_executable() -> Bool {
           prefix: "node_modules/@openai/codex-",
         )
         && (bundle.native_executable_rel as String).contains("/vendor/")
+        && (bundle.root as String).starts_with(prefix: "/tmp/gunbc-codex-runtime/")
         && match bundle.admitted_package_set_identity {
           Sha512Hash(_) => true
           _ => false
         }
+        && match bundle.receipt.receipt_identity {
+          Sha512Hash(_) => true
+          _ => false
+        }
+        && match bundle.receipt.protocol_schema_identity {
+          Sha512Hash(_) => true
+          _ => false
+        }
+        && (bundle.receipt.npm_cli_version as String) != ""
     _ => false
   }
 }

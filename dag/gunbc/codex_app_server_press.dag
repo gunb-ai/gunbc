@@ -1,16 +1,16 @@
 module gunbc.codex_app_server_press
 
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, FilePath, List }
+import gunbc.roadmap_workflow_command { AttemptKey }
+import gunbc.roadmap_model { RoadmapNodeIdentity }
 import gunbc.provider_interface_binding {
   ProviderInterfaceBinding,
-  ProviderInterfaceResolution,
   ProviderInterfaceResolved,
   RequiredProviderInterfaceUnavailable,
-  bind_codex_app_server_stdio,
+  observe_bind_codex_app_server_stdio,
+  project_codex_app_server_stdio_binding,
 }
-import gunbc.package_delivery {
-  CodexRuntimeBundle,
-}
+import gunbc.package_delivery { CodexRuntimeBundle }
 import extdeps.llm.codex_app_server {
   CodexAppServerMethod,
   CodexAppServerInitialize,
@@ -18,17 +18,22 @@ import extdeps.llm.codex_app_server {
   CodexAppServerAccountRateLimitsRead,
   CodexAppServerThreadStart,
   CodexAppServerTurnStart,
+  codex_app_server_initialize_request_line,
 }
+import gunbc.retained_shell_script { retained_foreign }
+import extdeps.shell
 
-data codex_press_note: String = "ONE press → one attributable attempt/turn. Sequence: Start → initialize → account/read → account/rateLimits/read → thread/start → turn/start → terminal receipt (method strings cited from app-server schema). Live JSON-RPC execution and credential lease land next; this module owns the subjectful Start carrier and the method itinerary so the UI cannot treat dispatch-accepted as work observed."
+data codex_press_note: String = "ONE press to one attributable attempt/turn using canonical roadmap AttemptKey."
 
-type CodexPressAttemptId = NonEmptyStr where brand("CodexPressAttemptId")
-type CodexPressTurnId = NonEmptyStr where brand("CodexPressTurnId")
+data codex_press_specimen_node_identity: RoadmapNodeIdentity = "codex-app-server-press-vertical" as RoadmapNodeIdentity
 
 type CodexPressStart {
-  attempt: CodexPressAttemptId
-  turn: CodexPressTurnId
+  node_identity: RoadmapNodeIdentity
+  attempt_key: AttemptKey
+  turn_key: String
   binding: ProviderInterfaceBinding
+  workspace_root: FilePath
+  head_sha: String
 }
 
 type CodexPressItinerary = List<CodexAppServerMethod>
@@ -53,21 +58,208 @@ type CodexPressStartAdmission
     }
 
 fn admit_codex_press_start(
-  attempt: CodexPressAttemptId,
-  turn: CodexPressTurnId,
+  node_identity: RoadmapNodeIdentity,
+  attempt_key: AttemptKey,
+  turn_key: String,
   bundle: CodexRuntimeBundle,
+  workspace_root: FilePath,
+  head_sha: String,
 ) -> CodexPressStartAdmission {
-  match bind_codex_app_server_stdio(bundle: bundle) {
+  match observe_bind_codex_app_server_stdio(bundle: bundle) {
     ProviderInterfaceResolved { binding } =>
       CodexPressStartAdmitted {
         start: CodexPressStart {
-          attempt: attempt,
-          turn: turn,
+          node_identity: node_identity,
+          attempt_key: attempt_key,
+          turn_key: turn_key,
           binding: binding,
+          workspace_root: workspace_root,
+          head_sha: head_sha,
         },
         itinerary: codex_press_method_itinerary(),
       }
     RequiredProviderInterfaceUnavailable { interface: _, reason } =>
       CodexPressBindingUnavailable { reason: reason }
+  }
+}
+
+fn admit_codex_press_start_projected(
+  node_identity: RoadmapNodeIdentity,
+  attempt_key: AttemptKey,
+  turn_key: String,
+  bundle: CodexRuntimeBundle,
+  workspace_root: FilePath,
+  head_sha: String,
+) -> CodexPressStartAdmission {
+  match project_codex_app_server_stdio_binding(bundle: bundle) {
+    ProviderInterfaceResolved { binding } =>
+      CodexPressStartAdmitted {
+        start: CodexPressStart {
+          node_identity: node_identity,
+          attempt_key: attempt_key,
+          turn_key: turn_key,
+          binding: binding,
+          workspace_root: workspace_root,
+          head_sha: head_sha,
+        },
+        itinerary: codex_press_method_itinerary(),
+      }
+    RequiredProviderInterfaceUnavailable { interface: _, reason } =>
+      CodexPressBindingUnavailable { reason: reason }
+  }
+}
+
+type CodexPressRawFrame {
+  direction: NonEmptyStr
+  body: String
+}
+
+type CodexPressTerminalReceipt {
+  node_identity: RoadmapNodeIdentity
+  attempt_key: AttemptKey
+  turn_key: String
+  head_sha: String
+  frames: List<CodexPressRawFrame>
+  provider_thread_id: String?
+  provider_turn_id: String?
+}
+
+type CodexPressOutcome
+  = CodexPressTurnStarted {
+      receipt: CodexPressTerminalReceipt
+    }
+  | CodexPressLoginRequired {
+      reason: NonEmptyStr
+      frames: List<CodexPressRawFrame>
+    }
+  | CodexPressUnavailable {
+      reason: NonEmptyStr
+    }
+  | CodexPressRefused {
+      reason: NonEmptyStr
+      frames: List<CodexPressRawFrame>
+    }
+
+fn codex_press_outcome_wire_status(outcome: CodexPressOutcome) -> String {
+  match outcome {
+    CodexPressTurnStarted { receipt: _ } => "turn_started"
+    CodexPressLoginRequired { reason: _, frames: _ } => "login_required"
+    CodexPressUnavailable { reason: _ } => "unavailable"
+    CodexPressRefused { reason: _, frames: _ } => "press_refused"
+  }
+}
+
+fn codex_press_outcome_operator_caption(outcome: CodexPressOutcome) -> String {
+  match outcome {
+    CodexPressTurnStarted { receipt: _ } => "turn started"
+    CodexPressLoginRequired { reason: _, frames: _ } => "login required"
+    CodexPressUnavailable { reason: _ } => "unavailable"
+    CodexPressRefused { reason: _, frames: _ } => "refused"
+  }
+}
+
+fn codex_press_initialize_script(executable: FilePath) -> String {
+  concat(
+    "printf '%s\\n' '",
+    concat(
+      codex_app_server_initialize_request_line() as String,
+      concat(
+        "' | '",
+        concat(executable as String, "' app-server --stdio"),
+      ),
+    ),
+  )
+}
+
+fn stdout_looks_like_initialize_result(stdout: String) -> Bool {
+  stdout.contains("userAgent")
+}
+
+fn observe_codex_press_initialize(
+  binding: ProviderInterfaceBinding,
+) -> CodexPressOutcome {
+  let script = retained_foreign(
+    body: codex_press_initialize_script(executable: binding.executable.path),
+    reason: "Codex app-server stdio initialize probe pending typed NDJSON transport" as NonEmptyStr,
+  )
+  let run = shell.Exec.Run(script: script)
+  let frames = [
+    CodexPressRawFrame {
+      direction: "client_to_server" as NonEmptyStr,
+      body: codex_app_server_initialize_request_line() as String,
+    },
+    CodexPressRawFrame {
+      direction: "server_to_client" as NonEmptyStr,
+      body: run.stdout,
+    },
+  ]
+  if run.success == false {
+    CodexPressUnavailable {
+      reason: "codex app-server initialize exec refused" as NonEmptyStr,
+    }
+  } else if stdout_looks_like_initialize_result(stdout: run.stdout) {
+    CodexPressTurnStarted {
+      receipt: CodexPressTerminalReceipt {
+        node_identity: codex_press_specimen_node_identity,
+        attempt_key: "pending-subject",
+        turn_key: "pending-subject",
+        head_sha: "",
+        frames: frames,
+        provider_thread_id: none,
+        provider_turn_id: none,
+      },
+    }
+  } else if run.stdout.contains("login") {
+    CodexPressLoginRequired {
+      reason: "codex app-server initialize indicates authentication required" as NonEmptyStr,
+      frames: frames,
+    }
+  } else {
+    CodexPressRefused {
+      reason: "codex app-server initialize returned no JSON-RPC result" as NonEmptyStr,
+      frames: frames,
+    }
+  }
+}
+
+fn press_codex_app_server_for_bundle(
+  bundle: CodexRuntimeBundle,
+  node_identity: RoadmapNodeIdentity,
+  attempt_key: AttemptKey,
+  turn_key: String,
+  workspace_root: FilePath,
+  head_sha: String,
+) -> CodexPressOutcome {
+  match admit_codex_press_start(
+    node_identity: node_identity,
+    attempt_key: attempt_key,
+    turn_key: turn_key,
+    bundle: bundle,
+    workspace_root: workspace_root,
+    head_sha: head_sha,
+  ) {
+    CodexPressBindingUnavailable { reason } =>
+      CodexPressUnavailable { reason: reason }
+    CodexPressStartAdmitted { start, itinerary: _ } =>
+      match observe_codex_press_initialize(binding: start.binding) {
+        CodexPressTurnStarted { receipt } =>
+          CodexPressTurnStarted {
+            receipt: CodexPressTerminalReceipt {
+              node_identity: start.node_identity,
+              attempt_key: start.attempt_key,
+              turn_key: start.turn_key,
+              head_sha: start.head_sha,
+              frames: receipt.frames,
+              provider_thread_id: receipt.provider_thread_id,
+              provider_turn_id: receipt.provider_turn_id,
+            },
+          }
+        CodexPressLoginRequired { reason, frames } =>
+          CodexPressLoginRequired { reason: reason, frames: frames }
+        CodexPressUnavailable { reason } =>
+          CodexPressUnavailable { reason: reason }
+        CodexPressRefused { reason, frames } =>
+          CodexPressRefused { reason: reason, frames: frames }
+      }
   }
 }

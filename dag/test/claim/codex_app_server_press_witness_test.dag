@@ -1,19 +1,30 @@
 module test.claim.codex_app_server_press_witness_test
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
-import std.content_hash { content_hash_of_value, sha512_hex_digest, Sha512Digest }
-import gunbc.package_delivery { CodexRuntimeBundle, CodexNpmRuntimeTarget }
+import std.content_hash {
+  content_hash_of_value,
+  sha512_hex_digest,
+  Sha512Digest,
+  as_content_hash_sha512,
+}
+import gunbc.package_delivery {
+  CodexRuntimeBundle,
+  CodexNpmRuntimeTarget,
+  CodexRuntimeBundleReceipt,
+}
 import gunbc.provider_interface_binding {
-  bind_codex_app_server_stdio,
+  project_codex_app_server_stdio_binding,
   ProviderInterfaceResolved,
   ProviderControlInterface,
 }
 import gunbc.codex_app_server_press {
-  admit_codex_press_start,
+  admit_codex_press_start_projected,
   CodexPressStartAdmitted,
-  CodexPressAttemptId,
-  CodexPressTurnId,
   codex_press_method_itinerary,
+  codex_press_specimen_node_identity,
+  codex_press_outcome_wire_status,
+  CodexPressTurnStarted,
+  CodexPressTerminalReceipt,
 }
 import gunbc.provider_turn_adjudication {
   automatic_recovery_authorized,
@@ -32,22 +43,39 @@ import extdeps.llm.codex_app_server {
   codex_app_server_method_wire_name,
 }
 
-data witness_note: String = "Hermetic press carriers: itinerary + stdio binding + terminal/cause adjudication RED. Live JSON-RPC turn execution is the next wet slice."
+data witness_note: String = "Hermetic press carriers: itinerary + projected stdio binding + AttemptKey/TurnKey Start + terminal/cause adjudication RED. Live JSON-RPC turn execution is the wet slice."
 
 data fixture_digest_hex: String = "c86dec3d635d6bfd980084080eaf4caeb8e8093210eebc5833921ab2b1b754172e8422d39207a0fc9cea989ab557df11138309e630b10d75d094e8eb762b4547"
 
+fn fixture_digest() -> Sha512Digest? {
+  sha512_hex_digest(hex: fixture_digest_hex)
+}
+
 fn fixture_bundle_from_digest(digest: Sha512Digest) -> CodexRuntimeBundle {
+  let id = as_content_hash_sha512(digest: digest)
+  let target = CodexNpmRuntimeTarget {
+    os: "linux" as NonEmptyStr,
+    cpu: "arm64" as NonEmptyStr,
+  }
   CodexRuntimeBundle {
     root: "/tmp/codex-runtime-fixture" as FilePath,
     native_executable_rel: "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" as NonEmptyStr,
     wrapper_executable_rel: "node_modules/@openai/codex/bin/codex.js" as NonEmptyStr,
     platform_package_rel: "node_modules/@openai/codex-linux-arm64" as NonEmptyStr,
-    target: CodexNpmRuntimeTarget {
-      os: "linux" as NonEmptyStr,
-      cpu: "arm64" as NonEmptyStr,
-    },
+    target: target,
     admitted_packages: [],
-    admitted_package_set_identity: content_hash_of_value(value: digest.hex),
+    admitted_package_set_identity: id,
+    receipt: CodexRuntimeBundleReceipt {
+      manifest_digest: digest,
+      lock_digest: digest,
+      target: target,
+      admitted_packages: [],
+      admitted_package_set_identity: id,
+      native_executable_digest: digest,
+      npm_cli_version: "10.9.8" as NonEmptyStr,
+      protocol_schema_identity: id,
+      receipt_identity: id,
+    },
   }
 }
 
@@ -80,10 +108,12 @@ test fn press_itinerary_wire_names_match_generated_schema() -> Bool {
 }
 
 test fn stdio_binding_derives_from_runtime_bundle() -> Bool {
-  match sha512_hex_digest(hex: fixture_digest_hex) {
+  match fixture_digest() {
     Absent => false
     Present { value: digest } =>
-      match bind_codex_app_server_stdio(bundle: fixture_bundle_from_digest(digest: digest)) {
+      match project_codex_app_server_stdio_binding(
+        bundle: fixture_bundle_from_digest(digest: digest),
+      ) {
         ProviderInterfaceResolved { binding } =>
           match binding.interface {
             CodexAppServer {} =>
@@ -99,17 +129,21 @@ test fn stdio_binding_derives_from_runtime_bundle() -> Bool {
 }
 
 test fn press_start_names_attempt_turn_and_binding() -> Bool {
-  match sha512_hex_digest(hex: fixture_digest_hex) {
+  match fixture_digest() {
     Absent => false
     Present { value: digest } =>
-      match admit_codex_press_start(
-        attempt: "attempt-fixture-1" as CodexPressAttemptId,
-        turn: "turn-fixture-1" as CodexPressTurnId,
+      match admit_codex_press_start_projected(
+        node_identity: codex_press_specimen_node_identity,
+        attempt_key: "attempt-fixture-1",
+        turn_key: "turn-fixture-1",
         bundle: fixture_bundle_from_digest(digest: digest),
+        workspace_root: "/tmp/ws" as FilePath,
+        head_sha: "deadbeef",
       ) {
         CodexPressStartAdmitted { start, itinerary } =>
-          (start.attempt as String) == "attempt-fixture-1"
-            && (start.turn as String) == "turn-fixture-1"
+          (start.attempt_key as String) == "attempt-fixture-1"
+            && start.turn_key == "turn-fixture-1"
+            && (start.node_identity as String) == "codex-app-server-press-vertical"
             && count(itinerary) == 5
         _ => false
       }
@@ -117,13 +151,16 @@ test fn press_start_names_attempt_turn_and_binding() -> Bool {
 }
 
 test fn accepted_start_without_turn_never_displays_as_running_or_finished() -> Bool {
-  match sha512_hex_digest(hex: fixture_digest_hex) {
+  match fixture_digest() {
     Absent => false
     Present { value: digest } =>
-      match admit_codex_press_start(
-        attempt: "attempt-fixture-2" as CodexPressAttemptId,
-        turn: "turn-fixture-2" as CodexPressTurnId,
+      match admit_codex_press_start_projected(
+        node_identity: codex_press_specimen_node_identity,
+        attempt_key: "attempt-fixture-2",
+        turn_key: "turn-fixture-2",
         bundle: fixture_bundle_from_digest(digest: digest),
+        workspace_root: "/tmp/ws" as FilePath,
+        head_sha: "deadbeef",
       ) {
         CodexPressStartAdmitted { start: _, itinerary: _ } =>
           press_display_running(disposition: ProviderTurnNotObserved) == false
@@ -148,4 +185,25 @@ test fn failed_unclassified_cannot_authorize_recovery() -> Bool {
   }
   automatic_recovery_authorized(disposition: unknown) == false
     && automatic_recovery_authorized(disposition: classified_retryable) == false
+}
+
+test fn press_outcome_wire_status_is_not_dispatch_accepted() -> Bool {
+  match fixture_digest() {
+    Absent => false
+    Present { value: digest } => {
+      let outcome = CodexPressTurnStarted {
+        receipt: CodexPressTerminalReceipt {
+          node_identity: codex_press_specimen_node_identity,
+          attempt_key: "a",
+          turn_key: "t",
+          head_sha: "h",
+          frames: [],
+          provider_thread_id: none,
+          provider_turn_id: none,
+        },
+      }
+      let status = codex_press_outcome_wire_status(outcome: outcome)
+      status == "turn_started" && status != "accepted" && status != "spawned"
+    }
+  }
 }

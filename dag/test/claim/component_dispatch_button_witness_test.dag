@@ -27,7 +27,7 @@ test fn witness_scale_well_formed() -> Bool {
 test fn witness_dispatch_button_states_total_over_wire() -> Bool {
   dispatch_button_wire_total()
     && dispatch_button_terminal_count() == belt_dispatch_all_status_labels().length()
-    && belt_dispatch_all_status_labels().length() == 8
+    && belt_dispatch_all_status_labels().length() == 12
 }
 
 test fn witness_dropped_state_is_located_red() -> Bool {
