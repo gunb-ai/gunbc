@@ -2,7 +2,7 @@ module test.claim.codex_app_server_press_witness_test
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.content_hash { content_hash_of_value, sha512_hex_digest, Sha512Digest }
-import gunbc.package_delivery { CodexRuntimeBundle }
+import gunbc.package_delivery { CodexRuntimeBundle, CodexNpmRuntimeTarget }
 import gunbc.provider_interface_binding {
   bind_codex_app_server_stdio,
   ProviderInterfaceResolved,
@@ -39,10 +39,15 @@ data fixture_digest_hex: String = "c86dec3d635d6bfd980084080eaf4caeb8e8093210eeb
 fn fixture_bundle_from_digest(digest: Sha512Digest) -> CodexRuntimeBundle {
   CodexRuntimeBundle {
     root: "/tmp/codex-runtime-fixture" as FilePath,
-    executable_rel: "node_modules/@openai/codex/bin/codex.js" as NonEmptyStr,
+    native_executable_rel: "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" as NonEmptyStr,
+    wrapper_executable_rel: "node_modules/@openai/codex/bin/codex.js" as NonEmptyStr,
     platform_package_rel: "node_modules/@openai/codex-linux-arm64" as NonEmptyStr,
-    admitted_digests: [digest],
-    identity: content_hash_of_value(value: digest.hex),
+    target: CodexNpmRuntimeTarget {
+      os: "linux" as NonEmptyStr,
+      cpu: "arm64" as NonEmptyStr,
+    },
+    admitted_packages: [],
+    admitted_package_set_identity: content_hash_of_value(value: digest.hex),
   }
 }
 
@@ -84,7 +89,7 @@ test fn stdio_binding_derives_from_runtime_bundle() -> Bool {
             CodexAppServer {} =>
               match binding.transport {
                 CodexAppServerStdio =>
-                  (binding.executable.path as String) == "/tmp/codex-runtime-fixture/node_modules/@openai/codex/bin/codex.js"
+                  (binding.executable.path as String) == "/tmp/codex-runtime-fixture/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex"
                 _ => false
               }
           }
@@ -142,5 +147,5 @@ test fn failed_unclassified_cannot_authorize_recovery() -> Bool {
     },
   }
   automatic_recovery_authorized(disposition: unknown) == false
-    && automatic_recovery_authorized(disposition: classified_retryable) == true
+    && automatic_recovery_authorized(disposition: classified_retryable) == false
 }

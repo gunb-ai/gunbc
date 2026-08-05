@@ -1,7 +1,13 @@
 module gunbc.package_delivery
 
 import std.types { String, NonEmptyStr, List, FilePath, Bool, Int }
-import std.content_hash { Sha512Digest, Sha1Digest, content_hash_of_value, ContentHash }
+import std.content_hash {
+  Sha512Digest,
+  Sha1Digest,
+  content_hash_of_value,
+  ContentHash,
+  as_content_hash_sha512,
+}
 import extdeps.npm {
   NpmRegistryIntegrity,
   NpmRegistrySha512Integrity,
@@ -35,6 +41,7 @@ import extdeps.package {
 }
 import extdeps.http.client
 import extdeps.shell
+import extdeps.filesystem.filesystem_io
 import extdeps.tools.sha512sum {
   sha512sum_observe_file,
   Sha512FileObserved,
@@ -153,11 +160,53 @@ fn archive_basename_from_locator(locator: NonEmptyStr) -> NonEmptyStr {
   }
 }
 
+data codex_npm_registry_https_prefix: String = "https://registry.npmjs.org/"
+
+type CodexRegistryLocatorAdmission
+  = CodexRegistryLocatorAdmitted {
+      locator: NonEmptyStr
+    }
+  | CodexRegistryLocatorRefused {
+      locator: NonEmptyStr
+      cause: NonEmptyStr
+    }
+
+data codex_registry_locator_admission_note: String = "Digest matching proves content identity, not fetch authorization. First Codex profile admits only HTTPS locators under registry.npmjs.org/ before DownloadToFile. file:/http:/other hosts refuse."
+
+fn admit_codex_registry_artifact_locator(
+  locator: NonEmptyStr,
+) -> CodexRegistryLocatorAdmission {
+  let s = locator as String
+  if s.starts_with(prefix: codex_npm_registry_https_prefix) {
+    if s.contains("..") {
+      CodexRegistryLocatorRefused {
+        locator: locator,
+        cause: "registry locator contains path traversal" as NonEmptyStr,
+      }
+    } else {
+      CodexRegistryLocatorAdmitted { locator: locator }
+    }
+  } else {
+    CodexRegistryLocatorRefused {
+      locator: locator,
+      cause: "locator is not an HTTPS registry.npmjs.org artifact URL" as NonEmptyStr,
+    }
+  }
+}
+
+fn staging_archive_name_from_lock_key(lock_node_key: NonEmptyStr) -> NonEmptyStr {
+  concat(
+    (lock_node_key as String).replace(from: "/", to: "__"),
+    ".tgz",
+  ) as NonEmptyStr
+}
+
 type RegistryArtifactAcquisition
   = RegistryArtifactAdmitted {
-      artifact: NpmRegistryArtifact
-      path: FilePath
-      digest: Sha512Digest
+      receipt: AdmittedPackageArtifactReceipt
+    }
+  | RegistryArtifactLocatorRefused {
+      admission: CodexRegistryLocatorAdmission
     }
   | RegistryArtifactDownloadRefused {
       locator: NonEmptyStr
@@ -169,42 +218,66 @@ type RegistryArtifactAcquisition
       digest: Sha1Digest
     }
 
+type AdmittedPackageArtifactReceipt {
+  lock_node_key: NonEmptyStr
+  package_name: NonEmptyStr
+  version: NonEmptyStr
+  source_locator: NonEmptyStr
+  expected_digest: Sha512Digest
+  observed_digest: Sha512Digest
+  local_artifact_path: FilePath
+}
+
 fn acquire_and_admit_registry_artifact(
   artifact: NpmRegistryArtifact,
+  lock_node_key: NonEmptyStr,
   dest_dir: FilePath,
 ) -> RegistryArtifactAcquisition {
-  match codex_admit_npm_integrity(integrity: artifact.expected_integrity) {
-    CodexNpmIntegritySha1Unsupported { digest } =>
-      RegistryArtifactSha1Unsupported { digest: digest }
-    CodexNpmIntegrityAdmitted { digest: expected } => {
-      let dest = concat(
-        dest_dir as String,
-        concat("/", archive_basename_from_locator(locator: artifact.resolved.locator) as String),
-      ) as FilePath
-      let downloaded = http.Client.DownloadToFile(
-        url: artifact.resolved.locator,
-        destination: dest as NonEmptyStr,
-      )
-      if downloaded.success == false {
-        RegistryArtifactDownloadRefused { locator: artifact.resolved.locator }
-      } else {
-        match admit_observed_archive_digest(
-          expected: expected,
-          observation: observe_package_archive_at_path(
-            locator: artifact.resolved.locator,
-            path: dest,
-          ),
-        ) {
-          PackageArchiveDigestMatched { locator: _, digest } =>
-            RegistryArtifactAdmitted {
-              artifact: artifact,
-              path: dest,
-              digest: digest,
+  match admit_codex_registry_artifact_locator(locator: artifact.resolved.locator) {
+    CodexRegistryLocatorRefused { locator, cause } =>
+      RegistryArtifactLocatorRefused {
+        admission: CodexRegistryLocatorRefused { locator: locator, cause: cause },
+      }
+    CodexRegistryLocatorAdmitted { locator: _ } =>
+      match codex_admit_npm_integrity(integrity: artifact.expected_integrity) {
+        CodexNpmIntegritySha1Unsupported { digest } =>
+          RegistryArtifactSha1Unsupported { digest: digest }
+        CodexNpmIntegrityAdmitted { digest: expected } => {
+          let dest = concat(
+            dest_dir as String,
+            concat("/", staging_archive_name_from_lock_key(lock_node_key: lock_node_key) as String),
+          ) as FilePath
+          let downloaded = http.Client.DownloadToFile(
+            url: artifact.resolved.locator,
+            destination: dest as NonEmptyStr,
+          )
+          if downloaded.success == false {
+            RegistryArtifactDownloadRefused { locator: artifact.resolved.locator }
+          } else {
+            match admit_observed_archive_digest(
+              expected: expected,
+              observation: observe_package_archive_at_path(
+                locator: artifact.resolved.locator,
+                path: dest,
+              ),
+            ) {
+              PackageArchiveDigestMatched { locator: _, digest } =>
+                RegistryArtifactAdmitted {
+                  receipt: AdmittedPackageArtifactReceipt {
+                    lock_node_key: lock_node_key,
+                    package_name: artifact.package.name,
+                    version: artifact.version as String as NonEmptyStr,
+                    source_locator: artifact.resolved.locator,
+                    expected_digest: expected,
+                    observed_digest: digest,
+                    local_artifact_path: dest,
+                  },
+                }
+              other => RegistryArtifactIntegrityRefused { admission: other }
             }
-          other => RegistryArtifactIntegrityRefused { admission: other }
+          }
         }
       }
-    }
   }
 }
 
@@ -392,66 +465,225 @@ fn observe_codex_npm_runtime_target() -> CodexNpmRuntimeTargetObservation {
   }
 }
 
-fn npm_platform_list_contains(
-  values: List<NonEmptyStr>,
-  needle: NonEmptyStr,
-) -> Bool {
-  fold(
-    values,
-    init: false,
-    f: (acc, value) => acc || value == needle,
-  )
+data codex_exact_platform_lock_key_note: String = "FIRST PROFILE PRODUCT POLICY — not a general npm resolver. Exactly one wrapper lock-node plus exactly one (os,cpu)→platform lock-node. Empty-edge roster is not treated as a resolved dependency graph."
+
+fn codex_platform_lock_path_key(target: CodexNpmRuntimeTarget) -> NonEmptyStr? {
+  if (target.os as String) == "linux" && (target.cpu as String) == "arm64" {
+    Present { value: "node_modules/@openai/codex-linux-arm64" as NonEmptyStr }
+  } else if (target.os as String) == "linux" && (target.cpu as String) == "x64" {
+    Present { value: "node_modules/@openai/codex-linux-x64" as NonEmptyStr }
+  } else if (target.os as String) == "darwin" && (target.cpu as String) == "arm64" {
+    Present { value: "node_modules/@openai/codex-darwin-arm64" as NonEmptyStr }
+  } else if (target.os as String) == "darwin" && (target.cpu as String) == "x64" {
+    Present { value: "node_modules/@openai/codex-darwin-x64" as NonEmptyStr }
+  } else if (target.os as String) == "win32" && (target.cpu as String) == "arm64" {
+    Present { value: "node_modules/@openai/codex-win32-arm64" as NonEmptyStr }
+  } else if (target.os as String) == "win32" && (target.cpu as String) == "x64" {
+    Present { value: "node_modules/@openai/codex-win32-x64" as NonEmptyStr }
+  } else {
+    none
+  }
 }
 
-fn npm_platform_constraint_matches_target(
-  platform: NpmPlatformConstraint,
-  target: CodexNpmRuntimeTarget,
-) -> Bool {
-  let os_ok = if count(platform.os) == 0 {
-    true
+fn codex_native_executable_rel(target: CodexNpmRuntimeTarget) -> NonEmptyStr? {
+  if (target.os as String) == "linux" && (target.cpu as String) == "arm64" {
+    Present {
+      value: "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" as NonEmptyStr,
+    }
+  } else if (target.os as String) == "linux" && (target.cpu as String) == "x64" {
+    Present {
+      value: "node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex" as NonEmptyStr,
+    }
+  } else if (target.os as String) == "darwin" && (target.cpu as String) == "arm64" {
+    Present {
+      value: "node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex" as NonEmptyStr,
+    }
+  } else if (target.os as String) == "darwin" && (target.cpu as String) == "x64" {
+    Present {
+      value: "node_modules/@openai/codex-darwin-x64/vendor/x86_64-apple-darwin/bin/codex" as NonEmptyStr,
+    }
   } else {
-    npm_platform_list_contains(values: platform.os, needle: target.os)
+    none
   }
-  let cpu_ok = if count(platform.cpu) == 0 {
-    true
-  } else {
-    npm_platform_list_contains(values: platform.cpu, needle: target.cpu)
-  }
-  os_ok && cpu_ok
 }
 
-fn codex_node_is_target_required(
-  node: CodexPackageLockNode,
+type CodexTargetPackageLookup
+  = CodexTargetPackageAbsent {
+      key: NonEmptyStr
+    }
+  | CodexTargetPackageUnique {
+      node: CodexPackageLockNode
+      artifact: NpmRegistryArtifact
+    }
+  | CodexTargetPackageDuplicate {
+      key: NonEmptyStr
+      count: Int
+    }
+  | CodexTargetPackageWrongMetadata {
+      key: NonEmptyStr
+      cause: NonEmptyStr
+    }
+
+fn codex_target_package_lookup(
+  graph: CodexPackageLockGraph,
   target: CodexNpmRuntimeTarget,
-) -> Bool {
-  match node.selection {
-    NpmRootProject { manifest_identity: _ } => false
-    NpmRegistrySelected { artifact: _ } =>
-      if node.metadata.flags.optional {
-        npm_platform_constraint_matches_target(
-          platform: node.metadata.platform,
-          target: target,
-        )
-      } else {
-        true
+) -> CodexTargetPackageLookup {
+  match codex_platform_lock_path_key(target: target) {
+    Absent =>
+      CodexTargetPackageWrongMetadata {
+        key: "unsupported-target" as NonEmptyStr,
+        cause: "no exact platform lock-node key for observed os/cpu" as NonEmptyStr,
       }
+    Present { value: path_key } => {
+      let key = NpmRelativeLockPath { key: path_key }
+      match package_lock_lookup_node(graph: graph, key: key) {
+        PackageLockNodeAbsent { key: _ } =>
+          CodexTargetPackageAbsent { key: path_key }
+        PackageLockNodeDuplicate { key: _, count } =>
+          CodexTargetPackageDuplicate { key: path_key, count: count }
+        PackageLockNodeUnique { node } =>
+          match node.selection {
+            NpmRootProject { manifest_identity: _ } =>
+              CodexTargetPackageWrongMetadata {
+                key: path_key,
+                cause: "platform lock-node is root project, not registry artifact" as NonEmptyStr,
+              }
+            NpmRegistrySelected { artifact } =>
+              if node.metadata.flags.optional == false {
+                CodexTargetPackageWrongMetadata {
+                  key: path_key,
+                  cause: "platform lock-node is not marked optional" as NonEmptyStr,
+                }
+              } else {
+                CodexTargetPackageUnique { node: node, artifact: artifact }
+              }
+          }
+      }
+    }
   }
 }
 
-fn codex_target_required_registry_nodes(
-  nodes: List<CodexPackageLockNode>,
+type CodexSelectedNodeAdmission
+  = CodexSelectedNodeAdmitted {
+      node: CodexPackageLockNode
+      artifact: NpmRegistryArtifact
+      lock_node_key: NonEmptyStr
+    }
+  | CodexSelectedNodeInstallScriptRefused {
+      lock_node_key: NonEmptyStr
+    }
+
+data codex_install_script_refusal_note: String = "npm ci --ignore-scripts prevents execution; it does not admit a package whose lock row requires an unadmitted build effect. First Codex profile refuses any selected node with hasInstallScript=true. Measured 0.146.0 closure has none — no exception roster."
+
+fn admit_codex_selected_node(
+  node: CodexPackageLockNode,
+  artifact: NpmRegistryArtifact,
+  lock_node_key: NonEmptyStr,
+) -> CodexSelectedNodeAdmission {
+  if node.metadata.flags.has_install_script {
+    CodexSelectedNodeInstallScriptRefused { lock_node_key: lock_node_key }
+  } else {
+    CodexSelectedNodeAdmitted {
+      node: node,
+      artifact: artifact,
+      lock_node_key: lock_node_key,
+    }
+  }
+}
+
+type CodexExactTargetClosure
+  = CodexExactTargetClosureSelected {
+      wrapper: CodexSelectedNodeAdmission
+      platform: CodexSelectedNodeAdmission
+      target: CodexNpmRuntimeTarget
+      platform_lock_key: NonEmptyStr
+      native_executable_rel: NonEmptyStr
+    }
+  | CodexExactTargetClosureWrapperRefused {
+      lookup: CodexWrapperLookup
+    }
+  | CodexExactTargetClosurePlatformRefused {
+      lookup: CodexTargetPackageLookup
+    }
+  | CodexExactTargetClosureInstallScriptRefused {
+      lock_node_key: NonEmptyStr
+    }
+  | CodexExactTargetClosureNativePathAbsent {
+      target: CodexNpmRuntimeTarget
+    }
+
+fn select_codex_exact_target_closure(
+  graph: CodexPackageLockGraph,
   target: CodexNpmRuntimeTarget,
-) -> List<CodexPackageLockNode> {
-  fold(
-    nodes,
-    init: [],
-    f: (acc, node) =>
-      if codex_node_is_target_required(node: node, target: target) {
-        acc |> list_push(node)
-      } else {
-        acc
-      },
-  )
+) -> CodexExactTargetClosure {
+  match codex_wrapper_lookup(graph: graph) {
+    CodexWrapperUnique { node: wrapper_node, artifact: wrapper_artifact } =>
+      match admit_codex_selected_node(
+        node: wrapper_node,
+        artifact: wrapper_artifact,
+        lock_node_key: codex_wrapper_lock_path_key,
+      ) {
+        CodexSelectedNodeInstallScriptRefused { lock_node_key } =>
+          CodexExactTargetClosureInstallScriptRefused {
+            lock_node_key: lock_node_key,
+          }
+        CodexSelectedNodeAdmitted {
+          node: w_node,
+          artifact: w_art,
+          lock_node_key: w_key,
+        } =>
+          match codex_target_package_lookup(graph: graph, target: target) {
+            CodexTargetPackageUnique { node: plat_node, artifact: plat_artifact } =>
+              match lock_path_key_rel(key: plat_node.key) {
+                Absent =>
+                  CodexExactTargetClosurePlatformRefused {
+                    lookup: CodexTargetPackageWrongMetadata {
+                      key: "platform" as NonEmptyStr,
+                      cause: "platform node key is root" as NonEmptyStr,
+                    },
+                  }
+                Present { value: plat_key } =>
+                  match admit_codex_selected_node(
+                    node: plat_node,
+                    artifact: plat_artifact,
+                    lock_node_key: plat_key,
+                  ) {
+                    CodexSelectedNodeInstallScriptRefused { lock_node_key } =>
+                      CodexExactTargetClosureInstallScriptRefused {
+                        lock_node_key: lock_node_key,
+                      }
+                    CodexSelectedNodeAdmitted {
+                      node: p_node,
+                      artifact: p_art,
+                      lock_node_key: p_key,
+                    } =>
+                      match codex_native_executable_rel(target: target) {
+                        Absent =>
+                          CodexExactTargetClosureNativePathAbsent { target: target }
+                        Present { value: native_rel } =>
+                          CodexExactTargetClosureSelected {
+                            wrapper: CodexSelectedNodeAdmitted {
+                              node: w_node,
+                              artifact: w_art,
+                              lock_node_key: w_key,
+                            },
+                            platform: CodexSelectedNodeAdmitted {
+                              node: p_node,
+                              artifact: p_art,
+                              lock_node_key: p_key,
+                            },
+                            target: target,
+                            platform_lock_key: p_key,
+                            native_executable_rel: native_rel,
+                          }
+                      }
+                  }
+              }
+            other => CodexExactTargetClosurePlatformRefused { lookup: other }
+          }
+      }
+    other => CodexExactTargetClosureWrapperRefused { lookup: other }
+  }
 }
 
 fn lock_path_key_rel(key: NpmLockPathKey) -> NonEmptyStr? {
@@ -463,29 +695,57 @@ fn lock_path_key_rel(key: NpmLockPathKey) -> NonEmptyStr? {
 
 type CodexRuntimeBundle {
   root: FilePath
-  executable_rel: NonEmptyStr
+  native_executable_rel: NonEmptyStr
+  wrapper_executable_rel: NonEmptyStr
   platform_package_rel: NonEmptyStr
-  admitted_digests: List<Sha512Digest>
-  identity: ContentHash
+  target: CodexNpmRuntimeTarget
+  admitted_packages: List<AdmittedPackageArtifactReceipt>
+  admitted_package_set_identity: ContentHash
 }
 
-fn codex_bundle_identity_from_admitted_digests(
-  digests: List<Sha512Digest>,
-) -> ContentHash {
-  let joined = fold(
-    digests,
-    init: "" as String,
-    f: (acc, d) =>
-      if acc == "" {
-        d.hex as String
-      } else {
-        concat(acc, concat("|", d.hex as String))
-      },
+data admitted_package_set_identity_note: String = "AdmittedCodexPackageSetIdentity: SHA-512 over a canonical newline record of (lock_node_key, version, source_locator, observed_digest), rows ordered wrapper-then-platform (exact two-node closure). This is NOT yet the full CodexRuntimeBundleReceipt (manifest/lock/toolchain/tree/adapter/protocol). dissolve-on: that receipt fold."
+
+fn admitted_package_receipt_canonical_line(
+  receipt: AdmittedPackageArtifactReceipt,
+) -> String {
+  concat(
+    receipt.lock_node_key as String,
+    concat(
+      "\t",
+      concat(
+        receipt.version as String,
+        concat(
+          "\t",
+          concat(
+            receipt.source_locator as String,
+            concat("\t", receipt.observed_digest.hex as String),
+          ),
+        ),
+      ),
+    ),
   )
-  if joined == "" {
-    content_hash_of_value(value: "empty-admitted-closure" as NonEmptyStr)
+}
+
+fn observe_admitted_package_set_identity(
+  receipts: List<AdmittedPackageArtifactReceipt>,
+  staging_dir: FilePath,
+) -> ContentHash? {
+  let body = fold(
+    receipts,
+    init: "" as String,
+    f: (acc, receipt) =>
+      concat(acc, concat(admitted_package_receipt_canonical_line(receipt: receipt), "\n")),
+  )
+  let path = concat(staging_dir as String, "/admitted-package-set.canonical")
+  let wrote = Filesystem.Write(path: path, content: body)
+  if wrote.success == false {
+    none
   } else {
-    content_hash_of_value(value: joined as NonEmptyStr)
+    match sha512sum_observe_file(path: path) {
+      Sha512FileObserved { digest } =>
+        Present { value: as_content_hash_sha512(digest: digest) }
+      Sha512FileObservationRefused { cause: _ } => none
+    }
   }
 }
 
@@ -496,14 +756,11 @@ type CodexRuntimeMaterialization
   | CodexRuntimeLockRefused {
       admission: CodexPackageLockAdmission
     }
-  | CodexRuntimeWrapperLookupRefused {
-      lookup: CodexWrapperLookup
+  | CodexRuntimeExactClosureRefused {
+      closure: CodexExactTargetClosure
     }
   | CodexRuntimeTargetObservationRefused {
       observation: CodexNpmRuntimeTargetObservation
-    }
-  | CodexRuntimeTargetClosureIncomplete {
-      cause: NonEmptyStr
     }
   | CodexRuntimeAcquisitionRefused {
       acquisition: RegistryArtifactAcquisition
@@ -524,72 +781,84 @@ type CodexRuntimeMaterialization
   | CodexRuntimePlatformPackageAbsent {
       path: FilePath
     }
+  | CodexRuntimeIdentityObservationRefused
 
 type TargetClosureAcquisitionAcc
   = TargetClosureAcquisitionOk {
-      admitted: List<RegistryArtifactAcquisition>
+      admitted: List<AdmittedPackageArtifactReceipt>
     }
   | TargetClosureAcquisitionFailed {
       acquisition: RegistryArtifactAcquisition
     }
 
-fn acquire_and_admit_target_closure(
-  nodes: List<CodexPackageLockNode>,
+fn acquire_and_admit_selected_pair(
+  wrapper: CodexSelectedNodeAdmission,
+  platform: CodexSelectedNodeAdmission,
   dest_dir: FilePath,
 ) -> TargetClosureAcquisitionAcc {
-  fold(
-    nodes,
-    init: TargetClosureAcquisitionOk { admitted: [] },
-    f: (acc, node) => match acc {
-      TargetClosureAcquisitionFailed { acquisition } =>
-        TargetClosureAcquisitionFailed { acquisition: acquisition }
-      TargetClosureAcquisitionOk { admitted } =>
-        match node.selection {
-          NpmRootProject { manifest_identity: _ } =>
-            TargetClosureAcquisitionOk { admitted: admitted }
-          NpmRegistrySelected { artifact } =>
-            match acquire_and_admit_registry_artifact(
-              artifact: artifact,
-              dest_dir: dest_dir,
-            ) {
-              RegistryArtifactAdmitted { artifact: a, path, digest } =>
-                TargetClosureAcquisitionOk {
-                  admitted: admitted |> list_push(
-                    RegistryArtifactAdmitted {
-                      artifact: a,
-                      path: path,
-                      digest: digest,
-                    },
-                  ),
-                }
-              other => TargetClosureAcquisitionFailed { acquisition: other }
-            }
-        }
-    },
-  )
+  match wrapper {
+    CodexSelectedNodeInstallScriptRefused { lock_node_key: _ } =>
+      TargetClosureAcquisitionFailed {
+        acquisition: RegistryArtifactDownloadRefused {
+          locator: "install-script-refused" as NonEmptyStr,
+        },
+      }
+    CodexSelectedNodeAdmitted { node: _, artifact: w_art, lock_node_key: w_key } =>
+      match acquire_and_admit_registry_artifact(
+        artifact: w_art,
+        lock_node_key: w_key,
+        dest_dir: dest_dir,
+      ) {
+        RegistryArtifactAdmitted { receipt: w_receipt } =>
+          match platform {
+            CodexSelectedNodeInstallScriptRefused { lock_node_key: _ } =>
+              TargetClosureAcquisitionFailed {
+                acquisition: RegistryArtifactDownloadRefused {
+                  locator: "install-script-refused" as NonEmptyStr,
+                },
+              }
+            CodexSelectedNodeAdmitted {
+              node: _,
+              artifact: p_art,
+              lock_node_key: p_key,
+            } =>
+              match acquire_and_admit_registry_artifact(
+                artifact: p_art,
+                lock_node_key: p_key,
+                dest_dir: dest_dir,
+              ) {
+                RegistryArtifactAdmitted { receipt: p_receipt } =>
+                  TargetClosureAcquisitionOk {
+                    admitted: [w_receipt, p_receipt],
+                  }
+                other => TargetClosureAcquisitionFailed { acquisition: other }
+              }
+          }
+        other => TargetClosureAcquisitionFailed { acquisition: other }
+      }
+  }
 }
 
 fn seed_npm_cache_from_admitted(
   cache: FilePath,
-  admitted: List<RegistryArtifactAcquisition>,
+  admitted: List<AdmittedPackageArtifactReceipt>,
 ) -> FilePath? {
   fold(
     admitted,
     init: none,
-    f: (fail, item) => match fail {
+    f: (fail, receipt) => match fail {
       Present { value: _ } => fail
-      Absent =>
-        match item {
-          RegistryArtifactAdmitted { artifact: _, path, digest: _ } => {
-            let added = npm.Cache.Add(cache: cache, tarball: path)
-            if added.success == false {
-              Present { value: path }
-            } else {
-              none
-            }
-          }
-          _ => Present { value: cache }
+      Absent => {
+        let added = npm.Cache.Add(
+          cache: cache,
+          tarball: receipt.local_artifact_path,
+        )
+        if added.success == false {
+          Present { value: receipt.local_artifact_path }
+        } else {
+          none
         }
+      }
     },
   )
 }
@@ -600,152 +869,119 @@ fn materialize_codex_runtime_bundle(
   lock_src: FilePath,
 ) -> CodexRuntimeMaterialization {
   match admit_codex_package_lock_text(text: lock_text) {
-    CodexPackageLockAdmitted { graph, nodes, registry_artifacts: _ } =>
-      match codex_wrapper_lookup(graph: graph) {
-        CodexWrapperUnique { node: _, artifact: _ } =>
-          match observe_codex_npm_runtime_target() {
-            CodexNpmRuntimeTargetObserved { target } => {
-              let required = codex_target_required_registry_nodes(
-                nodes: nodes,
-                target: target,
-              )
-              if count(required) < 2 {
-                CodexRuntimeTargetClosureIncomplete {
-                  cause: "target closure missing wrapper or platform package" as NonEmptyStr,
+    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match observe_codex_npm_runtime_target() {
+        CodexNpmRuntimeTargetObserved { target } =>
+          match select_codex_exact_target_closure(graph: graph, target: target) {
+            CodexExactTargetClosureSelected {
+              wrapper,
+              platform,
+              target: selected_target,
+              platform_lock_key,
+              native_executable_rel,
+            } => {
+              let staging = shell.Mktemp.Dir()
+              if staging.success == false {
+                CodexRuntimeWorkspaceRefused {
+                  cause: "staging mktemp failed" as NonEmptyStr,
                 }
               } else {
-                let staging = shell.Mktemp.Dir()
-                if staging.success == false {
-                  CodexRuntimeWorkspaceRefused {
-                    cause: "staging mktemp failed" as NonEmptyStr,
-                  }
-                } else {
-                  match acquire_and_admit_target_closure(
-                    nodes: required,
-                    dest_dir: staging.path,
-                  ) {
-                    TargetClosureAcquisitionFailed { acquisition } =>
-                      CodexRuntimeAcquisitionRefused { acquisition: acquisition }
-                    TargetClosureAcquisitionOk { admitted } => {
-                      let cache = shell.Mktemp.Dir()
-                      if cache.success == false {
-                        CodexRuntimeWorkspaceRefused {
-                          cause: "cache mktemp failed" as NonEmptyStr,
-                        }
-                      } else {
-                        match seed_npm_cache_from_admitted(
-                          cache: cache.path,
-                          admitted: admitted,
-                        ) {
-                          Present { value: failed_path } =>
-                            CodexRuntimeCacheSeedRefused {
-                              path: failed_path,
-                              stderr: "npm cache add refused" as String,
+                match acquire_and_admit_selected_pair(
+                  wrapper: wrapper,
+                  platform: platform,
+                  dest_dir: staging.path,
+                ) {
+                  TargetClosureAcquisitionFailed { acquisition } =>
+                    CodexRuntimeAcquisitionRefused { acquisition: acquisition }
+                  TargetClosureAcquisitionOk { admitted } => {
+                    let cache = shell.Mktemp.Dir()
+                    if cache.success == false {
+                      CodexRuntimeWorkspaceRefused {
+                        cause: "cache mktemp failed" as NonEmptyStr,
+                      }
+                    } else {
+                      match seed_npm_cache_from_admitted(
+                        cache: cache.path,
+                        admitted: admitted,
+                      ) {
+                        Present { value: failed_path } =>
+                          CodexRuntimeCacheSeedRefused {
+                            path: failed_path,
+                            stderr: "npm cache add refused" as String,
+                          }
+                        Absent => {
+                          let build = shell.Mktemp.Dir()
+                          if build.success == false {
+                            CodexRuntimeWorkspaceRefused {
+                              cause: "build mktemp failed" as NonEmptyStr,
                             }
-                          Absent => {
-                            let build = shell.Mktemp.Dir()
-                            if build.success == false {
+                          } else {
+                            let man_dest = concat(
+                              build.path as String,
+                              "/package.json",
+                            ) as FilePath
+                            let lock_dest = concat(
+                              build.path as String,
+                              "/package-lock.json",
+                            ) as FilePath
+                            let copied_man = shell.Copy.File(
+                              source: manifest_src,
+                              destination: man_dest,
+                            )
+                            let copied_lock = shell.Copy.File(
+                              source: lock_src,
+                              destination: lock_dest,
+                            )
+                            if copied_man.success == false {
                               CodexRuntimeWorkspaceRefused {
-                                cause: "build mktemp failed" as NonEmptyStr,
+                                cause: "copy package.json failed" as NonEmptyStr,
+                              }
+                            } else if copied_lock.success == false {
+                              CodexRuntimeWorkspaceRefused {
+                                cause: "copy package-lock.json failed" as NonEmptyStr,
                               }
                             } else {
-                              let man_dest = concat(
-                                build.path as String,
-                                "/package.json",
-                              ) as FilePath
-                              let lock_dest = concat(
-                                build.path as String,
-                                "/package-lock.json",
-                              ) as FilePath
-                              let copied_man = shell.Copy.File(
-                                source: manifest_src,
-                                destination: man_dest,
+                              let installed = npm.Ci.IgnoreScriptsOffline(
+                                workdir: build.path,
+                                cache: cache.path,
                               )
-                              let copied_lock = shell.Copy.File(
-                                source: lock_src,
-                                destination: lock_dest,
-                              )
-                              if copied_man.success == false {
-                                CodexRuntimeWorkspaceRefused {
-                                  cause: "copy package.json failed" as NonEmptyStr,
-                                }
-                              } else if copied_lock.success == false {
-                                CodexRuntimeWorkspaceRefused {
-                                  cause: "copy package-lock.json failed" as NonEmptyStr,
+                              if installed.success == false {
+                                CodexRuntimeNpmCiOfflineRefused {
+                                  stderr: installed.stderr,
                                 }
                               } else {
-                                let installed = npm.Ci.IgnoreScriptsOffline(
-                                  workdir: build.path,
-                                  cache: cache.path,
-                                )
-                                if installed.success == false {
-                                  CodexRuntimeNpmCiOfflineRefused {
-                                    stderr: installed.stderr,
-                                  }
+                                let native_path = concat(
+                                  build.path as String,
+                                  concat("/", native_executable_rel as String),
+                                ) as FilePath
+                                let plat_path = concat(
+                                  build.path as String,
+                                  concat("/", platform_lock_key as String),
+                                ) as FilePath
+                                let native_present = shell.Test.IsFile(path: native_path)
+                                let plat_present = shell.Test.IsDirectory(path: plat_path)
+                                if native_present.is_file == false {
+                                  CodexRuntimeExecutableAbsent { path: native_path }
+                                } else if plat_present.is_directory == false {
+                                  CodexRuntimePlatformPackageAbsent { path: plat_path }
                                 } else {
-                                  let platform_rel = fold(
-                                    required,
-                                    init: none,
-                                    f: (acc, node) => match acc {
-                                      Present { value: _ } => acc
-                                      Absent =>
-                                        if node.metadata.flags.optional {
-                                          lock_path_key_rel(key: node.key)
-                                        } else {
-                                          none
-                                        }
-                                    },
-                                  )
-                                  match platform_rel {
-                                    Absent =>
-                                      CodexRuntimeTargetClosureIncomplete {
-                                        cause: "no optional platform package in target closure" as NonEmptyStr,
+                                  match observe_admitted_package_set_identity(
+                                    receipts: admitted,
+                                    staging_dir: staging.path,
+                                  ) {
+                                    Absent => CodexRuntimeIdentityObservationRefused
+                                    Present { value: set_id } =>
+                                      CodexRuntimeMaterialized {
+                                        bundle: CodexRuntimeBundle {
+                                          root: build.path,
+                                          native_executable_rel: native_executable_rel,
+                                          wrapper_executable_rel: codex_bundle_executable_rel,
+                                          platform_package_rel: platform_lock_key,
+                                          target: selected_target,
+                                          admitted_packages: admitted,
+                                          admitted_package_set_identity: set_id,
+                                        },
                                       }
-                                    Present { value: plat } => {
-                                      let exe = concat(
-                                        build.path as String,
-                                        concat("/", codex_bundle_executable_rel as String),
-                                      ) as FilePath
-                                      let plat_path = concat(
-                                        build.path as String,
-                                        concat("/", plat as String),
-                                      ) as FilePath
-                                      let exe_present = shell.Test.IsFile(path: exe)
-                                      let plat_present = shell.Test.IsDirectory(
-                                        path: plat_path,
-                                      )
-                                      if exe_present.is_file == false {
-                                        CodexRuntimeExecutableAbsent { path: exe }
-                                      } else if plat_present.is_directory == false {
-                                        CodexRuntimePlatformPackageAbsent {
-                                          path: plat_path,
-                                        }
-                                      } else {
-                                        let digests = fold(
-                                          admitted,
-                                          init: [],
-                                          f: (acc, item) => match item {
-                                            RegistryArtifactAdmitted {
-                                              artifact: _,
-                                              path: _,
-                                              digest,
-                                            } => acc |> list_push(digest)
-                                            _ => acc
-                                          },
-                                        )
-                                        CodexRuntimeMaterialized {
-                                          bundle: CodexRuntimeBundle {
-                                            root: build.path,
-                                            executable_rel: codex_bundle_executable_rel,
-                                            platform_package_rel: plat,
-                                            admitted_digests: digests,
-                                            identity: codex_bundle_identity_from_admitted_digests(
-                                              digests: digests,
-                                            ),
-                                          },
-                                        }
-                                      }
-                                    }
                                   }
                                 }
                               }
@@ -758,9 +994,9 @@ fn materialize_codex_runtime_bundle(
                 }
               }
             }
-            other => CodexRuntimeTargetObservationRefused { observation: other }
+            other => CodexRuntimeExactClosureRefused { closure: other }
           }
-        other => CodexRuntimeWrapperLookupRefused { lookup: other }
+        other => CodexRuntimeTargetObservationRefused { observation: other }
       }
     other => CodexRuntimeLockRefused { admission: other }
   }
