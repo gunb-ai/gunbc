@@ -1114,6 +1114,12 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
   },
   SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag",
+    function: "direct_rust_door_production_group_closing_expectation_holds",
+    reason: "THE ONE scheduled production walk for the direct-rust-door lane, replacing four superseded roots deleted in the same change (provenanced-artifact, closing-contract, written-source-assessment, production-admissions). Measured 16004ms on the pre-consolidation tree; ingest-assemble-infer-emit exceeds the 5s fast-lane budget, so this is eval-budget routing. Group ALGEBRA carries no production cost — it is discriminated by planted-observation controls in v2.test.self_host.direct_rust_door_group_algebra, which stay in per-PR discovery",
+    dissolve_on: "the ingest-path inferred tree survives emission and every leaf reaches LeafEstablished — the paired known_red row deletes in the completing change and this promotes to the lane's permanent regression wall"
+  },
+  SubstrateLongLaneRow {
     entry: "dag/test/claim/long/generated_artifact_drift_fixed_point_witness_test.dag",
     function: "witness_committed_is_fixed_point",
     reason: "ReadsLiveTree fixed-point receipt: reads every committed artifact from disk and asserts artifact_generate reproduces bytes byte-for-byte. Measured 1005ms warm on srv_fleet_arm64 (witness_row_cost_basis) but flaked at 5004ms in falsifier discovery-corpus batch 1 under host contention (run 30550328673, BudgetExceeded) — borderline over the 5s fast-lane budget",
@@ -1124,54 +1130,6 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "witness_committed_fixed_point_red_control",
     reason: "RED control paired with witness_committed_is_fixed_point (same file, same Filesystem.Read + artifact_generate cost shape)",
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/direct_rust_door_emission_witness_test.dag",
-    function: "witness_direct_rust_door_provenanced_artifact_holds",
-    reason: "Lane B ingest-assemble-infer-emit provenance witness exceeded 5000ms fast-lane budget on PR CI (c80605a): generate_provenanced_rust_candidate_from_ingest runs full parse/normalize/resolve/infer/emit closure — eval-budget routing only",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery"
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_acceptance_test.dag",
-    function: "witness_v2_emitter_direct_rust_door_closing_contract_holds",
-    reason: "same ingest-path closure cost as direct_rust_door emission long witness (exceeds 5s fast-lane budget). Witness REDs by execution: ingest-path assess_written_source_independent_of_seed_emitter does not establish WrittenSourceIndependentOfSeedEmitter — functional gap tracked on explicit_witness_admission known_red row; long-lane enrollment is eval-budget routing only",
-    dissolve_on: "witness_v2_emitter_direct_rust_door_closing_contract_holds greens with frontier zero (known_red row deletes per v2_emitter_direct_rust_door_contract_dissolution_note) AND eval lands under gunbc_ci_fast_lane_witness_eval_budget — then re-enrolls per-PR discovery"
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_contract_test.dag",
-    function: "witness_written_source_assessment_establishes_on_fixture",
-    reason: "production assess_written_source_independent_of_seed_emitter runs ingest-path emit and exceeds 5s fast-lane budget. Ingest-path does not yet establish WrittenSourceIndependentOfSeedEmitter (functional gap on closing-contract path, not slowness alone)",
-    dissolve_on: "assess_written_source_independent_of_seed_emitter establishes WrittenSourceIndependentOfSeedEmitter on fixture AND eval lands under gunbc_ci_fast_lane_witness_eval_budget — then re-enrolls per-PR discovery"
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag",
-    function: "direct_rust_door_production_stops_at_emission",
-    reason: "stage-located control on the ingest-path production walk: assembly and inference ACCEPT, emission REJECTS. Measured 14276ms at abaa23e5d3, same ingest-assemble-infer-emit closure cost as its sibling direct-door long rows — eval-budget routing. GREEN today and it must go RED when the lane closes; that flip is the point, not a regression",
-    dissolve_on: "direct_rust_door_production_reaches_artifact greens — this control flips red in the same change and is REPLACED by the artifact row rather than relaxed; it deletes only when emission-stop is no longer a reachable state"
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag",
-    function: "direct_rust_door_production_reaches_artifact",
-    reason: "the honest production claim for the lane, RED BY EXECUTION at abaa23e5d3 (measured 15281ms): the real inferred tree does not survive emission. Distinct from the fixture path, which reaches CargoGreen from a hand-authored inferred tree and therefore never exercises this seam",
-    dissolve_on: "the ingest-path inferred tree emits and this witness greens by execution — the paired known_red row deletes in the same change and this promotes to a standing regression wall"
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag",
-    function: "direct_rust_door_missing_rule_leaf_established",
-    reason: "the group's one GREEN leaf, kept as the discrimination control proving the parent's red is located rather than everything-is-red. Measured 15551ms at abaa23e5d3 — shares the production walk cost because the group fold is evaluated to reach the leaf",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget and re-enrolls per-PR discovery"
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag",
-    function: "direct_rust_door_production_group_closing_expectation_holds",
-    reason: "the higher-order group expectation over four leaves derived from ONE production walk (source fidelity, declared producer closure, SourceProduced qualification, missing-rule refusal). RED at abaa23e5d3 because production stops at emission, so three leaves report LeafNotReached rather than a false that would read as refuted. Measured 16004ms",
-    dissolve_on: "every leaf reaches LeafEstablished — the paired known_red row deletes in the same change and this promotes to the lane's composed regression wall"
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_contract_test.dag",
-    function: "witness_production_admissions_close_contract_holds",
-    reason: "v2_emitter_direct_rust_door_acceptance_admissions runs both production folds including ingest-path written-source assessment; exceeds 5s fast-lane budget. Closing frontier nonzero until ingest-path establishes WrittenSourceIndependentOfSeedEmitter (functional gap, not slowness alone)",
-    dissolve_on: "production admissions close with frontier zero AND eval lands under gunbc_ci_fast_lane_witness_eval_budget — then re-enrolls per-PR discovery"
   }
 ]
 

@@ -1,0 +1,183 @@
+module v2.test.self_host.direct_rust_door_group_algebra
+
+import v2.compiler.self_host.candidate_generation {
+  ArtifactProduced,
+  EmissionRejected,
+  ProvenancedRustArtifact,
+  ProvenancedRustEmissionObservation,
+}
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_expected_source,
+  direct_rust_door_module_path,
+}
+import v2.compiler.self_host.emitter_producer_provenance {
+  BuildRefused,
+  ProducerEmissionReceipt,
+  V2EmitterInterpreted,
+  mint_producer_emission_receipt,
+  realized_closure_for_v2_direct_rust_door_emit_run,
+  source_produced_qualifications,
+}
+import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
+  DirectRustDoorEstablished,
+  DirectRustDoorRefused,
+  LeafEstablished,
+  LeafNotReached,
+  LeafRefused,
+  MissingRuleAcceptedDespiteGap,
+  MissingTranslationRuleRefuses,
+  direct_rust_door_group_from_observations,
+  direct_rust_door_missing_rule_leaf,
+  direct_rust_door_production_group_holds,
+  direct_rust_door_source_fidelity_leaf,
+}
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.infer { InferredTree }
+import v2.extdeps.languages.rust { rust_fixture_emitted_add_fn }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Unavailable,
+  diagnostics_singleton,
+  port_locus,
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+data direct_rust_door_group_algebra_note: String = "FAST lane: discriminates the direct-rust-door group ALGEBRA over PLANTED observations, paying ZERO production walks — no ingest, assemble, infer, or emit runs here. This is the cheap half of the composition pilot: the one canonical heavy root in long/direct_rust_door_production_group_test.dag establishes what production actually does, and these controls establish what the group does with any observation it is handed. Splitting them is what keeps the expensive walk at exactly one occurrence while the group's behaviour stays fully discriminated."
+
+fn planted_emission_rejected() -> ProvenancedRustEmissionObservation {
+  EmissionRejected {
+    diagnostics: diagnostics_singleton(
+      d: Diagnostic {
+        reason: ^direct_rust_door_group_algebra_planted_emission_refusal,
+        at: port_locus(port: ^direct_rust_door_group_algebra),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    )
+  }
+}
+
+fn planted_artifact_with_source(source_text: String) -> ProvenancedRustEmissionObservation {
+  match mint_producer_emission_receipt(
+    module_path: direct_rust_door_module_path,
+    producer: V2EmitterInterpreted,
+    qualifications: source_produced_qualifications,
+    build_result: BuildRefused { cause: ^direct_rust_door_group_algebra_planted_build },
+    behavioral_probe_entry: direct_rust_door_module_path,
+    behavioral_probe_function: "direct_rust_door_group_algebra_planted",
+    realized_closure: realized_closure_for_v2_direct_rust_door_emit_run()
+  ) {
+    Present { value: receipt } =>
+      ArtifactProduced {
+        artifact: ProvenancedRustArtifact {
+          source: Medium { carried: source_text, fidelity: Lossless },
+          emitted: rust_fixture_emitted_add_fn,
+          producer_receipt: receipt
+        }
+      }
+    Absent => planted_emission_rejected()
+  }
+}
+
+fn missing_rule_established() -> DirectRustDoorEstablished {
+  DirectRustDoorEstablished { capability: MissingTranslationRuleRefuses }
+}
+
+test fn emission_rejection_makes_artifact_leaf_not_reached() -> Bool {
+  match direct_rust_door_source_fidelity_leaf(
+    group: direct_rust_door_group_from_observations(
+      emission: planted_emission_rejected(),
+      missing_rule: missing_rule_established()
+    )
+  ) {
+    LeafNotReached { cause: _ } => true
+    LeafEstablished => false
+    LeafRefused { cause: _ } => false
+  }
+}
+
+test fn artifact_with_wrong_source_makes_leaf_refused() -> Bool {
+  match direct_rust_door_source_fidelity_leaf(
+    group: direct_rust_door_group_from_observations(
+      emission: planted_artifact_with_source(source_text: "fn not_the_expected_source() {}"),
+      missing_rule: missing_rule_established()
+    )
+  ) {
+    LeafRefused { cause: _ } => true
+    LeafEstablished => false
+    LeafNotReached { cause: _ } => false
+  }
+}
+
+test fn artifact_with_expected_source_makes_leaf_established() -> Bool {
+  match direct_rust_door_source_fidelity_leaf(
+    group: direct_rust_door_group_from_observations(
+      emission: planted_artifact_with_source(source_text: direct_rust_door_expected_source),
+      missing_rule: missing_rule_established()
+    )
+  ) {
+    LeafEstablished => true
+    LeafRefused { cause: _ } => false
+    LeafNotReached { cause: _ } => false
+  }
+}
+
+test fn all_established_leaves_close_the_parent() -> Bool {
+  direct_rust_door_production_group_holds(
+    group: direct_rust_door_group_from_observations(
+      emission: planted_artifact_with_source(source_text: direct_rust_door_expected_source),
+      missing_rule: missing_rule_established()
+    )
+  )
+}
+
+test fn one_refused_leaf_keeps_the_parent_open() -> Bool {
+  !direct_rust_door_production_group_holds(
+    group: direct_rust_door_group_from_observations(
+      emission: planted_artifact_with_source(source_text: direct_rust_door_expected_source),
+      missing_rule: DirectRustDoorRefused {
+        capability: MissingTranslationRuleRefuses,
+        failure: MissingRuleAcceptedDespiteGap
+      }
+    )
+  )
+}
+
+test fn not_reached_leaf_keeps_the_parent_open() -> Bool {
+  !direct_rust_door_production_group_holds(
+    group: direct_rust_door_group_from_observations(
+      emission: planted_emission_rejected(),
+      missing_rule: missing_rule_established()
+    )
+  )
+}
+
+test fn missing_rule_leaf_projects_its_admission() -> Bool {
+  let established = match direct_rust_door_missing_rule_leaf(
+    group: direct_rust_door_group_from_observations(
+      emission: planted_emission_rejected(),
+      missing_rule: missing_rule_established()
+    )
+  ) {
+    LeafEstablished => true
+    LeafRefused { cause: _ } => false
+    LeafNotReached { cause: _ } => false
+  }
+  let refused = match direct_rust_door_missing_rule_leaf(
+    group: direct_rust_door_group_from_observations(
+      emission: planted_emission_rejected(),
+      missing_rule: DirectRustDoorRefused {
+        capability: MissingTranslationRuleRefuses,
+        failure: MissingRuleAcceptedDespiteGap
+      }
+    )
+  ) {
+    LeafRefused { cause: _ } => true
+    LeafEstablished => false
+    LeafNotReached { cause: _ } => false
+  }
+  established && refused
+}
