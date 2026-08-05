@@ -16,12 +16,17 @@ import extdeps.external_authority { external_subject_ref_eq }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.instrument.pip_boy_3000 {
   pip_boy_3000_manufacturer,
-  pip_boy_3000_settings, pip_boy_3000_setting_label,
+  PipBoy3000Setting, DisplayTimeout, GlitchOnTap, TapThreshold, CrtJitter,
+  VerticalShift, ShowDebugInfo, SoundEffectsVolume, MuteSpeakerWhenHeadphonesConnected,
+  PipBoy3000SettingRow, pip_boy_3000_settings, pip_boy_3000_setting_label,
+  PipBoy3000GlitchMode, GlitchOff, GlitchShort, GlitchPersistent,
   pip_boy_3000_glitch_modes, pip_boy_3000_glitch_mode_label,
   pip_boy_3000_licensing_statement,
 }
 import extdeps.instrument.pip_boy_3000_mk_v {
   pip_boy_mk_v_manufacturer,
+  PipBoyMkVCapability, DisplayColourSelection, DisplayBrightness,
+  QuickNightViewBrightness, DemoMode, Clock, Alarm, AlarmSnooze, FmRadio,
   pip_boy_mk_v_capabilities, pip_boy_mk_v_capability_label,
   pip_boy_mk_v_licensing_statement,
 }
