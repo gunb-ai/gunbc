@@ -291,8 +291,7 @@ fn complexity_contract_subjects_partition_legacy_mixed_row() -> Bool {
       xs: complexity_legacy_mixed_row_scope,
       predicate: fn(claim) { complexity_legacy_row_claim_maps_to_declared_subject(claim: claim) }
     )
-    && length(xs: complexity_legacy_mixed_row_scope)
-      == (length(xs: complexity_derived_kernel_scope_statement) + length(xs: complexity_optimality_scope_statement))
+    && length(xs: complexity_legacy_mixed_row_scope) == (length(xs: complexity_derived_kernel_scope_statement) + length(xs: complexity_optimality_scope_statement))
 }
 
 fn complexity_derived_kernel_boundary_is_wall_after_grounding() -> Bool {
