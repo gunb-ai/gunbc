@@ -34333,6 +34333,51 @@ mod module_path_index_tests {
     }
 
     #[test]
+    fn build_module_path_index_matches_primary_precedence_module_source_index() {
+        let ws = workspace_root();
+        let tmp = ws.join("target").join(format!(
+            "path-index-prec-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let stub_dir = tmp.join("dag/gunbc");
+        std::fs::create_dir_all(&stub_dir).expect("overlay parents");
+        std::fs::write(
+            stub_dir.join("ci_layer_roots.dag"),
+            "module gunbc.ci_layer_roots\n\ndata overlay_shadow_marker: Int = 0\n",
+        )
+        .expect("write overlay stub");
+
+        let roots = vec![
+            tmp.to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let source_index = super::build_module_index_primary_precedence(&roots);
+        let path_index = build_module_path_index(&roots);
+        let module = "gunbc.ci_layer_roots";
+        let source_path = workspace_relative_repo_path(
+            &source_index
+                .get(module)
+                .expect("primary-precedence source index")
+                .path,
+        );
+        let indexed_path = path_index.get(module).expect("module path index").clone();
+        assert_eq!(
+            indexed_path, source_path,
+            "module-graph facts path index must agree with primary-precedence source index"
+        );
+        assert!(
+            indexed_path.contains("path-index-prec"),
+            "root[0] overlay must win over later dag root for the same module path"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn exclusion_frontier_reader_follows_synthetic_authority() {
         let synthetic = "module gunbc.ci_layer_roots\n\n\
              data witness_exclusion_frontier: List<WitnessExclusionRow> = [\n\
