@@ -63,15 +63,16 @@ test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started()
             let caption = codex_press_outcome_operator_caption(
               outcome: CodexPressAccountReady { receipt: receipt },
             )
+            let projected = account_standing_projection(
+              classification: receipt.standing.evidence.classification,
+            )
+            let ready_ok = status == "account_ready"
+              && status != "turn_started"
+              && caption == "account ready"
+              && standing_is_redacted_projection(summary: receipt.standing)
+              && projected.contains("rate_limits_observed")
             match receipt.standing.evidence.classification {
-              AccountStandingReady =>
-                status == "account_ready"
-                  && status != "turn_started"
-                  && caption == "account ready"
-                  && standing_is_redacted_projection(summary: receipt.standing)
-                  && account_standing_projection(
-                    classification: receipt.standing.evidence.classification,
-                  ).contains("rate_limits_observed")
+              AccountStandingReady => ready_ok
               _ => false
             }
           }
