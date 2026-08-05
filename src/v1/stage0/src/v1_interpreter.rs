@@ -10302,6 +10302,30 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(variant))
             },
 
+            arm "free_call.parse_roadmap_acceptance_event_history_jsonl" { "parse_roadmap_acceptance_event_history_jsonl" } => {
+                let text = expect_str(
+                    $positional.first().copied(),
+                    "parse_roadmap_acceptance_event_history_jsonl text",
+                )?;
+                crate::cli_run::roadmap_acceptance_history_carrier::parse_roadmap_acceptance_event_history_jsonl_builtin(
+                    &text,
+                    $ctx,
+                )
+                .map(Some)
+            },
+
+            arm "free_call.project_roadmap_acceptance_event_history_from_authority_text_host" { "project_roadmap_acceptance_event_history_from_authority_text_host" } => {
+                let authority_text = expect_str(
+                    $positional.first().copied(),
+                    "project_roadmap_acceptance_event_history_from_authority_text_host authority_text",
+                )?;
+                crate::cli_run::project_roadmap_acceptance_event_history_from_authority_text_builtin(
+                    &authority_text,
+                    $ctx,
+                )
+                .map(Some)
+            },
+
             // DECLARED SCAFFOLD supplying gunbc.stage0_emit_plan with SOURCE identities only.
             // It parses cli_run::regen_input_sources through the module-binding authority path;
             // it never observes EmitResult. Dissolve-on: generated_artifact_gate accepts a
