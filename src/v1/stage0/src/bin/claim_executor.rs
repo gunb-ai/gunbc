@@ -2239,11 +2239,24 @@ fn native_transport_observation(
         })
         .collect::<Result<Vec<_>, _>>()
     };
+    // The transport's phase vocabulary is closed; an unknown phase is malformed wire,
+    // not a new kind of leg the receipt should silently carry.
     let phase = match ctx.field(fields, "phase") {
-        Some(Value::Str(s)) => s.clone(),
+        Some(Value::Str(s)) if matches!(s.as_str(), "build" | "run" | "run_cached") => s.clone(),
+        Some(Value::Str(s)) => {
+            return Err(format!(
+                "native transport phase `{s}` is outside build|run|run_cached"
+            ))
+        }
         _ => return Err("native transport result missing String `phase`".to_string()),
     };
-    let termination = transport_termination(ctx.field(fields, "termination"), ctx);
+    let termination =
+        transport_termination(ctx.field(fields, "termination"), ctx).map_err(|refusal| {
+            format!(
+                "native transport termination wire refused: {}",
+                refusal.located
+            )
+        })?;
     Ok(NativeTransportObservation {
         // DERIVED, never a second field. The transport used to carry `success`
         // alongside the exit code, which is one fact written twice; a receipt could
@@ -8009,33 +8022,75 @@ impl ProcessTermination {
     }
 }
 
-/// Read the `std.process` `ProcessTermination` the transport carries. An absent or
-/// unrecognized arm is `Unobserved` — the honest "the transport did not tell me" state,
-/// never a fabricated exit code.
-fn transport_termination(value: Option<&Value>, ctx: &InterpContext) -> ProcessTermination {
+/// The transport violated its own modeled wire: the `termination` value could not be
+/// decoded as a `std.process` `ProcessTermination`. Deliberately a DIFFERENT state
+/// from `Unobserved` — Unobserved is the transport honestly reporting that the spawn
+/// never produced a status (an observation about the child), while this refusal means
+/// the transport or the interning under it is broken (a defect in the wire). The two
+/// have different owners and different fixes, so the decoder refuses instead of
+/// absorbing malformed wire into the legitimate arm.
+#[derive(Debug)]
+struct ProcessTerminationDecodeRefusal {
+    located: String,
+}
+
+/// Read the `std.process` `ProcessTermination` the transport carries. ONLY the
+/// explicit modeled `ProcessTerminationUnobserved` arm decodes to `Unobserved`;
+/// absent, mistyped, unknown-variant, and missing/non-integer-field wire all carry a
+/// located decode refusal, never a fabricated exit code and never a borrowed
+/// legitimate arm.
+fn transport_termination(
+    value: Option<&Value>,
+    ctx: &InterpContext,
+) -> Result<ProcessTermination, ProcessTerminationDecodeRefusal> {
+    let refuse = |located: String| Err(ProcessTerminationDecodeRefusal { located });
     let (variant_name, fields) = match value {
         Some(Value::Variant {
             variant_name,
             fields,
             ..
         }) => (variant_name, fields),
-        _ => return ProcessTermination::Unobserved,
+        Some(other) => {
+            return refuse(format!(
+                "termination is a {} where a ProcessTermination variant was modeled",
+                other.type_label_public()
+            ))
+        }
+        None => return refuse("termination field is absent from the transport record".to_string()),
     };
-    let int_field = |name: &str| match ctx.field(fields, name) {
-        Some(Value::Int(n)) => i32::try_from(*n).ok(),
-        _ => None,
+    let int_field = |name: &str, variant: &str| match ctx.field(fields, name) {
+        Some(Value::Int(n)) => i32::try_from(*n).map_err(|_| ProcessTerminationDecodeRefusal {
+            located: format!("{variant}.{name} {n} does not fit an i32"),
+        }),
+        Some(other) => Err(ProcessTerminationDecodeRefusal {
+            located: format!(
+                "{variant}.{name} is a {} where Int was modeled",
+                other.type_label_public()
+            ),
+        }),
+        None => Err(ProcessTerminationDecodeRefusal {
+            located: format!("{variant} is missing its `{name}` field"),
+        }),
     };
     if ctx.sym_eq(*variant_name, "ProcessExited") {
-        if let Some(code) = int_field("code") {
-            return ProcessTermination::Exited(code);
-        }
+        return Ok(ProcessTermination::Exited(int_field(
+            "code",
+            "ProcessExited",
+        )?));
     }
     if ctx.sym_eq(*variant_name, "ProcessSignaled") {
-        if let Some(signal) = int_field("signal") {
-            return ProcessTermination::Signaled(signal);
-        }
+        return Ok(ProcessTermination::Signaled(int_field(
+            "signal",
+            "ProcessSignaled",
+        )?));
     }
-    ProcessTermination::Unobserved
+    if ctx.sym_eq(*variant_name, "ProcessTerminationUnobserved") {
+        return Ok(ProcessTermination::Unobserved);
+    }
+    refuse(format!(
+        "unknown ProcessTermination variant `{}`",
+        ctx.resolve(*variant_name)
+    ))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -11883,6 +11938,75 @@ mod tests {
             assert!(
                 !termination.located().contains("exited"),
                 "{termination:?} rendered as an exit"
+            );
+        }
+    }
+
+    /// Malformed transport wire must not borrow the legitimate `Unobserved` arm. "The
+    /// process never produced a status" and "the transport violated its own modeled
+    /// wire" have different owners and different fixes; collapsing them is the same
+    /// state-space conflation this change removes at the `ExitStatus` boundary, one
+    /// layer down. ONLY the explicit modeled `ProcessTerminationUnobserved` variant
+    /// decodes to `Unobserved` — every other shape carries a located refusal.
+    #[test]
+    fn malformed_termination_wire_refuses_instead_of_reading_as_unobserved() {
+        let graph = v1_compiler::v1_compiler_infer_items::ResolvedGraph {
+            modules: Rc::new(Default::default()),
+            item_registry: Rc::new(Default::default()),
+            diagnostics: Rc::new(Default::default()),
+            emit_graph_info: v1_compiler::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+        };
+        let ctx = InterpContext::new(&graph, Rc::new(Default::default()), ExecutionMode::Hermetic);
+        let variant = |name: &str, fields: Vec<(&str, Value)>| Value::Variant {
+            type_name: ctx.sym("ProcessTermination"),
+            variant_name: ctx.sym(name),
+            fields: Rc::new(v1_compiler::v1_interpreter::sorted_fields(
+                fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect(),
+            )),
+        };
+        // The modeled arms decode — including the ONE legitimate route to Unobserved.
+        assert_eq!(
+            transport_termination(Some(&variant("ProcessTerminationUnobserved", vec![])), &ctx)
+                .unwrap(),
+            ProcessTermination::Unobserved
+        );
+        assert_eq!(
+            transport_termination(
+                Some(&variant("ProcessExited", vec![("code", Value::Int(101))])),
+                &ctx
+            )
+            .unwrap(),
+            ProcessTermination::Exited(101)
+        );
+        assert_eq!(
+            transport_termination(
+                Some(&variant("ProcessSignaled", vec![("signal", Value::Int(9))])),
+                &ctx
+            )
+            .unwrap(),
+            ProcessTermination::Signaled(9)
+        );
+        // Every malformed shape refuses with a located cause, never Unobserved.
+        let malformed: Vec<(&str, Option<Value>)> = vec![
+            ("absent field", None),
+            ("non-variant value", Some(Value::Int(0))),
+            ("unknown variant", Some(variant("ProcessVanished", vec![]))),
+            ("missing code", Some(variant("ProcessExited", vec![]))),
+            (
+                "non-integer signal",
+                Some(variant(
+                    "ProcessSignaled",
+                    vec![("signal", Value::Str("9".to_string()))],
+                )),
+            ),
+        ];
+        for (label, value) in malformed {
+            let refusal = transport_termination(value.as_ref(), &ctx)
+                .err()
+                .unwrap_or_else(|| panic!("{label}: malformed wire decoded as legitimate"));
+            assert!(
+                !refusal.located.is_empty(),
+                "{label}: refusal carries no location"
             );
         }
     }
