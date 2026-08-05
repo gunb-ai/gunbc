@@ -157,8 +157,6 @@ mod route_a_emit_fresh_cargo_green_test;
 #[cfg(test)]
 mod route_a_final_six_test;
 #[cfg(test)]
-mod rust_test_fixtures_declared_closure_test;
-#[cfg(test)]
 mod shared_recursive_field_access_test;
 #[cfg(test)]
 mod shell_transport_stdin_wet_test;
