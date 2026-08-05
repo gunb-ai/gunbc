@@ -1,0 +1,74 @@
+module v1.tests.claim.v1_annotation_target_emission_test
+
+import std.types { Bool, Int, String, List }
+import std.source_annotation {
+  annotation_attachment_result_graph,
+  source_annotation_graph_rows
+}
+import v1.compiler.annotation_bind { bind_annotations }
+import v1.compiler.tokenize { tokenize_artifact }
+import v1.compiler.parse { parse_with_table }
+import v1.compiler.artifact { RenderTarget, Rust }
+import v1.compiler.compile { SourceFile, compile_sources }
+import v1.std.core { build_newline_index, empty_intern_table, TextFile }
+
+data v1_annotation_target_emission_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_target_emission_test.dag --functions w_annotated_and_bare_twins_emit_identical_target_bytes,w_a_real_semantic_change_emits_different_target_bytes,w_the_annotated_source_still_produces_annotation_rows"
+
+data v1_annotation_target_emission_note: String = "D-C property 4: the same program written with and without prose must produce the SAME EXECUTABLE OUTPUT. This is the end of the erasure chain — the other controls compare parser-level facts, and this one compares the bytes a downstream toolchain actually compiles.
+
+It goes through compile_sources to a real RenderTarget rather than through a parse-level surface, because that is the path that would carry an annotation into emitted output if anything ever did. Today ResolvedPipelineResult and emit_resolved_for_target do not carry the authored graph at all, so the erasure is total by omission; this claim is what will notice if a future change routes the graph into emission without deciding to.
+
+THE THREE ARMS ARE ONE CLAIM, NOT THREE CONVENIENCES. Byte equality alone is satisfied by an emitter that returns the same thing for every input — including nothing at all — so the second arm requires the same rendering to DIFFER on a real semantic change, and the third requires the annotated source to have actually carried prose. Without arm two the equality is a tautology; without arm three it is an equality between two sources that may both have been comment-free."
+
+data annotated_source: String = "module emit_probe\n\n// prose about alpha\ndata alpha: Int = 1\n\n// prose about probe\nfn probe(x: Int) -> Int {\n  x + alpha\n}\n"
+
+data bare_source: String = "module emit_probe\n\ndata alpha: Int = 1\n\nfn probe(x: Int) -> Int {\n  x + alpha\n}\n"
+
+data semantically_changed_source: String = "module emit_probe\n\ndata alpha: Int = 2\n\nfn probe(x: Int) -> Int {\n  x + alpha\n}\n"
+
+data rendering_note: String = "Emitted files render as path-and-content pairs joined into one string, so the comparison fails on a changed byte, a changed path, a missing file, an extra file, or a reordering. Comparing only file COUNT or only total length would pass while the contents differed, which is the failure this property exists to exclude."
+
+fn emitted_text(source: String) -> String {
+  fold(
+    compile_sources(
+      sources: [SourceFile { path: "emit_probe.dag", content: source }],
+      target: Rust
+    ).files,
+    init: "",
+    f: (acc, file) => concat(acc, concat("\n=== ", concat(file.path, concat(" ===\n", file.content))))
+  )
+}
+
+fn annotation_row_count(source: String) -> Int {
+  let artifact = tokenize_artifact(source: source, file: "emit_probe.dag")
+  let parsed = parse_with_table(
+    tokens: artifact.tokens,
+    source_indices: map_insert(empty_map(), "emit_probe.dag", build_newline_index(file: "emit_probe.dag", source: source)),
+    intern_table: empty_intern_table(),
+  )
+  source_annotation_graph_rows(
+    graph: annotation_attachment_result_graph(
+      result: bind_annotations(
+        transport: parsed.occurrence_transport,
+        captures: artifact.annotations,
+        source_length: string_length(s: source)
+      )
+    )
+  ) |> count
+}
+
+data nonempty_emission_note: String = "Emission must be nonempty before equality means anything. An emitter that produced no files at all would make the twins trivially equal, so the first arm asserts real output was produced as well as that it matched."
+
+test fn w_annotated_and_bare_twins_emit_identical_target_bytes() -> Bool {
+  let annotated = emitted_text(source: annotated_source)
+  string_length(s: annotated) > 0 && annotated == emitted_text(source: bare_source)
+}
+
+test fn w_a_real_semantic_change_emits_different_target_bytes() -> Bool {
+  emitted_text(source: bare_source) != emitted_text(source: semantically_changed_source)
+}
+
+test fn w_the_annotated_source_still_produces_annotation_rows() -> Bool {
+  annotation_row_count(source: annotated_source) == 2 &&
+    annotation_row_count(source: bare_source) == 0
+}
