@@ -56,7 +56,7 @@ import std.content_hash {
   Fnv1a64,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef, external_subject_ref_eq }
-import extdeps.uri { Uri, Https, Http, uri_eq }
+import extdeps.uri { Uri, Https, Http }
 import extdeps.version { VersionIdentity }
 import extdeps.http.server { MediaType, TopLevelApplication }
 import extdeps.standards.web_annotation { web_annotation_authority, extdeps_external_authority_anchor }
@@ -293,7 +293,7 @@ test fn verification_receipt_binds_request_locator_to_target_access_route() -> B
         RepresentationMatch =>
           match r.observation {
             RepresentationRetrieved { request: req, observed_at: _, http_status: _, observed: _ } =>
-              uri_eq(left: r.target.expected_pin.subject.access_route, right: req.locator)
+              r.target.expected_pin.subject.access_route == req.locator
             _ => false
           }
         _ => false

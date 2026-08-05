@@ -15,7 +15,7 @@ import std.claim_evidence { RecordedFact, RecordedFactId }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch }
 import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef, external_subject_ref_eq }
-import extdeps.uri { Uri, uri_eq }
+import extdeps.uri { Uri }
 import extdeps.pin { Pin, ExactPin }
 import extdeps.version { VersionIdentity }
 import extdeps.http.server { MediaType }
@@ -162,7 +162,7 @@ fn cited_representation_identity_eq(
   right: CitedRepresentationIdentity,
 ) -> Bool {
   external_subject_ref_eq(a: left.source, b: right.source)
-    && uri_eq(left: left.access_route, right: right.access_route)
+    && left.access_route == right.access_route
     && left.byte_domain == right.byte_domain
 }
 
@@ -353,7 +353,7 @@ fn verify_citation_representation<Selector>(
       http_status: s,
       observed: o,
     } =>
-      if !uri_eq(left: r.locator, right: expected_route) {
+      if r.locator != expected_route {
         CitationVerificationRefused {
           cause: RequestLocatorMismatch {
             expected: expected_route,
@@ -375,7 +375,7 @@ fn verify_citation_representation<Selector>(
         )
       }
     ResponseObservedWithoutRepresentation { request: r, observed_at: _, http_status: _ } =>
-      if !uri_eq(left: r.locator, right: expected_route) {
+      if r.locator != expected_route {
         CitationVerificationRefused {
           cause: RequestLocatorMismatch {
             expected: expected_route,
@@ -390,7 +390,7 @@ fn verify_citation_representation<Selector>(
         }
       }
     CitationAccessRefused { request: r, observed_at: _, cause: _ } =>
-      if !uri_eq(left: r.locator, right: expected_route) {
+      if r.locator != expected_route {
         CitationVerificationRefused {
           cause: RequestLocatorMismatch {
             expected: expected_route,
@@ -403,7 +403,7 @@ fn verify_citation_representation<Selector>(
         }
       }
     CitationUnreachable { request: r, observed_at: _, cause: _ } =>
-      if !uri_eq(left: r.locator, right: expected_route) {
+      if r.locator != expected_route {
         CitationVerificationRefused {
           cause: RequestLocatorMismatch {
             expected: expected_route,
@@ -416,7 +416,7 @@ fn verify_citation_representation<Selector>(
         }
       }
     CitationRateLimited { request: r, observed_at: _, retry_after: _ } =>
-      if !uri_eq(left: r.locator, right: expected_route) {
+      if r.locator != expected_route {
         CitationVerificationRefused {
           cause: RequestLocatorMismatch {
             expected: expected_route,

@@ -80,11 +80,6 @@ pub fn uri_wire(uri: Rc<Uri>) -> String {
     v1_rt::concat(uri_scheme_wire(uri.scheme.clone()), uri.locator.clone())
 }
 
-pub fn uri_eq(left: Rc<Uri>, right: Rc<Uri>) -> bool {
-    ((left.scheme.clone() == right.scheme.clone())
-        && (left.locator.clone() == right.locator.clone()))
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ParsedHrefScheme {

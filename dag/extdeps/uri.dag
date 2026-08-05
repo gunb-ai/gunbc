@@ -56,10 +56,6 @@ fn uri_wire(uri: Uri) -> NonEmptyStr {
   concat(uri_scheme_wire(s: uri.scheme), uri.locator)
 }
 
-fn uri_eq(left: Uri, right: Uri) -> Bool {
-  left.scheme == right.scheme && left.locator == right.locator
-}
-
 type ParsedHrefScheme
   = HrefScheme { scheme: UriScheme }
   | RelativeHref
