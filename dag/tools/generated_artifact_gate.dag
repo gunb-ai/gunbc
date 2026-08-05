@@ -38,7 +38,9 @@ func run_generated_artifact_drift_gate_body() -> ProcessExit {
       " — it is a GENERATED projection of its .dag authority; do not hand-edit, regenerate via main_wet on dag/tools/generated_artifact_gate.dag"
     )
   }
-  record_generated_artifact_drift_gate_failure_detail(detail: reason)
+  if !all_ok {
+    record_generated_artifact_drift_gate_failure_detail(detail: reason)
+  }
   return if all_ok {
     ExitSuccess
   } else {

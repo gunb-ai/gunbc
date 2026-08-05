@@ -3987,14 +3987,13 @@ pub fn record_regen_verify_gate_failure_detail(detail: String) {
 }
 
 pub fn consume_regen_verify_gate_failure_detail() -> String {
-    REGEN_VERIFY_GATE_FAILURE_DETAIL
-        .lock()
-        .ok()
-        .and_then(|guard| guard.clone())
-        .filter(|detail| !detail.is_empty())
-        .unwrap_or_else(|| {
-            "regen_verify failure detail unavailable (gate verdict not recorded)".to_string()
-        })
+    match REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
+        Ok(guard) => guard.clone().unwrap_or_else(|| {
+            "regen_verify failure detail unavailable (gate body did not run in this process)"
+                .to_string()
+        }),
+        Err(e) => format!("regen_verify failure detail refused: gate detail lock poisoned ({e})"),
+    }
 }
 
 pub fn record_generated_artifact_drift_gate_failure_detail(detail: String) {
@@ -4003,16 +4002,30 @@ pub fn record_generated_artifact_drift_gate_failure_detail(detail: String) {
     }
 }
 
+#[cfg(test)]
+fn reset_regen_verify_gate_failure_detail_for_test() {
+    if let Ok(mut guard) = REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
+        *guard = None;
+    }
+}
+
+#[cfg(test)]
+fn reset_generated_artifact_drift_gate_failure_detail_for_test() {
+    if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
+        *guard = None;
+    }
+}
+
 pub fn consume_generated_artifact_drift_gate_failure_detail() -> String {
-    GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL
-        .lock()
-        .ok()
-        .and_then(|guard| guard.clone())
-        .filter(|detail| !detail.is_empty())
-        .unwrap_or_else(|| {
-            "generated-artifact drift failure detail unavailable (gate verdict not recorded)"
+    match GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
+        Ok(guard) => guard.clone().unwrap_or_else(|| {
+            "generated-artifact drift failure detail unavailable (gate body did not run in this process)"
                 .to_string()
-        })
+        }),
+        Err(e) => format!(
+            "generated-artifact drift failure detail refused: gate detail lock poisoned ({e})"
+        ),
+    }
 }
 
 fn format_first_compile_clean_hard_diagnostic(diagnostics: &im::Vector<Rc<ErrorNode>>) -> String {

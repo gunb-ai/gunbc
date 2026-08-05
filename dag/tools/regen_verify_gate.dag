@@ -14,8 +14,13 @@ fn regen_verify_failure_reason(exit: ProcessExit) -> String {
 
 func run_regen_verify_gate_body() -> ProcessExit {
   let verdict = run_regen_verify_verdict()
-  record_regen_verify_gate_failure_detail(detail: regen_verify_failure_reason(exit: verdict))
-  verdict
+  match verdict {
+    ExitSuccess => verdict
+    ExitFailure { code: _, reason: reason } => {
+      record_regen_verify_gate_failure_detail(detail: reason)
+      verdict
+    }
+  }
 }
 
 func run_regen_verify_gate() -> ProcessExit {
