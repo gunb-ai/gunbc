@@ -82,13 +82,14 @@ fn dgx_spark_catalog_row(storage_capacity_bytes: Int) -> IntegratedComputeSystem
     cpu_architecture: Aarch64,
     cpu_core_clusters: dgx_spark_cpu_core_clusters,
     gpu: nvidia_gb10_gpu_catalog,
-    memory: MemoryFacts {
-      capacity: gibibyte_to_byte_size(g: gibibyte(count: 128)),
-      memory_kind: UnifiedShared,
-    },
+    // On a UnifiedShared SoC the GPU-facing and system-facing memory are one physical
+    // fact, not two independent ones: derive both fields from the already-cited
+    // nvidia_gb10_gpu_catalog row instead of re-asserting the same 128 GiB / 273 GB/s
+    // literals a second time (review 49122; DESIGN §3 parallel-representation).
+    memory: nvidia_gb10_gpu_catalog.memory,
     memory_bus_width: bit_width(count: 256),
     memory_data_rate: hertz(count: 4266000000),
-    memory_bandwidth: bandwidth(count: 273000000000),
+    memory_bandwidth: nvidia_gb10_gpu_catalog.memory_bandwidth,
     storage_capacity: byte_size(count: storage_capacity_bytes),
     network_ports: dgx_spark_network_ports,
     external_power_supply: watt(count: 240),
