@@ -10,7 +10,9 @@ import std.measure {
   Millisecond,
   millisecond,
   millisecond_count,
+  nanosecond_to_millisecond_floor,
 }
+import v2.std.algebra { filter, length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.observation {
   ObservationEvent,
@@ -49,6 +51,7 @@ import std.observation {
 }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
+import v2.workflow.ci_floor_plan { gunbc_ci_fast_lane_eval_budget_ms }
 
 data witness_row_cost_spine_note: String = "Per-witness cost receipts (placement workstream #5 spine). THE RECORD is std.observation.ObservationEvent (progress-observation-design §2/§3c) — not a TSV schema and not WitnessTimingRow. Production shape is N+1 per entry: exactly ONE entry resolve-phase Concluded event (entry-level/shared resolve wall) plus one declaration-grain Concluded event per witness (eval wall + actual outcome; Refused distinct from Failed). RSS is MeasuredUnavailable with an explicit cause. The canonical event and joined receipt retain exact Nanosecond eval, resolve, and warm values; histogram, ordering, and attribution consume those exact values. The TSV/drift/placement wires are named Millisecond presentation and policy boundaries and may floor only there. The resolve column repeats the observed full entry resolve for each child — never divided across witnesses and never summed N times into a corpus total. W2 filters the SAME events via AttentionLevel/ObservationDensity (Ambient may suppress a render line while the complete receipt still retains the row). Basis values MUST cite an arm64 srv-fleet run id (never local x86). A row with no dated basis is BasisAbsent. Drift is falsifier-cadence counted, not merge-refusing. Executing consumers: dag/test/claim/witness_row_cost_drift_witness_test.dag and dag/test/claim/witness_row_cost_projection_witness_test.dag."
 
@@ -96,6 +99,52 @@ fn witness_row_cost_verdict(
         WithinBasis
       }
   }
+}
+
+data witness_row_cost_migration_threshold_note: String = "MANDATORY-MIGRATION DISCLOSURE (operator ruling 2026-08-04, dispatched via keen-ibex-349): 5000ms (gunbc_ci_fast_lane_eval_budget_ms, v2.workflow.ci_floor_plan) is a FAIL-STOP protecting the executor — never a budget, tolerance, or target; ordinary witnesses test narrow business logic and belong sub-millisecond where practical, comfortably under one second end-to-end. A witness measured within one order of magnitude of that hard cap is in MANDATORY migration territory. DERIVED, NOT MINTED (DESIGN §3 — no second hand-maintained number): the 500ms figure is gunbc_ci_fast_lane_eval_budget_ms() divided by witness_row_cost_migration_threshold_order_of_magnitude() (10, the 'one order of magnitude' the operator's own framing names); the two numbers cannot drift apart because there is only one authored constant. THIS IS A DISCLOSURE GATE, not yet a wall — same shape as gunbc.ci_materialization's ci_floor_materialization_receipt_note: an unknown population sits over threshold today, and turning that into a merge-refusing gate on day one reds the fleet for work nobody has scheduled. What the disclosure gate DOES require, so it is not the coverage-by-illusion tier (DESIGN §6): every row is COUNTED and LOCATED (entry + declaration, never a bare aggregate), and it MUST be a live consumer of the existing per-witness cost receipt (gunbc.witness_row_cost's own N+1 ObservationEvent join) rather than new instrumentation. DECLARED PROMOTION TRIGGER (the carrier, not PR prose — DESIGN §5's escape-hatch rule applied to a disclosure: a trigger that lives only in a PR body is exactly the rediscovery generator this work exists to close): this disclosure promotes to a merge-refusing wall — new rows above threshold refuse admission — once witness_row_cost_mandatory_migration_count() reaches zero on a full-corpus falsifier run; the same burn-down-then-flip-to-hard-error shape gunbc.ci_materialization's duplicated_keys field already uses. Until that population is zero, EVERY existing over-threshold row must have a filed migration disposition (a located row on this or a successor roster) or the gate stays disclosure-only; a shrinking-but-nonzero population with untriaged rows is not evidence the trigger fired. First discriminating case (per the dispatching session): dag/test/claim/roadmap_program_view_witness_test.dag's four witnesses, root-caused to a cost-shape defect in gunbc.roadmap_program_view (per-node content_hash digests, unindexed parent lookups, O(n) depth folds) — this disclosure's mechanism is proven correct exactly when it surfaces that file as a located row, independent of whether any one witness happens to trip the 5s fail-stop."
+
+fn witness_row_cost_migration_threshold_order_of_magnitude() -> Nat {
+  10
+}
+
+fn witness_row_cost_migration_threshold_ms() -> Nat {
+  gunbc_ci_fast_lane_eval_budget_ms() / witness_row_cost_migration_threshold_order_of_magnitude()
+}
+
+type MigrationDisclosureVerdict
+  = BelowMigrationThreshold
+  | MandatoryMigration { observed: Millisecond, threshold: Millisecond }
+
+fn witness_row_cost_migration_verdict(observed: Millisecond) -> MigrationDisclosureVerdict {
+  let threshold = millisecond(count: witness_row_cost_migration_threshold_ms())
+  if millisecond_count(m: observed) >= millisecond_count(m: threshold) {
+    MandatoryMigration { observed: observed, threshold: threshold }
+  } else {
+    BelowMigrationThreshold
+  }
+}
+
+fn witness_row_cost_migration_verdict_is_mandatory(v: MigrationDisclosureVerdict) -> Bool {
+  match v {
+    MandatoryMigration { observed: _, threshold: _ } => true
+    BelowMigrationThreshold => false
+  }
+}
+
+fn witness_row_cost_receipt_row_migration_verdict(row: WitnessCostReceiptRow) -> MigrationDisclosureVerdict {
+  witness_row_cost_migration_verdict(observed: nanosecond_to_millisecond_floor(n: row.eval))
+}
+
+fn witness_row_cost_mandatory_migration_rows(rows: List<WitnessCostReceiptRow>) -> List<WitnessCostReceiptRow> {
+  filter(rows, row =>
+    witness_row_cost_migration_verdict_is_mandatory(
+      v: witness_row_cost_receipt_row_migration_verdict(row: row)
+    )
+  )
+}
+
+fn witness_row_cost_mandatory_migration_count(rows: List<WitnessCostReceiptRow>) -> Nat {
+  length(xs: witness_row_cost_mandatory_migration_rows(rows: rows))
 }
 
 fn witness_cost_warm(eval: Nanosecond, resolve: Nanosecond) -> Nanosecond {
