@@ -7629,29 +7629,11 @@ fn build_symbol_index_census_nodes(module_nodes: List<Node>, source_indices: Map
   census_with_resolved_fn_sigs(index: raw, source_indices: source_indices)
 }
 
+data underlay_fill_direction_note: String = "Fill composition overlays the CLOSURE onto the shared underlay, never the underlay onto the closure. Both directions denote the same map — union of the two key sets, closure value wins on the intersection — so the composed index is identical; only the cost shape differs, and the difference is the per-entry assembly tax the floor pays 842 times. The prior shape walked the UNDERLAY's key list (sorted_map_keys over the whole-pool qualified fill / whole-tree bare census), probed the accumulator per key, and path-copied an insert for every miss: O(|underlay|) work and O(|underlay|) retained HAMT nodes per entry, against an underlay that is a per-index memo and therefore constant while the closure varies. Overlaying instead starts from that shared memo (O(1) persistent clone) and pays O(|closure|) inserts, so the term scales with the entry's own closure — the quantity the entry is actually about. Measured surface this repairs (per-entry-assembly-decomposition-measurement.md, representative 50): symbol-index merge 29.2-30.1% and per-root symbol-index composition 17.9-18.2% of all assembly. DESIGN 6 bare-minimum-cost: a copied accumulator is fixed regardless of the realized n, and the identity of the two directions is what makes this a cost fix rather than a semantic change (witness: symbol_index_fill_overlay_direction_test - closure wins on a colliding key, underlay-only and closure-only keys both survive)."
+
 fn symbol_index_with_bare_fill(closure: SymbolIndex, tree: SymbolIndex) -> SymbolIndex {
-  let bare_keys = sorted_map_keys(tree.global_bare)
-  let global2 = fold(bare_keys, init: closure.global_bare, f: (acc, k) =>
-    match map_get(acc, k) {
-      Present { value: _ } => acc
-      Absent =>
-        match map_get(tree.global_bare, k) {
-          Present { value: state } => map_insert(acc, k, state)
-          Absent => acc
-        }
-    }
-  )
-  let service_keys = sorted_map_keys(tree.services)
-  let services2 = fold(service_keys, init: closure.services, f: (acc, k) =>
-    match map_get(acc, k) {
-      Present { value: _ } => acc
-      Absent =>
-        match map_get(tree.services, k) {
-          Present { value: entry } => map_insert(acc, k, entry)
-          Absent => acc
-        }
-    }
-  )
+  let global2 = map_merge(tree.global_bare, closure.global_bare)
+  let services2 = map_merge(tree.services, closure.services)
   SymbolIndex { entries: closure.entries, global_bare: global2, services: services2 }
 }
 
@@ -7686,17 +7668,7 @@ fn build_symbol_index_qualified_fill(modules: List<Node>, source_indices: Map<St
 }
 
 fn symbol_index_with_qualified_fill(closure: SymbolIndex, fill: SymbolIndex) -> SymbolIndex {
-  let fill_keys = sorted_map_keys(fill.entries)
-  let entries2 = fold(fill_keys, init: closure.entries, f: (acc, k) =>
-    match map_get(acc, k) {
-      Present { value: _ } => acc
-      Absent =>
-        match map_get(fill.entries, k) {
-          Present { value: node } => map_insert(acc, k, node)
-          Absent => acc
-        }
-    }
-  )
+  let entries2 = map_merge(fill.entries, closure.entries)
   SymbolIndex { entries: entries2, global_bare: closure.global_bare, services: closure.services }
 }
 
