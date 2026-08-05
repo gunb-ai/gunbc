@@ -8,7 +8,7 @@ import gunbc.ci_cost_arc_closeout_receipt {
   NotHarvested,
   CaptureMeasuredNetOpen,
   EnrollmentLandedFleetRateOpen,
-  PartiallyDeliveredSkipProofOpen,
+  ClosedSkipProofLanded,
   ClosedReject,
   ClosedNoRepeatedTypecheck,
   Landed,
@@ -116,9 +116,11 @@ test fn witness_native_fleet_rate_open() -> Bool {
   }
 }
 
-test fn witness_warm_hit_partial() -> Bool {
+data witness_warm_hit_skip_proof_landed_note: String = "RENAMED from witness_warm_hit_partial (DESIGN §4b(4) — a probe that expected an open state and then closed flips to a permanent regression control, it does not retire): cross_process_hit_skips_semantic_recompute (v1_compiler_tests.resolve_cross_process_cache_test) now asserts TYPECHECK_COMPUTE_COUNT stays 0 on a warm cross-process disk-tier hit, green by execution. warm_hit_settle therefore reads ClosedSkipProofLanded, not PartiallyDeliveredSkipProofOpen. A future regression that reopens the skip-proof gap (or reverts this settle without re-landing the counter proof) must flip this assertion back, which is exactly the signal this test now exists to catch."
+
+test fn witness_warm_hit_skip_proof_landed() -> Bool {
   match warm_hit_settle() {
-    PartiallyDeliveredSkipProofOpen {} => true
+    ClosedSkipProofLanded {} => true
   }
 }
 

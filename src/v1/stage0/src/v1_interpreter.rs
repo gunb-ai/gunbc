@@ -3312,43 +3312,52 @@ macro_rules! v1_bridge_family_arms {
     ($cb:ident, $fname:ident, $args:ident, $node:ident, $ctx:ident) => {
         $cb! {
             $fname, $args, $node, $ctx;
-            family STD_NODE_BRIDGE_FNS "v2.std.node" {
+            family STD_NODE_BRIDGE_FNS "v2.std.node"
+                lookup_eval_call_bridge_std_node eval_call_bridge__v2_std_node_arm {
                 arm "v4_bridge.resolve_type_node" { "resolve_type_node" } =>
                     crate::coproduct_reflection::eval_resolve_type_node($ctx, &$args),
             }
-            family STD_LEXING_BRIDGE_FNS "v2.std.compilers.lexing" {
+            family STD_LEXING_BRIDGE_FNS "v2.std.compilers.lexing"
+                lookup_eval_call_bridge_std_compilers_lexing eval_call_bridge__v2_std_compilers_lexing_arm {
                 arm "v4_bridge.symbol_intern_lexeme" { "symbol_intern_lexeme" } =>
                     crate::coproduct_reflection::eval_symbol_intern_lexeme($ctx, &$args),
                 arm "v4_bridge.symbol_lexeme" { "symbol_lexeme" } =>
                     crate::coproduct_reflection::eval_symbol_lexeme($ctx, &$args),
             }
-            family STD_QUALIFIED_NAME_BRIDGE_FNS "v2.std.qualified_name" {
+            family STD_QUALIFIED_NAME_BRIDGE_FNS "v2.std.qualified_name"
+                lookup_eval_call_bridge_std_qualified_name eval_call_bridge__v2_std_qualified_name_arm {
                 arm "v4_bridge.qualified_name_from_dotted_string" { "qualified_name_from_dotted_string" } =>
                     crate::coproduct_reflection::eval_qualified_name_from_dotted_string($ctx, &$args),
             }
-            family STD_NODE_QUERY_BRIDGE_FNS "v2.std.node_query" {
+            family STD_NODE_QUERY_BRIDGE_FNS "v2.std.node_query"
+                lookup_eval_call_bridge_std_node_query eval_call_bridge__v2_std_node_query_arm {
                 arm "v4_bridge.coproduct_nullary_inhabitants" { "coproduct_nullary_inhabitants" } =>
                     crate::coproduct_reflection::eval_coproduct_nullary_inhabitants($ctx, $node, &$args),
             }
-            family STD_CONCEPT_INDEX_BRIDGE_FNS "v2.std.concept_index" {
+            family STD_CONCEPT_INDEX_BRIDGE_FNS "v2.std.concept_index"
+                lookup_eval_call_bridge_std_concept_index eval_call_bridge__v2_std_concept_index_arm {
                 arm "v4_bridge.concept_decl_facts_live" { "concept_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_concept_decl_facts_live($ctx, &$args),
             }
-            family STD_FN_INDEX_BRIDGE_FNS "v2.std.fn_index" {
+            family STD_FN_INDEX_BRIDGE_FNS "v2.std.fn_index"
+                lookup_eval_call_bridge_std_fn_index eval_call_bridge__v2_std_fn_index_arm {
                 arm "v4_bridge.fn_arrow_decl_facts_live" { "fn_arrow_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_facts_live($ctx, &$args),
                 arm "v4_bridge.fn_arrow_decl_substrate_is_whole_tree" { "fn_arrow_decl_substrate_is_whole_tree" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree($ctx, &$args),
             }
-            family CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS "v2.lens.affected_set.corpus_dependency_view" {
+            family CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS "v2.lens.affected_set.corpus_dependency_view"
+                lookup_eval_call_bridge_lens_affected_set_corpus_dependency_view eval_call_bridge__v2_lens_affected_set_corpus_dependency_view_arm {
                 arm "v4_bridge.corpus_dependency_view_per_pr_substrate_refuse" { "corpus_dependency_view_per_pr_substrate_refuse" } =>
                     crate::coproduct_reflection::eval_corpus_dependency_view_per_pr_substrate_refuse($ctx, &$args),
             }
-            family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index" {
+            family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index"
+                lookup_eval_call_bridge_std_data_index eval_call_bridge__v2_std_data_index_arm {
                 arm "v4_bridge.data_init_decl_facts_live" { "data_init_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_data_init_decl_facts_live($ctx, &$args),
             }
-            family INERT_LENS_BRIDGE_FNS "v2.lens.inert_lens" {
+            family INERT_LENS_BRIDGE_FNS "v2.lens.inert_lens"
+                lookup_eval_call_bridge_lens_inert_lens eval_call_bridge__v2_lens_inert_lens_arm {
                 arm "v4_bridge.inert_lens_unreached_module_count" { "inert_lens_unreached_module_count" } =>
                     Ok(Value::Int(crate::cli_run::inert_lens_unreached_module_count())),
                 arm "v4_bridge.inert_lens_top_level_module_count" { "inert_lens_top_level_module_count" } =>
@@ -3361,7 +3370,9 @@ macro_rules! v1_bridge_family_arms {
 /// Expansion 1: the name lists the guard predicate tests.
 macro_rules! v1_bridge_consts {
     ($f:ident, $a:ident, $n:ident, $c:ident;
-     $(family $cname:ident $module:literal { $(arm $id:tt { $lit:literal } => $body:expr ,)* })*) => {
+     $(family $cname:ident $module:literal $lookup_fn:ident $arm_macro:ident {
+         $(arm $id:tt { $lit:literal } => $body:expr ,)*
+     })*) => {
         $( pub(crate) const $cname: &[&str] = &[$($lit),*]; )*
     };
 }
@@ -3370,13 +3381,14 @@ v1_bridge_family_arms!(v1_bridge_consts, func_name, args, node, ctx);
 
 macro_rules! v1_bridge_dispatch {
     ($f:ident, $a:ident, $n:ident, $c:ident;
-     $(family $cname:ident $module:literal { $(arm $id:tt { $lit:literal } => $body:expr ,)* })*) => {
+     $(family $cname:ident $module:literal $lookup_fn:ident $arm_macro:ident {
+         $(arm $id:tt { $lit:literal } => $body:expr ,)*
+     })*) => {
         $(
             if is_v4_bridge_family($c, &$f, $cname, $module) {
-                return match $crate::v1_interpreter_dispatch_generated::lookup_eval_call_bridge(&$f) {
+                return match $crate::v1_interpreter_dispatch_generated::$lookup_fn(&$f) {
                     Some(arm) => match arm {
-                        $( eval_call_bridge_arm!($id) => $body , )*
-                        _ => unreachable!("bridge family guard/lookup mismatch for {}", $module),
+                        $( $arm_macro!($id) => $body , )*
                     },
                     None => unreachable!("bridge fn set mismatch: {}", $module),
                 };
