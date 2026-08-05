@@ -87,6 +87,10 @@ data nfr_reason_content_hash_structural_refusal: String = "ContentHash family st
 
 data nfr_dissolve_content_hash_structural_refusal: String = "SourceRef digest construction grounds each ContentHash family at inhabitance and the wildcard arm becomes a total match — row deletes with that fold (std.content_hash family grounding)"
 
+data nfr_reason_class_b_binding_projection: String = "Class B declared-import-closure observation projection (match on DeclaredImportClosureBindingObservation with off-variant wildcard refusal arms) landed with #7835 observe_declared_import_closure_symbol_binding builtin; callers judge ListedImport vs PoolCoincidence vs refusal — the match is the typed verdict fold over the host observation carrier, not business policy; declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_class_b_binding_projection: String = "the observation carrier's verdict partition becomes derived from inhabitance (total match over BindingObserved vs BindingNotRunnable and over UnlistedImportBindingSource) and the wildcard arms delete with their rows"
+
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request" },
@@ -807,6 +811,26 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/host_standup.dag::assimilation_complete_input_eq" },
     reason: nfr_reason_structural_eq_backfill,
     trigger: TriggerProse { text: nfr_dissolve_derived_equality },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_listed_import" },
+    reason: nfr_reason_class_b_binding_projection,
+    trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_pool_coincidence" },
+    reason: nfr_reason_class_b_binding_projection,
+    trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_refuses" },
+    reason: nfr_reason_class_b_binding_projection,
+    trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::row4_pool_coincidence_or_refuse" },
+    reason: nfr_reason_class_b_binding_projection,
+    trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
   },
 ]
 

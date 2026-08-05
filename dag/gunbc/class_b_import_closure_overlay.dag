@@ -9,6 +9,15 @@ data class_b_overlay_note: String = "Derives the Class B stripped entry overlay 
 data class_b_entry_rel: String = "src/v2/extdeps/languages/rust_test_fixtures.dag"
 data class_b_rust_import_prefix: String = "import v2.extdeps.languages.rust"
 
+data class_b_declared_import_pool_roots_note: String = "Minimal explicit pool for Class B rows 1-2 (#7835): the declared-import-closure footprint for rust_test_fixtures — entry plus v2.extdeps.languages.rust and its transitive std/extdeps dependencies — NOT witness_layer_roots. Stronger control: binding is observed with no unrelated ambient modules that could accidentally supply rust symbols; row 2 prepends fixtures/class_b_import_closure/perturbation_overlay to this baseline only. Rows 3-4 on the transport gate keep witness_layer_roots for stripped-entry pool-coincidence pressure."
+
+data class_b_declared_import_pool_roots: List<String> = [
+  "dag/std",
+  "dag/extdeps",
+  "src/v2/extdeps/languages",
+  "src/v2/std"
+]
+
 type StripImportFoldState {
   skipping: Bool
   out: List<String>
