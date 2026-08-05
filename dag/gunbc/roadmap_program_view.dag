@@ -620,7 +620,7 @@ type V1ProgramViewResult
   = ProgramViewDerived { view: V1DeletionProgramView }
   | ProgramViewRefused { causes: List<ProgramViewRefusalCause> }
 
-data program_view_refusal_note: String = "IDENTITY RESOLUTION IS A WALL, NOT A FILTER. A finish-line node or front gate that names no declared node is a modeling defect — the requirements' misspelled-R1 red control — and the projection REFUSES with every located cause rather than deriving around the hole: a silently smaller front would zero the defect's frequency and misreport every count downstream, the absorbing-fallback shape DESIGN section 5 forbids. The causes list carries all failures, not the first, so one repair round sees the whole population."
+data program_view_refusal_note: String = "IDENTITY RESOLUTION IS A WALL, NOT A FILTER. A finish-line node or front gate that names no declared node is a modeling defect — the requirements' misspelled-R1 red control — and the projection REFUSES with every located cause rather than deriving around the hole: a silently smaller front would zero the defect's frequency and misreport every count downstream, the absorbing-fallback shape DESIGN section 5 forbids. Duplicate live receipts for one node are the same class: DuplicateAcceptanceReceipt refuses the whole projection rather than silently picking one row. The causes list carries all failures, not the first, so one repair round sees the whole population."
 
 fn program_view(
   lines: List<V1FinishLineSpec>,
