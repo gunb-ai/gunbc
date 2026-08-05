@@ -2065,8 +2065,7 @@ fn call_function_inner(
             param_node_default_value((*p).clone()).is_none()
                 && match p.children.first() {
                     Some(type_expr) => {
-                        authored_name_at(ctx.si(), type_expr.clone())
-                            != all_param_names[*i]
+                        authored_name_at(ctx.si(), type_expr.clone()) != all_param_names[*i]
                     }
                     None => false,
                 }
@@ -2080,8 +2079,7 @@ fn call_function_inner(
             param_node_default_value((*p).clone()).is_none()
                 && match p.children.first() {
                     Some(type_expr) => {
-                        authored_name_at(ctx.si(), type_expr.clone())
-                            != all_param_names[*i]
+                        authored_name_at(ctx.si(), type_expr.clone()) != all_param_names[*i]
                     }
                     None => false,
                 }
