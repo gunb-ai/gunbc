@@ -3406,6 +3406,9 @@ fn discovery_claim_result(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Log label for a discovery batch, derived from the plan's modeled profile axes
+/// (`execution_mode`, `spawns_host_compiler`) — the same axes `ci_floor_plan` uses
+/// to split execution vs bin-witness corpora — not from explicit-entry count.
 fn discovery_corpus_kind_label(
     scan_dirs: &[String],
     execution_mode: ExecutionMode,
@@ -3439,8 +3442,7 @@ fn run_discovery_batch_node(
     expect_red: bool,
     scoped_receipt: Option<ScopedReceiptBatch>,
 ) -> ClaimResult {
-    let corpus_kind =
-        discovery_corpus_kind_label(&scan_dirs, execution_mode, spawns_host_compiler);
+    let corpus_kind = discovery_corpus_kind_label(&scan_dirs, execution_mode, spawns_host_compiler);
     set_phase(FloorPhase::Discovery, corpus_kind);
     // Post-discovery projections are executor machinery too.  Scoped batches keep
     // their witness subjects under the narrow `source_roots`, while the authored
