@@ -99,6 +99,12 @@ data excl_install_media_dissolve: String = "mock_response coverage lands and ass
 
 data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
+    pattern: "roadmap_program_view_live_corpus_receipt_test.dag",
+    classification: FalsifierSubstrateLongLane,
+    reason: "LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822): live_roadmap_program_view_corpus_projection_receipt exercises the full declared roadmap closure through gunbc.roadmap_program_view — evidentiary wiring receipt, not ordinary business logic. Business witnesses stay on planted fixtures in test.claim.roadmap_program_view_witness.",
+    dissolve_on: "replaced by a cheaper structural wiring receipt that covers the same live-authority join, or live roadmap projection integration receipts become unnecessary"
+  },
+  WitnessExclusionRow {
     pattern: "roadmap_receipt_continuity_live_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "SUBSTANTIATED per-row: live_roadmap_acceptance_history_integrity_holds reaches git.Inspect.HeadCommit, git.Inspect.MergeBase, and git.Core.Show without mock_response, so the hermetic discovery envelope REFUSES rather than skipping. The hermetic closing contract in roadmap_receipt_continuity_acceptance_test.dag keeps planted red controls only; this file executes the live git-observed integrity path on the per-PR wet corpora batch.",
@@ -1291,6 +1297,12 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "instrument_sandbox_live_keystone_holds",
     reason: "5074ms thread-CPU measured in falsifier discovery batch 3 (run 30986055960, BudgetExceeded against the 5000ms fast-lane budget). Attribution by execution (claim_batch, loyal-bat-373, 2026-08-05) puts 18510 of 19098ms of one served-page render inside a single live_program_view_result call, so every claim that renders the page or reads the live view pays it once and the cheap register-gate claims do not — those stay per-PR in dag/test/claim/instrument_sandbox_witness_test.dag at 0-2ms each. NOT declared irreducible corpus breadth: the projection's inputs cost 263ms to build (25 declared roadmap nodes, edges, receipts, finish-line and front specs) and deriving over them costs 5132ms, roughly 20x, at n=25. The cost is diffuse rather than one hot spot — program_relax_to_fixpoint early-exits correctly and roadmap_dependency_graph is a trivial map, but program_depth_lookup folds every row with no early exit, membership is tested by linear any-scans at every level, reverse adjacency is rebuilt per finish line where roadmap_focus already hoists it, and program_dedupe_ids rescans its accumulator per element, all nested inside per-node/per-front/per-line maps",
     dissolve_on: "gunbc.roadmap_program_view's derivation is restructured off nested linear scans onto keyed lookup and eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then these claims re-merge into dag/test/claim/instrument_sandbox_witness_test.dag per-PR and this row, the exclusion row, and dag/test/claim/long/instrument_sandbox_live_witness_test.dag delete together"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/roadmap_program_view_live_corpus_receipt_test.dag",
+    function: "live_roadmap_program_view_corpus_projection_receipt",
+    reason: "LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822): exercises the full declared roadmap closure through gunbc.roadmap_program_view — evidentiary wiring receipt enrolled on the corpus/integration lane for its integration role, not because eval cost exceeds the per-PR business budget. Business algebra stays on planted fixtures in roadmap_program_view_witness_test.dag",
+    dissolve_on: "replaced by a cheaper structural wiring receipt that covers the same live-authority join, or live roadmap projection integration receipts become unnecessary"
   }
 ]
 
