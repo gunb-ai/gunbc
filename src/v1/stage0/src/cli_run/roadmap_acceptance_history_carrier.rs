@@ -13,7 +13,7 @@ pub enum RoadmapAcceptanceEventHistoryParse {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(tag = "variant", rename_all = "snake_case")]
+#[serde(tag = "variant", rename_all = "snake_case", deny_unknown_fields)]
 enum JsonEvent {
     AcceptanceRecorded {
         receipt: JsonReceipt,
@@ -34,6 +34,7 @@ enum JsonAcceptanceRevocationDisposition {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct JsonReceipt {
     node: String,
     criteria_digest: String,
@@ -44,7 +45,7 @@ struct JsonReceipt {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(tag = "variant", rename_all = "snake_case")]
+#[serde(tag = "variant", rename_all = "snake_case", deny_unknown_fields)]
 enum JsonRedControl {
     RedControlNotRun,
     RedControlExecuted {
@@ -55,7 +56,7 @@ enum JsonRedControl {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(tag = "variant", rename_all = "snake_case")]
+#[serde(tag = "variant", rename_all = "snake_case", deny_unknown_fields)]
 enum JsonHandback {
     HandbackNotDelivered,
     HandbackDelivered {
@@ -299,6 +300,18 @@ mod tests {
         match parse_roadmap_acceptance_event_history_jsonl(jsonl, &ctx) {
             RoadmapAcceptanceEventHistoryParse::Refused { detail } => {
                 assert!(detail.contains("criteria_digest"));
+            }
+            RoadmapAcceptanceEventHistoryParse::Parsed { .. } => panic!("expected refusal"),
+        }
+    }
+
+    #[test]
+    fn unknown_jsonl_field_refuses() {
+        let ctx = empty_ctx();
+        let jsonl = r#"{"variant":"acceptance_recorded","receipt":{"node":"n","criteria_digest":"0123456789abcdef","extra":"x","red_control":{"variant":"red_control_not_run"},"handback":{"variant":"handback_not_delivered"},"accepted_by":"op","accepted_on":"2026-01-01"}}"#;
+        match parse_roadmap_acceptance_event_history_jsonl(jsonl, &ctx) {
+            RoadmapAcceptanceEventHistoryParse::Refused { detail } => {
+                assert!(detail.starts_with("line 1:"));
             }
             RoadmapAcceptanceEventHistoryParse::Parsed { .. } => panic!("expected refusal"),
         }
