@@ -37,11 +37,9 @@ import gunbc.econ.llm_attempt_receipt {
   derive_escalation_fraction,
   escalated_attempt_count,
   throughput_per_second_floor,
-  token_count,
-  token_count_value,
 }
 import std.algebra { FieldOfFractions }
-import std.measure { nanosecond }
+import std.measure { nanosecond, token_count, token_count_value }
 import std.types { Bool, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
