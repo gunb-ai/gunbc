@@ -327,8 +327,10 @@ fn obligation_realized_twice(
 }
 
 fn same_obligation_realized_twice(realizations: List<ResolveRealization>) -> Bool {
-  obligation_realized_twice(realizations: realizations, id: CompileAnchorWholeTree)
-    || obligation_realized_twice(realizations: realizations, id: NativeBundleEscapingEntry)
+  any(
+    ci_floor_resolve_obligation_identities(),
+    id => obligation_realized_twice(realizations: realizations, id: id),
+  )
 }
 
 fn resolve_realization_finalization_holds(
