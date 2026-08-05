@@ -499,7 +499,7 @@ mod roadmap_acceptance_history_projection_tests {
         let jsonl = std::fs::read_to_string(
             super::workspace_root().join("dag/gunbc/roadmap_acceptance_event_history.jsonl"),
         )
-            .expect("jsonl carrier");
+        .expect("jsonl carrier");
         let projected = project_roadmap_acceptance_event_history_from_authority_text(&authority);
         let RoadmapAcceptanceHistoryProjection::Projected { events: prior } = projected else {
             panic!("projection refused: {projected:?}");

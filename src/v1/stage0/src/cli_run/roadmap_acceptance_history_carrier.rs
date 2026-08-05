@@ -1,10 +1,8 @@
 use std::rc::Rc;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::v1_interpreter::{
-    list_value, sorted_fields, InterpContext, InterpError, InterpResult, Value,
-};
+use crate::v1_interpreter::{list_value, sorted_fields, InterpContext, InterpResult, Value};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RoadmapAcceptanceEventHistoryParse {
@@ -12,7 +10,7 @@ pub enum RoadmapAcceptanceEventHistoryParse {
     Refused { detail: String },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "variant", rename_all = "snake_case", deny_unknown_fields)]
 enum JsonEvent {
     AcceptanceRecorded {
@@ -27,13 +25,13 @@ enum JsonEvent {
     },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "variant", rename_all = "snake_case", deny_unknown_fields)]
 enum JsonAcceptanceRevocationDisposition {
     AcceptanceNodeReopensActiveFrontier,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct JsonReceipt {
     node: String,
@@ -44,7 +42,7 @@ struct JsonReceipt {
     accepted_on: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "variant", rename_all = "snake_case", deny_unknown_fields)]
 enum JsonRedControl {
     RedControlNotRun,
@@ -55,7 +53,7 @@ enum JsonRedControl {
     },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "variant", rename_all = "snake_case", deny_unknown_fields)]
 enum JsonHandback {
     HandbackNotDelivered,
