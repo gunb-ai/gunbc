@@ -8,7 +8,13 @@ import gunbc.ci_layer_roots {
   FalsifierRehomedBinWet,
   FalsifierSubstrateLongLane,
   NoConsumer,
-  OfflineLocalRecipe
+  OfflineLocalRecipe,
+  falsifier_self_host_wet_dark_lane_unclassified_rows,
+  falsifier_self_host_wet_dark_lane_population,
+  falsifier_self_host_wet_dark_lane_waiting_rows,
+  dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note,
+  witness_exclusion_row_mentions_wet_lane_dark_state,
+  witness_exclusion_row_waits_on_wet_lane_undarken
 }
 import v2.workflow.witness_admission {
   witness_exclusion_rows_well_formed,
@@ -125,4 +131,48 @@ test fn witness_exclusion_red_control_quarantine_row_in_path_carrier_reds() -> B
       }
     ]
   ) == false
+}
+
+data falsifier_self_host_wet_dark_lane_unclassified_rows_note: String = "falsifier_self_host_wet_dark_lane_population (gunbc.ci_layer_roots) derives its count from the real witness_exclusion_frontier rather than a hand-typed ordinal, but a derived count is only as trustworthy as the predicate deriving it: a row could phrase its dissolve_on around the same wet lane in a spelling the positive predicate has not learned, silently deflating the count for a reason no one sees (still-bat-561 review, 2026-08-05). The guard is a wider candidate net (witness_exclusion_row_mentions_wet_lane_dark_state) plus an unclassified-residue list: falsifier_self_host_wet_dark_lane_unclassified_rows_empty_holds asserts the PROPERTY that the residue stays empty, never the population's numeric value -- a count copied from the current tree is not an independent oracle (DESIGN.md §5)."
+
+test fn falsifier_self_host_wet_dark_lane_unclassified_rows_empty_holds() -> Bool {
+  falsifier_self_host_wet_dark_lane_unclassified_rows().length() == 0
+}
+
+data falsifier_self_host_wet_dark_lane_population_matches_waiting_rows_note: String = "review 48422 (cursor/composer-2.5, 2026-08-05): falsifier_self_host_wet_dark_lane_population(), falsifier_self_host_wet_dark_lane_waiting_patterns(), and dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note() had no call sites anywhere in the tree -- the derivation looked finished but nothing on the floor executed it (DESIGN §5 specification-without-execution). These two tests are the executing consumers: the first asserts the population is exactly the count of the same waiting-rows list by construction (a consistency property, not a tree-copied literal), the second asserts the composed note string actually contains the live derived count and the live pattern list rather than being unreachable prose."
+
+test fn falsifier_self_host_wet_dark_lane_population_matches_waiting_rows_holds() -> Bool {
+  falsifier_self_host_wet_dark_lane_population() == falsifier_self_host_wet_dark_lane_waiting_rows().length()
+}
+
+test fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note_mentions_derived_count_holds() -> Bool {
+  string_contains(
+    s: dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note(),
+    pattern: falsifier_self_host_wet_dark_lane_population() as String
+  )
+}
+
+fn synthetic_wet_lane_row(dissolve_on: String) -> WitnessExclusionRow {
+  WitnessExclusionRow {
+    pattern: "synthetic_wet_lane_third_spelling_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "synthetic",
+    dissolve_on: dissolve_on
+  }
+}
+
+data witness_exclusion_red_control_third_spelling_row_is_unclassified_note: String = "The discriminating RED control: a synthetic row phrasing its trigger around the wet lane in a THIRD spelling -- naming the lane without the cadence-flag identifier, without referential equality to excl_wet_integration_dissolve, and without un-darken(s) -- must be caught by the broad candidate net yet missed by the precise positive predicate, proving the unclassified-residue mechanism can actually distinguish (not merely always return true/empty by construction)."
+
+test fn witness_exclusion_red_control_third_spelling_row_is_unclassified() -> Bool {
+  let row = synthetic_wet_lane_row(dissolve_on: "falsifier_self_host_wet lane activates for this trigger")
+  witness_exclusion_row_mentions_wet_lane_dark_state(row: row)
+    && !witness_exclusion_row_waits_on_wet_lane_undarken(row: row)
+}
+
+data witness_exclusion_control_matched_row_is_not_flagged_unclassified_note: String = "Positive control on the same synthetic-row path: a row that DOES match one of the positive arms must not be reported as unclassified by the net/positive-predicate pairing."
+
+test fn witness_exclusion_control_matched_row_is_not_flagged_unclassified() -> Bool {
+  let row = synthetic_wet_lane_row(dissolve_on: "falsifier_self_host_wet_cadence_active flips true")
+  witness_exclusion_row_mentions_wet_lane_dark_state(row: row)
+    && witness_exclusion_row_waits_on_wet_lane_undarken(row: row)
 }
