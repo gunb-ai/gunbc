@@ -4596,6 +4596,20 @@ fn write_gate_warm_cost_receipt_at(
 ///    not distinguish them — the empty-observation narrow, in an artifact whose whole
 ///    purpose is per-row cost. A census taken from a selection-applied per-PR run would have
 ///    counted skipped rows as fast ones.
+///
+///    Note the `.dag` model was never wrong here: `WitnessCostReceiptRow` already carries
+///    `outcome` and the projection witness already matches on it. Only this writer dropped
+///    it — the model/realization fork, not a modeling gap.
+///
+/// 3. An absent measurement now renders as `unmeasured`, not `0`. Emitting the outcome column
+///    made the two cases *decidable*, but the number itself was still fabricated, and
+///    `std.observation`'s `observation_measured_note` rules on exactly this: "A renderer
+///    projecting MeasuredUnavailable prints the cause; it never prints 0 and never omits the
+///    field, because a silently omitted number is the same fabrication one layer up." An
+///    executed witness may legitimately measure 0 ms, and those rows keep their `0`; a row
+///    that never ran has no cost to report and now says so. The cell is deliberately
+///    non-numeric so a consumer reaching for a number fails loudly rather than counting an
+///    unexecuted row as a fast one.
 fn write_witness_row_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_log: bool) -> bool {
     write_witness_row_cost_receipt_at(
         std::path::Path::new("target"),
