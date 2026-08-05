@@ -5855,8 +5855,27 @@ pub fn compile_entry_on_declared_import_closure_only(
     source_roots: &[String],
     entry_path: &str,
 ) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
-    let index = build_multi_entry_index_primary_precedence(source_roots);
-    let sources = load_declared_import_closure_sources(&index, entry_path)?;
+    compile_declared_import_closure_only_with_pool(source_roots, entry_path, None)
+}
+
+/// Pool-scoped variant: builds the module index from `pool_roots` but compiles only
+/// the entry's declared import-edge closure (or `entry_content_override` alone when
+/// simulating a zero-import entry for negative controls).
+#[cfg(feature = "test_hooks")]
+pub fn compile_declared_import_closure_only_with_pool(
+    pool_roots: &[String],
+    entry_path: &str,
+    entry_content_override: Option<&str>,
+) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
+    let index = build_multi_entry_index_primary_precedence(pool_roots);
+    let sources = if let Some(content) = entry_content_override {
+        vec![Rc::new(v1_compiler_compile::SourceFile {
+            path: entry_path.to_string(),
+            content: content.to_string(),
+        })]
+    } else {
+        load_declared_import_closure_sources(&index, entry_path)?
+    };
     Ok(v1_compiler_compile::compile_to_resolved(Rc::new(
         sources.into(),
     )))
@@ -5869,11 +5888,44 @@ pub fn compile_stripped_entry_declared_import_closure_only(
     entry_path: &str,
     stripped_content: &str,
 ) -> Rc<v1_compiler_compile::ResolvedPipelineResult> {
-    let entry_source = Rc::new(v1_compiler_compile::SourceFile {
-        path: entry_path.to_string(),
-        content: stripped_content.to_string(),
-    });
-    v1_compiler_compile::compile_to_resolved(Rc::new(vec![entry_source].into()))
+    compile_declared_import_closure_only_with_pool(&[], entry_path, Some(stripped_content))
+        .expect("stripped entry-only compile")
+}
+
+/// Declaration identity + binding-source receipt for one cross-module symbol site.
+#[cfg(feature = "test_hooks")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrossModuleBindingReceipt {
+    pub definer_module: Option<String>,
+    pub binding_source: Option<UnlistedImportBindingSource>,
+}
+
+/// Extract per-symbol binding receipts for a consumer module against a resolved graph.
+#[cfg(feature = "test_hooks")]
+pub fn cross_module_binding_receipts_for_symbols(
+    graph: &ResolvedGraph,
+    consumer_module: &str,
+    symbols: &[&str],
+) -> std::collections::BTreeMap<String, CrossModuleBindingReceipt> {
+    use std::collections::BTreeMap;
+    symbols
+        .iter()
+        .map(|sym| {
+            let definer = definer_module_for_name(graph, sym);
+            let binding_source = if definer.is_some() {
+                Some(classify_unlisted_import_binding_source(graph, consumer_module, sym).0)
+            } else {
+                None
+            };
+            (
+                (*sym).to_string(),
+                CrossModuleBindingReceipt {
+                    definer_module: definer,
+                    binding_source,
+                },
+            )
+        })
+        .collect::<BTreeMap<_, _>>()
 }
 
 /// Builtins that REQUIRE a service registration to dispatch, paired with the
