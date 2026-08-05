@@ -46,6 +46,12 @@ fn probe() -> String {
   match parse_authored_occurrence_binding_source(file: "probe.dag", source: probe_source) {
     ParsedOccurrenceBindingSourceRefused => "REFUSED"
     ParsedOccurrenceBindingSourceReady { transport: t, module_path: _ } =>
-      fold(t.declarations, init: "DECLS:", f: (acc, d) => concat(acc, render_decl(d: d)))
+      concat(
+        fold(t.declarations, init: "DECLS:", f: (acc, d) => concat(acc, render_decl(d: d))),
+        concat(
+          concat("\nINDEX_ENTRIES=", to_string(count(t.index.entries))),
+          concat("\nREFS=", to_string(count(t.references)))
+        )
+      )
   }
 }
