@@ -14,7 +14,6 @@ import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
   LeafNotReached,
   LeafRefused,
   direct_rust_door_producer_identity_leaf,
-  direct_rust_door_production_group,
   direct_rust_door_seed_emitter_absence_leaf,
   direct_rust_door_source_fidelity_leaf,
   direct_rust_door_source_produced_leaf,
@@ -23,7 +22,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
-data direct_rust_door_observation_note: String = "FIRST-FAILURE PROJECTION of the canonical direct-door production group. This module used to run its own ingest-assemble-infer-mint composition, which made it a SECOND production authority answering the same question as v2_emitter_direct_rust_door_contract's group — two folds, two schedule occurrences, one fact. It now walks nothing: observe_direct_rust_door_provenance projects an already-computed group, so the expensive path is paid once by the group's own root and this vocabulary survives for consumers that want a single first-failure name rather than five independent leaves. The DirectRustDoorObservation variants are preserved verbatim so no consumer had to change."
+data direct_rust_door_observation_note: String = "PURE FIRST-FAILURE PROJECTION of the canonical direct-door production group. This module used to run its own ingest-assemble-infer-mint composition, which made it a SECOND production authority answering the same question as the group — two folds, two schedule occurrences, one fact. It now takes an ALREADY-BUILT group and computes nothing expensive: there is deliberately no zero-argument entrypoint here, because one would recompute the group and silently reopen the duplicate walk this consolidation closed. A caller that wants this vocabulary supplies the group it already holds. The nine DirectRustDoorObservation variants are preserved verbatim so no consumer had to change."
 
 data direct_rust_door_observation_arm_order_note: String = "ARM ORDER IS LOAD-BEARING and the reason it was load-bearing is now DISSOLVED (operator review 2026-08-04, discharged 2026-08-05). The original hazard: provenanced_rust_artifact_seed_independent is a CONJUNCTION over producer identity AND seed absence, so testing it first made WrongProducer unreachable — a wrong producer failed the conjunction and got reported as SeedEmitterReachable, naming a cause that did not hold. The conjuncts are now separate predicates behind separate leaves (producer_identity, seed_emitter_absence), so each arm consumes its OWN fact and neither can absorb the other. Ordering here is retained only to keep the first-failure vocabulary stable for consumers; correctness no longer depends on it. That discharges this note's own dissolve-on, which read: seed independence exposes its two conjuncts separately and each arm consumes its own predicate."
 
@@ -42,14 +41,6 @@ type DirectRustDoorObservation
   | SourceProducedQualificationMissing
   | DirectRustDoorSourceProduced
 
-fn direct_rust_door_leaf_is_refused(leaf: DirectRustDoorLeafResult) -> Bool {
-  match leaf {
-    LeafEstablished => false
-    LeafRefused { cause: _ } => true
-    LeafNotReached { cause: _ } => false
-  }
-}
-
 fn project_direct_rust_door_observation(
   group: DirectRustDoorProductionGroup
 ) -> DirectRustDoorObservation {
@@ -59,36 +50,27 @@ fn project_direct_rust_door_observation(
     EmissionRejected { diagnostics: ds } => CandidateRejected { reason: ds.head.reason }
     ProducerReceiptRejected { diagnostics: ds } => ReceiptRefused { reason: ds.head.reason }
     ArtifactProduced { artifact: _ } =>
-      if direct_rust_door_leaf_is_refused(
-        leaf: direct_rust_door_source_fidelity_leaf(group: group)
-      ) {
-        EmittedSourceMismatch
-      } else {
-        if direct_rust_door_leaf_is_refused(
-          leaf: direct_rust_door_producer_identity_leaf(group: group)
-        ) {
-          WrongProducer
-        } else {
-          if direct_rust_door_leaf_is_refused(
-            leaf: direct_rust_door_seed_emitter_absence_leaf(group: group)
-          ) {
-            SeedEmitterReachable
-          } else {
-            if direct_rust_door_leaf_is_refused(
-              leaf: direct_rust_door_source_produced_leaf(group: group)
-            ) {
-              SourceProducedQualificationMissing
-            } else {
-              DirectRustDoorSourceProduced
-            }
+      match direct_rust_door_source_fidelity_leaf(group: group) {
+        LeafRefused { cause: _ } => EmittedSourceMismatch
+        LeafNotReached { cause: _ } => EmittedSourceMismatch
+        LeafEstablished =>
+          match direct_rust_door_producer_identity_leaf(group: group) {
+            LeafRefused { cause: _ } => WrongProducer
+            LeafNotReached { cause: _ } => WrongProducer
+            LeafEstablished =>
+              match direct_rust_door_seed_emitter_absence_leaf(group: group) {
+                LeafRefused { cause: _ } => SeedEmitterReachable
+                LeafNotReached { cause: _ } => SeedEmitterReachable
+                LeafEstablished =>
+                  match direct_rust_door_source_produced_leaf(group: group) {
+                    LeafRefused { cause: _ } => SourceProducedQualificationMissing
+                    LeafNotReached { cause: _ } => SourceProducedQualificationMissing
+                    LeafEstablished => DirectRustDoorSourceProduced
+                  }
+              }
           }
-        }
       }
   }
-}
-
-fn observe_direct_rust_door_provenance() -> DirectRustDoorObservation {
-  project_direct_rust_door_observation(group: direct_rust_door_production_group())
 }
 
 data direct_rust_door_observation_totality_note: String = "Total over DirectRustDoorObservation with no wildcard arm (DESIGN 6 non-fold residue). A `_ => false` arm here would make the coproduct grow in silence: a tenth observation variant would land as false and read as an honest negative rather than an unhandled case."

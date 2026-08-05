@@ -9,6 +9,13 @@ import v2.compiler.self_host.candidate_generation {
   ProvenancedRustArtifact,
   ProvenancedRustEmissionObservation,
 }
+import v2.compiler.self_host.direct_rust_door_observation {
+  CandidateRejected,
+  DirectRustDoorSourceProduced,
+  EmittedSourceMismatch,
+  WrongProducer,
+  project_direct_rust_door_observation,
+}
 import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_expected_source,
   direct_rust_door_module_path,
@@ -314,4 +321,56 @@ test fn missing_qualification_refuses_only_the_qualification_leaf() -> Bool {
   leaf_refused(leaf: direct_rust_door_source_produced_leaf(group: g))
     && !leaf_refused(leaf: direct_rust_door_source_fidelity_leaf(group: g))
     && !leaf_refused(leaf: direct_rust_door_producer_identity_leaf(group: g))
+}
+
+data direct_rust_door_observation_projection_note: String = "THE EXECUTING CONSUMER for the first-failure observation vocabulary. Without these rows the projection would be specification-without-execution (DESIGN 5): the module's long witness was deleted as a duplicate production walk, so nothing else reaches it. These run over PLANTED groups and pay no production cost, which is the whole point — the vocabulary is exercised without reconstructing the compiler graph."
+
+test fn projection_names_the_refusing_stage() -> Bool {
+  match project_direct_rust_door_observation(
+    group: group_of(emission: EmissionRejected { diagnostics: planted_diag() })
+  ) {
+    CandidateRejected { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn projection_names_wrong_producer_not_seed_reachable() -> Bool {
+  match project_direct_rust_door_observation(
+    group: group_of(
+      emission: planted_artifact(
+        source_text: direct_rust_door_expected_source,
+        producer: V1SeedEmitter,
+        closure: realized_closure_for_v2_direct_rust_door_emit_run(),
+        qualifications: source_produced_qualifications
+      )
+    )
+  ) {
+    WrongProducer => true
+    _ => false
+  }
+}
+
+test fn projection_names_source_mismatch_before_producer() -> Bool {
+  match project_direct_rust_door_observation(
+    group: group_of(
+      emission: planted_artifact(
+        source_text: "fn not_the_expected_source() {}",
+        producer: V1SeedEmitter,
+        closure: realized_closure_for_v2_direct_rust_door_emit_run(),
+        qualifications: source_produced_qualifications
+      )
+    )
+  ) {
+    EmittedSourceMismatch => true
+    _ => false
+  }
+}
+
+test fn projection_establishes_on_a_fully_good_artifact() -> Bool {
+  match project_direct_rust_door_observation(
+    group: group_of(emission: planted_artifact_with_source(source_text: direct_rust_door_expected_source))
+  ) {
+    DirectRustDoorSourceProduced => true
+    _ => false
+  }
 }
