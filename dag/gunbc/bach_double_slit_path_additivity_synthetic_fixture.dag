@@ -1,0 +1,311 @@
+module gunbc.bach_double_slit_path_additivity_synthetic_fixture
+
+import std.types { Bool, Int, List }
+import extdeps.physics.bach_et_al_2013_double_slit {
+  SlitMaskConfiguration,
+  BothSlitsOpen,
+  SlitOneOpen,
+  SlitTwoOpen,
+  BothSlitsBlocked,
+}
+import gunbc.physics.bach_double_slit_path_additivity {
+  SyntheticDoubleSlitFixture,
+  SyntheticDoubleSlitFixtureOne,
+  ScreenBand,
+  CentralBand,
+  FirstMinimumBand,
+  SyntheticMatchedExposureSession,
+  SyntheticMatchedExposureOne,
+  SyntheticArrivalCountObservationRow,
+  PathAdditivitySubject,
+  PathAdditivitySyntheticFixture,
+  PathAdditivityRefutationReceipt,
+  ArrivalCountResolution,
+  ArrivalCountResolved,
+  ArrivalCountMissing,
+  ArrivalCountAmbiguous,
+  AdditivityInputResolution,
+  AdditivityInputsResolved,
+  AdditivityInputsIncomplete,
+  AdditivityInputsAmbiguous,
+  AdditivityInputFailure,
+  AdditivityInputMissing,
+  AdditivityInputAmbiguous,
+  resolve_arrival_count_at,
+  resolve_additivity_inputs,
+  derive_path_additivity_refutation_at_band,
+  path_additivity_refutation_holds_for_synthetic_fixture,
+  path_additivity_refutation_receipt_resolution_from_resolved_counts,
+  path_additivity_witness_is_counterexample,
+  path_additivity_witness_observed_vs_prediction,
+  PathAdditivityBandVerdict,
+  PathAdditivityRefutationAtBand,
+  PathAdditivityHeldAtBand,
+  PathAdditivityUndecidedAtBand,
+  RefutationReceiptResolution,
+  RefutationReceiptResolved,
+  RefutationNotEstablished,
+  AdditivityHeld,
+  AdditivityUndecided,
+  refutation_receipt_resolution_from_band_verdict,
+}
+import std.algebra { Greater }
+
+data synthetic_fixture_note: String = "SYNTHETIC MECHANISM FIXTURE — NOT Bach et al. 2013 provenance. Rows exercise gunbc.physics.bach_double_slit_path_additivity with equal declared exposure identity; classical mechanism adds raw counts."
+
+data synthetic_double_slit_fixture: SyntheticDoubleSlitFixture = SyntheticDoubleSlitFixtureOne {}
+
+data synthetic_first_minimum_both_open: SyntheticArrivalCountObservationRow = SyntheticArrivalCountObservationRow {
+  fixture: synthetic_double_slit_fixture,
+  arrangement: BothSlitsOpen,
+  band: FirstMinimumBand,
+  exposure: SyntheticMatchedExposureOne {},
+  arrival_count: 5,
+}
+
+data synthetic_first_minimum_slit_one: SyntheticArrivalCountObservationRow = SyntheticArrivalCountObservationRow {
+  fixture: synthetic_double_slit_fixture,
+  arrangement: SlitOneOpen,
+  band: FirstMinimumBand,
+  exposure: SyntheticMatchedExposureOne {},
+  arrival_count: 10,
+}
+
+data synthetic_first_minimum_slit_two: SyntheticArrivalCountObservationRow = SyntheticArrivalCountObservationRow {
+  fixture: synthetic_double_slit_fixture,
+  arrangement: SlitTwoOpen,
+  band: FirstMinimumBand,
+  exposure: SyntheticMatchedExposureOne {},
+  arrival_count: 10,
+}
+
+data synthetic_central_both_open: SyntheticArrivalCountObservationRow = SyntheticArrivalCountObservationRow {
+  fixture: synthetic_double_slit_fixture,
+  arrangement: BothSlitsOpen,
+  band: CentralBand,
+  exposure: SyntheticMatchedExposureOne {},
+  arrival_count: 95,
+}
+
+data synthetic_central_slit_one: SyntheticArrivalCountObservationRow = SyntheticArrivalCountObservationRow {
+  fixture: synthetic_double_slit_fixture,
+  arrangement: SlitOneOpen,
+  band: CentralBand,
+  exposure: SyntheticMatchedExposureOne {},
+  arrival_count: 40,
+}
+
+data synthetic_central_slit_two: SyntheticArrivalCountObservationRow = SyntheticArrivalCountObservationRow {
+  fixture: synthetic_double_slit_fixture,
+  arrangement: SlitTwoOpen,
+  band: CentralBand,
+  exposure: SyntheticMatchedExposureOne {},
+  arrival_count: 38,
+}
+
+data synthetic_blocked_central: SyntheticArrivalCountObservationRow = SyntheticArrivalCountObservationRow {
+  fixture: synthetic_double_slit_fixture,
+  arrangement: BothSlitsBlocked,
+  band: CentralBand,
+  exposure: SyntheticMatchedExposureOne {},
+  arrival_count: 0,
+}
+
+data synthetic_fixture_arrival_count_observations: List<SyntheticArrivalCountObservationRow> = [
+  synthetic_first_minimum_both_open,
+  synthetic_first_minimum_slit_one,
+  synthetic_first_minimum_slit_two,
+  synthetic_central_both_open,
+  synthetic_central_slit_one,
+  synthetic_central_slit_two,
+  synthetic_blocked_central,
+]
+
+data path_additivity_subject: PathAdditivitySubject = PathAdditivitySyntheticFixture {}
+
+fn synthetic_first_minimum_verdict() -> PathAdditivityBandVerdict {
+  derive_path_additivity_refutation_at_band(
+    rows: synthetic_fixture_arrival_count_observations,
+    fixture: synthetic_double_slit_fixture,
+    band: FirstMinimumBand,
+    exposure: SyntheticMatchedExposureOne {},
+  )
+}
+
+data bach_double_slit_path_additivity_first_minimum_verdict: PathAdditivityBandVerdict = synthetic_first_minimum_verdict()
+
+fn synthetic_first_minimum_receipt_resolution() -> RefutationReceiptResolution {
+  refutation_receipt_resolution_from_band_verdict(verdict: synthetic_first_minimum_verdict())
+}
+
+fn bach_double_slit_path_additivity_refutation_holds() -> Bool {
+  match bach_double_slit_path_additivity_first_minimum_verdict {
+    PathAdditivityRefutationAtBand { receipt: receipt } =>
+      path_additivity_refutation_holds_for_synthetic_fixture(receipt: receipt)
+    PathAdditivityHeldAtBand {
+      band: held_band,
+      exposure: held_exposure,
+    } => false
+    PathAdditivityUndecidedAtBand { failure: undecided_failure } => false
+  }
+}
+
+fn synthetic_path_additivity_receipt_matches_fold_kernel(
+  receipt: PathAdditivityRefutationReceipt,
+  band: ScreenBand,
+  exposure: SyntheticMatchedExposureSession,
+) -> Bool {
+  match resolve_additivity_inputs(
+    rows: synthetic_fixture_arrival_count_observations,
+    fixture: synthetic_double_slit_fixture,
+    band: band,
+    exposure: exposure,
+  ) {
+    AdditivityInputsResolved {
+      left: resolved_left,
+      right: resolved_right,
+      both: resolved_both,
+      left_contributing_rows: resolved_left_rows,
+      right_contributing_rows: resolved_right_rows,
+      both_contributing_rows: resolved_both_rows,
+    } =>
+      receipt.witness.left_alternative_count == resolved_left
+        && receipt.witness.right_alternative_count == resolved_right
+        && receipt.witness.both_open_observed_count == resolved_both
+    AdditivityInputsIncomplete {
+      missing_arrangement: missing_arrangement,
+      band: incomplete_band,
+      exposure: incomplete_exposure,
+    } => false
+    AdditivityInputsAmbiguous {
+      arrangement: ambiguous_arrangement,
+      band: ambiguous_band,
+      exposure: ambiguous_exposure,
+      matching_rows: ambiguous_matching_rows,
+    } => false
+  }
+}
+
+fn synthetic_central_band_verdict() -> PathAdditivityBandVerdict {
+  derive_path_additivity_refutation_at_band(
+    rows: synthetic_fixture_arrival_count_observations,
+    fixture: synthetic_double_slit_fixture,
+    band: CentralBand,
+    exposure: SyntheticMatchedExposureOne {},
+  )
+}
+
+fn bach_double_slit_path_additivity_central_band_refutation_holds() -> Bool {
+  match derive_path_additivity_refutation_at_band(
+    rows: synthetic_fixture_arrival_count_observations,
+    fixture: synthetic_double_slit_fixture,
+    band: CentralBand,
+    exposure: SyntheticMatchedExposureOne {},
+  ) {
+    PathAdditivityRefutationAtBand {
+      receipt: PathAdditivityRefutationReceipt {
+        witness: w,
+        subject: s,
+        location: l,
+      },
+    } =>
+      path_additivity_witness_is_counterexample(witness: w)
+        && path_additivity_witness_observed_vs_prediction(witness: w) == Greater
+    PathAdditivityHeldAtBand {
+      band: held_band,
+      exposure: held_exposure,
+    } => false
+    PathAdditivityUndecidedAtBand { failure: undecided_failure } => false
+  }
+}
+
+fn synthetic_derive_first_minimum_verdict_from_partial_rows() -> PathAdditivityBandVerdict {
+  let partial_rows = [
+    synthetic_first_minimum_both_open,
+    synthetic_first_minimum_slit_one,
+  ]
+  derive_path_additivity_refutation_at_band(
+    rows: partial_rows,
+    fixture: synthetic_double_slit_fixture,
+    band: FirstMinimumBand,
+    exposure: SyntheticMatchedExposureOne {},
+  )
+}
+
+fn synthetic_blocked_count_is_resolved_zero_not_missing() -> Bool {
+  match resolve_arrival_count_at(
+    rows: synthetic_fixture_arrival_count_observations,
+    fixture: synthetic_double_slit_fixture,
+    arrangement: BothSlitsBlocked,
+    band: CentralBand,
+    exposure: SyntheticMatchedExposureOne {},
+  ) {
+    ArrivalCountResolved { count: 0, contributing_rows: 1 } => true
+    ArrivalCountMissing {
+      arrangement: missing_arrangement,
+      band: missing_band,
+      exposure: missing_exposure,
+    } => false
+    ArrivalCountAmbiguous {
+      arrangement: ambiguous_arrangement,
+      band: ambiguous_band,
+      exposure: ambiguous_exposure,
+      matching_rows: ambiguous_matching_rows,
+    } => false
+  }
+}
+
+fn synthetic_missing_row_yields_incomplete_inputs() -> Bool {
+  let partial_rows = [
+    synthetic_first_minimum_both_open,
+    synthetic_first_minimum_slit_one,
+  ]
+  match resolve_additivity_inputs(
+    rows: partial_rows,
+    fixture: synthetic_double_slit_fixture,
+    band: FirstMinimumBand,
+    exposure: SyntheticMatchedExposureOne {},
+  ) {
+    AdditivityInputsIncomplete {
+      missing_arrangement: SlitTwoOpen,
+      band: incomplete_band,
+      exposure: incomplete_exposure,
+    } => true
+    AdditivityInputsResolved {
+      left: resolved_left,
+      right: resolved_right,
+      both: resolved_both,
+      left_contributing_rows: resolved_left_rows,
+      right_contributing_rows: resolved_right_rows,
+      both_contributing_rows: resolved_both_rows,
+    } => false
+    AdditivityInputsAmbiguous {
+      arrangement: ambiguous_arrangement,
+      band: ambiguous_band,
+      exposure: ambiguous_exposure,
+      matching_rows: ambiguous_matching_rows,
+    } => false
+  }
+}
+
+fn synthetic_fold_receipt_resolution_matches_kernel_counts() -> Bool {
+  match synthetic_first_minimum_receipt_resolution() {
+    RefutationReceiptResolved { receipt: folded } =>
+      match path_additivity_refutation_receipt_resolution_from_resolved_counts(
+        left: 10,
+        right: 10,
+        both: 5,
+        band: FirstMinimumBand,
+        exposure: SyntheticMatchedExposureOne {},
+      ) {
+        RefutationReceiptResolved { receipt: kernel } =>
+          kernel.witness.left_alternative_count == folded.witness.left_alternative_count
+            && kernel.witness.right_alternative_count == folded.witness.right_alternative_count
+            && kernel.witness.both_open_observed_count == folded.witness.both_open_observed_count
+        RefutationNotEstablished { reason: AdditivityUndecided { failure: not_established_failure } } => false
+        RefutationNotEstablished { reason: AdditivityHeld { band: held_band, exposure: held_exposure } } => false
+      }
+    RefutationNotEstablished { reason: AdditivityUndecided { failure: not_established_failure } } => false
+    RefutationNotEstablished { reason: AdditivityHeld { band: held_band, exposure: held_exposure } } => false
+  }
+}
