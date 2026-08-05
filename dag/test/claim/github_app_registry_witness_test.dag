@@ -716,6 +716,39 @@ test fn witness_narrowing_may_only_narrow() -> Bool {
   ) && permission_narrowing_is_within(narrowing: PermissionNarrowingOmitted, installation: inst)
 }
 
+test fn witness_unmodeled_installation_permission_refuses_rather_than_narrowing() -> Bool {
+  let inst = installation_of(
+    app: gunbai_bot_declared,
+    installation_id: bot_installation_id,
+    perms: [perm(axis: ContentsAxis, access: AppAccessRead)]
+  )
+  let with_unknown = GitHubAppInstallation {
+    installation_id: inst.installation_id,
+    app_id: inst.app_id,
+    app_slug: inst.app_slug,
+    html_url: inst.html_url,
+    account: inst.account,
+    repository_selection: inst.repository_selection,
+    permissions: concat(
+      inst.permissions,
+      [ObservedGitHubPermission {
+        name: ObservedGitHubPermissionName { wire_name: "future_provider_permission" },
+        access: AppAccessWrite
+      }]
+    ),
+    subscribed_events: inst.subscribed_events,
+  }
+  match permission_narrowing_verdict(narrowing: PermissionNarrowingOmitted, installation: with_unknown) {
+    NarrowingUnverifiable { unknown_wire_name } => unknown_wire_name == "future_provider_permission"
+    _ => false
+  }
+    && !permission_narrowing_is_within(narrowing: PermissionNarrowingOmitted, installation: with_unknown)
+    && match permission_narrowing_verdict(narrowing: PermissionNarrowingOmitted, installation: inst) {
+      NarrowingWithinInstallation => true
+      _ => false
+    }
+}
+
 test fn witness_registration_gap_precedes_installation_approval() -> Bool {
   match app_control_plane_state(
     app: gunbai_bot_declared,

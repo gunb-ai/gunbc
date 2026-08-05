@@ -272,20 +272,38 @@ type GitHubInstallationTokenRequest {
   permissions: GitHubInstallationPermissionNarrowing
 }
 
-fn requested_permissions(narrowing: GitHubInstallationPermissionNarrowing, installation: GitHubAppInstallation) -> List<GitHubAppPermission> {
+type AuthoredPermissionProjection
+  = AuthoredPermissions { permissions: List<GitHubAppPermission> }
+  | UnknownPermissionWireName { wire_name: NonEmptyStr }
+
+fn requested_permissions(
+  narrowing: GitHubInstallationPermissionNarrowing,
+  installation: GitHubAppInstallation
+) -> AuthoredPermissionProjection {
   match narrowing {
     PermissionNarrowingOmitted => authored_subset_of(perms: installation.permissions)
-    SelectedPermissions { permissions } => permissions
+    SelectedPermissions { permissions } => AuthoredPermissions { permissions: permissions }
   }
 }
 
-fn authored_subset_of(perms: List<ObservedGitHubPermission>) -> List<GitHubAppPermission> {
-  fold(perms, init: [], f: fn(acc, p) {
-    match permission_axis_from_wire(name: p.name.wire_name) {
-      Absent => acc
-      Present { value: axis } => append(acc, items: [GitHubAppPermission { name: axis, access: p.access }])
+fn authored_subset_of(perms: List<ObservedGitHubPermission>) -> AuthoredPermissionProjection {
+  fold_list(
+    xs: perms,
+    empty: AuthoredPermissions { permissions: [] },
+    cons: fn(acc, p) {
+      match acc {
+        UnknownPermissionWireName { wire_name } => UnknownPermissionWireName { wire_name: wire_name }
+        AuthoredPermissions { permissions } =>
+          match permission_axis_from_wire(name: p.name.wire_name) {
+            Absent => UnknownPermissionWireName { wire_name: p.name.wire_name }
+            Present { value: axis } =>
+              AuthoredPermissions {
+                permissions: concat(permissions, [GitHubAppPermission { name: axis, access: p.access }])
+              }
+          }
+      }
     }
-  })
+  )
 }
 
 fn permission_access_in(
@@ -304,20 +322,52 @@ fn permission_access_in(
   )
 }
 
+type PermissionNarrowingVerdict
+  = NarrowingWithinInstallation
+  | NarrowingExceedsInstallation
+  | NarrowingUnverifiable { unknown_wire_name: NonEmptyStr }
+
+fn permission_narrowing_verdict(
+  narrowing: GitHubInstallationPermissionNarrowing,
+  installation: GitHubAppInstallation
+) -> PermissionNarrowingVerdict {
+  match requested_permissions(narrowing: narrowing, installation: installation) {
+    UnknownPermissionWireName { wire_name } =>
+      NarrowingUnverifiable { unknown_wire_name: wire_name }
+    AuthoredPermissions { permissions } =>
+      fold_list(
+        xs: permissions,
+        empty: NarrowingWithinInstallation,
+        cons: fn(verdict, r) {
+          match verdict {
+            NarrowingUnverifiable { unknown_wire_name } =>
+              NarrowingUnverifiable { unknown_wire_name: unknown_wire_name }
+            NarrowingExceedsInstallation => NarrowingExceedsInstallation
+            NarrowingWithinInstallation =>
+              match observed_access_for(perms: installation.permissions, axis: r.name) {
+                Absent => NarrowingExceedsInstallation
+                Present { value: held } =>
+                  if permission_access_at_least(held: held, requested: r.access) {
+                    NarrowingWithinInstallation
+                  } else {
+                    NarrowingExceedsInstallation
+                  }
+              }
+          }
+        }
+      )
+  }
+}
+
 fn permission_narrowing_is_within(
   narrowing: GitHubInstallationPermissionNarrowing,
   installation: GitHubAppInstallation
 ) -> Bool {
-  fold_list(
-    xs: requested_permissions(narrowing: narrowing, installation: installation),
-    empty: true,
-    cons: fn(ok, r) {
-      ok && match observed_access_for(perms: installation.permissions, axis: r.name) {
-        Absent => false
-        Present { value: held } => permission_access_at_least(held: held, requested: r.access)
-      }
-    }
-  )
+  match permission_narrowing_verdict(narrowing: narrowing, installation: installation) {
+    NarrowingWithinInstallation => true
+    NarrowingExceedsInstallation => false
+    NarrowingUnverifiable { unknown_wire_name: _ } => false
+  }
 }
 
 type GitHubAppKeyFingerprintEncoding =
