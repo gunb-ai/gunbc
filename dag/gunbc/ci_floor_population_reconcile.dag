@@ -126,7 +126,7 @@ fn attribution_ratio_basis_points(classified: Millisecond, ci_job: Millisecond) 
 }
 
 fn unattributed_within_five_percent(unattributed_ms: Nat, ci_job_ms: Nat) -> Bool {
-  unattributed_ms * 10000 <= ci_job_ms * 500
+  !(unattributed_ms * 10000 > ci_job_ms * 500)
 }
 
 fn reconcile_exclusive_against_job_wall(

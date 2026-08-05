@@ -176,6 +176,21 @@ test fn witness_registered_path_and_wildcard_accept() -> Bool {
   }
 }
 
+test fn red_family_substring_trap_must_not_match() -> Bool {
+  match observe_path_against_registry(path: "not-workers/terminal-x.tsv" as NonEmptyStr) {
+    UnknownObservedPath { path: _ } =>
+      match observe_path_against_registry(path: "workers/nested/terminal-x.tsv" as NonEmptyStr) {
+        UnknownObservedPath { path: _ } =>
+          match observe_path_against_registry(path: "workers/xterminal-y.tsv" as NonEmptyStr) {
+            UnknownObservedPath { path: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
 test fn red_manifest_row_must_not_reappear() -> Bool {
   match observe_path_against_registry(path: "manifest.tsv" as NonEmptyStr) {
     UnknownObservedPath { path } => (path as String) == "manifest.tsv"

@@ -100,9 +100,9 @@ fn banked_admission_total_matches_review_arithmetic(r: CiFloorPopulationSettleme
 fn banked_admission_recovery_ms(r: CiFloorPopulationSettlementReceipt) -> Nat {
   let baseline = millisecond_count(m: r.cold_admission_baseline.wall)
   let observed = millisecond_count(m: banked_admission_observed_total_ms(r: r))
-  if baseline >= observed {
-    baseline - observed
+  if baseline < observed {
+    0 as Nat
   } else {
-    0
+    baseline - observed
   }
 }

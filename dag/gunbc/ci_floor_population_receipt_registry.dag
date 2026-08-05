@@ -283,6 +283,28 @@ fn string_list_contains_exact(xs: List<String>, needle: String) -> Bool {
   xs |> any(x => x == needle)
 }
 
+fn registry_family_filename_matches(
+  filename: String,
+  filename_prefix: NonEmptyStr,
+  filename_suffix: NonEmptyStr
+) -> Bool {
+  let prefix = filename_prefix as String
+  let suffix = filename_suffix as String
+  let n = string_length(s: filename)
+  let need = string_length(s: prefix) + string_length(s: suffix)
+  if string_contains(s: filename, pattern: "/") {
+    false
+  } else if !starts_with(s: filename, prefix: prefix) {
+    false
+  } else if !ends_with(s: filename, suffix: suffix) {
+    false
+  } else if need > n {
+    false
+  } else {
+    true
+  }
+}
+
 fn registry_locator_matches_relpath(path: String, locator: FloorReceiptLocator) -> Bool {
   match locator {
     ExactRelative { relative_path } => path == (relative_path as String)
@@ -298,11 +320,11 @@ fn registry_locator_matches_relpath(path: String, locator: FloorReceiptLocator) 
           start: string_length(s: dir_prefix),
           end: string_length(s: path)
         )
-        !string_contains(s: filename, pattern: "/")
-          && starts_with(s: filename, prefix: filename_prefix as String)
-          && ends_with(s: filename, suffix: filename_suffix as String)
-          && string_length(s: filename)
-            >= string_length(s: filename_prefix as String) + string_length(s: filename_suffix as String)
+        registry_family_filename_matches(
+          filename: filename,
+          filename_prefix: filename_prefix,
+          filename_suffix: filename_suffix
+        )
       }
     }
   }
