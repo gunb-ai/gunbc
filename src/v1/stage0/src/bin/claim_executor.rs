@@ -4911,12 +4911,44 @@ fn witness_row_cost_migration_threshold_ms_via_authority(
     }
 }
 
+/// Single-authority projection, mirroring `witness_row_cost_exceeds_basis_via_authority`:
+/// the verdict — `witness_row_cost_migration_verdict` then `witness_row_cost_migration_verdict_is_mandatory`
+/// — is decided entirely in `.dag`; Rust only plumbs the `observed` Value through two authority
+/// calls and reads back the resulting Bool. No `>=` comparison lives in this seed.
+fn witness_row_cost_migration_verdict_via_authority(
+    ctx: &InterpContext,
+    observed_ms: u128,
+) -> Result<bool, String> {
+    let observed = millisecond_value(ctx, observed_ms)?;
+    let verdict = match run_in_context_with_args(
+        ctx,
+        "witness_row_cost_migration_verdict",
+        &[(Some("observed".to_string()), observed)],
+        false,
+    ) {
+        Ok(v) => v,
+        Err(e) => return Err(format!("witness_row_cost_migration_verdict: {e}")),
+    };
+    match run_in_context_with_args(
+        ctx,
+        "witness_row_cost_migration_verdict_is_mandatory",
+        &[(Some("v".to_string()), verdict)],
+        false,
+    ) {
+        Ok(Value::Bool(b)) => Ok(b),
+        Ok(other) => Err(format!(
+            "witness_row_cost_migration_verdict_is_mandatory returned {other}, expected Bool (fail-closed)"
+        )),
+        Err(e) => Err(format!("witness_row_cost_migration_verdict_is_mandatory: {e}")),
+    }
+}
+
 /// MANDATORY-MIGRATION DISCLOSURE (`witness_row_cost_migration_threshold_note`, gunbc.witness_row_cost):
 /// runs every floor pass (not gated to falsifier cadence — this is what surfaces an over-threshold
 /// witness before it ever trips the 5s fail-stop on an unrelated PR). Disclosure only: never fails
-/// the walk on a nonzero population. The threshold is fetched once via authority; the per-row
-/// `>=` comparison against that fetched value is the trivial arithmetic side of an already-derived
-/// scalar, not a reimplementation of the comparator's business logic.
+/// the walk on a nonzero population. Both the threshold fetch and the per-row verdict are authority
+/// calls into `gunbc.witness_row_cost`; this function only serializes the resulting rows to a TSV
+/// and a log — it is strictly the receipt-writing seam, not a second decision surface.
 fn write_witness_row_cost_migration_disclosure_receipt_at(
     base: &std::path::Path,
     batch_records: &[BatchRecord],
@@ -4952,7 +4984,18 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
         for result in &rec.results {
             for row in &result.witness_row_costs {
                 let observed = row.2 / 1_000_000;
-                let verdict = if observed >= threshold_ms {
+                let is_mandatory =
+                    match witness_row_cost_migration_verdict_via_authority(&ctx, observed) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            eprintln!(
+                                "claim_executor: migration verdict refused for {}::{}: {e} — walk fails closed here",
+                                row.0, row.1
+                            );
+                            return false;
+                        }
+                    };
+                let verdict = if is_mandatory {
                     mandatory_count += 1;
                     worst.push((observed, row.0.clone(), row.1.clone()));
                     "MandatoryMigration"
