@@ -37,6 +37,10 @@ import gunbc.realization_vocab_confinement_census {
   confinement_conformance_observation,
   confinement_capability_receipt,
   confinement_surface_ceiling,
+  ConfinementSurfaceCeiling,
+  ConfinementCeilingDerived,
+  ConfinementCeilingReceiptUnavailable,
+  ConfinementCeilingRefused,
   confinement_surface_population_claim,
   confinement_surface_declared_key_count,
   confinement_surface_claimed_keys,
@@ -149,8 +153,12 @@ test fn witness_the_confinement_capability_receipt_carries_established_conforman
 
 fn confinement_witness_ceiling_predicate(f: fn(CensusInferenceCeiling) -> Bool) -> Bool {
   match confinement_surface_ceiling(revision: confinement_witness_revision()) {
-    Present { value: ceiling } => f(ceiling)
-    Absent => false
+    ConfinementCeilingDerived { ceiling: ceiling } => f(ceiling)
+    ConfinementCeilingReceiptUnavailable => false
+    ConfinementCeilingRefused {
+      coverage_classification_run_identity: _,
+      capability_method_run_identity: _,
+    } => false
   }
 }
 

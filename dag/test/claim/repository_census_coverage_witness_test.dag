@@ -47,6 +47,9 @@ import gunbc.repository_census_coverage {
   CensusMethodConformanceObservation,
   CensusMethodCapabilityReceipt,
   CensusInferenceCeiling,
+  CensusInferenceCeilingOutcome,
+  CensusCeilingDerived,
+  CensusCeilingRefusedRunMismatch,
   CensusCeilingLimit,
   CoverageNotEstablished,
   DenominatorNotIndependent,
@@ -64,6 +67,7 @@ import gunbc.repository_census_coverage {
   census_conformance_observation,
   census_method_capability_receipt,
   census_capability_receipt_conformance_established,
+  census_coverage_classification_run_identity,
   census_inference_ceiling,
   census_ceiling_supports_semantic_subject_claim,
   census_ceiling_supports_semantic_absence,
@@ -631,6 +635,18 @@ fn coverage_witness_capability_receipt_for(
   )
 }
 
+fn coverage_witness_ceiling_option(
+  outcome: CensusInferenceCeilingOutcome,
+) -> CensusInferenceCeiling? {
+  match outcome {
+    CensusCeilingDerived { ceiling: ceiling } => Present { value: ceiling }
+    CensusCeilingRefusedRunMismatch {
+      coverage_classification_run_identity: _,
+      capability_method_run_identity: _,
+    } => none
+  }
+}
+
 fn coverage_witness_ceiling_for(
   observation: RepositoryCensusObservation,
   denominator: CensusDenominatorObservation,
@@ -638,11 +654,13 @@ fn coverage_witness_ceiling_for(
 ) -> CensusInferenceCeiling? {
   match coverage_witness_capability_receipt_for(observation: observation) {
     Present { value: receipt } =>
-      census_inference_ceiling(
-        capability_receipt: receipt,
-        coverage: census_establish_coverage(
-          denominator: denominator,
-          observation: coverage_observation,
+      coverage_witness_ceiling_option(
+        outcome: census_inference_ceiling(
+          capability_receipt: receipt,
+          coverage: census_establish_coverage(
+            denominator: denominator,
+            observation: coverage_observation,
+          ),
         ),
       )
     Absent => none
@@ -690,6 +708,82 @@ test fn witness_a_capability_receipt_for_another_run_yields_no_ceiling() -> Bool
   ) {
     Present { value: _ } => false
     Absent => true
+  }
+}
+
+fn coverage_witness_mismatched_outcome() -> CensusInferenceCeilingOutcome? {
+  let other_observation = coverage_witness_observation_of(
+    population: coverage_witness_population,
+    revision: coverage_witness_revision,
+    rows: coverage_witness_ab_rows,
+    run: coverage_witness_run_at(
+      classifier: "coverage_witness_classifier",
+      invocation: "a-different-invocation",
+      revision: coverage_witness_revision,
+    ),
+  )
+  let subject_observation = coverage_witness_observation(rows: coverage_witness_ab_rows)
+  match coverage_witness_capability_receipt_for(observation: other_observation) {
+    Present { value: receipt } =>
+      Present {
+        value: census_inference_ceiling(
+          capability_receipt: receipt,
+          coverage: census_establish_coverage(
+            denominator: coverage_witness_denominator(subjects: coverage_witness_ab_subjects),
+            observation: subject_observation,
+          ),
+        ),
+      }
+    Absent => none
+  }
+}
+
+test fn witness_a_mismatched_run_refuses_by_name_rather_than_answering_nothing() -> Bool {
+  match coverage_witness_mismatched_outcome() {
+    Present { value: CensusCeilingDerived { ceiling: _ } } => false
+    Present {
+      value: CensusCeilingRefusedRunMismatch {
+        coverage_classification_run_identity: _,
+        capability_method_run_identity: _,
+      },
+    } => true
+    Absent => false
+  }
+}
+
+test fn witness_the_run_mismatch_refusal_carries_both_identities_and_they_differ() -> Bool {
+  match coverage_witness_mismatched_outcome() {
+    Present { value: CensusCeilingDerived { ceiling: _ } } => false
+    Present {
+      value: CensusCeilingRefusedRunMismatch {
+        coverage_classification_run_identity: coverage_run,
+        capability_method_run_identity: method_run,
+      },
+    } => !content_hash_eq_structural(left: coverage_run, right: method_run)
+    Absent => false
+  }
+}
+
+test fn witness_the_refusal_names_the_run_the_coverage_actually_established() -> Bool {
+  let subject_observation = coverage_witness_observation(rows: coverage_witness_ab_rows)
+  match coverage_witness_mismatched_outcome() {
+    Present { value: CensusCeilingDerived { ceiling: _ } } => false
+    Absent => false
+    Present {
+      value: CensusCeilingRefusedRunMismatch {
+        coverage_classification_run_identity: coverage_run,
+        capability_method_run_identity: _,
+      },
+    } =>
+      content_hash_eq_structural(
+        left: coverage_run,
+        right: census_coverage_classification_run_identity(
+          coverage: census_establish_coverage(
+            denominator: coverage_witness_denominator(subjects: coverage_witness_ab_subjects),
+            observation: subject_observation,
+          ),
+        ),
+      )
   }
 }
 
@@ -769,11 +863,13 @@ fn coverage_witness_self_joined_ceiling() -> CensusInferenceCeiling? {
   )
   match coverage_witness_capability_receipt_for(observation: observation) {
     Present { value: receipt } =>
-      census_inference_ceiling(
-        capability_receipt: receipt,
-        coverage: census_establish_coverage(
-          denominator: denominator,
-          observation: observation,
+      coverage_witness_ceiling_option(
+        outcome: census_inference_ceiling(
+          capability_receipt: receipt,
+          coverage: census_establish_coverage(
+            denominator: denominator,
+            observation: observation,
+          ),
         ),
       )
     Absent => none
@@ -815,11 +911,13 @@ fn coverage_witness_unconformed_ceiling() -> CensusInferenceCeiling? {
     conformance: Absent,
   ) {
     Present { value: receipt } =>
-      census_inference_ceiling(
-        capability_receipt: receipt,
-        coverage: census_establish_coverage(
-          denominator: coverage_witness_denominator(subjects: coverage_witness_ab_subjects),
-          observation: observation,
+      coverage_witness_ceiling_option(
+        outcome: census_inference_ceiling(
+          capability_receipt: receipt,
+          coverage: census_establish_coverage(
+            denominator: coverage_witness_denominator(subjects: coverage_witness_ab_subjects),
+            observation: observation,
+          ),
         ),
       )
     Absent => none
@@ -850,11 +948,13 @@ fn coverage_witness_textual_ceiling(rows: List<CensusObservedRow>) -> CensusInfe
     conformance: Present { value: coverage_witness_conforming_control() },
   ) {
     Present { value: receipt } =>
-      census_inference_ceiling(
-        capability_receipt: receipt,
-        coverage: census_establish_coverage(
-          denominator: coverage_witness_denominator(subjects: coverage_witness_ab_subjects),
-          observation: observation,
+      coverage_witness_ceiling_option(
+        outcome: census_inference_ceiling(
+          capability_receipt: receipt,
+          coverage: census_establish_coverage(
+            denominator: coverage_witness_denominator(subjects: coverage_witness_ab_subjects),
+            observation: observation,
+          ),
         ),
       )
     Absent => none

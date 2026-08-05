@@ -621,7 +621,7 @@ fn census_capability_receipt_conformance_established(
 
 data repository_census_ceiling_note: String = "BLOCKER 3 — THE CEILING IS A FUNCTION OF ONE PACKAGE, AND NO SEPARATELY SUPPLIED OBSERVATION EXISTS TO DISAGREE WITH IT. The first cut took capability, observation and coverage outcome as three arguments, turned any CoverageEstablished into coverage_established true, and never checked that the receipt was ABOUT the supplied observation — so a receipt for observation A beside observation B produced an exhaustive ceiling for B. There is now no observation parameter at all: the observation identity is DERIVED from the coverage outcome, on both arms. What remains is one join, and it refuses: the capability receipt's method_run_identity must equal the classification run identity the coverage outcome carries, or no ceiling exists. LIMITS ARE ENUMERATED RATHER THAN COLLAPSED, so a floor says which of the four conditions failed and a reader can tell a text-scan floor from a self-join floor from an unconformed one; that also keeps a degradation countable rather than absorbed (DESIGN section 5)."
 
-data repository_census_ceiling_refusal_frontier_note: String = "A DECLARED FRONTIER: census_inference_ceiling ANSWERS none, AND none IS NOT A TYPED LOCATED REFUSAL. Today that arm has exactly one cause — the capability receipt names a different classification run than the coverage outcome carries — so it is not yet a state-space conflation, and the two identities that would name the mismatch are both in hand at the point of refusal. The hazard is structural rather than present: the signature already tolerates a silent none, so the SECOND cause added to this function joins the first with nothing to distinguish them and no reader will notice, which is how a countable refusal becomes an absorbed one (DESIGN section 5 — a failure arm must refuse, never widen, and a degradation must stay countable). Recorded rather than fixed because the repair is a typed refusal arm carrying both run identities, and it is worth doing as ONE change with whatever next touches this function rather than as a second shape landed beside the first. DISSOLVE-ON: the next edit to census_inference_ceiling replaces the Optional with a refusal arm naming the mismatch and carrying the expected and actual run identities; this note deletes with it. TRIGGER TO ESCALATE INSTEAD: a second cause for the none arm arriving first, which makes the conflation real rather than structural and moves this from a frontier to a defect."
+data repository_census_ceiling_refusal_note: String = "THE REFUSAL NAMES ITS CAUSE AND CARRIES BOTH IDENTITIES, and this replaces a declared frontier rather than adding to one (dissolution fired 2026-08-05 by the operator ruling that this recut touches the function). The previous shape answered an Optional, and none is not a typed located refusal: it said a ceiling could not be derived while saying nothing about which two runs failed to join, so a holder could neither report the mismatch nor count it. The frontier note recorded that the arm had exactly one cause today and that the SECOND cause would join it silently, because the signature already tolerated an unexplained none. That is now unwritable rather than merely unlikely: the outcome is a coproduct, so a second cause CANNOT be added without adding a variant a reader must handle, and the compiler is what enforces it instead of a note asking the next author to be careful (DESIGN section 5, a failure arm must refuse rather than widen, and a degradation must stay countable). The refusal carries the classification run identity the coverage outcome established and the method run identity the capability receipt claims, in that order, so the located fact is which receipt was presented against which coverage — not merely that something did not match. And the ceiling is now CONSTRUCTED ONLY ON THE JOINED ARM: the previous body built the value and then discarded it on failure, which meant a strength was computed for a package that had not been shown to be one package."
 
 type CensusCeilingLimit
   = CoverageNotEstablished
@@ -670,35 +670,64 @@ fn census_ceiling_strength_for(
   }
 }
 
+fn census_conformance_limits(
+  receipt: CensusMethodCapabilityReceipt,
+) -> List<CensusCeilingLimit> {
+  if census_capability_receipt_conformance_established(receipt: receipt) {
+    []
+  } else {
+    [MethodConformanceUnobserved]
+  }
+}
+
+fn census_ceiling_limits_for(
+  capability_receipt: CensusMethodCapabilityReceipt,
+  coverage: CensusCoverageOutcome,
+) -> List<CensusCeilingLimit> {
+  let coverage_limits = census_coverage_limits(coverage: coverage)
+  let conformance_limits = census_conformance_limits(receipt: capability_receipt)
+  append(coverage_limits, conformance_limits)
+}
+
+type CensusInferenceCeilingOutcome
+  = CensusCeilingDerived { ceiling: CensusInferenceCeiling }
+  | CensusCeilingRefusedRunMismatch {
+      coverage_classification_run_identity: Fnv1a64Structural
+      capability_method_run_identity: Fnv1a64Structural
+    }
+
 fn census_inference_ceiling(
   capability_receipt: CensusMethodCapabilityReceipt,
   coverage: CensusCoverageOutcome,
-) -> CensusInferenceCeiling? {
+) -> CensusInferenceCeilingOutcome {
   let classification_run_identity = census_coverage_classification_run_identity(
     coverage: coverage,
   )
-  let receipt_joins_the_coverage = content_hash_eq_structural(
+  if content_hash_eq_structural(
     left: capability_receipt.method_run_identity,
     right: classification_run_identity,
-  )
-  let coverage_limits = census_coverage_limits(coverage: coverage)
-  let conformance_limits =
-    if census_capability_receipt_conformance_established(receipt: capability_receipt) {
-      []
-    } else {
-      [MethodConformanceUnobserved]
+  ) {
+    let limits = census_ceiling_limits_for(
+      capability_receipt: capability_receipt,
+      coverage: coverage,
+    )
+    CensusCeilingDerived {
+      ceiling: CensusInferenceCeiling {
+        strength: census_ceiling_strength_for(
+          fidelity: capability_receipt.fidelity,
+          limits: limits,
+        ),
+        observation_identity: census_coverage_observation_identity(coverage: coverage),
+        capability_identity: capability_receipt.capability_identity,
+        limits: limits,
+      },
     }
-  let limits = append(coverage_limits, conformance_limits)
-  let ceiling = CensusInferenceCeiling {
-    strength: census_ceiling_strength_for(
-      fidelity: capability_receipt.fidelity,
-      limits: limits,
-    ),
-    observation_identity: census_coverage_observation_identity(coverage: coverage),
-    capability_identity: capability_receipt.capability_identity,
-    limits: limits,
+  } else {
+    CensusCeilingRefusedRunMismatch {
+      coverage_classification_run_identity: classification_run_identity,
+      capability_method_run_identity: capability_receipt.method_run_identity,
+    }
   }
-  if receipt_joins_the_coverage { Present { value: ceiling } } else { none }
 }
 
 fn census_ceiling_supports_semantic_subject_claim(ceiling: CensusInferenceCeiling) -> Bool {

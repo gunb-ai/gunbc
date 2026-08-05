@@ -26,6 +26,9 @@ import gunbc.repository_census_coverage {
   CensusMethodConformanceObservation,
   CensusMethodCapabilityReceipt,
   CensusInferenceCeiling,
+  CensusInferenceCeilingOutcome,
+  CensusCeilingDerived,
+  CensusCeilingRefusedRunMismatch,
   census_denominator_observation,
   census_establish_coverage,
   census_conformance_observation,
@@ -262,14 +265,35 @@ fn confinement_capability_receipt(
   )
 }
 
-fn confinement_surface_ceiling(revision: MeasurementRevision) -> CensusInferenceCeiling? {
+data confinement_ceiling_cause_note: String = "THE TWO WAYS TO HAVE NO CEILING ARE DIFFERENT FACTS AND THIS MODULE KEEPS THEM APART. Upstream now refuses a run mismatch by name rather than by answering none, and collapsing that back into one Optional here would absorb the located cause one line after it was produced — the producer would be countable and the consumer would not, which is the shape DESIGN section 5 forbids and the reason the upstream frontier dissolved. ReceiptUnavailable means the capability receipt never existed, so the classifier was never joined to its contract and there was nothing to present. CeilingRefused means a receipt DID exist and named a different classification run than the coverage carries, and it forwards both identities unchanged. A holder that only wants a ceiling still matches one arm; a holder reporting why there is none can now say which of the two happened."
+
+type ConfinementSurfaceCeiling
+  = ConfinementCeilingDerived { ceiling: CensusInferenceCeiling }
+  | ConfinementCeilingReceiptUnavailable
+  | ConfinementCeilingRefused {
+      coverage_classification_run_identity: Fnv1a64Structural
+      capability_method_run_identity: Fnv1a64Structural
+    }
+
+fn confinement_surface_ceiling(revision: MeasurementRevision) -> ConfinementSurfaceCeiling {
   match confinement_capability_receipt(revision: revision) {
     Present { value: receipt } =>
-      census_inference_ceiling(
+      match census_inference_ceiling(
         capability_receipt: receipt,
         coverage: confinement_surface_coverage(revision: revision),
-      )
-    Absent => none
+      ) {
+        CensusCeilingDerived { ceiling: ceiling } =>
+          ConfinementCeilingDerived { ceiling: ceiling }
+        CensusCeilingRefusedRunMismatch {
+          coverage_classification_run_identity: coverage_run,
+          capability_method_run_identity: method_run,
+        } =>
+          ConfinementCeilingRefused {
+            coverage_classification_run_identity: coverage_run,
+            capability_method_run_identity: method_run,
+          }
+      }
+    Absent => ConfinementCeilingReceiptUnavailable
   }
 }
 
@@ -285,7 +309,7 @@ fn confinement_surface_population_claim(
   revision: MeasurementRevision,
 ) -> ConfinementSurfacePopulationObserved? {
   match confinement_surface_ceiling(revision: revision) {
-    Present { value: ceiling } => {
+    ConfinementCeilingDerived { ceiling: ceiling } => {
       let claim = ConfinementSurfacePopulationObserved {
         observed_at_revision: revision,
         observation: confinement_surface_observation(revision: revision),
@@ -297,7 +321,11 @@ fn confinement_surface_population_claim(
         none
       }
     }
-    Absent => none
+    ConfinementCeilingReceiptUnavailable => none
+    ConfinementCeilingRefused {
+      coverage_classification_run_identity: _,
+      capability_method_run_identity: _,
+    } => none
   }
 }
 
