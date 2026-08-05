@@ -63,6 +63,9 @@ pub mod std_measure;
 #[path = "../../stage0/src/std_types.rs"]
 pub mod std_types;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_unicode_types.rs"]
+pub mod std_unicode_types;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_lens_verdict.rs"]
 pub mod std_lens_verdict;
 #[rustfmt::skip]
