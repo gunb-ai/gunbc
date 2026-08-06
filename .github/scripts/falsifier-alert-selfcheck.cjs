@@ -70,6 +70,15 @@ const RECEIPT = {
   ],
 };
 
+const tempDirs = [];
+const startCwd = process.cwd();
+function cleanupTempDirs() {
+  process.chdir(startCwd);
+  for (const d of tempDirs) {
+    try { fs.rmSync(d, { recursive: true, force: true }); } catch (_) { /* best effort */ }
+  }
+}
+
 function makeEnv({ conclusion, existing, comments, receipt, signatureInBody }) {
   const calls = { create: [], update: [], comment: [] };
   // listComments is PAGE-ACCURATE: the real endpoint returns comments oldest-first
@@ -106,8 +115,11 @@ function makeEnv({ conclusion, existing, comments, receipt, signatureInBody }) {
     id: 999, conclusion, html_url: 'https://x/999', run_started_at: '2026-08-06T00:00:00Z',
   } } };
   const core = { info: () => {}, notice: () => {} };
-  // The script reads the receipt off disk relative to cwd.
+  // The script reads the receipt off disk relative to cwd. Each scenario gets its
+  // own dir, registered for removal so a job that runs every four hours on a
+  // long-lived self-hosted runner does not accumulate them.
   const dir = fs.mkdtempSync('/tmp/falsifier-alert-');
+  tempDirs.push(dir);
   if (receipt) {
     fs.mkdirSync(path.join(dir, 'receipt'));
     fs.writeFileSync(path.join(dir, 'receipt/floor-component-receipt.json'), JSON.stringify(receipt));
@@ -117,6 +129,7 @@ function makeEnv({ conclusion, existing, comments, receipt, signatureInBody }) {
 }
 
 const MENTION = '@briansrls';
+const EXPECTED_SCENARIOS = 5;
 const results = [];
 function check(name, pass, detail) {
   results.push({ name, pass, detail });
@@ -181,11 +194,23 @@ const bodyWithState = (sig) =>
       env.calls.comment.length === 0, `comments posted: ${env.calls.comment.length}`);
   }
 
+  cleanupTempDirs();
   let bad = 0;
   for (const r of results) {
     if (!r.pass) bad++;
     console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}${r.pass ? '' : `   [${r.detail}]`}`);
   }
+  // Refuse on a short result set rather than reporting "ALL GREEN" over a run
+  // that threw partway: zero failures among two executed scenarios is not the
+  // same fact as zero failures among five, and only one of them is a pass.
+  if (results.length !== EXPECTED_SCENARIOS) {
+    console.error(`\nREFUSED: ${results.length} of ${EXPECTED_SCENARIOS} scenarios reported — the run did not complete.`);
+    process.exit(2);
+  }
   console.log(bad === 0 ? '\nALL GREEN' : `\n${bad} RED`);
   process.exit(bad === 0 ? 0 : 1);
-})();
+})().catch((e) => {
+  cleanupTempDirs();
+  console.error(`REFUSED: harness threw before reporting — ${e && e.stack ? e.stack : e}`);
+  process.exit(2);
+});
