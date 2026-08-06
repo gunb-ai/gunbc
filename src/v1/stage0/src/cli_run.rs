@@ -1775,25 +1775,20 @@ pub enum DeclaredImportClosureBindingObservation {
     NotRunnable(String),
 }
 
-fn blocking_hard_diagnostic_count_for_symbol(
+fn declared_import_closure_hard_diagnostic_count(
     resolved: &v1_compiler_compile::ResolvedPipelineResult,
-    consumer_module: &str,
-    symbol: &str,
 ) -> i64 {
     resolved
         .diagnostics
         .iter()
         .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .filter(|d| d.module_name == consumer_module)
-        .filter(|d| {
-            let msg = diagnostic_to_message(d.diagnostic.clone());
-            msg.contains(symbol)
-        })
         .count() as i64
 }
 
 /// Classify binding on an already-resolved declared-import-closure compile. `graph: None` is not
 /// an observed refusal — the module never ingested — so it returns `NotRunnable` (P1(b), #7835).
+/// Any hard diagnostic on the compile also refuses observation: a graph with hard errors did not
+/// produce a trustworthy binding observation (#7835 producer control).
 pub fn declared_import_closure_binding_observation_from_resolved(
     resolved: &v1_compiler_compile::ResolvedPipelineResult,
     consumer_module: &str,
@@ -1808,7 +1803,12 @@ pub fn declared_import_closure_binding_observation_from_resolved(
             );
         }
     };
-    let blocking = blocking_hard_diagnostic_count_for_symbol(resolved, consumer_module, symbol);
+    let hard_count = declared_import_closure_hard_diagnostic_count(resolved);
+    if hard_count > 0 {
+        return DeclaredImportClosureBindingObservation::NotRunnable(format!(
+            "declared-import-closure compile produced {hard_count} hard diagnostic(s); binding observation refused"
+        ));
+    }
     let definer = definer_module_for_name(graph, symbol);
     let symbol_resolves = definer.is_some();
     let binding_source = if symbol_resolves {
@@ -1820,7 +1820,7 @@ pub fn declared_import_closure_binding_observation_from_resolved(
         binding_source,
         definer_module: definer,
         symbol_resolves,
-        blocking_hard_diagnostic_count: blocking,
+        blocking_hard_diagnostic_count: 0,
     })
 }
 
@@ -35342,6 +35342,70 @@ mod witness_layer_roots_compile_clean_tests {
                         DeclaredImportClosureBindingObservation::NotRunnable(_)
                     ),
                     "live malformed compile with graph:None must also be NotRunnable; got {live:?}"
+                );
+            } else {
+                panic!(
+                    "malformed source unexpectedly produced a graph — this control no longer proves that a parse failure reaches the graph:None path"
+                );
+            }
+        });
+    }
+
+    /// Producer control: graph-present compile with an unrelated hard diagnostic must refuse
+    /// observation — not populate `blocking_hard_diagnostic_count: 0` on an unresolved symbol.
+    #[test]
+    fn unrelated_hard_diagnostic_observation_is_not_runnable_at_producer() {
+        use crate::v1_std_core::{make_error_node, CompilerDiagnostic};
+        const CONSUMER: &str = "v2.extdeps.languages.rust_test";
+        const SYMBOL: &str = "rust_selection_policy_node";
+        with_workspace_cwd(|| {
+            let valid = "module v2.extdeps.languages.rust_test\n\nimport std.types { Bool }\n\ndata probe: Bool = true\n";
+            let compiled = compile_declared_import_closure_only_with_pool(
+                &class_b_declared_import_pool_roots(),
+                "src/v2/extdeps/languages/rust_test_fixtures.dag",
+                Some(valid),
+            )
+            .expect("content override bypasses pool load");
+            assert!(
+                compiled.graph.is_some(),
+                "valid fixture must produce a graph so this control exercises the hard-diagnostic refusal path"
+            );
+            let mut diagnostics = compiled.diagnostics.iter().cloned().collect::<Vec<_>>();
+            diagnostics.push(make_error_node(
+                Rc::new(CompilerDiagnostic::InternalError {
+                    message: "producer control unrelated hard diagnostic".to_string(),
+                    span: Rc::new(SourceSpan {
+                        file: "src/v2/extdeps/languages/rust_test_fixtures.dag".to_string(),
+                        start: 0,
+                        end: 1,
+                    }),
+                }),
+                CONSUMER.to_string(),
+            ));
+            let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
+                graph: compiled.graph.clone(),
+                diagnostics: Rc::new(diagnostics.into()),
+                source_indices: compiled.source_indices.clone(),
+                complexity: compiled.complexity.clone(),
+                ownership: compiled.ownership.clone(),
+                newline_indices: compiled.newline_indices.clone(),
+            });
+            let observation = declared_import_closure_binding_observation_from_resolved(
+                resolved.as_ref(),
+                CONSUMER,
+                SYMBOL,
+            );
+            assert!(
+                matches!(
+                    observation,
+                    DeclaredImportClosureBindingObservation::NotRunnable(_)
+                ),
+                "unrelated hard diagnostic must refuse observation at producer; got {observation:?}"
+            );
+            if let DeclaredImportClosureBindingObservation::Observed(observed) = observation {
+                assert!(
+                    !observed.symbol_resolves || observed.blocking_hard_diagnostic_count == 0,
+                    "would have vacuously passed row 3: {observed:?}"
                 );
             }
         });

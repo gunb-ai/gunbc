@@ -13,7 +13,7 @@ import gunbc.compile_clean_diagnostic_policy { ListedImport }
 import v2.std.optional { Present, Absent }
 import std.types { Bool, NonEmptyStr }
 
-data class_b_binding_predicate_note: String = "Per-PR discovery-admitted unit controls for gunbc.declared_import_closure_binding verdict predicates (#7835 P1). Pure folds over typed observation/outcome variants — not path-excluded and not explicit_witness_admission enrolled."
+data class_b_binding_predicate_note: String = "Per-PR discovery-admitted unit controls for gunbc.declared_import_closure_binding verdict predicates (#7835 P1). Pure folds over typed observation/outcome variants — not path-excluded and not explicit_witness_admission enrolled. binding_refused_at_seam_rejects_unrelated_hard_diagnostic exercises the fold predicate only; producer-level hard-diagnostic refusal is tested in cli_run.rs unrelated_hard_diagnostic_observation_is_not_runnable_at_producer."
 
 test fn binding_refused_at_seam_not_runnable_is_false() -> Bool {
   !binding_refused_at_intended_seam(obs: BindingNotRunnable { cause: "could-not-measure" as NonEmptyStr })
