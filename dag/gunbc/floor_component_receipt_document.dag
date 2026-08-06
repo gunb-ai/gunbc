@@ -45,6 +45,7 @@ type FloorComponentReceiptDocument {
   component_count: Int
   components: List<JsonValue>
   unsuccessful_components: List<JsonValue>
+  unsuccessful_summaries: List<ComponentAlertSummary>
   affected_set_control: JsonValue
   selection_degradation: JsonValue
 }
@@ -57,6 +58,8 @@ type FloorComponentReceiptDecoding
   | ReceiptMemberAbsent { member: String }
   | ReceiptMemberMalformed { member: String, detail: String }
   | ReceiptSchemaUnknown { observed: String, expected: NonEmptyStr }
+  | ReceiptComponentCountMismatch { declared: String, decoded: Int }
+  | ReceiptUnsuccessfulComponentIdentityNotUnique { count: Int }
 
 type ReceiptText
   = ReceiptTextFound { text: String }
@@ -77,7 +80,8 @@ fn receipt_text_at(v: JsonValue, key: String) -> ReceiptText {
           } else {
             ReceiptTextFound { text: s }
           }
-        JsonNumber { lexeme: l } => ReceiptTextFound { text: l as String }
+        JsonNumber { lexeme: _ } =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is a number, expected a string" } }
         JsonNull =>
           ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is null" } }
         JsonBool { value: _ } =>
@@ -118,12 +122,20 @@ fn receipt_array_at(v: JsonValue, key: String) -> ReceiptElements {
   }
 }
 
-fn receipt_value_at_or_null(v: JsonValue, key: String) -> JsonValue {
+data receipt_required_member_not_null_note: String = "AN ABSENT OR DUPLICATED REQUIRED MEMBER REFUSES; IT DOES NOT BECOME JsonNull. The earlier helper collapsed absent, duplicated and structurally-invalid into the same null value, which is the ⊥-as-answer conflation DESIGN names: `the receipt says the cold control is null` and `I could not read what the receipt says about the cold control` are different states, and the first is a claim about the floor while the second is a claim about the decoder. The alert renders per-component state from these, so a decoder that answers null for an unreadable member produces an issue body asserting something about a run that nothing in the receipt supports.\n\nThe affected-set control and the selection degradation are REQUIRED members and are decoded as such — the floor writes both on every exit path, so their absence is a defect in the writer, not an optional field. A member that is genuinely present and genuinely null still decodes to null, which is a fact the receipt stated."
+
+type ReceiptValue
+  = ReceiptValueFound { value: JsonValue }
+  | ReceiptValueFailed { decoding: FloorComponentReceiptDecoding }
+
+fn receipt_required_value_at(v: JsonValue, key: String) -> ReceiptValue {
   match json_object_unique_member(v: v, key: key) {
-    JsonMemberFound { value: found } => found
-    JsonMemberAbsent => JsonNull
-    JsonMemberDuplicated { count: _ } => JsonNull
-    JsonMemberNotAnObject => JsonNull
+    JsonMemberFound { value: found } => ReceiptValueFound { value: found }
+    JsonMemberAbsent => ReceiptValueFailed { decoding: ReceiptMemberAbsent { member: key } }
+    JsonMemberDuplicated { count: _ } =>
+      ReceiptValueFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is duplicated" } }
+    JsonMemberNotAnObject =>
+      ReceiptValueFailed { decoding: ReceiptMemberMalformed { member: key, detail: "enclosing value is not a JSON object" } }
   }
 }
 
@@ -153,6 +165,135 @@ fn floor_component_receipt_document_text(doc: FloorComponentReceiptDocument) -> 
   serialize_json(v: floor_component_receipt_document_json(doc: doc))
 }
 
+data component_alert_summary_note: String = "THE STRICT TYPED PROJECTION OF THE FACTS THE ALERT ACTUALLY DECIDES ON. Component interiors are still transported as JSON residue, because a total reverse decoder for std.observation.ObservationEvent is a separate obligation and half of one would fork a coproduct that already has an authority. But the four fields the alert READS — index, label, outcome, failure_mode — are exactly the fields its incident signature is keyed on, so they are not residue and must not be typed as residue. They are decoded, each required, each exactly once, each with its own located refusal.\n\nThe distinction that makes this coherent rather than arbitrary: unknown OPTIONAL detail may remain JSON, decision-driving facts may not. A field that changes what the alert says must be one the decoder has checked."
+
+type ComponentAlertSummary {
+  index: NonEmptyStr
+  label: NonEmptyStr
+  outcome: NonEmptyStr
+  failure_mode: NonEmptyStr
+}
+
+type ComponentAlertSummaryDecoding
+  = ComponentSummaryDecoded { summary: ComponentAlertSummary }
+  | ComponentSummaryFailed { decoding: FloorComponentReceiptDecoding }
+
+fn receipt_summary_text_at(v: JsonValue, key: String) -> ReceiptText {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberAbsent => ReceiptTextFailed { decoding: ReceiptMemberAbsent { member: key } }
+    JsonMemberDuplicated { count: _ } =>
+      ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is duplicated" } }
+    JsonMemberNotAnObject =>
+      ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component is not a JSON object" } }
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonString { value: sv } =>
+          if sv == "" {
+            ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is the empty string" } }
+          } else {
+            ReceiptTextFound { text: sv }
+          }
+        JsonNumber { lexeme: l } => ReceiptTextFound { text: l as String }
+        JsonNull =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is null" } }
+        JsonBool { value: _ } =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is a bool" } }
+        JsonArray { elements: _ } =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is an array" } }
+        JsonObject { members: _ } =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is an object" } }
+      }
+  }
+}
+
+data component_index_numeric_admission_note: String = "index admits a JSON number because the writer emits it with json_int, so a number is its NORMAL form here — unlike the event envelope's generic members, where a number signalled a shape change. label, outcome and failure_mode are emitted with json_string and admit only strings, so the widening is confined to the one member whose writer produces it, which is the same rule the event decoder follows."
+
+fn component_alert_summary_of(component: JsonValue) -> ComponentAlertSummaryDecoding {
+  match receipt_summary_text_at(v: component, key: "index") {
+    ReceiptTextFailed { decoding: d } => ComponentSummaryFailed { decoding: d }
+    ReceiptTextFound { text: idx } =>
+      match receipt_summary_text_at(v: component, key: "label") {
+        ReceiptTextFailed { decoding: d } => ComponentSummaryFailed { decoding: d }
+        ReceiptTextFound { text: label } =>
+          match receipt_summary_text_at(v: component, key: "outcome") {
+            ReceiptTextFailed { decoding: d } => ComponentSummaryFailed { decoding: d }
+            ReceiptTextFound { text: outcome } =>
+              match receipt_summary_text_at(v: component, key: "failure_mode") {
+                ReceiptTextFailed { decoding: d } => ComponentSummaryFailed { decoding: d }
+                ReceiptTextFound { text: mode } =>
+                  ComponentSummaryDecoded {
+                    summary: ComponentAlertSummary {
+                      index: idx as NonEmptyStr,
+                      label: label as NonEmptyStr,
+                      outcome: outcome as NonEmptyStr,
+                      failure_mode: mode as NonEmptyStr
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn component_alert_summary_identity(s: ComponentAlertSummary) -> String {
+  concat(concat(s.index as String, ":"), s.label as String)
+}
+
+data unsuccessful_component_identity_note: String = "EVERY UNSUCCESSFUL COMPONENT MUST HAVE A UNIQUE IDENTITY, and the check is an identity join rather than a count. The incident signature is built by mapping over these rows, so two rows sharing an index and label are either one row duplicated — which silently doubles a member of the signature and makes a red look like it changed when it did not — or two genuinely distinct components the receipt cannot tell apart, which means the signature cannot distinguish them either. Both are defects in the thing the alert decides on, so the decoder refuses rather than deduplicating: deduplicating would be the absorbing fallback, quietly repairing a producer defect until nobody knows it exists."
+
+fn identity_list_contains(seen: List<String>, needle: String) -> Bool {
+  fold(seen, init: false, f: (acc, s) => acc || (s == needle))
+}
+
+fn summaries_have_unique_identity(summaries: List<ComponentAlertSummary>) -> Bool {
+  count(fold(summaries, init: [], f: (acc, x) => {
+    let id = component_alert_summary_identity(s: x)
+    if identity_list_contains(seen: acc, needle: id) { acc } else { concat(acc, [id]) }
+  })) == count(summaries)
+}
+
+type ComponentSummaryListDecoding
+  = ComponentSummaryListDecoded { summaries: List<ComponentAlertSummary> }
+  | ComponentSummaryListFailed { decoding: FloorComponentReceiptDecoding }
+
+fn component_alert_summaries_of(components: List<JsonValue>) -> ComponentSummaryListDecoding {
+  fold(components, init: ComponentSummaryListDecoded { summaries: [] }, f: (acc, c) =>
+    match acc {
+      ComponentSummaryListFailed { decoding: d } => ComponentSummaryListFailed { decoding: d }
+      ComponentSummaryListDecoded { summaries: got } =>
+        match component_alert_summary_of(component: c) {
+          ComponentSummaryFailed { decoding: d } => ComponentSummaryListFailed { decoding: d }
+          ComponentSummaryDecoded { summary: sm } =>
+            ComponentSummaryListDecoded { summaries: concat(got, [sm]) }
+        }
+    })
+}
+
+data receipt_count_decode_note: String = "component_count is read by its own decoder, which admits a JSON number, for the same reason the event envelope's run id is: the writer emits it with json_int, so a number is its normal form. It is deliberately NOT read through the generic text decoder — that one now refuses numbers precisely so that a number appearing where prose belongs is a located refusal, and reusing it here would have forced a choice between weakening it everywhere and being unable to read the count at all."
+
+fn receipt_count_at(v: JsonValue, key: String) -> ReceiptText {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberAbsent => ReceiptTextFailed { decoding: ReceiptMemberAbsent { member: key } }
+    JsonMemberDuplicated { count: _ } =>
+      ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is duplicated" } }
+    JsonMemberNotAnObject =>
+      ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "enclosing value is not a JSON object" } }
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonNumber { lexeme: l } => ReceiptTextFound { text: l as String }
+        JsonString { value: sv } => ReceiptTextFound { text: sv }
+        JsonNull =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component_count is null" } }
+        JsonBool { value: _ } =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component_count is a bool" } }
+        JsonArray { elements: _ } =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component_count is an array" } }
+        JsonObject { members: _ } =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component_count is an object" } }
+      }
+  }
+}
+
 fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptyStr) -> FloorComponentReceiptDecoding {
   match parse_json(s: text) {
     Absent => ReceiptNotJson { detail: "receipt is not valid JSON" }
@@ -178,6 +319,24 @@ fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptySt
                             match receipt_array_at(v: doc, key: receipt_member_unsuccessful_components) {
                               ReceiptElementsFailed { decoding: d } => d
                               ReceiptElementsFound { elements: unsuccessful } =>
+                            match receipt_count_at(v: doc, key: receipt_member_component_count) {
+                              ReceiptTextFailed { decoding: d } => d
+                              ReceiptTextFound { text: declared_count } =>
+                            if declared_count != (count(components) as String) {
+                              ReceiptComponentCountMismatch { declared: declared_count, decoded: count(components) }
+                            } else {
+                            match receipt_required_value_at(v: doc, key: receipt_member_affected_set_cold_control) {
+                              ReceiptValueFailed { decoding: d } => d
+                              ReceiptValueFound { value: control } =>
+                            match receipt_required_value_at(v: doc, key: receipt_member_selection_degradation) {
+                              ReceiptValueFailed { decoding: d } => d
+                              ReceiptValueFound { value: degradation } =>
+                            match component_alert_summaries_of(components: unsuccessful) {
+                              ComponentSummaryListFailed { decoding: d } => d
+                              ComponentSummaryListDecoded { summaries: summaries } =>
+                            if !summaries_have_unique_identity(summaries: summaries) {
+                              ReceiptUnsuccessfulComponentIdentityNotUnique { count: count(summaries) }
+                            } else {
                                 ReceiptDecoded {
                                   document: FloorComponentReceiptDocument {
                                     subject: FloorComponentReceiptSubject {
@@ -189,10 +348,17 @@ fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptySt
                                     component_count: count(components),
                                     components: components,
                                     unsuccessful_components: unsuccessful,
-                                    affected_set_control: receipt_value_at_or_null(v: doc, key: receipt_member_affected_set_cold_control),
-                                    selection_degradation: receipt_value_at_or_null(v: doc, key: receipt_member_selection_degradation)
+                                    unsuccessful_summaries: summaries,
+                                    affected_set_control: control,
+                                    selection_degradation: degradation
                                   }
                                 }
+                            }
+                            }
+                            }
+                            }
+                            }
+                            }
                             }
                         }
                     }

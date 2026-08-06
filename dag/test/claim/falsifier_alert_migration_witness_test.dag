@@ -19,6 +19,7 @@ import gunbc.falsifier_alert_admission {
   FalsifierAlertAdmission,
   AlertAdmitted,
   AlertRefusedWorkflowNotObserved,
+  AlertRefusedWorkflowPathNotObserved,
   AlertRefusedRepositoryNotOwned,
   RepositoryField, EnclosingRepository, HeadRepository,
   AlertRefusedHeadBranchNotMain,
@@ -34,7 +35,7 @@ import gunbc.falsifier_alert_state {
   CurrentState, LegacyStateWithoutLastNotification, StateAbsent, StateMalformed,
   FalsifierAlertNotificationDecision,
   NotifyIncidentChanged, NotifyHeartbeatDue, NotifyMigratedToTypedState, NotifyFirstRed,
-  SuppressWithinWindow,
+  SuppressWithinWindow, RefuseMalformedState,
   falsifier_alert_state_from_payload,
   falsifier_alert_notification_decision,
   falsifier_alert_heartbeat_window
@@ -46,6 +47,8 @@ import gunbc.floor_component_receipt_document {
   ReceiptDecoded, ReceiptNotJson, ReceiptMemberAbsent, ReceiptMemberMalformed, ReceiptSchemaUnknown,
   ReceiptSubjectMatch, ReceiptSubjectMatches,
   ReceiptSubjectRunIdMismatch, ReceiptSubjectWorkflowMismatch, ReceiptSubjectHeadShaMismatch,
+  ReceiptComponentCountMismatch, ReceiptUnsuccessfulComponentIdentityNotUnique,
+  ComponentAlertSummary,
   floor_component_receipt_decode_with,
   floor_component_receipt_subject_matches_event
 }
@@ -72,23 +75,23 @@ data falsifier_alert_migration_witness_note: String = "ALERT-0..3's executing ev
 data alert_expected_schema: NonEmptyStr = "floor-component-receipt/v1"
 
 fn trusted_event_json() -> String {
-  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000001,\"name\":\"affected-set-falsifier\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000001\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
+  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000001,\"name\":\"affected-set-falsifier\",\"workflow_id\":161803,\"path\":\".github/workflows/falsifier.yml\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000001\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
 }
 
 fn fork_event_json() -> String {
-  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000002,\"name\":\"affected-set-falsifier\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000002\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"attacker/gunbc\"},\"event\":\"pull_request\"}}"
+  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000002,\"name\":\"affected-set-falsifier\",\"workflow_id\":161803,\"path\":\".github/workflows/falsifier.yml\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000002\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"attacker/gunbc\"},\"event\":\"pull_request\"}}"
 }
 
 fn non_main_event_json() -> String {
-  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000003,\"name\":\"affected-set-falsifier\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000003\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"topic/experiment\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
+  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000003,\"name\":\"affected-set-falsifier\",\"workflow_id\":161803,\"path\":\".github/workflows/falsifier.yml\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000003\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"topic/experiment\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
 }
 
 fn other_workflow_event_json() -> String {
-  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000004,\"name\":\"ci\",\"conclusion\":\"success\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000004\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
+  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000004,\"name\":\"ci\",\"workflow_id\":271828,\"path\":\".github/workflows/ci.yml\",\"conclusion\":\"success\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000004\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
 }
 
 fn event_missing_conclusion_json() -> String {
-  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000005,\"name\":\"affected-set-falsifier\",\"conclusion\":null,\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000005\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
+  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000005,\"name\":\"affected-set-falsifier\",\"workflow_id\":161803,\"path\":\".github/workflows/falsifier.yml\",\"conclusion\":null,\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000005\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
 }
 
 fn admission_of(json: String) -> FalsifierAlertAdmission {
@@ -272,7 +275,7 @@ fn receipt_json(schema: String, workflow: String, run_id: String, head_sha: Stri
       concat(concat("{\"schema\":\"", schema), concat("\",\"workflow_name\":\"", workflow)),
       concat(concat("\",\"run_id\":\"", run_id), concat("\",\"head_sha\":\"", head_sha))
     ),
-    "\",\"component_count\":0,\"affected_set_cold_control\":null,\"unsuccessful_components\":[],\"components\":[]}"
+    "\",\"component_count\":0,\"affected_set_cold_control\":null,\"selection_degradation\":null,\"unsuccessful_components\":[],\"components\":[]}"
   )
 }
 
@@ -445,6 +448,216 @@ test fn the_modelled_issue_states_decode() -> Bool {
         IssueStateFound { state: Closed } => true
         _ => false
       }
+    _ => false
+  }
+}
+
+data alert35_strict_boundary_note: String = "ALERT-3.5's evidence. Every claim here plants ONE wrong value in an otherwise-valid fixture and requires a LOCATED refusal naming the member that was wrong. That shape is the point: a decoder that refuses for the right reason and a decoder that refuses for some reason are indistinguishable on a fixture that is wrong in several ways at once, and the second is useless to debug against."
+
+data numeric_plant_note: String = "THE PLANT REPLACES THE VALUE IN PLACE; IT DOES NOT APPEND A DUPLICATE MEMBER. The first version of these fixtures appended a second copy of the member carrying a number, and every one of them passed — but they passed because json_object_unique_member refuses a DUPLICATED member, which fires before any type check and fires identically whether the decoder is strict or permissive. Proven by execution: reverting head_branch to the permissive decoder left that claim green, so it was measuring duplicate detection and reporting it as type strictness. Each field now has exactly one occurrence carrying a raw number, so the only thing that can refuse is the type check being asserted."
+
+fn event_json_with(name: String, conclusion: String, head_sha: String, head_branch: String, originating: String) -> String {
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(
+    "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000009,\"workflow_id\":161803,\"path\":\".github/workflows/falsifier.yml\",\"name\":",
+    name), ",\"conclusion\":"), conclusion), ",\"html_url\":\"https://x\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":"),
+    head_sha), ",\"head_branch\":"), head_branch),
+    ",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":"), concat(originating, "}}"))
+}
+
+data plant_valid_name: String = "\"affected-set-falsifier\""
+data plant_valid_conclusion: String = "\"failure\""
+data plant_valid_head_sha: String = "\"0123456789abcdef0123456789abcdef01234567\""
+data plant_valid_head_branch: String = "\"main\""
+data plant_valid_event: String = "\"schedule\""
+data plant_number: String = "12345"
+
+fn numeric_plant_refuses_at(field: String) -> Bool {
+  let text = if field == "name" {
+    event_json_with(name: plant_number, conclusion: plant_valid_conclusion, head_sha: plant_valid_head_sha, head_branch: plant_valid_head_branch, originating: plant_valid_event)
+  } else if field == "conclusion" {
+    event_json_with(name: plant_valid_name, conclusion: plant_number, head_sha: plant_valid_head_sha, head_branch: plant_valid_head_branch, originating: plant_valid_event)
+  } else if field == "head_sha" {
+    event_json_with(name: plant_valid_name, conclusion: plant_valid_conclusion, head_sha: plant_number, head_branch: plant_valid_head_branch, originating: plant_valid_event)
+  } else if field == "head_branch" {
+    event_json_with(name: plant_valid_name, conclusion: plant_valid_conclusion, head_sha: plant_valid_head_sha, head_branch: plant_number, originating: plant_valid_event)
+  } else {
+    event_json_with(name: plant_valid_name, conclusion: plant_valid_conclusion, head_sha: plant_valid_head_sha, head_branch: plant_valid_head_branch, originating: plant_number)
+  }
+  match workflow_run_event_from_json(text: text) {
+    WorkflowRunEventMemberMalformed { member: m, detail: _ } => m == field
+    _ => false
+  }
+}
+
+test fn the_all_valid_plant_baseline_decodes() -> Bool {
+  match workflow_run_event_from_json(text: event_json_with(name: plant_valid_name, conclusion: plant_valid_conclusion, head_sha: plant_valid_head_sha, head_branch: plant_valid_head_branch, originating: plant_valid_event)) {
+    WorkflowRunEventObserved { event: e } => e.head_branch == "main"
+    _ => false
+  }
+}
+
+test fn a_numeric_workflow_name_refuses_located() -> Bool {
+  numeric_plant_refuses_at(field: "name")
+}
+
+test fn a_numeric_conclusion_refuses_located() -> Bool {
+  numeric_plant_refuses_at(field: "conclusion")
+}
+
+test fn a_numeric_head_sha_refuses_located() -> Bool {
+  numeric_plant_refuses_at(field: "head_sha")
+}
+
+test fn a_numeric_head_branch_refuses_located() -> Bool {
+  numeric_plant_refuses_at(field: "head_branch")
+}
+
+test fn a_numeric_originating_event_refuses_located() -> Bool {
+  numeric_plant_refuses_at(field: "event")
+}
+
+test fn the_run_id_still_accepts_its_numeric_wire_form() -> Bool {
+  match workflow_run_event_from_json(text: trusted_event_json()) {
+    WorkflowRunEventObserved { event: e } => (e.run_id as String) == "31000000001"
+    _ => false
+  }
+}
+
+data workflow_path_claim_note: String = "The display name and the file path are asserted as SEPARATE refusals because they are separate facts: a workflow can be renamed without moving, and a file can be moved without being renamed. A wall that checked only the name would admit a run of a different file that had been given the expected name."
+
+fn event_with_path(path: String) -> String {
+  concat(concat(
+    "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000010,\"workflow_id\":161803,\"path\":\"",
+    path), "\",\"name\":\"affected-set-falsifier\",\"conclusion\":\"failure\",\"html_url\":\"https://x\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}")
+}
+
+test fn the_trust_wall_refuses_an_impostor_file_wearing_the_expected_name() -> Bool {
+  match falsifier_alert_admit(observation: workflow_run_event_from_json(text: event_with_path(path: ".github/workflows/attacker.yml"))) {
+    AlertRefusedWorkflowPathNotObserved { observed: o, expected: _ } =>
+      o == ".github/workflows/attacker.yml"
+    _ => false
+  }
+}
+
+test fn the_trust_wall_admits_the_expected_workflow_file() -> Bool {
+  match falsifier_alert_admit(observation: workflow_run_event_from_json(text: event_with_path(path: ".github/workflows/falsifier.yml"))) {
+    AlertAdmitted { event: _ } => true
+    _ => false
+  }
+}
+
+data malformed_state_claim_note: String = "The load-bearing claim of item B: a malformed marker must NOT reach any notify arm, because every notify arm is followed by a write that would overwrite the corrupt marker and destroy the only record of when the incident began."
+
+test fn a_malformed_state_marker_refuses_instead_of_starting_a_new_incident() -> Bool {
+  let d = falsifier_alert_notification_decision(
+    now: 9999999,
+    decoding: falsifier_alert_state_from_payload(payload: "{\"first_red\":\"not-a-number\",\"signature\":\"x\"}"),
+    signature: "a:b:c" as NonEmptyStr
+  )
+  match d {
+    RefuseMalformedState { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn an_absent_state_marker_still_initiates_typed_state() -> Bool {
+  match falsifier_alert_notification_decision(
+    now: 9999999,
+    decoding: StateAbsent,
+    signature: "a:b:c" as NonEmptyStr
+  ) {
+    NotifyFirstRed => true
+    _ => false
+  }
+}
+
+data receipt_strictness_claim_note: String = "Item C's claims. The count check is the one worth naming: the decoder previously IGNORED the wire component_count and recomputed it from the array, which is the recompute-instead-of-check pattern — it cannot disagree with itself, so it can never report that the producer and its own array are inconsistent. Checking the declared value against the decoded one is what makes the field mean anything."
+
+fn receipt_with(component_count: String, components: String, unsuccessful: String) -> String {
+  concat(concat(concat(concat(
+    "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":\"affected-set-falsifier\",\"run_id\":\"31000000001\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"component_count\":",
+    component_count), ",\"affected_set_cold_control\":null,\"selection_degradation\":null,\"unsuccessful_components\":"),
+    unsuccessful), concat(",\"components\":", concat(components, "}")))
+}
+
+data one_component: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"failed\",\"failure_mode\":\"WitnessRed\"}"
+
+test fn a_declared_component_count_that_disagrees_with_the_array_refuses() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "7", components: concat(concat("[", one_component), "]"), unsuccessful: "[]"),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptComponentCountMismatch { declared: d, decoded: n } => d == "7" && n == 1
+    _ => false
+  }
+}
+
+test fn an_agreeing_component_count_decodes() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", one_component), "]"), unsuccessful: "[]"),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptDecoded { document: doc } => doc.component_count == 1
+    _ => false
+  }
+}
+
+test fn duplicate_unsuccessful_component_identities_refuse() -> Bool {
+  let two = concat(concat(concat("[", one_component), concat(",", one_component)), "]")
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "2", components: concat(concat(concat("[", one_component), concat(",", one_component)), "]"), unsuccessful: two),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptUnsuccessfulComponentIdentityNotUnique { count: n } => n == 2
+    _ => false
+  }
+}
+
+test fn the_alert_summary_decodes_the_four_signature_fields() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", one_component), "]"), unsuccessful: concat(concat("[", one_component), "]")),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptDecoded { document: doc } =>
+      match doc.unsuccessful_summaries.first() {
+        Present { value: sm } =>
+          (sm.index as String) == "6"
+            && (sm.label as String) == "witness discovery"
+            && (sm.outcome as String) == "failed"
+            && (sm.failure_mode as String) == "WitnessRed"
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+test fn an_unsuccessful_component_missing_failure_mode_refuses_located() -> Bool {
+  let no_mode = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"failed\"}"
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", no_mode), "]"), unsuccessful: concat(concat("[", no_mode), "]")),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptMemberAbsent { member: m } => m == "failure_mode"
+    _ => false
+  }
+}
+
+test fn a_required_auxiliary_member_absent_refuses_rather_than_becoming_null() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":\"affected-set-falsifier\",\"run_id\":\"1\",\"head_sha\":\"abc\",\"component_count\":0,\"unsuccessful_components\":[],\"components\":[]}",
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptMemberAbsent { member: m } => m == "affected_set_cold_control"
+    _ => false
+  }
+}
+
+test fn a_numeric_workflow_name_in_the_receipt_refuses() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":42,\"run_id\":\"1\",\"head_sha\":\"abc\",\"component_count\":0,\"affected_set_cold_control\":null,\"selection_degradation\":null,\"unsuccessful_components\":[],\"components\":[]}",
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "workflow_name"
     _ => false
   }
 }
