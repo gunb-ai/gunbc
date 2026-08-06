@@ -2,6 +2,10 @@ module gunbc.falsifier_alert_admission
 
 import std.types { NonEmptyStr, String }
 import extdeps.github.actions { github_event_name_schedule, github_event_name_workflow_dispatch, workflow_run_activity_completed }
+import extdeps.github.expressions {
+  Expression, ContextAccess, StringLiteral, LogicalOr, LogicalAnd, Equals,
+  Github, serialize_expression
+}
 import extdeps.github.workflow_run_event {
   WorkflowRunEvent,
   WorkflowRunEventObservation,
@@ -90,32 +94,39 @@ fn falsifier_alert_admit(observation: WorkflowRunEventObservation) -> FalsifierA
   }
 }
 
-fn falsifier_alert_is_admitted(admission: FalsifierAlertAdmission) -> Bool {
-  match admission {
-    AlertAdmitted { event: _ } => true
-    AlertRefusedWorkflowNotObserved { observed: _, expected: _ } => false
-    AlertRefusedRepositoryNotOwned { field: _, observed: _, expected: _ } => false
-    AlertRefusedHeadBranchNotMain { observed: _, expected: _ } => false
-    AlertRefusedOriginatingEventNotAdmitted { observed: _ } => false
-    AlertRefusedActivityNotCompleted { observed: _, expected: _ } => false
-    AlertRefusedEventUnreadable { observation: _ } => false
+data falsifier_alert_no_bool_projection_note: String = "THERE IS DELIBERATELY NO falsifier_alert_is_admitted PREDICATE. An earlier revision carried one, and review 49400 was right to object: a Bool projection over FalsifierAlertAdmission throws away the located reason at exactly the boundary this module's purpose note argues it must be preserved, and once such a helper exists it is the convenient thing to reach for — a caller writes `if is_admitted` and the coordinate that failed is gone, which is the state this whole coproduct exists to prevent. Callers match on the admission and answer each arm; a caller that genuinely only needs a yes/no writes that match at its own use site, where the reason it is discarding is visible in the code discarding it."
+
+data falsifier_alert_job_condition_note: String = "The generated workflow's job-level condition is DERIVED from this module's constants rather than hand-typed into the YAML, so the two enforcement points cannot drift apart in what they consider admissible. The condition can only express the subset of the wall that GitHub's expression language can see in the event context — workflow name, head branch and originating event — which is why it is the cheap outer guard and not the wall itself: head_repository and the activity are re-read from the payload by the program. A condition that could express everything would still not remove the in-program check, for the reason the purpose note gives.\n\nIT IS BUILT AS A TYPED extdeps.github.expressions Expression AND SERIALIZED, not concatenated as text (review 49400). The earlier revision assembled the condition by nesting concat over raw expression fragments, which is a foreign-language program in normal form authored outside the module that owns that language — precisely the ExecutableSourceString class gunbc.falsifier_alert_residue declares in this same change as the thing to shrink. Emitting new residue while declaring residue is the failure mode worth catching, and the fix is the ordinary one: the expression grammar already had a model, it was missing two operators, so the operators landed there and this site selects from them."
+
+fn falsifier_alert_workflow_run_field(field: String) -> Expression {
+  ContextAccess { context: Github, path: ["event", "workflow_run", field] }
+}
+
+fn falsifier_alert_job_condition_expression() -> Expression {
+  LogicalAnd {
+    left: Equals {
+      left: falsifier_alert_workflow_run_field(field: "name"),
+      right: StringLiteral { value: falsifier_alert_observed_workflow_name as String }
+    },
+    right: LogicalAnd {
+      left: Equals {
+        left: falsifier_alert_workflow_run_field(field: "head_branch"),
+        right: StringLiteral { value: falsifier_alert_expected_head_branch as String }
+      },
+      right: LogicalOr {
+        left: Equals {
+          left: falsifier_alert_workflow_run_field(field: "event"),
+          right: StringLiteral { value: github_event_name_schedule }
+        },
+        right: Equals {
+          left: falsifier_alert_workflow_run_field(field: "event"),
+          right: StringLiteral { value: github_event_name_workflow_dispatch }
+        }
+      }
+    }
   }
 }
 
-data falsifier_alert_job_condition_note: String = "The generated workflow's job-level condition is DERIVED from this module's constants rather than hand-typed into the YAML, so the two enforcement points cannot drift apart in what they consider admissible. The condition can only express the subset of the wall that GitHub's expression language can see in the event context — workflow name, head branch, originating event and conclusion — which is why it is the cheap outer guard and not the wall itself: head_repository and the activity are re-read from the payload by the program. A condition that could express everything would still not remove the in-program check, for the reason the purpose note gives."
-
 fn falsifier_alert_job_condition() -> String {
-  concat(
-    concat(
-      concat("github.event.workflow_run.name == '", falsifier_alert_observed_workflow_name as String),
-      concat("' && github.event.workflow_run.head_branch == '", falsifier_alert_expected_head_branch as String)
-    ),
-    concat(
-      concat("' && (github.event.workflow_run.event == '", github_event_name_schedule),
-      concat(
-        concat("' || github.event.workflow_run.event == '", github_event_name_workflow_dispatch),
-        "')"
-      )
-    )
-  )
+  serialize_expression(expression: falsifier_alert_job_condition_expression())
 }

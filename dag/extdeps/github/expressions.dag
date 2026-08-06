@@ -44,6 +44,8 @@ type Expression
   | FunctionCall { function: ExpressionFunction, args: List<Expression> }
   | StringLiteral { value: String }
   | LogicalOr { left: Expression, right: Expression }
+  | LogicalAnd { left: Expression, right: Expression }
+  | Equals { left: Expression, right: Expression }
 
 type TemplateSegment
   = LiteralText { text: String }
@@ -94,6 +96,10 @@ type ExpressionSpellings {
   arg_sep: String
   string_quote: String
   or_op: String
+  and_op: String
+  eq_op: String
+  group_open: String
+  group_close: String
   interp_open: String
   interp_close: String
 }
@@ -105,6 +111,10 @@ data default_expression_spellings: ExpressionSpellings = {
   arg_sep: ", ",
   string_quote: "'",
   or_op: " || ",
+  and_op: " && ",
+  eq_op: " == ",
+  group_open: "(",
+  group_close: ")",
   interp_open: "${{ ",
   interp_close: " }}",
 }
@@ -126,7 +136,11 @@ fn serialize_expression_with(expression: Expression, sp: ExpressionSpellings) ->
     StringLiteral { value: v } =>
       join([sp.string_quote, v, sp.string_quote], "")
     LogicalOr { left: l, right: r } =>
-      join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.or_op)
+      join([sp.group_open, join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.or_op), sp.group_close], "")
+    LogicalAnd { left: l, right: r } =>
+      join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.and_op)
+    Equals { left: l, right: r } =>
+      join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.eq_op)
   }
 }
 
@@ -388,3 +402,5 @@ fn any_template_accesses_runner_var_via_env(templates: List<ExpressionTemplate>)
   fold(templates, init: false, f: (acc, template) =>
     acc || template_accesses_runner_var_via_env(template: template))
 }
+
+data expression_operator_extension_note: String = "LogicalAnd and Equals were added because a consumer needed to LOWER a job condition rather than concatenate one (review 49400 on gunbc#7903: the falsifier alert's trust-wall condition was being built by nested concat of raw expression text — a foreign-language executable string in normal form, authored outside this module, in the very change that declares that class as residue to shrink). Both operators are ordinary GitHub Actions expression syntax (docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/evaluate-expressions-in-workflows-and-actions#operators, read 2026-08-06), so this is modeling what upstream already has, not inventing a dialect.\n\nLogicalOr NOW PARENTHESIZES and previously did not. GitHub gives && higher precedence than ||, so an unparenthesized Or nested inside an And changes meaning — `a && b || c` parses as `(a && b) || c`. Before this change no And existed, so a bare Or could never be nested under one and the missing parentheses were unobservable; introducing And makes them load-bearing in the same motion. Parenthesizing unconditionally rather than computing when it is needed is the deliberate choice: precedence-aware emission is a second model of the grammar that has to stay in agreement with upstream's, while redundant parentheses are always correct and cost bytes nobody reads. The spellings record carries the grouping tokens so the serializer keeps no literal syntax of its own."

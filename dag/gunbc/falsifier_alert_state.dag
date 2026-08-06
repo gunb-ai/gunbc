@@ -1,6 +1,7 @@
 module gunbc.falsifier_alert_state
 
 import std.types { NonEmptyStr, String, EpochMs }
+import std.measure { Millisecond, millisecond, millisecond_count }
 import extdeps.languages.json.emit {
   JsonValue, JsonString, JsonNumber,
   json_object, json_kv, json_string, json_int, JsonKeyValue,
@@ -163,16 +164,16 @@ fn falsifier_alert_state_from_payload(payload: String) -> FalsifierAlertStateDec
 
 data falsifier_alert_throttle_window_note: String = "The heartbeat window is 20 hours expressed in milliseconds, and it is deliberately shorter than the 24-hour period a `daily` heartbeat suggests. A run cadence of every 4 hours means a 24-hour window would let a heartbeat slip a full cycle whenever the previous one landed slightly late, so the window is set below the cadence-aligned boundary it must not cross. It is a policy budget, not a measurement, which is what makes a literal legitimate here under DESIGN's oracle rule: it states the maximum silence an operator accepts during a live incident."
 
-data falsifier_alert_heartbeat_window_ms: EpochMs = 72000000
+data falsifier_alert_instant_duration_split_note: String = "AN INSTANT AND A DURATION ARE DIFFERENT CARRIERS HERE, and an earlier revision straddled them (review 49400, the load-bearing finding on this PR). EpochMs is `milliseconds since the Unix epoch` — a POINT IN TIME — and it was being used for the heartbeat window and for the `silent_for` elapsed spans as well as for the instants. With one carrier for both, `first_red + last_notification_at` typechecks, and it is nonsense: adding two instants has no meaning. So does `now + window` returning something the type says is an instant when the operands say otherwise.\n\nThe split is the ordinary affine one. Instants — first_red, last_notification_at, now — stay EpochMs, because that is what they are and it is the carrier the rest of this tree already uses for epoch-milliseconds facts. Durations — the window, and every silent_for — are std.measure Millisecond, the ratified Measure<Time, Milli, Nat> magnitude, so a duration cannot be passed where an instant is expected or vice versa. The two arithmetic sites are the only places they meet, and each is a legitimate affine operation: instant MINUS instant yields a duration, and instant PLUS duration yields an instant. They are written through millisecond/millisecond_count at exactly those points rather than by making the carriers interchangeable, so the crossing is visible where it happens instead of being everywhere."
 
 data falsifier_alert_throttle_note: String = "THE THROTTLE DECISION IS PURE AND TOTAL over (now, state, current signature). A CHANGED SIGNATURE ALWAYS NOTIFIES AND IS NEVER THROTTLED — it is a different incident with a different remedy, so suppressing it as `still red` is the state-space conflation the whole signature mechanism exists to prevent. An unchanged signature notifies only when the window has elapsed since the LAST NOTIFICATION, not since the run started and not since first_red. Comparing against last_notification_at is what makes the window mean what it says: measuring from first_red would make the interval drift with incident age, and measuring from the run start would notify every run."
 
 type FalsifierAlertNotificationDecision
   = NotifyIncidentChanged { previous: NonEmptyStr, current: NonEmptyStr }
-  | NotifyHeartbeatDue { silent_for: EpochMs }
+  | NotifyHeartbeatDue { silent_for: Millisecond }
   | NotifyMigratedToTypedState
   | NotifyFirstRed
-  | SuppressWithinWindow { silent_for: EpochMs }
+  | SuppressWithinWindow { silent_for: Millisecond }
 
 fn falsifier_alert_notification_decision(
   now: EpochMs,
@@ -186,20 +187,12 @@ fn falsifier_alert_notification_decision(
     CurrentState { state: s } =>
       if (s.signature as String) != (signature as String) {
         NotifyIncidentChanged { previous: s.signature, current: signature }
-      } else if now >= s.last_notification_at + falsifier_alert_heartbeat_window_ms {
-        NotifyHeartbeatDue { silent_for: now - s.last_notification_at }
+      } else if now >= s.last_notification_at + millisecond_count(m: falsifier_alert_heartbeat_window) {
+        NotifyHeartbeatDue { silent_for: millisecond(count: now - s.last_notification_at) }
       } else {
-        SuppressWithinWindow { silent_for: now - s.last_notification_at }
+        SuppressWithinWindow { silent_for: millisecond(count: now - s.last_notification_at) }
       }
   }
 }
 
-fn falsifier_alert_notification_notifies(d: FalsifierAlertNotificationDecision) -> Bool {
-  match d {
-    NotifyIncidentChanged { previous: _, current: _ } => true
-    NotifyHeartbeatDue { silent_for: _ } => true
-    NotifyMigratedToTypedState => true
-    NotifyFirstRed => true
-    SuppressWithinWindow { silent_for: _ } => false
-  }
-}
+data falsifier_alert_no_notifies_bool_note: String = "THERE IS DELIBERATELY NO falsifier_alert_notification_notifies PREDICATE, removed for the same reason as the admission module's (review 49400). Four of the five arms notify, but they do not notify the SAME THING — a changed incident, a heartbeat, a one-time migration and a first red produce different messages to different effect — so a Bool that answers only `does this notify` erases the distinction at the one boundary where the caller is about to choose what to say. The decision coproduct is the instruction; collapsing it to a flag means re-deriving the instruction somewhere else from something weaker."
