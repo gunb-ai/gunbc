@@ -84,16 +84,17 @@ type CapacityEvidenceGrade
   | CapacityEvidenceOperatorDeclared
   | CapacityEvidenceUnobserved
 
-// OPERATOR-DECLARED EVIDENCE MAY GRANT CANDIDATE CAPACITY AND MUST NOT GRANT LIVE CAPACITY. srv3's
-// session-free row is SessionsOperatorDeclaredAbsent — good enough to keep seven as a candidate width,
-// not good enough to actuate on. Observed arms advance live capacity; operator-declared and unobserved
-// arms cap at candidate only.
+// OPERATOR-DECLARED ABSENCE AND OBSERVED PRESENCE MAY GRANT CANDIDATE CAPACITY ONLY; ONLY
+// OBSERVED ABSENCE MAY ADVANCE LIVE CAPACITY. srv3's session-free row is SessionsOperatorDeclaredAbsent
+// — good enough to keep seven as a candidate width, not good enough to actuate on. srv1/srv2 carry
+// SessionsObservedPresent (sessions resident); that is not absence evidence and must not admit live
+// actuation on the joint-solve gate (review 49722).
 
 fn session_absence_evidence_grade(host: HostIdentity) -> CapacityEvidenceGrade {
   match host_session_evidence(host: host) {
     SessionsObservedAbsent { observed_on: _ } => CapacityEvidenceObserved
     SessionsOperatorDeclaredAbsent { reason: _ } => CapacityEvidenceOperatorDeclared
-    SessionsObservedPresent { observed_on: _, container_count: _ } => CapacityEvidenceObserved
+    SessionsObservedPresent { observed_on: _, container_count: _ } => CapacityEvidenceUnobserved
     SessionsUnobserved { reason: _ } => CapacityEvidenceUnobserved
   }
 }
@@ -454,20 +455,29 @@ fn live_capacity_admission_for_host(host: HostIdentity, solved: JointCapacitySol
   match solved {
     JointCapacitySolveUnsound { reason: r } => LiveCapacityRefused { reason: r }
     JointCapacitySolved { best: _, feasible_count: _, placement: _ } =>
-      match session_absence_evidence_grade(host: host) {
-        CapacityEvidenceObserved =>
-          LiveCapacityAdmitted { solved: solved, evidence: CapacityEvidenceObserved }
-        CapacityEvidenceOperatorDeclared =>
-          LiveCapacityCandidateOnly {
-            solved: solved,
-            evidence: CapacityEvidenceOperatorDeclared,
-            reason: "session absence is operator-declared, not observed — candidate capacity only",
-          }
-        CapacityEvidenceUnobserved =>
+      match host_session_evidence(host: host) {
+        SessionsObservedPresent { observed_on: _, container_count: _ } =>
           LiveCapacityCandidateOnly {
             solved: solved,
             evidence: CapacityEvidenceUnobserved,
-            reason: "session residency unobserved — candidate capacity only",
+            reason: "interactive sessions observed present — live actuation requires observed session absence",
+          }
+        _ =>
+          match session_absence_evidence_grade(host: host) {
+            CapacityEvidenceObserved =>
+              LiveCapacityAdmitted { solved: solved, evidence: CapacityEvidenceObserved }
+            CapacityEvidenceOperatorDeclared =>
+              LiveCapacityCandidateOnly {
+                solved: solved,
+                evidence: CapacityEvidenceOperatorDeclared,
+                reason: "session absence is operator-declared, not observed — candidate capacity only",
+              }
+            CapacityEvidenceUnobserved =>
+              LiveCapacityCandidateOnly {
+                solved: solved,
+                evidence: CapacityEvidenceUnobserved,
+                reason: "session residency unobserved — candidate capacity only",
+              }
           }
       }
   }
