@@ -19,7 +19,7 @@ import gunbc.host_capacity_solve {
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.fleet_intent_network { operator_host_srv3 }
-import std.measure { measure_scale_fraction_floor, byte_size_count }
+import std.measure { measure_scale_fraction_floor, byte_size_count, hardware_thread_count_value }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

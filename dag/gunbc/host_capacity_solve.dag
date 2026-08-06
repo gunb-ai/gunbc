@@ -50,7 +50,7 @@ import gunbc.fleet_container {
   BaselineUnmeasured,
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.host_layout { gunbc_managed_compile_pool_slice }
+import gunbc.host_layout { gunbc_managed_compile_pool_slice_unit }
 
 data host_capacity_solve_authority_disposition: Disposition = SingleAuthority
 
@@ -117,6 +117,12 @@ fn resolve_runner_non_compile_residency() -> RunnerNonCompileResidency {
     BaselineUnmeasured { reason: r } =>
       NonCompileResidencyUnresolved { reason: concat("gha_runner idle baseline unmeasured: ", r) }
   }
+}
+
+data srv3_non_compile_residency_observed_scaffold_note: String = "Scaffold producer (review 49712): DeclarationRef target for srv3_non_compile_residency_observed_dissolve_on. Until host_effect residency observation lands, this delegates to resolve_runner_non_compile_residency (idle baseline). Dissolve-on: replace body with measured observation and retire resolve_runner_non_compile_residency usage in joint_capacity_solve_for_host."
+
+fn srv3_non_compile_residency_observed() -> RunnerNonCompileResidency {
+  resolve_runner_non_compile_residency()
 }
 
 fn per_slot_runner_pool_charge(placement: CompilePoolPlacement, residency: RunnerNonCompileResidency) -> ByteSize? {
@@ -423,7 +429,7 @@ fn joint_capacity_solve_srv3_under_declared_pool(max_slots: Int, max_tokens: Int
   joint_capacity_solve_for_host(
     host: operator_host_srv3,
     offer: srv3_offer,
-    placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice_unit },
     max_slots: max_slots,
     max_tokens: max_tokens
   )
@@ -466,8 +472,6 @@ fn live_capacity_admission_for_host(host: HostIdentity, solved: JointCapacitySol
       }
   }
 }
-
-// Aspiration bind: srv3_non_compile_residency_observed is not yet authored; names the dissolve target, not a live symbol (review 49648).
 
 data srv3_non_compile_residency_observed_dissolve_on: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
