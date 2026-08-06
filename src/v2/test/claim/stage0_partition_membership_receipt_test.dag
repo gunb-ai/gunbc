@@ -9,6 +9,7 @@ import v2.workflow.rust_crate_partition {
   stage0_partition_membership_closure_covers_seeds,
   stage0_partition_membership_order_independence,
   stage0_partition_witness_assignment_conflict_refuses_holds,
+  stage0_partition_witness_assignment_conflict_cause_carries_reachers_holds,
   stage0_partition_witness_nonconvergence_refuses_holds,
   stage0_partition_witness_shared_dependency_v1_rt_not_in_std_core_holds,
   rust_crate_partition_declared_core_target,
@@ -43,6 +44,10 @@ test fn stage0_partition_nonconvergence_refuses_holds() -> Bool {
 
 test fn stage0_partition_assignment_conflict_refuses_holds() -> Bool {
   stage0_partition_witness_assignment_conflict_refuses_holds()
+}
+
+test fn stage0_partition_assignment_conflict_cause_carries_reachers_holds() -> Bool {
+  stage0_partition_witness_assignment_conflict_cause_carries_reachers_holds()
 }
 
 test fn stage0_partition_physical_crate_count_is_seven_holds() -> Bool {
