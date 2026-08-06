@@ -17,6 +17,7 @@ import tools.host_prelude {
 }
 
 data survey_source_root: String = "src/v2"
+data survey_dag_source_root: String = "dag"
 data survey_manifest_dir: String = "target/frontier-probe-survey"
 data survey_manifest_path: String = "target/frontier-probe-survey/host_frontier_probe_survey_manifest.dag"
 data survey_test_entry: String = "src/v2/test/claim/long/compiler_frontier_per_module_probe_test.dag"
@@ -28,6 +29,7 @@ data frontier_probe_survey_transport_scaffold_note: String = "SCAFFOLD — see v
 fn survey_manifest_emit_args(manifest_path: String) -> List<String> {
   [
     "--source-root", survey_source_root,
+    "--source-root", survey_dag_source_root,
     "--emit-survey-manifest", manifest_path,
     "--survey-dir", survey_manifest_dir
   ]

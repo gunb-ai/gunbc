@@ -124,6 +124,29 @@ data ci_floor_phase_journal_read_command: String = "sed 's/^/[floor-phase-journa
 
 data ci_floor_phase_journal_absent_command: String = "echo \"[floor-phase-journal] absent\""
 
+data ci_floor_wet_witness_row_outcome_receipt_path: String = "target/floor-wet-witness-row-outcome-receipt.tsv"
+
+data ci_floor_wet_witness_row_outcome_receipt_present_command: String = "[ -f \"target/floor-wet-witness-row-outcome-receipt.tsv\" ]"
+
+data ci_floor_wet_witness_row_outcome_receipt_header_command: String = "echo \"[wet-witness-row-outcome-receipt] batch entry function outcome detail\""
+
+data ci_floor_wet_witness_row_outcome_receipt_read_command: String = "sed 's/^/[wet-witness-row-outcome-receipt] /' \"target/floor-wet-witness-row-outcome-receipt.tsv\""
+
+data ci_floor_wet_witness_row_outcome_receipt_absent_command: String = "echo \"[wet-witness-row-outcome-receipt] absent\""
+
+data ci_floor_wet_witness_row_outcome_receipt_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_floor_peak_emit",
+    decl_name: "ci_floor_wet_witness_row_outcome_receipt_if",
+    field: WholeDeclaration
+  }
+}
+
+data ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_floor_wet_witness_row_outcome_receipt_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four receipt leaves: FileExists, header log, prefixed file read, and absent log. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_wet_witness_row_outcome_receipt_if contains no opaque shell command text."
+
+data ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment: String = concat("# ", ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger)
+
 data ci_floor_phase_journal_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -269,12 +292,33 @@ fn ci_floor_phase_journal_if() -> PipelineStep {
   }
 }
 
+fn ci_floor_wet_witness_row_outcome_receipt_if() -> PipelineStep {
+  If {
+    cond: ci_floor_peak_exit_zero(command: ci_floor_wet_witness_row_outcome_receipt_present_command),
+    then_: Pipeline {
+      steps: [
+        ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_header_command),
+        ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_read_command)
+      ],
+      on_failure: FailFast
+    },
+    else_: Present {
+      value: Pipeline {
+        steps: [ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_absent_command)],
+        on_failure: FailFast
+      }
+    }
+  }
+}
+
 fn ci_floor_peak_post_pipeline() -> Pipeline {
   Pipeline {
     steps: concat(
       [
         ci_floor_peak_do(command: ci_floor_phase_journal_runner_scaffold_comment),
-        ci_floor_phase_journal_if()
+        ci_floor_phase_journal_if(),
+        ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment),
+        ci_floor_wet_witness_row_outcome_receipt_if()
       ],
       concat(ci_floor_peak_cgroup_locate_steps(), [ci_floor_peak_post_peak_if()])
     ),
