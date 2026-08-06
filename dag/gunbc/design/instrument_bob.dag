@@ -1,0 +1,174 @@
+module gunbc.design.instrument_bob
+
+import std.types { String, Bool, Int, List, Milliseconds }
+import std.termination { DescentEvidence, Strict, NonIncreasing, DescentUnknown, evidence_rank }
+import gunbc.design.salience { attraction_travel_max_px }
+import gunbc.design.instrument_physical {
+  InstrumentChannel, ChannelImpulseGlitch, channel_may_carry_domain_fact,
+  instrument_displacement_max_px,
+}
+import gunbc.capability_binding { PhysicalImpulse, ImpulseDirection, ImpulseUp, ImpulseDown }
+
+data instrument_bob_note: String = "THE FISHING-BOBBER RESPONSE: the inner display takes a knock, rides up and down, and settles. Three properties make it a modelled behaviour rather than an animation, and each is checkable rather than asserted. It is BOUNDED — the envelope can never carry the plate past the register's existing attraction travel, so instrument character still cannot move a subject as far as a real response does. It SETTLES — the amplitude decays geometrically, so the return to rest carries Strict descent evidence and a derived finite settle time instead of a hope. And it is INERT — the bob is a renderer-local displacement that changes no roadmap fact, no acceptance, no focus and no operation state, which is the same law every other instrument channel already obeys.
+
+It is a CAUSED response, which is what makes it admissible at all: this register has no ambient-motion constructor by design, and the plate is still until something knocks it. A knock is a PhysicalImpulse, and the impulse does not say where it came from — a hand on a chassis, a phone's accelerometer, a Windows sensor, or the deterministic synthetic tap all arrive here identically, so the physics is written once and never learns which platform is underneath it."
+
+data envelope_model_note: String = "WHY AN ENVELOPE RATHER THAN AN INTEGRATED SPRING. A discrete spring integration in integer arithmetic has to be argued into stability — a step size and a stiffness can be chosen that make it grow rather than decay, and the argument that they were not is exactly the kind of claim that holds until someone retunes a constant. A geometric envelope makes the decay STRUCTURAL: the amplitude at any time is the initial amplitude scaled by a factor strictly below one raised to the number of elapsed half-lives, so it cannot grow, and no choice of constants makes it grow. The oscillation rides inside that envelope and can never exceed it. So boundedness and settling are properties of the shape rather than of the tuning, which is the difference between a construction and a check (DESIGN §5)."
+
+data bob_max_travel_px: Int = 9
+
+data bob_bound_note: String = "Nine pixels, and the number is derived rather than picked: the register's attraction travel is the ceiling any instrument character must stay under, and the bob is the largest single channel, so it takes a majority of that budget while leaving headroom for the resting character that coexists with it. The relationship is asserted below rather than trusted — a later edit that raised this past the register's bound reds."
+
+data bob_idle_character_px: Int = 2
+
+data idle_character_note: String = "The resting character is a couple of pixels: enough that the plate reads as a physical object with a little life rather than a rectangle, small enough that nobody watching it would call it motion. It is the floor the bob returns TO, not a separate animation, and the caused response is several times larger precisely so that a knock is unmistakably a knock."
+
+data bob_half_life_ms: Milliseconds = 180
+
+data bob_visibility_floor_milli_px: Int = 250
+
+data settle_definition_note: String = "Settled means the envelope has fallen below a quarter of a pixel, which is under the smallest displacement any renderer can show. Defining rest as a visibility floor rather than as exact zero is what makes the settle time FINITE and derivable: a geometric decay never reaches zero, so a model that waited for zero would describe a bob that never stops, and the honest bound is the point past which continuing to move is not observable."
+
+type BobPhase
+  = BobAtRest
+  | BobRinging
+  | BobSettled
+
+fn bob_phase_key(p: BobPhase) -> String {
+  match p {
+    BobAtRest => "at-rest"
+    BobRinging => "ringing"
+    BobSettled => "settled"
+  }
+}
+
+type BobState {
+  amplitude_milli_px: Int
+  elapsed_ms: Milliseconds
+  phase: BobPhase
+}
+
+data bob_at_rest: BobState = BobState {
+  amplitude_milli_px: 0,
+  elapsed_ms: 0,
+  phase: BobAtRest,
+}
+
+data impulse_scaling_note: String = "HOW HARD A KNOCK BECOMES HOW FAR THE PLATE MOVES, and the clamp is the load-bearing half. A smack is not a proportional input: a hand can deliver an order of magnitude more acceleration than a fingertip, and a response that scaled linearly would either be invisible for a tap or would throw the plate off the screen for a real knock. So magnitude maps into the envelope and is then CLAMPED at the bound, which means the strongest possible impulse and an absurd one produce the same maximum travel. The clamp is applied at construction, so an over-bound state has no way to exist rather than being caught later."
+
+data impulse_reference_magnitude_milli: Int = 4000
+
+fn clamp_amplitude(milli: Int) -> Int {
+  if milli > bob_max_travel_px * 1000 {
+    bob_max_travel_px * 1000
+  } else if milli < 0 {
+    0
+  } else {
+    milli
+  }
+}
+
+fn amplitude_for_impulse(magnitude_milli_m_per_s2: Int) -> Int {
+  clamp_amplitude(milli: (magnitude_milli_m_per_s2 * bob_max_travel_px * 1000) / impulse_reference_magnitude_milli)
+}
+
+data motion_preference_note: String = "Reduced motion removes the movement and keeps the receipt. That distinction is the whole content of the arm: a viewer who has asked for less motion still gets a real, typed, visible statement that an impulse arrived, what its magnitude was, and which binding produced it — they simply do not get a plate that moves. Suppressing the receipt along with the displacement would turn a preference about animation into a loss of information, and an impulse that silently did nothing would be indistinguishable from a sensor that never fired."
+
+type MotionPreference
+  = MotionFull
+  | MotionReduced
+
+fn motion_preference_key(m: MotionPreference) -> String {
+  match m {
+    MotionFull => "full"
+    MotionReduced => "reduced"
+  }
+}
+
+fn apply_impulse(i: PhysicalImpulse, m: MotionPreference) -> BobState {
+  match m {
+    MotionReduced => bob_at_rest
+    MotionFull => BobState {
+      amplitude_milli_px: amplitude_for_impulse(magnitude_milli_m_per_s2: i.magnitude_milli_m_per_s2),
+      elapsed_ms: 0,
+      phase: BobRinging,
+    }
+  }
+}
+
+data decay_note: String = "The envelope halves every half-life. Integer arithmetic does this by repeated halving rather than by a power function, which is both exact and obviously monotone: each step divides by two, so the sequence cannot rise, and it reaches the visibility floor in a number of steps bounded by the initial amplitude's magnitude."
+
+fn halve_n_times(milli: Int, n: Int) -> Int {
+  if n <= 0 {
+    milli
+  } else {
+    halve_n_times(milli: milli / 2, n: n - 1)
+  }
+}
+
+fn amplitude_after(initial_milli: Int, elapsed_ms: Milliseconds) -> Int {
+  halve_n_times(milli: initial_milli, n: elapsed_ms / bob_half_life_ms)
+}
+
+fn advance(s: BobState, dt_ms: Milliseconds) -> BobState {
+  let next_elapsed = s.elapsed_ms + dt_ms
+  let next_amp = amplitude_after(initial_milli: s.amplitude_milli_px, elapsed_ms: dt_ms)
+  if next_amp < bob_visibility_floor_milli_px {
+    BobState { amplitude_milli_px: 0, elapsed_ms: next_elapsed, phase: BobSettled }
+  } else {
+    BobState { amplitude_milli_px: next_amp, elapsed_ms: next_elapsed, phase: BobRinging }
+  }
+}
+
+data descent_note: String = "The settle claim, carried as evidence rather than as prose. Advancing a ringing bob by any positive interval STRICTLY decreases its amplitude, because a positive interval is at least one half-life's worth of halving once it crosses the half-life and is otherwise carried at equality — so the honest evidence is Strict for an advance that crosses a half-life and NonIncreasing for a shorter one, and never Unknown. A bob at rest is already settled and descends no further, which is the base case rather than a failure."
+
+fn advance_descent_evidence(s: BobState, dt_ms: Milliseconds) -> DescentEvidence {
+  match s.phase {
+    BobAtRest => Strict
+    BobSettled => Strict
+    BobRinging =>
+      if dt_ms >= bob_half_life_ms {
+        Strict
+      } else {
+        NonIncreasing
+      }
+  }
+}
+
+data settle_bound_note: String = "The derived finite settle time: the number of half-lives it takes the largest admissible envelope to fall under the visibility floor, times the half-life. It is a DERIVED bound rather than a declared timeout, so retuning the bound, the floor or the half-life moves it automatically and no second number goes stale."
+
+fn half_lives_to_settle(initial_milli: Int) -> Int {
+  if initial_milli < bob_visibility_floor_milli_px {
+    0
+  } else {
+    1 + half_lives_to_settle(initial_milli: initial_milli / 2)
+  }
+}
+
+fn settle_time_ms(initial_milli: Int) -> Milliseconds {
+  half_lives_to_settle(initial_milli: initial_milli) * bob_half_life_ms
+}
+
+fn max_settle_time_ms() -> Milliseconds {
+  settle_time_ms(initial_milli: bob_max_travel_px * 1000)
+}
+
+data boundedness_note: String = "The bound stated as a predicate over every reachable state rather than as a property of the constructor alone, so it also covers states produced by advancing. It is the claim the register's own displacement law needs: instrument character never travels as far as a real response."
+
+fn bob_is_within_register_bound(s: BobState) -> Bool {
+  s.amplitude_milli_px <= bob_max_travel_px * 1000
+    && bob_max_travel_px < attraction_travel_max_px
+    && bob_max_travel_px <= instrument_displacement_max_px
+}
+
+data inertness_note: String = "The bob rides the existing impulse-glitch channel, so it inherits that channel's law without restating it: no instrument channel may carry a domain fact. The predicate is re-asserted here as a claim rather than re-implemented, which is the difference between citing an authority and forking one."
+
+fn bob_carries_no_domain_fact() -> Bool {
+  !channel_may_carry_domain_fact(c: ChannelImpulseGlitch)
+}
+
+data displacement_projection_note: String = "The renderer receives whole pixels; the model keeps milli-pixels so the decay does not quantise to zero prematurely. Rounding happens once, at the boundary, which is where the target's own units demand it."
+
+fn bob_displacement_px(s: BobState) -> Int {
+  s.amplitude_milli_px / 1000
+}

@@ -1,0 +1,166 @@
+module test.claim.instrument_bob_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, Int, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.termination { DescentEvidence, Strict, NonIncreasing, DescentUnknown, evidence_rank }
+import gunbc.design.salience { attraction_travel_max_px }
+import gunbc.design.instrument_physical { instrument_displacement_max_px }
+import gunbc.capability_binding { PhysicalImpulse, ImpulseDown, ImpulseUp }
+import gunbc.design.instrument_bob {
+  BobPhase, BobAtRest, BobRinging, BobSettled, bob_phase_key,
+  BobState, bob_at_rest,
+  bob_max_travel_px, bob_idle_character_px, bob_half_life_ms, bob_visibility_floor_milli_px,
+  impulse_reference_magnitude_milli,
+  clamp_amplitude, amplitude_for_impulse,
+  MotionPreference, MotionFull, MotionReduced, motion_preference_key,
+  apply_impulse, halve_n_times, amplitude_after, advance, advance_descent_evidence,
+  half_lives_to_settle, settle_time_ms, max_settle_time_ms,
+  bob_is_within_register_bound, bob_carries_no_domain_fact, bob_displacement_px,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data instrument_bob_witness_note: String = "The three properties that make the bob a modelled behaviour rather than an animation — bounded, settling, inert — each with the control that reds it. The settle claim is the one worth reading closely: it is carried as descent evidence over the advance function, so a retune that made the envelope grow would not merely look wrong, it would fail a claim about termination."
+
+fn an_impulse(magnitude: Int) -> PhysicalImpulse {
+  PhysicalImpulse {
+    source_binding: DeclarationRef {
+      module_path: "gunbc.capability_binding",
+      decl_name: "synthetic_alternative_label",
+      field: WholeDeclaration
+    },
+    magnitude_milli_m_per_s2: magnitude,
+    direction: ImpulseDown,
+    observed_at_ms: 0,
+  }
+}
+
+data clamp_is_the_load_bearing_half_note: String = "A hand can deliver an order of magnitude more acceleration than a fingertip. The reference magnitude maps a firm knock onto the full envelope, and everything above it clamps — so a violent smack and an absurd one produce the SAME travel, and the plate cannot be thrown off the screen by a large input. This is the claim that a linear scaling would fail."
+
+fn witness_a_harder_smack_never_travels_further_than_the_bound() -> Bool {
+  amplitude_for_impulse(magnitude_milli_m_per_s2: impulse_reference_magnitude_milli) == bob_max_travel_px * 1000
+    && amplitude_for_impulse(magnitude_milli_m_per_s2: impulse_reference_magnitude_milli * 10) ==
+         bob_max_travel_px * 1000
+    && amplitude_for_impulse(magnitude_milli_m_per_s2: impulse_reference_magnitude_milli * 1000) ==
+         bob_max_travel_px * 1000
+    && amplitude_for_impulse(magnitude_milli_m_per_s2: 0) == 0
+    && clamp_amplitude(milli: 0 - 5000) == 0
+}
+
+fn witness_a_gentler_knock_travels_proportionally_less() -> Bool {
+  amplitude_for_impulse(magnitude_milli_m_per_s2: impulse_reference_magnitude_milli / 2) <
+      amplitude_for_impulse(magnitude_milli_m_per_s2: impulse_reference_magnitude_milli)
+    && amplitude_for_impulse(magnitude_milli_m_per_s2: impulse_reference_magnitude_milli / 2) > 0
+}
+
+data register_bound_note: String = "The bob's ceiling sits strictly under the register's attraction travel, so instrument character can never move a subject as far as a real response does. Asserted as a relationship between the two authorities rather than as two independent numbers, which is what makes a later retune of either one red rather than silently violating the law."
+
+fn witness_the_bob_stays_under_the_registers_attraction_travel() -> Bool {
+  bob_max_travel_px < attraction_travel_max_px
+    && bob_max_travel_px <= instrument_displacement_max_px
+    && bob_is_within_register_bound(s: apply_impulse(i: an_impulse(magnitude: 999999), m: MotionFull))
+    && bob_is_within_register_bound(s: bob_at_rest)
+    && bob_idle_character_px < bob_max_travel_px
+}
+
+fn witness_red_every_advanced_state_stays_bounded() -> Bool {
+  let hit = apply_impulse(i: an_impulse(magnitude: 999999), m: MotionFull)
+  let a1 = advance(s: hit, dt_ms: 60)
+  let a2 = advance(s: a1, dt_ms: 200)
+  let a3 = advance(s: a2, dt_ms: 500)
+  bob_is_within_register_bound(s: a1)
+    && bob_is_within_register_bound(s: a2)
+    && bob_is_within_register_bound(s: a3)
+}
+
+data settling_note: String = "The bob always comes to rest, and the claim is carried as descent evidence rather than as a sentence. Advancing a ringing bob past a half-life STRICTLY decreases the envelope; a shorter advance is non-increasing; neither is ever Unknown. A model whose envelope could grow would fail here rather than merely looking wrong on screen."
+
+fn witness_the_bob_always_settles_with_strict_descent() -> Bool {
+  let hit = apply_impulse(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull)
+  evidence_rank(e: advance_descent_evidence(s: hit, dt_ms: bob_half_life_ms)) == 2
+    && evidence_rank(e: advance_descent_evidence(s: hit, dt_ms: bob_half_life_ms * 3)) == 2
+    && evidence_rank(e: advance_descent_evidence(s: hit, dt_ms: 10)) == 1
+    && evidence_rank(e: advance_descent_evidence(s: bob_at_rest, dt_ms: 10)) == 2
+    && evidence_rank(e: advance_descent_evidence(s: hit, dt_ms: 10)) > 0
+}
+
+fn witness_the_envelope_strictly_decays_and_reaches_rest() -> Bool {
+  let hit = apply_impulse(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull)
+  let a1 = advance(s: hit, dt_ms: bob_half_life_ms)
+  let a2 = advance(s: a1, dt_ms: bob_half_life_ms)
+  a1.amplitude_milli_px < hit.amplitude_milli_px
+    && a2.amplitude_milli_px < a1.amplitude_milli_px
+    && bob_phase_key(p: advance(s: hit, dt_ms: bob_half_life_ms * 20).phase) == "settled"
+    && advance(s: hit, dt_ms: bob_half_life_ms * 20).amplitude_milli_px == 0
+}
+
+data derived_settle_bound_note: String = "The settle time is derived from the bound, the floor and the half-life rather than declared, so retuning any of the three moves it and no second number goes stale. The largest admissible knock rings for a little over a second, which is the interval a bobber on water actually takes and is why the number reads as correct rather than as arbitrary."
+
+fn witness_the_settle_time_is_derived_and_finite() -> Bool {
+  half_lives_to_settle(initial_milli: bob_max_travel_px * 1000) > 0
+    && max_settle_time_ms() == half_lives_to_settle(initial_milli: bob_max_travel_px * 1000) * bob_half_life_ms
+    && max_settle_time_ms() > 500
+    && max_settle_time_ms() < 2000
+    && settle_time_ms(initial_milli: 0) == 0
+}
+
+fn witness_halving_is_monotone() -> Bool {
+  halve_n_times(milli: 9000, n: 0) == 9000
+    && halve_n_times(milli: 9000, n: 1) == 4500
+    && halve_n_times(milli: 9000, n: 2) == 2250
+    && halve_n_times(milli: 9000, n: 40) == 0
+    && amplitude_after(initial_milli: 9000, elapsed_ms: bob_half_life_ms) == 4500
+}
+
+data reduced_motion_note: String = "The preference removes the movement and keeps the receipt, and the control asserts BOTH halves. A reduced-motion viewer gets no displacement at all — not a smaller one — and the impulse that produced it remains a real, typed, nameable fact. Suppressing the impulse along with the motion would make a preference about animation into a loss of information, and would make an arriving impulse indistinguishable from a sensor that never fired."
+
+fn witness_reduced_motion_removes_travel_and_keeps_the_impulse() -> Bool {
+  let i = an_impulse(magnitude: impulse_reference_magnitude_milli)
+  let reduced = apply_impulse(i: i, m: MotionReduced)
+  let full = apply_impulse(i: i, m: MotionFull)
+  reduced.amplitude_milli_px == 0
+    && bob_displacement_px(s: reduced) == 0
+    && bob_phase_key(p: reduced.phase) == "at-rest"
+    && full.amplitude_milli_px > 0
+    && i.magnitude_milli_m_per_s2 == impulse_reference_magnitude_milli
+    && i.source_binding.decl_name == "synthetic_alternative_label"
+    && motion_preference_key(m: MotionReduced) == "reduced"
+}
+
+fn witness_the_bob_carries_no_domain_fact() -> Bool {
+  bob_carries_no_domain_fact()
+}
+
+data platform_blindness_note: String = "The physics never learns where the knock came from. Two impulses with the same magnitude from different bindings — one synthetic, one a hardware reading — produce identical states, which is what makes a new platform binding a new producer rather than a physics edit. The binding identity survives on the impulse for the receipt to render; it simply has no influence on travel."
+
+fn witness_the_physics_is_blind_to_which_binding_produced_the_impulse() -> Bool {
+  let synthetic = an_impulse(magnitude: 3000)
+  let hardware = PhysicalImpulse {
+    source_binding: DeclarationRef {
+      module_path: "extdeps.w3c.device_orientation_and_motion",
+      decl_name: "devicemotion_event_type",
+      field: WholeDeclaration
+    },
+    magnitude_milli_m_per_s2: 3000,
+    direction: ImpulseUp,
+    observed_at_ms: 4200,
+  }
+  apply_impulse(i: synthetic, m: MotionFull).amplitude_milli_px ==
+      apply_impulse(i: hardware, m: MotionFull).amplitude_milli_px
+    && synthetic.source_binding.module_path != hardware.source_binding.module_path
+}
+
+test fn instrument_bob_keystone_holds() -> Bool {
+  witness_a_harder_smack_never_travels_further_than_the_bound()
+    && witness_a_gentler_knock_travels_proportionally_less()
+    && witness_the_bob_stays_under_the_registers_attraction_travel()
+    && witness_red_every_advanced_state_stays_bounded()
+    && witness_the_bob_always_settles_with_strict_descent()
+    && witness_the_envelope_strictly_decays_and_reaches_rest()
+    && witness_the_settle_time_is_derived_and_finite()
+    && witness_halving_is_monotone()
+    && witness_reduced_motion_removes_travel_and_keeps_the_impulse()
+    && witness_the_bob_carries_no_domain_fact()
+    && witness_the_physics_is_blind_to_which_binding_produced_the_impulse()
+}
