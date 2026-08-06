@@ -371,6 +371,31 @@ fn resolve_timed(
     }
 }
 
+/// The per-witness cost line, with BOTH clocks labelled.
+///
+/// The fast-lane budget is enforced on CPU — `run_claim_measured` feeds `cpu_nanos` to
+/// `budget_completion_outcome` — while this line used to print `wall_nanos` under a bare
+/// `{}ms`. So the local instrument did not report the enforced quantity, and the bound only
+/// cuts one way: `cpu <= wall`, meaning a wall figure bounds CPU from above and can never
+/// establish that a witness is OVER the cap. Three sessions read this line as the budget
+/// instrument on 2026-08-05. Labelling both is cheaper than every reader knowing which is which.
+///
+/// Extracted from the `eprintln!` so the property — the enforced quantity is reported, distinctly
+/// from the recorded one — has an executing consumer rather than only a format string.
+fn witness_report_line(
+    function: &str,
+    receipt: &v1_compiler::v1_interpreter::PerformanceReceipt,
+) -> String {
+    format!(
+        "[witness] {}: cpu={}ms wall={}ms subject={} eval_self={:.3}ms",
+        function,
+        receipt.cpu_nanos / 1_000_000,
+        receipt.wall_nanos / 1_000_000,
+        receipt.subject_key,
+        receipt.eval_self_nanos as f64 / 1.0e6,
+    )
+}
+
 fn run_claim_timed(
     ctx: &InterpContext,
     closure_subject: &str,
@@ -380,13 +405,7 @@ fn run_claim_timed(
 ) {
     let (outcome, receipt) = run_claim_measured(ctx, closure_subject, function);
     report_outcome(function, outcome, any_failed);
-    eprintln!(
-        "[witness] {}: {}ms subject={} eval_self={:.3}ms",
-        function,
-        receipt.wall_nanos / 1_000_000,
-        receipt.subject_key,
-        receipt.eval_self_nanos as f64 / 1.0e6,
-    );
+    eprintln!("{}", witness_report_line(function, &receipt));
     print_eval_profile(function);
     timings.witnesses += 1;
     timings.witness_ms += receipt.wall_nanos / 1_000_000;
@@ -713,7 +732,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
 
     eprintln!(
-        "[resolve-summary] {} resolve(s) in {}ms; {} witness(es) in {}ms",
+        "[resolve-summary] {} resolve(s) in {}ms wall; {} witness(es) in {}ms wall",
         timings.resolves, timings.resolve_ms, timings.witnesses, timings.witness_ms,
     );
     // The expectation frontier: effect sites that dispatched WITHOUT declaring
@@ -897,6 +916,50 @@ mod cli_path_resolution_wiring_tests {
             cwd.display(),
             workspace_root().display()
         );
+    }
+}
+
+#[cfg(test)]
+mod witness_report_line_tests {
+    use super::witness_report_line;
+    use v1_compiler::v1_interpreter::PerformanceReceipt;
+
+    fn receipt(wall_ms: u128, cpu_ms: u128) -> PerformanceReceipt {
+        PerformanceReceipt {
+            subject_key: "subj".to_string(),
+            work_shape: "w".to_string(),
+            wall_nanos: wall_ms * 1_000_000,
+            cpu_nanos: cpu_ms * 1_000_000,
+            eval_self_nanos: 0,
+            sample_count: 1,
+        }
+    }
+
+    /// The line must report the ENFORCED quantity (thread CPU) and the RECORDED one (wall) as
+    /// separately labelled fields. The two are deliberately different here, because a line that
+    /// carried only one of them — or carried one unlabelled, as this line did before — cannot be
+    /// compared to the fast-lane budget without the reader knowing which clock they are holding.
+    #[test]
+    fn reports_both_clocks_distinctly_labelled() {
+        let line = witness_report_line("some_witness", &receipt(9_000, 1_000));
+        assert!(
+            line.contains("cpu=1000ms"),
+            "the enforced quantity must be reported and labelled: {line}"
+        );
+        assert!(
+            line.contains("wall=9000ms"),
+            "the recorded quantity must stay, labelled: {line}"
+        );
+    }
+
+    /// cpu == wall is the degenerate case an uncontended single-threaded run approaches, and it
+    /// must NOT be the only case the format is correct for: both labels stay present, so a reader
+    /// who sees one figure knows it is one figure and not the other.
+    #[test]
+    fn both_labels_survive_when_the_clocks_agree() {
+        let line = witness_report_line("some_witness", &receipt(500, 500));
+        assert!(line.contains("cpu=500ms"), "{line}");
+        assert!(line.contains("wall=500ms"), "{line}");
     }
 }
 
