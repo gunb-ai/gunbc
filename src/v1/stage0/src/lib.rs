@@ -126,6 +126,7 @@ pub mod v1_compiler_tokenize;
 pub mod v1_compiler_trace;
 pub mod v1_compiler_trait_derive_emit;
 pub mod v1_compiler_workspace_members;
+pub mod v1_gunbc_namespace_reference_derived_closure_live_admissions;
 pub mod v1_gunbc_namespace_reference_derived_closure_production_observations;
 pub mod v1_gunbc_occurrence_binding_parser_walk;
 pub mod v1_probe_emit_interp;

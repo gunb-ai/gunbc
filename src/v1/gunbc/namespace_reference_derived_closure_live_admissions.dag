@@ -1,0 +1,115 @@
+module v1.gunbc.namespace_reference_derived_closure_live_admissions
+
+import gunbc.namespace_reference_derived_closure_admission {
+  assess_reference_binding_observation,
+  ReferenceDerivedClosureAdmission,
+  ReferenceDerivedClosureEstablished,
+  ReferenceDerivedClosureCapability,
+  SameFileEarlierNeighbourVisible,
+  SiblingDecisionBranchExcluded,
+  LaterDeclarationExcluded,
+  DistinctSameSpelledDeclarationsPreserved,
+}
+import std.reference_binding_observation { ReferenceBindingObservation }
+import v1.gunbc.namespace_reference_derived_closure_production_observations {
+  namespace_structural_binding_observations_a_through_d,
+  namespace_structural_binding_observations_mutation_a,
+  namespace_structural_binding_observations_mutation_b,
+  namespace_structural_binding_observations_mutation_c,
+  namespace_structural_binding_observations_mutation_d,
+}
+import std.types { Bool, List }
+
+data namespace_reference_derived_closure_live_admissions_note: String = "N3-A execution bridge. This is the one seam permitted to import BOTH a src/v1 producer (namespace_reference_derived_closure_production_observations) and the gunbc pure assessment fold (namespace_reference_derived_closure_admission) — dag/gunbc itself may never make that join. Folds the one-specimen base observations plus the four discriminating mutations into the child-specific N3-A closing receipt n3a_closing_receipt_holds; consumed only by src/v1/tests/claim witnesses. The terminal parent contract (dag/gunbc/namespace_reference_derived_closure_contract.dag) is untouched by this file and stays red."
+
+type N3aMutationDiscriminationReceipt sole_constructor {
+  target: ReferenceDerivedClosureCapability,
+  target_reds_alone: Bool,
+}
+
+fn n3a_clauses_a_through_d() -> List<ReferenceDerivedClosureCapability> {
+  [
+    SameFileEarlierNeighbourVisible,
+    SiblingDecisionBranchExcluded,
+    LaterDeclarationExcluded,
+    DistinctSameSpelledDeclarationsPreserved,
+  ]
+}
+
+fn capability_established(
+  admissions: List<ReferenceDerivedClosureAdmission>,
+  capability: ReferenceDerivedClosureCapability,
+) -> Bool {
+  admissions |> any(status => match status {
+    ReferenceDerivedClosureEstablished { receipt } => receipt.capability == capability
+    _ => false
+  })
+}
+
+fn all_four_established(admissions: List<ReferenceDerivedClosureAdmission>) -> Bool {
+  n3a_clauses_a_through_d() |> all(capability => capability_established(admissions: admissions, capability: capability))
+}
+
+fn n3a_admissions_for(observations: List<ReferenceBindingObservation>) -> List<ReferenceDerivedClosureAdmission> {
+  observations |> map(observation => assess_reference_binding_observation(observation: observation))
+}
+
+fn n3a_base_admissions() -> List<ReferenceDerivedClosureAdmission> {
+  n3a_admissions_for(observations: namespace_structural_binding_observations_a_through_d())
+}
+
+fn n3a_base_establishes_all_four() -> Bool {
+  all_four_established(admissions: n3a_base_admissions())
+}
+
+fn n3a_mutation_receipt(
+  target: ReferenceDerivedClosureCapability,
+  mutated_observations: List<ReferenceBindingObservation>,
+) -> N3aMutationDiscriminationReceipt {
+  let admissions = n3a_admissions_for(observations: mutated_observations)
+  let target_broken = !capability_established(admissions: admissions, capability: target)
+  let others_hold =
+    n3a_clauses_a_through_d()
+      |> filter(capability => capability != target)
+      |> all(capability => capability_established(admissions: admissions, capability: capability))
+  N3aMutationDiscriminationReceipt {
+    target: target,
+    target_reds_alone: target_broken && others_hold,
+  }
+}
+
+fn n3a_mutation_a_receipt() -> N3aMutationDiscriminationReceipt {
+  n3a_mutation_receipt(
+    target: SameFileEarlierNeighbourVisible,
+    mutated_observations: namespace_structural_binding_observations_mutation_a(),
+  )
+}
+
+fn n3a_mutation_b_receipt() -> N3aMutationDiscriminationReceipt {
+  n3a_mutation_receipt(
+    target: SiblingDecisionBranchExcluded,
+    mutated_observations: namespace_structural_binding_observations_mutation_b(),
+  )
+}
+
+fn n3a_mutation_c_receipt() -> N3aMutationDiscriminationReceipt {
+  n3a_mutation_receipt(
+    target: LaterDeclarationExcluded,
+    mutated_observations: namespace_structural_binding_observations_mutation_c(),
+  )
+}
+
+fn n3a_mutation_d_receipt() -> N3aMutationDiscriminationReceipt {
+  n3a_mutation_receipt(
+    target: DistinctSameSpelledDeclarationsPreserved,
+    mutated_observations: namespace_structural_binding_observations_mutation_d(),
+  )
+}
+
+fn n3a_closing_receipt_holds() -> Bool {
+  n3a_base_establishes_all_four()
+    && n3a_mutation_a_receipt().target_reds_alone
+    && n3a_mutation_b_receipt().target_reds_alone
+    && n3a_mutation_c_receipt().target_reds_alone
+    && n3a_mutation_d_receipt().target_reds_alone
+}

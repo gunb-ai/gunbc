@@ -16,13 +16,14 @@ pub use crate::gunbc_namespace_reference_derived_closure_contract::{reference_de
 pub use crate::std_reference_binding_observation::{ReferenceBindingObservation};
 use crate::std_reference_binding_observation::ReferenceBindingObservation::{DistinctHomonymObservation, DistinctHomonymProductionRefused, LaterDeclarationObservation, LaterDeclarationProductionRefused, SameFileNeighbourObservation, SameFileNeighbourProductionRefused, SiblingBranchObservation, SiblingBranchProductionRefused};
 pub use crate::v1_gunbc_namespace_reference_derived_closure_production_observations::{namespace_structural_binding_observations_a_through_d};
+pub use crate::v1_gunbc_namespace_reference_derived_closure_live_admissions::{n3a_closing_receipt_holds, n3a_base_establishes_all_four, n3a_mutation_a_receipt, n3a_mutation_b_receipt, n3a_mutation_c_receipt, n3a_mutation_d_receipt};
 pub use crate::std_types::{Bool, List};
 use crate::std_types::Bool::*;
 
 pub fn namespace_reference_derived_closure_production_admissions_witness_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "N3-A production and assessment witnesses under src/v1/tests/claim — outside witness_layer_roots compile-clean entries, scheduled via v1_claim_scoped_witness_batch (dag plus src/v1 envelope). v1 production returns neutral ReferenceBindingObservation carriers; assess_reference_binding_observation projects capability admissions here. The namespace-structural-observations roadmap row stays ExecutionContractUnspecified until a semantic closing carrier lands (prior variant-presence predicate retracted 2026-08-04). Discriminating RED: witness_closing_contract_still_reds_until_dependency_clauses_land exercises the parent frontier count.".to_string()
+            "N3-A production and assessment witnesses under src/v1/tests/claim — outside witness_layer_roots compile-clean entries, scheduled via v1_claim_scoped_witness_batch (dag plus src/v1 envelope). v1 production returns neutral ReferenceBindingObservation carriers; assess_reference_binding_observation projects capability admissions here. The namespace-structural-observations roadmap row stays ExecutionContractUnspecified until a semantic closing carrier lands (prior variant-presence predicate retracted 2026-08-04). Discriminating RED: witness_closing_contract_still_reds_until_dependency_clauses_land exercises the parent frontier count. witness_n3a_mutation_* rows exercise the four discriminating mutations of the single ordinary-compiled specimen (namespace_reference_derived_closure_live_admissions) — each asserts its own clause breaks alone while the other three stay established.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -143,6 +144,30 @@ pub fn witness_structural_production_observations_establish_clauses_a_through_d(
                 __all
             })
     }
+}
+
+pub fn witness_n3a_base_specimen_establishes_all_four_clauses() -> bool {
+    n3a_base_establishes_all_four()
+}
+
+pub fn witness_n3a_mutation_a_reds_same_file_neighbour_alone() -> bool {
+    n3a_mutation_a_receipt().target_reds_alone.clone()
+}
+
+pub fn witness_n3a_mutation_b_reds_sibling_branch_alone() -> bool {
+    n3a_mutation_b_receipt().target_reds_alone.clone()
+}
+
+pub fn witness_n3a_mutation_c_reds_later_declaration_alone() -> bool {
+    n3a_mutation_c_receipt().target_reds_alone.clone()
+}
+
+pub fn witness_n3a_mutation_d_reds_distinct_homonym_alone() -> bool {
+    n3a_mutation_d_receipt().target_reds_alone.clone()
+}
+
+pub fn witness_n3a_closing_receipt_holds() -> bool {
+    n3a_closing_receipt_holds()
 }
 
 pub fn witness_closing_contract_still_reds_until_dependency_clauses_land() -> bool {
