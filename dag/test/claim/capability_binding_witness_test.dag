@@ -330,9 +330,13 @@ fn witness_a_rejected_tap_carries_its_typed_causes() -> Bool {
       DegradedTapRejected { causes } =>
         causes_contain(cs: causes, c: MagnitudeBelowFloor)
           && causes_contain(cs: causes, c: LatencyAboveBudget)
-      _ => false
+      DegradedSamplesWithoutQualification => false
+      DegradedSamplesCarryNoValues => false
+      DegradedNoSamplesInWindow { lifecycle } => false
     }
-    _ => false
+    CapabilitySupported { receipt } => false
+    CapabilityUnavailable { obstacle } => false
+    CapabilityUnobserved => false
   }
 }
 
@@ -343,7 +347,9 @@ fn witness_every_obstacle_reaches_unavailable_with_its_own_typed_cause() -> Bool
     && verdict_of(s: HardwareUnavailable) == "unavailable"
     && match derive_capability_verdict(o: an_observation(s: BackendConnectionRefused { error_name: "NotReadableError" })) {
          CapabilityUnavailable { obstacle } => obstacle_key(o: obstacle) == "backend-connection-refused"
-         _ => false
+         CapabilitySupported { receipt } => false
+         CapabilityDegraded { missing, alternative } => false
+         CapabilityUnobserved => false
        }
 }
 
@@ -367,7 +373,9 @@ data alternative_is_resolvable_note: String = "The degradation's alternative is 
 fn degraded_alternative_module(s: BindingStreamState) -> String {
   match derive_capability_verdict(o: an_observation(s: s)) {
     CapabilityDegraded { missing, alternative } => alternative.decl_name
-    _ => ""
+    CapabilitySupported { receipt } => ""
+    CapabilityUnavailable { obstacle } => ""
+    CapabilityUnobserved => ""
   }
 }
 

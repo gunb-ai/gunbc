@@ -554,9 +554,15 @@ fn coverage_targets_asserting_support() -> Int {
     if coverage_state_is_a_support_claim(s: t.state) { acc + 1 } else { acc })
 }
 
-fn deferred_targets_all_name_a_trigger() -> Bool {
-  all(coverage_targets, t => match t.state {
+fn state_names_a_trigger_if_it_needs_one(s: BindingCoverageState) -> Bool {
+  match s {
     CoverageDeferred { trigger } => trigger != ""
-    _ => true
-  })
+    CoverageProbeBlocked { cause } => cause != ""
+    CoverageImplemented { receipt } => true
+    CoverageProbeRequired => true
+  }
+}
+
+fn deferred_targets_all_name_a_trigger() -> Bool {
+  all(coverage_targets, t => state_names_a_trigger_if_it_needs_one(s: t.state))
 }

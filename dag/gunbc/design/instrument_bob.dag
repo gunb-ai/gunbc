@@ -233,7 +233,8 @@ fn bob_frames_from(s: BobState, interval_ms: Milliseconds, budget: Int) -> List<
     }
     match next.phase {
       BobSettled => [frame]
-      _ => concat([frame], bob_frames_from(s: next, interval_ms: interval_ms, budget: budget - 1))
+      BobAtRest => [frame]
+      BobRinging => concat([frame], bob_frames_from(s: next, interval_ms: interval_ms, budget: budget - 1))
     }
   }
 }
@@ -242,7 +243,9 @@ fn bob_frames(i: PhysicalImpulse, m: MotionPreference, interval_ms: Milliseconds
   let start = apply_impulse(i: i, m: m)
   match start.phase {
     BobAtRest => [BobFrame { at_ms: 0, displacement_px: 0, phase: BobAtRest }]
-    _ => bob_frames_from(s: start, interval_ms: interval_ms, budget: max_frame_count(interval_ms: interval_ms))
+    BobSettled => [BobFrame { at_ms: 0, displacement_px: 0, phase: BobSettled }]
+    BobRinging =>
+      bob_frames_from(s: start, interval_ms: interval_ms, budget: max_frame_count(interval_ms: interval_ms))
   }
 }
 
