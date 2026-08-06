@@ -386,10 +386,10 @@ fn stage0_derived_explicit_assignment() -> Map<ModuleId, CompilationUnitId> {
 }
 
 fn stage0_partition_unit_member_module_ids(unit_id: CompilationUnitId) -> List<ModuleId> {
-  partition_unit_members(
-    module_dag: stage0_module_dag(),
-    assignment: stage0_interim_explicit_assignment(),
-    unit_id: unit_id
+  module_dag_forward_closure(
+    seeds: stage0_unit_seed_basenames(unit_id: unit_id)
+      |> map(basename => stage0_module_id(basename: basename)),
+    edges: stage0_cross_unit_import_edges()
   )
 }
 
@@ -417,13 +417,15 @@ fn stage0_partition_crate_rows_membership_derived_holds() -> Bool {
 }
 
 fn stage0_partition_membership_closure_covers_seeds_holds() -> Bool {
+  let edges = stage0_cross_unit_import_edges()
   stage0_module_bearing_unit_ids()
     |> fold(init: true, f: fn(ok, unit_id) {
       let seeds = stage0_unit_seed_basenames(unit_id: unit_id)
-      let derived = stage0_partition_unit_member_basenames_derived(unit_id: unit_id)
+        |> map(basename => stage0_module_id(basename: basename))
+      let closed = module_dag_forward_closure(seeds: seeds, edges: edges)
       ok && seeds
         |> fold(init: true, f: fn(seed_ok, seed) {
-          seed_ok && derived |> any(m => m == seed)
+          seed_ok && module_id_list_contains(xs: closed, item: seed)
         })
     })
 }
