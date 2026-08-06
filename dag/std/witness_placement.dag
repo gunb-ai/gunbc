@@ -2,138 +2,149 @@ module std.witness_placement
 
 import std.nat { Nat }
 import std.types { Bool, String }
-import std.witness_admission {
-  WitnessConsumerCadence,
-  DiscoverySelection,
-  FalsifierSubstrateLongLane,
-  OfflineLocalRecipe,
-  NoConsumer,
+import std.measure { Millisecond, millisecond_count }
+import std.realization_schedule {
+  ScheduledWitnessEnvelope,
+  WitnessSpan,
+  SpanEnrolled,
 }
 import std.witness_purpose {
   WitnessPurpose,
-  WitnessDisposition,
-  WitnessCostEnvelope,
-  WitnessCostEnvelopeVerdict,
-  witness_purpose_requires_scheduled_lane,
-  witness_disposition_requires_scheduled_lane,
-  witness_disposition_required_cadence,
-  WitnessRequiredCadence,
-  NoRequiredCadence,
-  RequiredCadence,
-  witness_cost_envelope_exceeds_fast_lane,
-  witness_cost_envelope_admits_observed_wall,
-  EnvelopeAbsent,
-  DeclaredEnvelope,
-  MechanismFixture,
-  PermanentRegressionWitness,
-  TerminatingSurvey,
-  WithinDeclaredEnvelope,
-  ExceedsDeclaredEnvelope,
-  EnvelopeUndeclared,
+  BehavioralDiscriminator,
+  BoundaryCrossing,
+  PopulationTotality,
+  ExternalFidelity,
+  ResourceContract,
+  TerminatingOneShot,
+  witness_purpose_requires_scheduled_cadence,
+  witness_purpose_is_one_shot,
 }
-import std.measure { Millisecond }
 
-data witness_placement_authority_note: String = "Derived witness placement (witness-evidence-lifecycle-design: route is a projection, never a source-tree declaration). WitnessRoute is computed from declared purpose, disposition, and cost envelope — not from a path substring such as test/claim/long/. The dissolve-on named by gunbc_ci_fast_lane_rule_note, long_lane_exclusion_note, and witness_deferral_freeze_purpose_frontier_note fires when floor admission consumes this projection instead of directory grain. Shadow mode (discrete-cost-derivation section 15 ruling 4): this module may audit beside the legacy path policy before path rows delete; a missing declaration REFUSES rather than silently becoming offline."
+data witness_placement_authority_note: String = "DERIVED witness placement (witness-evidence-lifecycle-design: route is a projection, never a source-tree declaration). Placement is computed from declared WitnessPurpose plus ScheduledWitnessEnvelope fields — not from path substrings such as test/claim/long/. Dissolve-on for long_lane_exclusion_note fires when floor admission consumes this projection. Allowed-to-remain (per-PR discovery) and has-an-executing-consumer (scheduled cadence) stay separate facts."
 
 type WitnessRoute
-  = PerPrDiscovery
-  | ScheduledLane { cadence: WitnessConsumerCadence }
-  | PlacementRefused { cause: WitnessPlacementRefusal }
+  = OrdinaryPerPr
+  | PerPrWet
+  | Scheduled { cadence: String }
+  | OneShot
+  | RefusedNoConsumer { cause: WitnessPlacementRefusal }
 
 type WitnessPlacementRefusal
-  = PurposeRequiresScheduledLaneUndeclared
-  | DispositionRequiresScheduledLaneUndeclared
-  | CostEnvelopeUndeclared
-  | CostEnvelopeExceedsDeclared { observed: Millisecond, ceiling: Millisecond }
-  | FastLaneBudgetExceededWithoutCadence
-  | TerminatingSurveyPastDeadline { deadline: String }
+  = PurposeRequiresScheduledCadenceUndeclared
+  | CostExceedsFastLaneWithoutCadence
+  | NonExecutingCadence { cadence: String }
+  | EnvelopeUndeclared
 
-fn witness_consumer_cadence_executes(cadence: WitnessConsumerCadence) -> Bool {
-  match cadence {
-    DiscoverySelection => true
-    FalsifierSubstrateLongLane => true
-    OfflineLocalRecipe => false
-    NoConsumer => false
-    _ => true
+fn cadence_is_per_pr(cadence: String) -> Bool {
+  cadence == "per_pr"
+}
+
+fn cadence_executes_on_floor(cadence: String) -> Bool {
+  cadence != "offline_local_recipe" && cadence != "no_consumer"
+}
+
+fn envelope_exceeds_fast_lane(
+  envelope: ScheduledWitnessEnvelope,
+  fast_lane_budget_ms: Nat,
+) -> Bool {
+  millisecond_count(m: envelope.wall_budget) > fast_lane_budget_ms
+}
+
+fn derive_witness_route_from_envelope(
+  purpose: WitnessPurpose,
+  envelope: ScheduledWitnessEnvelope,
+  fast_lane_budget_ms: Nat,
+) -> WitnessRoute {
+  if witness_purpose_is_one_shot(purpose: purpose) {
+    OneShot
+  } else if witness_purpose_requires_scheduled_cadence(purpose: purpose) {
+    if cadence_executes_on_floor(cadence: envelope.cadence) {
+      if cadence_is_per_pr(cadence: envelope.cadence) {
+        match purpose {
+          ExternalFidelity { effect: _ } => PerPrWet
+          PopulationTotality { population: _ } =>
+            RefusedNoConsumer { cause: PurposeRequiresScheduledCadenceUndeclared }
+          _ =>
+            RefusedNoConsumer { cause: PurposeRequiresScheduledCadenceUndeclared }
+        }
+      } else {
+        Scheduled { cadence: envelope.cadence }
+      }
+    } else {
+      RefusedNoConsumer { cause: NonExecutingCadence { cadence: envelope.cadence } }
+    }
+  } else if envelope_exceeds_fast_lane(
+    envelope: envelope,
+    fast_lane_budget_ms: fast_lane_budget_ms,
+  ) {
+    RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
+  } else {
+    match purpose {
+      ExternalFidelity { effect: _ } => PerPrWet
+      BehavioralDiscriminator => OrdinaryPerPr
+      BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => OrdinaryPerPr
+      ResourceContract { resource: _, bound: _ } => OrdinaryPerPr
+      PopulationTotality { population: _ } =>
+        RefusedNoConsumer { cause: PurposeRequiresScheduledCadenceUndeclared }
+      TerminatingOneShot { pinned_subject: _, dissolution_trigger: _, deadline: _ } => OneShot
+    }
   }
 }
 
 fn derive_witness_route(
   purpose: WitnessPurpose,
-  disposition: WitnessDisposition,
-  envelope: WitnessCostEnvelope,
+  envelope: ScheduledWitnessEnvelope,
   fast_lane_budget_ms: Nat,
 ) -> WitnessRoute {
-  if witness_purpose_requires_scheduled_lane(purpose: purpose) {
-    match witness_disposition_required_cadence(disposition: disposition) {
-      RequiredCadence { cadence: cadence } =>
-        if witness_consumer_cadence_executes(cadence: cadence) {
-          ScheduledLane { cadence: cadence }
-        } else {
-          PlacementRefused { cause: PurposeRequiresScheduledLaneUndeclared }
-        }
-      NoRequiredCadence =>
-        if witness_disposition_requires_scheduled_lane(disposition: disposition) {
-          PlacementRefused { cause: DispositionRequiresScheduledLaneUndeclared }
-        } else if witness_cost_envelope_exceeds_fast_lane(
-          envelope: envelope,
-          fast_lane_budget_ms: fast_lane_budget_ms,
-        ) {
-          PlacementRefused { cause: FastLaneBudgetExceededWithoutCadence }
-        } else {
-          match envelope {
-            EnvelopeAbsent =>
-              PlacementRefused { cause: CostEnvelopeUndeclared }
-            DeclaredEnvelope { purpose: _, eval_wall_ceiling: _ } => PerPrDiscovery
-          }
-        }
-    }
-  } else {
-    match disposition {
-      TerminatingSurvey { pinned_subject: _, dissolution_trigger: _, deadline: _ } =>
-        PerPrDiscovery
-      PermanentRegressionWitness { required_cadence: cadence } =>
-        if witness_consumer_cadence_executes(cadence: cadence) {
-          ScheduledLane { cadence: cadence }
-        } else {
-          PlacementRefused { cause: DispositionRequiresScheduledLaneUndeclared }
-        }
-      MechanismFixture =>
-        if witness_cost_envelope_exceeds_fast_lane(
-          envelope: envelope,
-          fast_lane_budget_ms: fast_lane_budget_ms,
-        ) {
-          PlacementRefused { cause: FastLaneBudgetExceededWithoutCadence }
-        } else {
-          match envelope {
-            EnvelopeAbsent =>
-              PlacementRefused { cause: CostEnvelopeUndeclared }
-            DeclaredEnvelope { purpose: _, eval_wall_ceiling: _ } => PerPrDiscovery
-          }
-        }
-    }
+  derive_witness_route_from_envelope(
+    purpose: purpose,
+    envelope: envelope,
+    fast_lane_budget_ms: fast_lane_budget_ms,
+  )
+}
+
+fn witness_route_cadence_string(route: WitnessRoute) -> String {
+  match route {
+    OrdinaryPerPr => "per_pr"
+    PerPrWet => "per_pr_wet"
+    Scheduled { cadence: cadence } => cadence
+    OneShot => "one_shot"
+    RefusedNoConsumer { cause: _ } => "refused"
   }
 }
 
 fn witness_route_is_per_pr(route: WitnessRoute) -> Bool {
   match route {
-    PerPrDiscovery => true
-    ScheduledLane { cadence: _ } => false
-    PlacementRefused { cause: _ } => false
+    OrdinaryPerPr => true
+    PerPrWet => true
+    OneShot => true
+    Scheduled { cadence: _ } => false
+    RefusedNoConsumer { cause: _ } => false
   }
 }
 
 fn witness_route_has_executing_consumer(route: WitnessRoute) -> Bool {
   match route {
-    PerPrDiscovery => true
-    ScheduledLane { cadence: cadence } => witness_consumer_cadence_executes(cadence: cadence)
-    PlacementRefused { cause: _ } => false
+    OrdinaryPerPr => true
+    PerPrWet => true
+    OneShot => true
+    Scheduled { cadence: cadence } => cadence_executes_on_floor(cadence: cadence)
+    RefusedNoConsumer { cause: _ } => false
   }
 }
 
-fn witness_placement_admits_observed_cost(
-  envelope: WitnessCostEnvelope,
-  observed: Millisecond,
-) -> WitnessCostEnvelopeVerdict {
-  witness_cost_envelope_admits_observed_wall(envelope: envelope, observed: observed)
+fn derive_route_from_span(
+  purpose: WitnessPurpose,
+  span: WitnessSpan,
+  fast_lane_budget_ms: Nat,
+) -> WitnessRoute {
+  match span {
+    SpanEnrolled { seams: _, cost_basis: _, envelope } =>
+      derive_witness_route(
+        purpose: purpose,
+        envelope: envelope,
+        fast_lane_budget_ms: fast_lane_budget_ms,
+      )
+    _ => RefusedNoConsumer { cause: EnvelopeUndeclared }
+  }
 }

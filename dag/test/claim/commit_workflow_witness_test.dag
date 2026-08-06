@@ -17,7 +17,7 @@ import gunbc.commit_workflow {
 }
 import std.measure { millisecond, WallClock }
 import std.realization_schedule {
-  WitnessSeam, SpanSeams, SpanUndeclared, SpanEnrolled,
+  WitnessSeam, SpanSeams, SpanUndeclared, SpanUnavailable, SpanEnrolled,
   WitnessCostBasis, MeasuredAtExactSubject,
   ScheduledWitnessEnvelope,
   CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq

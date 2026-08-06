@@ -4,215 +4,375 @@ import std.decl_ref { decl_ref }
 import std.content_hash {
   ContentHash,
   Fnv1a64,
+  Fnv1a64StructuralDigestHex,
   structural_content_hash,
-  fnv1a64_structural_hex_digest,
 }
-import std.measure { millisecond }
-import std.nat { Nat }
-import std.witness_admission {
-  WitnessConsumerCadence,
-  FalsifierSubstrateLongLane,
-  OfflineLocalRecipe,
+import std.measure {
+  millisecond,
+  WallClock,
+  CpuClock,
+}
+import std.realization_schedule {
+  WitnessSeam,
+  SpanEnrolled,
+  SpanUndeclared,
+  SpanUnavailable,
+  MeasuredAtExactSubject,
+  ScheduledWitnessEnvelope,
+  WitnessCostBasis,
+  EstimatedFromSiblingClass,
+  ObservedWallPresent,
+  ObservedWallMissing,
+  ObservedWallCensored,
+  compare_witness_span_to_observed,
+  compare_span_enrolled_wall_budget,
+  WithinDeclaredWallBudget,
+  ExceedsDeclaredWallBudget,
+  MissingMeasurement,
+  MissingBasis,
+  CensoredMeasurementLowerBound,
+  MissingSpan,
+  SpanUnavailableAtCompare,
+  RouteMismatch,
+  BasisClockMismatch,
 }
 import std.witness_purpose {
   WitnessPurpose,
-  WitnessDisposition,
-  WitnessCostEnvelope,
-  MinimalCounterexample,
+  BehavioralDiscriminator,
   BoundaryCrossing,
   PopulationTotality,
-  MechanismFixture,
-  PermanentRegressionWitness,
-  TerminatingSurvey,
-  DeclaredEnvelope,
-  EnvelopeAbsent,
-  witness_cost_envelope_admits_observed_wall,
-  WithinDeclaredEnvelope,
-  ExceedsDeclaredEnvelope,
-  EnvelopeUndeclared,
+  ExternalFidelity,
+  TerminatingOneShot,
 }
+import std.nat { Nat }
 import std.witness_placement {
   derive_witness_route,
+  derive_route_from_span,
   witness_route_is_per_pr,
   witness_route_has_executing_consumer,
-  PerPrDiscovery,
-  ScheduledLane,
-  PlacementRefused,
-  FastLaneBudgetExceededWithoutCadence,
-  CostEnvelopeUndeclared,
+  witness_route_cadence_string,
+  OrdinaryPerPr,
+  PerPrWet,
+  Scheduled,
+  OneShot,
+  RefusedNoConsumer,
+  CostExceedsFastLaneWithoutCadence,
+  PurposeRequiresScheduledCadenceUndeclared,
+  EnvelopeUndeclared,
 }
 
-data witness_purpose_placement_witness_note: String = "First executing consumer for std.witness_purpose and std.witness_placement (Lane B, royal-tern-308). Proves the purpose taxonomy, derived cost envelope admission, and derived route projection are checkable — not prose in witness_deferral_freeze_purpose_frontier_note. RED controls: reverting envelope admission, fast-lane refusal, or population-totality scheduling routes fail here."
+data witness_purpose_placement_witness_note: String = "First executing consumer for std.witness_purpose, std.witness_placement, and std.realization_schedule compare_witness_span_to_observed (Lane B, swift-wren-710). Uses ScheduledWitnessEnvelope — does NOT mint a parallel envelope carrier. RED controls: declared-vs-observed compare, censored lower bound, route derivation, SpanUnavailable."
 
 fn fixture_subject_hash() -> ContentHash {
   Fnv1a64(
-    structural_content_hash(
-      digest: fnv1a64_structural_hex_digest(text: "lane-b-fixture-subject")
-    )
+    structural_content_hash(digest: "deadbeefdeadbeef" as Fnv1a64StructuralDigestHex)
   )
 }
 
-fn fixture_mechanism_envelope() -> WitnessCostEnvelope {
-  DeclaredEnvelope {
-    purpose: MinimalCounterexample,
-    eval_wall_ceiling: millisecond(count: 100),
+fn fixture_envelope(wall_budget_ms: Nat) -> ScheduledWitnessEnvelope {
+  ScheduledWitnessEnvelope {
+    cadence: "per_pr",
+    wall_budget: millisecond(count: wall_budget_ms),
+    max_staleness: "0",
   }
 }
 
-fn fixture_population_purpose() -> WitnessPurpose {
-  PopulationTotality {
-    population: decl_ref(
-      module_path: "dag.test.claim.witness_purpose_placement_witness",
-      decl_name: "witness_purpose_placement_witness_note",
-    ),
+fn fixture_cost_basis() -> WitnessCostBasis {
+  MeasuredAtExactSubject {
+    clock: WallClock,
+    duration: millisecond(count: 3),
+    receipt: "fixture-measure-receipt",
   }
 }
 
-test fn mechanism_fixture_under_fast_lane_routes_per_pr() -> Bool {
+fn fixture_span_enrolled(wall_budget_ms: Nat) -> SpanEnrolled {
+  SpanEnrolled {
+    seams: [
+      WitnessSeam {
+        producer: "GithubActionsCiJob",
+        consumer: "witness_purpose_placement_witness_note",
+      }
+    ],
+    cost_basis: fixture_cost_basis(),
+    envelope: fixture_envelope(wall_budget_ms: wall_budget_ms),
+  }
+}
+
+test fn behavioral_discriminator_routes_ordinary_per_pr() -> Bool {
   let route = derive_witness_route(
-    purpose: MinimalCounterexample,
-    disposition: MechanismFixture,
-    envelope: fixture_mechanism_envelope(),
+    purpose: BehavioralDiscriminator,
+    envelope: fixture_envelope(wall_budget_ms: 100),
     fast_lane_budget_ms: 5000,
   )
   match route {
-    PerPrDiscovery => witness_route_is_per_pr(route: route)
-    ScheduledLane { cadence: _ } => false
-    PlacementRefused { cause: _ } => false
+    OrdinaryPerPr => witness_route_is_per_pr(route: route)
+    PerPrWet => false
+    Scheduled { cadence: _ } => false
+    OneShot => false
+    RefusedNoConsumer { cause: _ } => false
   }
 }
 
 test fn over_fast_lane_envelope_refuses_without_cadence() -> Bool {
-  let envelope = DeclaredEnvelope {
-    purpose: MinimalCounterexample,
-    eval_wall_ceiling: millisecond(count: 6000),
-  }
   let route = derive_witness_route(
-    purpose: MinimalCounterexample,
-    disposition: MechanismFixture,
-    envelope: envelope,
+    purpose: BehavioralDiscriminator,
+    envelope: fixture_envelope(wall_budget_ms: 6000),
     fast_lane_budget_ms: 5000,
   )
   match route {
-    PlacementRefused { cause: FastLaneBudgetExceededWithoutCadence } => true
-    PerPrDiscovery => false
-    ScheduledLane { cadence: _ } => false
-    PlacementRefused { cause: _ } => false
+    RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence } => true
+    OrdinaryPerPr => false
+    PerPrWet => false
+    Scheduled { cadence: _ } => false
+    OneShot => false
+    RefusedNoConsumer { cause: _ } => false
   }
 }
 
-test fn population_totality_requires_scheduled_lane() -> Bool {
-  let envelope = DeclaredEnvelope {
-    purpose: fixture_population_purpose(),
-    eval_wall_ceiling: millisecond(count: 100),
-  }
+test fn population_totality_requires_scheduled_cadence() -> Bool {
   let route = derive_witness_route(
-    purpose: fixture_population_purpose(),
-    disposition: MechanismFixture,
-    envelope: envelope,
-    fast_lane_budget_ms: 5000,
-  )
-  match route {
-    PlacementRefused { cause: _ } => true
-    PerPrDiscovery => false
-    ScheduledLane { cadence: _ } => false
-  }
-}
-
-test fn permanent_regression_witness_routes_to_declared_cadence() -> Bool {
-  let envelope = DeclaredEnvelope {
-    purpose: MinimalCounterexample,
-    eval_wall_ceiling: millisecond(count: 9000),
-  }
-  let route = derive_witness_route(
-    purpose: MinimalCounterexample,
-    disposition: PermanentRegressionWitness {
-      required_cadence: FalsifierSubstrateLongLane,
-    },
-    envelope: envelope,
-    fast_lane_budget_ms: 5000,
-  )
-  match route {
-    ScheduledLane { cadence: c } =>
-      witness_route_has_executing_consumer(route: route) && c == FalsifierSubstrateLongLane
-    PerPrDiscovery => false
-    PlacementRefused { cause: _ } => false
-  }
-}
-
-test fn undeclared_envelope_refuses_placement() -> Bool {
-  let route = derive_witness_route(
-    purpose: MinimalCounterexample,
-    disposition: MechanismFixture,
-    envelope: EnvelopeAbsent,
-    fast_lane_budget_ms: 5000,
-  )
-  match route {
-    PlacementRefused { cause: CostEnvelopeUndeclared } => true
-    PerPrDiscovery => false
-    ScheduledLane { cadence: _ } => false
-    PlacementRefused { cause: _ } => false
-  }
-}
-
-test fn cost_envelope_admits_observed_within_ceiling() -> Bool {
-  match witness_cost_envelope_admits_observed_wall(
-    envelope: fixture_mechanism_envelope(),
-    observed: millisecond(count: 99),
-  ) {
-    WithinDeclaredEnvelope => true
-    ExceedsDeclaredEnvelope { observed: _, ceiling: _ } => false
-    EnvelopeUndeclared => false
-  }
-}
-
-test fn cost_envelope_refuses_observed_over_ceiling() -> Bool {
-  match witness_cost_envelope_admits_observed_wall(
-    envelope: fixture_mechanism_envelope(),
-    observed: millisecond(count: 101),
-  ) {
-    ExceedsDeclaredEnvelope { observed: _, ceiling: _ } => true
-    WithinDeclaredEnvelope => false
-    EnvelopeUndeclared => false
-  }
-}
-
-test fn offline_local_recipe_cadence_does_not_execute() -> Bool {
-  let route = derive_witness_route(
-    purpose: MinimalCounterexample,
-    disposition: PermanentRegressionWitness {
-      required_cadence: OfflineLocalRecipe,
-    },
-    envelope: fixture_mechanism_envelope(),
-    fast_lane_budget_ms: 5000,
-  )
-  match route {
-    PlacementRefused { cause: _ } => !witness_route_has_executing_consumer(route: route)
-    ScheduledLane { cadence: _ } => false
-    PerPrDiscovery => false
-  }
-}
-
-test fn terminating_survey_allows_per_pr_despite_large_envelope() -> Bool {
-  let envelope = DeclaredEnvelope {
-    purpose: BoundaryCrossing {
-      modeled_boundary: decl_ref(
-        module_path: "std.witness_purpose",
-        decl_name: "WitnessPurpose",
+    purpose: PopulationTotality {
+      population: decl_ref(
+        module_path: "dag.test.claim.witness_purpose_placement_witness",
+        decl_name: "witness_purpose_placement_witness_note",
       ),
-      chosen_input: fixture_subject_hash(),
     },
-    eval_wall_ceiling: millisecond(count: 9000),
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    fast_lane_budget_ms: 5000,
+  )
+  match route {
+    RefusedNoConsumer { cause: PurposeRequiresScheduledCadenceUndeclared } => true
+    OrdinaryPerPr => false
+    PerPrWet => false
+    Scheduled { cadence: _ } => false
+    OneShot => false
+    RefusedNoConsumer { cause: _ } => false
+  }
+}
+
+test fn scheduled_envelope_routes_to_declared_cadence() -> Bool {
+  let envelope = ScheduledWitnessEnvelope {
+    cadence: "falsifier_substrate_long_lane",
+    wall_budget: millisecond(count: 9000),
+    max_staleness: "4h",
   }
   let route = derive_witness_route(
-    purpose: BoundaryCrossing {
-      modeled_boundary: decl_ref(
-        module_path: "std.witness_purpose",
-        decl_name: "WitnessPurpose",
-      ),
-      chosen_input: fixture_subject_hash(),
+    purpose: BehavioralDiscriminator,
+    envelope: envelope,
+    fast_lane_budget_ms: 5000,
+  )
+  match route {
+    Scheduled { cadence: c } =>
+      witness_route_has_executing_consumer(route: route)
+        && c == "falsifier_substrate_long_lane"
+    OrdinaryPerPr => false
+    PerPrWet => false
+    OneShot => false
+    RefusedNoConsumer { cause: _ } => false
+  }
+}
+
+test fn compare_within_declared_wall_budget() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    basis: fixture_cost_basis(),
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 99),
+      clock: WallClock,
     },
-    disposition: TerminatingSurvey {
+    derived_cadence: "per_pr",
+  ) {
+    WithinDeclaredWallBudget => true
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+  }
+}
+
+test fn compare_exceeds_declared_wall_budget() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    basis: fixture_cost_basis(),
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 101),
+      clock: WallClock,
+    },
+    derived_cadence: "per_pr",
+  ) {
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => true
+    WithinDeclaredWallBudget => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+  }
+}
+
+test fn compare_censored_is_lower_bound_not_verdict() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 5000),
+    basis: fixture_cost_basis(),
+    observed: ObservedWallCensored {
+      floor: millisecond(count: 5000),
+      clock: WallClock,
+    },
+    derived_cadence: "per_pr",
+  ) {
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => true
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    MissingBasis => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+  }
+}
+
+test fn compare_missing_measurement() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    basis: fixture_cost_basis(),
+    observed: ObservedWallMissing,
+    derived_cadence: "per_pr",
+  ) {
+    MissingMeasurement => true
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+  }
+}
+
+test fn compare_missing_basis_on_estimated() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    basis: EstimatedFromSiblingClass {
+      clock: WallClock,
+      source_witness: "sibling",
+      basis: "fixture-basis",
+    },
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 50),
+      clock: WallClock,
+    },
+    derived_cadence: "per_pr",
+  ) {
+    MissingBasis => true
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+  }
+}
+
+test fn compare_missing_span_on_undeclared() -> Bool {
+  match compare_witness_span_to_observed(
+    span: SpanUndeclared,
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 1),
+      clock: WallClock,
+    },
+    derived_cadence: "per_pr",
+  ) {
+    MissingSpan => true
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    SpanUnavailableAtCompare { cause: _ } => false
+  }
+}
+
+test fn compare_span_unavailable_at_compare() -> Bool {
+  match compare_witness_span_to_observed(
+    span: SpanUnavailable { cause: "derivation refused: no measured sibling" },
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 1),
+      clock: WallClock,
+    },
+    derived_cadence: "per_pr",
+  ) {
+    SpanUnavailableAtCompare { cause: _ } => true
+    MissingSpan => false
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+  }
+}
+
+test fn compare_route_mismatch() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    basis: fixture_cost_basis(),
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 50),
+      clock: WallClock,
+    },
+    derived_cadence: "falsifier_substrate_long_lane",
+  ) {
+    RouteMismatch { declared_cadence: d, derived_cadence: r } =>
+      d == "per_pr" && r == "falsifier_substrate_long_lane"
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+  }
+}
+
+test fn compare_basis_clock_mismatch() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    basis: fixture_cost_basis(),
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 50),
+      clock: CpuClock,
+    },
+    derived_cadence: "per_pr",
+  ) {
+    BasisClockMismatch { observed_clock: CpuClock, declared_clock: WallClock } => true
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+  }
+}
+
+test fn terminating_one_shot_routes_one_shot() -> Bool {
+  let route = derive_witness_route(
+    purpose: TerminatingOneShot {
       pinned_subject: fixture_subject_hash(),
       dissolution_trigger: decl_ref(
         module_path: "std.witness_purpose",
@@ -220,12 +380,30 @@ test fn terminating_survey_allows_per_pr_despite_large_envelope() -> Bool {
       ),
       deadline: "2026-12-31",
     },
-    envelope: envelope,
+    envelope: fixture_envelope(wall_budget_ms: 9000),
     fast_lane_budget_ms: 5000,
   )
   match route {
-    PerPrDiscovery => true
-    ScheduledLane { cadence: _ } => false
-    PlacementRefused { cause: _ } => false
+    OneShot => witness_route_cadence_string(route: route) == "one_shot"
+    OrdinaryPerPr => false
+    PerPrWet => false
+    Scheduled { cadence: _ } => false
+    RefusedNoConsumer { cause: _ } => false
+  }
+}
+
+test fn derive_route_from_span_refuses_without_enrollment() -> Bool {
+  let route = derive_route_from_span(
+    purpose: BehavioralDiscriminator,
+    span: SpanUndeclared,
+    fast_lane_budget_ms: 5000,
+  )
+  match route {
+    RefusedNoConsumer { cause: EnvelopeUndeclared } => true
+    OrdinaryPerPr => false
+    PerPrWet => false
+    Scheduled { cadence: _ } => false
+    OneShot => false
+    RefusedNoConsumer { cause: _ } => false
   }
 }

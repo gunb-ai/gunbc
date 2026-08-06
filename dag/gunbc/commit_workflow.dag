@@ -40,7 +40,7 @@ import std.measure { millisecond, millisecond_count, WallClock, clock_basis_eq }
 import std.realization_schedule {
   string_list_eq, ScheduleWitnessEntry,
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq,
-  WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams, SpanEnrolled,
+  WitnessSeam, WitnessSpan, SpanUndeclared, SpanUnavailable, SpanSeams, SpanEnrolled,
   WitnessCostBasis,
   MeasuredAtExactSubject, EstimatedFromSiblingClass,
   ScheduledWitnessEnvelope
@@ -1871,16 +1871,25 @@ fn witness_span_eq(a: WitnessSpan, b: WitnessSpan) -> Bool {
   match a {
     SpanUndeclared => match b {
       SpanUndeclared => true
+      SpanUnavailable { cause: _ } => false
+      SpanSeams { seams: _ } => false
+      SpanEnrolled { seams: _, cost_basis: _, envelope: _ } => false
+    }
+    SpanUnavailable { cause } => match b {
+      SpanUndeclared => false
+      SpanUnavailable { cause: other } => cause == other
       SpanSeams { seams: _ } => false
       SpanEnrolled { seams: _, cost_basis: _, envelope: _ } => false
     }
     SpanSeams { seams } => match b {
       SpanUndeclared => false
+      SpanUnavailable { cause: _ } => false
       SpanSeams { seams: other } => witness_seam_lists_eq(left: seams, right: other)
       SpanEnrolled { seams: _, cost_basis: _, envelope: _ } => false
     }
     SpanEnrolled { seams, cost_basis, envelope } => match b {
       SpanUndeclared => false
+      SpanUnavailable { cause: _ } => false
       SpanSeams { seams: _ } => false
       SpanEnrolled {
         seams: other_seams,
@@ -2316,6 +2325,7 @@ fn seams_wellformed_and_distinct(seams: List<WitnessSeam>) -> Bool {
 fn witness_span_wellformed(span: WitnessSpan) -> Bool {
   match span {
     SpanUndeclared => true
+    SpanUnavailable { cause } => cause != ""
     SpanSeams { seams } => seams.count() > 0 && seams_wellformed_and_distinct(seams: seams)
     SpanEnrolled { seams, cost_basis, envelope } =>
       seams.count() > 0
