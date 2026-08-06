@@ -2,7 +2,8 @@ module test.claim.dag_compile_clean_scope_witness
 
 import tools.dag_compile_clean_scope {
   witness_empty_touched_requires_whole_tree,
-  witness_touched_path_dispositions_hold,
+  witness_touched_path_dispositions_hold_first_half,
+  witness_touched_path_dispositions_hold_second_half,
   touched_path_disposition_matches,
   scope_disposition_rows,
   ScopeDispositionRow,
@@ -26,8 +27,12 @@ test fn dag_compile_clean_scope_empty_touched_requires_whole_tree_holds() -> Boo
   witness_empty_touched_requires_whole_tree()
 }
 
-test fn dag_compile_clean_scope_all_disposition_rows_hold() -> Bool {
-  witness_touched_path_dispositions_hold()
+test fn dag_compile_clean_scope_disposition_rows_hold_first_half() -> Bool {
+  witness_touched_path_dispositions_hold_first_half()
+}
+
+test fn dag_compile_clean_scope_disposition_rows_hold_second_half() -> Bool {
+  witness_touched_path_dispositions_hold_second_half()
 }
 
 test fn dag_compile_clean_scope_disposition_row_count_pinned() -> Bool {
