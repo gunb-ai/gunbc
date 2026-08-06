@@ -141,27 +141,142 @@ test fn witness_reconcile_covers_upsert_teardown_and_noop() -> Bool {
 data witness_matrix_shape_note: String = "Shape assertions over the derived matrix, pinned to the spine and the enrolled fleet rather than to hand-copied numbers: the matrix is exactly (hosts x spine steps), so it cannot silently drop a phase or a host. The coverage count is the honest measure of the live-observation frontier — one cell has a real producer today, (srv3, prefix:os-install-actuated) — and that number is what items 2 and 3 of the lane exist to raise. Pinning it means adding a producer is a VISIBLE, counted event that must update this witness, never a silent improvement nobody can point at."
 
 test fn witness_matrix_is_hosts_times_spine() -> Bool {
-  let cells = host_fleet_phase_matrix(hosts: fleet_subsumption_hosts).length()
-  let expected = fleet_subsumption_hosts.length() * host_standup_spine.length()
+  let cells = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments).length()
+  let expected = fleet_subsumption_enrollments.length() * host_standup_spine.length()
   cells == expected
 }
 
 test fn witness_live_observation_frontier_is_one_cell() -> Bool {
-  host_phase_observation_coverage_count(hosts: fleet_subsumption_hosts) == 1
+  host_phase_observation_coverage_count(enrollments: fleet_subsumption_enrollments) == 1
 }
 
 test fn witness_unmodeled_cells_track_spine_gaps() -> Bool {
-  let unmodeled = host_phase_unmodeled_count(hosts: fleet_subsumption_hosts)
-  let expected = fleet_subsumption_hosts.length() * host_standup_gap_phase_count()
+  let unmodeled = host_phase_unmodeled_count(enrollments: fleet_subsumption_enrollments)
+  let expected = fleet_subsumption_enrollments.length() * host_standup_gap_phase_count()
   unmodeled == expected
 }
 
 data witness_remaining_work_note: String = "Remaining work is the reconcile's own upsert count, and it must equal every cell that is not already at the FULL desired state — modeled AND converged. Asserting it against an independently computed count is what stops the reconcile from silently retiring cells: if desired ever weakened to 'converged, disposition ignored', srv3's installed-but-unmodeled OS cell would drop out of the count and the lane would look one item closer to done than it is."
 
 test fn witness_remaining_work_counts_every_unfinished_cell() -> Bool {
-  let remaining = host_phase_remaining_work_count(hosts: fleet_subsumption_hosts)
-  let total = host_fleet_phase_matrix(hosts: fleet_subsumption_hosts).length()
-  let finished = host_phase_finished_cell_count(hosts: fleet_subsumption_hosts)
+  let remaining = host_phase_remaining_work_count(enrollments: fleet_subsumption_enrollments)
+  let total = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments).length()
+  let finished = host_phase_finished_cell_count(enrollments: fleet_subsumption_enrollments)
   remaining == total - finished
 }
 
+
+data witness_program_scoping_note: String = "HOST-0 acceptance. The refactor's whole risk is that program scoping quietly CHANGES the runner fleet while looking tidy, so the identity conjunct is asserted rather than argued: a CI-participation enrollment must select the entire spine, because every phase authored to date exists to serve runner hosts. The complementary conjunct is the one the refactor exists for -- an inference enrollment must not carry a single runner or BMC obligation. Both are needed: the first alone would pass a no-op, the second alone would pass a refactor that broke srv1 through srv4."
+
+data synthetic_inference_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
+  host: operator_host_srv3,
+  participation: inference_serving_enrollment_participation,
+}
+
+data synthetic_ci_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
+  host: operator_host_srv3,
+  participation: ci_runner_enrollment_participation,
+}
+
+fn cell_label_is_runner_only(c: HostPhaseCellStatus) -> Bool {
+  let l = c.cell.phase_label
+  l == "prefix:bmc-credential-converge" || l == "prefix:os-install-mechanism" || l == "prefix:os-install-actuated" || l == "P1:runner-deploy-slot" || l == "P1b:build-cache-provision" || l == "P3:green-place-readiness" || l == "P4:session-placement-enrollment"
+}
+
+fn cell_label_is_shared(c: HostPhaseCellStatus) -> Bool {
+  let l = c.cell.phase_label
+  l == "P0:host-identity-converge" || l == "P0:reach-secrets-network" || l == "P2:compute-fabric-enroll" || l == "P5:assimilation-complete-gate"
+}
+
+test fn witness_ci_program_selects_the_whole_spine() -> Bool {
+  let selected = program_step_count(program: assimilation_program_for(intent: synthetic_ci_enrollment))
+  selected == host_standup_spine.length()
+}
+
+test fn witness_inference_program_is_strictly_smaller_than_the_spine() -> Bool {
+  let inference = program_step_count(program: assimilation_program_for(intent: synthetic_inference_enrollment))
+  inference > 0 && inference < host_standup_spine.length()
+}
+
+data synthetic_reordered_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
+  host: operator_host_srv3,
+  participation: [InferenceServingParticipation, CiRunnerParticipation],
+}
+
+data synthetic_forward_order_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
+  host: operator_host_srv3,
+  participation: [CiRunnerParticipation, InferenceServingParticipation],
+}
+
+data synthetic_duplicated_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
+  host: operator_host_srv3,
+  participation: [CiRunnerParticipation, CiRunnerParticipation, InferenceServingParticipation],
+}
+
+data witness_participation_set_semantics_note: String = "Participation is a set wearing a list's carrier, so the three enrollments below must be one program under BOTH readings -- the steps they select and the identity they derive. Selection was already order-blind and duplicate-blind because step_serves_any asks only whether SOME participation claims a step; identity was not, and joined whatever the caller happened to write. These conjuncts are the discriminating controls for that repair: each one reds against the pre-repair identity derivation, which is what distinguishes a real construction wall from a canonicalization function nobody calls."
+
+test fn witness_participation_order_does_not_change_program_identity() -> Bool {
+  let forward = assimilation_program_for(intent: synthetic_forward_order_enrollment)
+  let reversed = assimilation_program_for(intent: synthetic_reordered_enrollment)
+  forward.identity == reversed.identity
+    && program_step_count(program: forward) == program_step_count(program: reversed)
+}
+
+test fn witness_duplicate_participation_is_identity_neutral() -> Bool {
+  let once = assimilation_program_for(intent: synthetic_forward_order_enrollment)
+  let twice = assimilation_program_for(intent: synthetic_duplicated_enrollment)
+  once.identity == twice.identity
+    && program_step_count(program: once) == program_step_count(program: twice)
+}
+
+test fn witness_distinct_participation_changes_identity_and_obligations() -> Bool {
+  let ci = assimilation_program_for(intent: synthetic_ci_enrollment)
+  let inference = assimilation_program_for(intent: synthetic_inference_enrollment)
+  let both = assimilation_program_for(intent: synthetic_forward_order_enrollment)
+  ci.identity != inference.identity
+    && both.identity != ci.identity
+    && program_step_count(program: inference) < program_step_count(program: ci)
+}
+
+data witness_identity_is_exactly_canonical_note: String = "The DISCRIMINATING control, and the reason the three conjuncts above are not satisfied by any function that merely returns a constant. It pins the derived identity to an independently authored literal rather than to another projection of the same computation, and the literal is what the canonical roster REQUIRES it to be, not what the current code was measured to emit. Pre-repair, the duplicated enrollment joined its raw list and derived 'ci-runner+ci-runner+inference-serving'; this conjunct asserts that exact string is NOT the identity while the canonical two-label form IS. So it reds against the derivation this change replaced, which is what makes the repair a wall rather than a canonicalization helper sitting beside a still-writable path."
+
+test fn witness_program_identity_is_exactly_the_canonical_projection() -> Bool {
+  let duplicated = assimilation_program_for(intent: synthetic_duplicated_enrollment)
+  let reordered = assimilation_program_for(intent: synthetic_reordered_enrollment)
+  (duplicated.identity as String) == "ci-runner+inference-serving"
+    && (reordered.identity as String) == "ci-runner+inference-serving"
+    && (duplicated.identity as String) != "ci-runner+ci-runner+inference-serving"
+    && (reordered.identity as String) != "inference-serving+ci-runner"
+}
+
+test fn witness_single_participation_identities_are_distinct_labels() -> Bool {
+  (assimilation_program_for(intent: synthetic_ci_enrollment).identity as String) == "ci-runner"
+    && (assimilation_program_for(intent: synthetic_inference_enrollment).identity as String) == "inference-serving"
+}
+
+test fn witness_every_participation_is_in_the_canonical_roster() -> Bool {
+  fleet_participation_in_canonical_roster(p: CiRunnerParticipation)
+    && fleet_participation_in_canonical_roster(p: InferenceServingParticipation)
+}
+
+test fn witness_inference_enrollment_carries_no_runner_or_bmc_obligation() -> Bool {
+  let cells = host_phase_cells_for_enrollment(intent: synthetic_inference_enrollment)
+  let forbidden = filter(cells, c => cell_label_is_runner_only(c: c))
+  forbidden.length() == 0
+}
+
+test fn witness_inference_enrollment_keeps_the_shared_obligations() -> Bool {
+  let cells = host_phase_cells_for_enrollment(intent: synthetic_inference_enrollment)
+  let shared = filter(cells, c => cell_label_is_shared(c: c))
+  shared.length() == 4 && cells.length() == 4
+}
+
+test fn witness_every_spine_step_is_claimed_by_some_participation() -> Bool {
+  let unclaimed = filter(host_standup_spine, s => !step_serves_participation(step: s, wanted: CiRunnerParticipation) && !step_serves_participation(step: s, wanted: InferenceServingParticipation))
+  unclaimed.length() == 0
+}
+
+test fn witness_program_scoping_preserves_the_runner_fleet_matrix() -> Bool {
+  let cells = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments).length()
+  cells == fleet_subsumption_hosts.length() * host_standup_spine.length()
+}

@@ -2500,13 +2500,13 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       intricacy: IntricacyMedium,
       volume: VolumeSmall,
       t: fields(
-        headline: "Missing and duplicate arguments: the interpreter-first parity pair",
-        boundary: "The interpreter itself does not refuse these today — a missing required arg decays to NoSuchVariable at read (or silence if unread); a duplicate label silently overwrites in bindings.insert — so a compile-only wall would diverge the authorities the other way. Land the refusals in call_function_inner FIRST (default-value-aware: param_node_default_value legitimately fills omissions), then mirror at the compile seam, keeping the two authorities in lockstep exactly as the label/surplus pair did.",
-        displaced_cost: "A missing argument surfacing as NoSuchVariable inside the body blames the wrong site; a duplicate silently taking the last value is unlocatable.",
-        first_slice: "The interpreter's duplicate-label refusal (no default interaction, cheapest half), then compile mirror, probe-paired.",
-        red_control: "Probes: duplicate label and missing non-default arg refuse on both authorities; controls: defaulted omissions and every corpus form stay green.",
+        headline: "Duplicate-argument half LANDED (gunbc#7847); missing-argument half remains",
+        boundary: "CORRECTED FRAMING (parent review, 2026-08-05): the defect is two ACTUALS resolving to the SAME PARAMETER, not 'duplicate labels' — positional-then-named onto one slot, or two labels both satisfying an underscore-shorthand parameter. Keyed by resolved binding target: a NAMED actual keys on its own label; a POSITIONAL actual keys on the parameter its index fills, matching call_function_inner. call_function_inner refuses (CallArgumentDuplicate) before the compile-seam mirror, keeping both authorities in agreement. Fixed a prior compile-seam bug where declared-parameter matching let underscore-shorthand steal a later exact-named match (false positive in cardinality.dag). Missing required arguments remain unrefused; param_node_default_value legitimately fills omissions and must stay green.",
+        displaced_cost: "Two actuals resolving to one parameter previously let the last-bound value win silently, unlocatable at the call site; a missing argument surfacing as NoSuchVariable inside the body blames the wrong site.",
+        first_slice: "DONE — the duplicate half: interpreter refusal in call_function_inner, compile-seam mirror keyed on resolved binding target (not label-string equality), guarantee-probe corpus rows and dark-suite witness migrated, disposition-count witnesses updated. Remaining: the missing-argument half, default-value-aware, probe-paired the same way.",
+        red_control: "Landed: mixed positional+named duplicate (one(1, a: 2)) refuses on both authorities; every corpus form incl. underscore-shorthand params stays green. Remaining: missing non-default arg refuses on both authorities; defaulted omissions stay green.",
         out_of_scope: "Label membership (landed sibling); the method seam.",
-        handback: "Both authorities' refusal sites, census delta, probe receipts."
+        handback: "Duplicate half: both authorities' refusal sites, census delta, probe receipts — delivered in gunbc#7847. Missing half: still owed."
       )
     ),
     active_sized(identity: "rn_GVLXWYYRQV47WTJLSSIFX7FLFM", id: "call-signature-resolution-coverage",

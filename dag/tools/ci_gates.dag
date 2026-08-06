@@ -5,6 +5,7 @@ import gunbc.ci_gate { EmitHostGate, Gate, CheapClaimPoolGate }
 import gunbc.ci_spec {
   gunbc_ci_gates, CiSpec,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
+  ProseRowIntroductionGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
@@ -14,6 +15,7 @@ import tools.extdeps_external_authority_gate { run_extdeps_external_authority_ci
 import tools.dag_compile_clean_gate { run_dag_compile_clean_gate }
 import tools.generated_artifact_gate { run_generated_artifact_drift_gate }
 import tools.extdeps_scope_placement_gate { run_extdeps_scope_placement_gate }
+import tools.prose_row_introduction_gate { run_prose_row_introduction_gate }
 import tools.regen_verify_gate { run_regen_verify_gate }
 
 fn exit_ok(e: ProcessExit) -> Bool {
@@ -28,6 +30,7 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
     DagCompileCleanGate => run_dag_compile_clean_gate()
     GeneratedArtifactDriftGate => run_generated_artifact_drift_gate()
     ExtdepsScopePlacementGate => run_extdeps_scope_placement_gate()
+    ProseRowIntroductionGate => run_prose_row_introduction_gate()
     SourceRootIngestGate => exit_failure(
       reason: "SourceRootIngestGate: run via ci_floor_plan v2.workflow.source_root_ingest_gate (slice 3)"
     )

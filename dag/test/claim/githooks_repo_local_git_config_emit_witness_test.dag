@@ -16,7 +16,7 @@ import gunbc.repo_local_git_config {
   core_hooks_path_value,
   RepoLocalGitConfigBinding,
 }
-import extdeps.git { git_shell_join_argv }
+import extdeps.exec.command { ArgvCommand, shell_command_render, shell_quote }
 import std.disposition { Scaffold }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -24,24 +24,37 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_converge_shell_uses_reconcile_install_argv() -> Bool {
   let shell = emit_repo_local_git_config_converge_shell()
-  let merge_cmd = git_shell_join_argv(
-    argv: reconcile_install_argv(
+  let merge_cmd = shell_command_render(
+    command: ArgvCommand { argv: reconcile_install_argv(
       binding: RepoLocalGitConfigBinding {
         key: generated_artifact_merge_driver_key,
         value: generated_artifact_merge_driver_value,
       }
-    )
+    ) }
   )
-  let hooks_cmd = git_shell_join_argv(
-    argv: reconcile_install_argv(
+  let hooks_cmd = shell_command_render(
+    command: ArgvCommand { argv: reconcile_install_argv(
       binding: RepoLocalGitConfigBinding {
         key: core_hooks_path_key,
         value: core_hooks_path_value,
       }
-    )
+    ) }
   )
   string_contains(s: shell, pattern: merge_cmd)
     && string_contains(s: shell, pattern: hooks_cmd)
+}
+
+data converge_shell_quoting_witness_note: String = "THE DISCRIMINATING HALF. The witness above compares the emitted block against the same renderer it is built from, so it moves with any renderer and cannot by itself tell a quoted line from an unquoted one — a change detector, not a check (DESIGN section 5). This one asserts the property the value actually needs: the driver key is followed by its value as ONE shell word. Under the unquoted join this emitter used until the driver value became multi-word, the text after the key is a bare `bash .githooks/generated-artifact-merge %O %A %B %P`, so this claim goes red exactly on the defect it exists to catch."
+
+test fn witness_converge_shell_quotes_multiword_binding_value_as_one_word() -> Bool {
+  let shell = emit_repo_local_git_config_converge_shell()
+  string_contains(
+    s: shell,
+    pattern: concat(
+      concat(shell_quote(arg: generated_artifact_merge_driver_key), " "),
+      shell_quote(arg: generated_artifact_merge_driver_value),
+    ),
+  )
 }
 
 test fn witness_pre_commit_enrolls_converge_shell() -> Bool {
