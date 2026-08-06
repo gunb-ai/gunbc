@@ -3,6 +3,7 @@ module test.claim.proc_self_cgroup_witness
 import extdeps.linux.proc_self_cgroup {
   read_unified_cgroup_membership,
   proc_self_cgroup_line_from_wire,
+  proc_self_cgroup_is_unified_v2_line,
   CurrentCgroupObserved,
   MembershipMissing,
   MembershipAmbiguous,
@@ -12,6 +13,7 @@ import extdeps.linux.proc_self_cgroup {
   ProcSelfCgroupLineMissingColon,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -24,6 +26,8 @@ data fixture_unified_duplicate: String = "0::/first.path\n0::/second.path\n"
 data fixture_malformed_no_colon: String = "garbage-line\n"
 
 data fixture_missing_unified: String = "1:memory:/legacy.path\n"
+
+data fixture_hierarchy_zero_nonempty_controller: String = "0:cpu:/sys/fs/cgroup\n"
 
 test fn proc_self_cgroup_unified_single_membership_holds() -> Bool {
   match read_unified_cgroup_membership(content: fixture_unified_single) {
@@ -73,10 +77,26 @@ test fn proc_self_cgroup_malformed_is_distinct_holds() -> Bool {
   }
 }
 
+test fn proc_self_cgroup_hierarchy_zero_nonempty_controller_not_unified_holds() -> Bool {
+  match read_unified_cgroup_membership(content: fixture_hierarchy_zero_nonempty_controller) {
+    CurrentCgroupObserved { relative_path: _ } => false
+    MembershipMissing => true
+    MembershipAmbiguous { first: _, second: _ } => false
+    MembershipMalformed { cause: _ } => false
+  }
+}
+
+test fn proc_self_cgroup_unified_v2_requires_empty_controller_field_holds() -> Bool {
+  !proc_self_cgroup_is_unified_v2_line(
+    hierarchy_id: "0" as NonEmptyStr,
+    controller_list: "cpu",
+  )
+}
+
 test fn proc_self_cgroup_line_parse_splits_on_second_colon_only_holds() -> Bool {
   match proc_self_cgroup_line_from_wire(line: "0::/foo:bar/baz") {
-    ProcSelfCgroupLineParsed { hierarchy_id: hid, controller_list: _, relative_path: path } =>
-      (hid as String == "0") && (path as String == "/foo:bar/baz")
+    ProcSelfCgroupLineParsed { hierarchy_id: hid, controller_list: ctl, relative_path: path } =>
+      (hid as String == "0") && (ctl == "") && (path as String == "/foo:bar/baz")
     ProcSelfCgroupLineRefused { cause: _ } => false
   }
 }
