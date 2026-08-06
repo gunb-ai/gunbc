@@ -178,7 +178,7 @@ type ComponentAlertSummaryDecoding
   = ComponentSummaryDecoded { summary: ComponentAlertSummary }
   | ComponentSummaryFailed { decoding: FloorComponentReceiptDecoding }
 
-fn receipt_summary_text_at(v: JsonValue, key: String) -> ReceiptText {
+fn receipt_summary_index_at(v: JsonValue, key: String) -> ReceiptText {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberAbsent => ReceiptTextFailed { decoding: ReceiptMemberAbsent { member: key } }
     JsonMemberDuplicated { count: _ } =>
@@ -206,19 +206,48 @@ fn receipt_summary_text_at(v: JsonValue, key: String) -> ReceiptText {
   }
 }
 
-data component_index_numeric_admission_note: String = "index admits a JSON number because the writer emits it with json_int, so a number is its NORMAL form here — unlike the event envelope's generic members, where a number signalled a shape change. label, outcome and failure_mode are emitted with json_string and admit only strings, so the widening is confined to the one member whose writer produces it, which is the same rule the event decoder follows."
+fn receipt_summary_required_string_at(v: JsonValue, key: String) -> ReceiptText {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberAbsent => ReceiptTextFailed { decoding: ReceiptMemberAbsent { member: key } }
+    JsonMemberDuplicated { count: _ } =>
+      ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is duplicated" } }
+    JsonMemberNotAnObject =>
+      ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component is not a JSON object" } }
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonString { value: sv } =>
+          if sv == "" {
+            ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is the empty string" } }
+          } else {
+            ReceiptTextFound { text: sv }
+          }
+        JsonNumber { lexeme: _ } =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is a number, expected a string" } }
+        JsonNull =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is null" } }
+        JsonBool { value: _ } =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is a bool" } }
+        JsonArray { elements: _ } =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is an array" } }
+        JsonObject { members: _ } =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is an object" } }
+      }
+  }
+}
+
+data component_index_numeric_admission_note: String = "index admits a JSON number because the writer emits it with json_int, so a number is its NORMAL form here — unlike the event envelope's generic members, where a number signals a shape change. label, outcome and failure_mode are emitted with json_string and are decoded by a string-only helper, so the widening is confined to the one member whose writer produces it, which is the same rule the event decoder follows.\n\nTHIS NOTE ONCE DESCRIBED THE OPPOSITE OF THE CODE, and that is worth keeping rather than quietly correcting. One decoder served all four fields and admitted numbers for all four, while this paragraph asserted the confinement it did not implement (review 49571). A prose claim contradicting the mechanism beside it is worse than either an undocumented widening or a documented one: a reader checking the boundary finds the rule stated, believes it holds, and stops looking. The split is now structural — two functions, and the permissive one is reachable from exactly one call site — so the confinement is a property of the code rather than of this sentence."
 
 fn component_alert_summary_of(component: JsonValue) -> ComponentAlertSummaryDecoding {
-  match receipt_summary_text_at(v: component, key: "index") {
+  match receipt_summary_index_at(v: component, key: "index") {
     ReceiptTextFailed { decoding: d } => ComponentSummaryFailed { decoding: d }
     ReceiptTextFound { text: idx } =>
-      match receipt_summary_text_at(v: component, key: "label") {
+      match receipt_summary_required_string_at(v: component, key: "label") {
         ReceiptTextFailed { decoding: d } => ComponentSummaryFailed { decoding: d }
         ReceiptTextFound { text: label } =>
-          match receipt_summary_text_at(v: component, key: "outcome") {
+          match receipt_summary_required_string_at(v: component, key: "outcome") {
             ReceiptTextFailed { decoding: d } => ComponentSummaryFailed { decoding: d }
             ReceiptTextFound { text: outcome } =>
-              match receipt_summary_text_at(v: component, key: "failure_mode") {
+              match receipt_summary_required_string_at(v: component, key: "failure_mode") {
                 ReceiptTextFailed { decoding: d } => ComponentSummaryFailed { decoding: d }
                 ReceiptTextFound { text: mode } =>
                   ComponentSummaryDecoded {

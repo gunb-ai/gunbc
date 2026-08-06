@@ -661,3 +661,63 @@ test fn a_numeric_workflow_name_in_the_receipt_refuses() -> Bool {
     _ => false
   }
 }
+
+data component_summary_strictness_note: String = "The component summary's string fields get the same numeric-plant treatment as the event envelope, because they are the same class and were the residue review 49571 found: one decoder served all four fields and widened numbers on all four while the note beside it claimed only index did. Each plant replaces a value in place — not appended as a duplicate — for the reason the event plants record."
+
+fn component_with(index: String, label: String, outcome: String, mode: String) -> String {
+  concat(concat(concat(concat(concat(concat(concat(
+    "{\"index\":", index), ",\"label\":"), label), ",\"outcome\":"), outcome), ",\"failure_mode\":"), concat(mode, "}"))
+}
+
+data csum_valid_index: String = "6"
+data csum_valid_label: String = "\"witness discovery\""
+data csum_valid_outcome: String = "\"failed\""
+data csum_valid_mode: String = "\"WitnessRed\""
+
+fn decode_receipt_with_component(component: String) -> FloorComponentReceiptDecoding {
+  floor_component_receipt_decode_with(
+    text: receipt_with(
+      component_count: "1",
+      components: concat(concat("[", component), "]"),
+      unsuccessful: concat(concat("[", component), "]")
+    ),
+    expected_schema: alert_expected_schema
+  )
+}
+
+fn component_numeric_plant_refuses_at(field: String) -> Bool {
+  let c = if field == "label" {
+    component_with(index: csum_valid_index, label: plant_number, outcome: csum_valid_outcome, mode: csum_valid_mode)
+  } else if field == "outcome" {
+    component_with(index: csum_valid_index, label: csum_valid_label, outcome: plant_number, mode: csum_valid_mode)
+  } else {
+    component_with(index: csum_valid_index, label: csum_valid_label, outcome: csum_valid_outcome, mode: plant_number)
+  }
+  match decode_receipt_with_component(component: c) {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == field
+    _ => false
+  }
+}
+
+test fn a_numeric_component_label_refuses_located() -> Bool {
+  component_numeric_plant_refuses_at(field: "label")
+}
+
+test fn a_numeric_component_outcome_refuses_located() -> Bool {
+  component_numeric_plant_refuses_at(field: "outcome")
+}
+
+test fn a_numeric_component_failure_mode_refuses_located() -> Bool {
+  component_numeric_plant_refuses_at(field: "failure_mode")
+}
+
+test fn the_component_index_still_accepts_its_numeric_wire_form() -> Bool {
+  match decode_receipt_with_component(component: component_with(index: csum_valid_index, label: csum_valid_label, outcome: csum_valid_outcome, mode: csum_valid_mode)) {
+    ReceiptDecoded { document: doc } =>
+      match doc.unsuccessful_summaries.first() {
+        Present { value: sm } => (sm.index as String) == "6"
+        Absent => false
+      }
+    _ => false
+  }
+}
