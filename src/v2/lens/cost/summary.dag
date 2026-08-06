@@ -1,42 +1,226 @@
 module v2.lens.cost.summary
 
+import std.decl_ref { DeclarationRef }
+import std.realization_schedule { CostBasis, Measured, Predicted }
+import std.termination {
+  DescentEvidence,
+  DescentUnknown,
+  Strict,
+  descent_evidence_lattice_meet
+}
 import v2.lens.cost.expr {
+  CostAdd,
+  CostConst,
+  CostEffect,
   CostExpr,
+  CostLog,
+  CostMax,
+  CostMul,
+  CostRefused,
+  CostSum,
+  SizeAdd,
+  SizeConst,
+  SizeExpr,
+  SizeLength,
+  SizeMax,
+  SizeOf,
   cost_const,
   cost_expr_par,
   cost_expr_seq
 }
-import v2.std.nat { Succ, Zero }
+import v2.std.collection { Map, empty_map, map_get, map_insert }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.nat { Nat, Succ, Zero }
+import v2.std.optional { Absent, Optional, Present }
 
 data complexity_summary_pr1_scope_note: String = "PR1 carrier: work and span only — output_sizes, peak_space, effect_demand, and certainty deferred to later C2 slices. Span discrimination at this layer is STRUCTURAL: summary_sequential emits CostAdd while summary_parallel emits CostMax over the same operands; sequential.span != parallel.span compares constructors, not evaluated magnitudes. The semantic reading (sequential span 2 versus parallel span 1 on equal unit work) arrives when Lane A concrete CostExpr evaluation lands — not claimed here."
+
+data complexity_summary_output_sizes_note: String = "output_sizes carries symbolic SizeExpr per OutputSlot — a grounded size tree, not a byte count. PROVES: which output slot is described by which SizeExpr constructor tree. DOES NOT PROVE: evaluated magnitude or ByteSize; that is Lane A valuation over SizeVariable bindings."
+
+data complexity_summary_peak_space_note: String = "peak_space carries an optional symbolic CostExpr derived by space_of/derive_peak_space from work and output_sizes. PROVES: the structural residency dual of the work tree (CostAdd↔CostMax swap versus time) plus optional co-resident output term at summary grain. DOES NOT PROVE: concrete peak ByteSize or CostAccount.space — evaluation and realization_schedule bridging are out of scope for this slice."
+
+data complexity_summary_effect_demand_note: String = "effect_demand carries exact per-operation invocation counts keyed by DeclarationRef (the CostEffect identity). PROVES: how many modeled effect sites were accumulated into the summary. DOES NOT PROVE: latency, bytes moved, or host-calibrated cost — those are discrete-cost C3/C4 projection lanes; unmodeled effects remain CostRefused at the CostExpr layer, never zero."
+
+data complexity_summary_certainty_note: String = "certainty names SummaryEvidenceBasis — grounded descent or measured cost-basis tags — NOT a hand-stamped Proven|Conservative enum. PROVES: which existing substrate authority supports the summary (std.termination DescentEvidence or std.realization_schedule CostBasis). DOES NOT PROVE: a third confidence vocabulary; conservative widening is derived via summary_evidence_meet / summary_evidence_is_incomplete, never authored."
+
+type OutputSlot = PrimaryResult {}
+
+data primary_output_slot: OutputSlot = PrimaryResult {}
+
+type SummaryEvidenceBasis
+  = DescentGrounded { descent: DescentEvidence }
+  | MeasuredGrounded { basis: CostBasis }
+
+type EffectDemand {
+  operation_counts: Map<DeclarationRef, Nat>
+}
 
 type ComplexitySummary {
   work: CostExpr
   span: CostExpr
+  output_sizes: Map<OutputSlot, SizeExpr>
+  peak_space: Optional<CostExpr>
+  certainty: SummaryEvidenceBasis
+  effect_demand: EffectDemand
+}
+
+fn empty_effect_demand() -> EffectDemand {
+  EffectDemand { operation_counts: empty_map() }
+}
+
+fn summary_evidence_from_descent(descent: DescentEvidence) -> SummaryEvidenceBasis {
+  DescentGrounded { descent: descent }
+}
+
+fn summary_evidence_from_cost_basis(basis: CostBasis) -> SummaryEvidenceBasis {
+  MeasuredGrounded { basis: basis }
+}
+
+fn cost_basis_meet(a: CostBasis, b: CostBasis) -> CostBasis {
+  match a {
+    Predicted => Predicted
+    Measured =>
+      match b {
+        Predicted => Predicted
+        Measured => Measured
+      }
+  }
+}
+
+fn summary_evidence_meet(
+  left: SummaryEvidenceBasis,
+  right: SummaryEvidenceBasis
+) -> SummaryEvidenceBasis {
+  match left {
+    DescentGrounded { descent: ld } =>
+      match right {
+        DescentGrounded { descent: rd } =>
+          DescentGrounded {
+            descent: descent_evidence_lattice_meet(a: ld, b: rd)
+          }
+        MeasuredGrounded { basis: _ } => left
+      }
+    MeasuredGrounded { basis: lb } =>
+      match right {
+        MeasuredGrounded { basis: rb } =>
+          MeasuredGrounded { basis: cost_basis_meet(a: lb, b: rb) }
+        DescentGrounded { descent: _ } => right
+      }
+  }
+}
+
+fn summary_evidence_is_incomplete(basis: SummaryEvidenceBasis) -> Bool {
+  match basis {
+    DescentGrounded { descent: DescentUnknown } => true
+    MeasuredGrounded { basis: Predicted } => true
+    _ => false
+  }
 }
 
 fn unit_cost_expr() -> CostExpr {
   cost_const(value: Succ { prev: Zero })
 }
 
+fn unit_size_expr() -> SizeExpr {
+  SizeConst { value: Succ { prev: Zero } }
+}
+
 fn unit_complexity_summary() -> ComplexitySummary {
   ComplexitySummary {
     work: unit_cost_expr(),
-    span: unit_cost_expr()
+    span: unit_cost_expr(),
+    output_sizes: empty_map(),
+    peak_space: Absent,
+    certainty: summary_evidence_from_descent(descent: Strict),
+    effect_demand: empty_effect_demand()
+  }
+}
+
+fn size_expr_seq(left: SizeExpr, right: SizeExpr) -> SizeExpr {
+  SizeAdd { left: left, right: right }
+}
+
+fn size_expr_par(left: SizeExpr, right: SizeExpr) -> SizeExpr {
+  SizeMax { left: left, right: right }
+}
+
+fn merge_output_sizes_seq(
+  left: Map<OutputSlot, SizeExpr>,
+  right: Map<OutputSlot, SizeExpr>
+) -> Map<OutputSlot, SizeExpr> {
+  right
+}
+
+fn merge_output_sizes_par(
+  left: Map<OutputSlot, SizeExpr>,
+  right: Map<OutputSlot, SizeExpr>
+) -> Map<OutputSlot, SizeExpr> {
+  match map_get(left, primary_output_slot) {
+    Accepted { value: left_opt, diagnostics: _ } =>
+      match left_opt {
+        Present { value: lv } =>
+          match map_get(right, primary_output_slot) {
+            Accepted { value: right_opt, diagnostics: _ } =>
+              match right_opt {
+                Present { value: rv } =>
+                  map_insert(left, primary_output_slot, size_expr_par(left: lv, right: rv))
+                Absent => left
+              }
+            Rejected { diagnostics: _ } => left
+          }
+        Absent => right
+      }
+    Rejected { diagnostics: _ } => right
+  }
+}
+
+fn optional_peak_space_seq(
+  left: Optional<CostExpr>,
+  right: Optional<CostExpr>
+) -> Optional<CostExpr> {
+  match left {
+    Absent => right
+    Present { value: lv } =>
+      match right {
+        Absent => Present { value: lv }
+        Present { value: rv } => Present { value: cost_expr_par(a: lv, b: rv) }
+      }
+  }
+}
+
+fn optional_peak_space_par(
+  left: Optional<CostExpr>,
+  right: Optional<CostExpr>
+) -> Optional<CostExpr> {
+  match left {
+    Absent => right
+    Present { value: lv } =>
+      match right {
+        Absent => Present { value: lv }
+        Present { value: rv } => Present { value: cost_expr_seq(a: lv, b: rv) }
+      }
   }
 }
 
 fn summary_sequential(left: ComplexitySummary, right: ComplexitySummary) -> ComplexitySummary {
   ComplexitySummary {
     work: cost_expr_seq(a: left.work, b: right.work),
-    span: cost_expr_seq(a: left.span, b: right.span)
+    span: cost_expr_seq(a: left.span, b: right.span),
+    output_sizes: merge_output_sizes_seq(left: left.output_sizes, right: right.output_sizes),
+    peak_space: optional_peak_space_seq(left: left.peak_space, right: right.peak_space),
+    certainty: summary_evidence_meet(left: left.certainty, right: right.certainty),
+    effect_demand: left.effect_demand
   }
 }
 
 fn summary_parallel(left: ComplexitySummary, right: ComplexitySummary) -> ComplexitySummary {
   ComplexitySummary {
     work: cost_expr_seq(a: left.work, b: right.work),
-    span: cost_expr_par(a: left.span, b: right.span)
+    span: cost_expr_par(a: left.span, b: right.span),
+    output_sizes: merge_output_sizes_par(left: left.output_sizes, right: right.output_sizes),
+    peak_space: optional_peak_space_par(left: left.peak_space, right: right.peak_space),
+    effect_demand: left.effect_demand,
+    certainty: summary_evidence_meet(left: left.certainty, right: right.certainty)
   }
 }
 
@@ -58,4 +242,81 @@ fn triple_parallel_shape() -> ComplexitySummary {
       right: unit_complexity_summary()
     )
   )
+}
+
+fn space_of(work: CostExpr) -> CostExpr {
+  match work {
+    CostConst { value: v } => CostConst { value: v }
+    CostAdd { left: l, right: r } =>
+      cost_expr_par(a: space_of(work: l), b: space_of(work: r))
+    CostMax { left: l, right: r } =>
+      cost_expr_seq(a: space_of(work: l), b: space_of(work: r))
+    CostMul { left: l, right: r } =>
+      cost_expr_seq(a: space_of(work: l), b: space_of(work: r))
+    CostSum { binder: _, upper: _, body: bd } => space_of(work: bd)
+    CostLog { base: b, argument: a } => CostLog { base: b, argument: a }
+    CostEffect { operation: op } => CostEffect { operation: op }
+    CostRefused { cause: c } => CostRefused { cause: c }
+  }
+}
+
+fn size_expr_to_cost(size: SizeExpr) -> CostExpr {
+  match size {
+    SizeConst { value: v } => CostConst { value: v }
+    SizeOf { variable: _ } => unit_cost_expr()
+    SizeLength { of: _ } => unit_cost_expr()
+    SizeAdd { left: l, right: r } =>
+      cost_expr_seq(a: size_expr_to_cost(size: l), b: size_expr_to_cost(size: r))
+    SizeMax { left: l, right: r } =>
+      cost_expr_par(a: size_expr_to_cost(size: l), b: size_expr_to_cost(size: r))
+  }
+}
+
+fn derive_peak_space(
+  work: CostExpr,
+  output_sizes: Map<OutputSlot, SizeExpr>
+) -> Optional<CostExpr> {
+  match map_get(output_sizes, primary_output_slot) {
+    Accepted { value: out_opt, diagnostics: _ } =>
+      match out_opt {
+        Present { value: out } =>
+          Present {
+            value: cost_expr_seq(a: size_expr_to_cost(size: out), b: space_of(work: work))
+          }
+        Absent => Present { value: space_of(work: work) }
+      }
+    Rejected { diagnostics: _ } => Present { value: space_of(work: work) }
+  }
+}
+
+fn summary_with_derived_peak_space(summary: ComplexitySummary) -> ComplexitySummary {
+  ComplexitySummary {
+    work: summary.work,
+    span: summary.span,
+    output_sizes: summary.output_sizes,
+    peak_space: derive_peak_space(work: summary.work, output_sizes: summary.output_sizes),
+    certainty: summary.certainty,
+    effect_demand: summary.effect_demand
+  }
+}
+
+fn effect_demand_with_operation(
+  demand: EffectDemand,
+  operation: DeclarationRef,
+  count: Nat
+) -> EffectDemand {
+  EffectDemand {
+    operation_counts: map_insert(demand.operation_counts, operation, count)
+  }
+}
+
+fn summary_with_primary_output_size(summary: ComplexitySummary, size: SizeExpr) -> ComplexitySummary {
+  ComplexitySummary {
+    work: summary.work,
+    span: summary.span,
+    output_sizes: map_insert(summary.output_sizes, primary_output_slot, size),
+    peak_space: summary.peak_space,
+    certainty: summary.certainty,
+    effect_demand: summary.effect_demand
+  }
 }

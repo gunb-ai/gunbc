@@ -1,0 +1,165 @@
+module v2.test.lens_cost.summary_pr2
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.realization_schedule { Measured, Predicted }
+import std.termination { DescentUnknown, Strict }
+import v2.lens.cost.expr { CostAdd, CostConst, CostMax, SizeConst }
+import v2.lens.cost.summary {
+  ComplexitySummary,
+  DescentGrounded,
+  EffectDemand,
+  MeasuredGrounded,
+  primary_output_slot,
+  derive_peak_space,
+  effect_demand_with_operation,
+  empty_effect_demand,
+  space_of,
+  summary_evidence_from_cost_basis,
+  summary_evidence_from_descent,
+  summary_evidence_is_incomplete,
+  summary_evidence_meet,
+  summary_parallel,
+  summary_sequential,
+  summary_with_derived_peak_space,
+  summary_with_primary_output_size,
+  unit_complexity_summary,
+  unit_cost_expr,
+  unit_size_expr
+}
+import v2.lens.cost.expr { cost_expr_par, cost_expr_seq }
+import v2.std.collection { map_get }
+import v2.std.diagnostic { Accepted }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.nat { Succ, Zero }
+import v2.std.optional { Absent, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data summary_pr2_effect_operation: DeclarationRef = DeclarationRef {
+  module_path: "v2.lens.cost",
+  decl_name: "cost_lens",
+  field: WholeDeclaration
+}
+
+fn summary_with_unit_peak_space() -> ComplexitySummary {
+  summary_with_derived_peak_space(summary: unit_complexity_summary())
+}
+
+fn output_sizes_parallel_maxes_primary_slot(
+  left: ComplexitySummary,
+  right: ComplexitySummary
+) -> Bool {
+  match map_get(summary_parallel(left: left, right: right).output_sizes, primary_output_slot) {
+    Accepted { value: Present { value: SizeMax { left: _, right: _ } }, diagnostics: _ } => true
+    _ => false
+  }
+}
+
+fn effect_demand_lookup_count(
+  demand: EffectDemand,
+  operation: DeclarationRef
+) -> Bool {
+  match map_get(demand.operation_counts, operation) {
+    Accepted { value: Present { value: Succ { prev: Succ { prev: Zero } } }, diagnostics: _ } => true
+    _ => false
+  }
+}
+
+test fn space_of_swaps_seq_and_par_roles() -> Bool {
+  let seq_work = cost_expr_seq(a: unit_cost_expr(), b: unit_cost_expr())
+  let par_work = cost_expr_par(a: unit_cost_expr(), b: unit_cost_expr())
+  match space_of(work: seq_work) {
+    CostMax { left: _, right: _ } =>
+      match space_of(work: par_work) {
+        CostAdd { left: _, right: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn derive_peak_space_includes_output_term_structurally() -> Bool {
+  let sized = summary_with_primary_output_size(
+    summary: unit_complexity_summary(),
+    size: unit_size_expr()
+  )
+  match derive_peak_space(work: sized.work, output_sizes: sized.output_sizes) {
+    Present { value: peak } =>
+      match peak {
+        CostAdd { left: _, right: _ } => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn certainty_carries_descent_evidence_basis() -> Bool {
+  let strict_basis = summary_evidence_from_descent(descent: Strict)
+  let unknown_basis = summary_evidence_from_descent(descent: DescentUnknown)
+  match strict_basis {
+    DescentGrounded { descent: Strict } =>
+      match summary_evidence_meet(left: strict_basis, right: unknown_basis) {
+        DescentGrounded { descent: DescentUnknown } =>
+          summary_evidence_is_incomplete(basis: unknown_basis)
+            && !summary_evidence_is_incomplete(basis: strict_basis)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn measured_basis_predicted_is_incomplete() -> Bool {
+  let measured = summary_evidence_from_cost_basis(basis: Measured)
+  let predicted = summary_evidence_from_cost_basis(basis: Predicted)
+  match summary_evidence_meet(left: measured, right: predicted) {
+    MeasuredGrounded { basis: Predicted } =>
+      summary_evidence_is_incomplete(basis: predicted)
+        && !summary_evidence_is_incomplete(basis: measured)
+    _ => false
+  }
+}
+
+test fn sequential_peak_space_maxes_parallel_adds() -> Bool {
+  let left = summary_with_unit_peak_space()
+  let right = summary_with_unit_peak_space()
+  match summary_sequential(left: left, right: right).peak_space {
+    Present { value: seq_peak } =>
+      match summary_parallel(left: left, right: right).peak_space {
+        Present { value: par_peak } =>
+          match seq_peak {
+            CostMax { left: _, right: _ } =>
+              match par_peak {
+                CostAdd { left: _, right: _ } => seq_peak != par_peak
+                _ => false
+              }
+            _ => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn output_sizes_parallel_maxes_per_slot() -> Bool {
+  let one = summary_with_primary_output_size(
+    summary: unit_complexity_summary(),
+    size: SizeConst { value: Succ { prev: Zero } }
+  )
+  let two = summary_with_primary_output_size(
+    summary: unit_complexity_summary(),
+    size: SizeConst { value: Succ { prev: Succ { prev: Zero } } }
+  )
+  output_sizes_parallel_maxes_primary_slot(left: one, right: two)
+}
+
+test fn effect_demand_carries_exact_operation_count() -> Bool {
+  effect_demand_lookup_count(
+    demand: effect_demand_with_operation(
+      demand: empty_effect_demand(),
+      operation: summary_pr2_effect_operation,
+      count: Succ { prev: Succ { prev: Zero } }
+    ),
+    operation: summary_pr2_effect_operation
+  )
+}
