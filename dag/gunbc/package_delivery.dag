@@ -817,8 +817,7 @@ fn lock_path_key_rel(key: NpmLockPathKey) -> NonEmptyStr? {
   }
 }
 
-data codex_runtime_release_parent: FilePath =
-  srv1_provider_runtime_placement().runtime_release_root
+data codex_runtime_release_parent: FilePath = srv1_provider_runtime_placement().runtime_release_root
 
 data codex_runtime_receipt_sidecar_name: NonEmptyStr = ".gunbc-codex-runtime-receipt" as NonEmptyStr
 

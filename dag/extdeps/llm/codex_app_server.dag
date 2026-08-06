@@ -76,7 +76,14 @@ data codex_initialize_result_user_agent_key: NonEmptyStr = "userAgent" as NonEmp
 data codex_account_read_result_requires_openai_auth_key: NonEmptyStr = "requiresOpenaiAuth" as NonEmptyStr
 data codex_account_read_result_account_key: NonEmptyStr = "account" as NonEmptyStr
 data codex_rate_limits_result_rate_limits_key: NonEmptyStr = "rateLimits" as NonEmptyStr
+data codex_rate_limits_snapshot_primary_key: NonEmptyStr = "primary" as NonEmptyStr
+data codex_rate_limits_snapshot_secondary_key: NonEmptyStr = "secondary" as NonEmptyStr
+data codex_rate_limits_snapshot_spend_control_reached_key: NonEmptyStr = "spendControlReached" as NonEmptyStr
+data codex_rate_limits_snapshot_rate_limit_reached_type_key: NonEmptyStr = "rateLimitReachedType" as NonEmptyStr
+data codex_rate_limits_window_used_percent_key: NonEmptyStr = "usedPercent" as NonEmptyStr
 data codex_structured_error_code_rate_limit_reached: NonEmptyStr = "rate_limit_reached" as NonEmptyStr
 data codex_structured_error_code_quota_exceeded: NonEmptyStr = "quota_exceeded" as NonEmptyStr
 data codex_structured_error_code_authentication_required: NonEmptyStr = "authentication_required" as NonEmptyStr
+
+data codex_rate_limits_capacity_decode_note: String = "GetAccountRateLimitsResponse.rateLimits is a RateLimitSnapshot (0.146 generate-json-schema). An empty object answers the endpoint without proving capacity: primary/secondary windows carry usedPercent; spendControlReached true and a non-null rateLimitReachedType are exhaustion signals. Product standing must decode those fields — treating any object as Ready restores dispatch into an exhausted account."
 
