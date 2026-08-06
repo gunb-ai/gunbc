@@ -1043,13 +1043,11 @@ pub fn constructor_call_admission_diags(
             callee_name.clone(),
         ) {
             Some(bd) => {
-                eprintln!("DEBUG constructor_call_admission_diags: bd found, owner={:?} callee={:?} scope_module={:?} props={:?}", bd.owner_module_path, callee_name, scope.module_name, bd.node.properties);
                 match fn_admit_callers(
                     bd.node.clone(),
                     scope.type_env.clone().source_indices.clone(),
                 ) {
                     Some(permitted) => {
-                        eprintln!("DEBUG constructor_call_admission_diags: permitted={:?}", permitted);
                         if (bd.owner_module_path.clone() == scope.module_name.clone()) {
                             Rc::new(vec![])
                         } else {
@@ -1097,10 +1095,10 @@ pub fn constructor_call_admission_diags(
                             }
                         }
                     }
-                    None => { eprintln!("DEBUG constructor_call_admission_diags: fn_admit_callers returned None for callee={:?}", callee_name); Rc::new(vec![]) },
+                    None => Rc::new(vec![]),
                 }
             }
-            None => { eprintln!("DEBUG constructor_call_admission_diags: func_decl_binding_for_call returned None for callee={:?} scope_module={:?}", callee_name, scope.module_name); Rc::new(vec![]) },
+            None => Rc::new(vec![]),
         }
     }
 }
@@ -17377,12 +17375,6 @@ pub fn build_type_env(
             source_visible_names: source_visible_names.clone(),
             symbol_index: resolved_env_out.symbol_index.clone(),
         });
-        if let Some(b) = v1_rt::map_get(&final_env.str_bindings.clone(), "mint".to_string()) {
-            eprintln!("DEBUG build_type_env: module={:?} mint str_bindings props={:?}", module_name_str, b.resolved.properties);
-        }
-        if let Some(b) = v1_rt::map_get(&final_env.ancestry_str_bindings.clone(), "mint".to_string()) {
-            eprintln!("DEBUG build_type_env: module={:?} mint ancestry_str_bindings props={:?}", module_name_str, b.resolved.properties);
-        }
         let cache_str_bindings = v1_rt::rc_map_merge(
             final_env.ancestry_str_bindings.clone(),
             final_env.str_bindings.clone(),
