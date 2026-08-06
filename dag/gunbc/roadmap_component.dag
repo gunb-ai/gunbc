@@ -43,6 +43,7 @@ import gunbc.design.instrument_camera {
   program_depth_key, DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence,
   program_mode_key, ModeStatus, ModeRemaining, ModeWhy,
   focus_subject_key, NoSubjectSelected,
+  wheel_detent_threshold_px, wheel_gesture_reset_interval,
 }
 import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_line_key }
 import extdeps.web_audio {
@@ -2992,8 +2993,6 @@ data js_instrument_set_mode_fn: String = "gunbcSetInstrumentMode"
 data js_instrument_select_subject_fn: String = "gunbcSelectInstrumentSubject"
 data js_instrument_clear_subject_fn: String = "gunbcClearInstrumentSubject"
 
-data instrument_wheel_threshold_px: Int = 80
-data instrument_wheel_gesture_reset_ms: Int = 120
 data js_instrument_wheel_travel_var: String = "instrumentWheelTravel"
 data js_instrument_wheel_timer_var: String = "instrumentWheelGestureTimer"
 data js_instrument_normalize_wheel_fn: String = "gunbcNormalizeWheelDelta"
@@ -3432,7 +3431,7 @@ fn instrument_tuner_subject_focus_handler_body() -> List<TsStmt> {
 
 fn instrument_tuner_wheel_preamble() -> List<TsStmt> {
   [
-    ts_const(name: js_instrument_wheel_threshold_const, value: ts_lit_num(text: to_string(instrument_wheel_threshold_px))),
+    ts_const(name: js_instrument_wheel_threshold_const, value: ts_lit_num(text: to_string(wheel_detent_threshold_px))),
     ts_let(name: js_instrument_wheel_travel_var, value: ts_lit_num(text: "0")),
     ts_let(name: js_instrument_wheel_timer_var, value: ts_ident(name: "null")),
     ts_const(name: js_instrument_normalize_wheel_fn, value: ts_arrow(params: ["e"], body: ts_block(stmts: [
@@ -3546,7 +3545,7 @@ fn instrument_tuner_wheel_preamble() -> List<TsStmt> {
               ts_expr_stmt(expr: ts_binop(left: ts_ident(name: js_instrument_wheel_travel_var), op: "=", right: ts_lit_num(text: "0"))),
               ts_expr_stmt(expr: ts_binop(left: ts_ident(name: js_instrument_wheel_timer_var), op: "=", right: ts_ident(name: "null"))),
             ])),
-            ts_lit_num(text: to_string(instrument_wheel_gesture_reset_ms)),
+            ts_lit_num(text: to_string(millisecond_count(m: wheel_gesture_reset_interval))),
           ],
         ),
       )),

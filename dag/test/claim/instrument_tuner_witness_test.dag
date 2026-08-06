@@ -12,7 +12,9 @@ import gunbc.roadmap_component {
 import gunbc.design.instrument_camera {
   camera_storage_key, camera_wire, camera_initial, camera_wire_sep,
   ProgramCamera, DepthFront,
+  wheel_detent_threshold_px, wheel_gesture_reset_interval,
 }
+import std.measure { millisecond_count }
 import gunbc.roadmap_instrument_tuner {
   instrument_tuner_css, instrument_tuner_camera_population_joined,
   reading_row, instrument_user_depths,
@@ -57,6 +59,8 @@ fn witness_the_client_program_steps_one_detent_with_sound() -> Bool {
 fn witness_the_client_program_integrates_wheel_travel() -> Bool {
   string_contains(s: instrument_tuner_client_js_source(), pattern: js_instrument_handle_wheel_fn)
     && string_contains(s: instrument_tuner_client_js_source(), pattern: js_instrument_wheel_threshold_const)
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: to_string(wheel_detent_threshold_px))
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: to_string(millisecond_count(m: wheel_gesture_reset_interval)))
     && string_contains(s: instrument_tuner_client_js_source(), pattern: "deltaMode")
     && string_contains(s: instrument_tuner_client_js_source(), pattern: "instrumentWheelTravel")
 }
