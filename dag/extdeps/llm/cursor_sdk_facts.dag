@@ -37,7 +37,7 @@ data cursor_sdk_package_name: NonEmptyStr = "@cursor/sdk" as NonEmptyStr
 data cursor_sdk_package_version: NonEmptyStr = "1.0.26" as NonEmptyStr
 data cursor_sdk_module_export: NonEmptyStr = "@cursor/sdk" as NonEmptyStr
 
-data cursor_sdk_probe_lockfile_sha256: String = "d45372139f3b3cfec9b32788a1e6994d4a212d9d286854e795ad67ed12ee2d70"
+data cursor_sdk_probe_lockfile_sha256: String = "d45372139f3b3cfec9b32728a1e6994d4a212d9d286854e795ad67ed12ee2d70"
 data cursor_sdk_probe_root_integrity: NonEmptyStr = "sha512-dU3WpJwrxv8yoMjs0DxBgZr5btAJEO+NrvFutl08b6l2+jcuemfFWUlSPBQ2xZAH7zIZun+sqfHvjT5NxW8woQ==" as NonEmptyStr
 data cursor_sdk_probe_lock_entry_count: Int = 124
 data cursor_sdk_probe_platform_gated_entry_count: Int = 13
