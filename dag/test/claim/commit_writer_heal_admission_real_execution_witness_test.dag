@@ -1,11 +1,23 @@
 module test.claim.commit_writer_heal_admission_real_execution
 
 import std.logic { Bool }
-import std.types { String, FilePath, GitRef }
+import std.types { String, FilePath, GitRef, List }
+import std.algebra { Empty, Cons }
 import extdeps.git
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
-import gunbc.commit_workflow { commit_writer_heal_admission_gate, HealAutocommit }
+import gunbc.commit_workflow {
+  commit_writer_heal_admission_gate,
+  observe_complete_staged_commit,
+  admit_commit_writer,
+  HealAutocommit,
+  CommitWriterTransportObserved,
+  CommitWriterTransportRefused,
+  CommitWriterAdmitted,
+  CommitWriterRefused,
+  CommitWriterUnmergedIndexRefusal,
+  CommitWriterConflictMarkerTextRefusal,
+}
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -40,6 +52,22 @@ fn commit_witness_side(repo: FilePath, branch: String, content: String) -> Bool 
   branched == 0 && written && staged == 0 && committed == 0
 }
 
+fn refusals_contain_unmerged_index(refusals: List<CommitWriterRefusal>) -> Bool {
+  match refusals {
+    Empty => false
+    Cons { head: CommitWriterUnmergedIndexRefusal { path: _, stages: _ }, tail: _ } => true
+    Cons { head: _, tail } => refusals_contain_unmerged_index(refusals: tail)
+  }
+}
+
+fn refusals_contain_conflict_marker_text(refusals: List<CommitWriterRefusal>) -> Bool {
+  match refusals {
+    Empty => false
+    Cons { head: CommitWriterConflictMarkerTextRefusal { location: _ }, tail: _ } => true
+    Cons { head: _, tail } => refusals_contain_conflict_marker_text(refusals: tail)
+  }
+}
+
 fn with_witness_repo(scenario: fn(FilePath) -> Bool) -> Bool {
   let dir = shell.Mktemp.Dir()
   let seeded = seed_witness_repository(repo: dir.path)
@@ -65,13 +93,21 @@ test fn unmerged_index_with_no_markers_refuses_by_real_execution() -> Bool {
     let merged = git.Core.MergeNoEditInRepo(repo: repo, branch: "theirs")
     let unmerged = git.Core.LsFilesUnmergedInRepo(repo: repo, path: "unclaimed.txt")
     let gated = commit_writer_heal_admission_gate(repo: repo, writer: HealAutocommit)
-    let refused = match gated {
+    let gate_refused = match gated {
       ExitSuccess => false
       ExitFailure { code: _, reason: _ } => true
     }
+    let variant_refused = match observe_complete_staged_commit(repo: repo, writer: HealAutocommit) {
+      CommitWriterTransportRefused { reason: _ } => false
+      CommitWriterTransportObserved { observation } =>
+        match admit_commit_writer(writer: HealAutocommit, observation: observation) {
+          CommitWriterAdmitted { writer: _, coverage: _ } => false
+          CommitWriterRefused { writer: _, refusals } => refusals_contain_unmerged_index(refusals: refusals)
+        }
+    }
     theirs && ours && merged.exit_code != 0 && count(unmerged.entries) == 3
       && !string_contains(s: git.Core.CatFileBlobInRepo(repo: repo, oid: "HEAD:unclaimed.txt").content, pattern: "<<<<<<<")
-      && refused
+      && gate_refused && variant_refused
   })
 }
 
@@ -84,10 +120,32 @@ test fn unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution()
     )
     let staged = git.Core.AddAllInRepo(repo: repo).exit_code
     let gated = commit_writer_heal_admission_gate(repo: repo, writer: HealAutocommit)
-    let refused = match gated {
+    let gate_refused = match gated {
       ExitSuccess => false
       ExitFailure { code: _, reason: _ } => true
     }
-    written && staged == 0 && refused
+    let variant_refused = match observe_complete_staged_commit(repo: repo, writer: HealAutocommit) {
+      CommitWriterTransportRefused { reason: _ } => false
+      CommitWriterTransportObserved { observation } =>
+        match admit_commit_writer(writer: HealAutocommit, observation: observation) {
+          CommitWriterAdmitted { writer: _, coverage: _ } => false
+          CommitWriterRefused { writer: _, refusals } => refusals_contain_conflict_marker_text(refusals: refusals)
+        }
+    }
+    written && staged == 0 && gate_refused && variant_refused
+  })
+}
+
+test fn space_and_tab_named_paths_admit_by_real_execution() -> Bool {
+  with_witness_repo(scenario: repo => {
+    let space_written = write_witness_file(repo: repo, name: "has space name.txt", content: "space fixture\n")
+    let tab_written = write_witness_file(repo: repo, name: "has\ttab\tname.txt", content: "tab fixture\n")
+    let staged = git.Core.AddAllInRepo(repo: repo).exit_code
+    let gated = commit_writer_heal_admission_gate(repo: repo, writer: HealAutocommit)
+    let gate_admitted = match gated {
+      ExitSuccess => true
+      ExitFailure { code: _, reason: _ } => false
+    }
+    space_written && tab_written && staged == 0 && gate_admitted
   })
 }
