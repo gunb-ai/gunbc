@@ -48,20 +48,6 @@ fn known_red_probe(
   }
 }
 
-fn substrate_long_lane_admission(
-  entry: NonEmptyStr,
-  f: String,
-  reason: NonEmptyStr,
-  dissolve_on: NonEmptyStr
-) -> ExplicitWitnessAdmission {
-  ExplicitWitnessAdmission {
-    witness: ScheduleWitnessEntry { entry: entry, function: f, kind: CorpusWitnessKind },
-    cadence: FalsifierSubstrateLongLane,
-    reason: reason,
-    dissolve_on: dissolve_on
-  }
-}
-
 data known_red_class_note: String = "WHAT A KNOWN-RED ADMISSION IS: a witness red on main for a feature gap owned by a named lane. It is a RED CONTROL for that lane, not a broken test — deleting it would discard the discriminating input, while leaving it in per-PR discovery would red every wide PR on a debt that PR did not create. Greening is the counted un-quarantine event of std.witness_admission: the row deletes in the SAME change that lands the fix, which promotes the unchanged witness to ordinary DiscoverySelection as a permanent regression control (DESIGN 4b(4) — the climb deletes the quarantine machinery, never the evidence). The roster must not grow silently: a new admission carries a reason naming the diagnosis and owner plus a dissolve_on, both refused empty by NonEmptyStr, and a row whose witness runs green locally is stale and deletes. Local recipe per row: claim_batch --source-root dag --source-root src/v2 --entry <entry> --functions <function>. CorpusWitnessKind rows run on the hermetic falsifier probe batch; ExecutionWitnessKind rows run on the falsifier wet quarantine batch."
 
 data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
