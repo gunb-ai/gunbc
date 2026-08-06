@@ -148,12 +148,12 @@ test fn materialize_identical_input_twice_reuses_same_release_identity() -> Bool
   match materialize_codex_runtime_bundle(source: source) {
     CodexRuntimeMaterialized { bundle: first } =>
       match materialize_codex_runtime_bundle(source: source) {
-        CodexRuntimeMaterialized { bundle: second } =>
-          (first.root as String) == (second.root as String)
-            && (first.receipt.receipt_identity as String)
-              == (second.receipt.receipt_identity as String)
-            && (first.receipt.materialized_tree.tree_identity as String)
-              == (second.receipt.materialized_tree.tree_identity as String)
+        CodexRuntimeMaterialized { bundle: second } => {
+          let same_root = (first.root as String) == (second.root as String)
+          let same_receipt = (first.receipt.receipt_identity as String) == (second.receipt.receipt_identity as String)
+          let same_tree = (first.receipt.materialized_tree.tree_identity as String) == (second.receipt.materialized_tree.tree_identity as String)
+          same_root && same_receipt && same_tree
+        }
         _ => false
       }
     _ => false

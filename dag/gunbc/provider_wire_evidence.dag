@@ -3,6 +3,8 @@ module gunbc.provider_wire_evidence
 import std.types { String, NonEmptyStr, FilePath, Bool, Int }
 import std.content_hash { ContentHash, as_content_hash_sha512 }
 import extdeps.shell
+import extdeps.shell.exec
+import extdeps.filesystem.filesystem_io
 import extdeps.tools.sha512sum {
   sha512sum_observe_file,
   Sha512FileObserved,
