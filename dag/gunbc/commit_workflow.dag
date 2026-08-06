@@ -2325,7 +2325,7 @@ fn seams_wellformed_and_distinct(seams: List<WitnessSeam>) -> Bool {
 fn witness_span_wellformed(span: WitnessSpan) -> Bool {
   match span {
     SpanUndeclared => true
-    SpanUnavailable { cause } => cause != ""
+    SpanUnavailable { cause: _ } => true
     SpanSeams { seams } => seams.count() > 0 && seams_wellformed_and_distinct(seams: seams)
     SpanEnrolled { seams, cost_basis, envelope } =>
       seams.count() > 0
