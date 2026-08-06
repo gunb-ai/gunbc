@@ -26,11 +26,16 @@ import gunbc.host_budget_source {
   BudgetSourceMemAvailableCappedAtDeclaredHigh,
   BudgetSourceMemAvailable,
   BudgetSourceMemTotal,
-  BudgetSourceUnavailable,
+  BudgetSourceDarwinPhysicalMemory,
+  HostBudgetResolution,
+  HostBudgetResolved,
+  HostBudgetUnreadable,
   host_budget_source_is_degraded,
   host_budget_source_reads_procfs,
   host_budget_source_admissible_on_kernel,
-  host_budget_source_for_absent_procfs,
+  host_budget_source_for_kernel,
+  host_budget_resolution_bytes,
+  host_budget_unreadable_on_kernel,
   host_budget_source_label,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -48,7 +53,7 @@ data all_sources: List<HostBudgetSource> = [
   BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: byte_size(13958643712) },
   BudgetSourceMemAvailable,
   BudgetSourceMemTotal,
-  BudgetSourceUnavailable { kernel: Darwin },
+  BudgetSourceDarwinPhysicalMemory,
 ]
 
 test fn procfs_provision_follows_the_kernel_not_the_name() -> Bool {
@@ -83,7 +88,7 @@ test fn degraded_is_exactly_the_non_private_sources() -> Bool {
     && host_budget_source_is_degraded(s: BudgetSourceMemAvailable)
     && host_budget_source_is_degraded(s: BudgetSourceMemTotal)
     && host_budget_source_is_degraded(s: BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: byte_size(13958643712) })
-    && host_budget_source_is_degraded(s: BudgetSourceUnavailable { kernel: Darwin })
+    && host_budget_source_is_degraded(s: BudgetSourceDarwinPhysicalMemory)
 }
 
 data platform_wall_red_control_note: String = "THE DISCRIMINATING PAIR, and it is the whole reason this file exists. The live defect is that read_host_budget_bytes reports BudgetSourceMemTotal on a Darwin host — a procfs-reading source named on a kernel that provides no procfs. The first witness asserts every procfs-reading arm is INADMISSIBLE on both non-procfs kernels; the second asserts those same arms stay admissible on both procfs kernels.\n\nOne without the other proves nothing. Asserting only inadmissibility is satisfied by a predicate that refuses everything, which would make the governor unable to name a legitimate cgroup read on Linux; asserting only admissibility is satisfied by the predicate that returns true unconditionally, which is the behaviour today. Together they pin the boundary exactly at 'reads procfs AND kernel lacks procfs', which is the sentence the bug violates."
@@ -110,28 +115,67 @@ test fn procfs_sources_stay_admissible_on_kernels_with_procfs() -> Bool {
   )
 }
 
-test fn the_absent_procfs_source_is_admissible_everywhere_and_names_the_kernel() -> Bool {
+data every_kernel_source_is_admissible_on_its_own_kernel_note: String = "The per-kernel source selection must be admissible on the very kernel it was selected for, which sounds tautological and is exactly the property the old code violated: it selected a procfs source for Darwin. WindowsNt has no arm and is asserted absent rather than skipped — an unmodeled platform must produce no source at all, because the alternative is inventing one, and a plausible invention here is what the whole change removes."
+
+test fn each_kernel_selects_a_source_admissible_on_itself() -> Bool {
   all(
     all_kernels,
-    k => {
-      let s = host_budget_source_for_absent_procfs(kernel: k)
-      host_budget_source_admissible_on_kernel(s: s, kernel: k)
-        && !host_budget_source_reads_procfs(s: s)
-        && host_budget_source_is_degraded(s: s)
-    }
+    k =>
+      match host_budget_source_for_kernel(kernel: k) {
+        Present { value: s } => host_budget_source_admissible_on_kernel(s: s, kernel: k)
+        Absent => true
+      }
   )
+}
+
+test fn darwin_selects_a_real_read_and_windows_selects_nothing() -> Bool {
+  match host_budget_source_for_kernel(kernel: Darwin) {
+    Present { value: s } => !host_budget_source_reads_procfs(s: s) && host_budget_source_is_degraded(s: s)
+    Absent => false
+  }
+    && match host_budget_source_for_kernel(kernel: WindowsNt) {
+      Present { value: _ } => false
+      Absent => true
+    }
+}
+
+data refusal_is_not_a_number_note: String = "THE REFUSAL WITNESS, and it is the one that pins the operator ruling rather than restating it. HostBudgetUnreadable must yield NO bytes — not a ceiling, not a floor, not a zero. Each of those is a number a consumer would happily admit against, and the ceiling in particular is what cli_run's unwrap_or produced and what OOM-killed this corpus twice on the developer's machine. Asserting the absence of a value is the only form of this claim that a permissive default cannot satisfy: a fallback that returned ANY number would red this row, which is precisely the discrimination the previous shape could not express."
+
+test fn RED_unreadable_budget_yields_no_number_at_all() -> Bool {
+  all(
+    all_kernels,
+    k =>
+      match host_budget_resolution_bytes(r: host_budget_unreadable_on_kernel(kernel: k)) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  )
+}
+
+test fn a_resolved_budget_does_yield_its_bytes() -> Bool {
+  match host_budget_resolution_bytes(
+    r: HostBudgetResolved { source: BudgetSourceDarwinPhysicalMemory, bytes: byte_size(17179869184) }
+  ) {
+    Present { value: b } => byte_size_count(b: b) == 17179869184
+    Absent => false
+  }
 }
 
 data label_carries_no_unread_path_note: String = "The label is the surface a human actually reads, so the wall has to hold there too and not only on the discriminant. This asserts the unavailable arm's rendering never claims a /proc path — the exact text `/proc/meminfo MemTotal` is what ships today on a machine with no /proc, and a typed source whose label still said that would have fixed nothing a reader can see."
 
-test fn unavailable_label_never_claims_a_proc_path() -> Bool {
+test fn no_selected_source_label_claims_a_path_its_kernel_lacks() -> Bool {
   all(
     all_kernels,
     k =>
-      !contains(
-        haystack: host_budget_source_label(s: host_budget_source_for_absent_procfs(kernel: k)) as String,
-        needle: "/proc/"
-      )
+      match host_budget_source_for_kernel(kernel: k) {
+        Present { value: s } =>
+          if contains(haystack: host_budget_source_label(s: s) as String, needle: "/proc/") {
+            kernel_provides_procfs(kernel: k)
+          } else {
+            true
+          }
+        Absent => true
+      }
   )
 }
 

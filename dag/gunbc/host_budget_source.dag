@@ -24,7 +24,9 @@ data host_budget_source_authority_disposition: Disposition = Terminal {
 
 data host_budget_source_string_scan_note: String = "THE DEFECT THIS MODULE DISSOLVES, quoted from the code that carries it. v1's read_host_budget_bytes returns (Option<u64>, String) and cli_run's typed_module_cache_cap_derivation decides whether the budget is degraded by scanning that string: source_label.contains(\"memory.max\") || source_label.contains(\"memory.high\"). The comment beside it already names the fix and the rule it breaks — 'if it ever grows a typed source enum, ground this check on the enum instead of re-parsing its display label (section 3, avoid a second representation)'. So the label is simultaneously a human diagnostic and a machine-read discriminant, which is one string doing two jobs and neither well: a rewording of the diagnostic silently changes the degradation verdict, and a new source arm is degraded-by-default only if nobody happens to mention a cgroup file in its prose.\n\nThe coproduct below is that enum. Degradation becomes a total match rather than a substring test, rendering becomes one function rather than format! calls scattered across arms, and a new source cannot be added without answering both questions."
 
-data host_budget_source_fabricated_label_note: String = "THE macOS BUG, which is what made this worth modeling now rather than later. read_host_budget_bytes ends with a terminal arm that reads, in full: (mem_total_bytes(), \"/proc/meminfo MemTotal\".to_string()). mem_total_bytes() reads /proc/meminfo and returns None when it cannot — and on a Darwin host it ALWAYS returns None, because there is no /proc. The label is composed unconditionally beside it, so the tuple that comes back is (None, \"/proc/meminfo MemTotal\"): a source attribution naming a file that does not exist on the platform, for a read that never happened, next to a value that was never obtained.\n\nObserved live, every local run on the developer's machine: `[floor-drain] degraded_budget_source: cap=4000 source=/proc/meminfo MemTotal (no private cgroup memory.max/memory.high found; falling back to a host-shared signal)`. Nothing is CONCEALED — the degraded flag is correctly true and the line is loud — but the provenance is fabricated, which is the section 5 plausible-output shape applied to a diagnostic rather than to a result. It is also the precise failure that cost a session's worth of confusion: a reader cannot tell from that line whether MemTotal was read and disbelieved, or never read at all, and the cap of 4000 is the ceiling fallback rather than anything derived from a host fact.\n\nBudgetSourceUnavailable is the arm that had nowhere to go. It carries the kernel family, so the line can say what is true — this platform provides no procfs, nothing was read, and the cap is the declared ceiling."
+data host_budget_source_fabricated_label_note: String = "THE macOS BUG, which is what made this worth modeling now rather than later. read_host_budget_bytes ends with a terminal arm that reads, in full: (mem_total_bytes(), \"/proc/meminfo MemTotal\".to_string()). mem_total_bytes() reads /proc/meminfo and returns None when it cannot — and on a Darwin host it ALWAYS returns None, because there is no /proc. The label is composed unconditionally beside it, so the tuple that comes back is (None, \"/proc/meminfo MemTotal\"): a source attribution naming a file that does not exist on the platform, for a read that never happened, next to a value that was never obtained.\n\nObserved live, every local run on the developer's machine: `[floor-drain] degraded_budget_source: cap=4000 source=/proc/meminfo MemTotal (no private cgroup memory.max/memory.high found; falling back to a host-shared signal)`. Nothing is CONCEALED — the degraded flag is correctly true and the line is loud — but the provenance is fabricated, which is the section 5 plausible-output shape applied to a diagnostic rather than to a result. It is also the precise failure that cost a session's worth of confusion: a reader cannot tell from that line whether MemTotal was read and disbelieved, or never read at all, and the cap of 4000 is the ceiling fallback rather than anything derived from a host fact.\n\nBudgetSourceDarwinPhysicalMemory is the arm that had nowhere to go — and note it is a SOURCE, not an absence. The first repair attempted here was an absence arm carrying the kernel family, which described the situation truthfully and left the mechanism intact; the second and correct repair was to notice the platform has the fact and read it (extdeps.darwin.sysctl hw.memsize). A diagnostic that accurately reports having read nothing is still a run with no bound on it."
+
+data host_budget_source_no_fallback_arm_note: String = "THERE IS NO FALLBACK ARM, and removing it is the correction this module exists to carry (operator ruling 2026-08-05: 'we can't do fallbacks'). An earlier revision of this file modeled the macOS path as BudgetSourceUnavailable { kernel } and described the consumer as falling back to the declared ceiling. That was honest LABELLING of a dishonest MECHANISM: cli_run's typed_module_cache_cap_derivation ends in .unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL), so a budget it cannot compute becomes the MOST PERMISSIVE value it could have returned — top-as-answer conflated with top-as-ignorance, the absorbing fallback DESIGN section 5 forbids by name. Naming the arm accurately did not stop it widening.\n\nIT HAS A RECEIPT, paid during this very change: the full witness corpus was OOM-killed twice on the operator's Mac (exit 137, at ~6800 and ~3300 witnesses). No host signal was readable, the cap defaulted to the ceiling, nothing bounded the resolve, and the OS ended the process. That is section 5's prediction verbatim — the deficit's frequency is zeroed by construction, so it never ranks for fixing, and the corpus-denominated cost breaks the budget later and at interest instead of breaking the build.\n\nTHE STRATEGY CHANGED RATHER THAN THE LABEL. macOS is not a platform without memory facts; it is a platform whose memory facts were never asked for. extdeps.darwin.sysctl models hw.memsize (verified live: 17179869184), so BudgetSourceDarwinPhysicalMemory is a REAL READ and the Darwin path now produces a budget like any other. What remains is BudgetSourceUnreadable, which carries the reason and is NOT a source at all — it is the refusal, and no consumer may turn it into a number."
 
 type HostBudgetSource
   = BudgetSourceEnvOverride
@@ -33,9 +35,32 @@ type HostBudgetSource
   | BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: ByteSize }
   | BudgetSourceMemAvailable
   | BudgetSourceMemTotal
-  | BudgetSourceUnavailable { kernel: KernelFamily }
+  | BudgetSourceDarwinPhysicalMemory
 
-data host_budget_source_degraded_meaning_note: String = "DEGRADED MEANS 'NOT A PRIVATE LIMIT ON THIS PROCESS', not 'bad' and not 'unreadable'. Only the two cgroup arms and an explicit operator override describe a bound that belongs to this process alone; every meminfo-derived arm reports a HOST-SHARED signal, which on a machine running five other runner slots is a number about the machine rather than about this job — that is the whole reason the 2026-07-21 srv3 exit-137 receipts exist, and why uncapped hosts get their MemAvailable sample capped at the declared slot line before it is trusted.\n\nBudgetSourceUnavailable is degraded too, and for a third reason again: there is no signal at all, so the consumer falls back to a declared ceiling. Keeping it inside 'degraded' rather than minting a fourth verdict is deliberate — every consumer that asks 'may I trust this as a private bound' wants the same answer for all three — while the ARM stays distinct so the diagnostic can say which of the three actually happened."
+type HostBudgetResolution
+  = HostBudgetResolved { source: HostBudgetSource, bytes: ByteSize }
+  | HostBudgetUnreadable { reason: NonEmptyStr }
+
+fn host_budget_resolution_bytes(r: HostBudgetResolution) -> ByteSize? {
+  match r {
+    HostBudgetResolved { source: _, bytes: b } => Present { value: b }
+    HostBudgetUnreadable { reason: _ } => none
+  }
+}
+
+fn host_budget_unreadable_on_kernel(kernel: KernelFamily) -> HostBudgetResolution {
+  HostBudgetUnreadable {
+    reason: concat(
+      "no host memory budget is readable on kernel family ",
+      concat(
+        kernel_family_label(kernel: kernel) as String,
+        ": every modeled source refused, so the admission bound is UNKNOWN. Refuse the run rather than admitting against the widest cap the consumer could have chosen — an unbounded resolve on an unbounded host is the OOM-kill this arm exists to prevent, and it is not a state a default can rescue."
+      )
+    ) as NonEmptyStr
+  }
+}
+
+data host_budget_source_degraded_meaning_note: String = "DEGRADED MEANS 'NOT A PRIVATE LIMIT ON THIS PROCESS', not 'bad' and not 'unreadable'. Only the two cgroup arms and an explicit operator override describe a bound that belongs to this process alone; every meminfo-derived arm reports a HOST-SHARED signal, which on a machine running five other runner slots is a number about the machine rather than about this job — that is the whole reason the 2026-07-21 srv3 exit-137 receipts exist, and why uncapped hosts get their MemAvailable sample capped at the declared slot line before it is trusted.\n\nBudgetSourceDarwinPhysicalMemory is degraded for the same reason as the meminfo arms and not a new one: hw.memsize is total physical RAM, a fact about the machine rather than about this process, and Darwin offers no private-limit mechanism at all — there are no cgroups, so on a Mac there is nothing stronger to want. Degraded-with-a-real-value is the honest verdict there, and it is categorically different from the unreadable case, which is not a source at all and appears in HostBudgetResolution rather than in this coproduct."
 
 fn host_budget_source_is_degraded(s: HostBudgetSource) -> Bool {
   match s {
@@ -45,7 +70,7 @@ fn host_budget_source_is_degraded(s: HostBudgetSource) -> Bool {
     BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: _ } => true
     BudgetSourceMemAvailable => true
     BudgetSourceMemTotal => true
-    BudgetSourceUnavailable { kernel: _ } => true
+    BudgetSourceDarwinPhysicalMemory => true
   }
 }
 
@@ -57,7 +82,7 @@ fn host_budget_source_reads_procfs(s: HostBudgetSource) -> Bool {
     BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: _ } => true
     BudgetSourceMemAvailable => true
     BudgetSourceMemTotal => true
-    BudgetSourceUnavailable { kernel: _ } => false
+    BudgetSourceDarwinPhysicalMemory => false
   }
 }
 
@@ -75,14 +100,7 @@ fn host_budget_source_label(s: HostBudgetSource) -> NonEmptyStr {
       ) as NonEmptyStr
     BudgetSourceMemAvailable => "/proc/meminfo MemAvailable"
     BudgetSourceMemTotal => "/proc/meminfo MemTotal"
-    BudgetSourceUnavailable { kernel: k } =>
-      concat(
-        "unavailable: no procfs on kernel family ",
-        concat(
-          kernel_family_label(kernel: k) as String,
-          " — nothing was read, budget falls back to the declared ceiling"
-        )
-      ) as NonEmptyStr
+    BudgetSourceDarwinPhysicalMemory => "sysctl hw.memsize"
   }
 }
 
@@ -96,8 +114,15 @@ fn host_budget_source_admissible_on_kernel(s: HostBudgetSource, kernel: KernelFa
   }
 }
 
-fn host_budget_source_for_absent_procfs(kernel: KernelFamily) -> HostBudgetSource {
-  BudgetSourceUnavailable { kernel: kernel }
+data host_budget_source_for_kernel_note: String = "The source a host SHOULD read follows from its kernel, and stating it as a total match is what stops a platform being silently unserved. Darwin reads sysctl; the procfs kernels read their cgroup or meminfo path and are represented here by their weakest arm, MemTotal, because which of the stronger arms applies depends on runtime facts (is there a cgroup, is there an override) that no static row can answer. WindowsNt has no modeled source at all and therefore no arm — it returns none rather than a guess, and a consumer that reaches it refuses. That is the honest state: nobody has modeled Windows memory facts, and inventing one here would be the fabrication this whole change removes."
+
+fn host_budget_source_for_kernel(kernel: KernelFamily) -> HostBudgetSource? {
+  match kernel {
+    Darwin => Present { value: BudgetSourceDarwinPhysicalMemory }
+    Linux => Present { value: BudgetSourceMemTotal }
+    LinuxGuestOnWindows => Present { value: BudgetSourceMemTotal }
+    WindowsNt => none
+  }
 }
 
 data host_budget_source_seed_mirror_disposition: Disposition = Scaffold {

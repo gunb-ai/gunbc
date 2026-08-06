@@ -1082,29 +1082,35 @@ pub fn read_host_budget_bytes() -> (Option<u64>, String) {
         };
         return (Some(budget), source);
     }
-    // Terminal arm, and the ONLY one that can report having read nothing. Authority for
-    // the source vocabulary and its rendering is `dag/gunbc/host_budget_source.dag`
-    // (`HostBudgetSource`); `BudgetSourceUnavailable` is the arm this `None` branch
-    // realizes, and `dag/extdeps/linux/procfs.dag` carries why a Darwin host reaches it.
+    // Terminal arms. Authority for the source vocabulary and its rendering is
+    // `dag/gunbc/host_budget_source.dag` (`HostBudgetSource`); `dag/extdeps/linux/procfs.dag`
+    // carries why a Darwin host never reaches the meminfo arm.
     //
-    // This used to be `(mem_total_bytes(), "/proc/meminfo MemTotal".to_string())` — the
-    // label composed unconditionally beside a read that returns `None` whenever
-    // /proc/meminfo is absent, which on macOS is always. Every local run printed
+    // The meminfo arm used to be unconditional: `(mem_total_bytes(), "/proc/meminfo
+    // MemTotal".to_string())`, with the label composed beside a read that returns `None`
+    // whenever /proc/meminfo is absent — which on macOS is always. Every local run printed
     // `source=/proc/meminfo MemTotal` on a machine with no /proc: a source attribution for
-    // a read that never happened, next to a value never obtained. Loud but fabricated, and
-    // unreadable in the one way that matters — a reader could not tell "MemTotal said
-    // something we distrusted" from "there is no MemTotal here".
-    match mem_total_bytes() {
-        Some(total) => (Some(total), "/proc/meminfo MemTotal".to_string()),
-        None => (
-            None,
-            format!(
-                "unavailable: no readable /proc/meminfo on this host (target_os={}) \
-                 — nothing was read, budget falls back to the declared ceiling",
-                std::env::consts::OS
-            ),
-        ),
+    // a read that never happened. A reader could not tell "MemTotal said something we
+    // distrusted" from "there is no MemTotal here".
+    //
+    // The repair is not a better label for the absence. Darwin exposes total physical
+    // memory through sysctl hw.memsize, so it now gets a REAL read like any other platform
+    // (`BudgetSourceDarwinPhysicalMemory`). What remains `None` is a host where every
+    // modeled source refused, and that is a refusal rather than a source — see the caller,
+    // which must not turn it into a number.
+    if let Some(total) = mem_total_bytes() {
+        return (Some(total), "/proc/meminfo MemTotal".to_string());
     }
+    if let Some(physical) = darwin_physical_memory_bytes() {
+        return (Some(physical), "sysctl hw.memsize".to_string());
+    }
+    (
+        None,
+        format!(
+            "unreadable: no modeled host memory source answered on this platform (target_os={})",
+            std::env::consts::OS
+        ),
+    )
 }
 
 /// leaf→root walk — the effective budget the OOM-killer enforces. `None` when unreadable
@@ -1192,6 +1198,44 @@ pub fn read_cgroup_raw(dir: &Path, file: &str) -> Option<String> {
     std::fs::read_to_string(dir.join(file))
         .ok()
         .map(|s| s.trim().to_string())
+}
+
+/// Total physical RAM in bytes from Darwin's `sysctl` MIB `hw.memsize`.
+///
+/// Authority: `dag/extdeps/darwin/sysctl.dag` (`HwMemsize`), cited to Apple's sysctl.3.
+/// This is Darwin's answer to `/proc/meminfo` MemTotal and it is denominated in BYTES,
+/// where meminfo's fields are kibibytes — the one detail a shared parser would get wrong
+/// by 1024x. Observed live on macOS 15: 17179869184 (exactly 16 GiB).
+///
+/// Exists because the governor previously had NO source on Darwin and fell back to the
+/// most permissive cap it could name. macOS is not a platform without memory facts; its
+/// memory facts were never asked for.
+#[cfg(target_os = "macos")]
+pub fn darwin_physical_memory_bytes() -> Option<u64> {
+    let name = c"hw.memsize";
+    let mut value: u64 = 0;
+    let mut len: libc::size_t = std::mem::size_of::<u64>() as libc::size_t;
+    // SAFETY: `name` is a NUL-terminated literal, `value`/`len` are live locals sized to
+    // match, and `newp`/`newlen` are null/0 for a read-only query per sysctl(3).
+    let rc = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr(),
+            (&mut value as *mut u64).cast::<libc::c_void>(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if rc == 0 && value > 0 {
+        Some(value)
+    } else {
+        None
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn darwin_physical_memory_bytes() -> Option<u64> {
+    None
 }
 
 /// Total physical RAM in bytes (`/proc/meminfo` MemTotal, kB→bytes) — the last-resort

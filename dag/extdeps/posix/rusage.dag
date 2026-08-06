@@ -1,0 +1,53 @@
+module extdeps.posix.rusage
+
+import std.types { NonEmptyStr, String, Int, Bool }
+import std.measure { ByteSize, byte_size }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/getrusage.html"
+  }
+}
+
+data posix_rusage_subject_note: String = "getrusage(2) AS THE PORTABLE RESOURCE-USAGE INTERFACE, modeled because the repository was reading a Linux-only file for a fact POSIX already exposes everywhere. Peak resident set size was taken from /proc/self/status VmHWM, which exists on exactly one kernel family; getrusage with RUSAGE_SELF returns the same quantity in ru_maxrss on every conforming implementation, and the corpus's own v1 seed already depends on libc, so the portable call needs no new dependency.\n\nTHE SECTION 3 POINT THIS CORRECTS, because it is the general lesson rather than a macOS detail: reading VmHWM through procfs is a TRANSPORT, one of N, not a fact about the observation. Treating the transport's platform limits as the observation's limits is how 'peak RSS is unavailable on macOS' came to be believed — it is not, it was simply never asked for the portable way. The right shape is not two transports selected by platform either; it is ONE portable call, with the platform divergence pushed down to the single axis where it genuinely exists.\n\nTHAT AXIS IS THE UNIT, and it is a specification-level fact rather than an implementation quirk: POSIX defines ru_maxrss's meaning and DOES NOT SPECIFY ITS UNIT. Implementations therefore differ legitimately and permanently — no future release reconciles them — which is why RusageMaxrssUnit is modeled here as an open question this module refuses to answer, and answered instead by extdeps.linux.rusage and extdeps.darwin.rusage each speaking for their own implementation. A conversion that assumed either unit would be wrong on half the fleet by a factor of 1024, silently, in the direction that looks plausible."
+
+type RusageWho
+  = RusageSelf
+  | RusageChildren
+
+fn rusage_who_label(w: RusageWho) -> NonEmptyStr {
+  match w {
+    RusageSelf => "RUSAGE_SELF"
+    RusageChildren => "RUSAGE_CHILDREN"
+  }
+}
+
+data rusage_maxrss_unit_is_implementation_defined_note: String = "The two arms are not a preference and not a portability workaround — they are the two answers conforming implementations actually give, and the corpus must carry both because it runs on both. MaxrssKibibytes is what Linux returns; MaxrssBytes is what the BSD-derived kernels including Darwin return. Anything reading ru_maxrss without pairing it to a unit is off by 1024x on one of the two, and in the dangerous direction: a Linux value misread as bytes UNDERSTATES peak residency by three orders of magnitude, so a budget derived from it would look comfortable on a host about to be OOM-killed."
+
+type RusageMaxrssUnit
+  = MaxrssBytes
+  | MaxrssKibibytes
+
+fn maxrss_to_byte_size(raw: Int, unit: RusageMaxrssUnit) -> ByteSize {
+  match unit {
+    MaxrssBytes => byte_size(raw)
+    MaxrssKibibytes => byte_size(raw * 1024)
+  }
+}
+
+type RusageMaxrssObservation {
+  who: RusageWho
+  raw_value: Int
+  unit: RusageMaxrssUnit
+}
+
+fn rusage_maxrss_bytes(obs: RusageMaxrssObservation) -> ByteSize {
+  maxrss_to_byte_size(raw: obs.raw_value, unit: obs.unit)
+}
+
+fn rusage_maxrss_is_positive(obs: RusageMaxrssObservation) -> Bool {
+  obs.raw_value > 0
+}

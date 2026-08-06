@@ -8974,13 +8974,37 @@ fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
     // (Option<u64>, String); if it ever grows a typed source enum, ground this check on
     // the enum instead of re-parsing its display label (§3, avoid a second representation).
     let degraded = !(source_label.contains("memory.max") || source_label.contains("memory.high"));
-    let cap = budget
-        .map(|b| (b / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize)
-        .unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)
-        .clamp(
-            TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
-            TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
+    // REFUSE rather than widen when no budget is readable (operator ruling 2026-08-05;
+    // authority `dag/gunbc/host_budget_source.dag` `HostBudgetUnreadable`).
+    //
+    // This was `.unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)`: a budget that could not
+    // be computed became the MOST PERMISSIVE cap available — top-as-answer conflated with
+    // top-as-ignorance, the absorbing fallback DESIGN section 5 forbids by name. It is not
+    // hypothetical. It OOM-killed the full witness corpus twice on a macOS dev machine
+    // (exit 137): nothing readable, cap defaults to the ceiling, nothing bounds the resolve,
+    // kernel ends the process. The deficit's frequency was zero by construction, so it never
+    // ranked for fixing, and the cost arrived as a dead process instead of a diagnostic.
+    //
+    // Every platform this runs on now has a modeled source — procfs on Linux, sysctl
+    // hw.memsize on Darwin — so reaching this arm means an unmodeled host, which is exactly
+    // when admitting against an invented bound is least defensible. Panicking here is a hard
+    // stop by design: this runs inside resolution, there is no caller that could honour a
+    // typed refusal without threading Result through the cache seam, and continuing is the
+    // one option ruled out.
+    let Some(budget_bytes) = budget else {
+        panic!(
+            "HostBudgetUnreadable: no modeled host memory source answered ({source_label}). \
+             The typed-module cache cap bounds the memory used to RESOLVE the corpus, so an \
+             unknown budget cannot be defaulted — the previous default was the ceiling, which \
+             OOM-killed this process rather than refusing. Declare one with \
+             GUNBC_MEMORY_BUDGET_BYTES, or model this platform's memory source \
+             (dag/gunbc/host_budget_source.dag)."
         );
+    };
+    let cap = ((budget_bytes / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize).clamp(
+        TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
+        TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
+    );
     (cap, source_label, degraded)
 }
 
@@ -16412,9 +16436,41 @@ pub fn current_rss_bytes() -> Option<u64> {
     proc_status_kb_field("VmRSS")
 }
 
-/// Peak resident set from `/proc/self/status` VmHWM (high water mark), in bytes.
+/// Peak resident set (high water mark) in bytes, read the PORTABLE way.
+///
+/// Authority: `dag/extdeps/posix/rusage.dag` for the interface, with the unit answered by
+/// `dag/extdeps/linux/rusage.dag` (kibibytes) and `dag/extdeps/darwin/rusage.dag` (bytes).
+///
+/// This used to be `proc_status_kb_field("VmHWM")` — a `/proc/self/status` read, which
+/// exists on exactly one kernel family. That made every consumer of peak RSS Linux-only and
+/// produced `VmHWM unavailable on this host` on macOS, a message read as "this platform
+/// cannot report peak residency". It can: POSIX `getrusage(RUSAGE_SELF)` returns the same
+/// quantity in `ru_maxrss` everywhere, and libc was already a dependency. The procfs read
+/// was a TRANSPORT choice, not a capability limit, and mistaking one for the other is what
+/// made the fact look unobservable.
+///
+/// POSIX deliberately leaves `ru_maxrss`'s unit unspecified, so the conversion is per
+/// implementation and permanent — no release reconciles them. Linux reports kibibytes,
+/// Darwin bytes; the Darwin figure was confirmed by execution (a bare python3 reported
+/// 15417344, which is 14.7 MiB read as bytes and an impossible 14.7 GiB read as kibibytes).
+/// Reading a Linux value as bytes would understate peak residency 1024x, in the direction
+/// that looks survivable.
 pub fn peak_rss_vhwm_bytes() -> Option<u64> {
-    proc_status_kb_field("VmHWM")
+    // SAFETY: `ru` is a live, fully-owned zeroed `rusage`; `getrusage` only writes it.
+    let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+    let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) };
+    if rc != 0 || ru.ru_maxrss <= 0 {
+        return None;
+    }
+    let raw = ru.ru_maxrss as u64;
+    #[cfg(target_os = "macos")]
+    {
+        Some(raw)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Some(raw.saturating_mul(1024))
+    }
 }
 
 /// `memory.events` `high` counter from the process leaf cgroup, when readable.
