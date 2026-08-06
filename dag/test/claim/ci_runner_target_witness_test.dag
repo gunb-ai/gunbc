@@ -5,7 +5,10 @@ test fn witness_fleet_target_projects_fleet_derivation() -> Bool {
 }
 
 test fn witness_selected_target_projects_fleet() -> Bool {
-  gunbc_ci_selected_runner_spec() == ci_runner_target_spec(target: FleetSelfHosted)
+  gunbc_ci_selected_runner_spec()
+    == ci_fleet_admission_runner_spec(
+      base: ci_runner_target_spec(target: FleetSelfHosted)
+    )
 }
 
 test fn witness_ubicloud_target_projects_catalog_label() -> Bool {

@@ -1,0 +1,56 @@
+module test.claim.ci_fleet_host_quarantine_witness
+
+import gunbc.ci_fleet_host_quarantine {
+  ci_fleet_admission_label,
+  ci_fleet_admission_runner_spec,
+  ci_fleet_quarantined_hosts,
+}
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
+import extdeps.github.actions { SelfHosted }
+
+fn label_list_contains(labels: List<String>, needle: String) -> Bool {
+  fold(labels, init: false, f: (acc, l) => acc || (l == needle))
+}
+
+test fn witness_srv1_is_quarantined() -> Bool {
+  fold(
+    ci_fleet_quarantined_hosts,
+    init: false,
+    f: (acc, h) => acc || (h == operator_host_srv1)
+  )
+}
+
+test fn witness_selected_runner_spec_carries_admission_label() -> Bool {
+  match gunbc_ci_selected_runner_spec() {
+    SelfHosted { labels: labels } =>
+      label_list_contains(labels: labels, needle: ci_fleet_admission_label)
+    _ => false
+  }
+}
+
+test fn witness_base_fleet_spec_unchanged_without_admission() -> Bool {
+  match gunbc_ci_runner_spec() {
+    SelfHosted { labels: labels } => labels.length() == 3
+    _ => false
+  }
+}
+
+test fn witness_admission_projection_appends_one_label() -> Bool {
+  match ci_fleet_admission_runner_spec(base: gunbc_ci_runner_spec()) {
+    SelfHosted { labels: labels } =>
+      labels.length() == 4
+        && label_list_contains(labels: labels, needle: ci_fleet_admission_label)
+    _ => false
+  }
+}
+
+test fn witness_deploy_runner_spec_not_admission_gated_red_control() -> Bool {
+  match gunbc_ci_deploy_srv1_runner_spec() {
+    SelfHosted { labels: labels } =>
+      !label_list_contains(labels: labels, needle: ci_fleet_admission_label)
+    _ => false
+  }
+}
