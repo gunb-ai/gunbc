@@ -317,6 +317,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "frontier_probe_memory_refusal_2026-08-06",
+    primary_work: DeclarationRef { module_path: "v2.compiler.self_host.frontier_probe_survey", decl_name: "frontier_probe_memory_refusal_note", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "v2.compiler.self_host.frontier_probe_survey", decl_name: "frontier_roster_provenance_constructor_inflation_note", field: WholeDeclaration }],
+    dissolution: HasTrigger { text: "the probe emits a receipt for at least one module at a pinned FrontierSurveySubject (memory refusal resolved) and roster row provenance becomes structural — then this refusal receipt deletes with this row" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "srv2-05-native-agreement-divergence-diagnosis",
     primary_work: DeclarationRef { module_path: "v2.compiler.self_host.witness_entry_eligibility_census", decl_name: "witness_entry_eligibility_census_note", field: WholeDeclaration },
     additional_works: [],

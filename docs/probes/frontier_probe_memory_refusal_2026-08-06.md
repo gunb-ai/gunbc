@@ -39,7 +39,7 @@ Exit 137 alone does not establish an OOM — it is also the shape of a harness t
 
 Both were plausible, both were wrong, and both were killed by a control before being reported as causes.
 
-**H1 — "the 10 never-measured modules are the ones that exhaust memory."** The interim TSV holds exactly 17 rows and the 10 absent ones are a contiguous prefix of the sweep order, which made a module-specific property look likely. **Refuted:** `01_tokenize` is one of the 17 that *did* measure, and it OOMs now (run 4).
+**H1 — "the 10 never-measured modules are the ones that exhaust memory."** The interim TSV holds exactly 17 rows, and the 10 absent ones are sweep-order positions **1–9 and 11** — a near-prefix, with only `source_authority` (position 10) interrupting it. That clustering made a module-specific property look likely. **Refuted:** `01_tokenize` is one of the 17 that *did* measure, and it OOMs now (run 4).
 
 **H2 — "the widened root set (`src/v2` + `dag`) is the cause."** The interim audit probed with `src/v2` only; the authoritative closeout mandates both roots, which genuinely widens the closure. **Refuted:** `03_normalize` OOMs with `src/v2` alone (run 5).
 
@@ -49,9 +49,19 @@ The cause is therefore *not* module identity and *not* the root set. It remains 
 
 The decisive experiment is to build the probe at the interim audit head `9f978aa8df` — where 17 modules measured cleanly — and run it on this host. Success would mean a regression landed since; failure would mean the host cap is simply too small for this probe.
 
-That experiment is **blocked on a second memory kill**: building `v1-compiler` at the old head was itself OOM-killed (`sccache: Compiler killed by signal 9`, `oom_kill` → 6). `CARGO_BUILD_JOBS=15` on 128 cores means 15 real rustc processes on a large crate; the current-head build had largely hit sccache and so never spawned them. Retried serialized.
+**That experiment could not be executed on this host, and the reason is itself the answer to a different question.** Three attempts to build `v1-compiler` at the old head were all OOM-killed (`sccache: Compiler killed by signal 9`):
 
-A distinction worth preserving when this is assessed: **15 parallel rustc processes collectively reaching 32 GB is ordinary. One probe process reaching 32 GB alone, for a single module, is not.** The two kills have the same signal but very different significance, and only the second is evidence about the probe.
+| Attempt | Configuration | Result |
+|---|---|---|
+| 1 | release, `CARGO_BUILD_JOBS=15` (default) | killed, `oom_kill` → 6 |
+| 2 | release, `CARGO_BUILD_JOBS=1` | killed, `oom_kill` → 7 |
+| 3 | debug profile (`opt-level=2` per dev profile) | killed, `oom_kill` → 8 |
+
+Attempt 2 is the informative one: with `CARGO_BUILD_JOBS=1` there is a **single** rustc process, and it still exceeded the cap compiling the `v1-compiler` lib. So this is not a parallelism problem — **this host cannot cold-build `v1-compiler` at all**. The current-head build succeeded only because sccache served the lib; it never invoked rustc on it.
+
+Consequence: **regression vs host capacity is UNRESOLVED and not resolvable here.** Answering it requires a host that can cold-build the crate, or a warm sccache for the old head's sources. Per operator direction, this is reported rather than chased.
+
+A distinction worth preserving when this is assessed: **15 parallel rustc processes collectively reaching 32 GB is ordinary. One probe process reaching 32 GB alone, for a single module, is not.** The two kills share a signal but not a significance, and only the second is evidence about the probe. Attempt 2 sits in between and is evidence about the crate, not the probe.
 
 ### One candidate, not a diagnosis
 
