@@ -1,0 +1,740 @@
+ctrl-build: dispatching remote build via BuildBuddy
+ctrl-build: remote image: docker://ghcr.io/gunb-ai/ctrl-session:latest
+ctrl-build: command: env COHORT_ONLY=1 bash docs/plans/receipts/entry-view-assembly-direction/run_all.sh
+Warning: Mirroring your local git state is taking a long time. See https://www.buildbuddy.io/docs/remote-bazel/#automatic-git-state-mirroring for more details and suggestions.
+
+Waiting for available remote runner...
+Streaming remote runner logs to: https://app.buildbuddy.io/invocation/4a52649d-2f0c-4271-bff8-47b1bdd9c843
+[90m2026-08-06 05:00:34.889 UTC [mSyncing existing repo...
+[90m2026-08-06 05:00:34.889 UTC [mConfiguring repository...
+[90m2026-08-06 05:00:34.976 UTC [mConfiguring remote "origin"...
+[90m2026-08-06 05:00:34.984 UTC [32m$ [mgit fetch --force --progress --depth=1 origin 3b10d3b27e26d270b8632597eda110635c67b8e5
+remote: Total 0 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
+From https://github.com/gunb-ai/gunbc
+ * branch            3b10d3b27e26d270b8632597eda110635c67b8e5 -> FETCH_HEAD
+warning: fetch normally indicates which branches had a forced update,
+but that check has been disabled; to re-enable, use '--show-forced-updates'
+flag or run 'git config fetch.showForcedUpdates true'
+[90m2026-08-06 05:00:36.002 UTC [32m$ [mgit clean -x -d --force
+Removing 13d7c4f5ab20fdde5f45dc8e4785cd85c25f309777617b8a9d195f391e64ea14
+Removing 23e287334d5f8d21940ecd927daa825e7d3be7eb91b149bf9e2939ea0038ed8c
+Removing 443a1ec76e10386002f761a9bde6cfa938e60f8ce901d202604d400ee35a385b
+Removing 602657c79b0db6e8886c0a029496d6b190fccb7a3590c9c8e4d107be186f5e82
+Removing 89e5215dc700a234661afda9095e538c4453c17afdc6624249dab14f7814a366
+Removing 9a5c8743b5c2404891197742116d4e48f6a8aa9ab0c8665027bd38ccb1ed4b14
+Removing a1e58e91251b5e0fb85447a881903cc14a0092b61f04cd387db96ba0184bfaa9
+Removing docs/plans/receipts/entry-view-assembly-direction/
+Removing target/
+[90m2026-08-06 05:00:36.100 UTC [32m$ [mgit checkout --force -B session/calm-crab-696 3b10d3b27e26d270b8632597eda110635c67b8e5
+Reset branch 'session/calm-crab-696'
+[90m2026-08-06 05:00:36.239 UTC [32m$ [mgit apply --verbose ec946fe7e2f3f190b16204c594acac1b00676924cf733adb8967b41b61b27d3b
+ec946fe7e2f3f190b16204c594acac1b00676924cf733adb8967b41b61b27d3b:75: trailing whitespace.
+
+ec946fe7e2f3f190b16204c594acac1b00676924cf733adb8967b41b61b27d3b:92: trailing whitespace.
+
+ec946fe7e2f3f190b16204c594acac1b00676924cf733adb8967b41b61b27d3b:195: trailing whitespace.
+
+ec946fe7e2f3f190b16204c594acac1b00676924cf733adb8967b41b61b27d3b:210: trailing whitespace.
+
+ec946fe7e2f3f190b16204c594acac1b00676924cf733adb8967b41b61b27d3b:460: trailing whitespace.
+
+Checking patch docs/plans/receipts/entry-view-assembly-direction/base-arm-revert.patch...
+Checking patch docs/plans/receipts/entry-view-assembly-direction/cohort.tsv...
+Checking patch docs/plans/receipts/entry-view-assembly-direction/derive_summary.py...
+Checking patch docs/plans/receipts/entry-view-assembly-direction/run_all.sh...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/base-arm-revert.patch cleanly.
+Applied patch docs/plans/receipts/entry-view-assembly-direction/cohort.tsv cleanly.
+Applied patch docs/plans/receipts/entry-view-assembly-direction/derive_summary.py cleanly.
+Applied patch docs/plans/receipts/entry-view-assembly-direction/run_all.sh cleanly.
+warning: squelched 4 whitespace errors
+warning: 9 lines add whitespace errors.
+[90m2026-08-06 05:00:36.283 UTC [32m$ [mgit apply --verbose 443a1ec76e10386002f761a9bde6cfa938e60f8ce901d202604d400ee35a385b
+Checking patch docs/plans/receipts/entry-view-assembly-direction/binary_sha256.txt...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/binary_sha256.txt cleanly.
+[90m2026-08-06 05:00:36.394 UTC [32m$ [mgit apply --verbose 89e5215dc700a234661afda9095e538c4453c17afdc6624249dab14f7814a366
+Checking patch docs/plans/receipts/entry-view-assembly-direction/claim_batch.after...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/claim_batch.after cleanly.
+[90m2026-08-06 05:00:36.679 UTC [32m$ [mgit apply --verbose 23e287334d5f8d21940ecd927daa825e7d3be7eb91b149bf9e2939ea0038ed8c
+Checking patch docs/plans/receipts/entry-view-assembly-direction/claim_batch.base...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/claim_batch.base cleanly.
+[90m2026-08-06 05:00:36.898 UTC [32m$ [mgit apply --verbose 9cd69b7b8409feb9db2bc526904c098ca6df58f24fc74188a35e548004c03781
+Checking patch docs/plans/receipts/entry-view-assembly-direction/remote_cohort.log...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/remote_cohort.log cleanly.
+[90m2026-08-06 05:00:36.942 UTC [32m$ [mgit apply --verbose 42f879eae44086b303ef7c4ef916188676d56ea3fab8760698f4aea547f60853
+Checking patch docs/plans/receipts/entry-view-assembly-direction/remote_cohort_run3.log...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/remote_cohort_run3.log cleanly.
+[90m2026-08-06 05:00:36.980 UTC [32m$ [mgit apply --verbose 9a5c8743b5c2404891197742116d4e48f6a8aa9ab0c8665027bd38ccb1ed4b14
+Checking patch docs/plans/receipts/entry-view-assembly-direction/run.log...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/run.log cleanly.
+[90m2026-08-06 05:00:36.983 UTC [32m$ [mgit apply --verbose a1e58e91251b5e0fb85447a881903cc14a0092b61f04cd387db96ba0184bfaa9
+Checking patch docs/plans/receipts/entry-view-assembly-direction/run_ab_cohort.sh...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/run_ab_cohort.sh cleanly.
+[90m2026-08-06 05:00:36.985 UTC [32m$ [mset -euo pipefail
+export CTRL_BUILD_BYPASS_SHIMS=1
+export PATH="/opt/cargo/bin:/usr/local/bin:/usr/local/sbin:$PATH"
+export RUSTUP_HOME=/opt/rustup
+export GUNBC_V2_COMPILER=/usr/local/bin/gunbc
+export GUNBC_ROOT=/opt/gunbc
+cd .
+echo "ctrl-build: remote cwd: $(pwd)" >&2
+exec env COHORT_ONLY=1 bash docs/plans/receipts/entry-view-assembly-direction/run_all.sh
+ctrl-build: remote cwd: /root/workspace/repo-root
+=== building after-arm binaries ===
+   [92;1mCompiling [mproc-macro2 v1.0.106
+   [92;1mCompiling [mquote v1.0.45
+   [92;1mCompiling [municode-ident v1.0.24
+   [92;1mCompiling [mstable_deref_trait v1.2.1
+   [92;1mCompiling [mfind-msvc-tools v0.1.9
+   [92;1mCompiling [mshlex v1.3.0
+   [92;1mCompiling [mcc v1.2.62
+   [92;1mCompiling [msyn v2.0.117
+   [92;1mCompiling [mserde_core v1.0.228
+   [92;1mCompiling [mversion_check v0.9.5
+   [92;1mCompiling [mcfg-if v1.0.4
+   [92;1mCompiling [msynstructure v0.13.2
+   [92;1mCompiling [mserde v1.0.228
+   [92;1mCompiling [mlibc v0.2.186
+   [92;1mCompiling [mtypenum v1.20.1
+   [92;1mCompiling [mzerofrom-derive v0.1.7
+   [92;1mCompiling [myoke-derive v0.8.2
+   [92;1mCompiling [mzerofrom v0.1.8
+   [92;1mCompiling [mzerovec-derive v0.11.3
+   [92;1mCompiling [myoke v0.8.2
+   [92;1mCompiling [mdisplaydoc v0.2.5
+   [92;1mCompiling [mwriteable v0.6.3
+   [92;1mCompiling [mlitemap v0.8.2
+   [92;1mCompiling [mzerovec v0.11.6
+   [92;1mCompiling [mzerotrie v0.2.4
+   [92;1mCompiling [mserde_derive v1.0.228
+   [92;1mCompiling [mtinystr v0.8.3
+   [92;1mCompiling [micu_locale_core v2.2.0
+   [92;1mCompiling [mpotential_utf v0.1.5
+   [92;1mCompiling [micu_normalizer_data v2.2.0
+   [92;1mCompiling [mobject v0.37.3
+   [92;1mCompiling [micu_properties_data v2.2.0
+   [92;1mCompiling [mutf8_iter v1.0.4
+   [92;1mCompiling [micu_collections v2.2.0
+   [92;1mCompiling [micu_provider v2.2.0
+   [92;1mCompiling [mgeneric-array v0.14.7
+   [92;1mCompiling [mring v0.17.14
+   [92;1mCompiling [mzeroize v1.8.2
+   [92;1mCompiling [mmemchr v2.8.0
+   [92;1mCompiling [mrustls-pki-types v1.14.1
+   [92;1mCompiling [msmallvec v1.15.1
+   [92;1mCompiling [micu_normalizer v2.2.0
+   [92;1mCompiling [micu_properties v2.2.0
+   [92;1mCompiling [mar_archive_writer v0.5.1
+   [92;1mCompiling [mgetrandom v0.2.17
+   [92;1mCompiling [mcrc32fast v1.5.0
+   [92;1mCompiling [mzmij v1.0.21
+   [92;1mCompiling [mutf8parse v0.2.2
+   [92;1mCompiling [muntrusted v0.9.0
+   [92;1mCompiling [mpsm v0.1.31
+   [92;1mCompiling [manstyle-parse v1.0.0
+   [92;1mCompiling [midna_adapter v1.2.2
+   [92;1mCompiling [mis_terminal_polyfill v1.70.2
+   [92;1mCompiling [mserde_json v1.0.149
+   [92;1mCompiling [mequivalent v1.0.2
+   [92;1mCompiling [mhashbrown v0.17.1
+   [92;1mCompiling [madler2 v2.0.1
+   [92;1mCompiling [msimd-adler32 v0.3.9
+   [92;1mCompiling [mpercent-encoding v2.3.2
+   [92;1mCompiling [manstyle-query v1.1.5
+   [92;1mCompiling [mcolorchoice v1.0.5
+   [92;1mCompiling [mrustls v0.23.40
+   [92;1mCompiling [manstyle v1.0.14
+   [92;1mCompiling [manstream v1.0.0
+   [92;1mCompiling [mform_urlencoded v1.2.2
+   [92;1mCompiling [mrustls-webpki v0.103.13
+   [92;1mCompiling [mminiz_oxide v0.8.9
+   [92;1mCompiling [mindexmap v2.14.0
+   [92;1mCompiling [midna v1.1.0
+   [92;1mCompiling [mcrypto-common v0.1.7
+   [92;1mCompiling [mblock-buffer v0.10.4
+   [92;1mCompiling [mwebpki-roots v1.0.7
+   [92;1mCompiling [mtoml_datetime v0.6.11
+   [92;1mCompiling [mserde_spanned v0.6.9
+   [92;1mCompiling [mbitmaps v2.1.0
+   [92;1mCompiling [mim v15.1.0
+   [92;1mCompiling [mstacker v0.1.24
+   [92;1mCompiling [mwinnow v0.7.15
+   [92;1mCompiling [msubtle v2.6.1
+   [92;1mCompiling [mclap_lex v1.1.0
+   [92;1mCompiling [monce_cell v1.21.4
+   [92;1mCompiling [mstrsim v0.11.1
+Streaming remote runner logs to: https://app.buildbuddy.io/invocation/4a52649d-2f0c-4271-bff8-47b1bdd9c843
+[90m2026-08-06 05:00:34.889 UTC [mSyncing existing repo...
+[90m2026-08-06 05:00:34.889 UTC [mConfiguring repository...
+[90m2026-08-06 05:00:34.976 UTC [mConfiguring remote "origin"...
+[90m2026-08-06 05:00:34.984 UTC [32m$ [mgit fetch --force --progress --depth=1 origin 3b10d3b27e26d270b8632597eda110635c67b8e5
+remote: Total 0 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
+From https://github.com/gunb-ai/gunbc
+ * branch            3b10d3b27e26d270b8632597eda110635c67b8e5 -> FETCH_HEAD
+warning: fetch normally indicates which branches had a forced update,
+but that check has been disabled; to re-enable, use '--show-forced-updates'
+flag or run 'git config fetch.showForcedUpdates true'
+[90m2026-08-06 05:00:36.002 UTC [32m$ [mgit clean -x -d --force
+Removing 13d7c4f5ab20fdde5f45dc8e4785cd85c25f309777617b8a9d195f391e64ea14
+Removing 23e287334d5f8d21940ecd927daa825e7d3be7eb91b149bf9e2939ea0038ed8c
+Removing 443a1ec76e10386002f761a9bde6cfa938e60f8ce901d202604d400ee35a385b
+Removing 602657c79b0db6e8886c0a029496d6b190fccb7a3590c9c8e4d107be186f5e82
+Removing 89e5215dc700a234661afda9095e538c4453c17afdc6624249dab14f7814a366
+Removing 9a5c8743b5c2404891197742116d4e48f6a8aa9ab0c8665027bd38ccb1ed4b14
+Removing a1e58e91251b5e0fb85447a881903cc14a0092b61f04cd387db96ba0184bfaa9
+Removing docs/plans/receipts/entry-view-assembly-direction/
+Removing target/
+[90m2026-08-06 05:00:36.100 UTC [32m$ [mgit checkout --force -B session/calm-crab-696 3b10d3b27e26d270b8632597eda110635c67b8e5
+Reset branch 'session/calm-crab-696'
+[90m2026-08-06 05:00:36.239 UTC [32m$ [mgit apply --verbose ec946fe7e2f3f190b16204c594acac1b00676924cf733adb8967b41b61b27d3b
+ec946fe7e2f3f190b16204c594acac1b00676924cf733adb8967b41b61b27d3b:75: trailing whitespace.
+
+ec946fe7e2f3f190b16204c594acac1b00676924cf733adb8967b41b61b27d3b:92: trailing whitespace.
+
+ec946fe7e2f3f190b16204c594acac1b00676924cf733adb8967b41b61b27d3b:195: trailing whitespace.
+
+ec946fe7e2f3f190b16204c594acac1b00676924cf733adb8967b41b61b27d3b:210: trailing whitespace.
+
+ec946fe7e2f3f190b16204c594acac1b00676924cf733adb8967b41b61b27d3b:460: trailing whitespace.
+
+Checking patch docs/plans/receipts/entry-view-assembly-direction/base-arm-revert.patch...
+Checking patch docs/plans/receipts/entry-view-assembly-direction/cohort.tsv...
+Checking patch docs/plans/receipts/entry-view-assembly-direction/derive_summary.py...
+Checking patch docs/plans/receipts/entry-view-assembly-direction/run_all.sh...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/base-arm-revert.patch cleanly.
+Applied patch docs/plans/receipts/entry-view-assembly-direction/cohort.tsv cleanly.
+Applied patch docs/plans/receipts/entry-view-assembly-direction/derive_summary.py cleanly.
+Applied patch docs/plans/receipts/entry-view-assembly-direction/run_all.sh cleanly.
+warning: squelched 4 whitespace errors
+warning: 9 lines add whitespace errors.
+[90m2026-08-06 05:00:36.283 UTC [32m$ [mgit apply --verbose 443a1ec76e10386002f761a9bde6cfa938e60f8ce901d202604d400ee35a385b
+Checking patch docs/plans/receipts/entry-view-assembly-direction/binary_sha256.txt...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/binary_sha256.txt cleanly.
+[90m2026-08-06 05:00:36.394 UTC [32m$ [mgit apply --verbose 89e5215dc700a234661afda9095e538c4453c17afdc6624249dab14f7814a366
+Checking patch docs/plans/receipts/entry-view-assembly-direction/claim_batch.after...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/claim_batch.after cleanly.
+[90m2026-08-06 05:00:36.679 UTC [32m$ [mgit apply --verbose 23e287334d5f8d21940ecd927daa825e7d3be7eb91b149bf9e2939ea0038ed8c
+Checking patch docs/plans/receipts/entry-view-assembly-direction/claim_batch.base...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/claim_batch.base cleanly.
+[90m2026-08-06 05:00:36.898 UTC [32m$ [mgit apply --verbose 9cd69b7b8409feb9db2bc526904c098ca6df58f24fc74188a35e548004c03781
+Checking patch docs/plans/receipts/entry-view-assembly-direction/remote_cohort.log...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/remote_cohort.log cleanly.
+[90m2026-08-06 05:00:36.942 UTC [32m$ [mgit apply --verbose 42f879eae44086b303ef7c4ef916188676d56ea3fab8760698f4aea547f60853
+Checking patch docs/plans/receipts/entry-view-assembly-direction/remote_cohort_run3.log...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/remote_cohort_run3.log cleanly.
+[90m2026-08-06 05:00:36.980 UTC [32m$ [mgit apply --verbose 9a5c8743b5c2404891197742116d4e48f6a8aa9ab0c8665027bd38ccb1ed4b14
+Checking patch docs/plans/receipts/entry-view-assembly-direction/run.log...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/run.log cleanly.
+[90m2026-08-06 05:00:36.983 UTC [32m$ [mgit apply --verbose a1e58e91251b5e0fb85447a881903cc14a0092b61f04cd387db96ba0184bfaa9
+Checking patch docs/plans/receipts/entry-view-assembly-direction/run_ab_cohort.sh...
+Applied patch docs/plans/receipts/entry-view-assembly-direction/run_ab_cohort.sh cleanly.
+[90m2026-08-06 05:00:36.985 UTC [32m$ [mset -euo pipefail
+export CTRL_BUILD_BYPASS_SHIMS=1
+export PATH="/opt/cargo/bin:/usr/local/bin:/usr/local/sbin:$PATH"
+export RUSTUP_HOME=/opt/rustup
+export GUNBC_V2_COMPILER=/usr/local/bin/gunbc
+export GUNBC_ROOT=/opt/gunbc
+cd .
+echo "ctrl-build: remote cwd: $(pwd)" >&2
+exec env COHORT_ONLY=1 bash docs/plans/receipts/entry-view-assembly-direction/run_all.sh
+ctrl-build: remote cwd: /root/workspace/repo-root
+=== building after-arm binaries ===
+   [92;1mCompiling [mproc-macro2 v1.0.106
+   [92;1mCompiling [mquote v1.0.45
+   [92;1mCompiling [municode-ident v1.0.24
+   [92;1mCompiling [mstable_deref_trait v1.2.1
+   [92;1mCompiling [mfind-msvc-tools v0.1.9
+   [92;1mCompiling [mshlex v1.3.0
+   [92;1mCompiling [mcc v1.2.62
+   [92;1mCompiling [msyn v2.0.117
+   [92;1mCompiling [mserde_core v1.0.228
+   [92;1mCompiling [mversion_check v0.9.5
+   [92;1mCompiling [mcfg-if v1.0.4
+   [92;1mCompiling [msynstructure v0.13.2
+   [92;1mCompiling [mserde v1.0.228
+   [92;1mCompiling [mlibc v0.2.186
+   [92;1mCompiling [mtypenum v1.20.1
+   [92;1mCompiling [mzerofrom-derive v0.1.7
+   [92;1mCompiling [myoke-derive v0.8.2
+   [92;1mCompiling [mzerofrom v0.1.8
+   [92;1mCompiling [mzerovec-derive v0.11.3
+   [92;1mCompiling [myoke v0.8.2
+   [92;1mCompiling [mdisplaydoc v0.2.5
+   [92;1mCompiling [mwriteable v0.6.3
+   [92;1mCompiling [mlitemap v0.8.2
+   [92;1mCompiling [mzerovec v0.11.6
+   [92;1mCompiling [mzerotrie v0.2.4
+   [92;1mCompiling [mserde_derive v1.0.228
+   [92;1mCompiling [mtinystr v0.8.3
+   [92;1mCompiling [micu_locale_core v2.2.0
+   [92;1mCompiling [mpotential_utf v0.1.5
+   [92;1mCompiling [micu_normalizer_data v2.2.0
+   [92;1mCompiling [mobject v0.37.3
+   [92;1mCompiling [micu_properties_data v2.2.0
+   [92;1mCompiling [mutf8_iter v1.0.4
+   [92;1mCompiling [micu_collections v2.2.0
+   [92;1mCompiling [micu_provider v2.2.0
+   [92;1mCompiling [mgeneric-array v0.14.7
+   [92;1mCompiling [mring v0.17.14
+   [92;1mCompiling [mzeroize v1.8.2
+   [92;1mCompiling [mmemchr v2.8.0
+   [92;1mCompiling [mrustls-pki-types v1.14.1
+   [92;1mCompiling [msmallvec v1.15.1
+   [92;1mCompiling [micu_normalizer v2.2.0
+   [92;1mCompiling [micu_properties v2.2.0
+   [92;1mCompiling [mar_archive_writer v0.5.1
+   [92;1mCompiling [mgetrandom v0.2.17
+   [92;1mCompiling [mcrc32fast v1.5.0
+   [92;1mCompiling [mzmij v1.0.21
+   [92;1mCompiling [mutf8parse v0.2.2
+   [92;1mCompiling [muntrusted v0.9.0
+   [92;1mCompiling [mpsm v0.1.31
+   [92;1mCompiling [manstyle-parse v1.0.0
+   [92;1mCompiling [midna_adapter v1.2.2
+   [92;1mCompiling [mis_terminal_polyfill v1.70.2
+   [92;1mCompiling [mserde_json v1.0.149
+   [92;1mCompiling [mequivalent v1.0.2
+   [92;1mCompiling [mhashbrown v0.17.1
+   [92;1mCompiling [madler2 v2.0.1
+   [92;1mCompiling [msimd-adler32 v0.3.9
+   [92;1mCompiling [mpercent-encoding v2.3.2
+   [92;1mCompiling [manstyle-query v1.1.5
+   [92;1mCompiling [mcolorchoice v1.0.5
+   [92;1mCompiling [mrustls v0.23.40
+   [92;1mCompiling [manstyle v1.0.14
+   [92;1mCompiling [manstream v1.0.0
+   [92;1mCompiling [mform_urlencoded v1.2.2
+   [92;1mCompiling [mrustls-webpki v0.103.13
+   [92;1mCompiling [mminiz_oxide v0.8.9
+   [92;1mCompiling [mindexmap v2.14.0
+   [92;1mCompiling [midna v1.1.0
+   [92;1mCompiling [mcrypto-common v0.1.7
+   [92;1mCompiling [mblock-buffer v0.10.4
+   [92;1mCompiling [mwebpki-roots v1.0.7
+   [92;1mCompiling [mtoml_datetime v0.6.11
+   [92;1mCompiling [mserde_spanned v0.6.9
+   [92;1mCompiling [mbitmaps v2.1.0
+   [92;1mCompiling [mim v15.1.0
+   [92;1mCompiling [mstacker v0.1.24
+   [92;1mCompiling [mwinnow v0.7.15
+   [92;1mCompiling [msubtle v2.6.1
+   [92;1mCompiling [mclap_lex v1.1.0
+   [92;1mCompiling [monce_cell v1.21.4
+   [92;1mCompiling [mstrsim v0.11.1
+   [92;1mCompiling [mrand_core v0.6.4
+   [92;1mCompiling [mheck v0.5.0
+   [92;1mCompiling [mlog v0.4.29
+   [92;1mCompiling [mitoa v1.0.18
+   [92;1mCompiling [mtoml_write v0.1.2
+   [92;1mCompiling [mtoml_edit v0.22.27
+   [92;1mCompiling [mclap_derive v4.6.1
+   [92;1mCompiling [mrand_xoshiro v0.6.0
+   [92;1mCompiling [mclap_builder v4.6.0
+   [92;1mCompiling [msized-chunks v0.6.5
+   [92;1mCompiling [mwebpki-roots v0.26.11
+   [92;1mCompiling [mdigest v0.10.7
+   [92;1mCompiling [mflate2 v1.1.9
+   [92;1mCompiling [murl v2.5.8
+   [92;1mCompiling [mbase64 v0.22.1
+   [92;1mCompiling [mcpufeatures v0.2.17
+   [92;1mCompiling [msha2 v0.10.9
+   [92;1mCompiling [mureq v2.12.1
+   [92;1mCompiling [mclap v4.6.1
+   [92;1mCompiling [mtoml v0.8.23
+   [92;1mCompiling [municode-properties v0.1.4
+   [92;1mCompiling [mlazy_static v1.5.0
+   [92;1mCompiling [mv1-compiler v0.1.0 (/root/workspace/repo-root/src/v1/stage0)
+    [92;1mFinished [m`release` profile [optimized] target(s) in 3m 24s
+=== building base-arm binaries (patch applied) ===
+   [92;1mCompiling [mv1-compiler v0.1.0 (/root/workspace/repo-root/src/v1/stage0)
+    [92;1mFinished [m`release` profile [optimized] target(s) in 2m 41s
+   [92;1mCompiling [mv1-compiler v0.1.0 (/root/workspace/repo-root/src/v1/stage0)
+    [92;1mFinished [m`release` profile [optimized] target(s) in 2m 36s
+=== cohort base-r1 at 2026-08-06T05:09:20+00:00 ===
+=== cohort base-r1 wall_ms=100000 assembly_ms=29189.0 peak_rss_kb=5976883 ===
+=== cohort after-r1 at 2026-08-06T05:11:00+00:00 ===
+=== cohort after-r1 wall_ms=96000 assembly_ms=26887.0 peak_rss_kb=6081740 ===
+=== cohort base-r2 at 2026-08-06T05:12:36+00:00 ===
+=== cohort base-r2 wall_ms=96000 assembly_ms=27205.0 peak_rss_kb=5976883 ===
+=== cohort after-r2 at 2026-08-06T05:14:12+00:00 ===
+=== cohort after-r2 wall_ms=97000 assembly_ms=26873.0 peak_rss_kb=6081740 ===
+/root/workspace/repo-root/docs/plans/receipts/entry-view-assembly-direction/summary.json
+=== RECEIPT_SUMMARY_BEGIN ===
+{
+  "derived_from": [
+    "base-r1.tsv",
+    "base-r2.tsv",
+    "after-r1.tsv",
+    "after-r2.tsv"
+  ],
+  "binary_sha256": {
+    "base-r1": "beb499507755ada79e07d44b3902b7ce927998e7931f83270292c5340f7e6548",
+    "base-r2": "beb499507755ada79e07d44b3902b7ce927998e7931f83270292c5340f7e6548",
+    "after-r1": "2edd2f5728046ac328d8354136112522baf8d1ac98e4b48c342e0207b7bc0ea8",
+    "after-r2": "2edd2f5728046ac328d8354136112522baf8d1ac98e4b48c342e0207b7bc0ea8"
+  },
+  "exclusive_assembly_rows": {
+    "schedule": {
+      "base_ms": [
+        12.8,
+        12.8
+      ],
+      "after_ms": [
+        12.4,
+        12.3
+      ],
+      "delta_pct": -3.5
+    },
+    "probe": {
+      "base_ms": [
+        13.9,
+        14.0
+      ],
+      "after_ms": [
+        13.6,
+        13.8
+      ],
+      "delta_pct": -1.8
+    },
+    "graph": {
+      "base_ms": [
+        6.1,
+        5.8
+      ],
+      "after_ms": [
+        5.6,
+        5.5
+      ],
+      "delta_pct": -6.7
+    },
+    "symbol_index": {
+      "base_ms": [
+        4104.6,
+        3780.9
+      ],
+      "after_ms": [
+        3698.9,
+        3696.7
+      ],
+      "delta_pct": -6.2
+    },
+    "pool_fill": {
+      "base_ms": [
+        1738.1,
+        1749.8
+      ],
+      "after_ms": [
+        1734.6,
+        1748.4
+      ],
+      "delta_pct": -0.1
+    },
+    "symbol_index_merge": {
+      "base_ms": [
+        342.1,
+        292.2
+      ],
+      "after_ms": [
+        293.8,
+        284.4
+      ],
+      "delta_pct": -8.8
+    },
+    "variant_base": {
+      "base_ms": [
+        197.4,
+        194.6
+      ],
+      "after_ms": [
+        189.9,
+        190.2
+      ],
+      "delta_pct": -3.0
+    },
+    "root_symbol_index": {
+      "base_ms": [
+        406.4,
+        293.4
+      ],
+      "after_ms": [
+        298.1,
+        292.6
+      ],
+      "delta_pct": -15.6
+    },
+    "root_variant_base": {
+      "base_ms": [
+        4322.0,
+        4098.4
+      ],
+      "after_ms": [
+        4099.5,
+        4013.0
+      ],
+      "delta_pct": -3.7
+    },
+    "environment": {
+      "base_ms": [
+        233.6,
+        232.3
+      ],
+      "after_ms": [
+        227.5,
+        229.6
+      ],
+      "delta_pct": -1.9
+    },
+    "diagnostics": {
+      "base_ms": [
+        3.7,
+        3.6
+      ],
+      "after_ms": [
+        3.5,
+        3.6
+      ],
+      "delta_pct": -2.7
+    },
+    "registry": {
+      "base_ms": [
+        44.6,
+        40.7
+      ],
+      "after_ms": [
+        40.1,
+        39.9
+      ],
+      "delta_pct": -6.2
+    },
+    "services": {
+      "base_ms": [
+        1430.9,
+        1438.3
+      ],
+      "after_ms": [
+        1416.0,
+        1417.3
+      ],
+      "delta_pct": -1.3
+    },
+    "rewire_type_env": {
+      "base_ms": [
+        690.3,
+        603.9
+      ],
+      "after_ms": [
+        590.3,
+        586.1
+      ],
+      "delta_pct": -9.1
+    },
+    "rewire_import_str": {
+      "base_ms": [
+        6547.2,
+        6042.7
+      ],
+      "after_ms": [
+        5967.3,
+        6006.8
+      ],
+      "delta_pct": -4.9
+    },
+    "rewire_func_env": {
+      "base_ms": [
+        120.7,
+        121.1
+      ],
+      "after_ms": [
+        119.9,
+        119.9
+      ],
+      "delta_pct": -0.8
+    },
+    "emit_info": {
+      "base_ms": [
+        1498.0,
+        1396.3
+      ],
+      "after_ms": [
+        1373.6,
+        1374.1
+      ],
+      "delta_pct": -5.1
+    },
+    "other": {
+      "base_ms": [
+        126.4,
+        126.0
+      ],
+      "after_ms": [
+        134.9,
+        135.3
+      ],
+      "delta_pct": 7.1
+    }
+  },
+  "aggregates": {
+    "assembly_total_ms": {
+      "base": [
+        21838.800000000003,
+        20446.799999999996
+      ],
+      "after": [
+        20219.500000000004,
+        20169.5
+      ],
+      "delta_pct": -4.5
+    },
+    "exclusive_assembly_ms": {
+      "base": [
+        29189.0,
+        27205.0
+      ],
+      "after": [
+        26887.0,
+        26873.0
+      ],
+      "delta_pct": -4.7
+    },
+    "resolve_additive_ms": {
+      "base": [
+        52351,
+        50216
+      ],
+      "after": [
+        49602,
+        49635
+      ],
+      "delta_pct": -3.2
+    },
+    "elapsed_wall_ms": {
+      "base": [
+        100000,
+        96000
+      ],
+      "after": [
+        96000,
+        97000
+      ],
+      "delta_pct": -1.5
+    },
+    "peak_rss_kb": {
+      "base": [
+        5976883,
+        5976883
+      ],
+      "after": [
+        6081740,
+        6081740
+      ],
+      "delta_pct": 1.8
+    }
+  },
+  "entry_view_assembly_memo": {
+    "base-r1": {},
+    "base-r2": {},
+    "after-r1": {
+      "keys": 50,
+      "hits": 0,
+      "misses": 50
+    },
+    "after-r2": {
+      "keys": 50,
+      "hits": 0,
+      "misses": 50
+    }
+  },
+  "outcomes": {
+    "base-r1": {
+      "pass": 48,
+      "fail": 2
+    },
+    "base-r2": {
+      "pass": 48,
+      "fail": 2
+    },
+    "after-r1": {
+      "pass": 48,
+      "fail": 2
+    },
+    "after-r2": {
+      "pass": 48,
+      "fail": 2
+    }
+  },
+  "outcomes_identical_across_arms": true,
+  "resolve_count": {
+    "base-r1": 50,
+    "base-r2": 50,
+    "after-r1": 50,
+    "after-r2": 50
+  }
+}
+=== RECEIPT_SUMMARY_END ===
+=== ARM_TSV_BEGIN base-r1 ===
+label	base-r1
+binary_sha256	beb499507755ada79e07d44b3902b7ce927998e7931f83270292c5340f7e6548
+exit	1
+wall_ms	100000
+exclusive_assembly_ms	29189.0
+peak_rss_kb	5976883
+pass	48
+fail	2
+[resolve-summary] 50 resolve(s) in 52351ms; 50 witness(es) in 76ms
+[resolve-split] load=29015.0ms parse=2566.5ms resolve=423.3ms normalize=339.6ms typecheck=13253.3ms parent_envs=4.3ms reconcile_assembly=126.4ms ownership=368.2ms
+[assembly-split] schedule=12.8ms probe=13.9ms graph=6.1ms symbol_index=4104.6ms pool_fill=1738.1ms symbol_index_merge=342.1ms variant_base=197.4ms root_symbol_index=406.4ms root_variant_base=4322.0ms environment=233.6ms diagnostics=3.7ms registry=44.6ms services=1430.9ms rewire_type_env=690.3ms rewire_import_str=6547.2ms rewire_func_env=120.7ms emit_info=1498.0ms other=126.4ms rewire_total_observation=7358.2ms
+[cost-partition] {"basis":"summed_top_level_resolve_span_nanos","basis_note":"additive: each top-level resolve span's own duration, thread-sequential. Elapsed wall is NOT additive over concurrent spans and is carried under `observations`, never partitioned.","parent_span_nanos":67909128196,"spans":51,"nested_spans":0,"exclusive":{"load":29014962973,"parse":2566450770,"resolve_modules":423347761,"normalize":339616282,"typecheck_compute":13253325458,"parent_envs":4258125,"assembly_schedule":12819682,"assembly_probe":13906671,"assembly_graph":6071200,"assembly_symbol_index":4104648341,"assembly_pool_fill":1738146246,"assembly_symbol_index_merge":342127834,"assembly_variant_base":197406744,"assembly_root_symbol_index":406432770,"assembly_root_variant_base":4322039776,"assembly_environment":233619765,"assembly_diagnostics":3656601,"assembly_registry":44556687,"assembly_services":1430942401,"assembly_rewire_type_env":690299390,"assembly_rewire_import_str":6547205682,"assembly_rewire_func_env":120714811,"assembly_emit_info":1497992038,"reconcile_assembly":126376211,"ownership":368239374},"sum_exclusive_nanos":67809163593,"remainder_nanos":99964603,"inclusive":{"load_reference_scan":{"nanos":31878652,"contained_in":"load"},"load_import_closure":{"nanos":132997394,"contained_in":"load"},"load_bare_reference_closure":{"nanos":28618015772,"contained_in":"load"},"load_pool_reference_closure":{"nanos":146659379,"contained_in":"load"},"load_bare_edge_index":{"nanos":28490771927,"contained_in":"load_bare_reference_closure"},"load_bare_path_lookup":{"nanos":101022187,"contained_in":"load_bare_reference_closure"},"load_bare_edge_walk":{"nanos":5184515,"contained_in":"load_bare_reference_closure"}},"load_reference_scan_volume":{"bytes":12614305,"calls":1664,"fixpoint_rounds":92},"accounting_law":"parent_span_nanos == sum_exclusive_nanos + remainder_nanos","verdict":{"state":"Reconciled","residual_nanos":0,"tolerance_nanos":0},"span_nanos_by_entry":[{"entry":"dag/test/claim/accelerator_demo_execution_witness_test.dag","spans":1,"nanos":16071249077,"exclusive":{"load":14147471209,"parse":150539526,"resolve_modules":4872975,"normalize":25059236,"typecheck_compute":559468742,"parent_envs":240470,"reconcile_assembly":3471670,"ownership":20484932}},{"entry":"dag/gunbc/output_policy.dag","spans":1,"nanos":15536915523,"exclusive":{"load":14361403922,"parse":35681127,"resolve_modules":740591,"normalize":4898925,"typecheck_compute":112886849,"parent_envs":34768,"reconcile_assembly":767835,"ownership":3576344}},{"entry":"dag/test/claim/anomaly_evidence_witness_test.dag","spans":1,"nanos":7868835815,"exclusive":{"load":22969724,"parse":1224312571,"resolve_modules":35784887,"normalize":166205952,"typecheck_compute":4365137460,"parent_envs":1259715,"reconcile_assembly":11569113,"ownership":182900710}},{"entry":"dag/test/claim/build_cache_placement_observation_test.dag","spans":1,"nanos":7361605439,"exclusive":{"load":16188237,"parse":140720687,"resolve_modules":81584344,"normalize":19102409,"typecheck_compute":3206119561,"parent_envs":470324,"reconcile_assembly":17558404,"ownership":22921064}},{"entry":"dag/test/claim/bmc_wif_delegation_chain_witness_test.dag","spans":1,"nanos":5668051740,"exclusive":{"load":13963435,"parse":554346956,"resolve_modules":62866806,"normalize":69103652,"typecheck_compute":2345272986,"parent_envs":1084543,"reconcile_assembly":15066021,"ownership":74262677}},{"entry":"dag/test/claim/bmc_bootstrap_provision_witness_test.dag","spans":1,"nanos":1594535126,"exclusive":{"load":11432322,"parse":82512185,"resolve_modules":23267005,"normalize":10751931,"typecheck_compute":484589029,"parent_envs":227877,"reconcile_assembly":6336133,"ownership":10630571}},{"entry":"dag/test/claim/bmc_fan_converge_witness_test.dag","spans":1,"nanos":1152515037,"exclusive":{"load":13159524,"parse":92665006,"resolve_modules":16574677,"normalize":10558061,"typecheck_compute":467921633,"parent_envs":146041,"reconcile_assembly":4646646,"ownership":12268043}},{"entry":"dag/test/claim/bmc_onboarding_lifecycle_witness_test.dag","spans":1,"nanos":970626009,"exclusive":{"load":11033082,"parse":3403173,"resolve_modules":22573424,"normalize":619460,"typecheck_compute":32075924,"parent_envs":3940,"reconcile_assembly":5954212,"ownership":2301283}},{"entry":"dag/test/claim/bmc_token_federation_witness_test.dag","spans":1,"nanos":930483617,"exclusive":{"load":10664882,"parse":1476122,"resolve_modules":23620885,"normalize":367980,"typecheck_compute":23757275,"parent_envs":2690,"reconcile_assembly":5455928,"ownership":1358051}},{"entry":"dag/test/claim/annotation_carrier_witness_test.dag","spans":1,"nanos":563212365,"exclusive":{"load":9819920,"parse":45544067,"resolve_modules":5976646,"normalize":5466016,"typecheck_compute":240231989,"parent_envs":150502,"reconcile_assembly":2570083,"ownership":5137996}},{"entry":"dag/test/claim/bmc_netboot_serve_witness_test.dag","spans":1,"nanos":550021251,"exclusive":{"load":12936084,"parse":16962647,"resolve_modules":9899980,"normalize":2141932,"typecheck_compute":132437938,"parent_envs":78989,"reconcile_assembly":3338114,"ownership":2416473}},{"entry":"dag/test/claim/bmc_firmware_thermal_witness_test.dag","spans":1,"nanos":531459522,"exclusive":{"load":12798173,"parse":15270376,"resolve_modules":10817251,"normalize":1976482,"typecheck_compute":118522173,"parent_envs":11260,"reconcile_assembly":3005369,"ownership":3167883}},{"entry":"dag/test/claim/bmc_netboot_shell_boot_witness_test.dag","spans":1,"nanos":454697073,"exclusive":{"load":12488283,"parse":4105724,"resolve_modules":8193379,"normalize":697611,"typecheck_compute":35789397,"parent_envs":16050,"reconcile_assembly":3388556,"ownership":919391}},{"entry":"dag/test/claim/bmc_live_receipts_witness_test.dag","spans":1,"nanos":390393406,"exclusive":{"load":12502643,"parse":3718603,"resolve_modules":7726568,"normalize":386671,"typecheck_compute":16884487,"parent_envs":6680,"reconcile_assembly":3027459,"ownership":965341}},{"entry":"dag/test/claim/build_artifact_corruption_probe_witness_test.dag","spans":1,"nanos":386602222,"exclusive":{"load":10399741,"parse":14780666,"resolve_modules":6105786,"normalize":1536232,"typecheck_compute":86582459,"parent_envs":55508,"reconcile_assembly":2127099,"ownership":1803052}},{"entry":"dag/test/claim/bmc_onboard_body_witness_test.dag","spans":1,"nanos":378860803,"exclusive":{"load":10235800,"parse":7069618,"resolve_modules":6438156,"normalize":751531,"typecheck_compute":38007388,"parent_envs":24560,"reconcile_assembly":2725236,"ownership":1147831}},{"entry":"dag/test/claim/cache_key_completeness_test.dag","spans":1,"nanos":367634653,"exclusive":{"load":10387291,"parse":2627333,"resolve_modules":5971506,"normalize":330420,"typecheck_compute":27684879,"parent_envs":17210,"reconcile_assembly":1910345,"ownership":560900}},{"entry":"dag/test/claim/bmc_virtual_media_witness_test.dag","spans":1,"nanos":333963627,"exclusive":{"load":10650451,"parse":10341401,"resolve_modules":5864506,"normalize":1356761,"typecheck_compute":86329268,"parent_envs":41280,"reconcile_assembly":1860973,"ownership":1387272}},{"entry":"dag/test/claim/card_intake_risk_witness_test.dag","spans":1,"nanos":330332303,"exclusive":{"load":9314720,"parse":14685526,"resolve_modules":5151755,"normalize":1673892,"typecheck_compute":64043227,"parent_envs":42141,"reconcile_assembly":1673051,"ownership":1405141}},{"entry":"dag/test/claim/artifact_store_fs_witness_test.dag","spans":1,"nanos":319159382,"exclusive":{"load":9803130,"parse":10670521,"resolve_modules":4759145,"normalize":1176221,"typecheck_compute":60982703,"parent_envs":26869,"reconcile_assembly":1441332,"ownership":1551612}},{"entry":"dag/test/claim/build_cache_ensure_test.dag","spans":1,"nanos":294047886,"exclusive":{"load":9291930,"parse":7986398,"resolve_modules":4598045,"normalize":840221,"typecheck_compute":50756043,"parent_envs":11440,"reconcile_assembly":1379901,"ownership":959491}},{"entry":"dag/test/claim/artifact_store_witness_test.dag","spans":1,"nanos":286428978,"exclusive":{"load":10490451,"parse":9924450,"resolve_modules":4365795,"normalize":967951,"typecheck_compute":35937217,"parent_envs":14350,"reconcile_assembly":1482231,"ownership":1221751}},{"entry":"dag/test/claim/build_cache_endpoint_path_test.dag","spans":1,"nanos":266063396,"exclusive":{"load":9331660,"parse":7318807,"resolve_modules":3936734,"normalize":690830,"typecheck_compute":31559182,"parent_envs":12240,"reconcile_assembly":1492353,"ownership":715701}},{"entry":"dag/test/claim/access_layer_extension_witness_test.dag","spans":1,"nanos":243863583,"exclusive":{"load":6784997,"parse":14593495,"resolve_modules":1668872,"normalize":1909461,"typecheck_compute":83234048,"parent_envs":22568,"reconcile_assembly":806400,"ownership":1822302}},{"entry":"dag/test/claim/asrock_live_probe_witness_test.dag","spans":1,"nanos":236985066,"exclusive":{"load":10008321,"parse":6058806,"resolve_modules":2723013,"normalize":719121,"typecheck_compute":30917993,"parent_envs":19809,"reconcile_assembly":1169144,"ownership":741451}},{"entry":"dag/test/claim/accelerator_demo_gpu_witness_test.dag","spans":1,"nanos":233670693,"exclusive":{"load":10628541,"parse":6168896,"resolve_modules":2953843,"normalize":718711,"typecheck_compute":50348653,"parent_envs":25621,"reconcile_assembly":1297937,"ownership":649311}},{"entry":"dag/test/claim/artifact_store_scratch_grant_witness_test.dag","spans":1,"nanos":230122079,"exclusive":{"load":10063781,"parse":958641,"resolve_modules":3098924,"normalize":108480,"typecheck_compute":7261588,"parent_envs":5130,"reconcile_assembly":1302797,"ownership":290030}},{"entry":"dag/test/claim/accelerator_demo_model_witness_test.dag","spans":1,"nanos":230081969,"exclusive":{"load":10264001,"parse":913572,"resolve_modules":4185995,"normalize":146710,"typecheck_compute":8532859,"parent_envs":2340,"reconcile_assembly":1638647,"ownership":319970}},{"entry":"dag/test/claim/cache_layer_planner_test.dag","spans":1,"nanos":227871606,"exclusive":{"load":9300410,"parse":1280421,"resolve_modules":3351164,"normalize":174241,"typecheck_compute":22917034,"parent_envs":1920,"reconcile_assembly":1276766,"ownership":312040}},{"entry":"dag/test/claim/access_token_ensure_witness_test.dag","spans":1,"nanos":224211443,"exclusive":{"load":9458720,"parse":10426011,"resolve_modules":2209522,"normalize":1148581,"typecheck_compute":57060019,"parent_envs":24320,"reconcile_assembly":919059,"ownership":1115751}},{"entry":"dag/test/claim/busybox_bmc_build_witness_test.dag","spans":1,"nanos":217365575,"exclusive":{"load":10140090,"parse":2240833,"resolve_modules":3050853,"normalize":269420,"typecheck_compute":26981418,"parent_envs":17150,"reconcile_assembly":1277115,"ownership":447400}},{"entry":"dag/test/claim/bmc_redfish_grounding_witness_test.dag","spans":1,"nanos":216507355,"exclusive":{"load":10665721,"parse":3363903,"resolve_modules":3233333,"normalize":408640,"typecheck_compute":22275444,"parent_envs":5460,"reconcile_assembly":1236666,"ownership":661531}},{"entry":"dag/test/claim/bmc_capability_solve_witness_test.dag","spans":1,"nanos":214076132,"exclusive":{"load":11290202,"parse":4036375,"resolve_modules":3133854,"normalize":398421,"typecheck_compute":16602828,"parent_envs":10480,"reconcile_assembly":1287415,"ownership":681971}},{"entry":"dag/test/claim/bmc_typed_operations_witness_test.dag","spans":1,"nanos":210287108,"exclusive":{"load":8294649,"parse":4287084,"resolve_modules":3718714,"normalize":420350,"typecheck_compute":10744631,"parent_envs":4360,"reconcile_assembly":1212167,"ownership":471891}},{"entry":"dag/test/claim/bach_double_slit_path_additivity_synthetic_fixture_witness_test.dag","spans":1,"nanos":206565165,"exclusive":{"load":9862341,"parse":9546890,"resolve_modules":2485682,"normalize":969950,"typecheck_compute":28524099,"parent_envs":13501,"reconcile_assembly":798070,"ownership":1086931}},{"entry":"dag/test/claim/bmc_factory_credential_witness_test.dag","spans":1,"nanos":203075490,"exclusive":{"load":9986360,"parse":538410,"resolve_modules":2600203,"normalize":84770,"typecheck_compute":5474746,"parent_envs":2200,"reconcile_assembly":1238113,"ownership":244450}},{"entry":"dag/test/claim/access_iam_validation_test.dag","spans":1,"nanos":200552038,"exclusive":{"load":6928707,"parse":6301056,"resolve_modules":2349052,"normalize":844951,"typecheck_compute":35884307,"parent_envs":17439,"reconcile_assembly":860626,"ownership":568781}},{"entry":"dag/test/claim/builtin_get_resolver_test.dag","spans":1,"nanos":196613905,"exclusive":{"load":11547702,"parse":1445911,"resolve_modules":1344302,"normalize":173241,"typecheck_compute":9679030,"parent_envs":3790,"reconcile_assembly":507290,"ownership":184360}},{"entry":"dag/test/claim/bmc_auth_runtime_secret_seam_test.dag","spans":1,"nanos":195247914,"exclusive":{"load":10281331,"parse":4962815,"resolve_modules":2042582,"normalize":608251,"typecheck_compute":22895793,"parent_envs":13338,"reconcile_assembly":866237,"ownership":1008481}},{"entry":"dag/test/claim/bach_double_slit_observation_witness_test.dag","spans":1,"nanos":193920042,"exclusive":{"load":9513020,"parse":5941155,"resolve_modules":3270733,"normalize":693151,"typecheck_compute":23606594,"parent_envs":11740,"reconcile_assembly":741558,"ownership":762791}},{"entry":"dag/test/claim/cargo_target_path_witness_test.dag","spans":1,"nanos":174244821,"exclusive":{"load":9184529,"parse":2358302,"resolve_modules":1865563,"normalize":299381,"typecheck_compute":18225819,"parent_envs":9560,"reconcile_assembly":754012,"ownership":306820}},{"entry":"dag/test/claim/base64_rfc4648_witness_test.dag","spans":1,"nanos":171656618,"exclusive":{"load":9738720,"parse":1234001,"resolve_modules":1804261,"normalize":162060,"typecheck_compute":11938183,"parent_envs":1170,"reconcile_assembly":704084,"ownership":217640}},{"entry":"dag/test/claim/cargo_version_witness_test.dag","spans":1,"nanos":159643946,"exclusive":{"load":8987890,"parse":850331,"resolve_modules":1716281,"normalize":103380,"typecheck_compute":8265759,"parent_envs":1440,"reconcile_assembly":759688,"ownership":178350}},{"entry":"dag/test/claim/budget_tree_witness_test.dag","spans":1,"nanos":153743010,"exclusive":{"load":9503840,"parse":1717572,"resolve_modules":1554701,"normalize":221971,"typecheck_compute":16271687,"parent_envs":1510,"reconcile_assembly":521545,"ownership":194930}},{"entry":"dag/test/claim/advertising_interface_witness_test.dag","spans":1,"nanos":148653344,"exclusive":{"load":6632406,"parse":4166564,"resolve_modules":997061,"normalize":406790,"typecheck_compute":27668610,"parent_envs":24980,"reconcile_assembly":469949,"ownership":283680}},{"entry":"dag/test/claim/branded_list_first_optional_witness_test.dag","spans":1,"nanos":146693682,"exclusive":{"load":9329270,"parse":1310261,"resolve_modules":1678402,"normalize":126850,"typecheck_compute":8601428,"parent_envs":3900,"reconcile_assembly":567270,"ownership":189540}},{"entry":"dag/test/claim/acquisition_mechanism_witness_test.dag","spans":1,"nanos":144201569,"exclusive":{"load":6717897,"parse":3970814,"resolve_modules":1270461,"normalize":472311,"typecheck_compute":15947755,"parent_envs":8321,"reconcile_assembly":506970,"ownership":459740}},{"entry":"dag/test/claim/argv_command_render_witness_test.dag","spans":1,"nanos":135531221,"exclusive":{"load":8843449,"parse":2367922,"resolve_modules":1165681,"normalize":247880,"typecheck_compute":15953717,"parent_envs":6640,"reconcile_assembly":413012,"ownership":183801}},{"entry":"dag/test/claim/cache_purity_verdict_test.dag","spans":1,"nanos":130920106,"exclusive":{"load":6984267,"parse":1248921,"resolve_modules":864781,"normalize":139750,"typecheck_compute":11600872,"parent_envs":8150,"reconcile_assembly":390979,"ownership":135520}},{"entry":"dag/test/claim/access_authorization_profile_witness_test.dag","spans":1,"nanos":128488044,"exclusive":{"load":6541957,"parse":4855935,"resolve_modules":490271,"normalize":636321,"typecheck_compute":23074534,"parent_envs":8100,"reconcile_assembly":238878,"ownership":352990}},{"entry":"dag/test/claim/access_validation_test.dag","spans":1,"nanos":126640422,"exclusive":{"load":8743240,"parse":2642383,"resolve_modules":828811,"normalize":342761,"typecheck_compute":9858201,"parent_envs":3741,"reconcile_assembly":365753,"ownership":303411}}],"observations":{"witness_entry_resolve_wall_nanos":52351000000,"witness_eval_wall_nanos":76000000},"observations_note":"Elapsed-wall figures from the surrounding receipts. They measure a DIFFERENT universe than `parent_span_nanos` (witness-entry resolves only, or process wall across concurrent workers) and are reported, never partitioned."}
+=== ARM_TSV_END base-r1 ===
+=== ARM_TSV_BEGIN after-r1 ===
+label	after-r1
+binary_sha256	2edd2f5728046ac328d8354136112522baf8d1ac98e4b48c342e0207b7bc0ea8
+exit	1
+wall_ms	96000
+exclusive_assembly_ms	26887.0
+peak_rss_kb	6081740
+pass	48
+fail	2
+[resolve-summary] 50 resolve(s) in 49602ms; 50 witness(es) in 73ms
+[entry-view-assembly] closure_env keys=50 hits=0 misses=50 root_env keys=57 hits=672 misses=57 rewired keys=50 hits=0 misses=50
+[resolve-split] load=28821.3ms parse=2309.6ms resolve=368.9ms normalize=338.7ms typecheck=12569.4ms parent_envs=4.2ms reconcile_assembly=134.9ms ownership=329.2ms
+[assembly-split] schedule=12.4ms probe=13.6ms graph=5.6ms symbol_index=3698.9ms pool_fill=1734.6ms symbol_index_merge=293.8ms variant_base=189.9ms root_symbol_index=298.1ms root_variant_base=4099.5ms environment=227.5ms diagnostics=3.5ms registry=40.1ms services=1416.0ms rewire_type_env=590.3ms rewire_import_str=5967.3ms rewire_func_env=119.9ms emit_info=1373.6ms other=134.9ms rewire_total_observation=6677.5ms
+[cost-partition] {"basis":"summed_top_level_resolve_span_nanos","basis_note":"additive: each top-level resolve span's own duration, thread-sequential. Elapsed wall is NOT additive over concurrent spans and is carried under `observations`, never partitioned.","parent_span_nanos":65057628774,"spans":51,"nested_spans":0,"exclusive":{"load":28821321012,"parse":2309628730,"resolve_modules":368881614,"normalize":338713515,"typecheck_compute":12569355650,"parent_envs":4233832,"assembly_schedule":12351705,"assembly_probe":13610040,"assembly_graph":5571711,"assembly_symbol_index":3698942210,"assembly_pool_fill":1734620344,"assembly_symbol_index_merge":293759250,"assembly_variant_base":189918435,"assembly_root_symbol_index":298129289,"assembly_root_variant_base":4099460664,"assembly_environment":227505515,"assembly_diagnostics":3543949,"assembly_registry":40127583,"assembly_services":1415988091,"assembly_rewire_type_env":590335476,"assembly_rewire_import_str":5967271703,"assembly_rewire_func_env":119866172,"assembly_emit_info":1373608487,"reconcile_assembly":134878279,"ownership":329231546},"sum_exclusive_nanos":64960854802,"remainder_nanos":96773972,"inclusive":{"load_reference_scan":{"nanos":31139025,"contained_in":"load"},"load_import_closure":{"nanos":118048164,"contained_in":"load"},"load_bare_reference_closure":{"nanos":28460503301,"contained_in":"load"},"load_pool_reference_closure":{"nanos":136042813,"contained_in":"load"},"load_bare_edge_index":{"nanos":28344067218,"contained_in":"load_bare_reference_closure"},"load_bare_path_lookup":{"nanos":90584611,"contained_in":"load_bare_reference_closure"},"load_bare_edge_walk":{"nanos":4851817,"contained_in":"load_bare_reference_closure"}},"load_reference_scan_volume":{"bytes":12614305,"calls":1664,"fixpoint_rounds":92},"accounting_law":"parent_span_nanos == sum_exclusive_nanos + remainder_nanos","verdict":{"state":"Reconciled","residual_nanos":0,"tolerance_nanos":0},"span_nanos_by_entry":[{"entry":"dag/test/claim/accelerator_demo_execution_witness_test.dag","spans":1,"nanos":16016268421,"exclusive":{"load":14104675305,"parse":151465987,"resolve_modules":4848025,"normalize":25447837,"typecheck_compute":553821726,"parent_envs":236296,"reconcile_assembly":3424059,"ownership":19188960}},{"entry":"dag/gunbc/output_policy.dag","spans":1,"nanos":15432229414,"exclusive":{"load":14257335603,"parse":36474388,"resolve_modules":757441,"normalize":5070246,"typecheck_compute":112047394,"parent_envs":34471,"reconcile_assembly":772584,"ownership":3528394}},{"entry":"dag/test/claim/anomaly_evidence_witness_test.dag","spans":1,"nanos":7186816127,"exclusive":{"load":21523733,"parse":1064678697,"resolve_modules":32051463,"normalize":166388373,"typecheck_compute":4048734347,"parent_envs":1268263,"reconcile_assembly":13646760,"ownership":168921466}},{"entry":"dag/test/claim/build_cache_placement_observation_test.dag","spans":1,"nanos":6994224967,"exclusive":{"load":15194786,"parse":129411975,"resolve_modules":71730954,"normalize":19173010,"typecheck_compute":3108836748,"parent_envs":486921,"reconcile_assembly":21783949,"ownership":19269081}},{"entry":"dag/test/claim/bmc_wif_delegation_chain_witness_test.dag","spans":1,"nanos":5245742530,"exclusive":{"load":13274704,"parse":500650431,"resolve_modules":51572033,"normalize":69242432,"typecheck_compute":2214976807,"parent_envs":1069663,"reconcile_assembly":18181128,"ownership":66570160}},{"entry":"dag/test/claim/bmc_bootstrap_provision_witness_test.dag","spans":1,"nanos":1447136534,"exclusive":{"load":9455100,"parse":74031817,"resolve_modules":20359131,"normalize":10467201,"typecheck_compute":453241298,"parent_envs":227662,"reconcile_assembly":6873725,"ownership":9207050}},{"entry":"dag/test/claim/bmc_fan_converge_witness_test.dag","spans":1,"nanos":1041179442,"exclusive":{"load":11932262,"parse":81329894,"resolve_modules":13086893,"normalize":10299401,"typecheck_compute":441259808,"parent_envs":137178,"reconcile_assembly":4496698,"ownership":10810942}},{"entry":"dag/test/claim/bmc_onboarding_lifecycle_witness_test.dag","spans":1,"nanos":879643764,"exclusive":{"load":9829550,"parse":3094113,"resolve_modules":20115351,"normalize":502180,"typecheck_compute":31462353,"parent_envs":2830,"reconcile_assembly":6499668,"ownership":928821}},{"entry":"dag/test/claim/bmc_token_federation_witness_test.dag","spans":1,"nanos":845355808,"exclusive":{"load":9631050,"parse":1381981,"resolve_modules":19212340,"normalize":272441,"typecheck_compute":23323795,"parent_envs":3010,"reconcile_assembly":6533205,"ownership":688240}},{"entry":"dag/test/claim/annotation_carrier_witness_test.dag","spans":1,"nanos":550147521,"exclusive":{"load":9334109,"parse":46016118,"resolve_modules":5987706,"normalize":5587686,"typecheck_compute":232161941,"parent_envs":144012,"reconcile_assembly":2697841,"ownership":4619314}},{"entry":"dag/test/claim/bmc_netboot_serve_witness_test.dag","spans":1,"nanos":498357907,"exclusive":{"load":11309712,"parse":15729247,"resolve_modules":8268878,"normalize":2029022,"typecheck_compute":123826802,"parent_envs":75070,"reconcile_assembly":2939167,"ownership":1895532}},{"entry":"dag/test/claim/bmc_firmware_thermal_witness_test.dag","spans":1,"nanos":479089168,"exclusive":{"load":11989452,"parse":14241395,"resolve_modules":9076419,"normalize":1810531,"typecheck_compute":112616197,"parent_envs":10580,"reconcile_assembly":3296183,"ownership":2594163}},{"entry":"dag/test/claim/bmc_netboot_shell_boot_witness_test.dag","spans":1,"nanos":402683998,"exclusive":{"load":11495312,"parse":3809324,"resolve_modules":7613197,"normalize":495151,"typecheck_compute":34175476,"parent_envs":15209,"reconcile_assembly":2997710,"ownership":561691}},{"entry":"dag/test/claim/build_artifact_corruption_probe_witness_test.dag","spans":1,"nanos":353329737,"exclusive":{"load":9301289,"parse":13939604,"resolve_modules":5306586,"normalize":1510272,"typecheck_compute":81450592,"parent_envs":60611,"reconcile_assembly":1989254,"ownership":1492842}},{"entry":"dag/test/claim/bmc_live_receipts_witness_test.dag","spans":1,"nanos":350816395,"exclusive":{"load":11272262,"parse":3354583,"resolve_modules":7012817,"normalize":402470,"typecheck_compute":16018926,"parent_envs":6670,"reconcile_assembly":2564442,"ownership":602600}},{"entry":"dag/test/claim/bmc_onboard_body_witness_test.dag","spans":1,"nanos":344717479,"exclusive":{"load":9052589,"parse":6476816,"resolve_modules":6130897,"normalize":739451,"typecheck_compute":37076020,"parent_envs":16110,"reconcile_assembly":2355182,"ownership":812651}},{"entry":"dag/test/claim/cache_key_completeness_test.dag","spans":1,"nanos":334695698,"exclusive":{"load":9515600,"parse":2580162,"resolve_modules":5227766,"normalize":312050,"typecheck_compute":25772907,"parent_envs":15990,"reconcile_assembly":1775446,"ownership":366251}},{"entry":"dag/test/claim/bmc_virtual_media_witness_test.dag","spans":1,"nanos":308349040,"exclusive":{"load":9401330,"parse":9591490,"resolve_modules":4031994,"normalize":1281462,"typecheck_compute":83862447,"parent_envs":40850,"reconcile_assembly":1826355,"ownership":1134211}},{"entry":"dag/test/claim/card_intake_risk_witness_test.dag","spans":1,"nanos":300373202,"exclusive":{"load":8303359,"parse":13605564,"resolve_modules":4372845,"normalize":1642002,"typecheck_compute":59662490,"parent_envs":38199,"reconcile_assembly":1597826,"ownership":1148071}},{"entry":"dag/test/claim/artifact_store_fs_witness_test.dag","spans":1,"nanos":291976113,"exclusive":{"load":9223410,"parse":9984860,"resolve_modules":4056664,"normalize":1105520,"typecheck_compute":58952542,"parent_envs":27240,"reconcile_assembly":1393112,"ownership":1273471}},{"entry":"dag/test/claim/build_cache_ensure_test.dag","spans":1,"nanos":273444584,"exclusive":{"load":8435478,"parse":7539648,"resolve_modules":3924454,"normalize":780091,"typecheck_compute":49462141,"parent_envs":11430,"reconcile_assembly":1481295,"ownership":762121}},{"entry":"dag/test/claim/artifact_store_witness_test.dag","spans":1,"nanos":257246167,"exclusive":{"load":9414329,"parse":8908049,"resolve_modules":3981354,"normalize":930091,"typecheck_compute":33334164,"parent_envs":12180,"reconcile_assembly":1392842,"ownership":921451}},{"entry":"dag/test/claim/build_cache_endpoint_path_test.dag","spans":1,"nanos":244879424,"exclusive":{"load":8446958,"parse":6899647,"resolve_modules":3693314,"normalize":676981,"typecheck_compute":30711583,"parent_envs":12209,"reconcile_assembly":1318870,"ownership":540500}},{"entry":"dag/test/claim/access_layer_extension_witness_test.dag","spans":1,"nanos":239619128,"exclusive":{"load":6350576,"parse":14378785,"resolve_modules":1628212,"normalize":1814182,"typecheck_compute":82427534,"parent_envs":25270,"reconcile_assembly":776156,"ownership":1738432}},{"entry":"dag/test/claim/accelerator_demo_gpu_witness_test.dag","spans":1,"nanos":230439299,"exclusive":{"load":9713600,"parse":5720276,"resolve_modules":2816373,"normalize":699671,"typecheck_compute":49936192,"parent_envs":24000,"reconcile_assembly":1137003,"ownership":537931}},{"entry":"dag/test/claim/accelerator_demo_model_witness_test.dag","spans":1,"nanos":227338156,"exclusive":{"load":9384199,"parse":859830,"resolve_modules":4059314,"normalize":118970,"typecheck_compute":8427839,"parent_envs":1980,"reconcile_assembly":1483516,"ownership":148610}},{"entry":"dag/test/claim/access_token_ensure_witness_test.dag","spans":1,"nanos":220274849,"exclusive":{"load":8928399,"parse":10245301,"resolve_modules":2091172,"normalize":1129191,"typecheck_compute":55808190,"parent_envs":27080,"reconcile_assembly":888940,"ownership":1023122}},{"entry":"dag/test/claim/artifact_store_scratch_grant_witness_test.dag","spans":1,"nanos":213505572,"exclusive":{"load":9319489,"parse":918932,"resolve_modules":2896824,"normalize":111720,"typecheck_compute":7191098,"parent_envs":4470,"reconcile_assembly":1272107,"ownership":145000}},{"entry":"dag/test/claim/asrock_live_probe_witness_test.dag","spans":1,"nanos":209904118,"exclusive":{"load":8975199,"parse":5631085,"resolve_modules":2535743,"normalize":720621,"typecheck_compute":28910551,"parent_envs":20401,"reconcile_assembly":1016604,"ownership":559711}},{"entry":"dag/test/claim/cache_layer_planner_test.dag","spans":1,"nanos":209070257,"exclusive":{"load":8406018,"parse":1238331,"resolve_modules":3116554,"normalize":188470,"typecheck_compute":22451074,"parent_envs":1601,"reconcile_assembly":1155432,"ownership":205210}},{"entry":"dag/test/claim/bmc_redfish_grounding_witness_test.dag","spans":1,"nanos":201860860,"exclusive":{"load":9601400,"parse":2984883,"resolve_modules":2932673,"normalize":377660,"typecheck_compute":21963302,"parent_envs":6199,"reconcile_assembly":1132816,"ownership":443001}},{"entry":"dag/test/claim/bmc_capability_solve_witness_test.dag","spans":1,"nanos":199012507,"exclusive":{"load":10373161,"parse":3452704,"resolve_modules":2912073,"normalize":381720,"typecheck_compute":16292287,"parent_envs":10210,"reconcile_assembly":1093991,"ownership":440591}},{"entry":"dag/test/claim/busybox_bmc_build_witness_test.dag","spans":1,"nanos":196923725,"exclusive":{"load":8924338,"parse":2138972,"resolve_modules":2830423,"normalize":265061,"typecheck_compute":25503656,"parent_envs":15731,"reconcile_assembly":1006603,"ownership":302190}},{"entry":"dag/test/claim/bmc_typed_operations_witness_test.dag","spans":1,"nanos":195366793,"exclusive":{"load":7830088,"parse":3920984,"resolve_modules":3512154,"normalize":413710,"typecheck_compute":10738861,"parent_envs":4010,"reconcile_assembly":1193180,"ownership":311051}},{"entry":"dag/test/claim/access_iam_validation_test.dag","spans":1,"nanos":195265263,"exclusive":{"load":6570677,"parse":6257397,"resolve_modules":2218802,"normalize":844071,"typecheck_compute":34499796,"parent_envs":16710,"reconcile_assembly":795648,"ownership":498851}},{"entry":"dag/test/claim/builtin_get_resolver_test.dag","spans":1,"nanos":189686057,"exclusive":{"load":10641822,"parse":1285651,"resolve_modules":1236632,"normalize":163241,"typecheck_compute":8164229,"parent_envs":4380,"reconcile_assembly":451149,"ownership":110330}},{"entry":"dag/test/claim/bach_double_slit_path_additivity_synthetic_fixture_witness_test.dag","spans":1,"nanos":183083991,"exclusive":{"load":8823120,"parse":8671129,"resolve_modules":2043292,"normalize":904851,"typecheck_compute":26601618,"parent_envs":12001,"reconcile_assembly":719203,"ownership":973080}},{"entry":"dag/test/claim/bmc_factory_credential_witness_test.dag","spans":1,"nanos":176555774,"exclusive":{"load":8593869,"parse":516210,"resolve_modules":2341583,"normalize":71441,"typecheck_compute":5097095,"parent_envs":2170,"reconcile_assembly":1016199,"ownership":123331}},{"entry":"dag/test/claim/bmc_auth_runtime_secret_seam_test.dag","spans":1,"nanos":173275050,"exclusive":{"load":8111678,"parse":4898346,"resolve_modules":1863362,"normalize":603421,"typecheck_compute":20585791,"parent_envs":15070,"reconcile_assembly":835883,"ownership":891231}},{"entry":"dag/test/claim/bach_double_slit_observation_witness_test.dag","spans":1,"nanos":172780449,"exclusive":{"load":8864439,"parse":5650646,"resolve_modules":1933742,"normalize":677640,"typecheck_compute":22104544,"parent_envs":13129,"reconcile_assembly":727507,"ownership":645151}},{"entry":"dag/test/claim/cargo_target_path_witness_test.dag","spans":1,"nanos":165649032,"exclusive":{"load":8164348,"parse":2309563,"resolve_modules":1795632,"normalize":305280,"typecheck_compute":17054998,"parent_envs":10240,"reconcile_assembly":695163,"ownership":253560}},{"entry":"dag/test/claim/cargo_version_witness_test.dag","spans":1,"nanos":154324230,"exclusive":{"load":8039029,"parse":811891,"resolve_modules":1643331,"normalize":99390,"typecheck_compute":7499758,"parent_envs":1450,"reconcile_assembly":1185383,"ownership":111890}},{"entry":"dag/test/claim/base64_rfc4648_witness_test.dag","spans":1,"nanos":154034030,"exclusive":{"load":8821459,"parse":1217811,"resolve_modules":1658832,"normalize":165900,"typecheck_compute":11463531,"parent_envs":1530,"reconcile_assembly":641658,"ownership":158520}},{"entry":"dag/test/claim/advertising_interface_witness_test.dag","spans":1,"nanos":145951742,"exclusive":{"load":6336187,"parse":4055634,"resolve_modules":1022721,"normalize":402111,"typecheck_compute":26352166,"parent_envs":24478,"reconcile_assembly":484710,"ownership":257770}},{"entry":"dag/test/claim/acquisition_mechanism_witness_test.dag","spans":1,"nanos":143527369,"exclusive":{"load":6247307,"parse":3938975,"resolve_modules":1217151,"normalize":476320,"typecheck_compute":15408446,"parent_envs":7960,"reconcile_assembly":464154,"ownership":420380}},{"entry":"dag/test/claim/budget_tree_witness_test.dag","spans":1,"nanos":142619348,"exclusive":{"load":8411779,"parse":1673582,"resolve_modules":1391471,"normalize":222331,"typecheck_compute":15684086,"parent_envs":1570,"reconcile_assembly":466036,"ownership":159980}},{"entry":"dag/test/claim/branded_list_first_optional_witness_test.dag","spans":1,"nanos":139875406,"exclusive":{"load":8231909,"parse":1248972,"resolve_modules":1551791,"normalize":114760,"typecheck_compute":7283337,"parent_envs":3190,"reconcile_assembly":537591,"ownership":105650}},{"entry":"dag/test/claim/argv_command_render_witness_test.dag","spans":1,"nanos":128496894,"exclusive":{"load":7940819,"parse":2122832,"resolve_modules":1134992,"normalize":219321,"typecheck_compute":13247554,"parent_envs":7429,"reconcile_assembly":866158,"ownership":148550}},{"entry":"dag/test/claim/access_validation_test.dag","spans":1,"nanos":125148150,"exclusive":{"load":8256739,"parse":2508212,"resolve_modules":804332,"normalize":333741,"typecheck_compute":9504739,"parent_envs":3500,"reconcile_assembly":353656,"ownership":264340}},{"entry":"dag/test/claim/access_authorization_profile_witness_test.dag","spans":1,"nanos":124608270,"exclusive":{"load":5927486,"parse":4573195,"resolve_modules":462531,"normalize":603110,"typecheck_compute":21769303,"parent_envs":7810,"reconcile_assembly":242135,"ownership":307450}},{"entry":"dag/test/claim/cache_purity_verdict_test.dag","spans":1,"nanos":120729015,"exclusive":{"load":6184596,"parse":1202811,"resolve_modules":811380,"normalize":119709,"typecheck_compute":10595571,"parent_envs":7609,"reconcile_assembly":402397,"ownership":108650}}],"observations":{"witness_entry_resolve_wall_nanos":49602000000,"witness_eval_wall_nanos":73000000},"observations_note":"Elapsed-wall figures from the surrounding receipts. They measure a DIFFERENT universe than `parent_span_nanos` (witness-entry resolves only, or process wall across concurrent workers) and are reported, never partitioned."}
+=== ARM_TSV_END after-r1 ===
+=== ARM_TSV_BEGIN base-r2 ===
+label	base-r2
+binary_sha256	beb499507755ada79e07d44b3902b7ce927998e7931f83270292c5340f7e6548
+exit	1
+wall_ms	96000
+exclusive_assembly_ms	27205.0
+peak_rss_kb	5976883
+pass	48
+fail	2
+[resolve-summary] 50 resolve(s) in 50216ms; 50 witness(es) in 74ms
+[resolve-split] load=29025.7ms parse=2328.9ms resolve=382.9ms normalize=340.7ms typecheck=12754.3ms parent_envs=4.1ms reconcile_assembly=126.0ms ownership=373.5ms
+[assembly-split] schedule=12.8ms probe=14.0ms graph=5.8ms symbol_index=3780.9ms pool_fill=1749.8ms symbol_index_merge=292.2ms variant_base=194.6ms root_symbol_index=293.4ms root_variant_base=4098.4ms environment=232.3ms diagnostics=3.6ms registry=40.7ms services=1438.3ms rewire_type_env=603.9ms rewire_import_str=6042.7ms rewire_func_env=121.1ms emit_info=1396.3ms other=126.0ms rewire_total_observation=6767.8ms
+[cost-partition] {"basis":"summed_top_level_resolve_span_nanos","basis_note":"additive: each top-level resolve span's own duration, thread-sequential. Elapsed wall is NOT additive over concurrent spans and is carried under `observations`, never partitioned.","parent_span_nanos":65755831571,"spans":51,"nested_spans":0,"exclusive":{"load":29025745967,"parse":2328912447,"resolve_modules":382933026,"normalize":340675560,"typecheck_compute":12754319071,"parent_envs":4111941,"assembly_schedule":12847368,"assembly_probe":13979825,"assembly_graph":5813977,"assembly_symbol_index":3780881517,"assembly_pool_fill":1749756398,"assembly_symbol_index_merge":292178386,"assembly_variant_base":194583089,"assembly_root_symbol_index":293414603,"assembly_root_variant_base":4098427757,"assembly_environment":232344517,"assembly_diagnostics":3649134,"assembly_registry":40703411,"assembly_services":1438288069,"assembly_rewire_type_env":603887951,"assembly_rewire_import_str":6042737041,"assembly_rewire_func_env":121117927,"assembly_emit_info":1396259719,"reconcile_assembly":125979430,"ownership":373513820},"sum_exclusive_nanos":65657061951,"remainder_nanos":98769620,"inclusive":{"load_reference_scan":{"nanos":31993111,"contained_in":"load"},"load_import_closure":{"nanos":129582059,"contained_in":"load"},"load_bare_reference_closure":{"nanos":28630361360,"contained_in":"load"},"load_pool_reference_closure":{"nanos":146713450,"contained_in":"load"},"load_bare_edge_index":{"nanos":28502302630,"contained_in":"load_bare_reference_closure"},"load_bare_path_lookup":{"nanos":101267862,"contained_in":"load_bare_reference_closure"},"load_bare_edge_walk":{"nanos":5107809,"contained_in":"load_bare_reference_closure"}},"load_reference_scan_volume":{"bytes":12614305,"calls":1664,"fixpoint_rounds":92},"accounting_law":"parent_span_nanos == sum_exclusive_nanos + remainder_nanos","verdict":{"state":"Reconciled","residual_nanos":0,"tolerance_nanos":0},"span_nanos_by_entry":[{"entry":"dag/test/claim/accelerator_demo_execution_witness_test.dag","spans":1,"nanos":16115776955,"exclusive":{"load":14180530914,"parse":152930348,"resolve_modules":4826426,"normalize":25487437,"typecheck_compute":559146029,"parent_envs":236942,"reconcile_assembly":3597922,"ownership":20585101}},{"entry":"dag/gunbc/output_policy.dag","spans":1,"nanos":15516088792,"exclusive":{"load":14339879339,"parse":36184708,"resolve_modules":737111,"normalize":5170175,"typecheck_compute":111077756,"parent_envs":32192,"reconcile_assembly":730537,"ownership":3586863}},{"entry":"dag/test/claim/anomaly_evidence_witness_test.dag","spans":1,"nanos":7299122594,"exclusive":{"load":22538923,"parse":1068164200,"resolve_modules":33298315,"normalize":166470413,"typecheck_compute":4110813177,"parent_envs":1201857,"reconcile_assembly":11573878,"ownership":184351641}},{"entry":"dag/test/claim/build_cache_placement_observation_test.dag","spans":1,"nanos":7093644910,"exclusive":{"load":16561527,"parse":129420464,"resolve_modules":72683316,"normalize":19370120,"typecheck_compute":3154645880,"parent_envs":470507,"reconcile_assembly":18018429,"ownership":24263985}},{"entry":"dag/test/claim/bmc_wif_delegation_chain_witness_test.dag","spans":1,"nanos":5290654468,"exclusive":{"load":14338775,"parse":501961142,"resolve_modules":52587425,"normalize":69375342,"typecheck_compute":2220015869,"parent_envs":1046007,"reconcile_assembly":14981739,"ownership":75739569}},{"entry":"dag/test/claim/bmc_bootstrap_provision_witness_test.dag","spans":1,"nanos":1463461151,"exclusive":{"load":10101701,"parse":74571288,"resolve_modules":20760201,"normalize":10491151,"typecheck_compute":459538175,"parent_envs":208740,"reconcile_assembly":6023419,"ownership":11087041}},{"entry":"dag/test/claim/bmc_fan_converge_witness_test.dag","spans":1,"nanos":1063506835,"exclusive":{"load":13149264,"parse":82484685,"resolve_modules":13735734,"normalize":10389970,"typecheck_compute":449616604,"parent_envs":132079,"reconcile_assembly":4703409,"ownership":12562473}},{"entry":"dag/test/claim/bmc_onboarding_lifecycle_witness_test.dag","spans":1,"nanos":895565030,"exclusive":{"load":11171791,"parse":3395114,"resolve_modules":20855192,"normalize":609710,"typecheck_compute":32163573,"parent_envs":3430,"reconcile_assembly":5770199,"ownership":2037312}},{"entry":"dag/test/claim/bmc_token_federation_witness_test.dag","spans":1,"nanos":855725819,"exclusive":{"load":10851932,"parse":1453041,"resolve_modules":20614211,"normalize":370061,"typecheck_compute":23805365,"parent_envs":3880,"reconcile_assembly":5563060,"ownership":1752122}},{"entry":"dag/test/claim/annotation_carrier_witness_test.dag","spans":1,"nanos":557496229,"exclusive":{"load":9955520,"parse":45998598,"resolve_modules":6108506,"normalize":5602706,"typecheck_compute":236924438,"parent_envs":148541,"reconcile_assembly":2599379,"ownership":5257755}},{"entry":"dag/test/claim/bmc_netboot_serve_witness_test.dag","spans":1,"nanos":510710401,"exclusive":{"load":12900564,"parse":17120378,"resolve_modules":8989100,"normalize":2239972,"typecheck_compute":126850120,"parent_envs":77079,"reconcile_assembly":3126809,"ownership":2353963}},{"entry":"dag/test/claim/bmc_firmware_thermal_witness_test.dag","spans":1,"nanos":491334940,"exclusive":{"load":13097433,"parse":15688486,"resolve_modules":9327769,"normalize":1929492,"typecheck_compute":115867861,"parent_envs":12349,"reconcile_assembly":3149764,"ownership":3185724}},{"entry":"dag/test/claim/bmc_netboot_shell_boot_witness_test.dag","spans":1,"nanos":411864898,"exclusive":{"load":12594773,"parse":4117594,"resolve_modules":7988188,"normalize":520311,"typecheck_compute":34890888,"parent_envs":16330,"reconcile_assembly":3225178,"ownership":946551}},{"entry":"dag/test/claim/bmc_live_receipts_witness_test.dag","spans":1,"nanos":361272166,"exclusive":{"load":12672873,"parse":3511863,"resolve_modules":8100659,"normalize":389690,"typecheck_compute":17197418,"parent_envs":7290,"reconcile_assembly":2963541,"ownership":1012392}},{"entry":"dag/test/claim/build_artifact_corruption_probe_witness_test.dag","spans":1,"nanos":360714955,"exclusive":{"load":9998731,"parse":14158124,"resolve_modules":5408036,"normalize":1550471,"typecheck_compute":81967222,"parent_envs":56415,"reconcile_assembly":2044680,"ownership":1768322}},{"entry":"dag/test/claim/bmc_onboard_body_witness_test.dag","spans":1,"nanos":351302915,"exclusive":{"load":10599581,"parse":7109197,"resolve_modules":6372816,"normalize":758380,"typecheck_compute":38204508,"parent_envs":15321,"reconcile_assembly":2825971,"ownership":1155861}},{"entry":"dag/test/claim/cache_key_completeness_test.dag","spans":1,"nanos":341375335,"exclusive":{"load":10282841,"parse":2703352,"resolve_modules":5566466,"normalize":329020,"typecheck_compute":26469379,"parent_envs":16610,"reconcile_assembly":1993317,"ownership":567401}},{"entry":"dag/test/claim/bmc_virtual_media_witness_test.dag","spans":1,"nanos":311360514,"exclusive":{"load":10521171,"parse":10104900,"resolve_modules":4190665,"normalize":1329841,"typecheck_compute":84880170,"parent_envs":40839,"reconcile_assembly":1843865,"ownership":1369742}},{"entry":"dag/test/claim/card_intake_risk_witness_test.dag","spans":1,"nanos":303259515,"exclusive":{"load":8534868,"parse":13709944,"resolve_modules":4326904,"normalize":1604112,"typecheck_compute":61649067,"parent_envs":38740,"reconcile_assembly":1686147,"ownership":1390362}},{"entry":"dag/test/claim/artifact_store_fs_witness_test.dag","spans":1,"nanos":295945998,"exclusive":{"load":10055251,"parse":10497701,"resolve_modules":4206044,"normalize":1252791,"typecheck_compute":61021874,"parent_envs":26691,"reconcile_assembly":1479719,"ownership":1554622}},{"entry":"dag/test/claim/build_cache_ensure_test.dag","spans":1,"nanos":278847920,"exclusive":{"load":9427110,"parse":7949048,"resolve_modules":4140644,"normalize":849501,"typecheck_compute":51064913,"parent_envs":12170,"reconcile_assembly":1483838,"ownership":949731}},{"entry":"dag/test/claim/artifact_store_witness_test.dag","spans":1,"nanos":261371772,"exclusive":{"load":10420371,"parse":8769330,"resolve_modules":4026825,"normalize":1006041,"typecheck_compute":34726956,"parent_envs":14240,"reconcile_assembly":1384230,"ownership":1218522}},{"entry":"dag/test/claim/build_cache_endpoint_path_test.dag","spans":1,"nanos":245216385,"exclusive":{"load":9328190,"parse":7386418,"resolve_modules":3916924,"normalize":713931,"typecheck_compute":30135421,"parent_envs":13130,"reconcile_assembly":1376819,"ownership":697721}},{"entry":"dag/test/claim/access_layer_extension_witness_test.dag","spans":1,"nanos":242959033,"exclusive":{"load":6741338,"parse":14698535,"resolve_modules":1697712,"normalize":1818202,"typecheck_compute":83846485,"parent_envs":25651,"reconcile_assembly":816026,"ownership":1869712}},{"entry":"dag/test/claim/accelerator_demo_gpu_witness_test.dag","spans":1,"nanos":235843315,"exclusive":{"load":10647021,"parse":6019616,"resolve_modules":2994123,"normalize":735761,"typecheck_compute":51421253,"parent_envs":26390,"reconcile_assembly":1303150,"ownership":679340}},{"entry":"dag/test/claim/accelerator_demo_model_witness_test.dag","spans":1,"nanos":232621131,"exclusive":{"load":10352921,"parse":918551,"resolve_modules":4130364,"normalize":157680,"typecheck_compute":8841539,"parent_envs":2270,"reconcile_assembly":1623395,"ownership":326120}},{"entry":"dag/test/claim/access_token_ensure_witness_test.dag","spans":1,"nanos":222204861,"exclusive":{"load":9418480,"parse":10518451,"resolve_modules":2109542,"normalize":1185702,"typecheck_compute":57312220,"parent_envs":25669,"reconcile_assembly":902493,"ownership":1128341}},{"entry":"dag/test/claim/asrock_live_probe_witness_test.dag","spans":1,"nanos":215056204,"exclusive":{"load":10150261,"parse":6030847,"resolve_modules":2633102,"normalize":722991,"typecheck_compute":30500061,"parent_envs":19989,"reconcile_assembly":1130821,"ownership":721721}},{"entry":"dag/test/claim/artifact_store_scratch_grant_witness_test.dag","spans":1,"nanos":215001484,"exclusive":{"load":10032111,"parse":956950,"resolve_modules":3071073,"normalize":97320,"typecheck_compute":7629718,"parent_envs":4341,"reconcile_assembly":1272652,"ownership":306961}},{"entry":"dag/test/claim/cache_layer_planner_test.dag","spans":1,"nanos":211216069,"exclusive":{"load":9340740,"parse":1277611,"resolve_modules":3317314,"normalize":176490,"typecheck_compute":22716924,"parent_envs":2121,"reconcile_assembly":1317962,"ownership":316650}},{"entry":"dag/test/claim/bmc_redfish_grounding_witness_test.dag","spans":1,"nanos":210545819,"exclusive":{"load":10703851,"parse":3523333,"resolve_modules":3113453,"normalize":405610,"typecheck_compute":23281405,"parent_envs":5569,"reconcile_assembly":1196530,"ownership":641751}},{"entry":"dag/test/claim/bmc_capability_solve_witness_test.dag","spans":1,"nanos":202110771,"exclusive":{"load":10995122,"parse":3922995,"resolve_modules":3270534,"normalize":401670,"typecheck_compute":16757777,"parent_envs":10660,"reconcile_assembly":1231618,"ownership":634370}},{"entry":"dag/test/claim/busybox_bmc_build_witness_test.dag","spans":1,"nanos":201222089,"exclusive":{"load":9867791,"parse":2232652,"resolve_modules":3131453,"normalize":265901,"typecheck_compute":26267458,"parent_envs":15591,"reconcile_assembly":1075179,"ownership":424790}},{"entry":"dag/test/claim/bmc_typed_operations_witness_test.dag","spans":1,"nanos":199889699,"exclusive":{"load":8947259,"parse":4265774,"resolve_modules":3806924,"normalize":418560,"typecheck_compute":11133662,"parent_envs":4471,"reconcile_assembly":1214797,"ownership":478020}},{"entry":"dag/test/claim/access_iam_validation_test.dag","spans":1,"nanos":199008187,"exclusive":{"load":6874908,"parse":6299216,"resolve_modules":2440883,"normalize":839061,"typecheck_compute":36171998,"parent_envs":17370,"reconcile_assembly":892320,"ownership":573451}},{"entry":"dag/test/claim/builtin_get_resolver_test.dag","spans":1,"nanos":198709296,"exclusive":{"load":12748454,"parse":1372562,"resolve_modules":1323181,"normalize":173271,"typecheck_compute":9377841,"parent_envs":3360,"reconcile_assembly":499090,"ownership":185540}},{"entry":"dag/test/claim/bach_double_slit_path_additivity_synthetic_fixture_witness_test.dag","spans":1,"nanos":187989406,"exclusive":{"load":9414010,"parse":9046470,"resolve_modules":2198732,"normalize":923081,"typecheck_compute":28214360,"parent_envs":12750,"reconcile_assembly":803840,"ownership":1066922}},{"entry":"dag/test/claim/bmc_factory_credential_witness_test.dag","spans":1,"nanos":182848260,"exclusive":{"load":9735959,"parse":534941,"resolve_modules":2578102,"normalize":82310,"typecheck_compute":5418456,"parent_envs":2260,"reconcile_assembly":1182888,"ownership":239580}},{"entry":"dag/test/claim/bmc_auth_runtime_secret_seam_test.dag","spans":1,"nanos":176833824,"exclusive":{"load":8962340,"parse":5029185,"resolve_modules":1905922,"normalize":596930,"typecheck_compute":21698642,"parent_envs":14141,"reconcile_assembly":882888,"ownership":967941}},{"entry":"dag/test/claim/bach_double_slit_observation_witness_test.dag","spans":1,"nanos":175088612,"exclusive":{"load":9636930,"parse":6135666,"resolve_modules":2062502,"normalize":679710,"typecheck_compute":23369715,"parent_envs":10910,"reconcile_assembly":727372,"ownership":741491}},{"entry":"dag/test/claim/cargo_target_path_witness_test.dag","spans":1,"nanos":165379162,"exclusive":{"load":9214469,"parse":2399073,"resolve_modules":1877132,"normalize":311190,"typecheck_compute":18149089,"parent_envs":9590,"reconcile_assembly":786738,"ownership":311901}},{"entry":"dag/test/claim/base64_rfc4648_witness_test.dag","spans":1,"nanos":155175862,"exclusive":{"load":9445171,"parse":1255201,"resolve_modules":1737362,"normalize":160770,"typecheck_compute":12104143,"parent_envs":1639,"reconcile_assembly":688551,"ownership":223490}},{"entry":"dag/test/claim/cargo_version_witness_test.dag","spans":1,"nanos":152644068,"exclusive":{"load":8920640,"parse":827251,"resolve_modules":1770762,"normalize":104390,"typecheck_compute":8139888,"parent_envs":1630,"reconcile_assembly":731526,"ownership":173200}},{"entry":"dag/test/claim/advertising_interface_witness_test.dag","spans":1,"nanos":147937134,"exclusive":{"load":6709438,"parse":4231285,"resolve_modules":981391,"normalize":408120,"typecheck_compute":27543829,"parent_envs":25340,"reconcile_assembly":479869,"ownership":280880}},{"entry":"dag/test/claim/budget_tree_witness_test.dag","spans":1,"nanos":146739272,"exclusive":{"load":9288949,"parse":1786152,"resolve_modules":1573661,"normalize":226100,"typecheck_compute":16172797,"parent_envs":1809,"reconcile_assembly":544752,"ownership":205380}},{"entry":"dag/test/claim/branded_list_first_optional_witness_test.dag","spans":1,"nanos":146729672,"exclusive":{"load":9793240,"parse":1417502,"resolve_modules":1598351,"normalize":123970,"typecheck_compute":8436819,"parent_envs":3040,"reconcile_assembly":566052,"ownership":183560}},{"entry":"dag/test/claim/acquisition_mechanism_witness_test.dag","spans":1,"nanos":144357020,"exclusive":{"load":6814868,"parse":3894854,"resolve_modules":1336381,"normalize":514180,"typecheck_compute":16210707,"parent_envs":8430,"reconcile_assembly":477790,"ownership":486060}},{"entry":"dag/test/claim/argv_command_render_witness_test.dag","spans":1,"nanos":135499321,"exclusive":{"load":9044010,"parse":2320672,"resolve_modules":1219601,"normalize":239400,"typecheck_compute":16654147,"parent_envs":6540,"reconcile_assembly":423388,"ownership":189850}},{"entry":"dag/test/claim/access_authorization_profile_witness_test.dag","spans":1,"nanos":128348854,"exclusive":{"load":6608997,"parse":4831965,"resolve_modules":540000,"normalize":623131,"typecheck_compute":22916403,"parent_envs":8441,"reconcile_assembly":272292,"ownership":333451}},{"entry":"dag/test/claim/access_validation_test.dag","spans":1,"nanos":126215202,"exclusive":{"load":8851289,"parse":2537552,"resolve_modules":916941,"normalize":346791,"typecheck_compute":9898730,"parent_envs":2700,"reconcile_assembly":354222,"ownership":294321}},{"entry":"dag/test/claim/cache_purity_verdict_test.dag","spans":1,"nanos":122037447,"exclusive":{"load":6971957,"parse":1237662,"resolve_modules":829051,"normalize":126630,"typecheck_compute":11460342,"parent_envs":7890,"reconcile_assembly":435380,"ownership":134250}}],"observations":{"witness_entry_resolve_wall_nanos":50216000000,"witness_eval_wall_nanos":74000000},"observations_note":"Elapsed-wall figures from the surrounding receipts. They measure a DIFFERENT universe than `parent_span_nanos` (witness-entry resolves only, or process wall across concurrent workers) and are reported, never partitioned."}
+=== ARM_TSV_END base-r2 ===
+=== ARM_TSV_BEGIN after-r2 ===
+label	after-r2
+binary_sha256	2edd2f5728046ac328d8354136112522baf8d1ac98e4b48c342e0207b7bc0ea8
+exit	1
+wall_ms	97000
+exclusive_assembly_ms	26873.0
+peak_rss_kb	6081740
+pass	48
+fail	2
+[resolve-summary] 50 resolve(s) in 49635ms; 50 witness(es) in 73ms
+[entry-view-assembly] closure_env keys=50 hits=0 misses=50 root_env keys=57 hits=672 misses=57 rewired keys=50 hits=0 misses=50
+[resolve-split] load=28991.4ms parse=2299.9ms resolve=367.3ms normalize=340.2ms typecheck=12565.8ms parent_envs=4.3ms reconcile_assembly=135.3ms ownership=328.7ms
+[assembly-split] schedule=12.3ms probe=13.8ms graph=5.5ms symbol_index=3696.7ms pool_fill=1748.4ms symbol_index_merge=284.4ms variant_base=190.2ms root_symbol_index=292.6ms root_variant_base=4013.0ms environment=229.6ms diagnostics=3.6ms registry=39.9ms services=1417.3ms rewire_type_env=586.1ms rewire_import_str=6006.8ms rewire_func_env=119.9ms emit_info=1374.1ms other=135.3ms rewire_total_observation=6712.9ms
+[cost-partition] {"basis":"summed_top_level_resolve_span_nanos","basis_note":"additive: each top-level resolve span's own duration, thread-sequential. Elapsed wall is NOT additive over concurrent spans and is carried under `observations`, never partitioned.","parent_span_nanos":65162833358,"spans":51,"nested_spans":0,"exclusive":{"load":28991391860,"parse":2299926235,"resolve_modules":367262570,"normalize":340167951,"typecheck_compute":12565842348,"parent_envs":4276650,"assembly_schedule":12311499,"assembly_probe":13756748,"assembly_graph":5546903,"assembly_symbol_index":3696665882,"assembly_pool_fill":1748416896,"assembly_symbol_index_merge":284365493,"assembly_variant_base":190172583,"assembly_root_symbol_index":292609844,"assembly_root_variant_base":4012967781,"assembly_environment":229620386,"assembly_diagnostics":3616854,"assembly_registry":39850225,"assembly_services":1417266429,"assembly_rewire_type_env":586120138,"assembly_rewire_import_str":6006818110,"assembly_rewire_func_env":119903646,"assembly_emit_info":1374096547,"reconcile_assembly":135349000,"ownership":328711974},"sum_exclusive_nanos":65067034552,"remainder_nanos":95798806,"inclusive":{"load_reference_scan":{"nanos":30916525,"contained_in":"load"},"load_import_closure":{"nanos":119421585,"contained_in":"load"},"load_bare_reference_closure":{"nanos":28630717027,"contained_in":"load"},"load_pool_reference_closure":{"nanos":136486339,"contained_in":"load"},"load_bare_edge_index":{"nanos":28513325136,"contained_in":"load_bare_reference_closure"},"load_bare_path_lookup":{"nanos":90729971,"contained_in":"load_bare_reference_closure"},"load_bare_edge_walk":{"nanos":4971015,"contained_in":"load_bare_reference_closure"}},"load_reference_scan_volume":{"bytes":12614305,"calls":1664,"fixpoint_rounds":92},"accounting_law":"parent_span_nanos == sum_exclusive_nanos + remainder_nanos","verdict":{"state":"Reconciled","residual_nanos":0,"tolerance_nanos":0},"span_nanos_by_entry":[{"entry":"dag/test/claim/accelerator_demo_execution_witness_test.dag","spans":1,"nanos":16123484502,"exclusive":{"load":14208794143,"parse":152537599,"resolve_modules":4916135,"normalize":25287326,"typecheck_compute":551173187,"parent_envs":241903,"reconcile_assembly":3464688,"ownership":19713671}},{"entry":"dag/gunbc/output_policy.dag","spans":1,"nanos":15506348142,"exclusive":{"load":14323984852,"parse":36313188,"resolve_modules":724671,"normalize":5095066,"typecheck_compute":110844846,"parent_envs":34741,"reconcile_assembly":744826,"ownership":3605514}},{"entry":"dag/test/claim/anomaly_evidence_witness_test.dag","spans":1,"nanos":7168644099,"exclusive":{"load":21159412,"parse":1059230641,"resolve_modules":32460503,"normalize":168173744,"typecheck_compute":4029572009,"parent_envs":1212310,"reconcile_assembly":13567117,"ownership":167452554}},{"entry":"dag/test/claim/build_cache_placement_observation_test.dag","spans":1,"nanos":6995193568,"exclusive":{"load":15043196,"parse":128564114,"resolve_modules":70014462,"normalize":18906260,"typecheck_compute":3117046661,"parent_envs":453361,"reconcile_assembly":21588232,"ownership":19033650}},{"entry":"dag/test/claim/bmc_wif_delegation_chain_witness_test.dag","spans":1,"nanos":5256367202,"exclusive":{"load":12936093,"parse":496654826,"resolve_modules":50827333,"normalize":69161912,"typecheck_compute":2216099403,"parent_envs":1096382,"reconcile_assembly":18390298,"ownership":66844540}},{"entry":"dag/test/claim/bmc_bootstrap_provision_witness_test.dag","spans":1,"nanos":1449860836,"exclusive":{"load":9511950,"parse":74335967,"resolve_modules":20379942,"normalize":10676280,"typecheck_compute":454886853,"parent_envs":211362,"reconcile_assembly":6929758,"ownership":9393539}},{"entry":"dag/test/claim/bmc_fan_converge_witness_test.dag","spans":1,"nanos":1051486833,"exclusive":{"load":11906133,"parse":81524815,"resolve_modules":13455563,"normalize":10341240,"typecheck_compute":447146564,"parent_envs":143450,"reconcile_assembly":4558277,"ownership":10904742}},{"entry":"dag/test/claim/bmc_onboarding_lifecycle_witness_test.dag","spans":1,"nanos":880797226,"exclusive":{"load":9790481,"parse":3053952,"resolve_modules":20332021,"normalize":512190,"typecheck_compute":31159393,"parent_envs":2760,"reconcile_assembly":6499306,"ownership":856391}},{"entry":"dag/test/claim/bmc_token_federation_witness_test.dag","spans":1,"nanos":837712881,"exclusive":{"load":9576870,"parse":1385171,"resolve_modules":19350851,"normalize":278000,"typecheck_compute":23385174,"parent_envs":3450,"reconcile_assembly":6450870,"ownership":634210}},{"entry":"dag/test/claim/annotation_carrier_witness_test.dag","spans":1,"nanos":549721371,"exclusive":{"load":9383880,"parse":45731787,"resolve_modules":5877786,"normalize":5485356,"typecheck_compute":231668100,"parent_envs":150181,"reconcile_assembly":2691890,"ownership":4645325}},{"entry":"dag/test/claim/bmc_netboot_serve_witness_test.dag","spans":1,"nanos":496316126,"exclusive":{"load":11526072,"parse":15802177,"resolve_modules":8226868,"normalize":1991783,"typecheck_compute":124395580,"parent_envs":75318,"reconcile_assembly":3045014,"ownership":1878182}},{"entry":"dag/test/claim/bmc_firmware_thermal_witness_test.dag","spans":1,"nanos":480034448,"exclusive":{"load":11850792,"parse":14792895,"resolve_modules":8390759,"normalize":1877712,"typecheck_compute":113283938,"parent_envs":10790,"reconcile_assembly":3496117,"ownership":2606482}},{"entry":"dag/test/claim/bmc_netboot_shell_boot_witness_test.dag","spans":1,"nanos":399770845,"exclusive":{"load":11337281,"parse":3740154,"resolve_modules":7582108,"normalize":492240,"typecheck_compute":34250916,"parent_envs":16209,"reconcile_assembly":2963091,"ownership":569371}},{"entry":"dag/test/claim/build_artifact_corruption_probe_witness_test.dag","spans":1,"nanos":358088112,"exclusive":{"load":9377420,"parse":13945204,"resolve_modules":5365776,"normalize":1496192,"typecheck_compute":82454653,"parent_envs":55201,"reconcile_assembly":1931270,"ownership":1506541}},{"entry":"dag/test/claim/bmc_live_receipts_witness_test.dag","spans":1,"nanos":348726172,"exclusive":{"load":11275252,"parse":3306754,"resolve_modules":7087227,"normalize":444671,"typecheck_compute":16338797,"parent_envs":6760,"reconcile_assembly":2503522,"ownership":609541}},{"entry":"dag/test/claim/bmc_onboard_body_witness_test.dag","spans":1,"nanos":342831547,"exclusive":{"load":9190470,"parse":6503638,"resolve_modules":6107736,"normalize":719380,"typecheck_compute":37310357,"parent_envs":15570,"reconcile_assembly":2512895,"ownership":811751}},{"entry":"dag/test/claim/cache_key_completeness_test.dag","spans":1,"nanos":333418637,"exclusive":{"load":9490720,"parse":2570243,"resolve_modules":5220046,"normalize":301271,"typecheck_compute":25753936,"parent_envs":16671,"reconcile_assembly":1755688,"ownership":368371}},{"entry":"dag/test/claim/bmc_virtual_media_witness_test.dag","spans":1,"nanos":302442134,"exclusive":{"load":9378550,"parse":9533210,"resolve_modules":4050635,"normalize":1239712,"typecheck_compute":82767378,"parent_envs":39379,"reconcile_assembly":1770744,"ownership":1119591}},{"entry":"dag/test/claim/card_intake_risk_witness_test.dag","spans":1,"nanos":297383539,"exclusive":{"load":8502938,"parse":13498014,"resolve_modules":4327685,"normalize":1662202,"typecheck_compute":59268102,"parent_envs":40727,"reconcile_assembly":1606552,"ownership":1158370}},{"entry":"dag/test/claim/artifact_store_fs_witness_test.dag","spans":1,"nanos":285546237,"exclusive":{"load":9297839,"parse":9949230,"resolve_modules":4054344,"normalize":1135252,"typecheck_compute":58580392,"parent_envs":26270,"reconcile_assembly":1374081,"ownership":1250821}},{"entry":"dag/test/claim/build_cache_ensure_test.dag","spans":1,"nanos":269557320,"exclusive":{"load":8527799,"parse":7545148,"resolve_modules":3825054,"normalize":779761,"typecheck_compute":49226751,"parent_envs":10751,"reconcile_assembly":1405391,"ownership":751851}},{"entry":"dag/test/claim/artifact_store_witness_test.dag","spans":1,"nanos":251642781,"exclusive":{"load":9340339,"parse":8372968,"resolve_modules":3719583,"normalize":934731,"typecheck_compute":33249555,"parent_envs":13440,"reconcile_assembly":1356369,"ownership":916621}},{"entry":"dag/test/claim/build_cache_endpoint_path_test.dag","spans":1,"nanos":242340152,"exclusive":{"load":8582109,"parse":6960197,"resolve_modules":3738724,"normalize":664181,"typecheck_compute":30012262,"parent_envs":13090,"reconcile_assembly":1351952,"ownership":540020}},{"entry":"dag/test/claim/access_layer_extension_witness_test.dag","spans":1,"nanos":239672979,"exclusive":{"load":6416376,"parse":14445765,"resolve_modules":1664712,"normalize":1846722,"typecheck_compute":82222204,"parent_envs":24729,"reconcile_assembly":771273,"ownership":1720432}},{"entry":"dag/test/claim/accelerator_demo_gpu_witness_test.dag","spans":1,"nanos":234369444,"exclusive":{"load":9725160,"parse":5839197,"resolve_modules":2993243,"normalize":720931,"typecheck_compute":50159433,"parent_envs":24560,"reconcile_assembly":1205756,"ownership":526220}},{"entry":"dag/test/claim/accelerator_demo_model_witness_test.dag","spans":1,"nanos":227168776,"exclusive":{"load":9329679,"parse":898111,"resolve_modules":4052394,"normalize":127520,"typecheck_compute":8563809,"parent_envs":2240,"reconcile_assembly":1459312,"ownership":153970}},{"entry":"dag/test/claim/access_token_ensure_witness_test.dag","spans":1,"nanos":221244630,"exclusive":{"load":8967700,"parse":10261971,"resolve_modules":2159962,"normalize":1158051,"typecheck_compute":56306582,"parent_envs":24819,"reconcile_assembly":888557,"ownership":1065451}},{"entry":"dag/test/claim/artifact_store_scratch_grant_witness_test.dag","spans":1,"nanos":208529147,"exclusive":{"load":9243580,"parse":912231,"resolve_modules":2916233,"normalize":98270,"typecheck_compute":7207327,"parent_envs":4019,"reconcile_assembly":1259929,"ownership":145820}},{"entry":"dag/test/claim/asrock_live_probe_witness_test.dag","spans":1,"nanos":207413275,"exclusive":{"load":8785519,"parse":5587785,"resolve_modules":2530693,"normalize":687931,"typecheck_compute":29084260,"parent_envs":20120,"reconcile_assembly":1015771,"ownership":560380}},{"entry":"dag/test/claim/cache_layer_planner_test.dag","spans":1,"nanos":207278626,"exclusive":{"load":8390919,"parse":1236741,"resolve_modules":3148723,"normalize":189900,"typecheck_compute":22476774,"parent_envs":1890,"reconcile_assembly":1152185,"ownership":200690}},{"entry":"dag/test/claim/bmc_redfish_grounding_witness_test.dag","spans":1,"nanos":198580186,"exclusive":{"load":9189070,"parse":2974944,"resolve_modules":2903643,"normalize":367720,"typecheck_compute":21883282,"parent_envs":6870,"reconcile_assembly":1158650,"ownership":463521}},{"entry":"dag/test/claim/bmc_capability_solve_witness_test.dag","spans":1,"nanos":197821726,"exclusive":{"load":10326661,"parse":3443034,"resolve_modules":2903313,"normalize":388180,"typecheck_compute":16472487,"parent_envs":9761,"reconcile_assembly":1094741,"ownership":462101}},{"entry":"dag/test/claim/busybox_bmc_build_witness_test.dag","spans":1,"nanos":195134763,"exclusive":{"load":8921279,"parse":2101722,"resolve_modules":2876873,"normalize":259320,"typecheck_compute":25529658,"parent_envs":14959,"reconcile_assembly":1001685,"ownership":302340}},{"entry":"dag/test/claim/access_iam_validation_test.dag","spans":1,"nanos":194855302,"exclusive":{"load":6581866,"parse":6200146,"resolve_modules":2327813,"normalize":830251,"typecheck_compute":34642466,"parent_envs":17589,"reconcile_assembly":817954,"ownership":491000}},{"entry":"dag/test/claim/bmc_typed_operations_witness_test.dag","spans":1,"nanos":187635785,"exclusive":{"load":7569408,"parse":3538064,"resolve_modules":3680994,"normalize":401440,"typecheck_compute":10450740,"parent_envs":3600,"reconcile_assembly":1176220,"ownership":312211}},{"entry":"dag/test/claim/builtin_get_resolver_test.dag","spans":1,"nanos":185586422,"exclusive":{"load":11130261,"parse":1279602,"resolve_modules":1239431,"normalize":161930,"typecheck_compute":7940009,"parent_envs":3670,"reconcile_assembly":445009,"ownership":109520}},{"entry":"dag/test/claim/bach_double_slit_path_additivity_synthetic_fixture_witness_test.dag","spans":1,"nanos":182773070,"exclusive":{"load":8887569,"parse":8722949,"resolve_modules":2083382,"normalize":887891,"typecheck_compute":26771178,"parent_envs":13959,"reconcile_assembly":732414,"ownership":997421}},{"entry":"dag/test/claim/bmc_factory_credential_witness_test.dag","spans":1,"nanos":177013154,"exclusive":{"load":8676679,"parse":521411,"resolve_modules":2321972,"normalize":71910,"typecheck_compute":5188305,"parent_envs":1890,"reconcile_assembly":1045821,"ownership":123591}},{"entry":"dag/test/claim/bmc_auth_runtime_secret_seam_test.dag","spans":1,"nanos":172217289,"exclusive":{"load":8190579,"parse":4905635,"resolve_modules":1877782,"normalize":582640,"typecheck_compute":20739510,"parent_envs":13647,"reconcile_assembly":831690,"ownership":892921}},{"entry":"dag/test/claim/bach_double_slit_observation_witness_test.dag","spans":1,"nanos":169412696,"exclusive":{"load":8763789,"parse":5604966,"resolve_modules":1918842,"normalize":651340,"typecheck_compute":22120374,"parent_envs":10952,"reconcile_assembly":677959,"ownership":657231}},{"entry":"dag/test/claim/cargo_target_path_witness_test.dag","spans":1,"nanos":159036755,"exclusive":{"load":8183499,"parse":2296093,"resolve_modules":1773981,"normalize":301921,"typecheck_compute":16908068,"parent_envs":9599,"reconcile_assembly":687900,"ownership":261261}},{"entry":"dag/test/claim/cargo_version_witness_test.dag","spans":1,"nanos":153438710,"exclusive":{"load":8291149,"parse":812731,"resolve_modules":1649912,"normalize":115530,"typecheck_compute":7500308,"parent_envs":1830,"reconcile_assembly":1366844,"ownership":115840}},{"entry":"dag/test/claim/base64_rfc4648_witness_test.dag","spans":1,"nanos":151659848,"exclusive":{"load":8676819,"parse":1199331,"resolve_modules":1699572,"normalize":166000,"typecheck_compute":11662611,"parent_envs":1650,"reconcile_assembly":634271,"ownership":181821}},{"entry":"dag/test/claim/advertising_interface_witness_test.dag","spans":1,"nanos":145207511,"exclusive":{"load":6230666,"parse":4087084,"resolve_modules":1019951,"normalize":404130,"typecheck_compute":26469597,"parent_envs":25271,"reconcile_assembly":493926,"ownership":249031}},{"entry":"dag/test/claim/budget_tree_witness_test.dag","spans":1,"nanos":144120179,"exclusive":{"load":8559779,"parse":1608551,"resolve_modules":1488112,"normalize":209730,"typecheck_compute":15994347,"parent_envs":1800,"reconcile_assembly":496779,"ownership":156850}},{"entry":"dag/test/claim/acquisition_mechanism_witness_test.dag","spans":1,"nanos":141002167,"exclusive":{"load":6326967,"parse":3960904,"resolve_modules":1296181,"normalize":474000,"typecheck_compute":15068695,"parent_envs":7800,"reconcile_assembly":476190,"ownership":423771}},{"entry":"dag/test/claim/branded_list_first_optional_witness_test.dag","spans":1,"nanos":138987264,"exclusive":{"load":8087948,"parse":1254732,"resolve_modules":1562261,"normalize":114650,"typecheck_compute":7453858,"parent_envs":3189,"reconcile_assembly":591363,"ownership":131290}},{"entry":"dag/test/claim/access_authorization_profile_witness_test.dag","spans":1,"nanos":125127590,"exclusive":{"load":5933766,"parse":4578096,"resolve_modules":437581,"normalize":607410,"typecheck_compute":22575964,"parent_envs":8430,"reconcile_assembly":258030,"ownership":309750}},{"entry":"dag/test/claim/argv_command_render_witness_test.dag","spans":1,"nanos":124294049,"exclusive":{"load":7779848,"parse":2051292,"resolve_modules":1099871,"normalize":234480,"typecheck_compute":13233953,"parent_envs":6731,"reconcile_assembly":883240,"ownership":151570}},{"entry":"dag/test/claim/access_validation_test.dag","spans":1,"nanos":124108319,"exclusive":{"load":8249298,"parse":2540963,"resolve_modules":811350,"normalize":331980,"typecheck_compute":9528280,"parent_envs":3570,"reconcile_assembly":347675,"ownership":265031}},{"entry":"dag/test/claim/cache_purity_verdict_test.dag","spans":1,"nanos":121428986,"exclusive":{"load":6211436,"parse":1210292,"resolve_modules":787981,"normalize":119711,"typecheck_compute":11813462,"parent_envs":117430,"reconcile_assembly":419908,"ownership":109290}}],"observations":{"witness_entry_resolve_wall_nanos":49635000000,"witness_eval_wall_nanos":73000000},"observations_note":"Elapsed-wall figures from the surrounding receipts. They measure a DIFFERENT universe than `parent_span_nanos` (witness-entry resolves only, or process wall across concurrent workers) and are reported, never partitioned."}
+=== ARM_TSV_END after-r2 ===
+=== cohort-only measurement complete (floor skipped) ===
+[90m2026-08-06 05:15:49.074 UTC (command exited with code 0)
+
+2026-08-06 05:15:49.074 UTC [mUploading artifacts from /root/workspace/artifacts/command-0
+[90m2026-08-06 05:15:49.074 UTC [mUploaded 0 artifacts
+[90m2026-08-06 05:15:49.075 UTC [mStarting cleanup
+[90m2026-08-06 05:15:49.075 UTC [32m$ [mgit gc --auto
+[90mGit maintenance cleaned 0MB
+
+Remote run completed at 2026-08-06 05:15:49.076 UTC
