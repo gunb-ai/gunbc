@@ -147,10 +147,10 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: roster_decl(module_path: "v2.lens.realization_vocabulary_containment", decl_name: "realization_vocab_exception_roster"),
+    roster: roster_decl(module_path: "v2.lens.realization_vocabulary_containment", decl_name: "realization_vocab_grandfathered_edge_roster"),
     unit_kind: ".dag file path",
     membership: DeclaredFrontier {
-      reason: "paths granted import of the bash-AST emit vocabulary outside realization edges; per-row reasons and triggers in-row",
+      reason: "exact (importer_path, vocab_module) edges granted import of the target-AST vocabulary outside realization-edge prefixes; per-row reasons, debt classes, and triggers in-row",
       dissolve_on: "shell-to-intent phase 3 (bash-AST containment wall green) re-homes or dissolves each site; rows delete as their sites migrate"
     }
   },

@@ -4733,6 +4733,14 @@ fn write_floor_component_receipt_at(
     };
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let run_id = std::env::var("GITHUB_RUN_ID").unwrap_or_else(|_| "local".to_string());
+    // The receipt's SUBJECT. It binds the document to the run and tree that produced
+    // it so a consumer can refuse a receipt that is not about the run it is reacting
+    // to (`gunbc.floor_component_receipt_document` floor_component_receipt_subject_note).
+    // The fallbacks mirror run_id's: off a GitHub runner these are not "unknown", they
+    // are a LOCAL run, and a local receipt is not addressed to any workflow run — the
+    // decoder's subject match then refuses it against any event, which is correct.
+    let workflow_name = std::env::var("GITHUB_WORKFLOW").unwrap_or_else(|_| "local".to_string());
+    let head_sha = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
 
     let mut rows: Vec<Value> = Vec::new();
     for rec in batch_records {
@@ -4794,7 +4802,12 @@ fn write_floor_component_receipt_at(
             &ctx,
             "floor_component_receipt_document_with_selection",
             &[
+                (
+                    Some("workflow_name".to_string()),
+                    Value::Str(workflow_name.clone()),
+                ),
                 (Some("run_id".to_string()), Value::Str(run_id.clone())),
+                (Some("head_sha".to_string()), Value::Str(head_sha.clone())),
                 (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
                 (
                     Some("selection_mode_tag".to_string()),
@@ -4840,7 +4853,12 @@ fn write_floor_component_receipt_at(
             &ctx,
             "floor_component_receipt_document",
             &[
+                (
+                    Some("workflow_name".to_string()),
+                    Value::Str(workflow_name.clone()),
+                ),
                 (Some("run_id".to_string()), Value::Str(run_id.clone())),
+                (Some("head_sha".to_string()), Value::Str(head_sha.clone())),
                 (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
             ],
             false,

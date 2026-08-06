@@ -1,7 +1,7 @@
 module test.claim.floor_component_receipt_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { NonEmptyStr, String, Bool, List, Int }
+import std.types { NonEmptyStr, String, Bool, List, Int, CommitSha }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond }
 import std.measure { ClockBasis, CpuClock, WallClock }
@@ -25,6 +25,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data fcr_witness_note: String = "Executing consumer for gunbc.floor_component_receipt. THE PAIR IS THE PROOF: the receipt built from run 30509024051's real component states must report the affected-set cold control VERIFIED (it concluded Done over 5217 witnesses) while still naming the silent-pick gate as the failed component — and the same projection must report NOT verified when that control itself is red, absent, or ambiguous. Either direction alone is satisfiable by a broken projection: always-verified reproduces the alert defect this module exists to kill, always-unverified reproduces the hardcoded 'cold control is dark' story it replaces."
 
 data fcr_run_id: NonEmptyStr = "30509024051" as NonEmptyStr
+
+data fcr_workflow_name: NonEmptyStr = "affected-set-falsifier" as NonEmptyStr
+
+data fcr_head_sha: CommitSha = "0123456789abcdef0123456789abcdef01234567" as CommitSha
 
 fn fcr_control_row_with(outcome_tag: NonEmptyStr, detail: NonEmptyStr) -> FloorComponentRow? {
   floor_component_row(
@@ -128,7 +132,7 @@ fn fcr_control_verified(rows: List<FloorComponentRow>) -> Bool {
 test fn fcr_real_run_reports_control_verified_and_names_silent_pick() -> Bool {
   let rows = fcr_real_run_rows()
   let failed = floor_unsuccessful_component_rows(rows: rows)
-  let doc = floor_component_receipt_document(run_id: fcr_run_id, rows: rows)
+  let doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows)
   count(rows) == 4
     && fcr_control_verified(rows: rows)
     && count(failed) == 1
@@ -143,7 +147,7 @@ test fn fcr_real_run_reports_control_verified_and_names_silent_pick() -> Bool {
 
 test fn fcr_timed_out_arm_projects_budget_and_elapsed() -> Bool {
   let rows = fcr_rows_of(opts: [fcr_timed_out_row()])
-  let doc = floor_component_receipt_document(run_id: fcr_run_id, rows: rows)
+  let doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows)
   count(rows) == 1
     && string_contains(s: doc, pattern: "\"outcome\": \"timed_out\"")
     && string_contains(s: doc, pattern: "\"budget_ms\": 900000")
@@ -163,7 +167,7 @@ test fn fcr_red_control_control_itself_failed_is_not_verified() -> Bool {
 
 test fn fcr_red_control_absent_control_is_not_silently_verified() -> Bool {
   let rows = fcr_rows_of(opts: [fcr_silent_pick_row()])
-  let doc = floor_component_receipt_document(run_id: fcr_run_id, rows: rows)
+  let doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows)
   count(rows) == 1
     && !fcr_control_verified(rows: rows)
     && (match floor_affected_set_control_state(rows: rows) {
@@ -232,8 +236,8 @@ test fn fcr_refused_is_distinct_from_failed() -> Bool {
   let failed_rows = fcr_rows_of(opts: [
     fcr_control_row_with(outcome_tag: "failed" as NonEmptyStr, detail: "provenance gap" as NonEmptyStr)
   ])
-  let refused_doc = floor_component_receipt_document(run_id: fcr_run_id, rows: refused_rows)
-  let failed_doc = floor_component_receipt_document(run_id: fcr_run_id, rows: failed_rows)
+  let refused_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: refused_rows)
+  let failed_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: failed_rows)
   string_contains(s: refused_doc, pattern: "\"outcome\": \"refused\"")
     && string_contains(s: refused_doc, pattern: "\"diagnostic\"")
     && string_contains(s: failed_doc, pattern: "\"outcome\": \"failed\"")
@@ -258,7 +262,7 @@ fn fcr_mode_outcome_is(mode: NonEmptyStr, expected_outcome: String) -> Bool {
   let rows = fcr_rows_of(opts: [fcr_mode_row(mode: mode)])
   count(rows) == 1
     && string_contains(
-         s: floor_component_receipt_document(run_id: fcr_run_id, rows: rows),
+         s: floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows),
          pattern: concat(concat("\"outcome\": \"", expected_outcome), "\"")
        )
 }
@@ -304,7 +308,7 @@ test fn fcr_unreached_control_keeps_its_identity_and_is_not_verified() -> Bool {
   let rows = fcr_rows_of(opts: [
     fcr_unreached_control_row(selection_tag: "predict_only" as NonEmptyStr)
   ])
-  let doc = floor_component_receipt_document(run_id: fcr_run_id, rows: rows)
+  let doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows)
   count(rows) == 1
     && !fcr_control_verified(rows: rows)
     && (match floor_affected_set_control_state(rows: rows) {
@@ -324,8 +328,8 @@ test fn fcr_red_control_placeholder_identity_erases_the_cold_control() -> Bool {
   let planned = fcr_rows_of(opts: [
     fcr_unreached_control_row(selection_tag: "predict_only" as NonEmptyStr)
   ])
-  let padded_doc = floor_component_receipt_document(run_id: fcr_run_id, rows: padded)
-  let planned_doc = floor_component_receipt_document(run_id: fcr_run_id, rows: planned)
+  let padded_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: padded)
+  let planned_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: planned)
   count(padded) == 1
     && count(planned) == 1
     && (match floor_affected_set_control_state(rows: padded) {
@@ -346,8 +350,8 @@ fn fcr_mode_of(mode: NonEmptyStr) -> String {
 test fn fcr_infra_and_witness_red_share_an_outcome_but_not_a_mode() -> Bool {
   let infra_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "Infra" as NonEmptyStr)])
   let red_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "WitnessRed" as NonEmptyStr)])
-  let infra_doc = floor_component_receipt_document(run_id: fcr_run_id, rows: infra_rows)
-  let red_doc = floor_component_receipt_document(run_id: fcr_run_id, rows: red_rows)
+  let infra_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: infra_rows)
+  let red_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: red_rows)
   count(infra_rows) == 1
     && count(red_rows) == 1
     && string_contains(s: infra_doc, pattern: "\"outcome\": \"failed\"")
@@ -385,7 +389,7 @@ test fn fcr_red_control_tag_built_row_records_no_mode_rather_than_guessing() -> 
   let rows = fcr_rows_of(opts: [
     fcr_control_row_with(outcome_tag: "done" as NonEmptyStr, detail: "ok" as NonEmptyStr)
   ])
-  let doc = floor_component_receipt_document(run_id: fcr_run_id, rows: rows)
+  let doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows)
   count(rows) == 1
     && string_contains(s: doc, pattern: "\"failure_mode\": \"unrecorded\"")
     && !string_contains(s: doc, pattern: "\"failure_mode\": \"none\"")
