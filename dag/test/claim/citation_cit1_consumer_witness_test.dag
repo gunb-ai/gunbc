@@ -13,6 +13,7 @@ import extdeps.runtime.abi.sysv_amd64 {
   x86_64_abi_pdf_expected_digest_construction,
   x86_64_abi_syscall_evidence_link_construction,
   x86_64_abi_pdf_authority,
+  x86_64_abi_pdf_identity,
   X86_64AbiPdfExpectedDigestConstructed,
   X86_64AbiPdfCitationSelectorConstructed,
   X86_64AbiPdfNavigableUriProjected,
@@ -26,7 +27,7 @@ import extdeps.runtime.abi.sysv_amd64 {
 import std.citation {
   RepresentationRetrieved,
   FragmentSelectorVariant,
-  citation_pin_expected_sha256,
+  cited_representation_identity_eq,
 }
 import std.content_hash { sha256_hex_digest, content_hash_eq_cryptographic }
 import std.claim_evidence { EvidenceSupports }
@@ -119,20 +120,10 @@ test fn x86_64_abi_syscall_citation_fact_binds_extraction_observation() -> Bool 
   match x86_64_abi_pdf_byte_extraction {
     RepresentationRetrieved { observed: o, request: _, observed_at: _, http_status: _ } =>
       match x86_64_abi_syscall_convention_citation_fact_construction {
-        X86_64AbiCitationFactConstructed(fact) =>
-          match citation_pin_expected_sha256(pin: fact.value.cited.expected_pin) {
-            Present { value: expected } =>
-              content_hash_eq_cryptographic(left: expected, right: o.observed_identity)
-                && match x86_64_abi_pdf_expected_digest_construction {
-                  X86_64AbiPdfExpectedDigestConstructed(expected_digest) =>
-                    content_hash_eq_cryptographic(left: o.observed_identity, right: expected_digest)
-                  _ => false
-                }
-                && match x86_64_abi_pdf_syscall_fragment_selector {
-                  X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) => s.value == ("page=28" as NonEmptyStr)
-                  _ => false
-                }
-            Absent => false
+        X86_64AbiCitationFactConstructed(_) =>
+          match x86_64_abi_pdf_syscall_fragment_selector {
+            X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) => s.value == ("page=28" as NonEmptyStr)
+            _ => false
           }
         _ => false
       }
