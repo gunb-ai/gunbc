@@ -198,6 +198,20 @@ fn data_initializer_is_typechecked_subject_absent_projection(node: Node) -> Bool
   }
 }
 
+fn data_initializer_is_plain_record_projection(node: Node) -> Bool {
+  match projection_kind_lexeme_optional(node: node) {
+    Present { value: k } => k == "DataInitializerPlainRecordProjection"
+    Absent => false
+  }
+}
+
+fn plain_record_parent_qualified_name_optional(record: Node) -> Optional<String> {
+  match projection_named_child_optional(node: record, label: "parent_type") {
+    Present { value: parent } => declaration_identity_qualified_name_optional(node: parent)
+    Absent => optional_absent()
+  }
+}
+
 fn data_initializer_is_record_projection(node: Node) -> Bool {
   match projection_kind_lexeme_optional(node: node) {
     Present { value: k } => k == "DataInitializerRecordProjection"

@@ -9,10 +9,10 @@ use std::rc::Rc;
 use im::HashMap;
 
 use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
-use crate::v1_compiler_infer_env::{lookup_binding_by_name, lookup_type};
+use crate::v1_compiler_infer_env::{lookup_binding_by_name_local, lookup_type};
 use crate::v1_compiler_infer_items::{item_kind, ItemKind, TypedModule};
 use crate::v1_compiler_infer_types::normalize_access_type_node;
-use crate::v1_interpreter::{sorted_fields, InterpContext, InterpError, InterpResult, Value};
+use crate::v1_interpreter::{sorted_fields, InterpContext, InterpResult, Value};
 use crate::v1_std_core::{
     authored_name_at, field_init_node_name_at, field_init_node_value, Connective, ExprData,
     InferredNode, NewlineIndex, Node,
@@ -77,7 +77,7 @@ fn lookup_type_binding_in_importing_module(
     tm: &TypedModule,
     bare_name: &str,
 ) -> Option<Rc<crate::v1_compiler_infer_env::TypeBinding>> {
-    lookup_binding_by_name(tm.type_env.clone(), bare_name.to_string())
+    lookup_binding_by_name_local(tm.type_env.clone(), bare_name.to_string())
 }
 
 fn type_item_from_importing_module_type_env(
@@ -288,8 +288,7 @@ fn variant_value_from_typechecked_expr(
         return DataInitializerValueResolution::NotVariantValue;
     }
 
-    let parent_id =
-        declaration_identity_for_type_item(ctx, &coproduct, si, importing_module);
+    let parent_id = declaration_identity_for_type_item(ctx, &coproduct, si, importing_module);
     DataInitializerValueResolution::Resolved(ResolvedVariantIdentity {
         parent_qualified_name: parent_id.qualified_name,
         variant_name,
@@ -531,6 +530,41 @@ fn inferred_field_type_bare(si: &SourceIndices, field_init: &Rc<Node>) -> Option
     }
 }
 
+fn marshal_record_literal_projection(
+    ctx: &InterpContext,
+    importing_module: &str,
+    body: &Rc<Node>,
+    declared_type_bare: &str,
+    si: &SourceIndices,
+    tm: &TypedModule,
+) -> Value {
+    let type_item = match type_item_from_importing_module_type_env(tm, declared_type_bare, si) {
+        Some(node) => node,
+        None => return constructor_resolution_refused_projection(ctx),
+    };
+    // Classification uses the importing module type env + resolved connective only.
+    // A failed lookup must refuse — never fall through to the coproduct arm.
+    if type_item.connective == Connective::Disj {
+        marshal_coproduct_record_projection(
+            ctx,
+            importing_module,
+            body,
+            declared_type_bare,
+            si,
+            type_item,
+        )
+    } else {
+        marshal_plain_record_projection(
+            ctx,
+            importing_module,
+            body,
+            declared_type_bare,
+            si,
+            type_item,
+        )
+    }
+}
+
 fn marshal_field_initializer_projection(
     ctx: &InterpContext,
     importing_module: &str,
@@ -550,29 +584,14 @@ fn marshal_field_initializer_projection(
                 Some(tm) => tm,
                 None => return constructor_resolution_refused_projection(ctx),
             };
-            let type_item = match type_item_from_importing_module_type_env(&tm, &type_bare, si) {
-                Some(node) => node,
-                None => return constructor_resolution_refused_projection(ctx),
-            };
-            if type_item.connective == Connective::Disj {
-                marshal_coproduct_record_projection(
-                    ctx,
-                    importing_module,
-                    field_value,
-                    &type_bare,
-                    si,
-                    type_item,
-                )
-            } else {
-                marshal_plain_record_projection(
-                    ctx,
-                    importing_module,
-                    field_value,
-                    &type_bare,
-                    si,
-                    type_item,
-                )
-            }
+            marshal_record_literal_projection(
+                ctx,
+                importing_module,
+                field_value,
+                &type_bare,
+                si,
+                &tm,
+            )
         }
         _ => {
             let resolution =
@@ -590,8 +609,10 @@ fn marshal_plain_record_projection(
     si: &SourceIndices,
     type_item: Rc<Node>,
 ) -> Value {
-    let parent_id =
-        declaration_identity_for_type_item(ctx, &type_item, si, importing_module);
+    if type_item.connective == Connective::Disj {
+        return constructor_resolution_refused_projection(ctx);
+    }
+    let parent_id = declaration_identity_for_type_item(ctx, &type_item, si, importing_module);
 
     let mut edges: Vec<(String, Value)> = vec![(
         "parent_type".to_string(),
@@ -620,6 +641,9 @@ fn marshal_coproduct_record_projection(
     si: &SourceIndices,
     coproduct_item: Rc<Node>,
 ) -> Value {
+    if coproduct_item.connective != Connective::Disj {
+        return constructor_resolution_refused_projection(ctx);
+    }
     let variant_name = authored_name_at(si.clone(), body.clone());
     if variant_name.is_empty()
         || !crate::v1_std_core::has_child_named(
@@ -631,8 +655,7 @@ fn marshal_coproduct_record_projection(
         return constructor_resolution_refused_projection(ctx);
     }
 
-    let parent_id =
-        declaration_identity_for_type_item(ctx, &coproduct_item, si, importing_module);
+    let parent_id = declaration_identity_for_type_item(ctx, &coproduct_item, si, importing_module);
     let variant_id = ResolvedVariantIdentity {
         parent_qualified_name: parent_id.qualified_name.clone(),
         variant_name,
@@ -693,33 +716,18 @@ pub fn marshal_data_initializer_projection(
     };
 
     match body.expr_data.as_ref() {
-        ExprData::ExprRecordLit { .. } => {
-            let type_item = match type_item_from_importing_module_type_env(&tm, &declared_type_bare, &si)
-            {
-                Some(node) => node,
-                None => return Ok(constructor_resolution_refused_projection(ctx)),
-            };
-            if type_item.connective == Connective::Disj {
-                Ok(marshal_coproduct_record_projection(
-                    ctx,
-                    &importing_module,
-                    body,
-                    &declared_type_bare,
-                    &si,
-                    type_item,
-                ))
-            } else {
-                Ok(marshal_plain_record_projection(
-                    ctx,
-                    &importing_module,
-                    body,
-                    &declared_type_bare,
-                    &si,
-                    type_item,
-                ))
-            }
-        }
+        ExprData::ExprRecordLit { .. } => Ok(marshal_record_literal_projection(
+            ctx,
+            &importing_module,
+            body,
+            &declared_type_bare,
+            &si,
+            &tm,
+        )),
         ExprData::ExprVar { .. } => {
+            if lookup_type_binding_in_importing_module(&tm, &declared_type_bare).is_none() {
+                return Ok(constructor_resolution_refused_projection(ctx));
+            }
             let resolution = variant_value_from_typechecked_expr(ctx, &importing_module, body, &si);
             let mut edges: Vec<(String, Value)> = vec![(
                 "value_identity".to_string(),
@@ -729,12 +737,8 @@ pub fn marshal_data_initializer_projection(
                 if let Some(type_item) =
                     type_item_from_importing_module_type_env(&tm, &declared_type_bare, &si)
                 {
-                    let parent_id = declaration_identity_for_type_item(
-                        ctx,
-                        &type_item,
-                        &si,
-                        &importing_module,
-                    );
+                    let parent_id =
+                        declaration_identity_for_type_item(ctx, &type_item, &si, &importing_module);
                     edges.push((
                         "constructor_identity".to_string(),
                         marshal_constructor_identity_node(ctx, &parent_id, v),
@@ -760,4 +764,83 @@ pub fn typechecked_subject_absent_projection(ctx: &InterpContext) -> Value {
         "DataInitializerTypecheckedSubjectAbsentProjection",
         &[],
     )
+}
+
+#[cfg(test)]
+mod projection_marshal_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
+
+    use super::{marshal_data_initializer_projection, typechecked_subject_absent_projection};
+
+    fn empty_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn projection_kind_lexeme(ctx: &InterpContext, projection: &Value) -> Option<String> {
+        match projection {
+            Value::Record { fields, .. } => {
+                let kind_key = ctx.sym("kind");
+                let connective_key = ctx.sym("connective");
+                let identity_key = ctx.sym("identity");
+                let kind = fields
+                    .iter()
+                    .find(|(k, _)| *k == kind_key)
+                    .map(|(_, v)| v)?;
+                match kind {
+                    Value::Variant {
+                        fields: kind_fields,
+                        ..
+                    } => {
+                        let connective = kind_fields
+                            .iter()
+                            .find(|(k, _)| *k == connective_key)
+                            .map(|(_, v)| v)?;
+                        match connective {
+                            Value::Variant {
+                                fields: conn_fields,
+                                ..
+                            } => conn_fields
+                                .iter()
+                                .find(|(k, _)| *k == identity_key)
+                                .and_then(|(_, v)| match v {
+                                    Value::Str(s) => Some(s.clone()),
+                                    _ => None,
+                                }),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn missing_typechecked_subject_marshals_absent_projection_not_error() {
+        let ctx = empty_ctx();
+        let projection = marshal_data_initializer_projection(
+            &ctx,
+            "extdeps.units.dimensionless.extdeps_external_authority_anchor",
+        )
+        .expect("unresolvable marshal subject must refuse with projection, never throw");
+        let absent = typechecked_subject_absent_projection(&ctx);
+        assert_eq!(
+            projection_kind_lexeme(&ctx, &projection),
+            projection_kind_lexeme(&ctx, &absent),
+            "missing typechecked subject must marshal TypecheckedSubjectAbsentProjection"
+        );
+    }
 }

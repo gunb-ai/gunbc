@@ -12,6 +12,7 @@ import test.claim.decl_facts_reflection_witness_support {
   decl_facts_reflection_projection_variant_label_optional,
   decl_facts_reflection_resolved_nullary_parent,
   decl_facts_reflection_resolved_nullary_variant_name,
+  decl_facts_reflection_plain_record_parent,
 }
 import v2.std.data_initializer_identity {
   ambiguous_candidate_projection_count,
@@ -40,6 +41,14 @@ data ambiguous_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.amb
 data unimported_globally_unique_specimen_qn: String = "test.fixture.decl_facts_reflection.unimported_globally_unique_user.unimported_globally_unique_specimen"
 data scaffold_named_field_bind_qn: String = "test.fixture.decl_facts_reflection.specimens.scaffold_named_field_bind"
 data whole_declaration_bind_qn: String = "test.fixture.decl_facts_reflection.specimens.disposition_scaffold"
+data dimensionless_anchor_qn: String = "extdeps.units.dimensionless.extdeps_external_authority_anchor"
+
+test fn decl_facts_reflection_imported_external_authority_positive_control() -> Bool {
+  match decl_facts_reflection_plain_record_parent(qn: dimensionless_anchor_qn) {
+    Present { value: parent } => parent == "extdeps.external_authority.ExternalAuthority"
+    Absent => false
+  }
+}
 
 test fn decl_facts_reflection_two_unrelated_scaffold_arms_do_not_alias() -> Bool {
   let parent_a = decl_facts_reflection_constructor_parent(qn: local_a_scaffold_qn)

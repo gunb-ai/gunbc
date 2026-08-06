@@ -34,6 +34,8 @@ mod data_cache_scoping_test;
 #[cfg(test)]
 mod data_def_brand_alias_type_test;
 #[cfg(test)]
+mod decl_facts_dimensionless_projection_test;
+#[cfg(test)]
 mod dependency_pool_index_compile_test;
 #[cfg(test)]
 mod derive_bound_fail_closed_test;
@@ -194,7 +196,6 @@ mod variant_export_surface_witness_test;
 mod variant_owner_disambiguation_test;
 #[cfg(test)]
 mod wet_hermetic_equivalence_test;
-#[cfg(test)]
 mod whole_tree_wiring_enum_test;
 #[cfg(test)]
 mod width_nat_type_arg_test;

@@ -19,6 +19,8 @@ import v2.std.data_initializer_identity {
   decl_fact_lookup_candidate_count,
   data_initializer_is_nullary_projection,
   data_initializer_is_record_projection,
+  data_initializer_is_plain_record_projection,
+  plain_record_parent_qualified_name_optional,
 }
 
 data decl_facts_reflection_fixture_pool_roots: List<String> = witness_layer_roots
@@ -140,6 +142,18 @@ fn decl_facts_reflection_decl_field_variant_name(qn: String) -> Optional<String>
         Present { value: field_projection } =>
           decl_facts_reflection_projection_variant_label_optional(node: field_projection)
         Absent => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn decl_facts_reflection_plain_record_parent(qn: String) -> Optional<String> {
+  match decl_facts_reflection_fact_node(qn: qn) {
+    Present { value: node } =>
+      if data_initializer_is_plain_record_projection(node: node) {
+        plain_record_parent_qualified_name_optional(record: node)
+      } else {
+        optional_absent()
       }
     Absent => optional_absent()
   }
