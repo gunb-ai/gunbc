@@ -9,7 +9,7 @@ import v2.workflow.floor_compile_clean_predicates {
   compile_clean_all_touched_paths_docs_universe,
   compile_clean_touched_path_is_dag_source
 }
-import v2.std.algebra { any, contains, fold_list, length, list_snoc_item, Empty }
+import v2.std.algebra { any, bag_eq, contains, fold_list, length, list_snoc_item, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -192,4 +192,35 @@ fn repair_receipt_touched_paths() -> List<String> {
 
 fn mechanism_touch_module_graph_paths() -> List<String> {
   ["src/v2/lens/module_graph.dag"]
+}
+
+fn mechanism_touch_affected_set_paths() -> List<String> {
+  ["src/v2/lens/affected_set.dag"]
+}
+
+data mechanism_touch_module_graph_expected_identities: List<String> = [
+  compile_clean_scope_validating_entry,
+  compile_clean_shard_a_validating_entry
+]
+
+data mechanism_touch_affected_set_expected_identities: List<String> = [
+  affected_set_universe_validating_entry,
+  compile_clean_scope_validating_entry,
+  compile_clean_shard_a_validating_entry
+]
+
+data repair_receipt_expected_identities: List<String> = [
+  compile_clean_shard_a_validating_entry,
+  compile_clean_scope_validating_entry
+]
+
+fn self_relevant_identities_match_expected(
+  touched_paths: List<String>,
+  expected: List<String>
+) -> Bool {
+  bag_eq(
+    xs: derive_self_relevant_check_identities(touched_paths: touched_paths),
+    ys: expected,
+    eq: string_eq
+  )
 }

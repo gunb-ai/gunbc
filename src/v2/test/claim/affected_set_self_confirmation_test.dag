@@ -2,24 +2,28 @@ module v2.test.claim.affected_set_self_confirmation
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
+import v2.std.algebra { contains }
 import v2.std.collection { List }
-import v2.std.algebra { contains, length }
 import v2.std.text { String }
 import v2.lens.affected_set.self_confirmation {
   affected_set_universe_validating_entry,
   compile_clean_scope_validating_entry,
   compile_clean_shard_a_validating_entry,
   derive_self_relevant_check_identities,
+  mechanism_touch_affected_set_paths,
   mechanism_touch_module_graph_paths,
+  mechanism_touch_affected_set_expected_identities,
+  mechanism_touch_module_graph_expected_identities,
+  repair_receipt_expected_identities,
   repair_receipt_touched_paths,
   self_relevant_check_identity_in_derived_set,
   self_relevant_checks_blocks_skip,
-  selection_mechanism_self_relevant_rows
+  self_relevant_identities_match_expected
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data affected_set_self_confirmation_note: String = "Affected-set self-confirmation witness (operator brief calm-fox-44): change the selection mechanism -> derive expected self-relevant checks -> prove the repairing check is IN the selected identity set. NOT 'CI eventually went green' (absorbing fallback). The #7915 receipt is the discriminating repair scenario: only dag/extdeps/systems/nvidia.dag and dag/test/claim/generated_artifact_drift_test.dag changed, yet compile_clean_shard_a_witness_test must be in the derived identity set. RED control uses a hand-built derivation that omits shard_a while keeping scope — the predicate must answer false."
+data affected_set_self_confirmation_note: String = "Affected-set self-confirmation witness (operator brief calm-fox-44): change the selection mechanism -> derive expected self-relevant checks -> prove the repairing check is IN the selected identity set. NOT 'CI eventually went green' (absorbing fallback). The #7915 receipt is the discriminating repair scenario: only dag/extdeps/systems/nvidia.dag and dag/test/claim/generated_artifact_drift_test.dag changed, yet compile_clean_shard_a_witness_test must be in the derived identity set. Completeness is an identity join (bag_eq), never a roster count literal. RED control uses scope-only identity set that omits shard_a while full derivation includes it."
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
@@ -47,11 +51,36 @@ test fn witness_mechanism_touch_blocks_skip_for_scope_check() -> Bool {
   )
 }
 
+test fn witness_mechanism_touch_module_graph_derived_identities_exact() -> Bool {
+  self_relevant_identities_match_expected(
+    touched_paths: mechanism_touch_module_graph_paths(),
+    expected: mechanism_touch_module_graph_expected_identities
+  )
+}
+
+test fn witness_mechanism_touch_affected_set_roster_identities_exact() -> Bool {
+  self_relevant_identities_match_expected(
+    touched_paths: mechanism_touch_affected_set_paths(),
+    expected: mechanism_touch_affected_set_expected_identities
+  )
+    && identity_in_set(
+      entry: affected_set_universe_validating_entry,
+      identities: mechanism_touch_affected_set_expected_identities
+    )
+}
+
 test fn witness_repair_receipt_derives_shard_a_identity() -> Bool {
   let touched = repair_receipt_touched_paths()
   let derived = derive_self_relevant_check_identities(touched_paths: touched)
   identity_in_set(entry: compile_clean_shard_a_validating_entry, identities: derived)
     && identity_in_set(entry: compile_clean_scope_validating_entry, identities: derived)
+}
+
+test fn witness_repair_receipt_derived_identities_exact() -> Bool {
+  self_relevant_identities_match_expected(
+    touched_paths: repair_receipt_touched_paths(),
+    expected: repair_receipt_expected_identities
+  )
 }
 
 test fn witness_repair_receipt_blocks_skip_for_shard_a() -> Bool {
@@ -62,11 +91,7 @@ test fn witness_repair_receipt_blocks_skip_for_shard_a() -> Bool {
   )
 }
 
-test fn witness_mechanism_row_count_pinned() -> Bool {
-  length(xs: selection_mechanism_self_relevant_rows) == 2
-}
-
-data self_confirmation_red_control_note: String = "Discriminating RED: a synthetic derivation that keeps compile-clean scope but drops shard_a must NOT satisfy the repair-receipt predicate — exactly the #7915 failure shape (repair merged while the shard-a identity was absent from the selected set)."
+data self_confirmation_red_control_note: String = "Discriminating RED: scope-only identity set (the #7915 failure shape) omits shard_a while full derivation includes it — identity membership, not cardinality."
 
 test fn witness_repair_receipt_red_control_shard_a_absent() -> Bool {
   let touched = repair_receipt_touched_paths()
