@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 /**
+ * SCAFFOLD — audit §4 live paired entitlement probe runner (docs/probes/).
+ * dissolve-on: gunbc.claude_agent_sdk_press enrolls the paired probe as a typed
+ * WorkerTurn witness green-by-execution on an authenticated host — delete this Node
+ * orchestration when that path replaces the hand runner.
+ *
  * Section 4 paired entitlement probe (provider-control-interface-audit.md).
  *
  * Same Claude account state root · same model · same prompt:

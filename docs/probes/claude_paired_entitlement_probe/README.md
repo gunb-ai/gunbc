@@ -29,6 +29,9 @@ Dimensions recorded in the receipt JSON:
 node docs/probes/claude_paired_entitlement_probe/run-paired-probe.mjs
 ```
 
+The Node runners are **SCAFFOLD** (see file headers): dissolve when slice C press-trip
+witness subsumes this orchestration.
+
 Optional environment:
 
 - `GUNBC_PROBE_SOURCE_HOME` — credential home to copy into an isolated probe state

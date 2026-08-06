@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 /**
+ * SCAFFOLD — subprocess tee for SDK pathToClaudeCodeExecutable (audit §4.1).
+ * dissolve-on: same as run-paired-probe.mjs — delete when press-trip witness
+ * subsumes subprocess capture beneath the SDK parser.
+ *
  * SDK subprocess wrapper: forwards argv to the real Claude executable while
  * teeing stdout to GUNBC_PROBE_SDK_RAW_LOG (audit §4.1 — capture beneath parser).
  */
