@@ -84,6 +84,11 @@ type CommitWriterObservedBlobClassification
   | CommitWriterBlobNonTextClassified {
       artifact: CommitWriterArtifactClassificationReceipt,
     }
+  | CommitWriterBlobTextUnclaimed {
+      text: String,
+      marker_grammar: GitEffectiveConflictMarkerGrammar,
+    }
+  | CommitWriterBlobNonTextUnclaimed
   | CommitWriterBlobArtifactClassificationRefused {
       cause: CommitWriterArtifactClassificationFailure,
     }
@@ -177,7 +182,7 @@ type CommitWriterAdmission
       refusals: List<CommitWriterRefusal>
     }
 
-data commit_writer_admission_note: String = "ONE ADMISSION AUTHORITY FOR EVERY COMMIT WRITER. admit_commit_writer consumes one staged-index snapshot plus its blob-observation population, not a caller-selected path list. It refuses every non-normal GitIndexStage and independently refuses missing, extra, or duplicate blob observations; duplicate normal entries; index/blob identity disagreement; observed-content disagreement; and unavailable decode or classification. Text/non-text is carried only by the sole-constructor observer receipt. The marker grammar stores Git gitattributes conflict-marker-size once as PositiveInt and derives begin, separator, and end tokens, then parses complete begin -> separator -> end line blocks in the exact staged text; isolated and out-of-order tokens admit. Fixture exemption is not a naked Artifact argument: commit_writer_classify_artifact projects a sole-constructor receipt from v2.compiler.source_authority ModuleStorageBinding rows and binds it to the same GitPath and indexed GitObjectId. A source-path TestClaimArtifact, mismatched path, fabricated matching artifact, or receipt moved to another blob refuses. This reaches mechanical prevention today; DESIGN section 4b names sole_constructor completeness as the structural-unforgeability ceiling. The generated pre-commit hook remains optional feedback, never enforcement. COMMIT 218dea61248d RECEIPT: its WIP-prefixed merge subject identifies DashboardAutocommit as the proven missing writer despite the reused gunbc-ci-auto-heal committer identity. HealAutocommit already refuses authored conflicts in ci_heal_skew_authored_conflict_refusal, but ci_heal_skew_conflict_arm writes through shape_git_commit_no_verify_no_edit_argv, so it bypasses even hook feedback and currently commits ours bytes before later regeneration. COUNTABLE MODEL/REALIZATION SPLIT: commit_writer_binding_work owns two typed rows, the in-repo ci_heal_skew_conflict_arm under CommitWriterHealOrchestrationLaneOwner and the out-of-repository dashboard daemon under CommitWriterDashboardInfrastructureOperatorOwner. Each row triggers when its complete staged-index/blob observer transport lands; that transport must observe the effective marker size and ModuleStorageBinding authority, then call admit_commit_writer immediately before its write. The heal realization must additionally move regeneration and byte-proof before commit. Until those owned bindings land, this PR closes the shared decision and executable incident witness, not the writer transports."
+data commit_writer_admission_note: String = "ONE ADMISSION AUTHORITY FOR EVERY COMMIT WRITER. admit_commit_writer consumes one staged-index snapshot plus its blob-observation population, not a caller-selected path list. It refuses every non-normal GitIndexStage and independently refuses missing, extra, or duplicate blob observations; duplicate normal entries; index/blob identity disagreement; observed-content disagreement; and unavailable decode or classification. Text/non-text is carried only by the sole-constructor observer receipt. The marker grammar stores Git gitattributes conflict-marker-size once as PositiveInt and derives begin, separator, and end tokens, then parses complete begin -> separator -> end line blocks in the exact staged text; isolated and out-of-order tokens admit. Fixture exemption is not a naked Artifact argument: commit_writer_classify_artifact projects a sole-constructor receipt from v2.compiler.source_authority ModuleStorageBinding rows and binds it to the same GitPath and indexed GitObjectId. A source-path TestClaimArtifact, mismatched path, fabricated matching artifact, or receipt moved to another blob refuses. ABSENCE IS NOT INABILITY: CommitWriterArtifactClassificationReceipt stays sole_constructor with its one construction site in commit_writer_classify_artifact — no second way to earn a receipt exists. A blob that claims no exemption does not need one; the observer classifies it CommitWriterBlobTextUnclaimed or CommitWriterBlobNonTextUnclaimed instead of routing an absent claim through classification failure, and an unclaimed text blob still receives the full conflict-marker scan via commit_writer_text_marker_refusals. Only a claimed TestClaimArtifact receipt skips the scan, so omitting the receipt costs a forger the exemption and buys nothing. The observer is trusted on text-versus-non-text with no independent check today, for both claimed and unclaimed blobs alike; that residue is unchanged by the absence arm and is not fixed here. DESIGN section 4b names sole_constructor completeness as the structural-unforgeability ceiling; before the absence arm, admit_commit_writer refused every real heal-shaped commit because every non-.dag staged path had no ParsedFromSource binding to classify against, so it had never executed against a live population despite this note's earlier claim to have reached mechanical prevention. The generated pre-commit hook remains optional feedback, never enforcement. COMMIT 218dea61248d RECEIPT: its WIP-prefixed merge subject identifies DashboardAutocommit as the proven missing writer despite the reused gunbc-ci-auto-heal committer identity. HealAutocommit already refuses authored conflicts in ci_heal_skew_authored_conflict_refusal, but ci_heal_skew_conflict_arm writes through shape_git_commit_no_verify_no_edit_argv, so it bypasses even hook feedback and currently commits ours bytes before later regeneration. COUNTABLE MODEL/REALIZATION SPLIT: commit_writer_binding_work owns two typed rows, the in-repo ci_heal_skew_conflict_arm under CommitWriterHealOrchestrationLaneOwner and the out-of-repository dashboard daemon under CommitWriterDashboardInfrastructureOperatorOwner. Each row triggers when its complete staged-index/blob observer transport lands; that transport must observe the effective marker size and ModuleStorageBinding authority, then call admit_commit_writer immediately before its write. The heal realization must additionally move regeneration and byte-proof before commit. Until those owned bindings land, this PR closes the shared decision and executable incident witness, not the writer transports."
 
 type CommitWriterArtifactClassificationResolution
   = CommitWriterArtifactClassified {
@@ -257,6 +262,21 @@ fn commit_writer_refused_artifact_classification_receipt(
 ) -> CommitWriterBlobClassificationReceipt {
   CommitWriterBlobClassificationReceipt {
     observed: CommitWriterBlobArtifactClassificationRefused { cause: cause }
+  }
+}
+
+fn commit_writer_text_unclaimed_classification_receipt(
+  text: String,
+  marker_grammar: GitEffectiveConflictMarkerGrammar,
+) -> CommitWriterBlobClassificationReceipt {
+  CommitWriterBlobClassificationReceipt {
+    observed: CommitWriterBlobTextUnclaimed { text: text, marker_grammar: marker_grammar }
+  }
+}
+
+fn commit_writer_non_text_unclaimed_classification_receipt() -> CommitWriterBlobClassificationReceipt {
+  CommitWriterBlobClassificationReceipt {
+    observed: CommitWriterBlobNonTextUnclaimed
   }
 }
 
@@ -735,6 +755,13 @@ fn commit_writer_blob_classification_refusals(
             grammar: marker_grammar,
           )
         },
+      )
+    CommitWriterBlobNonTextUnclaimed => []
+    CommitWriterBlobTextUnclaimed { text, marker_grammar } =>
+      commit_writer_text_marker_refusals(
+        path: blob.path,
+        text: text,
+        grammar: marker_grammar,
       )
   }
 }
