@@ -72,6 +72,8 @@ Green CI is **not** the acceptance oracle; this receipt is.
 
 **Close or shrink.** The memos add process-lifetime retained state (+~280 MiB peak on this cohort) for ~1.5% wall and ~4.7% assembly — far below the ≥10% / ≥3-minute floor bar. The discriminating memo counters show the expensive keys (`closure_env`, `rewired`) do not repeat across this roster; only `root_env` repeats, and that row was already modest after fill-composition.
 
+**Disposition (2026-08-06):** `origin/main` integrated post-measurement; all three process-lifetime memos, receipt instrumentation, and `entry_view_assembly_memo_witness_test` **deleted** from the branch. Receipts retained; mechanism does not ship.
+
 Retained-for-promise is exactly the failure mode named in review: do not keep several process-lifetime memos on this evidence.
 
 Raw arms: `remote_cohort_run3.log` (includes embedded TSV + `summary.json`).

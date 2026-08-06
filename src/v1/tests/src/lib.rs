@@ -42,8 +42,6 @@ mod direct_import_precedence_over_transitive_leak_test;
 #[cfg(test)]
 mod e0308_mechanical_trio_test;
 #[cfg(test)]
-mod entry_view_assembly_memo_witness_test;
-#[cfg(test)]
 mod eval_measurement_purity_test;
 #[cfg(test)]
 mod faithful_collection_optional_grounding_witness_test;

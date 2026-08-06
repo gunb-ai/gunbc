@@ -735,21 +735,6 @@ fn run() -> Result<ExitCode, ExitCode> {
         "[resolve-summary] {} resolve(s) in {}ms wall; {} witness(es) in {}ms wall",
         timings.resolves, timings.resolve_ms, timings.witnesses, timings.witness_ms,
     );
-    {
-        let r = v1_compiler::cli_run::entry_view_assembly_memo_receipt(&index);
-        eprintln!(
-            "[entry-view-assembly] closure_env keys={} hits={} misses={} root_env keys={} hits={} misses={} rewired keys={} hits={} misses={}",
-            r.closure_env_keys,
-            r.closure_env_hits,
-            r.closure_env_misses,
-            r.root_env_keys,
-            r.root_env_hits,
-            r.root_env_misses,
-            r.rewired_modules_keys,
-            r.rewired_modules_hits,
-            r.rewired_modules_misses,
-        );
-    }
     // The expectation frontier: effect sites that dispatched WITHOUT declaring
     // `expect:`, counted at their located `service.op`. This receipt is the whole
     // reason `ExpectationDeclaration::UntracedDefault` is a value rather than a
