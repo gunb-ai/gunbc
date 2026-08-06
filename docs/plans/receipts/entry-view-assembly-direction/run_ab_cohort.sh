@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# SCAFFOLD — dissolve-on: entry-view assembly memo direction closed (measured no-go;
+# docs/plans/entry-view-assembly-direction-receipt.md). Superseded by run_all.sh for
+# the committed receipt; retained as a narrower cohort-only reproduction entrypoint.
+# dissolve-on: delete with run_all.sh when this receipt directory retires.
+#
 # Interleaved A/B cohort: base-r1 / after-r1 / base-r2 / after-r2
 # One tree (after_commit), one variable (base-arm-revert.patch applied or not).
 set -euo pipefail

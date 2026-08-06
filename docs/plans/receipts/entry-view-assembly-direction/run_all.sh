@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# SCAFFOLD — dissolve-on: entry-view assembly memo direction closed (measured no-go;
+# docs/plans/entry-view-assembly-direction-receipt.md). Frozen cohort A/B reproduction
+# runner only — not a CI gate. Per-arm TSV/stderr artifacts are the committed receipt;
+# this script re-derives them when re-run is needed.
+# dissolve-on: delete with this receipt directory when floor-prep-tax-program P1
+# follow-on row retires, or when gunbc bash-emit realizes measurement orchestration
+# through host_effect_apply (#5828) and hand bash under docs/ is no longer authored.
+#
 # Full A/B receipt: 50-entry cohort + representative affected floor.
 # Run on one host, back to back. Intended for ctrl-build --remote when local
 # cgroup cannot complete a release v1-compiler link.

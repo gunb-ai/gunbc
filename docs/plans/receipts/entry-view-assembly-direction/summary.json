@@ -272,14 +272,38 @@
     "base-r1": {},
     "base-r2": {},
     "after-r1": {
-      "keys": 50,
-      "hits": 0,
-      "misses": 50
+      "closure_env": {
+        "keys": 50,
+        "hits": 0,
+        "misses": 50
+      },
+      "root_env": {
+        "keys": 57,
+        "hits": 672,
+        "misses": 57
+      },
+      "rewired": {
+        "keys": 50,
+        "hits": 0,
+        "misses": 50
+      }
     },
     "after-r2": {
-      "keys": 50,
-      "hits": 0,
-      "misses": 50
+      "closure_env": {
+        "keys": 50,
+        "hits": 0,
+        "misses": 50
+      },
+      "root_env": {
+        "keys": 57,
+        "hits": 672,
+        "misses": 57
+      },
+      "rewired": {
+        "keys": 50,
+        "hits": 0,
+        "misses": 50
+      }
     }
   },
   "outcomes": {

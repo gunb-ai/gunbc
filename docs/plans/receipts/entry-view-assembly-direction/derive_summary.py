@@ -50,8 +50,23 @@ def parse_assembly_split(line: str) -> dict[str, float]:
     return out
 
 
-def parse_entry_view_assembly(line: str) -> dict[str, int]:
-    return {k: int(v) for k, v in re.findall(r"(\w+)=([0-9]+)", line)}
+MEMO_NAMES = ("closure_env", "root_env", "rewired")
+
+
+def parse_entry_view_assembly(line: str) -> dict[str, dict[str, int]]:
+    out: dict[str, dict[str, int]] = {}
+    for memo in MEMO_NAMES:
+        m = re.search(
+            rf"{memo}\s+keys=(\d+)\s+hits=(\d+)\s+misses=(\d+)",
+            line,
+        )
+        if m:
+            out[memo] = {
+                "keys": int(m.group(1)),
+                "hits": int(m.group(2)),
+                "misses": int(m.group(3)),
+            }
+    return out
 
 
 def mean_delta_pct(base_vals: list[float], after_vals: list[float]) -> float:
@@ -68,7 +83,7 @@ def main() -> int:
     parsed = {arm: parse_tsv(receipt_dir / f"{arm}.tsv") for arm in arms}
 
     assembly_by_arm: dict[str, dict[str, float]] = {}
-    entry_view_by_arm: dict[str, dict[str, int]] = {}
+    entry_view_by_arm: dict[str, dict[str, dict[str, int]]] = {}
     for arm in arms:
         assembly_by_arm[arm] = {}
         entry_view_by_arm[arm] = {}
