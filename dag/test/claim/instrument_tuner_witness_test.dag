@@ -28,15 +28,16 @@ fn fixture_view() -> V1DeletionProgramView {
   V1DeletionProgramView {
     finish_lines: [],
     fronts: [],
-    program_remaining: RemainingShape {
+    remaining: RemainingShape {
       sequential_depth: 0,
       open_fronts: 0,
       startable_now: 0,
       in_flight: 0,
       dependency_held: 0,
       contract_held: 0,
+      unsized: 0,
     },
-    proposed_carrier: ProposedCarrierAbsent,
+    proposed: ProposedCarrierAbsent,
   }
 }
 
