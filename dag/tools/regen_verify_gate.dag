@@ -1,20 +1,34 @@
 module tools.regen_verify_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import tools.regen_verify_transport { run_regen_verify }
+import tools.regen_verify_transport { run_regen_verify_verdict }
+
+data regen_verify_failure_receipt_note: String = "The loudness half (gunbc#7644 diagnosis): the floor witness collapses this gate's ProcessExit to Bool via tools.ci_gates.exit_ok, so regen-verify reds reported only returned Bool(false). The gate body records the located reason from the single regen_stage0 capture; the failure-receipt companion consumes that retained detail instead of re-running regen."
+
+fn regen_verify_failure_reason(exit: ProcessExit) -> String {
+  match exit {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason: reason } => reason
+  }
+}
 
 func run_regen_verify_gate_body() -> ProcessExit {
-  return if run_regen_verify() {
-    ExitSuccess
-  } else {
-    exit_failure(
-      reason: "regen-verify gate failed: committed stage0 does not match a fresh single-pass regen (the §7 self-host fixed-point wall)"
-    )
+  let verdict = run_regen_verify_verdict()
+  match verdict {
+    ExitSuccess => verdict
+    ExitFailure { code: _, reason: reason } => {
+      record_regen_verify_gate_failure_detail(detail: reason)
+      verdict
+    }
   }
 }
 
 func run_regen_verify_gate() -> ProcessExit {
   run_regen_verify_gate_body()
+}
+
+func regen_verify_failure_receipt() -> String {
+  consume_regen_verify_gate_failure_detail()
 }
 
 func main() -> ProcessExit {

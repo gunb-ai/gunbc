@@ -17,6 +17,8 @@ import gunbc.ci_spec {
   ci_heal_dispatch_entry,
   ci_heal_author_commit_artifact_dir,
   ci_heal_author_commit_artifact_name,
+  ci_heal_author_commit_artifact_includes_hidden_files,
+  path_has_hidden_segment,
   ci_heal_author_commit_regen_command,
   ci_heal_repo_local_git_config_entry,
   ci_heal_repo_local_git_config_function,
@@ -38,7 +40,7 @@ import extdeps.github.actions {
   Step, UsesStep, RunStep
 }
 
-data ci_heal_job_witness_note: String = "Green-by-execution proof that the CI auto-heal job is wired correctly, over the actual Job/Workflow model (not a grep). contents_write_is_scoped_to_heal_only pins least privilege. heal_job_needs_build_not_ci prevents heal from depending on ci. heal_commit_scope_is_auto_push_eligible_only: staging is auto_push_eligible_committed_artifact_paths() only — workflow YAML is AuthorCommitRequired and must never be git add'd. heal_workflow_drift_is_author_commit_required: detects drift, packages repair artifact, emits HealAuthorCommitRequired with regen command, never stages workflow paths. heal_author_commit_upload_step_enrolled: upload-artifact publishes heal-author-commit-required/ when workflow drift exists."
+data ci_heal_job_witness_note: String = "Green-by-execution proof that the CI auto-heal job is wired correctly, over the actual Job/Workflow model (not a grep). contents_write_is_scoped_to_heal_only pins least privilege. heal_job_needs_build_not_ci prevents heal from depending on ci. heal_commit_scope_is_auto_push_eligible_only: staging is auto_push_eligible_committed_artifact_paths() only — workflow YAML is AuthorCommitRequired and must never be git add'd. heal_workflow_drift_is_author_commit_required: detects drift, packages repair artifact, emits HealAuthorCommitRequired with regen command, never stages workflow paths. heal_author_commit_upload_step_enrolled: upload-artifact publishes heal-author-commit-required/ when workflow drift exists. heal_author_commit_upload_publishes_its_hidden_payload closes the gap that enrollment alone left open: the step being PRESENT was already witnessed while the artifact it published was empty on every run, because upload-artifact excludes hidden paths by default and this artifact's payload is entirely under .github/. Enrollment is not delivery, and only the second test tells them apart. author_commit_required_paths_all_carry_a_hidden_segment pins the premise the derivation rests on, so the day a non-hidden author-commit path is registered the flag stops being unconditionally true by accident. hidden_segment_predicate_discriminates is the RED control: it fixes both polarities on real corpus paths, so broadening the predicate to match every path, or narrowing it to miss a mid-path dot-directory, reds."
 
 fn perm_is_write(p: PermissionLevel) -> Bool {
   match p { PermWrite => true  _ => false }
@@ -222,6 +224,49 @@ test fn heal_author_commit_upload_step_enrolled() -> Bool {
   fold(ci_heal_generated_artifacts_job().steps, init: false, f: fn(found, step) {
     found || step_uploads_author_commit_artifact(s: step)
   })
+}
+
+fn step_kv_bool_is_true(s: Step, key: String) -> Bool {
+  match s {
+    UsesStep { name: _, id: _, uses: _, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match w {
+        Present { value: kvs } =>
+          fold(kvs, init: false, f: fn(found, row) {
+            found || (row.key == key && match row.value {
+              YamlBool { value: v } => v
+              YamlString { value: _ } => false
+              YamlNull => false
+              YamlInt { lexeme: _ } => false
+              YamlFloat { lexeme: _ } => false
+              YamlSequence { elements: _ } => false
+              YamlMapping { entries: _ } => false
+            })
+          })
+        Absent => false
+      }
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+test fn heal_author_commit_upload_publishes_its_hidden_payload() -> Bool {
+  fold(ci_heal_generated_artifacts_job().steps, init: false, f: fn(found, step) {
+    found || (step_uploads_author_commit_artifact(s: step)
+      && step_kv_bool_is_true(s: step, key: "include-hidden-files"))
+  })
+}
+
+test fn author_commit_required_paths_all_carry_a_hidden_segment() -> Bool {
+  all(author_commit_required_committed_artifact_paths(), p => path_has_hidden_segment(path: p))
+    && ci_heal_author_commit_artifact_includes_hidden_files()
+}
+
+test fn hidden_segment_predicate_discriminates() -> Bool {
+  path_has_hidden_segment(path: ".github/workflows/ci.yml")
+    && path_has_hidden_segment(path: ".github/workflows/falsifier.yml")
+    && path_has_hidden_segment(path: "a/.hidden/b")
+    && !path_has_hidden_segment(path: "release-bins.tgz")
+    && !path_has_hidden_segment(path: "target/floor-component-receipt.json")
+    && !path_has_hidden_segment(path: "docs/plans/idea-machine.md")
 }
 
 test fn heal_push_targets_triggering_branch() -> Bool {

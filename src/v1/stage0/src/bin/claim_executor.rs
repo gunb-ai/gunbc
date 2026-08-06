@@ -574,6 +574,7 @@ enum Runnable {
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
         execution_mode: ExecutionMode,
+        spawns_host_compiler: bool,
     },
     ScopedWitnessBatch {
         batch_id: String,
@@ -1005,7 +1006,7 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 Some(v) => str_list_from_value(v, ctx)?,
                 None => Vec::new(),
             };
-            let execution_mode = execution_mode_from_profile_field(
+            let profile = parsed_runnable_profile_from_field(
                 ctx.field(fields, "profile"),
                 "RunnableDiscoveryBatch",
                 ctx,
@@ -1018,7 +1019,8 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 node_frontier_selection,
                 exclude_substrings,
                 discovery_scope_dirs,
-                execution_mode,
+                execution_mode: profile.execution_mode,
+                spawns_host_compiler: profile.spawns_host_compiler,
             })
         }
         Value::Variant {
@@ -1753,6 +1755,7 @@ enum BatchUnit {
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
         execution_mode: ExecutionMode,
+        spawns_host_compiler: bool,
     },
     ScopedDiscovery {
         batch_id: String,
@@ -1763,6 +1766,7 @@ enum BatchUnit {
         node_frontier_selection: NodeFrontierSelectionMode,
         execution_authority: ScopedWitnessExecutionAuthority,
         execution_mode: ExecutionMode,
+        spawns_host_compiler: bool,
     },
 }
 
@@ -1825,6 +1829,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 exclude_substrings,
                 discovery_scope_dirs,
                 execution_mode,
+                spawns_host_compiler,
             } => {
                 if !scan_dirs.is_empty() || !explicit_entries.is_empty() {
                     units.push(BatchUnit::Discovery {
@@ -1835,6 +1840,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                         exclude_substrings: exclude_substrings.clone(),
                         discovery_scope_dirs: discovery_scope_dirs.clone(),
                         execution_mode: *execution_mode,
+                        spawns_host_compiler: *spawns_host_compiler,
                     });
                 }
                 for (entry, selector_function) in native_bundle_entries {
@@ -1864,6 +1870,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 node_frontier_selection: *node_frontier_selection,
                 execution_authority: *execution_authority,
                 execution_mode: profile.execution_mode,
+                spawns_host_compiler: profile.spawns_host_compiler,
             }),
         }
     }
@@ -2633,6 +2640,7 @@ fn run_batch_unit(
             exclude_substrings,
             discovery_scope_dirs,
             execution_mode,
+            spawns_host_compiler,
         } => {
             let DiscoveryBatchBudgets {
                 eval_budget_ms: effective_fast_lane,
@@ -2660,6 +2668,7 @@ fn run_batch_unit(
                 discovery_scope_dirs,
                 governor,
                 execution_mode,
+                spawns_host_compiler,
                 effective_fast_lane,
                 wet_wall_budget_ms,
                 wet_interp_budget_ms,
@@ -2676,6 +2685,7 @@ fn run_batch_unit(
             node_frontier_selection,
             execution_authority,
             execution_mode,
+            spawns_host_compiler,
         } => {
             let explicit_entries: Vec<(String, String)> = entries_with_kind
                 .iter()
@@ -2693,6 +2703,7 @@ fn run_batch_unit(
                 Vec::new(),
                 governor,
                 execution_mode,
+                spawns_host_compiler,
                 fast_lane_eval_budget_ms,
                 None,
                 None,
@@ -3487,6 +3498,25 @@ fn discovery_claim_result(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Log label for a discovery batch, derived from the plan's modeled profile axes
+/// (`execution_mode`, `spawns_host_compiler`) — the same axes `ci_floor_plan` uses
+/// to split execution vs bin-witness corpora — not from explicit-entry count.
+fn discovery_corpus_kind_label(
+    scan_dirs: &[String],
+    execution_mode: ExecutionMode,
+    spawns_host_compiler: bool,
+) -> &'static str {
+    if !scan_dirs.is_empty() {
+        "discovery-corpus"
+    } else if execution_mode == ExecutionMode::Wet && spawns_host_compiler {
+        "bin-witness-corpus"
+    } else if execution_mode == ExecutionMode::Wet {
+        "execution-corpus"
+    } else {
+        "explicit-corpus"
+    }
+}
+
 fn run_discovery_batch_node(
     source_roots: Vec<String>,
     execution_authority_source_roots: Vec<String>,
@@ -3497,13 +3527,15 @@ fn run_discovery_batch_node(
     discovery_scope_dirs: Vec<String>,
     governor: Arc<MemoryGovernor>,
     execution_mode: ExecutionMode,
+    spawns_host_compiler: bool,
     fast_lane_eval_budget_ms: Option<u64>,
     wet_receipt_wall_budget_ms: Option<u64>,
     wet_receipt_interp_eval_budget_ms: Option<u64>,
     expect_red: bool,
     scoped_receipt: Option<ScopedReceiptBatch>,
 ) -> ClaimResult {
-    set_phase(FloorPhase::Discovery, "discovery-corpus");
+    let corpus_kind = discovery_corpus_kind_label(&scan_dirs, execution_mode, spawns_host_compiler);
+    set_phase(FloorPhase::Discovery, corpus_kind);
     // Post-discovery projections are executor machinery too.  Scoped batches keep
     // their witness subjects under the narrow `source_roots`, while the authored
     // timing projector and its renderers live in the enclosing walk universe.  Keep
@@ -3512,7 +3544,7 @@ fn run_discovery_batch_node(
     // `gunbc.witness_row_cost` and tempts callers to widen the subject envelope.
     let execution_projection_source_roots = execution_authority_source_roots.clone();
     let label = format!(
-        "discovery-corpus[{} root(s)+{} explicit, adaptive width{}]",
+        "{corpus_kind}[{} root(s)+{} explicit, adaptive width{}]",
         source_roots.len(),
         explicit_entries.len(),
         if expect_red { ", expect_red" } else { "" },
@@ -5153,6 +5185,11 @@ fn write_floor_wet_witness_row_outcome_receipt_at(
     eprintln!(
         "[receipt] floor wet witness row-outcome: {row_count} row(s) (TSV receipt: {})",
         path.display()
+    );
+    trace_floor_phase(
+        "wet-witness-row-outcome-receipt",
+        "completed",
+        &format!("row_count={row_count} path={}", path.display()),
     );
     true
 }
@@ -7932,6 +7969,7 @@ fn run_perturb_check(
                         exclude_substrings,
                         discovery_scope_dirs,
                         execution_mode,
+                        spawns_host_compiler,
                     } => Runnable::DiscoveryBatch {
                         source_roots: roots.iter().map(|r| remap_root(r)).collect(),
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
@@ -7941,6 +7979,7 @@ fn run_perturb_check(
                         exclude_substrings: exclude_substrings.clone(),
                         discovery_scope_dirs: discovery_scope_dirs.clone(),
                         execution_mode: *execution_mode,
+                        spawns_host_compiler: *spawns_host_compiler,
                     },
                     Runnable::ScopedWitnessBatch {
                         batch_id,
@@ -8092,14 +8131,30 @@ fn replay_ordinary_floor_wet_witness_row_outcomes() {
                 "[wet-witness-row-outcome] coordinator replayed {count} row(s) from {}",
                 path.display()
             );
+            append_floor_phase_journal(
+                "wet-witness-row-outcome-replay",
+                "completed",
+                &format!("row_count={count} path={}", path.display()),
+            );
+            if let Ok(lines) = collect_wet_witness_row_outcome_replay_lines(path) {
+                for line in lines {
+                    append_floor_phase_journal("wet-witness-row-outcome-replay", "row", &line);
+                }
+            }
         }
         Err(msg) if path.exists() => {
             eprintln!("claim_executor: wet witness row-outcome coordinator replay refused: {msg}");
+            append_floor_phase_journal("wet-witness-row-outcome-replay", "refused", &msg);
         }
         Err(_) => {
             eprintln!(
                 "claim_executor: wet witness row-outcome receipt absent at {} — per-row wet batch outcomes unobservable",
                 path.display()
+            );
+            append_floor_phase_journal(
+                "wet-witness-row-outcome-replay",
+                "absent",
+                &format!("path={}", path.display()),
             );
         }
     }
@@ -10767,6 +10822,7 @@ mod tests {
                 exclude_substrings: Vec::new(),
                 discovery_scope_dirs: Vec::new(),
                 execution_mode: ExecutionMode::Hermetic,
+                spawns_host_compiler: false,
             }],
         ];
 
@@ -11962,6 +12018,7 @@ mod tests {
             exclude_substrings: vec![],
             discovery_scope_dirs: vec![],
             execution_mode: ExecutionMode::Hermetic,
+            spawns_host_compiler: false,
         }
     }
 
@@ -12028,6 +12085,7 @@ mod tests {
             exclude_substrings: vec![],
             discovery_scope_dirs: vec![],
             execution_mode: ExecutionMode::Wet,
+            spawns_host_compiler: true,
         }];
         let units = group_batch_units(&batch);
         assert_eq!(
@@ -12288,6 +12346,30 @@ mod tests {
         );
         assert_eq!(results.len(), 1);
         assert!(!results[0].ok, "unmapped sentinel must fail closed");
+    }
+
+    #[test]
+    fn discovery_corpus_kind_label_follows_profile_not_roster_size() {
+        assert_eq!(
+            discovery_corpus_kind_label(&[], ExecutionMode::Wet, true),
+            "bin-witness-corpus"
+        );
+        assert_eq!(
+            discovery_corpus_kind_label(&[], ExecutionMode::Wet, false),
+            "execution-corpus"
+        );
+        assert_eq!(
+            discovery_corpus_kind_label(
+                &["dag/test/claim".to_string()],
+                ExecutionMode::Hermetic,
+                false,
+            ),
+            "discovery-corpus"
+        );
+        assert_eq!(
+            discovery_corpus_kind_label(&[], ExecutionMode::Hermetic, false),
+            "explicit-corpus"
+        );
     }
 
     #[test]

@@ -16,7 +16,7 @@ type ConceptIndexWitnessCoproduct =
   | NullaryArm
   | NamedFieldArm { alpha: String, beta: Bool }
 
-data concept_index_enumeration_pool_roots: List<String> = ["src/v2/test/claim"]
+data concept_index_enumeration_pool_roots: List<String> = ["src/v2/test/claim/concept_index_enumeration"]
 
 fn idx() -> List<QualifiedConcept> {
   enumerate_concepts()
