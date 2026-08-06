@@ -1,0 +1,33 @@
+module test.claim.witness_consumer_cadence_wire_round_trip_witness
+
+import std.witness_admission {
+  WitnessConsumerCadence,
+  DiscoverySelection,
+  FalsifierSelfHostWet,
+  FalsifierRehomedBinWet,
+  FalsifierSubstrateLongLane,
+  BinWitnessWet,
+  QuarantineProbeExpectRed,
+  OfflineLocalRecipe,
+  FixtureExplicitRoster,
+  NoConsumer,
+  witness_consumer_cadence_wire_round_trip_holds,
+}
+
+data witness_consumer_cadence_wire_round_trip_witness_note: String = "Discriminating law for operator 7893 recut (still-bat-561): for every WitnessConsumerCadence c, decode(encode(c)) == c. RED today until ScheduledWitnessEnvelope migrates consumer: WitnessConsumerCadence (cadence wire table must round-trip all authority arms, not five enrollment strings). Dissolve-on: envelope consumer field lands and this witness greens."
+
+test fn witness_consumer_cadence_wire_round_trip_law_holds() -> Bool {
+  witness_consumer_cadence_wire_round_trip_holds(cadence: DiscoverySelection)
+    && witness_consumer_cadence_wire_round_trip_holds(cadence: FalsifierSelfHostWet)
+    && witness_consumer_cadence_wire_round_trip_holds(cadence: FalsifierRehomedBinWet)
+    && witness_consumer_cadence_wire_round_trip_holds(cadence: FalsifierSubstrateLongLane)
+    && witness_consumer_cadence_wire_round_trip_holds(cadence: BinWitnessWet)
+    && witness_consumer_cadence_wire_round_trip_holds(cadence: QuarantineProbeExpectRed)
+    && witness_consumer_cadence_wire_round_trip_holds(cadence: OfflineLocalRecipe)
+    && witness_consumer_cadence_wire_round_trip_holds(cadence: FixtureExplicitRoster)
+    && witness_consumer_cadence_wire_round_trip_holds(cadence: NoConsumer)
+}
+
+test fn witness_consumer_cadence_wire_round_trip_bin_witness_wet_red_control() -> Bool {
+  !witness_consumer_cadence_wire_round_trip_holds(cadence: BinWitnessWet)
+}

@@ -329,17 +329,35 @@ pub fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumer
     }
 }
 
-pub fn witness_consumer_cadence_executes(cadence: WitnessConsumerCadence) -> bool {
+pub fn witness_consumer_cadence_wire_round_trip_holds(cadence: WitnessConsumerCadence) -> bool {
+    {
+        let wire = witness_consumer_cadence_enrollment_wire(cadence.clone());
+        match (*decode_scheduled_envelope_cadence_wire(wire.clone())).clone() {
+            ScheduledEnvelopeCadenceWireDecode::EnvelopeCadenceDecoded {
+                cadence: decoded, ..
+            } => witness_consumer_cadence_eq(decoded.clone(), cadence.clone()),
+            ScheduledEnvelopeCadenceWireDecode::EnvelopeCadenceWireUnrecognized {
+                wire: _, ..
+            } => false,
+        }
+    }
+}
+
+pub fn witness_consumer_cadence_enrollment_wire(cadence: WitnessConsumerCadence) -> String {
     match cadence.clone() {
-        WitnessConsumerCadence::QuarantineProbeExpectRed => true,
-        WitnessConsumerCadence::FalsifierSelfHostWet => true,
-        WitnessConsumerCadence::FalsifierRehomedBinWet => true,
-        WitnessConsumerCadence::FalsifierSubstrateLongLane => true,
-        WitnessConsumerCadence::BinWitnessWet => true,
-        WitnessConsumerCadence::DiscoverySelection => false,
-        WitnessConsumerCadence::OfflineLocalRecipe => false,
-        WitnessConsumerCadence::FixtureExplicitRoster => false,
-        WitnessConsumerCadence::NoConsumer => false,
+        WitnessConsumerCadence::DiscoverySelection => "per_pr".to_string(),
+        WitnessConsumerCadence::FalsifierSelfHostWet => "4h".to_string(),
+        WitnessConsumerCadence::FalsifierRehomedBinWet => "falsifier_rehomed_bin_wet".to_string(),
+        WitnessConsumerCadence::FalsifierSubstrateLongLane => {
+            "falsifier_substrate_long_lane".to_string()
+        }
+        WitnessConsumerCadence::BinWitnessWet => "bin_witness_wet".to_string(),
+        WitnessConsumerCadence::QuarantineProbeExpectRed => {
+            "quarantine_probe_expect_red".to_string()
+        }
+        WitnessConsumerCadence::OfflineLocalRecipe => "offline_local_recipe".to_string(),
+        WitnessConsumerCadence::FixtureExplicitRoster => "fixture_explicit_roster".to_string(),
+        WitnessConsumerCadence::NoConsumer => "no_consumer".to_string(),
     }
 }
 

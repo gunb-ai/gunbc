@@ -208,16 +208,25 @@ fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumerCade
   }
 }
 
-fn witness_consumer_cadence_executes(cadence: WitnessConsumerCadence) -> Bool {
+fn witness_consumer_cadence_wire_round_trip_holds(cadence: WitnessConsumerCadence) -> Bool {
+  let wire = witness_consumer_cadence_enrollment_wire(cadence: cadence)
+  match decode_scheduled_envelope_cadence_wire(cadence: wire) {
+    EnvelopeCadenceDecoded { cadence: decoded } =>
+      witness_consumer_cadence_eq(a: decoded, b: cadence)
+    EnvelopeCadenceWireUnrecognized { wire: _ } => false
+  }
+}
+
+fn witness_consumer_cadence_enrollment_wire(cadence: WitnessConsumerCadence) -> String {
   match cadence {
-    QuarantineProbeExpectRed => true
-    FalsifierSelfHostWet => true
-    FalsifierRehomedBinWet => true
-    FalsifierSubstrateLongLane => true
-    BinWitnessWet => true
-    DiscoverySelection => false
-    OfflineLocalRecipe => false
-    FixtureExplicitRoster => false
-    NoConsumer => false
+    DiscoverySelection => "per_pr"
+    FalsifierSelfHostWet => "4h"
+    FalsifierRehomedBinWet => "falsifier_rehomed_bin_wet"
+    FalsifierSubstrateLongLane => "falsifier_substrate_long_lane"
+    BinWitnessWet => "bin_witness_wet"
+    QuarantineProbeExpectRed => "quarantine_probe_expect_red"
+    OfflineLocalRecipe => "offline_local_recipe"
+    FixtureExplicitRoster => "fixture_explicit_roster"
+    NoConsumer => "no_consumer"
   }
 }
