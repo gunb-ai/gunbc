@@ -2,8 +2,9 @@ module extdeps.posix.rusage
 
 import std.types { NonEmptyStr, String, Int, Bool }
 import std.measure { ByteSize, byte_size }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -50,4 +51,16 @@ fn rusage_maxrss_bytes(obs: RusageMaxrssObservation) -> ByteSize {
 
 fn rusage_maxrss_is_positive(obs: RusageMaxrssObservation) -> Bool {
   obs.raw_value > 0
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.posix.rusage",
+      decl_name: "RusageWho",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.posix.rusage.extdeps_external_authority_anchor,
+  further_citations: []
 }

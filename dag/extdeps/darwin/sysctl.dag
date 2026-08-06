@@ -2,8 +2,9 @@ module extdeps.darwin.sysctl
 
 import std.types { NonEmptyStr, String, List, Bool }
 import std.measure { ByteSize, byte_size, byte_size_count }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -48,4 +49,16 @@ fn darwin_memory_facts_are_plausible(f: DarwinMemoryFacts) -> Bool {
   byte_size_count(b: f.total_physical) > 0
     && byte_size_count(b: f.page_size) > 0
     && byte_size_count(b: f.total_physical) > byte_size_count(b: f.page_size)
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.darwin.sysctl",
+      decl_name: "darwin_sysctl_mibs_read_by_this_repository",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.darwin.sysctl.extdeps_external_authority_anchor,
+  further_citations: []
 }
