@@ -12,7 +12,7 @@ type WitnessResourceAxis
 
 data witness_purpose_authority_note: String = "DECLARED witness purpose taxonomy (operator ruling 2026-08-04; DESIGN witness-cost-derives-from-purpose; discrete-cost-derivation section 10). What semantic fact the witness exists to prove — authored, not inferred from implementation. Cost and placement are DERIVED consequences and live on ScheduledWitnessEnvelope (std.realization_schedule SpanEnrolled), not here. Minting a second envelope carrier is forbidden (ScheduledWitnessEnvelope already pairs cadence, wall_budget, max_staleness with WitnessCostBasis). Placement reads purpose arms directly via coproduct match in std.witness_placement — no Bool projection fns."
 
-data witness_purpose_terminating_one_shot_note: String = "TerminatingOneShot is strictly more demanding than naming a cadence (witness_deferral_freeze_purpose_frontier_note): pinned subject, mechanically checkable dissolution trigger, AND a deadline after which an undissolved survey REFUSES. Without the deadline every permanent witness can claim to be a one-shot."
+data witness_purpose_terminating_one_shot_note: String = "TerminatingOneShot is strictly more demanding than naming a cadence (witness_deferral_freeze_purpose_frontier_note): pinned subject, mechanically checkable dissolution trigger, AND a deadline after which an undissolved survey REFUSES. Without the deadline every permanent witness can claim to be a one-shot. dissolve-on: std.measure gains a typed instant/deadline carrier (no Instant/WallDeadline exists yet — deadline is interim NonEmptyStr wire text); TerminatingOneShot.deadline migrates to that carrier and post-deadline refusal becomes construction-enforced, not prose-only."
 
 type WitnessPurpose
   = BehavioralDiscriminator
