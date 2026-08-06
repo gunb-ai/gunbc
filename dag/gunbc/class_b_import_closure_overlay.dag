@@ -116,17 +116,3 @@ func class_b_materialize_stripped_entry_overlay(root: String, overlay_dir: Strin
     }
   }
 }
-
-test fn strip_receipt_accepts_one_closed_block() -> Bool {
-  match strip_rust_test_fixtures_import_block(content: "module m\nimport v2.extdeps.languages.rust {\n  a\n}\ndata x: Int = 1\n") {
-    StripImportValid { content } => string_contains(haystack: content, needle: "data x")
-    StripImportRefused { cause: _ } => false
-  }
-}
-
-test fn strip_receipt_refuses_unclosed_block() -> Bool {
-  match strip_rust_test_fixtures_import_block(content: "module m\nimport v2.extdeps.languages.rust { a\ndata x: Int = 1\n") {
-    StripImportRefused { cause: _ } => true
-    StripImportValid { content: _ } => false
-  }
-}

@@ -4,9 +4,25 @@ import v2.workflow.class_b_import_closure_transport {
   class_b_declared_import_closure_lists_rust_import,
   class_b_ambient_pool_provider_preserves_listed_import
 }
-import std.types { Bool }
+import gunbc.declared_import_closure_binding {
+  BindingObserved,
+  BindingNotRunnable,
+  ObservationProduced,
+  ObservationProductionRefused,
+  binding_refused_at_intended_seam,
+  row3_stripped_refuses_binding,
+  row4_stripped_pool_coincidence_or_refuse
+}
+import gunbc.class_b_import_closure_overlay {
+  strip_rust_test_fixtures_import_block,
+  StripImportValid,
+  StripImportRefused
+}
+import gunbc.compile_clean_diagnostic_policy { ListedImport }
+import v2.std.optional { Present, Absent }
+import std.types { Bool, NonEmptyStr }
 
-data class_b_witness_note: String = "Rows 1-2 of the Class B rust_test_fixtures control (#6985), delegated to v2.workflow.class_b_import_closure_transport for single authority. FalsifierSubstrateLongLane enrollment runs these on the nightly cold-control cadence (selection-miss backstop, same pattern as compile-clean cold controls). Per-PR merge-blocking execution is run_class_b_import_closure_gate on source_root_ingest_gate — not a second implementation."
+data class_b_witness_note: String = "Class B rust_test_fixtures control (#6985). Rows 1-2 delegate to v2.workflow.class_b_import_closure_transport for single authority. Predicate/strip unit controls exercise gunbc.declared_import_closure_binding and gunbc.class_b_import_closure_overlay without co-locating test fn in production modules (witness naming hygiene). FalsifierSubstrateLongLane enrollment runs rows 1-2 on the nightly cold-control cadence. Per-PR merge-blocking execution is run_class_b_import_closure_gate on source_root_ingest_gate."
 
 test fn declared_import_closure_lists_rust_import() -> Bool {
   class_b_declared_import_closure_lists_rust_import()
@@ -14,4 +30,75 @@ test fn declared_import_closure_lists_rust_import() -> Bool {
 
 test fn ambient_pool_provider_preserves_listed_import() -> Bool {
   class_b_ambient_pool_provider_preserves_listed_import()
+}
+
+test fn binding_refused_at_seam_not_runnable_is_false() -> Bool {
+  !binding_refused_at_intended_seam(obs: BindingNotRunnable { cause: "could-not-measure" as NonEmptyStr })
+}
+
+test fn binding_refused_at_seam_rejects_unrelated_hard_diagnostic() -> Bool {
+  !binding_refused_at_intended_seam(
+    obs: BindingObserved {
+      binding_source: Absent,
+      definer_module: "",
+      symbol_resolves: false,
+      blocking_hard_diagnostic_count: 1
+    }
+  )
+}
+
+test fn binding_refused_at_seam_accepts_clean_unresolved() -> Bool {
+  binding_refused_at_intended_seam(
+    obs: BindingObserved {
+      binding_source: Absent,
+      definer_module: "",
+      symbol_resolves: false,
+      blocking_hard_diagnostic_count: 0
+    }
+  )
+}
+
+test fn row3_production_refused_is_false() -> Bool {
+  !row3_stripped_refuses_binding(
+    outcome: ObservationProductionRefused {
+      phase: "strip" as NonEmptyStr,
+      cause: "setup failed" as NonEmptyStr
+    }
+  )
+}
+
+test fn row4_production_refused_is_false() -> Bool {
+  !row4_stripped_pool_coincidence_or_refuse(
+    outcome: ObservationProductionRefused {
+      phase: "mktemp" as NonEmptyStr,
+      cause: "setup failed" as NonEmptyStr
+    }
+  )
+}
+
+test fn row4_listed_import_on_produced_observation_fails() -> Bool {
+  !row4_stripped_pool_coincidence_or_refuse(
+    outcome: ObservationProduced {
+      observation: BindingObserved {
+        binding_source: Present { value: ListedImport },
+        definer_module: "v2.extdeps.languages.rust",
+        symbol_resolves: true,
+        blocking_hard_diagnostic_count: 0
+      }
+    }
+  )
+}
+
+test fn strip_receipt_accepts_one_closed_block() -> Bool {
+  match strip_rust_test_fixtures_import_block(content: "module m\nimport v2.extdeps.languages.rust {\n  a\n}\ndata x: Int = 1\n") {
+    StripImportValid { content } => string_contains(haystack: content, needle: "data x")
+    StripImportRefused { cause: _ } => false
+  }
+}
+
+test fn strip_receipt_refuses_unclosed_block() -> Bool {
+  match strip_rust_test_fixtures_import_block(content: "module m\nimport v2.extdeps.languages.rust { a\ndata x: Int = 1\n") {
+    StripImportRefused { cause: _ } => true
+    StripImportValid { content: _ } => false
+  }
 }
