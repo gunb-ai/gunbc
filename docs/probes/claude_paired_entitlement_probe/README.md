@@ -48,5 +48,12 @@ Neither answer from audit §4 is assumed:
 - If the SDK preserves subscription behaviour, direct CLI actuation dissolves for that realm.
 - If it demonstrably cannot, direct stream-json becomes an explicit interface — not a fallback.
 
-An unauthenticated host still produces a valid receipt (`both_arms_auth_failed_parity_on_unauthenticated_host`);
-it does **not** prove or disprove subscription entitlement windows.
+An unauthenticated host still produces a valid receipt
+(`both_arms_auth_failed_before_entitlement_surface`); it does **not** prove or
+disprove subscription entitlement windows. That verdict is **failure-path symmetry
+only** — neither arm reached code that emits `rate_limit_event`.
+
+The parser-drop finding (`control_response` in subprocess raw, absent from SDK
+parsed) is independent of auth and is witnessed in
+`dag/test/claim/claude_sdk_parser_drop_witness_test.dag` with receipt
+`claude_sdk_parser_drop_receipt.json`.

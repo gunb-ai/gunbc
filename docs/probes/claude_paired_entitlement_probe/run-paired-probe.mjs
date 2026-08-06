@@ -299,7 +299,8 @@ function compareArms(direct, sdk) {
   if (direct.stdout_empty && !raw.stdout_empty && s.auth_failure_observed) {
     entitlement_probe_verdict = 'direct_arm_empty_sdk_subprocess_nonempty';
   } else if (d.auth_failure_observed && s.auth_failure_observed) {
-    entitlement_probe_verdict = 'both_arms_auth_failed_parity_on_unauthenticated_host';
+    entitlement_probe_verdict =
+      'both_arms_auth_failed_before_entitlement_surface';
   } else if (directRateCount > 0 || sdkRateCount > 0 || sdkRawRateCount > 0) {
     entitlement_probe_verdict =
       directRateCount === sdkRawRateCount
@@ -327,6 +328,11 @@ function compareArms(direct, sdk) {
     direct_cli_dissolves = null;
   }
 
+  const failure_path_symmetry_note =
+    entitlement_probe_verdict === 'both_arms_auth_failed_before_entitlement_surface'
+      ? 'Symmetric auth failure only. Not entitlement-path parity: rate_limit_event emission never ran on either arm.'
+      : null;
+
   return {
     direct_summary: d,
     sdk_parsed_summary: s,
@@ -347,9 +353,133 @@ function compareArms(direct, sdk) {
       direct_cli_dissolves === null
         ? 'undecided_probe_did_not_reach_entitlement_surface'
         : direct_cli_dissolves,
+    failure_path_symmetry_note,
     audit_section_4_note:
       'Outcome is execution evidence only. Neither subscription preservation nor CLI dissolution is assumed.',
   };
+}
+
+async function diagnoseCredentialBinding({ sourceHome, stateRoot, repoRoot }) {
+  const stdinPayload = buildStreamJsonUserInput('ACK');
+  const args = [
+    '-p',
+    '--output-format',
+    'stream-json',
+    '--verbose',
+    '--input-format',
+    'stream-json',
+    '--permission-mode',
+    'plan',
+    '--model',
+    MODEL,
+  ];
+
+  async function probeInit(home) {
+    const env = { ...process.env, HOME: home };
+    const child = spawn('claude', args, {
+      env,
+      cwd: repoRoot,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const { stdout } = await collectChildOutput(child, { stdinPayload });
+    const init = parseJsonl(stdout).find((ev) => ev?.type === 'system');
+    const result = parseJsonl(stdout).find((ev) => ev?.type === 'result');
+    return {
+      api_key_source: init?.apiKeySource ?? null,
+      auth_failure: stdout.includes('authentication_failed'),
+      terminal_result: result?.result ?? null,
+      stdout_sha256: sha256(stdout),
+    };
+  }
+
+  const ambient = await probeInit(sourceHome);
+  const copied = await probeInit(stateRoot);
+
+  const sourceClaudeJson = join(sourceHome, '.claude.json');
+  const copiedClaudeJson = join(stateRoot, '.claude.json');
+  const claudeJsonShaMatch =
+    existsSync(sourceClaudeJson) &&
+    existsSync(copiedClaudeJson) &&
+    sha256(readFileSync(sourceClaudeJson, 'utf8')) ===
+      sha256(readFileSync(copiedClaudeJson, 'utf8'));
+
+  let diagnosis = 'inconclusive';
+  let diagnosis_detail =
+    'Could not distinguish genuine unauthenticated host from lossy credential copy.';
+  if (
+    ambient.api_key_source === copied.api_key_source &&
+    ambient.auth_failure === copied.auth_failure &&
+    ambient.terminal_result === copied.terminal_result &&
+    claudeJsonShaMatch
+  ) {
+    if (ambient.api_key_source === 'none' && ambient.auth_failure) {
+      diagnosis = 'genuinely_unauthenticated_host';
+      diagnosis_detail =
+        'Ambient HOME and isolated file-tree copy produce identical apiKeySource=none and authentication_failed. .claude.json is bit-identical. Subscription profile metadata may be cached in .claude.json, but no active OAuth token is present in either binding — not a lossy-copy artifact.';
+    } else if (ambient.api_key_source && ambient.api_key_source !== 'none') {
+      diagnosis = 'authenticated_binding_reproduced_by_copy';
+      diagnosis_detail =
+        'Ambient and copied bindings agree on a non-none apiKeySource; file-tree copy preserved auth signals.';
+    }
+  } else if (claudeJsonShaMatch && ambient.api_key_source !== copied.api_key_source) {
+    diagnosis = 'lossy_copy_suspected';
+    diagnosis_detail =
+      'Identical .claude.json but divergent apiKeySource between ambient HOME and copied state — credential likely has out-of-tree storage (keychain or other).';
+  } else if (!claudeJsonShaMatch) {
+    diagnosis = 'copy_incomplete_or_divergent';
+    diagnosis_detail =
+      'Copied credential_state .claude.json does not match source; probe copy step is lossy or stale.';
+  }
+
+  return {
+    diagnosis,
+    diagnosis_detail,
+    ambient_home_probe: ambient,
+    copied_state_probe: copied,
+    claude_json_sha_match: claudeJsonShaMatch,
+    claude_state_root_ref_denotes_whole_credential:
+      diagnosis === 'lossy_copy_suspected'
+        ? false
+        : diagnosis === 'genuinely_unauthenticated_host'
+          ? 'profile_metadata_file_resident_token_absent_in_observed_binding'
+          : 'undecided_pending_authenticated_observation',
+  };
+}
+
+function writeParserDropReceipt({ probeDir, comparison, probeReceiptPath, hostToolchain }) {
+  const receipt = {
+    receipt: 'claude_sdk_parser_drop',
+    date: nowIso().slice(0, 10),
+    authority: 'docs/plans/provider-control-interface-audit.md section 4.1',
+    purpose:
+      'Execution evidence that control_response is present in subprocess stream-json beneath SDK 0.3.220 and dropped by the SDK parser.',
+    probe_parameters: {
+      sdk_version: SDK_VERSION,
+      claude_version: hostToolchain.claude_version,
+      capture_method: 'pathToClaudeCodeExecutable wrapper teeing subprocess stdout',
+      paired_probe_receipt: probeReceiptPath.split('/').pop(),
+    },
+    comparison: {
+      sdk_subprocess_raw_event_types:
+        comparison.sdk_subprocess_raw_summary.raw_event_types_preserved,
+      sdk_parsed_event_types:
+        comparison.sdk_parsed_summary.raw_event_types_preserved,
+      event_types_dropped_by_sdk_parser:
+        comparison.event_types_dropped_by_sdk_parser,
+      event_types_only_on_sdk_subprocess_raw:
+        comparison.event_types_only_on_sdk_subprocess_raw,
+      parser_drop_verdict:
+        comparison.event_types_dropped_by_sdk_parser.includes('control_response')
+          ? 'control_response_present_in_subprocess_raw_absent_from_sdk_parsed'
+          : 'control_response_not_observed',
+      modeling_note: comparison.native_rate_limit_tokens.modeling_note,
+    },
+    captures_relative_to: probeDir,
+    redaction_note: 'Derived from wet probe capture; no secrets included.',
+  };
+  const stablePath = join(here, 'claude_sdk_parser_drop_receipt.json');
+  writeFileSync(stablePath, JSON.stringify(receipt, null, 2), 'utf8');
+  return stablePath;
 }
 
 async function main() {
@@ -369,6 +499,12 @@ async function main() {
       recursive: true,
     });
   }
+
+  const credential_binding_diagnosis = await diagnoseCredentialBinding({
+    sourceHome: SOURCE_HOME,
+    stateRoot,
+    repoRoot,
+  });
 
   const env = {
     ...process.env,
@@ -418,6 +554,18 @@ async function main() {
   });
   const comparison = compareArms(direct, sdk);
 
+  const host_toolchain = {
+    node_version: process.version,
+    claude_version: await new Promise((resolve) => {
+      const p = spawn('claude', ['--version'], { env });
+      let out = '';
+      p.stdout.on('data', (d) => {
+        out += d.toString();
+      });
+      p.on('close', () => resolve(out.trim()));
+    }),
+  };
+
   const receipt = {
     receipt: 'claude_paired_entitlement_probe',
     date: nowIso().slice(0, 10),
@@ -432,17 +580,8 @@ async function main() {
       source_home_observed: SOURCE_HOME,
       cwd,
     },
-    host_toolchain: {
-      node_version: process.version,
-      claude_version: await new Promise((resolve) => {
-        const p = spawn('claude', ['--version'], { env });
-        let out = '';
-        p.stdout.on('data', (d) => {
-          out += d.toString();
-        });
-        p.on('close', () => resolve(out.trim()));
-      }),
-    },
+    host_toolchain,
+    credential_binding_diagnosis,
     arms: {
       direct_cli: {
         exit_code: direct.exit_code,
@@ -467,6 +606,12 @@ async function main() {
 
   const receiptPath = join(here, `claude_paired_entitlement_probe_${stamp}.json`);
   writeFileSync(receiptPath, JSON.stringify(receipt, null, 2), 'utf8');
+  writeParserDropReceipt({
+    probeDir,
+    comparison,
+    probeReceiptPath: receiptPath,
+    hostToolchain: host_toolchain,
+  });
   console.log(receiptPath);
 }
 

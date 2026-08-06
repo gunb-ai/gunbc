@@ -1,0 +1,51 @@
+module extdeps.llm.claude_agent_sdk_stream
+
+import std.types { String, List, Bool }
+
+data claude_agent_sdk_stream_authority_note: String = "Audit provider-control-interface-audit.md section 4.1: SDK 0.3.220 exposes closed SDKRateLimitInfo enums with no raw escape hatch, and the SDK parser drops unknown top-level stream-json message types. gunbc must capture beneath the parser and model ClaudeNativeRateLimitType as NonEmptyStr with recognised projections layered over it."
+
+data claude_stream_event_type_control_response: String = "control_response"
+data claude_stream_event_type_rate_limit_event: String = "rate_limit_event"
+
+fn list_contains_string(items: List<String>, needle: String) -> Bool {
+  fold(items, init: false, f: fn(found, item) {
+    if found { true } else { item == needle }
+  })
+}
+
+fn claude_sdk_control_response_parser_drop_holds(
+  subprocess_raw_types: List<String>,
+  sdk_parsed_types: List<String>
+) -> Bool {
+  list_contains_string(
+    items: subprocess_raw_types,
+    needle: claude_stream_event_type_control_response
+  )
+    && !list_contains_string(
+      items: sdk_parsed_types,
+      needle: claude_stream_event_type_control_response
+    )
+}
+
+data claude_sdk_parser_drop_witness_fixture_note: String = "Positive control derived from the 2026-08-06 wet paired probe receipt on Claude Code 2.1.223 with SDK 0.3.220. The subprocess raw stream carried control_response; the SDK query() parsed surface did not."
+
+data parser_drop_fixture_subprocess_raw_types: List<String> = [
+  "control_response",
+  "system",
+  "assistant",
+  "result"
+]
+
+data parser_drop_fixture_sdk_parsed_types: List<String> = [
+  "system",
+  "assistant",
+  "result",
+  "gunbc_probe_adapter_error"
+]
+
+data parser_drop_red_control_parsed_types: List<String> = [
+  "control_response",
+  "system",
+  "assistant",
+  "result"
+]
