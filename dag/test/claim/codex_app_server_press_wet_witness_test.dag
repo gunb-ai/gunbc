@@ -79,7 +79,7 @@ test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started()
               )
               let ready_ok = status == "account_authenticated_rate_limits_readable"
                 && status != "turn_started"
-                && caption == "authenticated; rate limits readable"
+                && caption == "authenticated; capacity available"
                 && standing_is_redacted_projection(summary: receipt.standing)
                 && projected.contains("rate_limits_observed")
                 && (receipt.subject.credential.codex_home as String) == (home.path as String)

@@ -30,6 +30,11 @@ import extdeps.llm.codex_app_server {
   codex_account_read_result_requires_openai_auth_key,
   codex_account_read_result_account_key,
   codex_rate_limits_result_rate_limits_key,
+  codex_rate_limits_snapshot_primary_key,
+  codex_rate_limits_snapshot_secondary_key,
+  codex_rate_limits_snapshot_spend_control_reached_key,
+  codex_rate_limits_snapshot_rate_limit_reached_type_key,
+  codex_rate_limits_window_used_percent_key,
   codex_structured_error_code_rate_limit_reached,
   codex_structured_error_code_quota_exceeded,
   codex_structured_error_code_authentication_required,
@@ -49,13 +54,13 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject,
 }
 
-data codex_press_note: String = "Account-standing observation for the Codex app-server specimen. This module does NOT claim a provider turn: thread/start and turn/start are target itinerary only until a subjectful WorkerTurn binding lands. AccountStandingAuthenticatedRateLimitsReadable means initialize+account/read succeeded and rateLimits was a readable object — it does NOT decode primary/secondary window utilization, credits, or spendControlReached (capacity decode is the next grounding). An authenticated/rate-limits-readable result must never be labeled turn-started."
+data codex_press_note: String = "Account-standing observation for the Codex app-server specimen. This module does NOT claim a provider turn: thread/start and turn/start are target itinerary only until a subjectful WorkerTurn binding lands. AccountStandingAuthenticatedRateLimitsReadable means initialize+account/read succeeded AND RateLimitSnapshot capacity decode shows the account can accept work (window usedPercent below 100, spendControlReached not true, rateLimitReachedType absent). An empty rateLimits object answers the endpoint without proving capacity and classifies Incomplete — never Ready. An authenticated/capacity-available result must never be labeled turn-started."
 
 data codex_press_hermetic_evidence_root: FilePath = "/tmp/gunbc-codex-press-evidence" as FilePath
 
 data account_trip_digest_mode_note: String = "Hermetic parse helpers (parse_account_trip_stdout_for_tests) use AccountTripDigestStructural — content_hash_of_value fingerprints with zero host effects, so discovery stays mock-free. Wet observe_codex_account_preflight uses AccountTripDigestRetainPrivateSha512 under a caller-supplied evidence_root. Structural digests are NOT durable content identities; private SHA-512 retention is."
 
-data account_standing_authenticated_rate_limits_readable_note: String = "Formerly AccountStandingReady. Empty rateLimits:{} still classifies here because this PR only establishes authentication + rateLimits readability. Decoding QuotaAvailable|QuotaReached|SpendControlReached|StandingUnknown from the pinned protocol schema is the dissolve-on for reclaiming a stronger Ready name."
+data account_standing_authenticated_rate_limits_readable_note: String = "Ready requires decoded capacity from the cited RateLimitSnapshot fields (primary/secondary usedPercent, spendControlReached, rateLimitReachedType). Empty rateLimits:\{\} is Incomplete. QuotaReached covers spend-control, reached-type, and saturated windows. Bridge into gunbc.provider_standing LimitObservedAvailable|LimitUnavailableUntilReset|LimitExhausted dissolves when that consumer lands on this receipt."
 
 type AccountTripDigestMode
   = AccountTripDigestStructural
@@ -180,7 +185,7 @@ fn codex_press_outcome_wire_status(outcome: CodexPressOutcome) -> String {
 
 fn codex_press_outcome_operator_caption(outcome: CodexPressOutcome) -> String {
   match outcome {
-    CodexPressAccountReady { receipt: _ } => "authenticated; rate limits readable"
+    CodexPressAccountReady { receipt: _ } => "authenticated; capacity available"
     CodexPressLoginRequired { reason: _, receipt: _ } => "login required"
     CodexPressUnavailable { reason: _, process: _ } => "unavailable"
     CodexPressRefused { reason, receipt: _ } =>
@@ -335,14 +340,115 @@ fn disposition_from_account_read_result(result: JsonValue) -> AccountTripFrameDi
   }
 }
 
+fn json_number_as_int(v: JsonValue) -> Int? {
+  match v {
+    JsonNumber { lexeme: l } => parse_int(s: l as String)
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonString { value: _ } => none
+    JsonArray { elements: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn rate_limit_window_used_percent(window: JsonValue) -> Int? {
+  match json_object_unique_member(
+    v: window,
+    key: codex_rate_limits_window_used_percent_key as String,
+  ) {
+    JsonMemberFound { value: pct } => json_number_as_int(v: pct)
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn rate_limit_window_is_saturated(window: JsonValue) -> Bool {
+  match rate_limit_window_used_percent(window: window) {
+    Absent => false
+    Present { value: pct } => pct >= 100
+  }
+}
+
+fn rate_limit_window_shows_remaining_capacity(window: JsonValue) -> Bool {
+  match rate_limit_window_used_percent(window: window) {
+    Absent => false
+    Present { value: pct } => pct < 100
+  }
+}
+
+fn rate_limits_snapshot_has_exhaustion_signal(snapshot: JsonValue) -> Bool {
+  match json_object_unique_member(
+    v: snapshot,
+    key: codex_rate_limits_snapshot_spend_control_reached_key as String,
+  ) {
+    JsonMemberFound { value: JsonBool { value: true } } => true
+    _ =>
+      match json_object_unique_member(
+        v: snapshot,
+        key: codex_rate_limits_snapshot_rate_limit_reached_type_key as String,
+      ) {
+        JsonMemberFound { value: JsonString { value: t } } => t != ""
+        JsonMemberFound { value: JsonNull } => false
+        JsonMemberFound { value: _ } => false
+        JsonMemberAbsent => false
+        JsonMemberDuplicated { count: _ } => false
+        JsonMemberNotAnObject => false
+      }
+  }
+}
+
+fn rate_limits_snapshot_window_saturated(snapshot: JsonValue, key: String) -> Bool {
+  match json_object_unique_member(v: snapshot, key: key) {
+    JsonMemberFound { value: window } => rate_limit_window_is_saturated(window: window)
+    JsonMemberAbsent => false
+    JsonMemberDuplicated { count: _ } => false
+    JsonMemberNotAnObject => false
+  }
+}
+
+fn rate_limits_snapshot_window_has_capacity(snapshot: JsonValue, key: String) -> Bool {
+  match json_object_unique_member(v: snapshot, key: key) {
+    JsonMemberFound { value: window } =>
+      rate_limit_window_shows_remaining_capacity(window: window)
+    JsonMemberAbsent => false
+    JsonMemberDuplicated { count: _ } => false
+    JsonMemberNotAnObject => false
+  }
+}
+
+fn disposition_from_rate_limits_snapshot(snapshot: JsonValue) -> AccountTripFrameDisposition {
+  if rate_limits_snapshot_has_exhaustion_signal(snapshot: snapshot)
+    || rate_limits_snapshot_window_saturated(
+      snapshot: snapshot,
+      key: codex_rate_limits_snapshot_primary_key as String,
+    )
+    || rate_limits_snapshot_window_saturated(
+      snapshot: snapshot,
+      key: codex_rate_limits_snapshot_secondary_key as String,
+    ) {
+    AccountTripQuotaSignal
+  } else if rate_limits_snapshot_window_has_capacity(
+    snapshot: snapshot,
+    key: codex_rate_limits_snapshot_primary_key as String,
+  )
+    || rate_limits_snapshot_window_has_capacity(
+      snapshot: snapshot,
+      key: codex_rate_limits_snapshot_secondary_key as String,
+    ) {
+    AccountTripResultOk
+  } else {
+    AccountTripMissing
+  }
+}
+
 fn disposition_from_rate_limits_result(result: JsonValue) -> AccountTripFrameDisposition {
   match json_object_unique_member(
     v: result,
     key: codex_rate_limits_result_rate_limits_key as String,
   ) {
-    JsonMemberFound { value: JsonObject { members: _ } } => AccountTripResultOk
-    JsonMemberFound { value: JsonNull } => AccountTripMissing
-    JsonMemberFound { value: _ } => AccountTripMissing
+    JsonMemberFound { value: snapshot } =>
+      disposition_from_rate_limits_snapshot(snapshot: snapshot)
     JsonMemberAbsent => AccountTripMissing
     JsonMemberDuplicated { count: _ } => AccountTripMissing
     JsonMemberNotAnObject => AccountTripMissing

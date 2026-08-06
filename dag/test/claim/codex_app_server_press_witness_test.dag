@@ -60,7 +60,15 @@ import extdeps.llm.codex_app_server {
   codex_app_server_method_wire_name,
 }
 
-data witness_note: String = "Hermetic press carriers: account-trip itinerary (3) vs turn-target itinerary (5) + projected stdio binding + preflight subject + terminal/cause adjudication RED. AccountReady is standing only — never turn_started. Live JSON-RPC turn execution remains open."
+data witness_note: String = "Hermetic press carriers: account-trip itinerary (3) vs turn-target itinerary (5) + projected stdio binding + preflight subject + terminal/cause adjudication RED. AccountReady requires RateLimitSnapshot capacity (usedPercent below 100), never an empty rateLimits object, and never turn_started. Live JSON-RPC turn execution remains open."
+
+data fixture_rate_limits_capacity_available_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"primary\":{\"usedPercent\":12},\"secondary\":{\"usedPercent\":3},\"spendControlReached\":false}}}\n"
+
+data fixture_rate_limits_empty_object_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{}}}\n"
+
+data fixture_rate_limits_primary_saturated_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"primary\":{\"usedPercent\":100,\"resetsAt\":1893456000},\"rateLimitReachedType\":\"rate_limit_reached\"}}}\n"
+
+data fixture_rate_limits_spend_control_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"spendControlReached\":true}}}\n"
 
 data fixture_digest_hex: String = "c86dec3d635d6bfd980084080eaf4caeb8e8093210eebc5833921ab2b1b754172e8422d39207a0fc9cea989ab557df11138309e630b10d75d094e8eb762b4547"
 
@@ -245,7 +253,7 @@ test fn account_ready_wire_status_is_not_turn_started_or_dispatch_accepted() -> 
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
         "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
-        "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{}}}\n",
+        fixture_rate_limits_capacity_available_line,
       ),
     ),
   )
@@ -267,12 +275,61 @@ test fn account_ready_wire_status_is_not_turn_started_or_dispatch_accepted() -> 
         && status != "turn_started"
         && status != "accepted"
         && status != "spawned"
-        && caption == "authenticated; rate limits readable"
+        && caption == "authenticated; capacity available"
         && caption != "turn started"
       match evidence.classification {
         AccountStandingAuthenticatedRateLimitsReadable => ready_ok
         _ => false
       }
+  }
+}
+
+test fn empty_rate_limits_object_is_incomplete_not_ready() -> Bool {
+  let evidence = parse_account_trip_stdout_for_tests(
+    stdout: concat(
+      "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
+      concat(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
+        fixture_rate_limits_empty_object_line,
+      ),
+    ),
+  )
+  match evidence.classification {
+    AccountStandingIncomplete => true
+    AccountStandingAuthenticatedRateLimitsReadable => false
+    _ => false
+  }
+}
+
+test fn saturated_primary_window_is_quota_reached() -> Bool {
+  let evidence = parse_account_trip_stdout_for_tests(
+    stdout: concat(
+      "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
+      concat(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
+        fixture_rate_limits_primary_saturated_line,
+      ),
+    ),
+  )
+  match evidence.classification {
+    AccountStandingQuotaReached => true
+    _ => false
+  }
+}
+
+test fn spend_control_reached_is_quota_reached() -> Bool {
+  let evidence = parse_account_trip_stdout_for_tests(
+    stdout: concat(
+      "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
+      concat(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
+        fixture_rate_limits_spend_control_line,
+      ),
+    ),
+  )
+  match evidence.classification {
+    AccountStandingQuotaReached => true
+    _ => false
   }
 }
 
@@ -306,7 +363,16 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
         "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
-        "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{}}}\n",
+        fixture_rate_limits_capacity_available_line,
+      ),
+    ),
+  )
+  let empty_limits = parse_account_trip_stdout_for_tests(
+    stdout: concat(
+      "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
+      concat(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
+        fixture_rate_limits_empty_object_line,
       ),
     ),
   )
@@ -326,7 +392,7 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
         "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
         concat(
           "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
-          "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{}}}\n",
+          fixture_rate_limits_capacity_available_line,
         ),
       ),
     ),
@@ -347,6 +413,10 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
     AccountStandingAuthenticatedRateLimitsReadable => true
     _ => false
   }
+  let empty_limits_incomplete = match empty_limits.classification {
+    AccountStandingIncomplete => true
+    _ => false
+  }
   let missing_ok = match missing.classification {
     AccountStandingInitializeMissing => true
     _ => false
@@ -361,7 +431,7 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
   }
   let projected = account_standing_projection(classification: ok.classification)
   let projection_ok = projected == "initialize_ok; account_read_ok; rate_limits_observed"
-  login_ok && quota_ok && quota_message_only_incomplete && ready_ok && missing_ok && incomplete_ok && duplicate_ok && projection_ok
+  login_ok && quota_ok && quota_message_only_incomplete && ready_ok && empty_limits_incomplete && missing_ok && incomplete_ok && duplicate_ok && projection_ok
 }
 
 test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
@@ -427,7 +497,7 @@ test fn unknown_frame_is_digested_not_silent() -> Bool {
         "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
         concat(
           "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
-          "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{}}}\n",
+          fixture_rate_limits_capacity_available_line,
         ),
       ),
     ),
