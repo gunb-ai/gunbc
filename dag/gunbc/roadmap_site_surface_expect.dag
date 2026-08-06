@@ -53,7 +53,7 @@ fn healthz_surface_projection(body: String) -> String? {
     Absent => Absent
     Present { value: doc } =>
       if length(healthz_projected_members(doc: doc)) == healthz_surface_projection_member_count {
-        serialize_json(v: json_object(members: healthz_projected_members(doc: doc)))
+        Present { value: serialize_json(v: json_object(members: healthz_projected_members(doc: doc))) }
       } else {
         Absent
       }

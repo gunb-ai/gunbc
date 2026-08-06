@@ -382,6 +382,7 @@ fn reconcile_service_ready_read_for_effect(
         grounding: ground_service_ready_from_healthz_with_bundle(
           read: observed,
           bundle: materialize_live_roadmap_site_surface_bundle(),
+          expected_revision: expected_revision,
         )
       )
   }
