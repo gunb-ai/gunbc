@@ -939,13 +939,19 @@ fn commit_writer_observe_staged_blob(
     path: entry.path,
     indexed_oid: entry.oid,
     content_oid: entry.oid,
-    classification: commit_writer_classify_staged_blob(
-      module_storage: module_storage,
-      path: entry.path,
-      indexed_oid: entry.oid,
-      text: read.content,
-      grammar: GitEffectiveConflictMarkerGrammar { size: 7 },
-    ),
+    classification: if read.success {
+      commit_writer_classify_staged_blob(
+        module_storage: module_storage,
+        path: entry.path,
+        indexed_oid: entry.oid,
+        text: read.content,
+        grammar: GitEffectiveConflictMarkerGrammar { size: 7 },
+      )
+    } else {
+      commit_writer_unavailable_classification_receipt(
+        cause: concat("git cat-file -p failed for oid ", hex),
+      )
+    },
   }
 }
 
