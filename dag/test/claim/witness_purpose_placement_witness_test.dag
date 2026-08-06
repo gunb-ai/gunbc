@@ -13,8 +13,6 @@ import std.measure {
   CpuClock,
 }
 import std.realization_schedule {
-  WitnessSeam,
-  SpanEnrolled,
   SpanUndeclared,
   SpanUnavailable,
   MeasuredAtExactSubject,
@@ -81,19 +79,6 @@ fn fixture_cost_basis() -> WitnessCostBasis {
     clock: WallClock,
     duration: millisecond(count: 3),
     receipt: "fixture-measure-receipt",
-  }
-}
-
-fn fixture_span_enrolled(wall_budget_ms: Nat) -> SpanEnrolled {
-  SpanEnrolled {
-    seams: [
-      WitnessSeam {
-        producer: "GithubActionsCiJob",
-        consumer: "witness_purpose_placement_witness_note",
-      }
-    ],
-    cost_basis: fixture_cost_basis(),
-    envelope: fixture_envelope(wall_budget_ms: wall_budget_ms),
   }
 }
 
