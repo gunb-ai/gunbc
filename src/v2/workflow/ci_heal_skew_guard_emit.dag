@@ -310,7 +310,7 @@ data ci_heal_skew_admission_check_note: String = "THE COMMIT WRITER ADMISSION AU
 
 fn ci_heal_skew_admission_check_argv() -> List<String> {
   [
-    "gunbc", "run",
+    "\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)/target/release/gunbc\"", "run",
     "--source-root", "dag",
     "--source-root", "src/v2",
     "--entry", "dag/gunbc/commit_workflow.dag",
