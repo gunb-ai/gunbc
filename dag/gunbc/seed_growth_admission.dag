@@ -1,0 +1,44 @@
+module gunbc.seed_growth_admission
+
+import gunbc.seed_growth { SeedGrowthJustification }
+import gunbc.rust_item_identity { RustItemIdentity, rust_item_identity_key }
+import std.decl_ref { DeclarationRef }
+import std.types { Bool, Int, List, String }
+import v2.std.algebra { length }
+
+data seed_growth_admission_note: String = "ITEM-GRAIN admission authority for hand-authored Rust growth (Lane swift-lynx-164). Implements the completeness join gunbc.seed_growth.seed_growth_note assigns to the honest-frontier lane: compare every newly authored or modified hand Rust item in a change against SeedGrowthJustification.hand_authored_declarations and refuse on the difference. PATH-GRAIN census (sibling proud-owl-773 PR #7894) answers which files lack disposition; THIS MODULE answers which ITEMS within files lack justification. NOT IN SCOPE: deleting existing Rust (other lanes own host-effect, materialization, interpreter cutover). NOT IN SCOPE: netting deletions against additions — every addition needs its own justification (operator ruling). G0 HOST SCAFFOLD: scripts/rust_item_census.py enumerates items at HEAD; dissolves when gunbc.rust_item_host_observation provides parsed RustItemIdentity rows from git diff."
+
+type SeedGrowthAdmissionVerdict
+  = SeedGrowthAdmissionComplete {
+      justified_items: List<String>,
+      stale_justifications: List<String>,
+      duplicate_justifications: List<String>,
+      uncitable_items: List<String>
+    }
+  | SeedGrowthAdmissionRefused {
+      unjustified_additions: List<String>,
+      detail: String
+    }
+
+type SeedGrowthChangeDisposition
+  = SeedBridgeAuthorized
+  | ExistingSeedItemModified
+  | GeneratedInstead
+  | HandRustDeleted
+  | RetainedKernel
+  | GrowthRefused
+
+data seed_growth_justification_roster_note: String = "CLOSED ROSTER of every SeedGrowthJustification row in the corpus. G1 joins new/modified hand items against this list. Rows are authored beside the obligation they declare; the roster is derived by enumeration, never by grep. Today: stage0_rust_observation_seed_growth_justification (gunbc.stage0_rust_host_observation) and observation_scoped_run_seed_growth_justification (gunbc.roadmap_authority). Each new justification adds one row here AND one data row in its owning module."
+
+fn seed_growth_justification_declaration_count(j: SeedGrowthJustification) -> Int {
+  length(xs: j.hand_authored_declarations)
+}
+
+fn seed_growth_justification_well_formed(j: SeedGrowthJustification) -> Bool {
+  j.reason != ""
+    && j.trigger != ""
+    && j.current_boundary != ""
+    && length(xs: j.hand_authored_declarations) > 0
+}
+
+data seed_growth_admission_g0_population_note: String = "G0 CENSUS RECEIPT at HEAD 2be84333f5fcb87a68563f884de8a70cb3677d03 (2026-08-06, scripts/rust_item_census.py). Tracked .rs files: 355. Hand files: 215 (132,992 LOC). Generated files: 140 (147,880 LOC). Hand items: 8,359 (fn 6201, mod 487, struct 291, enum 138, type 258, const 399, static 154, impl_block 134, impl_method 273, macro_rules 19, trait 5). src/v1 hand: 182 files, 131,463 LOC. Giants: cli_run.rs 1,820 items / 38,615 LOC; claim_executor.rs 381 items / 13,497 LOC; v1_interpreter.rs 593 items / 13,547 LOC. Generated share by LOC: 52.7% (hand 47.3%). This receipt is the G0 denominator; G1 compares merge-base diff against SeedGrowthJustification rows."
