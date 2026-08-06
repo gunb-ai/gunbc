@@ -19,6 +19,12 @@ import gunbc.runner_lifecycle {
   HostRunnerCapacityReceipt,
   runner_slot_instance_name,
   runner_slot_unit_name,
+  runner_lifecycle_cited_release,
+  runner_lifecycle_ci_org,
+}
+import extdeps.github.actions_runner {
+  ActionsRunnerBinaryArtifact,
+  ActionsRunnerLinuxX64,
 }
 import gunbc.host_disk_observation {
   DiskObserved,
@@ -120,15 +126,31 @@ test fn witness_slot_identity_formats_zero_padded_unit() -> Bool {
 }
 
 test fn witness_runner_lifecycle_host_effects_declared() -> Bool {
-  match EnsureActionsRunnerRelease { runner_release: _ } { EnsureActionsRunnerRelease { runner_release: _ } => true }
-    && match EnsureRunnerSlotDirectory { slot: _, artifact: _ } { EnsureRunnerSlotDirectory { slot: _, artifact: _ } => true }
-    && match EnsureRunnerJitWrapper { host_label: _ } { EnsureRunnerJitWrapper { host_label: _ } => true }
-    && match EnsureRunnerSystemdTemplate { host_label: _ } { EnsureRunnerSystemdTemplate { host_label: _ } => true }
-    && match EnsureRunnerMemoryCaps { slot: _ } { EnsureRunnerMemoryCaps { slot: _ } => true }
-    && match ActivateRunnerSlot { slot: _ } { ActivateRunnerSlot { slot: _ } => true }
-    && match ReplaceRunnerIncarnation { slot: _ } { ReplaceRunnerIncarnation { slot: _ } => true }
-    && match ObserveRunnerLocalState { slot: _ } { ObserveRunnerLocalState { slot: _ } => true }
-    && match ObserveGitHubRunnerRegistration { slot: _, organization: _ } {
-      ObserveGitHubRunnerRegistration { slot: _, organization: _ } => true
-    }
+  let slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 1 }
+  let artifact = ActionsRunnerBinaryArtifact {
+    binary_release: runner_lifecycle_cited_release,
+    arch: ActionsRunnerLinuxX64,
+  }
+  let host_label = operator_host_srv3 as NonEmptyStr
+  let ensure_release = EnsureActionsRunnerRelease { runner_release: runner_lifecycle_cited_release }
+  let ensure_directory = EnsureRunnerSlotDirectory { slot: slot, artifact: artifact }
+  let ensure_jit_wrapper = EnsureRunnerJitWrapper { host_label: host_label }
+  let ensure_systemd_template = EnsureRunnerSystemdTemplate { host_label: host_label }
+  let ensure_memory_caps = EnsureRunnerMemoryCaps { slot: slot }
+  let activate_slot = ActivateRunnerSlot { slot: slot }
+  let replace_incarnation = ReplaceRunnerIncarnation { slot: slot }
+  let observe_local_state = ObserveRunnerLocalState { slot: slot }
+  let observe_registration = ObserveGitHubRunnerRegistration {
+    slot: slot,
+    organization: runner_lifecycle_ci_org,
+  }
+  ensure_release == ensure_release
+    && ensure_directory == ensure_directory
+    && ensure_jit_wrapper == ensure_jit_wrapper
+    && ensure_systemd_template == ensure_systemd_template
+    && ensure_memory_caps == ensure_memory_caps
+    && activate_slot == activate_slot
+    && replace_incarnation == replace_incarnation
+    && observe_local_state == observe_local_state
+    && observe_registration == observe_registration
 }

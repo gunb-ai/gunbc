@@ -80,3 +80,9 @@ fn runner_lifecycle_realize_observe_github_runner_registration(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   runner_lifecycle_realize_scaffold(effect_label: "ObserveGitHubRunnerRegistration", intent: intent)
 }
+
+data runner_lifecycle_realize_hub_scaffold_note: String = "Hub entry for runner_lifecycle_effects_scaffold (review 49715): per-effect realize_* arms delegate here until host_effect_apply runs wet shell/systemd; dissolves when each arm replaces runner_lifecycle_realize_scaffold with real transport."
+
+fn runner_lifecycle_realize(intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "runner_lifecycle", intent: intent)
+}

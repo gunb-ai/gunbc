@@ -189,9 +189,6 @@ type GitHubRunnerRegistrationObservation
   | GitHubRunnerRegistrationPending { slot: RunnerSlotIdentity, reason: NonEmptyStr }
   | GitHubRunnerRegistrationRefused { slot: RunnerSlotIdentity, reason: NonEmptyStr }
 
-// Aspiration bind: runner_lifecycle_realize is not yet a single top-level decl; names the realize
-// module's per-effect dissolve targets (runner_lifecycle_realize_*), not a live symbol (review 49698).
-
 data runner_lifecycle_effects_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
