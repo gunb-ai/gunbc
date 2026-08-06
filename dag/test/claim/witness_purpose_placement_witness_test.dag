@@ -53,6 +53,7 @@ import std.witness_placement {
   RefusedNoConsumer,
   CostExceedsFastLaneWithoutCadence,
   PurposeRequiresScheduledCadenceUndeclared,
+  OneShotPurposeOnScheduledCadence,
   EnvelopeUndeclared,
   SpanUnavailableAtPlacement,
   UnrecognizedEnvelopeCadence,
@@ -441,6 +442,57 @@ test fn terminating_one_shot_routes_one_shot() -> Bool {
     OrdinaryPerPr => false
     PerPrWet => false
     Scheduled { cadence: _ } => false
+    RefusedNoConsumer { cause: _ } => false
+  }
+}
+
+test fn terminating_one_shot_on_scheduled_cadence_refuses() -> Bool {
+  let one_shot_purpose = TerminatingOneShot {
+    pinned_subject: fixture_subject_hash(),
+    dissolution_trigger: decl_ref(
+      module_path: "std.witness_purpose",
+      decl_name: "witness_purpose_authority_note",
+    ),
+    deadline: "2026-12-31",
+  }
+  let falsifier_job_route = derive_witness_route(
+    purpose: one_shot_purpose,
+    envelope: ScheduledWitnessEnvelope {
+      cadence: "4h",
+      wall_budget: millisecond(count: 9000),
+      max_staleness: "4h",
+    },
+    fast_lane_budget: millisecond(count: 5000),
+  )
+  let long_lane_route = derive_witness_route(
+    purpose: one_shot_purpose,
+    envelope: ScheduledWitnessEnvelope {
+      cadence: "falsifier_substrate_long_lane",
+      wall_budget: millisecond(count: 9000),
+      max_staleness: "4h",
+    },
+    fast_lane_budget: millisecond(count: 5000),
+  )
+  match falsifier_job_route {
+    RefusedNoConsumer {
+      cause: OneShotPurposeOnScheduledCadence { cadence: "4h" },
+    } =>
+      match long_lane_route {
+        RefusedNoConsumer {
+          cause: OneShotPurposeOnScheduledCadence {
+            cadence: "falsifier_substrate_long_lane",
+          },
+        } => true
+        Scheduled { cadence: _ } => false
+        OneShot => false
+        OrdinaryPerPr => false
+        PerPrWet => false
+        RefusedNoConsumer { cause: _ } => false
+      }
+    Scheduled { cadence: _ } => false
+    OneShot => false
+    OrdinaryPerPr => false
+    PerPrWet => false
     RefusedNoConsumer { cause: _ } => false
   }
 }

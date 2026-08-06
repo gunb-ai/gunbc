@@ -41,6 +41,7 @@ type WitnessRoute
 
 type WitnessPlacementRefusal
   = PurposeRequiresScheduledCadenceUndeclared
+  | OneShotPurposeOnScheduledCadence { cadence: String }
   | CostExceedsFastLaneWithoutCadence
   | NonExecutingCadence { cadence: String }
   | EnvelopeUndeclared
@@ -126,9 +127,21 @@ fn derive_witness_route(
           }
       }
     EnvelopeCadenceFalsifierCadenceJob =>
-      Scheduled { cadence: envelope.cadence }
+      match purpose {
+        TerminatingOneShot { pinned_subject: _, dissolution_trigger: _, deadline: _ } =>
+          RefusedNoConsumer {
+            cause: OneShotPurposeOnScheduledCadence { cadence: envelope.cadence },
+          }
+        _ => Scheduled { cadence: envelope.cadence }
+      }
     EnvelopeCadenceFalsifierSubstrateLongLane =>
-      Scheduled { cadence: envelope.cadence }
+      match purpose {
+        TerminatingOneShot { pinned_subject: _, dissolution_trigger: _, deadline: _ } =>
+          RefusedNoConsumer {
+            cause: OneShotPurposeOnScheduledCadence { cadence: envelope.cadence },
+          }
+        _ => Scheduled { cadence: envelope.cadence }
+      }
   }
 }
 
