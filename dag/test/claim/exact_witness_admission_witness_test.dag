@@ -16,7 +16,7 @@ import gunbc.explicit_witness_admission {
   known_red_probe_v1_envelope_roster,
   known_red_probe_execution_roster
 }
-import gunbc.ci_layer_roots { known_red_probe_roster, witness_long_eval_budget_entries, falsifier_substrate_long_lane_entries }
+import gunbc.ci_layer_roots { known_red_probe_roster, witness_long_eval_budget_entries, witness_long_eval_budget_contains, witness_long_eval_budget_union_in, falsifier_substrate_long_lane_entries }
 import v2.workflow.witness_admission {
   explicit_witness_admission_uniqueness_holds,
   explicit_witness_admission_rows_well_formed_holds,
@@ -28,7 +28,8 @@ import v2.workflow.witness_admission {
 import std.realization_schedule {
   ScheduleWitnessEntry,
   CorpusWitnessKind,
-  ExecutionWitnessKind
+  ExecutionWitnessKind,
+  schedule_witness_entry_eq
 }
 import std.witness_admission {
   OfflineLocalRecipe,
@@ -41,6 +42,7 @@ import std.witness_admission {
 }
 import v2.std.algebra { length }
 import v2.std.collection { List }
+import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -231,19 +233,61 @@ test fn eval_budget_is_independent_of_cadence_and_of_expected_verdict() -> Bool 
     )
 }
 
-data long_budget_union_note: String = "The scheduler ceiling reads the UNION, so a row that declares its own long budget is covered without appearing on the long-lane BATCH roster. The second clause is what makes that a real separation rather than a renaming: a declared-long row is genuinely absent from the batch roster, so it occupies one schedule position, not two."
+data long_budget_union_note: String = "The scheduler ceiling reads the UNION, so a row that declares its own long budget is covered without appearing on the long-lane BATCH roster. The second clause is what makes that a real separation rather than a renaming: a declared-long row is genuinely absent from the batch roster, so it occupies one schedule position, not two. The union is an IDENTITY SET, and the counting clause below is stated as one-occurrence-per-declared-row rather than as a sum of the two input lengths — a sum is only correct while the inputs happen to be disjoint, which is a property of today's population and not of the mechanism, so it would go quietly wrong exactly when a row starts reaching the ceiling through both inputs."
+
+fn long_budget_union_occurrences(w: ScheduleWitnessEntry) -> Int {
+  fold(witness_long_eval_budget_entries(), init: 0, f: fn(n, x) {
+    if schedule_witness_entry_eq(a: x, b: w) { n + 1 } else { n }
+  })
+}
 
 test fn declared_long_budget_reaches_the_ceiling_roster_without_the_batch_roster() -> Bool {
   let declared = witness_long_eval_budget_roster()
-  let union = witness_long_eval_budget_entries()
   let batch = falsifier_substrate_long_lane_entries()
   (length(xs: declared) > 0)
-    && (length(xs: union) == (length(xs: batch) + length(xs: declared)))
     && fold(declared, init: true, f: fn(ok, w) {
-      ok && !any(xs: batch, predicate: fn(b) {
-        (b.entry == w.entry) && (b.function == w.function)
-      })
+      ok
+        && (long_budget_union_occurrences(w: w) == 1)
+        && !any(xs: batch, predicate: fn(b) { schedule_witness_entry_eq(a: b, b: w) })
     })
+    && fold(batch, init: true, f: fn(ok, b) { ok && (long_budget_union_occurrences(w: b) == 1) })
+}
+
+data long_budget_identity_set_control_note: String = "THE DISCRIMINATING CONTROL FOR THE DEDUP, and it drives the union fold with PLANTED inputs rather than observing the live one. A control that reads only the live union cannot see the dedup at all: today's two inputs are disjoint, so deleting the membership check changes nothing observable and the control passes either way — measured, not assumed (removing the check left both live clauses green). The plant supplies the overlap the population does not currently have, so the first clause fails the moment the fold stops joining on identity. Third clause is the negative pole: a row on neither input is absent, so membership is not answering true for everything. Fourth: a genuinely distinct row is kept, so the dedup is not collapsing on something coarser than identity."
+
+fn synthetic_union_row(f: String) -> ScheduleWitnessEntry {
+  ScheduleWitnessEntry {
+    entry: "dag/test/claim/synthetic_admission_witness_test.dag",
+    function: f,
+    kind: CorpusWitnessKind
+  }
+}
+
+fn planted_union_occurrences(
+  batch: List<ScheduleWitnessEntry>,
+  declared: List<ScheduleWitnessEntry>,
+  w: ScheduleWitnessEntry
+) -> Int {
+  fold(
+    witness_long_eval_budget_union_in(batch: batch, declared: declared),
+    init: 0,
+    f: fn(n, x) { if schedule_witness_entry_eq(a: x, b: w) { n + 1 } else { n } }
+  )
+}
+
+test fn red_control_long_budget_union_collapses_a_row_present_in_both_inputs() -> Bool {
+  let overlapping = synthetic_union_row(f: "reaches_the_ceiling_through_both_inputs")
+  let batch_only = synthetic_union_row(f: "on_the_batch_roster_only")
+  let declared_only = synthetic_union_row(f: "declares_its_own_budget_only")
+  let absent = synthetic_union_row(f: "never_enrolled_anywhere")
+  let batch = [batch_only, overlapping]
+  let declared = [overlapping, declared_only]
+  (planted_union_occurrences(batch: batch, declared: declared, w: overlapping) == 1)
+    && (length(xs: witness_long_eval_budget_union_in(batch: batch, declared: declared)) == 3)
+    && (planted_union_occurrences(batch: batch, declared: declared, w: absent) == 0)
+    && (planted_union_occurrences(batch: batch, declared: declared, w: declared_only) == 1)
+    && witness_long_eval_budget_contains(xs: batch, w: overlapping)
+    && !witness_long_eval_budget_contains(xs: batch, w: declared_only)
 }
 
 test fn every_declared_long_budget_row_is_also_expected_red_today() -> Bool {

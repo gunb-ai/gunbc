@@ -1777,19 +1777,84 @@ fn expected_verdict_for(
     }
 }
 
+/// What actually happened to ONE witness declared expected-red.
+///
+/// AGREEMENT MEANS THE ASSERTION RAN AND WAS FALSE — not merely that it was not `Pass`.
+/// The first shape of this classifier computed `green = (outcome == Pass)` and routed every
+/// other outcome into the agreement arm, which blessed a budget kill, an interpreter error, a
+/// non-Bool return and an unobserved row as though the business assertion had executed and
+/// returned false. That is the ⊥-as-ignorance conflation in the one place that decides whether
+/// a red is real: "the assertion was false" and "no verdict was produced" are different states
+/// with different remedies, and only the first is a quarantine holding. It also contradicted a
+/// recorded ruling outright — `BudgetExceeded` is an interruption plus a measured lower bound on
+/// cost, NEVER a semantic verdict on a witness — so a known-red witness that timed out reported
+/// its quarantine as intact while its real behaviour was unobserved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ExpectedRedDisposition {
+    /// The assertion ran and returned false. THE ONLY AGREEMENT.
+    AgreementAssertionReturnedFalse,
+    /// The assertion ran and returned true — the quarantine is stale and its row must go.
+    StaleQuarantineAssertionReturnedTrue,
+    /// Killed at a declared budget: an interruption plus a lower bound on cost, no verdict.
+    BudgetFailure,
+    /// The interpreter raised, or the witness returned a non-Bool. No verdict was produced.
+    ///
+    /// `RuntimeError` and `NotBool` share this arm because the seam cannot tell them apart from
+    /// a REFUSAL BEFORE EVALUATION today: `run_claim` formats the typed `InterpError` into a
+    /// `String` at the point it builds `ClaimOutcome::RuntimeError`, so a pre-evaluation refusal
+    /// and a mid-evaluation fault arrive indistinguishable. They are not split here by sniffing
+    /// that message — recovering a class from prose the seed just formatted is the exact
+    /// mechanism `budget_refusal` exists to avoid. Dissolve-on: `ClaimOutcome` carries the typed
+    /// error through instead of a formatted string, at which point this arm splits in two.
+    InfrastructureOrReferentFailure,
+    /// No observation exists for this rostered witness — it was not selected, was skipped, or
+    /// never reported. ABSENT EVIDENCE IS NOT A VERDICT: it is neither agreement nor failure,
+    /// and it is counted so its frequency stays observable rather than being absorbed into
+    /// either arm.
+    EvidenceAbsent,
+}
+
+impl ExpectedRedDisposition {
+    fn of(outcome: &ClaimOutcome) -> Self {
+        match outcome {
+            ClaimOutcome::Fail => Self::AgreementAssertionReturnedFalse,
+            ClaimOutcome::Pass => Self::StaleQuarantineAssertionReturnedTrue,
+            ClaimOutcome::TimedOut { .. } => Self::BudgetFailure,
+            ClaimOutcome::RuntimeError { .. } | ClaimOutcome::NotBool { .. } => {
+                Self::InfrastructureOrReferentFailure
+            }
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            Self::AgreementAssertionReturnedFalse => "agreement",
+            Self::StaleQuarantineAssertionReturnedTrue => "stale-quarantine",
+            Self::BudgetFailure => "budget-failure",
+            Self::InfrastructureOrReferentFailure => "infrastructure-or-referent-failure",
+            Self::EvidenceAbsent => "evidence-absent",
+        }
+    }
+}
+
 /// The result of matching each executed witness against its own declared expectation.
 ///
-/// Four cells, and each is a distinct fact with a distinct remedy — collapsing any two is
-/// what the batch-wide boolean did. `agreements` is a quarantine holding (not a failure and
-/// never paged). `stale_known_red` is the un-quarantine event: a typed REFUSAL naming the
-/// rows to delete, so a known-red that silently starts passing stops the line instead of
-/// going quietly green and leaving a row nobody revisits. `unexpected_failures` is an
-/// ordinary red.
+/// Every cell is a distinct fact with a distinct remedy — collapsing any two is what the
+/// batch-wide boolean, and then the `!= Pass` shortcut, each did in turn.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct WitnessExpectationTally {
     agreements: Vec<(String, String)>,
     stale_known_red: Vec<(String, String)>,
+    /// Expected-red witnesses that produced NO verdict: budget kills and infra/referent faults.
+    /// Real failures, previously blessed as agreement.
+    expected_red_without_verdict: Vec<(String, String, ExpectedRedDisposition)>,
+    /// Rostered expected-red witnesses with no observation at all. Counted, never a verdict.
+    evidence_absent: Vec<(String, String)>,
+    /// Witnesses expected to hold that did not pass. Ordinary reds.
     unexpected_failures: Vec<(String, String)>,
+    /// Every non-`Pass` outcome this classifier actually saw, whatever its expectation. The
+    /// denominator the failure accounting divides by.
+    classified_non_pass: usize,
 }
 
 impl WitnessExpectationTally {
@@ -1802,32 +1867,89 @@ impl WitnessExpectationTally {
             })
         }
     }
+
+    /// Failures that must red the batch: an expected-red witness that produced no verdict, and
+    /// an expected-to-hold witness that did not pass. Absent evidence is deliberately NOT here.
+    fn hard_failures(&self) -> usize {
+        self.expected_red_without_verdict.len() + self.unexpected_failures.len()
+    }
 }
 
 fn classify_witness_expectations(
     outcomes: &[DiscoveryWitnessOutcome],
     expected_red: &[(String, String)],
 ) -> WitnessExpectationTally {
+    classify_witness_expectations_in(outcomes, expected_red, &[])
+}
+
+/// `rostered` is the batch's explicit entries, used only to find expected-red rows that produced
+/// no observation at all. Empty means the absent-evidence axis is not being checked.
+fn classify_witness_expectations_in(
+    outcomes: &[DiscoveryWitnessOutcome],
+    expected_red: &[(String, String)],
+    rostered: &[(String, String)],
+) -> WitnessExpectationTally {
     let mut tally = WitnessExpectationTally::default();
     for row in outcomes {
         let id = (row.entry.clone(), row.function.clone());
-        let green = matches!(row.outcome, ClaimOutcome::Pass);
+        if !matches!(row.outcome, ClaimOutcome::Pass) {
+            tally.classified_non_pass += 1;
+        }
         match expected_verdict_for(expected_red, &row.entry, &row.function) {
             WitnessExpectedVerdict::ExpectWitnessRed => {
-                if green {
-                    tally.stale_known_red.push(id);
-                } else {
-                    tally.agreements.push(id);
+                match ExpectedRedDisposition::of(&row.outcome) {
+                    ExpectedRedDisposition::AgreementAssertionReturnedFalse => {
+                        tally.agreements.push(id)
+                    }
+                    ExpectedRedDisposition::StaleQuarantineAssertionReturnedTrue => {
+                        tally.stale_known_red.push(id)
+                    }
+                    other => tally.expected_red_without_verdict.push((id.0, id.1, other)),
                 }
             }
             WitnessExpectedVerdict::ExpectWitnessHolds => {
-                if !green {
+                if !matches!(row.outcome, ClaimOutcome::Pass) {
                     tally.unexpected_failures.push(id);
                 }
             }
         }
     }
+    // An expected-red row this batch was asked to run, for which no observation came back.
+    for (entry, function) in rostered {
+        let expected = matches!(
+            expected_verdict_for(expected_red, entry, function),
+            WitnessExpectedVerdict::ExpectWitnessRed
+        );
+        let observed = outcomes
+            .iter()
+            .any(|o| &o.entry == entry && &o.function == function);
+        if expected && !observed {
+            tally
+                .evidence_absent
+                .push((entry.clone(), function.clone()));
+        }
+    }
     tally
+}
+
+/// Absent evidence is counted and named on every path, and is never an arm of the verdict.
+/// Reporting it is what keeps it from being absorbed: a known-red row that stopped running is a
+/// coverage deficit whose frequency must stay observable, not a quarantine silently holding.
+fn report_absent_expected_red_evidence(tally: &WitnessExpectationTally) {
+    if !tally.evidence_absent.is_empty() {
+        eprintln!(
+            "[expect-red] EVIDENCE ABSENT for {} expected-red witness(es) — not agreement, not failure, no verdict: {}",
+            tally.evidence_absent.len(),
+            render_witness_ids(&tally.evidence_absent)
+        );
+    }
+}
+
+fn render_disposition_ids(ids: &[(String, String, ExpectedRedDisposition)]) -> String {
+    ids.iter()
+        .map(|(e, f, d)| format!("{e}::{f} [{}]", d.label()))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn render_witness_ids(ids: &[(String, String)]) -> String {
@@ -3807,7 +3929,12 @@ fn run_discovery_batch_node(
             // Every witness green means every expected-RED witness here is a STALE
             // quarantine — its dissolve-on fired. Named at function grain rather than
             // counted, because the remedy is deleting those specific admission rows.
-            let tally = classify_witness_expectations(&summary.witness_outcomes, &expected_red);
+            let tally = classify_witness_expectations_in(
+                &summary.witness_outcomes,
+                &expected_red,
+                &explicit_entries,
+            );
+            report_absent_expected_red_evidence(&tally);
             match tally.refusal() {
                 Some(refusal) => discovery_claim_result(
                     label,
@@ -3868,7 +3995,12 @@ fn run_discovery_batch_node(
             // Per-witness, never per-batch: a red witness that declared ExpectWitnessRed is
             // AGREEMENT and a green one that declared it is a stale-quarantine refusal, in
             // the same batch, in either order. A mixed batch is ordinary rather than a trap.
-            let tally = classify_witness_expectations(&summary.witness_outcomes, &expected_red);
+            let tally = classify_witness_expectations_in(
+                &summary.witness_outcomes,
+                &expected_red,
+                &explicit_entries,
+            );
+            report_absent_expected_red_evidence(&tally);
             if !tally.agreements.is_empty() {
                 eprintln!(
                     "[expect-red] {} known-red witness(es) still red (agreement — quarantine holds): {}",
@@ -3897,8 +4029,8 @@ fn run_discovery_batch_node(
                 // rather than read "no unexpected failures" as "nothing failed". That would
                 // be the empty-observation narrow: an unmatchable failure rendered as the
                 // verdict "nothing is wrong".
-                None if tally.unexpected_failures.is_empty()
-                    && summary.failures.len() <= tally.agreements.len() =>
+                None if tally.hard_failures() == 0
+                    && summary.failures.len() <= tally.classified_non_pass =>
                 {
                     discovery_claim_result(
                         format!("{label} (expect_red still-red OK)"),
@@ -3914,10 +4046,16 @@ fn run_discovery_batch_node(
                     label,
                     false,
                     format!(
-                        "{} of {} discovery witness(es) failed ({} agreement(s) held): {}",
+                        "{} of {} discovery witness(es) failed ({} agreement(s) held; {} expected-red produced NO verdict{}): {}",
                         summary.failures.len(),
                         summary.total,
                         tally.agreements.len(),
+                        tally.expected_red_without_verdict.len(),
+                        if tally.expected_red_without_verdict.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" — {}", render_disposition_ids(&tally.expected_red_without_verdict))
+                        },
                         summary.failures.join("; ")
                     ),
                     node_frontier_selection,
@@ -10612,6 +10750,133 @@ mod tests {
             detail.contains("direct_rust_door_production_group_closing_expectation_holds"),
             "the refusal must name the identity to un-quarantine, got: {detail}"
         );
+    }
+
+    /// ONE ROW PER DISPOSITION of the required result table, each discriminating.
+    ///
+    /// The table exists because the first classifier computed `green = (outcome == Pass)` and
+    /// swept every other outcome into the agreement arm. Each row below is an outcome that
+    /// arm would have blessed as "the quarantine held" while the assertion produced no verdict
+    /// at all.
+    #[test]
+    fn expected_red_disposition_table_distinguishes_every_outcome() {
+        let entry = "src/v2/test/claim/long/direct_rust_door_production_group_test.dag";
+        let f = "direct_rust_door_production_group_closing_expectation_holds";
+        let expected_red = vec![(entry.to_string(), f.to_string())];
+
+        let row = |o: ClaimOutcome| {
+            classify_witness_expectations_in(
+                &[outcome(entry, f, o)],
+                &expected_red,
+                &[(entry.to_string(), f.to_string())],
+            )
+        };
+
+        // ROW 1 — assertion executed, returned false: the ONLY agreement.
+        let t = row(ClaimOutcome::Fail);
+        assert_eq!(t.agreements.len(), 1);
+        assert_eq!(t.hard_failures(), 0);
+        assert!(t.evidence_absent.is_empty());
+
+        // ROW 2 — assertion executed, returned true: stale quarantine, a typed refusal.
+        let t = row(ClaimOutcome::Pass);
+        assert!(t.agreements.is_empty());
+        assert!(t.refusal().is_some());
+
+        // ROW 3 — timed out: a BUDGET failure. An interruption plus a lower bound on cost is
+        // never a semantic verdict, so it must not read as a quarantine holding.
+        let t = row(ClaimOutcome::TimedOut {
+            elapsed_ms: 5001,
+            budget_ms: 5000,
+            kind: BudgetKind::Cpu,
+        });
+        assert!(
+            t.agreements.is_empty(),
+            "a budget kill must never count as agreement — the assertion did not produce a verdict"
+        );
+        assert_eq!(
+            t.refusal(),
+            None,
+            "a budget kill is not a stale quarantine either"
+        );
+        assert_eq!(
+            t.expected_red_without_verdict,
+            vec![(
+                entry.to_string(),
+                f.to_string(),
+                ExpectedRedDisposition::BudgetFailure
+            )]
+        );
+        assert_eq!(t.hard_failures(), 1, "it must red the batch");
+
+        // ROW 4 — interpreter fault, and ROW 4b — non-Bool referent: no verdict produced.
+        // Row 5 of the table (refused BEFORE evaluation) shares this arm today because
+        // `run_claim` formats the typed error to a String; that is declared on the variant,
+        // not papered over by sniffing the message.
+        for o in [
+            ClaimOutcome::RuntimeError {
+                message: "undefined variable: X".into(),
+            },
+            ClaimOutcome::NotBool {
+                got: "Record".into(),
+            },
+        ] {
+            let t = row(o);
+            assert!(t.agreements.is_empty());
+            assert_eq!(
+                t.expected_red_without_verdict
+                    .iter()
+                    .map(|(_, _, d)| d.clone())
+                    .collect::<Vec<_>>(),
+                vec![ExpectedRedDisposition::InfrastructureOrReferentFailure]
+            );
+            assert_eq!(t.hard_failures(), 1);
+        }
+
+        // ROW 6 — no observation at all: ABSENT EVIDENCE, which is not a verdict in either
+        // direction. Not agreement, not a refusal, and not a hard failure — counted instead,
+        // so its frequency stays observable rather than being absorbed into an arm.
+        let t = classify_witness_expectations_in(
+            &[],
+            &expected_red,
+            &[(entry.to_string(), f.to_string())],
+        );
+        assert!(t.agreements.is_empty());
+        assert_eq!(t.refusal(), None);
+        assert_eq!(t.hard_failures(), 0);
+        assert_eq!(t.evidence_absent, vec![(entry.to_string(), f.to_string())]);
+    }
+
+    /// The regression this table was written for, stated as one assertion: under the `!= Pass`
+    /// shortcut EVERY one of these blessed the quarantine. None may.
+    #[test]
+    fn no_verdict_outcome_is_ever_agreement_for_an_expected_red_witness() {
+        let entry = "e.dag";
+        let f = "witness_holds";
+        let expected_red = vec![(entry.to_string(), f.to_string())];
+        for o in [
+            ClaimOutcome::TimedOut {
+                elapsed_ms: 1,
+                budget_ms: 1,
+                kind: BudgetKind::Wall,
+            },
+            ClaimOutcome::RuntimeError {
+                message: "boom".into(),
+            },
+            ClaimOutcome::NotBool { got: "Int".into() },
+        ] {
+            let t = classify_witness_expectations(&[outcome(entry, f, o.clone())], &expected_red);
+            assert!(
+                t.agreements.is_empty() && t.hard_failures() == 1,
+                "{o:?} must produce no agreement and must red the batch"
+            );
+        }
+        // …while the one that genuinely ran and was false still does agree, so the fix is not
+        // simply "nothing agrees any more".
+        let t =
+            classify_witness_expectations(&[outcome(entry, f, ClaimOutcome::Fail)], &expected_red);
+        assert_eq!(t.agreements.len(), 1);
+        assert_eq!(t.hard_failures(), 0);
     }
 
     /// Expectation is a property of the WITNESS, so a quarantined function and a green
