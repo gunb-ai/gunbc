@@ -176,7 +176,7 @@ data rust_crate_partition_declared_core_target: Int = 7
 
 data rust_crate_partition_module_bearing_unit_target: Int = 6
 
-data stage0_r3_emit_shell_note: String = "R3-only emit shell crate (reexport surface, NOT a partition_fold CompilationUnit): modules list is the reexport bundle for render at cutover; those modules remain owned by module-bearing units in stage0_interim_explicit_assignment. Physical crate count = module_bearing (6) + emit_shell (1) = declared_core_target (7)."
+data stage0_r3_emit_shell_note: String = "R3-only emit shell crate (reexport surface, NOT a partition_fold CompilationUnit): modules list is the reexport bundle for render at cutover; those modules remain owned by module-bearing units in stage0_derived_partition_outcome. Physical crate count = module_bearing (6) + emit_shell (1) = declared_core_target (7)."
 
 data stage0_unit_runtime: CompilationUnitId = "stage0-unit-runtime" as CompilationUnitId
 data stage0_unit_std_primitives: CompilationUnitId = "stage0-unit-std-primitives" as CompilationUnitId
@@ -1296,20 +1296,6 @@ fn stage0_derived_unit_member_basenames_from_members(
   }
 }
 
-fn stage0_derived_unit_member_basenames_from_outcome(
-  outcome: Stage0DerivedPartitionOutcome,
-  unit_id: CompilationUnitId
-) -> List<String> {
-  match outcome {
-    Stage0DerivedPartitionRefused { cause: _ } => []
-    Stage0DerivedPartitionOk { assignment: _, members_by_unit: members_by_unit, reach_dispositions_by_unit: _ } =>
-      stage0_derived_unit_member_basenames_from_members(
-        members_by_unit: members_by_unit,
-        unit_id: unit_id
-      )
-  }
-}
-
 fn stage0_interim_explicit_assignment_outcome() -> ResolvePartitionOutcome {
   match stage0_derived_partition_outcome() {
     Stage0DerivedPartitionRefused { cause: cause } =>
@@ -1321,7 +1307,7 @@ fn stage0_interim_explicit_assignment_outcome() -> ResolvePartitionOutcome {
   }
 }
 
-data stage0_partition_derived_membership_production_refusal_note: String = "Production paths are outcome-shaped through stage0_partition_crate_rows_outcome and stage0_interim_explicit_assignment_outcome. No caller may obtain crate rows or assignments after Stage0DerivedPartitionRefused — list/map projections that collapse refusal are deleted."
+data stage0_partition_derived_membership_production_refusal_note: String = "Production partition membership is obtained only through outcome-shaped surfaces: stage0_derived_partition_outcome, stage0_partition_crate_rows_outcome, stage0_interim_explicit_assignment_outcome, and stage0_partition_receipt_outcome. stage0_partition_receipt_outcome and stage0_partition_r4_valid resolve through stage0_interim_explicit_assignment_outcome — not through an ExplicitPartition carrying assignment. Collapsing list/map projections of Stage0DerivedPartitionRefused are deleted from this carrier."
 
 fn stage0_partition_derived_membership_matches_enrolled_baseline_holds() -> Bool {
   match stage0_derived_partition_outcome() {
@@ -1339,25 +1325,6 @@ fn stage0_partition_derived_membership_matches_enrolled_baseline_holds() -> Bool
             )
         })
   }
-}
-
-fn stage0_partition_crate_row_membership_derived(row: Stage0PartitionCrateRow) -> List<String> {
-  if row.unit_id == stage0_unit_emit_core {
-    stage0_r3_emit_reexport_surface_modules()
-  } else {
-    match stage0_derived_partition_outcome() {
-      Stage0DerivedPartitionRefused { cause: _ } => []
-      Stage0DerivedPartitionOk { assignment: _, members_by_unit: members_by_unit, reach_dispositions_by_unit: _ } =>
-        stage0_derived_unit_member_basenames_from_members(
-          members_by_unit: members_by_unit,
-          unit_id: row.unit_id
-        )
-    }
-  }
-}
-
-fn stage0_partition_crate_rows_membership_derived_holds() -> Bool {
-  stage0_partition_derived_membership_matches_enrolled_baseline_holds()
 }
 
 fn stage0_partition_membership_closure_covers_seeds() -> Bool {
@@ -1763,22 +1730,6 @@ fn stage0_assign_modules_to_unit(
     })
 }
 
-fn stage0_interim_explicit_assignment() -> Map<ModuleId, CompilationUnitId> {
-  match stage0_derived_partition_outcome() {
-    Stage0DerivedPartitionOk { assignment: assignment, members_by_unit: _, reach_dispositions_by_unit: _ } =>
-      assignment
-    Stage0DerivedPartitionRefused { cause: _ } => empty_map()
-  }
-}
-
-fn stage0_interim_explicit_partition() -> ExplicitPartition {
-  ExplicitPartition { assignment: stage0_interim_explicit_assignment() }
-}
-
-fn stage0_partition_parameter() -> PartitionParameter {
-  ExplicitPartitionParam { partition: stage0_interim_explicit_partition() }
-}
-
 fn stage0_partition_provenance() -> PartitionProvenance {
   partition_provenance_hand_explicit()
 }
@@ -1871,10 +1822,7 @@ fn resolve_partition_outcome(
 
 fn stage0_partition_receipt_outcome() -> Stage0PartitionReceiptOutcome {
   let dag = stage0_module_dag()
-  match resolve_partition_outcome(
-    parameter: stage0_partition_parameter(),
-    module_dag: dag
-  ) {
+  match stage0_interim_explicit_assignment_outcome() {
     ResolvePartitionOk { assignment: assignment } =>
       match partition_fold_outcome(module_dag: dag, assignment: assignment) {
         PartitionFoldOk { units: units } =>
@@ -2200,10 +2148,7 @@ fn stage0_partition_row_lookups_resolved_on_enrolled_graph() -> Bool {
 
 fn stage0_partition_r4_valid() -> Bool {
   let dag = stage0_module_dag()
-  match resolve_partition_outcome(
-    parameter: stage0_partition_parameter(),
-    module_dag: dag
-  ) {
+  match stage0_interim_explicit_assignment_outcome() {
     ResolvePartitionOk { assignment: assignment } =>
       match partition_fold_outcome(module_dag: dag, assignment: assignment) {
         PartitionFoldOk { units: units } =>

@@ -28,6 +28,8 @@ import v2.std.compilers.compilation_unit {
   partition_unit_by_id
 }
 import v2.workflow.rust_crate_partition {
+  ExplicitPartition,
+  ExplicitPartitionParam,
   PolicyPartitionParam,
   PolicyResolverUnimplemented,
   PartitionPolicy,
@@ -54,7 +56,6 @@ import v2.workflow.rust_crate_partition {
   stage0_partition_receipt_outcome,
   stage0_partition_row_lookups_resolved,
   stage0_single_crate_fold_outcome,
-  stage0_partition_parameter,
   stage0_partition_provenance,
   stage0_partition_r4_valid,
   stage0_unit_runtime,
@@ -259,14 +260,17 @@ test fn witness_partition_r4_valid_on_interim_holds() -> Bool {
 
 test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
   let dag = stage0_module_dag()
+  let ignored_explicit_param = ExplicitPartitionParam {
+    partition: ExplicitPartition { assignment: empty_map() }
+  }
   match stage0_derived_partition_outcome() {
     Stage0DerivedPartitionRefused { cause: _ } =>
-      match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: dag) {
+      match resolve_partition_outcome(parameter: ignored_explicit_param, module_dag: dag) {
         ResolvePartitionRefused { cause: Stage0DerivedMembershipRefused { cause: _ } } => true
         ResolvePartitionOk { assignment: _ } => false
       }
-    Stage0DerivedPartitionOk { assignment: expected, members_by_unit: _ } =>
-      match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: dag) {
+    Stage0DerivedPartitionOk { assignment: expected, members_by_unit: _, reach_dispositions_by_unit: _ } =>
+      match resolve_partition_outcome(parameter: ignored_explicit_param, module_dag: dag) {
         ResolvePartitionOk { assignment: resolved } =>
           (resolved |> count) == (expected |> count)
         ResolvePartitionRefused { cause: _ } => false
