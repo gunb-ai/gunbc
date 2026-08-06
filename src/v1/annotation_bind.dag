@@ -160,21 +160,18 @@ fn render_annotation_block(text: String) -> String {
     |> join(separator: "\n")
 }
 
-data subject_annotation_blocks_note: String = "The renderer's precondition made STRUCTURAL rather than documented. An earlier cut took a bare List<SourceAnnotationDebt>, named it `rows for one subject`, and then ignored every row's subject field — so a caller handing it rows attached to two different declarations would have rendered both above the first, and the next parse would silently rebind the second declaration's prose onto the first. The note said one subject; nothing checked it, and no fixture with two declarations existed to notice.
+data render_subject_blocks_note: String = "SELECTION AND RENDERING ARE ONE OPERATION, and the fusion is the fix for a rung inflation this seam produced twice. The first cut took a bare List<SourceAnnotationDebt> named `rows for one subject` and ignored every row's subject field. The second cut minted a SubjectAnnotationBlocks { subject, texts } carrier and claimed mixed-subject content was structurally impossible — but the record's fields were public and the renderer read only texts, so a caller could still pair a subject with texts selected from anywhere. The invalid ASSOCIATION stayed writable; erasing the texts' own subjects had only made the contradiction unobservable, which is strictly worse than validated. A guarantee that names a subject while accepting caller-supplied content is validation wearing construction's name.
 
-THE CARRIER HOLDS BLOCK TEXTS, NOT ROWS, and that is the whole of the fix. A SourceAnnotationDebt carries its own subject, so a value naming one subject while holding rows naming another was a representable contradiction, and every guard against it — a predicate over the rows, a filter in the factory — was a validation that a direct constructor simply skipped. A text carries no subject, so there is no second subject in the value for the first to disagree with, and the mixed-subject state has no representation to check.
+So no carrier exists. This function takes the admitted graph and a subject, selects exactly the rows whose subject matches, refuses an empty selection, and renders the result. The only path to `subject S's rendering` runs through the graph's own subject edges, so text that is not provenance-bound to S has no route into a value that claims S. render_annotation_block below it still renders arbitrary text — a text-level spelling that names no subject and therefore claims none.
 
-RUNG, STATED EXACTLY, because the earlier cut of this note overstated it and a review caught the overstatement. Mixed-subject is structurally impossible: unwritable, not validated, so the predicate that used to assert it is deleted rather than kept beside it. NONEMPTY is not at that rung: subject_annotation_blocks_for returns Absent for a subject carrying no prose — rendering `no blocks` is the caller's decision to omit the region entirely, and an empty string would put a bare newline where nothing was authored — but SubjectAnnotationBlocks { subject, texts: [] } stays constructible and renders empty. That residue is named rather than argued away. NEXT-RUNG TRIGGER: a nonempty list carrier, which v1 does not have; minting one for a single site is the cost DESIGN.md sec 6 declines until a second consumer wants it."
+Consecutive blocks on the one subject are separated by a blank line — the renderer half of the std grouping law. Joining with a single newline would emit two authored blocks as one, and the round trip would then certify a merge the author never wrote.
 
-type SubjectAnnotationBlocks {
-  subject: OccurrenceId
-  texts: List<String>
-}
+EMPTY SELECTION REFUSES: a subject carrying no prose yields Absent rather than an empty string, because rendering `no blocks` is the caller's decision to omit the region entirely, and an empty string would put a bare newline where nothing was authored."
 
-fn subject_annotation_blocks_for(
+fn render_subject_annotation_blocks(
   graph: SourceAnnotationGraph,
   subject: OccurrenceId
-) -> SubjectAnnotationBlocks? {
+) -> String? {
   let texts = fold(
     source_annotation_graph_rows(graph: graph),
     init: [],
@@ -183,27 +180,32 @@ fn subject_annotation_blocks_for(
   if (texts |> count) == 0 {
     none
   } else {
-    Present { value: SubjectAnnotationBlocks { subject: subject, texts: texts } }
+    Present {
+      value: texts
+        |> map(text => render_annotation_block(text: text))
+        |> join(separator: "\n\n"),
+    }
   }
 }
 
-data render_subject_blocks_note: String = "Consecutive rows on ONE subject are separated by a blank line, which is the renderer half of the std law. Joining with a single newline instead would emit two authored blocks as one, and the round trip would then certify a merge the author never wrote — the exact failure the blank-line grouping ruling exists to prevent, reintroduced from the writing side.
+data keyed_annotation_rows_note: String = "Projects a graph's rows onto the cross-parse-stable key std.source_annotation's agreement is defined over: the AUTHORED NAME, resolved against the SAME eligible-subject population attachment rosters — the module and its depth-1 items — never the whole occurrence index. An earlier cut scanned every occurrence, which admitted two failure directions the roster cannot produce: a nested binder sharing a top-level name could collide with the real subject, and nothing checked that the name identified ONE eligible subject at all.
 
-It takes SubjectAnnotationBlocks rather than a list because the one-subject precondition is what makes `separated by a blank line` mean anything: blocks belonging to different declarations are not consecutive blocks on one subject, they are two regions of the file."
+It is FAIL-CLOSED twice, and both arms close the same false-AGREEMENT direction. A row whose subject is not in the eligible population yields Absent for the whole projection rather than a placeholder key — a placeholder would make two unresolvable subjects compare equal, turning a lookup failure into a false agreement. And a DUPLICATE authored name among the eligible subjects refuses the whole projection: with two module items named alpha, rows attached to DIFFERENT declarations would project onto ONE key, and agreement would certify prose as `the same subject's` across genuinely different subjects. The name key is sound exactly where eligible names are unique, so where they are not, there is no projection — the property is explicitly scoped to one module with unique eligible authored names, and everything outside that scope refuses rather than guessing.
 
-fn render_subject_annotation_blocks(blocks: SubjectAnnotationBlocks) -> String {
-  blocks.texts
-    |> map(text => render_annotation_block(text: text))
-    |> join(separator: "\n\n")
-}
+Both lookups scan the eligible list per row — a join without a sorted index, bounded by one module's items, the same shape and dissolve-on as the roster scan in std.source_annotation: a name-indexed subject table on the parse artifact."
 
-data keyed_annotation_rows_note: String = "Projects a graph's rows onto the cross-parse-stable key std.source_annotation's agreement is defined over. The key is the AUTHORED NAME resolved through the same occurrence index the subject roster was built from, because that is the fact a reader means by `the same declaration` and it survives reparsing, which the occurrence id does not.
-
-It is FAIL-CLOSED: a subject that does not resolve to a name yields Absent for the whole projection rather than a row with an empty or placeholder key. A placeholder would make two unresolvable subjects compare equal to each other, turning a lookup failure into a false agreement — the same false-positive direction the keying exists to close."
-
-fn authored_name_of(transport: OccurrenceTransport, id: OccurrenceId) -> String? {
+fn eligible_key_entries(transport: OccurrenceTransport) -> List<OccurrenceIndexEntry> {
   fold(
     transport.index.entries,
+    init: [],
+    f: (acc, entry) =>
+      if entry_ancestor_depth(entry: entry) < 2 { list_push(acc, entry) } else { acc }
+  )
+}
+
+fn authored_name_among(entries: List<OccurrenceIndexEntry>, id: OccurrenceId) -> String? {
+  fold(
+    entries,
     init: none,
     f: (acc, entry) =>
       if entry.projection.occurrence.value == id.value {
@@ -211,6 +213,23 @@ fn authored_name_of(transport: OccurrenceTransport, id: OccurrenceId) -> String?
       } else {
         acc
       }
+  )
+}
+
+fn eligible_name_count(entries: List<OccurrenceIndexEntry>, name: String) -> Int {
+  fold(
+    entries,
+    init: 0,
+    f: (n, entry) => if entry.projection.authored_name == name { n + 1 } else { n }
+  )
+}
+
+fn eligible_names_unique(entries: List<OccurrenceIndexEntry>) -> Bool {
+  fold(
+    entries,
+    init: true,
+    f: (ok, entry) =>
+      ok && eligible_name_count(entries: entries, name: entry.projection.authored_name) == 1
   )
 }
 
@@ -224,22 +243,27 @@ fn keyed_annotation_rows(
   transport: OccurrenceTransport,
   graph: SourceAnnotationGraph
 ) -> List<KeyedAnnotationRow>? {
-  fold(
-    source_annotation_graph_rows(graph: graph),
-    init: Present { value: empty_keyed_rows() },
-    f: (acc, row) =>
-      match acc {
-        Absent => none
-        Present { value: rows } =>
-          match authored_name_of(transport: transport, id: row.subject) {
-            Absent => none
-            Present { value: name } =>
-              Present {
-                value: list_push(rows, KeyedAnnotationRow { subject_key: name, text: row.text }),
-              }
-          }
-      }
-  )
+  let eligible = eligible_key_entries(transport: transport)
+  if !eligible_names_unique(entries: eligible) {
+    none
+  } else {
+    fold(
+      source_annotation_graph_rows(graph: graph),
+      init: Present { value: empty_keyed_rows() },
+      f: (acc, row) =>
+        match acc {
+          Absent => none
+          Present { value: rows } =>
+            match authored_name_among(entries: eligible, id: row.subject) {
+              Absent => none
+              Present { value: name } =>
+                Present {
+                  value: list_push(rows, KeyedAnnotationRow { subject_key: name, text: row.text }),
+                }
+            }
+        }
+    )
+  }
 }
 
 fn normalize_dag_annotation(capture: UnboundAnnotationCapture) -> NormalizedAnnotationCapture {

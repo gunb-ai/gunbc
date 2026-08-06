@@ -11,7 +11,7 @@ pub use crate::std_types::{Bool, List};
 pub use crate::v1_compiler_annotation_bind::AdmittedSourceAnnotations;
 pub use crate::v1_compiler_annotation_bind::{
     admit_source_annotations, bind_annotations, keyed_annotation_rows, render_annotation_block,
-    render_line_comment_delimiter, render_subject_annotation_blocks, subject_annotation_blocks_for,
+    render_line_comment_delimiter, render_subject_annotation_blocks,
 };
 pub use crate::v1_compiler_parse::parse_with_table;
 pub use crate::v1_compiler_parse::ParseWithTableResult;
@@ -29,7 +29,7 @@ use std::rc::Rc;
 pub fn v1_annotation_round_trip_offline_recipe() -> String {
     thread_local! {
         static CACHED: String = {
-            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_round_trip_test.dag --functions w_two_blocks_survive_the_round_trip,w_a_renderer_without_the_blank_line_merges_them,w_one_block_spanning_two_lines_stays_one_block,w_identical_text_twice_stays_twice,w_authored_indentation_survives,w_an_empty_annotation_line_survives,w_a_source_with_no_prose_is_not_evidence,w_a_refused_source_is_not_evidence,w_the_two_declarations_share_an_occurrence_ordinal,w_same_text_same_position_different_declaration_disagrees,w_each_declaration_keeps_its_own_prose,w_a_parse_error_is_not_evidence,w_a_duplicated_authored_name_refuses_as_subject,w_mixed_subject_rows_cannot_reach_the_renderer".to_string()
+            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_round_trip_test.dag --functions w_two_blocks_survive_the_round_trip,w_a_renderer_without_the_blank_line_merges_them,w_one_block_spanning_two_lines_stays_one_block,w_identical_text_twice_stays_twice,w_authored_indentation_survives,w_an_empty_annotation_line_survives,w_a_source_with_no_prose_is_not_evidence,w_a_refused_source_is_not_evidence,w_the_two_declarations_share_an_occurrence_ordinal,w_same_text_same_position_different_declaration_disagrees,w_each_declaration_keeps_its_own_prose,w_a_parse_error_is_not_evidence,w_a_duplicated_authored_name_refuses_as_subject,w_duplicate_names_refuse_the_keyed_projection,w_mixed_subject_rows_cannot_reach_the_renderer".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -152,7 +152,7 @@ pub fn declaration_text() -> String {
 pub fn rendered_source_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Rebuilds a source from the CANONICAL rendering of an admitted graph, through subject_annotation_blocks_for and the production renderer rather than assembling annotation lines locally, so a defect in either reaches these claims. A source whose graph is refused, empty, or unresolvable renders as a marker that parses to no annotations, so the failure surfaces as a disagreement rather than as an accidentally-matching empty pair.".to_string()
+            "Rebuilds a source from the CANONICAL rendering of an admitted graph, through the production render_subject_annotation_blocks rather than assembling annotation lines locally, so a defect in it reaches these claims. The renderer selects the subject's rows from the graph itself — there is no carrier for a caller to fill with foreign text — so what this helper adds is only the module header and the declaration line beneath. A source whose graph is refused, empty, or unresolvable renders as a marker that parses to no annotations, so the failure surfaces as a disagreement rather than as an accidentally-matching empty pair.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -165,15 +165,15 @@ pub fn rendered_source_for_parsed(
 ) -> String {
     match subject_named_in(parsed.clone(), subject_name.clone()) {
         None => "module rt\n\n".to_string(),
-        Some(subject) => match subject_annotation_blocks_for(
+        Some(subject) => match render_subject_annotation_blocks(
             parsed.admitted.clone().graph.clone(),
             subject.clone(),
         ) {
             None => "module rt\n\n".to_string(),
-            Some(blocks) => v1_rt::concat(
+            Some(rendering) => v1_rt::concat(
                 "module rt\n\n".to_string(),
                 v1_rt::concat(
-                    render_subject_annotation_blocks(blocks.clone()),
+                    rendering.clone(),
                     v1_rt::concat("\n".to_string(), decl.clone()),
                 ),
             ),
@@ -192,7 +192,7 @@ pub fn rendered_source_for(source: String, subject_name: String, decl: String) -
 pub fn authored_name_uniqueness_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "THE AUTHORED-NAME KEY IS SOUND ONLY WHERE THE NAME IS UNIQUE, so a second match REFUSES rather than resolving. An earlier cut folded to the last match and returned it, which is the quiet half of the same false-agreement direction the keying exists to close: with two module items sharing a name, `the subject called alpha` is not a question with an answer, and answering it anyway picks one by traversal order and calls the other one's prose the same subject's.\n\nZero matches and two matches are both Absent here because both mean `this name does not identify a subject`. They are distinguishable at the call site if a future arm needs to tell them apart; what must never happen is a confident wrong id.".to_string()
+            "THE AUTHORED-NAME KEY IS SOUND ONLY WHERE THE NAME IS UNIQUE, so a second match REFUSES rather than resolving. An earlier cut folded to the last match and returned it, which is the quiet half of the same false-agreement direction the keying exists to close: with two module items sharing a name, `the subject called alpha` is not a question with an answer, and answering it anyway picks one by traversal order and calls the other one's prose the same subject's.\n\nThe scan is scoped to ancestor depth below two — the module and its direct items, the same eligible population attachment rosters — because a nested parameter or field sharing a top-level name is not an annotation subject, and counting it would refuse a name that is in fact unique among the subjects that matter.\n\nZero matches and two matches are both Absent here because both mean `this name does not identify a subject`. They are distinguishable at the call site if a future arm needs to tell them apart; what must never happen is a confident wrong id.\n\nThis helper protects the TEST'S OWN rendering selection. The production projection does not depend on it: keyed_annotation_rows carries its own eligible-roster resolution and duplicate refusal, and the arm below proves that at the projection itself rather than here.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -216,7 +216,9 @@ pub fn subjects_named_in(
         .fold(
             Rc::new(vec![]),
             |acc: Rc<Vec<OccurrenceId>>, entry: Rc<OccurrenceIndexEntry>| {
-                if (entry.projection.clone().authored_name.clone() == name.clone()) {
+                if (((entry.containment.clone().ancestors.clone().len() as i64) < 2)
+                    && (entry.projection.clone().authored_name.clone() == name.clone()))
+                {
                     v1_rt::rc_list_push(acc.clone(), entry.projection.clone().occurrence.clone())
                 } else {
                     acc.clone()
@@ -571,12 +573,12 @@ pub fn reattached_block_text(rendered: String, name: String) -> String {
         let parsed = annotation_parsed_of(rendered.clone());
         match subject_named_in(parsed.clone(), name.clone()) {
             None => "".to_string(),
-            Some(subject) => match subject_annotation_blocks_for(
+            Some(subject) => match render_subject_annotation_blocks(
                 parsed.admitted.clone().graph.clone(),
                 subject.clone(),
             ) {
                 None => "".to_string(),
-                Some(blocks) => render_subject_annotation_blocks(blocks.clone()),
+                Some(rendering) => rendering.clone(),
             },
         }
     }
@@ -689,10 +691,46 @@ pub fn w_a_duplicated_authored_name_refuses_as_subject() -> bool {
         && (subject_id_value(duplicate_name_source(), "gamma".to_string()) > (0 - 1)))
 }
 
+pub fn duplicate_key_projection_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE DISCRIMINATOR AT THE PROJECTION ITSELF, because testing the lookup helper above and calling the projection covered would be proving a neighbour. The fixture is the exact false positive the keyed projection could produce before it refused duplicates: one module, two declarations sharing the authored name `alpha`, the SAME annotation text attached to each — so both rows would project onto the identical (`alpha`, text) key, and two graphs whose prose is attached to DIFFERENT declarations would compare as agreeing. The arm demands the projection REFUSE the ambiguous graph outright; anything it returned would make that false agreement constructible one call later.\n\nThe positive control is the same shape with unique names, proving the Absent is the duplicate refusing and not the projection being broken. round_trip_is_evidence must also be false on the ambiguous source, since a projection that refuses cannot be evidence of anything.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn duplicate_same_text_source() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "module rt\n\n// same text\ndata alpha: String = \"a\"\n\n// same text\ndata alpha: String = \"b\"\n".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn w_duplicate_names_refuse_the_keyed_projection() -> bool {
+    {
+        let ambiguous = annotation_parsed_of(duplicate_same_text_source());
+        (((((source_annotation_graph_rows(ambiguous.admitted.clone().graph.clone()).len()
+            as i64)
+            == 2)
+            && match admitted_keyed_rows(duplicate_same_text_source()) {
+                None => true,
+                Some(_) => false,
+            })
+            && !round_trip_is_evidence(duplicate_same_text_source(), "alpha".to_string()))
+            && match admitted_keyed_rows(two_decl_source()) {
+                None => false,
+                Some(rows) => ((rows.clone().len() as i64) == 2),
+            })
+    }
+}
+
 pub fn mixed_subject_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "WHAT THIS ARM CAN AND CANNOT SHOW, stated because an earlier cut of it claimed the stronger half. The mixed-subject state is unrepresentable — SubjectAnnotationBlocks holds block TEXTS, and a text carries no subject to disagree with the carrier's — and unrepresentability is exactly the property no executed arm can witness: there is no value to hand the renderer, which is the point. What executes here is the SELECTION: over a two-declaration graph the factory yields only the named subject's blocks, and a subject carrying no prose yields Absent rather than an empty block list. The carrier's own claim, and the residue it does not close, are stated at its declaration.".to_string()
+            "WHAT THIS ARM CAN AND CANNOT SHOW, restated after the carrier it used to exercise was deleted for rung inflation. The earlier SubjectAnnotationBlocks record claimed mixed-subject content was unwritable while its public fields let a caller pair a subject with texts from anywhere — the association stayed writable and had merely lost the provenance that would expose it. Now there is no carrier at all: render_subject_annotation_blocks selects the subject's rows from the admitted graph itself, so no value exists through which foreign text can claim a subject, and unrepresentability of that VALUE is exactly what no executed arm can witness. What executes here is the selection semantics the fusion must get right: over a two-declaration graph, alpha's rendering is exactly alpha's prose and contains none of beta's; and a subject carrying no prose yields Absent rather than an empty rendering.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -703,18 +741,16 @@ pub fn w_mixed_subject_rows_cannot_reach_the_renderer() -> bool {
         let parsed = annotation_parsed_of(two_decl_source());
         match subject_named_in(parsed.clone(), "alpha".to_string()) {
             None => false,
-            Some(alpha) => match subject_annotation_blocks_for(
+            Some(alpha) => match render_subject_annotation_blocks(
                 parsed.admitted.clone().graph.clone(),
                 alpha.clone(),
             ) {
                 None => false,
-                Some(blocks) => {
-                    ((((blocks.texts.clone().len() as i64) == 1)
-                        && (render_subject_annotation_blocks(blocks.clone())
-                            == "// about alpha".to_string()))
+                Some(rendering) => {
+                    ((rendering.clone() == "// about alpha".to_string())
                         && match subject_named(bare_source(), "alpha".to_string()) {
                             None => false,
-                            Some(unannotated) => match subject_annotation_blocks_for(
+                            Some(unannotated) => match render_subject_annotation_blocks(
                                 annotation_parsed_of(bare_source())
                                     .admitted
                                     .clone()
