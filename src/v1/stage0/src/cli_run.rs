@@ -7864,6 +7864,11 @@ pub fn new_shared_typecheck_caches() -> Arc<RwLock<SharedTypecheckCaches>> {
     shared_typecheck_store::new_shared_typecheck_caches()
 }
 
+pub use shared_typecheck_store::{
+    reset_shared_typecheck_store_counters_for_test, shared_typecheck_store_counters_snapshot,
+    SharedTypecheckStoreCounters,
+};
+
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     new_multi_entry_index_shell(build_module_index(source_roots), source_roots, None)
 }
@@ -10032,6 +10037,7 @@ fn index_get_typed(
     typed_key: &str,
 ) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
+        shared_typecheck_store::record_private_store_fallback();
         return Ok(index.typed_module_cache.borrow().get(typed_key).cloned());
     };
     shared_get_typed(store, typed_key)
@@ -10060,6 +10066,7 @@ fn index_insert_typed(
     result: Rc<v1_compiler_infer::TypecheckModuleResult>,
 ) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
+        shared_typecheck_store::record_private_store_fallback();
         index
             .typed_module_cache
             .borrow_mut()
@@ -12571,90 +12578,118 @@ fn reconcile_with_typed_cache(
                 let tc_result = match cached {
                     Some(hit) => hit,
                     None => {
-                        // Once-per-node receipt (§6.2): count only genuine computes (cache misses).
-                        bump_typecheck_compute_count();
-                        if phase_profile::phase_profile_enabled() {
-                            let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
-                            eprintln!(
-                                "{}",
-                                render_typecheck_begin_line_mirror(&mod_name, typecheck_emoji())
-                            );
-                        }
-                        // Same-tree bare underlay for the module being typechecked
-                        // (bare = own tree, qualified = whole pool); out-of-root
-                        // modules keep the closure-only bare universe.
-                        let (module_symbol_index, module_variant_base) =
-                            match source_tree_root_of(&index.source_roots, &decl_file) {
-                                Some(root) => match tree_symbol_index_memo.get(&root) {
-                                    Some(hit) => hit.clone(),
-                                    None => {
-                                        let root_symbol_index_started = std::time::Instant::now();
-                                        let composed =
-                                            v1_compiler_infer::symbol_index_with_bare_fill(
-                                                symbol_index.clone(),
-                                                tree_bare_census_for_root(index, &root)?,
-                                            );
-                                        resolve_stage_slot_add(|s| {
-                                            s.assembly_root_symbol_index +=
-                                                root_symbol_index_started.elapsed().as_nanos()
-                                        });
-                                        // The composed index's global_bare = closure ∪ tree,
-                                        // so its variant base is computed from the composed
-                                        // map — once per root, beside the index it belongs to.
-                                        let root_variant_base_started = std::time::Instant::now();
-                                        let base =
+                        let mut compute_on_miss =
+                            || -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
+                                if let Some(hit) = index_get_typed(index, &typed_key)? {
+                                    return Ok(hit);
+                                }
+                                // Once-per-node receipt (§6.2): count only genuine computes (cache misses).
+                                bump_typecheck_compute_count();
+                                if phase_profile::phase_profile_enabled() {
+                                    let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
+                                    eprintln!(
+                                        "{}",
+                                        render_typecheck_begin_line_mirror(
+                                            &mod_name,
+                                            typecheck_emoji()
+                                        )
+                                    );
+                                }
+                                // Same-tree bare underlay for the module being typechecked
+                                // (bare = own tree, qualified = whole pool); out-of-root
+                                // modules keep the closure-only bare universe.
+                                let (module_symbol_index, module_variant_base) =
+                                    match source_tree_root_of(&index.source_roots, &decl_file) {
+                                        Some(root) => match tree_symbol_index_memo.get(&root) {
+                                            Some(hit) => hit.clone(),
+                                            None => {
+                                                let root_symbol_index_started =
+                                                    std::time::Instant::now();
+                                                let composed =
+                                                    v1_compiler_infer::symbol_index_with_bare_fill(
+                                                        symbol_index.clone(),
+                                                        tree_bare_census_for_root(index, &root)?,
+                                                    );
+                                                resolve_stage_slot_add(|s| {
+                                                    s.assembly_root_symbol_index +=
+                                                        root_symbol_index_started
+                                                            .elapsed()
+                                                            .as_nanos()
+                                                });
+                                                // The composed index's global_bare = closure ∪ tree,
+                                                // so its variant base is computed from the composed
+                                                // map — once per root, beside the index it belongs to.
+                                                let root_variant_base_started =
+                                                    std::time::Instant::now();
+                                                let base =
                                             v1_compiler_infer::build_global_bare_variant_locals(
                                                 composed.global_bare.clone(),
                                                 source_indices.clone(),
                                             );
-                                        resolve_stage_slot_add(|s| {
-                                            s.assembly_root_variant_base +=
-                                                root_variant_base_started.elapsed().as_nanos()
-                                        });
-                                        tree_symbol_index_memo
-                                            .insert(root, (composed.clone(), base.clone()));
-                                        (composed, base)
-                                    }
-                                },
-                                None => (symbol_index.clone(), closure_variant_base.clone()),
+                                                resolve_stage_slot_add(|s| {
+                                                    s.assembly_root_variant_base +=
+                                                        root_variant_base_started
+                                                            .elapsed()
+                                                            .as_nanos()
+                                                });
+                                                tree_symbol_index_memo
+                                                    .insert(root, (composed.clone(), base.clone()));
+                                                (composed, base)
+                                            }
+                                        },
+                                        None => {
+                                            (symbol_index.clone(), closure_variant_base.clone())
+                                        }
+                                    };
+                                let module_tc_started = std::time::Instant::now();
+                                let computed = v1_compiler_infer::typecheck_module(
+                                    resolved.clone(),
+                                    module_index.clone(),
+                                    variant_surfaces.clone(),
+                                    source_indices.clone(),
+                                    intern_table.clone(),
+                                    module_symbol_index,
+                                    module_variant_base,
+                                );
+                                // Per-module attribution for the typecheck-dominant resolves measured
+                                // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
+                                // parse+resolve+normalize). Threshold keeps the floor log quiet;
+                                // anything over it is a pathology-lane candidate by name.
+                                let module_tc_elapsed = module_tc_started.elapsed();
+                                resolve_stage_slot_add(|s| {
+                                    s.typecheck_compute += module_tc_elapsed.as_nanos()
+                                });
+                                let module_tc_ms = module_tc_elapsed.as_millis();
+                                // Compile-clean cost receipt key (prelude-coverage follow-up (a)):
+                                // every COMPUTED module's typecheck wall, not just the >=2s render
+                                // threshold below — the receipt is the complete record, the render
+                                // line a projection (one record, two projections).
+                                note_module_typecheck_wall(&mod_name, module_tc_ms);
+                                if module_tc_ms >= 2_000 {
+                                    let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
+                                    eprintln!(
+                                        "{}",
+                                        render_typecheck_concluded_line_mirror(
+                                            &mod_name,
+                                            module_tc_ms as u64,
+                                            typecheck_emoji(),
+                                        )
+                                    );
+                                }
+                                let computed =
+                                    index_insert_typed(index, typed_key.clone(), computed)?;
+                                Ok(computed)
                             };
-                        let module_tc_started = std::time::Instant::now();
-                        let computed = v1_compiler_infer::typecheck_module(
-                            resolved.clone(),
-                            module_index.clone(),
-                            variant_surfaces.clone(),
-                            source_indices.clone(),
-                            intern_table.clone(),
-                            module_symbol_index,
-                            module_variant_base,
-                        );
-                        // Per-module attribution for the typecheck-dominant resolves measured
-                        // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
-                        // parse+resolve+normalize). Threshold keeps the floor log quiet;
-                        // anything over it is a pathology-lane candidate by name.
-                        let module_tc_elapsed = module_tc_started.elapsed();
-                        resolve_stage_slot_add(|s| {
-                            s.typecheck_compute += module_tc_elapsed.as_nanos()
-                        });
-                        let module_tc_ms = module_tc_elapsed.as_millis();
-                        // Compile-clean cost receipt key (prelude-coverage follow-up (a)):
-                        // every COMPUTED module's typecheck wall, not just the >=2s render
-                        // threshold below — the receipt is the complete record, the render
-                        // line a projection (one record, two projections).
-                        note_module_typecheck_wall(&mod_name, module_tc_ms);
-                        if module_tc_ms >= 2_000 {
-                            let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
-                            eprintln!(
-                                "{}",
-                                render_typecheck_concluded_line_mirror(
-                                    &mod_name,
-                                    module_tc_ms as u64,
-                                    typecheck_emoji(),
-                                )
-                            );
+
+                        if let Some(store) = index.cross_worker_store.as_ref() {
+                            SharedTypecheckCaches::with_keyed_compute_lock(
+                                store,
+                                &typed_key,
+                                compute_on_miss,
+                            )?
+                        } else {
+                            compute_on_miss()?
                         }
-                        let computed = index_insert_typed(index, typed_key.clone(), computed)?;
-                        computed
                     }
                 };
                 let environment_started = std::time::Instant::now();
@@ -19206,6 +19241,9 @@ impl Default for DiscoveryCorpusOptions {
 /// gates, replacing the retired plan-pinned `spawn_width` / `spawn_width_cap` constants.
 pub enum DiscoveryWidthPolicy {
     Serial,
+    /// Experimental fixed width-2 pool over one process-scoped typed-module byte store.
+    /// Not production-default — cohort A/B harness only.
+    ControlledWidthTwo,
     Adaptive(std::sync::Arc<crate::memory_governor::MemoryGovernor>),
 }
 
@@ -21620,6 +21658,135 @@ fn run_discovery_corpus_with_options_inner(
                 &rows,
                 options.node_frontier_selection,
                 selection_categorization_reason.clone(),
+                deferred_rows,
+            ))
+        }
+        DiscoveryWidthPolicy::ControlledWidthTwo => {
+            const CONTROLLED_WIDTH: usize = 2;
+            let groups = entry_row_groups(&rows);
+            eprintln!(
+                "run_discovery_corpus: controlled width-2 pool over {} entry-group(s), {} row(s)",
+                groups.len(),
+                rows.len(),
+            );
+            let cross_worker_store = new_shared_typecheck_caches();
+            if floor_stream {
+                eprintln!(
+                    "{} [affected-set] controlled width-2 pool (fixed {} workers; shared typed-module store)",
+                    floor_ts(),
+                    CONTROLLED_WIDTH,
+                );
+            }
+            let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
+                std::sync::Arc::new(Mutex::new(
+                    groups
+                        .into_iter()
+                        .map(|g| g.iter().map(|&i| rows[i].clone()).collect())
+                        .collect(),
+                ));
+            let abort = std::sync::Arc::new(AtomicBool::new(false));
+            let source_roots_owned = source_roots.to_vec();
+            let execution_authority_roots_owned = options.execution_authority_source_roots.clone();
+            let execution_authority_is_subject_for_workers = execution_authority_is_subject;
+            let selection_for_workers = options.node_frontier_selection;
+            let budget_policy_for_workers = options.witness_budget_policy();
+            let mut handles = Vec::with_capacity(CONTROLLED_WIDTH);
+            for worker_ordinal in 0..CONTROLLED_WIDTH {
+                let queue_for_worker = queue.clone();
+                let abort_for_worker = abort.clone();
+                let roots = source_roots_owned.clone();
+                let execution_authority_roots = execution_authority_roots_owned.clone();
+                let seeds = diff_edits.clone();
+                let paths = changed_paths.clone();
+                let keys = whole_tree_published_keys.clone();
+                let store = cross_worker_store.clone();
+                let style = ShardStyle {
+                    shard_id: worker_ordinal,
+                    shard_count: CONTROLLED_WIDTH,
+                    color: floor_color,
+                    stream: floor_stream,
+                };
+                handles.push(std::thread::spawn(
+                    move || -> Result<Vec<DiscoverySummary>, String> {
+                        let index = build_multi_entry_index_with_shared_caches(&roots, store);
+                        let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
+                            let resolved = if execution_authority_is_subject_for_workers {
+                                resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY)
+                            } else {
+                                resolve_entry_graph(&execution_authority_roots, FLOOR_RUNNER_ENTRY)
+                            };
+                            match resolved {
+                                Ok((graph, source_indices)) => {
+                                    Some(make_eval_context(&graph, source_indices, execution_mode))
+                                }
+                                Err(msg) => {
+                                    abort_for_worker.store(true, Ordering::SeqCst);
+                                    return Err(format!(
+                                        "floor runner resolve failed in controlled-width worker ({msg})"
+                                    ));
+                                }
+                            }
+                        } else {
+                            None
+                        };
+                        let mut worker_summaries = Vec::new();
+                        loop {
+                            if abort_for_worker.load(Ordering::SeqCst) {
+                                break;
+                            }
+                            let Some(group_rows) = queue_for_worker.lock().unwrap().pop_front()
+                            else {
+                                break;
+                            };
+                            match run_discovery_rows(
+                                &group_rows,
+                                &index,
+                                execution_mode,
+                                selection_for_workers,
+                                &paths,
+                                &seeds,
+                                runner.as_ref(),
+                                execution_authority_is_subject_for_workers,
+                                keys.clone(),
+                                budget_policy_for_workers,
+                                style,
+                            ) {
+                                Ok(summary) => worker_summaries.push(summary),
+                                Err(e) => {
+                                    abort_for_worker.store(true, Ordering::SeqCst);
+                                    return Err(e);
+                                }
+                            }
+                        }
+                        Ok(worker_summaries)
+                    },
+                ));
+            }
+            let mut summaries = Vec::new();
+            let mut first_err: Option<String> = None;
+            for handle in handles {
+                match handle
+                    .join()
+                    .map_err(|_| "controlled-width discovery worker panicked".to_string())
+                {
+                    Ok(Ok(worker_summaries)) => summaries.extend(worker_summaries),
+                    Ok(Err(e)) | Err(e) => first_err = first_err.or(Some(e)),
+                }
+            }
+            if let Some(e) = first_err {
+                return Err(e);
+            }
+            let leftover = queue.lock().unwrap().len();
+            if leftover > 0 {
+                return Err(format!(
+                    "controlled width-2 pool exited with {leftover} undrained entry-group(s)"
+                ));
+            }
+            Ok(finalize_discovery_summary(
+                merge_discovery_summaries(summaries),
+                &rows,
+                options.node_frontier_selection,
+                selection_categorization_reason,
                 deferred_rows,
             ))
         }
