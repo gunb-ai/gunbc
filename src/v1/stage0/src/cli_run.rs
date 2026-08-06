@@ -34624,7 +34624,7 @@ mod witness_layer_roots_compile_clean_tests {
         );
     }
 
-    fn selection_control_refusal_causes_are_distinct_and_countable() {
+    /// The unblocked scoped arm, by execution: a single touched dag entry selects at least
     /// itself through the import-closure grain (the discriminating RED for this arm is
     /// `floor_fast_plan_whole_tree_on_mixed_rs_and_dag_touch` — same touch set plus an `.rs`
     /// path flips the disposition to whole-tree).
