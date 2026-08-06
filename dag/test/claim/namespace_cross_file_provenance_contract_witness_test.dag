@@ -2,8 +2,11 @@ module test.claim.namespace_cross_file_provenance_contract_witness_test
 
 import gunbc.namespace_cross_file_provenance_contract {
   assess_controlled_two_mention_provenance_projection,
+  assess_namespace_cross_file_provenance_row_closure,
   NamespaceCrossFileProvenanceEstablished,
   NamespaceCrossFileProvenanceRefused,
+  ParserEmbeddedSubstrateEvidence,
+  AwaitingOrdinaryLoadedCompilationClosure,
   BindingProvenanceCountWrong,
   FileDependencyCountWrong,
   DeclarationOccurrencesNotShared,
@@ -26,7 +29,7 @@ import std.occurrence_binding_candidates {
 }
 import std.types { Bool, FilePath, List }
 
-data namespace_cross_file_provenance_contract_witness_note: String = "Planted controls for namespace_cross_file_provenance_contract assess_controlled_two_mention_provenance_projection. Each refusal variant is exercised on a hand-built ReferenceDerivedClauseEProductionReady carrier using the full projection fields."
+data namespace_cross_file_provenance_contract_witness_note: String = "Planted controls for namespace_cross_file_provenance_contract assess_controlled_two_mention_provenance_projection. Each refusal variant is exercised on a hand-built ReferenceDerivedClauseEProductionReady carrier using the full projection fields. witness_row_closure_awaits_ordinary_loaded_compilation is the executing positive control for the known-red closing witness: ParserEmbeddedSubstrateEvidence must refuse AwaitingOrdinaryLoadedCompilationClosure regardless of production content, proving witness_namespace_cross_file_provenance_closing_contract_holds stays rung-honest RED until B2."
 
 fn contract_witness_consumer_file() -> FilePath {
   "app/consumer.dag"
@@ -129,6 +132,18 @@ test fn witness_substrate_establishes_controlled_scenario() -> Bool {
     production: contract_witness_controlled_production(),
   ) {
     NamespaceCrossFileProvenanceEstablished => true
+    _ => false
+  }
+}
+
+test fn witness_row_closure_awaits_ordinary_loaded_compilation() -> Bool {
+  match assess_namespace_cross_file_provenance_row_closure(
+    production: contract_witness_controlled_production(),
+    source: ParserEmbeddedSubstrateEvidence,
+  ) {
+    NamespaceCrossFileProvenanceRefused {
+      failure: AwaitingOrdinaryLoadedCompilationClosure,
+    } => true
     _ => false
   }
 }
