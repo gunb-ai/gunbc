@@ -11394,6 +11394,32 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::consume_floor_compile_clean_gate_verdict(),
             ))),
 
+            arm "free_call.consume_floor_compile_clean_gate_failure_detail" { "consume_floor_compile_clean_gate_failure_detail" } => Ok(Some(Value::Str(
+                crate::cli_run::consume_floor_compile_clean_gate_failure_detail(),
+            ))),
+
+            arm "free_call.record_regen_verify_gate_failure_detail" { "record_regen_verify_gate_failure_detail" } => {
+                if let [Value::Str(detail)] = $positional.as_slice() {
+                    crate::cli_run::record_regen_verify_gate_failure_detail(detail.clone());
+                }
+                Ok(Some(Value::Unit))
+            },
+
+            arm "free_call.consume_regen_verify_gate_failure_detail" { "consume_regen_verify_gate_failure_detail" } => Ok(Some(Value::Str(
+                crate::cli_run::consume_regen_verify_gate_failure_detail(),
+            ))),
+
+            arm "free_call.record_generated_artifact_drift_gate_failure_detail" { "record_generated_artifact_drift_gate_failure_detail" } => {
+                if let [Value::Str(detail)] = $positional.as_slice() {
+                    crate::cli_run::record_generated_artifact_drift_gate_failure_detail(detail.clone());
+                }
+                Ok(Some(Value::Unit))
+            },
+
+            arm "free_call.consume_generated_artifact_drift_gate_failure_detail" { "consume_generated_artifact_drift_gate_failure_detail" } => Ok(Some(Value::Str(
+                crate::cli_run::consume_generated_artifact_drift_gate_failure_detail(),
+            ))),
+
             arm "free_call.witness_compile_clean_cli_floor_verdicts_agree" { "witness_compile_clean_cli_floor_verdicts_agree" } => Ok(Some(Value::Bool(
                 crate::cli_run::witness_compile_clean_cli_floor_verdicts_agree(),
             ))),
