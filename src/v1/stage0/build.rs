@@ -1,4 +1,3 @@
-use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn git_output(args: &[&str]) -> Option<String> {
@@ -10,41 +9,17 @@ fn git_output(args: &[&str]) -> Option<String> {
     }
 }
 
-/// Resolve the checkout's git metadata directory (follows worktree `gitdir:` files).
-fn resolve_git_dir(mut dir: &Path) -> Option<PathBuf> {
-    loop {
-        let dot_git = dir.join(".git");
-        if dot_git.is_dir() {
-            return Some(dot_git);
-        }
-        if dot_git.is_file() {
-            let content = std::fs::read_to_string(&dot_git).ok()?;
-            let gitdir = content.strip_prefix("gitdir:")?.trim();
-            return Some(PathBuf::from(gitdir));
-        }
-        dir = dir.parent()?;
-    }
-}
-
-fn rerun_if_changed(path: &Path) {
-    if path.exists() {
-        println!("cargo:rerun-if-changed={}", path.display());
-    }
-}
-
 fn main() {
-    // Re-run when git HEAD moves; also when this script or the survey bin change so
-    // BUILD_DIRTY is recomputed after local source edits (defense-in-depth — survey
-    // time ensure_clean_tree and verify_build_provenance still gate the run).
+    // Re-run when this script or the survey bin change so BUILD_DIRTY is recomputed
+    // after local source edits (defense-in-depth — survey time ensure_clean_tree and
+    // verify_build_provenance still gate the run).
     //
-    // Paths must be absolute/explicit: `.git/HEAD` is package-relative and does not
-    // exist (the checkout root is several ancestors up; worktrees use a `gitdir:` file).
-    // A missing `rerun-if-changed` target makes every subsequent cargo invocation treat
-    // the build script as stale, forcing a second v1-compiler compile on the CI gate.
-    if let Some(git_dir) = resolve_git_dir(Path::new(env!("CARGO_MANIFEST_DIR"))) {
-        rerun_if_changed(&git_dir.join("HEAD"));
-        rerun_if_changed(&git_dir.join("refs/heads"));
-    }
+    // Do NOT declare cargo:rerun-if-changed on .git/HEAD here. Package-relative paths
+    // like `.git/HEAD` do not exist (checkout .git lives at workspace root; worktrees
+    // use a gitdir: pointer file). A missing rerun-if-changed target makes every
+    // subsequent cargo invocation treat the build script as stale, forcing a second
+    // v1-compiler compile when alternating cargo build and cargo test. Pointing at
+    // the real HEAD path would be worse: every commit would invalidate the shared lib.
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src/bin/frontier_probe_survey.rs");
 
