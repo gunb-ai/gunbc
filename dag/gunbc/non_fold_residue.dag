@@ -803,6 +803,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     reason: nfr_reason_resolve_realization_predicate,
     trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
   },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/host_standup.dag::assimilation_complete_input_eq" },
+    reason: nfr_reason_structural_eq_backfill,
+    trigger: TriggerProse { text: nfr_dissolve_derived_equality },
+  },
 ]
 
 fn non_fold_residue_frontier_units() -> List<String> {
