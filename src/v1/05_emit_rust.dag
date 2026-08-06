@@ -125,6 +125,8 @@ import v1.compiler.emit {
 import v1.compiler.languages {
   wrap_shared_type,
   sharing_wrap_ctor_for_target,
+  sharing_wrap_ctor_open_for_target,
+  sharing_wrap_ctor_close_for_target,
   sharing_type_is_wrapped_for_target
 }
 import v1.compiler.emit_core_support {
@@ -246,11 +248,11 @@ fn rust_shared_wrap_ctor(inner_expr: String) -> String {
 }
 
 fn rust_shared_wrap_ctor_prefix() -> String {
-  "Rc::new("
+  sharing_wrap_ctor_open_for_target(target: Rust)
 }
 
 fn rust_shared_wrap_ctor_suffix() -> String {
-  ")"
+  sharing_wrap_ctor_close_for_target(target: Rust)
 }
 
 fn corpus_repr_is_faithful(corpus_repr: RustCorpusRepr) -> Bool {

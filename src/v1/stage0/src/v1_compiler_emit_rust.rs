@@ -92,7 +92,8 @@ pub use crate::v1_compiler_infer_types::{
 use crate::v1_compiler_languages::VisibilitySpec::KeywordVisibility;
 pub use crate::v1_compiler_languages::{
     is_string_like, scaffold_for_target, serialization_for_target, sharing_for_target,
-    sharing_type_is_wrapped_for_target, sharing_wrap_ctor_for_target, test_conventions_for_target,
+    sharing_type_is_wrapped_for_target, sharing_wrap_ctor_close_for_target,
+    sharing_wrap_ctor_for_target, sharing_wrap_ctor_open_for_target, test_conventions_for_target,
     visibility_for_target, wrap_shared_type,
 };
 pub use crate::v1_compiler_languages::{ItemKeywords, TestConventions, VisibilitySpec};
@@ -455,11 +456,11 @@ pub fn rust_shared_wrap_ctor(inner_expr: String) -> String {
 }
 
 pub fn rust_shared_wrap_ctor_prefix() -> String {
-    "Rc::new(".to_string()
+    sharing_wrap_ctor_open_for_target(RenderTarget::Rust)
 }
 
 pub fn rust_shared_wrap_ctor_suffix() -> String {
-    ")".to_string()
+    sharing_wrap_ctor_close_for_target(RenderTarget::Rust)
 }
 
 pub fn corpus_repr_is_faithful(corpus_repr: RustCorpusRepr) -> bool {
