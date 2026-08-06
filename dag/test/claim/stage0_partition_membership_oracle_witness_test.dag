@@ -1,0 +1,42 @@
+module test.claim.stage0_partition_membership_oracle_witness
+
+import v2.std.text { string_contains }
+import v2.workflow.stage0_partition_membership_oracle {
+  Stage0ModuleUseCrateObservation,
+  Stage0PartitionMembershipOracleOk,
+  Stage0PartitionMembershipOracleRefused,
+  stage0_partition_membership_oracle_holds,
+  stage0_partition_membership_oracle_outcome,
+  stage0_partition_membership_oracle_refusal_message
+}
+import v2.workflow.rust_crate_partition {
+  stage0_partition_membership_closure_covers_seeds_holds,
+  stage0_partition_crate_rows_membership_derived_holds
+}
+
+data witness_note: String = "C3 independent referent: use crate:: scan refuses when a referenced top-level module is outside the derived closure for the owning partition crate (plus lower reexport closures). RED control: synthetic observation references phantom_module outside closure."
+
+test fn w_stage0_partition_membership_derived_holds() -> Bool {
+  stage0_partition_crate_rows_membership_derived_holds()
+}
+
+test fn w_stage0_partition_membership_closure_covers_seeds_holds() -> Bool {
+  stage0_partition_membership_closure_covers_seeds_holds()
+}
+
+test fn w_stage0_partition_oracle_green_on_empty_observations_holds() -> Bool {
+  stage0_partition_membership_oracle_holds(observations: [])
+}
+
+test fn w_stage0_partition_oracle_red_outside_closure_holds() -> Bool {
+  let observation = Stage0ModuleUseCrateObservation {
+    module_basename: "std_effects",
+    source_text: "use crate::phantom_partition_oracle_module::Foo;\n"
+  }
+  match stage0_partition_membership_oracle_outcome(observations: [observation]) {
+    Stage0PartitionMembershipOracleRefused { cause: cause } =>
+      stage0_partition_membership_oracle_refusal_message(cause: cause)
+        |> string_contains(pattern: "phantom_partition_oracle_module")
+    Stage0PartitionMembershipOracleOk => false
+  }
+}

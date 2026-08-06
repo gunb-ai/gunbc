@@ -1,7 +1,12 @@
 module v1.compiler.stage0_crates
 
 import v1.std.core { TextFile }
-import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep }
+import v1.compiler.emit_rust {
+  emit_non_empty_wrappers,
+  emit_cargo_dep,
+  rust_pub_use_module_name,
+  rust_use_crate_marker
+}
 import extdeps.cargo { CargoDependency, CargoFeature, RegistryDep, LocalPathDep }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
 import gunbc.stage0_crate_partition_generated {
@@ -556,6 +561,223 @@ fn emit_stage0_crate_boundary_files_outcome(
           }
       }
     })
+}
+
+type Stage0ModuleUseCrateObservation {
+  module_basename: String
+  source_text: String
+}
+
+type Stage0PartitionMembershipOracleRefusalCause
+  = Stage0PartitionMembershipUseCrateOutsideClosure {
+      module_basename: String
+      referenced_module: String
+      package_name: String
+    }
+
+type Stage0PartitionMembershipOracleOutcome
+  = Stage0PartitionMembershipOracleOk
+  | Stage0PartitionMembershipOracleRefused {
+      cause: Stage0PartitionMembershipOracleRefusalCause
+    }
+
+fn stage0_generated_row_modules_for_package(package_name: String) -> List<String> {
+  generated_partition_crate_rows
+    |> filter(row => row.package_name == package_name)
+    |> fold(init: [], f: fn(acc, row) {
+      if (acc |> count) == 0 {
+        row.modules
+      } else {
+        acc
+      }
+    })
+}
+
+fn stage0_generated_spec_resolvable_module_basenames(
+  modules: List<String>,
+  reexport_packages: List<String>
+) -> List<String> {
+  reexport_packages
+    |> fold(init: modules, f: fn(acc, pkg) {
+      acc |> concat(stage0_generated_row_modules_for_package(package_name: pkg))
+    })
+}
+
+fn stage0_partition_membership_source_line_use_crate_modules(line: String) -> List<String> {
+  if rust_use_crate_marker(line: line) == "" {
+    []
+  } else {
+    let module_name = rust_pub_use_module_name(line: line)
+    if module_name == "" {
+      []
+    } else {
+      [
+        stage0_partition_membership_use_crate_top_level_module(referenced: module_name)
+      ]
+    }
+  }
+}
+
+fn stage0_partition_membership_source_text_use_crate_modules(text: String) -> List<String> {
+  text
+    |> split(delimiter: "\n")
+    |> fold(init: [], f: fn(acc, line) {
+      acc |> concat(stage0_partition_membership_source_line_use_crate_modules(line: line))
+    })
+}
+
+fn stage0_partition_membership_string_list_contains(
+  xs: List<String>,
+  needle: String
+) -> Bool {
+  xs |> any(item => item == needle)
+}
+
+fn stage0_partition_membership_oracle_refusal_message(
+  cause: Stage0PartitionMembershipOracleRefusalCause
+) -> String {
+  match cause {
+    Stage0PartitionMembershipUseCrateOutsideClosure {
+      module_basename: module_basename,
+      referenced_module: referenced_module,
+      package_name: package_name
+    } =>
+      concat(
+        "stage0 partition membership oracle refused: module ",
+        module_basename,
+        " references crate::",
+        referenced_module,
+        " outside derived closure for package ",
+        package_name
+      )
+  }
+}
+
+fn stage0_partition_membership_use_crate_top_level_module(referenced: String) -> String {
+  match referenced |> split(delimiter: "::") |> first {
+    Present { value: head } => head
+    Absent => referenced
+  }
+}
+
+fn stage0_partition_membership_observation_oracle_outcome(
+  observation: Stage0ModuleUseCrateObservation,
+  package_name: String,
+  resolvable_modules: List<String>
+) -> Stage0PartitionMembershipOracleOutcome {
+  stage0_partition_membership_source_text_use_crate_modules(text: observation.source_text)
+    |> fold(init: Stage0PartitionMembershipOracleOk, f: fn(inner, referenced_module) {
+      match inner {
+        Stage0PartitionMembershipOracleRefused { cause: _ } => inner
+        Stage0PartitionMembershipOracleOk =>
+          if stage0_partition_membership_string_list_contains(
+            xs: resolvable_modules,
+            needle: stage0_partition_membership_use_crate_top_level_module(
+              referenced: referenced_module
+            )
+          ) {
+            Stage0PartitionMembershipOracleOk
+          } else {
+            Stage0PartitionMembershipOracleRefused {
+              cause: Stage0PartitionMembershipUseCrateOutsideClosure {
+                module_basename: observation.module_basename,
+                referenced_module: referenced_module,
+                package_name: package_name
+              }
+            }
+          }
+      }
+    })
+}
+
+fn stage0_partition_membership_oracle_for_generated_row_outcome(
+  row: GeneratedPartitionCrateRow,
+  observations: List<Stage0ModuleUseCrateObservation>
+) -> Stage0PartitionMembershipOracleOutcome {
+  match row.kind {
+    GeneratedEmitCoreCrate => Stage0PartitionMembershipOracleOk
+    GeneratedFoundationCrate => {
+      let resolvable = stage0_generated_spec_resolvable_module_basenames(
+        modules: row.modules,
+        reexport_packages: row.reexport_packages
+      )
+      observations
+        |> filter(obs => row.modules |> any(m => m == obs.module_basename))
+        |> fold(init: Stage0PartitionMembershipOracleOk, f: fn(acc, observation) {
+          match acc {
+            Stage0PartitionMembershipOracleRefused { cause: _ } => acc
+            Stage0PartitionMembershipOracleOk =>
+              stage0_partition_membership_observation_oracle_outcome(
+                observation: observation,
+                package_name: row.package_name,
+                resolvable_modules: resolvable
+              )
+          }
+        })
+    }
+    GeneratedLayeredCoreCrate => {
+      let resolvable = stage0_generated_spec_resolvable_module_basenames(
+        modules: row.modules,
+        reexport_packages: row.reexport_packages
+      )
+      observations
+        |> filter(obs => row.modules |> any(m => m == obs.module_basename))
+        |> fold(init: Stage0PartitionMembershipOracleOk, f: fn(acc, observation) {
+          match acc {
+            Stage0PartitionMembershipOracleRefused { cause: _ } => acc
+            Stage0PartitionMembershipOracleOk =>
+              stage0_partition_membership_observation_oracle_outcome(
+                observation: observation,
+                package_name: row.package_name,
+                resolvable_modules: resolvable
+              )
+          }
+        })
+    }
+  }
+}
+
+fn stage0_partition_membership_oracle_outcome(
+  observations: List<Stage0ModuleUseCrateObservation>
+) -> Stage0PartitionMembershipOracleOutcome {
+  generated_partition_crate_rows
+    |> fold(init: Stage0PartitionMembershipOracleOk, f: fn(acc, row) {
+      match acc {
+        Stage0PartitionMembershipOracleRefused { cause: _ } => acc
+        Stage0PartitionMembershipOracleOk =>
+          stage0_partition_membership_oracle_for_generated_row_outcome(
+            row: row,
+            observations: observations
+          )
+      }
+    })
+}
+
+fn stage0_partition_membership_oracle_holds(
+  observations: List<Stage0ModuleUseCrateObservation>
+) -> Bool {
+  match stage0_partition_membership_oracle_outcome(observations: observations) {
+    Stage0PartitionMembershipOracleOk => true
+    Stage0PartitionMembershipOracleRefused { cause: _ } => false
+  }
+}
+
+fn stage0_partition_membership_oracle_for_observations_holds(
+  observations: List<Stage0ModuleUseCrateObservation>
+) -> Bool {
+  stage0_partition_membership_oracle_holds(observations: observations)
+}
+
+fn stage0_partition_membership_oracle_for_observations_outcome(
+  observations: List<Stage0ModuleUseCrateObservation>
+) -> Stage0PartitionMembershipOracleOutcome {
+  stage0_partition_membership_oracle_outcome(observations: observations)
+}
+
+fn stage0_partition_membership_oracle_for_observations_refusal_message(
+  cause: Stage0PartitionMembershipOracleRefusalCause
+) -> String {
+  stage0_partition_membership_oracle_refusal_message(cause: cause)
 }
 
 fn stage0_crate_boundary_emit_outcome() -> Stage0CrateBoundaryEmitOutcome {

@@ -491,7 +491,7 @@ data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler
 
 data gunbc_ci_stage0_partition_compile_gate_timeout_minutes: Int = 15
 
-data gunbc_ci_stage0_partition_compile_gate_timeout_note: String = "stage0 partition compile gate step budget (sharp-fox-403): seven sequential cargo check -p v1-stage0-* partition crates enrolled as the roster_registry interim backstop after derived membership landed. Cold-host envelope matches v1-compiler-tests compile gate until a dedicated receipt exists; warm partition crates are smaller than the monolith test crate."
+data gunbc_ci_stage0_partition_compile_gate_timeout_note: String = "stage0 partition compile gate step budget (sharp-fox-403): seven sequential cargo check -p v1-stage0-* partition crates enrolled as the roster_registry interim backstop after seed-plus-closure derived membership landed. Cold-host envelope matches v1-compiler-tests compile gate until a dedicated receipt exists; warm partition crates are smaller than the monolith test crate."
 
 data gunbc_ci_artifact_transfer_step_timeout_minutes: Int = 10
 

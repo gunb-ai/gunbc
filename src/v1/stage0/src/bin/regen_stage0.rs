@@ -894,7 +894,73 @@ fn rustfmt_workspace(manifest_dir: &Path) -> Result<(), String> {
     }
 }
 
+fn collect_partition_membership_observations(
+    stage0_src: &Path,
+    plan: &v1_compiler::v1_compiler_stage0_crates::Stage0CratePlan,
+) -> Result<
+    im::Vector<Rc<v1_compiler::v1_compiler_stage0_crates::Stage0ModuleUseCrateObservation>>,
+    String,
+> {
+    let mut observations = im::Vector::new();
+    for spec in plan.crates.iter() {
+        if matches!(
+            spec.kind,
+            v1_compiler::v1_compiler_stage0_crates::Stage0CrateKind::EmitCoreCrate
+        ) {
+            continue;
+        }
+        for module_basename in spec.modules.iter() {
+            let path = stage0_src.join(format!("{}.rs", module_basename));
+            let source_text = fs::read_to_string(&path)
+                .map_err(|e| format!("partition membership oracle read {}: {e}", path.display()))?;
+            observations.push_back(Rc::new(
+                v1_compiler::v1_compiler_stage0_crates::Stage0ModuleUseCrateObservation {
+                    module_basename: module_basename.clone(),
+                    source_text,
+                },
+            ));
+        }
+    }
+    Ok(observations)
+}
+
+fn assert_partition_membership_use_crate_oracle(stage0_src: &Path) -> Result<(), String> {
+    match v1_compiler::v1_compiler_stage0_crates::stage0_crate_plan_outcome().as_ref() {
+        v1_compiler::v1_compiler_stage0_crates::Stage0CratePlanOutcome::Stage0CratePlanRefused {
+            cause,
+        } => Err(format!("stage0 crate plan refused: {:?}", cause)),
+        v1_compiler::v1_compiler_stage0_crates::Stage0CratePlanOutcome::Stage0CratePlanOk {
+            plan,
+        } => {
+            let observations = collect_partition_membership_observations(stage0_src, plan)?;
+            let observations_rc = Rc::new(observations);
+            if v1_compiler::v1_compiler_stage0_crates::stage0_partition_membership_oracle_for_observations_holds(
+                observations_rc.clone(),
+            ) {
+                Ok(())
+            } else {
+                match v1_compiler::v1_compiler_stage0_crates::stage0_partition_membership_oracle_for_observations_outcome(
+                    observations_rc,
+                )
+                .as_ref()
+                {
+                    v1_compiler::v1_compiler_stage0_crates::Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleRefused {
+                        cause,
+                    } => Err(
+                        v1_compiler::v1_compiler_stage0_crates::stage0_partition_membership_oracle_for_observations_refusal_message(
+                            cause.clone(),
+                        ),
+                    ),
+                    v1_compiler::v1_compiler_stage0_crates::Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleOk => Ok(()),
+                }
+            }
+        }
+    }
+}
+
 fn stage0_split_crate_boundaries(workspace: &Path) -> Result<Vec<(PathBuf, String)>, String> {
+    let stage0_src = workspace.join("src/v1/stage0/src");
+    assert_partition_membership_use_crate_oracle(&stage0_src)?;
     if !v1_compiler::v1_compiler_stage0_crates::stage0_partition_lookups_valid() {
         return Err(
             "stage0 partition emit refused: lookup validation failed (missing module owner or package crate_dir)"
