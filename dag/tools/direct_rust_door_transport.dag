@@ -5,6 +5,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.inspect
 import extdeps.gunbc
 import extdeps.shell
+import gunbc.output_policy { ExpectFailure }
 import v2.compiler.self_host.behavioral_comparison_receipt {
   AdmittedBehaviorEquivalent,
   AdmittedBehaviorEquivalentReceipt,
@@ -124,7 +125,8 @@ fn direct_rust_door_admitted_equivalent_for_workspace(
     let fault_run = gunbc.WitnessBin.Run(
       workdir: workspace_dir,
       bin_path: witness_bin_path,
-      args: ["--inject-fault"]
+      args: ["--inject-fault"],
+      expect: ExpectFailure
     )
     let executable_read = Filesystem.Read(path: witness_bin_path)
     let head = git.Inspect.HeadCommit()
@@ -163,7 +165,11 @@ fn direct_rust_door_subtract_admission_for_workspace(
   if !direct_rust_door_prepare_behavioral_witness_workspace(workspace_dir: workspace_dir) {
     optional_absent()
   } else {
-    let pass_run = gunbc.WitnessBin.Run(workdir: workspace_dir, bin_path: witness_bin_path)
+    let pass_run = gunbc.WitnessBin.Run(
+      workdir: workspace_dir,
+      bin_path: witness_bin_path,
+      expect: ExpectFailure
+    )
     let executable_read = Filesystem.Read(path: witness_bin_path)
     let head = git.Inspect.HeadCommit()
     let parsed_rows =
