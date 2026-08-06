@@ -25,11 +25,20 @@ import extdeps.systems.nvidia_fleet_lifecycle {
   FleetLifecycleEnvelope,
   FleetLifecycleStatus,
   StatusOk,
+  StatusError,
 }
+import product.placement_supply { HostIdentity }
+import extdeps.dhcp.v4 { MacAddress, StaticDhcpReservation, Active }
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv3 }
 import gunbc.dgx_spark_procurement {
   dgx_spark_procurement_intent,
-  srv5_reserved,
-  srv6_reserved,
+  dgx_spark_router_bindings,
+  dgx_spark_reserved_identities,
+  srv5_router_binding,
+  srv6_router_binding,
+  DgxSparkRouterBinding,
   admit_dgx_spark_deployment,
   DgxSparkAdmissionOutcome,
   DgxSparkDeploymentAdmitted,
@@ -38,6 +47,16 @@ import gunbc.dgx_spark_procurement {
   DeploymentAdmissionNoEvidence,
   DeploymentAdmissionWrongTool,
   DeploymentAdmissionHostMismatch,
+  DeploymentAdmissionObservationNotOk,
+  DeploymentAdmissionIdentityNotReserved,
+  DeploymentAdmissionRouterBindingMismatch,
+  DeploymentAdmissionRouterBindingPending,
+  converge_dgx_spark_procurement,
+  dgx_spark_procurement_convergence,
+  DgxSparkProcurementConverged,
+  DgxSparkProcurementPending,
+  DgxSparkUnitDeployed,
+  DgxSparkUnitPending,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -79,28 +98,38 @@ test fn w_tool_names_match_the_cited_page() -> Bool {
     && fleet_lifecycle_operation_tool_name(op: UpdateControl) == "spark_updatectl.py"
 }
 
+
 test fn w_procurement_intent_reserves_two_identities_not_enrolled() -> Bool {
   dgx_spark_procurement_intent.unit_count == 2
-    && dgx_spark_procurement_intent.reserved_identities == [srv5_reserved, srv6_reserved]
+    && dgx_spark_procurement_intent.reserved_identities == [operator_host_srv5, operator_host_srv6]
+    && dgx_spark_reserved_identities() == [operator_host_srv5, operator_host_srv6]
 }
 
-test fn w_red_admission_without_evidence_refuses() -> Bool {
-  match admit_dgx_spark_deployment(
-    identity: srv5_reserved,
-    catalog: nvidia_dgx_spark_4tb_catalog,
-    identity_observation: none,
-  ) {
-    DgxSparkDeploymentRefused { reason: DeploymentAdmissionNoEvidence } => true
-    DgxSparkDeploymentRefused { reason: _ } => false
-    DgxSparkDeploymentAdmitted { deployment: _ } => false
+// SPARK-LANE-A: the reserved-identity list is DERIVED from the router-binding roster, so the two can never disagree. This witness is the discriminator for that derivation: it asserts the identity of the two lists element-wise against the binding rows, so re-introducing a hand-written second identity list would have to keep both in step to stay green, and dropping a binding row changes both sides together.
+test fn w_reserved_identities_derive_from_the_router_binding_roster() -> Bool {
+  count(dgx_spark_router_bindings) == 2
+    && dgx_spark_reserved_identities() == map(dgx_spark_router_bindings, b => b.identity)
+    && srv5_router_binding.identity == operator_host_srv5
+    && srv6_router_binding.identity == operator_host_srv6
+}
+
+// The live physical fact as of 2026-08-06: neither ordered unit has arrived, so neither has a MAC to reserve against and neither carries a router reservation. This is the honest state, not a gap in the model -- and the next witness proves it is fail-closed rather than skipped past.
+test fn w_both_ordered_units_have_no_router_reservation_yet() -> Bool {
+  match srv5_router_binding.reservation {
+    Absent => true
+    Present { value: _ } => false
   }
+    && match srv6_router_binding.reservation {
+      Absent => true
+      Present { value: _ } => false
+    }
 }
 
-fn synthetic_device_identity_envelope() -> FleetLifecycleEnvelope {
+fn synthetic_device_identity_envelope_for(host: NonEmptyStr) -> FleetLifecycleEnvelope {
   FleetLifecycleEnvelope {
     tool: "device_identity.py",
     ts: "2026-08-05T00:00:00Z",
-    host: "srv5",
+    host: host,
     status: StatusOk,
     rc: 0,
     duration_ms: 42,
@@ -110,13 +139,48 @@ fn synthetic_device_identity_envelope() -> FleetLifecycleEnvelope {
   }
 }
 
+fn synthetic_device_identity_envelope() -> FleetLifecycleEnvelope {
+  synthetic_device_identity_envelope_for(host: "srv5")
+}
+
+// A synthetic reservation fixture, deliberately carrying the all-zero MAC and the .0 network address so it can never be mistaken for an observed router row (the same convention gunbc.network_identity_subsumption's srv3_os_up_dynamic_lease_row uses for its post-install fixture). Its ONLY job is to make the router-binding wall a proven discriminator rather than a permanently-red arm: without a bound fixture the positive control could not exist, and a wall no input can pass proves nothing.
+fn synthetic_bound_binding_for(identity_host: NonEmptyStr) -> DgxSparkRouterBinding {
+  DgxSparkRouterBinding {
+    identity: identity_host as HostIdentity,
+    reservation: Present {
+      value: Cr1000aDhcpLeaseRow {
+        mac_address: "00:00:00:00:00:00" as MacAddress,
+        ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0),
+        lease: StaticDhcpReservation {
+          reservation_label: "synthetic-dgx-spark-fixture" as NonEmptyStr,
+          status: Active,
+        },
+      }
+    },
+  }
+}
+
+test fn w_red_admission_without_evidence_refuses() -> Bool {
+  match admit_dgx_spark_deployment(
+    identity: operator_host_srv5,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    identity_observation: none,
+    router_binding: synthetic_bound_binding_for(identity_host: "srv5"),
+  ) {
+    DgxSparkDeploymentRefused { reason: DeploymentAdmissionNoEvidence } => true
+    DgxSparkDeploymentRefused { reason: _ } => false
+    DgxSparkDeploymentAdmitted { deployment: _ } => false
+  }
+}
+
 test fn w_admission_with_real_evidence_succeeds() -> Bool {
   match admit_dgx_spark_deployment(
-    identity: srv5_reserved,
+    identity: operator_host_srv5,
     catalog: nvidia_dgx_spark_4tb_catalog,
     identity_observation: Present { value: synthetic_device_identity_envelope() },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv5"),
   ) {
-    DgxSparkDeploymentAdmitted { deployment: d } => d.identity == srv5_reserved
+    DgxSparkDeploymentAdmitted { deployment: d } => d.identity == operator_host_srv5
     DgxSparkDeploymentRefused { reason: _ } => false
   }
 }
@@ -137,9 +201,10 @@ fn synthetic_wrong_tool_envelope() -> FleetLifecycleEnvelope {
 
 test fn w_red_admission_with_wrong_tool_evidence_refuses() -> Bool {
   match admit_dgx_spark_deployment(
-    identity: srv5_reserved,
+    identity: operator_host_srv5,
     catalog: nvidia_dgx_spark_4tb_catalog,
     identity_observation: Present { value: synthetic_wrong_tool_envelope() },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv5"),
   ) {
     DgxSparkDeploymentRefused { reason: DeploymentAdmissionWrongTool { observed_tool: t } } => t == "spark_updatectl.py"
     DgxSparkDeploymentRefused { reason: _ } => false
@@ -149,15 +214,159 @@ test fn w_red_admission_with_wrong_tool_evidence_refuses() -> Bool {
 
 test fn w_red_admission_with_mismatched_host_refuses() -> Bool {
   match admit_dgx_spark_deployment(
-    identity: srv6_reserved,
+    identity: operator_host_srv6,
     catalog: nvidia_dgx_spark_4tb_catalog,
     identity_observation: Present { value: synthetic_device_identity_envelope() },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv6"),
   ) {
     DgxSparkDeploymentRefused {
       reason: DeploymentAdmissionHostMismatch { observed_host: h, requested_identity: i }
-    } => h == "srv5" && i == srv6_reserved
+    } => h == "srv5" && i == operator_host_srv6
     DgxSparkDeploymentRefused { reason: _ } => false
     DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
 
+fn synthetic_failed_device_identity_envelope() -> FleetLifecycleEnvelope {
+  FleetLifecycleEnvelope {
+    tool: "device_identity.py",
+    ts: "2026-08-05T00:00:00Z",
+    host: "srv5",
+    status: StatusError,
+    rc: 1,
+    duration_ms: 42,
+    summary: "synthetic FAILED device_identity.py run: the tool was invoked against srv5 and did not succeed",
+    warnings: [],
+    artifacts: [],
+  }
+}
+
+// SPARK-LANE-A RED control #1: the right tool, run against the right host, REPORTING FAILURE. Before this change the wall read only tool and host and admitted this envelope -- a §5 fail-open in which the failure arm of an observation was consumed as evidence of success. The cited envelope carries status and rc as independent facts and this witness pins both into the typed refusal, so a future edit that checks only one of them reds here.
+test fn w_red_admission_with_failed_observation_refuses() -> Bool {
+  match admit_dgx_spark_deployment(
+    identity: operator_host_srv5,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    identity_observation: Present { value: synthetic_failed_device_identity_envelope() },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv5"),
+  ) {
+    DgxSparkDeploymentRefused {
+      reason: DeploymentAdmissionObservationNotOk { observed_status: StatusError, observed_rc: rc }
+    } => rc == 1
+    DgxSparkDeploymentRefused { reason: _ } => false
+    DgxSparkDeploymentAdmitted { deployment: _ } => false
+  }
+}
+
+// SPARK-LANE-A RED control #2: a perfectly valid, successful device_identity.py observation of srv3 -- a real fleet host -- with a matching bound router binding. It must still refuse, because srv3 is not one of the two ordered DGX Spark units: nothing about a valid observation of some host makes that host a machine the operator procured, and admitting one would let the procurement roster be written by whatever happened to answer.
+test fn w_red_admission_of_unreserved_identity_refuses() -> Bool {
+  match admit_dgx_spark_deployment(
+    identity: operator_host_srv3,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    identity_observation: Present { value: synthetic_device_identity_envelope_for(host: "srv3") },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv3"),
+  ) {
+    DgxSparkDeploymentRefused {
+      reason: DeploymentAdmissionIdentityNotReserved { requested_identity: i }
+    } => i == operator_host_srv3
+    DgxSparkDeploymentRefused { reason: _ } => false
+    DgxSparkDeploymentAdmitted { deployment: _ } => false
+  }
+}
+
+// SPARK-LANE-A RED control #3: the live srv5 binding, which has no router reservation because the unit has not arrived. Everything else about this call is valid -- reserved identity, right tool, matching host, successful observation -- so this witness isolates the router-binding requirement as the sole reason for refusal. It is the wall that makes the Absent reservation fail-closed rather than decorative, and it flips to green of its own accord the day the operator reserves srv5 on the router and that row lands in gunbc.dgx_spark_procurement.
+test fn w_red_admission_with_pending_router_binding_refuses() -> Bool {
+  match admit_dgx_spark_deployment(
+    identity: operator_host_srv5,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    identity_observation: Present { value: synthetic_device_identity_envelope() },
+    router_binding: srv5_router_binding,
+  ) {
+    DgxSparkDeploymentRefused {
+      reason: DeploymentAdmissionRouterBindingPending { requested_identity: i }
+    } => i == operator_host_srv5
+    DgxSparkDeploymentRefused { reason: _ } => false
+    DgxSparkDeploymentAdmitted { deployment: _ } => false
+  }
+}
+
+// SPARK-LANE-A RED control #4: srv6's identity carrying srv5's router binding. Without this check a deployment could be admitted against a reservation belonging to a different machine -- the address half of the host-mismatch class the envelope half already closes.
+test fn w_red_admission_with_mismatched_router_binding_refuses() -> Bool {
+  match admit_dgx_spark_deployment(
+    identity: operator_host_srv6,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    identity_observation: Present { value: synthetic_device_identity_envelope_for(host: "srv6") },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv5"),
+  ) {
+    DgxSparkDeploymentRefused {
+      reason: DeploymentAdmissionRouterBindingMismatch { binding_identity: b, requested_identity: i }
+    } => b == operator_host_srv5 && i == operator_host_srv6
+    DgxSparkDeploymentRefused { reason: _ } => false
+    DgxSparkDeploymentAdmitted { deployment: _ } => false
+  }
+}
+
+// SPARK-LANE-A convergence, live: the real binding roster against the real (empty) observation population must be Pending with exactly one typed row per ordered unit, and the cause must be the absence of evidence -- not an untyped "not ready" and not a silently empty result that a consumer could read as converged.
+test fn w_live_procurement_convergence_is_pending_for_both_units() -> Bool {
+  match dgx_spark_procurement_convergence() {
+    DgxSparkProcurementPending { pending: p } =>
+      count(p) == 2
+        && fold(
+          p,
+          init: true,
+          f: (acc, d) =>
+            acc && match d {
+              DgxSparkUnitPending { identity: _, reason: DeploymentAdmissionNoEvidence } => true
+              DgxSparkUnitPending { identity: _, reason: _ } => false
+              DgxSparkUnitDeployed { deployment: _ } => false
+            }
+        )
+    DgxSparkProcurementConverged { deployments: _ } => false
+  }
+}
+
+// The positive control for convergence: two bound bindings plus a successful device_identity.py observation for each converge to two deployments. Without it the Pending witness above would be satisfied by a converge that can never converge.
+test fn w_procurement_converges_when_both_units_are_bound_and_observed() -> Bool {
+  match converge_dgx_spark_procurement(
+    bindings: [
+      synthetic_bound_binding_for(identity_host: "srv5"),
+      synthetic_bound_binding_for(identity_host: "srv6"),
+    ],
+    observations: [
+      synthetic_device_identity_envelope_for(host: "srv5"),
+      synthetic_device_identity_envelope_for(host: "srv6"),
+    ],
+  ) {
+    DgxSparkProcurementConverged { deployments: ds } =>
+      count(ds) == 2
+        && map(ds, d => d.identity) == [operator_host_srv5, operator_host_srv6]
+    DgxSparkProcurementPending { pending: _ } => false
+  }
+}
+
+// Partial arrival is Pending, not converged: one unit bound and observed, the other still awaiting its router reservation. This is the discriminator against a converge that folds with an OR (any unit ready reads as converged) rather than requiring every unit.
+test fn w_red_partial_arrival_does_not_converge() -> Bool {
+  match converge_dgx_spark_procurement(
+    bindings: [synthetic_bound_binding_for(identity_host: "srv5"), srv6_router_binding],
+    observations: [
+      synthetic_device_identity_envelope_for(host: "srv5"),
+      synthetic_device_identity_envelope_for(host: "srv6"),
+    ],
+  ) {
+    DgxSparkProcurementPending { pending: p } =>
+      count(p) == 1
+        && fold(
+          p,
+          init: false,
+          f: (acc, d) =>
+            acc || match d {
+              DgxSparkUnitPending {
+                identity: i,
+                reason: DeploymentAdmissionRouterBindingPending { requested_identity: _ },
+              } => i == operator_host_srv6
+              DgxSparkUnitPending { identity: _, reason: _ } => false
+              DgxSparkUnitDeployed { deployment: _ } => false
+            }
+        )
+    DgxSparkProcurementConverged { deployments: _ } => false
+  }
+}
