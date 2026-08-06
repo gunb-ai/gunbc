@@ -22,10 +22,14 @@ data falsifier_alert_expected_head_branch: NonEmptyStr = "main"
 
 data falsifier_alert_originating_event_note: String = "The admitted originating events are `schedule` and `workflow_dispatch`, and the workflow_dispatch arm carries a real caveat rather than being waved through. GitHub requires write access to dispatch a workflow, so a dispatch is already an authenticated act by someone with repository write — that is the sense in which it is `approved`, and it is the strongest statement this payload supports, because the event does not carry an approval record for the alert to verify independently. `push` and `pull_request` are deliberately NOT admitted even though the falsifier could in principle be triggered by them: a pull_request-originated run can carry a contributor's head, which is exactly the content this wall exists to keep away from a privileged writer, and a push-originated run is not part of the cadence this alert reports on. The head_branch check is a second, independent barrier on the same concern rather than a duplicate of it — an originating event can be legitimate while the head is not main, and a run on main can arrive from an event this alert should not report."
 
+type RepositoryField
+  = EnclosingRepository
+  | HeadRepository
+
 type FalsifierAlertAdmission
   = AlertAdmitted { event: WorkflowRunEvent }
   | AlertRefusedWorkflowNotObserved { observed: String, expected: NonEmptyStr }
-  | AlertRefusedRepositoryNotOwned { observed: String, expected: NonEmptyStr }
+  | AlertRefusedRepositoryNotOwned { field: RepositoryField, observed: String, expected: NonEmptyStr }
   | AlertRefusedHeadBranchNotMain { observed: String, expected: NonEmptyStr }
   | AlertRefusedOriginatingEventNotAdmitted { observed: String }
   | AlertRefusedActivityNotCompleted { observed: String, expected: String }
@@ -43,11 +47,13 @@ fn falsifier_alert_admit_event(event: WorkflowRunEvent) -> FalsifierAlertAdmissi
     }
   } else if event.repository_full_name != (falsifier_alert_expected_repository as String) {
     AlertRefusedRepositoryNotOwned {
+      field: EnclosingRepository,
       observed: event.repository_full_name,
       expected: falsifier_alert_expected_repository
     }
   } else if event.head_repository_full_name != (falsifier_alert_expected_repository as String) {
     AlertRefusedRepositoryNotOwned {
+      field: HeadRepository,
       observed: event.head_repository_full_name,
       expected: falsifier_alert_expected_repository
     }
@@ -68,7 +74,7 @@ fn falsifier_alert_admit_event(event: WorkflowRunEvent) -> FalsifierAlertAdmissi
   }
 }
 
-data falsifier_alert_head_repository_note: String = "head_repository is checked against the SAME expected repository as the enclosing repository, and the two checks are not a copy of one another. `repository` is where the workflow run lives; `head_repository` is where the code it ran CAME FROM, and on a fork-originated run those differ — that divergence is precisely the fork case, and it is the one shape where an admitted-looking run carries foreign content. Checking only the enclosing repository would admit exactly that run. They share a refusal variant because the remedy is the same (this is not our code, stop), and the variant carries the observed value so the two are distinguishable in the record."
+data falsifier_alert_head_repository_note: String = "head_repository is checked against the SAME expected repository as the enclosing repository, and the two checks are not a copy of one another. `repository` is where the workflow run lives; `head_repository` is where the code it ran CAME FROM, and on a fork-originated run those differ — that divergence is precisely the fork case, and it is the one shape where an admitted-looking run carries foreign content. Checking only the enclosing repository would admit exactly that run. They share a refusal variant because the remedy is the same (this is not our code, stop), but the variant names WHICH coordinate failed through a RepositoryField discriminator rather than leaving it to be inferred from the observed value. review 49380 caught that an earlier revision claimed the observed value made them distinguishable, which was not true: a consumer holding only the observed string cannot tell a fork-originated run (head_repository diverged — the attack shape) from a plain wrong-repo delivery, and those are different incidents even though both stop. The field is the fact; the observed value is evidence for it."
 
 fn falsifier_alert_admit(observation: WorkflowRunEventObservation) -> FalsifierAlertAdmission {
   match observation {
@@ -88,7 +94,7 @@ fn falsifier_alert_is_admitted(admission: FalsifierAlertAdmission) -> Bool {
   match admission {
     AlertAdmitted { event: _ } => true
     AlertRefusedWorkflowNotObserved { observed: _, expected: _ } => false
-    AlertRefusedRepositoryNotOwned { observed: _, expected: _ } => false
+    AlertRefusedRepositoryNotOwned { field: _, observed: _, expected: _ } => false
     AlertRefusedHeadBranchNotMain { observed: _, expected: _ } => false
     AlertRefusedOriginatingEventNotAdmitted { observed: _ } => false
     AlertRefusedActivityNotCompleted { observed: _, expected: _ } => false

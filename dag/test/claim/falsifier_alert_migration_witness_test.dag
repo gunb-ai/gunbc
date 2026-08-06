@@ -20,6 +20,7 @@ import gunbc.falsifier_alert_admission {
   AlertAdmitted,
   AlertRefusedWorkflowNotObserved,
   AlertRefusedRepositoryNotOwned,
+  RepositoryField, EnclosingRepository, HeadRepository,
   AlertRefusedHeadBranchNotMain,
   AlertRefusedOriginatingEventNotAdmitted,
   AlertRefusedActivityNotCompleted,
@@ -141,10 +142,13 @@ test fn trust_wall_admits_the_scheduled_main_falsifier_run() -> Bool {
 
 test fn trust_wall_refuses_a_fork_head_repository() -> Bool {
   match admission_of(json: fork_event_json()) {
-    AlertRefusedRepositoryNotOwned { observed: o, expected: _ } => o == "attacker/gunbc"
+    AlertRefusedRepositoryNotOwned { field: HeadRepository, observed: o, expected: _ } =>
+      o == "attacker/gunbc"
     _ => false
   }
 }
+
+data fork_field_discriminator_note: String = "The fork claim asserts the FIELD, not just the observed value, because that is what review 49380 found missing. Its fixture is the fork shape exactly: the enclosing repository is ours and only head_repository diverges, so a wall that checked only the enclosing repository would admit it and a refusal that did not name the field would report it identically to a plain wrong-repo delivery. Matching HeadRepository in the pattern means both failures red this claim."
 
 test fn trust_wall_refuses_a_non_main_head_branch() -> Bool {
   match admission_of(json: non_main_event_json()) {
