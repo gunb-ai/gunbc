@@ -158,7 +158,8 @@ type SparkUnattendedPxeBootAdmissionOutcome
 type SparkUnattendedPxeBootRefusalReason
   = UnattendedPxeBootNetworkStandingIncomplete { gaps: List<PxeNetworkGap> }
   | UnattendedPxeBootFirmwareStandingIncomplete { gaps: List<SparkPxeFirmwareGap> }
-  | UnattendedPxeBootObservationAbsent
+  | NetworkObservationAbsent
+  | FirmwareConfigurationAbsent
 
 fn admit_spark_unattended_pxe_boot(
   image_kind: SparkPxeBootImageKind,
@@ -170,7 +171,7 @@ fn admit_spark_unattended_pxe_boot(
   match network_observation {
     Absent =>
       SparkUnattendedPxeBootRefused {
-        reason: UnattendedPxeBootObservationAbsent
+        reason: NetworkObservationAbsent
       }
     Present { value: network_obs } =>
       match evaluate_pxe_network_standing(observation: Present { value: network_obs }) {
@@ -182,7 +183,7 @@ fn admit_spark_unattended_pxe_boot(
           match firmware_config {
             Absent =>
               SparkUnattendedPxeBootRefused {
-                reason: UnattendedPxeBootObservationAbsent
+                reason: FirmwareConfigurationAbsent
               }
             Present { value: fw } =>
               match evaluate_spark_pxe_firmware_standing(config: fw) {

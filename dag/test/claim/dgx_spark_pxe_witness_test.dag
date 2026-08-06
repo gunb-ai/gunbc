@@ -1,7 +1,7 @@
 module test.claim.dgx_spark_pxe_witness
 
 import std.types { NonEmptyStr, Bool, String, List, Int }
-import extdeps.uri { Uri, Http, Https }
+import extdeps.uri { Uri, Http, Tftp }
 import extdeps.provisioning.network_boot { UefiPxe }
 import extdeps.systems.nvidia_dgx_spark_pxe {
   spark_pxe_bootloader_filename,
@@ -33,7 +33,8 @@ import gunbc.dgx_spark_pxe_boot {
   SparkUnattendedPxeBootAdmissionOutcome,
   SparkUnattendedPxeBootAdmitted,
   SparkUnattendedPxeBootRefused,
-  UnattendedPxeBootObservationAbsent,
+  NetworkObservationAbsent,
+  FirmwareConfigurationAbsent,
   UnattendedPxeBootNetworkStandingIncomplete,
   UnattendedPxeBootFirmwareStandingIncomplete,
   SecureBootBlocksPxe,
@@ -41,8 +42,8 @@ import gunbc.dgx_spark_pxe_boot {
 }
 
 data witness_tftp_root: Uri = Uri {
-  scheme: Https,
-  locator: "tftp.install.spark.lan/",
+  scheme: Tftp,
+  locator: "tftp.install.spark.lan",
 }
 
 data witness_http_root: Uri = Uri {
@@ -146,7 +147,21 @@ test fn w_red_admission_without_observation_refuses() -> Bool {
     network_observation: none,
     firmware_config: none,
   ) {
-    SparkUnattendedPxeBootRefused { reason: UnattendedPxeBootObservationAbsent } => true
+    SparkUnattendedPxeBootRefused { reason: NetworkObservationAbsent } => true
+    SparkUnattendedPxeBootRefused { reason: _ } => false
+    SparkUnattendedPxeBootAdmitted { boot: _ } => false
+  }
+}
+
+test fn w_red_admission_without_firmware_config_refuses() -> Bool {
+  match admit_spark_unattended_pxe_boot(
+    image_kind: FastOsRecoveryTarball,
+    tftp_root: witness_tftp_root,
+    http_image_root: witness_http_root,
+    network_observation: Present { value: synthetic_ready_network_observation() },
+    firmware_config: none,
+  ) {
+    SparkUnattendedPxeBootRefused { reason: FirmwareConfigurationAbsent } => true
     SparkUnattendedPxeBootRefused { reason: _ } => false
     SparkUnattendedPxeBootAdmitted { boot: _ } => false
   }
