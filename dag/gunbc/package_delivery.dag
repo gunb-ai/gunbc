@@ -426,6 +426,26 @@ type CodexNpmRuntimeTarget {
   cpu: NonEmptyStr
 }
 
+fn codex_expected_wrapper_version() -> NonEmptyStr {
+  (codex_required_package_version as String) as NonEmptyStr
+}
+
+fn codex_expected_platform_version(target: CodexNpmRuntimeTarget) -> NonEmptyStr {
+  concat(
+    codex_required_package_version as String,
+    concat("-", concat(target.os as String, concat("-", target.cpu as String))),
+  ) as NonEmptyStr
+}
+
+fn codex_registry_locator_matches_version(
+  locator: NonEmptyStr,
+  version: NonEmptyStr,
+) -> Bool {
+  (locator as String).contains(
+    concat("/@openai/codex/-/codex-", concat(version as String, ".tgz")),
+  )
+}
+
 type CodexNpmRuntimeTargetObservation
   = CodexNpmRuntimeTargetObserved {
       target: CodexNpmRuntimeTarget
@@ -605,6 +625,7 @@ fn admit_codex_selected_node(
   artifact: NpmRegistryArtifact,
   lock_node_key: NonEmptyStr,
   expect_optional: Bool,
+  expect_version: NonEmptyStr,
   expect_os: NonEmptyStr?,
   expect_cpu: NonEmptyStr?,
 ) -> CodexSelectedNodeAdmission {
@@ -620,19 +641,20 @@ fn admit_codex_selected_node(
       lock_node_key: lock_node_key,
       cause: "optional flag does not match first-profile expectation" as NonEmptyStr,
     }
+  } else if (artifact.version as String) != (expect_version as String) {
+    CodexSelectedNodeIdentityRefused {
+      lock_node_key: lock_node_key,
+      cause: "package version is not the pinned Codex 0.146.0 profile identity" as NonEmptyStr,
+    }
+  } else if codex_registry_locator_matches_version(
+    locator: artifact.resolved.locator,
+    version: expect_version,
+  ) == false {
+    CodexSelectedNodeIdentityRefused {
+      lock_node_key: lock_node_key,
+      cause: "resolved locator does not match expected Codex registry tarball identity" as NonEmptyStr,
+    }
   } else {
-    let version_ok =
-      if expect_optional {
-        (artifact.version as String).starts_with(prefix: (codex_required_package_version as String))
-      } else {
-        (artifact.version as String) == (codex_required_package_version as String)
-      }
-    if version_ok == false {
-      CodexSelectedNodeIdentityRefused {
-        lock_node_key: lock_node_key,
-        cause: "package version is not the pinned Codex 0.146.0 profile" as NonEmptyStr,
-      }
-    } else {
       match expect_os {
         Absent =>
           CodexSelectedNodeAdmitted {
@@ -667,7 +689,6 @@ fn admit_codex_selected_node(
               }
           }
       }
-    }
   }
 }
 
@@ -707,6 +728,7 @@ fn select_codex_exact_target_closure(
         artifact: wrapper_artifact,
         lock_node_key: codex_wrapper_lock_path_key,
         expect_optional: false,
+        expect_version: codex_expected_wrapper_version(),
         expect_os: none,
         expect_cpu: none,
       ) {
@@ -740,6 +762,7 @@ fn select_codex_exact_target_closure(
                     artifact: plat_artifact,
                     lock_node_key: plat_key,
                     expect_optional: true,
+                    expect_version: codex_expected_platform_version(target: target),
                     expect_os: Present { value: target.os },
                     expect_cpu: Present { value: target.cpu },
                   ) {
@@ -799,9 +822,18 @@ data codex_runtime_receipt_sidecar_name: NonEmptyStr = ".gunbc-codex-runtime-rec
 
 data codex_runtime_bundle_receipt_note: String = "FULL cryptographic CodexRuntimeBundleReceipt: installed manifest+lock digests + target + digest-only admitted rows + installed-tree identity + native executable digest + npm+node toolchain + canonical protocol-schema bundle identity. Bundle root is content-addressed under gunbc.host_layout.srv1_codex_runtime_release_root/<receipt-hex> (not /tmp). Mutable Codex state lives under srv1_codex_runtime_mutable_state_root — never equate a content-derived path with immutability. Reuse requires sidecar + native digest + full rematerialized-tree identity match."
 
+type PackageTreeEntryKind
+  = PackageTreeRegularFile {
+      content_digest: Sha512Digest
+    }
+  | PackageTreeSymlink {
+      target: NonEmptyStr
+    }
+
 type PackageTreeEntryReceipt {
   rel_path: NonEmptyStr
-  content_digest: Sha512Digest
+  mode_octal: NonEmptyStr
+  kind: PackageTreeEntryKind
 }
 
 type PackageMaterializedTreeReceipt {
@@ -953,8 +985,33 @@ fn observe_codex_build_toolchain() -> CodexBuildToolchainReceipt? {
 }
 
 fn package_tree_entry_canonical_line(entry: PackageTreeEntryReceipt) -> String {
-  concat(entry.rel_path as String, concat("\t", entry.content_digest.hex as String))
+  match entry.kind {
+    PackageTreeRegularFile { content_digest } =>
+      concat(
+        "f\t",
+        concat(
+          entry.mode_octal as String,
+          concat(
+            "\t",
+            concat(entry.rel_path as String, concat("\t", content_digest.hex as String)),
+          ),
+        ),
+      )
+    PackageTreeSymlink { target } =>
+      concat(
+        "l\t",
+        concat(
+          entry.mode_octal as String,
+          concat(
+            "\t",
+            concat(entry.rel_path as String, concat("\t", target as String)),
+          ),
+        ),
+      )
+  }
 }
+
+data package_tree_identity_mode_symlink_note: String = "Tree identity covers regular files AND symlinks. Each entry carries mode_octal plus either SHA-512 content (regular file) or symlink target. Enumeration uses GNU find -printf '%y\\t%m\\t%P\\t%l' so a content-preserving mode flip or symlink retarget refuses reuse."
 
 fn observe_package_materialized_tree(
   root: FilePath,
@@ -963,50 +1020,79 @@ fn observe_package_materialized_tree(
   let script = retained_foreign(
     body: concat(
       "find '",
-      concat(root as String, "' -type f | sort"),
+      concat(
+        root as String,
+        "' \\( -type f -o -type l \\) -printf '%y\\t%m\\t%P\\t%l\\n' | sort",
+      ),
     ),
-    reason: "Installed-tree file enumeration pending typed shell.Find.Files -type f enrollment" as NonEmptyStr,
+    reason: "Installed-tree file+symlink enumeration with mode pending typed shell.Find enrollment" as NonEmptyStr,
   )
   let listed = shell.Exec.Run(script: script)
   if listed.success == false {
     none
   } else {
-    let abs_paths = filter(
+    let rows = filter(
       split(s: listed.stdout, delimiter: "\n"),
       p => p != "",
     )
-    let root_prefix = concat(root as String, "/")
     let entries_acc = fold(
-      abs_paths,
+      rows,
       init: Present { value: [] as List<PackageTreeEntryReceipt> },
-      f: (acc, abs) => match acc {
+      f: (acc, row) => match acc {
         Absent => none
         Present { value: so_far } => {
-          let rel =
-            if (abs as String).starts_with(prefix: root_prefix) {
-              substring(
-                s: abs as String,
-                start: root_prefix.length(),
-                end: (abs as String).length(),
-              )
-            } else {
-              abs as String
-            }
-          if (rel as String).starts_with(prefix: ".gunbc-") {
-            Present { value: so_far }
-          } else {
-            match observe_file_sha512(path: abs as FilePath) {
-              Absent => none
-              Present { value: digest } =>
-                Present {
-                  value: so_far |> list_push(
-                    PackageTreeEntryReceipt {
-                      rel_path: rel as NonEmptyStr,
-                      content_digest: digest,
-                    },
-                  ),
-                }
-            }
+          let cols = split(s: row, delimiter: "\t")
+          match cols.skip(n: 0).first() {
+            Absent => none
+            Present { value: kind_ch } =>
+              match cols.skip(n: 1).first() {
+                Absent => none
+                Present { value: mode } =>
+                  match cols.skip(n: 2).first() {
+                    Absent => none
+                    Present { value: rel } =>
+                      if rel == "" || (rel as String).starts_with(prefix: ".gunbc-") {
+                        Present { value: so_far }
+                      } else if kind_ch == "f" {
+                        let abs = concat(root as String, concat("/", rel))
+                        match observe_file_sha512(path: abs as FilePath) {
+                          Absent => none
+                          Present { value: digest } =>
+                            Present {
+                              value: so_far |> list_push(
+                                PackageTreeEntryReceipt {
+                                  rel_path: rel as NonEmptyStr,
+                                  mode_octal: mode as NonEmptyStr,
+                                  kind: PackageTreeRegularFile { content_digest: digest },
+                                },
+                              ),
+                            }
+                        }
+                      } else if kind_ch == "l" {
+                        match cols.skip(n: 3).first() {
+                          Absent => none
+                          Present { value: target } =>
+                            if target == "" {
+                              none
+                            } else {
+                              Present {
+                                value: so_far |> list_push(
+                                  PackageTreeEntryReceipt {
+                                    rel_path: rel as NonEmptyStr,
+                                    mode_octal: mode as NonEmptyStr,
+                                    kind: PackageTreeSymlink {
+                                      target: target as NonEmptyStr,
+                                    },
+                                  },
+                                ),
+                              }
+                            }
+                        }
+                      } else {
+                        none
+                      }
+                  }
+              }
           }
         }
       },
@@ -1417,6 +1503,14 @@ fn release_codex_runtime_bundle_immutable(
                         cause: "existing release native digest mismatch" as NonEmptyStr,
                       }
                     } else {
+                      let native_file = shell.Test.IsFile(path: existing_native)
+                      let native_exec = shell.Test.IsExecutable(path: existing_native)
+                      if native_file.is_file == false || native_exec.executable == false {
+                        CodexRuntimeReleaseReuseMismatch {
+                          existing_root: dest,
+                          cause: "existing release native entry is not a regular executable file" as NonEmptyStr,
+                        }
+                      } else {
                       match observe_package_materialized_tree(
                         root: dest,
                         work_dir: build_root,
@@ -1454,6 +1548,7 @@ fn release_codex_runtime_bundle_immutable(
                                   }
                               }
                           }
+                      }
                       }
                     }
                 }
