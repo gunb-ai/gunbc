@@ -1657,6 +1657,58 @@ fn ct_constructor_call_admission_test() -> String {
     "    }\n\n")
 }
 
+// The discriminating control for the ConstructorReferenceAdmission de-fork.
+// mint_mod admits exactly caller_ok.ok_call. sneak_call sits in the SAME module and
+// is NOT admitted, so it separates the two authorities that briefly coexisted: an
+// exact DeclRefCoords check refuses it, while the module-grain check deleted from
+// 04_lookup.dag would have admitted it on the module match alone. Asserting
+// caller_decl_name is what makes this a discriminator rather than a second copy of
+// the cross-module test -- a refusal naming ok_call would mean the wall fired on the
+// wrong subject and still looked green.
+fn ct_constructor_call_admission_same_module_sibling_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn constructor_call_admission_refuses_same_module_unlisted_sibling() {\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(8 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let mint_mod = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"mint_mod.dag\".to_string(),\n",
+    "                    content: \"module mint_mod\\ntype Sealed sole_constructor { tag: String }\\nfn mint(tag: String) -> Sealed admit_callers: [decl_ref(module_path: \\\"caller_ok\\\", decl_name: \\\"ok_call\\\")] = Sealed { tag: tag }\\n\".to_string(),\n",
+    "                });\n",
+    "                let caller_ok = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"caller_ok.dag\".to_string(),\n",
+    "                    content: \"module caller_ok\\nimport mint_mod { mint, Sealed }\\nfn ok_call() -> Sealed { mint(\\\"ok\\\") }\\nfn sneak_call() -> Sealed { mint(\\\"sneak\\\") }\\n\".to_string(),\n",
+    "                });\n",
+    "                let result = crate::v1_compiler_compile::compile_sources(\n",
+    "                    std::rc::Rc::new(im::vector![mint_mod, caller_ok]),\n",
+    "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "                );\n",
+    "                let admission_errors: Vec<_> = result.diagnostics.iter()\n",
+    "                    .filter_map(|d| match &*d.diagnostic {\n",
+    "                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused {\n",
+    "                            caller_decl_name, ..\n",
+    "                        } => Some(caller_decl_name.clone()),\n",
+    "                        _ => None,\n",
+    "                    })\n",
+    "                    .collect();\n",
+    "                assert!(\n",
+    "                    admission_errors.iter().any(|n| n == \"sneak_call\"),\n",
+    "                    \"expected ConstructorCallAdmissionRefused naming sneak_call (same module as the admitted sibling, but not admitted); got: {:?}\",\n",
+    "                    result.diagnostics\n",
+    "                );\n",
+    "                assert!(\n",
+    "                    !admission_errors.iter().any(|n| n == \"ok_call\"),\n",
+    "                    \"ok_call is admitted by exact decl_ref and must not be refused; got: {:?}\",\n",
+    "                    admission_errors\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"constructor_call_admission_refuses_same_module_unlisted_sibling panicked\");\n",
+    "    }\n\n")
+}
+
 fn ct_sole_constructor_fieldless_witness_test() -> String {
   concat(
     "    #[test]\n",
@@ -2516,6 +2568,7 @@ fn compiler_tests_source() -> String {
     ct_declared_type_conformance_witness_test(),
     ct_sole_constructor_test(),
     ct_constructor_call_admission_test(),
+    ct_constructor_call_admission_same_module_sibling_test(),
     ct_sole_constructor_fieldless_witness_test(),
     ct_contracts_sidecar_witness_test(),
     ct_caret_parse_smoke_native_witness_tests(),
