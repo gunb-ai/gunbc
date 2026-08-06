@@ -17,9 +17,9 @@ data provider_standing_authority_note: String = "SHARED CONTRACT for Claude and 
 
 data provider_standing_selection_note: String = "Selection eligibility consumes an admitted ProviderStanding bundle AND a ProviderLimitDispatchDraw. LimitDispatchDrawAutomatic fail-closes on any observed ProviderNativeLimitBucket exhaustion (extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note). ProfileExactOverride may supply operator_asserted_native_limit_bucket on SelectCodex — attributed assertion, not a cited join. LimitDispatchDrawUnspecified is fail-closed like Automatic and must not be used for dispatch eligibility; standing-only callers should not call provider_standing_is_selection_eligible with Unspecified."
 
-data provider_standing_limit_dispatch_draw_note: String = "Limit blocking is dispatch-scoped. LimitDispatchDrawAutomatic treats every ProviderNativeLimitBucket exhaustion/rate-limit/until-reset as blocking — relevance is undeterminable without a cited model-to-limitId join. LimitDispatchDrawNativeBucket blocks only on matching native_key. DISSOLVES ON: extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note — automatic becomes decidable when cited join lands."
+data provider_standing_limit_dispatch_draw_note: String = "Limit blocking is dispatch-scoped. LimitDispatchDrawAutomatic treats every ProviderNativeLimitBucket exhaustion/rate-limit/until-reset/rejection as blocking — relevance is undeterminable without a cited model-to-limitId join. LimitDispatchDrawNativeBucket blocks only on matching native_key. DISSOLVES ON: extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note — automatic becomes decidable when cited join lands."
 
-data provider_standing_automatic_native_bucket_join_undetermined_note: String = "Automatic dispatch refusal on native-bucket exhaustion is not account-scope promotion and not a capacity claim — the model cannot prove the draw avoids the named bucket."
+data provider_standing_limit_rejection_unspecified_draw_note: String = "LimitRejected under LimitDispatchDrawUnspecified does not block when the subject is ProviderModelLimit — a single rejected model must not erase account eligibility (section 10 worked example: Fable rejected, Opus still runnable). ProviderNativeLimitBucket and ProviderAccountLimit rejections still route through limit_subject_covers_dispatch_draw so a future rate_limit_reached decode cannot slip past Unspecified/Automatic fail-closed the way LimitExhausted does."
 
 type ProviderLimitDispatchDraw
   = LimitDispatchDrawUnspecified
@@ -324,7 +324,11 @@ fn limit_observation_blocks_dispatch(
       limit_subject_covers_dispatch_draw(subject: s, draw: draw)
     LimitRejected { subject: s, native_token: _, reason: _ } =>
       match draw {
-        LimitDispatchDrawUnspecified => false
+        LimitDispatchDrawUnspecified =>
+          match s {
+            ProviderModelLimit { credential: _, model: _ } => false
+            _ => limit_subject_covers_dispatch_draw(subject: s, draw: draw)
+          }
         _ => limit_subject_covers_dispatch_draw(subject: s, draw: draw)
       }
     LimitCapabilityGapUnobservable { reason: _ } => false
