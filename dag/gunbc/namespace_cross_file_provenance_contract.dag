@@ -23,7 +23,7 @@ import std.occurrence_binding_candidates {
 
 data namespace_cross_file_provenance_contract_note: String = "THE CLOSING CONDITION for roadmap node namespace-cross-file-provenance (N3-B / clause e substrate). Returns NamespaceCrossFileProvenanceVerdict over the neutral ReferenceDerivedDependencyProjection carrier — never the parent ReferenceDerivedClosureAdmission ontology (N3-D translates child evidence into RepeatedMentionsCollapseDependency). assess_controlled_two_mention_provenance_projection proves the controlled two-mention / one-declaration / one-file-dependency projection law on parser-embedded or hand-built carriers. Row closure assessment refuses ParserEmbeddedSubstrateEvidence until B2 supplies an ordinary loaded compilation closure observation capable of greening unchanged."
 
-data lists_agree_at_nfr_disposition_note: String = "NFR census disposition (review 48425/48733): lists_agree_at is not separately rostered on gunbc.non_fold_residue.non_fold_residue_frontier. nfr_residue_sites attributes only match-on-closed-coproduct-param sites carrying a top-level wildcard arm; this helper's Absent => false arms are on list-head Option projection (left |> first), not a param scrutinee, so a roster row is scan-invisible and would count permanently stale (receipt: row landed 6dcf9289a67, deleted a4f53019847 when stale_roster_count=1). assess_controlled_two_mention_provenance_projection routes ReferencePopulationRefused to ProjectionBindingRefused before population agreement; dissolve lists_agree_at when list agreement becomes a total std carrier (algebra-derived zip fold) and delete this note with the row."
+data lists_agree_at_nfr_disposition_note: String = "NFR census disposition (review 48425/48733): lists_agree_at is not separately rostered on gunbc.non_fold_residue.non_fold_residue_frontier. nfr_residue_sites attributes only match-on-closed-coproduct-param sites carrying a top-level wildcard arm; this helper's list-head Option projection arms (left |> first Absent) are not a param scrutinee, so a roster row is scan-invisible and would count permanently stale (receipt: row landed 6dcf9289a67, deleted a4f53019847 when stale_roster_count=1). Those arms now refuse ProjectionListStructureBroken rather than fabricating semantic disagreement (review 49325). assess_controlled_two_mention_provenance_projection routes ReferencePopulationRefused to ProjectionBindingRefused before population agreement; dissolve lists_agree_at when list agreement becomes a total std carrier (algebra-derived zip fold) and delete this note with the row."
 
 type NamespaceCrossFileProvenanceObservationSource
   = ParserEmbeddedSubstrateEvidence
@@ -43,39 +43,48 @@ type NamespaceCrossFileProvenanceFailure
   | DeclarationOccurrencesNotShared
   | ProvenanceProjectionInconsistent
   | BoundPopulationInconsistentWithProvenance
+  | ProjectionListStructureBroken
+
+type ListsAgreementAtVerdict
+  = ListsAgree
+  | ListsDisagree
+  | ListStructureBroken
+
+fn lists_agree_at<A, B>(
+  left: List<A>,
+  right: List<B>,
+  agree: fn(A, B) -> Bool,
+) -> ListsAgreementAtVerdict {
+  if count(left) != count(right) {
+    ListsDisagree
+  } else if (left |> count) == 0 {
+    ListsAgree
+  } else {
+    match left |> first {
+      Present { value: left_head } =>
+        match right |> first {
+          Present { value: right_head } =>
+            if agree(left_head, right_head) {
+              lists_agree_at(
+                left: left.skip(n: 1),
+                right: right.skip(n: 1),
+                agree: agree,
+              )
+            } else {
+              ListsDisagree
+            }
+          Absent => ListStructureBroken
+        }
+      Absent => ListStructureBroken
+    }
+  }
+}
 
 type NamespaceCrossFileProvenanceVerdict
   = NamespaceCrossFileProvenanceEstablished
   | NamespaceCrossFileProvenanceRefused {
       failure: NamespaceCrossFileProvenanceFailure,
     }
-
-fn lists_agree_at<A, B>(
-  left: List<A>,
-  right: List<B>,
-  agree: fn(A, B) -> Bool,
-) -> Bool {
-  if count(left) != count(right) {
-    false
-  } else if (left |> count) == 0 {
-    true
-  } else {
-    match left |> first {
-      Present { value: left_head } =>
-        match right |> first {
-          Present { value: right_head } =>
-            agree(left_head, right_head)
-              && lists_agree_at(
-                left: left.skip(n: 1),
-                right: right.skip(n: 1),
-                agree: agree,
-              )
-          Absent => false
-        }
-      Absent => false
-    }
-  }
-}
 
 fn direct_file_dependency_eq(
   a: DirectFileDependency,
@@ -88,14 +97,14 @@ fn direct_file_dependency_eq(
 fn direct_file_dependency_lists_eq(
   left: List<DirectFileDependency>,
   right: List<DirectFileDependency>
-) -> Bool {
+) -> ListsAgreementAtVerdict {
   lists_agree_at(left: left, right: right, agree: direct_file_dependency_eq)
 }
 
 fn reference_derived_file_dependencies_match_provenances(
   provenances: List<CrossFileBindingProvenance>,
   file_dependencies: List<DirectFileDependency>
-) -> Bool {
+) -> ListsAgreementAtVerdict {
   direct_file_dependency_lists_eq(
     left: direct_file_dependencies_from_provenances(provenances: provenances),
     right: file_dependencies,
@@ -113,7 +122,7 @@ fn cross_file_binding_provenance_matches_provider(
 fn provenance_provider_lists_agree(
   provenances: List<CrossFileBindingProvenance>,
   providers: List<BoundReferenceProvider>
-) -> Bool {
+) -> ListsAgreementAtVerdict {
   lists_agree_at(
     left: provenances,
     right: providers,
@@ -124,11 +133,11 @@ fn provenance_provider_lists_agree(
 fn bound_population_agrees_with_provenances(
   provenances: List<CrossFileBindingProvenance>,
   population: BoundReferencePopulation
-) -> Bool {
+) -> ListsAgreementAtVerdict {
   match population {
     AllReferencesBound { providers: providers } =>
       provenance_provider_lists_agree(provenances: provenances, providers: providers)
-    ReferencePopulationRefused { first_failure: _, more_failures: _ } => false
+    ReferencePopulationRefused { first_failure: _, more_failures: _ } => ListsDisagree
   }
 }
 
@@ -173,40 +182,53 @@ fn assess_controlled_two_mention_provenance_projection(
                       NamespaceCrossFileProvenanceRefused {
                         failure: ReferenceOccurrencesNotDistinct,
                       }
-                    } else if !reference_derived_file_dependencies_match_provenances(
-                      provenances: provenances,
-                      file_dependencies: dependencies,
-                    ) {
-                      NamespaceCrossFileProvenanceRefused {
-                        failure: ProvenanceProjectionInconsistent,
-                      }
                     } else {
-                      match bound_population {
-                        ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
+                      match reference_derived_file_dependencies_match_provenances(
+                        provenances: provenances,
+                        file_dependencies: dependencies,
+                      ) {
+                        ListStructureBroken =>
                           NamespaceCrossFileProvenanceRefused {
-                            failure: ProjectionBindingRefused { population: bound_population },
+                            failure: ProjectionListStructureBroken,
                           }
-                        AllReferencesBound { providers: providers } =>
-                          if !provenance_provider_lists_agree(
-                            provenances: provenances,
-                            providers: providers,
-                          ) {
-                            NamespaceCrossFileProvenanceRefused {
-                              failure: BoundPopulationInconsistentWithProvenance,
-                            }
-                          } else {
-                            NamespaceCrossFileProvenanceEstablished
+                        ListsDisagree =>
+                          NamespaceCrossFileProvenanceRefused {
+                            failure: ProvenanceProjectionInconsistent,
                           }
+                        ListsAgree => {
+                          match bound_population {
+                            ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
+                              NamespaceCrossFileProvenanceRefused {
+                                failure: ProjectionBindingRefused { population: bound_population },
+                              }
+                            AllReferencesBound { providers: providers } =>
+                              match provenance_provider_lists_agree(
+                                provenances: provenances,
+                                providers: providers,
+                              ) {
+                                ListStructureBroken =>
+                                  NamespaceCrossFileProvenanceRefused {
+                                    failure: ProjectionListStructureBroken,
+                                  }
+                                ListsDisagree =>
+                                  NamespaceCrossFileProvenanceRefused {
+                                    failure: BoundPopulationInconsistentWithProvenance,
+                                  }
+                                ListsAgree =>
+                                  NamespaceCrossFileProvenanceEstablished
+                              }
+                          }
+                        }
                       }
                     }
                   Absent =>
                     NamespaceCrossFileProvenanceRefused {
-                      failure: DeclarationOccurrencesNotShared,
+                      failure: ProjectionListStructureBroken,
                     }
                 }
               Absent =>
                 NamespaceCrossFileProvenanceRefused {
-                  failure: DeclarationOccurrencesNotShared,
+                  failure: ProjectionListStructureBroken,
                 }
             }
           }
