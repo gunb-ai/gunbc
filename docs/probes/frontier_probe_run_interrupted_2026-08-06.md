@@ -16,7 +16,7 @@ The Lane 1 exact-head closeout recipe (`gunbc.ci_layer_roots` `compiler_frontier
 
 ## The refusal
 
-Every probe invocation was killed by the cgroup OOM killer. Host cap `memory.max` = 33578549248 bytes (31.3 GiB / 32023 MiB).
+Every probe invocation was SIGKILLed by an OOM killer. Host `memory.max` = 33578549248 bytes (31.3 GiB / 32023 MiB) — but see the counter analysis below: **this cgroup's cap was never the binding constraint.**
 
 | # | Invocation | Source roots | Result |
 |---|------------|--------------|--------|
@@ -25,8 +25,9 @@ Every probe invocation was killed by the cgroup OOM killer. Host cap `memory.max
 | 3 | `03_resolve`, fresh process | `src/v2` + `dag` | exit 137 |
 | 4 | `01_tokenize`, fresh process | `src/v2` + `dag` | exit 137 |
 | 5 | `03_normalize`, fresh process | `src/v2` only | exit 137 |
+| 6 | `01_tokenize` retry, low host load | `src/v2` + `dag` | exit 137 — survived to 3.5 min at ~2.0 GB, past every earlier run, then killed anyway without raising `memory.peak` |
 
-Five for five. Zero receipts produced.
+Six for six. Zero receipts produced.
 
 **Located identically in all five:** death occurs immediately after the `probing <module>` line, inside the interpreted `frontier_probe_emit_from_ingest` evaluation. The ingest closure is read to completion first (the `[file] read …` lines), so this is not an ingest or discovery failure.
 
