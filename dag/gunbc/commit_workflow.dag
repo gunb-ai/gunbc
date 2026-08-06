@@ -1335,7 +1335,10 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/realization_vocabulary_containment/roster_soundness_test.dag",
-      check_fns: ["realization_vocab_roster_soundness_planted_stale_red_holds"],
+      check_fns: [
+        "realization_vocab_roster_soundness_census_complete_holds",
+        "realization_vocab_roster_soundness_planted_stale_red_holds"
+      ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },

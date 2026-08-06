@@ -1,19 +1,46 @@
 module v2.test.realization_vocabulary_containment.roster_soundness
 
 import v2.lens.realization_vocabulary_containment {
+  realization_vocab_grandfathered_edges,
   realization_vocab_roster_sound,
   RealizationVocabImportEdge
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data empty_live_leak_edges: List<RealizationVocabImportEdge> = []
+data typescript_sidecar_module: String = "extdeps.languages.typescript.program"
 
-data roster_soundness_fast_lane_note: String = "Live-corpus roster soundness receipt moved to long/realization_vocabulary_containment_witness_test.dag (5s fast-lane budget). This file retains the synthetic stale-grandfathered-edge RED control only."
+data bash_build_module: String = "v2.extdeps.languages.bash_build"
+
+data roster_soundness_fast_lane_note: String = "Live-corpus roster soundness receipt moved to long/realization_vocabulary_containment_witness_test.dag (5s fast-lane budget). This file retains synthetic edge-grain roster-soundness controls: a positive census-complete live_leak_edges arm and a RED arm that omits one frozen edge so realization_vocab_stale_grandfathered_edges is non-empty."
+
+data live_leak_edges_missing_build_step_edge: List<RealizationVocabImportEdge> = [
+  RealizationVocabImportEdge {
+    importer_path: "dag/gunbc/roadmap_component.dag",
+    vocab_module: typescript_sidecar_module
+  },
+  RealizationVocabImportEdge {
+    importer_path: "dag/gunbc/design/theme_transition.dag",
+    vocab_module: typescript_sidecar_module
+  },
+  RealizationVocabImportEdge {
+    importer_path: "dag/gunbc/node_http_server_emit.dag",
+    vocab_module: typescript_sidecar_module
+  },
+  RealizationVocabImportEdge {
+    importer_path: "src/v2/workflow/effect_plan_bash_materialize.dag",
+    vocab_module: bash_build_module
+  }
+]
+
+test fn realization_vocab_roster_soundness_census_complete_holds() -> Bool {
+  realization_vocab_roster_sound(live_leak_edges: realization_vocab_grandfathered_edges())
+}
 
 test fn realization_vocab_roster_soundness_planted_stale_red_holds() -> Bool {
-  realization_vocab_roster_sound(live_leak_edges: empty_live_leak_edges) == false
+  realization_vocab_roster_sound(live_leak_edges: live_leak_edges_missing_build_step_edge) == false
 }
