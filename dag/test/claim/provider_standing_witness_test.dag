@@ -1,0 +1,363 @@
+module test.claim.provider_standing_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import extdeps.llm.cli_lifecycle {
+  ClaudeCliProvider,
+  CodexCliProvider,
+  ProviderInstance,
+  ProviderInstanceFieldUnobserved,
+}
+import gunbc.provider_standing {
+  ProviderStandingBundle,
+  ProviderStandingFromFact,
+  ProviderStandingUnobserved,
+  ProviderAccountLimit,
+  LimitCredentialUnspecified,
+  LimitObservedAvailable,
+  LimitUnavailableUntilReset,
+  LimitRejected,
+  LimitWarning,
+  LimitCapabilityGapUnobservable,
+  ProviderModelLimit,
+  InstallationReady,
+  AuthenticationAuthenticated,
+  EntitlementObservedAvailable,
+  TurnNotStarted,
+  ToolEnvironmentReady,
+  provider_standing_from_fixture_bundle,
+  provider_standing_is_selection_eligible,
+  fixture_standing_bundle_authenticated_available,
+  fixture_standing_bundle_authenticated_unavailable_until_reset,
+  fixture_standing_bundle_cursor_capability_gap,
+  fixture_standing_bundle_claude_profile_present_token_absent,
+  AuthenticationProfilePresentTokenAbsent,
+  select_first_preferred_kind,
+  dispatch_automatic_provider_preference,
+}
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.dispatch_selection {
+  ProfileAutomatic,
+  DispatchSelectionRefused,
+  SelectAutomatically,
+  default_provider_selection_request,
+  resolve_dispatch_selection,
+  automatic_selection_selected_kind,
+  claude_offer_not_wired_reason,
+  fixture_inventory_codex_then_claude,
+  fixture_inventory_claude_then_codex,
+  fixture_codex_offer_with_standing,
+  Unsized,
+}
+
+test fn witness_limit_warning_does_not_block_selection() -> Bool {
+  let bundle = ProviderStandingBundle {
+    installation: InstallationReady,
+    authentication: AuthenticationAuthenticated,
+    entitlement: EntitlementObservedAvailable,
+    limits: [
+      LimitWarning {
+        subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
+        native_token: "seven_day_opus" as NonEmptyStr,
+        utilization_basis_points: 9500,
+      },
+    ],
+    turn: TurnNotStarted,
+    tool_environment: ToolEnvironmentReady,
+  }
+  provider_standing_is_selection_eligible(
+    standing: provider_standing_from_fixture_bundle(
+      provider: ProviderInstance {
+        kind: ClaudeCliProvider,
+        host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        executable: "claude" as NonEmptyStr,
+        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      },
+      bundle: bundle,
+    ),
+  )
+}
+
+test fn witness_model_limit_rejection_does_not_block_account_selection() -> Bool {
+  let bundle = ProviderStandingBundle {
+    installation: InstallationReady,
+    authentication: AuthenticationAuthenticated,
+    entitlement: EntitlementObservedAvailable,
+    limits: [
+      LimitRejected {
+        subject: ProviderModelLimit {
+          credential: LimitCredentialUnspecified,
+          model: "fable" as NonEmptyStr,
+        },
+        native_token: "fable" as NonEmptyStr,
+        reason: "fable bucket rejected" as NonEmptyStr,
+      },
+      LimitObservedAvailable {
+        subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
+      },
+    ],
+    turn: TurnNotStarted,
+    tool_environment: ToolEnvironmentReady,
+  }
+  provider_standing_is_selection_eligible(
+    standing: provider_standing_from_fixture_bundle(
+      provider: ProviderInstance {
+        kind: ClaudeCliProvider,
+        host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        executable: "claude" as NonEmptyStr,
+        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      },
+      bundle: bundle,
+    ),
+  )
+}
+
+test fn witness_unobserved_standing_is_ineligible() -> Bool {
+  !provider_standing_is_selection_eligible(
+    standing: ProviderStandingUnobserved {
+      reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+    },
+  )
+}
+
+test fn witness_cursor_capability_gap_is_eligible() -> Bool {
+  provider_standing_is_selection_eligible(
+    standing: provider_standing_from_fixture_bundle(
+      provider: ProviderInstance {
+        kind: CodexCliProvider,
+        host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        executable: "cursor-agent" as NonEmptyStr,
+        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      },
+      bundle: fixture_standing_bundle_cursor_capability_gap(),
+    ),
+  )
+}
+
+test fn witness_codex_unavailable_prefers_claude_over_codex() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let inventory = fixture_inventory_codex_then_claude(
+    instance: instance,
+    codex_standing: provider_standing_from_fixture_bundle(
+      provider: ProviderInstance {
+        kind: CodexCliProvider,
+        host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        executable: "codex" as NonEmptyStr,
+        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      },
+      bundle: fixture_standing_bundle_authenticated_unavailable_until_reset(),
+    ),
+    claude_standing: provider_standing_from_fixture_bundle(
+      provider: ProviderInstance {
+        kind: ClaudeCliProvider,
+        host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        executable: "claude" as NonEmptyStr,
+        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      },
+      bundle: fixture_standing_bundle_authenticated_available(),
+    ),
+  )
+  match automatic_selection_selected_kind(inventory: inventory) {
+    Present { value: kind } => kind == ClaudeCliProvider
+    Absent => false
+  }
+}
+
+test fn witness_offer_list_order_does_not_change_automatic_selection() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let codex_standing = provider_standing_from_fixture_bundle(
+    provider: ProviderInstance {
+      kind: CodexCliProvider,
+      host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      executable: "codex" as NonEmptyStr,
+      observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    },
+    bundle: fixture_standing_bundle_authenticated_unavailable_until_reset(),
+  )
+  let claude_standing = provider_standing_from_fixture_bundle(
+    provider: ProviderInstance {
+      kind: ClaudeCliProvider,
+      host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      executable: "claude" as NonEmptyStr,
+      observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    },
+    bundle: fixture_standing_bundle_authenticated_available(),
+  )
+  let codex_first = fixture_inventory_codex_then_claude(
+    instance: instance,
+    codex_standing: codex_standing,
+    claude_standing: claude_standing,
+  )
+  let claude_first = fixture_inventory_claude_then_codex(
+    instance: instance,
+    codex_standing: codex_standing,
+    claude_standing: claude_standing,
+  )
+  let codex_first_kind = automatic_selection_selected_kind(inventory: codex_first)
+  let claude_first_kind = automatic_selection_selected_kind(inventory: claude_first)
+  match codex_first_kind {
+    Present { value: a } =>
+      match claude_first_kind {
+        Present { value: b } => a == b && a == ClaudeCliProvider
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn witness_standing_ineligible_codex_selects_claude_before_resolve() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let inventory = fixture_inventory_codex_then_claude(
+    instance: instance,
+    codex_standing: provider_standing_from_fixture_bundle(
+      provider: ProviderInstance {
+        kind: CodexCliProvider,
+        host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        executable: "codex" as NonEmptyStr,
+        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      },
+      bundle: fixture_standing_bundle_authenticated_unavailable_until_reset(),
+    ),
+    claude_standing: provider_standing_from_fixture_bundle(
+      provider: ProviderInstance {
+        kind: ClaudeCliProvider,
+        host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        executable: "claude" as NonEmptyStr,
+        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      },
+      bundle: fixture_standing_bundle_authenticated_available(),
+    ),
+  )
+  match resolve_dispatch_selection(
+    inventory: inventory,
+    request: default_provider_selection_request(),
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+      reason == claude_offer_not_wired_reason
+    _ => false
+  }
+}
+
+test fn witness_profile_present_token_absent_not_selection_eligible() -> Bool {
+  !provider_standing_is_selection_eligible(
+    standing: provider_standing_from_fixture_bundle(
+      provider: ProviderInstance {
+        kind: ClaudeCliProvider,
+        host: ProviderInstanceFieldUnobserved {
+          reason: "eager-raven-845 live claude credential home" as NonEmptyStr,
+        },
+        executable: "claude" as NonEmptyStr,
+        observed_version: ProviderInstanceFieldUnobserved {
+          reason: "eager-raven-845 live claude credential home" as NonEmptyStr,
+        },
+        state_directory: ProviderInstanceFieldUnobserved {
+          reason: "eager-raven-845 live claude credential home" as NonEmptyStr,
+        },
+        credential_storage_method: ProviderInstanceFieldUnobserved {
+          reason: "eager-raven-845 live claude credential home" as NonEmptyStr,
+        },
+        service_identity: ProviderInstanceFieldUnobserved {
+          reason: "eager-raven-845 live claude credential home" as NonEmptyStr,
+        },
+      },
+      bundle: fixture_standing_bundle_claude_profile_present_token_absent(),
+    ),
+  )
+}
+
+test fn witness_profile_present_token_absent_not_authenticated_standing() -> Bool {
+  match fixture_standing_bundle_claude_profile_present_token_absent().authentication {
+    AuthenticationProfilePresentTokenAbsent {
+      subscription_tier: tier,
+      token_source: source,
+    } =>
+      tier == ("claude_max" as NonEmptyStr) && source == ("none" as NonEmptyStr)
+    AuthenticationAuthenticated => false
+    _ => false
+  }
+}
+
+test fn witness_profile_present_token_absent_claude_skipped_for_codex() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let inventory = fixture_inventory_codex_then_claude(
+    instance: instance,
+    codex_standing: provider_standing_from_fixture_bundle(
+      provider: ProviderInstance {
+        kind: CodexCliProvider,
+        host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        executable: "codex" as NonEmptyStr,
+        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      },
+      bundle: fixture_standing_bundle_authenticated_available(),
+    ),
+    claude_standing: provider_standing_from_fixture_bundle(
+      provider: ProviderInstance {
+        kind: ClaudeCliProvider,
+        host: ProviderInstanceFieldUnobserved {
+          reason: "eager-raven-845 live claude credential home" as NonEmptyStr,
+        },
+        executable: "claude" as NonEmptyStr,
+        observed_version: ProviderInstanceFieldUnobserved {
+          reason: "eager-raven-845 live claude credential home" as NonEmptyStr,
+        },
+        state_directory: ProviderInstanceFieldUnobserved {
+          reason: "eager-raven-845 live claude credential home" as NonEmptyStr,
+        },
+        credential_storage_method: ProviderInstanceFieldUnobserved {
+          reason: "eager-raven-845 live claude credential home" as NonEmptyStr,
+        },
+        service_identity: ProviderInstanceFieldUnobserved {
+          reason: "eager-raven-845 live claude credential home" as NonEmptyStr,
+        },
+      },
+      bundle: fixture_standing_bundle_claude_profile_present_token_absent(),
+    ),
+  )
+  match automatic_selection_selected_kind(inventory: inventory) {
+    Present { value: kind } => kind == CodexCliProvider
+    Absent => false
+  }
+}
+
+test fn provider_standing_keystone_holds() -> Bool {
+  witness_limit_warning_does_not_block_selection()
+    && witness_model_limit_rejection_does_not_block_account_selection()
+    && witness_unobserved_standing_is_ineligible()
+    && witness_cursor_capability_gap_is_eligible()
+    && witness_codex_unavailable_prefers_claude_over_codex()
+    && witness_offer_list_order_does_not_change_automatic_selection()
+    && witness_standing_ineligible_codex_selects_claude_before_resolve()
+    && witness_profile_present_token_absent_not_selection_eligible()
+    && witness_profile_present_token_absent_not_authenticated_standing()
+    && witness_profile_present_token_absent_claude_skipped_for_codex()
+}

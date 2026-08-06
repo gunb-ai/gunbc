@@ -14,6 +14,8 @@ import extdeps.llm.cli_lifecycle {
   CodexCliProvider,
   CursorCliProvider,
   ClaudeCliProvider,
+  ProviderInstance,
+  ProviderInstanceFieldUnobserved,
 }
 import extdeps.llm.cursor_cli { cursor_model_auto }
 import gunbc.roadmap_dashboard_instance {
@@ -21,6 +23,12 @@ import gunbc.roadmap_dashboard_instance {
   srv2_lab_dashboard_instance,
 }
 import gunbc.provider_account { codex_roadmap_account_selection }
+import gunbc.provider_standing {
+  provider_standing_from_fixture_bundle,
+  fixture_standing_bundle_authenticated_available,
+  fixture_standing_bundle_authenticated_unavailable_until_reset,
+  fixture_standing_bundle_cursor_capability_gap,
+}
 import gunbc.dispatch_selection {
   CursorLocalLoginRef,
   ProfileAutomatic,
@@ -41,6 +49,7 @@ import gunbc.dispatch_selection {
   DispatchResolvedExecution,
   default_provider_selection_request,
   dispatch_selection_for_instance,
+  resolve_dispatch_selection,
   provider_inventory_for_instance,
   automatic_codex_behavior_preservation_holds,
   inventory_includes_provider_kind,
@@ -49,6 +58,9 @@ import gunbc.dispatch_selection {
   dispatch_execution_preference_alias_note,
   dispatch_execution_receipt_bar_note,
   provider_selection_request_for_kind,
+  fixture_inventory_codex_only_available,
+  fixture_inventory_codex_and_cursor_available,
+  Unsized,
 }
 
 test fn witness_automatic_codex_preserves_medium_effort() -> Bool {
@@ -58,8 +70,11 @@ test fn witness_automatic_codex_preserves_medium_effort() -> Bool {
 }
 
 test fn witness_intricacy_does_not_change_automatic_effort() -> Bool {
-  let high = dispatch_selection_for_instance(
+  let inventory = fixture_inventory_codex_only_available(
     instance: srv1_live_dashboard_instance(),
+  )
+  let high = resolve_dispatch_selection(
+    inventory: inventory,
     request: default_provider_selection_request(),
     node_sizing: Sized {
       intricacy: IntricacyHigh,
@@ -68,8 +83,8 @@ test fn witness_intricacy_does_not_change_automatic_effort() -> Bool {
       acceptance: PrsMerged,
     },
   )
-  let low = dispatch_selection_for_instance(
-    instance: srv1_live_dashboard_instance(),
+  let low = resolve_dispatch_selection(
+    inventory: inventory,
     request: default_provider_selection_request(),
     node_sizing: Sized {
       intricacy: IntricacyLow,
@@ -93,8 +108,10 @@ test fn witness_intricacy_does_not_change_automatic_effort() -> Bool {
 }
 
 test fn witness_deep_profile_refuses_without_realization() -> Bool {
-  match dispatch_selection_for_instance(
-    instance: srv1_live_dashboard_instance(),
+  match resolve_dispatch_selection(
+    inventory: fixture_inventory_codex_only_available(
+      instance: srv1_live_dashboard_instance(),
+    ),
     request: SelectAutomatically { profile: ProfileDeep },
     node_sizing: Unsized,
   ) {
@@ -122,8 +139,10 @@ test fn witness_srv2_inventory_includes_cursor() -> Bool {
 }
 
 test fn witness_srv2_cursor_selection_resolves() -> Bool {
-  match dispatch_selection_for_instance(
-    instance: srv2_lab_dashboard_instance(),
+  match resolve_dispatch_selection(
+    inventory: fixture_inventory_codex_and_cursor_available(
+      instance: srv2_lab_dashboard_instance(),
+    ),
     request: SelectCursor {
       profile: ProfileAutomatic,
       credential: CursorLocalLoginRef,
@@ -140,8 +159,10 @@ test fn witness_srv2_cursor_selection_resolves() -> Bool {
 
 test fn witness_receipt_records_requested_and_resolved() -> Bool {
   let request = SelectAutomatically { profile: ProfileAutomatic }
-  match dispatch_selection_for_instance(
-    instance: srv1_live_dashboard_instance(),
+  match resolve_dispatch_selection(
+    inventory: fixture_inventory_codex_only_available(
+      instance: srv1_live_dashboard_instance(),
+    ),
     request: request,
     node_sizing: Unsized,
   ) {
