@@ -5,6 +5,10 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_oversubscription_within_slice,
   gunbc_runner_slot_desired,
   gunbc_runner_slots_per_host,
+  host_memory_admitted_width,
+  host_disk_admitted_width,
+  DiskAdmitsWidth,
+  DiskWidthUnconstrained,
   gunbc_runner_slice_cap_declared,
   gunbc_committed_runner_slot_allocations,
   gunbc_runner_slot_enforcement_expected_cap,
@@ -22,24 +26,70 @@ test fn runner_slot_allocation_wall_holds() -> Bool {
 
 test fn runner_slot_allocation_oversubscription_boundary_exact() -> Bool {
   let per_slot = gunbc_runner_slot_desired()
-  gunbc_runner_slot_oversubscription_within_slice(
-    slots: gunbc_runner_slots_per_host(),
-    per_slot: per_slot.memory_max,
-    slice_cap: gunbc_runner_slice_cap_declared()
+  all(
+    gunbc_committed_runner_slot_allocations(),
+    a =>
+      gunbc_runner_slot_oversubscription_within_slice(
+        slots: gunbc_runner_slots_per_host(host: a.host),
+        per_slot: per_slot.memory_max,
+        slice_cap: gunbc_runner_slice_cap_declared(host: a.host)
+      )
   )
 }
 
-test fn runner_slot_allocation_committed_hosts_nonempty() -> Bool {
-  gunbc_committed_runner_slot_allocations() |> count == 3
+fn committed_allocation_for(host: HostIdentity) -> Int {
+  fold(
+    gunbc_committed_runner_slot_allocations(),
+    init: 0,
+    f: (n, a) => if (a.host as String) == (host as String) { n + 1 } else { n }
+  )
+}
+
+test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() -> Bool {
+  committed_allocation_for(host: operator_host_srv1) == 1
+    && committed_allocation_for(host: operator_host_srv2) == 1
+    && committed_allocation_for(host: operator_host_srv3) == 1
+    && committed_allocation_for(host: operator_host_srv4) == 1
+    && committed_allocation_for(host: "srv-does-not-exist") == 0
+}
+
+data widths_are_pinned_on_both_axes_note: String = "BOTH AXES ARE PINNED SEPARATELY, because the committed width is a minimum and a minimum can be right for the wrong reason. Asserting only the committed 5/5/7/5 would pass if the disk cap vanished and srv4's MEMORY admission fell to 5 instead — the same four numbers from a broken memory model. Asserting only the memory admissions would pass while the fleet provisioned a seventh slot onto srv4's 500GB disk.\n\nSo the memory admission is pinned at 5/5/7/7, the committed width at 5/5/7/5, and srv4 is the row where they are asserted to DIFFER. That last conjunct is what makes the pair discriminating rather than redundant: it fails if the two axes are ever collapsed back into one, in either direction."
+
+test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
+  host_memory_admitted_width(host: operator_host_srv1) == 5
+    && host_memory_admitted_width(host: operator_host_srv2) == 5
+    && host_memory_admitted_width(host: operator_host_srv3) == 7
+    && host_memory_admitted_width(host: operator_host_srv4) == 7
+}
+
+test fn runner_slot_allocation_committed_widths_take_the_binding_axis() -> Bool {
+  gunbc_runner_slots_per_host(host: operator_host_srv1) == 5
+    && gunbc_runner_slots_per_host(host: operator_host_srv2) == 5
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 7
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 5
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) < host_memory_admitted_width(host: operator_host_srv4)
 }
 
 test fn runner_slot_allocation_RED_oversubscription_exceeds_slice() -> Bool {
   let per_slot = gunbc_runner_slot_desired()
-  !gunbc_runner_slot_oversubscription_within_slice(
-    slots: gunbc_runner_slots_per_host() + 1,
-    per_slot: per_slot.memory_max,
-    slice_cap: gunbc_runner_slice_cap_declared()
+  all(
+    gunbc_committed_runner_slot_allocations(),
+    a =>
+      !gunbc_runner_slot_oversubscription_within_slice(
+        slots: gunbc_runner_slots_per_host(host: a.host) + 1,
+        per_slot: per_slot.memory_max,
+        slice_cap: gunbc_runner_slice_cap_declared(host: a.host)
+      )
   )
+}
+
+test fn runner_slot_allocation_unknown_host_refuses_a_width() -> Bool {
+  gunbc_runner_slots_per_host(host: "srv-does-not-exist") == 0
+    && byte_size_count(b: gunbc_runner_slice_cap_declared(host: "srv-does-not-exist")) == 0
+}
+
+test fn runner_slot_allocation_memory_high_clears_the_measured_floor() -> Bool {
+  byte_size_count(b: gunbc_runner_slot_desired().memory_high) > byte_size_count(b: gunbc_floor_minimum_viable_armed_budget)
 }
 
 test fn runner_slot_allocation_enforcement_expected_cap_is_desired_memory_max() -> Bool {

@@ -985,15 +985,25 @@ impl Drop for AdmittedSlot {
 // ---- measurement lines consume these same readers) ----
 
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `dag/gunbc/runner_slot_allocation.dag`
-/// `gunbc_runner_slot_desired().memory_high` = `byte_size(16106127360)`; corroborated by
+/// `gunbc_runner_slot_desired().memory_high` = `byte_size(13958643712)`; corroborated by
 /// `gunbc.ci_floor_measurement.gunbc_ci_runner_slot_memory_high_live`, which derives from
 /// the same row and forbids a duplicate literal):
 /// uncapped-host MemAvailable cap for `read_host_budget_bytes`. When no cgroup limit
 /// binds, raw MemAvailable must not be the sole budget — uncapped hosts let the floor
 /// reach physical RAM and OOM-kill (runs 29180195694, srv3 2026-07-21 exit-137).
+///
+/// TRACKS THE .dag ROW BY HAND, and 2026-08-05 is the receipt for why that is debt
+/// rather than duplication-with-a-comment. This constant was 16_106_127_360 while the
+/// authority said 15GiB; the per-host allocation ruling moved the authority to 13GiB and
+/// nothing made this line follow — the doc comment above cited the old literal verbatim,
+/// so the citation would have gone false in the same commit that made the value stale.
+/// The mirror only binds on UNCAPPED hosts (every fleet slot has a cgroup memory.high, so
+/// production reads the real cgroup and never reaches here), which is exactly what makes
+/// the staleness quiet: it is invisible until a host without applied caps runs a floor —
+/// a dev machine, or srv3/srv4 slots 06/07 before converge lands.
 /// dissolve-on: v2 emit of stage0 host-budget constants from `gunbc.runner_slot_allocation`
 /// (self-host frontier row for `memory_governor` cgroup-budget readers).
-pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 16_106_127_360;
+pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 13_958_643_712;
 
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `dag/gunbc/runner_slot_allocation.dag`
 /// `gunbc_floor_minimum_viable_armed_budget` = `byte_size(12884901888)`; doomed/success witness
@@ -1072,7 +1082,35 @@ pub fn read_host_budget_bytes() -> (Option<u64>, String) {
         };
         return (Some(budget), source);
     }
-    (mem_total_bytes(), "/proc/meminfo MemTotal".to_string())
+    // Terminal arms. Authority for the source vocabulary and its rendering is
+    // `dag/gunbc/host_budget_source.dag` (`HostBudgetSource`); `dag/extdeps/linux/procfs.dag`
+    // carries why a Darwin host never reaches the meminfo arm.
+    //
+    // The meminfo arm used to be unconditional: `(mem_total_bytes(), "/proc/meminfo
+    // MemTotal".to_string())`, with the label composed beside a read that returns `None`
+    // whenever /proc/meminfo is absent — which on macOS is always. Every local run printed
+    // `source=/proc/meminfo MemTotal` on a machine with no /proc: a source attribution for
+    // a read that never happened. A reader could not tell "MemTotal said something we
+    // distrusted" from "there is no MemTotal here".
+    //
+    // The repair is not a better label for the absence. Darwin exposes total physical
+    // memory through sysctl hw.memsize, so it now gets a REAL read like any other platform
+    // (`BudgetSourceDarwinPhysicalMemory`). What remains `None` is a host where every
+    // modeled source refused, and that is a refusal rather than a source — see the caller,
+    // which must not turn it into a number.
+    if let Some(total) = mem_total_bytes() {
+        return (Some(total), "/proc/meminfo MemTotal".to_string());
+    }
+    if let Some(physical) = darwin_physical_memory_bytes() {
+        return (Some(physical), "sysctl hw.memsize".to_string());
+    }
+    (
+        None,
+        format!(
+            "unreadable: no modeled host memory source answered on this platform (target_os={})",
+            std::env::consts::OS
+        ),
+    )
 }
 
 /// leaf→root walk — the effective budget the OOM-killer enforces. `None` when unreadable
@@ -1160,6 +1198,44 @@ pub fn read_cgroup_raw(dir: &Path, file: &str) -> Option<String> {
     std::fs::read_to_string(dir.join(file))
         .ok()
         .map(|s| s.trim().to_string())
+}
+
+/// Total physical RAM in bytes from Darwin's `sysctl` MIB `hw.memsize`.
+///
+/// Authority: `dag/extdeps/darwin/sysctl.dag` (`HwMemsize`), cited to Apple's sysctl.3.
+/// This is Darwin's answer to `/proc/meminfo` MemTotal and it is denominated in BYTES,
+/// where meminfo's fields are kibibytes — the one detail a shared parser would get wrong
+/// by 1024x. Observed live on macOS 15: 17179869184 (exactly 16 GiB).
+///
+/// Exists because the governor previously had NO source on Darwin and fell back to the
+/// most permissive cap it could name. macOS is not a platform without memory facts; its
+/// memory facts were never asked for.
+#[cfg(target_os = "macos")]
+pub fn darwin_physical_memory_bytes() -> Option<u64> {
+    let name = c"hw.memsize";
+    let mut value: u64 = 0;
+    let mut len: libc::size_t = std::mem::size_of::<u64>() as libc::size_t;
+    // SAFETY: `name` is a NUL-terminated literal, `value`/`len` are live locals sized to
+    // match, and `newp`/`newlen` are null/0 for a read-only query per sysctl(3).
+    let rc = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr(),
+            (&mut value as *mut u64).cast::<libc::c_void>(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if rc == 0 && value > 0 {
+        Some(value)
+    } else {
+        None
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn darwin_physical_memory_bytes() -> Option<u64> {
+    None
 }
 
 /// Total physical RAM in bytes (`/proc/meminfo` MemTotal, kB→bytes) — the last-resort
