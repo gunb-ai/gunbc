@@ -272,7 +272,11 @@ fn codex_press_account_trip_script(
 fn json_rpc_id_as_int(v: JsonValue) -> Int? {
   match v {
     JsonNumber { lexeme: l } => parse_int(s: l as String)
-    _ => none
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonString { value: _ } => none
+    JsonArray { elements: _ } => none
+    JsonObject { members: _ } => none
   }
 }
 
@@ -410,7 +414,8 @@ fn absorb_id_response(
 fn observation_is_duplicate(obs: AccountTripResponseObservation) -> Bool {
   match obs {
     AccountTripResponseDuplicate { id: _, count: _ } => true
-    _ => false
+    AccountTripResponseAbsent => false
+    AccountTripResponseUnique { response: _ } => false
   }
 }
 

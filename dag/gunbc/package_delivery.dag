@@ -1719,7 +1719,13 @@ fn release_codex_runtime_bundle_immutable(
               let _ = shell.Remove.RecursiveForce(path: build_root)
               CodexRuntimeReleaseReady { root: root }
             }
-            other => other
+            CodexRuntimeReleaseFailed { cause } =>
+              CodexRuntimeReleaseFailed { cause: cause }
+            CodexRuntimeReleaseReuseMismatch { existing_root, cause } =>
+              CodexRuntimeReleaseReuseMismatch {
+                existing_root: existing_root,
+                cause: cause,
+              }
           }
         } else {
           match relocate_build_root_to_unique_publishing(
