@@ -1,10 +1,7 @@
 module v2.lens.cost.summary
 
 import v2.lens.cost.expr {
-  CostAdd,
-  CostConst,
   CostExpr,
-  CostMax,
   cost_const,
   cost_expr_par,
   cost_expr_seq
@@ -59,34 +56,4 @@ fn triple_parallel_shape() -> ComplexitySummary {
       right: unit_complexity_summary()
     )
   )
-}
-
-fn cost_expr_is_unit(expr: CostExpr) -> Bool {
-  match expr {
-    CostConst { value: Succ { prev: Zero } } => true
-    _ => false
-  }
-}
-
-fn cost_expr_is_pair_of_units(expr: CostExpr) -> Bool {
-  match expr {
-    CostAdd {
-      left: CostConst { value: Succ { prev: Zero } },
-      right: CostConst { value: Succ { prev: Zero } }
-    } => true
-    _ => false
-  }
-}
-
-fn cost_expr_is_triple_of_units(expr: CostExpr) -> Bool {
-  match expr {
-    CostAdd {
-      left: CostConst { value: Succ { prev: Zero } },
-      right: CostAdd {
-        left: CostConst { value: Succ { prev: Zero } },
-        right: CostConst { value: Succ { prev: Zero } }
-      }
-    } => true
-    _ => false
-  }
 }

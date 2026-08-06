@@ -1,9 +1,7 @@
 module v2.test.lens_cost.summary_span
 
-import v2.lens.cost.expr { CostAdd, CostConst, CostMax }
+import v2.lens.cost.expr { CostAdd, CostConst, CostExpr, CostMax }
 import v2.lens.cost.summary {
-  cost_expr_is_pair_of_units,
-  cost_expr_is_triple_of_units,
   summary_parallel,
   summary_sequential,
   triple_parallel_shape,
@@ -12,15 +10,39 @@ import v2.lens.cost.summary {
 }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.nat { Succ, Zero }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn is_pair_of_unit_costs(expr: CostExpr) -> Bool {
+  match expr {
+    CostAdd {
+      left: CostConst { value: Succ { prev: Zero } },
+      right: CostConst { value: Succ { prev: Zero } }
+    } => true
+    _ => false
+  }
+}
+
+fn is_triple_of_unit_costs(expr: CostExpr) -> Bool {
+  match expr {
+    CostAdd {
+      left: CostConst { value: Succ { prev: Zero } },
+      right: CostAdd {
+        left: CostConst { value: Succ { prev: Zero } },
+        right: CostConst { value: Succ { prev: Zero } }
+      }
+    } => true
+    _ => false
+  }
+}
 
 test fn sequential_summary_adds_work_and_span() -> Bool {
   let left = unit_complexity_summary()
   let right = unit_complexity_summary()
   let combined = summary_sequential(left: left, right: right)
-  cost_expr_is_pair_of_units(expr: combined.work)
-    && cost_expr_is_pair_of_units(expr: combined.span)
+  is_pair_of_unit_costs(expr: combined.work)
+    && is_pair_of_unit_costs(expr: combined.span)
 }
 
 test fn parallel_summary_adds_work_but_maxes_span() -> Bool {
@@ -29,7 +51,7 @@ test fn parallel_summary_adds_work_but_maxes_span() -> Bool {
   let combined = summary_parallel(left: left, right: right)
   match combined.span {
     CostMax { left: _, right: _ } =>
-      cost_expr_is_pair_of_units(expr: combined.work)
+      is_pair_of_unit_costs(expr: combined.work)
     _ => false
   }
 }
@@ -37,8 +59,8 @@ test fn parallel_summary_adds_work_but_maxes_span() -> Bool {
 test fn equal_work_different_shape_derives_equal_work_different_span() -> Bool {
   let sequential = triple_sequential_shape()
   let parallel = triple_parallel_shape()
-  cost_expr_is_triple_of_units(expr: sequential.work)
-    && cost_expr_is_triple_of_units(expr: parallel.work)
+  is_triple_of_unit_costs(expr: sequential.work)
+    && is_triple_of_unit_costs(expr: parallel.work)
     && sequential.work == parallel.work
     && sequential.span != parallel.span
 }
