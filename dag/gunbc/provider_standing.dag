@@ -1,6 +1,6 @@
 module gunbc.provider_standing
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
 import std.claim_evidence { RecordedFactId, RecordedFact }
 import std.measure { BasisPoint }
 import v2.std.optional { optional_absent, optional_present }
