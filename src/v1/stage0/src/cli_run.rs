@@ -19977,7 +19977,7 @@ fn declared_source_refs_blocks_skip(axis: DeclaredSourceRefAxis) -> bool {
 // `v2.lens.affected_set.self_confirmation` directly.
 // DELETE WHEN dissolved: `COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY`,
 // `COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY`, `AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY`,
-// `SELECTION_MECHANISM_MODULE_PATHS`, `compile_clean_verdict_affecting_touch`,
+// `SELECTION_MECHANISM_SELF_RELEVANT_ROWS`, `compile_clean_verdict_affecting_touch`,
 // `mechanism_derived_self_relevant_entries`, `derive_self_relevant_check_identities`,
 // `self_relevant_checks_blocks_skip`, and `CLI_RUN_AFFECTED_SET_SELF_CONFIRMATION_BRIDGE_MARKER`.
 // Receipt: `rg cli_run_affected_set_self_confirmation_bridge src/v1/stage0/src/cli_run.rs` == 1
@@ -19992,13 +19992,29 @@ const COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY: &str =
 const AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY: &str =
     "src/v2/test/claim/affected_set_universe_test.dag";
 
-const SELECTION_MECHANISM_MODULE_PATHS: &[&str] = &[
-    "src/v2/lens/module_graph.dag",
-    "src/v2/lens/affected_set.dag",
-    "src/v2/lens/affected_set/entry_selection.dag",
-    "src/v2/lens/affected_set/declared_source_ref_selection.dag",
-    "tools.dag_compile_clean_scope.dag",
-    "src/v2/workflow/floor_compile_clean_predicates.dag",
+struct SelfRelevantCheckRow {
+    validating_entry: &'static str,
+    mechanism_module_paths: &'static [&'static str],
+}
+
+// Mirror `selection_mechanism_self_relevant_rows` in
+// `v2.lens.affected_set.self_confirmation` — per-check mechanism paths, not one flat union.
+const SELECTION_MECHANISM_SELF_RELEVANT_ROWS: &[SelfRelevantCheckRow] = &[
+    SelfRelevantCheckRow {
+        validating_entry: COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
+        mechanism_module_paths: &[
+            "src/v2/lens/module_graph.dag",
+            "src/v2/lens/affected_set.dag",
+            "src/v2/lens/affected_set/entry_selection.dag",
+            "src/v2/lens/affected_set/declared_source_ref_selection.dag",
+            "tools.dag_compile_clean_scope.dag",
+            "src/v2/workflow/floor_compile_clean_predicates.dag",
+        ],
+    },
+    SelfRelevantCheckRow {
+        validating_entry: AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY,
+        mechanism_module_paths: &["src/v2/lens/affected_set.dag"],
+    },
 ];
 
 fn compile_clean_touched_path_norm(path: &str) -> &str {
@@ -20024,23 +20040,16 @@ fn compile_clean_verdict_affecting_touch(touched_paths: &[String]) -> bool {
 }
 
 fn mechanism_derived_self_relevant_entries(touched_paths: &[String]) -> Vec<&'static str> {
-    let mechanism_touched = touched_paths.iter().any(|touched| {
-        SELECTION_MECHANISM_MODULE_PATHS
-            .iter()
-            .any(|path| repo_paths_match_touched(path, touched))
-    });
-    if !mechanism_touched {
-        return Vec::new();
-    }
-    let mut out = vec![
-        COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
-        AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY,
-    ];
-    if touched_paths
-        .iter()
-        .any(|touched| repo_paths_match_touched("src/v2/lens/affected_set.dag", touched))
-    {
-        // universe row already included
+    let mut out = Vec::new();
+    for row in SELECTION_MECHANISM_SELF_RELEVANT_ROWS {
+        let row_touched = touched_paths.iter().any(|touched| {
+            row.mechanism_module_paths
+                .iter()
+                .any(|path| repo_paths_match_touched(path, touched))
+        });
+        if row_touched && !out.contains(&row.validating_entry) {
+            out.push(row.validating_entry);
+        }
     }
     out.sort();
     out.dedup();
@@ -35029,6 +35038,49 @@ mod witness_layer_roots_compile_clean_tests {
                 .iter()
                 .any(|e| *e == COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY),
             "mechanism touch must derive scope witness: {derived:?}"
+        );
+        assert!(
+            !derived
+                .iter()
+                .any(|e| *e == AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY),
+            "module_graph touch must not derive universe witness (per-row paths): {derived:?}"
+        );
+    }
+
+    /// Per-row parity with `v2.lens.affected_set.self_confirmation`: affected_set.dag touch
+    /// derives universe + scope + shard_a (verdict axis), not universe on other mechanism paths.
+    #[test]
+    fn self_confirmation_mechanism_touch_affected_set_derives_universe_identity() {
+        let touched = vec!["src/v2/lens/affected_set.dag".to_string()];
+        let derived = derive_self_relevant_check_identities(&touched);
+        for expected in [
+            AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY,
+            COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
+            COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+        ] {
+            assert!(
+                derived.iter().any(|e| *e == expected),
+                "affected_set touch must derive {expected}: {derived:?}"
+            );
+        }
+    }
+
+    /// Per-row parity: entry_selection.dag derives scope + shard_a only, not universe.
+    #[test]
+    fn self_confirmation_mechanism_touch_entry_selection_omits_universe() {
+        let touched = vec!["src/v2/lens/affected_set/entry_selection.dag".to_string()];
+        let derived = derive_self_relevant_check_identities(&touched);
+        assert!(
+            derived
+                .iter()
+                .any(|e| *e == COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY),
+            "entry_selection touch must derive scope witness: {derived:?}"
+        );
+        assert!(
+            !derived
+                .iter()
+                .any(|e| *e == AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY),
+            "entry_selection touch must not derive universe witness: {derived:?}"
         );
     }
 
