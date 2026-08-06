@@ -876,6 +876,8 @@ fn record_lit_expected_coproduct(expected: Node?, scope: InferScope) -> Node? {
   }
 }
 
+data record_lit_witness_parent_from_expected_scope_note: String = "Scoped fallback when lookup_variant_parent_enum misses under composed symbol index (#7836 per-entry assembly): stamp Witness only when record_lit_variant_from_expected proves expected type is Witness<C> with matching Holds/Violates arm — not a guess on miss. Underlying lookup gap may affect other enums; fixing composed-index variant parent resolution closes the whole class (dissolve-on for this arm)."
+
 fn record_lit_witness_parent_from_expected(type_name: String, expected: Node?, scope: InferScope) -> String? {
   if type_name != "Holds" && type_name != "Violates" {
     none
