@@ -358,6 +358,12 @@ test fn witness_binding_refusal_retains_its_locator() -> Bool {
   }
 }
 
+// witness_refusal_cause_tokens_are_pairwise_distinct's fold_list cons lambda, third clause
+// (t != "HealPushRefusalPopulationEmpty"): this pins what heal_push_refusal_cause_token's
+// fold relies on. It reuses the empty-population marker as its own "nothing accumulated
+// yet" state, so a cause token colliding with that marker would make the first joined
+// cause silently replace the marker instead of appending. Safe today by coincidence;
+// this makes it safe by execution (review 49204).
 test fn witness_refusal_cause_tokens_are_pairwise_distinct() -> Bool {
   let causes = [
     ActionsJobCredentialScopeUnavailable, ActionsJobCredentialScopeNotGranted,
@@ -373,11 +379,6 @@ test fn witness_refusal_cause_tokens_are_pairwise_distinct() -> Bool {
     xs: tokens,
     empty: true,
     cons: fn(ok, t) {
-      // The third clause pins what refusal_causes_token's fold relies on:
-      // it reuses the empty-population marker as its own "nothing accumulated
-      // yet" state, so a cause token colliding with that marker would make the
-      // first joined cause silently replace the marker instead of appending.
-      // Safe today by coincidence; this makes it safe by execution (review 49204).
       ok && (count(filter(tokens, u => u == t)) == 1) && (t != "")
         && (t != "HealPushRefusalPopulationEmpty")
     }
