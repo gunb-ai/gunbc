@@ -118,8 +118,8 @@ fn falsifier_run_standing_from(
       cause: "no planned falsifier components — the lane projection did not run, and a vacuous completeness would report that as success" as NonEmptyStr
     }
   } else {
-    let missing = filter(xs: planned_ix, f: fn(i) { !list_contains_index(xs: reported_ix, target: i) })
-    let surplus = filter(xs: reported_ix, f: fn(i) { !list_contains_index(xs: planned_ix, target: i) })
+    let missing = filter(xs: planned_ix, predicate: fn(i) { !list_contains_index(xs: reported_ix, target: i) })
+    let surplus = filter(xs: reported_ix, predicate: fn(i) { !list_contains_index(xs: planned_ix, target: i) })
     let duplicated = duplicated_indices(xs: reported_ix)
     if list_length(items: missing) > 0 {
       StandingMissingComponents { missing_indices: missing }
