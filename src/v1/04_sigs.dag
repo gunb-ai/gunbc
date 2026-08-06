@@ -79,6 +79,7 @@ type FuncSigLookup
   = FuncSigResolved { sig: ResolvedFuncSig }
   | FuncSigUnresolved
   | FuncSigAmbiguous { candidates: List<String> }
+  | FuncSigCallerNotAdmitted { function_name: String, owner_module_path: String, admitted: List<String> }
 
 type ChainSigScan {
   first_sig: ResolvedFuncSig?

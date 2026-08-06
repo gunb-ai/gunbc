@@ -113,7 +113,7 @@ pub use crate::v1_compiler_infer_service::{
 };
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult, UniqueAccum};
 use crate::v1_compiler_infer_sigs::FuncSigLookup::{
-    FuncSigAmbiguous, FuncSigResolved, FuncSigUnresolved,
+    FuncSigAmbiguous, FuncSigCallerNotAdmitted, FuncSigResolved, FuncSigUnresolved,
 };
 pub use crate::v1_compiler_infer_sigs::{flatten_parent_envs, resolve_func_sigs};
 pub use crate::v1_compiler_infer_sigs::{
@@ -4992,6 +4992,40 @@ pub fn infer_expr_body(
                         span.clone(),
                         scope.clone(),
                     ),
+                    FuncSigLookup::FuncSigCallerNotAdmitted {
+                        function_name: fname,
+                        owner_module_path: om,
+                        admitted: adm,
+                        ..
+                    } => Rc::new(InferResult {
+                        typed: semantic_expr_error_node(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "constructor call admission refused for '".to_string(),
+                                    fname.clone(),
+                                ),
+                                "'".to_string(),
+                            ),
+                            span.clone(),
+                        ),
+                        diagnostics: Rc::new(vec![make_error_node(
+                            Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
+                                constructor_module_path: om.clone(),
+                                constructor_decl_name: fname.clone(),
+                                caller_module_path: scope.module_name.clone(),
+                                caller_decl_name: if (scope.caller_decl_name.clone()
+                                    == "".to_string())
+                                {
+                                    "<unknown>".to_string()
+                                } else {
+                                    scope.caller_decl_name.clone()
+                                },
+                                permitted_callers: adm.clone(),
+                                span: span.clone(),
+                            }),
+                            scope.module_name.clone(),
+                        )]),
+                    }),
                     FuncSigLookup::FuncSigUnresolved => {
                         match lookup_binding_by_name(scope.type_env.clone(), name.clone()) {
                             Some(gbinding) => {
@@ -5344,6 +5378,39 @@ pub fn infer_expr_body(
                     span.clone(),
                     scope.clone(),
                 ),
+                FuncSigLookup::FuncSigCallerNotAdmitted {
+                    function_name: fname,
+                    owner_module_path: om,
+                    admitted: adm,
+                    ..
+                } => Rc::new(InferResult {
+                    typed: semantic_expr_error_node(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                "constructor call admission refused for '".to_string(),
+                                fname.clone(),
+                            ),
+                            "'".to_string(),
+                        ),
+                        span.clone(),
+                    ),
+                    diagnostics: Rc::new(vec![make_error_node(
+                        Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
+                            constructor_module_path: om.clone(),
+                            constructor_decl_name: fname.clone(),
+                            caller_module_path: scope.module_name.clone(),
+                            caller_decl_name: if (scope.caller_decl_name.clone() == "".to_string())
+                            {
+                                "<unknown>".to_string()
+                            } else {
+                                scope.caller_decl_name.clone()
+                            },
+                            permitted_callers: adm.clone(),
+                            span: span.clone(),
+                        }),
+                        scope.module_name.clone(),
+                    )]),
+                }),
                 _ => {
                     match constructor_reference_admission_early_refusal(
                         func_name.clone(),
