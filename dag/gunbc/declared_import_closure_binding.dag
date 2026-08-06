@@ -41,7 +41,7 @@ fn binding_source_is_pool_coincidence(obs: DeclaredImportClosureBindingObservati
 
 fn binding_refuses(obs: DeclaredImportClosureBindingObservation) -> Bool {
   match obs {
-    BindingNotRunnable { cause: _ } => true
+    BindingNotRunnable { cause: _ } => false
     BindingObserved { symbol_resolves: false, blocking_hard_diagnostic_count: _, binding_source: _, definer_module: _ } => true
     BindingObserved { symbol_resolves: true, blocking_hard_diagnostic_count: n, binding_source: _, definer_module: _ } => n > 0
   }
@@ -49,4 +49,12 @@ fn binding_refuses(obs: DeclaredImportClosureBindingObservation) -> Bool {
 
 fn row4_pool_coincidence_or_refuse(obs: DeclaredImportClosureBindingObservation) -> Bool {
   binding_refuses(obs: obs) || binding_source_is_pool_coincidence(obs: obs)
+}
+
+test fn binding_refuses_not_runnable_is_false() -> Bool {
+  !binding_refuses(obs: BindingNotRunnable { cause: "could-not-measure" as NonEmptyStr })
+}
+
+test fn row4_not_runnable_is_false() -> Bool {
+  !row4_pool_coincidence_or_refuse(obs: BindingNotRunnable { cause: "could-not-measure" as NonEmptyStr })
 }
