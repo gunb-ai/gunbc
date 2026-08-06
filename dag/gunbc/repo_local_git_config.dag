@@ -14,6 +14,7 @@ import gunbc.membership_reconcile {
 import gunbc.ownership { Ownership, Ensured }
 import extdeps.git
 import extdeps.git.inspect
+import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_config_value }
 import extdeps.git {
   shape_git_config_local_argv,
   shape_git_config_local_get_argv,
@@ -24,7 +25,7 @@ import std.realization_reconcile {
   NotConverged,
 }
 
-data repo_local_git_config_authority_note: String = "Repository-local Git configuration desired state for gunbc integration-policy projections (generated-file conflict policy charter, lane 2). The merge-driver definition for merge=generated-artifact and core.hooksPath are modeled facts reconciled against observed read-back — a documented manual git config command with no read-back is declared-but-unrealized configuration and does not satisfy the lane. merge.generated-artifact.driver=true is a transport convenience (take-ours during merge), not the safety boundary; commit-writer admission plus regeneration receipts remain authoritative. Bindings are Ensured: reconcile upserts drift, never tears down a binding absent from desired. Read-back uses git config --local --get so a matching global/system value cannot fabricate convergence. Hook install argv and git.Core.ConfigLocal\{Get,Set\}\{,InRepo\} transport both derive from extdeps.git shape_git_config_local_* — one executable authority, cwd-relative for generated hooks and -C repo for the actuator."
+data repo_local_git_config_authority_note: String = "Repository-local Git configuration desired state for gunbc integration-policy projections (generated-file conflict policy charter, lane 2). The merge-driver definition for merge=generated-artifact and core.hooksPath are modeled facts reconciled against observed read-back — a documented manual git config command with no read-back is declared-but-unrealized configuration and does not satisfy the lane. merge.generated-artifact.driver no longer answers `true`. `true` took the ours side and exited 0, so git recorded a CLEAN merge while the other side's authority-derived bytes were dropped with no signal — the DESIGN section 5 absorbing fallback at the integration boundary, measured twice on PR #7836 against the stage0 seed. The binding now names the emitted refusing driver (gunbc.generated_artifact_merge_driver), which leaves the ours side in the worktree verbatim with no conflict markers, marks the path unmerged, and exits nonzero with the located regeneration recipe. Git invokes a low-level merge driver only when BOTH sides changed the path relative to the merge base, so the refusal fires exactly where taking either side drops the other side and adds no stop to a merge that was previously correct. It raises the class to mechanically preventable, not to structural: commit-writer admission plus regeneration receipts remain the boundary a writer cannot pass. Bindings are Ensured: reconcile upserts drift, never tears down a binding absent from desired. Read-back uses git config --local --get so a matching global/system value cannot fabricate convergence. Hook install argv and git.Core.ConfigLocal\{Get,Set\}\{,InRepo\} transport both derive from extdeps.git shape_git_config_local_* — one executable authority, cwd-relative for generated hooks and -C repo for the actuator."
 
 type RepoLocalGitConfigBinding {
   key: String
@@ -42,7 +43,7 @@ type RepoLocalGitConfigConvergedEvidence {
 }
 
 data generated_artifact_merge_driver_key: String = "merge.generated-artifact.driver"
-data generated_artifact_merge_driver_value: String = "true"
+data generated_artifact_merge_driver_value: String = generated_artifact_merge_driver_config_value()
 data core_hooks_path_key: String = "core.hooksPath"
 data core_hooks_path_value: String = ".githooks"
 
@@ -50,7 +51,7 @@ data repo_local_git_config_converge_entry: String = "dag/gunbc/repo_local_git_co
 data repo_local_git_config_converge_function: String = "converge"
 data repo_local_git_config_lane2_followup_typed_readback_refusal: String = "🟡 dissolve-on: repo_local_git_config read-back — collapse absence / wrong value / read failure into RepoLocalGitConfigApplyReceipt \{ all_success, first_failure \} only; upgrade to typed refusals per charter (operator nonblocking 2026-08-01, crisp-bat-830 second-pass). Countable follow-up slice; not lane-2 PR boundary."
 
-data repo_local_git_config_clone_setup_note: String = "One-time manual seed per clone: set core.hooksPath=.githooks (DESIGN Building & checks). Generated pre-commit/pre-push hooks then run idempotent local binding convergence on every invocation — argv derived from reconcile_install_argv (merge.generated-artifact.driver=true and core.hooksPath re-assertion). gunbc run … repo_local_git_config converge remains the explicit actuator/CI entry. Safe degradation: clones that never set hooksPath get vanilla git text-merge for generated-artifact paths; drift gate still guards at CI; merge-driver binding is not self-healed until hooks run."
+data repo_local_git_config_clone_setup_note: String = "One-time manual seed per clone: set core.hooksPath=.githooks (DESIGN Building & checks). Generated pre-commit/pre-push hooks then run idempotent local binding convergence on every invocation — argv derived from reconcile_install_argv (the merge.generated-artifact.driver binding and core.hooksPath re-assertion). gunbc run … repo_local_git_config converge remains the explicit actuator/CI entry. Safe degradation, and it is a real coverage bound rather than a nicety: a clone that never set hooksPath gets vanilla git text-merge for generated-artifact paths, so it gets neither the take-ours transport nor the refusing driver — a concurrent divergence there surfaces as ordinary conflict-marker text in a generated file, and the drift gate remains the CI-side guard. The merge-driver binding is not self-healed until hooks run."
 
 fn desired_repo_local_git_config_bindings() -> List<RepoLocalGitConfigBinding> {
   [
