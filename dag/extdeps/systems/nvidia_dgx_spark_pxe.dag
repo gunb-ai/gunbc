@@ -1,0 +1,150 @@
+module extdeps.systems.nvidia_dgx_spark_pxe
+
+import std.types { NonEmptyStr, String, Bool }
+import extdeps.uri { Uri, Https, uri_wire }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.firmware.kernel_cmdline { KernelFlag, KernelKeyValue, kernel_cmdline_render }
+import extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/dgx/dgx-spark/pxe.html"
+  }
+}
+
+data dgx_spark_uefi_settings_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/dgx/dgx-spark/uefi-settings.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.systems.nvidia_dgx_spark_pxe",
+      decl_name: "spark_pxe_bootloader_filename",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [dgx_spark_uefi_settings_authority]
+}
+
+data spark_pxe_bootloader_filename: NonEmptyStr = "grubnetaa64.efi.signed"
+
+type SparkPxeBootImageKind
+  = FastOsRecoveryTarball
+  | DgxOsIsoImage
+
+type SparkPxeTftpRelativePath
+  = TftpBootloader
+  | TftpGrubConfig
+  | TftpKernelImage
+  | TftpInitrdImage
+
+fn spark_pxe_tftp_relative_path(p: SparkPxeTftpRelativePath, image: SparkPxeBootImageKind) -> NonEmptyStr {
+  match image {
+    FastOsRecoveryTarball =>
+      match p {
+        TftpBootloader => "grubnetaa64.efi.signed"
+        TftpGrubConfig => "grub/grub.cfg"
+        TftpKernelImage => "fastos/vmlinuz"
+        TftpInitrdImage => "fastos/initrd"
+      }
+    DgxOsIsoImage =>
+      match p {
+        TftpBootloader => "grubnetaa64.efi.signed"
+        TftpGrubConfig => "grub/grub.cfg"
+        TftpKernelImage => "baseos/vmlinuz"
+        TftpInitrdImage => "baseos/initrd"
+      }
+  }
+}
+
+fn spark_pxe_http_install_image_path(image: SparkPxeBootImageKind) -> NonEmptyStr {
+  match image {
+    FastOsRecoveryTarball => "fastos/usb.customer.tar.gz"
+    DgxOsIsoImage => "base_os_7.0.0/base_os_7.0.0.iso"
+  }
+}
+
+type SparkInstallerKernelParameterName
+  = SparkInstallerUsbSkipFw
+  | SparkInstallerUsbShell
+  | SparkInstallerNoui
+  | SparkInstallerAutoinstall
+  | SparkInstallerPxeInstall
+
+fn spark_installer_kernel_parameter_name(p: SparkInstallerKernelParameterName) -> NonEmptyStr {
+  match p {
+    SparkInstallerUsbSkipFw => "usb.skipfw"
+    SparkInstallerUsbShell => "usb.shell"
+    SparkInstallerNoui => "noui"
+    SparkInstallerAutoinstall => "autoinstall"
+    SparkInstallerPxeInstall => "pxeinstall"
+  }
+}
+
+type SparkUefiNetworkStackSetting
+  = SparkUefiNetworkStackEnabled
+  | SparkUefiIpv4PxeSupportEnabled
+  | SparkUefiIpv4HttpSupportEnabled
+  | SparkUefiIpv6PxeSupportEnabled
+  | SparkUefiIpv6HttpSupportEnabled
+
+type SparkPxeSecureBootPrerequisite
+  = SecureBootDisabledForPxe
+  | BootloaderEnrolledForPxe { bootloader: NonEmptyStr }
+
+fn spark_pxe_secure_boot_prerequisite_satisfied(p: SparkPxeSecureBootPrerequisite) -> Bool {
+  match p {
+    SecureBootDisabledForPxe => true
+    BootloaderEnrolledForPxe { bootloader: b } => b == spark_pxe_bootloader_filename
+  }
+}
+
+fn spark_fastos_unattended_kernel_cmdline(http_image_root: Uri) -> String {
+  kernel_cmdline_render(args: [
+    KernelKeyValue { key: "nouveau.modeset", value: "0" },
+    KernelFlag { name: "console=tty0" },
+    KernelFlag { name: "console=ttyS0,921600" },
+    KernelKeyValue { key: "sbsa_gwdt.action", value: "1" },
+    KernelFlag { name: spark_installer_kernel_parameter_name(p: SparkInstallerNoui) },
+    KernelKeyValue {
+      key: spark_installer_kernel_parameter_name(p: SparkInstallerPxeInstall),
+      value: "true",
+    },
+    KernelKeyValue {
+      key: "fastos_usbimg_url",
+      value: concat(
+        uri_wire(uri: http_image_root),
+        concat("/", spark_pxe_http_install_image_path(image: FastOsRecoveryTarball) as String),
+      ),
+    },
+    KernelFlag { name: "ip=dhcp" },
+  ])
+}
+
+fn spark_dgx_os_unattended_kernel_cmdline(http_image_root: Uri) -> String {
+  kernel_cmdline_render(args: [
+    KernelFlag { name: "fsck.mode=skip" },
+    KernelFlag { name: spark_installer_kernel_parameter_name(p: SparkInstallerAutoinstall) },
+    KernelFlag { name: "ip=dhcp" },
+    KernelKeyValue {
+      key: "url",
+      value: concat(
+        uri_wire(uri: http_image_root),
+        concat("/", spark_pxe_http_install_image_path(image: DgxOsIsoImage) as String),
+      ),
+    },
+    KernelFlag { name: "nvme-core.multipath=n" },
+    KernelKeyValue { key: "nouveau.modeset", value: "0" },
+  ])
+}
+
+fn spark_pxe_client_boot_mode(tftp_root: Uri) -> ClientNetworkBootMode {
+  UefiPxe { tftp_root: tftp_root }
+}
