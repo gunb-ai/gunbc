@@ -3,7 +3,8 @@ module extdeps.github.issues
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import extdeps.github.errors { GitHubErrorShape }
 import std.types { NonEmptyStr, Timestamp, Secret }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -23,6 +24,18 @@ data issue_comments_authority: ExternalAuthority = ExternalAuthority {
 data issues_module_homing_note: String = "WHY THIS MODULE EXISTS AND WHAT MOVED INTO IT. IssueComment and CreateComment were declared in extdeps.github.pulls, and that was a real external-surface homing defect rather than a filing preference. CreateComment's own transport is POST /repos/\{owner\}/\{repo\}/issues/\{issue_number\}/comments — the ISSUES API, named in its path, parameterized by an issue number — so the pulls module was declaring an operation against an upstream surface it does not model. GitHub's own documentation splits them: the pulls API documents review comments (which are a different resource, anchored to a diff position), while every comment on the conversation timeline of an issue OR a pull request belongs to the issues API. That a pull request is addressable as an issue is a fact about GitHub's model, and modeling it correctly means the comment operation lives with the issues surface and the pulls surface imports nothing to get it.\n\nTHE MOVE IS ATOMIC AND LEAVES NO ALIAS. A compatibility re-export in extdeps.github.pulls would be exactly the second name for one concept that DESIGN §3 forbids, and the usual justification for one — a migration window for consumers out of our control — does not apply, because every consumer is in this tree and moved in the same change. The operation key changes from github.Pulls.CreateComment to github.Issues.CreateComment, which is a visible, greppable rename with a finite consumer set (the mock corpus row, the mock totality lens case, and the Rust REST transport witness), not a silent one."
 
 data issue_state_note: String = "IssueState is Open | Closed and deliberately does NOT carry the state_reason axis (completed / not_planned / reopened) that GitHub added beside it. Those are two independent facts upstream — an issue is closed, and separately there is a recorded reason it was closed — and fusing them into one enum would produce a coproduct where Closed appears three times and every consumer that only cares whether the issue is open has to enumerate reasons it does not use. The alert consumer needs the open/closed axis alone. When a consumer needs the reason, it lands as its own optional field on Issue, cited to the same authority, and this enum is untouched."
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.issues",
+      decl_name: "IssueState",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.issues.extdeps_external_authority_anchor,
+  further_citations: [extdeps.github.issues.issue_comments_authority]
+}
 
 type IssueState = Open | Closed
 
