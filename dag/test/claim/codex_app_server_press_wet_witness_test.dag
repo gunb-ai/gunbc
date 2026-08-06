@@ -2,7 +2,7 @@ module test.claim.codex_app_server_press_wet_witness_test
 
 import extdeps.filesystem.filesystem_io
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.types { Bool, String, FilePath }
+import std.types { Bool, String, FilePath, NonEmptyStr }
 import gunbc.package_delivery {
   codex_runtime_lock_path,
   codex_runtime_manifest_path,
@@ -10,8 +10,8 @@ import gunbc.package_delivery {
   CodexRuntimeMaterialized,
 }
 import gunbc.codex_app_server_press {
-  press_codex_app_server_for_bundle,
-  codex_press_specimen_node_identity,
+  observe_codex_account_preflight,
+  ProviderProbeKey,
   codex_press_outcome_wire_status,
   codex_press_outcome_operator_caption,
   account_standing_projection,
@@ -31,7 +31,7 @@ import extdeps.shell
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data witness_note: String = "WET: materialize content-addressed Codex runtime, then observe account standing via ONE held-open initialize → account/read → account/rateLimits/read session with typed id correlation. Accepts account_ready OR login_required OR quota press_refused. Incomplete and unavailable are RED. Must NEVER claim turn_started. Excluded from hermetic discovery."
+data witness_note: String = "WET: materialize content-addressed Codex runtime, then observe account standing via observe_codex_account_preflight (ONE held-open initialize → account/read → account/rateLimits/read session with typed id correlation). Accepts account_ready OR login_required OR quota press_refused. Incomplete and unavailable are RED. Must NEVER claim turn_started. Excluded from hermetic discovery."
 
 fn committed_codex_lock_text() -> String {
   filesystem_read(path: codex_runtime_lock_path as String).content
@@ -48,13 +48,9 @@ test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started()
       if shell.Test.IsFile(path: path).is_file == false {
         false
       } else {
-        match press_codex_app_server_for_bundle(
+        match observe_codex_account_preflight(
           bundle: bundle,
-          node_identity: codex_press_specimen_node_identity,
-          attempt_key: "wet-account-trip-1",
-          turn_key: "wet-account-trip-1-turn-pending",
-          workspace_root: "/tmp" as FilePath,
-          head_sha: "wet",
+          probe_key: "wet-account-trip-1" as ProviderProbeKey,
         ) {
           CodexPressAccountReady { receipt } => {
             let status = codex_press_outcome_wire_status(
@@ -76,19 +72,19 @@ test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started()
               _ => false
             }
           }
-          CodexPressLoginRequired { reason, standing } =>
+          CodexPressLoginRequired { reason, receipt } =>
             codex_press_outcome_wire_status(
-              outcome: CodexPressLoginRequired { reason: reason, standing: standing },
+              outcome: CodexPressLoginRequired { reason: reason, receipt: receipt },
             ) == "login_required"
-              && standing_is_redacted_projection(summary: standing)
-              && match standing.evidence.classification {
+              && standing_is_redacted_projection(summary: receipt.standing)
+              && match receipt.standing.evidence.classification {
                 AccountStandingLoginRequired => true
                 _ => false
               }
-          CodexPressRefused { reason, standing } =>
+          CodexPressRefused { reason, receipt } =>
             (reason as String).contains("quota")
-              && standing_is_redacted_projection(summary: standing)
-              && match standing.evidence.classification {
+              && standing_is_redacted_projection(summary: receipt.standing)
+              && match receipt.standing.evidence.classification {
                 AccountStandingQuotaReached => true
                 AccountStandingIncomplete => false
                 AccountStandingInitializeMissing => false

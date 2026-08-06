@@ -2,7 +2,6 @@ module test.claim.codex_app_server_press_witness_test
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.content_hash {
-  content_hash_of_value,
   sha512_hex_digest,
   Sha512Digest,
   as_content_hash_sha512,
@@ -20,20 +19,21 @@ import gunbc.provider_interface_binding {
   ProviderControlInterface,
 }
 import gunbc.codex_app_server_press {
-  admit_codex_press_start_projected,
-  CodexPressStartAdmitted,
   codex_press_method_itinerary,
   codex_press_account_trip_methods,
-  codex_press_specimen_node_identity,
   codex_press_outcome_wire_status,
   codex_press_outcome_operator_caption,
   parse_account_trip_stdout_for_tests,
   account_standing_projection,
   account_standing_summary_from_evidence,
+  preflight_subject_from_bundle,
   CodexPressAccountReady,
   CodexPressLoginRequired,
   CodexPressRefused,
   CodexAccountStandingReceipt,
+  CodexAccountPreflightSubject,
+  CodexRuntimeBundleReceiptRef,
+  ProviderProbeKey,
   AccountStandingReady,
   AccountStandingLoginRequired,
   AccountStandingQuotaReached,
@@ -58,7 +58,7 @@ import extdeps.llm.codex_app_server {
   codex_app_server_method_wire_name,
 }
 
-data witness_note: String = "Hermetic press carriers: account-trip itinerary (3) vs turn-target itinerary (5) + projected stdio binding + AttemptKey Start + terminal/cause adjudication RED. AccountReady is standing only — never turn_started. Live JSON-RPC turn execution remains open."
+data witness_note: String = "Hermetic press carriers: account-trip itinerary (3) vs turn-target itinerary (5) + projected stdio binding + preflight subject + terminal/cause adjudication RED. AccountReady is standing only — never turn_started. Live JSON-RPC turn execution remains open."
 
 data fixture_digest_hex: String = "c86dec3d635d6bfd980084080eaf4caeb8e8093210eebc5833921ab2b1b754172e8422d39207a0fc9cea989ab557df11138309e630b10d75d094e8eb762b4547"
 
@@ -99,6 +99,26 @@ fn fixture_bundle_from_digest(digest: Sha512Digest) -> CodexRuntimeBundle {
       protocol_schema_identity: id,
       receipt_identity: id,
     },
+  }
+}
+
+fn fixture_preflight_subject() -> CodexAccountPreflightSubject? {
+  match fixture_digest() {
+    Absent => none
+    Present { value: digest } =>
+      match project_codex_app_server_stdio_binding(
+        bundle: fixture_bundle_from_digest(digest: digest),
+      ) {
+        ProviderInterfaceResolved { binding } =>
+          Present {
+            value: preflight_subject_from_bundle(
+              bundle: fixture_bundle_from_digest(digest: digest),
+              binding: binding,
+              probe_key: "probe-fixture-1" as ProviderProbeKey,
+            ),
+          }
+        _ => none
+      }
   }
 }
 
@@ -165,45 +185,30 @@ test fn stdio_binding_derives_from_runtime_bundle() -> Bool {
   }
 }
 
-test fn press_start_admits_account_trip_not_turn_itinerary() -> Bool {
-  match fixture_digest() {
+test fn preflight_subject_carries_runtime_receipt_and_probe_key() -> Bool {
+  match fixture_preflight_subject() {
     Absent => false
-    Present { value: digest } =>
-      match admit_codex_press_start_projected(
-        node_identity: codex_press_specimen_node_identity,
-        attempt_key: "attempt-fixture-1",
-        turn_key: "turn-fixture-1",
-        bundle: fixture_bundle_from_digest(digest: digest),
-        workspace_root: "/tmp/ws" as FilePath,
-        head_sha: "deadbeef",
-      ) {
-        CodexPressStartAdmitted { start, itinerary } =>
-          (start.attempt_key as String) == "attempt-fixture-1"
-            && (start.node_identity as String) == "codex-app-server-press-vertical"
-            && count(itinerary) == 3
-        _ => false
-      }
+    Present { value: subject } =>
+      (subject.probe_key as String) == "probe-fixture-1"
+        && match subject.runtime {
+          CodexRuntimeBundleReceiptRef { receipt_identity: id } =>
+            match fixture_digest() {
+              Absent => false
+              Present { value: digest } =>
+                (id as String) == (as_content_hash_sha512(digest: digest) as String)
+            }
+        }
+        && count(codex_press_account_trip_methods()) == 3
   }
 }
 
-test fn accepted_start_without_turn_never_displays_as_running_or_finished() -> Bool {
-  match fixture_digest() {
+test fn preflight_subject_without_turn_never_displays_as_running_or_finished() -> Bool {
+  match fixture_preflight_subject() {
     Absent => false
-    Present { value: digest } =>
-      match admit_codex_press_start_projected(
-        node_identity: codex_press_specimen_node_identity,
-        attempt_key: "attempt-fixture-2",
-        turn_key: "turn-fixture-2",
-        bundle: fixture_bundle_from_digest(digest: digest),
-        workspace_root: "/tmp/ws" as FilePath,
-        head_sha: "deadbeef",
-      ) {
-        CodexPressStartAdmitted { start: _, itinerary: _ } =>
-          press_display_running(disposition: ProviderTurnNotObserved) == false
-            && press_display_finished(disposition: ProviderTurnNotObserved) == false
-            && automatic_recovery_authorized(disposition: ProviderTurnNotObserved) == false
-        _ => false
-      }
+    Present { value: _ } =>
+      press_display_running(disposition: ProviderTurnNotObserved) == false
+        && press_display_finished(disposition: ProviderTurnNotObserved) == false
+        && automatic_recovery_authorized(disposition: ProviderTurnNotObserved) == false
   }
 }
 
@@ -234,24 +239,28 @@ test fn account_ready_wire_status_is_not_turn_started_or_dispatch_accepted() -> 
     ),
   )
   let standing = account_standing_summary_from_evidence(evidence: evidence)
-  let outcome = CodexPressAccountReady {
-    receipt: CodexAccountStandingReceipt {
-      node_identity: codex_press_specimen_node_identity,
-      attempt_key: "a",
-      standing: standing,
-    },
-  }
-  let status = codex_press_outcome_wire_status(outcome: outcome)
-  let caption = codex_press_outcome_operator_caption(outcome: outcome)
-  let ready_ok = status == "account_ready"
-    && status != "turn_started"
-    && status != "accepted"
-    && status != "spawned"
-    && caption == "account ready"
-    && caption != "turn started"
-  match evidence.classification {
-    AccountStandingReady => ready_ok
-    _ => false
+  match fixture_preflight_subject() {
+    Absent => false
+    Present { value: subject } =>
+      let outcome = CodexPressAccountReady {
+        receipt: CodexAccountStandingReceipt {
+          subject: subject,
+          standing: standing,
+          wire_evidence: none,
+        },
+      }
+      let status = codex_press_outcome_wire_status(outcome: outcome)
+      let caption = codex_press_outcome_operator_caption(outcome: outcome)
+      let ready_ok = status == "account_ready"
+        && status != "turn_started"
+        && status != "accepted"
+        && status != "spawned"
+        && caption == "account ready"
+        && caption != "turn started"
+      match evidence.classification {
+        AccountStandingReady => ready_ok
+        _ => false
+      }
   }
 }
 
@@ -266,7 +275,7 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
-        "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{}}}\n",
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
         "{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"message\":\"rate_limit_reached\"}}\n",
       ),
     ),
@@ -289,6 +298,18 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
       "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{}}}\n",
     ),
   )
+  let duplicate = parse_account_trip_stdout_for_tests(
+    stdout: concat(
+      "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
+      concat(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
+        concat(
+          "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
+          "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{}}}\n",
+        ),
+      ),
+    ),
+  )
   let login_ok = match login.classification {
     AccountStandingLoginRequired => true
     _ => false
@@ -309,9 +330,13 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
     AccountStandingIncomplete => true
     _ => false
   }
+  let duplicate_ok = match duplicate.classification {
+    AccountStandingIncomplete => true
+    _ => false
+  }
   let projected = account_standing_projection(classification: ok.classification)
   let projection_ok = projected == "initialize_ok; account_read_ok; rate_limits_observed"
-  login_ok && quota_ok && ready_ok && missing_ok && incomplete_ok && projection_ok
+  login_ok && quota_ok && ready_ok && missing_ok && incomplete_ok && duplicate_ok && projection_ok
 }
 
 test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
@@ -319,19 +344,27 @@ test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
-        "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{}}}\n",
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
         "{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"message\":\"rate_limit_reached\"}}\n",
       ),
     ),
   )
-  let outcome = CodexPressRefused {
-    reason: "codex quota exhausted at account/rateLimits/read" as NonEmptyStr,
-    standing: account_standing_summary_from_evidence(evidence: evidence),
+  match fixture_preflight_subject() {
+    Absent => false
+    Present { value: subject } =>
+      let outcome = CodexPressRefused {
+        reason: "codex quota exhausted at account/rateLimits/read" as NonEmptyStr,
+        receipt: CodexAccountStandingReceipt {
+          subject: subject,
+          standing: account_standing_summary_from_evidence(evidence: evidence),
+          wire_evidence: none,
+        },
+      }
+      codex_press_outcome_wire_status(outcome: outcome) == "press_refused"
+        && codex_press_outcome_operator_caption(outcome: outcome) == "quota exhausted"
+        && codex_press_outcome_wire_status(outcome: outcome) != "accepted"
+        && codex_press_outcome_wire_status(outcome: outcome) != "turn_started"
   }
-  codex_press_outcome_wire_status(outcome: outcome) == "press_refused"
-    && codex_press_outcome_operator_caption(outcome: outcome) == "quota exhausted"
-    && codex_press_outcome_wire_status(outcome: outcome) != "accepted"
-    && codex_press_outcome_wire_status(outcome: outcome) != "turn_started"
 }
 
 test fn login_required_wire_status_is_not_accepted_or_turn_started() -> Bool {
@@ -341,14 +374,22 @@ test fn login_required_wire_status_is_not_accepted_or_turn_started() -> Bool {
       "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"requiresOpenaiAuth\":true}}\n",
     ),
   )
-  let outcome = CodexPressLoginRequired {
-    reason: "codex app-server account trip requires login" as NonEmptyStr,
-    standing: account_standing_summary_from_evidence(evidence: evidence),
+  match fixture_preflight_subject() {
+    Absent => false
+    Present { value: subject } =>
+      let outcome = CodexPressLoginRequired {
+        reason: "codex app-server account trip requires login" as NonEmptyStr,
+        receipt: CodexAccountStandingReceipt {
+          subject: subject,
+          standing: account_standing_summary_from_evidence(evidence: evidence),
+          wire_evidence: none,
+        },
+      }
+      codex_press_outcome_wire_status(outcome: outcome) == "login_required"
+        && codex_press_outcome_wire_status(outcome: outcome) != "accepted"
+        && codex_press_outcome_wire_status(outcome: outcome) != "turn_started"
+        && codex_press_outcome_operator_caption(outcome: outcome) == "login required"
   }
-  codex_press_outcome_wire_status(outcome: outcome) == "login_required"
-    && codex_press_outcome_wire_status(outcome: outcome) != "accepted"
-    && codex_press_outcome_wire_status(outcome: outcome) != "turn_started"
-    && codex_press_outcome_operator_caption(outcome: outcome) == "login required"
 }
 
 test fn unknown_frame_is_digested_not_silent() -> Bool {
@@ -358,7 +399,7 @@ test fn unknown_frame_is_digested_not_silent() -> Bool {
       concat(
         "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
         concat(
-          "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{}}}\n",
+          "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
           "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{}}}\n",
         ),
       ),
