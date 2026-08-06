@@ -1,7 +1,8 @@
 module gunbc.design.instrument_camera
 
 import std.types { String, Bool, Int, List }
-import gunbc.v1_deletion_plan { V1FinishLine, v1_finish_line_key }
+import std.measure { Millisecond, millisecond, millisecond_count }
+import gunbc.v1_deletion_plan { V1FinishLine, v1_finish_line_key, v1_exit_finish_lines }
 
 data state_ownership_note: String = "FOUR OWNERS, AND THE SPLIT IS THE WHOLE POINT (instrument wave, operator directive 2026-08-04). Before physical-device input can drive presentation, it has to be impossible for it to drive anything else. The authoritative program view is V0's derived v1-deletion facts and this module NEVER writes it — no fn here returns a finish line, an acceptance, or a roadmap edge. Local instrument state is what the person operating the instrument chose: which subject is selected, how deep the camera sits, which mode it reads. Instrument observation is what the world told us: whether a sensor exists, whether permission was granted, whether an impulse arrived. Renderer ephemera is plate position, velocity, glow interpolation, glitch phase — none of it modelled here at all, because it is per-frame and belongs to the realization. The law that makes the split real rather than a naming convention: a ProgramCamera carries only a depth, a mode, and a focus KEY, so it structurally cannot hold a program fact to corrupt."
 
@@ -60,6 +61,22 @@ fn program_depth_index(d: ProgramDepth) -> Int {
   }
 }
 
+fn program_depths() -> List<ProgramDepth> {
+  [DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence]
+}
+
+fn instrument_user_depths() -> List<ProgramDepth> {
+  [DepthProgram, DepthOutcome, DepthFront]
+}
+
+fn instrument_depth_keys() -> List<String> {
+  map(program_depths(), d => program_depth_key(d: d))
+}
+
+fn instrument_user_depth_keys() -> List<String> {
+  map(instrument_user_depths(), d => program_depth_key(d: d))
+}
+
 data depth_ordering_note: String = "program_depth_index exists so a detent crossing is DERIVED rather than authored: one wheel threshold or one arrow key moves the index by exactly one, and the dial's rendered position is the index. Authoring a per-pair transition table would be the same ordering said twice."
 
 data depth_detent_step_note: String = "A depth change crosses AT MOST ONE detent, by construction: step_depth takes a direction, not a target, so no caller can jump from the outermost detent to the innermost in one gesture and no continuous zoom can exist. Clamping at the ends is deliberate and is not an absorbing fallback — the request is fully answered ('you are already at the outermost detent'), nothing is widened, and a caller that wants to know whether it moved compares the returned depth."
@@ -98,6 +115,14 @@ fn program_mode_key(m: ProgramMode) -> String {
     ModeRemaining => "remaining"
     ModeWhy => "why"
   }
+}
+
+fn program_modes() -> List<ProgramMode> {
+  [ModeStatus, ModeRemaining, ModeWhy]
+}
+
+fn instrument_mode_keys() -> List<String> {
+  map(program_modes(), m => program_mode_key(m: m))
 }
 
 data focus_is_a_key_not_a_fact_note: String = "FocusSubject carries the finish line's KEY, not its spec. That is what keeps the camera structurally unable to hold a program fact: a key is an identity the authoritative view can resolve, while a spec would be a copy of V0's claim living in local state, free to drift from the thing it names. Selecting nothing is a real state — the instrument opens with no subject chosen — so it is a variant rather than an empty string."
@@ -139,6 +164,75 @@ fn camera_step_depth(c: ProgramCamera, step: DepthStep) -> ProgramCamera {
   ProgramCamera { depth: step_depth(d: c.depth, step: step), mode: c.mode, focus: c.focus }
 }
 
+fn camera_seek_depth(c: ProgramCamera, target: ProgramDepth) -> ProgramCamera {
+  if c.depth == target {
+    c
+  } else if program_depth_index(d: c.depth) < program_depth_index(d: target) {
+    camera_seek_depth(c: camera_step_depth(c: c, step: Inward), target: target)
+  } else {
+    camera_seek_depth(c: camera_step_depth(c: c, step: Outward), target: target)
+  }
+}
+
+data wheel_detent_threshold_px: Int = 80
+data wheel_gesture_reset_interval: Millisecond = millisecond(count: 120)
+
+type WheelIntegrator {
+  travel_px: Int
+}
+
+fn wheel_integrator_initial() -> WheelIntegrator {
+  WheelIntegrator { travel_px: 0 }
+}
+
+fn wheel_normalized_delta(delta_y: Int, delta_mode: Int, viewport_height: Int) -> Int {
+  if delta_mode == 1 {
+    delta_y * 16
+  } else if delta_mode == 2 {
+    delta_y * viewport_height
+  } else {
+    delta_y
+  }
+}
+
+fn wheel_integrator_absorb(i: WheelIntegrator, delta_px: Int) -> WheelIntegrator {
+  WheelIntegrator { travel_px: i.travel_px + delta_px }
+}
+
+fn wheel_integrator_steps_available(i: WheelIntegrator, threshold: Int) -> Int {
+  if threshold <= 0 {
+    0
+  } else if i.travel_px >= threshold {
+    i.travel_px / threshold
+  } else if i.travel_px <= -threshold {
+    (-i.travel_px) / threshold
+  } else {
+    0
+  }
+}
+
+fn wheel_integrator_consume_one_step(i: WheelIntegrator, threshold: Int) -> WheelIntegrator {
+  if i.travel_px >= threshold {
+    WheelIntegrator { travel_px: i.travel_px - threshold }
+  } else if i.travel_px <= -threshold {
+    WheelIntegrator { travel_px: i.travel_px + threshold }
+  } else {
+    i
+  }
+}
+
+fn wheel_owns_scroll_at_clamp(c: ProgramCamera, delta_px: Int) -> Bool {
+  let i = program_depth_index(d: c.depth)
+  let max = program_depth_index(d: DepthEvidence)
+  if delta_px > 0 && i >= max {
+    false
+  } else if delta_px < 0 && i <= program_depth_index(d: DepthProgram) {
+    false
+  } else {
+    true
+  }
+}
+
 fn camera_set_mode(c: ProgramCamera, m: ProgramMode) -> ProgramCamera {
   ProgramCamera { depth: c.depth, mode: m, focus: c.focus }
 }
@@ -161,4 +255,114 @@ fn camera_preserves_subject_across_depth(c: ProgramCamera, step: DepthStep) -> B
 
 fn camera_preserves_subject_across_mode(c: ProgramCamera, m: ProgramMode) -> Bool {
   focus_subject_eq(a: camera_set_mode(c: c, m: m).focus, b: c.focus)
+}
+
+data camera_storage_key: String = "gunbc.instrument.camera"
+
+data camera_wire_sep: String = "|"
+
+data camera_wire_note: String = "THE PERSISTENCE WIRE IS THREE KEYS, NOT A PROGRAM FACT. Depth, mode and focus travel as the same string keys program_depth_key, program_mode_key and focus_subject_key already emit, joined on a pipe that cannot appear in any of them, so the wire cannot be mistaken for a roadmap node or a finish-line claim. An unparseable or unknown segment resets to camera_initial rather than inventing a fourth state — the client refuses the bad wire, it does not widen it."
+
+fn camera_wire(c: ProgramCamera) -> String {
+  join([
+    program_depth_key(d: c.depth),
+    program_mode_key(m: c.mode),
+    focus_subject_key(f: c.focus),
+  ], camera_wire_sep)
+}
+
+fn program_depth_from_key(k: String) -> ProgramDepth {
+  match k {
+    "program" => DepthProgram
+    "outcome" => DepthOutcome
+    "front" => DepthFront
+    "node" => DepthNode
+    "evidence" => DepthEvidence
+    _ => DepthProgram
+  }
+}
+
+fn program_mode_from_key(k: String) -> ProgramMode {
+  match k {
+    "status" => ModeStatus
+    "remaining" => ModeRemaining
+    "why" => ModeWhy
+    _ => ModeStatus
+  }
+}
+
+fn focus_from_key(k: String) -> FocusSubject {
+  if k == "none" {
+    NoSubjectSelected
+  } else {
+    FinishLineFocused { line_key: k }
+  }
+}
+
+fn camera_wire_valid(w: String) -> Bool {
+  let parts = split(s: w, delimiter: camera_wire_sep)
+  if count(parts) != 3 {
+    false
+  } else {
+    let fields = fold(
+      parts,
+      init: CameraWireFields { depth: "", mode: "", focus: "", seen: 0 },
+      f: (acc, p) => camera_wire_field_step(acc: acc, p: p),
+    )
+    depth_key_valid(k: fields.depth)
+      && mode_key_valid(k: fields.mode)
+      && focus_key_valid(k: fields.focus)
+  }
+}
+
+type CameraWireFields {
+  depth: String
+  mode: String
+  focus: String
+  seen: Int
+}
+
+fn camera_wire_field_step(acc: CameraWireFields, p: String) -> CameraWireFields {
+  match acc.seen {
+    0 => CameraWireFields { depth: p, mode: acc.mode, focus: acc.focus, seen: 1 }
+    1 => CameraWireFields { depth: acc.depth, mode: p, focus: acc.focus, seen: 2 }
+    2 => CameraWireFields { depth: acc.depth, mode: acc.mode, focus: p, seen: 3 }
+    _ => acc
+  }
+}
+
+fn depth_key_valid(k: String) -> Bool {
+  k == program_depth_key(d: DepthProgram)
+    || k == program_depth_key(d: DepthOutcome)
+    || k == program_depth_key(d: DepthFront)
+    || k == program_depth_key(d: DepthNode)
+    || k == program_depth_key(d: DepthEvidence)
+}
+
+fn mode_key_valid(k: String) -> Bool {
+  k == program_mode_key(m: ModeStatus)
+    || k == program_mode_key(m: ModeRemaining)
+    || k == program_mode_key(m: ModeWhy)
+}
+
+fn focus_key_valid(k: String) -> Bool {
+  k == focus_subject_key(f: NoSubjectSelected)
+    || (v1_exit_finish_lines() |> any(s => v1_finish_line_key(l: s.line) == k))
+}
+
+fn camera_from_wire(w: String) -> ProgramCamera {
+  if !camera_wire_valid(w: w) {
+    camera_initial
+  } else {
+    let fields = fold(
+      split(s: w, delimiter: camera_wire_sep),
+      init: CameraWireFields { depth: "", mode: "", focus: "", seen: 0 },
+      f: (acc, p) => camera_wire_field_step(acc: acc, p: p),
+    )
+    ProgramCamera {
+      depth: program_depth_from_key(k: fields.depth),
+      mode: program_mode_from_key(k: fields.mode),
+      focus: focus_from_key(k: fields.focus),
+    }
+  }
 }
