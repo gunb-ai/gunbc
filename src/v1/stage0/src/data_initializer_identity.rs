@@ -9,7 +9,7 @@ use std::rc::Rc;
 use im::HashMap;
 
 use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
-use crate::v1_compiler_infer_env::lookup_type;
+use crate::v1_compiler_infer_env::{lookup_binding_by_name, lookup_type};
 use crate::v1_compiler_infer_items::{item_kind, ItemKind, TypedModule};
 use crate::v1_compiler_infer_types::normalize_access_type_node;
 use crate::v1_interpreter::{sorted_fields, InterpContext, InterpError, InterpResult, Value};
@@ -73,26 +73,67 @@ fn typed_module_for_path(ctx: &InterpContext, module_path: &str) -> Option<Rc<Ty
         .cloned()
 }
 
-fn type_item_in_module(tm: &TypedModule, si: &SourceIndices, bare_name: &str) -> Option<Rc<Node>> {
-    tm.items
-        .iter()
-        .find(|item| {
-            item_kind(Rc::clone(item)) == ItemKind::TypeItem
-                && authored_name_at(si.clone(), Rc::clone(item)) == bare_name
-        })
-        .cloned()
+fn lookup_type_binding_in_importing_module(
+    tm: &TypedModule,
+    bare_name: &str,
+) -> Option<Rc<crate::v1_compiler_infer_env::TypeBinding>> {
+    lookup_binding_by_name(tm.type_env.clone(), bare_name.to_string())
+}
+
+fn type_item_from_importing_module_type_env(
+    tm: &TypedModule,
+    bare_name: &str,
+    si: &SourceIndices,
+) -> Option<Rc<Node>> {
+    let binding = lookup_type_binding_in_importing_module(tm, bare_name)?;
+    let node = binding.resolved.clone();
+    if item_kind(node.clone()) != ItemKind::TypeItem {
+        return None;
+    }
+    let name = authored_name_at(si.clone(), node.clone());
+    if name != bare_name {
+        return None;
+    }
+    Some(node)
+}
+
+fn module_path_for_type_decl_node(
+    ctx: &InterpContext,
+    type_item: &Rc<Node>,
+    si: &SourceIndices,
+) -> Option<String> {
+    let file = type_item.span.file.as_str();
+    let type_name = authored_name_at(si.clone(), type_item.clone());
+    for tm in ctx.modules.iter() {
+        let mod_name = authored_name_at(si.clone(), tm.module.clone());
+        for item in tm.items.iter() {
+            if item_kind(Rc::clone(item)) != ItemKind::TypeItem {
+                continue;
+            }
+            if item.span.file.as_str() != file {
+                continue;
+            }
+            if authored_name_at(si.clone(), Rc::clone(item)) == type_name {
+                return Some(mod_name);
+            }
+        }
+    }
+    None
 }
 
 fn declaration_identity_for_type_item(
-    module_path: &str,
+    ctx: &InterpContext,
     type_item: &Rc<Node>,
     si: &SourceIndices,
+    fallback_module_path: &str,
 ) -> ResolvedDeclarationIdentity {
+    let module_path = module_path_for_type_decl_node(ctx, type_item, si)
+        .unwrap_or_else(|| fallback_module_path.to_string());
     let name = authored_name_at(si.clone(), type_item.clone());
     ResolvedDeclarationIdentity {
-        qualified_name: decl_logical_qualified_name(module_path, &name),
+        qualified_name: decl_logical_qualified_name(&module_path, &name),
         name,
-        module_path: module_path.to_string(),
+        module_path,
         rel_path: rel_path_from_node(type_item),
     }
 }
@@ -247,7 +288,8 @@ fn variant_value_from_typechecked_expr(
         return DataInitializerValueResolution::NotVariantValue;
     }
 
-    let parent_id = declaration_identity_for_type_item(importing_module, &coproduct, si);
+    let parent_id =
+        declaration_identity_for_type_item(ctx, &coproduct, si, importing_module);
     DataInitializerValueResolution::Resolved(ResolvedVariantIdentity {
         parent_qualified_name: parent_id.qualified_name,
         variant_name,
@@ -494,25 +536,24 @@ fn marshal_field_initializer_projection(
     importing_module: &str,
     field_value: &Rc<Node>,
     si: &SourceIndices,
-) -> InterpResult<Value> {
+) -> Value {
     match field_value.expr_data.as_ref() {
         ExprData::ExprRecordLit { .. } => {
             let type_bare = inferred_field_type_bare(si, field_value).unwrap_or_default();
             if type_bare.is_empty() {
-                return Ok(marshal_value_identity_node(
+                return marshal_value_identity_node(
                     ctx,
                     &DataInitializerValueResolution::NotVariantValue,
-                ));
+                );
             }
-            let tm = typed_module_for_path(ctx, importing_module).ok_or_else(|| {
-                InterpError::TypeError {
-                    msg: format!("typed module missing for `{importing_module}`"),
-                }
-            })?;
-            let type_item =
-                type_item_in_module(&tm, si, &type_bare).ok_or_else(|| InterpError::TypeError {
-                    msg: format!("type item `{type_bare}` missing in `{importing_module}`"),
-                })?;
+            let tm = match typed_module_for_path(ctx, importing_module) {
+                Some(tm) => tm,
+                None => return constructor_resolution_refused_projection(ctx),
+            };
+            let type_item = match type_item_from_importing_module_type_env(&tm, &type_bare, si) {
+                Some(node) => node,
+                None => return constructor_resolution_refused_projection(ctx),
+            };
             if type_item.connective == Connective::Disj {
                 marshal_coproduct_record_projection(
                     ctx,
@@ -520,15 +561,23 @@ fn marshal_field_initializer_projection(
                     field_value,
                     &type_bare,
                     si,
+                    type_item,
                 )
             } else {
-                marshal_plain_record_projection(ctx, importing_module, field_value, &type_bare, si)
+                marshal_plain_record_projection(
+                    ctx,
+                    importing_module,
+                    field_value,
+                    &type_bare,
+                    si,
+                    type_item,
+                )
             }
         }
         _ => {
             let resolution =
                 variant_value_from_typechecked_expr(ctx, importing_module, field_value, si);
-            Ok(marshal_value_identity_node(ctx, &resolution))
+            marshal_value_identity_node(ctx, &resolution)
         }
     }
 }
@@ -539,18 +588,10 @@ fn marshal_plain_record_projection(
     body: &Rc<Node>,
     type_bare: &str,
     si: &SourceIndices,
-) -> InterpResult<Value> {
-    let tm =
-        typed_module_for_path(ctx, importing_module).ok_or_else(|| InterpError::TypeError {
-            msg: format!("typed module missing for `{importing_module}`"),
-        })?;
-    let type_item =
-        type_item_in_module(&tm, si, type_bare).ok_or_else(|| InterpError::TypeError {
-            msg: format!(
-                "plain record type item missing for `{type_bare}` in `{importing_module}`"
-            ),
-        })?;
-    let parent_id = declaration_identity_for_type_item(importing_module, &type_item, si);
+    type_item: Rc<Node>,
+) -> Value {
+    let parent_id =
+        declaration_identity_for_type_item(ctx, &type_item, si, importing_module);
 
     let mut edges: Vec<(String, Value)> = vec![(
         "parent_type".to_string(),
@@ -564,15 +605,11 @@ fn marshal_plain_record_projection(
         }
         let field_value = field_init_node_value(child.clone());
         let field_projection =
-            marshal_field_initializer_projection(ctx, importing_module, &field_value, si)?;
+            marshal_field_initializer_projection(ctx, importing_module, &field_value, si);
         edges.push((field_name.clone(), field_projection));
     }
 
-    Ok(projection_node_with_named_edges(
-        ctx,
-        "DataInitializerPlainRecordProjection",
-        &edges,
-    ))
+    projection_node_with_named_edges(ctx, "DataInitializerPlainRecordProjection", &edges)
 }
 
 fn marshal_coproduct_record_projection(
@@ -581,18 +618,8 @@ fn marshal_coproduct_record_projection(
     body: &Rc<Node>,
     declared_type_bare: &str,
     si: &SourceIndices,
-) -> InterpResult<Value> {
-    let tm =
-        typed_module_for_path(ctx, importing_module).ok_or_else(|| InterpError::TypeError {
-            msg: format!("typed module missing for `{importing_module}`"),
-        })?;
-    let coproduct_item =
-        type_item_in_module(&tm, si, declared_type_bare).ok_or_else(|| InterpError::TypeError {
-            msg: format!(
-                "coproduct type item missing for `{declared_type_bare}` in `{importing_module}`"
-            ),
-        })?;
-
+    coproduct_item: Rc<Node>,
+) -> Value {
     let variant_name = authored_name_at(si.clone(), body.clone());
     if variant_name.is_empty()
         || !crate::v1_std_core::has_child_named(
@@ -601,10 +628,11 @@ fn marshal_coproduct_record_projection(
             si.clone(),
         )
     {
-        return Ok(constructor_resolution_refused_projection(ctx));
+        return constructor_resolution_refused_projection(ctx);
     }
 
-    let parent_id = declaration_identity_for_type_item(importing_module, &coproduct_item, si);
+    let parent_id =
+        declaration_identity_for_type_item(ctx, &coproduct_item, si, importing_module);
     let variant_id = ResolvedVariantIdentity {
         parent_qualified_name: parent_id.qualified_name.clone(),
         variant_name,
@@ -622,28 +650,21 @@ fn marshal_coproduct_record_projection(
         }
         let field_value = field_init_node_value(child.clone());
         let field_projection =
-            marshal_field_initializer_projection(ctx, importing_module, &field_value, si)?;
+            marshal_field_initializer_projection(ctx, importing_module, &field_value, si);
         edges.push((field_name.clone(), field_projection));
     }
 
-    Ok(projection_node_with_named_edges(
-        ctx,
-        "DataInitializerRecordProjection",
-        &edges,
-    ))
+    projection_node_with_named_edges(ctx, "DataInitializerRecordProjection", &edges)
 }
 
 pub fn marshal_data_initializer_projection(
     ctx: &InterpContext,
     qualified_name: &str,
 ) -> InterpResult<Value> {
-    let item = ctx
-        .lookup_typed_item(qualified_name)
-        .ok_or_else(|| InterpError::TypeError {
-            msg: format!(
-                "typechecked subject missing for data initializer projection `{qualified_name}`"
-            ),
-        })?;
+    let item = match ctx.lookup_typed_item(qualified_name) {
+        Some(item) => item,
+        None => return Ok(typechecked_subject_absent_projection(ctx)),
+    };
 
     let si = ctx.source_indices.clone();
     let importing_module = {
@@ -656,23 +677,48 @@ pub fn marshal_data_initializer_projection(
         }
     };
 
-    let body = item.body.as_ref().ok_or_else(|| InterpError::TypeError {
-        msg: format!("data item `{qualified_name}` missing initializer body"),
-    })?;
+    let body = match item.body.as_ref() {
+        Some(body) => body,
+        None => return Ok(constructor_resolution_refused_projection(ctx)),
+    };
 
     let declared_type_bare = match declared_type_bare_name(&item, &si) {
         Some(name) => name,
         None => return Ok(constructor_resolution_refused_projection(ctx)),
     };
 
+    let tm = match typed_module_for_path(ctx, &importing_module) {
+        Some(tm) => tm,
+        None => return Ok(constructor_resolution_refused_projection(ctx)),
+    };
+
     match body.expr_data.as_ref() {
-        ExprData::ExprRecordLit { .. } => marshal_coproduct_record_projection(
-            ctx,
-            &importing_module,
-            body,
-            &declared_type_bare,
-            &si,
-        ),
+        ExprData::ExprRecordLit { .. } => {
+            let type_item = match type_item_from_importing_module_type_env(&tm, &declared_type_bare, &si)
+            {
+                Some(node) => node,
+                None => return Ok(constructor_resolution_refused_projection(ctx)),
+            };
+            if type_item.connective == Connective::Disj {
+                Ok(marshal_coproduct_record_projection(
+                    ctx,
+                    &importing_module,
+                    body,
+                    &declared_type_bare,
+                    &si,
+                    type_item,
+                ))
+            } else {
+                Ok(marshal_plain_record_projection(
+                    ctx,
+                    &importing_module,
+                    body,
+                    &declared_type_bare,
+                    &si,
+                    type_item,
+                ))
+            }
+        }
         ExprData::ExprVar { .. } => {
             let resolution = variant_value_from_typechecked_expr(ctx, &importing_module, body, &si);
             let mut edges: Vec<(String, Value)> = vec![(
@@ -680,19 +726,19 @@ pub fn marshal_data_initializer_projection(
                 marshal_value_identity_node(ctx, &resolution),
             )];
             if let DataInitializerValueResolution::Resolved(v) = &resolution {
-                if let Some(tm) = typed_module_for_path(ctx, &importing_module) {
-                    if let Some(coproduct_item) = type_item_in_module(&tm, &si, &declared_type_bare)
-                    {
-                        let parent_id = declaration_identity_for_type_item(
-                            &importing_module,
-                            &coproduct_item,
-                            &si,
-                        );
-                        edges.push((
-                            "constructor_identity".to_string(),
-                            marshal_constructor_identity_node(ctx, &parent_id, v),
-                        ));
-                    }
+                if let Some(type_item) =
+                    type_item_from_importing_module_type_env(&tm, &declared_type_bare, &si)
+                {
+                    let parent_id = declaration_identity_for_type_item(
+                        ctx,
+                        &type_item,
+                        &si,
+                        &importing_module,
+                    );
+                    edges.push((
+                        "constructor_identity".to_string(),
+                        marshal_constructor_identity_node(ctx, &parent_id, v),
+                    ));
                 }
             }
             Ok(projection_node_with_named_edges(
