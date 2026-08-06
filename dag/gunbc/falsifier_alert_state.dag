@@ -1,7 +1,7 @@
 module gunbc.falsifier_alert_state
 
 import std.types { NonEmptyStr, String, EpochMs }
-import std.measure { Millisecond, millisecond, millisecond_count }
+import std.measure { Millisecond, millisecond }
 import extdeps.languages.json.emit {
   JsonValue, JsonString, JsonNumber,
   json_object, json_kv, json_string, json_int, JsonKeyValue,
