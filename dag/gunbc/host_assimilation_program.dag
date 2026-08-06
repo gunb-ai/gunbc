@@ -181,12 +181,12 @@ fn assimilation_completion_input_list_contains(
 
 fn assimilation_completion_input_append_unique(
   inputs: List<AssimilationCompleteInput>,
-  input: AssimilationCompleteInput,
+  wanted_input: AssimilationCompleteInput,
 ) -> List<AssimilationCompleteInput> {
-  if assimilation_completion_input_list_contains(inputs: inputs, wanted: input) {
+  if assimilation_completion_input_list_contains(inputs: inputs, wanted: wanted_input) {
     inputs
   } else {
-    append(inputs, [input])
+    append(inputs, [wanted_input])
   }
 }
 
@@ -197,8 +197,8 @@ fn assimilation_completion_inputs_union(
   fold_list(
     xs: b,
     empty: a,
-    cons: fn(acc, input) {
-      assimilation_completion_input_append_unique(inputs: acc, input: input)
+    cons: fn(acc, wanted_input) {
+      assimilation_completion_input_append_unique(inputs: acc, wanted_input: wanted_input)
     }
   )
 }
@@ -227,13 +227,16 @@ fn assimilation_completion_inputs_for_one(p: FleetParticipation) -> List<Assimil
 data empty_assimilation_complete_input_list: List<AssimilationCompleteInput> = []
 
 fn assimilation_completion_inputs_for(participation: List<FleetParticipation>) -> List<AssimilationCompleteInput> {
-  if participation_list_contains(ps: participation, wanted: CiRunnerParticipation) {
-    assimilation_completion_inputs_for_one(p: CiRunnerParticipation)
-  } else if participation_list_contains(ps: participation, wanted: InferenceServingParticipation) {
-    assimilation_completion_inputs_for_one(p: InferenceServingParticipation)
-  } else {
-    empty_assimilation_complete_input_list
-  }
+  fold_list(
+    xs: participation,
+    empty: empty_assimilation_complete_input_list,
+    cons: fn(acc, p) {
+      assimilation_completion_inputs_union(
+        a: acc,
+        b: assimilation_completion_inputs_for_one(p: p)
+      )
+    }
+  )
 }
 
 fn default_unsatisfied_witness_for_input(input: AssimilationCompleteInput) -> AssimilationInputWitness {
