@@ -394,7 +394,7 @@ fn v1_claim_scoped_known_red_probe_batch_holds(r: Runnable) -> Bool {
         && execution_mode_eq(left: batch.execution_mode, right: Hermetic)
         && (batch.resource_profile.process_isolation == SequentialChildProcess)
         && match runnable_batch_clamp_source(r: r) {
-          RunnableOwnsBatchClamp { clamp: clamp } => (second_count(s: clamp.overhead) == 140) && (millisecond_count(m: clamp.per_unit) == 0)
+          RunnableOwnsBatchClamp { clamp: clamp } => (second_count(s: clamp.overhead) == 220) && (millisecond_count(m: clamp.per_unit) == 0)
           _ => false
         }
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
