@@ -8,6 +8,7 @@
 # then regenerate from merged authorities before commit (charter four-case policy row 1).
 
 .gitattributes merge=generated-artifact
+.githooks/generated-artifact-merge merge=generated-artifact
 .githooks/pre-commit merge=generated-artifact
 .githooks/pre-push merge=generated-artifact
 .github/live-deploy-srv1-apply.sh merge=generated-artifact
@@ -94,8 +95,6 @@ src/v1/stage0/src/extdeps_languages_python_types.rs merge=generated-artifact
 src/v1/stage0/src/extdeps_languages_rust_emit.rs merge=generated-artifact
 src/v1/stage0/src/extdeps_languages_rust_syntax.rs merge=generated-artifact
 src/v1/stage0/src/extdeps_languages_rust_types.rs merge=generated-artifact
-src/v1/stage0/src/extdeps_process_gnu_bash_exit.rs merge=generated-artifact
-src/v1/stage0/src/extdeps_process_posix_exit.rs merge=generated-artifact
 src/v1/stage0/src/extdeps_units_dimensionless.rs merge=generated-artifact
 src/v1/stage0/src/extdeps_units_iec_80000_13.rs merge=generated-artifact
 src/v1/stage0/src/extdeps_units_iso8601.rs merge=generated-artifact
@@ -140,7 +139,6 @@ src/v1/stage0/src/std_occurrence_binding_candidates.rs merge=generated-artifact
 src/v1/stage0/src/std_occurrence_binding_resolve.rs merge=generated-artifact
 src/v1/stage0/src/std_occurrence_identity.rs merge=generated-artifact
 src/v1/stage0/src/std_pareto.rs merge=generated-artifact
-src/v1/stage0/src/std_process.rs merge=generated-artifact
 src/v1/stage0/src/std_realization_schedule.rs merge=generated-artifact
 src/v1/stage0/src/std_reference_binding_observation.rs merge=generated-artifact
 src/v1/stage0/src/std_roster_frontier.rs merge=generated-artifact

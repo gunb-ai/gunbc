@@ -52,6 +52,11 @@ type AssimilationInputWitness
   | InputRefused { input: AssimilationCompleteInput, reason: String }
   | InputGap { input: AssimilationCompleteInput, interim_realization: String }
 
+type AssimilationObligation {
+  input: AssimilationCompleteInput
+  witness: AssimilationInputWitness
+}
+
 type GreenPlacePinCoherentWitness
   = GreenPlaceFromGunbcGate {
       noop_satisfied_authority: DeclarationRef
@@ -63,10 +68,7 @@ type GreenPlacePinCoherentWitness
   | GreenPlacePinGap { interim_realization: String }
 
 type AssimilationCompleteGate {
-  node_registered: AssimilationInputWitness
-  resources_present: AssimilationInputWitness
-  green_place_pin_coherent: GreenPlacePinCoherentWitness
-  runner_healthy: AssimilationInputWitness
+  obligations: List<AssimilationObligation>
 }
 
 type AssimilationCompleteVerdict
@@ -362,7 +364,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "P5:assimilation-complete-gate",
     modeling: "modeled-new-authority",
-    authority_or_interim: "gunbc.host_standup.AssimilationCompleteGate — AND(node_registered, resources_present, green_place_pin_coherent via gunbc_pinned_noop_satisfied gate ref, runner_slot_healthy); no pin re-derivation in P5"
+    authority_or_interim: "gunbc.host_assimilation_program.assimilation_completion_inputs_for — program-derived obligation roster folded fail-closed (required missing and unrequired present both refuse); green-place projected into AssimilationInputWitness; no pin re-derivation in P5"
   },
 ]
 
@@ -445,45 +447,108 @@ fn green_place_pin_coherent_satisfied(w: GreenPlacePinCoherentWitness) -> Bool {
   }
 }
 
-fn green_place_pin_coherent_failure(w: GreenPlacePinCoherentWitness) -> AssimilationCompleteVerdict? {
+fn assimilation_input_witness_from_green_place(w: GreenPlacePinCoherentWitness) -> AssimilationInputWitness {
   match w {
+    GreenPlaceFromGunbcGate { gate_verdict: true, noop_satisfied_authority: _, marker_satisfied_authority: _, desired_pin_authority: _ } =>
+      InputSatisfied
     GreenPlaceFromGunbcGate { gate_verdict: false, noop_satisfied_authority: _, marker_satisfied_authority: _, desired_pin_authority: _ } =>
-      Present {
-        value: AssimilationIncomplete {
-          input: GreenPlacePinCoherent,
-          reason: "host_standup:P5:green_place_pin_coherent: gunbc gate verdict false or unread — fail-closed, no pin re-derivation in spine"
-        }
+      InputRefused {
+        input: GreenPlacePinCoherent,
+        reason: "host_standup:P5:green_place_pin_coherent: gunbc gate verdict false or unread — fail-closed, no pin re-derivation in spine"
       }
-    GreenPlaceFromGunbcGate { gate_verdict: true, noop_satisfied_authority: _, marker_satisfied_authority: _, desired_pin_authority: _ } => Absent
     GreenPlacePinRefused { reason: r } =>
-      Present { value: AssimilationIncomplete { input: GreenPlacePinCoherent, reason: r } }
+      InputRefused { input: GreenPlacePinCoherent, reason: r }
     GreenPlacePinGap { interim_realization: path } =>
+      InputGap { input: GreenPlacePinCoherent, interim_realization: path }
+  }
+}
+
+fn assimilation_complete_input_eq(a: AssimilationCompleteInput, b: AssimilationCompleteInput) -> Bool {
+  match a {
+    NodeRegistered => match b { NodeRegistered => true, _ => false }
+    ResourcesPresent => match b { ResourcesPresent => true, _ => false }
+    GreenPlacePinCoherent => match b { GreenPlacePinCoherent => true, _ => false }
+    RunnerSlotHealthy => match b { RunnerSlotHealthy => true, _ => false }
+  }
+}
+
+fn assimilation_obligation_for_input(
+  gate: AssimilationCompleteGate,
+  wanted: AssimilationCompleteInput,
+) -> AssimilationObligation? {
+  filter(
+    gate.obligations,
+    o => assimilation_complete_input_eq(a: o.input, b: wanted)
+  ) |> first
+}
+
+fn assimilation_input_is_required(
+  required: List<AssimilationCompleteInput>,
+  wanted: AssimilationCompleteInput,
+) -> Bool {
+  fold_list(
+    xs: required,
+    empty: false,
+    cons: fn(acc, r) {
+      if acc {
+        true
+      } else {
+        assimilation_complete_input_eq(a: r, b: wanted)
+      }
+    }
+  )
+}
+
+fn assimilation_gate_unrequired_obligation_refusal(
+  gate: AssimilationCompleteGate,
+  required: List<AssimilationCompleteInput>,
+) -> AssimilationCompleteVerdict? {
+  match filter(
+    gate.obligations,
+    o => !assimilation_input_is_required(required: required, wanted: o.input)
+  ) |> first {
+    Present { value: o } =>
       Present {
         value: AssimilationIncomplete {
-          input: GreenPlacePinCoherent,
-          reason: concat("host_standup:P5:gap-refused:", path)
+          input: o.input,
+          reason: "host_standup:P5:unrequired-obligation-present"
         }
       }
+    Absent => Absent
   }
 }
 
-fn host_standup_default_assimilation_gate_unsatisfied() -> AssimilationCompleteGate {
-  AssimilationCompleteGate {
-    node_registered: InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" },
-    resources_present: InputGap { input: ResourcesPresent, interim_realization: "ctrl:resources-present-unmodeled" },
-    green_place_pin_coherent: host_standup_p3_green_place_input_witness(),
-    runner_healthy: InputGap { input: RunnerSlotHealthy, interim_realization: "gunbc.runner_slot_enforcement until P1 converged" },
+fn assimilation_gate_missing_required_refusal(
+  gate: AssimilationCompleteGate,
+  required: List<AssimilationCompleteInput>,
+) -> AssimilationCompleteVerdict? {
+  match filter(
+    required,
+    wanted_input =>
+      match assimilation_obligation_for_input(gate: gate, wanted: wanted_input) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  ) |> first {
+    Present { value: wanted_input } =>
+      Present {
+        value: AssimilationIncomplete {
+          input: wanted_input,
+          reason: "host_standup:P5:required-obligation-missing"
+        }
+      }
+    Absent => Absent
   }
 }
 
-fn host_standup_p3_fail_closed_blocks_complete() -> Bool {
-  !host_standup_p3_gunbc_pinned_tree_landed
-    && match assimilation_complete(gate: host_standup_default_assimilation_gate_unsatisfied()) {
-      AssimilationIncomplete { input: GreenPlacePinCoherent, reason: r } =>
-        string_contains(s: r, pattern: "#5948")
-      AssimilationComplete => false
-      AssimilationIncomplete { input: _, reason: _ } => true
-    }
+fn assimilation_gate_roster_refusal(
+  gate: AssimilationCompleteGate,
+  required: List<AssimilationCompleteInput>,
+) -> AssimilationCompleteVerdict? {
+  match assimilation_gate_unrequired_obligation_refusal(gate: gate, required: required) {
+    Present { value: v } => Present { value: v }
+    Absent => assimilation_gate_missing_required_refusal(gate: gate, required: required)
+  }
 }
 
 fn host_standup_gap_count() -> Int {
@@ -515,33 +580,72 @@ fn assimilation_input_failure(w: AssimilationInputWitness) -> AssimilationComple
   }
 }
 
-fn assimilation_complete_first_failure(gate: AssimilationCompleteGate) -> AssimilationCompleteVerdict? {
-  match assimilation_input_failure(w: gate.node_registered) {
-    Present { value: v } => Present { value: v }
-    Absent =>
-      match assimilation_input_failure(w: gate.resources_present) {
-        Present { value: v } => Present { value: v }
+fn assimilation_obligation_failure(o: AssimilationObligation) -> AssimilationCompleteVerdict? {
+  assimilation_input_failure(w: o.witness)
+}
+
+fn assimilation_complete_first_failure(
+  gate: AssimilationCompleteGate,
+  required: List<AssimilationCompleteInput>,
+) -> AssimilationCompleteVerdict? {
+  fold_list(
+    xs: required,
+    empty: Absent,
+    cons: fn(acc, wanted_input) {
+      match acc {
+        Present { value: _ } => acc
         Absent =>
-          match green_place_pin_coherent_failure(w: gate.green_place_pin_coherent) {
-            Present { value: v } => Present { value: v }
-            Absent => assimilation_input_failure(w: gate.runner_healthy)
+          match assimilation_obligation_for_input(gate: gate, wanted: wanted_input) {
+            Present { value: o } => assimilation_obligation_failure(o: o)
+            Absent =>
+              Present {
+                value: AssimilationIncomplete {
+                  input: wanted_input,
+                  reason: "host_standup:P5:required-obligation-missing"
+                }
+              }
           }
+      }
+    }
+  )
+}
+
+fn assimilation_complete(
+  gate: AssimilationCompleteGate,
+  required: List<AssimilationCompleteInput>,
+) -> AssimilationCompleteVerdict {
+  match assimilation_gate_roster_refusal(gate: gate, required: required) {
+    Present { value: v } => v
+    Absent =>
+      match assimilation_complete_first_failure(gate: gate, required: required) {
+        Present { value: v } => v
+        Absent => AssimilationComplete
       }
   }
 }
 
-fn assimilation_complete(gate: AssimilationCompleteGate) -> AssimilationCompleteVerdict {
-  match assimilation_complete_first_failure(gate: gate) {
-    Present { value: v } => v
-    Absent => AssimilationComplete
+fn assimilation_complete_all_satisfied(
+  gate: AssimilationCompleteGate,
+  required: List<AssimilationCompleteInput>,
+) -> Bool {
+  match assimilation_gate_roster_refusal(gate: gate, required: required) {
+    Present { value: _ } => false
+    Absent =>
+      fold_list(
+        xs: required,
+        empty: true,
+        cons: fn(acc, wanted_input) {
+          if !acc {
+            false
+          } else {
+            match assimilation_obligation_for_input(gate: gate, wanted: wanted_input) {
+              Present { value: o } => assimilation_input_satisfied(w: o.witness)
+              Absent => false
+            }
+          }
+        }
+      )
   }
-}
-
-fn assimilation_complete_all_satisfied(gate: AssimilationCompleteGate) -> Bool {
-  assimilation_input_satisfied(w: gate.node_registered)
-    && assimilation_input_satisfied(w: gate.resources_present)
-    && green_place_pin_coherent_satisfied(w: gate.green_place_pin_coherent)
-    && assimilation_input_satisfied(w: gate.runner_healthy)
 }
 
 fn srv3_install_mechanism_is_nbd_proxy_no_fallback() -> Bool {
