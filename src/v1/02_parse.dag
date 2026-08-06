@@ -49,6 +49,7 @@ import v1.std.core {
   InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens,
   intern_table_with_authored_token_ordinals,
   field_access_base,
+  CallCalleeSurface, NamedCallableCallee, ComplexExpressionCallee,
 }
 import std.occurrence_identity {
   AuthoredTokenOrdinalSpace,

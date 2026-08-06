@@ -135,6 +135,7 @@ pub use crate::v1_compiler_infer_types::{
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+use crate::v1_std_core::CallCalleeSurface::NamedCallableCallee;
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
@@ -196,10 +197,11 @@ pub use crate::v1_std_core::{
     with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords, DeclaredFuncEnv,
-    DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle,
-    FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, StringPart, UnaryOpKind, VarBindingKind,
+    CallCalleeSurface, CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords,
+    DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine,
+    FieldAccessStyle, FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode,
+    InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, UnaryOpKind,
+    VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

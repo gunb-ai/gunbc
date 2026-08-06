@@ -38,6 +38,7 @@ pub use crate::std_syntax::{
 pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+use crate::v1_std_core::CallCalleeSurface::{ComplexExpressionCallee, NamedCallableCallee};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, ParseError};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
@@ -77,9 +78,9 @@ pub use crate::v1_std_core::{
     transport_url_key, variant_node_fields, variant_node_name_at, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
-    FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern, NewlineIndex, Node,
-    OperationModifier, StringPart, Token, TokenShape, UnaryOpKind,
+    CallCalleeSurface, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
+    ExprErrorKind, FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern,
+    NewlineIndex, Node, OperationModifier, StringPart, Token, TokenShape, UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
