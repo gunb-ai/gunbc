@@ -1,20 +1,19 @@
 module v2.test.realization_vocabulary_containment.roster_soundness
 
+import v2.lens.realization_vocabulary_containment {
+  realization_vocab_roster_sound,
+  RealizationVocabImportEdge
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data planted_stale_roster_entry: String = "dag/tools/_stale_migrated_off_consumer.dag"
+data empty_live_leak_edges: List<RealizationVocabImportEdge> = []
 
-data roster_soundness_fast_lane_note: String = "Live-corpus roster soundness receipt moved to long/realization_vocabulary_containment_witness_test.dag (5s fast-lane budget). This file retains the synthetic stale-roster RED control only."
-
-data empty_live_leak_paths: List<String> = []
+data roster_soundness_fast_lane_note: String = "Live-corpus roster soundness receipt moved to long/realization_vocabulary_containment_witness_test.dag (5s fast-lane budget). This file retains the synthetic stale-grandfathered-edge RED control only."
 
 test fn realization_vocab_roster_soundness_planted_stale_red_holds() -> Bool {
-  realization_vocab_roster_sound(
-    roster: list_append(
-      left: realization_vocab_exception_paths(),
-      right: [planted_stale_roster_entry]
-    ),
-    live_leak_paths: empty_live_leak_paths
-  ) == false
+  realization_vocab_roster_sound(live_leak_edges: empty_live_leak_edges) == false
 }
