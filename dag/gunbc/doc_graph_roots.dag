@@ -331,6 +331,15 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "arc-store-path-migration-decision",
+    primary_work: DeclarationRef { module_path: "v1.compiler.languages", decl_name: "sharing_wrap_ctor_for_target", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.compiler.wrap_decision", decl_name: "WrapDecisionBundleChildLookup", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the v1-run-stability width>1 resumption trigger in this note fires and the parked alias-flip plus C1 in-memory store land in one motion — or the decision record migrates into a registered gunbc.plan.Plan row" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "module-identity-storage-binding-design",
     primary_work: DeclarationRef { module_path: "v2.lens.effect_reach", decl_name: "effect_reach_law", field: WholeDeclaration },
     additional_works: [DeclarationRef { module_path: "v2.workflow.witness_admission", decl_name: "consumer_for_explicit_rosters", field: WholeDeclaration }],

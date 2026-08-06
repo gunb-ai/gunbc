@@ -6,7 +6,7 @@ import extdeps.git.inspect
 import extdeps.gunbc
 import std.logic { Bool }
 import tools.dag_compile_clean_transport {
-  dcc_compile_tail_args,
+  dcc_fixture_only_compile_args,
   dcc_gunbc_path,
   dcc_gunbc_ready
 }
@@ -17,8 +17,7 @@ fn single_module_shard_compile_typed(entry_rel_path: String) -> Bool {
   let root = git.Inspect.Toplevel()
   if dcc_gunbc_ready(root: root.path) {
     let stage = shell.Mktemp.Dir()
-    let out = shell.Mktemp.Dir()
-    if stage.success && out.success {
+    if stage.success {
       let staged = shell.Copy.File(
         source: concat(root.path, concat("/", entry_rel_path)),
         destination: stage.path
@@ -26,14 +25,10 @@ fn single_module_shard_compile_typed(entry_rel_path: String) -> Bool {
       let compile = gunbc.WitnessBin.Run(
         workdir: root.path,
         bin_path: dcc_gunbc_path(root: root.path),
-        args: concat(
-          ["compile", "--source-root", stage.path],
-          dcc_compile_tail_args(out_dir: out.path)
-        )
+        args: dcc_fixture_only_compile_args(tmp: stage.path)
       )
-      let cleaned_out = shell.Remove.RecursiveForce(path: out.path)
       let cleaned_stage = shell.Remove.RecursiveForce(path: stage.path)
-      staged.success && compile.success && cleaned_out.success && cleaned_stage.success
+      staged.success && compile.success && cleaned_stage.success
     } else {
       false
     }

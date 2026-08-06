@@ -1,0 +1,137 @@
+module gunbc.host_budget_source
+
+import std.types { NonEmptyStr, String, Bool, List }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.linux.procfs {
+  ProcfsPath,
+  ProcMeminfo,
+  ProcSelfCgroup,
+  ProcfsAvailability,
+  ProcfsAvailable,
+  ProcfsAbsentOnKernel,
+  kernel_provides_procfs,
+  kernel_family_label,
+  procfs_path_literal,
+  procfs_availability,
+}
+
+data host_budget_source_authority_disposition: Disposition = Terminal {
+  reason: "Single authority for the SOURCE half of the host memory budget the v1 memory governor arms against. The BUDGET VALUE stays where it is measured (a cgroup read, a meminfo read, an operator env override); what this module owns is the closed set of places that value can come from, whether each is degraded, and how each is rendered. It exists because those three facts were carried by a free-text label string and re-derived from it by substring scan."
+}
+
+data host_budget_source_string_scan_note: String = "THE DEFECT THIS MODULE DISSOLVES, quoted from the code that carries it. v1's read_host_budget_bytes returns (Option<u64>, String) and cli_run's typed_module_cache_cap_derivation decides whether the budget is degraded by scanning that string: source_label.contains(\"memory.max\") || source_label.contains(\"memory.high\"). The comment beside it already names the fix and the rule it breaks — 'if it ever grows a typed source enum, ground this check on the enum instead of re-parsing its display label (section 3, avoid a second representation)'. So the label is simultaneously a human diagnostic and a machine-read discriminant, which is one string doing two jobs and neither well: a rewording of the diagnostic silently changes the degradation verdict, and a new source arm is degraded-by-default only if nobody happens to mention a cgroup file in its prose.\n\nThe coproduct below is that enum. Degradation becomes a total match rather than a substring test, rendering becomes one function rather than format! calls scattered across arms, and a new source cannot be added without answering both questions."
+
+data host_budget_source_fabricated_label_note: String = "THE macOS BUG, which is what made this worth modeling now rather than later. read_host_budget_bytes ends with a terminal arm that reads, in full: (mem_total_bytes(), \"/proc/meminfo MemTotal\".to_string()). mem_total_bytes() reads /proc/meminfo and returns None when it cannot — and on a Darwin host it ALWAYS returns None, because there is no /proc. The label is composed unconditionally beside it, so the tuple that comes back is (None, \"/proc/meminfo MemTotal\"): a source attribution naming a file that does not exist on the platform, for a read that never happened, next to a value that was never obtained.\n\nObserved live, every local run on the developer's machine: `[floor-drain] degraded_budget_source: cap=4000 source=/proc/meminfo MemTotal (no private cgroup memory.max/memory.high found; falling back to a host-shared signal)`. Nothing is CONCEALED — the degraded flag is correctly true and the line is loud — but the provenance is fabricated, which is the section 5 plausible-output shape applied to a diagnostic rather than to a result. It is also the precise failure that cost a session's worth of confusion: a reader cannot tell from that line whether MemTotal was read and disbelieved, or never read at all, and the cap of 4000 is the ceiling fallback rather than anything derived from a host fact.\n\nBudgetSourceDarwinPhysicalMemory is the arm that had nowhere to go — and note it is a SOURCE, not an absence. The first repair attempted here was an absence arm carrying the kernel family, which described the situation truthfully and left the mechanism intact; the second and correct repair was to notice the platform has the fact and read it (extdeps.darwin.sysctl hw.memsize). A diagnostic that accurately reports having read nothing is still a run with no bound on it."
+
+data host_budget_source_no_fallback_arm_note: String = "THERE IS NO FALLBACK ARM, and removing it is the correction this module exists to carry (operator ruling 2026-08-05: 'we can't do fallbacks'). An earlier revision of this file modeled the macOS path as BudgetSourceUnavailable { kernel } and described the consumer as falling back to the declared ceiling. That was honest LABELLING of a dishonest MECHANISM: cli_run's typed_module_cache_cap_derivation ends in .unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL), so a budget it cannot compute becomes the MOST PERMISSIVE value it could have returned — top-as-answer conflated with top-as-ignorance, the absorbing fallback DESIGN section 5 forbids by name. Naming the arm accurately did not stop it widening.\n\nIT HAS A RECEIPT, paid during this very change: the full witness corpus was OOM-killed twice on the operator's Mac (exit 137, at ~6800 and ~3300 witnesses). No host signal was readable, the cap defaulted to the ceiling, nothing bounded the resolve, and the OS ended the process. That is section 5's prediction verbatim — the deficit's frequency is zeroed by construction, so it never ranks for fixing, and the corpus-denominated cost breaks the budget later and at interest instead of breaking the build.\n\nTHE STRATEGY CHANGED RATHER THAN THE LABEL. macOS is not a platform without memory facts; it is a platform whose memory facts were never asked for. extdeps.darwin.sysctl models hw.memsize (verified live: 17179869184), so BudgetSourceDarwinPhysicalMemory is a REAL READ and the Darwin path now produces a budget like any other. What remains is BudgetSourceUnreadable, which carries the reason and is NOT a source at all — it is the refusal, and no consumer may turn it into a number."
+
+type HostBudgetSource
+  = BudgetSourceEnvOverride
+  | BudgetSourceCgroupMemoryHigh { cgroup_dir: NonEmptyStr }
+  | BudgetSourceCgroupMemoryMax { cgroup_dir: NonEmptyStr }
+  | BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: ByteSize }
+  | BudgetSourceMemAvailable
+  | BudgetSourceMemTotal
+  | BudgetSourceDarwinPhysicalMemory
+
+type HostBudgetResolution
+  = HostBudgetResolved { source: HostBudgetSource, bytes: ByteSize }
+  | HostBudgetUnreadable { reason: NonEmptyStr }
+
+fn host_budget_resolution_bytes(r: HostBudgetResolution) -> ByteSize? {
+  match r {
+    HostBudgetResolved { source: _, bytes: b } => Present { value: b }
+    HostBudgetUnreadable { reason: _ } => none
+  }
+}
+
+fn host_budget_unreadable_on_kernel(kernel: KernelFamily) -> HostBudgetResolution {
+  HostBudgetUnreadable {
+    reason: concat(
+      "no host memory budget is readable on kernel family ",
+      concat(
+        kernel_family_label(kernel: kernel) as String,
+        ": every modeled source refused, so the admission bound is UNKNOWN. Refuse the run rather than admitting against the widest cap the consumer could have chosen — an unbounded resolve on an unbounded host is the OOM-kill this arm exists to prevent, and it is not a state a default can rescue."
+      )
+    ) as NonEmptyStr
+  }
+}
+
+data host_budget_source_degraded_meaning_note: String = "DEGRADED MEANS 'NOT A PRIVATE LIMIT ON THIS PROCESS', not 'bad' and not 'unreadable'. Only the two cgroup arms and an explicit operator override describe a bound that belongs to this process alone; every meminfo-derived arm reports a HOST-SHARED signal, which on a machine running five other runner slots is a number about the machine rather than about this job — that is the whole reason the 2026-07-21 srv3 exit-137 receipts exist, and why uncapped hosts get their MemAvailable sample capped at the declared slot line before it is trusted.\n\nBudgetSourceDarwinPhysicalMemory is degraded for the same reason as the meminfo arms and not a new one: hw.memsize is total physical RAM, a fact about the machine rather than about this process, and Darwin offers no private-limit mechanism at all — there are no cgroups, so on a Mac there is nothing stronger to want. Degraded-with-a-real-value is the honest verdict there, and it is categorically different from the unreadable case, which is not a source at all and appears in HostBudgetResolution rather than in this coproduct."
+
+fn host_budget_source_is_degraded(s: HostBudgetSource) -> Bool {
+  match s {
+    BudgetSourceEnvOverride => false
+    BudgetSourceCgroupMemoryHigh { cgroup_dir: _ } => false
+    BudgetSourceCgroupMemoryMax { cgroup_dir: _ } => false
+    BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: _ } => true
+    BudgetSourceMemAvailable => true
+    BudgetSourceMemTotal => true
+    BudgetSourceDarwinPhysicalMemory => true
+  }
+}
+
+fn host_budget_source_reads_procfs(s: HostBudgetSource) -> Bool {
+  match s {
+    BudgetSourceEnvOverride => false
+    BudgetSourceCgroupMemoryHigh { cgroup_dir: _ } => true
+    BudgetSourceCgroupMemoryMax { cgroup_dir: _ } => true
+    BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: _ } => true
+    BudgetSourceMemAvailable => true
+    BudgetSourceMemTotal => true
+    BudgetSourceDarwinPhysicalMemory => false
+  }
+}
+
+fn host_budget_source_label(s: HostBudgetSource) -> NonEmptyStr {
+  match s {
+    BudgetSourceEnvOverride => "env GUNBC_MEMORY_BUDGET_BYTES"
+    BudgetSourceCgroupMemoryHigh { cgroup_dir: d } =>
+      concat("cgroup memory.high (", concat(d as String, ")")) as NonEmptyStr
+    BudgetSourceCgroupMemoryMax { cgroup_dir: d } =>
+      concat("cgroup memory.max (", concat(d as String, ")")) as NonEmptyStr
+    BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: h } =>
+      concat(
+        "min(/proc/meminfo MemAvailable, declared runner-slot memory.high ",
+        concat(to_string(byte_size_count(b: h)), " bytes)")
+      ) as NonEmptyStr
+    BudgetSourceMemAvailable => "/proc/meminfo MemAvailable"
+    BudgetSourceMemTotal => "/proc/meminfo MemTotal"
+    BudgetSourceDarwinPhysicalMemory => "sysctl hw.memsize"
+  }
+}
+
+data host_budget_source_platform_wall_note: String = "THE WALL THIS MODULE EXISTS TO HOLD, stated as a relation between two things that were previously unrelated: a source that READS procfs may not be reported on a kernel that does not PROVIDE procfs. That is exactly the sentence the live macOS diagnostic violates, and with both halves modeled it is now decidable — extdeps.linux.procfs answers which kernels synthesize /proc, this module answers which sources read it, and host_budget_source_admissible_on_kernel is their conjunction.\n\nIt is a validating predicate rather than a construction wall, and that is an honest limitation rather than a preferred design (DESIGN section 5 prefers construction). Making the bad state unwritable would mean parameterizing HostBudgetSource by the kernel it was observed on so a procfs arm could not be constructed for Darwin at all; that is buildable, and it is deliberately not attempted here because the constructor's only caller today is hand-Rust in the v1 seed, which cannot consume a .dag type at the point it runs. The predicate plus its RED control is the strongest wall reachable while the seed still composes these values itself; the dissolution is the same emit path that retires the seed's other budget mirrors."
+
+fn host_budget_source_admissible_on_kernel(s: HostBudgetSource, kernel: KernelFamily) -> Bool {
+  if host_budget_source_reads_procfs(s: s) {
+    kernel_provides_procfs(kernel: kernel)
+  } else {
+    true
+  }
+}
+
+data host_budget_source_for_kernel_note: String = "The source a host SHOULD read follows from its kernel, and stating it as a total match is what stops a platform being silently unserved. Darwin reads sysctl; the procfs kernels read their cgroup or meminfo path and are represented here by their weakest arm, MemTotal, because which of the stronger arms applies depends on runtime facts (is there a cgroup, is there an override) that no static row can answer. WindowsNt has no modeled source at all and therefore no arm — it returns none rather than a guess, and a consumer that reaches it refuses. That is the honest state: nobody has modeled Windows memory facts, and inventing one here would be the fabrication this whole change removes."
+
+fn host_budget_source_for_kernel(kernel: KernelFamily) -> HostBudgetSource? {
+  match kernel {
+    Darwin => Present { value: BudgetSourceDarwinPhysicalMemory }
+    Linux => Present { value: BudgetSourceMemTotal }
+    LinuxGuestOnWindows => Present { value: BudgetSourceMemTotal }
+    WindowsNt => none
+  }
+}
+
+data host_budget_source_seed_mirror_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_budget_source",
+    decl_name: "host_budget_source_emitted_into_stage0",
+    field: WholeDeclaration
+  }
+}
+
+data host_budget_source_seed_mirror_note: String = "THIS MODEL IS THE AUTHORITY AND v1 STILL HAND-REALIZES IT, which is a mirror of exactly the kind that just went stale elsewhere in this change — so it is declared rather than left implicit. memory_governor::read_host_budget_bytes composes its own labels and cli_run::typed_module_cache_cap_derivation computes its own degraded flag, and neither reads these rows.\n\nWhy the mirror cannot simply be deleted today: one consumer runs strictly before any .dag value could exist. cli_run's enforce_typed_cache_entry_cap derives the typed-module-cache eviction bound from this same budget WHILE MODULES ARE BEING RESOLVED — it is the thing bounding the memory used to resolve the corpus, so it cannot be a value obtained by resolving the corpus. The governor's own arm in claim_executor is different and could in principle read a resolved value (it happens after the plan resolve), so that half is ordinary seed-shrink debt rather than a bootstrap constraint. The two must not be conflated when the emit lands: the first needs the value baked into the seed, the second only needs the seed to stop duplicating it.\n\nUntil then the honest position is that these rows are the authority a reviewer should check the seed against, and nothing executes that check — the same gap that let DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES drift in this very PR. One lens reading the seed's constants against their cited rows would cover this module, that constant, and DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES together."

@@ -1,0 +1,25 @@
+module test.claim.claim_executor_hand_rust_boundary_witness
+
+import gunbc.claim_executor_hand_rust_boundary {
+  claim_executor_boundary_row_count,
+  claim_executor_hand_rust_boundary_note,
+  claim_executor_live_scale_receipt,
+  claim_executor_terminal_boundary_declared
+}
+import v2.std.text { String }
+
+test fn claim_executor_terminal_boundary_is_declared() -> Bool {
+  claim_executor_terminal_boundary_declared()
+}
+
+test fn claim_executor_boundary_has_rows() -> Bool {
+  claim_executor_boundary_row_count() >= 10
+}
+
+test fn claim_executor_live_scale_receipt_records_loc() -> Bool {
+  string_contains(s: claim_executor_live_scale_receipt, pattern: "scripts/rust_item_census.py")
+}
+
+test fn claim_executor_boundary_is_instrument_not_deletion() -> Bool {
+  string_contains(s: claim_executor_hand_rust_boundary_note, pattern: "NOT a deletion plan")
+}

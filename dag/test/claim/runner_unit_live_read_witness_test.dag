@@ -90,8 +90,7 @@ test fn witness_parse_infinity_is_unbounded() -> Bool {
 
 test fn witness_parse_bytes_is_typed() -> Bool {
   match parse_systemd_memory_limit_show(raw: "17179869184") {
-    MemoryLimitBytes { bytes: b } =>
-      byte_size_count(b: b) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+    MemoryLimitBytes { bytes: b } => byte_size_count(b: b) == 17179869184
     _ => false
   }
 }

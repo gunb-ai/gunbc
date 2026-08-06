@@ -30,9 +30,9 @@ data github_pulls_mock_case_diff: PublishedMockCase = PublishedMockCase {
   case_id: 0
 }
 
-data github_pulls_mock_case_create_comment: PublishedMockCase = PublishedMockCase {
-  operation_key: "github.Pulls.CreateComment",
-  service: "github.Pulls",
+data github_issues_mock_case_create_comment: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Issues.CreateComment",
+  service: "github.Issues",
   operation: "CreateComment",
   case_id: 0
 }
@@ -63,7 +63,7 @@ data github_published_mock_corpus: List<PublishedMockCase> = [
   github_pulls_mock_case_list,
   github_pulls_mock_case_get,
   github_pulls_mock_case_diff,
-  github_pulls_mock_case_create_comment,
+  github_issues_mock_case_create_comment,
   github_pulls_mock_case_list_reviews,
   github_pulls_mock_case_create_review,
   github_pulls_mock_case_list_comments

@@ -20,7 +20,7 @@ type PartitionTotalityVerdict
   | PartitionGlobUnavailable { stderr: String }
 
 fn nonempty_lines(text: String) -> List<String> {
-  filter(xs: split(s: text, delimiter: "\n"), f: fn(line) { line != "" })
+  filter(xs: split(s: text, delimiter: "\n"), predicate: fn(line) { line != "" })
 }
 
 fn duplicated_entry_paths(paths: List<String>) -> List<String> {
@@ -43,9 +43,9 @@ fn compile_clean_partition_totality_verdict_from(
     PartitionGlobUnavailable { stderr: glob_stderr }
   } else {
     let glob_paths = nonempty_lines(glob_stdout)
-    let orphans = filter(xs: glob_paths, f: fn(p) { !list_contains_path(xs: roster_paths, target: p) })
+    let orphans = filter(xs: glob_paths, predicate: fn(p) { !list_contains_path(xs: roster_paths, target: p) })
     let duplicated = duplicated_entry_paths(paths: roster_paths)
-    let surplus = filter(xs: roster_paths, f: fn(p) { !list_contains_path(xs: glob_paths, target: p) })
+    let surplus = filter(xs: roster_paths, predicate: fn(p) { !list_contains_path(xs: glob_paths, target: p) })
     if list_length(items: orphans) > 0 {
       PartitionOrphan { unclaimed_paths: orphans }
     } else if list_length(items: duplicated) > 0 {
