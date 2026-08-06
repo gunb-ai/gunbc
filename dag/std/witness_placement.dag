@@ -70,7 +70,7 @@ fn envelope_exceeds_fast_lane(
   millisecond_count(m: envelope.wall_budget) > millisecond_count(m: fast_lane_budget)
 }
 
-fn derive_witness_route_from_envelope(
+fn derive_witness_route(
   purpose: WitnessPurpose,
   envelope: ScheduledWitnessEnvelope,
   fast_lane_budget: Millisecond,
@@ -130,18 +130,6 @@ fn derive_witness_route_from_envelope(
     EnvelopeCadenceFalsifierSubstrateLongLane =>
       Scheduled { cadence: envelope.cadence }
   }
-}
-
-fn derive_witness_route(
-  purpose: WitnessPurpose,
-  envelope: ScheduledWitnessEnvelope,
-  fast_lane_budget: Millisecond,
-) -> WitnessRoute {
-  derive_witness_route_from_envelope(
-    purpose: purpose,
-    envelope: envelope,
-    fast_lane_budget: fast_lane_budget,
-  )
 }
 
 fn derive_route_from_span(
