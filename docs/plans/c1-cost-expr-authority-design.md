@@ -155,7 +155,9 @@ Helper (v1 parity): `cost_loop_expr(binder, iterations, body)` = `CostSum` unles
 
 **Result: 22/22 PASS, 0 FAIL** (pre-carrier authoring receipt).
 
-**Re-executed 2026-08-06** on carrier head `9c1532707` (same worktree, worktree `claim_batch`): **22/22 PASS, 0 FAIL** plus **7/7** C1 carrier witnesses (`bounded_summation_test.dag` ×3, `expr_refusal_test.dag` ×4). Post-carrier baseline holds.
+**Acceptance (CI floor on this PR's merge head):** the enrolled `lens_cost/*` baseline roster and C1 carrier witnesses (`bounded_summation_test.dag` ×3, `expr_refusal_test.dag` ×4) are green on this PR's CI floor — the real discovery path for `*_test.dag` under `dag/` and `src/v2/`, not a worktree-local `claim_batch` receipt. Check the PR's **ci** check on the head this branch merges.
+
+**Authoring history — mid-carrier local run (2026-08-06):** worktree `claim_batch` at `9c1532707` reported 22/22 + 7/7 pass before later carrier edits (NFR roster row, `CostRefused` routing); retained for traceability only — superseded by CI acceptance above.
 
 | Entry | Function | Result |
 | --- | --- | --- |
@@ -218,7 +220,7 @@ The installed PATH binary cannot parse current `.dag` syntax (qualified type pat
 1. Add §2 types + §3 `CostExprRefusalCause` to `v2.lens.cost` (`v2.lens.cost.expr`). **Candidate on branch; pending main delivery.**
 2. Add §4 normalization functions; **do not** edit `symbolic_cost_fold` / `cost_lens`. **Candidate.**
 3. Add witnesses §6 (`bounded_summation_test.dag`, `expr_refusal_test.dag`). **Candidate.**
-4. Run 22/22 baseline roster green on CI at final head. **22/22 + 7/7 carrier witnesses green locally at `9c1532707`; CI floor pending.**
+4. Run 22/22 baseline roster green on CI at final head. **Green on this PR's CI floor** — baseline roster and C1 carrier witnesses execute via discovery on the merge head (check PR **ci** check). Local `claim_batch` receipts in §6 are authoring history only.
 5. `llvm_instruction_cost` — **no edit**. **Unchanged.**
 6. Design note on main (`docs/plans/c1-cost-expr-authority-design.md`). **Delivered.**
 
