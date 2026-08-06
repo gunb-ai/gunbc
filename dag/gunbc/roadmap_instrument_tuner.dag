@@ -108,6 +108,10 @@ fn program_depths() -> List<ProgramDepth> {
   [DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence]
 }
 
+fn instrument_user_depths() -> List<ProgramDepth> {
+  [DepthProgram, DepthOutcome, DepthFront]
+}
+
 fn program_modes() -> List<ProgramMode> {
   [ModeStatus, ModeRemaining, ModeWhy]
 }
@@ -126,6 +130,11 @@ fn cameras_for_focus(f: FocusSubject) -> List<ProgramCamera> {
 
 fn all_cameras() -> List<ProgramCamera> {
   flat_map(all_focus_subjects(), f => cameras_for_focus(f: f))
+}
+
+fn instrument_tuner_camera_population_joined() -> Bool {
+  count(all_cameras()) == count(program_depths()) * count(program_modes()) * count(all_focus_subjects())
+    && count(all_focus_subjects()) == 1 + count(v1_exit_finish_lines())
 }
 
 fn remaining_text(r: RemainingShape) -> String {
@@ -225,8 +234,8 @@ fn subject_row(spec: V1FinishLineSpec) -> Fragment {
 fn controls_section() -> Fragment {
   el("section", [
     el("h2", [ txt("camera controls") ]),
-    note(s: "Wheel and arrow keys cross exactly one detent. Depth and mode buttons set the camera directly; the reading below follows."),
-    el_class("div", instrument_row_class, map(program_depths(), d => depth_button(d: d))),
+    note(s: "Wheel and arrow keys cross exactly one detent. Depth buttons traverse each intermediate detent toward the label — no direct jumps. Mode buttons switch reading projection."),
+    el_class("div", instrument_row_class, map(instrument_user_depths(), d => depth_button(d: d))),
     el_class("div", instrument_row_class, map(program_modes(), m => mode_button(m: m))),
   ])
 }

@@ -139,6 +139,78 @@ fn camera_step_depth(c: ProgramCamera, step: DepthStep) -> ProgramCamera {
   ProgramCamera { depth: step_depth(d: c.depth, step: step), mode: c.mode, focus: c.focus }
 }
 
+fn camera_seek_depth(c: ProgramCamera, target: ProgramDepth) -> ProgramCamera {
+  if c.depth == target {
+    c
+  } else if program_depth_index(d: c.depth) < program_depth_index(d: target) {
+    camera_seek_depth(c: camera_step_depth(c: c, step: Inward), target: target)
+  } else {
+    camera_seek_depth(c: camera_step_depth(c: c, step: Outward), target: target)
+  }
+}
+
+data wheel_detent_threshold_px: Int = 80
+
+type WheelIntegrator {
+  travel_px: Int
+}
+
+fn wheel_integrator_initial() -> WheelIntegrator {
+  WheelIntegrator { travel_px: 0 }
+}
+
+fn wheel_normalized_delta(delta_y: Int, delta_mode: Int, viewport_height: Int) -> Int {
+  if delta_mode == 1 {
+    delta_y * 16
+  } else if delta_mode == 2 {
+    delta_y * viewport_height
+  } else {
+    delta_y
+  }
+}
+
+fn wheel_integrator_absorb(i: WheelIntegrator, delta_px: Int, threshold: Int) -> WheelIntegrator {
+  WheelIntegrator { travel_px: i.travel_px + delta_px }
+}
+
+fn wheel_integrator_steps_available(i: WheelIntegrator, threshold: Int) -> Int {
+  if threshold <= 0 {
+    0
+  } else if i.travel_px >= threshold {
+    i.travel_px / threshold
+  } else if i.travel_px <= -threshold {
+    (-i.travel_px) / threshold
+  } else {
+    0
+  }
+}
+
+fn wheel_integrator_consume_one_step(i: WheelIntegrator, threshold: Int) -> WheelIntegrator {
+  if i.travel_px >= threshold {
+    WheelIntegrator { travel_px: i.travel_px - threshold }
+  } else if i.travel_px <= -threshold {
+    WheelIntegrator { travel_px: i.travel_px + threshold }
+  } else {
+    i
+  }
+}
+
+fn wheel_step_direction(i: WheelIntegrator) -> DepthStep {
+  if i.travel_px > 0 { Inward } else { Outward }
+}
+
+fn wheel_owns_scroll_at_clamp(c: ProgramCamera, delta_px: Int) -> Bool {
+  let i = program_depth_index(d: c.depth)
+  let max = program_depth_index(d: DepthEvidence)
+  if delta_px > 0 && i >= max {
+    false
+  } else if delta_px < 0 && i <= program_depth_index(d: DepthProgram) {
+    false
+  } else {
+    true
+  }
+}
+
 fn camera_set_mode(c: ProgramCamera, m: ProgramMode) -> ProgramCamera {
   ProgramCamera { depth: c.depth, mode: m, focus: c.focus }
 }

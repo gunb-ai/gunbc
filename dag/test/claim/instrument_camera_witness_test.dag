@@ -11,8 +11,12 @@ import gunbc.design.instrument_camera {
   FocusSubject, NoSubjectSelected, FinishLineFocused, focus_subject_key,
   focus_finish_line, focus_subject_eq,
   ProgramCamera, camera_initial, camera_step_depth, camera_set_mode, camera_select,
+  camera_seek_depth,
   camera_preserves_subject_across_depth, camera_preserves_subject_across_mode,
   camera_wire, camera_from_wire, camera_wire_valid, camera_storage_key,
+  wheel_detent_threshold_px, WheelIntegrator, wheel_integrator_initial,
+  wheel_integrator_absorb, wheel_integrator_steps_available, wheel_integrator_consume_one_step,
+  wheel_normalized_delta, wheel_owns_scroll_at_clamp,
 }
 import gunbc.design.instrument_projection {
   SubjectPlacement, RefusalAggregate, NoActiveRefusal, ActiveRefusals, refusal_count,
@@ -174,6 +178,40 @@ fn witness_red_invalid_camera_wire_resets_to_initial() -> Bool {
     && camera_storage_key == "gunbc.instrument.camera"
 }
 
+fn witness_seek_traverses_each_intermediate_detent() -> Bool {
+  program_depth_key(d: camera_seek_depth(c: camera_initial, target: DepthFront).depth) == "front"
+    && program_depth_key(d: camera_step_depth(c: camera_initial, step: Inward).depth) == "outcome"
+}
+
+fn witness_wheel_below_threshold_accumulates_without_stepping() -> Bool {
+  let i = wheel_integrator_absorb(
+    i: wheel_integrator_absorb(i: wheel_integrator_initial(), delta_px: 30, threshold: wheel_detent_threshold_px),
+    delta_px: 30,
+    threshold: wheel_detent_threshold_px,
+  )
+  wheel_integrator_steps_available(i: i, threshold: wheel_detent_threshold_px) == 0
+}
+
+fn witness_wheel_threshold_crossing_admits_one_step() -> Bool {
+  let i = wheel_integrator_absorb(
+    i: wheel_integrator_initial(),
+    delta_px: wheel_detent_threshold_px,
+    threshold: wheel_detent_threshold_px,
+  )
+  wheel_integrator_steps_available(i: i, threshold: wheel_detent_threshold_px) == 1
+    && program_depth_key(
+      d: camera_step_depth(
+        c: camera_initial,
+        step: if i.travel_px > 0 { Inward } else { Outward },
+      ).depth,
+    ) == "outcome"
+}
+
+fn witness_wheel_releases_scroll_at_outermost_clamp() -> Bool {
+  !wheel_owns_scroll_at_clamp(c: camera_initial, delta_px: -40)
+    && wheel_owns_scroll_at_clamp(c: camera_initial, delta_px: 40)
+}
+
 test fn instrument_camera_keystone_holds() -> Bool {
   witness_only_the_authoritative_view_may_write_a_domain_fact()
     && witness_red_no_instrument_owner_may_write_a_domain_fact()
@@ -191,4 +229,8 @@ test fn instrument_camera_keystone_holds() -> Bool {
     && witness_red_the_projection_never_spends_two_focal_budgets()
     && witness_camera_wire_round_trips()
     && witness_red_invalid_camera_wire_resets_to_initial()
+    && witness_seek_traverses_each_intermediate_detent()
+    && witness_wheel_below_threshold_accumulates_without_stepping()
+    && witness_wheel_threshold_crossing_admits_one_step()
+    && witness_wheel_releases_scroll_at_outermost_clamp()
 }
