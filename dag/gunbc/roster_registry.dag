@@ -284,11 +284,9 @@ data roster_registry: List<RosterRegistration> = [
   RosterRegistration {
     roster: roster_decl(module_path: "v2.workflow.rust_crate_partition", decl_name: "stage0_partition_crate_rows"),
     unit_kind: "stage0 seed module basename per partition crate",
-    membership: ByDerivation {
-      predicate: roster_decl(
-        module_path: "v2.workflow.rust_crate_partition",
-        decl_name: "stage0_partition_crate_row_membership_derived"
-      )
+    membership: DeclaredFrontier {
+      reason: "C2 dissolved hand-listed per-crate module rosters — membership is now computed by stage0_derived_partition_outcome (order-independent owner fold over unit seeds plus stage0_cross_unit_import_edges) — but the edge census itself remains hand-enrolled beside source imports (§3 parallel representation; witnesses prove fold correctness on the enrolled graph, not edge↔import parity). Interim backstop: per-crate cargo-check consumer (#7925 C1)",
+      dissolve_on: "stage0_cross_unit_import_edges derives from the module import graph (not a hand edge list) AND stage0_partition_crate_row_membership_derived is the sole membership authority — then promote this registration to ByDerivation"
     }
   },
   RosterRegistration {

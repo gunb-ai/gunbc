@@ -97,8 +97,7 @@ type ModuleDagForwardClosureOutcome
 
 type Stage0PartitionAssignmentCollisionCause {
   module: ModuleId
-  incumbent_unit: CompilationUnitId
-  claiming_unit: CompilationUnitId
+  reachers: List<CompilationUnitId>
 }
 
 type Stage0PartitionReachDisposition
@@ -593,14 +592,13 @@ fn stage0_derived_partition_assign_module(
     raw_members_by_unit: raw_members_by_unit
   )
   match stage0_module_owner_from_reachers(module: member_module, reachers: reachers) {
-    Stage0ModuleOwnershipConflict { module: _, reachers: _ } =>
+    Stage0ModuleOwnershipConflict { module: _, reachers: conflict_reachers } =>
       Stage0DerivedPartitionRefused {
         cause: Stage0UnitMembershipReachRefused {
           disposition: Stage0PartitionAssignmentConflict {
             collision: Stage0PartitionAssignmentCollisionCause {
               module: member_module,
-              incumbent_unit: stage0_unit_runtime,
-              claiming_unit: stage0_unit_std_core
+              reachers: conflict_reachers
             }
           }
         }
@@ -960,7 +958,61 @@ fn stage0_partition_witness_assignment_conflict_refuses_holds() -> Bool {
     stage0_partition_witness_unit_b
   ]
   match stage0_module_owner_from_reachers(module: witness_module, reachers: reachers) {
-    Stage0ModuleOwnershipConflict { module: _, reachers: _ } => true
+    Stage0ModuleOwnershipConflict { module: conflict_module, reachers: conflict_reachers } =>
+      conflict_module == witness_module
+        && (conflict_reachers |> count) == 2
+        && stage0_compilation_unit_id_list_contains(
+          xs: conflict_reachers,
+          item: stage0_partition_witness_unit_a
+        )
+        && stage0_compilation_unit_id_list_contains(
+          xs: conflict_reachers,
+          item: stage0_partition_witness_unit_b
+        )
+    _ => false
+  }
+}
+
+fn stage0_partition_witness_assignment_conflict_cause_carries_reachers_holds() -> Bool {
+  let witness_module = stage0_module_id(basename: "stage0_partition_witness_conflict_shared")
+  let raw_members_by_unit = map_insert(
+    map_insert(
+      empty_map(),
+      stage0_partition_witness_unit_a,
+      [witness_module]
+    ),
+    stage0_partition_witness_unit_b,
+    [witness_module]
+  )
+  match stage0_derived_partition_assign_module(
+    assignment: empty_map(),
+    member_module: witness_module,
+    unit_ids: [
+      stage0_partition_witness_unit_a,
+      stage0_partition_witness_unit_b
+    ],
+    raw_members_by_unit: raw_members_by_unit
+  ) {
+    Stage0DerivedPartitionRefused {
+      cause: Stage0UnitMembershipReachRefused {
+        disposition: Stage0PartitionAssignmentConflict {
+          collision: Stage0PartitionAssignmentCollisionCause {
+            module: conflict_module,
+            reachers: conflict_reachers
+          }
+        }
+      }
+    } =>
+      conflict_module == witness_module
+        && (conflict_reachers |> count) == 2
+        && stage0_compilation_unit_id_list_contains(
+          xs: conflict_reachers,
+          item: stage0_partition_witness_unit_a
+        )
+        && stage0_compilation_unit_id_list_contains(
+          xs: conflict_reachers,
+          item: stage0_partition_witness_unit_b
+        )
     _ => false
   }
 }
