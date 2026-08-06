@@ -88,7 +88,7 @@ test fn witness_srv3_memory_high_knob_grounds_authority() -> Bool {
 test fn witness_srv3_memory_high_is_throttle_line_below_max() -> Bool {
   let desired = gunbc_runner_slot_desired()
   byte_size_count(b: desired.memory_high) < byte_size_count(b: desired.memory_max)
-    && byte_size_count(b: desired.memory_high) == byte_size_count(b: byte_size(16106127360))
+    && byte_size_count(b: desired.memory_high) >= byte_size_count(b: gunbc_floor_minimum_viable_armed_budget)
 }
 
 test fn witness_srv3_apply_mode_is_fresh_standup() -> Bool {

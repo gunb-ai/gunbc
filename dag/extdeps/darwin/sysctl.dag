@@ -1,0 +1,64 @@
+module extdeps.darwin.sysctl
+
+import std.types { NonEmptyStr, String, List, Bool }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/sysctl.3.html"
+  }
+}
+
+data darwin_sysctl_subject_note: String = "sysctl IS DARWIN'S ANSWER TO /proc/meminfo, and modeling it is what lets the memory governor stop treating macOS as a platform with no memory facts. The corpus previously reached a terminal arm on any host without /proc and reported having read a file that does not exist there; the honest repair is not a better label for the absence, it is to read the interface the platform actually provides.\n\nWHAT THIS MODULE OWNS: the named MIB entries this repository reads and their units. hw.memsize is total physical RAM in BYTES — note the contrast with /proc/meminfo, whose fields are kibibytes, so a consumer that shared one parser across both would be wrong by 1024x in the same direction as the ru_maxrss trap one module over. hw.pagesize is the VM page size in bytes, required to turn Mach page counts into byte quantities.\n\nOBSERVED LIVE on the operator's machine, 2026-08-05: hw.memsize = 17179869184 (exactly 16 GiB) and hw.pagesize = 16384 (Apple silicon's 16 KiB pages, not the 4096 an x86 habit would assume — which is precisely the constant a hand-written page-count conversion gets wrong).\n\nWHAT THIS MODULE DOES NOT OWN: an available-memory figure. Darwin exposes no single MemAvailable equivalent; the nearest construction sums free, inactive and speculative page counts from Mach VM statistics, and whether that sum is the right analogue is a judgement this module declines to make silently. Total physical RAM is a fact; a derived availability estimate would be a model, and it belongs where its assumptions can be stated."
+
+type DarwinSysctlMib
+  = HwMemsize
+  | HwPagesize
+
+fn darwin_sysctl_mib_name(m: DarwinSysctlMib) -> NonEmptyStr {
+  match m {
+    HwMemsize => "hw.memsize"
+    HwPagesize => "hw.pagesize"
+  }
+}
+
+data darwin_sysctl_mibs_read_by_this_repository: List<DarwinSysctlMib> = [
+  HwMemsize,
+  HwPagesize,
+]
+
+data darwin_sysctl_units_are_bytes_note: String = "Both MIB entries modeled here are denominated in BYTES, unlike /proc/meminfo's kibibyte fields. The unit is stated as a typed row rather than left to the reader because the two interfaces are consumed by the same governor for the same purpose, and the only thing distinguishing a correct conversion from a 1024x error is which platform produced the number."
+
+type DarwinMemoryFacts {
+  total_physical: ByteSize
+  page_size: ByteSize
+}
+
+fn darwin_memory_facts(total_physical_bytes: Int, page_size_bytes: Int) -> DarwinMemoryFacts {
+  DarwinMemoryFacts {
+    total_physical: byte_size(total_physical_bytes),
+    page_size: byte_size(page_size_bytes),
+  }
+}
+
+fn darwin_memory_facts_are_plausible(f: DarwinMemoryFacts) -> Bool {
+  byte_size_count(b: f.total_physical) > 0
+    && byte_size_count(b: f.page_size) > 0
+    && byte_size_count(b: f.total_physical) > byte_size_count(b: f.page_size)
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.darwin.sysctl",
+      decl_name: "darwin_sysctl_mibs_read_by_this_repository",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.darwin.sysctl.extdeps_external_authority_anchor,
+  further_citations: []
+}

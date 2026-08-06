@@ -3,6 +3,7 @@ module tools.floor_effect_gate_witness
 import gunbc.ci_gate { EmitHostGate, CheapClaimPoolGate }
 import gunbc.ci_spec {
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
+  ProseRowIntroductionGate,
   RegenVerifyGate
 }
 import tools.ci_gates { exit_ok, run_spec_gate }
@@ -11,6 +12,7 @@ import tools.extdeps_scope_placement_gate {
   scope_placement_failure_reason,
   scope_placement_membership_verdict,
 }
+import tools.prose_row_introduction_gate { prose_row_gate_failure_receipt }
 import tools.dag_compile_clean_gate { dag_compile_clean_failure_receipt }
 import tools.generated_artifact_gate { generated_artifact_drift_failure_receipt }
 import tools.regen_verify_gate { regen_verify_failure_receipt }
@@ -25,7 +27,7 @@ data extdeps_scope_placement_gate_passes_name: String = "extdeps_scope_placement
 
 data scope_placement_gate_loudness_seed_probe_passes_name: String = "scope_placement_gate_loudness_seed_probe_passes"
 
-data floor_gate_failure_receipt_note: String = "claim_executor derives a failure-receipt companion from a Bool witness's own name and evaluates it in THIS entry's context, so the companion must be declared here beside the witness it explains — not only in the gate module that builds the reason. Naming is mechanical: <witness>_passes or <witness>_holds yields <witness>_failure_receipt, delegated to gunbc.test_module_hygiene.failure_receipt_companion (the single authority; cli_run::failure_receipt_companion routes through the same module). scope_placement_gate_loudness_seed_probe_* is a hermetic always-false _passes witness + failure_receipt companion enrolled solely so dag/test/claim/extdeps_scope_placement_gate_loudness_witness_test.dag can execute production seed_runner_bool_false_failure_detail against a located receipt without re-running the wet placement gate; it must stay OFF CiSpec.witness_entries and OFF any future entry-scoped *_passes auto-discovery (auto-enrollment would red CI). Mute frontier (identity join on this entry, 2026-08-05): eight _passes witnesses, five _failure_receipt companions (extdeps_scope_placement_gate_failure_receipt, scope_placement_gate_loudness_seed_probe_failure_receipt, dag_compile_clean_gate_failure_receipt, generated_artifact_drift_gate_failure_receipt, regen_verify_gate_failure_receipt; _companion_name helpers are not companions). Three production gates still return bare returned Bool(false) on refusal with no located receipt: cheap_claim_pool_gate, emit_host_gate, extdeps_external_authority_gate. Dissolution trigger: a gate leaves this frontier when this entry declares its <witness>_failure_receipt companion beside the _passes witness. Frontier counts are hand-authored prose debt — dissolve-on: derived projection from this entry's declarations (see loudness_witness_note sequencing note)."
+data floor_gate_failure_receipt_note: String = "claim_executor derives a failure-receipt companion from a Bool witness's own name and evaluates it in THIS entry's context, so the companion must be declared here beside the witness it explains — not only in the gate module that builds the reason. Naming is mechanical: <witness>_passes or <witness>_holds yields <witness>_failure_receipt, delegated to gunbc.test_module_hygiene.failure_receipt_companion (the single authority; cli_run::failure_receipt_companion routes through the same module). scope_placement_gate_loudness_seed_probe_* is a hermetic always-false _passes witness + failure_receipt companion enrolled solely so dag/test/claim/extdeps_scope_placement_gate_loudness_witness_test.dag can execute production seed_runner_bool_false_failure_detail against a located receipt without re-running the wet placement gate; it must stay OFF CiSpec.witness_entries and OFF any future entry-scoped *_passes auto-discovery (auto-enrollment would red CI). Mute frontier (identity join on this entry, 2026-08-06): nine _passes witnesses, six _failure_receipt companions (extdeps_scope_placement_gate_failure_receipt, prose_row_introduction_gate_failure_receipt, scope_placement_gate_loudness_seed_probe_failure_receipt, dag_compile_clean_gate_failure_receipt, generated_artifact_drift_gate_failure_receipt, regen_verify_gate_failure_receipt; _companion_name helpers are not companions). Three production gates still return bare returned Bool(false) on refusal with no located receipt: cheap_claim_pool_gate, emit_host_gate, extdeps_external_authority_gate. Dissolution trigger: a gate leaves this frontier when this entry declares its <witness>_failure_receipt companion beside the _passes witness. Frontier counts are hand-authored prose debt — dissolve-on: derived projection from this entry's declarations (see loudness_witness_note sequencing note)."
 
 fn extdeps_scope_placement_gate_failure_receipt_companion_name() -> String {
   match failure_receipt_companion(function: extdeps_scope_placement_gate_passes_name) {
@@ -60,6 +62,14 @@ func extdeps_scope_placement_gate_passes() -> Bool {
 
 func extdeps_scope_placement_gate_failure_receipt() -> String {
   tools.extdeps_scope_placement_gate.scope_placement_failure_receipt()
+}
+
+func prose_row_introduction_gate_passes() -> Bool {
+  tools.ci_gates.exit_ok(e: run_spec_gate(g: ProseRowIntroductionGate))
+}
+
+func prose_row_introduction_gate_failure_receipt() -> String {
+  tools.prose_row_introduction_gate.prose_row_gate_failure_receipt()
 }
 
 func scope_placement_gate_loudness_seed_probe_passes() -> Bool {

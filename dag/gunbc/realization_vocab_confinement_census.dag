@@ -49,7 +49,7 @@ import v2.lens.realization_vocabulary_containment {
   target_ast_vocab_modules,
   target_ast_vocab_module_prefixes,
   realization_edge_path_prefixes,
-  realization_vocab_exception_paths,
+  realization_vocab_grandfathered_edge_keys,
 }
 
 data confinement_census_consumer_note: String = "THE FIRST DOMAIN CLAIM CARRIED END TO END ON THE CENSUS CARRIER, and the reason this module exists at all rather than another synthetic fixture. Blocker 8 asked for a real consumer, and a carrier tested only against rows it authored itself proves nothing about whether real data can inhabit it. The subject here is the confinement surface of the realization-vocabulary containment lens (v2.lens.realization_vocabulary_containment): the four declared rosters by which that lens decides what counts as target-AST vocabulary and where it is allowed to appear. Those rosters are ordinary declared data on main, so this census is substrate-only — it reads no live tree, and its row set is a function of the pinned revision rather than of whenever CI happens to run."
@@ -133,7 +133,7 @@ fn confinement_surface_declared_keys() -> List<CensusSubjectKey> {
   let exact = target_ast_vocab_modules |> map(key => key as CensusSubjectKey)
   let prefixes = target_ast_vocab_module_prefixes |> map(key => key as CensusSubjectKey)
   let edges = realization_edge_path_prefixes |> map(key => key as CensusSubjectKey)
-  let exceptions = realization_vocab_exception_paths() |> map(key => key as CensusSubjectKey)
+  let exceptions = realization_vocab_grandfathered_edge_keys() |> map(key => key as CensusSubjectKey)
   append(append(append(exact, prefixes), edges), exceptions)
 }
 
@@ -151,7 +151,7 @@ fn confinement_surface_axis_of_declared_key() -> List<CensusObservedRow> {
     |> map(key => confinement_surface_row(key: key, axis: VocabularyModulePrefix))
   let edges = realization_edge_path_prefixes
     |> map(key => confinement_surface_row(key: key, axis: RealizationEdgePathPrefix))
-  let exceptions = realization_vocab_exception_paths()
+  let exceptions = realization_vocab_grandfathered_edge_keys()
     |> map(key => confinement_surface_row(key: key, axis: DeclaredExceptionUnit))
   append(append(append(exact, prefixes), edges), exceptions)
 }

@@ -140,6 +140,10 @@ pub struct ImportRule {
 pub struct SharingStrategy {
     pub needs_sharing: bool,
     pub wrap_template: String,
+    pub wrap_type_prefix: String,
+    pub wrap_ctor_template: String,
+    pub wrap_ctor_open: String,
+    pub wrap_ctor_close: String,
     pub clone_value: String,
     pub deref_clone: String,
     pub field_clone: String,
@@ -527,6 +531,10 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         sharing: Rc::new(SharingStrategy {
             needs_sharing: true,
             wrap_template: "Rc<{0}>".to_string(),
+            wrap_type_prefix: "Rc<".to_string(),
+            wrap_ctor_template: "Rc::new({0})".to_string(),
+            wrap_ctor_open: "Rc::new(".to_string(),
+            wrap_ctor_close: ")".to_string(),
             clone_value: "{0}.clone()".to_string(),
             deref_clone: "(*{0}).clone()".to_string(),
             field_clone: "{0}.{1}.clone()".to_string(),
@@ -709,6 +717,10 @@ pub fn python_spec() -> Rc<LanguageSpec> {
         sharing: Rc::new(SharingStrategy {
             needs_sharing: false,
             wrap_template: "{0}".to_string(),
+            wrap_type_prefix: "".to_string(),
+            wrap_ctor_template: "{0}".to_string(),
+            wrap_ctor_open: "".to_string(),
+            wrap_ctor_close: "".to_string(),
             clone_value: "{0}".to_string(),
             deref_clone: "{0}".to_string(),
             field_clone: "{0}.{1}".to_string(),
@@ -893,6 +905,10 @@ pub fn go_spec() -> Rc<LanguageSpec> {
         sharing: Rc::new(SharingStrategy {
             needs_sharing: false,
             wrap_template: "{0}".to_string(),
+            wrap_type_prefix: "".to_string(),
+            wrap_ctor_template: "{0}".to_string(),
+            wrap_ctor_open: "".to_string(),
+            wrap_ctor_close: "".to_string(),
             clone_value: "{0}".to_string(),
             deref_clone: "{0}".to_string(),
             field_clone: "{0}.{1}".to_string(),
@@ -1061,6 +1077,10 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
         sharing: Rc::new(SharingStrategy {
             needs_sharing: true,
             wrap_template: "Rc<{0}>".to_string(),
+            wrap_type_prefix: "Rc<".to_string(),
+            wrap_ctor_template: "Rc::new({0})".to_string(),
+            wrap_ctor_open: "Rc::new(".to_string(),
+            wrap_ctor_close: ")".to_string(),
             clone_value: "{0}.clone()".to_string(),
             deref_clone: "(*{0}).clone()".to_string(),
             field_clone: "{0}.{1}.clone()".to_string(),
@@ -1362,6 +1382,36 @@ pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
     {
         let tmpl = sharing_for_target(target.clone()).wrap_template.clone();
         v1_rt::replace(tmpl.clone(), "{0}".to_string(), inner.clone())
+    }
+}
+
+pub fn sharing_wrap_ctor_for_target(target: RenderTarget, inner_expr: String) -> String {
+    {
+        let tmpl = sharing_for_target(target.clone())
+            .wrap_ctor_template
+            .clone();
+        v1_rt::replace(tmpl.clone(), "{0}".to_string(), inner_expr.clone())
+    }
+}
+
+pub fn sharing_wrap_ctor_open_for_target(target: RenderTarget) -> String {
+    sharing_for_target(target.clone()).wrap_ctor_open.clone()
+}
+
+pub fn sharing_wrap_ctor_close_for_target(target: RenderTarget) -> String {
+    sharing_for_target(target.clone()).wrap_ctor_close.clone()
+}
+
+pub fn sharing_type_is_wrapped_for_target(target: RenderTarget, type_name: String) -> bool {
+    {
+        let prefix = sharing_for_target(target.clone()).wrap_type_prefix.clone();
+        let prefix_len = v1_rt::string_length(&prefix);
+        if (prefix_len.clone() == 0) {
+            false
+        } else {
+            ((v1_rt::string_length(&type_name) >= prefix_len.clone())
+                && (v1_rt::substring(&type_name, 0, prefix_len.clone()) == prefix.clone()))
+        }
     }
 }
 

@@ -19,6 +19,7 @@ use v1_compiler::v1_std_core::{build_newline_index, NewlineIndex, Node};
 
 const AUTHORITY_FILES: &[&str] = &[
     "dag/extdeps/github/pulls.dag",
+    "dag/extdeps/github/issues.dag",
     "dag/extdeps/github/gists.dag",
     "dag/extdeps/llm/anthropic_rest.dag",
     "dag/extdeps/llm/openai_rest.dag",
@@ -32,10 +33,10 @@ const TRACKED: &[(&str, &str)] = &[
     ("github.Pulls", "List"),
     ("github.Pulls", "Get"),
     ("github.Pulls", "Diff"),
-    ("github.Pulls", "CreateComment"),
     ("github.Pulls", "ListReviews"),
     ("github.Pulls", "CreateReview"),
     ("github.Pulls", "ListComments"),
+    ("github.Issues", "CreateComment"),
     ("github.Gist", "Create"),
     ("llm.Anthropic", "Messages"),
     ("llm.OpenAI", "ChatCompletion"),
@@ -222,7 +223,7 @@ fn main() -> ExitCode {
 
     let create_comment = tracked
         .iter()
-        .find(|o| o.service == "github.Pulls" && o.name == "CreateComment")
+        .find(|o| o.service == "github.Issues" && o.name == "CreateComment")
         .expect("CreateComment in tracked ops");
     if !create_comment.path.contains("/issues/") {
         return fail(format!(

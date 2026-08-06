@@ -1,0 +1,415 @@
+module extdeps.github.app
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.crypto.hash { HashAlgorithm, Sha256 }
+import extdeps.github.github { GitHubUser }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/apps/apps"
+  }
+}
+
+data installation_auth_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation"
+  }
+}
+
+data private_key_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/managing-private-keys-for-github-apps"
+  }
+}
+
+type GitHubAppId { value: Int }
+
+type GitHubAppInstallationId { value: Int }
+
+type GitHubRepositoryId { value: Int }
+
+type GitHubAppRegistration {
+  owner: GitHubUser
+  app_id: GitHubAppId
+  client_id: NonEmptyStr
+  slug: NonEmptyStr
+  homepage: Uri?
+}
+
+type GitHubAppPermissionAccess
+  = AppAccessRead
+  | AppAccessWrite
+
+type GitHubPermissionAxis
+  = ActionsAxis
+  | ArtifactMetadataAxis
+  | AttestationsAxis
+  | ChecksAxis
+  | CodeQualityAxis
+  | ContentsAxis
+  | DeploymentsAxis
+  | DiscussionsAxis
+  | IdTokenAxis
+  | IssuesAxis
+  | MetadataAxis
+  | ModelsAxis
+  | PackagesAxis
+  | PagesAxis
+  | PullRequestsAxis
+  | RepositoryProjectsAxis
+  | SecurityEventsAxis
+  | StatusesAxis
+  | VulnerabilityAlertsAxis
+  | WorkflowsAxis
+  | AdministrationAxis
+  | OrganizationSelfHostedRunnersAxis
+
+data all_permission_axes: List<GitHubPermissionAxis> = [
+  ActionsAxis, ArtifactMetadataAxis, AttestationsAxis, ChecksAxis, CodeQualityAxis,
+  ContentsAxis, DeploymentsAxis, DiscussionsAxis, IdTokenAxis, IssuesAxis,
+  MetadataAxis, ModelsAxis, PackagesAxis, PagesAxis, PullRequestsAxis,
+  RepositoryProjectsAxis, SecurityEventsAxis, StatusesAxis, VulnerabilityAlertsAxis,
+  WorkflowsAxis, AdministrationAxis, OrganizationSelfHostedRunnersAxis
+]
+
+fn permission_axis_wire_name(axis: GitHubPermissionAxis) -> NonEmptyStr {
+  match axis {
+    ActionsAxis => "actions"
+    ArtifactMetadataAxis => "artifact_metadata"
+    AttestationsAxis => "attestations"
+    ChecksAxis => "checks"
+    CodeQualityAxis => "code_quality"
+    ContentsAxis => "contents"
+    DeploymentsAxis => "deployments"
+    DiscussionsAxis => "discussions"
+    IdTokenAxis => "id_token"
+    IssuesAxis => "issues"
+    MetadataAxis => "metadata"
+    ModelsAxis => "models"
+    PackagesAxis => "packages"
+    PagesAxis => "pages"
+    PullRequestsAxis => "pull_requests"
+    RepositoryProjectsAxis => "repository_projects"
+    SecurityEventsAxis => "security_events"
+    StatusesAxis => "statuses"
+    VulnerabilityAlertsAxis => "vulnerability_alerts"
+    WorkflowsAxis => "workflows"
+    AdministrationAxis => "administration"
+    OrganizationSelfHostedRunnersAxis => "organization_self_hosted_runners"
+  }
+}
+
+fn permission_axis_from_wire(name: NonEmptyStr) -> GitHubPermissionAxis? {
+  fold_list(
+    xs: all_permission_axes,
+    empty: none,
+    cons: fn(found, axis) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent => if name == permission_axis_wire_name(axis: axis) { Present { value: axis } } else { none }
+      }
+    }
+  )
+}
+
+type GitHubAppPermission {
+  name: GitHubPermissionAxis
+  access: GitHubAppPermissionAccess
+}
+
+type ObservedGitHubPermissionName { wire_name: NonEmptyStr }
+
+type ObservedGitHubPermission {
+  name: ObservedGitHubPermissionName
+  access: GitHubAppPermissionAccess
+}
+
+fn observed_permission_name(axis: GitHubPermissionAxis) -> ObservedGitHubPermissionName {
+  ObservedGitHubPermissionName { wire_name: permission_axis_wire_name(axis: axis) }
+}
+
+fn as_observed_permission(p: GitHubAppPermission) -> ObservedGitHubPermission {
+  ObservedGitHubPermission { name: observed_permission_name(axis: p.name), access: p.access }
+}
+
+fn observed_permission_name_eq(a: ObservedGitHubPermissionName, b: ObservedGitHubPermissionName) -> Bool {
+  a.wire_name == b.wire_name
+}
+
+fn observed_name_is_axis(name: ObservedGitHubPermissionName, axis: GitHubPermissionAxis) -> Bool {
+  match permission_axis_from_wire(name: name.wire_name) {
+    Absent => false
+    Present { value: observed_axis } => observed_axis == axis
+  }
+}
+
+fn observed_access_for(
+  perms: List<ObservedGitHubPermission>,
+  axis: GitHubPermissionAxis
+) -> GitHubAppPermissionAccess? {
+  fold(perms, init: none, f: fn(found, p) {
+    match found {
+      Present { value: v } => Present { value: v }
+      Absent => if observed_name_is_axis(name: p.name, axis: axis) { Present { value: p.access } } else { none }
+    }
+  })
+}
+
+fn observed_permission_occurrences(
+  perms: List<ObservedGitHubPermission>,
+  name: ObservedGitHubPermissionName
+) -> Int {
+  fold(perms, init: 0, f: fn(n, p) { if observed_permission_name_eq(a: p.name, b: name) { n + 1 } else { n } })
+}
+
+fn first_duplicated_observed_permission(perms: List<ObservedGitHubPermission>) -> ObservedGitHubPermissionName? {
+  fold(perms, init: none, f: fn(found, p) {
+    match found {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        if observed_permission_occurrences(perms: perms, name: p.name) > 1 {
+          Present { value: p.name }
+        } else {
+          none
+        }
+    }
+  })
+}
+
+fn permission_access_rank(access: GitHubAppPermissionAccess) -> Int {
+  match access {
+    AppAccessRead => 1
+    AppAccessWrite => 2
+  }
+}
+
+fn permission_access_at_least(
+  held: GitHubAppPermissionAccess,
+  requested: GitHubAppPermissionAccess
+) -> Bool {
+  permission_access_rank(access: held) >= permission_access_rank(access: requested)
+}
+
+fn permission_name_eq(a: GitHubPermissionAxis, b: GitHubPermissionAxis) -> Bool {
+  a == b
+}
+
+type GitHubAppPermissionSetAdmission
+  = PermissionSetAdmitted { permissions: List<GitHubAppPermission> }
+  | PermissionSetDuplicateName { name: GitHubPermissionAxis }
+
+data no_admitted_permissions: List<GitHubAppPermission> = []
+
+fn permission_name_occurrences(
+  perms: List<GitHubAppPermission>,
+  name: GitHubPermissionAxis
+) -> Int {
+  fold_list(
+    xs: perms,
+    empty: 0,
+    cons: fn(n, p) { if permission_name_eq(a: p.name, b: name) { n + 1 } else { n } }
+  )
+}
+
+fn first_duplicated_permission(perms: List<GitHubAppPermission>) -> GitHubAppPermission? {
+  fold_list(
+    xs: perms,
+    empty: none,
+    cons: fn(found, p) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if permission_name_occurrences(perms: perms, name: p.name) > 1 {
+            Present { value: p }
+          } else {
+            none
+          }
+      }
+    }
+  )
+}
+
+fn admit_permission_set(perms: List<GitHubAppPermission>) -> GitHubAppPermissionSetAdmission {
+  match first_duplicated_permission(perms: perms) {
+    Present { value: dup } => PermissionSetDuplicateName { name: dup.name }
+    Absent => PermissionSetAdmitted { permissions: perms }
+  }
+}
+
+type GitHubAppRepositorySelectionMode
+  = SelectionAll
+  | SelectionSelected
+
+type GitHubAppInstallation {
+  installation_id: GitHubAppInstallationId
+  app_id: GitHubAppId
+  app_slug: NonEmptyStr
+  html_url: Uri
+  account: GitHubUser
+  repository_selection: GitHubAppRepositorySelectionMode
+  permissions: List<ObservedGitHubPermission>
+  subscribed_events: List<NonEmptyStr>
+}
+
+type GitHubInstallationRepositoryNarrowing
+  = RepositoryNarrowingOmitted
+  | SelectedRepositoryNames { names: List<NonEmptyStr> }
+  | SelectedRepositoryIds { ids: List<GitHubRepositoryId> }
+
+type GitHubInstallationPermissionNarrowing
+  = PermissionNarrowingOmitted
+  | SelectedPermissions { permissions: List<GitHubAppPermission> }
+
+type GitHubInstallationTokenRequest {
+  installation_id: GitHubAppInstallationId
+  repositories: GitHubInstallationRepositoryNarrowing
+  permissions: GitHubInstallationPermissionNarrowing
+}
+
+type AuthoredPermissionProjection
+  = AuthoredPermissions { permissions: List<GitHubAppPermission> }
+  | UnknownPermissionWireName { wire_name: NonEmptyStr }
+
+fn requested_permissions(
+  narrowing: GitHubInstallationPermissionNarrowing,
+  installation: GitHubAppInstallation
+) -> AuthoredPermissionProjection {
+  match narrowing {
+    PermissionNarrowingOmitted => authored_subset_of(perms: installation.permissions)
+    SelectedPermissions { permissions } => AuthoredPermissions { permissions: permissions }
+  }
+}
+
+fn authored_subset_of(perms: List<ObservedGitHubPermission>) -> AuthoredPermissionProjection {
+  fold_list(
+    xs: perms,
+    empty: AuthoredPermissions { permissions: [] },
+    cons: fn(acc, p) {
+      match acc {
+        UnknownPermissionWireName { wire_name } => UnknownPermissionWireName { wire_name: wire_name }
+        AuthoredPermissions { permissions } =>
+          match permission_axis_from_wire(name: p.name.wire_name) {
+            Absent => UnknownPermissionWireName { wire_name: p.name.wire_name }
+            Present { value: axis } =>
+              AuthoredPermissions {
+                permissions: concat(permissions, [GitHubAppPermission { name: axis, access: p.access }])
+              }
+          }
+      }
+    }
+  )
+}
+
+fn permission_access_in(
+  perms: List<GitHubAppPermission>,
+  name: GitHubPermissionAxis
+) -> GitHubAppPermissionAccess? {
+  fold_list(
+    xs: perms,
+    empty: none,
+    cons: fn(found, p) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent => if permission_name_eq(a: p.name, b: name) { Present { value: p.access } } else { none }
+      }
+    }
+  )
+}
+
+type PermissionNarrowingVerdict
+  = NarrowingWithinInstallation
+  | NarrowingExceedsInstallation
+  | NarrowingUnverifiable { unknown_wire_name: NonEmptyStr }
+
+fn permission_narrowing_verdict(
+  narrowing: GitHubInstallationPermissionNarrowing,
+  installation: GitHubAppInstallation
+) -> PermissionNarrowingVerdict {
+  match requested_permissions(narrowing: narrowing, installation: installation) {
+    UnknownPermissionWireName { wire_name } =>
+      NarrowingUnverifiable { unknown_wire_name: wire_name }
+    AuthoredPermissions { permissions } =>
+      fold_list(
+        xs: permissions,
+        empty: NarrowingWithinInstallation,
+        cons: fn(verdict, r) {
+          match verdict {
+            NarrowingUnverifiable { unknown_wire_name } =>
+              NarrowingUnverifiable { unknown_wire_name: unknown_wire_name }
+            NarrowingExceedsInstallation => NarrowingExceedsInstallation
+            NarrowingWithinInstallation =>
+              match observed_access_for(perms: installation.permissions, axis: r.name) {
+                Absent => NarrowingExceedsInstallation
+                Present { value: held } =>
+                  if permission_access_at_least(held: held, requested: r.access) {
+                    NarrowingWithinInstallation
+                  } else {
+                    NarrowingExceedsInstallation
+                  }
+              }
+          }
+        }
+      )
+  }
+}
+
+fn permission_narrowing_is_within(
+  narrowing: GitHubInstallationPermissionNarrowing,
+  installation: GitHubAppInstallation
+) -> Bool {
+  match permission_narrowing_verdict(narrowing: narrowing, installation: installation) {
+    NarrowingWithinInstallation => true
+    NarrowingExceedsInstallation => false
+    NarrowingUnverifiable { unknown_wire_name: _ } => false
+  }
+}
+
+type GitHubAppKeyFingerprintEncoding =
+  | FingerprintBase64
+
+type GitHubAppPublicKeyFingerprint {
+  algorithm: HashAlgorithm
+  encoding: GitHubAppKeyFingerprintEncoding
+  digest: NonEmptyStr
+}
+
+fn sha256_base64_key_fingerprint(digest: NonEmptyStr) -> GitHubAppPublicKeyFingerprint {
+  GitHubAppPublicKeyFingerprint {
+    algorithm: Sha256,
+    encoding: FingerprintBase64,
+    digest: digest,
+  }
+}
+
+fn key_fingerprint_eq(a: GitHubAppPublicKeyFingerprint, b: GitHubAppPublicKeyFingerprint) -> Bool {
+  match a.algorithm {
+    Sha256 => match b.algorithm {
+      Sha256 => match a.encoding {
+        FingerprintBase64 => match b.encoding {
+          FingerprintBase64 => a.digest == b.digest
+        }
+      }
+    }
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.app",
+      decl_name: "GitHubAppRegistration",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.app.extdeps_external_authority_anchor,
+  further_citations: [
+    extdeps.github.app.installation_auth_citation,
+    extdeps.github.app.private_key_citation
+  ]
+}

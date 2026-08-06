@@ -138,6 +138,22 @@ thread_local! {
     static CALL_ENV_DEPTH_PEAK: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
+/// Default-off: when `interp_test_witness` is compiled in, the hook is a guarded no-op (one
+/// relaxed atomic load per `eval_call`) until a test arms it.
+#[cfg(any(test, feature = "interp_test_witness"))]
+static CALL_ENV_DEPTH_WITNESS_ARMED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+fn call_env_depth_witness_enabled() -> bool {
+    CALL_ENV_DEPTH_WITNESS_ARMED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn arm_call_env_depth_witness_for_test() {
+    CALL_ENV_DEPTH_WITNESS_ARMED.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn with_lexical_base_env<R>(base: &Rc<Env>, f: impl FnOnce() -> R) -> R {
     LEXICAL_BASE_ENV.with(|cell| {
         let prev = cell.borrow_mut().take();
@@ -154,7 +170,9 @@ fn with_lexical_base_env<R>(base: &Rc<Env>, f: impl FnOnce() -> R) -> R {
         }
         let _guard = LexicalBaseGuard { prev };
         #[cfg(any(test, feature = "interp_test_witness"))]
-        CALL_ENV_DEPTH_PEAK.with(|peak| peak.set(0));
+        if call_env_depth_witness_enabled() {
+            CALL_ENV_DEPTH_PEAK.with(|peak| peak.set(0));
+        }
         f()
     })
 }
@@ -169,6 +187,9 @@ fn lexical_base_env(caller_env: &Rc<Env>) -> Rc<Env> {
 
 #[cfg(any(test, feature = "interp_test_witness"))]
 fn record_call_env_depth(env: &Env) {
+    if !call_env_depth_witness_enabled() {
+        return;
+    }
     let depth = env.chain_depth();
     CALL_ENV_DEPTH_PEAK.with(|peak| {
         let current = peak.get();
@@ -1374,20 +1395,27 @@ pub struct InterpContext {
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
     // Per-call parameter-name derivation is invariant per fn_node but was re-sliced from
     // source spans on every call (authored_name_at). Memoize it per ctx, keyed by fn_node
-    // pointer identity — sound because the ctx owns fn_nodes, so pointers are stable for the
-    // cache's lifetime and the cache dies with the ctx (same discipline as data_cache above).
+    // pointer identity. The key alone is not sound: the ctx does not own fn_nodes (they are
+    // borrowed `Rc<Node>`s that can be dropped while the ctx lives), so a freed node's address
+    // can be reused by an unrelated later node and silently collide on this key. keepalive_fns
+    // retains the `Rc<Node>` behind each new key for the ctx's lifetime (same discipline as
+    // PureCallMemo.keepalive_fns / EvalRecomputeTrace.keepalive_fns / EvalCallMemo.keepalive_fns),
+    // making the pointer stable and the cache dies with the ctx (same discipline as data_cache).
     // Value = (filtered named-param list, all-param list), matching call_function's two uses.
     param_name_cache: std::cell::RefCell<HashMap<usize, Rc<(Vec<String>, Vec<String>)>>>,
+    param_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
     // Same chokepoint, ExprVar arm: eval_var rebuilt the variable name String from its source
     // span (expr_var_name_at) and re-interned it (ctx.sym) on every read. Memoize the interned
-    // Symbol per ExprVar node — keyed by node pointer, sound for the ctx lifetime exactly as
-    // data_cache/param_name_cache above. Eval then skips the slice + re-intern and goes straight
+    // Symbol per ExprVar node — keyed by node pointer, kept alive via var_sym_cache_keepalive
+    // exactly as param_name_cache above. Eval then skips the slice + re-intern and goes straight
     // to env.lookup(sym); the name String is materialized lazily only on the registry slow path.
     var_sym_cache: std::cell::RefCell<HashMap<usize, Symbol>>,
+    var_sym_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
     // Same chokepoint, ExprCall callee name: eval_call re-sliced the callee name from its source
     // span (expr_call_func_at -> authored_name_at) on every call. Memoize the decoded name per
-    // call node — keyed by node pointer, sound for the ctx lifetime as the caches above.
+    // call node — keyed by node pointer, kept alive via call_func_name_cache_keepalive as above.
     call_func_name_cache: std::cell::RefCell<HashMap<usize, String>>,
+    call_func_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     eval_recompute_trace: std::cell::RefCell<EvalRecomputeTrace>,
@@ -1608,8 +1636,11 @@ impl InterpContext {
             fixture_store,
             data_cache: std::cell::RefCell::new(HashMap::new()),
             param_name_cache: std::cell::RefCell::new(HashMap::new()),
+            param_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             var_sym_cache: std::cell::RefCell::new(HashMap::new()),
+            var_sym_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             call_func_name_cache: std::cell::RefCell::new(HashMap::new()),
+            call_func_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             eval_recompute_trace: std::cell::RefCell::new(EvalRecomputeTrace::default()),
@@ -1817,9 +1848,12 @@ pub fn run_in_context_with_args(
 }
 
 /// Peak parent-chain depth observed across `call_function` frames in the last
-/// `run_in_context*` invocation (test witness for lexical-base scoping).
+/// `run_in_context*` invocation (test witness for lexical-base scoping; default-off until armed).
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn call_env_depth_peak_snapshot() -> usize {
+    if !call_env_depth_witness_enabled() {
+        return 0;
+    }
     CALL_ENV_DEPTH_PEAK.with(|peak| peak.get())
 }
 
@@ -1965,10 +1999,8 @@ fn call_function_inner(
 
     let cached_params = {
         let key = Rc::as_ptr(fn_node) as usize;
-        // Bind the lookup to a local so the immutable borrow is released before the
-        // None branch takes a mutable borrow (an `if let ...borrow()` would hold it through `else`).
-        let hit = ctx.param_name_cache.borrow().get(&key).cloned();
-        if let Some(c) = hit {
+        let existing = ctx.param_name_cache.borrow().get(&key).cloned();
+        if let Some(c) = existing {
             c
         } else {
             // Each param's authored name is sliced once into `all`; `filtered` reuses it
@@ -1988,9 +2020,12 @@ fn call_function_inner(
                 })
                 .map(|(i, _)| all[i].clone())
                 .collect();
-            let c = Rc::new((filtered, all));
-            ctx.param_name_cache.borrow_mut().insert(key, c.clone());
-            c
+            let fresh = Rc::new((filtered, all));
+            ctx.param_name_cache_keepalive
+                .borrow_mut()
+                .push(fn_node.clone());
+            ctx.param_name_cache.borrow_mut().insert(key, fresh.clone());
+            fresh
         }
     };
     let param_names: &Vec<String> = &cached_params.0;
@@ -2028,9 +2063,49 @@ fn call_function_inner(
                         ),
                     });
                 }
+                // A duplicate caller label silently overwrote the earlier binding via
+                // HashMap::insert, so the earlier argument's evaluated value vanished
+                // unlocatably (DESIGN §5: the compile-side wall must not report a fact the
+                // runtime keeps quiet about). Refuse instead of taking the last value.
+                //
+                // An anonymous binding key ("_") is excluded from the collision check (but
+                // still inserted, harmlessly overwriting any earlier "_" — the body cannot
+                // read a parameter named "_", so two anonymous parameters bound at different
+                // positions/labels are two distinct, unreadable slots, not a collision; the
+                // insert itself must still happen so the required-argument "supplied" check
+                // below, which reads `bindings.contains_key`, keeps seeing an anonymous
+                // parameter as filled) (review from parent session loyal-ant-382, 2026-08-05
+                // — the prior form both keyed AND refused every anonymous param under the
+                // literal "_", false-refusing a signature with two or more anonymous
+                // parameters).
+                if name != "_" && bindings.contains_key(&ctx.sym(name)) {
+                    return Err(InterpError::CallContractMismatch {
+                        callee: fn_node.name.clone(),
+                        detail: format!("argument '{}' supplied more than once", name),
+                    });
+                }
                 bindings.insert(ctx.sym(name), val.clone());
             } else if positional_idx < param_names.len() {
-                bindings.insert(ctx.sym(&param_names[positional_idx]), val.clone());
+                // A positional actual is keyed by its resolved declared parameter, exactly as
+                // the named branch above is — so a positional actual filling a parameter an
+                // earlier named actual already bound (`two(a: 1, 2)` against `fn two(a, b)`,
+                // where the positional slot 0's declared name is `a`, already bound by the
+                // named actual) must refuse the same way, not silently overwrite last-write-wins
+                // (DESIGN §5 fail-closed; review 48817).
+                //
+                // An anonymous declared parameter ("_") is excluded from the collision check
+                // (see the named-branch note above): two anonymous parameters filled
+                // positionally are two distinct, unreadable slots, not a duplicate. The
+                // insert still happens unconditionally so the required-argument check below
+                // sees the slot as filled.
+                let pname = &param_names[positional_idx];
+                if pname != "_" && bindings.contains_key(&ctx.sym(pname)) {
+                    return Err(InterpError::CallContractMismatch {
+                        callee: fn_node.name.clone(),
+                        detail: format!("argument '{}' supplied more than once", pname),
+                    });
+                }
+                bindings.insert(ctx.sym(pname), val.clone());
                 positional_idx += 1;
             } else {
                 // The pre-existing `else if` guard dropped surplus positional arguments on the
@@ -2321,15 +2396,15 @@ fn eval_var(
     // (skips the per-eval source-span slice in expr_var_name_at and the ctx.sym re-intern).
     let key = Rc::as_ptr(node) as usize;
     let sym = {
-        let hit = ctx.var_sym_cache.borrow().get(&key).copied();
-        match hit {
-            Some(s) => s,
-            None => {
-                let name = expr_var_name_at(node.clone(), ctx.si());
-                let s = ctx.sym(&name);
-                ctx.var_sym_cache.borrow_mut().insert(key, s);
-                s
-            }
+        let existing = ctx.var_sym_cache.borrow().get(&key).copied();
+        if let Some(s) = existing {
+            s
+        } else {
+            let name = expr_var_name_at(node.clone(), ctx.si());
+            let fresh = ctx.sym(&name);
+            ctx.var_sym_cache_keepalive.borrow_mut().push(node.clone());
+            ctx.var_sym_cache.borrow_mut().insert(key, fresh);
+            fresh
         }
     };
 
@@ -3604,14 +3679,18 @@ macro_rules! v1_native_intercept_dispatch {
 fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let func_name = {
         let key = Rc::as_ptr(node) as usize;
-        let hit = ctx.call_func_name_cache.borrow().get(&key).cloned();
-        match hit {
-            Some(s) => s,
-            None => {
-                let s = expr_call_func_at(node.clone(), ctx.si());
-                ctx.call_func_name_cache.borrow_mut().insert(key, s.clone());
-                s
-            }
+        let existing = ctx.call_func_name_cache.borrow().get(&key).cloned();
+        if let Some(s) = existing {
+            s
+        } else {
+            let fresh = expr_call_func_at(node.clone(), ctx.si());
+            ctx.call_func_name_cache_keepalive
+                .borrow_mut()
+                .push(node.clone());
+            ctx.call_func_name_cache
+                .borrow_mut()
+                .insert(key, fresh.clone());
+            fresh
         }
     };
     record_call_frequency(&func_name);
@@ -10804,20 +10883,18 @@ macro_rules! v1_builtin_arms {
             // cannot report it — a fabricated 0 would be a Measured lie (DESIGN §5).
             arm "free_call.observed_peak_resident_bytes" { "observed_peak_resident_bytes" } => match $positional.as_slice() {
                 [] => {
-                    let bytes = std::fs::read_to_string("/proc/self/status")
-                        .ok()
-                        .and_then(|status| {
-                            status
-                                .lines()
-                                .find(|l| l.starts_with("VmHWM"))
-                                .and_then(|line| line.split_whitespace().nth(1))
-                                .and_then(|kb| kb.parse::<i64>().ok())
-                        })
-                        .map(|kb| kb.saturating_mul(1024));
+                    // Routed through the single portable reader rather than re-inlining a
+                    // procfs parse here. This arm previously carried its OWN copy of the
+                    // /proc/self/status VmHWM read — a second implementation of one
+                    // observation (section 3), and the copy that actually executes for
+                    // witnesses, so fixing only cli_run's would have left this one Linux-only.
+                    // Authority for the interface and its per-implementation units:
+                    // dag/extdeps/posix/rusage.dag with dag/extdeps/{linux,darwin}/rusage.dag.
+                    let bytes = crate::cli_run::peak_rss_vhwm_bytes().and_then(|b| i64::try_from(b).ok());
                     match bytes {
                         Some(b) => Ok(Some(Value::Int(b))),
                         None => Err(InterpError::TypeError {
-                            msg: "observed_peak_resident_bytes: VmHWM unavailable on this host (refusing to fabricate a Measured space fact)"
+                            msg: "observed_peak_resident_bytes: getrusage(RUSAGE_SELF).ru_maxrss unavailable on this host (refusing to fabricate a Measured space fact)"
                                 .to_string(),
                         }),
                     }

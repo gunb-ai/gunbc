@@ -18,8 +18,8 @@ fn materialize_github_mock(case: PublishedMockCase) -> Outcome<MaterializedGithu
     outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_get })
   } else if case.operation_key == "github.Pulls.Diff" {
     outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_diff })
-  } else if case.operation_key == "github.Pulls.CreateComment" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_create_comment })
+  } else if case.operation_key == "github.Issues.CreateComment" {
+    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_issues_create_comment })
   } else if case.operation_key == "github.Pulls.ListReviews" {
     outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_list_reviews })
   } else if case.operation_key == "github.Pulls.CreateReview" {
