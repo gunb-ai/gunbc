@@ -36,9 +36,9 @@ type SizeExpr
 type CostExprRefusalCause
   = UnboundedIteration { at: Locus }
   | UngroundedLogArgument { argument: SizeExpr, at: Locus }
+  | InvalidLogBase { base: Nat, at: Locus }
   | UnmodeledEffect { operation: DeclarationRef, at: Locus }
   | UnresolvedSize { variable: SizeVariable, at: Locus }
-  | EffectModelAbsent { operation: DeclarationRef, at: Locus }
 
 type CostExpr
   = CostConst { value: Nat }
@@ -66,6 +66,18 @@ fn cost_const(value: Nat) -> CostExpr {
   CostConst { value: value }
 }
 
+fn cost_log(base: Nat, argument: SizeExpr) -> CostExpr {
+  CostLog { base: base, argument: argument }
+}
+
+fn log_base_is_degenerate(base: Nat) -> Bool {
+  match base {
+    Zero => true
+    Succ { prev: Zero } => true
+    _ => false
+  }
+}
+
 fn cost_expr_authority_locus() -> Locus {
   textual_whole_file_locus(file: ^cost_expr_authority_virtual_file)
 }
@@ -84,6 +96,12 @@ fn cost_expr_refusal_diagnostic(cause: CostExprRefusalCause) -> Diagnostic {
         at: loc,
         correction: Unavailable { reason: AmbiguousIntent }
       }
+    InvalidLogBase { base: _, at: loc } =>
+      Diagnostic {
+        reason: ^cost_expr_refusal_invalid_log_base,
+        at: loc,
+        correction: Unavailable { reason: AmbiguousIntent }
+      }
     UnmodeledEffect { operation: _, at: loc } =>
       Diagnostic {
         reason: ^cost_expr_refusal_unmodeled_effect,
@@ -93,12 +111,6 @@ fn cost_expr_refusal_diagnostic(cause: CostExprRefusalCause) -> Diagnostic {
     UnresolvedSize { variable: _, at: loc } =>
       Diagnostic {
         reason: ^cost_expr_refusal_unresolved_size,
-        at: loc,
-        correction: Unavailable { reason: AmbiguousIntent }
-      }
-    EffectModelAbsent { operation: _, at: loc } =>
-      Diagnostic {
-        reason: ^cost_expr_refusal_effect_model_absent,
         at: loc,
         correction: Unavailable { reason: AmbiguousIntent }
       }
@@ -159,18 +171,29 @@ fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> SymbolicCost {
         a: normalize_size_expr_to_bound(size: u),
         b: normalize_cost_expr_to_symbolic(expr: bd)
       )
-    CostLog { base: _, argument: a } =>
-      match a {
-        SizeOf { variable: v } => LogCost { variable: v }
-        _ =>
-          UnknownCost {
-            diagnostic: cost_expr_refusal_diagnostic(
-              cause: UngroundedLogArgument {
-                argument: a,
-                at: cost_expr_authority_locus()
-              }
-            )
-          }
+    CostLog { base: b, argument: a } =>
+      if log_base_is_degenerate(base: b) {
+        UnknownCost {
+          diagnostic: cost_expr_refusal_diagnostic(
+            cause: InvalidLogBase {
+              base: b,
+              at: cost_expr_authority_locus()
+            }
+          )
+        }
+      } else {
+        match a {
+          SizeOf { variable: v } => LogCost { variable: v }
+          _ =>
+            UnknownCost {
+              diagnostic: cost_expr_refusal_diagnostic(
+                cause: UngroundedLogArgument {
+                  argument: a,
+                  at: cost_expr_authority_locus()
+                }
+              )
+            }
+        }
       }
     CostEffect { operation: op } =>
       UnknownCost {
