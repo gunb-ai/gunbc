@@ -57,6 +57,9 @@ data synthesis_gap_poly_inner: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
+// Holds.base repro touch (2026-08-06): forces sg_claims_test.dag's consumers
+// into the per-PR affected closure so batch 3 selection-narrows this subject,
+// matching the failing configuration. Not a semantic change.
 data synthesis_gap_poly_input: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
