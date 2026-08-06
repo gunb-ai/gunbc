@@ -83,6 +83,7 @@ type FloorComponentFailureMode
   | ModeBudgetExceeded
   | ModeInfra
   | ModeWitnessRed
+  | ModeStaleKnownRed
   | ModeNotReached
   | ModeUnrecorded
 
@@ -91,6 +92,7 @@ fn floor_component_failure_mode_of(mode: NonEmptyStr) -> FloorComponentFailureMo
   else if (mode as String) == "BudgetExceeded" { Present { value: ModeBudgetExceeded } }
   else if (mode as String) == "Infra" { Present { value: ModeInfra } }
   else if (mode as String) == "WitnessRed" { Present { value: ModeWitnessRed } }
+  else if (mode as String) == "StaleKnownRed" { Present { value: ModeStaleKnownRed } }
   else if (mode as String) == "not_reached" { Present { value: ModeNotReached } }
   else { none }
 }
@@ -101,6 +103,7 @@ fn floor_component_failure_mode_tag(m: FloorComponentFailureMode) -> String {
     ModeBudgetExceeded => "BudgetExceeded"
     ModeInfra => "Infra"
     ModeWitnessRed => "WitnessRed"
+    ModeStaleKnownRed => "StaleKnownRed"
     ModeNotReached => "not_reached"
     ModeUnrecorded => "unrecorded"
   }
@@ -165,12 +168,15 @@ data floor_component_failure_mode_note: String = "The seed's failure-mode vocabu
 
 data floor_component_outcome_of_mode_single_authority_note: String = "ONE tag table, not two. An earlier revision of the failure-mode edge parsed the seed's tag twice — once to a FloorComponentFailureMode and once, separately, to an ObservationOutcome — so the tag vocabulary was written out in two parallel string tables that had to be edited together (caught by review 48341 on gunbc#7827, non-blocking; fixed here rather than left, because two representations of one vocabulary is the second-representation DESIGN 3 forbids and the fact that today's only caller invokes them back-to-back makes the drift local, not impossible). The outcome is now derived FROM THE MODE rather than from the tag, so the tag appears exactly once (floor_component_failure_mode_of) and the mode-to-outcome collapse appears exactly once here. A newly added mode is a compile error in this match instead of a silently unmapped string, which is the construction form of the fail-closed property the note above states. ModeUnrecorded REFUSES rather than being given an outcome: it is not a failure mode at all, it is the absence of a recorded one, so inventing an outcome for it would be the fabricated-plausible-output DESIGN 5 forbids. It is unreachable from the tag path by construction — floor_component_failure_mode_of never returns it — so the refusal is a total-match obligation, not a live arm."
 
+data floor_component_stale_known_red_mode_note: String = "ModeStaleKnownRed is its own mode, not a WitnessRed, because a known-red witness that starts PASSING and a witness that regresses are opposite events with opposite remedies — delete the admission row that is now stale, versus fix the code — and collapsing them makes an un-quarantine indistinguishable from a regression in the alert's class signature. It maps to Refused rather than Failed for the same reason BudgetExceeded does: nothing about the witness is broken, the LINE STOPS for analysis and the diagnostic names the exact identities to un-quarantine (DESIGN 5, the factory model). Critically it is NOT Done: an expected-red row that silently went green would otherwise accumulate on a roster nobody revisits, which is the fail-open this arm closes. The producer derives it from ROSTER MEMBERSHIP joined against per-witness outcomes and carries it as typed data (claim_executor StaleKnownRedRefusal), never from a message, so it is not exposed to the substring classifier's WitnessRed fallback."
+
 fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: NonEmptyStr) -> ObservationOutcome? {
   match m {
     ModeNoFailure => Present { value: Done }
     ModeBudgetExceeded => Present { value: Refused { diagnostic: detail } }
     ModeInfra => Present { value: Failed { error: detail, output: "" } }
     ModeWitnessRed => Present { value: Failed { error: detail, output: "" } }
+    ModeStaleKnownRed => Present { value: Refused { diagnostic: detail } }
     ModeNotReached => Present { value: Skipped { reason: detail } }
     ModeUnrecorded => none
   }
