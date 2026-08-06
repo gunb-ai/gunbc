@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.optional { Optional, Present, Absent }
 import gunbc.compile_clean_diagnostic_policy { UnlistedImportBindingSource, ListedImport, PoolCoincidence }
 
-data declared_import_closure_binding_charter_note: String = "THE CLASS B OBSERVATION SURFACE for declared-import-closure binding (#6985). Host twin of observe_declared_import_closure_symbol_binding: compile an entry under primary-precedence pool_roots using ONLY its declared import-edge closure (no reference-derived widening), then report whether consumer_module binds symbol and through which UnlistedImportBindingSource arm. MEASUREMENT ONLY — callers judge ListedImport vs PoolCoincidence vs refusal."
+data declared_import_closure_binding_charter_note: String = "THE CLASS B OBSERVATION SURFACE for declared-import-closure binding (#6985). Host twin of observe_declared_import_closure_symbol_binding: compile an entry under primary-precedence pool_roots using ONLY its declared import-edge closure (no reference-derived widening), then report whether consumer_module binds symbol and through which UnlistedImportBindingSource arm. MEASUREMENT ONLY — callers judge ListedImport vs PoolCoincidence vs refusal. ObservationProductionRefused is distinct from BindingObserved refusal so could-not-measure and setup failure never read as the subject passing (DESIGN §5)."
 
 type DeclaredImportClosureBindingObservation
   = BindingObserved {
@@ -14,6 +14,10 @@ type DeclaredImportClosureBindingObservation
       blocking_hard_diagnostic_count: Int
     }
   | BindingNotRunnable { cause: NonEmptyStr }
+
+type DeclaredImportClosureBindingObservationOutcome
+  = ObservationProduced { observation: DeclaredImportClosureBindingObservation }
+  | ObservationProductionRefused { phase: NonEmptyStr, cause: NonEmptyStr }
 
 fn binding_source_is_listed_import(obs: DeclaredImportClosureBindingObservation) -> Bool {
   match obs {
@@ -33,28 +37,96 @@ fn binding_source_is_pool_coincidence(obs: DeclaredImportClosureBindingObservati
       binding_source: Present { value: PoolCoincidence },
       symbol_resolves: true,
       definer_module: _,
-      blocking_hard_diagnostic_count: _
+      blocking_hard_diagnostic_count: 0
     } => true
     _ => false
   }
 }
 
-fn binding_refuses(obs: DeclaredImportClosureBindingObservation) -> Bool {
+fn binding_refused_at_intended_seam(obs: DeclaredImportClosureBindingObservation) -> Bool {
   match obs {
     BindingNotRunnable { cause: _ } => false
-    BindingObserved { symbol_resolves: false, blocking_hard_diagnostic_count: _, binding_source: _, definer_module: _ } => true
-    BindingObserved { symbol_resolves: true, blocking_hard_diagnostic_count: n, binding_source: _, definer_module: _ } => n > 0
+    BindingObserved {
+      symbol_resolves: false,
+      blocking_hard_diagnostic_count: 0,
+      binding_source: _,
+      definer_module: _
+    } => true
+    _ => false
   }
 }
 
 fn row4_pool_coincidence_or_refuse(obs: DeclaredImportClosureBindingObservation) -> Bool {
-  binding_refuses(obs: obs) || binding_source_is_pool_coincidence(obs: obs)
+  binding_refused_at_intended_seam(obs: obs) || binding_source_is_pool_coincidence(obs: obs)
 }
 
-test fn binding_refuses_not_runnable_is_false() -> Bool {
-  !binding_refuses(obs: BindingNotRunnable { cause: "could-not-measure" as NonEmptyStr })
+fn row3_stripped_refuses_binding(outcome: DeclaredImportClosureBindingObservationOutcome) -> Bool {
+  match outcome {
+    ObservationProductionRefused { phase: _, cause: _ } => false
+    ObservationProduced { observation } => binding_refused_at_intended_seam(obs: observation)
+  }
 }
 
-test fn row4_not_runnable_is_false() -> Bool {
-  !row4_pool_coincidence_or_refuse(obs: BindingNotRunnable { cause: "could-not-measure" as NonEmptyStr })
+fn row4_stripped_pool_coincidence_or_refuse(outcome: DeclaredImportClosureBindingObservationOutcome) -> Bool {
+  match outcome {
+    ObservationProductionRefused { phase: _, cause: _ } => false
+    ObservationProduced { observation } => row4_pool_coincidence_or_refuse(obs: observation)
+  }
+}
+
+test fn binding_refused_at_seam_not_runnable_is_false() -> Bool {
+  !binding_refused_at_intended_seam(obs: BindingNotRunnable { cause: "could-not-measure" as NonEmptyStr })
+}
+
+test fn binding_refused_at_seam_rejects_unrelated_hard_diagnostic() -> Bool {
+  !binding_refused_at_intended_seam(
+    obs: BindingObserved {
+      binding_source: Absent,
+      definer_module: "",
+      symbol_resolves: false,
+      blocking_hard_diagnostic_count: 1
+    }
+  )
+}
+
+test fn binding_refused_at_seam_accepts_clean_unresolved() -> Bool {
+  binding_refused_at_intended_seam(
+    obs: BindingObserved {
+      binding_source: Absent,
+      definer_module: "",
+      symbol_resolves: false,
+      blocking_hard_diagnostic_count: 0
+    }
+  )
+}
+
+test fn row3_production_refused_is_false() -> Bool {
+  !row3_stripped_refuses_binding(
+    outcome: ObservationProductionRefused {
+      phase: "strip" as NonEmptyStr,
+      cause: "setup failed" as NonEmptyStr
+    }
+  )
+}
+
+test fn row4_production_refused_is_false() -> Bool {
+  !row4_stripped_pool_coincidence_or_refuse(
+    outcome: ObservationProductionRefused {
+      phase: "mktemp" as NonEmptyStr,
+      cause: "setup failed" as NonEmptyStr
+    }
+  )
+}
+
+test fn row4_listed_import_on_produced_observation_fails() -> Bool {
+  !row4_stripped_pool_coincidence_or_refuse(
+    outcome: ObservationProduced {
+      observation: BindingObserved {
+        binding_source: Present { value: ListedImport },
+        definer_module: "v2.extdeps.languages.rust",
+        symbol_resolves: true,
+        blocking_hard_diagnostic_count: 0
+      }
+    }
+  )
 }
