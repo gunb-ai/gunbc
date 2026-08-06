@@ -4,6 +4,7 @@ module gunbc.generated_artifact
 import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs, InstallServerSpec, fleet_install_server_specs }
 import gunbc.plan { Plan, plan_path }
 import gunbc.plan_registry { all_plans }
+import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_path }
 
 type GeneratedArtifact
   = CiYamlArtifact
@@ -14,6 +15,7 @@ type GeneratedArtifact
   | DesignArtifact
   | GithooksPrePushArtifact
   | GithooksPreCommitArtifact
+  | GeneratedArtifactMergeDriverArtifact
   | RunnerDeployArtifact
   | Stage0CrateLayoutGeneratedDagArtifact
   | Stage0CrateLayoutGeneratedRsArtifact
@@ -29,7 +31,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact],
+      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
@@ -57,6 +59,7 @@ fn artifact_path(a: GeneratedArtifact) -> String {
     DesignArtifact => "DESIGN.md"
     GithooksPrePushArtifact => ".githooks/pre-push"
     GithooksPreCommitArtifact => ".githooks/pre-commit"
+    GeneratedArtifactMergeDriverArtifact => generated_artifact_merge_driver_script_path
     RunnerDeployArtifact => ".github/fleet-runner-deploy.manifest"
     Stage0CrateLayoutGeneratedDagArtifact => "dag/gunbc/stage0_crate_layout_generated.dag"
     Stage0CrateLayoutGeneratedRsArtifact => "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
@@ -77,6 +80,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     GitattributesArtifact => CommitRequired { consumer: GitProtocol }
     GithooksPrePushArtifact => CommitRequired { consumer: GitProtocol }
     GithooksPreCommitArtifact => CommitRequired { consumer: GitProtocol }
+    GeneratedArtifactMergeDriverArtifact => CommitRequired { consumer: GitProtocol }
     CiYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FalsifierYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
@@ -122,6 +126,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     DesignArtifact => match b { DesignArtifact => true  _ => false }
     GithooksPrePushArtifact => match b { GithooksPrePushArtifact => true  _ => false }
     GithooksPreCommitArtifact => match b { GithooksPreCommitArtifact => true  _ => false }
+    GeneratedArtifactMergeDriverArtifact => match b { GeneratedArtifactMergeDriverArtifact => true  _ => false }
     RunnerDeployArtifact => match b { RunnerDeployArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }

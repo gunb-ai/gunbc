@@ -2,7 +2,7 @@
 module test.claim.generated_artifact_drift
 
 import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   CommitPolicy, CommitRequired, NotCommitted,
   generated_artifact_registry,
@@ -150,6 +150,7 @@ test fn witness_all_known_committed() -> Bool {
     && artifact_is_committed(a: RoadmapArtifact)
     && artifact_is_committed(a: DesignArtifact)
     && artifact_is_committed(a: GithooksPrePushArtifact)
+    && artifact_is_committed(a: GeneratedArtifactMergeDriverArtifact)
     && artifact_is_committed(a: GithooksPreCommitArtifact)
     && artifact_is_committed(a: PlanArtifact { plan: idea_machine_plan })
     && !artifact_is_committed(a: RunnerDeployArtifact)
@@ -184,7 +185,7 @@ test fn witness_ignored_paths_excluded() -> Bool {
 }
 
 test fn witness_registry_complete() -> Bool {
-  count(generated_artifact_registry) == (16 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
+  count(generated_artifact_registry) == (17 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
     && registry_contains(a: CiYamlArtifact)
     && registry_contains(a: FalsifierYamlArtifact)
     && registry_contains(a: GitignoreArtifact)
@@ -193,6 +194,7 @@ test fn witness_registry_complete() -> Bool {
     && registry_contains(a: DesignArtifact)
     && registry_contains(a: GithooksPrePushArtifact)
     && registry_contains(a: GithooksPreCommitArtifact)
+    && registry_contains(a: GeneratedArtifactMergeDriverArtifact)
     && registry_contains(a: RunnerDeployArtifact)
     && registry_contains(a: Stage0CrateLayoutGeneratedDagArtifact)
     && registry_contains(a: Stage0CrateLayoutGeneratedRsArtifact)
@@ -211,6 +213,7 @@ test fn witness_registry_complete() -> Bool {
     && artifact_is_committed(a: RoadmapArtifact)
     && artifact_is_committed(a: DesignArtifact)
     && artifact_is_committed(a: GithooksPrePushArtifact)
+    && artifact_is_committed(a: GeneratedArtifactMergeDriverArtifact)
     && artifact_is_committed(a: GithooksPreCommitArtifact)
     && artifact_is_committed(a: PlanArtifact { plan: idea_machine_plan })
     && artifact_is_committed(a: Stage0CrateLayoutGeneratedDagArtifact)
@@ -241,6 +244,7 @@ test fn witness_commit_policy_reasons() -> Bool {
   consumer_is(a: GitignoreArtifact, expected: GitProtocol)
     && consumer_is(a: GitattributesArtifact, expected: GitProtocol)
     && consumer_is(a: GithooksPrePushArtifact, expected: GitProtocol)
+    && consumer_is(a: GeneratedArtifactMergeDriverArtifact, expected: GitProtocol)
     && consumer_is(a: GithooksPreCommitArtifact, expected: GitProtocol)
     && consumer_is(a: CiYamlArtifact, expected: GithubActionsWorkflow)
     && consumer_is(a: FalsifierYamlArtifact, expected: GithubActionsWorkflow)
