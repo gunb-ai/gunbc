@@ -26,37 +26,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data cursor_sdk_authority_note: String = "Slice-E modeling only (provider-control-interface-audit §6, §12). No press trip, inventory wiring, or WorkerTurn fork — those wait on slices B/C. OBSERVED @cursor/sdk 1.0.26 via docs/probes/provider_interface_acquisition_2026-08-03.json. LocalAgentOptions.cwd is the belt-owned worktree; CloudAgentOptions is a separate workspace realization. Run.supports(operation) is queryable over stream|wait|cancel|conversation."
-
-type CursorSdkRunStatus
-  = CursorSdkRunning
-  | CursorSdkFinished
-  | CursorSdkError
-  | CursorSdkCancelled
-
-type CursorSdkRunResultStatus
-  = CursorSdkFinished
-  | CursorSdkError
-  | CursorSdkCancelled
-
-type CursorSdkRunOperation
-  = CursorSdkStreamOp
-  | CursorSdkWaitOp
-  | CursorSdkCancelOp
-  | CursorSdkConversationOp
-
-fn cursor_sdk_run_operation_wire(op: CursorSdkRunOperation) -> String {
-  match op {
-    CursorSdkStreamOp => "stream"
-    CursorSdkWaitOp => "wait"
-    CursorSdkCancelOp => "cancel"
-    CursorSdkConversationOp => "conversation"
-  }
-}
-
-type CursorControlInterface
-  = CursorSdkLocal
-  | CursorSdkCloud
+data cursor_sdk_authority_note: String = "Slice-E modeling only (provider-control-interface-audit §6, §12). No press trip, inventory wiring, or WorkerTurn fork — those wait on slices B/C. OBSERVED @cursor/sdk 1.0.26 via docs/probes/provider_interface_acquisition_2026-08-03.json. LocalAgentOptions.cwd is the belt-owned worktree; CloudAgentOptions is a separate workspace realization. RunStatus / Run.supports(operation) land with the press trip when slices B/C wire live SDK control — not modeled as dead types in this slice."
 
 data cursor_sdk_belt_worktree_note: String = "Belt-owned local worktree (audit slice E): LocalAgentOptions.cwd points at the dashboard attempt worktree. cursor-agent -w/--worktree is deliberately unused — recorded in extdeps.llm.cursor_cli."
 

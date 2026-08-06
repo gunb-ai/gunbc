@@ -109,11 +109,22 @@ test fn agent_report_text_does_not_classify_as_terminal_error() -> Bool {
   !cursor_sdk_terminal_is_rate_limit_error(reconcile: reconcile)
 }
 
+data malformed_error_subobject: String = "{\"status\":\"error\",\"error\":[{\"message\":\"bad\"}]}"
+
+test fn malformed_error_subobject_refuses_not_absent() -> Bool {
+  match cursor_sdk_stream_reconcile_run_result(raw: malformed_error_subobject) {
+    CursorSdkStreamTerminalsUnclassified { reason, raw: _ } =>
+      string_contains(s: reason as String, pattern: "malformed error object")
+    CursorSdkStreamTerminalsReconciled { status: _, error: _, raw: _ } => false
+  }
+}
+
 test fn cursor_sdk_stream_witness_keystone_holds() -> Bool {
   finished_run_result_reconciles()
     && auth_error_classifies()
     && rate_limit_error_classifies()
     && malformed_result_refuses()
+    && malformed_error_subobject_refuses_not_absent()
     && assistant_message_classifies()
     && usage_message_classifies()
     && local_result_event_classifies()

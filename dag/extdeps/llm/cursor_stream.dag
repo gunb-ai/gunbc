@@ -134,28 +134,32 @@ fn cursor_sdk_terminal_status_from_wire(wire_status: String) -> CursorSdkTermina
   }
 }
 
-fn cursor_sdk_error_from_object(v: JsonValue) -> CursorSdkTerminalErrorWire {
+fn cursor_sdk_error_from_object(v: JsonValue) -> CursorSdkTerminalErrorWire? {
   match json_object_unique_member(v: v, key: "message") {
     JsonMemberFound { value: msg_v } => {
       let message = json_string_value_or_empty(v: msg_v)
       match json_object_unique_member(v: v, key: "code") {
         JsonMemberFound { value: code_v } =>
-          CursorSdkTerminalErrorObserved {
-            message: message,
-            code: json_string_value_or_empty(v: code_v),
+          Present {
+            value: CursorSdkTerminalErrorObserved {
+              message: message,
+              code: json_string_value_or_empty(v: code_v),
+            },
           }
         JsonMemberAbsent =>
-          CursorSdkTerminalErrorObserved {
-            message: message,
-            code: "",
+          Present {
+            value: CursorSdkTerminalErrorObserved {
+              message: message,
+              code: "",
+            },
           }
-        JsonMemberDuplicated { count: _ } => CursorSdkTerminalErrorAbsent
-        JsonMemberNotAnObject => CursorSdkTerminalErrorAbsent
+        JsonMemberDuplicated { count: _ } => none
+        JsonMemberNotAnObject => none
       }
     }
-    JsonMemberAbsent => CursorSdkTerminalErrorAbsent
-    JsonMemberDuplicated { count: _ } => CursorSdkTerminalErrorAbsent
-    JsonMemberNotAnObject => CursorSdkTerminalErrorAbsent
+    JsonMemberAbsent => Present { value: CursorSdkTerminalErrorAbsent }
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -176,10 +180,18 @@ fn cursor_sdk_stream_reconcile_run_result(raw: String) -> CursorSdkStreamTermina
               Present { value: status } =>
                 match json_object_unique_member(v: v, key: "error") {
                   JsonMemberFound { value: err_v } =>
-                    CursorSdkStreamTerminalsReconciled {
-                      status: status,
-                      error: cursor_sdk_error_from_object(v: err_v),
-                      raw: raw,
+                    match cursor_sdk_error_from_object(v: err_v) {
+                      Present { value: error_wire } =>
+                        CursorSdkStreamTerminalsReconciled {
+                          status: status,
+                          error: error_wire,
+                          raw: raw,
+                        }
+                      Absent =>
+                        CursorSdkStreamTerminalsUnclassified {
+                          reason: "malformed error object in Cursor SDK run result" as NonEmptyStr,
+                          raw: raw,
+                        }
                     }
                   JsonMemberAbsent =>
                     CursorSdkStreamTerminalsReconciled {
