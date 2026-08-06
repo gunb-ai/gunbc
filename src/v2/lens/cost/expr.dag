@@ -22,7 +22,7 @@ import v2.std.diagnostic {
   Unavailable,
   textual_whole_file_locus
 }
-import v2.std.nat { Nat, Succ, Zero }
+import v2.std.nat { Nat, Succ, Zero, nat_lte }
 
 type SizeExpr
   = SizeConst { value: Nat }
@@ -66,14 +66,6 @@ fn cost_const(value: Nat) -> CostExpr {
 
 fn cost_log_expr(base: Nat, argument: SizeExpr) -> CostExpr {
   CostLog { base: base, argument: argument }
-}
-
-fn log_base_is_degenerate(base: Nat) -> Bool {
-  match base {
-    Zero => true
-    Succ { prev: Zero } => true
-    _ => false
-  }
 }
 
 fn cost_expr_authority_locus() -> Locus {
@@ -168,7 +160,7 @@ fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> SymbolicCost {
         b: normalize_cost_expr_to_symbolic(expr: bd)
       )
     CostLog { base: b, argument: a } =>
-      if log_base_is_degenerate(base: b) {
+      if nat_lte(a: b, b: Succ { prev: Zero }) {
         UnknownCost {
           diagnostic: cost_expr_refusal_diagnostic(
             cause: InvalidLogBase {
