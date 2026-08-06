@@ -161,37 +161,37 @@ fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> SymbolicCost {
       )
     CostLog { base: b, argument: a } =>
       if nat_lte(a: b, b: Succ { prev: Zero }) {
-        UnknownCost {
-          diagnostic: cost_expr_refusal_diagnostic(
+        normalize_cost_expr_to_symbolic(
+          expr: CostRefused {
             cause: InvalidLogBase {
               base: b,
               at: cost_expr_authority_locus()
             }
-          )
-        }
+          }
+        )
       } else {
         match a {
           SizeOf { variable: v } => LogCost { variable: v }
           _ =>
-            UnknownCost {
-              diagnostic: cost_expr_refusal_diagnostic(
+            normalize_cost_expr_to_symbolic(
+              expr: CostRefused {
                 cause: UngroundedLogArgument {
                   argument: a,
                   at: cost_expr_authority_locus()
                 }
-              )
-            }
+              }
+            )
         }
       }
     CostEffect { operation: op } =>
-      UnknownCost {
-        diagnostic: cost_expr_refusal_diagnostic(
+      normalize_cost_expr_to_symbolic(
+        expr: CostRefused {
           cause: UnmodeledEffect {
             operation: op,
             at: cost_expr_authority_locus()
           }
-        )
-      }
+        }
+      )
     CostRefused { cause: c } =>
       UnknownCost { diagnostic: cost_expr_refusal_diagnostic(cause: c) }
   }
