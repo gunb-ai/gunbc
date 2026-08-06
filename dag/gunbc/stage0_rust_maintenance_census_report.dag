@@ -26,11 +26,11 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   list_concat_unique,
   path_in_list
 }
-import v2.std.algebra { any, filter, length, list_map }
+import v2.std.algebra { any, filter, list_map }
 import v2.std.collection { List }
 import v2.std.text { String }
 
-data stage0_rust_maintenance_census_report_note: String = "Lane F (dashboard node adhoc-8ddc666b-e43): the CURRENT hand-Rust denominator, replacing the stale 109-of-175 figure. Adds NO classification logic and NO filename literal — it is a pure projection over the already-derived gunbc.stage0_rust_lifecycle_totality LifecycleTotalityReceipt (itself computed from the repo-wide gunbc.stage0_rust_host_observation RustManifestObserved subject, i.e. every .rs path git tracks at HEAD, not a stage0-scoped subset) plus a per-RustMaintenanceDisposition-variant breakdown of gunbc.stage0_rust_source_lifecycle_scaffold disposition_authority_rows, restricted by identity join to paths the receipt actually classified. The four DESIGN section 5 invariants map onto the receipt's existing exact-path-set fields: missing_disposition_paths = unclassified_paths (a tracked path with no disposition — the honest 'resists classification' population, never a filename exception); extra_disposition_paths = stale_disposition_paths (a disposition/generated authority naming a path git no longer tracks); duplicate_disposition_paths = duplicate_disposition_paths ++ duplicate_generated_paths ++ duplicate_role_paths (any authority listing one path more than once); unknown_disposition_shape_paths = ill_formed_maintenance_disposition_paths (a disposition row whose payload fails rust_maintenance_disposition_well_formed). cross_axis_overlap_paths and role_without_disposition_paths are carried through unfiltered because they are additional receipt-native defect axes the mandate did not name but DESIGN section 5 forbids rounding off. Every list here is an identity-join result, never a count: two runs against the same pinned revision must return the same paths, not merely the same length."
+data stage0_rust_maintenance_census_report_note: String = "Lane F (dashboard node adhoc-8ddc666b-e43): the CURRENT hand-Rust denominator, replacing the stale 109-of-175 figure. Adds NO classification logic and NO filename literal — it is a pure projection over the already-derived gunbc.stage0_rust_lifecycle_totality LifecycleTotalityReceipt (itself computed from the repo-wide gunbc.stage0_rust_host_observation RustManifestObserved subject, i.e. every .rs path git tracks at HEAD, not a stage0-scoped subset) plus a per-RustMaintenanceDisposition-variant breakdown of gunbc.stage0_rust_source_lifecycle_scaffold disposition_authority_rows, restricted by identity join to paths the receipt actually classified. The mandate's seven categories map onto this record: Tracked Rust population = tracked_rust_paths; Generated = generated_paths (the receipt's own derived_generated_stage0_repo_paths join against gunbc.generated_artifact, distinct from a disposition row merely tagged with the Generated disposition variant on an EmitFrom/RetainedKernel/HandScaffold path); EmitFrom/RetainedKernel/DeleteWithV1/HandScaffold = the four disposition_category_paths breakdowns; Unknown or refused = unknown_or_refused_paths, the union of unclassified_paths (a tracked path with no disposition at all) and ill_formed_maintenance_disposition_paths (a disposition row whose payload fails rust_maintenance_disposition_well_formed) — the honest 'resists classification' population, never patched with a filename exception. The four DESIGN section 5 invariants beyond the population itself: extra_disposition_paths = stale_disposition_paths (a disposition/generated authority naming a path git no longer tracks); duplicate_disposition_paths = duplicate_disposition_paths ++ duplicate_generated_paths ++ duplicate_role_paths (any authority listing one path more than once); unknown_or_refused_paths doubles as the 'unknown dispositions' invariant; missing paths is the same unclassified_paths axis folded into unknown_or_refused_paths rather than reported twice under two names. cross_axis_overlap_paths and role_without_disposition_paths are carried through unfiltered because they are additional receipt-native defect axes the mandate did not name but DESIGN section 5 forbids rounding off. Every list here is an identity-join result, never a count: two runs against the same pinned revision must return the same paths, not merely the same length."
 
 type RustMaintenanceCensusReport
   = RustMaintenanceCensusDerived {
@@ -41,11 +41,9 @@ type RustMaintenanceCensusReport
       retained_kernel_paths: List<String>,
       delete_with_v1_paths: List<String>,
       hand_scaffold_paths: List<String>,
-      unknown_disposition_variant_paths: List<String>,
-      missing_disposition_paths: List<String>,
+      unknown_or_refused_paths: List<String>,
       extra_disposition_paths: List<String>,
       duplicate_disposition_paths: List<String>,
-      unknown_disposition_shape_paths: List<String>,
       cross_axis_overlap_paths: List<String>,
       role_without_disposition_paths: List<String>
     }
@@ -56,16 +54,6 @@ fn row_has_disposition_variant(
   predicate: fn(RustMaintenanceDisposition) -> Bool
 ) -> Bool {
   any(xs: row.maintenance_dispositions, predicate: predicate)
-}
-
-fn is_generated_disposition(d: RustMaintenanceDisposition) -> Bool {
-  match d {
-    Generated { authority: authority } => true
-    EmitFrom { authority: authority } => false
-    DeleteWith { roadmap_node: roadmap_node } => false
-    RetainedKernel { reason: reason } => false
-    HandScaffold { reason: reason, dissolve_on: dissolve_on } => false
-  }
 }
 
 fn is_emit_from_disposition(d: RustMaintenanceDisposition) -> Bool {
@@ -126,7 +114,12 @@ fn disposition_category_paths(
 }
 
 fn current_rust_maintenance_census_report() -> RustMaintenanceCensusReport {
-  let observation = current_stage0_rust_source_observation()
+  rust_maintenance_census_report_over(observation: current_stage0_rust_source_observation())
+}
+
+fn rust_maintenance_census_report_over(
+  observation: RustSourceHostObservation
+) -> RustMaintenanceCensusReport {
   match observation {
     RustManifestReadRefused { detail: detail } =>
       RustMaintenanceCensusObservationRefused { detail: detail }
@@ -160,12 +153,13 @@ fn current_rust_maintenance_census_report() -> RustMaintenanceCensusReport {
           ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
         } => {
           let rows = disposition_authority_rows()
-          let all_duplicate_paths = list_map(
-            xs: filter(
-              xs: duplicate_disposition_paths,
-              predicate: fn(p) { true }
-            ),
-            f: fn(p) { p }
+          let all_duplicate_paths = list_concat_unique(
+            acc: list_concat_unique(acc: duplicate_disposition_paths, items: duplicate_generated_paths),
+            items: duplicate_role_paths
+          )
+          let all_unknown_or_refused_paths = list_concat_unique(
+            acc: unclassified_paths,
+            items: ill_formed_maintenance_disposition_paths
           )
           RustMaintenanceCensusDerived {
             pinned_repository_revision: revision,
@@ -191,15 +185,9 @@ fn current_rust_maintenance_census_report() -> RustMaintenanceCensusReport {
               tracked_paths: maintenance_disposition_paths,
               predicate: is_hand_scaffold_disposition
             ),
-            unknown_disposition_variant_paths: disposition_category_paths(
-              rows: rows,
-              tracked_paths: maintenance_disposition_paths,
-              predicate: is_generated_disposition
-            ),
-            missing_disposition_paths: unclassified_paths,
+            unknown_or_refused_paths: all_unknown_or_refused_paths,
             extra_disposition_paths: stale_disposition_paths,
             duplicate_disposition_paths: all_duplicate_paths,
-            unknown_disposition_shape_paths: ill_formed_maintenance_disposition_paths,
             cross_axis_overlap_paths: cross_axis_overlap_paths,
             role_without_disposition_paths: role_without_disposition_paths
           }

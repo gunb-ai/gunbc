@@ -1,0 +1,77 @@
+module test.claim.stage0_rust_maintenance_census_report_witness
+
+import gunbc.stage0_rust_maintenance_census_report {
+  RustMaintenanceCensusDerived,
+  RustMaintenanceCensusObservationRefused,
+  current_rust_maintenance_census_report,
+  disposition_category_paths,
+  is_delete_with_disposition,
+  is_emit_from_disposition,
+  is_hand_scaffold_disposition,
+  is_retained_kernel_disposition,
+  rust_maintenance_census_report_over,
+  stage0_rust_maintenance_census_report_note
+}
+import gunbc.stage0_rust_lifecycle_totality { lifecycle_totality_witness_observation }
+import gunbc.stage0_rust_source_lifecycle_scaffold {
+  disposition_authority_rows,
+  path_in_list
+}
+import v2.std.algebra { any, length }
+
+test fn maintenance_census_report_note_cites_identity_join() -> Bool {
+  string_contains(s: stage0_rust_maintenance_census_report_note, pattern: "identity-join")
+    && string_contains(s: stage0_rust_maintenance_census_report_note, pattern: "NO filename literal")
+}
+
+test fn maintenance_census_report_positive_control_derives_from_current_head() -> Bool {
+  match current_rust_maintenance_census_report() {
+    RustMaintenanceCensusDerived {
+      pinned_repository_revision: revision,
+      tracked_rust_paths: tracked_rust_paths,
+      generated_paths: generated_paths,
+      emit_from_paths: emit_from_paths,
+      retained_kernel_paths: retained_kernel_paths,
+      delete_with_v1_paths: delete_with_v1_paths,
+      hand_scaffold_paths: hand_scaffold_paths,
+      unknown_or_refused_paths: unknown_or_refused_paths,
+      extra_disposition_paths: extra_disposition_paths,
+      duplicate_disposition_paths: duplicate_disposition_paths,
+      cross_axis_overlap_paths: cross_axis_overlap_paths,
+      role_without_disposition_paths: role_without_disposition_paths
+    } => revision != "" && length(xs: tracked_rust_paths) > 0
+    RustMaintenanceCensusObservationRefused { detail: detail } => false
+  }
+}
+
+test fn maintenance_census_report_category_paths_are_disjoint_by_predicate() -> Bool {
+  let rows = disposition_authority_rows()
+  let tracked = [
+    "src/v1/stage0/src/main.rs",
+    "src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs"
+  ]
+  let emit_from = disposition_category_paths(rows: rows, tracked_paths: tracked, predicate: is_emit_from_disposition)
+  let hand_scaffold = disposition_category_paths(rows: rows, tracked_paths: tracked, predicate: is_hand_scaffold_disposition)
+  !any(xs: emit_from, predicate: fn(path) { path_in_list(path: path, paths: hand_scaffold) })
+}
+
+test fn maintenance_census_report_red_control_reports_unclassified_as_unknown_or_refused() -> Bool {
+  let observation = lifecycle_totality_witness_observation(extra_paths: ["orphan_maintenance_census.rs"])
+  match rust_maintenance_census_report_over(observation: observation) {
+    RustMaintenanceCensusDerived {
+      pinned_repository_revision: revision,
+      tracked_rust_paths: tracked_rust_paths,
+      generated_paths: generated_paths,
+      emit_from_paths: emit_from_paths,
+      retained_kernel_paths: retained_kernel_paths,
+      delete_with_v1_paths: delete_with_v1_paths,
+      hand_scaffold_paths: hand_scaffold_paths,
+      unknown_or_refused_paths: unknown_or_refused_paths,
+      extra_disposition_paths: extra_disposition_paths,
+      duplicate_disposition_paths: duplicate_disposition_paths,
+      cross_axis_overlap_paths: cross_axis_overlap_paths,
+      role_without_disposition_paths: role_without_disposition_paths
+    } => path_in_list(path: "orphan_maintenance_census.rs", paths: unknown_or_refused_paths)
+    RustMaintenanceCensusObservationRefused { detail: detail } => false
+  }
+}
