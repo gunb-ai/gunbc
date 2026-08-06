@@ -1,26 +1,74 @@
 #!/usr/bin/env bash
+# SCAFFOLD — dissolve-on: the Arc store path is decided for good. Delete this
+# harness together with docs/plans/receipts/arc-1-shareability-frontier/ when
+# either (a) the width>1 crossover lands and Arc returns as one combined change,
+# or (b) the Arc direction is retired outright. It exists only to reproduce the
+# +5.84% serial cost banked in docs/plans/arc-store-path-migration-decision.md.
+#
 # Arc-1 width-1 50-entry cohort receipt (operator bar, smart-badger-549).
 # Both arms from one host, interleaved, one variable: Arc wrapper (after) vs Rc (base/main).
+#
+# BOTH ARMS ARE PINNED. The `after` arm is NOT the current checkout: #7875 closed
+# unmerged, so main carries `std::rc::Rc` only and building `after` from $ROOT would
+# compare Rc against Rc and report ~0% — silently contradicting the very measurement
+# this harness exists to reproduce (DESIGN §5, fabricated plausible output). The pin
+# below is asserted, not assumed: the run refuses if the arms are not what they claim.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RECEIPT_DIR="$ROOT/docs/plans/receipts/arc-1-shareability-frontier"
 WT="$ROOT/.receipt-worktrees/arc1-base"
+AFTER_WT="$ROOT/.receipt-worktrees/arc1-after"
+# The measured commit. Authority: receipts/arc-1-shareability-frontier/subject.tsv `after_commit`.
+AFTER_COMMIT="dfc1cb46c0233e468c5a947494b154824476a013"
+ARC_ALIAS="std::sync::Arc as Rc"
 mkdir -p "$RECEIPT_DIR"
+
+# Fail closed on the one confusion that makes this harness lie: an arm that is not
+# the representation it is labelled with. Typed, located, and loud — never a silent
+# ~0% delta.
+assert_arm_representation() {
+  local label="$1" tree="$2" want="$3"  # want = present | absent
+  local n
+  n="$(grep -rl -- "$ARC_ALIAS" "$tree/src/v1/stage0/src" 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "$want" = present ] && [ "$n" -eq 0 ]; then
+    echo "arc1_cohort_receipt: REFUSED — arm '$label' ($tree) contains no '$ARC_ALIAS'." >&2
+    echo "  This arm must be the Arc representation; it is not. Refusing rather than" >&2
+    echo "  reporting an Rc-vs-Rc delta of ~0% against a banked +5.84%." >&2
+    exit 2
+  fi
+  if [ "$want" = absent ] && [ "$n" -ne 0 ]; then
+    echo "arc1_cohort_receipt: REFUSED — arm '$label' ($tree) contains '$ARC_ALIAS' in $n file(s)." >&2
+    echo "  This arm must be the Rc baseline; it is not. Refusing rather than reporting" >&2
+    echo "  an Arc-vs-Arc delta." >&2
+    exit 2
+  fi
+  echo "arc1_cohort_receipt: arm '$label' representation OK ($want, $n file(s) matched)"
+}
 
 export CTRL_BUILD_WRAP_CARGO=0
 export CTRL_BUILD_BYPASS_SHIMS=1
 export RUSTC_WRAPPER=
 
-echo "arc1_cohort_receipt: building after (Arc) binary at $ROOT"
-cd "$ROOT"
+echo "arc1_cohort_receipt: building after (Arc) binary at pinned $AFTER_COMMIT"
+if ! git cat-file -e "${AFTER_COMMIT}^{commit}" 2>/dev/null; then
+  echo "arc1_cohort_receipt: REFUSED — the measured commit $AFTER_COMMIT is not present." >&2
+  echo "  Fetch it (it lives on session/loyal-ferret-892) before reproducing. Refusing" >&2
+  echo "  rather than substituting the current checkout, which carries Rc only." >&2
+  exit 2
+fi
+rm -rf "$AFTER_WT"
+git worktree add -f --detach "$AFTER_WT" "$AFTER_COMMIT" >/dev/null
+assert_arm_representation after "$AFTER_WT" present
+cd "$AFTER_WT"
 cargo build --release --bin p1_cohort_probe
-AFTER_BIN="$ROOT/target/release/p1_cohort_probe"
+AFTER_BIN="$AFTER_WT/target/release/p1_cohort_probe"
 AFTER_SHA="$(sha256sum "$AFTER_BIN" | awk '{print $1}')"
 
 echo "arc1_cohort_receipt: building base (main/Rc) binary in worktree"
 rm -rf "$WT"
 git worktree add -f "$WT" origin/main >/dev/null
+assert_arm_representation base "$WT" absent
 cd "$WT"
 cargo build --release --bin p1_cohort_probe
 BASE_BIN="$WT/target/release/p1_cohort_probe"
