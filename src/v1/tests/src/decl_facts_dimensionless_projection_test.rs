@@ -146,6 +146,31 @@ fn declaration_identity_qualified_name(ctx: &InterpContext, projection: &Value) 
     projection_kind_lexeme(ctx, &qn_projection)
 }
 
+const SPECIMENS_REL: &str = "dag/test/fixture/decl_facts_reflection/specimens.dag";
+const DISPOSITION_SCaffold_QN: &str =
+    "test.fixture.decl_facts_reflection.specimens.disposition_scaffold";
+
+fn specimens_ctx() -> InterpContext {
+    let sources: Vec<Rc<SourceFile>> = resolve_imports_transitively_with_source_roots(
+        SPECIMENS_REL,
+        &read_fixture(SPECIMENS_REL),
+        &v2_layer_roots(),
+    );
+    ctx_from_sources(sources)
+}
+
+#[test]
+fn disposition_scaffold_marshals_coproduct_record_projection() {
+    let ctx = specimens_ctx();
+    let projection = marshal_data_initializer_projection(&ctx, DISPOSITION_SCaffold_QN)
+        .expect("disposition scaffold must marshal without error");
+    assert_eq!(
+        projection_kind_lexeme(&ctx, &projection),
+        Some("DataInitializerRecordProjection".to_string()),
+        "imported coproduct initializer must use coproduct record projection"
+    );
+}
+
 #[test]
 fn dimensionless_imported_external_authority_marshals_defining_module_parent() {
     let ctx = dimensionless_ctx();
