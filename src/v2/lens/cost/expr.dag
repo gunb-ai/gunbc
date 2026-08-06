@@ -24,8 +24,6 @@ import v2.std.diagnostic {
 }
 import v2.std.nat { Nat, Succ, Zero }
 
-data cost_expr_authority_note: String = "C1 (v2-complexity-capability-parity): SizeExpr and CostExpr are the single richer expression authority in v2.lens.cost. SymbolicCost is their normalized asymptotic projection via normalize_cost_expr_to_symbolic — one authority with two levels of detail, never two competing cost types. Grounded identities per design note c1-cost-expr-authority-design: SizeOf/SizeLength carry SizeVariable (interim until ValueIdentity lands); CostEffect replaces CostExtern; CostRefused carries a closed CostExprRefusalCause coproduct instead of free-text CostUnknown. The blocking cost_lens fold over SymbolicCost is unchanged in C1."
-
 type SizeExpr
   = SizeConst { value: Nat }
   | SizeOf { variable: SizeVariable }
@@ -116,8 +114,6 @@ fn cost_expr_refusal_diagnostic(cause: CostExprRefusalCause) -> Diagnostic {
       }
   }
 }
-
-data cost_expr_refusal_cause_variant_count_debt_note: String = "Dissolve-on: substrate-derived coproduct cardinality replaces any hand-maintained variant count. Today enforcement is the exhaustive match in cost_expr_refusal_diagnostic — adding a CostExprRefusalCause arm without updating that match is a compile refusal, not a runtime count witness."
 
 fn cost_loop_expr(binder: SizeVariable, iterations: SizeExpr, body: CostExpr) -> CostExpr {
   match body {
