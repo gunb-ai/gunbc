@@ -172,7 +172,7 @@ test fn pdf_profile_parameter_wire_encodes_equals_in_nameddest() -> Bool {
   match pdf_open_nameddest(name: "a=b" as NonEmptyStr) {
     ParameterConstructed(parameter) =>
       match pdf_profile_parameter_wire(parameter: parameter) {
-        PdfProfileParameterWired { wire: w } => w == "nameddest=a%3db"
+        PdfProfileParameterWired { wire: w } => w == "nameddest=a%3Db"
         _ => false
       }
     _ => false
