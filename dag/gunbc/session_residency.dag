@@ -1,0 +1,66 @@
+module gunbc.session_residency
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+
+data session_residency_authority_disposition: Disposition = Terminal {
+  reason: "Single authority for WHICH FLEET HOSTS RUN INTERACTIVE AGENT SESSIONS. It is a fleet-topology fact — where session containers are placed — and it is the fact that justifies charging a host a sessions reservation out of its RAM budget. Nothing declared it before; consumers inferred it from whatever nearby row happened to correlate."
+}
+
+data why_this_is_not_derived_from_the_build_cache_roster_note: String = "THE PROXY THIS REPLACES WAS ONE EDIT FROM CAUSING THE BUG IT WAS WRITTEN TO PREVENT, and the near-miss is the argument for the row. gunbc.ci_runner_placement decided whether a host owes a sessions reservation by asking whether gunbc.build_cache_instance.build_cache_desired_instances listed an InteractiveSessionCompiles instance for it. That correlated — srv1 and srv2 had session sccache instances, srv3 and srv4 did not — and correlation was the whole of it.\n\nOn 2026-08-06 the unit backing those instances was deleted from srv1 and srv2 as dead: ctrl-sccache.service had served 29MB in 45 days, held zero connections, and had zero cache writes in the preceding week, because session containers set SCCACHE_DIR to their own in-container path and never used it. The natural follow-up — dropping the now-meaningless session rows from the desired roster — would have silently stopped charging srv1 and srv2 their 20GiB sessions reservation. The conservation wall would then have admitted 7 slots on each, overcommitting them by roughly 17GiB, and returning true while doing it. That is precisely the defect the sessions charge was added to close, reintroduced by a tidy-up two files away, with no test able to see the connection.\n\nTHE REAL FACT IS RESIDENCY, NOT CACHING. Session containers consume host RAM whether or not a shared build cache exists for them: measured 2026-08-06, srv1 and srv2 were each running NINETEEN containers under sessions.slice while the session cache they supposedly depended on had been dead for weeks. A host's sessions reservation follows from sessions living there, and from nothing else."
+
+type SessionResidency
+  = HostsInteractiveSessions
+  | NoInteractiveSessions
+
+data session_residency_observation_note: String = "GROUNDING, with its asymmetry stated rather than smoothed over. The two POSITIVE rows are observed: on 2026-08-06 srv1 and srv2 each showed 19 container cgroups under /sys/fs/cgroup/sessions.slice/, counted directly on the hosts. The dashboard deploy job is also pinned to srv1 alone (.github/workflows/ci.yml deploy_dashboard_srv1, runs-on includes the srv1 label), which is consistent.\n\nThe two NEGATIVE rows are OPERATOR-DECLARED, not observed by the session that wrote this row: srv3 refused a direct key login (the fleet-automation key is authorized for no user there — the B2 gap in gunbc.plans.fleet_subsumption_manual_gaps) and srv4 failed host-key verification, so neither could be counted. The operator states srv3 and srv4 carry no sessions, and the fleet's own history agrees — both were stood up through the modeled path as CI hosts and neither has ever had a dashboard instance.\n\nWhy that asymmetry is acceptable HERE and would not be everywhere: the negative rows are the ones that GRANT capacity. A host wrongly marked NoInteractiveSessions is charged nothing and gets more runner slots, so an error in that direction overcommits — which means these two rows should be the first thing re-checked when srv3/srv4 become reachable, and they carry a dissolve-on saying so."
+
+fn host_session_residency(host: HostIdentity) -> SessionResidency {
+  if (host as String) == (operator_host_srv1 as String) {
+    HostsInteractiveSessions
+  } else if (host as String) == (operator_host_srv2 as String) {
+    HostsInteractiveSessions
+  } else if (host as String) == (operator_host_srv3 as String) {
+    NoInteractiveSessions
+  } else if (host as String) == (operator_host_srv4 as String) {
+    NoInteractiveSessions
+  } else {
+    HostsInteractiveSessions
+  }
+}
+
+data unknown_host_defaults_to_hosting_sessions_note: String = "THE UNKNOWN ARM CHARGES RATHER THAN EXEMPTS, and it is the one place in this lane where the fail-closed direction is the OPPOSITE of the usual one. Everywhere else an unclassified host refuses — gunbc.ci_floor_measurement returns HostFixedOverheadUnmeasured, gunbc.runner_slot_allocation returns zero slots — because refusing to derive is safer than deriving from a borrowed premise.\n\nHere refusing is not available: this function answers a Bool-shaped question with no third state, and the consumer needs an answer to size a budget. So the question becomes which WRONG answer is survivable. Saying a host hosts sessions when it does not costs runner slots on that host — visible, recoverable, an under-use of hardware. Saying it does not when it does removes the largest non-runner claim from the conservation sum and overcommits the machine, which is the srv4 OOM shape and is not recoverable inside CI. The expensive direction is the safe default, so an unclassified host is charged until someone classifies it.\n\nA host that never appears here is also not enrolled in gunbc.fleet_intent and takes no fleet work at all, so this arm is unreachable in practice today. It is written for the enrollment that has not happened yet."
+
+fn host_carries_interactive_sessions(host: HostIdentity) -> Bool {
+  match host_session_residency(host: host) {
+    HostsInteractiveSessions => true
+    NoInteractiveSessions => false
+  }
+}
+
+data observed_session_container_counts_note: String = "The counts are recorded as a dated observation rather than as the authority, because they are a SNAPSHOT: session containers come and go continuously, and 19 is what two hosts happened to be running at one moment on 2026-08-06. What the snapshot establishes is the QUALITATIVE fact this module exists to carry — that sessions are resident on srv1 and srv2 in quantity — which is stable in a way the number is not. A consumer wanting the number should observe it, not read it here."
+
+type ObservedSessionContainerCount {
+  host: HostIdentity
+  observed_on: NonEmptyStr
+  container_count: Int
+}
+
+data session_container_observations: List<ObservedSessionContainerCount> = [
+  ObservedSessionContainerCount { host: operator_host_srv1, observed_on: "2026-08-06", container_count: 19 },
+  ObservedSessionContainerCount { host: operator_host_srv2, observed_on: "2026-08-06", container_count: 19 },
+]
+
+data session_residency_negative_rows_dissolve_on: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.session_residency",
+    decl_name: "session_container_observations_srv3_srv4",
+    field: WholeDeclaration
+  }
+}

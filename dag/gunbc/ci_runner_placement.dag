@@ -11,12 +11,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
-import gunbc.build_cache_instance {
-  BuildCacheConsumerClass,
-  ContinuousIntegrationCompiles,
-  InteractiveSessionCompiles,
-  build_cache_desired_instances,
-}
+import gunbc.session_residency { host_carries_interactive_sessions }
 import gunbc.fleet_host_budget {
   gunbc_fleet_oomd_evidence,
   gunbc_runner_pool_budget_for,
@@ -201,21 +196,7 @@ fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount)
   }
 }
 
-data host_session_slice_roster_note: String = "WHICH HOSTS OWE A SESSIONS RESERVATION IS READ FROM THE DEPLOYED-INSTANCE ROSTER, never re-listed here. gunbc.build_cache_instance build_cache_desired_instances already declares one BuildCacheInstance per (host, consumer class), and an InteractiveSessionCompiles row appears for srv1 and srv2 and for neither managed host. That roster is the fleet's statement about where interactive sessions live; a second list of session hosts in this module would be the nickname DESIGN 3 forbids, and it would rot in the ordinary way — someone moves the dashboard and the budget keeps charging the old host.\n\nTHE BUG THIS CLOSES IS NOT SUBTLE AND IT WAS LIVE. The conservation call passed session_pool: byte_size(0) for EVERY host, unconditionally. So the wall that exists to refuse over-commitment could not see the largest non-runner claim on the two hosts that actually carry it, and it scored srv1 and srv2 as though 20GiB of session reservation were free. At the previous 5 × 16GiB width that host summed to 123.8GiB against 125GiB usable — 1.2GiB of margin on the fleet's tightest hosts, with the model reporting room for two more slots. Raising the fleet-wide width without fixing this would have handed srv1/srv2 seven slots each and overcommitted them by roughly 17GiB, through a wall returning true.\n\nThe reservation SIZE is a different question from WHERE, and it is not settled here: gunbc.ci_floor_measurement gunbc_ci_session_reservation_mode declares a Regime-2 aggregate of exactly 21474836480 bytes, and that number has the same round-power-of-two signature as the fixed overhead this change just split, with no derivation from the thirteen measured per-session samples beside it. It is charged as declared because charging it is strictly safer than the zero it replaces, and because the whole Regime-2 path is refusing anyway on unverified oomd. Dissolve-on: a measured concurrent-peak series replaces the aggregate."
-
-fn host_carries_interactive_sessions(host: HostIdentity) -> Bool {
-  fold(
-    build_cache_desired_instances,
-    init: false,
-    f: (acc, inst) =>
-      acc
-        || (((inst.identity.host as String) == (host as String))
-             && match inst.identity.consumer_class {
-                  InteractiveSessionCompiles => true
-                  ContinuousIntegrationCompiles => false
-                })
-  )
-}
+data host_session_slice_source_note: String = "WHICH HOSTS OWE A SESSIONS RESERVATION comes from gunbc.session_residency, the authority for where interactive session containers actually live. It does NOT come from the build-cache roster, and the correction is recorded because the proxy came within one cleanup of causing the bug this charge exists to prevent.\n\nThe original derivation asked whether gunbc.build_cache_instance listed an InteractiveSessionCompiles instance for the host. That correlated with session residency and nothing more. When ctrl-sccache.service was deleted from srv1 and srv2 on 2026-08-06 as provably dead — 29MB in 45 days, zero connections, zero writes in a week, because containers cache to their own in-container path — the obvious follow-up of dropping those roster rows would have stopped charging both hosts their 20GiB reservation, and the conservation wall would then have admitted 7 slots each and overcommitted them by ~17GiB while returning true.\n\nSessions consume host RAM whether or not a shared build cache exists for them; srv1 and srv2 were each running 19 session containers at the moment their session cache was found dead. The charge follows residency.\n\nTHE RESERVATION SIZE remains a separate and unsettled question: gunbc.ci_floor_measurement gunbc_ci_session_reservation_mode declares a Regime-2 aggregate of exactly 21474836480 bytes, a round power of two with the same signature as the fixed-overhead literal this change already split, and no derivation from the thirteen measured per-session samples beside it. It is charged as declared because charging it is strictly safer than the zero it replaced. Dissolve-on: a measured concurrent-peak series."
 
 data host_session_slice_refuses_rather_than_charging_zero_note: String = "AN UNSIZED SESSION SLICE ON A SESSION HOST REFUSES, because the alternative is the bug this change exists to remove, re-entering through a different door. The first draft of this function returned byte_size(0) whenever the reservation mode could not produce a number — SessionAggregateUnmeasured, SessionOperatingPointUnset, SessionReservationModeUnset — which reads as 'sessions cost nothing' and is exactly the unconditional zero that let srv1 and srv2 score as though 20GiB of reservation were free. Fixing the WHERE (a host carries sessions) while leaving the HOW MUCH silently zero would have moved the defect rather than closed it.\n\nThe distinction the arms preserve: a host with NO session instance genuinely owes nothing, and SessionSliceNotApplicable says so. A host that DOES carry one and cannot size it is unknown, not free, and SessionSliceUnsized refuses the whole plan with a located reason. Those are different states and one of them is safe.\n\nToday every arm resolves — the declared Regime-2 aggregate is present — so this refusal is dormant. It is written anyway because the mode is one edit from unmeasured and the cost of the fail-open version is a fleet that overcommits its two tightest hosts while every wall returns true."
 
@@ -247,7 +228,7 @@ fn host_session_slice_resolution(host: HostIdentity) -> HostSessionSliceResoluti
       Present { value: b } => SessionSliceCharged { bytes: b }
       Absent =>
         SessionSliceUnsized {
-          reason: concat("host carries an InteractiveSessionCompiles instance (gunbc.build_cache_instance build_cache_desired_instances) but gunbc_ci_session_reservation_mode yields no reservation size, so the largest non-runner claim on this host is unknown: refuse to derive a runner width rather than charge zero for it. Host: ", host)
+          reason: concat("host runs interactive session containers (gunbc.session_residency host_session_residency) but gunbc_ci_session_reservation_mode yields no reservation size, so the largest non-runner claim on this host is unknown: refuse to derive a runner width rather than charge zero for it. Host: ", host)
         }
     }
   } else {

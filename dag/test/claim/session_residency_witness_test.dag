@@ -1,0 +1,57 @@
+module test.claim.session_residency_witness
+
+import std.logic { Bool }
+import std.types { String, List }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+import gunbc.session_residency {
+  SessionResidency,
+  HostsInteractiveSessions,
+  NoInteractiveSessions,
+  host_session_residency,
+  host_carries_interactive_sessions,
+  session_container_observations,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_note: String = "These rows pin WHICH hosts owe a sessions reservation. They are cheap and they exist because the previous derivation of this same fact was a correlation that survived only as long as an unrelated file stayed unchanged — see gunbc.session_residency why_this_is_not_derived_from_the_build_cache_roster_note. A wrong answer here does not fail loudly; it silently removes the largest non-runner claim from a host's conservation sum."
+
+test fn session_hosts_are_srv1_and_srv2() -> Bool {
+  host_carries_interactive_sessions(host: operator_host_srv1)
+    && host_carries_interactive_sessions(host: operator_host_srv2)
+}
+
+test fn managed_hosts_carry_no_sessions() -> Bool {
+  !host_carries_interactive_sessions(host: operator_host_srv3)
+    && !host_carries_interactive_sessions(host: operator_host_srv4)
+}
+
+data unknown_host_direction_note: String = "The unclassified arm is asserted to CHARGE, not exempt, and this is the row that would catch someone 'fixing' it to match the refuse-by-default convention used elsewhere in this lane. That convention is right where refusing is available; here the consumer needs a Bool to size a budget, so the choice is between two wrong answers. Charging a host that has no sessions wastes runner slots on that host — visible and recoverable. Exempting a host that HAS sessions overcommits the machine — the srv4 OOM shape. The expensive direction is the safe one."
+
+test fn unclassified_host_is_charged_not_exempted() -> Bool {
+  host_carries_interactive_sessions(host: "srv-not-yet-enrolled")
+}
+
+test fn residency_and_bool_projection_agree() -> Bool {
+  all(
+    [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
+    h =>
+      match host_session_residency(host: h) {
+        HostsInteractiveSessions => host_carries_interactive_sessions(host: h)
+        NoInteractiveSessions => !host_carries_interactive_sessions(host: h)
+      }
+  )
+}
+
+data observation_supports_the_positive_rows_note: String = "The recorded container counts must actually support the hosts they are cited for: an observation row naming a host that this module classifies as session-free would be evidence contradicting its own conclusion, which is the shape a stale receipt takes when a host's role changes and only one of the two rows is updated."
+
+test fn every_observed_host_is_classified_as_hosting_sessions() -> Bool {
+  all(
+    session_container_observations,
+    o => host_carries_interactive_sessions(host: o.host) && o.container_count > 0
+  )
+}
