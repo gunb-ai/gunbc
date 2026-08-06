@@ -138,9 +138,29 @@ fn assimilation_program_for(intent: HostEnrollmentIntent) -> HostAssimilationPro
 
 data host_enrollment_participation_nonempty_note: String = "Enrollment participation is authored as a non-empty list at every fleet enrollment site today. An empty list would yield an empty program identity (invalid NonEmptyStr) and zero completion obligations; a NonEmptyList carrier on HostEnrollmentIntent is deferred until enrollment validation walls land."
 
+data fleet_participation_canonical_roster_note: String = "Participation has SET semantics but is carried as a List, and identity must not be able to tell the two apart. Step selection already reads the list as membership -- step_serves_any asks only whether SOME participation claims the step -- so order and repetition are invisible to which obligations exist. Deriving the identity from the raw list did let them through: [CiRunner, InferenceServing] and [InferenceServing, CiRunner] and [CiRunner, CiRunner, InferenceServing] select exactly the same steps while producing three different identity strings, which is a second representation of one program (DESIGN section 3) and would fork any consumer that keys on identity. The correction projects through a FIXED roster instead of reading the caller's list order: filtering the roster by membership yields at most one occurrence of each participation, in one order, whatever the caller wrote. That is the construction half -- a duplicate or a reordering cannot reach the identity, so there is no post-hoc canonicalization check to remember to call. The roster's own completeness is the residue this cannot construct away, and it is walled by an EXHAUSTIVE match in fleet_participation_in_canonical_roster: a newly added participation does not compile until it is stated there, and its witness reds if it is stated but left out of the roster."
+
+data fleet_participation_canonical_roster: List<FleetParticipation> = [
+  CiRunnerParticipation,
+  InferenceServingParticipation,
+]
+
+fn fleet_participation_in_canonical_roster(p: FleetParticipation) -> Bool {
+  match p {
+    CiRunnerParticipation =>
+      participation_list_contains(ps: fleet_participation_canonical_roster, wanted: CiRunnerParticipation)
+    InferenceServingParticipation =>
+      participation_list_contains(ps: fleet_participation_canonical_roster, wanted: InferenceServingParticipation)
+  }
+}
+
+fn canonical_participation(ps: List<FleetParticipation>) -> List<FleetParticipation> {
+  filter(fleet_participation_canonical_roster, c => participation_list_contains(ps: ps, wanted: c))
+}
+
 fn host_enrollment_program_identity(intent: HostEnrollmentIntent) -> NonEmptyStr {
   join(
-    map(intent.participation, p => fleet_participation_label(p: p)),
+    map(canonical_participation(ps: intent.participation), p => fleet_participation_label(p: p)),
     "+"
   ) as NonEmptyStr
 }

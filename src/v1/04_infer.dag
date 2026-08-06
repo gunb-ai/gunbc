@@ -876,6 +876,22 @@ fn record_lit_expected_coproduct(expected: Node?, scope: InferScope) -> Node? {
   }
 }
 
+// When lookup_variant_parent_enum and variant_owner_node miss under composed symbol
+// index (#7836 per-entry assembly), derive parent_enum from expected coproduct
+// evidence: stamp only if record_lit_variant_from_expected proves the variant arm
+// exists in the expected type's coproduct — refuses on miss, never guesses.
+fn record_lit_parent_enum_from_expected(type_name: String, expected: Node?, scope: InferScope) -> String? {
+  match record_lit_variant_from_expected(type_name: Present { value: type_name }, expected: expected, scope: scope) {
+    Present { value: _ } =>
+      match record_lit_expected_coproduct(expected: expected, scope: scope) {
+        Present { value: coproduct } =>
+          Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: coproduct) }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
 fn record_lit_variant_from_expected(type_name: String?, expected: Node?, scope: InferScope) -> Node? {
   match type_name {
     Present { value: tn } =>
@@ -4681,7 +4697,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
       Absent =>
         match variant_owner_node(scope: scope, name: type_name.value) {
           Present { value: owner } => Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: owner) }
-          Absent => none
+          Absent => record_lit_parent_enum_from_expected(type_name: type_name.value, expected: expected, scope: scope)
         }
     }
     let effective_lookup = match type_lookup {
