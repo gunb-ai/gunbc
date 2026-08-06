@@ -16,6 +16,7 @@ import gunbc.ci_spec {
   gunbc_ci_heal_binary_source_skew_guard_script,
   gunbc_ci_workflow_wrapper_budget_minutes,
   ci_heal_author_commit_artifact_dir, ci_heal_author_commit_artifact_name,
+  ci_heal_author_commit_artifact_includes_hidden_files,
   gunbc_ci_heal_repo_local_git_config_invoke,
 }
 import v2.workflow.ci_heal_revalidation_preflight_emit {
@@ -625,6 +626,7 @@ fn ci_heal_author_commit_upload_step() -> Step {
         kv(key: "name", value: yaml_string(s: ci_heal_author_commit_artifact_name)),
         kv(key: "path", value: yaml_string(s: ci_heal_author_commit_artifact_dir)),
         kv(key: "if-no-files-found", value: yaml_string(s: "ignore")),
+        kv(key: "include-hidden-files", value: yaml_bool(b: ci_heal_author_commit_artifact_includes_hidden_files())),
         kv(key: "retention-days", value: yaml_int(n: 7)),
         kv(key: "compression-level", value: yaml_int(n: 0))
       ]
