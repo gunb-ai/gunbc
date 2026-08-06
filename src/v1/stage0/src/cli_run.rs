@@ -9010,7 +9010,7 @@ fn typed_module_cache_cap(index: &MultiEntryIndex) -> usize {
         let (cap, source, degraded) = typed_module_cache_cap_derivation();
         if degraded {
             eprintln!(
-                "[floor-drain] degraded_budget_source: cap={cap} source={source} (no private cgroup memory.max/memory.high found; falling back to a host-shared signal)"
+                "[floor-drain] degraded_budget_source: cap={cap} source={source} (no private cgroup memory.max/memory.high found)"
             );
         }
         cap

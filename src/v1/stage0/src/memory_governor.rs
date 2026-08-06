@@ -1082,7 +1082,29 @@ pub fn read_host_budget_bytes() -> (Option<u64>, String) {
         };
         return (Some(budget), source);
     }
-    (mem_total_bytes(), "/proc/meminfo MemTotal".to_string())
+    // Terminal arm, and the ONLY one that can report having read nothing. Authority for
+    // the source vocabulary and its rendering is `dag/gunbc/host_budget_source.dag`
+    // (`HostBudgetSource`); `BudgetSourceUnavailable` is the arm this `None` branch
+    // realizes, and `dag/extdeps/linux/procfs.dag` carries why a Darwin host reaches it.
+    //
+    // This used to be `(mem_total_bytes(), "/proc/meminfo MemTotal".to_string())` — the
+    // label composed unconditionally beside a read that returns `None` whenever
+    // /proc/meminfo is absent, which on macOS is always. Every local run printed
+    // `source=/proc/meminfo MemTotal` on a machine with no /proc: a source attribution for
+    // a read that never happened, next to a value never obtained. Loud but fabricated, and
+    // unreadable in the one way that matters — a reader could not tell "MemTotal said
+    // something we distrusted" from "there is no MemTotal here".
+    match mem_total_bytes() {
+        Some(total) => (Some(total), "/proc/meminfo MemTotal".to_string()),
+        None => (
+            None,
+            format!(
+                "unavailable: no readable /proc/meminfo on this host (target_os={}) \
+                 — nothing was read, budget falls back to the declared ceiling",
+                std::env::consts::OS
+            ),
+        ),
+    }
 }
 
 /// leaf→root walk — the effective budget the OOM-killer enforces. `None` when unreadable

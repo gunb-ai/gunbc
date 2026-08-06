@@ -11,12 +11,17 @@ import std.realization_measurement {
 }
 import std.realization_schedule { Measured, Predicted }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.linux.procfs { ProcfsPath, ProcSelfStatus }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data live_tree_disposition_reason: String = "peak_resident_measured_holds reads /proc/self/status (VmHWM) through the observed_peak_resident_bytes host builtin - host state outside the resolved substrate closure, the exact hidden-behind-a-builtin class the entry-text classifier cannot see (live_tree.dag) - so this row declares ReadsLiveTree and never predict-skips."
 
 data peak_resident_witness_note: String = "Witness-realization plan P1 ACCEPT: the first CostAccount.space with basis Measured produced BY EXECUTION (memory-control audit F2: RealizationMeasureEffect previously had no space-observing variant, so a Measured space fact was unproducible). The builtin fails closed when VmHWM is unavailable - the witness then errors rather than fabricating."
+
+data peak_resident_platform_precondition: ProcfsPath = ProcSelfStatus
+
+data peak_resident_platform_precondition_note: String = "THIS WITNESS CANNOT PASS ON A KERNEL WITHOUT procfs, and until 2026-08-05 nothing said so. observed_peak_resident_bytes reads VmHWM from /proc/self/status; on Darwin that file does not exist, the builtin correctly refuses rather than fabricating, and the witness surfaces as `type error: observed_peak_resident_bytes: VmHWM unavailable on this host`. That message is accurate and still costs real time, because it is indistinguishable at a glance from a witness the current change just broke — diagnosing it during this PR meant stashing the working tree and re-running against unmodified main to prove the failure was the platform rather than the diff.\n\nWhat the row above adds is a DECLARED precondition, greppable and typed against extdeps.linux.procfs, so the next reader sees the reason without running the experiment. Peak resident set is available on macOS (Mach task_info) and on Windows (GetProcessMemoryInfo); it is only the procfs TRANSPORT that is Linux-only, so this is a missing realization rather than a missing capability, and the precondition names the transport rather than declaring the fact unobservable.\n\nWHAT THIS DELIBERATELY DOES NOT DO: branch on the platform to return true. A witness that greens where it cannot observe is the fabricated-plausible-output shape (DESIGN section 5) with a platform check as its trigger, and it would report coverage the fleet does not have — worse than the honest failure, because CI runs on Linux where the observation is real and the skip would hide nothing there while quietly lying everywhere else. The deficit stays visible and stays counted; the dissolution is a Mach task_info realization behind the same builtin, at which point this row retires and the witness passes on both platforms for the same reason."
 
 test fn peak_resident_measured_holds() -> Bool {
   let peak = observed_peak_resident_bytes()

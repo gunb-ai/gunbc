@@ -1,0 +1,142 @@
+module test.claim.host_budget_source_witness
+
+import std.logic { Bool }
+import std.types { String, List }
+import std.measure { byte_size, byte_size_count }
+import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
+import extdeps.linux.procfs {
+  ProcfsPath,
+  ProcMeminfo,
+  ProcSelfStatus,
+  ProcSelfCgroup,
+  ProcSwaps,
+  ProcfsAvailable,
+  ProcfsAbsentOnKernel,
+  kernel_provides_procfs,
+  procfs_availability,
+  procfs_availability_is_available,
+  procfs_paths_read_by_this_repository,
+  procfs_path_literal,
+}
+import gunbc.host_budget_source {
+  HostBudgetSource,
+  BudgetSourceEnvOverride,
+  BudgetSourceCgroupMemoryHigh,
+  BudgetSourceCgroupMemoryMax,
+  BudgetSourceMemAvailableCappedAtDeclaredHigh,
+  BudgetSourceMemAvailable,
+  BudgetSourceMemTotal,
+  BudgetSourceUnavailable,
+  host_budget_source_is_degraded,
+  host_budget_source_reads_procfs,
+  host_budget_source_admissible_on_kernel,
+  host_budget_source_for_absent_procfs,
+  host_budget_source_label,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_subject_note: String = "These rows are about the RELATION between a kernel family and a budget source, not about the machine running them, so they are SubstrateInputsOnly and give the same verdict on every platform. That is deliberate and is the point: the defect being walled is a claim the code makes about a platform, and a check that could only run on the affected platform would be untestable from the fleet's own Linux CI — which is how the fabricated label survived in the first place."
+
+data all_kernels: List<KernelFamily> = [Linux, Darwin, WindowsNt, LinuxGuestOnWindows]
+
+data all_sources: List<HostBudgetSource> = [
+  BudgetSourceEnvOverride,
+  BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/system.slice" },
+  BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/system.slice" },
+  BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: byte_size(13958643712) },
+  BudgetSourceMemAvailable,
+  BudgetSourceMemTotal,
+  BudgetSourceUnavailable { kernel: Darwin },
+]
+
+test fn procfs_provision_follows_the_kernel_not_the_name() -> Bool {
+  kernel_provides_procfs(kernel: Linux)
+    && kernel_provides_procfs(kernel: LinuxGuestOnWindows)
+    && !kernel_provides_procfs(kernel: Darwin)
+    && !kernel_provides_procfs(kernel: WindowsNt)
+}
+
+test fn procfs_availability_is_absent_for_every_path_on_darwin() -> Bool {
+  all(
+    procfs_paths_read_by_this_repository,
+    p =>
+      !procfs_availability_is_available(a: procfs_availability(kernel: Darwin, path: p))
+        && procfs_availability_is_available(a: procfs_availability(kernel: Linux, path: p))
+  )
+}
+
+test fn every_procfs_path_renders_an_absolute_proc_path() -> Bool {
+  all(
+    procfs_paths_read_by_this_repository,
+    p => starts_with(s: procfs_path_literal(p: p) as String, prefix: "/proc/")
+  )
+}
+
+data degraded_is_private_limit_note: String = "The degraded axis is asserted as a PARTITION of the arms rather than arm-by-arm, so adding a source cannot leave the question unanswered: exactly the three non-degraded arms are the ones describing a bound private to this process, and everything meminfo-derived or unavailable is degraded. A witness that listed only the degraded arms would still pass if a new arm defaulted to non-degraded, which is the direction that actually costs something — a host-shared signal silently trusted as a private limit is the 2026-07-21 srv3 exit-137 shape."
+
+test fn degraded_is_exactly_the_non_private_sources() -> Bool {
+  !host_budget_source_is_degraded(s: BudgetSourceEnvOverride)
+    && !host_budget_source_is_degraded(s: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup" })
+    && !host_budget_source_is_degraded(s: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" })
+    && host_budget_source_is_degraded(s: BudgetSourceMemAvailable)
+    && host_budget_source_is_degraded(s: BudgetSourceMemTotal)
+    && host_budget_source_is_degraded(s: BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: byte_size(13958643712) })
+    && host_budget_source_is_degraded(s: BudgetSourceUnavailable { kernel: Darwin })
+}
+
+data platform_wall_red_control_note: String = "THE DISCRIMINATING PAIR, and it is the whole reason this file exists. The live defect is that read_host_budget_bytes reports BudgetSourceMemTotal on a Darwin host — a procfs-reading source named on a kernel that provides no procfs. The first witness asserts every procfs-reading arm is INADMISSIBLE on both non-procfs kernels; the second asserts those same arms stay admissible on both procfs kernels.\n\nOne without the other proves nothing. Asserting only inadmissibility is satisfied by a predicate that refuses everything, which would make the governor unable to name a legitimate cgroup read on Linux; asserting only admissibility is satisfied by the predicate that returns true unconditionally, which is the behaviour today. Together they pin the boundary exactly at 'reads procfs AND kernel lacks procfs', which is the sentence the bug violates."
+
+test fn RED_procfs_sources_are_inadmissible_on_kernels_without_procfs() -> Bool {
+  all(
+    all_sources,
+    s =>
+      if host_budget_source_reads_procfs(s: s) {
+        !host_budget_source_admissible_on_kernel(s: s, kernel: Darwin)
+          && !host_budget_source_admissible_on_kernel(s: s, kernel: WindowsNt)
+      } else {
+        true
+      }
+  )
+}
+
+test fn procfs_sources_stay_admissible_on_kernels_with_procfs() -> Bool {
+  all(
+    all_sources,
+    s =>
+      host_budget_source_admissible_on_kernel(s: s, kernel: Linux)
+        && host_budget_source_admissible_on_kernel(s: s, kernel: LinuxGuestOnWindows)
+  )
+}
+
+test fn the_absent_procfs_source_is_admissible_everywhere_and_names_the_kernel() -> Bool {
+  all(
+    all_kernels,
+    k => {
+      let s = host_budget_source_for_absent_procfs(kernel: k)
+      host_budget_source_admissible_on_kernel(s: s, kernel: k)
+        && !host_budget_source_reads_procfs(s: s)
+        && host_budget_source_is_degraded(s: s)
+    }
+  )
+}
+
+data label_carries_no_unread_path_note: String = "The label is the surface a human actually reads, so the wall has to hold there too and not only on the discriminant. This asserts the unavailable arm's rendering never claims a /proc path — the exact text `/proc/meminfo MemTotal` is what ships today on a machine with no /proc, and a typed source whose label still said that would have fixed nothing a reader can see."
+
+test fn unavailable_label_never_claims_a_proc_path() -> Bool {
+  all(
+    all_kernels,
+    k =>
+      !contains(
+        haystack: host_budget_source_label(s: host_budget_source_for_absent_procfs(kernel: k)) as String,
+        needle: "/proc/"
+      )
+  )
+}
+
+test fn procfs_reading_labels_do_name_their_path() -> Bool {
+  contains(haystack: host_budget_source_label(s: BudgetSourceMemTotal) as String, needle: "/proc/meminfo")
+    && contains(haystack: host_budget_source_label(s: BudgetSourceMemAvailable) as String, needle: "/proc/meminfo")
+    && contains(haystack: host_budget_source_label(s: BudgetSourceEnvOverride) as String, needle: "GUNBC_MEMORY_BUDGET_BYTES")
+}
