@@ -141,7 +141,7 @@ import v1.compiler.infer_resolve {
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
   resolve_func_sigs, flatten_parent_envs,
-  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous, FuncSigCallerNotAdmitted
+  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous
 }
 import v1.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
@@ -2721,11 +2721,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent =>
           match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name) {
             FuncSigResolved { sig: fsig } =>
-              match (fsig.params |> count) == 0 {
-                true =>
-                  match constructor_reference_admission_early_refusal(callee_name: name, span: span, scope: scope) {
-                    Present { value: refusal } => refusal
-                    Absent =>
+              match constructor_reference_admission_early_refusal(callee_name: name, span: span, scope: scope) {
+                Present { value: refusal } => refusal
+                Absent =>
+                  match (fsig.params |> count) == 0 {
+                    true =>
                       ok_infer(texpr: make_named_expr_node(
                         name: name,
                         expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
@@ -2734,34 +2734,19 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         span: span,
                         name_span: span
                       ))
+                    false =>
+                      ok_infer(texpr: make_named_expr_node(
+                        name: name,
+                        expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
+                        children: [],
+                        inferred: Present { value: Resolved { node: resolved_callable_type(func_params: fsig.params, ret: fsig.inferred) } },
+                        span: span,
+                        name_span: span
+                      ))
                   }
-                false =>
-                  ok_infer(texpr: make_named_expr_node(
-                    name: name,
-                    expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
-                    children: [],
-                    inferred: Present { value: Resolved { node: resolved_callable_type(func_params: fsig.params, ret: fsig.inferred) } },
-                    span: span,
-                    name_span: span
-                  ))
               }
             FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
               ambiguous_reference_refusal(name: name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
-            FuncSigCallerNotAdmitted { function_name: fname, owner_module_path: om, admitted: adm } =>
-              InferResult {
-                typed: semantic_expr_error_node(message: concat("constructor call admission refused for '", fname, "'"), span: span),
-                diagnostics: [make_error_node(
-                  diagnostic: ConstructorCallAdmissionRefused {
-                    constructor_module_path: om,
-                    constructor_decl_name: fname,
-                    caller_module_path: scope.module_name,
-                    caller_decl_name: if scope.caller_decl_name == "" { "<unknown>" } else { scope.caller_decl_name },
-                    permitted_callers: adm,
-                    span: span
-                  },
-                  module_name: scope.module_name
-                )]
-              }
             FuncSigUnresolved =>
               match lookup_binding_by_name(env: scope.type_env, name: name) {
                 Present { value: gbinding } =>
@@ -2936,21 +2921,6 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       match call_sig_lookup {
       FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
         ambiguous_reference_refusal(name: func_name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
-      FuncSigCallerNotAdmitted { function_name: fname, owner_module_path: om, admitted: adm } =>
-        InferResult {
-          typed: semantic_expr_error_node(message: concat("constructor call admission refused for '", fname, "'"), span: span),
-          diagnostics: [make_error_node(
-            diagnostic: ConstructorCallAdmissionRefused {
-              constructor_module_path: om,
-              constructor_decl_name: fname,
-              caller_module_path: scope.module_name,
-              caller_decl_name: if scope.caller_decl_name == "" { "<unknown>" } else { scope.caller_decl_name },
-              permitted_callers: adm,
-              span: span
-            },
-            module_name: scope.module_name
-          )]
-        }
       _ =>
       match constructor_reference_admission_early_refusal(callee_name: func_name, span: span, scope: scope) {
         Present { value: refusal } => refusal

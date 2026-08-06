@@ -16,8 +16,7 @@ import v1.std.core {
   ErrorNode,
 
   CardOptional,
-  error_type,
-  DeclRefCoords, fn_admit_callers, decl_ref_coords_label
+  error_type
 }
 
 import std.algebra {
@@ -48,7 +47,7 @@ import v1.compiler.infer_emit_info {
 
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, lookup_resolved_sig,
-  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous, FuncSigCallerNotAdmitted
+  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous
 }
 
 import v1.compiler.infer_service {
@@ -82,8 +81,6 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
   match lookup_resolved_sig(env: func_env, name: name) {
     FuncSigResolved { sig: sig } => FuncSigResolved { sig: sig }
     FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
-    FuncSigCallerNotAdmitted { function_name: fname, owner_module_path: om, admitted: adm } =>
-      FuncSigCallerNotAdmitted { function_name: fname, owner_module_path: om, admitted: adm }
     FuncSigUnresolved => func_sig_from_global_bare(type_env: type_env, name: name)
   }
 }
@@ -93,7 +90,6 @@ fn func_sig_if_resolved(lookup: FuncSigLookup) -> ResolvedFuncSig? {
     FuncSigResolved { sig: sig } => Present { value: sig }
     FuncSigUnresolved => Absent
     FuncSigAmbiguous { candidates: _ } => Absent
-    FuncSigCallerNotAdmitted { function_name: _, owner_module_path: _, admitted: _ } => Absent
   }
 }
 
@@ -231,36 +227,15 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             variant_provenance: empty_map()
           } }
         } else {
-          match fn_admit_callers(n: node, source_indices: type_env.source_indices) {
-            Present { value: permitted } =>
-              if permitted |> any(p => p.module_path == type_env.module_path) {
-                let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
-                FuncSigResolved { sig: ResolvedFuncSig {
-                  name: name,
-                  params: node.params,
-                  inferred: qualified_return,
-                  is_async: false,
-                  output_provenance: [],
-                  variant_provenance: empty_map()
-                } }
-              } else {
-                FuncSigCallerNotAdmitted {
-                  function_name: name,
-                  owner_module_path: bd.owner_module_path,
-                  admitted: permitted |> map(p => decl_ref_coords_label(coords: p))
-                }
-              }
-            Absent =>
-              let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
-              FuncSigResolved { sig: ResolvedFuncSig {
-                name: name,
-                params: node.params,
-                inferred: qualified_return,
-                is_async: false,
-                output_provenance: [],
-                variant_provenance: empty_map()
-              } }
-          }
+          let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
+          FuncSigResolved { sig: ResolvedFuncSig {
+            name: name,
+            params: node.params,
+            inferred: qualified_return,
+            is_async: false,
+            output_provenance: [],
+            variant_provenance: empty_map()
+          } }
         }
       }
     Absent => FuncSigUnresolved
