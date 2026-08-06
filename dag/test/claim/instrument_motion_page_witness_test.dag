@@ -1,0 +1,116 @@
+module test.claim.instrument_motion_page_witness
+
+import gunbc.roadmap_serve {
+  RoadmapServeHandler, InstrumentMotionPageHandler, InstrumentMotionAssetHandler,
+  roadmap_serve_invoke,
+}
+import gunbc.roadmap_component {
+  instrument_motion_asset_path, instrument_motion_page_path,
+  instrument_motion_client_js_source,
+  motion_plate_class, motion_tap_btn_class, motion_receipt_class,
+  motion_frame_data_attr, motion_reduced_frame_data_attr, motion_frame_interval_attr,
+  motion_plate_id, motion_receipt_id, motion_probe_run_id,
+}
+import gunbc.roadmap_instrument_motion {
+  frames_for, frames_wire, motion_frame_interval_ms,
+}
+import gunbc.capability_binding {
+  SyntheticTapLight, SyntheticTapFirm, SyntheticTapKnock,
+}
+import gunbc.design.instrument_bob {
+  BobFrame, MotionFull, MotionReduced, bob_max_travel_px,
+}
+import extdeps.http.server { ServeHttpRequest, ServeHttpResponse }
+import std.types { String, Int, Bool, List, HttpMethod, GET }
+
+data witness_subject_note: String = "THE MOTION LAB'S VERTICAL SLICE, exercised through the route rather than through the page function, because the thing that can break in production is the composition — a handler arm that renders the wrong page, an asset route serving the wrong body, a page whose attributes and whose client program have drifted apart. Calling instrument_motion_page() directly would prove the fragment and leave every seam above it untested.
+
+WHAT THE RED CONTROLS DISCRIMINATE. The reduced wire is asserted to DIFFER from the full wire and to be exactly the at-rest frame: if a future edit made reduced motion a client-side opt-out, both wires would be equal and the first control reds. The client program is asserted to contain no arithmetic library call: if the physics ever migrated into the renderer, Math. would appear and the second control reds. And the shipped full wire is asserted to respect the modelled travel bound at every frame, so a page that shipped an unbounded sequence reds even though the model that decided it is green."
+
+fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest {
+  ServeHttpRequest { method: method, path: path, body: "" }
+}
+
+fn motion_page_body() -> String {
+  roadmap_serve_invoke(
+    handler: InstrumentMotionPageHandler,
+    params: [],
+    request: fixture_request(method: GET, path: instrument_motion_page_path),
+  ).body
+}
+
+fn motion_asset_body() -> String {
+  roadmap_serve_invoke(
+    handler: InstrumentMotionAssetHandler,
+    params: [],
+    request: fixture_request(method: GET, path: instrument_motion_asset_path),
+  ).body
+}
+
+test fn witness_motion_page_renders_through_its_route() -> Bool {
+  let r = roadmap_serve_invoke(
+    handler: InstrumentMotionPageHandler,
+    params: [],
+    request: fixture_request(method: GET, path: instrument_motion_page_path),
+  )
+  let html = r.body
+  r.status == 200
+    && string_contains(s: html, pattern: motion_plate_class)
+    && string_contains(s: html, pattern: motion_tap_btn_class)
+    && string_contains(s: html, pattern: motion_receipt_class)
+    && string_contains(s: html, pattern: motion_plate_id)
+    && string_contains(s: html, pattern: motion_receipt_id)
+    && string_contains(s: html, pattern: motion_probe_run_id)
+    && string_contains(s: html, pattern: instrument_motion_asset_path)
+}
+
+test fn witness_page_ships_both_decided_sequences() -> Bool {
+  let html = motion_page_body()
+  string_contains(s: html, pattern: motion_frame_data_attr)
+    && string_contains(s: html, pattern: motion_reduced_frame_data_attr)
+    && string_contains(s: html, pattern: motion_frame_interval_attr)
+    && string_contains(s: html, pattern: concat(motion_frame_interval_attr, concat("=\"", concat(to_string(motion_frame_interval_ms), "\""))))
+    && string_contains(s: html, pattern: frames_wire(t: SyntheticTapKnock, m: MotionFull))
+    && string_contains(s: html, pattern: frames_wire(t: SyntheticTapLight, m: MotionFull))
+    && string_contains(s: html, pattern: frames_wire(t: SyntheticTapFirm, m: MotionFull))
+}
+
+test fn witness_reduced_is_a_decided_answer_not_an_opt_out() -> Bool {
+  let full = frames_wire(t: SyntheticTapKnock, m: MotionFull)
+  let reduced = frames_wire(t: SyntheticTapKnock, m: MotionReduced)
+  reduced == "0"
+    && full != reduced
+    && count(frames_for(t: SyntheticTapKnock, m: MotionReduced)) == 1
+    && count(frames_for(t: SyntheticTapKnock, m: MotionFull)) > 3
+}
+
+test fn witness_shipped_sequence_respects_the_modelled_bound() -> Bool {
+  let fs = frames_for(t: SyntheticTapKnock, m: MotionFull)
+  all(fs, f => f.displacement_px <= bob_max_travel_px && f.displacement_px >= (0 - bob_max_travel_px))
+}
+
+test fn witness_asset_route_serves_the_modeled_client() -> Bool {
+  let js = motion_asset_body()
+  js == instrument_motion_client_js_source()
+    && string_contains(s: js, pattern: "addEventListener('devicemotion'")
+    && string_contains(s: js, pattern: "LinearAccelerationSensor")
+    && string_contains(s: js, pattern: "try {")
+    && string_contains(s: js, pattern: "catch (err)")
+    && string_contains(s: js, pattern: "interface absent in this container")
+    && string_contains(s: js, pattern: "construction refused")
+}
+
+test fn witness_client_computes_no_physics() -> Bool {
+  let js = motion_asset_body()
+  !string_contains(s: js, pattern: "Math.")
+    && !string_contains(s: js, pattern: "exp(")
+    && !string_contains(s: js, pattern: "sin(")
+    && string_contains(s: js, pattern: "split(',')")
+}
+
+test fn witness_receipt_starts_unanswered() -> Bool {
+  let html = motion_page_body()
+  string_contains(s: html, pattern: "not yet run")
+    && !string_contains(s: html, pattern: "sensor present")
+    && !string_contains(s: html, pattern: "supported")
+}

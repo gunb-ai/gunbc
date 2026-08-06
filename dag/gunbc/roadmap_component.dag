@@ -30,8 +30,14 @@ import extdeps.languages.typescript.program {
   TsProgram, TsExpr, TsStmt, serialize_typescript_program,
   ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_call, ts_binop, ts_arrow, ts_block,
   ts_const, ts_let, ts_return, ts_new, ts_expr_stmt, ts_if, ts_cond, ts_prefix, ts_object, ts_field,
-  ts_array, ts_index,
+  ts_array, ts_index, ts_try,
 }
+import extdeps.w3c.device_orientation_and_motion {
+  devicemotion_event_type, device_motion_event_interface,
+  PermissionGranted, permission_state_wire,
+}
+import extdeps.w3c.accelerometer { LinearAccelerationSensor, accelerometer_interface_name }
+import extdeps.w3c.generic_sensor { SensorActivating, sensor_lifecycle_key }
 import gunbc.design.sound {
   SoundSpec, engage_detent_click,
   sound_spec_frequency_wire, sound_spec_decay_seconds_wire,
@@ -3766,6 +3772,553 @@ fn instrument_tuner_client_program() -> TsProgram {
 
 fn instrument_tuner_client_js_source() -> String {
   serialize_typescript_program(p: instrument_tuner_client_program())
+}
+
+data instrument_sandbox_page_path: String = "/sandbox/instrument"
+data instrument_tuner_page_path: String = "/sandbox/instrument/tuner"
+data instrument_motion_page_path: String = "/sandbox/instrument/motion"
+
+data instrument_lab_nav_note: String = "ONE ROSTER, RENDERED IN THE SHARED HEADER, so a new instrument page is discoverable by adding a row rather than by remembering which pages to edit. It also removes the path literals: the route table and the links now read the same declaration, so a page cannot link somewhere the router does not serve. That is the difference between a nav that is DERIVED from the routes' own path authority and one that agrees with it by coincidence until someone renames a route."
+
+type InstrumentLabLink {
+  path: String
+  label: String
+}
+
+data instrument_lab_links: List<InstrumentLabLink> = [
+  InstrumentLabLink { path: instrument_sandbox_page_path, label: "instrument" },
+  InstrumentLabLink { path: instrument_tuner_page_path, label: "tuner" },
+  InstrumentLabLink { path: instrument_motion_page_path, label: "motion lab" },
+]
+
+data instrument_motion_asset_path: String = "/assets/instrument-motion.js"
+
+data instrument_motion_client_note: String = "THE RENDERER HALF OF THE MOTION LAB. It replays a decided sequence and reports two probes; it computes no physics and it decides no verdict.
+
+THE ONE RULE THIS PROGRAM EXISTS TO KEEP: every receipt line it writes names something that happened. A count of events is a count it kept. A named error is the error's own name, read off the event. A window is measured, not declared. Where nothing has happened yet the line says so, and where an interface is absent the line says absent rather than silent — those are different observations and this program never renders them the same way.
+
+WHY THE FRAMES ARRIVE AS DATA: the displacement sequence is decided in gunbc.design.instrument_bob, asserted green in a witness, and shipped into the page on an attribute. So the browser cannot disagree with the witness, a physics change is a diff rather than something to watch for on screen, and this file has no envelope, no half-life and no bound of its own to drift from the model's."
+
+data motion_plate_class: String = "motion-plate"
+data motion_tap_btn_class: String = "motion-tap-btn"
+data motion_receipt_class: String = "motion-receipt"
+data motion_frame_data_attr: String = "data-frames"
+data motion_reduced_frame_data_attr: String = "data-frames-reduced"
+data motion_frame_interval_attr: String = "data-frame-interval"
+data motion_plate_id: String = "motion-plate"
+data motion_receipt_id: String = "motion-receipt"
+data motion_probe_run_id: String = "motion-probe-run"
+
+data motion_probe_window_ms: Int = 2000
+
+data motion_reduced_sequence_is_emitted_not_suppressed_note: String = "REDUCED MOTION IS A SECOND DECIDED SEQUENCE, NOT A SUPPRESSED FIRST ONE. The page ships both wires and the client selects by matchMedia, so under a reduced-motion preference the model still answers 'what does the plate do' — it answers with the at-rest frame gunbc.design.instrument_bob returns for MotionReduced. The receipt, the straddle and the magnitudes are untouched. Suppressing playback in the client instead would put a second motion policy in the renderer, disagreeing silently with the one the witness asserts."
+
+data js_motion_plate_var: String = "gunbcMotionPlate"
+data js_motion_receipt_var: String = "gunbcMotionReceipt"
+data js_motion_interval_var: String = "gunbcMotionInterval"
+data js_motion_reduced_var: String = "gunbcMotionReduced"
+data js_motion_timer_var: String = "gunbcMotionTimer"
+data js_motion_line_fn: String = "gunbcMotionLine"
+data js_motion_play_fn: String = "gunbcMotionPlay"
+data js_motion_devicemotion_probe_fn: String = "gunbcMotionProbeDeviceMotion"
+data js_motion_sensor_probe_fn: String = "gunbcMotionProbeSensor"
+data js_motion_sensor_refused_var: String = "gunbcMotionSensorRefused"
+
+fn js_motion_assign(target: TsExpr, value: TsExpr) -> TsStmt {
+  ts_expr_stmt(expr: ts_binop(left: target, op: "=", right: value))
+}
+
+fn js_motion_guard(cond: TsExpr) -> TsStmt {
+  ts_if(cond: cond, then: ts_return(expr: none), else_stmt: none)
+}
+
+fn js_motion_cat(parts: List<TsExpr>) -> TsExpr {
+  fold(parts, init: ts_lit_str(value: ""), f: (acc, p) => ts_binop(left: acc, op: "+", right: p))
+}
+
+fn js_motion_line_call(index: String, text: TsExpr) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_ident(name: js_motion_line_fn),
+    args: [ts_lit_num(text: index), text],
+  ))
+}
+
+fn js_motion_typeof_undefined(name: String) -> TsExpr {
+  ts_binop(
+    left: ts_prefix(op: "typeof ", expr: ts_ident(name: name)),
+    op: "===",
+    right: ts_lit_str(value: "undefined"),
+  )
+}
+
+fn js_motion_now() -> TsExpr {
+  ts_call(callee: ts_member(object: ts_ident(name: "Date"), property: "now"), args: [])
+}
+
+fn js_motion_get_by_id(id: String) -> TsExpr {
+  ts_call(
+    callee: ts_member(object: ts_ident(name: "document"), property: "getElementById"),
+    args: [ts_lit_str(value: id)],
+  )
+}
+
+fn js_motion_set_timeout(body: List<TsStmt>) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_ident(name: "setTimeout"),
+    args: [
+      ts_arrow(params: [], body: ts_block(stmts: body)),
+      ts_lit_num(text: to_string(motion_probe_window_ms)),
+    ],
+  ))
+}
+
+fn motion_preamble_statements() -> List<TsStmt> {
+  [
+    ts_const(name: js_motion_plate_var, value: js_motion_get_by_id(id: motion_plate_id)),
+    ts_const(name: js_motion_receipt_var, value: js_motion_get_by_id(id: motion_receipt_id)),
+    ts_const(
+      name: js_motion_interval_var,
+      value: ts_cond(
+        test: ts_ident(name: js_motion_plate_var),
+        consequent: ts_call(
+          callee: ts_ident(name: "parseInt"),
+          args: [
+            ts_call(
+              callee: ts_member(object: ts_ident(name: js_motion_plate_var), property: "getAttribute"),
+              args: [ts_lit_str(value: motion_frame_interval_attr)],
+            ),
+            ts_lit_num(text: "10"),
+          ],
+        ),
+        alternate: ts_lit_num(text: "0"),
+      ),
+    ),
+    ts_const(
+      name: js_motion_reduced_var,
+      value: ts_binop(
+        left: ts_member(object: ts_ident(name: "window"), property: "matchMedia"),
+        op: "&&",
+        right: ts_member(
+          object: ts_call(
+            callee: ts_member(object: ts_ident(name: "window"), property: "matchMedia"),
+            args: [ts_lit_str(value: "(prefers-reduced-motion: reduce)")],
+          ),
+          property: "matches",
+        ),
+      ),
+    ),
+    ts_let(name: js_motion_timer_var, value: ts_ident(name: "null")),
+    ts_let(name: js_motion_sensor_refused_var, value: ts_ident(name: "false")),
+  ]
+}
+
+fn motion_line_fn_statement() -> TsStmt {
+  ts_const(
+    name: js_motion_line_fn,
+    value: ts_arrow(params: ["i", "text"], body: ts_block(stmts: [
+      js_motion_guard(cond: ts_prefix(op: "!", expr: ts_ident(name: js_motion_receipt_var))),
+      ts_const(name: "rows", value: ts_member(object: ts_ident(name: js_motion_receipt_var), property: "children")),
+      js_motion_guard(cond: ts_binop(
+        left: ts_ident(name: "i"),
+        op: ">=",
+        right: ts_member(object: ts_ident(name: "rows"), property: "length"),
+      )),
+      js_motion_assign(
+        target: ts_member(
+          object: ts_index(object: ts_ident(name: "rows"), index: ts_ident(name: "i")),
+          property: "textContent",
+        ),
+        value: ts_ident(name: "text"),
+      ),
+    ])),
+  )
+}
+
+fn js_motion_set_translate(px: TsExpr) -> TsStmt {
+  js_motion_assign(
+    target: ts_member(
+      object: ts_member(object: ts_ident(name: js_motion_plate_var), property: "style"),
+      property: "transform",
+    ),
+    value: js_motion_cat(parts: [ts_lit_str(value: "translateY("), px, ts_lit_str(value: "px)")]),
+  )
+}
+
+fn js_motion_clear_timer_statements() -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "clearInterval"), args: [ts_ident(name: js_motion_timer_var)])),
+    js_motion_assign(target: ts_ident(name: js_motion_timer_var), value: ts_ident(name: "null")),
+  ]
+}
+
+fn motion_play_fn_statement() -> TsStmt {
+  ts_const(
+    name: js_motion_play_fn,
+    value: ts_arrow(params: ["wire"], body: ts_block(stmts: [
+      js_motion_guard(cond: ts_prefix(op: "!", expr: ts_ident(name: js_motion_plate_var))),
+      js_motion_guard(cond: ts_binop(
+        left: ts_ident(name: js_motion_interval_var),
+        op: "<=",
+        right: ts_lit_num(text: "0"),
+      )),
+      ts_if(
+        cond: ts_binop(left: ts_ident(name: js_motion_timer_var), op: "!==", right: ts_ident(name: "null")),
+        then: ts_block(stmts: js_motion_clear_timer_statements()),
+        else_stmt: none,
+      ),
+      ts_const(
+        name: "frames",
+        value: ts_call(
+          callee: ts_member(object: ts_ident(name: "wire"), property: "split"),
+          args: [ts_lit_str(value: ",")],
+        ),
+      ),
+      ts_let(name: "i", value: ts_lit_num(text: "0")),
+      js_motion_assign(
+        target: ts_ident(name: js_motion_timer_var),
+        value: ts_call(
+          callee: ts_ident(name: "setInterval"),
+          args: [
+            ts_arrow(params: [], body: ts_block(stmts: [
+              ts_if(
+                cond: ts_binop(
+                  left: ts_ident(name: "i"),
+                  op: ">=",
+                  right: ts_member(object: ts_ident(name: "frames"), property: "length"),
+                ),
+                then: ts_block(stmts: concat(
+                  js_motion_clear_timer_statements(),
+                  [
+                    js_motion_set_translate(px: ts_lit_num(text: "0")),
+                    ts_return(expr: none),
+                  ],
+                )),
+                else_stmt: none,
+              ),
+              js_motion_set_translate(px: ts_index(object: ts_ident(name: "frames"), index: ts_ident(name: "i"))),
+              js_motion_assign(
+                target: ts_ident(name: "i"),
+                value: ts_binop(left: ts_ident(name: "i"), op: "+", right: ts_lit_num(text: "1")),
+              ),
+            ])),
+            ts_ident(name: js_motion_interval_var),
+          ],
+        ),
+      ),
+    ])),
+  )
+}
+
+fn motion_tap_bind_statement() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
+    args: [
+      ts_lit_str(value: "click"),
+      ts_arrow(params: ["e"], body: ts_block(stmts: [
+        ts_const(name: "t", value: ts_member(object: ts_ident(name: "e"), property: "target")),
+        js_motion_guard(cond: ts_binop(
+          left: ts_prefix(op: "!", expr: ts_ident(name: "t")),
+          op: "||",
+          right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "closest")),
+        )),
+        ts_const(
+          name: "btn",
+          value: ts_call(
+            callee: ts_member(object: ts_ident(name: "t"), property: "closest"),
+            args: [ts_lit_str(value: join(["[", motion_frame_data_attr, "]"], ""))],
+          ),
+        ),
+        js_motion_guard(cond: ts_prefix(op: "!", expr: ts_ident(name: "btn"))),
+        ts_const(
+          name: "wire",
+          value: ts_call(
+            callee: ts_member(object: ts_ident(name: "btn"), property: "getAttribute"),
+            args: [ts_cond(
+              test: ts_ident(name: js_motion_reduced_var),
+              consequent: ts_lit_str(value: motion_reduced_frame_data_attr),
+              alternate: ts_lit_str(value: motion_frame_data_attr),
+            )],
+          ),
+        ),
+        js_motion_guard(cond: ts_prefix(op: "!", expr: ts_ident(name: "wire"))),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_motion_play_fn), args: [ts_ident(name: "wire")])),
+      ])),
+    ],
+  ))
+}
+
+data motion_devicemotion_probe_note: String = "The DeviceMotion route, reported as three separable facts because they fail separately: whether the interface exists at all, whether the permission gate answered, and what the stream actually delivered over a measured window. A silent stream reports zero events over its window — it does NOT report an absent sensor, because a window that produced nothing and an interface that does not exist are different observations and only one of them was made."
+
+fn motion_devicemotion_listen_statements() -> List<TsStmt> {
+  [
+    ts_let(name: "events", value: ts_lit_num(text: "0")),
+    ts_let(name: "valued", value: ts_lit_num(text: "0")),
+    ts_const(name: "t0", value: js_motion_now()),
+    ts_const(name: "h", value: ts_arrow(params: ["ev"], body: ts_block(stmts: [
+      js_motion_assign(
+        target: ts_ident(name: "events"),
+        value: ts_binop(left: ts_ident(name: "events"), op: "+", right: ts_lit_num(text: "1")),
+      ),
+      ts_const(name: "a", value: ts_member(object: ts_ident(name: "ev"), property: "acceleration")),
+      ts_if(
+        cond: ts_binop(
+          left: ts_ident(name: "a"),
+          op: "&&",
+          right: ts_binop(
+            left: ts_member(object: ts_ident(name: "a"), property: "x"),
+            op: "!==",
+            right: ts_ident(name: "null"),
+          ),
+        ),
+        then: js_motion_assign(
+          target: ts_ident(name: "valued"),
+          value: ts_binop(left: ts_ident(name: "valued"), op: "+", right: ts_lit_num(text: "1")),
+        ),
+        else_stmt: none,
+      ),
+    ]))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "window"), property: "addEventListener"),
+      args: [ts_lit_str(value: devicemotion_event_type), ts_ident(name: "h")],
+    )),
+    js_motion_line_call(index: "0", text: ts_lit_str(value: join([device_motion_event_interface, " · listening"], ""))),
+    js_motion_set_timeout(body: [
+      ts_expr_stmt(expr: ts_call(
+        callee: ts_member(object: ts_ident(name: "window"), property: "removeEventListener"),
+        args: [ts_lit_str(value: devicemotion_event_type), ts_ident(name: "h")],
+      )),
+      js_motion_line_call(index: "0", text: js_motion_cat(parts: [
+        ts_lit_str(value: join([device_motion_event_interface, " · "], "")),
+        ts_ident(name: "events"),
+        ts_lit_str(value: " events, "),
+        ts_ident(name: "valued"),
+        ts_lit_str(value: " carrying values, over "),
+        ts_binop(left: js_motion_now(), op: "-", right: ts_ident(name: "t0")),
+        ts_lit_str(value: "ms"),
+      ])),
+    ]),
+  ]
+}
+
+fn motion_devicemotion_probe_statement() -> TsStmt {
+  ts_const(
+    name: js_motion_devicemotion_probe_fn,
+    value: ts_arrow(params: [], body: ts_block(stmts: [
+      ts_if(
+        cond: js_motion_typeof_undefined(name: device_motion_event_interface),
+        then: ts_block(stmts: [
+          js_motion_line_call(
+            index: "0",
+            text: ts_lit_str(value: join([device_motion_event_interface, " · interface absent in this container"], "")),
+          ),
+          ts_return(expr: none),
+        ]),
+        else_stmt: none,
+      ),
+      ts_const(name: "listen", value: ts_arrow(params: [], body: ts_block(stmts: motion_devicemotion_listen_statements()))),
+      ts_if(
+        cond: ts_binop(
+          left: ts_prefix(
+            op: "typeof ",
+            expr: ts_member(object: ts_ident(name: device_motion_event_interface), property: "requestPermission"),
+          ),
+          op: "===",
+          right: ts_lit_str(value: "function"),
+        ),
+        then: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(
+              object: ts_call(
+                callee: ts_member(
+                  object: ts_call(
+                    callee: ts_member(
+                      object: ts_ident(name: device_motion_event_interface),
+                      property: "requestPermission",
+                    ),
+                    args: [],
+                  ),
+                  property: "then",
+                ),
+                args: [ts_arrow(params: ["st"], body: ts_block(stmts: [
+                  ts_if(
+                    cond: ts_binop(left: ts_ident(name: "st"), op: "===", right: ts_lit_str(value: permission_state_wire(s: PermissionGranted))),
+                    then: ts_block(stmts: [
+                      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "listen"), args: [])),
+                      ts_return(expr: none),
+                    ]),
+                    else_stmt: none,
+                  ),
+                  js_motion_line_call(index: "0", text: js_motion_cat(parts: [
+                    ts_lit_str(value: join([device_motion_event_interface, " · permission "], "")),
+                    ts_ident(name: "st"),
+                  ])),
+                ]))],
+              ),
+              property: "catch",
+            ),
+            args: [ts_arrow(params: ["err"], body: ts_block(stmts: [
+              js_motion_line_call(index: "0", text: js_motion_cat(parts: [
+                ts_lit_str(value: join([device_motion_event_interface, " · permission request refused · "], "")),
+                ts_member(object: ts_ident(name: "err"), property: "name"),
+              ])),
+            ]))],
+          )),
+          ts_return(expr: none),
+        ]),
+        else_stmt: none,
+      ),
+      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "listen"), args: [])),
+    ])),
+  )
+}
+
+data motion_sensor_probe_note: String = "The Generic Sensor route, kept because it is the only one whose failures are NAMED. Construction itself can raise, so it is wrapped: a SecurityError from an insecure context or a blocking permissions policy becomes a located line rather than a fault that leaves the previous line standing. The refusal flag exists so an error observed during the window is not overwritten by the window's own summary — the first thing that actually happened is what the receipt keeps."
+
+fn motion_sensor_probe_statement() -> TsStmt {
+  ts_const(
+    name: js_motion_sensor_probe_fn,
+    value: ts_arrow(params: [], body: ts_block(stmts: [
+      ts_if(
+        cond: js_motion_typeof_undefined(name: accelerometer_interface_name(i: LinearAccelerationSensor)),
+        then: ts_block(stmts: [
+          js_motion_line_call(
+            index: "1",
+            text: ts_lit_str(value: join([
+              accelerometer_interface_name(i: LinearAccelerationSensor),
+              " · interface absent in this container",
+            ], "")),
+          ),
+          ts_return(expr: none),
+        ]),
+        else_stmt: none,
+      ),
+      js_motion_assign(target: ts_ident(name: js_motion_sensor_refused_var), value: ts_ident(name: "false")),
+      ts_try(
+        body: ts_block(stmts: [
+          ts_let(name: "readings", value: ts_lit_num(text: "0")),
+          ts_const(
+            name: "s",
+            value: ts_new(
+              callee: ts_ident(name: accelerometer_interface_name(i: LinearAccelerationSensor)),
+              args: [ts_object(fields: [ts_field(key: "frequency", value: ts_lit_num(text: "60"))])],
+            ),
+          ),
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(object: ts_ident(name: "s"), property: "addEventListener"),
+            args: [
+              ts_lit_str(value: "error"),
+              ts_arrow(params: ["ev"], body: ts_block(stmts: [
+                js_motion_assign(target: ts_ident(name: js_motion_sensor_refused_var), value: ts_ident(name: "true")),
+                js_motion_line_call(index: "1", text: js_motion_cat(parts: [
+                  ts_lit_str(value: join([
+                    accelerometer_interface_name(i: LinearAccelerationSensor), " · refused · ",
+                  ], "")),
+                  ts_member(object: ts_member(object: ts_ident(name: "ev"), property: "error"), property: "name"),
+                ])),
+              ])),
+            ],
+          )),
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(object: ts_ident(name: "s"), property: "addEventListener"),
+            args: [
+              ts_lit_str(value: "reading"),
+              ts_arrow(params: [], body: ts_block(stmts: [
+                js_motion_assign(
+                  target: ts_ident(name: "readings"),
+                  value: ts_binop(left: ts_ident(name: "readings"), op: "+", right: ts_lit_num(text: "1")),
+                ),
+              ])),
+            ],
+          )),
+          ts_const(name: "t0", value: js_motion_now()),
+          js_motion_line_call(
+            index: "1",
+            text: ts_lit_str(value: join([
+              accelerometer_interface_name(i: LinearAccelerationSensor), " · ",
+              sensor_lifecycle_key(s: SensorActivating),
+            ], "")),
+          ),
+          ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "s"), property: "start"), args: [])),
+          js_motion_set_timeout(body: [
+            ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "s"), property: "stop"), args: [])),
+            js_motion_guard(cond: ts_ident(name: js_motion_sensor_refused_var)),
+            js_motion_line_call(index: "1", text: js_motion_cat(parts: [
+              ts_lit_str(value: join([accelerometer_interface_name(i: LinearAccelerationSensor), " · "], "")),
+              ts_ident(name: "readings"),
+              ts_lit_str(value: " readings over "),
+              ts_binop(left: js_motion_now(), op: "-", right: ts_ident(name: "t0")),
+              ts_lit_str(value: "ms · activated "),
+              ts_member(object: ts_ident(name: "s"), property: "activated"),
+            ])),
+          ]),
+        ]),
+        catch_param: "err",
+        handler: ts_block(stmts: [
+          js_motion_assign(target: ts_ident(name: js_motion_sensor_refused_var), value: ts_ident(name: "true")),
+          js_motion_line_call(index: "1", text: js_motion_cat(parts: [
+            ts_lit_str(value: join([
+              accelerometer_interface_name(i: LinearAccelerationSensor), " · construction refused · ",
+            ], "")),
+            ts_member(object: ts_ident(name: "err"), property: "name"),
+          ])),
+        ]),
+      ),
+    ])),
+  )
+}
+
+fn motion_probe_bind_statement() -> TsStmt {
+  ts_const(name: "motionProbeBtn", value: js_motion_get_by_id(id: motion_probe_run_id))
+}
+
+fn motion_probe_bind_statements() -> List<TsStmt> {
+  [
+    motion_probe_bind_statement(),
+    ts_if(
+      cond: ts_ident(name: "motionProbeBtn"),
+      then: ts_expr_stmt(expr: ts_call(
+        callee: ts_member(object: ts_ident(name: "motionProbeBtn"), property: "addEventListener"),
+        args: [
+          ts_lit_str(value: "click"),
+          ts_arrow(params: [], body: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_motion_devicemotion_probe_fn), args: [])),
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_motion_sensor_probe_fn), args: [])),
+          ])),
+        ],
+      )),
+      else_stmt: none,
+    ),
+  ]
+}
+
+fn instrument_motion_client_program() -> TsProgram {
+  TsProgram {
+    ts_nocheck: false,
+    header_lines: [
+      "gunbc instrument motion lab — emitted from gunbc.roadmap_component.instrument_motion_client_program",
+      "Replays a decided frame sequence; reports two probes as exact observations. No physics, no verdicts.",
+    ],
+    statements: concat(
+      motion_preamble_statements(),
+      concat(
+        [
+          motion_line_fn_statement(),
+          motion_play_fn_statement(),
+          motion_tap_bind_statement(),
+          motion_devicemotion_probe_statement(),
+          motion_sensor_probe_statement(),
+        ],
+        concat(
+          motion_probe_bind_statements(),
+          theme_toggle_bind_statements(),
+        ),
+      ),
+    ),
+  }
+}
+
+fn instrument_motion_client_js_source() -> String {
+  serialize_typescript_program(p: instrument_motion_client_program())
 }
 
 fn dispatch_state_display_text(state: ComponentState) -> String {

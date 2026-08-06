@@ -1,0 +1,295 @@
+module gunbc.roadmap_instrument_motion
+
+import std.types { Int, String, Bool, List, Milliseconds }
+import std.markup { Fragment, Element, Attribute, attr }
+import gunbc.site.markup { txt, el, el_class, el_attrs }
+import extdeps.languages.css.properties {
+  Display, Gap, Padding, Border, BorderRadius, Background, Color, Cursor, FontFamily, FontSize,
+}
+import extdeps.languages.css.selectors { SelectorSubject, ClassSelector }
+import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl, serialize_rules }
+import gunbc.roadmap_instrument_sandbox { instrument_css }
+import gunbc.design.theme { role_var, SurfaceRole, BorderRole, TextRole, FocusRole }
+import gunbc.design.scale { scale_var, space_2, space_4, space_6, radius_3, text_12, font_mono }
+import gunbc.roadmap_component {
+  instrument_motion_asset_path,
+  motion_plate_class, motion_tap_btn_class, motion_receipt_class,
+  motion_frame_data_attr, motion_reduced_frame_data_attr, motion_frame_interval_attr,
+  motion_plate_id, motion_receipt_id, motion_probe_run_id,
+}
+import gunbc.capability_binding {
+  SyntheticTapStrength, SyntheticTapLight, SyntheticTapFirm, SyntheticTapKnock,
+  synthetic_tap_strength_key, synthetic_tap_magnitude_milli, synthetic_tap_impulse,
+  synthetic_tap_clears_requirement, bob_impulse_requirement_candidate,
+  AuditionProvisional, RequirementSigned,
+  BindingCoverageTarget, coverage_state_key, coverage_targets,
+  CoverageProvider, ProviderModelled, ProviderNotYetModelled,
+}
+import gunbc.design.instrument_bob {
+  BobFrame, bob_frames, MotionPreference, MotionFull, MotionReduced,
+  bob_max_travel_px, bob_half_life_ms, max_settle_time_ms,
+}
+import extdeps.w3c.device_orientation_and_motion {
+  devicemotion_event_type, device_motion_event_interface,
+  accelerometer_permission_name, gyroscope_permission_name,
+}
+import extdeps.w3c.accelerometer {
+  AccelerometerInterface, LinearAccelerationSensor, accelerometer_interface_name,
+  upstream_recommends_device_orientation_for_new_projects,
+}
+
+data instrument_motion_note: String = "THE MOTION LAB, at /sandbox/instrument/motion. Its first job is to let a person hit the SYNTHETIC TAP button and watch the inner plate ride and settle, on any machine, with no sensor involved and nothing to grant. That is deliberate: the synthetic source is a first-class input rather than a fallback, so the response is judgeable before any hardware question is answered, and a viewer can tell whether the bob feels right independently of whether their laptop can produce one.
+
+WHAT THIS PAGE MAY NOT DO, and the reason the whole lane exists: it may not claim a physical source it did not observe. The two web probes report exactly what happened — how many events arrived, how many carried values, how long the window was, which lifecycle state a sensor reached, and which named error refused it — and an unanswered question renders as unanswered. A page that showed a moving plate and implied a sensor had moved it would be the fabricated plausible output aimed at the one place a person cannot check by looking.
+
+THE PHYSICS IS NOT COMPUTED HERE. The frame sequence is decided in gunbc.design.instrument_bob and emitted into the page as data; the client replays it. So the substrate is the authority for how the plate moves, the browser is a renderer of a decided sequence, and a physics change is a diff in a witness rather than something to watch for on screen."
+
+data motion_page_title: String = "gunbc — instrument motion lab"
+
+data frames_are_emitted_not_computed_note: String = "The client receives a decided sequence rather than a physics implementation. This is the same reading-direction discipline the emitter uses elsewhere: the model decides, the target renders. It also means the browser cannot disagree with the witness — the list asserted green in dag/test/claim/instrument_bob_witness_test.dag is the list the page ships."
+
+data motion_frame_interval_ms: Milliseconds = 16
+
+fn frames_for(t: SyntheticTapStrength, m: MotionPreference) -> List<BobFrame> {
+  bob_frames(
+    i: synthetic_tap_impulse(t: t, at_ms: 0),
+    m: m,
+    interval_ms: motion_frame_interval_ms)
+}
+
+fn frame_wire(f: BobFrame) -> String {
+  to_string(f.displacement_px)
+}
+
+fn frames_wire(t: SyntheticTapStrength, m: MotionPreference) -> String {
+  join(map(frames_for(t: t, m: m), f => frame_wire(f: f)), ",")
+}
+
+data both_preferences_are_shipped_note: String = "Both sequences travel with the button, and the client picks by matchMedia. The reduced wire is not an empty string or a missing attribute — it is the at-rest frame gunbc.design.instrument_bob decides for MotionReduced, so a reduced-motion viewer gets a model answer rather than a renderer opting out. The receipt, the magnitudes and the straddle are identical under both."
+
+fn cls(name: String) -> SelectorSubject {
+  ClassSelector { class_name: name }
+}
+
+fn motion_rules() -> List<BuildRule> {
+  [
+    StaticRule {
+      selector: cls(name: motion_plate_class),
+      decls: [
+        decl(prop: Display, value: "block"),
+        decl(prop: Padding, value: scale_var(t: space_6)),
+        decl(prop: Border, value: concat("1px solid ", role_var(r: BorderRole))),
+        decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+        decl(prop: Background, value: role_var(r: SurfaceRole)),
+        decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      ],
+    },
+    StaticRule {
+      selector: cls(name: motion_tap_btn_class),
+      decls: [
+        decl(prop: Padding, value: scale_var(t: space_2)),
+        decl(prop: Border, value: concat("1px solid ", role_var(r: BorderRole))),
+        decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+        decl(prop: Background, value: role_var(r: SurfaceRole)),
+        decl(prop: Color, value: role_var(r: TextRole)),
+        decl(prop: Cursor, value: "pointer"),
+        decl(prop: FontFamily, value: scale_var(t: font_mono)),
+        decl(prop: FontSize, value: scale_var(t: text_12)),
+      ],
+    },
+    StaticRule {
+      selector: cls(name: motion_receipt_class),
+      decls: [
+        decl(prop: Display, value: "grid"),
+        decl(prop: Gap, value: scale_var(t: space_2)),
+        decl(prop: FontFamily, value: scale_var(t: font_mono)),
+        decl(prop: FontSize, value: scale_var(t: text_12)),
+        decl(prop: Color, value: role_var(r: TextRole)),
+      ],
+    },
+  ]
+}
+
+data motion_css_composes_the_register_note: String = "The page's stylesheet is the instrument register's own sheet plus this page's three rules, in that order, because the plate and the buttons are painted in role variables the register defines. Emitting only the local rules would leave every role_var undefined and the page would render unstyled while every rule in it was correct — a failure that looks like a styling bug and is actually a missing composition."
+
+fn instrument_motion_css() -> String {
+  join([instrument_css(), serialize_rules(rules: motion_rules())], "\n")
+}
+
+fn note(s: String) -> Fragment {
+  el_class("p", "instrument-note", [ txt(s) ])
+}
+
+fn tap_button(t: SyntheticTapStrength) -> Fragment {
+  el_attrs("button", [
+    attr(name: "class", value: motion_tap_btn_class),
+    attr(name: "type", value: "button"),
+    attr(name: "data-strength", value: synthetic_tap_strength_key(t: t)),
+    attr(name: motion_frame_data_attr, value: frames_wire(t: t, m: MotionFull)),
+    attr(name: motion_reduced_frame_data_attr, value: frames_wire(t: t, m: MotionReduced)),
+  ], [
+    txt(join([
+      "synthetic tap · ", synthetic_tap_strength_key(t: t),
+      " · ", to_string(synthetic_tap_magnitude_milli(t: t)), " milli-m/s²",
+    ], "")),
+  ])
+}
+
+data straddle_is_shown_note: String = "The three buttons are labelled with their magnitudes and with whether each clears the discriminating floor, because the straddle is the argument: a light tap is below the threshold a real knock would have to clear, and showing that is what stops the control from reading as a volume knob."
+
+fn tap_row() -> Fragment {
+  el_class("div", "motion-taps", [
+    tap_button(t: SyntheticTapLight),
+    tap_button(t: SyntheticTapFirm),
+    tap_button(t: SyntheticTapKnock),
+  ])
+}
+
+fn straddle_row(t: SyntheticTapStrength) -> Fragment {
+  el_class("div", "motion-straddle", [
+    txt(join([
+      synthetic_tap_strength_key(t: t), " — ",
+      if synthetic_tap_clears_requirement(t: t, r: bob_impulse_requirement_candidate) {
+        "clears the discriminating floor"
+      } else {
+        "below the discriminating floor"
+      },
+    ], "")),
+  ])
+}
+
+fn requirement_standing_text() -> String {
+  match bob_impulse_requirement_candidate.standing {
+    AuditionProvisional { pending } => join(["PROVISIONAL — ", pending], "")
+    RequirementSigned { audition_receipt } => "signed"
+  }
+}
+
+fn plate_section() -> Fragment {
+  el("section", [
+    el("h2", [ txt("the plate") ]),
+    note(s: "Press a tap. The inner plate rides and settles; the outer frame does not move. Nothing here reads a sensor, and nothing here changes a roadmap fact, an acceptance, a focus or an operation — the displacement is renderer-local by construction."),
+    el_attrs("div", [
+      attr(name: "class", value: motion_plate_class),
+      attr(name: "id", value: motion_plate_id),
+      attr(name: motion_frame_interval_attr, value: to_string(motion_frame_interval_ms)),
+    ], [
+      el("p", [ txt("v1 deletion — inner display") ]),
+      el("p", [ txt("still until touched") ]),
+    ]),
+    tap_row(),
+    el_class("div", "motion-straddles", [
+      straddle_row(t: SyntheticTapLight),
+      straddle_row(t: SyntheticTapFirm),
+      straddle_row(t: SyntheticTapKnock),
+    ]),
+    note(s: join([
+      "Bound ", to_string(bob_max_travel_px), "px · half-life ",
+      to_string(bob_half_life_ms), "ms · settles within ",
+      to_string(max_settle_time_ms()), "ms. Requirement standing: ",
+      requirement_standing_text(),
+    ], "")),
+  ])
+}
+
+data probe_section_note: String = "Two probes, run separately and reported separately, because they answer different questions. DeviceMotion is the cross-engine route the Accelerometer specification itself points new projects at; LinearAccelerationSensor is the route whose lifecycle produces a NAMED error when it cannot connect, which is the only way to tell a missing backend from a missing permission from missing hardware. Neither is dropped in favour of the other."
+
+fn probe_section() -> Fragment {
+  el("section", [
+    el("h2", [ txt("capability probes") ]),
+    note(s: join([
+      "Both routes are exercised. The upstream Accelerometer specification is maintained for existing deployments and points new projects at Device Orientation and Motion, so DeviceMotion is primary — but only the sensor lifecycle names its failures, so both run. Dispatch of ",
+      devicemotion_event_type, " requires the ", accelerometer_permission_name,
+      " and ", gyroscope_permission_name, " permissions together.",
+    ], "")),
+    el_attrs("button", [
+      attr(name: "class", value: motion_tap_btn_class),
+      attr(name: "type", value: "button"),
+      attr(name: "id", value: motion_probe_run_id),
+    ], [ txt("run both probes") ]),
+    el_attrs("div", [
+      attr(name: "class", value: motion_receipt_class),
+      attr(name: "id", value: motion_receipt_id),
+    ], [
+      el("div", [ txt(join([device_motion_event_interface, " · not yet run"], "")) ]),
+      el("div", [ txt(join([accelerometer_interface_name(i: LinearAccelerationSensor), " · not yet run"], "")) ]),
+    ]),
+    note(s: "An unanswered question renders as unanswered. A probe that has not run says so, and a silent stream is reported as silence with its window rather than as an absent sensor."),
+  ])
+}
+
+fn coverage_provider_text(p: CoverageProvider) -> String {
+  match p {
+    ProviderModelled { declaration } => declaration.module_path
+    ProviderNotYetModelled { intended_upstream } => join(["not yet modelled — ", intended_upstream], "")
+  }
+}
+
+fn coverage_row(t: BindingCoverageTarget) -> Fragment {
+  el_class("div", "motion-coverage-row", [
+    txt(join([
+      t.platform, " · ", coverage_provider_text(p: t.provider),
+      " · ", coverage_state_key(s: t.state),
+    ], "")),
+  ])
+}
+
+data coverage_section_note: String = "The coverage frontier, rendered so the gap between what is implemented and what is merely intended is visible rather than inferred. No row here is a support claim — not even implemented, which means the binding exists and can be probed. Support is a verdict derived from an executed observation on an exact host, and no such verdict is shown until one has run."
+
+fn coverage_section() -> Fragment {
+  el("section", concat(
+    [
+      el("h2", [ txt("coverage obligations") ]),
+      note(s: "Obligations, not support claims. A deferred target names the consumer whose arrival is its trigger; a target nobody has a reason to reach has no row at all, because an empty space is more honest than a placeholder."),
+    ],
+    map(coverage_targets, t => coverage_row(t: t))))
+}
+
+fn motion_main() -> Fragment {
+  el("main", [
+    plate_section(),
+    probe_section(),
+    coverage_section(),
+  ])
+}
+
+fn instrument_motion_page() -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [ attr(name: "lang", value: "en") ],
+    children: [
+      el("head", [
+        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8") ], children: [] },
+        Element {
+          tag: "meta",
+          attributes: [
+            attr(name: "name", value: "viewport"),
+            attr(name: "content", value: "width=device-width, initial-scale=1"),
+          ],
+          children: [],
+        },
+        el("style", [ txt(instrument_motion_css()) ]),
+        el("title", [ txt(motion_page_title) ]),
+      ]),
+      el("body", [
+        el("header", [
+          el_class("div", "header-inner", [
+            el_class("span", "wordmark", [ txt("gunbc") ]),
+            el("h1", [ txt("instrument motion lab") ]),
+            el_attrs("a", [ attr(name: "href", value: "/sandbox/instrument") ], [ txt("← instrument") ]),
+            el_attrs("a", [ attr(name: "href", value: "/sandbox/instrument/tuner") ], [ txt("tuner") ]),
+          ]),
+        ]),
+        motion_main(),
+        Element {
+          tag: "script",
+          attributes: [
+            attr(name: "src", value: instrument_motion_asset_path),
+            attr(name: "defer", value: ""),
+          ],
+          children: [],
+        },
+      ]),
+    ],
+  }
+}

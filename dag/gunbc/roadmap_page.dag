@@ -27,6 +27,7 @@ import gunbc.roadmap_authority {
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges }
 import gunbc.roadmap_component {
   roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
+  InstrumentLabLink, instrument_lab_links,
   theme_toggle_label_prefix, theme_toggle_auto_value,
   disclosure_mark_class, disclosure_mark_glyph, node_mid_class,
   workflow_controls_class,
@@ -145,11 +146,35 @@ data roadmap_wordmark_note: String = "A1 header decision (presentation recon, op
 
 data header_composition_frame_note: String = "HEADER AND CONTENT SHARE ONE COMPOSITION FRAME (A2 hierarchy closeout, operator gap ruling 2026-08-02: the wide-screen fold showed two alignment systems — the header hugging the left viewport edge while the content column centered at the page measure, leaving a dead gutter that read as accident). The header element keeps its full-width surface and border — it is a chassis edge — but its CONTENT now lives in .header-inner, the same measure_page/auto-margin frame the .roadmap and .daily-workspace columns use, so the wordmark, page name, and controls sit flush over the content column at every width. One frame, stated once: the inner wrapper consumes the identical tokens, so a measure change moves header and content together."
 
+data instrument_lab_nav_render_note: String = "The nav renders from gunbc.roadmap_component.instrument_lab_links, the same declaration the router builds its route specs from, so a link that does not resolve is unwritable here — there is no second list of paths to drift, and test.claim.roadmap_serve_witness.witness_every_lab_nav_link_resolves executes that agreement. It sits in the shared header rather than on each page because discoverability is a property of the site, not of whichever page someone remembered to edit.
+
+SEPARATED BY TEXT RATHER THAN BY A GAP RULE, deliberately: roadmap_css carries a byte digest pinned by execution in the design-register parity witness, and a new rule there would re-pin an unrelated authority to buy three words of spacing. An interpunct is the cheaper construction and needs no style to be legible."
+
+fn instrument_lab_nav_link(l: InstrumentLabLink) -> Fragment {
+  el_attrs("a", [ attr(name: "href", value: l.path) ], [ txt(l.label) ])
+}
+
+fn instrument_lab_nav_children() -> List<Fragment> {
+  fold(instrument_lab_links, init: [], f: (acc, l) => {
+    let link = instrument_lab_nav_link(l: l)
+    if count(acc) == 0 {
+      [link]
+    } else {
+      concat(acc, [txt(" · "), link])
+    }
+  })
+}
+
+fn instrument_lab_nav() -> Fragment {
+  el_class("nav", "lab-nav", instrument_lab_nav_children())
+}
+
 fn roadmap_header(page: String) -> Fragment {
   el("header", [
     el_class("div", "header-inner", [
       el_class("span", "wordmark", [ txt("gunbc") ]),
       el("h1", [ txt(page) ]),
+      instrument_lab_nav(),
       sound_toggle_control(),
       theme_toggle_control(),
     ]),

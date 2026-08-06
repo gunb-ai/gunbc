@@ -43,6 +43,7 @@ type TsStmt
   | ForOf { var_name: String, iterable: TsExpr, body: TsStmt }
   | Return { expr: TsExpr? }
   | Block { stmts: List<TsStmt> }
+  | Try { body: TsStmt, catch_param: String, handler: TsStmt }
 
 type TsProgram {
   ts_nocheck: Bool
@@ -154,6 +155,14 @@ fn ts_if(cond: TsExpr, then: TsStmt, else_stmt: TsStmt?) -> TsStmt {
 
 fn ts_for_of(var_name: String, iterable: TsExpr, body: TsStmt) -> TsStmt {
   ForOf { var_name: var_name, iterable: iterable, body: body }
+}
+
+data try_statement_grounding_note: String = "ECMAScript TryStatement, in the shape this emitter can actually construct: a block, one binding catch parameter, one handler block. The optional finally clause and the parameter-less catch form are NOT admitted, because nothing constructs them and an arm nobody builds is an arm nobody has proven serializes.
+
+WHY IT LANDED: a constructor can throw. The Generic Sensor specification says so by name — constructing a sensor outside a secure context, or where the permissions policy forbids it, raises SecurityError, and there is no interrogable property that answers the question first. Without a catch the emitted probe would fault mid-handler and the page would keep displaying 'not yet run': an unanswered question standing where a REFUSAL was observed. That is the empty-observation narrow (DESIGN §5) at the exact seam this lane exists to keep honest, so the grammar grows one arm rather than the probe pretending the throw cannot happen."
+
+fn ts_try(body: TsStmt, catch_param: String, handler: TsStmt) -> TsStmt {
+  Try { body: body, catch_param: catch_param, handler: handler }
 }
 
 fn escape_single_quoted(s: String) -> String {
@@ -358,6 +367,7 @@ fn serialize_ts_stmt_body(s: TsStmt) -> String {
     If { cond: _, then: _, else_stmt: _ } => serialize_ts_stmt(s: s)
     ForOf { var_name: _, iterable: _, body: _ } => serialize_ts_stmt(s: s)
     Return { expr: _ } => serialize_ts_stmt(s: s)
+    Try { body: _, catch_param: _, handler: _ } => serialize_ts_stmt(s: s)
   }
 }
 
@@ -381,6 +391,10 @@ fn serialize_ts_stmt(s: TsStmt) -> String {
         Absent => "return;"
       }
     Block { stmts: ss } => concat("{\n", concat(serialize_ts_stmts_indented(stmts: ss, indent: "  "), "\n}"))
+    Try { body: b, catch_param: cp, handler: h } =>
+      concat("try ", concat(
+        serialize_ts_stmt_body(s: b),
+        concat(" catch (", concat(cp, concat(") ", serialize_ts_stmt_body(s: h))))))
   }
 }
 
