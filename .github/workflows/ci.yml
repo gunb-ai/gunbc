@@ -98,11 +98,6 @@ jobs:
       - name: cargo fmt --all --check (fast gate; fails in seconds, before the release build)
         run: "\"$CARGO_BIN\" fmt --all --check"
         timeout-minutes: 5
-      - name: cargo check -p v1-compiler-tests --tests (compile gate; no test execution)
-        run: |
-          # 🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Check(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await
-          "$CARGO_BIN" 'check' '-p' 'v1-compiler-tests' '--tests'
-        timeout-minutes: 15
       - name: Build release bins (claim_executor + gunbc)
         id: release_build
         run: |
@@ -110,10 +105,10 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
           BUILD_LOG=$(mktemp)
-          if ! ("$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin selection_control_skip_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin resolution_divergence_census --bin cssl_assemble --bin frontier_probe_survey) 2>&1 | tee "$BUILD_LOG"; then
+          if ! ("$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter,interp_test_witness,test_hooks --bin claim_executor --bin gunbc --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin selection_control_skip_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin resolution_divergence_census --bin cssl_assemble --bin frontier_probe_survey) 2>&1 | tee "$BUILD_LOG"; then
             if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
-              CARGO_BUILD_JOBS=1 "$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin selection_control_skip_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin resolution_divergence_census --bin cssl_assemble --bin frontier_probe_survey
+              CARGO_BUILD_JOBS=1 "$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter,interp_test_witness,test_hooks --bin claim_executor --bin gunbc --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin selection_control_skip_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin resolution_divergence_census --bin cssl_assemble --bin frontier_probe_survey
             else
               exit 1
             fi
@@ -122,6 +117,13 @@ jobs:
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/selection_control_skip_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey"
           sccache --show-stats 2>/dev/null || true
         timeout-minutes: 45
+      - name: cargo test -p v1-compiler-tests --release --no-run (compile-contract gate; reuses release v1-compiler)
+        run: |
+          set -e
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          # 🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await
+          "$CARGO_BIN" 'test' '-p' 'v1-compiler-tests' '--release' '--no-run'
+        timeout-minutes: 15
       - name: Pack release bins for cross-job handoff (tar keeps exec bits)
         run: |
           # 🟡 dissolve-on: ci_release_bins_pack_script — concat-built foreign-executor (GitHub Actions run:) release-bins tar pack runner; membership of archived bin names is derived from gunbc.ci_release_bins, but the pack transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the pack runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold

@@ -138,6 +138,22 @@ thread_local! {
     static CALL_ENV_DEPTH_PEAK: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
+/// Default-off: when `interp_test_witness` is compiled in, the hook is a guarded no-op (one
+/// relaxed atomic load per `eval_call`) until a test arms it.
+#[cfg(any(test, feature = "interp_test_witness"))]
+static CALL_ENV_DEPTH_WITNESS_ARMED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+fn call_env_depth_witness_enabled() -> bool {
+    CALL_ENV_DEPTH_WITNESS_ARMED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn arm_call_env_depth_witness_for_test() {
+    CALL_ENV_DEPTH_WITNESS_ARMED.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn with_lexical_base_env<R>(base: &Rc<Env>, f: impl FnOnce() -> R) -> R {
     LEXICAL_BASE_ENV.with(|cell| {
         let prev = cell.borrow_mut().take();
@@ -154,7 +170,9 @@ fn with_lexical_base_env<R>(base: &Rc<Env>, f: impl FnOnce() -> R) -> R {
         }
         let _guard = LexicalBaseGuard { prev };
         #[cfg(any(test, feature = "interp_test_witness"))]
-        CALL_ENV_DEPTH_PEAK.with(|peak| peak.set(0));
+        if call_env_depth_witness_enabled() {
+            CALL_ENV_DEPTH_PEAK.with(|peak| peak.set(0));
+        }
         f()
     })
 }
@@ -169,6 +187,9 @@ fn lexical_base_env(caller_env: &Rc<Env>) -> Rc<Env> {
 
 #[cfg(any(test, feature = "interp_test_witness"))]
 fn record_call_env_depth(env: &Env) {
+    if !call_env_depth_witness_enabled() {
+        return;
+    }
     let depth = env.chain_depth();
     CALL_ENV_DEPTH_PEAK.with(|peak| {
         let current = peak.get();
@@ -1817,9 +1838,12 @@ pub fn run_in_context_with_args(
 }
 
 /// Peak parent-chain depth observed across `call_function` frames in the last
-/// `run_in_context*` invocation (test witness for lexical-base scoping).
+/// `run_in_context*` invocation (test witness for lexical-base scoping; default-off until armed).
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn call_env_depth_peak_snapshot() -> usize {
+    if !call_env_depth_witness_enabled() {
+        return 0;
+    }
     CALL_ENV_DEPTH_PEAK.with(|peak| peak.get())
 }
 
