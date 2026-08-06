@@ -2,6 +2,7 @@ module gunbc.provider_wire_evidence
 
 import std.types { String, NonEmptyStr, FilePath, Bool, Int }
 import std.content_hash { ContentHash, as_content_hash_sha512 }
+import std.measure { ByteSize, byte_size }
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io
@@ -12,7 +13,7 @@ import extdeps.tools.sha512sum {
 }
 import gunbc.retained_shell_script { retained_foreign }
 
-data provider_wire_evidence_note: String = "Durable private wire evidence for provider account-standing captures. Publication is exclusive under an evidence root: 0700 directory → unique same-directory temporary file → write raw bytes → SHA-512 → hardlink to content-addressed name (fails closed if a concurrent writer already published a different object at that hex) → independent digest read-back → 0600 retained object → remove temporary. byte_count is UTF-8 code-unit length of the retained String carrier (substrate String length), not a separate host byte-count observation."
+data provider_wire_evidence_note: String = "Durable private wire evidence for provider account-standing captures. Publication is exclusive under an evidence root: 0700 directory → unique same-directory temporary file → write raw bytes → SHA-512 → hardlink to content-addressed name (fails closed if a concurrent writer already published a different object at that hex) → independent digest read-back → 0600 retained object → remove temporary. byte_count is ByteSize (std.measure) over the UTF-8 code-unit length of the retained String carrier (substrate String length), not a separate host byte-count observation."
 
 type PrivateEvidenceRef {
   root: FilePath
@@ -27,7 +28,7 @@ type ProcessExitObservation {
 type ProviderWireEvidenceReceipt {
   private_ref: PrivateEvidenceRef
   content_digest: ContentHash
-  byte_count: Int
+  byte_count: ByteSize
   process_exit: ProcessExitObservation
   stderr_ref: PrivateEvidenceRef?
 }
@@ -36,7 +37,7 @@ type PrivateEvidenceBytesRetention
   = PrivateEvidenceBytesRetained {
       ref: PrivateEvidenceRef
       content_digest: ContentHash
-      byte_count: Int
+      byte_count: ByteSize
     }
 
 fn private_evidence_object_path(root: FilePath, hex: NonEmptyStr) -> String {
@@ -135,7 +136,7 @@ fn retain_private_evidence_bytes_detailed(
                             content_address_hex: digest.hex,
                           },
                           content_digest: as_content_hash_sha512(digest: digest),
-                          byte_count: string_length(s: bytes),
+                          byte_count: byte_size(count: string_length(s: bytes)),
                         }
                       }
                     }
@@ -156,7 +157,7 @@ fn retain_private_evidence_bytes_detailed(
                             content_address_hex: digest.hex,
                           },
                           content_digest: as_content_hash_sha512(digest: digest),
-                          byte_count: string_length(s: bytes),
+                          byte_count: byte_size(count: string_length(s: bytes)),
                         }
                       }
                     } else {
@@ -178,7 +179,7 @@ fn retain_private_evidence_bytes_detailed(
                             content_address_hex: digest.hex,
                           },
                           content_digest: as_content_hash_sha512(digest: digest),
-                          byte_count: string_length(s: bytes),
+                          byte_count: byte_size(count: string_length(s: bytes)),
                         }
                       }
                     }
