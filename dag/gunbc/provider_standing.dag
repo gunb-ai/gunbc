@@ -2,6 +2,7 @@ module gunbc.provider_standing
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.claim_evidence { RecordedFactId, RecordedFact }
+import std.measure { BasisPoint, basis_point }
 import v2.std.optional { optional_absent, optional_present }
 import extdeps.llm.cli_lifecycle {
   ProviderInstance,
@@ -62,7 +63,7 @@ type ProviderLimitObservation
   | LimitWarning {
       subject: ProviderLimitSubject,
       native_token: NonEmptyStr,
-      utilization_basis_points: Int,
+      utilization_basis_points: BasisPoint,
     }
   | LimitRejected {
       subject: ProviderLimitSubject,

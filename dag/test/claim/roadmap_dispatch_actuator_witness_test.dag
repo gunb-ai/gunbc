@@ -65,6 +65,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_codex_exec_spec,
   dispatch_spawn_commands_for_provider,
   dispatch_spawn_commands_for_instance,
+  dispatch_spawn_commands_for_inventory,
   DispatchSpawnCommands,
   DispatchSpawnReady,
   DispatchSpawnRefused,
@@ -94,6 +95,8 @@ import gunbc.dispatch_selection {
   SelectCodex,
   default_provider_selection_request,
   dispatch_codex_default_model,
+  dispatch_selection_standing_ineligible_reason,
+  fixture_inventory_codex_only_available,
 }
 import gunbc.provider_account { codex_roadmap_account_selection }
 import gunbc.dispatch_pipe_pane_emit {
@@ -101,7 +104,10 @@ import gunbc.dispatch_pipe_pane_emit {
   PipeEmitRefused,
   dispatch_event_pipe_emission,
 }
-import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
+import gunbc.roadmap_dashboard_instance {
+  srv1_lab_dashboard_instance,
+  srv1_live_dashboard_instance,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -219,10 +225,18 @@ test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
     && string_contains(s: join(cmd.args, separator: "\0"), pattern: "CLAUDE_CODE_NO_FLICKER=1")
 }
 
-test fn witness_codex_provider_is_selected_explicitly() -> Bool {
+test fn witness_production_automatic_selection_refuses_unobserved_standing() -> Bool {
   match dispatch_cli_provider() {
-    Present { value: provider } => provider == CodexDispatchProvider
-    none => false
+    Present { value: _ } => false
+    none => true
+  }
+}
+
+test fn witness_actuator_automatic_selection_refuses_with_standing_reason() -> Bool {
+  match dispatch_actuator_selection(node_sizing: Unsized) {
+    DispatchActuatorSelectionRefused { reason } =>
+      reason == dispatch_selection_standing_ineligible_reason
+    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint: _ } => false
   }
 }
 
@@ -277,11 +291,20 @@ fn codex_tmux_command_shape_holds(cmds: DispatchSpawnCommands) -> Bool {
 
 test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
   let node = sized_derivable(id: "codex-selected", prs: [1], title: "Codex selected")
-  match dispatch_spawn_commands_for_provider(
+  match dispatch_spawn_commands_for_inventory(
+    instance: srv1_live_dashboard_instance(),
+    inventory: fixture_inventory_codex_only_available(
+      instance: srv1_live_dashboard_instance(),
+    ),
     node: node,
     session_uuid: "uuid-unused-by-codex",
     attempt_key: "feedfacefeedface",
-    provider: CodexDispatchProvider,
+    request: SelectCodex {
+      profile: ProfileAutomatic,
+      account: codex_roadmap_account_selection(),
+      model: dispatch_codex_default_model,
+      effort: ReasoningMedium,
+    },
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
     DispatchSpawnReady { commands: cmds } =>
@@ -327,8 +350,9 @@ fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands) -> Bool {
 
 test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  match dispatch_spawn_commands_for_instance(
+  match dispatch_spawn_commands_for_inventory(
     instance: lab,
+    inventory: fixture_inventory_codex_only_available(instance: lab),
     node: sized_derivable(
       id: "ts-dispatch-provider-events",
       prs: [],
@@ -409,7 +433,8 @@ test fn witness_provider_projection_is_exact_bounded_capability() -> Bool {
 }
 
 test fn codex_provider_v0_argv_keystone_holds() -> Bool {
-  witness_codex_provider_is_selected_explicitly()
+  witness_production_automatic_selection_refuses_unobserved_standing()
+    && witness_actuator_automatic_selection_refuses_with_standing_reason()
     && witness_codex_npm_launcher_fingerprint_is_live_receipt()
     && witness_codex_argv_is_unattended_but_sandboxed()
     && witness_selected_provider_shapes_codex_tmux_command()

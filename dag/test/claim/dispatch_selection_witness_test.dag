@@ -60,6 +60,8 @@ import gunbc.dispatch_selection {
   provider_selection_request_for_kind,
   fixture_inventory_codex_only_available,
   fixture_inventory_codex_and_cursor_available,
+  dispatch_selection_shape_mismatch_reason,
+  dispatch_selection_standing_ineligible_reason,
   Unsized,
 }
 
@@ -223,7 +225,20 @@ test fn witness_wrong_selection_shape_refuses() -> Bool {
     },
     node_sizing: Unsized,
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => true
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+      reason == dispatch_selection_shape_mismatch_reason
+    DispatchSelectionResolved { receipt: _ } => false
+  }
+}
+
+test fn witness_production_automatic_selection_refuses_unobserved_standing() -> Bool {
+  match dispatch_selection_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    request: default_provider_selection_request(),
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+      reason == dispatch_selection_standing_ineligible_reason
     DispatchSelectionResolved { receipt: _ } => false
   }
 }
@@ -234,7 +249,8 @@ test fn witness_claude_request_refuses_on_codex_only_inventory() -> Bool {
     request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
     node_sizing: Unsized,
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => true
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+      reason == dispatch_selection_shape_mismatch_reason
     DispatchSelectionResolved { receipt: _ } => false
   }
 }
@@ -260,6 +276,7 @@ test fn dispatch_selection_keystone_holds() -> Bool {
     && witness_receipt_records_requested_and_resolved()
     && witness_carrier_notes_record_directive_addendum()
     && witness_wrong_selection_shape_refuses()
+    && witness_production_automatic_selection_refuses_unobserved_standing()
     && witness_claude_request_refuses_on_codex_only_inventory()
     && witness_exact_override_requires_explicit_provider_arm()
 }

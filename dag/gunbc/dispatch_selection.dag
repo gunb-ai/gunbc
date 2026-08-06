@@ -246,6 +246,10 @@ data claude_state_root_denotes_profile_not_authority_note: String = "CARRIER-SHA
 
 data dispatch_selection_standing_ineligible_reason: NonEmptyStr = "no provider offer is selection-eligible for the requested profile" as NonEmptyStr
 
+data dispatch_selection_shape_mismatch_reason: NonEmptyStr = "no provider offer matches the requested selection shape" as NonEmptyStr
+
+data dispatch_production_standing_unobserved_refusal_note: String = "Production inventory rows carry ProviderStandingUnobserved until the observation layer wires RecordedFact standing (eager-raven-845 / nimble-owl-833). dispatch_cli_provider and dispatch_selection_for_instance refuse automatic and explicit selection at this boundary rather than reusing the prior rung-inflated ProviderAuthenticated inventory literal. Spawn-shape witnesses use fixture_inventory_* builders until observation lands."
+
 fn dispatch_temporal_unobserved() -> DispatchTemporalBounds {
   DispatchTemporalUnobserved { reason: dispatch_selection_temporal_unobserved_reason }
 }
@@ -816,6 +820,30 @@ fn find_offer_for_request(
   }
 }
 
+fn inventory_has_shape_match(
+  inventory: ProviderInventory,
+  request: ProviderSelectionRequest,
+) -> Bool {
+  any(inventory.offers, offer =>
+    offer_matches_request_shape(offer: offer, request: request)
+  )
+}
+
+fn dispatch_selection_refusal_reason_for_miss(
+  inventory: ProviderInventory,
+  request: ProviderSelectionRequest,
+) -> NonEmptyStr {
+  match request {
+    SelectAutomatically { profile: _ } => dispatch_selection_standing_ineligible_reason
+    _ =>
+      if inventory_has_shape_match(inventory: inventory, request: request) {
+        dispatch_selection_standing_ineligible_reason
+      } else {
+        dispatch_selection_shape_mismatch_reason
+      }
+  }
+}
+
 fn resolve_dispatch_selection(
   inventory: ProviderInventory,
   request: ProviderSelectionRequest,
@@ -839,7 +867,10 @@ fn resolve_dispatch_selection(
         DispatchSelectionRefused {
           node_sizing: node_sizing,
           requested_selection: request,
-          reason: dispatch_selection_standing_ineligible_reason,
+          reason: dispatch_selection_refusal_reason_for_miss(
+            inventory: inventory,
+            request: request,
+          ),
         }
     }
   }

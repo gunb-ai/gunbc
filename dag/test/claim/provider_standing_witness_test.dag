@@ -1,6 +1,7 @@
 module test.claim.provider_standing_witness
 
 import std.types { Bool, String, NonEmptyStr }
+import std.measure { basis_point }
 import extdeps.llm.cli_lifecycle {
   ClaudeCliProvider,
   CodexCliProvider,
@@ -58,7 +59,7 @@ test fn witness_limit_warning_does_not_block_selection() -> Bool {
       LimitWarning {
         subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
         native_token: "seven_day_opus" as NonEmptyStr,
-        utilization_basis_points: 9500,
+        utilization_basis_points: basis_point(count: 9500),
       },
     ],
     turn: TurnNotStarted,

@@ -89,12 +89,14 @@ import gunbc.dispatch_selection {
   ExecutionProfile,
   ProfileAutomatic,
   ProviderSelectionRequest,
+  ProviderInventory,
   DispatchExecutionReceipt,
   DispatchSelectionResolved,
   DispatchSelectionRefused,
   default_provider_selection_request,
   provider_selection_request_for_kind,
   dispatch_selection_for_instance,
+  resolve_dispatch_selection,
   provider_inventory_for_instance,
   resolved_process_fingerprint,
   srv1_live_dashboard_instance,
@@ -177,7 +179,7 @@ type DispatchCliProvider
   | CodexDispatchProvider
   | CursorDispatchProvider
 
-data dispatch_cli_provider_note: String = "Provider choice is resolved by gunbc.dispatch_selection from a per-instance inventory, not a host-wide constant. dispatch_cli_provider() projects the srv1-live Automatic selection for legacy call sites; instance-aware dispatch uses dispatch_selection_for_instance. Each DispatchCliProvider variant owns argv, preflight, and expected pane fingerprint together at this call site."
+data dispatch_cli_provider_note: String = "Provider choice is resolved by gunbc.dispatch_selection from a per-instance inventory, not a host-wide constant. dispatch_cli_provider() projects the srv1-live Automatic selection for legacy call sites; instance-aware dispatch uses dispatch_selection_for_instance. Production inventory standing is honestly unobserved until the observation layer lands, so dispatch_cli_provider() refuses rather than reusing the prior ProviderAuthenticated inventory literal (dispatch_production_standing_unobserved_refusal_note). Each DispatchCliProvider variant owns argv, preflight, and expected pane fingerprint together at this call site."
 
 fn provider_kind_to_dispatch_cli(kind: ProviderKind) -> DispatchCliProvider {
   match kind {
@@ -1479,15 +1481,16 @@ fn dispatch_spawn_commands_for_provider(
   )
 }
 
-fn dispatch_spawn_commands_for_instance(
+fn dispatch_spawn_commands_for_inventory(
   instance: HostDashboardInstance,
+  inventory: ProviderInventory,
   node: RoadmapNode,
   session_uuid: String,
   attempt_key: String,
   request: ProviderSelectionRequest,
 ) -> DispatchSpawnPlan {
-  match dispatch_selection_for_instance(
-    instance: instance,
+  match resolve_dispatch_selection(
+    inventory: inventory,
     request: request,
     node_sizing: node.sizing,
   ) {
@@ -1517,6 +1520,23 @@ fn dispatch_spawn_commands_for_instance(
       }
     }
   }
+}
+
+fn dispatch_spawn_commands_for_instance(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  session_uuid: String,
+  attempt_key: String,
+  request: ProviderSelectionRequest,
+) -> DispatchSpawnPlan {
+  dispatch_spawn_commands_for_inventory(
+    instance: instance,
+    inventory: provider_inventory_for_instance(instance: instance),
+    node: node,
+    session_uuid: session_uuid,
+    attempt_key: attempt_key,
+    request: request,
+  )
 }
 
 fn dispatch_spawn_commands_for_resolved_instance(
