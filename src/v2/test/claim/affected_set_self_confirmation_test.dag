@@ -11,8 +11,10 @@ import v2.lens.affected_set.self_confirmation {
   compile_clean_shard_a_validating_entry,
   derive_self_relevant_check_identities,
   mechanism_touch_affected_set_paths,
+  mechanism_touch_compile_clean_scope_tool_paths,
   mechanism_touch_module_graph_paths,
   mechanism_touch_affected_set_expected_identities,
+  mechanism_touch_compile_clean_scope_tool_expected_identities,
   mechanism_touch_module_graph_expected_identities,
   repair_receipt_expected_identities,
   repair_receipt_touched_paths,
@@ -55,6 +57,23 @@ test fn witness_mechanism_touch_module_graph_derived_identities_exact() -> Bool 
   self_relevant_identities_match_expected(
     touched_paths: mechanism_touch_module_graph_paths(),
     expected: mechanism_touch_module_graph_expected_identities
+  )
+}
+
+test fn witness_mechanism_touch_compile_clean_scope_tool_derives_scope_identity() -> Bool {
+  let touched = mechanism_touch_compile_clean_scope_tool_paths()
+  let derived = derive_self_relevant_check_identities(touched_paths: touched)
+  identity_in_set(entry: compile_clean_scope_validating_entry, identities: derived)
+    && self_relevant_checks_blocks_skip(
+      entry_path: compile_clean_scope_validating_entry,
+      touched_paths: touched
+    )
+}
+
+test fn witness_mechanism_touch_compile_clean_scope_tool_derived_identities_exact() -> Bool {
+  self_relevant_identities_match_expected(
+    touched_paths: mechanism_touch_compile_clean_scope_tool_paths(),
+    expected: mechanism_touch_compile_clean_scope_tool_expected_identities
   )
 }
 

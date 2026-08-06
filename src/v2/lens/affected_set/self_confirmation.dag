@@ -37,7 +37,7 @@ data selection_mechanism_self_relevant_rows: List<SelfRelevantCheckRow> = [
       "src/v2/lens/affected_set.dag",
       "src/v2/lens/affected_set/entry_selection.dag",
       "src/v2/lens/affected_set/declared_source_ref_selection.dag",
-      "tools.dag_compile_clean_scope.dag",
+      "dag/tools/dag_compile_clean_scope.dag",
       "src/v2/workflow/floor_compile_clean_predicates.dag"
     ]
   },
@@ -198,7 +198,16 @@ fn mechanism_touch_affected_set_paths() -> List<String> {
   ["src/v2/lens/affected_set.dag"]
 }
 
+fn mechanism_touch_compile_clean_scope_tool_paths() -> List<String> {
+  ["dag/tools/dag_compile_clean_scope.dag"]
+}
+
 data mechanism_touch_module_graph_expected_identities: List<String> = [
+  compile_clean_scope_validating_entry,
+  compile_clean_shard_a_validating_entry
+]
+
+data mechanism_touch_compile_clean_scope_tool_expected_identities: List<String> = [
   compile_clean_scope_validating_entry,
   compile_clean_shard_a_validating_entry
 ]

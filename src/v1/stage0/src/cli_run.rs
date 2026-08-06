@@ -20013,7 +20013,7 @@ const SELECTION_MECHANISM_SELF_RELEVANT_ROWS: &[SelfRelevantCheckRow] = &[
             "src/v2/lens/affected_set.dag",
             "src/v2/lens/affected_set/entry_selection.dag",
             "src/v2/lens/affected_set/declared_source_ref_selection.dag",
-            "tools.dag_compile_clean_scope.dag",
+            "dag/tools/dag_compile_clean_scope.dag",
             "src/v2/workflow/floor_compile_clean_predicates.dag",
         ],
     },
@@ -35051,6 +35051,23 @@ mod witness_layer_roots_compile_clean_tests {
                 .any(|e| *e == AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY),
             "module_graph touch must not derive universe witness (per-row paths): {derived:?}"
         );
+    }
+
+    /// Per-row parity: dag/tools/dag_compile_clean_scope.dag must match by repo path, not module id.
+    #[test]
+    fn self_confirmation_mechanism_touch_compile_clean_scope_tool_derives_scope() {
+        let touched = vec!["dag/tools/dag_compile_clean_scope.dag".to_string()];
+        let derived = derive_self_relevant_check_identities(&touched);
+        assert!(
+            derived
+                .iter()
+                .any(|e| *e == COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY),
+            "compile_clean_scope tool touch must derive scope witness: {derived:?}"
+        );
+        assert!(self_relevant_checks_blocks_skip(
+            COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
+            &touched
+        ));
     }
 
     /// Per-row parity with `v2.lens.affected_set.self_confirmation`: affected_set.dag touch
