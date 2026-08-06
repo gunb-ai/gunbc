@@ -2,16 +2,23 @@ module v2.test.claim.stage0_partition_membership_receipt
 
 import v2.workflow.rust_crate_partition {
   stage0_derived_assignment_succeeds_on_enrolled_graph,
+  stage0_partition_crate_rows_refusal_propagates_holds,
   stage0_partition_derived_membership_matches_enrolled_baseline_holds,
+  stage0_partition_derived_refusal_propagates_to_receipt_holds,
   stage0_partition_membership_closure_covers_seeds,
   stage0_partition_membership_order_independence,
+  stage0_planted_assignment_conflict_holds,
+  stage0_planted_convergence_chain_succeeds_holds,
+  stage0_planted_order_independence_holds,
+  stage0_planted_separated_membership_differs_holds,
+  stage0_planted_shared_dependency_fixture_holds,
   stage0_partition_red_control_synthetic_module_not_in_derived_holds,
   stage0_partition_witness_assignment_conflict_refuses_holds,
   stage0_partition_witness_assignment_conflict_cause_carries_reachers_holds,
   stage0_partition_witness_nonconvergence_refuses_holds,
   stage0_partition_witness_shared_dependency_v1_rt_not_in_std_core_holds,
   rust_crate_partition_declared_core_target,
-  stage0_physical_crate_count
+  stage0_physical_crate_count_holds
 }
 
 data stage0_partition_membership_receipt_note: String = "C2 equivalence receipt: derived per-unit membership matches stage0_partition_unit_membership_baseline, frozen at stage0_partition_enrolled_membership_baseline_frozen_commit (origin/main hand per-crate module lists, pre-derivation; independent of derivation). Baseline update rule: a baseline names the commit it was frozen at so a reader can tell what the snapshot is of; a baseline update is authored from the graph change — which modules moved between units and why — and lands as a reviewable diff of the baseline itself; a baseline is never updated by pasting derivation output, and if the only way to produce the new expected values is to run the thing under test, the update stops and asks. RED controls: synthetic unreachable module absent from derived membership; zero-step raw reach refuses; two-unit owner ambiguity refuses; forward vs reversed unit-order iteration yields identical membership."
@@ -26,6 +33,14 @@ test fn stage0_partition_derived_membership_matches_enrolled_baseline_witness_ho
 
 test fn stage0_partition_derived_assignment_succeeds_on_enrolled_graph_holds() -> Bool {
   stage0_derived_assignment_succeeds_on_enrolled_graph()
+}
+
+test fn stage0_partition_derived_refusal_propagates_to_receipt_witness_holds() -> Bool {
+  stage0_partition_derived_refusal_propagates_to_receipt_holds()
+}
+
+test fn stage0_partition_crate_rows_refusal_propagates_witness_holds() -> Bool {
+  stage0_partition_crate_rows_refusal_propagates_holds()
 }
 
 test fn stage0_partition_shared_dependency_v1_rt_not_in_std_core_holds() -> Bool {
@@ -49,7 +64,27 @@ test fn stage0_partition_assignment_conflict_cause_carries_reachers_holds() -> B
 }
 
 test fn stage0_partition_physical_crate_count_is_seven_holds() -> Bool {
-  stage0_physical_crate_count() == rust_crate_partition_declared_core_target
+  stage0_physical_crate_count_holds(expected: rust_crate_partition_declared_core_target)
+}
+
+test fn stage0_planted_shared_dependency_fixture_witness_holds() -> Bool {
+  stage0_planted_shared_dependency_fixture_holds()
+}
+
+test fn stage0_planted_order_independence_witness_holds() -> Bool {
+  stage0_planted_order_independence_holds()
+}
+
+test fn stage0_planted_assignment_conflict_witness_holds() -> Bool {
+  stage0_planted_assignment_conflict_holds()
+}
+
+test fn stage0_planted_separated_membership_differs_witness_holds() -> Bool {
+  stage0_planted_separated_membership_differs_holds()
+}
+
+test fn stage0_planted_convergence_chain_succeeds_witness_holds() -> Bool {
+  stage0_planted_convergence_chain_succeeds_holds()
 }
 
 test fn stage0_partition_red_control_wrong_module_not_derived_holds() -> Bool {
