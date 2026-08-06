@@ -1468,32 +1468,21 @@ pub fn record_lit_expected_coproduct(
     }
 }
 
-pub fn record_lit_witness_parent_from_expected_scope_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Scoped fallback when lookup_variant_parent_enum misses under composed symbol index (#7836 per-entry assembly): stamp Witness only when record_lit_variant_from_expected proves expected type is Witness<C> with matching Holds/Violates arm — not a guess on miss. Underlying lookup gap may affect other enums; fixing composed-index variant parent resolution closes the whole class (dissolve-on for this arm).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn record_lit_witness_parent_from_expected(
+pub fn record_lit_parent_enum_from_expected(
     type_name: String,
     expected: Option<Rc<Node>>,
     scope: Rc<InferScope>,
 ) -> Option<String> {
-    if ((type_name.clone() != "Holds".to_string()) && (type_name.clone() != "Violates".to_string()))
+    match record_lit_variant_from_expected(Some(type_name.clone()), expected.clone(), scope.clone())
     {
-        None
-    } else {
-        match record_lit_variant_from_expected(
-            Some(type_name.clone()),
-            expected.clone(),
-            scope.clone(),
-        ) {
-            Some(_) => Some("Witness".to_string()),
+        Some(_) => match record_lit_expected_coproduct(expected.clone(), scope.clone()) {
+            Some(coproduct) => Some(authored_name_at(
+                scope.type_env.clone().source_indices.clone(),
+                coproduct.clone(),
+            )),
             None => None,
-        }
+        },
+        None => None,
     }
 }
 
@@ -9168,7 +9157,7 @@ pub fn infer_record_lit(
                                 scope.type_env.clone().source_indices.clone(),
                                 owner.clone(),
                             )),
-                            None => record_lit_witness_parent_from_expected(
+                            None => record_lit_parent_enum_from_expected(
                                 type_name.clone().unwrap(),
                                 expected.clone(),
                                 scope.clone(),
