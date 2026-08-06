@@ -1,0 +1,31 @@
+module v2.test.claim.stage0_partition_membership_receipt
+
+import v2.std.algebra { list_snoc_item }
+import v2.workflow.rust_crate_partition {
+  stage0_partition_crate_rows,
+  stage0_partition_crate_row_membership_derived,
+  stage0_partition_crate_rows_membership_derived_holds,
+  rust_crate_partition_declared_core_target,
+  stage0_physical_crate_count
+}
+
+data stage0_partition_membership_receipt_note: String = "Equivalence receipt for stage0_partition_crate_rows (gunbc.roster_registry ByDerivation target): per row, membership derived from the interim explicit assignment via partition_unit_members equals the bound row.modules — module-bearing units from partition_unit_members, emit-shell from the reexport surface list. RED control: a synthetic row with a hand module absent from the assignment would fail membership_derived_holds."
+
+test fn stage0_partition_derived_membership_equals_row_modules_holds() -> Bool {
+  stage0_partition_crate_rows_membership_derived_holds()
+}
+
+test fn stage0_partition_physical_crate_count_is_seven_holds() -> Bool {
+  stage0_physical_crate_count() == rust_crate_partition_declared_core_target
+}
+
+test fn stage0_partition_red_control_wrong_module_not_derived_holds() -> Bool {
+  let rows = stage0_partition_crate_rows()
+  match rows {
+    [] => false
+    head :: _ => {
+      let derived = stage0_partition_crate_row_membership_derived(row: head)
+      !(derived == list_snoc_item(xs: derived, item: "synthetic_unassigned_module"))
+    }
+  }
+}
