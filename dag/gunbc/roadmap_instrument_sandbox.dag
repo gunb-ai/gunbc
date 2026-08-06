@@ -28,7 +28,8 @@ import gunbc.design.salience {
 import gunbc.design.instrument_camera {
   ProgramCamera, ProgramDepth, DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence,
   ProgramMode, ModeStatus, ModeRemaining, ModeWhy, program_depth_key, program_depth_index,
-  program_mode_key, camera_initial, camera_select, camera_set_mode, focus_finish_line,
+  program_mode_key, program_depths, program_modes,
+  camera_initial, camera_select, camera_set_mode, focus_finish_line,
   StateOwner, AuthoritativeProgramView, LocalInstrumentState, InstrumentObservation,
   RendererEphemera, state_owner_key, owner_may_write_domain_fact,
 }
@@ -277,9 +278,6 @@ fn live_program_view_result() -> LiveProgramView {
       }
   }
 }
-
-fn program_depths() -> List<ProgramDepth> { [DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence] }
-fn program_modes() -> List<ProgramMode> { [ModeStatus, ModeRemaining, ModeWhy] }
 
 fn depth_cell(d: ProgramDepth) -> Fragment {
   cell(s: join([to_string(program_depth_index(d: d)), " · ", program_depth_key(d: d)], ""))

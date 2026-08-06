@@ -3,7 +3,9 @@ module test.claim.heal_author_commit_witness
 
 import gunbc.generated_artifact {
   CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, DesignArtifact,
-  artifact_path,
+  artifact_path
+}
+import gunbc.heal_push_plan {
   classify_heal_repair_paths,
   HealRepairNoDrift,
   HealRepairAutoPushEligibleOnly,

@@ -1,10 +1,14 @@
 # anemia-lens CONFIRM eval corpus
 
 `anemia_confirm_eval_corpus.json` is the **single-authority** ground-truth set for evaluating the
-anemia-lens CONFIRM judge (the leaf-side §2 decomposition detector — see DESIGN.md §2). It is consumed
-cross-repo (e.g. `ctrl`'s coherence gate) via the gunbc submodule at this fixed path — do **not** vendor
-a copy; point at this file. The design rationale lives in the anemia-lens design doc (PR #5302, not yet
-on `main`).
+anemia-lens CONFIRM judge (the leaf-side §2 decomposition detector — see DESIGN.md §2). Do **not**
+vendor a copy; point at this file. The historical design proposal is archived in closed-unmerged
+PR #5302.
+
+**Consumer status: none in the current tree.** An earlier revision named a `ctrl` coherence-gate
+consumer that no longer exists. This corpus is a fixed historical decision-eval, not an enrolled gate.
+A future consumer must be wired and independently observed before the corpus is described as live
+coverage.
 
 **What this corpus is.** A fixed, labelled **decision-eval**: each row is one
 `(declared_type, signal, coincides_with)` input plus the correct verdict (`expected_confirm`). The judge

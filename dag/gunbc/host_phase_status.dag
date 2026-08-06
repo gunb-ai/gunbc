@@ -11,6 +11,12 @@ import gunbc.host_standup {
   DeclaredGap,
   host_standup_spine,
 }
+import gunbc.host_assimilation_program {
+  FleetParticipation,
+  HostEnrollmentIntent,
+  assimilation_program_for,
+  ci_runner_enrollment_participation,
+}
 import gunbc.host_standup_assimilation_deduction { srv3_post_install_actuation_verdict }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -117,22 +123,34 @@ fn host_phase_cell_status(host: HostIdentity, step: HostStandupStep) -> HostPhas
   }
 }
 
-fn host_phase_cells_for_host(host: HostIdentity) -> List<HostPhaseCellStatus> {
-  map(host_standup_spine, s => host_phase_cell_status(host: host, step: s))
+data host_phase_program_scoping_note: String = "The cells of a host are the steps of ITS OWN assimilation program, not the universal spine. The previous shape crossed every enrolled host with host_standup_spine, which was right while every enrolled host was the same kind of thing and becomes a fabrication the moment one is not: an inference appliance has no BMC to converge and no Actions runner slot to deploy, so those cells could never be satisfied and could never honestly be marked converged. The global-spine path is DELETED rather than kept beside this one -- a retained cross-product would be an inert second answer that some consumer eventually reads (DESIGN section 6, coverage by illusion). A host enrolled for CI participation alone still selects the entire spine, so srv1 through srv4 are unchanged; that is asserted by an executing witness, not assumed here."
+
+fn host_phase_cells_for_enrollment(intent: HostEnrollmentIntent) -> List<HostPhaseCellStatus> {
+  map(
+    assimilation_program_for(intent: intent).steps,
+    s => host_phase_cell_status(host: intent.host, step: s),
+  )
 }
 
-fn host_fleet_phase_matrix(hosts: List<HostIdentity>) -> List<HostPhaseCellStatus> {
-  flat_map(hosts, h => host_phase_cells_for_host(host: h))
+fn host_fleet_phase_matrix(enrollments: List<HostEnrollmentIntent>) -> List<HostPhaseCellStatus> {
+  flat_map(enrollments, e => host_phase_cells_for_enrollment(intent: e))
 }
 
 data fleet_subsumption_hosts_note: String = "The enrolled fleet, read from gunbc.fleet_intent_network's host rows rather than re-listed here — the matrix must never be able to disagree with the intent about WHICH hosts exist. This is also the enrollment prerequisite the srv4 OOM incident priced (fleet_subsumption_manual_gaps section C): a host takes no fleet work until it is an intent row, so a host absent from this list has no cells at all, and one that appears gains a full column of UnknownRefused cells — the work becoming visible the moment the host is enrolled, which is the behaviour the incident wanted."
 
-data fleet_subsumption_hosts: List<HostIdentity> = [
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-  operator_host_srv4,
+data fleet_subsumption_enrollments: List<HostEnrollmentIntent> = [
+  HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_enrollment_participation },
+  HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_enrollment_participation },
+  HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_enrollment_participation },
+  HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_enrollment_participation },
 ]
+
+data fleet_subsumption_hosts_projection_note: String = "The bare host list is DERIVED from the enrollments, never authored beside them. Consumers that legitimately care only about WHICH hosts exist -- toolchain components, network diagnosis, swap backing -- keep reading a List of HostIdentity and are untouched by program scoping, while the enrollment rows stay the single authority for who is in the fleet and what they are in it for. Authoring both lists would rebuild the parallel representation this refactor removes."
+
+data fleet_subsumption_hosts: List<HostIdentity> = map(
+  fleet_subsumption_enrollments,
+  e => e.host,
+)
 
 fn host_phase_cell_key(c: HostPhaseCellStatus) -> String {
   join([c.cell.host as String, "|", c.cell.phase_label], "")
@@ -177,9 +195,9 @@ fn host_phase_cell_ownership(c: HostPhaseCellStatus) -> Ownership? {
 
 data host_phase_reconcile_instantiation_note: String = "The status matrix reconciled as a MEMBERSHIP DIFF — one more (key_of, key_eq, value_eq, ownership_of) bundle handed to the single generic gunbc.membership_reconcile.membership_reconcile, never a forked diff (a forked reconcile means the genericity bought nothing). Desired is every cell modeled AND observed Converged: that is the end state of the whole subsumption lane — every phase modeled AND every enrolled host converged on it — so a Modified hunk is precisely one unit of remaining work, and membership_upsert_count is the answer to 'how much is left' as a NUMBER rather than a prose reconstruction. Removed is a real arm, not a degenerate pole: a cell observed for a host no longer in fleet_intent is a host that left the fleet, and cells are Owned, so it tears down rather than refusing. The witness exercises that arm synthetically because the live fleet has no departed host today — an instantiation whose interesting hunks are all unreachable in practice is an instantiation nobody has actually tested."
 
-fn host_phase_desired(hosts: List<HostIdentity>) -> List<HostPhaseCellStatus> {
+fn host_phase_desired(enrollments: List<HostEnrollmentIntent>) -> List<HostPhaseCellStatus> {
   map(
-    host_fleet_phase_matrix(hosts: hosts),
+    host_fleet_phase_matrix(enrollments: enrollments),
     c => HostPhaseCellStatus {
       cell: c.cell,
       disposition: host_phase_desired_disposition(),
@@ -216,19 +234,19 @@ fn host_phase_reconcile(
   )
 }
 
-fn host_phase_fleet_reconcile(hosts: List<HostIdentity>) -> MembershipPlan<HostPhaseCellStatus> {
+fn host_phase_fleet_reconcile(enrollments: List<HostEnrollmentIntent>) -> MembershipPlan<HostPhaseCellStatus> {
   host_phase_reconcile(
-    desired: host_phase_desired(hosts: hosts),
-    observed: host_fleet_phase_matrix(hosts: hosts),
+    desired: host_phase_desired(enrollments: enrollments),
+    observed: host_fleet_phase_matrix(enrollments: enrollments),
   )
 }
 
-fn host_phase_remaining_work_count(hosts: List<HostIdentity>) -> Int {
-  membership_upsert_count(plan: host_phase_fleet_reconcile(hosts: hosts))
+fn host_phase_remaining_work_count(enrollments: List<HostEnrollmentIntent>) -> Int {
+  membership_upsert_count(plan: host_phase_fleet_reconcile(enrollments: enrollments))
 }
 
-fn host_phase_observation_coverage_count(hosts: List<HostIdentity>) -> Int {
-  filter(host_fleet_phase_matrix(hosts: hosts), c => host_phase_cell_has_live_producer(c: c)).length()
+fn host_phase_observation_coverage_count(enrollments: List<HostEnrollmentIntent>) -> Int {
+  filter(host_fleet_phase_matrix(enrollments: enrollments), c => host_phase_cell_has_live_producer(c: c)).length()
 }
 
 fn host_phase_cell_is_converged(c: HostPhaseCellStatus) -> Bool {
@@ -242,8 +260,8 @@ fn host_phase_cell_is_converged(c: HostPhaseCellStatus) -> Bool {
   }
 }
 
-fn host_phase_converged_cell_count(hosts: List<HostIdentity>) -> Int {
-  filter(host_fleet_phase_matrix(hosts: hosts), c => host_phase_cell_is_converged(c: c)).length()
+fn host_phase_converged_cell_count(enrollments: List<HostEnrollmentIntent>) -> Int {
+  filter(host_fleet_phase_matrix(enrollments: enrollments), c => host_phase_cell_is_converged(c: c)).length()
 }
 
 data host_phase_finished_note: String = "FINISHED is both axes at their end state — a modeled authority AND an observed Converged — and it is deliberately stricter than converged. A host that is in the desired condition by unmodeled means is not finished: nothing can rebuild it, so the next host repeats the toil, which is the entire cost this lane exists to remove. srv3's OS install is that cell today. Counting it as done would make the lane's own progress number flatter than the truth in exactly the direction that feels good."
@@ -252,10 +270,10 @@ fn host_phase_cell_is_finished(c: HostPhaseCellStatus) -> Bool {
   host_phase_cell_is_modeled(c: c) && host_phase_cell_is_converged(c: c)
 }
 
-fn host_phase_finished_cell_count(hosts: List<HostIdentity>) -> Int {
-  filter(host_fleet_phase_matrix(hosts: hosts), c => host_phase_cell_is_finished(c: c)).length()
+fn host_phase_finished_cell_count(enrollments: List<HostEnrollmentIntent>) -> Int {
+  filter(host_fleet_phase_matrix(enrollments: enrollments), c => host_phase_cell_is_finished(c: c)).length()
 }
 
-fn host_phase_unmodeled_count(hosts: List<HostIdentity>) -> Int {
-  filter(host_fleet_phase_matrix(hosts: hosts), c => !host_phase_cell_is_modeled(c: c)).length()
+fn host_phase_unmodeled_count(enrollments: List<HostEnrollmentIntent>) -> Int {
+  filter(host_fleet_phase_matrix(enrollments: enrollments), c => !host_phase_cell_is_modeled(c: c)).length()
 }

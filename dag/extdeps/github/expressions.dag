@@ -44,6 +44,8 @@ type Expression
   | FunctionCall { function: ExpressionFunction, args: List<Expression> }
   | StringLiteral { value: String }
   | LogicalOr { left: Expression, right: Expression }
+  | LogicalAnd { left: Expression, right: Expression }
+  | Equals { left: Expression, right: Expression }
 
 type TemplateSegment
   = LiteralText { text: String }
@@ -94,6 +96,8 @@ type ExpressionSpellings {
   arg_sep: String
   string_quote: String
   or_op: String
+  and_op: String
+  eq_op: String
   interp_open: String
   interp_close: String
 }
@@ -105,6 +109,8 @@ data default_expression_spellings: ExpressionSpellings = {
   arg_sep: ", ",
   string_quote: "'",
   or_op: " || ",
+  and_op: " && ",
+  eq_op: " == ",
   interp_open: "${{ ",
   interp_close: " }}",
 }
@@ -127,6 +133,10 @@ fn serialize_expression_with(expression: Expression, sp: ExpressionSpellings) ->
       join([sp.string_quote, v, sp.string_quote], "")
     LogicalOr { left: l, right: r } =>
       join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.or_op)
+    LogicalAnd { left: l, right: r } =>
+      join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.and_op)
+    Equals { left: l, right: r } =>
+      join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.eq_op)
   }
 }
 
@@ -354,6 +364,12 @@ fn expression_accesses_runner_var_via_env(expression: Expression) -> Bool {
     LogicalOr { left: l, right: r } =>
       expression_accesses_runner_var_via_env(expression: l) ||
         expression_accesses_runner_var_via_env(expression: r)
+    LogicalAnd { left: l, right: r } =>
+      expression_accesses_runner_var_via_env(expression: l) ||
+        expression_accesses_runner_var_via_env(expression: r)
+    Equals { left: l, right: r } =>
+      expression_accesses_runner_var_via_env(expression: l) ||
+        expression_accesses_runner_var_via_env(expression: r)
     StringLiteral { value: _ } => false
   }
 }
@@ -364,6 +380,12 @@ fn expression_uses_context(expression: Expression, target: ExpressionContext) ->
     FunctionCall { function: _, args: a } =>
       fold(a, init: false, f: (acc, arg) => acc || expression_uses_context(expression: arg, target: target))
     LogicalOr { left: l, right: r } =>
+      expression_uses_context(expression: l, target: target) ||
+        expression_uses_context(expression: r, target: target)
+    LogicalAnd { left: l, right: r } =>
+      expression_uses_context(expression: l, target: target) ||
+        expression_uses_context(expression: r, target: target)
+    Equals { left: l, right: r } =>
       expression_uses_context(expression: l, target: target) ||
         expression_uses_context(expression: r, target: target)
     StringLiteral { value: _ } => false
@@ -388,3 +410,5 @@ fn any_template_accesses_runner_var_via_env(templates: List<ExpressionTemplate>)
   fold(templates, init: false, f: (acc, template) =>
     acc || template_accesses_runner_var_via_env(template: template))
 }
+
+data expression_operator_extension_note: String = "LogicalAnd and Equals were added because a consumer needed to LOWER a job condition rather than concatenate one (review 49400 on gunbc#7903: the falsifier alert's trust-wall condition was being built by nested concat of raw expression text — a foreign-language executable string in normal form, authored outside the module that owns that language, in the very change that declares that class as residue to shrink). Both are ordinary GitHub Actions expression syntax (docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/evaluate-expressions-in-workflows-and-actions#operators, read 2026-08-06), so this models what upstream already has.\n\nNO GROUPING CONSTRUCT WAS ADDED, AND THAT IS THE LOAD-BEARING DECISION. GitHub binds && tighter than ||, so an Or nested under an And needs parentheses to keep its meaning, and the first attempt here made LogicalOr parenthesize unconditionally. review 49430 refused it, correctly and on the strongest possible ground: this module is READ IN BOTH DIRECTIONS — parse_expression_with is the inverse of serialize_expression_with — and the change added a construct to emission that ingest could not read, so `(a || b)` serialized out and would not parse back. That is precisely the one-grammar-both-directions invariant DESIGN §4 states, broken by editing one direction alone. Three round-trip witnesses and an emission golden would have caught it; they were not run, and the earlier claim on the PR that they had been was wrong.\n\nSo emission is UNCHANGED from before this row, and the precedence hazard is answered where it actually arises — at the authoring site, by choosing a shape that needs no grouping. gunbc.falsifier_alert_admission builds its condition in DISTRIBUTED form, `A && B && s || A && B && d`, which under GitHub's own precedence already parses as the intended `(A && B && s) || (A && B && d)`. Adding parentheses to this grammar remains legitimate future work, but it is a change to BOTH directions plus the goldens that pin them, not a serializer edit.\n\nDECLARED ASYMMETRY, NAMED RATHER THAN LEFT IMPLIED (review 49460): parse_expression_with reads Or, calls, context accesses and string literals; it does NOT read && or ==. So these two operators are EMISSION-ONLY today, and this module is bidirectional for the constructs that predate them and one-way for these. That is a real §4 asymmetry, admissible here only because no consumer reads these forms BACK — the sole use is lowering a job condition that GitHub evaluates and nothing in this tree re-ingests. It stops being admissible the moment any consumer parses a condition containing && or ==, which is the trigger: ingest arms for both operators plus round-trip witnesses covering them land before that consumer, not after it. Stated explicitly because the previous revision of this row broke bidirectionality by accident and shipped it; an asymmetry that is declared and triggered is a frontier, one that is merely true is a defect waiting to be discovered."
