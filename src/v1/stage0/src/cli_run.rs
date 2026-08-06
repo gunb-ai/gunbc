@@ -17797,19 +17797,50 @@ pub fn collect_stale_frozen_path_deferrals() -> Vec<(String, String, &'static st
 /// states. The one non-refusing arm is the base ref resolving while the roster file is ABSENT from
 /// it — that is the change introducing the freeze, where "may only shrink" has nothing to shrink
 /// from; it is decidable, it is reachable exactly once, and every later PR sees the file at base.
+///
+/// WHERE THE BASE REF COMES FROM, and why it is not the `origin/main` literal this function used to
+/// carry. `gunbc.diff_baseline` is the single authority for "what does this run compare HEAD
+/// against?" — it exists precisely as "the de-fork of the origin/main policy-as-literal" — and it
+/// already resolves a push to its payload `before` SHA rather than to the branch tip. This gate
+/// forked that decision and hardcoded the tip, so it was never asking the authority's question.
+/// Reading the resolved baseline through `floor_diff_baseline_readout` deletes the fork; a readout
+/// refusal is propagated, never replaced by a constant.
 pub fn collect_frozen_path_deferral_additions() -> Result<Vec<String>, String> {
-    let base = std::env::var("GUNBC_CI_DIFF_BASE").unwrap_or_else(|_| "origin/main".to_string());
-    collect_frozen_path_deferral_additions_against(&base)
+    let (base, event) = floor_diff_baseline_readout().map_err(|reason| {
+        format!(
+            "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnresolved — the frozen path-deferral \
+             roster is a monotone debt contract and gunbc.diff_baseline could not resolve the \
+             baseline this run compares against, so growth cannot be ruled out. Could-not-resolve \
+             and permits-this are different states and this arm refuses rather than conflating \
+             them (it does NOT fall back to a constant ref — that fork is what this gate was \
+             repaired to delete). Resolver reason: {reason}"
+        )
+    })?;
+    collect_frozen_path_deferral_additions_against(&base).map_err(|e| {
+        // Locate the refusal in the event that produced the baseline: the same base ref means
+        // different things under `push` and `pull_request`, and a refusal that cannot name which
+        // one it resolved under is not actionable.
+        format!("{e} (baseline base={base} event={event})")
+    })
 }
 
 /// The same gate against an explicit baseline — the grain the controls execute, so proving the
 /// git read path needs no environment mutation and no cross-test lock.
 pub fn collect_frozen_path_deferral_additions_against(base: &str) -> Result<Vec<String>, String> {
-    let root = workspace_root();
+    collect_frozen_path_deferral_additions_in_repo(&workspace_root(), base)
+}
+
+/// The same gate against an explicit repository root — the grain a hermetic git fixture executes,
+/// so the *which commit did we read* half can be proven by construction in a temp repo instead of
+/// being asserted about the live tree, whose history no test may author.
+pub fn collect_frozen_path_deferral_additions_in_repo(
+    root: &std::path::Path,
+    base: &str,
+) -> Result<Vec<String>, String> {
     let run = |args: &[&str]| -> Result<std::process::Output, String> {
         std::process::Command::new("git")
             .args(args)
-            .current_dir(&root)
+            .current_dir(root)
             .output()
             .map_err(|e| format!("git {args:?}: {e}"))
     };
@@ -17824,24 +17855,83 @@ pub fn collect_frozen_path_deferral_additions_against(base: &str) -> Result<Vec<
              origin main) or set GUNBC_CI_DIFF_BASE to a resolvable rev."
         ));
     }
-    let spec = format!("{base}:{WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL}");
+    let fork_point = frozen_path_deferral_baseline_fork_point(&run, base)?;
+    let spec = format!("{fork_point}:{WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL}");
     let shown = run(&["show", &spec])?;
     if !shown.status.success() {
-        // Base resolves, path absent at base: the introducing change. Counted, never silent.
+        // Fork point resolves, path absent there: the introducing change. Counted, never silent.
         eprintln!(
             "{} [freeze-monotonicity] {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL} is absent at \
-             base={base} — treating this change as the freeze point (the only arm with no \
-             baseline to shrink from; unreachable once the roster is on the base branch)",
+             fork_point={fork_point} (base={base}) — treating this change as the freeze point \
+             (the only arm with no baseline to shrink from; unreachable once the roster is on \
+             the base branch)",
             floor_ts()
         );
         return Ok(Vec::new());
     }
     let base_keys =
         frozen_path_deferral_keys_from_source(&String::from_utf8_lossy(&shown.stdout).into_owned());
+    // Both sides of the comparison are read from the SAME repository root. The current side used
+    // to come from a process-wide cache over the live workspace while the base side came from
+    // `root` — coherent in production, where they are the same tree, and silently incomparable for
+    // any caller that supplies another one. Reading both from `root` makes the fixture grain real
+    // rather than approximate; production passes `workspace_root()` and reads the identical file.
+    let current_source = std::fs::read_to_string(root.join(WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL))
+        .map_err(|e| {
+            format!(
+                "WITNESS ADMISSION REFUSAL cause=FreezeRosterUnreadable base={base} — the frozen \
+                 path-deferral roster {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL} could not be read \
+                 from the repository under check, so growth cannot be ruled out: {e}"
+            )
+        })?;
     Ok(frozen_path_deferral_additions_in(
-        frozen_path_deferral_keys(),
+        &frozen_path_deferral_keys_from_source(&current_source),
         &base_keys,
     ))
+}
+
+/// THE COMMIT THE ROSTER IS ACTUALLY COMPARED AT, and why it is the fork point rather than the base
+/// ref itself. A monotone contract asks one question — did THIS change add rows — so its referent
+/// has to be the common ancestor the change departed from. The base ref is not that: it is a moving
+/// branch tip, and reading the roster at the tip makes the verdict a function of when the check
+/// happened to run rather than of what the change did.
+///
+/// THE MEASURED FAILURE (gunbc main, 2026-08-06): `177e0725` merged carrying a row that `82914f2`
+/// removed from main four minutes later. Its floor run was queued behind ~6 hours of runner
+/// backlog, so by execution time the fetched tip no longer had the row while the checked-out tree
+/// still did — `current - tip = {row}` and a commit that added nothing was refused for growth. The
+/// PR direction is the same defect mirrored: a long-lived branch would red because main removed a
+/// row the branch merely inherited. `git merge-base` answers both, and is degenerate-correct where
+/// the base is already an ancestor (a push's `before` SHA, an operator `HEAD~20`), so this is one
+/// rule and not a per-event case split.
+///
+/// Fail-closed: unrelated histories have no fork point, and "these share no ancestor" is not
+/// evidence that the roster did not grow.
+fn frozen_path_deferral_baseline_fork_point(
+    run: &dyn Fn(&[&str]) -> Result<std::process::Output, String>,
+    base: &str,
+) -> Result<String, String> {
+    let merge_base = run(&["merge-base", base, "HEAD"])?;
+    if !merge_base.status.success() {
+        return Err(format!(
+            "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnrelatedHistory base={base} — the \
+             frozen path-deferral roster is monotone against the commit this change DEPARTED \
+             from, and `git merge-base {base} HEAD` found no common ancestor, so there is no \
+             honest baseline to shrink from. No-common-ancestor and permits-this are different \
+             states and this arm refuses rather than conflating them."
+        ));
+    }
+    let fork_point = String::from_utf8_lossy(&merge_base.stdout)
+        .trim()
+        .to_string();
+    if fork_point.is_empty() {
+        return Err(format!(
+            "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnrelatedHistory base={base} — \
+             `git merge-base {base} HEAD` succeeded but named no commit, so the baseline is \
+             unobservable and growth cannot be ruled out."
+        ));
+    }
+    Ok(fork_point)
 }
 
 /// The pure fold the gate is built from — the grain the fixture controls plant into.
@@ -24863,6 +24953,169 @@ mod node_frontier_plumbing_controls {
         )
         .expect_err("an unresolvable baseline must refuse");
         assert!(err.contains("FreezeBaselineUnobservable"));
+    }
+
+    // THE INCIDENT, planted as a repository shape rather than asserted about. gunbc main went red
+    // on 2026-08-06 because this gate read the roster at the MOVING BASE TIP: `177e0725` merged
+    // carrying a row, `82914f2` removed it from main four minutes later, and the floor run —
+    // queued behind ~6h of runner backlog — then compared the older commit's unchanged roster
+    // against a tip that no longer had the row, reporting `FrozenPathDeferralGrew` for a change
+    // that added nothing.
+    //
+    // The fixture is that history exactly: fork point carries the row, HEAD inherits it unchanged,
+    // the base branch advances and REMOVES it. Reading at the tip finds a spurious addition;
+    // reading at the fork point finds none. Both readings are asserted, so this goes red in both
+    // directions — a regression to tip-reading fails the first assert, and a fork-point resolution
+    // that silently stopped comparing anything fails the second.
+    #[test]
+    fn frozen_roster_baseline_is_the_fork_point_not_the_moving_base_tip() {
+        let repo = std::env::temp_dir().join(format!(
+            "gunbc-freeze-forkpoint-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let roster = repo.join(super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL);
+        std::fs::create_dir_all(roster.parent().expect("roster parent")).expect("mkdir fixture");
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&repo)
+                .output()
+                .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let write_roster = |rows: &[&str]| {
+            let body = rows
+                .iter()
+                .map(|r| {
+                    format!(
+                        "  FrozenPathDeferral {{ entry: \"{r}_test.dag\", functions: \
+                         [\"{r}_holds\"] }},\n"
+                    )
+                })
+                .collect::<String>();
+            std::fs::write(
+                &roster,
+                format!(
+                    "module gunbc.witness_deferral_freeze\n\n\
+                     data frozen_path_deferrals: List<FrozenPathDeferral> = [\n{body}]\n"
+                ),
+            )
+            .expect("write roster");
+        };
+
+        git(&["init", "--quiet", "--initial-branch", "main", "."]);
+        git(&["config", "user.email", "fixture@gunbc.invalid"]);
+        git(&["config", "user.name", "fixture"]);
+
+        // Fork point: the row exists on the base branch.
+        write_roster(&["inherited", "other"]);
+        git(&["add", "-A"]);
+        git(&["commit", "--quiet", "-m", "fork point: row present"]);
+        let fork_point = git(&["rev-parse", "HEAD"]);
+
+        // The merged commit under check — roster untouched, exactly like `177e0725`.
+        git(&["checkout", "--quiet", "-b", "under-check"]);
+        std::fs::write(repo.join("unrelated.txt"), "an unrelated edit\n").expect("write unrelated");
+        git(&["add", "-A"]);
+        git(&["commit", "--quiet", "-m", "under check: roster untouched"]);
+
+        // The base branch advances past it and removes the row, exactly like `82914f2`.
+        git(&["checkout", "--quiet", "main"]);
+        write_roster(&["other"]);
+        git(&["add", "-A"]);
+        git(&["commit", "--quiet", "-m", "base advances: row removed"]);
+        let moved_tip = git(&["rev-parse", "HEAD"]);
+        git(&["checkout", "--quiet", "under-check"]);
+        assert_ne!(
+            fork_point, moved_tip,
+            "the base tip must actually have moved"
+        );
+
+        // RED HALF: reading at the moved tip manufactures the phantom addition. This is the
+        // production behaviour before the repair, reproduced so the fix has something to discriminate
+        // against — if it ever stops reporting growth, the fixture no longer models the incident.
+        let at_tip_current = super::frozen_path_deferral_keys_from_source(
+            &std::fs::read_to_string(&roster).expect("read roster at head"),
+        );
+        let at_tip_base = super::frozen_path_deferral_keys_from_source(
+            &String::from_utf8_lossy(
+                &std::process::Command::new("git")
+                    .args([
+                        "show",
+                        &format!(
+                            "{moved_tip}:{}",
+                            super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL
+                        ),
+                    ])
+                    .current_dir(&repo)
+                    .output()
+                    .expect("git show at tip")
+                    .stdout,
+            )
+            .into_owned(),
+        );
+        assert_eq!(
+            super::frozen_path_deferral_additions_in(&at_tip_current, &at_tip_base),
+            vec!["inherited_test.dag::inherited_holds".to_string()],
+            "the fixture must reproduce the incident: at the moved tip the inherited row reads as \
+             an addition"
+        );
+
+        // GREEN HALF, the repair: against the same base ref, the gate resolves the fork point and
+        // finds nothing added — the commit under check added no row, and now the verdict says so
+        // regardless of how far the base branch has moved since it merged.
+        let additions = super::collect_frozen_path_deferral_additions_in_repo(&repo, &moved_tip)
+            .expect("fork-point baseline is readable");
+        assert!(
+            additions.is_empty(),
+            "a commit that added no freeze row must not refuse because the base tip moved past it: \
+             {additions:?}"
+        );
+
+        // And the contract still bites in the same repository: a row this commit genuinely adds is
+        // still growth against the fork point, so the repair widened nothing.
+        write_roster(&["inherited", "other", "genuinely_new"]);
+        let grown = super::collect_frozen_path_deferral_additions_in_repo(&repo, &moved_tip)
+            .expect("fork-point baseline is readable");
+        assert_eq!(
+            grown,
+            vec!["genuinely_new_test.dag::genuinely_new_holds".to_string()],
+            "a real addition must still be caught at the fork point"
+        );
+        super::refuse_frozen_path_deferral_additions(&grown).expect_err("growth must refuse");
+
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    // Unrelated histories have no fork point, and that is ignorance rather than permission.
+    #[test]
+    fn frozen_roster_baseline_refuses_unrelated_history() {
+        let err = super::frozen_path_deferral_baseline_fork_point(
+            &|_args: &[&str]| {
+                Ok(std::process::Output {
+                    // A nonzero exit with no stdout is what `git merge-base` returns for two
+                    // histories with no common ancestor.
+                    status: std::process::Command::new("false")
+                        .status()
+                        .expect("spawn false"),
+                    stdout: Vec::new(),
+                    stderr: Vec::new(),
+                })
+            },
+            "some-unrelated-root",
+        )
+        .expect_err("no common ancestor must refuse");
+        assert!(err.contains("FreezeBaselineUnrelatedHistory"), "{err}");
+        assert!(err.contains("some-unrelated-root"), "{err}");
     }
 
     #[test]
