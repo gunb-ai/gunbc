@@ -19,9 +19,10 @@ use v1_compiler::cli_run::{
     resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, BudgetKind, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
-    DiscoveryWidthPolicy, DiscoveryWitnessOutcome, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
-    ResolutionDivergencePhase, ResolutionDivergencePhaseState, SelectionDegradationSnapshot,
-    TimingPercentiles, WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    DiscoveryWidthPolicy, DiscoveryWitnessOutcome, FloorPhase, HistogramData,
+    NodeFrontierSelectionMode, PhaseProfile, ResolutionDivergencePhase,
+    ResolutionDivergencePhaseState, SelectionDegradationSnapshot, TimingPercentiles,
+    WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
@@ -2691,7 +2692,9 @@ fn run_batch_unit(
                 fast_lane_eval_budget_ms,
                 &falsifier_self_host_wet_budgets,
             );
-            let expected_red = falsifier_self_host_wet_budgets.expected_red_witnesses.clone();
+            let expected_red = falsifier_self_host_wet_budgets
+                .expected_red_witnesses
+                .clone();
             let execution_authority_source_roots = roots.clone();
             vec![run_discovery_batch_node(
                 roots,
@@ -2742,7 +2745,13 @@ fn run_batch_unit(
                 fast_lane_eval_budget_ms,
                 None,
                 None,
-                false,
+                // Scoped batches never computed a polarity at all — the batch-wide flag was
+                // hardcoded false here, so a known-red witness reached by this route reddened
+                // its component. Function-grain matching makes the same roster correct on
+                // every route, which is the point of moving the fact onto the witness.
+                falsifier_self_host_wet_budgets
+                    .expected_red_witnesses
+                    .clone(),
                 Some(ScopedReceiptBatch {
                     batch_id,
                     source_roots_digest,
@@ -9253,16 +9262,14 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             expected_red_witnesses: {
-                let mut pairs = match read_schedule_witness_entry_pairs(
-                    &plan_ctx,
-                    "known_red_probe_roster",
-                ) {
-                    Ok(v) => v,
-                    Err(msg) => {
-                        eprintln!("{msg}");
-                        return Err(ExitCode::from(1));
-                    }
-                };
+                let mut pairs =
+                    match read_schedule_witness_entry_pairs(&plan_ctx, "known_red_probe_roster") {
+                        Ok(v) => v,
+                        Err(msg) => {
+                            eprintln!("{msg}");
+                            return Err(ExitCode::from(1));
+                        }
+                    };
                 match read_schedule_witness_entry_pairs(
                     &plan_ctx,
                     "falsifier_self_host_wet_known_red_roster",
@@ -10574,9 +10581,10 @@ mod tests {
             .refusal()
             .expect("an expected-red witness that ran green must refuse, never pass quietly");
         assert_eq!(refusal.witnesses.len(), 1);
-        let (mode, detail) = batch_failure_mode_and_detail(&batch_record_for_test(vec![
-            stale_known_red_result(Some(refusal)),
-        ]));
+        let (mode, detail) =
+            batch_failure_mode_and_detail(&batch_record_for_test(vec![stale_known_red_result(
+                Some(refusal),
+            )]));
         assert_eq!(mode, STALE_KNOWN_RED_MODE);
         assert_ne!(mode, "WitnessRed");
         assert_ne!(mode, "none");
@@ -10592,18 +10600,29 @@ mod tests {
     #[test]
     fn expected_red_is_function_grain_not_file_or_batch_grain() {
         let entry = "src/v2/test/claim/emit/logic_ground_truth_test.dag";
-        let expected_red = vec![(entry.to_string(), "logic_complement_truth_table".to_string())];
+        let expected_red = vec![(
+            entry.to_string(),
+            "logic_complement_truth_table".to_string(),
+        )];
 
         let tally = classify_witness_expectations(
             &[
                 outcome(entry, "logic_complement_truth_table", ClaimOutcome::Fail),
                 outcome(entry, "logic_sibling_that_must_hold", ClaimOutcome::Pass),
-                outcome("other/witness_test.dag", "unrelated_holds", ClaimOutcome::Fail),
+                outcome(
+                    "other/witness_test.dag",
+                    "unrelated_holds",
+                    ClaimOutcome::Fail,
+                ),
             ],
             &expected_red,
         );
         assert_eq!(tally.agreements.len(), 1, "the quarantined fn is agreement");
-        assert_eq!(tally.refusal(), None, "its green sibling is not a stale quarantine");
+        assert_eq!(
+            tally.refusal(),
+            None,
+            "its green sibling is not a stale quarantine"
+        );
         assert_eq!(
             tally.unexpected_failures.len(),
             1,
@@ -10614,7 +10633,11 @@ mod tests {
         // The green SIBLING going red is an ordinary failure, not agreement: file placement
         // never confers polarity.
         let sibling_red = classify_witness_expectations(
-            &[outcome(entry, "logic_sibling_that_must_hold", ClaimOutcome::Fail)],
+            &[outcome(
+                entry,
+                "logic_sibling_that_must_hold",
+                ClaimOutcome::Fail,
+            )],
             &expected_red,
         );
         assert!(sibling_red.agreements.is_empty());
@@ -13430,6 +13453,7 @@ mod tests {
                 NodeFrontierSelectionMode::Applied,
                 &summary_with(killed.clone()),
                 projected,
+                None,
             );
             assert!(
                 result.budget_refusal.is_some(),
@@ -13447,6 +13471,7 @@ mod tests {
             NodeFrontierSelectionMode::Applied,
             &summary_with(ClaimOutcome::Fail),
             Ok(Vec::new()),
+            None,
         );
         assert!(result.budget_refusal.is_none());
     }
@@ -13494,6 +13519,7 @@ mod tests {
             NodeFrontierSelectionMode::Applied,
             &summary,
             Err("[witness-row-cost] REFUSED: missing measured resolve parent for e.dag".into()),
+            None,
         );
         assert!(!result.ok);
         assert!(

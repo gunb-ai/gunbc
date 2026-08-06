@@ -2,6 +2,9 @@ module test.claim.exact_witness_admission_witness
 
 import gunbc.explicit_witness_admission {
   ExplicitWitnessAdmission,
+  explicit_witness_admission_is_known_red,
+  explicit_witness_admission_requires_long_eval_budget,
+  witness_long_eval_budget_roster,
   explicit_witness_admissions,
   explicit_witness_admission_covers,
   explicit_witness_admission_covers_in,
@@ -13,7 +16,7 @@ import gunbc.explicit_witness_admission {
   known_red_probe_v1_envelope_roster,
   known_red_probe_execution_roster
 }
-import gunbc.ci_layer_roots { known_red_probe_roster }
+import gunbc.ci_layer_roots { known_red_probe_roster, witness_long_eval_budget_entries, falsifier_substrate_long_lane_entries }
 import v2.workflow.witness_admission {
   explicit_witness_admission_uniqueness_holds,
   explicit_witness_admission_rows_well_formed_holds,
@@ -27,7 +30,15 @@ import std.realization_schedule {
   CorpusWitnessKind,
   ExecutionWitnessKind
 }
-import std.witness_admission { OfflineLocalRecipe }
+import std.witness_admission {
+  OfflineLocalRecipe,
+  FalsifierSubstrateLongLane,
+  QuarantineProbeExpectRed,
+  SubstrateLongLaneEvalBudget,
+  FastLaneEvalBudget,
+  ExpectWitnessRed,
+  ExpectWitnessHolds
+}
 import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -117,6 +128,7 @@ fn synthetic_admission(f: String) -> ExplicitWitnessAdmission {
     entry: "dag/test/claim/synthetic_admission_witness_test.dag",
     f: f,
     kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
     reason: "synthetic",
     dissolve_on: "synthetic"
   )
@@ -142,6 +154,8 @@ test fn red_control_admission_with_non_executing_cadence_reds() -> Bool {
           kind: CorpusWitnessKind
         },
         cadence: OfflineLocalRecipe,
+        budget: FastLaneEvalBudget,
+        expected: ExpectWitnessRed,
         reason: "synthetic",
         dissolve_on: "synthetic"
       }
@@ -165,3 +179,79 @@ test fn red_control_file_grain_admission_would_reach_the_sibling() -> Bool {
 data red_control_file_grain_note: String = "red_control_file_grain_admission_would_reach_the_sibling is what keeps the discriminating claim from passing vacuously: it runs the SAME predicate over the file-grain shape and shows it DOES reach the sibling, so the false in the primary assertion is a decision about grain rather than a predicate that never matches. Both arms are synthetic, so neither can lose its subject when a live quarantine climbs out."
 
 data live_row_claims_are_population_independent_note: String = "every_live_admission_is_reached_by_its_own_row, every_admission_is_projected_into_exactly_one_cadence_roster and ci_layer_roots_probe_roster_is_the_corpus_projection are universals and identities over the live rows. They hold at any roster size, including zero, and they are deliberately NOT where the discrimination lives - a check whose strength depends on the live population having members is a check that goes quietly vacuous the moment the lane it guards succeeds."
+
+
+data axis_separation_witness_note: String = "THE AXIS-SEPARATION CLAIM, and the synthetic pair is the whole content of it. Polarity used to be read off the cadence, so the two facts could not disagree and any assertion about them was a tautology. These rows make them disagree on purpose: one row is expected-RED on a NON-quarantine cadence, the other is expected-HOLDS on the quarantine cadence. If anything still derives polarity from the cadence, exactly one of the two assertions below flips. The live-population claims that follow are universals and hold at any roster size — the discrimination lives here, in rows nobody can green by fixing a lane."
+
+fn synthetic_long_lane_cadence_but_expected_red() -> ExplicitWitnessAdmission {
+  ExplicitWitnessAdmission {
+    witness: ScheduleWitnessEntry {
+      entry: "dag/test/claim/synthetic_admission_witness_test.dag",
+      function: "a_holds",
+      kind: CorpusWitnessKind
+    },
+    cadence: FalsifierSubstrateLongLane,
+    budget: SubstrateLongLaneEvalBudget,
+    expected: ExpectWitnessRed,
+    reason: "synthetic",
+    dissolve_on: "synthetic"
+  }
+}
+
+fn synthetic_quarantine_cadence_but_expected_holds() -> ExplicitWitnessAdmission {
+  ExplicitWitnessAdmission {
+    witness: ScheduleWitnessEntry {
+      entry: "dag/test/claim/synthetic_admission_witness_test.dag",
+      function: "b_holds",
+      kind: CorpusWitnessKind
+    },
+    cadence: QuarantineProbeExpectRed,
+    budget: FastLaneEvalBudget,
+    expected: ExpectWitnessHolds,
+    reason: "synthetic",
+    dissolve_on: "synthetic"
+  }
+}
+
+test fn expected_verdict_is_independent_of_cadence() -> Bool {
+  explicit_witness_admission_is_known_red(row: synthetic_long_lane_cadence_but_expected_red())
+    && !explicit_witness_admission_is_known_red(
+      row: synthetic_quarantine_cadence_but_expected_holds()
+    )
+}
+
+test fn eval_budget_is_independent_of_cadence_and_of_expected_verdict() -> Bool {
+  explicit_witness_admission_requires_long_eval_budget(
+    row: synthetic_long_lane_cadence_but_expected_red()
+  )
+    && !explicit_witness_admission_requires_long_eval_budget(
+      row: synthetic_quarantine_cadence_but_expected_holds()
+    )
+}
+
+data long_budget_union_note: String = "The scheduler ceiling reads the UNION, so a row that declares its own long budget is covered without appearing on the long-lane BATCH roster. The second clause is what makes that a real separation rather than a renaming: a declared-long row is genuinely absent from the batch roster, so it occupies one schedule position, not two."
+
+test fn declared_long_budget_reaches_the_ceiling_roster_without_the_batch_roster() -> Bool {
+  let declared = witness_long_eval_budget_roster()
+  let union = witness_long_eval_budget_entries()
+  let batch = falsifier_substrate_long_lane_entries()
+  (length(xs: declared) > 0)
+    && (length(xs: union) == (length(xs: batch) + length(xs: declared)))
+    && fold(declared, init: true, f: fn(ok, w) {
+      ok && !any(xs: batch, predicate: fn(b) {
+        (b.entry == w.entry) && (b.function == w.function)
+      })
+    })
+}
+
+test fn every_declared_long_budget_row_is_also_expected_red_today() -> Bool {
+  fold(explicit_witness_admissions, init: true, f: fn(ok, row) {
+    if explicit_witness_admission_requires_long_eval_budget(row: row) {
+      ok && explicit_witness_admission_is_known_red(row: row)
+    } else {
+      ok
+    }
+  })
+}
+
+data both_axes_on_one_row_note: String = "every_declared_long_budget_row_is_also_expected_red_today is the live receipt that the previously inexpressible combination — expensive AND known-red — is now carried on ONE row. It is an observation of today's population, not a law: a green witness may declare a long budget, and when one does this claim retires rather than being relaxed."
