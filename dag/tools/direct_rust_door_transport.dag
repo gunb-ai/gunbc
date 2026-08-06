@@ -40,6 +40,7 @@ import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_behavioral_corpus_identity,
   direct_rust_door_behavioral_probe_entry,
   direct_rust_door_behavioral_probe_function,
+  direct_rust_door_fixture_lib_path,
   direct_rust_door_behavioral_witness_bin_path,
   direct_rust_door_divergent_rust_source,
   direct_rust_door_fixture_lane_tag,
@@ -128,7 +129,9 @@ fn direct_rust_door_admitted_equivalent_for_workspace(
       args: ["--inject-fault"],
       expect: ExpectFailure
     )
-    let executable_read = Filesystem.Read(path: witness_bin_path)
+    let executable_read = Filesystem.Read(
+      path: direct_rust_door_fixture_lib_path(workspace_dir: workspace_dir)
+    )
     let head = git.Inspect.HeadCommit()
     let parsed_rows = direct_rust_door_parse_pass_rows_from_stdout(stdout: pass_run.stdout)
     if pass_run.success
@@ -170,7 +173,9 @@ fn direct_rust_door_subtract_admission_for_workspace(
       bin_path: witness_bin_path,
       expect: ExpectFailure
     )
-    let executable_read = Filesystem.Read(path: witness_bin_path)
+    let executable_read = Filesystem.Read(
+      path: direct_rust_door_fixture_lib_path(workspace_dir: workspace_dir)
+    )
     let head = git.Inspect.HeadCommit()
     let parsed_rows =
       direct_rust_door_parse_subtract_rows_from_stdout(stdout: pass_run.stdout)
@@ -270,9 +275,9 @@ fn run_direct_rust_door_behavioral_qualification_smoke() -> Bool {
         written: cargo_written
       ) {
         Present { value: admitted } =>
-          let witness_bin_path =
-            direct_rust_door_behavioral_witness_bin_path(workspace_dir: dir.path)
-          let executable_read = Filesystem.Read(path: witness_bin_path)
+          let executable_read = Filesystem.Read(
+            path: direct_rust_door_fixture_lib_path(workspace_dir: dir.path)
+          )
           let head = git.Inspect.HeadCommit()
           match advance_written_synthetic_emitted_artifact_fixture_behaviorally_equivalent(
             written: cargo_written,
