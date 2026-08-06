@@ -333,6 +333,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "extdeps_external_authority_live_roster_module_count".to_string(),
             int_type(),
         );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "seed_runner_bool_false_failure_detail".to_string(),
+            string_type(),
+        );
         let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_orphan_count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -369,6 +374,31 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "consume_floor_compile_clean_gate_verdict".to_string(),
             bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "consume_floor_compile_clean_gate_failure_detail".to_string(),
+            string_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "record_regen_verify_gate_failure_detail".to_string(),
+            unit_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "consume_regen_verify_gate_failure_detail".to_string(),
+            string_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "record_generated_artifact_drift_gate_failure_detail".to_string(),
+            unit_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "consume_generated_artifact_drift_gate_failure_detail".to_string(),
+            string_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

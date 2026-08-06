@@ -1,0 +1,246 @@
+module test.claim.llm_attempt_receipt_witness
+
+import gunbc.econ.llm_attempt_receipt {
+  AcceptedGoodputDerived,
+  AcceptedGoodputRefused,
+  ArchitectureJudgment,
+  AttemptPhaseDurations,
+  ConcurrencyObservation,
+  DagReview,
+  DecodeDurationUnobserved,
+  DecodeThroughputDerived,
+  DecodeThroughputRefused,
+  EmptyAttemptRoster,
+  EscalationFractionDerived,
+  EscalationFractionRefused,
+  LlmAttemptReceipt,
+  LlmTokenUsage,
+  LlmUsageObservation,
+  LlmUsageObserved,
+  LlmUsageUnobserved,
+  PrefixCacheHit,
+  PrefixCacheMiss,
+  ResolvedModelIdentity,
+  RequestedModelIdentity,
+  ReviewAccepted,
+  ReviewDisposition,
+  ReviewEscalated,
+  ReviewRejected,
+  SubstrateIdentity,
+  ThroughputUsageUnobserved,
+  ZeroDecodeDuration,
+  ZeroObservationWindow,
+  accepted_attempt_count,
+  attempt_is_accepted,
+  derive_accepted_goodput,
+  derive_decode_throughput,
+  derive_escalation_fraction,
+  escalated_attempt_count,
+  throughput_per_second_floor,
+}
+import std.algebra { FieldOfFractions }
+import std.measure { nanosecond, token_count, token_count_value }
+import std.types { Bool, List, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fixture_substrate: SubstrateIdentity = SubstrateIdentity {
+  compiler_revision: "4b7a13d73b1" as NonEmptyStr,
+  authority_snapshot: "design-2026-08-05" as NonEmptyStr,
+}
+
+data fixture_concurrency: ConcurrencyObservation = ConcurrencyObservation {
+  admitted_sessions: 16,
+  active_sequences: 4,
+}
+
+data fixture_usage: LlmTokenUsage = LlmTokenUsage {
+  input: token_count(count: 32000),
+  cached_input: token_count(count: 30000),
+  output: token_count(count: 1000),
+}
+
+fn review_receipt(
+  identity: NonEmptyStr,
+  usage: LlmUsageObservation,
+  durations: AttemptPhaseDurations,
+  disposition: ReviewDisposition,
+) -> LlmAttemptReceipt {
+  LlmAttemptReceipt {
+    attempt_identity: identity,
+    task_class: DagReview,
+    prompt_policy_identity: "review-policy-v1" as NonEmptyStr,
+    context_policy_identity: "closure-context-v1" as NonEmptyStr,
+    substrate: fixture_substrate,
+    requested_model: "qwen3-coder-next" as RequestedModelIdentity,
+    resolved_model: "qwen3-coder-next-q4-k-m" as ResolvedModelIdentity,
+    model_artifact_identity: "qwen3-coder-next-Q4_K_M-gguf" as NonEmptyStr,
+    serving_runtime_identity: "vllm-arm64-cuda" as NonEmptyStr,
+    machine_opportunity_identity: "dgx-spark-01" as NonEmptyStr,
+    concurrency: fixture_concurrency,
+    prefix_cache: PrefixCacheHit { reused: token_count(count: 30000) },
+    usage: usage,
+    durations: durations,
+    wall_energy: none,
+    disposition: disposition,
+  }
+}
+
+data one_second_decode: AttemptPhaseDurations = AttemptPhaseDurations {
+  queue: Present { value: nanosecond(count: 500000000) },
+  prefill: Present { value: nanosecond(count: 54000000000) },
+  decode: Present { value: nanosecond(count: 1000000000) },
+}
+
+data decode_unobserved: AttemptPhaseDurations = AttemptPhaseDurations {
+  queue: none,
+  prefill: none,
+  decode: none,
+}
+
+data zero_decode: AttemptPhaseDurations = AttemptPhaseDurations {
+  queue: none,
+  prefill: none,
+  decode: Present { value: nanosecond(count: 0) },
+}
+
+data accepted_attempt: LlmAttemptReceipt = review_receipt(
+  identity: "attempt-accepted" as NonEmptyStr,
+  usage: LlmUsageObserved { usage: fixture_usage },
+  durations: one_second_decode,
+  disposition: ReviewAccepted,
+)
+
+data rejected_attempt: LlmAttemptReceipt = review_receipt(
+  identity: "attempt-rejected" as NonEmptyStr,
+  usage: LlmUsageObserved { usage: fixture_usage },
+  durations: one_second_decode,
+  disposition: ReviewRejected { reason: "false positive finding" as NonEmptyStr },
+)
+
+data escalated_attempt: LlmAttemptReceipt = review_receipt(
+  identity: "attempt-escalated" as NonEmptyStr,
+  usage: LlmUsageObserved { usage: fixture_usage },
+  durations: one_second_decode,
+  disposition: ReviewEscalated { reason: "architectural judgment required" as NonEmptyStr },
+)
+
+data usage_unobserved_attempt: LlmAttemptReceipt = review_receipt(
+  identity: "attempt-usage-unobserved" as NonEmptyStr,
+  usage: LlmUsageUnobserved { reason: "provider reported no usage block" as NonEmptyStr },
+  durations: one_second_decode,
+  disposition: ReviewAccepted,
+)
+
+data decode_unobserved_attempt: LlmAttemptReceipt = review_receipt(
+  identity: "attempt-decode-unobserved" as NonEmptyStr,
+  usage: LlmUsageObserved { usage: fixture_usage },
+  durations: decode_unobserved,
+  disposition: ReviewAccepted,
+)
+
+data zero_decode_attempt: LlmAttemptReceipt = review_receipt(
+  identity: "attempt-zero-decode" as NonEmptyStr,
+  usage: LlmUsageObserved { usage: fixture_usage },
+  durations: zero_decode,
+  disposition: ReviewAccepted,
+)
+
+data mixed_roster: List<LlmAttemptReceipt> = [
+  accepted_attempt,
+  rejected_attempt,
+  escalated_attempt,
+  usage_unobserved_attempt,
+]
+
+test fn decode_throughput_derives_from_counts_and_duration() -> Bool {
+  match derive_decode_throughput(receipt: accepted_attempt) {
+    DecodeThroughputDerived { throughput: t } => t.num == 1000 && t.denom == 1000000000
+    DecodeThroughputRefused { cause: _ } => false
+  }
+}
+
+test fn decode_throughput_floor_projects_tokens_per_second() -> Bool {
+  match derive_decode_throughput(receipt: accepted_attempt) {
+    DecodeThroughputDerived { throughput: t } =>
+      match throughput_per_second_floor(t: t) {
+        Present { value: v } => v == 1000
+        none => false
+      }
+    DecodeThroughputRefused { cause: _ } => false
+  }
+}
+
+test fn unobserved_usage_refuses_throughput_without_refusing_the_attempt() -> Bool {
+  let refused = match derive_decode_throughput(receipt: usage_unobserved_attempt) {
+    DecodeThroughputRefused { cause: ThroughputUsageUnobserved } => true
+    _ => false
+  }
+  refused && attempt_is_accepted(d: usage_unobserved_attempt.disposition)
+}
+
+test fn absent_decode_duration_refuses_rather_than_fabricating() -> Bool {
+  match derive_decode_throughput(receipt: decode_unobserved_attempt) {
+    DecodeThroughputRefused { cause: DecodeDurationUnobserved } => true
+    _ => false
+  }
+}
+
+test fn zero_decode_duration_refuses_rather_than_fabricating() -> Bool {
+  match derive_decode_throughput(receipt: zero_decode_attempt) {
+    DecodeThroughputRefused { cause: ZeroDecodeDuration } => true
+    _ => false
+  }
+}
+
+test fn zero_denominator_floor_projection_returns_none() -> Bool {
+  match throughput_per_second_floor(t: FieldOfFractions { num: 1000, denom: 0 }) {
+    none => true
+    Present { value: _ } => false
+  }
+}
+
+test fn goodput_counts_accepted_attempts_only() -> Bool {
+  accepted_attempt_count(receipts: mixed_roster) == 2
+    && escalated_attempt_count(receipts: mixed_roster) == 1
+}
+
+test fn accepted_goodput_derives_over_the_observation_window() -> Bool {
+  match derive_accepted_goodput(receipts: mixed_roster, window: nanosecond(count: 4000000000)) {
+    AcceptedGoodputDerived { goodput: g } => g.num == 2 && g.denom == 4000000000
+    AcceptedGoodputRefused { cause: _ } => false
+  }
+}
+
+test fn empty_roster_refuses_goodput() -> Bool {
+  match derive_accepted_goodput(receipts: [], window: nanosecond(count: 4000000000)) {
+    AcceptedGoodputRefused { cause: EmptyAttemptRoster } => true
+    _ => false
+  }
+}
+
+test fn zero_window_refuses_goodput() -> Bool {
+  match derive_accepted_goodput(receipts: mixed_roster, window: nanosecond(count: 0)) {
+    AcceptedGoodputRefused { cause: ZeroObservationWindow } => true
+    _ => false
+  }
+}
+
+test fn escalation_fraction_is_exact_over_the_roster() -> Bool {
+  match derive_escalation_fraction(receipts: mixed_roster) {
+    EscalationFractionDerived { fraction: f } => f.num == 1 && f.denom == 4
+    EscalationFractionRefused { cause: _ } => false
+  }
+}
+
+test fn empty_roster_refuses_escalation_fraction() -> Bool {
+  match derive_escalation_fraction(receipts: []) {
+    EscalationFractionRefused { cause: EmptyAttemptRoster } => true
+    _ => false
+  }
+}
+
+test fn token_count_round_trips_its_magnitude() -> Bool {
+  token_count_value(t: token_count(count: 32000)) == 32000
+}

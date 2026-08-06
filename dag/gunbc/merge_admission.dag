@@ -30,12 +30,12 @@ import gunbc.commit_workflow {
   CommitCheckEnrollment, CommitCheckKind,
   CommitSpecGate, CommitWitnessClaim, CommitCargoFmtCheck,
 }
-import std.measure { millisecond_count }
+import std.measure { millisecond_count, ClockBasis, CpuClock, WallClock }
 import std.realization_schedule {
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, NativeBundleWitnessKind,
   WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams, SpanEnrolled,
-  WitnessCostBasis, WitnessCostClock, WitnessCostWallEval, WitnessCostThreadCpuEval,
-  MeasuredAtExactSubject, EstimatedFromSiblingClass, witness_cost_clock_eq,
+  WitnessCostBasis,
+  MeasuredAtExactSubject, EstimatedFromSiblingClass,
   ScheduledWitnessEnvelope,
 }
 import gunbc.ci_gate {
@@ -155,10 +155,10 @@ fn witness_seam_content_hash(seam: WitnessSeam) -> ContentHash {
   as_content_hash_structural(structural: witness_seam_content_hash_structural(seam: seam))
 }
 
-fn witness_cost_clock_content_hash_structural(clock: WitnessCostClock) -> Fnv1a64Structural {
+fn clock_basis_content_hash_structural(clock: ClockBasis) -> Fnv1a64Structural {
   match clock {
-    WitnessCostWallEval => content_hash_atom(value: "WitnessCostWallEval")
-    WitnessCostThreadCpuEval => content_hash_atom(value: "WitnessCostThreadCpuEval")
+    WallClock => content_hash_atom(value: "WallClock")
+    CpuClock => content_hash_atom(value: "CpuClock")
   }
 }
 
@@ -167,7 +167,7 @@ fn witness_cost_basis_content_hash_structural(basis: WitnessCostBasis) -> Fnv1a6
     MeasuredAtExactSubject { clock, duration, receipt } =>
       content_hash_combine_structural(
         left: content_hash_combine_structural(
-          left: witness_cost_clock_content_hash_structural(clock: clock),
+          left: clock_basis_content_hash_structural(clock: clock),
           right: content_hash_tagged_structural(
             tag: "MeasuredAtExactSubject",
             payload: content_hash_atom(value: receipt)
@@ -178,7 +178,7 @@ fn witness_cost_basis_content_hash_structural(basis: WitnessCostBasis) -> Fnv1a6
     EstimatedFromSiblingClass { clock, source_witness, basis } =>
       content_hash_combine_structural(
         left: content_hash_combine_structural(
-          left: witness_cost_clock_content_hash_structural(clock: clock),
+          left: clock_basis_content_hash_structural(clock: clock),
           right: content_hash_tagged_structural(
             tag: "EstimatedFromSiblingClass",
             payload: content_hash_atom(value: source_witness)

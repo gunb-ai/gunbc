@@ -13,11 +13,17 @@ import v2.compiler.name_resolve {
   resolve_diagnostics,
   validate_module_roots
 }
+import v2.compiler.parse {
+  overlap_residue_stage_from_parse_grammar
+}
 import v2.compiler.program_assembly {
   assemble_program_from_ingest,
   program_assembly_fold_ingest,
   ProgramAssemblyFoldFailed,
   ProgramAssemblyFoldOk
+}
+import v2.compiler.self_host.frontier_probe_assemble_detail {
+  frontier_probe_receipt_from_assemble_rejection
 }
 import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeClosurePopulationRefused,
@@ -26,6 +32,7 @@ import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeDetailAbsent,
   FrontierProbeReceipt,
   MissingModule,
+  NoFrontierProbeDetail,
   ProbeStageEmit,
   SourceRefContentHashMismatch,
   SourceRefReadRefused,
@@ -332,7 +339,8 @@ fn frontier_probe_receipt_from_reason_only(
     blocker_class: blocker,
     located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
     located_reason: reason,
-    detail: detail
+    detail: detail,
+    assemble_detail: NoFrontierProbeDetail
   }
 }
 
@@ -347,7 +355,8 @@ fn frontier_probe_receipt_from_read_failed(
     blocker_class: blocker,
     located_stage: ProbeStageAssemble,
     located_reason: reason,
-    detail: frontier_probe_detail_from_read_result(result: result)
+    detail: frontier_probe_detail_from_read_result(result: result),
+    assemble_detail: NoFrontierProbeDetail
   }
 }
 
@@ -360,7 +369,8 @@ fn frontier_probe_receipt_from_population_refused(
     blocker_class: UnknownProbeCause { reason: cause },
     located_stage: ProbeStageAssemble,
     located_reason: cause,
-    detail: FrontierProbeClosurePopulationRefused { cause: cause }
+    detail: FrontierProbeClosurePopulationRefused { cause: cause },
+    assemble_detail: NoFrontierProbeDetail
   }
 }
 
@@ -373,7 +383,8 @@ fn frontier_probe_receipt_from_coverage_refused(
     blocker_class: UnknownProbeCause { reason: frontier_probe_coverage_refused_reason },
     located_stage: ProbeStageAssemble,
     located_reason: frontier_probe_coverage_refused_reason,
-    detail: FrontierProbeCoverageRefused { coverage: coverage }
+    detail: FrontierProbeCoverageRefused { coverage: coverage },
+    assemble_detail: NoFrontierProbeDetail
   }
 }
 
@@ -524,7 +535,8 @@ fn frontier_probe_receipt_from_discovered_closure(
                             blocker_class: blocker,
                             located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
                             located_reason: reason,
-                            detail: FrontierProbeDetailAbsent
+                            detail: FrontierProbeDetailAbsent,
+                            assemble_detail: NoFrontierProbeDetail
                           }
                         }
                         Accepted { value: admission, diagnostics: _ } =>
@@ -560,7 +572,8 @@ fn frontier_probe_receipt_from_admission_diagnostic_rejected(
       d: d,
       ingest: ingest,
       admission: admission
-    )
+    ),
+    assemble_detail: NoFrontierProbeDetail
   }
 }
 
@@ -639,18 +652,20 @@ fn frontier_probe_emit_from_ingest(
   ) {
     Rejected { diagnostics: d } => {
       let blocker = frontier_classify_rejection_reason(reason: d.head.reason)
-      FrontierProbeReceipt {
+      frontier_probe_receipt_from_assemble_rejection(
         module_path: module_path,
-        blocker_class: blocker,
-        located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
-        located_reason: d.head.reason,
+        blocker: blocker,
+        diagnostics: d,
         detail: frontier_probe_detail_from_diagnostic(
           reason: d.head.reason,
           d: d,
           ingest: ingest,
           admission: admission
+        ),
+        overlap_residue_stage: overlap_residue_stage_from_parse_grammar(
+          grammar: dag_language_model().grammar
         )
-      }
+      )
     }
     Accepted { value: _, diagnostics: _ } =>
       match emit_compiler_import_closure_from_ingest(
@@ -666,7 +681,8 @@ fn frontier_probe_emit_from_ingest(
             },
             located_stage: ProbeStageEmit,
             located_reason: ^probe_emit_accept_self_host_bar_unbound,
-            detail: FrontierProbeDetailAbsent
+            detail: FrontierProbeDetailAbsent,
+            assemble_detail: NoFrontierProbeDetail
           }
         Rejected { diagnostics: d } => {
           let blocker = frontier_classify_rejection_reason(reason: d.head.reason)
@@ -675,7 +691,8 @@ fn frontier_probe_emit_from_ingest(
             blocker_class: blocker,
             located_stage: frontier_probe_located_stage_for_emit_outcome(blocker: blocker),
             located_reason: d.head.reason,
-            detail: FrontierProbeDetailAbsent
+            detail: FrontierProbeDetailAbsent,
+            assemble_detail: NoFrontierProbeDetail
           }
         }
       }

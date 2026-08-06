@@ -30,15 +30,21 @@ data run_generated_artifact_drift_gate_body_note: String = "One live pass: obser
 func run_generated_artifact_drift_gate_body() -> ProcessExit {
   let observations = observe_generated_artifact_population()
   let all_ok = assess_generated_artifact_population(expected: committed_generated_artifacts(), observations: observations)
+  let reason = if all_ok {
+    ""
+  } else {
+    concat(
+      concat("generated-artifact drift/validation failed: ", first_failing_diagnostic_path(expected: committed_generated_artifacts(), observations: observations)),
+      " — it is a GENERATED projection of its .dag authority; do not hand-edit, regenerate via main_wet on dag/tools/generated_artifact_gate.dag"
+    )
+  }
+  if !all_ok {
+    record_generated_artifact_drift_gate_failure_detail(detail: reason)
+  }
   return if all_ok {
     ExitSuccess
   } else {
-    exit_failure(
-      reason: concat(
-        concat("generated-artifact drift/validation failed: ", first_failing_diagnostic_path(expected: committed_generated_artifacts(), observations: observations)),
-        " — it is a GENERATED projection of its .dag authority; do not hand-edit, regenerate via main_wet on dag/tools/generated_artifact_gate.dag"
-      )
-    )
+    exit_failure(reason: reason)
   }
 }
 
@@ -48,6 +54,19 @@ func main() -> ProcessExit {
 
 func run_generated_artifact_drift_gate() -> ProcessExit {
   run_generated_artifact_drift_gate_body()
+}
+
+data generated_artifact_drift_failure_receipt_note: String = "The loudness half: the floor witness collapses this gate's ProcessExit to Bool via tools.ci_gates.exit_ok, so a generated-artifact drift red reported only returned Bool(false) without the located path. The gate body records the reason from its single observe_generated_artifact_population pass; the failure-receipt companion consumes that retained detail instead of re-observing."
+
+fn generated_artifact_drift_failure_reason(exit: ProcessExit) -> String {
+  match exit {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason: reason } => reason
+  }
+}
+
+func generated_artifact_drift_failure_receipt() -> String {
+  consume_generated_artifact_drift_gate_failure_detail()
 }
 
 func main_wet() -> ProcessExit {
