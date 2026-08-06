@@ -1,5 +1,6 @@
 module test.claim.ci_heal_job_witness
 
+import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import gunbc.ci_workflow {
   ci_workflow,
   ci_floor_job_prelude_steps,
@@ -146,6 +147,13 @@ fn step_is_the_upstream_red_refusal(s: Step) -> Bool {
     RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       r == ci_floor_upstream_red_refusal_script
     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+test fn floor_refusal_is_exactly_the_first_step() -> Bool {
+  match list_head(xs: ci_job().steps) {
+    HeadFound { value: head } => step_is_the_upstream_red_refusal(s: head)
+    HeadAbsent => false
   }
 }
 
