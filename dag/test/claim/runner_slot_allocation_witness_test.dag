@@ -4,7 +4,12 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_allocation_wall_holds,
   gunbc_runner_slot_oversubscription_within_slice,
   gunbc_runner_slot_desired,
-  gunbc_runner_slots_per_host,
+  candidate_width_under_current_topology,
+  actuatable_desired_width,
+  observed_live_width,
+  width_actuation_standing,
+  ActuationGrounded,
+  ActuationUngrounded,
   host_memory_admitted_width,
   host_disk_admitted_width,
   DiskAdmitsWidth,
@@ -30,7 +35,7 @@ test fn runner_slot_allocation_oversubscription_boundary_exact() -> Bool {
     gunbc_committed_runner_slot_allocations(),
     a =>
       gunbc_runner_slot_oversubscription_within_slice(
-        slots: gunbc_runner_slots_per_host(host: a.host),
+        slots: actuatable_desired_width(host: a.host),
         per_slot: per_slot.memory_max,
         slice_cap: gunbc_runner_slice_cap_declared(host: a.host)
       )
@@ -62,12 +67,38 @@ test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool 
     && host_memory_admitted_width(host: operator_host_srv4) == 7
 }
 
-test fn runner_slot_allocation_committed_widths_take_the_binding_axis() -> Bool {
-  gunbc_runner_slots_per_host(host: operator_host_srv1) == 5
-    && gunbc_runner_slots_per_host(host: operator_host_srv2) == 5
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 7
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 5
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) < host_memory_admitted_width(host: operator_host_srv4)
+test fn runner_slot_allocation_candidate_widths_take_the_binding_axis() -> Bool {
+  candidate_width_under_current_topology(host: operator_host_srv1) == 5
+    && candidate_width_under_current_topology(host: operator_host_srv2) == 5
+    && candidate_width_under_current_topology(host: operator_host_srv3) == 7
+    && candidate_width_under_current_topology(host: operator_host_srv4) == 5
+    && candidate_width_under_current_topology(host: operator_host_srv4) < host_memory_admitted_width(host: operator_host_srv4)
+}
+
+data three_widths_are_pinned_separately_note: String = "EACH WIDTH IS PINNED AGAINST ITS OWN CLAIM, and the rows are worth having separately because a single assertion cannot distinguish the three states that produced this split. Candidate is 5/5/7/5 — what the resolved constraints admit. Actuatable is 5/5/5/5 — what can be reached through the modeled path, which is nothing beyond what is already running because no activation receipt exists on any host. Observed is 5/5/5/5 — what the machines are running.\n\nsrv3 IS THE ROW THAT DISCRIMINATES: it is the only host whose candidate and actuatable differ, so a change that re-collapsed the widths, or that quietly advanced actuatable without a receipt, reds here and nowhere else. That second failure is the one worth catching — advancing actuatable is how two runners would get claimed on a machine nobody provisioned."
+
+test fn actuatable_width_never_exceeds_candidate() -> Bool {
+  all(
+    gunbc_committed_runner_slot_allocations(),
+    a => actuatable_desired_width(host: a.host) <= candidate_width_under_current_topology(host: a.host)
+  )
+}
+
+test fn actuatable_width_is_the_observed_width_while_activation_is_ungrounded() -> Bool {
+  all(
+    [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
+    h =>
+      match width_actuation_standing(host: h) {
+        ActuationUngrounded { reason: _ } => actuatable_desired_width(host: h) == observed_live_width(host: h)
+        ActuationGrounded { receipt: _ } => actuatable_desired_width(host: h) == candidate_width_under_current_topology(host: h)
+      }
+  )
+}
+
+test fn srv3_is_the_host_whose_candidate_exceeds_what_can_be_actuated() -> Bool {
+  candidate_width_under_current_topology(host: operator_host_srv3) == 7
+    && actuatable_desired_width(host: operator_host_srv3) == 5
+    && observed_live_width(host: operator_host_srv3) == 5
 }
 
 test fn runner_slot_allocation_RED_oversubscription_exceeds_slice() -> Bool {
@@ -76,7 +107,7 @@ test fn runner_slot_allocation_RED_oversubscription_exceeds_slice() -> Bool {
     gunbc_committed_runner_slot_allocations(),
     a =>
       !gunbc_runner_slot_oversubscription_within_slice(
-        slots: gunbc_runner_slots_per_host(host: a.host) + 1,
+        slots: actuatable_desired_width(host: a.host) + 1,
         per_slot: per_slot.memory_max,
         slice_cap: gunbc_runner_slice_cap_declared(host: a.host)
       )
@@ -84,7 +115,9 @@ test fn runner_slot_allocation_RED_oversubscription_exceeds_slice() -> Bool {
 }
 
 test fn runner_slot_allocation_unknown_host_refuses_a_width() -> Bool {
-  gunbc_runner_slots_per_host(host: "srv-does-not-exist") == 0
+  candidate_width_under_current_topology(host: "srv-does-not-exist") == 0
+    && actuatable_desired_width(host: "srv-does-not-exist") == 0
+    && observed_live_width(host: "srv-does-not-exist") == 0
     && byte_size_count(b: gunbc_runner_slice_cap_declared(host: "srv-does-not-exist")) == 0
 }
 

@@ -238,7 +238,7 @@ fn host_allocation_conserves(
   ))
 }
 
-data declared_runner_count_derivation_note: String = "This still divides the declared pool by the declared per-slot cap rather than reading gunbc_runner_slots_per_host directly, and the redundancy is now GONE rather than merely tolerated. The pool is derived as slots × MemoryMax (gunbc.runner_slot_allocation gunbc_runner_slice_cap_declared), so floor(pool ÷ MemoryMax) returns that same slot count by construction — the two agree because one is the other's inverse, not because an author kept them coherent. The old note admitted the difference: it said 80 ÷ 16 = 5 was 'coherent with slots_per_host by construction at these values', which is a coincidence with a caveat attached, and the caveat was doing the work."
+data declared_runner_count_derivation_note: String = "This still divides the declared pool by the declared per-slot cap rather than reading gunbc.runner_slot_allocation actuatable_desired_width directly, and the redundancy is now GONE rather than merely tolerated. The pool is derived as slots × MemoryMax (gunbc.runner_slot_allocation gunbc_runner_slice_cap_declared), so floor(pool ÷ MemoryMax) returns that same slot count by construction — the two agree because one is the other's inverse, not because an author kept them coherent. The old note admitted the difference: it said 80 ÷ 16 = 5 was 'coherent with slots_per_host by construction at these values', which is a coincidence with a caveat attached, and the caveat was doing the work."
 
 fn declared_runner_count_for(host: HostIdentity) -> Int {
   measure_fit_count_floor(
