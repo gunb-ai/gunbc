@@ -1374,12 +1374,6 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "live_roadmap_program_view_corpus_projection_receipt",
     reason: "LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822): exercises the full declared roadmap closure through gunbc.roadmap_program_view — evidentiary wiring receipt enrolled on the corpus/integration lane for its integration role, not because eval cost exceeds the per-PR business budget. Business algebra stays on planted fixtures in roadmap_program_view_witness_test.dag",
     dissolve_on: "replaced by a cheaper structural wiring receipt that covers the same live-authority join, or live roadmap projection integration receipts become unnecessary"
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/concept_index_enumeration_coproduct_parse_only_witness_test.dag",
-    function: "witness_coproduct_arms_parse_only",
-    reason: "parse_only_concept_matches over src/v2/test/claim exceeded 6065ms thread-CPU on PR CI run 31017039134 (3850ms measured basis, witness_row_cost_basis.tsv) — corpus-breadth cost grows with unrelated modules in the pool (docs/plans/witness-evidence-lifecycle-design.md receipt class); eval-budget routing only",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or the witness-evidence-lifecycle program derives per-witness execution requirements and this row dissolves with test/claim/long/ dir grain"
   }
 ]
 
