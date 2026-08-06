@@ -1444,20 +1444,27 @@ pub struct InterpContext {
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
     // Per-call parameter-name derivation is invariant per fn_node but was re-sliced from
     // source spans on every call (authored_name_at). Memoize it per ctx, keyed by fn_node
-    // pointer identity — sound because the ctx owns fn_nodes, so pointers are stable for the
-    // cache's lifetime and the cache dies with the ctx (same discipline as data_cache above).
+    // pointer identity. The key alone is not sound: the ctx does not own fn_nodes (they are
+    // borrowed `Rc<Node>`s that can be dropped while the ctx lives), so a freed node's address
+    // can be reused by an unrelated later node and silently collide on this key. keepalive_fns
+    // retains the `Rc<Node>` behind each new key for the ctx's lifetime (same discipline as
+    // PureCallMemo.keepalive_fns / EvalRecomputeTrace.keepalive_fns / EvalCallMemo.keepalive_fns),
+    // making the pointer stable and the cache dies with the ctx (same discipline as data_cache).
     // Value = (filtered named-param list, all-param list), matching call_function's two uses.
     param_name_cache: std::cell::RefCell<HashMap<usize, Rc<(Vec<String>, Vec<String>)>>>,
+    param_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
     // Same chokepoint, ExprVar arm: eval_var rebuilt the variable name String from its source
     // span (expr_var_name_at) and re-interned it (ctx.sym) on every read. Memoize the interned
-    // Symbol per ExprVar node — keyed by node pointer, sound for the ctx lifetime exactly as
-    // data_cache/param_name_cache above. Eval then skips the slice + re-intern and goes straight
+    // Symbol per ExprVar node — keyed by node pointer, kept alive via var_sym_cache_keepalive
+    // exactly as param_name_cache above. Eval then skips the slice + re-intern and goes straight
     // to env.lookup(sym); the name String is materialized lazily only on the registry slow path.
     var_sym_cache: std::cell::RefCell<HashMap<usize, Symbol>>,
+    var_sym_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
     // Same chokepoint, ExprCall callee name: eval_call re-sliced the callee name from its source
     // span (expr_call_func_at -> authored_name_at) on every call. Memoize the decoded name per
-    // call node — keyed by node pointer, sound for the ctx lifetime as the caches above.
+    // call node — keyed by node pointer, kept alive via call_func_name_cache_keepalive as above.
     call_func_name_cache: std::cell::RefCell<HashMap<usize, String>>,
+    call_func_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     eval_recompute_trace: std::cell::RefCell<EvalRecomputeTrace>,
@@ -1678,8 +1685,11 @@ impl InterpContext {
             fixture_store,
             data_cache: std::cell::RefCell::new(HashMap::new()),
             param_name_cache: std::cell::RefCell::new(HashMap::new()),
+            param_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             var_sym_cache: std::cell::RefCell::new(HashMap::new()),
+            var_sym_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             call_func_name_cache: std::cell::RefCell::new(HashMap::new()),
+            call_func_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             eval_recompute_trace: std::cell::RefCell::new(EvalRecomputeTrace::default()),
@@ -2038,10 +2048,8 @@ fn call_function_inner(
 
     let cached_params = {
         let key = Rc::as_ptr(fn_node) as usize;
-        // Bind the lookup to a local so the immutable borrow is released before the
-        // None branch takes a mutable borrow (an `if let ...borrow()` would hold it through `else`).
-        let hit = ctx.param_name_cache.borrow().get(&key).cloned();
-        if let Some(c) = hit {
+        let existing = ctx.param_name_cache.borrow().get(&key).cloned();
+        if let Some(c) = existing {
             c
         } else {
             // Each param's authored name is sliced once into `all`; `filtered` reuses it
@@ -2061,9 +2069,12 @@ fn call_function_inner(
                 })
                 .map(|(i, _)| all[i].clone())
                 .collect();
-            let c = Rc::new((filtered, all));
-            ctx.param_name_cache.borrow_mut().insert(key, c.clone());
-            c
+            let fresh = Rc::new((filtered, all));
+            ctx.param_name_cache_keepalive
+                .borrow_mut()
+                .push(fn_node.clone());
+            ctx.param_name_cache.borrow_mut().insert(key, fresh.clone());
+            fresh
         }
     };
     let param_names: &Vec<String> = &cached_params.0;
@@ -2434,15 +2445,15 @@ fn eval_var(
     // (skips the per-eval source-span slice in expr_var_name_at and the ctx.sym re-intern).
     let key = Rc::as_ptr(node) as usize;
     let sym = {
-        let hit = ctx.var_sym_cache.borrow().get(&key).copied();
-        match hit {
-            Some(s) => s,
-            None => {
-                let name = expr_var_name_at(node.clone(), ctx.si());
-                let s = ctx.sym(&name);
-                ctx.var_sym_cache.borrow_mut().insert(key, s);
-                s
-            }
+        let existing = ctx.var_sym_cache.borrow().get(&key).copied();
+        if let Some(s) = existing {
+            s
+        } else {
+            let name = expr_var_name_at(node.clone(), ctx.si());
+            let fresh = ctx.sym(&name);
+            ctx.var_sym_cache_keepalive.borrow_mut().push(node.clone());
+            ctx.var_sym_cache.borrow_mut().insert(key, fresh);
+            fresh
         }
     };
 
@@ -3717,14 +3728,18 @@ macro_rules! v1_native_intercept_dispatch {
 fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let func_name = {
         let key = Rc::as_ptr(node) as usize;
-        let hit = ctx.call_func_name_cache.borrow().get(&key).cloned();
-        match hit {
-            Some(s) => s,
-            None => {
-                let s = expr_call_func_at(node.clone(), ctx.si());
-                ctx.call_func_name_cache.borrow_mut().insert(key, s.clone());
-                s
-            }
+        let existing = ctx.call_func_name_cache.borrow().get(&key).cloned();
+        if let Some(s) = existing {
+            s
+        } else {
+            let fresh = expr_call_func_at(node.clone(), ctx.si());
+            ctx.call_func_name_cache_keepalive
+                .borrow_mut()
+                .push(node.clone());
+            ctx.call_func_name_cache
+                .borrow_mut()
+                .insert(key, fresh.clone());
+            fresh
         }
     };
     record_call_frequency(&func_name);
@@ -6648,6 +6663,64 @@ fn compile_diagnostic_census_value(
             variant_name: ctx.sym("CensusNotRunnable"),
             fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), Value::Str(cause))])),
         },
+    }
+}
+
+fn unlisted_import_binding_source_value(
+    source: crate::cli_run::UnlistedImportBindingSource,
+    ctx: &InterpContext,
+) -> Value {
+    let variant = match source {
+        crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
+        crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
+        crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
+    };
+    Value::Variant {
+        type_name: ctx.sym("UnlistedImportBindingSource"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(vec![]),
+    }
+}
+
+fn declared_import_closure_binding_value(
+    observation: crate::cli_run::DeclaredImportClosureBindingObservation,
+    ctx: &InterpContext,
+) -> Value {
+    match observation {
+        crate::cli_run::DeclaredImportClosureBindingObservation::Observed(observed) => {
+            let binding_source = match observed.binding_source {
+                Some(source) => {
+                    optional_present(unlisted_import_binding_source_value(source, ctx), ctx)
+                }
+                None => optional_absent(ctx),
+            };
+            Value::Variant {
+                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
+                variant_name: ctx.sym("BindingObserved"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("binding_source"), binding_source),
+                    (
+                        ctx.sym("definer_module"),
+                        Value::Str(observed.definer_module.unwrap_or_default()),
+                    ),
+                    (
+                        ctx.sym("symbol_resolves"),
+                        Value::Bool(observed.symbol_resolves),
+                    ),
+                    (
+                        ctx.sym("blocking_hard_diagnostic_count"),
+                        Value::Int(observed.blocking_hard_diagnostic_count),
+                    ),
+                ])),
+            }
+        }
+        crate::cli_run::DeclaredImportClosureBindingObservation::NotRunnable(cause) => {
+            Value::Variant {
+                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
+                variant_name: ctx.sym("BindingNotRunnable"),
+                fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), Value::Str(cause))])),
+            }
+        }
     }
 }
 
@@ -10923,20 +10996,18 @@ macro_rules! v1_builtin_arms {
             // cannot report it — a fabricated 0 would be a Measured lie (DESIGN §5).
             arm "free_call.observed_peak_resident_bytes" { "observed_peak_resident_bytes" } => match $positional.as_slice() {
                 [] => {
-                    let bytes = std::fs::read_to_string("/proc/self/status")
-                        .ok()
-                        .and_then(|status| {
-                            status
-                                .lines()
-                                .find(|l| l.starts_with("VmHWM"))
-                                .and_then(|line| line.split_whitespace().nth(1))
-                                .and_then(|kb| kb.parse::<i64>().ok())
-                        })
-                        .map(|kb| kb.saturating_mul(1024));
+                    // Routed through the single portable reader rather than re-inlining a
+                    // procfs parse here. This arm previously carried its OWN copy of the
+                    // /proc/self/status VmHWM read — a second implementation of one
+                    // observation (section 3), and the copy that actually executes for
+                    // witnesses, so fixing only cli_run's would have left this one Linux-only.
+                    // Authority for the interface and its per-implementation units:
+                    // dag/extdeps/posix/rusage.dag with dag/extdeps/{linux,darwin}/rusage.dag.
+                    let bytes = crate::cli_run::peak_rss_vhwm_bytes().and_then(|b| i64::try_from(b).ok());
                     match bytes {
                         Some(b) => Ok(Some(Value::Int(b))),
                         None => Err(InterpError::TypeError {
-                            msg: "observed_peak_resident_bytes: VmHWM unavailable on this host (refusing to fabricate a Measured space fact)"
+                            msg: "observed_peak_resident_bytes: getrusage(RUSAGE_SELF).ru_maxrss unavailable on this host (refusing to fabricate a Measured space fact)"
                                 .to_string(),
                         }),
                     }
@@ -11501,6 +11572,26 @@ macro_rules! v1_builtin_arms {
                     $ctx,
                 )))
             },
+
+            arm "free_call.observe_declared_import_closure_symbol_binding" { "observe_declared_import_closure_symbol_binding" } => {
+                let pool_roots = expect_str_list($positional.first().copied(), $name)?;
+                let entry_path = expect_str($positional.get(1).copied(), $name)?;
+                let consumer_module = expect_str($positional.get(2).copied(), $name)?;
+                let symbol = expect_str($positional.get(3).copied(), $name)?;
+                Ok(Some(declared_import_closure_binding_value(
+                    crate::cli_run::observe_declared_import_closure_symbol_binding(
+                        &pool_roots,
+                        &entry_path,
+                        &consumer_module,
+                        &symbol,
+                    ),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.class_b_import_closure_gate_not_affected_skip" { "class_b_import_closure_gate_not_affected_skip" } => Ok(Some(Value::Bool(
+                crate::cli_run::class_b_import_closure_gate_not_affected_skip_for_ci(),
+            ))),
 
             arm "free_call.witness_layer_roots_compile_clean_check" { "witness_layer_roots_compile_clean_check" } => Ok(Some(Value::Bool(
                 crate::cli_run::witness_layer_roots_compile_clean_check(),
