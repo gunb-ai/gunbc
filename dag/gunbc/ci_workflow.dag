@@ -19,6 +19,8 @@ import gunbc.ci_spec {
   ci_heal_author_commit_required_output,
   ci_heal_author_commit_artifact_includes_hidden_files,
   gunbc_ci_heal_repo_local_git_config_invoke,
+  ci_fmt_gate_line,
+  ci_v1_compiler_tests_compile_gate_run_script,
 }
 import v2.workflow.ci_heal_revalidation_preflight_emit {
   ci_heal_revalidation_preflight_script,
@@ -48,7 +50,6 @@ import v2.workflow.ci_workflow_run_emit {
   ci_selection_control_script
 }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
-import v2.workflow.ci_v1_compiler_tests_compile_gate_emit { ci_v1_compiler_tests_compile_gate_script }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
@@ -284,9 +285,9 @@ fn ci_fmt_gate_step() -> Step {
 
 fn ci_v1_compiler_tests_compile_gate_step() -> Step {
   RunStep {
-    name: Present { value: "cargo check -p v1-compiler-tests --tests (compile gate; no test execution)" },
+    name: Present { value: "cargo test -p v1-compiler-tests --release --no-run (compile-contract gate; reuses release v1-compiler)" },
     id: none,
-    run: ci_v1_compiler_tests_compile_gate_script(),
+    run: ci_v1_compiler_tests_compile_gate_run_script(),
     shell: none,
     env: none,
     working_directory: none,
@@ -471,7 +472,7 @@ data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
-data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests compile gate step budget (operator ruling 2026-08-01, PR #7533 receipt): cargo check -p v1-compiler-tests --tests exceeded the 5m aux cap on cold native-cache hosts (run 30692671758 @ 6f20329: srv1-05, step killed at 5m00s while still compiling deps; warm-cache runs complete in ~50s). Raised 10m -> 15m after run 30719671973 @ 6945446401 (srv1-01, cache hit): step killed at 10m00s while Checking v1-compiler-tests — deps consumed the full prior budget. 15m is the cold-host envelope after that receipt — not RustMonolithGate re-enrollment."
+data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests compile-contract gate step budget (operator ruling 2026-08-05, PR A / fierce-heron-177): reordered after the release build and switched to cargo test --release --no-run so v1-compiler compiles once per job. Warm runs should complete in seconds once the release artifact is warm; 15m retains the prior cold-host envelope without raising the cap."
 
 data gunbc_ci_artifact_transfer_step_timeout_minutes: Int = 10
 
@@ -660,7 +661,7 @@ fn ci_build_job() -> Job {
     id: "build",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_heal_revalidation_prelude_steps(), [ci_fmt_gate_step(), ci_v1_compiler_tests_compile_gate_step(), ci_release_build_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
+    steps: concat(ci_heal_revalidation_prelude_steps(), [ci_fmt_gate_step(), ci_release_build_step(), ci_v1_compiler_tests_compile_gate_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
     needs: [],
     env: none,
     outputs: none,

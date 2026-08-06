@@ -43,6 +43,7 @@ import gunbc.commit_workflow { commit_gate_roster, project_falsifier_witness_ent
 import gunbc.ci_gate {
   Gate, EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
+  ProseRowIntroductionGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
@@ -165,6 +166,7 @@ data gunbc_ci_cheap_floor_gate_membership: List<Gate> = [
   ExtdepsExternalAuthorityGate,
   GeneratedArtifactDriftGate,
   ExtdepsScopePlacementGate,
+  ProseRowIntroductionGate,
 ]
 
 data gunbc_ci_cheap_floor_gate_membership_note: String = "Declared cheap-floor gate membership (operator ruling 2026-07-22, fail-fast lane): the negligible-memory wet-declared gates (gate_profile_negligible_wet_declared) that check extdeps authority and generated-artifact drift — seconds each, no whole-tree compile. (The layering-imports direction gate was a member until the direction rule's deletion, operator ruling 2026-07-24; the publication-placement gate was deleted by operator ruling 2026-08-01.) They run in batch 0 BEFORE DagCompileCleanGate so an authority or drift violation reds in seconds instead of after the ~4min compile-clean anchor. Membership is an explicit list, not inferred from profile fields, so enrollment changes are counted roster edits, never silent drift. Cheap gates are also floor_resource_anchor nodes: excluding them from discovery-flip corpus→gate serialization avoids a scheduler deadlock (cheap→compile data order requires cheap first; corpus→cheap resource order requires corpus first; compile→corpus data order closes the cycle). Dissolve-on: when per-gate cost attribution lands, derive from measurement."
@@ -185,6 +187,7 @@ fn gate_in_cheap_floor_membership(g: Gate) -> Bool {
       ExtdepsExternalAuthorityGate => match g { ExtdepsExternalAuthorityGate => true  _ => found }
       GeneratedArtifactDriftGate => match g { GeneratedArtifactDriftGate => true  _ => found }
       ExtdepsScopePlacementGate => match g { ExtdepsScopePlacementGate => true  _ => found }
+      ProseRowIntroductionGate => match g { ProseRowIntroductionGate => true  _ => found }
       _ => found
     }
   })
@@ -197,6 +200,7 @@ fn spec_enrolls_gate(spec: CiSpec, g: Gate) -> Bool {
       ExtdepsExternalAuthorityGate => match g { ExtdepsExternalAuthorityGate => true  _ => found }
       GeneratedArtifactDriftGate => match g { GeneratedArtifactDriftGate => true  _ => found }
       ExtdepsScopePlacementGate => match g { ExtdepsScopePlacementGate => true  _ => found }
+      ProseRowIntroductionGate => match g { ProseRowIntroductionGate => true  _ => found }
       DagCompileCleanGate => match g { DagCompileCleanGate => true  _ => found }
       EmitHostGate => match g { EmitHostGate => true  _ => found }
       SourceRootIngestGate => match g { SourceRootIngestGate => true  _ => found }
@@ -274,6 +278,7 @@ fn gate_node(g: Gate) -> Node {
     DagCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [], occurrence_id: SyntheticOccurrence }
     GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [], occurrence_id: SyntheticOccurrence }
     ExtdepsScopePlacementGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_scope_placement } }, children: [], occurrence_id: SyntheticOccurrence }
+    ProseRowIntroductionGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_prose_row_introduction } }, children: [], occurrence_id: SyntheticOccurrence }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [], occurrence_id: SyntheticOccurrence }
     RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [], occurrence_id: SyntheticOccurrence }
     SelfHostReadsRealBytesGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_reads_real_bytes } }, children: [], occurrence_id: SyntheticOccurrence }
@@ -346,6 +351,7 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
     ExtdepsExternalAuthorityGate => gate_profile_negligible_wet_declared()
     GeneratedArtifactDriftGate => gate_profile_negligible_wet_declared()
     ExtdepsScopePlacementGate => gate_profile_negligible_wet_declared()
+    ProseRowIntroductionGate => gate_profile_negligible_wet_declared()
   }
 }
 
@@ -369,6 +375,7 @@ fn gate_runnable(g: Gate) -> Runnable {
     DagCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dag_compile_clean_gate_passes", profile: profile }
     GeneratedArtifactDriftGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "generated_artifact_drift_gate_passes", profile: profile }
     ExtdepsScopePlacementGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_scope_placement_gate_passes", profile: profile }
+    ProseRowIntroductionGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "prose_row_introduction_gate_passes", profile: profile }
     SourceRootIngestGate => RunnableSingleClaim {
       entry: floor_source_root_ingest_gate_entry,
       function: "source_root_ingest_gate_passes",

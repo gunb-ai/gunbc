@@ -11,6 +11,7 @@ import gunbc.ci_gate {
   Gate,
   EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
+  ProseRowIntroductionGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
@@ -50,6 +51,9 @@ import gunbc.merge_admission_produce {
 }
 import v2.workflow.ci_regen_rustfmt_path_emit {
   ci_regen_ensure_rustfmt_path_script,
+}
+import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
+  ci_v1_compiler_tests_compile_gate_script,
 }
 import v2.workflow.ci_heal_skew_guard_emit {
   ci_heal_binary_source_skew_guard_script,
@@ -228,7 +232,7 @@ data gunbc_ci_compile_clean_clamp_note: String = "COMPILE-CLEAN LEG CLAMP (prelu
 
 data gunbc_ci_compile_clean_clamp: RunnableBatchClamp = RunnableBatchClamp { overhead: second(count: 60), per_unit: millisecond(count: 320) }
 
-data ci_release_features: String = "text_lookup_work_counter"
+data ci_release_features: String = "text_lookup_work_counter,interp_test_witness,test_hooks"
 
 fn ci_release_build_line() -> String {
   concat(
@@ -250,7 +254,7 @@ fn ci_fmt_gate_line() -> String {
   "\"$CARGO_BIN\" fmt --all --check"
 }
 
-data ci_v1_compiler_tests_compile_gate_note: String = "cargo check -p v1-compiler-tests --tests, RE-ENROLLED 2026-07-31 (operator ruling, PR #7490 repair): the nextest RUN half of commit_gate_rust_suite_removed_disposition stays retired (~37 GiB, seed-runtime red), but #7490's typecheck_module signature migration updated stage0 call sites and left four direct integration-test callers stale on main — compile breakage invisible to DagCompileCleanGate (dag-only) and the release build (v1-compiler stage0 only; v1-compiler-tests is a separate workspace crate). This is the fmt-amendment pattern applied to the missing COMPILE half: compile-only, no test execution, ~41s measured cold on the repair host — not RustMonolithGate re-enrollment. Placement: build job immediately after fmt, before the ~33min release build. Operation shape and shell scaffold: v2.workflow.ci_v1_compiler_tests_compile_gate_emit (extdeps.cargo_build cargo.Build.Check)."
+data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler-tests --release --no-run (compile-contract gate; no test execution), RE-ORDERED 2026-08-05 (operator ruling, PR A / fierce-heron-177): runs AFTER the release build so the gate reuses the release-profile v1-compiler artifact instead of forcing a second dev-profile compile. ci_release_features carries text_lookup_work_counter,interp_test_witness,test_hooks so release bins and the test crate share ONE release-profile v1-compiler artifact (feature-set union). Per-call depth instrumentation is default-off armed (record_call_env_depth is a relaxed-load guard until a test calls arm_call_env_depth_witness_for_test). Affected-set admission (compile_contract_admission_witness + CompileContractAdmissionReceipt) was built per lane brief step 3, measured at 84-133s to skip an 18s compile (resolve_entry_graph_shared for one git diff), and REMOVED 2026-08-06 — the gate runs unconditionally on every build job. Operation shape: v2.workflow.ci_v1_compiler_tests_compile_gate_emit (extdeps.cargo_build cargo.Build.Test)."
 
 fn ci_retry_body_run(command: String) -> Run {
   Run {
@@ -432,6 +436,16 @@ fn ci_regen_floor_skip_shortcut_script() -> String {
           concat("      exit 0\n", concat("  fi\n", "fi\n"))
         )
       )
+    )
+  )
+}
+
+fn ci_v1_compiler_tests_compile_gate_run_script() -> String {
+  concat(
+    "set -e\n",
+    concat(
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      ci_v1_compiler_tests_compile_gate_script()
     )
   )
 }

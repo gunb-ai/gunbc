@@ -107,51 +107,128 @@ test fn green_place_pin_coherent_references_gunbc_gate_not_input_satisfied() -> 
 }
 
 test fn assimilation_complete_gate_is_fail_closed_on_any_gap_or_refusal() -> Bool {
-  let all_gap = AssimilationCompleteGate {
-    node_registered: InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" },
-    resources_present: InputSatisfied,
-    green_place_pin_coherent: GreenPlacePinGap { interim_realization: "ctrl:pending" },
-    runner_healthy: InputSatisfied,
+  let ci_required = assimilation_completion_inputs_for(participation: ci_runner_enrollment_participation)
+  let gap_gate = AssimilationCompleteGate {
+    obligations: [
+      AssimilationObligation {
+        input: NodeRegistered,
+        witness: InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" },
+      },
+      AssimilationObligation { input: ResourcesPresent, witness: InputSatisfied },
+      AssimilationObligation {
+        input: GreenPlacePinCoherent,
+        witness: assimilation_input_witness_from_green_place(
+          w: GreenPlacePinGap { interim_realization: "ctrl:pending" }
+        ),
+      },
+      AssimilationObligation { input: RunnerSlotHealthy, witness: InputSatisfied },
+    ],
   }
-  match assimilation_complete(gate: all_gap) {
+  match assimilation_complete(gate: gap_gate, required: ci_required) {
     AssimilationIncomplete { input: NodeRegistered, reason: r } =>
       string_contains(s: r, pattern: "P5:gap-refused:")
     AssimilationComplete => false
   }
     && match assimilation_complete(gate: AssimilationCompleteGate {
-      node_registered: InputSatisfied,
-      resources_present: InputRefused { input: ResourcesPresent, reason: "missing cgroup slice" },
-      green_place_pin_coherent: host_standup_p5_default_green_place_gate_verdict(),
-      runner_healthy: InputSatisfied,
-    }) {
+      obligations: [
+        AssimilationObligation { input: NodeRegistered, witness: InputSatisfied },
+        AssimilationObligation {
+          input: ResourcesPresent,
+          witness: InputRefused { input: ResourcesPresent, reason: "missing cgroup slice" },
+        },
+        AssimilationObligation {
+          input: GreenPlacePinCoherent,
+          witness: assimilation_input_witness_from_green_place(
+            w: host_standup_p5_default_green_place_gate_verdict()
+          ),
+        },
+        AssimilationObligation { input: RunnerSlotHealthy, witness: InputSatisfied },
+      ],
+    }, required: ci_required) {
       AssimilationIncomplete { input: ResourcesPresent, reason: _ } => true
       AssimilationComplete => false
     }
 }
 
 test fn assimilation_complete_passes_only_when_all_four_inputs_satisfied() -> Bool {
+  let ci_required = assimilation_completion_inputs_for(participation: ci_runner_enrollment_participation)
   let gate = AssimilationCompleteGate {
-    node_registered: InputSatisfied,
-    resources_present: InputSatisfied,
-    green_place_pin_coherent: GreenPlaceFromGunbcGate {
-      noop_satisfied_authority: host_standup_p5_green_place_noop_gate_authority,
-      marker_satisfied_authority: host_standup_p5_green_place_marker_gate_authority,
-      desired_pin_authority: host_standup_p5_desired_pin_authority,
-      gate_verdict: true,
-    },
-    runner_healthy: InputSatisfied,
+    obligations: [
+      AssimilationObligation { input: NodeRegistered, witness: InputSatisfied },
+      AssimilationObligation { input: ResourcesPresent, witness: InputSatisfied },
+      AssimilationObligation {
+        input: GreenPlacePinCoherent,
+        witness: assimilation_input_witness_from_green_place(
+          w: GreenPlaceFromGunbcGate {
+            noop_satisfied_authority: host_standup_p5_green_place_noop_gate_authority,
+            marker_satisfied_authority: host_standup_p5_green_place_marker_gate_authority,
+            desired_pin_authority: host_standup_p5_desired_pin_authority,
+            gate_verdict: true,
+          }
+        ),
+      },
+      AssimilationObligation { input: RunnerSlotHealthy, witness: InputSatisfied },
+    ],
   }
-  assimilation_complete_all_satisfied(gate: gate)
-    && match assimilation_complete(gate: gate) {
+  assimilation_complete_all_satisfied(gate: gate, required: ci_required)
+    && match assimilation_complete(gate: gate, required: ci_required) {
       AssimilationComplete => true
       AssimilationIncomplete { input: _, reason: _ } => false
     }
 }
 
+test fn inference_completion_inputs_exclude_ci_only_obligations() -> Bool {
+  assimilation_completion_inputs_for(participation: inference_serving_enrollment_participation).length() == 2
+    && assimilation_completion_inputs_for(participation: ci_runner_enrollment_participation).length() == 4
+}
+
+test fn both_participation_completion_inputs_union_inference_first() -> Bool {
+  let both = assimilation_completion_inputs_for(participation: both_participation_enrollment_participation)
+  both.length() == 4
+    && assimilation_input_is_required(required: both, wanted: NodeRegistered)
+    && assimilation_input_is_required(required: both, wanted: ResourcesPresent)
+    && assimilation_input_is_required(required: both, wanted: GreenPlacePinCoherent)
+    && assimilation_input_is_required(required: both, wanted: RunnerSlotHealthy)
+}
+
+test fn assimilation_gate_refuses_when_required_obligation_missing() -> Bool {
+  let ci_required = assimilation_completion_inputs_for(participation: ci_runner_enrollment_participation)
+  let incomplete_gate = AssimilationCompleteGate {
+    obligations: [
+      AssimilationObligation { input: NodeRegistered, witness: InputSatisfied },
+      AssimilationObligation { input: ResourcesPresent, witness: InputSatisfied },
+    ],
+  }
+  match assimilation_complete(gate: incomplete_gate, required: ci_required) {
+    AssimilationIncomplete { input: _, reason: r } =>
+      string_contains(s: r, pattern: "required-obligation-missing")
+    AssimilationComplete => false
+  }
+}
+
+test fn assimilation_gate_refuses_when_unrequired_obligation_present() -> Bool {
+  let inference_required = assimilation_completion_inputs_for(participation: inference_serving_enrollment_participation)
+  let gate_with_runner = AssimilationCompleteGate {
+    obligations: [
+      AssimilationObligation { input: NodeRegistered, witness: InputSatisfied },
+      AssimilationObligation { input: ResourcesPresent, witness: InputSatisfied },
+      AssimilationObligation { input: RunnerSlotHealthy, witness: InputSatisfied },
+    ],
+  }
+  match assimilation_complete(gate: gate_with_runner, required: inference_required) {
+    AssimilationIncomplete { input: RunnerSlotHealthy, reason: r } =>
+      string_contains(s: r, pattern: "unrequired-obligation-present")
+    AssimilationComplete => false
+  }
+}
+
 test fn p3_green_place_contributes_via_gunbc_gate_after_pinned_tree_lands() -> Bool {
   host_standup_p3_gunbc_pinned_tree_landed
     && !host_standup_p3_fail_closed_blocks_complete()
-    && match assimilation_complete(gate: host_standup_default_assimilation_gate_unsatisfied()) {
+    && match assimilation_complete(
+      gate: host_standup_default_assimilation_gate_unsatisfied(),
+      required: assimilation_completion_inputs_for(participation: ci_runner_enrollment_participation),
+    ) {
       AssimilationIncomplete { input: GreenPlacePinCoherent, reason: r } =>
         string_contains(s: r, pattern: "gunbc gate verdict false")
       AssimilationIncomplete { input: NodeRegistered, reason: _ } => true
@@ -161,7 +238,10 @@ test fn p3_green_place_contributes_via_gunbc_gate_after_pinned_tree_lands() -> B
 
 test fn assimilation_gate_still_refuses_p0_p2_p4_gaps_when_p3_landed() -> Bool {
   host_standup_p3_gunbc_pinned_tree_landed
-    && match assimilation_complete(gate: host_standup_default_assimilation_gate_unsatisfied()) {
+    && match assimilation_complete(
+      gate: host_standup_default_assimilation_gate_unsatisfied(),
+      required: assimilation_completion_inputs_for(participation: ci_runner_enrollment_participation),
+    ) {
       AssimilationIncomplete { input: NodeRegistered, reason: r } =>
         string_contains(s: r, pattern: "P5:gap-refused:")
       AssimilationComplete => false

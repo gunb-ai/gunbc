@@ -7,6 +7,7 @@ type Gate
   | DagCompileCleanGate
   | GeneratedArtifactDriftGate
   | ExtdepsScopePlacementGate
+  | ProseRowIntroductionGate
   | SourceRootIngestGate
   | RegenVerifyGate
   | SelfHostReadsRealBytesGate
