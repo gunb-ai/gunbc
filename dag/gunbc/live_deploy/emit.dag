@@ -222,6 +222,7 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec) -> Doc {
       " serve --source-root dag --source-root src/v2",
       " --entry dag/gunbc/roadmap_serve.dag --function ", svc.serve_function as String,
       " --host ", host, " --port ", port,
+      " --release-revision ", svc.release_revision as String,
     ], "")),
     doc_line_of(text: "Restart=on-failure"),
     doc_line_of(text: ""),
