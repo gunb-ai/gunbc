@@ -1,14 +1,5 @@
 module v2.lens.grounding_ledger
 
-import std.judgment {
-  DecisionReached,
-  DecisionRefused,
-  JudgeRequired,
-  Judgment,
-  JudgmentAuthority,
-  ReviewDecision,
-  StructuralJudgment,
-}
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: RatchetForever
@@ -18,8 +9,6 @@ type ResidueReason
   = DecodeReturnedNone
   | UnrecognizedSiblingArm
 
-data grounding_verdict_note: String = "Only actual grounding outcomes live here now. PendingJudge used to sit in this coproduct and was the one member that answered a DIFFERENT question: every other arm says what the field IS, while PendingJudge said that nobody had decided yet -- a workflow state wearing a domain verdict's clothes, so any consumer matching on the verdict had to remember that one arm was not an answer. It moved to std.judgment's JudgeRequired, where 'not yet decided' is structurally distinct from every answer rather than adjacent to them. The consequence that matters: a fold counting grounded fields can no longer accidentally count an undecided one, because an undecided site now has no GroundingVerdict at all."
-
 type GroundingVerdict
   = Reference { authority: DeclarationRef }
   | ReferenceUri
@@ -27,77 +16,28 @@ type GroundingVerdict
   | Role
   | StayString { reason: ResidueReason }
   | GenuineProse
+  | PendingJudge
 
-data grounding_question_note: String = "The BOUNDED question handed to a judge, and bounded is the whole safety property. It carries the site, what the lens matched it against, and the admissible targets the mechanical layer already computed -- so a judge chooses among supplied candidates or declines, and cannot mint an authority or name a target nobody proposed. That restriction is what makes a small model safe to consult here: the output space is closed by the question rather than by trusting the answer."
-
-type GroundingQuestion {
-  site_qn: String
-  field: String
-  coincides_with: String
-  admissible_targets: List<DeclarationRef>
-}
-
-data grounding_refusal_note: String = "Refusal causes are the criterion's OWN, not a shared registry every criterion widens. A refusal is not a clearance and not an unanswered question: it says the evidence cannot support any judgment about this site, which is the fail-closed arm (DESIGN section 5). Keeping the causes typed and local is what lets a deficit be counted and ranked instead of absorbed."
-
-type GroundingDecisionRefusal
-  = SiteEvidenceUnavailable { detail: String }
-  | CoincidenceTargetUnresolved { target: String }
-
-type GroundingDecision = ReviewDecision<GroundingVerdict, GroundingQuestion, GroundingDecisionRefusal>
-
-data structural_rule_authority: DeclarationRef = DeclarationRef {
-  module_path: "v2.lens.grounding_ledger",
-  decl_name: "residue_forced_decision",
-  field: WholeDeclaration,
-}
+type DecidedBy
+  = StructuralRule
+  | Judge { rationale: String }
+  | OperatorReview { note: String }
 
 type LedgerEntry {
   site_qn: String
   field: String
   coincides_with: String
-  decision: GroundingDecision
+  verdict: GroundingVerdict
+  decided_by: DecidedBy
 }
 
-fn grounding_judge_required(question: GroundingQuestion) -> GroundingDecision {
-  JudgeRequired { question: question }
-}
-
-fn structural_grounding_judgment(verdict: GroundingVerdict) -> GroundingDecision {
-  DecisionReached {
-    judgment: Judgment {
-      verdict: verdict,
-      decided_by: StructuralJudgment { rule: structural_rule_authority },
-    }
-  }
-}
-
-data residue_forced_decision_note: String = "Unchanged in behaviour, recut in shape. A decode-optional sibling and an unrecognized sibling arm are both STRUCTURALLY FORCED outcomes -- the mechanical layer really did decide them, so they are reached judgments carrying a structural authority, and no judge is consulted. The clean candidate is the residue: previously it returned PendingJudge as though that were a verdict, and now it returns JudgeRequired carrying the bounded question. That is the mechanical-decides-first discipline made structural: what the traversal can settle never reaches a model, and what it cannot is handed over as a closed question rather than as a gap someone might read as clean."
-
-fn residue_forced_decision(
-  question: GroundingQuestion,
-  sibling_decode_optional: Bool,
-  has_unrecognized_sibling: Bool
-) -> GroundingDecision {
+fn residue_forced_verdict(sibling_decode_optional: Bool, has_unrecognized_sibling: Bool) -> GroundingVerdict {
   if sibling_decode_optional {
-    structural_grounding_judgment(verdict: StayString { reason: DecodeReturnedNone })
+    StayString { reason: DecodeReturnedNone }
   } else if has_unrecognized_sibling {
-    structural_grounding_judgment(verdict: StayString { reason: UnrecognizedSiblingArm })
+    StayString { reason: UnrecognizedSiblingArm }
   } else {
-    grounding_judge_required(question: question)
-  }
-}
-
-fn grounding_question_for(
-  site_qn: String,
-  field: String,
-  coincides_with: String,
-  admissible_targets: List<DeclarationRef>
-) -> GroundingQuestion {
-  GroundingQuestion {
-    site_qn: site_qn,
-    field: field,
-    coincides_with: coincides_with,
-    admissible_targets: admissible_targets,
+    PendingJudge
   }
 }
 
@@ -105,7 +45,6 @@ fn structural_ledger_entry(
   site_qn: String,
   field: String,
   coincides_with: String,
-  admissible_targets: List<DeclarationRef>,
   sibling_decode_optional: Bool,
   has_unrecognized_sibling: Bool
 ) -> LedgerEntry {
@@ -113,15 +52,10 @@ fn structural_ledger_entry(
     site_qn: site_qn,
     field: field,
     coincides_with: coincides_with,
-    decision: residue_forced_decision(
-      question: grounding_question_for(
-        site_qn: site_qn,
-        field: field,
-        coincides_with: coincides_with,
-        admissible_targets: admissible_targets
-      ),
+    verdict: residue_forced_verdict(
       sibling_decode_optional: sibling_decode_optional,
       has_unrecognized_sibling: has_unrecognized_sibling
     ),
+    decided_by: StructuralRule
   }
 }
