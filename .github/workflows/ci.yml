@@ -24,7 +24,7 @@ env:
 jobs:
   build:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 85
+    timeout-minutes: 100
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -123,6 +123,11 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           # 🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await
           "$CARGO_BIN" 'test' '-p' 'v1-compiler-tests' '--release' '--no-run'
+        timeout-minutes: 15
+      - name: cargo check all seven stage0 partition crates (compile gate; roster drift backstop)
+        run: |
+          # 🟡 dissolve-on: ci_stage0_partition_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for seven partition-crate cargo.Build.Check invocations; DISSOLVES WHEN bash-emit (#5828 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operations — same de-fork as ci_v1_compiler_tests_compile_gate_script and ci_fmt_gate_line
+          "$CARGO_BIN" 'check' '-p' 'v1-stage0-runtime' && "$CARGO_BIN" 'check' '-p' 'v1-stage0-std-core' && "$CARGO_BIN" 'check' '-p' 'v1-stage0-std-surface' && "$CARGO_BIN" 'check' '-p' 'v1-stage0-extdeps-languages' && "$CARGO_BIN" 'check' '-p' 'v1-stage0-v1-infer' && "$CARGO_BIN" 'check' '-p' 'v1-stage0-v1-artifact' && "$CARGO_BIN" 'check' '-p' 'v1-stage0-emit-core'
         timeout-minutes: 15
       - name: Pack release bins for cross-job handoff (tar keeps exec bits)
         run: |
