@@ -1632,13 +1632,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "roadmap-runtime",
       path: "docs/plans/provider-control-interface-audit.md",
       t: fields(
-        headline: "Admit exact Codex 0.146 runtime and observe account standing (preflight, not press)",
-        boundary: "Owns the exact Codex package chain (lock admit → offline materialize → content-addressed release with sidecar read-back) and a typed three-request app-server account-standing session (initialize / account/read / rateLimits/read). Does NOT own WorkerTurn, thread/start, turn/start, persisted turn receipts, OperatorActionItem inbox, production dispatch success, or srv1 cutover — those are follow-on lanes after this preflight closes.",
-        displaced_cost: "Replaces pathname-trusted /tmp trees and stdout substring scraping with an attributable runtime identity and typed account standing so later press work binds to real evidence instead of a green account-ready click that did no work.",
-        first_slice: "Closed artifact chain + CodexRuntimeBundleReceipt (installed digests, tree identity, npm+node toolchain, canonical schema bundle, release sidecar) + held-open typed account session with wet Ready|Login|quota controls and incomplete RED. Account standing stays wet/provider-readiness only — not a BeltDispatchResult success arm.",
-        red_control: "Missing binary refuses; digest mismatch refuses; existing release without matching sidecar/native read-back refuses; malformed JSON-RPC frames digests as unknown; account trip missing any of the three correlated results is incomplete RED; account_ready must never be labeled turn_started; production dispatch must not mint an attempt for account readiness.",
-        out_of_scope: "No thread/start or turn/start execution, no device-code/Secret Manager enrollment, no WorkerTurn persistence, no Check/Connect production UI, no srv1 exec/tmux removal, no Publication/Review/Audit. roadmap-runtime-readback waits until a real turn specimen exists.",
-        handback: "Reusable exact Codex runtime release + typed account-standing preflight under gunbc.package_delivery / gunbc.codex_app_server_press / extdeps.llm.codex_app_server; wet witnesses enrolled; roadmap wording matches preflight scope — not a completed press vertical."
+        headline: "Bundle exact Codex 0.146 runtime and observe typed account standing",
+        boundary: "Owns exact Codex package materialization (lock admit with package/version/optional/os-cpu gates → offline install → host-owned content-addressed release with full tree+native reuse read-back) and provider-scoped account preflight (CodexAccountPreflightSubject: runtime×interface×probe_key — not AttemptKey). Typed JSON-RPC id 1/2/3 with duplicate refusal, structured result bodies, SHA-512 private wire evidence. Does NOT own WorkerTurn, thread/start, turn/start, OAuth, production dispatch, or UI.",
+        displaced_cost: "Replaces /tmp pathname trust, dual initialize sessions, substring standing classification, and attempt-keyed readiness that looked like item progress.",
+        first_slice: "Closed artifact chain + CodexRuntimeBundleReceipt + observe_codex_account_preflight with wet Ready|Login|quota and incomplete/duplicate RED. Account standing is wet/provider-readiness only.",
+        red_control: "Wrong package/version/optional/os-cpu refuses; reuse without tree identity match refuses; duplicate JSON-RPC ids refuse; empty result bodies are not Ready; whole-stream substring cannot reclassify; account_ready never labeled turn_started; production dispatch does not mint attempts for readiness.",
+        out_of_scope: "No thread/start or turn/start, no device-code/Secret Manager enrollment, no WorkerTurn persistence, no Check/Connect production UI, no srv1 exec/tmux removal.",
+        handback: "Exact admitted Codex runtime + typed provider-account preflight under gunbc.package_delivery / gunbc.codex_app_server_press — ready for stacked WorkerTurn PR, not a completed press vertical."
       )
     ),
     active_small(

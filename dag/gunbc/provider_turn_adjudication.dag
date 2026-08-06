@@ -26,7 +26,7 @@ type ProviderTurnDisposition
     }
   | ProviderTurnNotObserved
 
-data press_start_is_not_turn_note: String = "An admitted CodexPressStart names the attempt/turn/interface subject. It is NOT a turn observation. ProviderTurnNotObserved is the honest standing until a native terminal event is retained."
+data press_start_is_not_turn_note: String = "Codex account preflight (CodexAccountPreflightSubject / observe_codex_account_preflight) is provider/runtime standing — NOT a turn observation and NOT a roadmap AttemptKey. ProviderTurnNotObserved is the honest standing until a native terminal event is retained on a WorkerTurn."
 
 fn automatic_recovery_authorized(disposition: ProviderTurnDisposition) -> Bool {
   match disposition {
