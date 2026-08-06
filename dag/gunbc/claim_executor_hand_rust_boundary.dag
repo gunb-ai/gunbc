@@ -2,7 +2,7 @@ module gunbc.claim_executor_hand_rust_boundary
 
 import std.types { Int, List, String }
 
-data claim_executor_hand_rust_boundary_note: String = "TERMINAL BOUNDARY ledger for claim_executor.rs hand Rust (Lane swift-lynx-164). Measured at HEAD f16d936fed4: 13,497 LOC, 381 Rust items, 304 fns. CONTRACT: .dag owns plans, admission, scheduling, selection, outcome, and receipt semantics; Rust owns spawn, observe (time/memory/move bytes), and persist. Anything else in this file needs an explicit SeedGrowthJustification row. NOT a deletion plan — instrument only. Sibling cli_run.rs ledger: gunbc.cli_run_hand_rust_area_ledger."
+data claim_executor_hand_rust_boundary_note: String = "TERMINAL BOUNDARY ledger for claim_executor.rs hand Rust (Lane swift-lynx-164). Live scale is measured at execution by scripts/rust_item_census.py — this note does NOT pin numeric literals (DESIGN §3 stale-citation class). CONTRACT: .dag owns plans, admission, scheduling, selection, outcome, and receipt semantics; Rust owns spawn, observe (time/memory/move bytes), and persist. Anything else in this file needs an explicit SeedGrowthJustification row. NOT a deletion plan — instrument only. Sibling cli_run.rs ledger: gunbc.cli_run_hand_rust_area_ledger."
 
 type ClaimExecutorRustRole
   = DagOwnsSemantics
@@ -16,7 +16,7 @@ type ClaimExecutorBoundaryRow {
   detail: String
 }
 
-data claim_executor_live_scale_receipt: String = "claim_executor.rs LIVE SCALE (measured 2026-08-06): 13,497 LOC; 381 Rust items; 304 fns. Terminal shape: thin host boundary spawning/oberving witness runs; floor plan semantics live in src/v2/workflow/ci_floor_plan.dag."
+data claim_executor_live_scale_receipt: String = "claim_executor.rs LIVE SCALE is measured at execution by scripts/rust_item_census.py. Terminal shape: thin host boundary spawning/oberving witness runs; floor plan semantics live in src/v2/workflow/ci_floor_plan.dag."
 
 fn claim_executor_boundary_rows() -> List<ClaimExecutorBoundaryRow> {
   [

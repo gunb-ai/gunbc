@@ -12,8 +12,8 @@ test fn cli_run_area_ledger_covers_sixteen_areas() -> Bool {
 }
 
 test fn cli_run_live_scale_receipt_updates_stale_prose() -> Bool {
-  string_contains(s: cli_run_live_scale_receipt, pattern: "38,617")
-    && string_contains(s: cli_run_live_scale_receipt, pattern: "26,773")
+  string_contains(s: cli_run_live_scale_receipt, pattern: "scripts/rust_item_census.py")
+    && string_contains(s: cli_run_live_scale_receipt, pattern: "cli_run_hollowing_plan")
 }
 
 test fn cli_run_area_ledger_is_instrument_not_deletion() -> Bool {

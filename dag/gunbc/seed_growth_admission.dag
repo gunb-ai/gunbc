@@ -12,7 +12,7 @@ import std.roster_frontier {
 import std.types { Bool, Int, List, String }
 import v2.std.algebra { any, filter, fold_list, length, list_append, list_snoc_item }
 
-data seed_growth_admission_note: String = "ITEM-GRAIN admission authority for hand-authored Rust growth (Lane swift-lynx-164). Implements the completeness join gunbc.seed_growth.seed_growth_note assigns to the honest-frontier lane: compare every newly authored or modified hand Rust item in a change against SeedGrowthJustification.hand_authored_declarations and refuse on the difference. PATH-GRAIN census (sibling proud-owl-773 PR #7894) answers which files lack disposition; THIS MODULE answers which ITEMS within files lack justification. NOT IN SCOPE: deleting existing Rust (other lanes own host-effect, materialization, interpreter cutover). NOT IN SCOPE: netting deletions against additions — every addition needs its own justification (operator ruling). G0 HOST: scripts/rust_item_census.py enumerates items at HEAD and supports --diff against merge-base; dissolves when gunbc.rust_item_host_observation provides parsed RustItemIdentity rows from git diff."
+data seed_growth_admission_note: String = "ITEM-GRAIN admission authority for hand-authored Rust growth (Lane swift-lynx-164). Implements the completeness join gunbc.seed_growth.seed_growth_note assigns to the honest-frontier lane: compare every newly authored or modified hand Rust item in a change against SeedGrowthJustification.hand_authored_declarations and refuse on the difference. PATH-GRAIN census (sibling proud-owl-773 PR #7894) answers which files lack disposition; THIS MODULE answers which ITEMS within files lack justification. NOT IN SCOPE: deleting existing Rust (other lanes own host-effect, materialization, interpreter cutover). NOT IN SCOPE: netting deletions against additions — every addition needs its own justification (operator ruling). G0 HOST: scripts/rust_item_census.py enumerates items at HEAD and supports --diff against merge-base; dissolves when gunbc.rust_item_host_observation provides parsed RustItemIdentity rows from git diff. ENROLLED CONSUMER: seed_growth_admission_roster_gate_holds is conjunct of gunbc.stage0_rust_source_lifecycle_scaffold stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds (witnessed by stage0_rust_source_lifecycle_scaffold_witness_test)."
 
 type SeedGrowthAdmissionVerdict
   = SeedGrowthAdmissionComplete {
@@ -134,4 +134,22 @@ fn seed_growth_roster_mechanical_checks_holds() -> Bool {
     && !seed_growth_roster_has_duplicate_keys()
 }
 
-data seed_growth_admission_g0_population_note: String = "G0 CENSUS RECEIPT at HEAD f16d936fed4ef8fbdb3ec7a3b8cba572448be535 (2026-08-06, scripts/rust_item_census.py). Tracked .rs files: 355. Hand files: 215 (133,161 LOC). Generated files: 140 (148,050 LOC). Hand items: 8,360 (fn 6202, mod 487, struct 291, enum 138, type 258, const 399, static 154, impl_block 134, impl_method 273, macro_rules 19, trait 5). src/v1 hand: 182 files, 131,632 LOC. Giants: cli_run.rs 1,820 items / 38,617 LOC; claim_executor.rs 381 items / 13,497 LOC; v1_interpreter.rs 593 items / 13,547 LOC. Generated share by LOC: 52.7% (hand 47.3%). cli_run_hollowing_plan §0 stale prose (26,773 LOC dated 2026-07-23) superseded by this receipt. G1 compares merge-base diff against SeedGrowthJustification rows."
+fn seed_growth_admission_roster_gate_holds() -> Bool {
+  match seed_growth_join_declarations(
+    candidates: seed_growth_roster_all_declarations()
+  ) {
+    SeedGrowthAdmissionComplete {
+      justified_items: justified,
+      stale_justifications: stale,
+      duplicate_justifications: dups,
+      uncitable_items: uncitable
+    } =>
+      length(xs: justified) == 9
+        && length(xs: stale) == 0
+        && length(xs: dups) == 0
+        && length(xs: uncitable) == 1
+    SeedGrowthAdmissionRefused { unjustified_additions: _, detail: _ } => false
+  }
+}
+
+data seed_growth_admission_g0_population_note: String = "G0 CENSUS HOST (scripts/rust_item_census.py). Item-grain population is measured at execution from git-tracked .rs files; generated-vs-hand is derived from gunbc.stage0_emit_plan_generated generated_stage0_files and gunbc.generated_artifact artifact_path — unclassified stage0/src paths refuse. This note does NOT pin numeric literals (DESIGN §3 stale-citation class); run the script at HEAD for the live receipt. Supersedes cli_run_hollowing_plan §0 prose dated 2026-07-23. G1 compares merge-base diff against SeedGrowthJustification rows once rust_item_host_observation supplies DeclarationRef candidates."

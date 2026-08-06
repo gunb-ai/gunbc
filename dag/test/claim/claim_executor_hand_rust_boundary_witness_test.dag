@@ -17,7 +17,7 @@ test fn claim_executor_boundary_has_rows() -> Bool {
 }
 
 test fn claim_executor_live_scale_receipt_records_loc() -> Bool {
-  string_contains(s: claim_executor_live_scale_receipt, pattern: "13,497")
+  string_contains(s: claim_executor_live_scale_receipt, pattern: "scripts/rust_item_census.py")
 }
 
 test fn claim_executor_boundary_is_instrument_not_deletion() -> Bool {

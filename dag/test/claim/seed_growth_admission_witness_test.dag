@@ -5,6 +5,7 @@ import gunbc.seed_growth_admission {
   SeedGrowthAdmissionComplete,
   SeedGrowthAdmissionRefused,
   seed_growth_admission_g0_population_note,
+  seed_growth_admission_roster_gate_holds,
   seed_growth_forward_freeze_policy_note,
   seed_growth_join_declarations,
   seed_growth_roster_all_declarations,
@@ -63,9 +64,13 @@ test fn forward_freeze_policy_requires_item_enumeration() -> Bool {
     && string_contains(s: seed_growth_forward_freeze_policy_note, pattern: "no netting")
 }
 
+test fn seed_growth_admission_roster_gate_holds() -> Bool {
+  seed_growth_admission_roster_gate_holds()
+}
+
 test fn g0_population_note_supersedes_stale_cli_run_prose() -> Bool {
-  string_contains(s: seed_growth_admission_g0_population_note, pattern: "38,617")
-    && string_contains(s: seed_growth_admission_g0_population_note, pattern: "26,773")
+  string_contains(s: seed_growth_admission_g0_population_note, pattern: "cli_run_hollowing_plan")
+    && string_contains(s: seed_growth_admission_g0_population_note, pattern: "does NOT pin numeric literals")
 }
 
 test fn stage0_justification_rows_are_in_roster() -> Bool {

@@ -50,8 +50,8 @@ test fn seed_growth_admission_note_cites_seed_growth_authority() -> Bool {
     && string_contains(s: seed_growth_justification_roster_note, pattern: "CLOSED ROSTER")
 }
 
-test fn g0_population_note_records_item_denominator() -> Bool {
-  string_contains(s: seed_growth_admission_g0_population_note, pattern: "8,360")
-    && string_contains(s: seed_growth_admission_g0_population_note, pattern: "cli_run.rs")
-    && string_contains(s: seed_growth_admission_g0_population_note, pattern: "impl_method")
+test fn g0_population_note_cites_census_host() -> Bool {
+  string_contains(s: seed_growth_admission_g0_population_note, pattern: "scripts/rust_item_census.py")
+    && string_contains(s: seed_growth_admission_g0_population_note, pattern: "does NOT pin numeric literals")
+    && string_contains(s: seed_growth_admission_g0_population_note, pattern: "cli_run_hollowing_plan")
 }
