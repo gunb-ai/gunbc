@@ -9,7 +9,6 @@ import std.judgment {
   ReviewDecision,
   StructuralJudgment,
 }
-import std.types { Bool, DeclarationRef, NonEmptyStr, String, WholeDeclaration }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: RatchetForever
@@ -59,6 +58,10 @@ type LedgerEntry {
   decision: GroundingDecision
 }
 
+fn grounding_judge_required(question: GroundingQuestion) -> GroundingDecision {
+  JudgeRequired { question: question }
+}
+
 fn structural_grounding_judgment(verdict: GroundingVerdict) -> GroundingDecision {
   DecisionReached {
     judgment: Judgment {
@@ -80,7 +83,7 @@ fn residue_forced_decision(
   } else if has_unrecognized_sibling {
     structural_grounding_judgment(verdict: StayString { reason: UnrecognizedSiblingArm })
   } else {
-    JudgeRequired { question: question }
+    grounding_judge_required(question: question)
   }
 }
 
