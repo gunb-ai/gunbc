@@ -44,6 +44,7 @@ import gunbc.design.instrument_camera {
   program_mode_key, ModeStatus, ModeRemaining, ModeWhy,
   focus_subject_key, NoSubjectSelected,
 }
+import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_line_key }
 import extdeps.web_audio {
   web_audio_context_interface,
   web_audio_create_oscillator_method, web_audio_create_gain_method,
@@ -3008,6 +3009,24 @@ fn instrument_mode_keys() -> List<String> {
   ]
 }
 
+fn instrument_focus_keys() -> List<String> {
+  concat(
+    [focus_subject_key(f: NoSubjectSelected)],
+    v1_exit_finish_lines() |> map(s => v1_finish_line_key(l: s.line)),
+  )
+}
+
+fn js_instrument_wire_index_valid(keys_var: String, parts_var: String, index: String) -> TsExpr {
+  ts_binop(
+    left: ts_call(
+      callee: ts_member(object: ts_ident(name: keys_var), property: "indexOf"),
+      args: [ts_index(object: ts_ident(name: parts_var), index: ts_lit_num(text: index))],
+    ),
+    op: "<",
+    right: ts_lit_num(text: "0"),
+  )
+}
+
 fn js_instrument_camera_member(name: String) -> TsExpr {
   ts_member(object: ts_ident(name: js_instrument_camera_var), property: name)
 }
@@ -3056,6 +3075,21 @@ fn instrument_tuner_load_camera_fn_body() -> List<TsStmt> {
     )),
     ts_if(
       cond: ts_binop(left: ts_member(object: ts_ident(name: "parts"), property: "length"), op: "!==", right: ts_lit_num(text: "3")),
+      then: ts_return(expr: none),
+      else_stmt: none,
+    ),
+    ts_if(
+      cond: js_instrument_wire_index_valid(keys_var: "INSTRUMENT_DEPTH_KEYS", parts_var: "parts", index: "0"),
+      then: ts_return(expr: none),
+      else_stmt: none,
+    ),
+    ts_if(
+      cond: js_instrument_wire_index_valid(keys_var: "INSTRUMENT_MODE_KEYS", parts_var: "parts", index: "1"),
+      then: ts_return(expr: none),
+      else_stmt: none,
+    ),
+    ts_if(
+      cond: js_instrument_wire_index_valid(keys_var: "INSTRUMENT_FOCUS_KEYS", parts_var: "parts", index: "2"),
       then: ts_return(expr: none),
       else_stmt: none,
     ),
@@ -3322,6 +3356,8 @@ fn instrument_tuner_camera_preamble() -> List<TsStmt> {
       ts_field(key: "focus", value: ts_lit_str(value: focus_subject_key(f: camera_initial.focus))),
     ])),
     ts_const(name: "INSTRUMENT_DEPTH_KEYS", value: ts_array(elements: map(instrument_depth_keys(), k => ts_lit_str(value: k)))),
+    ts_const(name: "INSTRUMENT_MODE_KEYS", value: ts_array(elements: map(instrument_mode_keys(), k => ts_lit_str(value: k)))),
+    ts_const(name: "INSTRUMENT_FOCUS_KEYS", value: ts_array(elements: map(instrument_focus_keys(), k => ts_lit_str(value: k)))),
     ts_const(name: js_instrument_save_fn, value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_call(
       callee: ts_member(object: ts_ident(name: "localStorage"), property: "setItem"),
       args: [ts_lit_str(value: camera_storage_key), js_instrument_wire_expr()],

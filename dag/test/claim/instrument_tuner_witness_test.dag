@@ -42,10 +42,16 @@ fn witness_exactly_one_initial_reading_row() -> Bool {
   count(all_cameras() |> filter(c => camera_wire(c: c) == camera_wire(c: camera_initial))) == 1
 }
 
+fn witness_the_client_program_refuses_invalid_wire_keys() -> Bool {
+  string_contains(s: instrument_tuner_client_js_source(), pattern: "INSTRUMENT_MODE_KEYS")
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: "INSTRUMENT_FOCUS_KEYS")
+}
+
 test fn instrument_tuner_keystone_holds() -> Bool {
   witness_the_client_program_persists_the_camera()
     && witness_the_client_program_steps_one_detent()
     && witness_the_client_program_has_selection_parity_hooks()
+    && witness_the_client_program_refuses_invalid_wire_keys()
     && witness_the_page_pre_renders_every_camera_state()
     && witness_exactly_one_initial_reading_row()
     && instrument_tuner_asset_path == "/assets/instrument-tuner.js"
