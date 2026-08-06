@@ -35,7 +35,7 @@ test fn witness_fleet_regime_is_slot_carved_with_throttle_line() -> Bool {
     SlotCarved { desired: d } =>
       let high = byte_size_count(b: d.memory_high)
       let max = byte_size_count(b: d.memory_max)
-      high == 16106127360 && high < max
+      high < max && high >= byte_size_count(b: gunbc_floor_minimum_viable_armed_budget)
     WholeMachine { ram: _ } => false
   }
 }

@@ -10868,20 +10868,18 @@ macro_rules! v1_builtin_arms {
             // cannot report it — a fabricated 0 would be a Measured lie (DESIGN §5).
             arm "free_call.observed_peak_resident_bytes" { "observed_peak_resident_bytes" } => match $positional.as_slice() {
                 [] => {
-                    let bytes = std::fs::read_to_string("/proc/self/status")
-                        .ok()
-                        .and_then(|status| {
-                            status
-                                .lines()
-                                .find(|l| l.starts_with("VmHWM"))
-                                .and_then(|line| line.split_whitespace().nth(1))
-                                .and_then(|kb| kb.parse::<i64>().ok())
-                        })
-                        .map(|kb| kb.saturating_mul(1024));
+                    // Routed through the single portable reader rather than re-inlining a
+                    // procfs parse here. This arm previously carried its OWN copy of the
+                    // /proc/self/status VmHWM read — a second implementation of one
+                    // observation (section 3), and the copy that actually executes for
+                    // witnesses, so fixing only cli_run's would have left this one Linux-only.
+                    // Authority for the interface and its per-implementation units:
+                    // dag/extdeps/posix/rusage.dag with dag/extdeps/{linux,darwin}/rusage.dag.
+                    let bytes = crate::cli_run::peak_rss_vhwm_bytes().and_then(|b| i64::try_from(b).ok());
                     match bytes {
                         Some(b) => Ok(Some(Value::Int(b))),
                         None => Err(InterpError::TypeError {
-                            msg: "observed_peak_resident_bytes: VmHWM unavailable on this host (refusing to fabricate a Measured space fact)"
+                            msg: "observed_peak_resident_bytes: getrusage(RUSAGE_SELF).ru_maxrss unavailable on this host (refusing to fabricate a Measured space fact)"
                                 .to_string(),
                         }),
                     }
