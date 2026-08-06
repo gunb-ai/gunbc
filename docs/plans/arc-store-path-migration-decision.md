@@ -4,7 +4,7 @@
 >
 > **Lane:** loyal-ferret-892 / smart-badger-549 (CI Perf — actual benefits)
 >
-> **Operator verdict (msg_a1d9d4a4, msg_df5f756a):** Do **not** land the prelude alias flip (`std::rc::Rc` → `std::sync::Arc as Rc`). Land wrapper-authority consolidation if no detectable regression at measurement resolution; park flip, Send+Sync frontier, and C1 in-memory store behind the un-latch trigger. Consolidation merged #7919 at 16:38; #7875 closed without merge.
+> **Manager recommendation (smart-badger-549, msg_a1d9d4a4, msg_df5f756a):** Do **not** land the prelude alias flip (`std::rc::Rc` → `std::sync::Arc as Rc`). Land wrapper-authority consolidation if no detectable regression at measurement resolution; park flip, Send+Sync frontier, and C1 in-memory store behind the un-latch trigger. **Operator ratification:** #7919 merged; #7875 closed unmerged. The operator did not message this lane directly — warrant is recommendation plus merge/close actions, not an explicit operator ruling.
 
 ---
 
