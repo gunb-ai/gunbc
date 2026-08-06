@@ -420,6 +420,15 @@ jobs:
           echo "$CONFLICTS" | head -20 | sed 's/^/    /' >&2
           git diff --name-only --diff-filter=U -z | xargs -0 git checkout --ours --
           git diff --name-only --diff-filter=U -z | xargs -0 git add
+          STILL_UNMERGED="$(git diff --name-only --diff-filter=U)"
+          if [ -n "$STILL_UNMERGED" ]; then
+          echo "heal refused: the index still carries unmerged stages after resolution; refusing to commit" >&2
+          echo "  still-unmerged paths:" >&2
+          echo "$STILL_UNMERGED" | head -20 | sed 's/^/    /' >&2
+          echo "  a commit over an unmerged index is never fabricated; this job will not guess." >&2
+          git merge --abort
+          exit 1
+          fi
           git commit --no-verify --no-edit >/dev/null
           fi
           SEED_AHEAD_AFTER="$(git rev-list HEAD.."$BUILT_FROM" -- src/v1)"
