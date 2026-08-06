@@ -133,19 +133,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn nid(s: String) -> RoadmapNodeId { s }
 
-fn sized_with_intricacy(id: String, intricacy: Intricacy, title: String) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as RoadmapNodeIdentity,
-    node: nid(s: id),
-    line: DerivableLine { prs: [1], title: title, description: "" },
-    carriers: [],
-    sizing: Sized { intricacy: intricacy, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
-    execution: ExecutionContractUnspecified,
-    owner: "",
-    signoff: Unsigned,
-  }
-}
-
 fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as RoadmapNodeIdentity,
