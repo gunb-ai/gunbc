@@ -494,9 +494,13 @@ fn floor_component_receipt_json_value(
       )
     ]))
   } else {
-    json_object(members: base)
+    json_object(members: concat(base, [
+      json_kv(key: receipt_member_selection_degradation, value: json_null())
+    ]))
   }
 }
+
+data selection_degradation_always_emitted_note: String = "selection_degradation IS EMITTED ON EVERY PATH, INCLUDING THE ONE WITH NO SELECTION SNAPSHOT, where it is an explicit null. It previously appeared only when a snapshot existed, and the member was simply absent otherwise.\n\nThat was tolerable while nothing decoded the receipt. It stopped being tolerable the moment gunbc.floor_component_receipt_document made the member REQUIRED on the read side: the writer could still emit a document the reader would refuse, so encode-then-decode was broken for exactly the path claim_executor takes when no selection ran (review 49594 caught this, correctly, along with a note on the decoder side that overstated what this writer did).\n\nAn explicit null is the right repair rather than relaxing the decoder, because the two states differ and the receipt should say which one it is: `null` means this run had no selection degradation to report, and an ABSENT member means the writer did not tell you either way. Making absence impossible on the write side is what lets the read side treat absence as the defect it now is."
 
 fn floor_component_receipt_document(
   workflow_name: NonEmptyStr,
