@@ -1,20 +1,84 @@
 module v2.test.realization_vocabulary_containment.roster_soundness
 
+import v2.std.layer { LayerImportFact, LayerPrefixStd, LayerPrefixWorkflow }
+import v2.lens.realization_vocabulary_containment {
+  realization_vocab_live_leak_edges_from_facts,
+  realization_vocab_roster_sound
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data planted_stale_roster_entry: String = "dag/tools/_stale_migrated_off_consumer.dag"
+data typescript_sidecar_module: String = "extdeps.languages.typescript.program"
 
-data roster_soundness_fast_lane_note: String = "Live-corpus roster soundness receipt moved to long/realization_vocabulary_containment_witness_test.dag (5s fast-lane budget). This file retains the synthetic stale-roster RED control only."
+data bash_build_module: String = "v2.extdeps.languages.bash_build"
 
-data empty_live_leak_paths: List<String> = []
+data roster_soundness_fast_lane_note: String = "Live-corpus roster soundness receipt moved to long/realization_vocabulary_containment_witness_test.dag (5s fast-lane budget). Per-PR controls hand-build LayerImportFact census rows and derive live_leak_edges via realization_vocab_live_leak_edges_from_facts (not by projecting realization_vocab_grandfathered_edge_roster); roster_sound then compares that derived edge set against the grandfather roster. Positive: full TS-0 frozen census facts. RED: same census minus build_step so one grandfathered edge is stale."
+
+data ts0_frozen_census_facts: List<LayerImportFact> = [
+  LayerImportFact {
+    layer: LayerPrefixStd,
+    path: "dag/gunbc/roadmap_component.dag",
+    import_module: typescript_sidecar_module
+  },
+  LayerImportFact {
+    layer: LayerPrefixStd,
+    path: "dag/gunbc/design/theme_transition.dag",
+    import_module: typescript_sidecar_module
+  },
+  LayerImportFact {
+    layer: LayerPrefixStd,
+    path: "dag/gunbc/node_http_server_emit.dag",
+    import_module: typescript_sidecar_module
+  },
+  LayerImportFact {
+    layer: LayerPrefixWorkflow,
+    path: "src/v2/workflow/effect_plan_bash_materialize.dag",
+    import_module: bash_build_module
+  },
+  LayerImportFact {
+    layer: LayerPrefixStd,
+    path: "dag/tools/build_step.dag",
+    import_module: bash_build_module
+  }
+]
+
+data ts0_frozen_census_facts_missing_build_step: List<LayerImportFact> = [
+  LayerImportFact {
+    layer: LayerPrefixStd,
+    path: "dag/gunbc/roadmap_component.dag",
+    import_module: typescript_sidecar_module
+  },
+  LayerImportFact {
+    layer: LayerPrefixStd,
+    path: "dag/gunbc/design/theme_transition.dag",
+    import_module: typescript_sidecar_module
+  },
+  LayerImportFact {
+    layer: LayerPrefixStd,
+    path: "dag/gunbc/node_http_server_emit.dag",
+    import_module: typescript_sidecar_module
+  },
+  LayerImportFact {
+    layer: LayerPrefixWorkflow,
+    path: "src/v2/workflow/effect_plan_bash_materialize.dag",
+    import_module: bash_build_module
+  }
+]
+
+test fn realization_vocab_roster_soundness_census_complete_holds() -> Bool {
+  realization_vocab_roster_sound(
+    live_leak_edges: realization_vocab_live_leak_edges_from_facts(facts: ts0_frozen_census_facts)
+  )
+}
 
 test fn realization_vocab_roster_soundness_planted_stale_red_holds() -> Bool {
   realization_vocab_roster_sound(
-    roster: list_append(
-      left: realization_vocab_exception_paths(),
-      right: [planted_stale_roster_entry]
-    ),
-    live_leak_paths: empty_live_leak_paths
+    live_leak_edges: realization_vocab_live_leak_edges_from_facts(
+      facts: ts0_frozen_census_facts_missing_build_step
+    )
   ) == false
 }
