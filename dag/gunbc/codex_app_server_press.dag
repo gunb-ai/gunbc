@@ -1,7 +1,7 @@
 module gunbc.codex_app_server_press
 
 import std.types { NonEmptyStr, String, FilePath, List, Bool, Int }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, content_hash_of_value }
 import gunbc.provider_interface_binding {
   ProviderInterfaceBinding,
   ProviderInterfaceResolved,
@@ -45,6 +45,12 @@ import extdeps.languages.json.parse {
 data codex_press_note: String = "Account-standing observation for the Codex app-server specimen. This module does NOT claim a provider turn: thread/start and turn/start are target itinerary only until a subjectful WorkerTurn binding lands. An account-ready result must never be labeled turn-started."
 
 data codex_press_hermetic_evidence_root: FilePath = "/tmp/gunbc-codex-press-evidence" as FilePath
+
+data account_trip_digest_mode_note: String = "Hermetic parse helpers (parse_account_trip_stdout_for_tests) use AccountTripDigestStructural — content_hash_of_value fingerprints with zero host effects, so discovery stays mock-free. Wet observe_codex_account_preflight uses AccountTripDigestRetainPrivateSha512 (Mkdir+Write+sha512sum under srv1_provider_wire_evidence_root). Structural digests are NOT durable content identities; private SHA-512 retention is."
+
+type AccountTripDigestMode
+  = AccountTripDigestStructural
+  | AccountTripDigestRetainPrivateSha512
 
 type CodexRuntimeBundleReceiptRef {
   receipt_identity: ContentHash
@@ -383,10 +389,23 @@ fn empty_account_trip_parse_acc() -> AccountTripParseAcc {
   }
 }
 
-fn digest_retained_line(line: String, evidence_root: FilePath) -> ContentHash? {
-  match retain_private_evidence_bytes_detailed(root: evidence_root, bytes: line) {
-    Absent => none
-    Present { value: retained } => Present { value: retained.content_digest }
+fn digest_account_trip_line(
+  line: String,
+  evidence_root: FilePath,
+  mode: AccountTripDigestMode,
+) -> ContentHash? {
+  if line == "" {
+    none
+  } else {
+    match mode {
+      AccountTripDigestStructural =>
+        Present { value: content_hash_of_value(value: line as NonEmptyStr) }
+      AccountTripDigestRetainPrivateSha512 =>
+        match retain_private_evidence_bytes_detailed(root: evidence_root, bytes: line) {
+          Absent => none
+          Present { value: retained } => Present { value: retained.content_digest }
+        }
+    }
   }
 }
 
@@ -394,8 +413,9 @@ fn push_unknown_digest(
   acc: AccountTripParseAcc,
   line: String,
   evidence_root: FilePath,
+  mode: AccountTripDigestMode,
 ) -> AccountTripParseAcc {
-  match digest_retained_line(line: line, evidence_root: evidence_root) {
+  match digest_account_trip_line(line: line, evidence_root: evidence_root, mode: mode) {
     Absent =>
       AccountTripParseAcc {
         initialize: acc.initialize,
@@ -417,19 +437,31 @@ fn absorb_account_trip_line(
   acc: AccountTripParseAcc,
   line: String,
   evidence_root: FilePath,
+  mode: AccountTripDigestMode,
 ) -> AccountTripParseAcc {
   let trimmed = line.trim()
   if trimmed == "" {
     acc
   } else {
     match parse_json(s: trimmed) {
-      Absent => push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root)
+      Absent =>
+        push_unknown_digest(
+          acc: acc,
+          line: trimmed,
+          evidence_root: evidence_root,
+          mode: mode,
+        )
       Present { value: parsed } =>
         match json_object_unique_member(v: parsed, key: "id") {
           JsonMemberFound { value: idv } =>
             match json_rpc_id_as_int(v: idv) {
               Absent =>
-                push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root)
+                push_unknown_digest(
+                  acc: acc,
+                  line: trimmed,
+                  evidence_root: evidence_root,
+                  mode: mode,
+                )
               Present { value: n } =>
                 let disposition = disposition_for_id_response(id: n, obj: parsed)
                 if n == 1 {
@@ -466,11 +498,21 @@ fn absorb_account_trip_line(
                     unknown_frame_digests: acc.unknown_frame_digests,
                   }
                 } else {
-                  push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root)
+                  push_unknown_digest(
+                    acc: acc,
+                    line: trimmed,
+                    evidence_root: evidence_root,
+                    mode: mode,
+                  )
                 }
             }
           _ =>
-            push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root)
+            push_unknown_digest(
+              acc: acc,
+              line: trimmed,
+              evidence_root: evidence_root,
+              mode: mode,
+            )
         }
     }
   }
@@ -513,14 +555,25 @@ fn parse_account_trip_session(
   stdout: String,
   stderr: String,
   evidence_root: FilePath,
+  mode: AccountTripDigestMode,
 ) -> CodexAccountStandingEvidence {
   let acc = fold(
     split(s: stdout, delimiter: "\n"),
     init: empty_account_trip_parse_acc(),
-    f: (a, line) => absorb_account_trip_line(acc: a, line: line, evidence_root: evidence_root),
+    f: (a, line) =>
+      absorb_account_trip_line(
+        acc: a,
+        line: line,
+        evidence_root: evidence_root,
+        mode: mode,
+      ),
   )
   let stderr_bytes = if stderr == "" { "(empty-stderr)" } else { stderr }
-  let stderr_digest = digest_retained_line(line: stderr_bytes, evidence_root: evidence_root)
+  let stderr_digest = digest_account_trip_line(
+    line: stderr_bytes,
+    evidence_root: evidence_root,
+    mode: mode,
+  )
   CodexAccountStandingEvidence {
     itinerary: codex_press_account_trip_methods(),
     initialize: acc.initialize,
@@ -605,6 +658,7 @@ fn parse_account_trip_stdout_for_tests(stdout: String) -> CodexAccountStandingEv
     stdout: stdout,
     stderr: "",
     evidence_root: codex_press_hermetic_evidence_root,
+    mode: AccountTripDigestStructural,
   )
 }
 
@@ -638,6 +692,7 @@ fn observe_codex_account_preflight(
           stdout: capture.stdout,
           stderr: capture.stderr,
           evidence_root: srv1_provider_wire_evidence_root,
+          mode: AccountTripDigestRetainPrivateSha512,
         )
         let session_binding = binding_from_initialize_session(
           bundle: bundle,
