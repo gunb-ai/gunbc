@@ -1094,13 +1094,6 @@ pub fn set_eval_call_memo_enabled(ctx: &InterpContext, enabled: bool) {
 /// Cross-witness serving is an outer-frame promotion that must arrive as a
 /// conscious provider row with byte-bounded admission — never a default.
 pub fn eval_call_memo_frame_exit(ctx: &InterpContext) {
-    // LOCAL MEASUREMENT ARM — NOT FOR MERGE. Skipping the drain is the
-    // unbounded-retention shape the comment above prices at 20GiB; it exists
-    // here only to measure what a cross-witness promotion could recover before
-    // any bounded promotion is designed.
-    if std::env::var("GUNBC_EVAL_MEMO_CROSS_WITNESS_PROBE").is_ok_and(|v| v != "0") {
-        return;
-    }
     let mut m = ctx.eval_call_memo.borrow_mut();
     m.map.clear();
     m.keepalive_fns.clear();

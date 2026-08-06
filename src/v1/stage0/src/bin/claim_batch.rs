@@ -480,11 +480,6 @@ fn run_witnesses(
         // values across witnesses is byte-unbounded (20GiB-class kills).
         v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
     }
-    // Per-ENTRY recompute ledger (no-op unless GUNBC_RECOMPUTE_TRACE=1). The
-    // trace outlives the per-witness memo eviction above, so what it reports
-    // here is the cross-witness duplicate demand this ctx paid for — the one
-    // population the witness-frame memo cannot serve by construction.
-    v1_compiler::v1_interpreter::print_eval_recompute_trace(&ctx);
     Ok(())
 }
 
@@ -679,7 +674,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             // must not retain values across witnesses sharing this ctx).
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
         }
-        v1_compiler::v1_interpreter::print_eval_recompute_trace(&ctx);
         if stats_requested {
             print_interp_stats(&ctx, flatten_baseline);
         }
