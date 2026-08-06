@@ -1,0 +1,38 @@
+module tools.interpreter_dispatch_bijection_real_roster_transport
+
+import extdeps.git.inspect
+import extdeps.shell
+import gunbc.retained_shell_script { retained_foreign }
+import std.logic { Bool }
+
+data interpreter_dispatch_bijection_real_roster_transport_note: String = "R1 closeout item TWO real-crate bijection receipt (gunbc#7825): executes the two #[ignore] integration tests in src/v1/stage0/tests/interpreter_dispatch_bijection_real_roster_red.rs via shell.Exec.Run with RUSTC_WRAPPER cleared — real git clone, real gunbc run main_wet regen, real cargo build -p v1-compiler on the clone. cargo.Build.Test routes through ctrl-build remote in this environment and is intentionally not used here. Claim-A compile-red siblings stay in the default local cargo test run; this transport is the falsifier_self_host_wet enrollment path for claim-B."
+
+fn interpreter_dispatch_bijection_real_roster_red_shell(root: String) -> String {
+  concat(
+    "set -euo pipefail\n",
+    concat(
+      "cd ",
+      concat(
+        root,
+        concat(
+          "\n",
+          concat(
+            "env RUSTC_WRAPPER= CTRL_BUILD_MODE=local /opt/cargo/bin/cargo test -p v1-compiler --test interpreter_dispatch_bijection_real_roster_red --release -- --ignored --exact w_red_real_roster_row_with_no_real_handler_arm_refuses_compile\n",
+            "env RUSTC_WRAPPER= CTRL_BUILD_MODE=local /opt/cargo/bin/cargo test -p v1-compiler --test interpreter_dispatch_bijection_real_roster_red --release -- --ignored --exact w_red_real_handler_arm_with_no_real_roster_row_refuses_compile\n"
+          )
+        )
+      )
+    )
+  )
+}
+
+fn run_interpreter_dispatch_bijection_real_roster_red() -> Bool {
+  let root = git.Inspect.Toplevel()
+  let run = shell.Exec.Run(
+    script: retained_foreign(
+      body: interpreter_dispatch_bijection_real_roster_red_shell(root: root.path),
+      reason: "interpreter dispatch bijection real roster cargo integration tests"
+    )
+  )
+  run.success
+}
