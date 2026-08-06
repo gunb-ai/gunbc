@@ -146,14 +146,16 @@ Helper (v1 parity): `cost_loop_expr(binder, iterations, body)` = `CostSum` unles
 
 **Requirement:** every enrolled `lens_cost/*` witness green **before** carrier merge and **after**, by execution.
 
-**Executed 2026-08-05** on worktree `quick-koi-569` at commit `c71592487`, via:
+**Executed 2026-08-05** (pre-carrier) on worktree `quick-koi-569` at commit `c71592487`, via:
 
 ```
 ./target/release/claim_batch --source-root dag --source-root src/v2 \
   <14 entry groups, 22 witness functions — see receipt table>
 ```
 
-**Result: 22/22 PASS, 0 FAIL.** Receipt is the executed baseline for C1 carrier authoring.
+**Result: 22/22 PASS, 0 FAIL** (pre-carrier authoring receipt).
+
+**Re-executed 2026-08-06** on carrier head `9c1532707` (same worktree, worktree `claim_batch`): **22/22 PASS, 0 FAIL** plus **7/7** C1 carrier witnesses (`bounded_summation_test.dag` ×3, `expr_refusal_test.dag` ×4). Post-carrier baseline holds.
 
 | Entry | Function | Result |
 | --- | --- | --- |
@@ -177,8 +179,8 @@ Helper (v1 parity): `cost_loop_expr(binder, iterations, body)` = `CostSum` unles
 | `copied_port_derivation_test.dag` | `multi_linear_ambiguous_derivation_refuses_red_control` | PASS |
 | `copied_port_derivation_test.dag` | `citation_retained_frontier_count_is_three` | PASS |
 | `p9_llvm_instruction_cost_registry_owner.dag` | `p9_registry_owner_receipt_holds` | PASS |
-| `budget_roster_completeness_test.dag` | `complexity_budget_roster_unrated_declared_budget_semantic_red_holds` | PASS |
-| `budget_roster_completeness_test.dag` | `complexity_budget_roster_family_gate_holds` | PASS |
+| `src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag` | `complexity_budget_roster_unrated_declared_budget_semantic_red_holds` | PASS |
+| `src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag` | `complexity_budget_roster_family_gate_holds` | PASS |
 
 ### Execution environment finding (not a tree defect)
 
@@ -216,7 +218,7 @@ The installed PATH binary cannot parse current `.dag` syntax (qualified type pat
 1. Add §2 types + §3 `CostExprRefusalCause` to `v2.lens.cost` (`v2.lens.cost.expr`). **Candidate on branch; pending main delivery.**
 2. Add §4 normalization functions; **do not** edit `symbolic_cost_fold` / `cost_lens`. **Candidate.**
 3. Add witnesses §6 (`bounded_summation_test.dag`, `expr_refusal_test.dag`). **Candidate.**
-4. Run 22/22 baseline roster green on CI at final head. **Pending.**
+4. Run 22/22 baseline roster green on CI at final head. **22/22 + 7/7 carrier witnesses green locally at `9c1532707`; CI floor pending.**
 5. `llvm_instruction_cost` — **no edit**. **Unchanged.**
 6. Design note on main (`docs/plans/c1-cost-expr-authority-design.md`). **Delivered.**
 
