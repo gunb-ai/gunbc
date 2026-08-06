@@ -19975,6 +19975,9 @@ fn declared_source_refs_blocks_skip(axis: DeclaredSourceRefAxis) -> bool {
 // Lane: 7933A temporary safety stop-line (calm-fox-44) — any non-docs .dag touch blocks
 // discovery skip for compile-clean shard_a and scope witness entries. BROAD interim rule,
 // not precise self-confirmation; see `gunbc.affected_set_stop_line` and 7933B plan.
+// Mid-life parallel representation (§3): validating-entry paths are named in
+// `gunbc.affected_set_stop_line`; the consts below are the interim Rust twin
+// (7933B deletes these, not the .dag rows).
 // DELETE WHEN dissolved: `COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY`,
 // `COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY`, `compile_clean_touched_path_norm`,
 // `compile_clean_touched_path_is_docs_only`, `compile_clean_touched_path_is_dag_source`,
