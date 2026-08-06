@@ -1,0 +1,268 @@
+module extdeps.github.workflow_run_event
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonNumber }
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject
+}
+import extdeps.github.actions { github_event_path_env }
+import extdeps.github.workflow_runs { WorkflowRunConclusion, parse_workflow_run_conclusion }
+import std.types { CommitSha, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/webhooks/webhook-events-and-payloads#workflow_run"
+  }
+}
+
+data workflow_run_event_surface_note: String = "THIS IS THE EVENT PAYLOAD, NOT THE REST RESOURCE, AND THE TWO ARE DELIBERATELY NOT ONE CARRIER. extdeps.github.workflow_runs models what `GET /repos/{owner}/{repo}/actions/runs` RETURNS — a WorkflowRun resource, listed and filtered by an API client that asked for it. This module models what GitHub DELIVERS to a workflow_run-triggered job through GITHUB_EVENT_PATH: a webhook envelope whose members overlap the resource's but whose shape, nullability and surrounding context are the webhook's own. Forcing the event's fields onto WorkflowRun would make one carrier answer to two upstream authorities that version independently — the external-decomposition rule in DESIGN §3 — and it would also be a lie about nullability, because the resource is fetched after the fact while the event is delivered at an activity boundary where conclusion may legitimately be null. WHAT IS SHARED IS SHARED: WorkflowRunConclusion is imported, not re-declared, because the conclusion vocabulary genuinely is one upstream vocabulary and a second copy of it would be the §3 nickname. The envelope, not the vocabulary, is what forks."
+
+data workflow_run_event_run_id_carrier_note: String = "run_id is carried as the decimal digits VERBATIM rather than decoded to an Int, and that is a modeling decision with a receipt on both sides. There is no JSON-number-to-Int decode anywhere in this tree — extdeps.languages.json.emit keeps every number as a JsonNumberLexeme (a branded String) precisely so that parsing never silently reinterprets a lexeme — so decoding here would mint the repo's first such decode inside a webhook reader, which is the wrong place to introduce it and would need its own overflow and leading-zero story. It is also unnecessary: the only consumer question is IDENTITY — does the receipt this alert downloaded come from the run this event describes — and gunbc.floor_component_receipt already carries its subject run_id as NonEmptyStr, so the join is string-to-string at both ends with no decode on either side. A decode would add a lossy step between two carriers that already agree. If arithmetic on run ids is ever needed, the decode lands in the JSON authority with its own witness, not here."
+
+data workflow_run_event_member: String = "workflow_run"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.workflow_run_event",
+      decl_name: "workflow_run_event_member",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.workflow_run_event.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type WorkflowRunEvent {
+  activity: String
+
+  run_id: NonEmptyStr
+  workflow_name: String
+  conclusion: WorkflowRunConclusion
+  html_url: NonEmptyStr
+  run_started_at: NonEmptyStr
+
+  head_sha: CommitSha
+  head_branch: String
+  head_repository_full_name: String
+
+  originating_event: String
+
+  repository_full_name: String
+}
+
+type WorkflowRunEventObservation
+  = WorkflowRunEventObserved { event: WorkflowRunEvent }
+  | WorkflowRunEventMemberAbsent { member: String }
+  | WorkflowRunEventMemberMalformed { member: String, detail: String }
+  | WorkflowRunEventMalformed { detail: String }
+  | WorkflowRunEventPayloadReadRefused { path: String, cause: String }
+
+type WorkflowRunEventMember
+  = WorkflowRunEventMemberFound { value: JsonValue }
+  | WorkflowRunEventMemberFailed { observation: WorkflowRunEventObservation }
+
+fn workflow_run_event_member_at(v: JsonValue, key: String) -> WorkflowRunEventMember {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberAbsent =>
+      WorkflowRunEventMemberFailed { observation: WorkflowRunEventMemberAbsent { member: key } }
+    JsonMemberDuplicated { count: _ } =>
+      WorkflowRunEventMemberFailed {
+        observation: WorkflowRunEventMemberMalformed { member: key, detail: "member is duplicated" }
+      }
+    JsonMemberNotAnObject =>
+      WorkflowRunEventMemberFailed {
+        observation: WorkflowRunEventMemberMalformed { member: key, detail: "enclosing value is not a JSON object" }
+      }
+    JsonMemberFound { value: found } =>
+      WorkflowRunEventMemberFound { value: found }
+  }
+}
+
+type WorkflowRunEventText
+  = WorkflowRunEventTextFound { text: String }
+  | WorkflowRunEventTextFailed { observation: WorkflowRunEventObservation }
+
+data workflow_run_event_number_as_text_note: String = "A JSON number is admitted here beside a JSON string because GitHub delivers run id as a number and every other field this module reads as a string. Admitting the number's LEXEME is not a coercion — it is the digits the payload actually carried, unchanged — and the alternative (refusing numbers) would force the run id to be read through a second, number-shaped path for no gain, since the consumer compares it to a string. Null, bool, array and object all refuse, so the widening is exactly one wire form wide and every other shape is still a located malformation."
+
+fn workflow_run_event_text_at(v: JsonValue, key: String) -> WorkflowRunEventText {
+  match workflow_run_event_member_at(v: v, key: key) {
+    WorkflowRunEventMemberFailed { observation: o } =>
+      WorkflowRunEventTextFailed { observation: o }
+    WorkflowRunEventMemberFound { value: found } =>
+      match found {
+        JsonString { value: s } =>
+          if s == "" {
+            WorkflowRunEventTextFailed {
+              observation: WorkflowRunEventMemberMalformed { member: key, detail: "member is the empty string" }
+            }
+          } else {
+            WorkflowRunEventTextFound { text: s }
+          }
+        JsonNumber { lexeme: l } =>
+          WorkflowRunEventTextFound { text: l as String }
+        JsonNull =>
+          WorkflowRunEventTextFailed {
+            observation: WorkflowRunEventMemberMalformed { member: key, detail: "member is null" }
+          }
+        JsonBool { value: _ } =>
+          WorkflowRunEventTextFailed {
+            observation: WorkflowRunEventMemberMalformed { member: key, detail: "member is a bool, expected a string" }
+          }
+        JsonArray { elements: _ } =>
+          WorkflowRunEventTextFailed {
+            observation: WorkflowRunEventMemberMalformed { member: key, detail: "member is an array, expected a string" }
+          }
+        JsonObject { members: _ } =>
+          WorkflowRunEventTextFailed {
+            observation: WorkflowRunEventMemberMalformed { member: key, detail: "member is an object, expected a string" }
+          }
+      }
+  }
+}
+
+fn workflow_run_event_nested_text(v: JsonValue, outer: String, inner: String) -> WorkflowRunEventText {
+  match workflow_run_event_member_at(v: v, key: outer) {
+    WorkflowRunEventMemberFailed { observation: o } =>
+      WorkflowRunEventTextFailed { observation: o }
+    WorkflowRunEventMemberFound { value: nested } =>
+      match workflow_run_event_text_at(v: nested, key: inner) {
+        WorkflowRunEventTextFailed { observation: o } =>
+          WorkflowRunEventTextFailed { observation: o }
+        WorkflowRunEventTextFound { text: t } =>
+          WorkflowRunEventTextFound { text: t }
+      }
+  }
+}
+
+data workflow_run_event_conclusion_required_note: String = "conclusion is REQUIRED by this decoder and a null one is a located malformation rather than an Absent field, because of what the envelope is FOR. GitHub delivers workflow_run at three activities and leaves conclusion null until the run completes; this module is read only from a WorkflowRunCompleted trigger, where the activity is `completed` and a conclusion therefore exists. Modeling it as optional would push a state that cannot occur on this path onto every consumer as an arm they must invent an answer for — and the plausible answer (treat null as `not finished yet, do nothing`) is indistinguishable from the real defect (the payload changed shape underneath us, or the trigger was widened without revisiting this reader). Both must be loud. The activity member is decoded and carried BESIDE the conclusion for the same reason: the admission wall re-checks it rather than trusting the trigger filter, so a widened trigger is caught by the reader instead of silently admitted."
+
+data workflow_run_event_total_decode_note: String = "The decode is a nested chain of total matches with NO catch-all and NO default value anywhere. Every member that cannot be read short-circuits to the SAME observation coproduct carrying the member name that failed and why, so a payload-shape change reports which field moved rather than surfacing as a downstream nonsense value. This is the push-event precedent (extdeps.github.push_event push_before_from_event_json) applied to a larger record: one Absent arm, one Malformed arm, one read-refusal arm, no arm that guesses. The nesting is the price of threading a short-circuit through a language with no early return, and it is deliberately paid here — in the reader — rather than by giving fields defaults that consumers would then have to distrust."
+
+fn workflow_run_event_assemble(
+  activity: String,
+  run_id: String,
+  workflow_name: String,
+  conclusion: WorkflowRunConclusion,
+  html_url: String,
+  run_started_at: String,
+  head_sha: String,
+  head_branch: String,
+  head_repository_full_name: String,
+  originating_event: String,
+  repository_full_name: String
+) -> WorkflowRunEventObservation {
+  WorkflowRunEventObserved {
+    event: WorkflowRunEvent {
+      activity: activity,
+      run_id: run_id as NonEmptyStr,
+      workflow_name: workflow_name,
+      conclusion: conclusion,
+      html_url: html_url as NonEmptyStr,
+      run_started_at: run_started_at as NonEmptyStr,
+      head_sha: head_sha as CommitSha,
+      head_branch: head_branch,
+      head_repository_full_name: head_repository_full_name,
+      originating_event: originating_event,
+      repository_full_name: repository_full_name
+    }
+  }
+}
+
+fn workflow_run_event_from_json(text: String) -> WorkflowRunEventObservation {
+  match parse_json(s: text) {
+    Absent =>
+      WorkflowRunEventMalformed { detail: "GITHUB_EVENT_PATH payload is not valid JSON" }
+    Present { value: doc } =>
+      match workflow_run_event_text_at(v: doc, key: "action") {
+        WorkflowRunEventTextFailed { observation: o } => o
+        WorkflowRunEventTextFound { text: activity } =>
+          match workflow_run_event_nested_text(v: doc, outer: "repository", inner: "full_name") {
+            WorkflowRunEventTextFailed { observation: o } => o
+            WorkflowRunEventTextFound { text: repo_full } =>
+              match workflow_run_event_member_at(v: doc, key: workflow_run_event_member) {
+                WorkflowRunEventMemberFailed { observation: o } => o
+                WorkflowRunEventMemberFound { value: run } =>
+                  match workflow_run_event_text_at(v: run, key: "id") {
+                    WorkflowRunEventTextFailed { observation: o } => o
+                    WorkflowRunEventTextFound { text: run_id } =>
+                      match workflow_run_event_text_at(v: run, key: "name") {
+                        WorkflowRunEventTextFailed { observation: o } => o
+                        WorkflowRunEventTextFound { text: wf_name } =>
+                          match workflow_run_event_text_at(v: run, key: "conclusion") {
+                            WorkflowRunEventTextFailed { observation: o } => o
+                            WorkflowRunEventTextFound { text: raw_conclusion } =>
+                              match parse_workflow_run_conclusion(raw: raw_conclusion) {
+                                Absent =>
+                                  WorkflowRunEventMemberMalformed {
+                                    member: "workflow_run.conclusion",
+                                    detail: concat("unmodelled workflow run conclusion: ", raw_conclusion)
+                                  }
+                                Present { value: conclusion } =>
+                                  match workflow_run_event_text_at(v: run, key: "html_url") {
+                                    WorkflowRunEventTextFailed { observation: o } => o
+                                    WorkflowRunEventTextFound { text: html_url } =>
+                                      match workflow_run_event_text_at(v: run, key: "run_started_at") {
+                                        WorkflowRunEventTextFailed { observation: o } => o
+                                        WorkflowRunEventTextFound { text: started } =>
+                                          match workflow_run_event_text_at(v: run, key: "head_sha") {
+                                            WorkflowRunEventTextFailed { observation: o } => o
+                                            WorkflowRunEventTextFound { text: head_sha } =>
+                                              match workflow_run_event_text_at(v: run, key: "head_branch") {
+                                                WorkflowRunEventTextFailed { observation: o } => o
+                                                WorkflowRunEventTextFound { text: head_branch } =>
+                                                  match workflow_run_event_nested_text(v: run, outer: "head_repository", inner: "full_name") {
+                                                    WorkflowRunEventTextFailed { observation: o } => o
+                                                    WorkflowRunEventTextFound { text: head_repo } =>
+                                                      match workflow_run_event_text_at(v: run, key: "event") {
+                                                        WorkflowRunEventTextFailed { observation: o } => o
+                                                        WorkflowRunEventTextFound { text: originating } =>
+                                                          workflow_run_event_assemble(
+                                                            activity: activity,
+                                                            run_id: run_id,
+                                                            workflow_name: wf_name,
+                                                            conclusion: conclusion,
+                                                            html_url: html_url,
+                                                            run_started_at: started,
+                                                            head_sha: head_sha,
+                                                            head_branch: head_branch,
+                                                            head_repository_full_name: head_repo,
+                                                            originating_event: originating,
+                                                            repository_full_name: repo_full
+                                                          )
+                                                      }
+                                                  }
+                                              }
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn workflow_run_event_from_event_path(path: String) -> WorkflowRunEventObservation {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    workflow_run_event_from_json(text: read.content)
+  } else {
+    WorkflowRunEventPayloadReadRefused {
+      path: path,
+      cause: read.error
+    }
+  }
+}

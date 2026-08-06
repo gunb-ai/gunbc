@@ -1,0 +1,205 @@
+module gunbc.falsifier_alert_state
+
+import std.types { NonEmptyStr, String, EpochMs }
+import extdeps.languages.json.emit {
+  JsonValue, JsonString, JsonNumber,
+  json_object, json_kv, json_string, json_int, JsonKeyValue,
+  serialize_json
+}
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject
+}
+
+data falsifier_alert_state_purpose_note: String = "ALERT-2's state half. The alert's own state — when the incident started, what is currently failing, and when it last NOTIFIED — rides in the issue body as a typed marker, so the issue remains the single authority for its own state and no external store exists. This module owns the marker's shape and both directions across it.\n\nlast_notification_at IS THE POINT OF THIS CARRIER. It replaces recovering the throttle's input by listing the issue's comments and reading the newest one's timestamp, which failed three separate ways: it read comments[length-1] from a single per_page=100 page, and since the endpoint returns oldest-first and accepts no sort parameter, past 100 comments that index is the 100th and only gets older — so the throttle inverted from at-most-every-20h into every-run, turning a silent alert into a spamming one. It also broke if anyone else commented on the issue, and it made a fact the alert itself produced depend on an API call that could fail. The alert knows when it last notified because it did the notifying; that fact is now written where it is produced and read back with no API call at all."
+
+type FalsifierAlertState {
+  first_red: EpochMs
+  signature: NonEmptyStr
+  last_notification_at: EpochMs
+}
+
+data falsifier_alert_state_marker_prefix: NonEmptyStr = "<!-- falsifier-alert-state: "
+
+data falsifier_alert_state_marker_suffix: NonEmptyStr = " -->"
+
+data falsifier_alert_state_first_red_member: String = "first_red"
+
+data falsifier_alert_state_signature_member: String = "signature"
+
+data falsifier_alert_state_last_notification_member: String = "last_notification_at"
+
+data falsifier_alert_state_decode_note: String = "STATE DECODING IS FOUR NAMED STATES AND NOT AN OPTIONAL. CurrentState is a marker carrying all three fields. LegacyStateWithoutLastNotification is a marker written before last_notification_at existed — it has first_red and signature, and its absence of a notification time is a real fact about a real issue in the wild, not a malformation. StateAbsent is no marker at all. StateMalformed is a marker that is present but does not decode.\n\nCollapsing any pair of these would produce a wrong action. Legacy and Absent differ in whether first_red is known, and first_red is the ONLY record of when the incident started — losing it silently restarts the clock on an incident that has been running for days. Absent and Malformed differ in whether something is broken: an issue that predates markers is expected, an issue whose marker does not parse means either the body was hand-edited or the writer has a defect, and both want to be seen.\n\nTHE LEGACY ARM SENDS EXACTLY ONE MIGRATION NOTIFICATION and rewrites the body with typed state, after which the issue is Current forever. One, because the transition is a real event an operator should see once; exactly one, because a migration that notified on every run would be the spamming failure this module exists to close, arriving by a different road.\n\nTHE `First red:` REGEX RECOVERY IS DROPPED. The previous version recovered first_red from a RENDERED PROSE LINE in the issue body when no marker was present. State is never recovered from prose: the prose is a projection for humans, its wording is free to change, and a parser over it makes every cosmetic edit to the alert's own rendering a potential silent state loss. An issue with no marker now yields StateAbsent honestly rather than a value reconstructed from a sentence."
+
+type FalsifierAlertStateDecoding
+  = CurrentState { state: FalsifierAlertState }
+  | LegacyStateWithoutLastNotification { first_red: EpochMs, signature: NonEmptyStr }
+  | StateAbsent
+  | StateMalformed { detail: String }
+
+fn falsifier_alert_state_json(state: FalsifierAlertState) -> JsonValue {
+  json_object(members: [
+    json_kv(key: falsifier_alert_state_first_red_member, value: json_int(n: state.first_red)),
+    json_kv(key: falsifier_alert_state_signature_member, value: json_string(s: state.signature as String)),
+    json_kv(key: falsifier_alert_state_last_notification_member, value: json_int(n: state.last_notification_at))
+  ])
+}
+
+fn falsifier_alert_state_marker(state: FalsifierAlertState) -> String {
+  concat(
+    concat(falsifier_alert_state_marker_prefix as String, serialize_json(v: falsifier_alert_state_json(state: state))),
+    falsifier_alert_state_marker_suffix as String
+  )
+}
+
+type FalsifierAlertStateNumber
+  = StateNumberFound { value: EpochMs }
+  | StateNumberMissing
+  | StateNumberMalformed { detail: String }
+
+data falsifier_alert_state_number_note: String = "A state number is read back through the JSON number's LEXEME, and a lexeme that is not a run of decimal digits is a malformation rather than a value. This module writes those numbers itself through json_int, so any other shape means the marker was edited by hand or produced by something that is not this writer — in both cases the honest answer is Malformed. The negative arm is explicit rather than left to the carrier: parse_int admits a leading minus, so without it a negative lexeme would reach an `Int where range(min: 0)` position having passed the only check that looked at it."
+
+fn falsifier_alert_state_number_at(v: JsonValue, key: String) -> FalsifierAlertStateNumber {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberAbsent => StateNumberMissing
+    JsonMemberDuplicated { count: _ } =>
+      StateNumberMalformed { detail: concat(key, " is duplicated in the state marker") }
+    JsonMemberNotAnObject =>
+      StateNumberMalformed { detail: "state marker payload is not a JSON object" }
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonNumber { lexeme: l } =>
+          match parse_int(s: l as String) {
+            Absent =>
+              StateNumberMalformed { detail: concat(key, " is not an integer") }
+            Present { value: n } =>
+              if n < 0 {
+                StateNumberMalformed { detail: concat(key, " is negative") }
+              } else {
+                StateNumberFound { value: n as EpochMs }
+              }
+          }
+        JsonString { value: _ } =>
+          StateNumberMalformed { detail: concat(key, " is a string, expected a number") }
+        JsonNull =>
+          StateNumberMalformed { detail: concat(key, " is null, expected a number") }
+        JsonBool { value: _ } =>
+          StateNumberMalformed { detail: concat(key, " is a bool, expected a number") }
+        JsonArray { elements: _ } =>
+          StateNumberMalformed { detail: concat(key, " is an array, expected a number") }
+        JsonObject { members: _ } =>
+          StateNumberMalformed { detail: concat(key, " is an object, expected a number") }
+      }
+  }
+}
+
+type FalsifierAlertStateSignature
+  = StateSignatureFound { value: NonEmptyStr }
+  | StateSignatureMissing
+  | StateSignatureMalformed { detail: String }
+
+fn falsifier_alert_state_signature_at(v: JsonValue) -> FalsifierAlertStateSignature {
+  match json_object_unique_member(v: v, key: falsifier_alert_state_signature_member) {
+    JsonMemberAbsent => StateSignatureMissing
+    JsonMemberDuplicated { count: _ } =>
+      StateSignatureMalformed { detail: "signature is duplicated in the state marker" }
+    JsonMemberNotAnObject =>
+      StateSignatureMalformed { detail: "state marker payload is not a JSON object" }
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonString { value: s } =>
+          if s == "" {
+            StateSignatureMalformed { detail: "signature is the empty string" }
+          } else {
+            StateSignatureFound { value: s as NonEmptyStr }
+          }
+        JsonNumber { lexeme: _ } =>
+          StateSignatureMalformed { detail: "signature is a number, expected a string" }
+        JsonNull =>
+          StateSignatureMalformed { detail: "signature is null, expected a string" }
+        JsonBool { value: _ } =>
+          StateSignatureMalformed { detail: "signature is a bool, expected a string" }
+        JsonArray { elements: _ } =>
+          StateSignatureMalformed { detail: "signature is an array, expected a string" }
+        JsonObject { members: _ } =>
+          StateSignatureMalformed { detail: "signature is an object, expected a string" }
+      }
+  }
+}
+
+fn falsifier_alert_state_from_payload(payload: String) -> FalsifierAlertStateDecoding {
+  match parse_json(s: payload) {
+    Absent => StateMalformed { detail: "state marker payload is not valid JSON" }
+    Present { value: doc } =>
+      match falsifier_alert_state_signature_at(v: doc) {
+        StateSignatureMissing => StateMalformed { detail: "state marker has no signature" }
+        StateSignatureMalformed { detail: d } => StateMalformed { detail: d }
+        StateSignatureFound { value: signature } =>
+          match falsifier_alert_state_number_at(v: doc, key: falsifier_alert_state_first_red_member) {
+            StateNumberMissing => StateMalformed { detail: "state marker has no first_red" }
+            StateNumberMalformed { detail: d } => StateMalformed { detail: d }
+            StateNumberFound { value: first_red } =>
+              match falsifier_alert_state_number_at(v: doc, key: falsifier_alert_state_last_notification_member) {
+                StateNumberMissing =>
+                  LegacyStateWithoutLastNotification { first_red: first_red, signature: signature }
+                StateNumberMalformed { detail: d } => StateMalformed { detail: d }
+                StateNumberFound { value: last_notification } =>
+                  CurrentState {
+                    state: FalsifierAlertState {
+                      first_red: first_red,
+                      signature: signature,
+                      last_notification_at: last_notification
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+data falsifier_alert_throttle_window_note: String = "The heartbeat window is 20 hours expressed in milliseconds, and it is deliberately shorter than the 24-hour period a `daily` heartbeat suggests. A run cadence of every 4 hours means a 24-hour window would let a heartbeat slip a full cycle whenever the previous one landed slightly late, so the window is set below the cadence-aligned boundary it must not cross. It is a policy budget, not a measurement, which is what makes a literal legitimate here under DESIGN's oracle rule: it states the maximum silence an operator accepts during a live incident."
+
+data falsifier_alert_heartbeat_window_ms: EpochMs = 72000000
+
+data falsifier_alert_throttle_note: String = "THE THROTTLE DECISION IS PURE AND TOTAL over (now, state, current signature). A CHANGED SIGNATURE ALWAYS NOTIFIES AND IS NEVER THROTTLED — it is a different incident with a different remedy, so suppressing it as `still red` is the state-space conflation the whole signature mechanism exists to prevent. An unchanged signature notifies only when the window has elapsed since the LAST NOTIFICATION, not since the run started and not since first_red. Comparing against last_notification_at is what makes the window mean what it says: measuring from first_red would make the interval drift with incident age, and measuring from the run start would notify every run."
+
+type FalsifierAlertNotificationDecision
+  = NotifyIncidentChanged { previous: NonEmptyStr, current: NonEmptyStr }
+  | NotifyHeartbeatDue { silent_for: EpochMs }
+  | NotifyMigratedToTypedState
+  | NotifyFirstRed
+  | SuppressWithinWindow { silent_for: EpochMs }
+
+fn falsifier_alert_notification_decision(
+  now: EpochMs,
+  decoding: FalsifierAlertStateDecoding,
+  signature: NonEmptyStr
+) -> FalsifierAlertNotificationDecision {
+  match decoding {
+    StateAbsent => NotifyFirstRed
+    StateMalformed { detail: _ } => NotifyFirstRed
+    LegacyStateWithoutLastNotification { first_red: _, signature: _ } => NotifyMigratedToTypedState
+    CurrentState { state: s } =>
+      if (s.signature as String) != (signature as String) {
+        NotifyIncidentChanged { previous: s.signature, current: signature }
+      } else if now >= s.last_notification_at + falsifier_alert_heartbeat_window_ms {
+        NotifyHeartbeatDue { silent_for: now - s.last_notification_at }
+      } else {
+        SuppressWithinWindow { silent_for: now - s.last_notification_at }
+      }
+  }
+}
+
+fn falsifier_alert_notification_notifies(d: FalsifierAlertNotificationDecision) -> Bool {
+  match d {
+    NotifyIncidentChanged { previous: _, current: _ } => true
+    NotifyHeartbeatDue { silent_for: _ } => true
+    NotifyMigratedToTypedState => true
+    NotifyFirstRed => true
+    SuppressWithinWindow { silent_for: _ } => false
+  }
+}

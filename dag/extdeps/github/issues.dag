@@ -1,0 +1,180 @@
+module extdeps.github.issues
+
+import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
+import extdeps.github.errors { GitHubErrorShape }
+import std.types { NonEmptyStr, Timestamp, Secret }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/issues/issues"
+  }
+}
+
+data issue_comments_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/issues/comments"
+  }
+}
+
+data issues_module_homing_note: String = "WHY THIS MODULE EXISTS AND WHAT MOVED INTO IT. IssueComment and CreateComment were declared in extdeps.github.pulls, and that was a real external-surface homing defect rather than a filing preference. CreateComment's own transport is POST /repos/{owner}/{repo}/issues/{issue_number}/comments — the ISSUES API, named in its path, parameterized by an issue number — so the pulls module was declaring an operation against an upstream surface it does not model. GitHub's own documentation splits them: the pulls API documents review comments (which are a different resource, anchored to a diff position), while every comment on the conversation timeline of an issue OR a pull request belongs to the issues API. That a pull request is addressable as an issue is a fact about GitHub's model, and modeling it correctly means the comment operation lives with the issues surface and the pulls surface imports nothing to get it.\n\nTHE MOVE IS ATOMIC AND LEAVES NO ALIAS. A compatibility re-export in extdeps.github.pulls would be exactly the second name for one concept that DESIGN §3 forbids, and the usual justification for one — a migration window for consumers out of our control — does not apply, because every consumer is in this tree and moved in the same change. The operation key changes from github.Pulls.CreateComment to github.Issues.CreateComment, which is a visible, greppable rename with a finite consumer set (the mock corpus row, the mock totality lens case, and the Rust REST transport witness), not a silent one."
+
+data issue_state_note: String = "IssueState is Open | Closed and deliberately does NOT carry the state_reason axis (completed / not_planned / reopened) that GitHub added beside it. Those are two independent facts upstream — an issue is closed, and separately there is a recorded reason it was closed — and fusing them into one enum would produce a coproduct where Closed appears three times and every consumer that only cares whether the issue is open has to enumerate reasons it does not use. The alert consumer needs the open/closed axis alone. When a consumer needs the reason, it lands as its own optional field on Issue, cited to the same authority, and this enum is untouched."
+
+type IssueState = Open | Closed
+
+fn issue_state_wire_label(state: IssueState) -> String {
+  match state {
+    Open => "open"
+    Closed => "closed"
+  }
+}
+
+fn parse_issue_state(raw: String) -> IssueState? {
+  match raw {
+    "open" => Present { value: Open }
+    "closed" => Present { value: Closed }
+    _ => none
+  }
+}
+
+type Issue {
+  number: Int
+  title: String
+  body: String
+  state: IssueState
+  html_url: NonEmptyStr
+  created_at: Timestamp
+  updated_at: Timestamp
+}
+
+type IssueComment {
+  id: Int
+  html_url: NonEmptyStr
+  body: String
+  created_at: Timestamp
+}
+
+data issues_list_comments_absent_note: String = "THERE IS DELIBERATELY NO ListComments OPERATION HERE, and its absence is a modeling decision worth stating because the obvious next edit is to add one. The only thing that ever wanted it was a throttle that recovered `when did we last notify` by fetching an issue's comment list and reading the newest one's timestamp. That is a second source of truth for a fact the alert itself produced: the alert knows exactly when it last notified, because it did the notifying. Recovering it by scanning comments made the throttle depend on pagination (the first version read comments[length-1] from one per_page=100 page, so past 100 comments it read the 100th and the throttle inverted into notify-every-run), on nobody else commenting on the issue, and on the comment list being readable at all. The fact belongs in the alert's own typed state marker instead, where it is written by the same step that sends the notification and read back with no API call, no pagination and no boundary. Adding ListComments would re-open all three failure modes to serve a question that no longer needs asking."
+
+service github.Issues {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+
+    rate_limit: { requests: 5000, per: hour, scope: core }
+  }
+
+  operation ListForRepo {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      state: String
+      labels: String
+      per_page: Int
+    }
+    output {
+      body: String from "body"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/issues",
+      query: { state: state, labels: labels, per_page: per_page }
+    }
+    response {
+      200 => String
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation Create {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      title: String
+      body: String
+      labels: String
+    }
+    output {
+      number: Int from "number"
+      html_url: NonEmptyStr from "html_url"
+    }
+    transport rest {
+      method: POST,
+      path: "/repos/\{owner\}/\{repo\}/issues",
+      body: { title: title, body: body, labels: labels }
+    }
+    response {
+      201 => Issue
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation Update {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      issue_number: Int
+      title: String
+      body: String
+      state: String
+    }
+    output {
+      number: Int from "number"
+      html_url: NonEmptyStr from "html_url"
+    }
+    transport rest {
+      method: PATCH,
+      path: "/repos/\{owner\}/\{repo\}/issues/\{issue_number\}",
+      body: { title: title, body: body, state: state }
+    }
+    response {
+      200 => Issue
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation CreateComment {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      issue_number: Int
+      body: String
+    }
+    output {
+      id: Int from "id"
+      html_url: NonEmptyStr from "html_url"
+    }
+    transport rest {
+      method: POST,
+      path: "/repos/\{owner\}/\{repo\}/issues/\{issue_number\}/comments",
+      body: { body: body }
+    }
+    response {
+      201 => IssueComment
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}

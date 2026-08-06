@@ -1,0 +1,115 @@
+module gunbc.falsifier_alert_admission
+
+import std.types { NonEmptyStr, String }
+import extdeps.github.actions { github_event_name_schedule, github_event_name_workflow_dispatch, workflow_run_activity_completed }
+import extdeps.github.workflow_run_event {
+  WorkflowRunEvent,
+  WorkflowRunEventObservation,
+  WorkflowRunEventObserved,
+  WorkflowRunEventMemberAbsent,
+  WorkflowRunEventMemberMalformed,
+  WorkflowRunEventMalformed,
+  WorkflowRunEventPayloadReadRefused
+}
+
+data falsifier_alert_admission_purpose_note: String = "ALERT-1(c). THE PRE-EXECUTION TRUST WALL. This alert holds issues: write, so before it reads or acts on ANY content originating from an observed run it must establish that the run is the one it exists to observe. The threat is not exotic: workflow_run fires for runs of the named workflow on any branch and from any originating event, including one produced by a fork's pull request or an unapproved dispatch, and the alert then downloads an artifact from that run and renders its contents into an issue it has write access to. Without this wall, the content of an attacker-influenced run reaches a privileged writer.\n\nADMISSION IS THE CONJUNCTION OF FIVE FACTS, all of which must hold: the workflow is affected-set-falsifier, the repository is gunb-ai/gunbc, the head branch is main, the originating event is a schedule or an approved workflow_dispatch, and the activity is completed. Each is a separate coordinate and each refusal names which one failed — a single boolean 'not trusted' would tell an operator nothing about whether they are looking at a misconfiguration or an attack.\n\nIT IS ENFORCED TWICE, AND THAT IS NOT REDUNDANCY IN THE DESIGN §2 SENSE. The generated workflow carries a job-level `if` so the job does not start; this program re-evaluates the same facts from the payload it reads itself. They are different mechanisms against different failure modes: the job-level guard is cheap and stops the runner from ever holding the token, but it is written in a foreign expression language and can be silently weakened by an edit to the workflow; the in-program check reads the payload the alert is actually about to act on, and so cannot be bypassed by a workflow edit. Neither subsumes the other, so neither is a second representation of the other — the shared authority is this module's predicate, which the workflow's condition is derived from."
+
+data falsifier_alert_observed_workflow_name: NonEmptyStr = "affected-set-falsifier"
+
+data falsifier_alert_expected_repository: NonEmptyStr = "gunb-ai/gunbc"
+
+data falsifier_alert_expected_head_branch: NonEmptyStr = "main"
+
+data falsifier_alert_originating_event_note: String = "The admitted originating events are `schedule` and `workflow_dispatch`, and the workflow_dispatch arm carries a real caveat rather than being waved through. GitHub requires write access to dispatch a workflow, so a dispatch is already an authenticated act by someone with repository write — that is the sense in which it is `approved`, and it is the strongest statement this payload supports, because the event does not carry an approval record for the alert to verify independently. `push` and `pull_request` are deliberately NOT admitted even though the falsifier could in principle be triggered by them: a pull_request-originated run can carry a contributor's head, which is exactly the content this wall exists to keep away from a privileged writer, and a push-originated run is not part of the cadence this alert reports on. The head_branch check is a second, independent barrier on the same concern rather than a duplicate of it — an originating event can be legitimate while the head is not main, and a run on main can arrive from an event this alert should not report."
+
+type FalsifierAlertAdmission
+  = AlertAdmitted { event: WorkflowRunEvent }
+  | AlertRefusedWorkflowNotObserved { observed: String, expected: NonEmptyStr }
+  | AlertRefusedRepositoryNotOwned { observed: String, expected: NonEmptyStr }
+  | AlertRefusedHeadBranchNotMain { observed: String, expected: NonEmptyStr }
+  | AlertRefusedOriginatingEventNotAdmitted { observed: String }
+  | AlertRefusedActivityNotCompleted { observed: String, expected: String }
+  | AlertRefusedEventUnreadable { observation: WorkflowRunEventObservation }
+
+fn falsifier_alert_originating_event_admitted(event_name: String) -> Bool {
+  event_name == github_event_name_schedule || event_name == github_event_name_workflow_dispatch
+}
+
+fn falsifier_alert_admit_event(event: WorkflowRunEvent) -> FalsifierAlertAdmission {
+  if event.workflow_name != (falsifier_alert_observed_workflow_name as String) {
+    AlertRefusedWorkflowNotObserved {
+      observed: event.workflow_name,
+      expected: falsifier_alert_observed_workflow_name
+    }
+  } else if event.repository_full_name != (falsifier_alert_expected_repository as String) {
+    AlertRefusedRepositoryNotOwned {
+      observed: event.repository_full_name,
+      expected: falsifier_alert_expected_repository
+    }
+  } else if event.head_repository_full_name != (falsifier_alert_expected_repository as String) {
+    AlertRefusedRepositoryNotOwned {
+      observed: event.head_repository_full_name,
+      expected: falsifier_alert_expected_repository
+    }
+  } else if event.head_branch != (falsifier_alert_expected_head_branch as String) {
+    AlertRefusedHeadBranchNotMain {
+      observed: event.head_branch,
+      expected: falsifier_alert_expected_head_branch
+    }
+  } else if !falsifier_alert_originating_event_admitted(event_name: event.originating_event) {
+    AlertRefusedOriginatingEventNotAdmitted { observed: event.originating_event }
+  } else if event.activity != workflow_run_activity_completed {
+    AlertRefusedActivityNotCompleted {
+      observed: event.activity,
+      expected: workflow_run_activity_completed
+    }
+  } else {
+    AlertAdmitted { event: event }
+  }
+}
+
+data falsifier_alert_head_repository_note: String = "head_repository is checked against the SAME expected repository as the enclosing repository, and the two checks are not a copy of one another. `repository` is where the workflow run lives; `head_repository` is where the code it ran CAME FROM, and on a fork-originated run those differ — that divergence is precisely the fork case, and it is the one shape where an admitted-looking run carries foreign content. Checking only the enclosing repository would admit exactly that run. They share a refusal variant because the remedy is the same (this is not our code, stop), and the variant carries the observed value so the two are distinguishable in the record."
+
+fn falsifier_alert_admit(observation: WorkflowRunEventObservation) -> FalsifierAlertAdmission {
+  match observation {
+    WorkflowRunEventObserved { event: e } => falsifier_alert_admit_event(event: e)
+    WorkflowRunEventMemberAbsent { member: _ } =>
+      AlertRefusedEventUnreadable { observation: observation }
+    WorkflowRunEventMemberMalformed { member: _, detail: _ } =>
+      AlertRefusedEventUnreadable { observation: observation }
+    WorkflowRunEventMalformed { detail: _ } =>
+      AlertRefusedEventUnreadable { observation: observation }
+    WorkflowRunEventPayloadReadRefused { path: _, cause: _ } =>
+      AlertRefusedEventUnreadable { observation: observation }
+  }
+}
+
+fn falsifier_alert_is_admitted(admission: FalsifierAlertAdmission) -> Bool {
+  match admission {
+    AlertAdmitted { event: _ } => true
+    AlertRefusedWorkflowNotObserved { observed: _, expected: _ } => false
+    AlertRefusedRepositoryNotOwned { observed: _, expected: _ } => false
+    AlertRefusedHeadBranchNotMain { observed: _, expected: _ } => false
+    AlertRefusedOriginatingEventNotAdmitted { observed: _ } => false
+    AlertRefusedActivityNotCompleted { observed: _, expected: _ } => false
+    AlertRefusedEventUnreadable { observation: _ } => false
+  }
+}
+
+data falsifier_alert_job_condition_note: String = "The generated workflow's job-level condition is DERIVED from this module's constants rather than hand-typed into the YAML, so the two enforcement points cannot drift apart in what they consider admissible. The condition can only express the subset of the wall that GitHub's expression language can see in the event context — workflow name, head branch, originating event and conclusion — which is why it is the cheap outer guard and not the wall itself: head_repository and the activity are re-read from the payload by the program. A condition that could express everything would still not remove the in-program check, for the reason the purpose note gives."
+
+fn falsifier_alert_job_condition() -> String {
+  concat(
+    concat(
+      concat("github.event.workflow_run.name == '", falsifier_alert_observed_workflow_name as String),
+      concat("' && github.event.workflow_run.head_branch == '", falsifier_alert_expected_head_branch as String)
+    ),
+    concat(
+      concat("' && (github.event.workflow_run.event == '", github_event_name_schedule),
+      concat(
+        concat("' || github.event.workflow_run.event == '", github_event_name_workflow_dispatch),
+        "')"
+      )
+    )
+  )
+}
