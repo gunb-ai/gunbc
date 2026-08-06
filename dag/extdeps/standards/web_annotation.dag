@@ -1,0 +1,31 @@
+module extdeps.standards.web_annotation
+
+import std.types { NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/annotation-model/"
+  }
+}
+
+data web_annotation_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data web_annotation_selector_grounding_note: String = "Cited upstream: W3C Web Annotation Data Model (retrieved 2026-08-04). std.citation FragmentSelector, TextQuoteSelector, and TextPositionSelector ground on this specification's selector vocabulary (FragmentSelector with conformsTo, TextQuoteSelector, TextPositionSelector). TRAP: the Recommendation's example table still points PDF fragment selectors at RFC 3778; application/pdf fragments cite extdeps.standards.rfc_8118 instead, with explicit supersession evidence — do not copy the stale table."
+
+data web_annotation_data_model: NonEmptyStr = "Web Annotation Data Model"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.standards.web_annotation",
+      decl_name: "web_annotation_data_model",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
