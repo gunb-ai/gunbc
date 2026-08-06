@@ -43,8 +43,9 @@ import gunbc.design.instrument_physical {
   instrument_displacement_px, instrument_displacement_max_px,
   DisplacementAdmission, DisplacementAdmitted, DisplacementOverBudget, displacement_admission,
   PhysicalImpulseSource, SyntheticImpulse, HostAccelerometer, HostDeviceMotion, impulse_source_key,
-  SensorAvailability, SensorPresent, SensorAbsent, SensorPermissionNotRequested,
-  SensorPermissionDenied, SensorAvailabilityUnknown, sensor_availability_key,
+  SensorAvailability, SensorDeliveringSamples, SensorInterfacePresent, SensorAbsent,
+  SensorPermissionNotRequested, SensorPermissionDenied, SensorReadFailed,
+  SensorAvailabilityUnknown, sensor_availability_key,
   ImpulseAdmission, ImpulseAdmitted, ImpulseSourceUnavailable, ImpulseChannelDisabled, admit_impulse,
 }
 import gunbc.design.instrument_audition {
@@ -499,7 +500,11 @@ fn impulse_cell(s: PhysicalImpulseSource, a: SensorAvailability) -> Fragment {
 }
 
 fn sensor_states() -> List<SensorAvailability> {
-  [SensorPresent, SensorAbsent, SensorPermissionNotRequested, SensorPermissionDenied, SensorAvailabilityUnknown]
+  [
+    SensorDeliveringSamples, SensorInterfacePresent, SensorAbsent,
+    SensorPermissionNotRequested, SensorPermissionDenied, SensorReadFailed,
+    SensorAvailabilityUnknown,
+  ]
 }
 
 fn impulse_row(s: PhysicalImpulseSource) -> Fragment {

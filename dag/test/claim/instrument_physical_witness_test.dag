@@ -17,8 +17,9 @@ import gunbc.design.instrument_physical {
   channel_behaviour_axis, channel_provenance, channel_is_cited_precedent,
   PhysicalImpulseSource, SyntheticImpulse, HostAccelerometer, HostDeviceMotion,
   impulse_source_key,
-  SensorAvailability, SensorPresent, SensorAbsent, SensorPermissionNotRequested,
-  SensorPermissionDenied, SensorAvailabilityUnknown,
+  SensorAvailability, SensorDeliveringSamples, SensorInterfacePresent, SensorAbsent,
+  SensorPermissionNotRequested, SensorPermissionDenied, SensorReadFailed,
+  SensorAvailabilityUnknown,
   sensor_availability_key, sensor_may_deliver_impulses,
   ImpulseAdmission, ImpulseAdmitted, ImpulseSourceUnavailable, ImpulseChannelDisabled,
   admit_impulse,
@@ -88,12 +89,35 @@ fn witness_red_four_legal_channels_can_sum_to_an_illegal_instrument() -> Bool {
   }
 }
 
-fn witness_only_a_present_sensor_delivers_impulses() -> Bool {
-  sensor_may_deliver_impulses(a: SensorPresent)
+fn witness_only_an_observed_sample_delivers_impulses() -> Bool {
+  sensor_may_deliver_impulses(a: SensorDeliveringSamples)
+    && !sensor_may_deliver_impulses(a: SensorInterfacePresent)
     && !sensor_may_deliver_impulses(a: SensorAbsent)
     && !sensor_may_deliver_impulses(a: SensorPermissionNotRequested)
     && !sensor_may_deliver_impulses(a: SensorPermissionDenied)
+    && !sensor_may_deliver_impulses(a: SensorReadFailed)
     && !sensor_may_deliver_impulses(a: SensorAvailabilityUnknown)
+}
+
+data hollow_sensor_surface_witness_note: String = "THE HOST THIS RED IS NAMED AFTER IS REAL AND WAS READ. A capability receipt taken on a MacBook (Chrome 150, macOS, secure context, 2026-08-05) reported DeviceMotionEvent present, DeviceOrientationEvent present, Accelerometer, LinearAccelerationSensor and GravitySensor all present, no requestPermission gate, and zero motion events delivered. Under the enum this claim replaces that host was SensorPresent and admit_impulse returned ImpulseAdmitted — the instrument armed against a sensor that would never fire, and no witness in this file went red. So this is not a hypothetical arm added for symmetry: it is the executed counter-example that forced the split, and it reds if delivery is ever inferred from the interface being present again."
+
+fn witness_red_a_hollow_sensor_surface_refuses_though_the_interface_exists() -> Bool {
+  match admit_impulse(p: preference_default, s: HostDeviceMotion, sensor: SensorInterfacePresent) {
+    ImpulseSourceUnavailable { source, availability } =>
+      source == "host-device-motion" && availability == "interface-present-no-samples"
+    ImpulseAdmitted { source, settle } => false
+    ImpulseChannelDisabled { source } => false
+  }
+}
+
+fn witness_red_a_failed_read_is_not_an_absent_sensor() -> Bool {
+  sensor_availability_key(a: SensorReadFailed) != sensor_availability_key(a: SensorAbsent)
+    && sensor_availability_key(a: SensorInterfacePresent) != sensor_availability_key(a: SensorDeliveringSamples)
+    && match admit_impulse(p: preference_default, s: HostAccelerometer, sensor: SensorReadFailed) {
+         ImpulseSourceUnavailable { source, availability } => availability == "read-failed"
+         ImpulseAdmitted { source, settle } => false
+         ImpulseChannelDisabled { source } => false
+       }
 }
 
 fn witness_red_an_uninterrogated_sensor_stays_distinct_from_a_missing_one() -> Bool {
@@ -116,7 +140,7 @@ fn witness_the_synthetic_source_auditions_on_a_machine_with_no_sensor() -> Bool 
 }
 
 fn witness_red_a_disabled_glitch_channel_refuses_a_real_impulse() -> Bool {
-  match admit_impulse(p: preference_still, s: SyntheticImpulse, sensor: SensorPresent) {
+  match admit_impulse(p: preference_still, s: SyntheticImpulse, sensor: SensorDeliveringSamples) {
     ImpulseChannelDisabled { source } => source == "synthetic"
     ImpulseAdmitted { source, settle } => false
     ImpulseSourceUnavailable { source, availability } => false
@@ -242,7 +266,9 @@ test fn instrument_physical_keystone_holds() -> Bool {
     && witness_every_channel_off_position_is_total()
     && witness_composed_displacement_stays_under_the_register_attraction_travel()
     && witness_red_four_legal_channels_can_sum_to_an_illegal_instrument()
-    && witness_only_a_present_sensor_delivers_impulses()
+    && witness_only_an_observed_sample_delivers_impulses()
+    && witness_red_a_hollow_sensor_surface_refuses_though_the_interface_exists()
+    && witness_red_a_failed_read_is_not_an_absent_sensor()
     && witness_red_an_uninterrogated_sensor_stays_distinct_from_a_missing_one()
     && witness_the_synthetic_source_auditions_on_a_machine_with_no_sensor()
     && witness_red_a_disabled_glitch_channel_refuses_a_real_impulse()

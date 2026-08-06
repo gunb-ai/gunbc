@@ -224,31 +224,39 @@ fn impulse_source_key(s: PhysicalImpulseSource) -> String {
   }
 }
 
-data sensor_availability_note: String = "FIVE STATES, BECAUSE THE THREE THAT GET COLLAPSED ARE THE ONES THAT MATTER. A sensor that is absent, one that exists but has not been asked for, one whose permission was refused, and one we could not interrogate are four different worlds with four different remedies, and every one of them is routinely flattened into a single falsy 'no sensor' — the empty-observation narrow, rendering could-not-observe as the verdict nothing-is-there. SensorAvailabilityUnknown is therefore NOT a synonym for absent: sensor_may_deliver_impulses admits only SensorPresent, so an uninterrogated sensor delivers nothing while remaining visibly distinct from one that is genuinely missing, and a surface can honestly say which."
+data sensor_availability_note: String = "SEVEN STATES, BECAUSE BOTH POLES COLLAPSE AND ONLY ONE OF THEM USED TO BE GUARDED. A sensor that is absent, one that exists but has not been asked for, one whose permission was refused, one whose interrogation itself errored, and one we could not interrogate are five different worlds with five different remedies, and every one of them is routinely flattened into a single falsy 'no sensor' — the empty-observation narrow, rendering could-not-observe as the verdict nothing-is-there. SensorAvailabilityUnknown is therefore NOT a synonym for absent. The correction recorded in sensor_delivery_is_observed_note is that the TRUE pole conflates in exactly the same way and was admitting on the strength of a name."
+
+data sensor_delivery_is_observed_note: String = "THE INTERFACE EXISTING IS NOT THE SENSOR DELIVERING, AND THE OLD SensorPresent MEANT BOTH. This split is not a refinement of taste: the prior five-state enum was falsified by an executed reading. On a MacBook (Chrome 150, macOS, secure context) DeviceMotionEvent, DeviceOrientationEvent, Accelerometer, LinearAccelerationSensor and GravitySensor all exist, no requestPermission gate stands in the way, and the count of motion events actually delivered is ZERO. The W3C Device Orientation and Motion spec is explicit that this is conforming rather than broken — with no supporting hardware the event still fires with its acceleration attributes set to null — so a machine can present a complete, permitted sensor surface and never produce a single reading. Under the five-state enum that host was SensorPresent, sensor_may_deliver_impulses answered true, and admit_impulse returned ImpulseAdmitted: the instrument would have declared itself armed and then waited forever for an impulse that structurally could not arrive, with every witness green. That is the fail-open twin of the narrow the note above guards, and it is the same mistake one layer down as a capability probe that reads names out of the host global instead of reading samples. So delivery is now an OBSERVED fact and admission requires it: only SensorDeliveringSamples — reached by having seen a sample — may deliver, and SensorInterfacePresent names the host above exactly. The synthetic source keeps auditioning because authored input genuinely does deliver, which is why source_availability maps it to SensorDeliveringSamples rather than exempting it from the check."
 
 type SensorAvailability
-  = SensorPresent
+  = SensorDeliveringSamples
+  | SensorInterfacePresent
   | SensorAbsent
   | SensorPermissionNotRequested
   | SensorPermissionDenied
+  | SensorReadFailed
   | SensorAvailabilityUnknown
 
 fn sensor_availability_key(a: SensorAvailability) -> String {
   match a {
-    SensorPresent => "present"
+    SensorDeliveringSamples => "delivering-samples"
+    SensorInterfacePresent => "interface-present-no-samples"
     SensorAbsent => "absent"
     SensorPermissionNotRequested => "permission-not-requested"
     SensorPermissionDenied => "permission-denied"
+    SensorReadFailed => "read-failed"
     SensorAvailabilityUnknown => "availability-unknown"
   }
 }
 
 fn sensor_may_deliver_impulses(a: SensorAvailability) -> Bool {
   match a {
-    SensorPresent => true
+    SensorDeliveringSamples => true
+    SensorInterfacePresent => false
     SensorAbsent => false
     SensorPermissionNotRequested => false
     SensorPermissionDenied => false
+    SensorReadFailed => false
     SensorAvailabilityUnknown => false
   }
 }
@@ -262,7 +270,7 @@ type ImpulseAdmission
 
 fn source_availability(s: PhysicalImpulseSource, sensor: SensorAvailability) -> SensorAvailability {
   match s {
-    SyntheticImpulse => SensorPresent
+    SyntheticImpulse => SensorDeliveringSamples
     HostAccelerometer => sensor
     HostDeviceMotion => sensor
   }
