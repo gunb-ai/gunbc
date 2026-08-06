@@ -253,37 +253,10 @@ fn touched_path_disposition_matches(row: ScopeDispositionRow) -> Bool {
   )
 }
 
-data scope_disposition_rows_first_half: List<ScopeDispositionRow> = [
-  ScopeDispositionRow { touched: "docs/plans/example.md", expect: ExpectSkip },
-  ScopeDispositionRow { touched: "./docs/plans/example.md", expect: ExpectSkip },
-  ScopeDispositionRow { touched: "dag/gunbc/plans/example.dag", expect: ExpectWholeTree },
-  ScopeDispositionRow { touched: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag", expect: ExpectScopedContaining { required_entry: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag" } }
-]
-
-data scope_disposition_rows_second_half: List<ScopeDispositionRow> = [
-  ScopeDispositionRow { touched: "src/v1/stage0/src/cli_run.rs", expect: ExpectWholeTree },
-  ScopeDispositionRow { touched: ".github/workflows/ci.yml", expect: ExpectWholeTree },
-  ScopeDispositionRow { touched: "src/v2/test/fixture/floor_skip/floor_disc_shared_helper.dag", expect: ExpectScopedContaining { required_entry: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag" } }
-]
-
-data scope_disposition_rows_fast_lane_split_note: String = "Per-PR fast-lane split (2026-08-06): witness_touched_path_dispositions_hold over all seven rows measured 5002ms thread-CPU against the 5000ms budget on PR CI after corpus growth — the mechanism rows stay fixture-grain (scope_disposition_witness_roster_note); the split is admission headroom only. lever_a_local_receipts_hold still folds the full witness offline."
-
-fn witness_touched_path_disposition_rows_hold(rows: List<ScopeDispositionRow>) -> Bool {
-  fold(rows, init: true, f: fn(acc, row) {
+fn witness_touched_path_dispositions_hold() -> Bool {
+  fold(scope_disposition_rows, init: true, f: fn(acc, row) {
     acc && touched_path_disposition_matches_with_roster(row: row, roster: scope_disposition_witness_roster)
   })
-}
-
-fn witness_touched_path_dispositions_hold() -> Bool {
-  witness_touched_path_disposition_rows_hold(rows: scope_disposition_rows)
-}
-
-fn witness_touched_path_dispositions_hold_first_half() -> Bool {
-  witness_touched_path_disposition_rows_hold(rows: scope_disposition_rows_first_half)
-}
-
-fn witness_touched_path_dispositions_hold_second_half() -> Bool {
-  witness_touched_path_disposition_rows_hold(rows: scope_disposition_rows_second_half)
 }
 
 fn witness_mixed_rs_and_dag_requires_whole_tree() -> Bool {
