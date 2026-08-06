@@ -3972,77 +3972,10 @@ fn append_test_floor_compile_clean_inject(sources: &mut Vec<Rc<v1_compiler_compi
 enum FloorCompileCleanReceipt {
     Skipped { reason: String },
     Refused { reason: String },
-    Compiled { ok: bool, failure_detail: String },
+    Compiled { ok: bool },
 }
 
 static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
-
-static REGEN_VERIFY_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
-static GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
-
-pub fn record_regen_verify_gate_failure_detail(detail: String) {
-    if let Ok(mut guard) = REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
-        *guard = Some(detail);
-    }
-}
-
-pub fn consume_regen_verify_gate_failure_detail() -> String {
-    match REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
-        Ok(guard) => guard.clone().unwrap_or_else(|| {
-            "regen_verify failure detail unavailable (gate body did not run in this process)"
-                .to_string()
-        }),
-        Err(e) => format!("regen_verify failure detail refused: gate detail lock poisoned ({e})"),
-    }
-}
-
-pub fn record_generated_artifact_drift_gate_failure_detail(detail: String) {
-    if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
-        *guard = Some(detail);
-    }
-}
-
-#[cfg(test)]
-fn reset_regen_verify_gate_failure_detail_for_test() {
-    if let Ok(mut guard) = REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
-        *guard = None;
-    }
-}
-
-#[cfg(test)]
-fn reset_generated_artifact_drift_gate_failure_detail_for_test() {
-    if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
-        *guard = None;
-    }
-}
-
-pub fn consume_generated_artifact_drift_gate_failure_detail() -> String {
-    match GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
-        Ok(guard) => guard.clone().unwrap_or_else(|| {
-            "generated-artifact drift failure detail unavailable (gate body did not run in this process)"
-                .to_string()
-        }),
-        Err(e) => format!(
-            "generated-artifact drift failure detail refused: gate detail lock poisoned ({e})"
-        ),
-    }
-}
-
-fn format_first_compile_clean_hard_diagnostic(diagnostics: &im::Vector<Rc<ErrorNode>>) -> String {
-    diagnostics
-        .iter()
-        .find(|d| compile_clean_diagnostic_is_hard(d))
-        .map(|d| {
-            format!(
-                "compile-clean: {}",
-                diagnostic_to_message(d.diagnostic.clone())
-            )
-        })
-        .unwrap_or_else(|| {
-            "dag compile-clean gate failed: no hard diagnostic located in compile receipt"
-                .to_string()
-        })
-}
 
 /// Cost snapshot of the ONE compile-clean leg — the "receipt keys" half of the
 /// prelude-coverage-hole follow-up (`gunbc_ci_floor_batch_clamp_note` row (a)):
@@ -4158,7 +4091,7 @@ fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>
 fn floor_compile_clean_emit_ok_via_index(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index_roots: &[String],
-) -> (bool, String) {
+) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
     use crate::v1_compiler_complexity::empty_complexity_report;
     let index = process_shared_index(index_roots);
@@ -4174,15 +4107,12 @@ fn floor_compile_clean_emit_ok_via_index(
         Ok(resolved) => resolved,
         Err(msg) => {
             eprintln!("compile-clean: hard diagnostics:\n{msg}");
-            return (false, format!("compile-clean: {msg}"));
+            return false;
         }
     };
     if compile_clean_pipeline_has_hard_errors(compile_clean_diags.as_ref()) {
         eprint_compile_clean_hard_diagnostics(compile_clean_diags.as_ref());
-        return (
-            false,
-            format_first_compile_clean_hard_diagnostic(compile_clean_diags.as_ref()),
-        );
+        return false;
     }
     let newline_indices: Rc<im::Vector<Rc<NewlineIndex>>> =
         Rc::new(si.values().cloned().collect::<im::Vector<_>>());
@@ -4196,12 +4126,10 @@ fn floor_compile_clean_emit_ok_via_index(
     });
     let result = v1_compiler_compile::emit_resolved_for_target(resolved, RenderTarget::Dag);
     if result.files.is_empty() {
-        let detail = "floor compile-clean: refused — compile produced zero files (empty emit set)"
-            .to_string();
-        eprintln!("{detail}");
-        return (false, detail);
+        eprintln!("floor compile-clean: refused — compile produced zero files (empty emit set)");
+        return false;
     }
-    (true, String::new())
+    true
 }
 
 fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
@@ -4241,7 +4169,7 @@ fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
             let closure_units = sources.len() as u128;
             let leg_started = std::time::Instant::now();
             let _ = drain_module_typecheck_walls();
-            let (ok, failure_detail) = floor_compile_clean_emit_ok_via_index(sources, &index_roots);
+            let ok = floor_compile_clean_emit_ok_via_index(sources, &index_roots);
             let wall_ms = leg_started.elapsed().as_millis();
             let module_typecheck_walls = drain_module_typecheck_walls();
             write_floor_compile_clean_cost_receipt(
@@ -4258,7 +4186,7 @@ fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
                     pass_subject,
                 });
             }
-            FloorCompileCleanReceipt::Compiled { ok, failure_detail }
+            FloorCompileCleanReceipt::Compiled { ok }
         }
     }
 }
@@ -4319,7 +4247,7 @@ pub fn install_floor_compile_clean_receipt() -> Result<(), String> {
         "claim_executor: floor compile-clean — one whole-tree --target dag compile via shared index (gate consumes receipt; batch-2 resolves reuse the typed store)"
     );
     let receipt = produce_floor_compile_clean_receipt();
-    if let FloorCompileCleanReceipt::Compiled { ok, .. } = &receipt {
+    if let FloorCompileCleanReceipt::Compiled { ok } = &receipt {
         eprintln!("claim_executor: floor compile-clean receipt ok={ok}");
     }
     *guard = Some(receipt);
@@ -4371,32 +4299,7 @@ pub fn consume_floor_compile_clean_gate_verdict() -> bool {
             eprintln!("compile-clean gate: refused ({reason})");
             false
         }
-        Some(FloorCompileCleanReceipt::Compiled { ok, .. }) => *ok,
-    }
-}
-
-/// Failure-receipt companion for the compile-clean gate: reads the in-run receipt only.
-pub fn consume_floor_compile_clean_gate_failure_detail() -> String {
-    let guard = match FLOOR_COMPILE_CLEAN_RECEIPT.lock() {
-        Ok(g) => g,
-        Err(e) => {
-            return format!("compile-clean failure detail refused: receipt lock poisoned ({e})");
-        }
-    };
-    match guard.as_ref() {
-        None => "compile-clean failure detail unavailable: no in-run compile receipt".to_string(),
-        Some(FloorCompileCleanReceipt::Skipped { reason }) => {
-            format!("compile-clean gate skipped: {reason}")
-        }
-        Some(FloorCompileCleanReceipt::Refused { reason }) => reason.clone(),
-        Some(FloorCompileCleanReceipt::Compiled {
-            ok: true,
-            failure_detail: _,
-        }) => String::new(),
-        Some(FloorCompileCleanReceipt::Compiled {
-            ok: false,
-            failure_detail,
-        }) => failure_detail.clone(),
+        Some(FloorCompileCleanReceipt::Compiled { ok }) => *ok,
     }
 }
 
@@ -4599,7 +4502,7 @@ pub fn compile_clean_floor_verdict_whole_tree() -> Result<bool, String> {
         None => return Ok(true),
         Some(s) => s,
     };
-    Ok(floor_compile_clean_emit_ok_via_index(sources, &roots).0)
+    Ok(floor_compile_clean_emit_ok_via_index(sources, &roots))
 }
 
 /// CLI compile-clean verdict: same source closure and diagnostic policy as the floor,
@@ -4664,15 +4567,11 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
-        CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => {
-            "ConstructorCallAdmissionRefused"
-        }
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
         CompilerDiagnostic::CallPositionalDeficit { .. } => "CallPositionalDeficit",
-        CompilerDiagnostic::CallArgumentDuplicate { .. } => "CallArgumentDuplicate",
         CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => "CallNamedArgOnFunctionValue",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
@@ -4704,16 +4603,11 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
-        CompilerDiagnostic::ConstructorCallAdmissionRefused {
-            constructor_decl_name,
-            ..
-        } => constructor_decl_name.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
         CompilerDiagnostic::CallPositionalDeficit { parameter, .. } => parameter.clone(),
-        CompilerDiagnostic::CallArgumentDuplicate { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallNamedArgOnFunctionValue { argument, .. } => argument.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
@@ -5301,7 +5195,7 @@ mod compile_clean_via_index_verdict_equivalence {
         fn verdicts(&self) -> (bool, bool) {
             let raw = floor_compile_clean_emit_ok(self.sources.clone());
             let via_index =
-                floor_compile_clean_emit_ok_via_index(self.sources.clone(), &self.roots).0;
+                floor_compile_clean_emit_ok_via_index(self.sources.clone(), &self.roots);
             (raw, via_index)
         }
     }
@@ -9073,37 +8967,13 @@ fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
     // (Option<u64>, String); if it ever grows a typed source enum, ground this check on
     // the enum instead of re-parsing its display label (§3, avoid a second representation).
     let degraded = !(source_label.contains("memory.max") || source_label.contains("memory.high"));
-    // REFUSE rather than widen when no budget is readable (operator ruling 2026-08-05;
-    // authority `dag/gunbc/host_budget_source.dag` `HostBudgetUnreadable`).
-    //
-    // This was `.unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)`: a budget that could not
-    // be computed became the MOST PERMISSIVE cap available — top-as-answer conflated with
-    // top-as-ignorance, the absorbing fallback DESIGN section 5 forbids by name. It is not
-    // hypothetical. It OOM-killed the full witness corpus twice on a macOS dev machine
-    // (exit 137): nothing readable, cap defaults to the ceiling, nothing bounds the resolve,
-    // kernel ends the process. The deficit's frequency was zero by construction, so it never
-    // ranked for fixing, and the cost arrived as a dead process instead of a diagnostic.
-    //
-    // Every platform this runs on now has a modeled source — procfs on Linux, sysctl
-    // hw.memsize on Darwin — so reaching this arm means an unmodeled host, which is exactly
-    // when admitting against an invented bound is least defensible. Panicking here is a hard
-    // stop by design: this runs inside resolution, there is no caller that could honour a
-    // typed refusal without threading Result through the cache seam, and continuing is the
-    // one option ruled out.
-    let Some(budget_bytes) = budget else {
-        panic!(
-            "HostBudgetUnreadable: no modeled host memory source answered ({source_label}). \
-             The typed-module cache cap bounds the memory used to RESOLVE the corpus, so an \
-             unknown budget cannot be defaulted — the previous default was the ceiling, which \
-             OOM-killed this process rather than refusing. Declare one with \
-             GUNBC_MEMORY_BUDGET_BYTES, or model this platform's memory source \
-             (dag/gunbc/host_budget_source.dag)."
+    let cap = budget
+        .map(|b| (b / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize)
+        .unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)
+        .clamp(
+            TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
+            TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
         );
-    };
-    let cap = ((budget_bytes / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize).clamp(
-        TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
-        TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
-    );
     (cap, source_label, degraded)
 }
 
@@ -9133,7 +9003,7 @@ fn typed_module_cache_cap(index: &MultiEntryIndex) -> usize {
         let (cap, source, degraded) = typed_module_cache_cap_derivation();
         if degraded {
             eprintln!(
-                "[floor-drain] degraded_budget_source: cap={cap} source={source} (no private cgroup memory.max/memory.high found)"
+                "[floor-drain] degraded_budget_source: cap={cap} source={source} (no private cgroup memory.max/memory.high found; falling back to a host-shared signal)"
             );
         }
         cap
@@ -13075,27 +12945,6 @@ pub fn append_failure_receipt_companion_loudness(
     }
 }
 
-/// Production claim_executor / discovery-summary Bool(false) detail rendering.
-/// Exposed to `.dag` witnesses via `seed_runner_bool_false_failure_detail` so CI can
-/// exercise the same `append_failure_receipt_companion_loudness` path the floor runner uses.
-///
-/// HAND-RUST DISPOSITION (DESIGN §7 seed-shrinks-toward-zero; review 48788). DEFERRED seed
-/// retention: one new builtin arm routing witness loudness through the existing
-/// `append_failure_receipt_companion_loudness` / `gunbc.test_module_hygiene.failure_receipt_companion`
-/// stack — no parallel naming authority. Lane: **v1 exit** (zero hand-maintained Rust).
-/// ROADMAP row: "Get hand-written Rust in this repository down to zero"
-/// (authority `dag/gunbc/v1_deletion_plan.dag`). Dissolution trigger: deleted with
-/// `claim_executor` when witness execution leaves the seed runner; witnesses then call the
-/// loudness projection directly without this bridge.
-pub fn seed_runner_bool_false_failure_detail(
-    ctx: &v1_interpreter::InterpContext,
-    witness_function: &str,
-) -> String {
-    let mut detail = "returned Bool(false)".to_string();
-    append_failure_receipt_companion_loudness(&mut detail, ctx, witness_function);
-    detail
-}
-
 /// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).
 /// Empty string = no divergence detail (clean companion **or** companion not declared).
 /// Non-empty refusal sentinel on wrong type / non-missing interpreter error — never silent
@@ -14963,7 +14812,7 @@ fn extract_bool_witness_transport(
     (entry, function)
 }
 
-fn defining_module_for_resolved_type(
+pub(crate) fn defining_module_for_resolved_type(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
     type_name: &str,
@@ -14989,7 +14838,10 @@ fn defining_module_for_resolved_type(
     None
 }
 
-fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<Rc<Node>> {
+pub(crate) fn lookup_resolved_type_node(
+    graph: &ResolvedGraph,
+    type_name: &str,
+) -> Option<Rc<Node>> {
     for tm in graph.modules.iter() {
         if let Some(node) = lookup_type_by_name(tm.type_env.clone(), type_name.to_string()) {
             return Some(node);
@@ -14998,7 +14850,7 @@ fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<R
     None
 }
 
-fn declared_type_name_from_annotation(
+pub(crate) fn declared_type_name_from_annotation(
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
     type_annotation: &Rc<Node>,
 ) -> Option<String> {
@@ -15011,7 +14863,7 @@ fn declared_type_name_from_annotation(
     }
 }
 
-fn resolved_decl_ref_from_type_name(
+pub(crate) fn resolved_decl_ref_from_type_name(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
     name: &str,
@@ -15024,7 +14876,7 @@ fn resolved_decl_ref_from_type_name(
     })
 }
 
-fn resolved_initializer_decl_ref(
+pub(crate) fn resolved_initializer_decl_ref(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
     body: &Rc<Node>,
@@ -15945,31 +15797,6 @@ fn witness_cost_eval_durations(
     .map_err(|e| format!("[witness-row-cost] REFUSED: eval duration constructor failed: {e}"))
 }
 
-/// One witness's cost row, as the authored projection produced it.
-///
-/// Was a seven-wide anonymous tuple, which is how `eval` came to mean "wall" by position and
-/// nothing else — the same defect one layer down from the field name `ObservationEvent.wall`
-/// that the 2026-08-05 clock-basis ruling retired. Naming the fields is what lets a SECOND
-/// clock ride here without either becoming "the third u128".
-#[derive(Debug, Clone)]
-pub struct WitnessRowCost {
-    pub entry: String,
-    pub function: String,
-    /// Wall, and required: the clock the witness threshold is stated on. The authored
-    /// projection refuses a witness that carries no wall figure, so this is never invented.
-    pub eval_wall_nanos: u128,
-    /// Thread CPU, and OPTIONAL — the remedy discriminator, not a second threshold (operator
-    /// ruling 2026-08-05). High wall with high CPU is algorithm or repeated evaluation; high
-    /// wall with low CPU is waiting, I/O, subprocess or scheduling. `None` means the producer
-    /// did not sample it, which renders as `unmeasured` and never as `0`: a clock that was not
-    /// read must not look like a fast one.
-    pub eval_cpu_nanos: Option<u128>,
-    pub resolve_nanos: u128,
-    pub warm_nanos: u128,
-    pub outcome: String,
-    pub detail: String,
-}
-
 fn witness_cost_string_field(
     ctx: &v1_interpreter::InterpContext,
     fields: &[(v1_interpreter::Symbol, v1_interpreter::Value)],
@@ -16083,7 +15910,7 @@ fn witness_cost_nanosecond_count(
 pub fn project_witness_cost_receipt(
     source_roots: &[String],
     summary: &DiscoverySummary,
-) -> Result<Vec<WitnessRowCost>, String> {
+) -> Result<Vec<(String, String, u128, u128, u128, String, String)>, String> {
     use v1_interpreter::{run_in_context_with_args, ExecutionMode, Value};
 
     if summary.performance_receipts.len() != summary.witness_outcomes.len() {
@@ -16361,21 +16188,15 @@ pub fn project_witness_cost_receipt(
                          carries no wall duration"
                     )
                 })?;
-            // The CPU figure is read the same way and is allowed to be absent: production
-            // rows carry it because `run_claim_measured` samples both clocks from one run,
-            // and a producer that genuinely sampled only wall says so by omission rather
-            // than by a zero.
-            let eval_cpu_nanos = witness_cost_clock_nanos(&ctx, &eval, "clock_basis_cpu")?;
-            projected_rows.push(WitnessRowCost {
-                entry: row_entry,
+            projected_rows.push((
+                row_entry,
                 function,
                 eval_wall_nanos,
-                eval_cpu_nanos,
-                resolve_nanos: witness_cost_nanosecond_count(&ctx, resolve, "resolve")?,
-                warm_nanos: witness_cost_nanosecond_count(&ctx, warm, "warm")?,
+                witness_cost_nanosecond_count(&ctx, resolve, "resolve")?,
+                witness_cost_nanosecond_count(&ctx, warm, "warm")?,
                 outcome,
-                detail: outcome_detail,
-            });
+                outcome_detail,
+            ));
         }
     }
     if projected_rows.len() != summary.witness_outcomes.len() {
@@ -16388,25 +16209,29 @@ pub fn project_witness_cost_receipt(
     Ok(projected_rows)
 }
 
-pub fn top_n_slowest_witnesses(rows: &[WitnessRowCost], n: usize) -> Vec<WitnessRowCost> {
+pub fn top_n_slowest_witnesses(
+    rows: &[(String, String, u128, u128, u128, String, String)],
+    n: usize,
+) -> Vec<(String, String, u128, u128, u128, String, String)> {
     let mut sorted = rows.to_vec();
     sorted.sort_by(|a, b| {
-        b.eval_wall_nanos
-            .cmp(&a.eval_wall_nanos)
-            .then_with(|| a.function.cmp(&b.function))
-            .then_with(|| a.entry.cmp(&b.entry))
+        b.2.cmp(&a.2)
+            .then_with(|| a.1.cmp(&b.1))
+            .then_with(|| a.0.cmp(&b.0))
     });
     sorted.truncate(n);
     sorted
 }
 
-pub fn compute_histogram_data(rows: &[WitnessRowCost]) -> HistogramData {
+pub fn compute_histogram_data(
+    rows: &[(String, String, u128, u128, u128, String, String)],
+) -> HistogramData {
     HistogramData {
         included: rows.len(),
         skipped: 0,
-        total: compute_percentiles(rows.iter().map(|row| row.warm_nanos).collect()),
-        resolve: compute_percentiles(rows.iter().map(|row| row.resolve_nanos).collect()),
-        eval: compute_percentiles(rows.iter().map(|row| row.eval_wall_nanos).collect()),
+        total: compute_percentiles(rows.iter().map(|row| row.4).collect()),
+        resolve: compute_percentiles(rows.iter().map(|row| row.3).collect()),
+        eval: compute_percentiles(rows.iter().map(|row| row.2).collect()),
     }
 }
 
@@ -16535,41 +16360,9 @@ pub fn current_rss_bytes() -> Option<u64> {
     proc_status_kb_field("VmRSS")
 }
 
-/// Peak resident set (high water mark) in bytes, read the PORTABLE way.
-///
-/// Authority: `dag/extdeps/posix/rusage.dag` for the interface, with the unit answered by
-/// `dag/extdeps/linux/rusage.dag` (kibibytes) and `dag/extdeps/darwin/rusage.dag` (bytes).
-///
-/// This used to be `proc_status_kb_field("VmHWM")` — a `/proc/self/status` read, which
-/// exists on exactly one kernel family. That made every consumer of peak RSS Linux-only and
-/// produced `VmHWM unavailable on this host` on macOS, a message read as "this platform
-/// cannot report peak residency". It can: POSIX `getrusage(RUSAGE_SELF)` returns the same
-/// quantity in `ru_maxrss` everywhere, and libc was already a dependency. The procfs read
-/// was a TRANSPORT choice, not a capability limit, and mistaking one for the other is what
-/// made the fact look unobservable.
-///
-/// POSIX deliberately leaves `ru_maxrss`'s unit unspecified, so the conversion is per
-/// implementation and permanent — no release reconciles them. Linux reports kibibytes,
-/// Darwin bytes; the Darwin figure was confirmed by execution (a bare python3 reported
-/// 15417344, which is 14.7 MiB read as bytes and an impossible 14.7 GiB read as kibibytes).
-/// Reading a Linux value as bytes would understate peak residency 1024x, in the direction
-/// that looks survivable.
+/// Peak resident set from `/proc/self/status` VmHWM (high water mark), in bytes.
 pub fn peak_rss_vhwm_bytes() -> Option<u64> {
-    // SAFETY: `ru` is a live, fully-owned zeroed `rusage`; `getrusage` only writes it.
-    let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
-    let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) };
-    if rc != 0 || ru.ru_maxrss <= 0 {
-        return None;
-    }
-    let raw = ru.ru_maxrss as u64;
-    #[cfg(target_os = "macos")]
-    {
-        Some(raw)
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Some(raw.saturating_mul(1024))
-    }
+    proc_status_kb_field("VmHWM")
 }
 
 /// `memory.events` `high` counter from the process leaf cgroup, when readable.
@@ -16793,23 +16586,7 @@ fn witness_admission_entry_function_keys_from_source(
                 }
             }
             let after = &content[search_from..];
-            // WINDOW is a BYTE budget, but `after` is UTF-8: clamping with `min` alone
-            // slices mid-character whenever byte `WINDOW` lands inside a multi-byte char,
-            // and the admission rows this reads are prose that routinely contains one
-            // (em dash, arrow). That panicked the whole floor worker — exit 101, no
-            // terminal receipt — on a row whose reason string simply happened to put an
-            // em dash across byte 400. Every other slice in this function takes its
-            // offset from `find`/`split_once`, which return char boundaries; this fixed
-            // offset was the only unguarded one. Walk down to the nearest boundary so a
-            // long row is truncated rather than fatal.
-            let window_end = {
-                let mut end = after.len().min(WINDOW);
-                while end > 0 && !after.is_char_boundary(end) {
-                    end -= 1;
-                }
-                end
-            };
-            let window = &after[..window_end];
+            let window = &after[..after.len().min(WINDOW)];
             let trimmed = window.trim_start();
             if !def_sig.is_empty() && trimmed.starts_with(def_sig) {
                 continue;
@@ -26905,12 +26682,12 @@ mod discovery_summary_merge_tests {
         let rows =
             project_witness_cost_receipt(&source_roots(), &summary).expect("authored projection");
         assert_eq!(rows.len(), 2);
-        assert_eq!(rows[0].eval_wall_nanos, 7_000_000);
-        assert_eq!(rows[0].warm_nanos, 107_000_000);
-        assert_eq!(rows[0].outcome, "Failed");
-        assert_eq!(rows[0].detail, "returned Bool(false)");
-        assert_eq!(rows[1].outcome, "Refused");
-        assert_eq!(rows[1].detail, "returned `String`, not Bool");
+        assert_eq!(rows[0].2, 7_000_000);
+        assert_eq!(rows[0].4, 107_000_000);
+        assert_eq!(rows[0].5, "Failed");
+        assert_eq!(rows[0].6, "returned Bool(false)");
+        assert_eq!(rows[1].5, "Refused");
+        assert_eq!(rows[1].6, "returned `String`, not Bool");
     }
 
     #[test]
@@ -26939,23 +26716,20 @@ mod discovery_summary_merge_tests {
         let rows =
             project_witness_cost_receipt(&source_roots(), &summary).expect("authored projection");
         assert_eq!(rows.len(), 3);
-        assert_eq!(rows[0].function, "one_ns");
-        assert_eq!(rows[0].eval_wall_nanos, 1);
-        assert_eq!(rows[0].resolve_nanos, 7);
-        assert_eq!(rows[0].warm_nanos, 8);
-        assert_eq!(rows[1].function, "sub_ms");
-        assert_eq!(rows[1].eval_wall_nanos, 999_999);
-        assert_eq!(rows[1].warm_nanos, 1_000_006);
-        assert_eq!(rows[2].function, "one_ms");
-        assert_eq!(rows[2].eval_wall_nanos, 1_000_000);
-        assert_eq!(rows[2].warm_nanos, 1_000_007);
+        assert_eq!(rows[0].1, "one_ns");
+        assert_eq!(rows[0].2, 1);
+        assert_eq!(rows[0].3, 7);
+        assert_eq!(rows[0].4, 8);
+        assert_eq!(rows[1].1, "sub_ms");
+        assert_eq!(rows[1].2, 999_999);
+        assert_eq!(rows[1].4, 1_000_006);
+        assert_eq!(rows[2].1, "one_ms");
+        assert_eq!(rows[2].2, 1_000_000);
+        assert_eq!(rows[2].4, 1_000_007);
 
         let slowest = top_n_slowest_witnesses(&rows, rows.len());
         assert_eq!(
-            slowest
-                .iter()
-                .map(|row| row.function.as_str())
-                .collect::<Vec<_>>(),
+            slowest.iter().map(|row| row.1.as_str()).collect::<Vec<_>>(),
             vec!["one_ms", "sub_ms", "one_ns"]
         );
         let histogram = compute_histogram_data(&rows);
@@ -27035,10 +26809,10 @@ mod discovery_summary_merge_tests {
         let rows = project_witness_cost_receipt(&roots, &summary)
             .expect("real discovery summary must pass the authored projector");
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].entry, entry);
-        assert_eq!(rows[0].function, function);
-        assert_eq!(rows[0].outcome, "Done");
-        assert_eq!(rows[0].detail, "");
+        assert_eq!(rows[0].0, entry);
+        assert_eq!(rows[0].1, function);
+        assert_eq!(rows[0].5, "Done");
+        assert_eq!(rows[0].6, "");
     }
 }
 
@@ -34419,35 +34193,12 @@ mod witness_layer_roots_compile_clean_tests {
             reset_floor_compile_clean_receipt_for_test();
             install_floor_compile_clean_receipt_fixture(FloorCompileCleanReceipt::Compiled {
                 ok: false,
-                failure_detail: "compile-clean: synthetic hard diagnostic".to_string(),
             });
             assert!(
                 !consume_floor_compile_clean_gate_verdict(),
                 "gate must refuse when the installed receipt records compile failure"
             );
         });
-    }
-
-    #[test]
-    fn regen_verify_gate_failure_detail_unavailable_without_prior_record() {
-        reset_regen_verify_gate_failure_detail_for_test();
-        assert!(
-            consume_regen_verify_gate_failure_detail()
-                .contains("gate body did not run in this process"),
-            "missing record must refuse with a located message, not imply an empty success verdict"
-        );
-    }
-
-    #[test]
-    fn regen_verify_gate_failure_detail_round_trips_recorded_reason() {
-        reset_regen_verify_gate_failure_detail_for_test();
-        record_regen_verify_gate_failure_detail(
-            "Changed generated file(s): v1_compiler_emit_rust.rs".to_string(),
-        );
-        assert_eq!(
-            consume_regen_verify_gate_failure_detail(),
-            "Changed generated file(s): v1_compiler_emit_rust.rs"
-        );
     }
 
     /// §5 discriminating RED (end-to-end): real whole-tree compile with an injected broken module
@@ -35872,48 +35623,6 @@ mod module_path_index_tests {
             vec!["OfflineLocalRecipe", "BinWitnessWet"],
             "classification variant names must project from the row fields"
         );
-    }
-
-    #[test]
-    fn row_scan_survives_a_multibyte_char_straddling_the_window_edge() {
-        // The 400-byte scan window is a BYTE budget over UTF-8 prose. This fixture puts an
-        // em dash so that the window edge falls strictly INSIDE it, which is what made the
-        // slice panic and kill the floor worker (exit 101, no terminal receipt). The pad is
-        // computed rather than eyeballed so the straddle is a property of the fixture, not
-        // of anyone's byte counting: the em dash starts one byte before the edge, so bytes
-        // 399..402 span it and 400 is not a boundary.
-        // `entry:` and `function:` come FIRST, mirroring the real rows: the scanner
-        // deliberately panics when it cannot find `entry:` within the window, and that
-        // refusal is correct behaviour, not the bug under test. Keeping them early isolates
-        // this test to the slice.
-        //
-        // The prose that follows is a long run of em dashes, so every byte in the window's
-        // neighbourhood belongs to a 3-byte char. The exact window edge depends on where the
-        // scanner sets `search_from`, an internal this test deliberately does NOT model —
-        // pinning it would make the fixture fail for the wrong reason the moment the scanner
-        // moves. Shifting the run by 0/1/2 ASCII bytes covers every residue class mod 3, so
-        // at least one iteration is guaranteed to put the edge strictly inside a character.
-        // That is what makes the sweep discriminating rather than merely likely.
-        for shift in 0..3 {
-            let synthetic = format!(
-                "module gunbc.ci_layer_roots\n\n  SubstrateLongLaneRow {{\n    \
-                 entry: \"dag/test/claim/long/x_test.dag\",\n    \
-                 function: \"w_x\",\n    \
-                 reason: \"{pad}{dashes} tail\",\n  }}\n",
-                pad = "x".repeat(shift),
-                dashes = "\u{2014}".repeat(200),
-            );
-            // Must not panic for any shift. The prose is truncated mid-run by design, so the
-            // claim is survival plus correct extraction of the keys that precede it.
-            let keys = super::witness_admission_entry_function_keys_from_source(
-                "synthetic.dag",
-                &synthetic,
-            );
-            assert!(
-                keys.iter().any(|k| k.contains("w_x")),
-                "shift {shift}: the row's keys precede the prose and must still extract; got {keys:?}"
-            );
-        }
     }
 
     #[test]

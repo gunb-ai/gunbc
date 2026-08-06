@@ -40,7 +40,6 @@ import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeDetailAbsent,
   FrontierProbeReceipt,
   FrontierProbeStage,
-  NoFrontierProbeDetail,
   NameResolutionGap,
   ProbeStageAssemble,
   ProbeStageSemanticDerivation,
@@ -60,8 +59,7 @@ import v2.compiler.self_host.frontier_probe_types {
   frontier_blocker_class_matches,
   frontier_probe_blocker_rank,
   frontier_probe_located_stage_for_blocker,
-  frontier_located_reason_is_stale_knowledge_attributed,
-  frontier_probe_receipt_module_path
+  frontier_located_reason_is_stale_knowledge_attributed
 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
@@ -242,8 +240,7 @@ fn execution_measured_seed_retained_row(
       blocker_class: measured_blocker,
       located_stage: located_stage,
       located_reason: located_reason,
-      detail: FrontierProbeDetailAbsent,
-      assemble_detail: NoFrontierProbeDetail
+      detail: FrontierProbeDetailAbsent
     },
     tractability_rank: tractability_rank_for(closure_reads: closure_reads, blocker: measured_blocker)
   }
@@ -1256,7 +1253,7 @@ fn compiler_frontier_roster_matches_survey_holds(survey: List<FrontierProbeRecei
     empty: true,
     cons: fn(ok, receipt) {
       ok && compiler_frontier_row_for_path_matches_probe(
-        target: frontier_probe_receipt_module_path(receipt: receipt),
+        target: receipt.module_path,
         receipt: receipt
       )
     }
@@ -1428,6 +1425,7 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "v1_interpreter", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "cli_run", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "coproduct_reflection", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "data_initializer_identity", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "resolved_graph_cache", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "shared_typecheck_store", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "recorded_fixture", has_pub_mod: true, is_dir: false },

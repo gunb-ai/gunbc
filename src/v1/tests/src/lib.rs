@@ -34,6 +34,10 @@ mod data_cache_scoping_test;
 #[cfg(test)]
 mod data_def_brand_alias_type_test;
 #[cfg(test)]
+mod decl_facts_dimensionless_projection_test;
+#[cfg(test)]
+mod decl_facts_skeleton_reflection_test;
+#[cfg(test)]
 mod dependency_pool_index_compile_test;
 #[cfg(test)]
 mod derive_bound_fail_closed_test;
@@ -79,7 +83,6 @@ mod group_completion_construction_test;
 mod gunbhub_serve_program_test;
 #[cfg(test)]
 mod html_markup_smoke_test;
-#[cfg(test)]
 mod import_visibility_pool_coincidence_test;
 #[cfg(test)]
 mod int_pow_bounded_test;
@@ -117,13 +120,11 @@ mod measure_periphery_emit_test;
 mod measure_value_arg_unit_collapse_test;
 #[cfg(test)]
 mod module_authority_resolution_test;
-#[cfg(test)]
 mod namespace_alias_decl_test;
 #[cfg(test)]
 mod namespace_unique_on_chain_policy_test;
 #[cfg(test)]
 mod nested_fold_generic_param_emit_test;
-#[cfg(test)]
 mod nested_list_alias_emit_test;
 #[cfg(test)]
 mod node_keyed_graph_artifact_codec_test;
@@ -167,8 +168,6 @@ mod shell_transport_stdin_wet_test;
 mod source_root_ingest_manifest_host_test;
 #[cfg(test)]
 mod sub_value_lattice_factor_test;
-#[cfg(test)]
-mod symbol_index_fill_overlay_direction_test;
 #[cfg(test)]
 mod target_model_runtime_import_repro;
 #[cfg(test)]
