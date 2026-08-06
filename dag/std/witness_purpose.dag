@@ -1,0 +1,113 @@
+module std.witness_purpose
+
+import std.decl_ref { DeclarationRef }
+import std.content_hash { ContentHash }
+import std.measure { Millisecond, millisecond, millisecond_count }
+import std.nat { Nat }
+import std.types { Bool, NonEmptyStr }
+import std.witness_admission { WitnessConsumerCadence }
+
+data witness_purpose_authority_note: String = "Witness purpose taxonomy (operator ruling 2026-08-04, DESIGN witness-cost-derives-from-purpose thread; discrete-cost-derivation section 10; witness-evidence-lifecycle-design). A witness's size must be DERIVED from what it proves — not from a directory name, not from a stopwatch race, not from verisimilitude. WitnessPurpose is the closed vocabulary for that derivation: which modeled boundary, population, external effect, or resource contract justifies the work. WitnessDisposition is orthogonal — what ongoing obligation the witness owes once its purpose is admitted (permanent regression receipt, terminating one-shot survey, or per-PR mechanism fixture). Purpose answers WHY the work is honest; disposition answers WHAT cadence or dissolution the witness owes. Neither is encoded in a source path."
+
+data witness_disposition_terminating_survey_note: String = "TerminatingSurvey is strictly more demanding than naming a cadence (witness_deferral_freeze_purpose_frontier_note). A one-shot owes a pinned subject identity, a mechanically checkable dissolution trigger, AND a deadline after which an undissolved survey REFUSES — without the deadline every permanent witness can claim to be a one-shot. PermanentRegressionWitness names the executing cadence that must observe later regressions; MechanismFixture is the default per-PR discriminating shape with no separate scheduled consumer beyond discovery."
+
+type WitnessResourceAxis
+  = EvalWallTime
+  | EvalThreadCpu
+  | PeakMemory
+
+type WitnessPurpose
+  = MinimalCounterexample
+  | BoundaryCrossing { modeled_boundary: DeclarationRef, chosen_input: ContentHash }
+  | PopulationTotality { population: DeclarationRef }
+  | ExternalFidelity { effect: DeclarationRef }
+  | ResourceContract { resource: WitnessResourceAxis, bound: Millisecond }
+
+type WitnessDisposition
+  = MechanismFixture
+  | PermanentRegressionWitness { required_cadence: WitnessConsumerCadence }
+  | TerminatingSurvey {
+      pinned_subject: ContentHash,
+      dissolution_trigger: DeclarationRef,
+      deadline: NonEmptyStr,
+    }
+
+type WitnessCostEnvelope
+  = DeclaredEnvelope {
+      purpose: WitnessPurpose,
+      eval_wall_ceiling: Millisecond,
+    }
+  | EnvelopeAbsent
+
+type WitnessCostEnvelopeVerdict
+  = WithinDeclaredEnvelope
+  | ExceedsDeclaredEnvelope { observed: Millisecond, ceiling: Millisecond }
+  | EnvelopeUndeclared
+
+fn witness_cost_envelope_ceiling_ms(envelope: WitnessCostEnvelope) -> WitnessCostEnvelopeVerdict {
+  match envelope {
+    EnvelopeAbsent => EnvelopeUndeclared
+    DeclaredEnvelope { purpose: _, eval_wall_ceiling: ceiling } =>
+      WithinDeclaredEnvelope
+  }
+}
+
+fn witness_cost_envelope_admits_observed_wall(
+  envelope: WitnessCostEnvelope,
+  observed: Millisecond,
+) -> WitnessCostEnvelopeVerdict {
+  match envelope {
+    EnvelopeAbsent => EnvelopeUndeclared
+    DeclaredEnvelope { purpose: _, eval_wall_ceiling: ceiling } =>
+      if millisecond_count(m: observed) > millisecond_count(m: ceiling) {
+        ExceedsDeclaredEnvelope { observed: observed, ceiling: ceiling }
+      } else {
+        WithinDeclaredEnvelope
+      }
+  }
+}
+
+fn witness_purpose_requires_scheduled_lane(purpose: WitnessPurpose) -> Bool {
+  match purpose {
+    MinimalCounterexample => false
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    PopulationTotality { population: _ } => true
+    ExternalFidelity { effect: _ } => true
+    ResourceContract { resource: _, bound: _ } => false
+  }
+}
+
+fn witness_disposition_requires_scheduled_lane(disposition: WitnessDisposition) -> Bool {
+  match disposition {
+    MechanismFixture => false
+    PermanentRegressionWitness { required_cadence: _ } => true
+    TerminatingSurvey { pinned_subject: _, dissolution_trigger: _, deadline: _ } => false
+  }
+}
+
+type WitnessRequiredCadence
+  = NoRequiredCadence
+  | RequiredCadence { cadence: WitnessConsumerCadence }
+
+fn witness_disposition_required_cadence(
+  disposition: WitnessDisposition,
+) -> WitnessRequiredCadence {
+  match disposition {
+    MechanismFixture => NoRequiredCadence
+    PermanentRegressionWitness { required_cadence: cadence } =>
+      RequiredCadence { cadence: cadence }
+    TerminatingSurvey { pinned_subject: _, dissolution_trigger: _, deadline: _ } =>
+      NoRequiredCadence
+  }
+}
+
+fn witness_cost_envelope_exceeds_fast_lane(
+  envelope: WitnessCostEnvelope,
+  fast_lane_budget_ms: Nat,
+) -> Bool {
+  match envelope {
+    EnvelopeAbsent => false
+    DeclaredEnvelope { purpose: _, eval_wall_ceiling: ceiling } =>
+      millisecond_count(m: ceiling) > fast_lane_budget_ms
+  }
+}

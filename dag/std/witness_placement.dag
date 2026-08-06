@@ -1,0 +1,139 @@
+module std.witness_placement
+
+import std.nat { Nat }
+import std.types { Bool, String }
+import std.witness_admission {
+  WitnessConsumerCadence,
+  DiscoverySelection,
+  FalsifierSubstrateLongLane,
+  OfflineLocalRecipe,
+  NoConsumer,
+}
+import std.witness_purpose {
+  WitnessPurpose,
+  WitnessDisposition,
+  WitnessCostEnvelope,
+  WitnessCostEnvelopeVerdict,
+  witness_purpose_requires_scheduled_lane,
+  witness_disposition_requires_scheduled_lane,
+  witness_disposition_required_cadence,
+  WitnessRequiredCadence,
+  NoRequiredCadence,
+  RequiredCadence,
+  witness_cost_envelope_exceeds_fast_lane,
+  witness_cost_envelope_admits_observed_wall,
+  EnvelopeAbsent,
+  DeclaredEnvelope,
+  MechanismFixture,
+  PermanentRegressionWitness,
+  TerminatingSurvey,
+  WithinDeclaredEnvelope,
+  ExceedsDeclaredEnvelope,
+  EnvelopeUndeclared,
+}
+import std.measure { Millisecond }
+
+data witness_placement_authority_note: String = "Derived witness placement (witness-evidence-lifecycle-design: route is a projection, never a source-tree declaration). WitnessRoute is computed from declared purpose, disposition, and cost envelope — not from a path substring such as test/claim/long/. The dissolve-on named by gunbc_ci_fast_lane_rule_note, long_lane_exclusion_note, and witness_deferral_freeze_purpose_frontier_note fires when floor admission consumes this projection instead of directory grain. Shadow mode (discrete-cost-derivation section 15 ruling 4): this module may audit beside the legacy path policy before path rows delete; a missing declaration REFUSES rather than silently becoming offline."
+
+type WitnessRoute
+  = PerPrDiscovery
+  | ScheduledLane { cadence: WitnessConsumerCadence }
+  | PlacementRefused { cause: WitnessPlacementRefusal }
+
+type WitnessPlacementRefusal
+  = PurposeRequiresScheduledLaneUndeclared
+  | DispositionRequiresScheduledLaneUndeclared
+  | CostEnvelopeUndeclared
+  | CostEnvelopeExceedsDeclared { observed: Millisecond, ceiling: Millisecond }
+  | FastLaneBudgetExceededWithoutCadence
+  | TerminatingSurveyPastDeadline { deadline: String }
+
+fn witness_consumer_cadence_executes(cadence: WitnessConsumerCadence) -> Bool {
+  match cadence {
+    DiscoverySelection => true
+    FalsifierSubstrateLongLane => true
+    OfflineLocalRecipe => false
+    NoConsumer => false
+    _ => true
+  }
+}
+
+fn derive_witness_route(
+  purpose: WitnessPurpose,
+  disposition: WitnessDisposition,
+  envelope: WitnessCostEnvelope,
+  fast_lane_budget_ms: Nat,
+) -> WitnessRoute {
+  if witness_purpose_requires_scheduled_lane(purpose: purpose) {
+    match witness_disposition_required_cadence(disposition: disposition) {
+      RequiredCadence { cadence: cadence } =>
+        if witness_consumer_cadence_executes(cadence: cadence) {
+          ScheduledLane { cadence: cadence }
+        } else {
+          PlacementRefused { cause: PurposeRequiresScheduledLaneUndeclared }
+        }
+      NoRequiredCadence =>
+        if witness_disposition_requires_scheduled_lane(disposition: disposition) {
+          PlacementRefused { cause: DispositionRequiresScheduledLaneUndeclared }
+        } else if witness_cost_envelope_exceeds_fast_lane(
+          envelope: envelope,
+          fast_lane_budget_ms: fast_lane_budget_ms,
+        ) {
+          PlacementRefused { cause: FastLaneBudgetExceededWithoutCadence }
+        } else {
+          match envelope {
+            EnvelopeAbsent =>
+              PlacementRefused { cause: CostEnvelopeUndeclared }
+            DeclaredEnvelope { purpose: _, eval_wall_ceiling: _ } => PerPrDiscovery
+          }
+        }
+    }
+  } else {
+    match disposition {
+      TerminatingSurvey { pinned_subject: _, dissolution_trigger: _, deadline: _ } =>
+        PerPrDiscovery
+      PermanentRegressionWitness { required_cadence: cadence } =>
+        if witness_consumer_cadence_executes(cadence: cadence) {
+          ScheduledLane { cadence: cadence }
+        } else {
+          PlacementRefused { cause: DispositionRequiresScheduledLaneUndeclared }
+        }
+      MechanismFixture =>
+        if witness_cost_envelope_exceeds_fast_lane(
+          envelope: envelope,
+          fast_lane_budget_ms: fast_lane_budget_ms,
+        ) {
+          PlacementRefused { cause: FastLaneBudgetExceededWithoutCadence }
+        } else {
+          match envelope {
+            EnvelopeAbsent =>
+              PlacementRefused { cause: CostEnvelopeUndeclared }
+            DeclaredEnvelope { purpose: _, eval_wall_ceiling: _ } => PerPrDiscovery
+          }
+        }
+    }
+  }
+}
+
+fn witness_route_is_per_pr(route: WitnessRoute) -> Bool {
+  match route {
+    PerPrDiscovery => true
+    ScheduledLane { cadence: _ } => false
+    PlacementRefused { cause: _ } => false
+  }
+}
+
+fn witness_route_has_executing_consumer(route: WitnessRoute) -> Bool {
+  match route {
+    PerPrDiscovery => true
+    ScheduledLane { cadence: cadence } => witness_consumer_cadence_executes(cadence: cadence)
+    PlacementRefused { cause: _ } => false
+  }
+}
+
+fn witness_placement_admits_observed_cost(
+  envelope: WitnessCostEnvelope,
+  observed: Millisecond,
+) -> WitnessCostEnvelopeVerdict {
+  witness_cost_envelope_admits_observed_wall(envelope: envelope, observed: observed)
+}

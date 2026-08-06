@@ -1,0 +1,231 @@
+module test.claim.witness_purpose_placement_witness
+
+import std.decl_ref { decl_ref }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64,
+  structural_content_hash,
+  fnv1a64_structural_hex_digest,
+}
+import std.measure { millisecond }
+import std.nat { Nat }
+import std.witness_admission {
+  WitnessConsumerCadence,
+  FalsifierSubstrateLongLane,
+  OfflineLocalRecipe,
+}
+import std.witness_purpose {
+  WitnessPurpose,
+  WitnessDisposition,
+  WitnessCostEnvelope,
+  MinimalCounterexample,
+  BoundaryCrossing,
+  PopulationTotality,
+  MechanismFixture,
+  PermanentRegressionWitness,
+  TerminatingSurvey,
+  DeclaredEnvelope,
+  EnvelopeAbsent,
+  witness_cost_envelope_admits_observed_wall,
+  WithinDeclaredEnvelope,
+  ExceedsDeclaredEnvelope,
+  EnvelopeUndeclared,
+}
+import std.witness_placement {
+  derive_witness_route,
+  witness_route_is_per_pr,
+  witness_route_has_executing_consumer,
+  PerPrDiscovery,
+  ScheduledLane,
+  PlacementRefused,
+  FastLaneBudgetExceededWithoutCadence,
+  CostEnvelopeUndeclared,
+}
+
+data witness_purpose_placement_witness_note: String = "First executing consumer for std.witness_purpose and std.witness_placement (Lane B, royal-tern-308). Proves the purpose taxonomy, derived cost envelope admission, and derived route projection are checkable — not prose in witness_deferral_freeze_purpose_frontier_note. RED controls: reverting envelope admission, fast-lane refusal, or population-totality scheduling routes fail here."
+
+fn fixture_subject_hash() -> ContentHash {
+  Fnv1a64(
+    structural_content_hash(
+      digest: fnv1a64_structural_hex_digest(text: "lane-b-fixture-subject")
+    )
+  )
+}
+
+fn fixture_mechanism_envelope() -> WitnessCostEnvelope {
+  DeclaredEnvelope {
+    purpose: MinimalCounterexample,
+    eval_wall_ceiling: millisecond(count: 100),
+  }
+}
+
+fn fixture_population_purpose() -> WitnessPurpose {
+  PopulationTotality {
+    population: decl_ref(
+      module_path: "dag.test.claim.witness_purpose_placement_witness",
+      decl_name: "witness_purpose_placement_witness_note",
+    ),
+  }
+}
+
+test fn mechanism_fixture_under_fast_lane_routes_per_pr() -> Bool {
+  let route = derive_witness_route(
+    purpose: MinimalCounterexample,
+    disposition: MechanismFixture,
+    envelope: fixture_mechanism_envelope(),
+    fast_lane_budget_ms: 5000,
+  )
+  match route {
+    PerPrDiscovery => witness_route_is_per_pr(route: route)
+    ScheduledLane { cadence: _ } => false
+    PlacementRefused { cause: _ } => false
+  }
+}
+
+test fn over_fast_lane_envelope_refuses_without_cadence() -> Bool {
+  let envelope = DeclaredEnvelope {
+    purpose: MinimalCounterexample,
+    eval_wall_ceiling: millisecond(count: 6000),
+  }
+  let route = derive_witness_route(
+    purpose: MinimalCounterexample,
+    disposition: MechanismFixture,
+    envelope: envelope,
+    fast_lane_budget_ms: 5000,
+  )
+  match route {
+    PlacementRefused { cause: FastLaneBudgetExceededWithoutCadence } => true
+    PerPrDiscovery => false
+    ScheduledLane { cadence: _ } => false
+    PlacementRefused { cause: _ } => false
+  }
+}
+
+test fn population_totality_requires_scheduled_lane() -> Bool {
+  let envelope = DeclaredEnvelope {
+    purpose: fixture_population_purpose(),
+    eval_wall_ceiling: millisecond(count: 100),
+  }
+  let route = derive_witness_route(
+    purpose: fixture_population_purpose(),
+    disposition: MechanismFixture,
+    envelope: envelope,
+    fast_lane_budget_ms: 5000,
+  )
+  match route {
+    PlacementRefused { cause: _ } => true
+    PerPrDiscovery => false
+    ScheduledLane { cadence: _ } => false
+  }
+}
+
+test fn permanent_regression_witness_routes_to_declared_cadence() -> Bool {
+  let envelope = DeclaredEnvelope {
+    purpose: MinimalCounterexample,
+    eval_wall_ceiling: millisecond(count: 9000),
+  }
+  let route = derive_witness_route(
+    purpose: MinimalCounterexample,
+    disposition: PermanentRegressionWitness {
+      required_cadence: FalsifierSubstrateLongLane,
+    },
+    envelope: envelope,
+    fast_lane_budget_ms: 5000,
+  )
+  match route {
+    ScheduledLane { cadence: c } =>
+      witness_route_has_executing_consumer(route: route) && c == FalsifierSubstrateLongLane
+    PerPrDiscovery => false
+    PlacementRefused { cause: _ } => false
+  }
+}
+
+test fn undeclared_envelope_refuses_placement() -> Bool {
+  let route = derive_witness_route(
+    purpose: MinimalCounterexample,
+    disposition: MechanismFixture,
+    envelope: EnvelopeAbsent,
+    fast_lane_budget_ms: 5000,
+  )
+  match route {
+    PlacementRefused { cause: CostEnvelopeUndeclared } => true
+    PerPrDiscovery => false
+    ScheduledLane { cadence: _ } => false
+    PlacementRefused { cause: _ } => false
+  }
+}
+
+test fn cost_envelope_admits_observed_within_ceiling() -> Bool {
+  match witness_cost_envelope_admits_observed_wall(
+    envelope: fixture_mechanism_envelope(),
+    observed: millisecond(count: 99),
+  ) {
+    WithinDeclaredEnvelope => true
+    ExceedsDeclaredEnvelope { observed: _, ceiling: _ } => false
+    EnvelopeUndeclared => false
+  }
+}
+
+test fn cost_envelope_refuses_observed_over_ceiling() -> Bool {
+  match witness_cost_envelope_admits_observed_wall(
+    envelope: fixture_mechanism_envelope(),
+    observed: millisecond(count: 101),
+  ) {
+    ExceedsDeclaredEnvelope { observed: _, ceiling: _ } => true
+    WithinDeclaredEnvelope => false
+    EnvelopeUndeclared => false
+  }
+}
+
+test fn offline_local_recipe_cadence_does_not_execute() -> Bool {
+  let route = derive_witness_route(
+    purpose: MinimalCounterexample,
+    disposition: PermanentRegressionWitness {
+      required_cadence: OfflineLocalRecipe,
+    },
+    envelope: fixture_mechanism_envelope(),
+    fast_lane_budget_ms: 5000,
+  )
+  match route {
+    PlacementRefused { cause: _ } => !witness_route_has_executing_consumer(route: route)
+    ScheduledLane { cadence: _ } => false
+    PerPrDiscovery => false
+  }
+}
+
+test fn terminating_survey_allows_per_pr_despite_large_envelope() -> Bool {
+  let envelope = DeclaredEnvelope {
+    purpose: BoundaryCrossing {
+      modeled_boundary: decl_ref(
+        module_path: "std.witness_purpose",
+        decl_name: "WitnessPurpose",
+      ),
+      chosen_input: fixture_subject_hash(),
+    },
+    eval_wall_ceiling: millisecond(count: 9000),
+  }
+  let route = derive_witness_route(
+    purpose: BoundaryCrossing {
+      modeled_boundary: decl_ref(
+        module_path: "std.witness_purpose",
+        decl_name: "WitnessPurpose",
+      ),
+      chosen_input: fixture_subject_hash(),
+    },
+    disposition: TerminatingSurvey {
+      pinned_subject: fixture_subject_hash(),
+      dissolution_trigger: decl_ref(
+        module_path: "std.witness_purpose",
+        decl_name: "witness_purpose_authority_note",
+      ),
+      deadline: "2026-12-31",
+    },
+    envelope: envelope,
+    fast_lane_budget_ms: 5000,
+  )
+  match route {
+    PerPrDiscovery => true
+    ScheduledLane { cadence: _ } => false
+    PlacementRefused { cause: _ } => false
+  }
+}
