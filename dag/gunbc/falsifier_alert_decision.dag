@@ -1,0 +1,312 @@
+module gunbc.falsifier_alert_decision
+
+import std.types { NonEmptyStr, String, EpochMs }
+import std.measure { Millisecond, millisecond, millisecond_count }
+import extdeps.github.workflow_run_event { WorkflowRunEvent }
+import extdeps.github.workflow_runs {
+  WorkflowRunConclusion,
+  Success, Failure, Cancelled, Neutral, Skipped, TimedOut, ActionRequired, StartupFailure
+}
+import gunbc.falsifier_alert_admission {
+  FalsifierAlertAdmission,
+  AlertAdmitted,
+  AlertRefusedWorkflowNotObserved,
+  AlertRefusedWorkflowPathNotObserved,
+  AlertRefusedRepositoryNotOwned,
+  AlertRefusedHeadBranchNotMain,
+  AlertRefusedOriginatingEventNotAdmitted,
+  AlertRefusedActivityNotCompleted,
+  AlertRefusedEventUnreadable
+}
+import gunbc.falsifier_alert_state {
+  FalsifierAlertState,
+  FalsifierAlertStateDecoding,
+  CurrentState, LegacyStateWithoutLastNotification, StateAbsent, StateMalformed,
+  falsifier_alert_heartbeat_window
+}
+import gunbc.floor_component_receipt_document {
+  FloorComponentReceiptDocument,
+  FloorComponentReceiptDecoding,
+  ReceiptDecoded, ReceiptNotJson, ReceiptMemberAbsent, ReceiptMemberMalformed,
+  ReceiptSchemaUnknown, ReceiptComponentCountMismatch, ReceiptUnsuccessfulComponentIdentityNotUnique,
+  ReceiptSubjectMatch, ReceiptSubjectMatches,
+  ReceiptSubjectRunIdMismatch, ReceiptSubjectWorkflowMismatch, ReceiptSubjectHeadShaMismatch,
+  ComponentAlertSummary
+}
+import gunbc.falsifier_lane {
+  FalsifierRouting, RoutedToOwner, RoutingLaneUndetermined, RoutingOwnerUndeclared
+}
+
+data falsifier_alert_decision_purpose_note: String = "ALERT-4. THE WHOLE DECISION, AS A PURE FUNCTION, PERFORMING NO GITHUB CALLS. alert_decision takes an admission outcome, a receipt outcome, the issue's own decoded state, the current instant, the escalation recipient and the lane routings, and returns one terminal AlertDecision. It opens nothing, comments nothing, closes nothing and reads nothing: the effect plan realizes the decision, and this module only decides.\\n\\nWHY THE PURITY IS THE POINT AND NOT A STYLE PREFERENCE. The moment the core reads the world it stops being testable by fixtures — every property below would need a live issue, a live run and a live clock to exercise, which means the properties that matter most (a heartbeat fires at exactly the window boundary; a malformed marker never opens a new incident; every notifying artifact carries the escalation mention) would be checked by nobody. Every fact this function needs arrives as a parameter, so each property is a fixture and a comparison, and the arms that are hardest to reach in production are the cheapest to prove here."
+
+data falsifier_alert_decision_arm_separation_note: String = "FOUR DISTINCT REFUSE ARMS, DELIBERATELY NOT COLLAPSED. RefuseUntrustedEvent means the run is not the one this alert observes — a fork head, a wrong branch, an unadmitted originating event — and its remedy is either a misconfiguration or an attack. RefuseReceiptMalformed means the receipt did not decode, and its remedy is in the floor's writer. RefuseReceiptMismatch means the receipt decoded perfectly and is about a DIFFERENT RUN, whose remedy is in the artifact plumbing that fetched it. RefuseMalformedState means the issue's own marker is corrupt, and its remedy is a human looking at the issue body.\\n\\nThose are four different people and four different investigations. One `Refused` arm carrying a string would make the alert's most important output — the thing an operator reads at 3am when the observer itself has stopped working — a sentence to be parsed rather than a state to be dispatched on. This is the same state-space conflation the state decoding already avoids between StateAbsent and StateMalformed, applied one layer out; having avoided it once, collapsing it here would be inconsistent as well as wrong."
+
+type EscalationRecipient
+  = EscalationDeclared { handle: NonEmptyStr }
+  | EscalationUndeclared { cause: NonEmptyStr }
+
+data falsifier_alert_three_facts_note: String = "THREE FACTS, THREE CARRIERS, NEVER FUSED: the GLOBAL ESCALATION RECIPIENT (who is told that the falsifier is broken at all), the LANE-SPECIFIC OWNER (who owns the particular component that failed), and the ISSUE STATE (what has already been said about this incident). They are easy to fuse and fusing them is a real loss.\\n\\nThe live shape makes the trap concrete: the lane owner roster in gunbc.falsifier_lane is EMPTY, so every lane routes to RoutingOwnerUndeclared, while exactly one global handle exists. It is tempting to read the global handle as the owner of every lane — it is the only handle there is — but that would fabricate ownership facts nobody asserted, and would make the undeclared-owner gap invisible precisely because something plausible got rendered in its place.\\n\\nSo the rule is symmetric and both halves are witnessed. An UNDECLARED LANE OWNER MUST NOT SUPPRESS GLOBAL ESCALATION: the falsifier being red is escalated whether or not anyone owns the failing lane, because the escalation recipient's question is `is the observer working` and the lane owner's question is `whose component broke`. And AN UNDECLARED LANE OWNER MUST STILL BE RENDERABLE: the issue says the lane has no owner, by name, so the gap is counted and located rather than papered over by the global mention standing in for it."
+
+type AlertNotification {
+  escalation: EscalationRecipient
+  routings: List<FalsifierRouting>
+}
+
+data no_action_reason_note: String = "NoAction carries a typed REASON rather than being a bare arm, because two genuinely different situations reach it: a run whose conclusion is not actionable at all (cancelled, skipped, timed out — the alert has nothing to say about a run that did not conclude green or red), and a green run with no open incident (nothing to close, nothing to announce). The remedy differs — the first may warrant looking at why runs keep being cancelled, the second is the steady state — so although both produce no effect, fusing them would discard the distinction at the only point anything records it. This is a reason on one arm rather than two arms because the brief's terminal set names one NoAction and the EFFECT is genuinely identical; what must not be lost is why."
+
+type NoActionReason
+  = ConclusionNotActionable { conclusion_tag: NonEmptyStr }
+  | GreenWithNoOpenIncident
+
+type AlertDecision
+  = NoAction { reason: NoActionReason }
+  | OpenIssue { signature: NonEmptyStr, notification: AlertNotification }
+  | RefreshIssueWithoutNotification { signature: NonEmptyStr, silent_for: Millisecond }
+  | RefreshAndNotifyChangedClass { previous: NonEmptyStr, current: NonEmptyStr, notification: AlertNotification }
+  | RefreshAndNotifyHeartbeat { signature: NonEmptyStr, silent_for: Millisecond, notification: AlertNotification }
+  | NotifyGreenAndClose { notification: AlertNotification }
+  | NotifyLegacyStateMigration { first_red: EpochMs, signature: NonEmptyStr, notification: AlertNotification }
+  | RefuseMalformedState { detail: String }
+  | RefuseUntrustedEvent { admission: FalsifierAlertAdmission }
+  | RefuseReceiptMismatch { mismatch: ReceiptSubjectMatch }
+  | RefuseReceiptMalformed { decoding: FloorComponentReceiptDecoding }
+
+data receipt_input_note: String = "The receipt arrives as its DECODING plus its SUBJECT MATCH, not as a bare document, because the two failures are different arms of the result and a decoded-but-mismatched receipt is not a decode failure. Passing an already-unwrapped document would force the caller to collapse them before calling, which is exactly where the distinction would be lost."
+
+type AlertReceiptInput
+  = ReceiptAdmitted { document: FloorComponentReceiptDocument }
+  | ReceiptSubjectRejected { mismatch: ReceiptSubjectMatch }
+  | ReceiptUndecodable { decoding: FloorComponentReceiptDecoding }
+
+data conclusion_actionability_note: String = "Only Success and Failure drive the alert. GitHub's other conclusions describe a run that did not reach a verdict about its subject — Cancelled, Skipped, TimedOut, Neutral, ActionRequired, StartupFailure — and inventing a red from any of them would be the fabricated-plausible-output DESIGN §5 forbids: a startup failure says nothing whatsoever about whether the corpus is green. The match is total over the closed coproduct, so a conclusion added upstream is a compile error here rather than an arm that silently behaves like one of these."
+
+fn conclusion_tag(c: WorkflowRunConclusion) -> NonEmptyStr {
+  match c {
+    Success => "success" as NonEmptyStr
+    Failure => "failure" as NonEmptyStr
+    Cancelled => "cancelled" as NonEmptyStr
+    Neutral => "neutral" as NonEmptyStr
+    Skipped => "skipped" as NonEmptyStr
+    TimedOut => "timed_out" as NonEmptyStr
+    ActionRequired => "action_required" as NonEmptyStr
+    StartupFailure => "startup_failure" as NonEmptyStr
+  }
+}
+
+data signature_derivation_note: String = "THE SIGNATURE IS DERIVED FROM THE TYPED COMPONENT SUMMARIES, not from rendered prose and not from a raw JSON scan. ALERT-3.5 made index, label, outcome and failure_mode strictly decoded fields precisely so this function could key on them; the four together are the grain at which a red that CHANGED CLASS is distinguishable from a red that merely persists. failure_mode is in the key because outcome alone is many-to-one — Infra and WitnessRed both surface as `failed` — so without it a change of owner reads as no change at all.\\n\\nAn empty unsuccessful set under a Failure conclusion still produces a signature rather than being treated as green: the run failed, and a receipt that names no failing component is itself a discrepancy the alert should show unchanged across windows rather than silently reclassify."
+
+fn component_signature_member(s: ComponentAlertSummary) -> String {
+  concat(
+    concat(concat(s.index as String, ":"), concat(s.label as String, ":")),
+    concat(concat(s.failure_mode as String, ":"), s.outcome as String)
+  )
+}
+
+fn alert_signature_of(doc: FloorComponentReceiptDocument) -> NonEmptyStr {
+  let members = map(doc.unsuccessful_summaries, x => component_signature_member(s: x))
+  if count(members) == 0 {
+    "no-unsuccessful-components" as NonEmptyStr
+  } else {
+    join(members, "|") as NonEmptyStr
+  }
+}
+
+data notification_always_carries_escalation_note: String = "EVERY NOTIFYING ARM CARRIES AN AlertNotification, AND EVERY AlertNotification CARRIES THE ESCALATION RECIPIENT. That is a construction property rather than a convention: the four notifying arms cannot be built without one, because the field is required, so an author adding a fifth notifying arm has to supply it to make the program typecheck.\\n\\nThis is the structural form of the defect that started this whole lane. The alert reached its recipient once per incident because the mention lived only in the issue body, and a mention notifies when it is CREATED — body edits send nothing — so the heartbeat and changed-class comments, the artifacts carrying current state, notified nobody for two days while the mechanism reported success. A convention that says `remember to include the mention` is exactly what failed there. The non-notifying arms deliberately do NOT carry one: RefreshIssueWithoutNotification edits a body and sends nothing by design, and giving it a notification field would invite someone to use it."
+
+fn alert_notification(escalation: EscalationRecipient, routings: List<FalsifierRouting>) -> AlertNotification {
+  AlertNotification { escalation: escalation, routings: routings }
+}
+
+fn alert_decision_notifies(d: AlertDecision) -> Bool {
+  match d {
+    OpenIssue { signature: _, notification: _ } => true
+    RefreshAndNotifyChangedClass { previous: _, current: _, notification: _ } => true
+    RefreshAndNotifyHeartbeat { signature: _, silent_for: _, notification: _ } => true
+    NotifyGreenAndClose { notification: _ } => true
+    NotifyLegacyStateMigration { first_red: _, signature: _, notification: _ } => true
+    RefreshIssueWithoutNotification { signature: _, silent_for: _ } => false
+    NoAction { reason: _ } => false
+    RefuseMalformedState { detail: _ } => false
+    RefuseUntrustedEvent { admission: _ } => false
+    RefuseReceiptMismatch { mismatch: _ } => false
+    RefuseReceiptMalformed { decoding: _ } => false
+  }
+}
+
+fn alert_decision_notification(d: AlertDecision) -> AlertNotification? {
+  match d {
+    OpenIssue { signature: _, notification: n } => Present { value: n }
+    RefreshAndNotifyChangedClass { previous: _, current: _, notification: n } => Present { value: n }
+    RefreshAndNotifyHeartbeat { signature: _, silent_for: _, notification: n } => Present { value: n }
+    NotifyGreenAndClose { notification: n } => Present { value: n }
+    NotifyLegacyStateMigration { first_red: _, signature: _, notification: n } => Present { value: n }
+    RefreshIssueWithoutNotification { signature: _, silent_for: _ } => none
+    NoAction { reason: _ } => none
+    RefuseMalformedState { detail: _ } => none
+    RefuseUntrustedEvent { admission: _ } => none
+    RefuseReceiptMismatch { mismatch: _ } => none
+    RefuseReceiptMalformed { decoding: _ } => none
+  }
+}
+
+data escalation_survives_undeclared_owner_note: String = "The predicate that makes the escalation/ownership separation checkable: a notification escalates exactly when the escalation recipient is declared, and that answer does not consult the routings at all. An undeclared lane owner therefore cannot suppress escalation, and — the mirror, which is the half that is easy to lose — a declared lane owner cannot substitute for a missing escalation recipient either. Both directions are witnessed."
+
+fn notification_escalates(n: AlertNotification) -> Bool {
+  match n.escalation {
+    EscalationDeclared { handle: _ } => true
+    EscalationUndeclared { cause: _ } => false
+  }
+}
+
+fn routing_lacks_owner(r: FalsifierRouting) -> Bool {
+  match r {
+    RoutedToOwner { index: _, lane: _, owner: _ } => false
+    RoutingLaneUndetermined { index: _, cause: _ } => true
+    RoutingOwnerUndeclared { index: _, lane: _, cause: _ } => true
+  }
+}
+
+fn notification_has_unowned_routing(n: AlertNotification) -> Bool {
+  fold(n.routings, init: false, f: (acc, r) => acc || routing_lacks_owner(r: r))
+}
+
+data readable_incident_state_note: String = "THE MALFORMED MARKER IS PEELED OFF ONCE, AND WHAT REMAINS CANNOT BE MALFORMED. AlertIncidentState is the state a verdict fold is allowed to see: absent, current, or legacy. StateMalformed has no image in it, so the green fold and the red fold cannot re-decide the corrupt-marker question — not because they are careful, but because there is no arm to write it in.\\n\\nThis replaces the shape this module first had, where the guard sat in alert_decision AND again in each of the two folds. All three agreed, so nothing was wrong; what was wrong was that three copies of one rule can only stay in agreement by diligence, and a fourth fold added later would have started with no answer at all. A discriminating RED found this: deleting the outer guard left every claim green, which is what a redundant check looks like from the outside. The rule now lives at exactly one seam, and the two folds are total over a coproduct in which the bad state does not exist."
+
+type AlertIncidentState
+  = IncidentAbsent
+  | IncidentCurrent { state: FalsifierAlertState }
+  | IncidentLegacy { first_red: EpochMs, signature: NonEmptyStr }
+
+type AlertIncidentStateReading
+  = IncidentReadable { state: AlertIncidentState }
+  | IncidentUnreadable { detail: String }
+
+fn alert_incident_state_of(decoding: FalsifierAlertStateDecoding) -> AlertIncidentStateReading {
+  match decoding {
+    StateAbsent => IncidentReadable { state: IncidentAbsent }
+    CurrentState { state: s } => IncidentReadable { state: IncidentCurrent { state: s } }
+    LegacyStateWithoutLastNotification { first_red: f, signature: sig } =>
+      IncidentReadable { state: IncidentLegacy { first_red: f, signature: sig } }
+    StateMalformed { detail: d } => IncidentUnreadable { detail: d }
+  }
+}
+
+data decision_order_note: String = "THE ORDER OF THE GUARDS IS THE ALGEBRA, and it runs outside-in: trust, then the artifact, then our own state, then the verdict. Each stage may only be reached when every stage outside it held.\\n\\nTrust first, because an unadmitted event's receipt must never be decoded, rendered, or acted on — this program holds issue-write capability, so content from an untrusted run is exactly what must not reach it. Receipt decodability before subject match, because a document that did not decode has no subject to compare. Subject match before state, because a receipt about another run tells us nothing about this incident. State before verdict, because a corrupt marker means we cannot safely write ANY outcome, green or red — RefuseMalformedState fires whether the run passed or failed, since the harm is overwriting an unreadable incident record, not the direction of the verdict.\\n\\nThat last ordering is a deliberate choice worth stating: it means a GREEN run with a corrupt marker refuses instead of closing the issue. Closing would be the friendlier-looking answer and it would destroy the corrupt marker in the process, which is the one artifact a human needs to diagnose what wrote it."
+
+fn alert_decision(
+  admission: FalsifierAlertAdmission,
+  receipt: AlertReceiptInput,
+  state: AlertIncidentState,
+  now: EpochMs,
+  escalation: EscalationRecipient,
+  routings: List<FalsifierRouting>
+) -> AlertDecision {
+  match admission {
+    AlertRefusedWorkflowNotObserved { observed: _, expected: _ } => RefuseUntrustedEvent { admission: admission }
+    AlertRefusedWorkflowPathNotObserved { observed: _, expected: _ } => RefuseUntrustedEvent { admission: admission }
+    AlertRefusedRepositoryNotOwned { field: _, observed: _, expected: _ } => RefuseUntrustedEvent { admission: admission }
+    AlertRefusedHeadBranchNotMain { observed: _, expected: _ } => RefuseUntrustedEvent { admission: admission }
+    AlertRefusedOriginatingEventNotAdmitted { observed: _ } => RefuseUntrustedEvent { admission: admission }
+    AlertRefusedActivityNotCompleted { observed: _, expected: _ } => RefuseUntrustedEvent { admission: admission }
+    AlertRefusedEventUnreadable { observation: _ } => RefuseUntrustedEvent { admission: admission }
+    AlertAdmitted { event: e } =>
+      match receipt {
+        ReceiptUndecodable { decoding: d } => RefuseReceiptMalformed { decoding: d }
+        ReceiptSubjectRejected { mismatch: m } => RefuseReceiptMismatch { mismatch: m }
+        ReceiptAdmitted { document: doc } =>
+          match alert_incident_state_of(decoding: state) {
+            IncidentUnreadable { detail: d } => RefuseMalformedState { detail: d }
+            IncidentReadable { state: incident } => alert_decision_on_verdict(
+              event: e,
+              document: doc,
+              state: incident,
+              now: now,
+              escalation: escalation,
+              routings: routings
+            )
+          }
+      }
+  }
+}
+
+fn alert_decision_on_verdict(
+  event: WorkflowRunEvent,
+  document: FloorComponentReceiptDocument,
+  state: AlertIncidentState,
+  now: EpochMs,
+  escalation: EscalationRecipient,
+  routings: List<FalsifierRouting>
+) -> AlertDecision {
+  match event.conclusion {
+    Success => alert_decision_green(state: state, escalation: escalation, routings: routings)
+    Failure => alert_decision_red(
+      document: document,
+      state: state,
+      now: now,
+      escalation: escalation,
+      routings: routings
+    )
+    Cancelled => NoAction { reason: ConclusionNotActionable { conclusion_tag: conclusion_tag(c: Cancelled) } }
+    Neutral => NoAction { reason: ConclusionNotActionable { conclusion_tag: conclusion_tag(c: Neutral) } }
+    Skipped => NoAction { reason: ConclusionNotActionable { conclusion_tag: conclusion_tag(c: Skipped) } }
+    TimedOut => NoAction { reason: ConclusionNotActionable { conclusion_tag: conclusion_tag(c: TimedOut) } }
+    ActionRequired => NoAction { reason: ConclusionNotActionable { conclusion_tag: conclusion_tag(c: ActionRequired) } }
+    StartupFailure => NoAction { reason: ConclusionNotActionable { conclusion_tag: conclusion_tag(c: StartupFailure) } }
+  }
+}
+
+data green_close_note: String = "A GREEN RUN CLOSES ONLY AN INCIDENT THAT EXISTS. With no marker there is nothing open and nothing to announce, so the answer is NoAction with the reason recorded — not a notification that everything is fine, which would page the recipient on every successful run of a four-hourly cadence. A legacy marker DOES close: it is a real open incident that merely predates the typed state, and refusing to close it would leave a stale issue open forever as the cost of a format change."
+
+fn alert_decision_green(
+  state: AlertIncidentState,
+  escalation: EscalationRecipient,
+  routings: List<FalsifierRouting>
+) -> AlertDecision {
+  match state {
+    IncidentAbsent => NoAction { reason: GreenWithNoOpenIncident }
+    IncidentCurrent { state: _ } => NotifyGreenAndClose { notification: alert_notification(escalation: escalation, routings: routings) }
+    IncidentLegacy { first_red: _, signature: _ } =>
+      NotifyGreenAndClose { notification: alert_notification(escalation: escalation, routings: routings) }
+  }
+}
+
+data red_window_note: String = "THE WINDOW IS MEASURED FROM last_notification_at, WHICH IS THE FACT THE ALERT ITSELF PRODUCED. Not from first_red, which would make the interval drift with incident age; not from the run start, which would notify every run; and emphatically not from the newest comment's timestamp, which is where this began — a single per_page=100 page read oldest-first, so past 100 comments the throttle inverted from at-most-every-20h into every-run. There is no second source of issue state here and none may be added.\\n\\nA CHANGED SIGNATURE IS NEVER THROTTLED. It is a different incident with a different remedy, so suppressing it as `still red` is the conflation the signature exists to detect; the window applies only to a red whose class has not moved."
+
+fn alert_decision_red(
+  document: FloorComponentReceiptDocument,
+  state: AlertIncidentState,
+  now: EpochMs,
+  escalation: EscalationRecipient,
+  routings: List<FalsifierRouting>
+) -> AlertDecision {
+  let signature = alert_signature_of(doc: document)
+  match state {
+    IncidentAbsent =>
+      OpenIssue { signature: signature, notification: alert_notification(escalation: escalation, routings: routings) }
+    IncidentLegacy { first_red: f, signature: _ } =>
+      NotifyLegacyStateMigration {
+        first_red: f,
+        signature: signature,
+        notification: alert_notification(escalation: escalation, routings: routings)
+      }
+    IncidentCurrent { state: s } =>
+      if (s.signature as String) != (signature as String) {
+        RefreshAndNotifyChangedClass {
+          previous: s.signature,
+          current: signature,
+          notification: alert_notification(escalation: escalation, routings: routings)
+        }
+      } else if now >= s.last_notification_at + millisecond_count(m: falsifier_alert_heartbeat_window) {
+        RefreshAndNotifyHeartbeat {
+          signature: signature,
+          silent_for: millisecond(count: now - s.last_notification_at),
+          notification: alert_notification(escalation: escalation, routings: routings)
+        }
+      } else {
+        RefreshIssueWithoutNotification {
+          signature: signature,
+          silent_for: millisecond(count: now - s.last_notification_at)
+        }
+      }
+  }
+}
