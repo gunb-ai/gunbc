@@ -19,18 +19,6 @@ data proc_self_cgroup_proc_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.linux.proc_self_cgroup",
-      decl_name: "proc_self_cgroup_proc_authority",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps.linux.proc_self_cgroup.proc_self_cgroup_proc_authority,
-  further_citations: [extdeps.linux.proc_self_cgroup.extdeps_external_authority_anchor]
-}
-
 type ProcSelfCgroupLineRefusal
   = ProcSelfCgroupLineMissingColon
   | ProcSelfCgroupLineMissingSecondColon
@@ -45,11 +33,23 @@ type ProcSelfCgroupLineParse
     }
   | ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineRefusal }
 
-type UnifiedCgroupMembershipRead
+type ProcPidCgroupMembershipRecord
   = CurrentCgroupObserved { relative_path: NonEmptyStr }
   | MembershipMissing
   | MembershipAmbiguous { first: NonEmptyStr, second: NonEmptyStr }
   | MembershipMalformed { cause: ProcSelfCgroupLineRefusal }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.proc_self_cgroup",
+      decl_name: "ProcPidCgroupMembershipRecord",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: proc_self_cgroup_proc_authority,
+  further_citations: [extdeps_external_authority_anchor]
+}
 
 type ProcSelfCgroupMalformedScan
   = NoMalformedLine
@@ -100,6 +100,10 @@ fn proc_self_cgroup_line_from_wire(line: String) -> ProcSelfCgroupLineParse {
   }
 }
 
+fn proc_self_cgroup_is_unified_v2_line(hierarchy_id: NonEmptyStr, controller_list: String) -> Bool {
+  (hierarchy_id as String == "0") && (controller_list == "")
+}
+
 fn proc_self_cgroup_nonempty_lines(content: String) -> List<String> {
   split(s: content, delimiter: "\n")
     |> filter(line => trim(line) != "")
@@ -117,12 +121,12 @@ fn proc_self_cgroup_unified_hierarchy_paths_loop(
     let rest = lines.skip(n: 1)
     match proc_self_cgroup_line_from_wire(line: line) {
       ProcSelfCgroupLineParsed { hierarchy_id: hid, controller_list: ctl, relative_path: path } =>
-        if (hid as String == "0") {
+        if proc_self_cgroup_is_unified_v2_line(hierarchy_id: hid, controller_list: ctl) {
           proc_self_cgroup_unified_hierarchy_paths_loop(lines: rest, acc: concat(acc, [path]))
         } else {
           proc_self_cgroup_unified_hierarchy_paths_loop(lines: rest, acc: acc)
         }
-      ProcSelfCgroupLineRefused { cause: c } =>
+      ProcSelfCgroupLineRefused { cause: _ } =>
         proc_self_cgroup_unified_hierarchy_paths_loop(lines: rest, acc: acc)
     }
   }
@@ -142,7 +146,7 @@ fn proc_self_cgroup_first_malformed_cause_loop(lines: List<String>) -> ProcSelfC
     let line = lines.first()
     match proc_self_cgroup_line_from_wire(line: line) {
       ProcSelfCgroupLineRefused { cause: c } => MalformedFound { cause: c }
-      ProcSelfCgroupLineParsed { hierarchy_id: hid, controller_list: ctl, relative_path: path } =>
+      ProcSelfCgroupLineParsed { hierarchy_id: _, controller_list: _, relative_path: _ } =>
         proc_self_cgroup_first_malformed_cause_loop(lines: lines.skip(n: 1))
     }
   }
@@ -154,7 +158,7 @@ fn proc_self_cgroup_first_malformed_cause(content: String) -> ProcSelfCgroupMalf
   )
 }
 
-fn read_unified_cgroup_membership(content: String) -> UnifiedCgroupMembershipRead {
+fn read_unified_cgroup_membership(content: String) -> ProcPidCgroupMembershipRecord {
   match proc_self_cgroup_first_malformed_cause(content: content) {
     MalformedFound { cause: cause } => MembershipMalformed { cause: cause }
     NoMalformedLine =>
@@ -169,16 +173,5 @@ fn read_unified_cgroup_membership(content: String) -> UnifiedCgroupMembershipRea
           second: paths.skip(n: 1).first(),
         }
       }
-  }
-}
-
-service LinuxCgroup {
-  operation CurrentMembership {
-    input {}
-    output {
-      membership: UnifiedCgroupMembershipRead from "membership"
-    }
-    readonly
-    transport file { path: "/proc/self/cgroup" }
   }
 }
