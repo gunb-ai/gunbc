@@ -1,0 +1,11 @@
+label	base-r2
+binary_sha256	beb499507755ada79e07d44b3902b7ce927998e7931f83270292c5340f7e6548
+exit	1
+wall_ms	96000
+exclusive_assembly_ms	27205.0
+peak_rss_kb	5976883
+pass	48
+fail	2
+[resolve-summary] 50 resolve(s) in 50216ms; 50 witness(es) in 74ms
+[resolve-split] load=29025.7ms parse=2328.9ms resolve=382.9ms normalize=340.7ms typecheck=12754.3ms parent_envs=4.1ms reconcile_assembly=126.0ms ownership=373.5ms
+[assembly-split] schedule=12.8ms probe=14.0ms graph=5.8ms symbol_index=3780.9ms pool_fill=1749.8ms symbol_index_merge=292.2ms variant_base=194.6ms root_symbol_index=293.4ms root_variant_base=4098.4ms environment=232.3ms diagnostics=3.6ms registry=40.7ms services=1438.3ms rewire_type_env=603.9ms rewire_import_str=6042.7ms rewire_func_env=121.1ms emit_info=1396.3ms other=126.0ms rewire_total_observation=6767.8ms
