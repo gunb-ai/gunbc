@@ -623,10 +623,11 @@ fn live_deploy_poll_until_service_ready_for_deploy(
 }
 
 fn live_deploy_poll_until_service_ready(
-  release_revision: CommitSha,
+  candidate: CandidateRelease,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   live_deploy_poll_until_service_ready_for_deploy(
     spec: deployment_spec_srv1(),
+    candidate: candidate,
     transport: ci_deploy_srv1_access.transport,
     access: ci_deploy_srv1_access,
   )
