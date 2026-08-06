@@ -22,24 +22,60 @@ test fn runner_slot_allocation_wall_holds() -> Bool {
 
 test fn runner_slot_allocation_oversubscription_boundary_exact() -> Bool {
   let per_slot = gunbc_runner_slot_desired()
-  gunbc_runner_slot_oversubscription_within_slice(
-    slots: gunbc_runner_slots_per_host(),
-    per_slot: per_slot.memory_max,
-    slice_cap: gunbc_runner_slice_cap_declared()
+  all(
+    gunbc_committed_runner_slot_allocations(),
+    a =>
+      gunbc_runner_slot_oversubscription_within_slice(
+        slots: gunbc_runner_slots_per_host(host: a.host),
+        per_slot: per_slot.memory_max,
+        slice_cap: gunbc_runner_slice_cap_declared(host: a.host)
+      )
   )
 }
 
-test fn runner_slot_allocation_committed_hosts_nonempty() -> Bool {
-  gunbc_committed_runner_slot_allocations() |> count == 3
+fn committed_allocation_for(host: HostIdentity) -> Int {
+  fold(
+    gunbc_committed_runner_slot_allocations(),
+    init: 0,
+    f: (n, a) => if (a.host as String) == (host as String) { n + 1 } else { n }
+  )
+}
+
+test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() -> Bool {
+  committed_allocation_for(host: operator_host_srv1) == 1
+    && committed_allocation_for(host: operator_host_srv2) == 1
+    && committed_allocation_for(host: operator_host_srv3) == 1
+    && committed_allocation_for(host: operator_host_srv4) == 1
+    && committed_allocation_for(host: "srv-does-not-exist") == 0
+}
+
+test fn runner_slot_allocation_widths_differ_by_host_class() -> Bool {
+  gunbc_runner_slots_per_host(host: operator_host_srv1) == 5
+    && gunbc_runner_slots_per_host(host: operator_host_srv2) == 5
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 7
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 7
 }
 
 test fn runner_slot_allocation_RED_oversubscription_exceeds_slice() -> Bool {
   let per_slot = gunbc_runner_slot_desired()
-  !gunbc_runner_slot_oversubscription_within_slice(
-    slots: gunbc_runner_slots_per_host() + 1,
-    per_slot: per_slot.memory_max,
-    slice_cap: gunbc_runner_slice_cap_declared()
+  all(
+    gunbc_committed_runner_slot_allocations(),
+    a =>
+      !gunbc_runner_slot_oversubscription_within_slice(
+        slots: gunbc_runner_slots_per_host(host: a.host) + 1,
+        per_slot: per_slot.memory_max,
+        slice_cap: gunbc_runner_slice_cap_declared(host: a.host)
+      )
   )
+}
+
+test fn runner_slot_allocation_unknown_host_refuses_a_width() -> Bool {
+  gunbc_runner_slots_per_host(host: "srv-does-not-exist") == 0
+    && byte_size_count(b: gunbc_runner_slice_cap_declared(host: "srv-does-not-exist")) == 0
+}
+
+test fn runner_slot_allocation_memory_high_clears_the_measured_floor() -> Bool {
+  byte_size_count(b: gunbc_runner_slot_desired().memory_high) > byte_size_count(b: gunbc_floor_minimum_viable_armed_budget)
 }
 
 test fn runner_slot_allocation_enforcement_expected_cap_is_desired_memory_max() -> Bool {

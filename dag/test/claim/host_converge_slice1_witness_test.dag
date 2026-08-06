@@ -42,7 +42,7 @@ import gunbc.host_converge_slice1 {
   host_converge_slice1_unit_outcome_to_legacy_result,
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.fleet_host_budget { declared_runner_count }
+import gunbc.fleet_host_budget { declared_runner_count_for }
 import std.measure { byte_size }
 import std.disposition { Scaffold, Terminal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -152,7 +152,7 @@ test fn witness_enumerate_units_uses_typed_list_units_op() -> Bool {
 }
 
 test fn witness_cross_check_enumeration_none_iff_length_matches_declared() -> Bool {
-  let declared = declared_runner_count()
+  let declared = declared_runner_count_for(host: operator_host_srv3)
   let empty_units: List<NonEmptyStr> = []
   match host_converge_slice1_cross_check_enumeration(host: operator_host_srv3, units: empty_units) {
     Present { value: mismatch } =>

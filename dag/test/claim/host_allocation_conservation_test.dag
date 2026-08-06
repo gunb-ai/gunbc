@@ -8,10 +8,61 @@ test fn allocation_conserves_when_pools_fit() -> Bool {
     host: byte_size(134217728000),
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
-    runner_pool: gunbc_runner_pool_budget,
+    runner_pool: gunbc_runner_pool_budget_for(host: operator_host_srv1),
     session_pool: byte_size(0),
     compile_pool: byte_size(0)
   )
+}
+
+data per_host_width_red_controls_note: String = "THE FOUR CONTROLS BELOW ARE THE POINT OF THE PER-HOST SPLIT, and each one goes red against a specific way of getting this wrong rather than against a changed number. Every input is the live authority except the WIDTH under test, which is perturbed by exactly one slot — so a control cannot pass by coincidence and cannot be repaired by editing a literal.\n\nThe pair matters more than either half. Asserting only that the committed widths fit would be satisfied by a wall that returns true for everything, which is exactly the wall this change replaced (it charged session_pool: 0 on every host and would have passed srv1 at seven slots). Asserting only the refusals would be satisfied by a wall that refuses everything. Together they pin the boundary at the slot, in both directions, on both host classes.\n\nWhy srv1 refuses at 6 and srv3 refuses at 8: srv1 owes the sessions reservation its roster entry declares and carries the legacy overhead allowance, srv3 owes neither and carries the measured bound. Same per-slot ceiling, same host RAM, different admissible width — which is the whole claim, stated as arithmetic that fails if either per-host fact is wrong."
+
+fn conserves_at_width(host: HostIdentity, slots: Int) -> Bool {
+  host_allocation_conserves(
+    host: host_os_usable_ram_bytes(),
+    overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead_for(host: host)),
+    headroom: oomd_actuation_floor(host: host_os_usable_ram_bytes()),
+    runner_pool: gunbc_runner_slot_demand_sum_memory_max(
+      slots: slots,
+      per_slot: gunbc_runner_slot_desired().memory_max
+    ),
+    session_pool: host_session_slice_bytes(host: host),
+    compile_pool: byte_size(0)
+  )
+}
+
+test fn committed_width_fits_on_every_host() -> Bool {
+  all(
+    gunbc_committed_runner_slot_allocations(),
+    a => conserves_at_width(host: a.host, slots: a.slots_per_host)
+  )
+}
+
+test fn one_more_slot_refuses_on_every_host() -> Bool {
+  all(
+    gunbc_committed_runner_slot_allocations(),
+    a => !conserves_at_width(host: a.host, slots: a.slots_per_host + 1)
+  )
+}
+
+test fn session_hosts_refuse_the_managed_width() -> Bool {
+  conserves_at_width(host: operator_host_srv3, slots: 7)
+    && !conserves_at_width(host: operator_host_srv1, slots: 7)
+    && !conserves_at_width(host: operator_host_srv2, slots: 7)
+}
+
+test fn charging_zero_sessions_would_have_admitted_the_overcommit() -> Bool {
+  host_allocation_conserves(
+    host: host_os_usable_ram_bytes(),
+    overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead_for(host: operator_host_srv1)),
+    headroom: oomd_actuation_floor(host: host_os_usable_ram_bytes()),
+    runner_pool: gunbc_runner_slot_demand_sum_memory_max(
+      slots: 6,
+      per_slot: gunbc_runner_slot_desired().memory_max
+    ),
+    session_pool: byte_size(0),
+    compile_pool: byte_size(0)
+  )
+    && !conserves_at_width(host: operator_host_srv1, slots: 6)
 }
 
 test fn allocation_unsound_when_runner_pool_overcommits() -> Bool {
@@ -30,7 +81,7 @@ test fn sessions_subtract_from_the_same_budget() -> Bool {
     host: byte_size(134217728000),
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
-    runner_pool: gunbc_runner_pool_budget,
+    runner_pool: gunbc_runner_pool_budget_for(host: operator_host_srv1),
     session_pool: gunbc.fleet_host_budget.session_pool_bytes(active_sessions: 40),
     compile_pool: byte_size(0)
   )

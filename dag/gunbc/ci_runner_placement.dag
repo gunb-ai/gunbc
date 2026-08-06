@@ -1,6 +1,6 @@
 module gunbc.ci_runner_placement
 
-import gunbc.ci_fleet { ComputeOffer }
+import gunbc.ci_fleet { ComputeOffer, gunbc_ci_host }
 import gunbc.fleet_intent { compute_host_ram_bytes_total, compute_host_primary_cpu }
 import product.placement_supply { HostIdentity }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_le, HardwareThreadCount }
@@ -11,11 +11,17 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.build_cache_instance {
+  BuildCacheConsumerClass,
+  ContinuousIntegrationCompiles,
+  InteractiveSessionCompiles,
+  build_cache_desired_instances,
+}
 import gunbc.fleet_host_budget {
   gunbc_fleet_oomd_evidence,
-  gunbc_runner_pool_budget,
+  gunbc_runner_pool_budget_for,
   host_allocation_conserves,
-  declared_runner_count,
+  declared_runner_count_for,
   oomd_actuation_floor,
   CompilePoolResolution,
   CompilePoolDerived,
@@ -31,6 +37,7 @@ import extdeps.cpu { cpu_facts_threads }
 import gunbc.ci_floor_measurement {
   HostFixedOverhead,
   HostFixedOverheadMeasured,
+  HostFixedOverheadAllowance,
   HostFixedOverheadUnmeasured,
   SessionOperatingPoint,
   SessionOperatingPointSet,
@@ -44,7 +51,7 @@ import gunbc.ci_floor_measurement {
   Regime1WorstCase,
   Regime2AggregateOomd,
   SessionReservationModeUnset,
-  gunbc_ci_host_fixed_overhead,
+  gunbc_ci_host_fixed_overhead_for,
   gunbc_ci_per_session_peak_samples,
   gunbc_ci_session_reservation_mode,
   gunbc_ci_runner_cgroup_memory_cap,
@@ -157,16 +164,34 @@ data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { rea
 
 fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
   match o {
-    HostFixedOverheadMeasured { bytes: b } => b
+    HostFixedOverheadMeasured { bytes: b, provenance: _ } => b
+    HostFixedOverheadAllowance { bytes: b, reason: _ } => b
     HostFixedOverheadUnmeasured => byte_size(0)
+  }
+}
+
+data host_fixed_overhead_unmeasured_is_refusal_not_zero_note: String = "host_fixed_overhead_bytes maps Unmeasured to ZERO BYTES, and that arm is a fail-open this module must not consume directly. Zero overhead makes a host look like it has its entire RAM available for runners, which is the most permissive possible answer to a question nobody answered — the absorbing fallback in the input to a conservation wall. The arm is retained because the function is a total projection and callers legitimately fold over it, but accumulate_conservation_deployment refuses on Unmeasured BEFORE reaching it (host_overhead_or_refusal), so the zero is unreachable on the plan path. Retained rather than deleted because deleting it would only move the totality problem to every caller."
+
+type HostOverheadResolution
+  = HostOverheadResolved { bytes: ByteSize }
+  | HostOverheadUnresolved { reason: String }
+
+fn host_overhead_or_refusal(host: HostIdentity, o: HostFixedOverhead) -> HostOverheadResolution {
+  match o {
+    HostFixedOverheadMeasured { bytes: b, provenance: _ } => HostOverheadResolved { bytes: b }
+    HostFixedOverheadAllowance { bytes: b, reason: _ } => HostOverheadResolved { bytes: b }
+    HostFixedOverheadUnmeasured =>
+      HostOverheadUnresolved {
+        reason: concat("host fixed overhead is unmeasured and carries no operator allowance, so the share of RAM this host spends on residents the budget does not model is unknown: refuse to derive a runner width rather than charge zero (which would silently hand the host its whole RAM) or borrow another host's number. Classify it in gunbc.ci_floor_measurement gunbc_ci_host_fixed_overhead_for. Host: ", host)
+      }
   }
 }
 
 fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount) -> RunnerHostDeployment {
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
-    runner_count: declared_runner_count(),
-    runner_slice_cap: gunbc_runner_pool_budget,
+    runner_count: declared_runner_count_for(host: offer.supply.physical.identity),
+    runner_slice_cap: gunbc_runner_pool_budget_for(host: offer.supply.physical.identity),
     per_runner_memory_cap: gunbc_ci_runner_cgroup_memory_cap,
     per_runner_memory_swap_cap: gunbc_runner_slot_desired().memory_swap_max,
     per_runner_memory_high_cap: gunbc_runner_slot_desired().memory_high,
@@ -174,6 +199,74 @@ fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount)
     runner: runner_spec_from_offer(offer: offer),
     workload_class: BatchLatencyTolerant,
   }
+}
+
+data host_session_slice_roster_note: String = "WHICH HOSTS OWE A SESSIONS RESERVATION IS READ FROM THE DEPLOYED-INSTANCE ROSTER, never re-listed here. gunbc.build_cache_instance build_cache_desired_instances already declares one BuildCacheInstance per (host, consumer class), and an InteractiveSessionCompiles row appears for srv1 and srv2 and for neither managed host. That roster is the fleet's statement about where interactive sessions live; a second list of session hosts in this module would be the nickname DESIGN 3 forbids, and it would rot in the ordinary way — someone moves the dashboard and the budget keeps charging the old host.\n\nTHE BUG THIS CLOSES IS NOT SUBTLE AND IT WAS LIVE. The conservation call passed session_pool: byte_size(0) for EVERY host, unconditionally. So the wall that exists to refuse over-commitment could not see the largest non-runner claim on the two hosts that actually carry it, and it scored srv1 and srv2 as though 20GiB of session reservation were free. At the previous 5 × 16GiB width that host summed to 123.8GiB against 125GiB usable — 1.2GiB of margin on the fleet's tightest hosts, with the model reporting room for two more slots. Raising the fleet-wide width without fixing this would have handed srv1/srv2 seven slots each and overcommitted them by roughly 17GiB, through a wall returning true.\n\nThe reservation SIZE is a different question from WHERE, and it is not settled here: gunbc.ci_floor_measurement gunbc_ci_session_reservation_mode declares a Regime-2 aggregate of exactly 21474836480 bytes, and that number has the same round-power-of-two signature as the fixed overhead this change just split, with no derivation from the thirteen measured per-session samples beside it. It is charged as declared because charging it is strictly safer than the zero it replaces, and because the whole Regime-2 path is refusing anyway on unverified oomd. Dissolve-on: a measured concurrent-peak series replaces the aggregate."
+
+fn host_carries_interactive_sessions(host: HostIdentity) -> Bool {
+  fold(
+    build_cache_desired_instances,
+    init: false,
+    f: (acc, inst) =>
+      acc
+        || (((inst.identity.host as String) == (host as String))
+             && match inst.identity.consumer_class {
+                  InteractiveSessionCompiles => true
+                  ContinuousIntegrationCompiles => false
+                })
+  )
+}
+
+data host_session_slice_refuses_rather_than_charging_zero_note: String = "AN UNSIZED SESSION SLICE ON A SESSION HOST REFUSES, because the alternative is the bug this change exists to remove, re-entering through a different door. The first draft of this function returned byte_size(0) whenever the reservation mode could not produce a number — SessionAggregateUnmeasured, SessionOperatingPointUnset, SessionReservationModeUnset — which reads as 'sessions cost nothing' and is exactly the unconditional zero that let srv1 and srv2 score as though 20GiB of reservation were free. Fixing the WHERE (a host carries sessions) while leaving the HOW MUCH silently zero would have moved the defect rather than closed it.\n\nThe distinction the arms preserve: a host with NO session instance genuinely owes nothing, and SessionSliceNotApplicable says so. A host that DOES carry one and cannot size it is unknown, not free, and SessionSliceUnsized refuses the whole plan with a located reason. Those are different states and one of them is safe.\n\nToday every arm resolves — the declared Regime-2 aggregate is present — so this refusal is dormant. It is written anyway because the mode is one edit from unmeasured and the cost of the fail-open version is a fleet that overcommits its two tightest hosts while every wall returns true."
+
+type HostSessionSliceResolution
+  = SessionSliceCharged { bytes: ByteSize }
+  | SessionSliceNotApplicable
+  | SessionSliceUnsized { reason: String }
+
+fn session_reservation_declared_bytes() -> ByteSize? {
+  match gunbc_ci_session_reservation_mode {
+    Regime2AggregateOomd { oomd_eviction_ceiling: _, session_concurrency: _, aggregate_reservation: agg } =>
+      match agg {
+        SessionAggregateMeasured { bytes: b } => Present { value: b }
+        SessionAggregateUnmeasured => none
+      }
+    Regime1WorstCase { point: p } =>
+      match p {
+        SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } =>
+          Present { value: measure_scale_fraction_floor(m: c, num: n, den: 1) }
+        SessionOperatingPointUnset => none
+      }
+    SessionReservationModeUnset => none
+  }
+}
+
+fn host_session_slice_resolution(host: HostIdentity) -> HostSessionSliceResolution {
+  if host_carries_interactive_sessions(host: host) {
+    match session_reservation_declared_bytes() {
+      Present { value: b } => SessionSliceCharged { bytes: b }
+      Absent =>
+        SessionSliceUnsized {
+          reason: concat("host carries an InteractiveSessionCompiles instance (gunbc.build_cache_instance build_cache_desired_instances) but gunbc_ci_session_reservation_mode yields no reservation size, so the largest non-runner claim on this host is unknown: refuse to derive a runner width rather than charge zero for it. Host: ", host)
+        }
+    }
+  } else {
+    SessionSliceNotApplicable
+  }
+}
+
+fn host_session_slice_bytes(host: HostIdentity) -> ByteSize {
+  match host_session_slice_resolution(host: host) {
+    SessionSliceCharged { bytes: b } => b
+    SessionSliceNotApplicable => byte_size(0)
+    SessionSliceUnsized { reason: _ } => byte_size(0)
+  }
+}
+
+data host_usable_ram_note: String = "CONSERVATION IS CHECKED AGAINST OS-USABLE RAM, NOT THE DIMM TOTAL, and the difference decides admissions at exactly the width this change lands on. compute_host_ram_bytes_total sums the populated modules — 128GiB nominal — while the OS sees 134217728000 bytes (125GiB) after firmware and kernel reservations; gunbc.ci_fleet fleet_host_memory_nominal_vs_usable_note exists specifically to say these are two facts and must not be conflated, and this wall was quietly conflating them by checking against the nominal figure.\n\nThat is a 3GiB overstatement of what the host can hold, and it is not academic here. An eighth 14GiB slot on a managed host sums to 125.6GiB, which PASSES against 128GiB nominal and FAILS against 125GiB usable — so the pre-existing wall would have admitted a width the machine cannot carry, by charging memory that does not exist. The seventh slot fits under both readings; the eighth is precisely where the conflation would have bitten.\n\nHONEST RESIDUAL: per-host MemTotal is unobserved. gunbc_ci_host.memory is a fleet-level MemTotal-shaped authority and every host in this fleet is the same board at the same population, so it stands in for all four — a substitution that is safe in the conservative direction (it is the smaller number) and would stop being safe the moment a host with different RAM enrolls. Dissolve-on: a per-host MemTotal read, the same quiescent /proc/meminfo reach that grounds the fixed overhead and gates the oomd verification."
+
+fn host_os_usable_ram_bytes() -> ByteSize {
+  compute_host_ram_bytes_total(host: gunbc_ci_host)
 }
 
 fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: ComputeOffer) -> DeploymentAccumulator {
@@ -186,9 +279,42 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: Compute
         total: acc.total,
       }
     Present { value: cpu } => {
-      let host_ram = compute_host_ram_bytes_total(host: offer.supply.physical)
-      let overhead = host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead)
+      let host_id = offer.supply.physical.identity
+      let host_ram = host_os_usable_ram_bytes()
       let headroom = oomd_actuation_floor(host: host_ram)
+      match host_session_slice_resolution(host: host_id) {
+        SessionSliceUnsized { reason: sr } =>
+          DeploymentAccumulator {
+            deployments: acc.deployments,
+            unsound_reason: if acc.unsound_reason == "" { sr } else { acc.unsound_reason },
+            any_unfit: acc.any_unfit,
+            total: acc.total,
+          }
+        SessionSliceNotApplicable => accumulate_with_session_slice(acc: acc, offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: headroom, session_pool: byte_size(0))
+        SessionSliceCharged { bytes: session_pool } => accumulate_with_session_slice(acc: acc, offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: headroom, session_pool: session_pool)
+      }
+    }
+  }
+}
+
+fn accumulate_with_session_slice(
+  acc: DeploymentAccumulator,
+  offer: ComputeOffer,
+  cpu: CpuFacts,
+  host_id: HostIdentity,
+  host_ram: ByteSize,
+  headroom: ByteSize,
+  session_pool: ByteSize
+) -> DeploymentAccumulator {
+      match host_overhead_or_refusal(host: host_id, o: gunbc_ci_host_fixed_overhead_for(host: host_id)) {
+        HostOverheadUnresolved { reason: orr } =>
+          DeploymentAccumulator {
+            deployments: acc.deployments,
+            unsound_reason: if acc.unsound_reason == "" { orr } else { acc.unsound_reason },
+            any_unfit: acc.any_unfit,
+            total: acc.total,
+          }
+        HostOverheadResolved { bytes: overhead } =>
       match compile_pool_bytes_for(
         placement: gunbc_compile_pool_placement,
         nproc: cpu_facts_threads(cpu: cpu),
@@ -207,8 +333,8 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: Compute
           host: host_ram,
           overhead: overhead,
           headroom: headroom,
-          runner_pool: gunbc_runner_pool_budget,
-          session_pool: byte_size(0),
+          runner_pool: gunbc_runner_pool_budget_for(host: host_id),
+          session_pool: session_pool,
           compile_pool: compile_pool
         ) {
           let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu))
@@ -227,8 +353,7 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: Compute
           }
         }
       }
-    }
-  }
+      }
 }
 
 fn runner_deployment_plan() -> RunnerDeploymentPlan {

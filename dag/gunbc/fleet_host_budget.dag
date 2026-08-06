@@ -16,6 +16,7 @@ import std.effects { EffectShape, CreateEffect, CreateCause, CreateIfAbsent, Key
 import std.realization_schedule { CostAccount, CostBasis, Predicted }
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves }
+import product.placement_supply { HostIdentity }
 import gunbc.ci_fleet { ComputeOffer }
 import gunbc.fleet_intent { compute_host_ram_bytes_total, compute_host_primary_cpu }
 import extdeps.cpu { cpu_facts_threads }
@@ -184,7 +185,9 @@ fn child_node(name: String, b: ByteSize) -> BudgetNode {
   }
 }
 
-data gunbc_runner_pool_budget: ByteSize = gunbc_runner_slice_cap_declared()
+fn gunbc_runner_pool_budget_for(host: HostIdentity) -> ByteSize {
+  gunbc_runner_slice_cap_declared(host: host)
+}
 
 data gunbc_per_runner_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_max
 
@@ -233,8 +236,13 @@ fn host_allocation_conserves(
   ))
 }
 
-fn declared_runner_count() -> Int {
-  measure_fit_count_floor(capacity: gunbc_runner_pool_budget, each: gunbc_ci_runner_cgroup_memory_cap)
+data declared_runner_count_derivation_note: String = "This still divides the declared pool by the declared per-slot cap rather than reading gunbc_runner_slots_per_host directly, and the redundancy is now GONE rather than merely tolerated. The pool is derived as slots × MemoryMax (gunbc.runner_slot_allocation gunbc_runner_slice_cap_declared), so floor(pool ÷ MemoryMax) returns that same slot count by construction — the two agree because one is the other's inverse, not because an author kept them coherent. The old note admitted the difference: it said 80 ÷ 16 = 5 was 'coherent with slots_per_host by construction at these values', which is a coincidence with a caveat attached, and the caveat was doing the work."
+
+fn declared_runner_count_for(host: HostIdentity) -> Int {
+  measure_fit_count_floor(
+    capacity: gunbc_runner_pool_budget_for(host: host),
+    each: gunbc_ci_runner_cgroup_memory_cap
+  )
 }
 
 fn max_concurrent_sessions(session_pool: ByteSize) -> Int {
