@@ -8,25 +8,23 @@ import v2.lens.cost.expr {
   CostConst,
   CostEffect,
   CostExpr,
+  CostLog,
   CostSum,
+  InvalidLogBase,
   SizeConst,
-  SizeExpr,
   size_of
 }
 import v2.lens.cost.valuation {
-  BoundedCost,
-  InvertedCostInterval,
-  evaluation_interval,
   CostEvaluation,
   CostEvaluationRefused,
   CostValuationBinding,
   DuplicateSizeBinding,
   ExactCost,
+  ExpressionRefused,
+  IntegerLogarithmUnavailable,
   MissingSizeBinding,
   UnmodeledEffectCost,
-  UnresolvedCost,
-  evaluate_cost_expr,
-  evaluate_cost_expr_partially
+  evaluate_cost_expr
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -167,17 +165,6 @@ test fn missing_binding_refuses_and_never_becomes_zero() -> Bool {
         _ => false
       }
     ExactCost { value: _ } => false
-    _ => false
-  }
-}
-
-test fn missing_binding_under_partial_valuation_reports_the_free_variable() -> Bool {
-  match evaluate_cost_expr_partially(
-    expr: unit_loop_over(variable: outer_variable),
-    bindings: []
-  ) {
-    UnresolvedCost { free_variables: f } => f.head.source == outer_leaf
-    _ => false
   }
 }
 
@@ -273,76 +260,76 @@ test fn cost_effect_refuses_until_an_effect_model_exists() -> Bool {
         _ => false
       }
     ExactCost { value: _ } => false
-    _ => false
   }
 }
 
-test fn cost_effect_under_partial_valuation_still_refuses() -> Bool {
-  match evaluate_cost_expr_partially(
-    expr: CostEffect { operation: effect_operation },
-    bindings: []
-  ) {
-    CostEvaluationRefused { causes: _ } => true
-    _ => false
-  }
-}
+data log_cause_separation_note: String = "Four witnesses for one construct, because a logarithm fails in three unrelated ways and an earlier revision of the evaluator reported every non-refusing case as UngroundedLogArgument - ignoring the base entirely, so base 0 read as an ARGUMENT problem and a fully grounded argument was called UNGROUNDED. Each witness pins one cause. The discriminating pair is base-zero against grounded-argument: under the earlier arm both answered the same cause, so either one alone would have passed while the arm was wrong, and only asserting that they differ catches it."
 
-data interval_claim_scope_note: String = "evaluation_interval is witnessed at its OWN seam rather than through the CostSum bounded-upper arm, because that arm has no producer until the ceiling-valued binding lands (see cost_evaluation_arm_producer_note). Testing it through an absent producer would be untestable; testing the function directly is executing evidence for exactly the arithmetic the arm will use, and the first revision of this file shipped that arithmetic as combine_evaluation with max - which collapses a two-endpoint envelope to its own ceiling - so this is a regression control on a defect that actually occurred, not a hypothetical."
-
-test fn interval_of_two_distinct_points_retains_both_endpoints() -> Bool {
-  match evaluation_interval(
-    low: ExactCost { value: nat_3 },
-    high: ExactCost { value: nat_7 }
-  ) {
-    BoundedCost { lower: l, upper: u } => l == nat_3 && u == nat_7
-    _ => false
-  }
-}
-
-test fn interval_does_not_collapse_to_its_ceiling_red_control() -> Bool {
-  match evaluation_interval(
-    low: ExactCost { value: nat_3 },
-    high: ExactCost { value: nat_7 }
-  ) {
-    ExactCost { value: _ } => false
-    BoundedCost { lower: _, upper: _ } => true
-    _ => false
-  }
-}
-
-test fn interval_of_one_repeated_point_is_exact() -> Bool {
-  is_exact(
-    evaluation: evaluation_interval(
-      low: ExactCost { value: nat_7 },
-      high: ExactCost { value: nat_7 }
-    ),
-    expected: nat_7
-  )
-}
-
-test fn inverted_interval_refuses_rather_than_swapping_endpoints() -> Bool {
-  match evaluation_interval(
-    low: ExactCost { value: nat_7 },
-    high: ExactCost { value: nat_3 }
+test fn log_base_zero_refuses_as_an_invalid_base() -> Bool {
+  match evaluate_cost_expr(
+    expr: CostLog { base: Zero, argument: size_of(variable: outer_variable) },
+    bindings: [bind(variable: outer_variable, value: nat_8)]
   ) {
     CostEvaluationRefused { causes: c } =>
       match c.head {
-        InvertedCostInterval { lower: l, upper: u, at: _ } => l == nat_7 && u == nat_3
+        ExpressionRefused { cause: inner, at: _ } =>
+          match inner {
+            InvalidLogBase { base: b, at: _ } => b == Zero
+            _ => false
+          }
         _ => false
       }
     _ => false
   }
 }
 
-test fn interval_propagates_a_refusal_from_either_endpoint() -> Bool {
-  match evaluation_interval(
-    low: evaluate_cost_expr(expr: CostEffect { operation: effect_operation }, bindings: []),
-    high: ExactCost { value: nat_7 }
+test fn log_base_one_refuses_as_an_invalid_base() -> Bool {
+  match evaluate_cost_expr(
+    expr: CostLog { base: nat_1, argument: size_of(variable: outer_variable) },
+    bindings: [bind(variable: outer_variable, value: nat_8)]
   ) {
-    CostEvaluationRefused { causes: _ } => true
+    CostEvaluationRefused { causes: c } =>
+      match c.head {
+        ExpressionRefused { cause: inner, at: _ } =>
+          match inner {
+            InvalidLogBase { base: b, at: _ } => b == nat_1
+            _ => false
+          }
+        _ => false
+      }
     _ => false
   }
 }
+
+test fn log_of_a_grounded_argument_names_the_missing_authority_not_the_argument() -> Bool {
+  match evaluate_cost_expr(
+    expr: CostLog { base: nat_2, argument: size_of(variable: outer_variable) },
+    bindings: [bind(variable: outer_variable, value: nat_8)]
+  ) {
+    CostEvaluationRefused { causes: c } =>
+      match c.head {
+        IntegerLogarithmUnavailable { base: b, argument: _, at: _ } => b == nat_2
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn log_of_an_unbound_argument_refuses_as_a_missing_binding() -> Bool {
+  match evaluate_cost_expr(
+    expr: CostLog { base: nat_2, argument: size_of(variable: outer_variable) },
+    bindings: []
+  ) {
+    CostEvaluationRefused { causes: c } =>
+      match c.head {
+        MissingSizeBinding { variable: v, at: _ } => v.source == outer_leaf
+        _ => false
+      }
+    _ => false
+  }
+}
+
+data refusing_body_cause_count_note: String = "Ten iterations of a body that refuses unconditionally yield ONE cause, not ten. Both halves of that are the subject: ten identical causes would amplify a single deficit tenfold, degrading the countability the accumulate rule exists to protect, and building them costs quadratic time because non_empty_append is linear in its left argument. This witness reds if the settled-disposition skip in evaluate_summation is removed, which is what makes it a regression control rather than a description."
 
 test fn refusing_body_under_a_bound_yields_exactly_one_cause() -> Bool {
   match evaluate_cost_expr(
@@ -362,9 +349,7 @@ test fn refusing_body_under_a_bound_yields_exactly_one_cause() -> Bool {
   }
 }
 
-data refusing_body_cause_count_note: String = "Ten iterations of a body that refuses unconditionally yield ONE cause, not ten. Both halves of that are the subject: ten identical causes would amplify a single deficit tenfold, degrading the countability the accumulate rule exists to protect, and building them costs quadratic time because non_empty_append is linear in its left argument. This witness reds if the settled-disposition skip in evaluate_summation is removed, which is what makes it a regression control rather than a description."
-
-data claim_conjunction_totality_note: String = "The conjunction enumerates EVERY test fn in this file, and that totality is the point rather than a convenience. An earlier revision listed three of them while the claim label asserted refusal and scoping behaviour the other ten established, so the claim could have gone green with its own label false - specification-without-execution at the claim seam, caught by review 49620. The rule this file now follows: a claim label may assert only what its conjunction executes, so adding a test fn without adding it here is the defect to watch for."
+data claim_conjunction_totality_note: String = "The conjunction enumerates EVERY test fn in this file, and that totality is the point rather than a convenience. An earlier revision listed three of them while the claim label asserted refusal and scoping behaviour the others established, so the claim could have gone green with its own label false - specification-without-execution at the claim seam, caught by review 49620. The rule this file now follows: a claim label may assert only what its conjunction executes, so adding a test fn without adding it here is the defect to watch for."
 
 fn every_valuation_witness_holds() -> Bool {
   unit_body_over_size_five_evaluates_to_five()
@@ -372,24 +357,21 @@ fn every_valuation_witness_holds() -> Bool {
     && binder_dependent_body_is_summed_not_treated_as_invariant()
     && invariant_body_control_does_not_produce_the_summed_answer()
     && missing_binding_refuses_and_never_becomes_zero()
-    && missing_binding_under_partial_valuation_reports_the_free_variable()
     && duplicate_bindings_refuse()
     && distinct_bindings_control_does_not_refuse()
     && binder_shadowing_is_scoped_and_removed_on_exit()
     && shadowing_control_rejects_the_unshadowed_reading()
     && zero_iterations_produce_exact_zero()
     && cost_effect_refuses_until_an_effect_model_exists()
-    && cost_effect_under_partial_valuation_still_refuses()
-    && interval_of_two_distinct_points_retains_both_endpoints()
-    && interval_does_not_collapse_to_its_ceiling_red_control()
-    && interval_of_one_repeated_point_is_exact()
-    && inverted_interval_refuses_rather_than_swapping_endpoints()
-    && interval_propagates_a_refusal_from_either_endpoint()
+    && log_base_zero_refuses_as_an_invalid_base()
+    && log_base_one_refuses_as_an_invalid_base()
+    && log_of_a_grounded_argument_names_the_missing_authority_not_the_argument()
+    && log_of_an_unbound_argument_refuses_as_a_missing_binding()
     && refusing_body_under_a_bound_yields_exactly_one_cause()
 }
 
 data claim_cost_valuation: TestClaim = EqualsClaim {
-  label: "lens_cost/valuation: CostExpr evaluated at concrete SizeVariable bindings yields exact semantic work, refuses a missing or duplicated binding rather than answering zero, scopes a CostSum binder to its body, and retains both endpoints of a bounded interval - every test fn in this file enrolled in the conjunction",
+  label: "lens_cost/valuation: CostExpr evaluated at a complete SizeVariable valuation yields exact semantic work, refuses a missing or duplicated binding rather than answering zero, scopes a CostSum binder to its body, and separates the three ways a logarithm fails - every test fn in this file enrolled in the conjunction",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: outer_leaf,
   rhs: if every_valuation_witness_holds() {
