@@ -14,7 +14,7 @@ import v2.workflow.rust_crate_partition {
   stage0_physical_crate_count
 }
 
-data stage0_partition_membership_receipt_note: String = "C2 equivalence receipt: derived per-unit membership matches a frozen baseline from origin/main hand lists (independent oracle). RED controls: synthetic unreachable module absent from derived membership; zero-step raw reach refuses; two-unit owner ambiguity refuses; forward vs reversed unit-order iteration yields identical membership."
+data stage0_partition_membership_receipt_note: String = "C2 equivalence receipt: derived per-unit membership matches stage0_partition_unit_membership_baseline, frozen at stage0_partition_enrolled_membership_baseline_frozen_commit (origin/main hand per-crate module lists, pre-derivation; independent of derivation). Baseline update rule: a baseline names the commit it was frozen at so a reader can tell what the snapshot is of; a baseline update is authored from the graph change — which modules moved between units and why — and lands as a reviewable diff of the baseline itself; a baseline is never updated by pasting derivation output, and if the only way to produce the new expected values is to run the thing under test, the update stops and asks. RED controls: synthetic unreachable module absent from derived membership; zero-step raw reach refuses; two-unit owner ambiguity refuses; forward vs reversed unit-order iteration yields identical membership."
 
 test fn stage0_partition_membership_closure_covers_seeds_holds() -> Bool {
   stage0_partition_membership_closure_covers_seeds()
