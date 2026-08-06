@@ -78,8 +78,6 @@ type WorkflowDispatchPreflight
       run_subject_head: CommitSha
     }
 
-data heal_revalidation_subject_universe_note: String = "HEAL REVALIDATION IS A TOTAL CLASSIFICATION OVER EVERY HEAD THE HEAL CAN PRODUCE (operator mandate 2026-08-01). HealNoChange creates no new subject. HealProduced creates an immutable healed_head, immediately supersedes prior_head, and starts in HealRevalidationRequired; Pending, Accepted, and Refused dispatches all remain refusals until CheckCoverageComplete for that exact healed head and the current nonempty roster admits through gunbc.merge_admission. HealAuthorCommitRequired names workflow-path drift the GitHub App cannot push (workflows:write absent): no new subject, no supersession, no dispatch — the drift gate stays red until the PR author commits. The dispatched run also classifies its GitHub run/check subject separately from checkout HEAD: both must equal healed_head, and either mismatch is a typed refusal. Adding a heal path or preflight subject state means adding a coproduct arm, which turns the exhaustive folds red until that new subject is classified. There is no unknown-head arm and no rerun-everything fallback."
-
 data heal_revalidation_external_boundary_note: String = "This module and the CI workflow close the in-repository model/realization loop: a produced heal explicitly dispatches a new run and exact-head coverage is required. The external dashboard readout that historically treated an absent run as ok, and its separate aggregate conflation of Cancelled superseded runs with failed runs, live outside this repository and are not fixed or claimed fixed here."
 
 fn heal_revalidation_initial(outcome: HealOutcome) -> HealRevalidationState {

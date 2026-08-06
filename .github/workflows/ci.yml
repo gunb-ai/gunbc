@@ -353,7 +353,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64]
     needs: [build]
     timeout-minutes: 40
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     permissions:
       contents: write
       actions: write
@@ -436,18 +436,21 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/tools/generated_artifact_gate.dag --function main_wet
         timeout-minutes: 5
       - name: Commit + push auto-push-eligible regenerated artifacts (workflow paths are author-commit-required)
+        id: heal_commit_push
         run: |
           git config user.name "gunbc-ci-auto-heal"
           git config user.email "gunbc-ci-auto-heal@users.noreply.github.com"
           AUTHOR_COMMIT_DRIFT=""
           if [ -e ".github/workflows/ci.yml" ] && ! git diff --quiet -- ".github/workflows/ci.yml"; then AUTHOR_COMMIT_DRIFT="$AUTHOR_COMMIT_DRIFT .github/workflows/ci.yml"; fi
           if [ -e ".github/workflows/falsifier.yml" ] && ! git diff --quiet -- ".github/workflows/falsifier.yml"; then AUTHOR_COMMIT_DRIFT="$AUTHOR_COMMIT_DRIFT .github/workflows/falsifier.yml"; fi
+          echo "heal_author_commit_required=0" >> "$GITHUB_OUTPUT"
           if [ -n "$AUTHOR_COMMIT_DRIFT" ]; then
             rm -rf "heal-author-commit-required"
             for p in $AUTHOR_COMMIT_DRIFT; do
-              mkdir -p "heal-author-commit-required/$(dirname "$p")"
-              cp "$p" "heal-author-commit-required/$p"
+              if ! mkdir -p "heal-author-commit-required/$(dirname "$p")"; then echo "::error::HealRepairBundleIncomplete path=$p" >&2; exit 1; fi
+              if ! cp "$p" "heal-author-commit-required/$p"; then echo "::error::HealRepairBundleIncomplete path=$p" >&2; exit 1; fi
             done
+            echo "heal_author_commit_required=1" >> "$GITHUB_OUTPUT"
           fi
           if [ -e ".gitignore" ]; then git add ".gitignore"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .gitignore"; fi
           if [ -e ".gitattributes" ]; then git add ".gitattributes"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .gitattributes"; fi
@@ -521,7 +524,7 @@ jobs:
           PRIOR_HEAD=$(git rev-parse HEAD)
           if git diff --cached --quiet; then
             if [ -n "$AUTHOR_COMMIT_DRIFT" ]; then
-              echo "::error::HealAuthorCommitRequired head=$PRIOR_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=GitHubAppLacksWorkflowsWrite regen_command='gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet'" >&2
+              echo "::error::HealAuthorCommitRequired head=$PRIOR_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=ActionsJobCredentialScopeUnavailable regen_command='gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet'" >&2
               exit 1
             fi
             echo "HealNoChange head=$PRIOR_HEAD"
@@ -540,21 +543,21 @@ jobs:
             fi
             echo "SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required"
             if [ -n "$AUTHOR_COMMIT_DRIFT" ]; then
-              echo "::error::HealAuthorCommitRequired head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=GitHubAppLacksWorkflowsWrite regen_command='gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet'" >&2
+              echo "::error::HealAuthorCommitRequired head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=ActionsJobCredentialScopeUnavailable regen_command='gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet'" >&2
             fi
             exit 1
           fi
         env:
           GITHUB_TOKEN: ${{ github.token }}
         timeout-minutes: 5
-      - name: Upload author-commit-required workflow repairs (GitHub App cannot push .github/workflows/**)
+      - name: Upload author-commit-required workflow repairs (the selected push credential cannot update .github/workflows/**)
         uses: actions/upload-artifact@v4
         with:
           name: heal-author-commit-required
           path: heal-author-commit-required
-          if-no-files-found: ignore
+          if-no-files-found: error
           include-hidden-files: true
           retention-days: 7
           compression-level: 0
-        if: always()
+        if: always() && steps.heal_commit_push.outputs.heal_author_commit_required == '1'
         timeout-minutes: 10
