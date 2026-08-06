@@ -48,15 +48,19 @@ fn healthz_projected_members(doc: JsonValue) -> List<JsonKeyValue> {
   )
 }
 
+fn healthz_projection_of_doc(doc: JsonValue) -> String? {
+  let members = healthz_projected_members(doc: doc)
+  if length(members) == healthz_surface_projection_member_count {
+    Present { value: serialize_json(v: json_object(members: members)) }
+  } else {
+    Absent
+  }
+}
+
 fn healthz_surface_projection(body: String) -> String? {
   match parse_json(s: json_text_trim_trailing_lf(body: body)) {
     Absent => Absent
-    Present { value: doc } =>
-      if length(healthz_projected_members(doc: doc)) == healthz_surface_projection_member_count {
-        Present { value: serialize_json(v: json_object(members: healthz_projected_members(doc: doc))) }
-      } else {
-        Absent
-      }
+    Present { value: doc } => healthz_projection_of_doc(doc: doc)
   }
 }
 

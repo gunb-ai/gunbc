@@ -52,6 +52,7 @@ import gunbc.running_release_identity {
   SurfaceBundleIdentityAbsent,
   SurfaceBundleIdentityDuplicated,
   SurfaceBundleIdentityNotAString,
+  SurfaceBundleIdentityMalformed,
   observe_running_release_identity,
 }
 import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, HealthzEffectiveRead }
@@ -195,26 +196,10 @@ fn running_release_unidentified_detail(cause: RunningReleaseUnidentifiedCause) -
 }
 
 fn healthz_release_identity_refusal(body: String, cause: RunningReleaseUnidentifiedCause) -> HealthzRefusalCause {
+  let detail = running_release_unidentified_detail(cause: cause)
   match cause {
     ReleaseRevisionAbsent => ProcessIdentityAbsent { body: body }
-    ReleaseIdentityBodyUnparseable =>
-      ProcessIdentityMalformed { detail: running_release_unidentified_detail(cause: cause), body: body }
-    ReleaseRevisionDuplicated { count: _ } =>
-      ProcessIdentityMalformed { detail: running_release_unidentified_detail(cause: cause), body: body }
-    ReleaseRevisionNotAnObject =>
-      ProcessIdentityMalformed { detail: running_release_unidentified_detail(cause: cause), body: body }
-    ReleaseRevisionNotAString =>
-      ProcessIdentityMalformed { detail: running_release_unidentified_detail(cause: cause), body: body }
-    ReleaseRevisionMalformed { text: _ } =>
-      ProcessIdentityMalformed { detail: running_release_unidentified_detail(cause: cause), body: body }
-    SurfaceBundleIdentityAbsent =>
-      ProcessIdentityMalformed { detail: running_release_unidentified_detail(cause: cause), body: body }
-    SurfaceBundleIdentityDuplicated { count: _ } =>
-      ProcessIdentityMalformed { detail: running_release_unidentified_detail(cause: cause), body: body }
-    SurfaceBundleIdentityNotAString =>
-      ProcessIdentityMalformed { detail: running_release_unidentified_detail(cause: cause), body: body }
-    SurfaceBundleIdentityMalformed { text: _ } =>
-      ProcessIdentityMalformed { detail: running_release_unidentified_detail(cause: cause), body: body }
+    _ => ProcessIdentityMalformed { detail: detail, body: body }
   }
 }
 
