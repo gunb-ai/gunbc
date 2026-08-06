@@ -1,10 +1,6 @@
 module v2.lens.complexity
 
 
-fn complexity_witness_holds<C>(value: C) -> Witness<C> {
-  Holds { value: value }
-}
-
 fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
   true
 }
@@ -25,7 +21,7 @@ fn complexity_projection_locus() -> Locus {
 
 fn complexity_variables_from_refine(xs: List<SizeVariable>) -> Witness<ComplexityVariables> {
   match refine(base: xs, by: complexity_variables_validation, at: complexity_projection_locus()) {
-    Accepted { value: refined, diagnostics: _ } => complexity_witness_holds(value: refined)
+    Accepted { value: refined, diagnostics: _ } => Holds { value: refined }
     Rejected { diagnostics } => Violates { diagnostic: diagnostics.head }
   }
 }
@@ -217,7 +213,7 @@ fn complexity_projection_diagnostic() -> Diagnostic {
 fn asymptotic_projection(cost_witness: Witness<SymbolicCost>) -> Witness<ComplexityBound> {
   match cost_witness {
     Holds { value: cost } =>
-      complexity_witness_holds(value: complexity_bound_from_cost(cost: cost))
+      Holds { value: complexity_bound_from_cost(cost: cost) }
     Violates { diagnostic: d } =>
       Violates { diagnostic: d }
   }
