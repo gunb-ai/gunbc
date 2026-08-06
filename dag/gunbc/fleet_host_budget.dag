@@ -51,6 +51,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_session_reservation_mode,
   gunbc_ci_runner_cgroup_memory_cap,
 }
+import gunbc.host_layout { gunbc_managed_compile_pool_slice }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired,
   gunbc_runner_slice_cap_declared
@@ -136,7 +137,9 @@ type CompilePoolPlacement
   = CompilePoolSliceDeclared { slice_unit: String }
   | CompilePoolInRunnerSlots
 
-data gunbc_compile_pool_placement: CompilePoolPlacement = CompilePoolInRunnerSlots
+data gunbc_compile_pool_placement: CompilePoolPlacement = CompilePoolSliceDeclared {
+  slice_unit: gunbc_managed_compile_pool_slice as String,
+}
 
 type CompilePoolResolution
   = CompilePoolDerived { bytes: ByteSize }

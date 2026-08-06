@@ -37,15 +37,20 @@ fn readiness_for(
   )
 }
 
-test fn witness_the_live_fleet_topology_yields_no_ready_pool() -> Bool {
-  readiness_for(
-    placement: gunbc_compile_pool_placement,
-    sizing: sized(),
-    observed: observed_slice(name: gunbc_managed_compile_pool_slice as String),
-  ) == false
+test fn witness_the_live_topology_declares_a_pool_but_observation_still_gates_readiness() -> Bool {
+  let receipt = compile_pool_ready_receipt(
+    readiness: derive_compile_pool_readiness(
+      placement: gunbc_compile_pool_placement,
+      sizing: sized(),
+      observed: CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
+    ),
+    intended_slice: gunbc_managed_compile_pool_slice,
+    host: "srv1",
+  )
+  receipt.pool_declared && (receipt.pool_observed == false) && (receipt_admits_pool(receipt: receipt) == false)
 }
 
-data live_topology_doc: String = "This reads the REAL gunbc_compile_pool_placement row rather than a fixture, so it is a claim about the fleet and not about a constructed example. It asserts false: the row is CompilePoolInRunnerSlots, no managed slice is declared, so no host can present a ready pool and activation refuses fleet-wide. When the topology flips to CompilePoolSliceDeclared in the same change that shrinks runner_pool, this witness reds — deliberately. It is the tripwire that the flip cannot land silently, and at that point it becomes an assertion that the pool IS ready rather than being deleted."
+data live_topology_doc: String = "Reads the REAL gunbc_compile_pool_placement row. After the topology flip to CompilePoolSliceDeclared this witness asserts pool_declared true with pool_observed false when the slice is absent on the host — the honest pre-actuation state. It reds if someone reverts the topology row without updating this witness, or if a hand-written receipt claims observed readiness without host evidence."
 
 test fn witness_a_declared_and_observed_slice_is_ready() -> Bool {
   readiness_for(
