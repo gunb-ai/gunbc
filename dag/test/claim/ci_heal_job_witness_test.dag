@@ -3,9 +3,9 @@ module test.claim.ci_heal_job_witness
 import gunbc.ci_workflow {
   ci_workflow,
   ci_heal_generated_artifacts_job,
+  ci_heal_author_commit_upload_step,
   ci_build_job,
   ci_job,
-  ci_heal_branch_ref_expr
 }
 import extdeps.languages.yaml.types {
   YamlKeyValue, YamlValue,
@@ -29,11 +29,20 @@ import gunbc.ci_spec {
 }
 import std.disposition { Scaffold }
 import gunbc.generated_artifact {
-  auto_push_eligible_committed_artifact_paths,
-  author_commit_required_committed_artifact_paths,
   CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, artifact_path
 }
-import gunbc.ci_workflow_expressions { ci_regen_heal_if }
+import gunbc.heal_push_plan {
+  auto_push_eligible_committed_artifact_paths,
+  author_commit_required_committed_artifact_paths,
+  live_heal_push_refusal_cause_token
+}
+import gunbc.ci_heal_credential {
+  ci_heal_job_permissions,
+  ci_heal_effective_grant,
+  ci_heal_branch_ref_expr,
+  ci_regen_heal_if
+}
+
 import extdeps.github.actions {
   Job, Workflow, WorkflowPermissions, PermissionLevel, PermWrite, PermRead,
   WorkflowDispatch, Push, PullRequest, Schedule, WorkflowCall, MergeGroup,
@@ -92,6 +101,17 @@ fn workflow_contents_is_read(w: Workflow) -> Bool {
 
 test fn heal_job_enrolled_in_ci_workflow() -> Bool {
   fold(ci_workflow.jobs, init: false, f: (acc, j) => acc || (j.id == "heal_generated_artifacts"))
+}
+
+test fn heal_job_permissions_are_the_grant_authority() -> Bool {
+  match ci_heal_generated_artifacts_job().permissions {
+    Present { value: wp } =>
+      (wp == ci_heal_job_permissions)
+        && (ci_heal_effective_grant.permissions == ci_heal_job_permissions)
+        && (ci_heal_effective_grant.job.decl_name == "ci_heal_generated_artifacts_job")
+        && (ci_heal_effective_grant.workflow.module_path == "gunbc.ci_workflow")
+    Absent => false
+  }
 }
 
 test fn heal_job_needs_build_not_ci() -> Bool {
@@ -181,6 +201,18 @@ test fn heal_commit_scope_is_auto_push_eligible_only() -> Bool {
     && (count(author_commit_required_committed_artifact_paths()) == 2)
 }
 
+// The packaging diagnostic must be reachable. GitHub runs `run:` under
+// `bash -eo pipefail`, so a post-hoc `[ ! -e ]` check after `cp` is dead in both
+// directions: cp failing aborts the script first, cp succeeding leaves the file
+// present. The typed diagnostic therefore has to hang off the failing command.
+test fn heal_bundle_incompleteness_diagnostic_is_reachable() -> Bool {
+  let script = gunbc_ci_heal_commit_push_script()
+  string_contains(s: script, pattern: "if ! cp \"$p\" \"")
+    && string_contains(s: script, pattern: "if ! mkdir -p \"")
+    && string_contains(s: script, pattern: "::error::HealRepairBundleIncomplete path=$p")
+    && !string_contains(s: script, pattern: "if [ ! -e \"")
+}
+
 test fn heal_git_add_is_existence_guarded() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
   string_contains(s: script, pattern: concat("if [ -e \"", artifact_path(a: GitignoreArtifact)))
@@ -190,7 +222,8 @@ test fn heal_git_add_is_existence_guarded() -> Bool {
 test fn heal_workflow_drift_is_author_commit_required() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
   string_contains(s: script, pattern: "HealAuthorCommitRequired")
-    && string_contains(s: script, pattern: "GitHubAppLacksWorkflowsWrite")
+    && string_contains(s: script, pattern: concat("cause=", live_heal_push_refusal_cause_token()))
+    && !string_contains(s: script, pattern: "GitHubAppLacksWorkflowsWrite")
     && string_contains(s: script, pattern: ci_heal_author_commit_regen_command)
     && string_contains(s: script, pattern: concat("git diff --quiet -- \"", artifact_path(a: CiYamlArtifact)))
     && string_contains(s: script, pattern: concat("git diff --quiet -- \"", artifact_path(a: FalsifierYamlArtifact)))
@@ -218,6 +251,46 @@ fn step_uploads_author_commit_artifact(s: Step) -> Bool {
       }
     RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
   }
+}
+
+fn step_with_value(s: Step, key: NonEmptyStr) -> YamlValue? {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => none
+    UsesStep { name: _, id: _, uses: _, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match w {
+        Absent => none
+        Present { value: rows } => fold(rows, init: none, f: fn(found, row) {
+          match found {
+            Present { value: v } => Present { value: v }
+            Absent => if row.key == key { Present { value: row.value } } else { none }
+          }
+        })
+      }
+  }
+}
+
+// Complements the sibling hidden-payload witnesses rather than restating them:
+// they pin that the flag is TRUE, this pins that the emitted flag equals the
+// derivation. A hardcoded `true` passes theirs and reds here the day the roster
+// gains a non-hidden path — which is the construction property the derivation
+// exists to buy. The predicate's own polarities are hidden_segment_predicate_discriminates.
+test fn heal_author_commit_upload_includes_hidden_workflow_files() -> Bool {
+  let paths = author_commit_required_committed_artifact_paths()
+  (count(paths) > 0)
+    && match step_with_value(s: ci_heal_author_commit_upload_step(), key: "include-hidden-files") {
+         Present { value: v } => match v {
+           YamlBool { value: b } => b == ci_heal_author_commit_artifact_includes_hidden_files()
+           _ => false
+         }
+         Absent => false
+       }
+    && match step_with_value(s: ci_heal_author_commit_upload_step(), key: "path") {
+         Present { value: v } => match v {
+           YamlString { value: d } => d == ci_heal_author_commit_artifact_dir
+           _ => false
+         }
+         Absent => false
+       }
 }
 
 test fn heal_author_commit_upload_step_enrolled() -> Bool {

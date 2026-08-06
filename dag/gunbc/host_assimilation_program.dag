@@ -1,0 +1,284 @@
+module gunbc.host_assimilation_program
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import gunbc.host_standup {
+  HostStandupStep,
+  HostStandupPhase,
+  Prefix,
+  Assimilation,
+  HostStandupPrefixPhase,
+  HostStandupAssimilationPhase,
+  BmcCredentialConverge,
+  OsInstallMechanismResolved,
+  OsInstallActuated,
+  HostConvergePolicyDerived,
+  HostIdentityConverge,
+  ReachSecretsNetwork,
+  RunnerDeploySlot,
+  BuildCacheProvision,
+  ComputeFabricEnroll,
+  GreenPlaceReadiness,
+  SessionPlacementEnrollment,
+  StandupAssimilationComplete,
+  host_standup_spine,
+  AssimilationCompleteInput,
+  NodeRegistered,
+  ResourcesPresent,
+  GreenPlacePinCoherent,
+  RunnerSlotHealthy,
+  AssimilationInputWitness,
+  InputSatisfied,
+  InputGap,
+  AssimilationObligation,
+  AssimilationCompleteGate,
+  AssimilationCompleteVerdict,
+  AssimilationIncomplete,
+  AssimilationComplete,
+  host_standup_p3_green_place_input_witness,
+  assimilation_input_witness_from_green_place,
+  assimilation_complete,
+  host_standup_p3_gunbc_pinned_tree_landed,
+  assimilation_complete_input_eq,
+  assimilation_input_is_required,
+}
+import product.placement_supply { HostIdentity }
+
+data host_assimilation_program_note: String = "WHY THIS EXISTS: host_standup_spine is ONE universal list, and gunbc.host_phase_status crossed every enrolled host with all of it. That was correct while every enrolled host was the same kind of thing -- srv1 through srv4 are Ampere Altra CI runner hosts, provisioned through BMC and virtual media, hosting GitHub Actions runner slots and a build cache. It stops being correct the moment a host of a DIFFERENT KIND is enrolled: two NVIDIA DGX Spark inference appliances (srv5, srv6) have no BMC to converge, no virtual-media OS install, no runner user, no Actions slots and no build cache, so crossing them with the universal spine would manufacture obligations that can never be satisfied and can never honestly be marked converged. A fleet-completeness number computed over invented obligations is worse than no number. THE CORRECTION IS PROGRAM SCOPING, NOT AN APPLICABILITY VERDICT: an Applicable-or-NotApplicable arm on the cell would keep the false cells and label them, which is the parallel-representation shape (DESIGN section 3) and leaves every consumer to remember to filter. A host's participation instead SELECTS which obligations exist at all, so an obligation that does not apply is not a cell with a label -- it is not a cell."
+
+data host_participation_axis_note: String = "Participation is what a host DOES for the fleet, and it is a LIST because the axes are independent rather than exclusive: nothing in the model forbids a host that both runs CI and serves inference, and a coproduct would have forced a third fused variant the first time that happened. It is deliberately NOT a host KIND enum (AltraRunner | SparkAppliance) -- kind is hardware, participation is role, and binding obligations to hardware would mean a future Altra dedicated to serving inherits BMC obligations because of what it is made of rather than what it is for. srv5 and srv6 stay opaque host identities for the same reason: the identity survives a role change or a hardware replacement, and DGX Spark remains a product fact recorded elsewhere, never part of the host's permanent name."
+
+type FleetParticipation
+  = CiRunnerParticipation
+  | InferenceServingParticipation
+
+fn fleet_participation_label(p: FleetParticipation) -> String {
+  match p {
+    CiRunnerParticipation => "ci-runner"
+    InferenceServingParticipation => "inference-serving"
+  }
+}
+
+fn fleet_participation_eq(a: FleetParticipation, b: FleetParticipation) -> Bool {
+  fleet_participation_label(p: a) == fleet_participation_label(p: b)
+}
+
+type HostEnrollmentIntent {
+  host: HostIdentity
+  participation: List<FleetParticipation>
+}
+
+data host_phase_participation_classification_note: String = "The one place a standup phase is bound to the participations that require it, kept HERE rather than as a field on HostStandupStep on purpose. Adding the field would reshape fourteen rows in host_standup.dag, which is load-bearing, and that module's own gap-ledger note has already ruled that its row-reshaping change stays separable from its status-axis change so the two are reviewable apart -- this is the third change in that neighbourhood and it obeys the same ruling. The match below is EXHAUSTIVE over both closed phase enums, so a newly added phase does not silently default into or out of any program: the compiler refuses until its participations are stated. That is the construction half (DESIGN section 5) -- there is no unclassified phase to detect after the fact, because an unclassified phase does not compile."
+
+data host_phase_prefix_participation_note: String = "Every PREFIX phase is CI-runner only. BMC credential convergence and virtual-media OS installation are the Ampere Altra provisioning path and have no analogue on an appliance that self-provisions through its own first-boot flow; HostConvergePolicyDerived is grouped with them because the policy it derives is that installation path's policy. A DGX Spark absolutely HAS arrival obligations -- physical binding, network convergence, baseline observation -- but they are its OWN obligations, authored where that arrival is modeled, and inheriting a differently-shaped host's provisioning steps because they sound generic is precisely the false-obligation defect this module exists to prevent."
+
+fn prefix_phase_participations(p: HostStandupPrefixPhase) -> List<FleetParticipation> {
+  match p {
+    BmcCredentialConverge => [CiRunnerParticipation]
+    OsInstallMechanismResolved => [CiRunnerParticipation]
+    OsInstallActuated => [CiRunnerParticipation]
+    HostConvergePolicyDerived => [CiRunnerParticipation]
+  }
+}
+
+data host_phase_assimilation_participation_note: String = "HostIdentityConverge and ReachSecretsNetwork are shared: every enrolled host needs a converged identity and an admitted reach path whatever it does for the fleet. ComputeFabricEnroll is shared because both kinds offer capacity, though of different shapes -- hardware threads for a runner, an inference envelope for an appliance -- and that is the fit-predicate work downstream, not a reason to fork the phase. StandupAssimilationComplete is shared because every program needs a terminal obligation. RunnerDeploySlot, BuildCacheProvision, GreenPlaceReadiness and SessionPlacementEnrollment are CI-runner only: Actions runner slots, an sccache build cache, dashboard green-place pinning and session placement are all facts about executing CI work, and an inference appliance that acquired them would be competing with its own serving."
+
+fn assimilation_phase_participations(p: HostStandupAssimilationPhase) -> List<FleetParticipation> {
+  match p {
+    HostIdentityConverge => [CiRunnerParticipation, InferenceServingParticipation]
+    ReachSecretsNetwork => [CiRunnerParticipation, InferenceServingParticipation]
+    RunnerDeploySlot => [CiRunnerParticipation]
+    BuildCacheProvision => [CiRunnerParticipation]
+    ComputeFabricEnroll => [CiRunnerParticipation, InferenceServingParticipation]
+    GreenPlaceReadiness => [CiRunnerParticipation]
+    SessionPlacementEnrollment => [CiRunnerParticipation]
+    StandupAssimilationComplete => [CiRunnerParticipation, InferenceServingParticipation]
+  }
+}
+
+fn host_phase_participations(phase: HostStandupPhase) -> List<FleetParticipation> {
+  match phase {
+    Prefix { phase: p } => prefix_phase_participations(p: p)
+    Assimilation { phase: p } => assimilation_phase_participations(p: p)
+  }
+}
+
+fn participation_list_contains(ps: List<FleetParticipation>, wanted: FleetParticipation) -> Bool {
+  fold_list(
+    xs: ps,
+    empty: false,
+    cons: fn(acc, p) { if acc { true } else { fleet_participation_eq(a: p, b: wanted) } }
+  )
+}
+
+fn step_serves_participation(step: HostStandupStep, wanted: FleetParticipation) -> Bool {
+  participation_list_contains(ps: host_phase_participations(phase: step.phase), wanted: wanted)
+}
+
+fn step_serves_any(step: HostStandupStep, wanted: List<FleetParticipation>) -> Bool {
+  fold_list(
+    xs: wanted,
+    empty: false,
+    cons: fn(acc, w) { if acc { true } else { step_serves_participation(step: step, wanted: w) } }
+  )
+}
+
+type HostAssimilationProgram {
+  identity: NonEmptyStr
+  steps: List<HostStandupStep>
+}
+
+data host_assimilation_program_derivation_note: String = "The program is DERIVED from the spine by participation, never a second hand-authored step list. A hand-authored inference program would be a parallel representation of the spine and would drift the first time a phase changed, which is the defect the host_standup gap ledger already records against itself. Deriving also gives the refactor its identity guarantee for free: a host enrolled for CI participation alone selects every step in the spine, because every phase in the spine today exists to serve runner hosts, so srv1 through srv4 keep byte-identical cells rather than merely similar ones. That identity is asserted by an executing witness rather than argued here."
+
+fn assimilation_program_for(intent: HostEnrollmentIntent) -> HostAssimilationProgram {
+  HostAssimilationProgram {
+    identity: host_enrollment_program_identity(intent: intent),
+    steps: filter(host_standup_spine, s => step_serves_any(step: s, wanted: intent.participation)),
+  }
+}
+
+data host_enrollment_participation_nonempty_note: String = "Enrollment participation is authored as a non-empty list at every fleet enrollment site today. An empty list would yield an empty program identity (invalid NonEmptyStr) and zero completion obligations; a NonEmptyList carrier on HostEnrollmentIntent is deferred until enrollment validation walls land."
+
+fn host_enrollment_program_identity(intent: HostEnrollmentIntent) -> NonEmptyStr {
+  join(
+    map(intent.participation, p => fleet_participation_label(p: p)),
+    "+"
+  ) as NonEmptyStr
+}
+
+fn program_step_count(program: HostAssimilationProgram) -> Int {
+  program.steps.length()
+}
+
+data ci_runner_program_identity_note: String = "The CI-runner program is the identity anchor for the refactor: it must select the WHOLE spine, because every phase authored to date exists to serve runner hosts. If a later phase is added that no participation claims, or one that CI does not claim, this equality breaks and the witness reds -- which is the intended alarm, not a maintenance burden. It is the discriminating control that distinguishes 'the refactor preserved srv1-srv4 exactly' from 'the refactor produced a plausible-looking matrix'."
+
+data ci_runner_enrollment_participation: List<FleetParticipation> = [CiRunnerParticipation]
+
+data inference_serving_enrollment_participation: List<FleetParticipation> = [InferenceServingParticipation]
+
+data both_participation_enrollment_participation: List<FleetParticipation> = [
+  InferenceServingParticipation,
+  CiRunnerParticipation,
+]
+
+data assimilation_completion_inputs_union_note: String = "Completion inputs derive as the union over enrolled participations, deduplicated by AssimilationCompleteInput identity, not as a priority chain over participation kinds. A host enrolled for both CI and inference must carry every obligation either role requires; ordering in the participation list must not drop CI-only inputs when inference is listed first."
+
+fn assimilation_completion_input_list_contains(
+  inputs: List<AssimilationCompleteInput>,
+  wanted: AssimilationCompleteInput,
+) -> Bool {
+  fold_list(
+    xs: inputs,
+    empty: false,
+    cons: fn(acc, r) {
+      if acc {
+        true
+      } else {
+        assimilation_complete_input_eq(a: r, b: wanted)
+      }
+    }
+  )
+}
+
+fn assimilation_completion_input_append_unique(
+  inputs: List<AssimilationCompleteInput>,
+  wanted_input: AssimilationCompleteInput,
+) -> List<AssimilationCompleteInput> {
+  if assimilation_completion_input_list_contains(inputs: inputs, wanted: wanted_input) {
+    inputs
+  } else {
+    append(inputs, [wanted_input])
+  }
+}
+
+fn assimilation_completion_inputs_union(
+  a: List<AssimilationCompleteInput>,
+  b: List<AssimilationCompleteInput>,
+) -> List<AssimilationCompleteInput> {
+  fold_list(
+    xs: b,
+    empty: a,
+    cons: fn(acc, wanted_input) {
+      assimilation_completion_input_append_unique(inputs: acc, wanted_input: wanted_input)
+    }
+  )
+}
+
+data assimilation_completion_input_classification_note: String = "Completion obligations are derived from participation beside the phase classification tables above, not as fixed fields on AssimilationCompleteGate. CiRunnerParticipation requires all four AssimilationCompleteInput arms because a CI runner host must be node-registered, resources-present, green-place coherent via the gunbc gate (not merely P3 modeled), and runner-slot healthy. InferenceServingParticipation requires only NodeRegistered and ResourcesPresent: an inference appliance has no GitHub Actions runner slot to health-check and no dashboard green-place pin to coherence-check, so those inputs are not obligations and cannot be supplied without fabricating evidence. GreenPlacePinCoherent and RunnerSlotHealthy are CI-only because they gate facts about executing CI work (dashboard pin coherence, Actions slot enforcement), not generic host readiness."
+
+data shared_completion_inputs: List<AssimilationCompleteInput> = [
+  NodeRegistered,
+  ResourcesPresent,
+]
+
+data ci_runner_only_completion_inputs: List<AssimilationCompleteInput> = [
+  GreenPlacePinCoherent,
+  RunnerSlotHealthy,
+]
+
+fn assimilation_completion_inputs_for_one(p: FleetParticipation) -> List<AssimilationCompleteInput> {
+  match p {
+    CiRunnerParticipation =>
+      append(shared_completion_inputs, items: ci_runner_only_completion_inputs)
+    InferenceServingParticipation =>
+      shared_completion_inputs
+  }
+}
+
+data empty_assimilation_complete_input_list: List<AssimilationCompleteInput> = []
+
+fn assimilation_completion_inputs_for(participation: List<FleetParticipation>) -> List<AssimilationCompleteInput> {
+  fold_list(
+    xs: participation,
+    empty: empty_assimilation_complete_input_list,
+    cons: fn(acc, p) {
+      assimilation_completion_inputs_union(
+        a: acc,
+        b: assimilation_completion_inputs_for_one(p: p)
+      )
+    }
+  )
+}
+
+fn default_unsatisfied_witness_for_input(input: AssimilationCompleteInput) -> AssimilationInputWitness {
+  match input {
+    NodeRegistered =>
+      InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" }
+    ResourcesPresent =>
+      InputGap { input: ResourcesPresent, interim_realization: "ctrl:resources-present-unmodeled" }
+    GreenPlacePinCoherent =>
+      assimilation_input_witness_from_green_place(w: host_standup_p3_green_place_input_witness())
+    RunnerSlotHealthy =>
+      InputGap { input: RunnerSlotHealthy, interim_realization: "gunbc.runner_slot_enforcement until P1 converged" }
+  }
+}
+
+fn assimilation_gate_unsatisfied_for_participation(participation: List<FleetParticipation>) -> AssimilationCompleteGate {
+  AssimilationCompleteGate {
+    obligations: map(
+      assimilation_completion_inputs_for(participation: participation),
+      fn(wanted_input) {
+        AssimilationObligation {
+          input: wanted_input,
+          witness: default_unsatisfied_witness_for_input(input: wanted_input),
+        }
+      }
+    ),
+  }
+}
+
+fn host_standup_default_assimilation_gate_unsatisfied() -> AssimilationCompleteGate {
+  assimilation_gate_unsatisfied_for_participation(participation: ci_runner_enrollment_participation)
+}
+
+fn host_standup_p3_fail_closed_blocks_complete() -> Bool {
+  !host_standup_p3_gunbc_pinned_tree_landed
+    && match assimilation_complete(
+      gate: host_standup_default_assimilation_gate_unsatisfied(),
+      required: assimilation_completion_inputs_for(participation: ci_runner_enrollment_participation),
+    ) {
+      AssimilationIncomplete { input: GreenPlacePinCoherent, reason: r } =>
+        string_contains(s: r, pattern: "#5948")
+      AssimilationComplete => false
+      AssimilationIncomplete { input: _, reason: _ } => true
+    }
+}
