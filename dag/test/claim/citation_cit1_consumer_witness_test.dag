@@ -110,7 +110,7 @@ test fn x86_64_abi_pdf_draft_edition_is_0_99_6() -> Bool {
 }
 
 test fn x86_64_abi_version_cover_uri_uses_page_one() -> Bool {
-  match x86_64_abi_pdf_version_navigable_uri_projection {
+  match x86_64_abi_pdf_version_navigable_uri_projection() {
     X86_64AbiPdfNavigableUriProjected { uri: u } =>
       u.locator == "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf#page=1"
     _ => false
@@ -118,7 +118,7 @@ test fn x86_64_abi_version_cover_uri_uses_page_one() -> Bool {
 }
 
 test fn x86_64_abi_syscall_convention_uri_uses_physical_page_125() -> Bool {
-  match x86_64_abi_pdf_syscall_navigable_uri_projection {
+  match x86_64_abi_pdf_syscall_navigable_uri_projection() {
     X86_64AbiPdfNavigableUriProjected { uri: u } =>
       u.locator == "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf#page=125"
     _ => false
@@ -141,7 +141,7 @@ test fn x86_64_abi_consumer_refuses_unencodable_nameddest_navigable_uri() -> Boo
 }
 
 test fn x86_64_abi_syscall_citation_selector_conforms_to_rfc_8118() -> Bool {
-  match x86_64_abi_pdf_syscall_fragment_selector {
+  match x86_64_abi_pdf_syscall_fragment_selector() {
     X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
       s.value == ("page=125" as NonEmptyStr)
         && s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator

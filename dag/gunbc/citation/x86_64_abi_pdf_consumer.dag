@@ -143,13 +143,15 @@ fn assemble_x86_64_abi_pdf_pin_construction() -> X86_64AbiPdfPinConstruction {
 
 data x86_64_abi_pdf_pin_construction: X86_64AbiPdfPinConstruction = assemble_x86_64_abi_pdf_pin_construction()
 
-data x86_64_abi_pdf_version_cover_sequence: PdfSafeParameterSequenceConstruction = pdf_safe_parameter_sequence(
-  constructions: [pdf_open_page(page: 1)],
-)
+fn x86_64_abi_pdf_version_cover_sequence() -> PdfSafeParameterSequenceConstruction {
+  pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)])
+}
 
-data x86_64_abi_pdf_syscall_convention_sequence: PdfSafeParameterSequenceConstruction = pdf_safe_parameter_sequence(
-  constructions: [pdf_open_page(page: x86_64_abi_syscall_convention_authoritative_page)],
-)
+fn x86_64_abi_pdf_syscall_convention_sequence() -> PdfSafeParameterSequenceConstruction {
+  pdf_safe_parameter_sequence(
+    constructions: [pdf_open_page(page: x86_64_abi_syscall_convention_authoritative_page)],
+  )
+}
 
 fn x86_64_abi_syscall_citation_page_is_authoritative(page: PositiveInt) -> Bool {
   page == x86_64_abi_syscall_convention_authoritative_page
@@ -190,16 +192,16 @@ fn x86_64_abi_pdf_citation_selector_from_safe(
   }
 }
 
-data x86_64_abi_pdf_version_fragment_selector: X86_64AbiPdfCitationSelectorConstruction = x86_64_abi_pdf_citation_selector_from_safe(construction: x86_64_abi_pdf_version_cover_sequence)
-
-data x86_64_abi_pdf_syscall_fragment_selector: X86_64AbiPdfCitationSelectorConstruction = x86_64_abi_pdf_citation_selector_from_safe(construction: x86_64_abi_pdf_syscall_convention_sequence)
+fn x86_64_abi_pdf_syscall_fragment_selector() -> X86_64AbiPdfCitationSelectorConstruction {
+  x86_64_abi_pdf_citation_selector_from_safe(construction: x86_64_abi_pdf_syscall_convention_sequence())
+}
 
 data x86_64_abi_syscall_citation_rung_disposition: X86_64AbiPdfCitationRungDisposition = BelowDigestMatchedRung { cause: IndependentExpectedPinUnavailable }
 
 fn x86_64_abi_syscall_citation_fact_construction() -> X86_64AbiCitationFactConstruction {
   match x86_64_abi_pdf_pin_construction {
     X86_64AbiPdfPinConstructed(pin) =>
-      match x86_64_abi_pdf_syscall_fragment_selector {
+      match x86_64_abi_pdf_syscall_fragment_selector() {
         X86_64AbiPdfCitationSelectorConstructed(selector) =>
           X86_64AbiCitationFactConstructed(
             citation_recorded_fact(
@@ -214,7 +216,7 @@ fn x86_64_abi_syscall_citation_fact_construction() -> X86_64AbiCitationFactConst
           }
       }
     X86_64AbiPdfPinRefused { cause: pin_cause } =>
-      match x86_64_abi_pdf_syscall_fragment_selector {
+      match x86_64_abi_pdf_syscall_fragment_selector() {
         X86_64AbiPdfCitationSelectorConstructed(selector) =>
           X86_64AbiCitationFactRefused {
             pin: X86_64AbiPdfPinRefused { cause: pin_cause },
@@ -329,6 +331,10 @@ fn x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points(
   }
 }
 
-data x86_64_abi_pdf_version_navigable_uri_projection: X86_64AbiPdfNavigableUriProjection = x86_64_abi_pdf_navigable_uri_from_safe(construction: x86_64_abi_pdf_version_cover_sequence)
+fn x86_64_abi_pdf_version_navigable_uri_projection() -> X86_64AbiPdfNavigableUriProjection {
+  x86_64_abi_pdf_navigable_uri_from_safe(construction: x86_64_abi_pdf_version_cover_sequence())
+}
 
-data x86_64_abi_pdf_syscall_navigable_uri_projection: X86_64AbiPdfNavigableUriProjection = x86_64_abi_pdf_navigable_uri_from_safe(construction: x86_64_abi_pdf_syscall_convention_sequence)
+fn x86_64_abi_pdf_syscall_navigable_uri_projection() -> X86_64AbiPdfNavigableUriProjection {
+  x86_64_abi_pdf_navigable_uri_from_safe(construction: x86_64_abi_pdf_syscall_convention_sequence())
+}
