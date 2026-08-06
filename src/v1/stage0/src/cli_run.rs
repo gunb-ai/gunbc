@@ -26818,7 +26818,10 @@ mod discovery_summary_merge_tests {
 
         let slowest = top_n_slowest_witnesses(&rows, rows.len());
         assert_eq!(
-            slowest.iter().map(|row| row.1.as_str()).collect::<Vec<_>>(),
+            slowest
+                .iter()
+                .map(|row| row.function.as_str())
+                .collect::<Vec<_>>(),
             vec!["one_ms", "sub_ms", "one_ns"]
         );
         let histogram = compute_histogram_data(&rows);
