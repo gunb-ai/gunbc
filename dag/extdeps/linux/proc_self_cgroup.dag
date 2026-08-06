@@ -1,0 +1,184 @@
+module extdeps.linux.proc_self_cgroup
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Https, Uri }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Int, List, NonEmptyStr, String }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man7/cgroups.7.html"
+  }
+}
+
+data proc_self_cgroup_proc_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man5/proc.5.html#/proc/self/cgroup"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.proc_self_cgroup",
+      decl_name: "proc_self_cgroup_proc_authority",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.linux.proc_self_cgroup.proc_self_cgroup_proc_authority,
+  further_citations: [extdeps.linux.proc_self_cgroup.extdeps_external_authority_anchor]
+}
+
+type ProcSelfCgroupLineRefusal
+  = ProcSelfCgroupLineMissingColon
+  | ProcSelfCgroupLineMissingSecondColon
+  | ProcSelfCgroupLineEmptyHierarchy
+  | ProcSelfCgroupLineEmptyPath
+
+type ProcSelfCgroupLineParse
+  = ProcSelfCgroupLineParsed {
+      hierarchy_id: NonEmptyStr,
+      controller_list: String,
+      relative_path: NonEmptyStr,
+    }
+  | ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineRefusal }
+
+type UnifiedCgroupMembershipRead
+  = CurrentCgroupObserved { relative_path: NonEmptyStr }
+  | MembershipMissing
+  | MembershipAmbiguous { first: NonEmptyStr, second: NonEmptyStr }
+  | MembershipMalformed { cause: ProcSelfCgroupLineRefusal }
+
+type ProcSelfCgroupMalformedScan
+  = NoMalformedLine
+  | MalformedFound { cause: ProcSelfCgroupLineRefusal }
+
+data proc_self_cgroup_empty_unified_paths: List<NonEmptyStr> = []
+
+fn proc_self_cgroup_char_index_from(s: String, ch: String, from: Int) -> Int {
+  let n = string_length(s: s)
+  if from >= n {
+    -1
+  } else if char_at(s: s, pos: from) == ch {
+    from
+  } else {
+    proc_self_cgroup_char_index_from(s: s, ch: ch, from: from + 1)
+  }
+}
+
+fn proc_self_cgroup_line_from_wire(line: String) -> ProcSelfCgroupLineParse {
+  let trimmed = trim(line)
+  if trimmed == "" {
+    ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineEmptyHierarchy }
+  } else {
+    let first = proc_self_cgroup_char_index_from(s: trimmed, ch: ":", from: 0)
+    if first < 0 {
+      ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineMissingColon }
+    } else {
+      let second = proc_self_cgroup_char_index_from(s: trimmed, ch: ":", from: first + 1)
+      if second < 0 {
+        ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineMissingSecondColon }
+      } else {
+        let hierarchy = substring(s: trimmed, start: 0, end: first)
+        let controllers = substring(s: trimmed, start: first + 1, end: second)
+        let path = substring(s: trimmed, start: second + 1, end: string_length(s: trimmed))
+        if hierarchy == "" {
+          ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineEmptyHierarchy }
+        } else if path == "" {
+          ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineEmptyPath }
+        } else {
+          ProcSelfCgroupLineParsed {
+            hierarchy_id: hierarchy as NonEmptyStr,
+            controller_list: controllers,
+            relative_path: path as NonEmptyStr,
+          }
+        }
+      }
+    }
+  }
+}
+
+fn proc_self_cgroup_nonempty_lines(content: String) -> List<String> {
+  split(s: content, delimiter: "\n")
+    |> filter(line => trim(line) != "")
+    |> map(line => trim(line))
+}
+
+fn proc_self_cgroup_unified_hierarchy_paths_loop(
+  lines: List<String>,
+  acc: List<NonEmptyStr>,
+) -> List<NonEmptyStr> {
+  if list_length(items: lines) == 0 {
+    acc
+  } else {
+    let line = lines.first()
+    let rest = lines.skip(n: 1)
+    match proc_self_cgroup_line_from_wire(line: line) {
+      ProcSelfCgroupLineParsed { hierarchy_id: hid, controller_list: ctl, relative_path: path } =>
+        if (hid as String == "0") {
+          proc_self_cgroup_unified_hierarchy_paths_loop(lines: rest, acc: concat(acc, [path]))
+        } else {
+          proc_self_cgroup_unified_hierarchy_paths_loop(lines: rest, acc: acc)
+        }
+      ProcSelfCgroupLineRefused { cause: c } =>
+        proc_self_cgroup_unified_hierarchy_paths_loop(lines: rest, acc: acc)
+    }
+  }
+}
+
+fn proc_self_cgroup_unified_hierarchy_paths(content: String) -> List<NonEmptyStr> {
+  proc_self_cgroup_unified_hierarchy_paths_loop(
+    lines: proc_self_cgroup_nonempty_lines(content: content),
+    acc: proc_self_cgroup_empty_unified_paths,
+  )
+}
+
+fn proc_self_cgroup_first_malformed_cause_loop(lines: List<String>) -> ProcSelfCgroupMalformedScan {
+  if list_length(items: lines) == 0 {
+    NoMalformedLine
+  } else {
+    let line = lines.first()
+    match proc_self_cgroup_line_from_wire(line: line) {
+      ProcSelfCgroupLineRefused { cause: c } => MalformedFound { cause: c }
+      ProcSelfCgroupLineParsed { hierarchy_id: hid, controller_list: ctl, relative_path: path } =>
+        proc_self_cgroup_first_malformed_cause_loop(lines: lines.skip(n: 1))
+    }
+  }
+}
+
+fn proc_self_cgroup_first_malformed_cause(content: String) -> ProcSelfCgroupMalformedScan {
+  proc_self_cgroup_first_malformed_cause_loop(
+    lines: proc_self_cgroup_nonempty_lines(content: content)
+  )
+}
+
+fn read_unified_cgroup_membership(content: String) -> UnifiedCgroupMembershipRead {
+  match proc_self_cgroup_first_malformed_cause(content: content) {
+    MalformedFound { cause: cause } => MembershipMalformed { cause: cause }
+    NoMalformedLine =>
+      let paths = proc_self_cgroup_unified_hierarchy_paths(content: content)
+      if list_length(items: paths) == 0 {
+        MembershipMissing
+      } else if list_length(items: paths) == 1 {
+        CurrentCgroupObserved { relative_path: paths.first() }
+      } else {
+        MembershipAmbiguous {
+          first: paths.first(),
+          second: paths.skip(n: 1).first(),
+        }
+      }
+  }
+}
+
+service LinuxCgroup {
+  operation CurrentMembership {
+    input {}
+    output {
+      membership: UnifiedCgroupMembershipRead from "membership"
+    }
+    readonly
+    transport file { path: "/proc/self/cgroup" }
+  }
+}
