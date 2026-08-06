@@ -1,6 +1,6 @@
 # C1 — SizeExpr / CostExpr authority in `v2.lens.cost`
 
-> **Status: DRAFT for operator review (2026-08-05).** Design-note-first per lane sequencing: **no carrier lands from this note.** C0(b1) PR #7821 and C0(b2) PR #7840 remain open at the approval bar; C0(c) #7841 merged. Carrier authoring waits for operator signal after C0(b) lands.
+> **Status: CARRIERS LANDED in PR #7888 (2026-08-06).** C0 signal received: `v2.lens.cost.expr` carries grounded `SizeExpr`/`CostExpr`, `normalize_cost_expr_to_symbolic`, closed `CostExprRefusalCause`, and discriminating witnesses in `bounded_summation_test.dag`. Design note landed in #7879; carrier in #7888. `cost_lens` / `symbolic_cost_fold` unchanged.
 >
 > **Authority:** [`v2-complexity-capability-parity.md`](v2-complexity-capability-parity.md) §5–§7 item 2. This note is the C1 design deliverable requested by the lane brief.
 
@@ -16,7 +16,7 @@
 | `symbolic_cost_dominates`, `asymptotic_class_of_cost` | yes | comparison machinery on `SymbolicCost` |
 | `cost_lens` / `symbolic_cost_fold` | yes | blocking wall over the Node kernel |
 | `llvm_instruction_cost` | yes | **registered** owner `v2.lens.registry` `lens_owned_fn_llvm_instruction_cost` |
-| `SizeExpr`, `CostExpr`, binder-carrying sum, cost max, extern channel | **no** | |
+| `SizeExpr`, `CostExpr`, binder-carrying sum, cost max, extern channel | **yes** (`v2.lens.cost.expr`) | landed C1 carrier (#7888); `CostEffect` replaces extern channel |
 
 **`src/v1/complexity.dag`** lines 70–95 (promotion source, **not** port target):
 
@@ -195,7 +195,7 @@ The installed PATH binary cannot parse current `.dag` syntax (qualified type pat
 
 1. `CostSum` inhabitance witness — `cost_loop_expr` produces `CostSum`, projects to `LinearCost`.
 2. RED control — projection of `CostSum` with zero body must **not** claim linear (stays `zero_cost`).
-3. `CostRefused` cause variant count stable (planted duplicate variant → witness red).
+3. `CostExprRefusalCause` arms stay in sync with `cost_expr_refusal_diagnostic` — exhaustive match is the enforcement (compile refusal on drift); runtime variant-count witnesses deleted as self-referential per review 49220.
 
 ## 7. Contradictions and open items found in the tree
 
@@ -205,17 +205,17 @@ The installed PATH binary cannot parse current `.dag` syntax (qualified type pat
 | `CostInternTable` keyed by `String` | migrate in C4 | v1 only | C1 does not touch; C4 uses `DeclarationRef`-keyed memo |
 | `SymbolicCost` already has `SumCost`/`ProductCost` | C1 adds binder sum | true | C1 adds **binder-carrying** `CostSum` on `CostExpr`; `SymbolicCost.SumCost` remains flat binary — no rename collision |
 | `UnknownCost` vs `CostRefused` | countable cause | `UnknownCost` already uses `Diagnostic` | Rich layer gets `CostExprRefusalCause`; projection bridges to existing `UnknownCost` |
-| C0(b) census rows | inform disposition | PRs #7821/#7840 open | Carrier waits; census may add per-capability triggers — design compatible |
-| Premature WIP carrier (PR #7879) | wait for C0 | landed as WIP commit | **Reverted** in `5c87cbb69`; PR returns to design-only until operator signal |
+| C0(b) census rows | inform disposition | b1/b2 on main (#7821/#7840) | Census on main; carrier compatible |
+| Premature WIP carrier | wait for C0 | reverted in `5c87cbb69`, re-landed after C0 signal | **Carriers in-tree** in `v2.lens.cost.expr` + `bounded_summation_test.dag` (#7888) |
 
 ## 8. Carrier landing checklist (post-C0 signal)
 
-1. Add §2 types + §3 `CostExprRefusalCause` to `v2.lens.cost` (submodule `cost/expr.dag`).
-2. Add §4 normalization functions; **do not** edit `symbolic_cost_fold` / `cost_lens`.
-3. Add witnesses §6; enroll in CI discovery if per-PR.
-4. Run baseline roster green on CI.
-5. `llvm_instruction_cost` — **no edit**.
-6. Flip PR #7879 to ready only after (4).
+1. ~~Add §2 types + §3 `CostExprRefusalCause` to `v2.lens.cost` (submodule `cost/expr.dag`).~~ **Done** — `src/v2/lens/cost/expr.dag`.
+2. ~~Add §4 normalization functions; **do not** edit `symbolic_cost_fold` / `cost_lens`.~~ **Done**.
+3. ~~Add witnesses §6; enroll in CI discovery if per-PR.~~ **Done** — `bounded_summation_test.dag`.
+4. Run baseline roster green on CI. **Pending merge (#7888)**.
+5. `llvm_instruction_cost` — **no edit**. **Done** (untouched).
+6. ~~Flip PR #7879 to ready only after (4).~~ **Done** — design note merged (#7879); carrier in #7888.
 
 ## Dissolution trigger
 
