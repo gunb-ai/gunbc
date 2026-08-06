@@ -1,7 +1,8 @@
 module test.claim.long.v1_complexity_decl_classification_totality_test
 
-import std.types { Bool, List }
-import v2.std.decl_index { DeclFact, decl_facts }
+import std.types { String, Bool, List }
+import v2.std.decl_index { DeclFact, decl_facts, DataItem }
+import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
 import gunbc.v1_complexity_decl_classification {
   v1_complexity_decl_population,
   v1_complexity_decl_population_count,
@@ -9,6 +10,7 @@ import gunbc.v1_complexity_decl_classification {
   every_population_fact_classified,
   every_roster_row_matches_population,
   roster_names_distinct,
+  population_names_distinct,
 }
 import gunbc.v1_complexity_decl_classification_roster { v1_complexity_decl_classification_roster }
 
@@ -48,4 +50,52 @@ test fn w_no_stale_classification_rows() -> Bool {
 
 test fn w_derived_population_is_nonempty() -> Bool {
   v1_complexity_decl_population_count(pool_roots: totality_pool_roots) > 100
+}
+
+data population_key_precondition_note: String = "The name-keyed join's precondition, executed rather than assumed. classification_matches_fact matches a roster row to a DeclFact on bare name; that is sound only while the DERIVED population's top-level names are distinct. The four witnesses above cannot see a violation: a duplicate name in the population still classifies, still matches a roster row, and leaves no stale row — the counts can even agree while one roster row silently answers for two declarations. roster_names_distinct does not cover it either, since it constrains the authored side only."
+
+data planted_duplicate_population: List<DeclFact> = [
+  DeclFact {
+    qualified_name: "v1.compiler.complexity.planted_duplicate_control_RED",
+    name: "planted_duplicate_control_RED",
+    kind: DataItem,
+    node: enforcement_red_probe_body_leaf,
+    rel_path: "synthetic/v1_complexity_planted_duplicate_a.dag"
+  },
+  DeclFact {
+    qualified_name: "v1.compiler.complexity.planted_duplicate_control_RED",
+    name: "planted_duplicate_control_RED",
+    kind: DataItem,
+    node: enforcement_red_probe_body_leaf,
+    rel_path: "synthetic/v1_complexity_planted_duplicate_b.dag"
+  },
+]
+
+data distinct_control_population: List<DeclFact> = [
+  DeclFact {
+    qualified_name: "v1.compiler.complexity.distinct_control_first",
+    name: "distinct_control_first",
+    kind: DataItem,
+    node: enforcement_red_probe_body_leaf,
+    rel_path: "synthetic/v1_complexity_distinct_a.dag"
+  },
+  DeclFact {
+    qualified_name: "v1.compiler.complexity.distinct_control_second",
+    name: "distinct_control_second",
+    kind: DataItem,
+    node: enforcement_red_probe_body_leaf,
+    rel_path: "synthetic/v1_complexity_distinct_b.dag"
+  },
+]
+
+test fn w_population_decl_names_are_distinct() -> Bool {
+  population_names_distinct(facts: totality_population)
+}
+
+test fn w_distinctness_fold_reds_on_a_planted_duplicate() -> Bool {
+  population_names_distinct(facts: planted_duplicate_population) == false
+}
+
+test fn w_distinctness_fold_accepts_a_distinct_control() -> Bool {
+  population_names_distinct(facts: distinct_control_population)
 }
