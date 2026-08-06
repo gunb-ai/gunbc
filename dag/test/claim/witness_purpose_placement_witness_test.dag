@@ -55,6 +55,7 @@ import std.witness_placement {
   CostExceedsFastLaneWithoutCadence,
   PurposeRequiresScheduledCadenceUndeclared,
   EnvelopeUndeclared,
+  SpanUnavailableAtPlacement,
   UnrecognizedEnvelopeCadence,
 }
 import std.nat { Nat }
@@ -400,6 +401,23 @@ test fn derive_route_from_span_refuses_without_enrollment() -> Bool {
     PerPrWet => false
     Scheduled { cadence: _ } => false
     OneShot => false
+    RefusedNoConsumer { cause: _ } => false
+  }
+}
+
+test fn derive_route_from_span_span_unavailable() -> Bool {
+  let route = derive_route_from_span(
+    purpose: BehavioralDiscriminator,
+    span: SpanUnavailable { cause: "derivation refused: no measured sibling" },
+    fast_lane_budget: millisecond(count: 5000),
+  )
+  match route {
+    RefusedNoConsumer { cause: SpanUnavailableAtPlacement { cause: _ } } => true
+    OrdinaryPerPr => false
+    PerPrWet => false
+    Scheduled { cadence: _ } => false
+    OneShot => false
+    RefusedNoConsumer { cause: EnvelopeUndeclared } => false
     RefusedNoConsumer { cause: _ } => false
   }
 }

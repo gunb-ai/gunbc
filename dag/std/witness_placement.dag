@@ -1,11 +1,14 @@
 module std.witness_placement
 
-import std.types { Bool, String }
+import std.types { Bool, String, NonEmptyStr }
 import std.measure { Millisecond, millisecond_count }
 import std.realization_schedule {
   ScheduledWitnessEnvelope,
   WitnessSpan,
   SpanEnrolled,
+  SpanUndeclared,
+  SpanUnavailable,
+  SpanSeams,
 }
 import std.witness_purpose {
   WitnessPurpose,
@@ -41,6 +44,7 @@ type WitnessPlacementRefusal
   | CostExceedsFastLaneWithoutCadence
   | NonExecutingCadence { cadence: String }
   | EnvelopeUndeclared
+  | SpanUnavailableAtPlacement { cause: NonEmptyStr }
   | UnrecognizedEnvelopeCadence { wire: String }
 
 fn interpret_envelope_cadence_wire(cadence: String) -> WitnessEnvelopeCadenceWire {
@@ -152,6 +156,11 @@ fn derive_route_from_span(
         envelope: envelope,
         fast_lane_budget: fast_lane_budget,
       )
-    _ => RefusedNoConsumer { cause: EnvelopeUndeclared }
+    SpanUnavailable { cause } =>
+      RefusedNoConsumer { cause: SpanUnavailableAtPlacement { cause: cause } }
+    SpanUndeclared =>
+      RefusedNoConsumer { cause: EnvelopeUndeclared }
+    SpanSeams { seams: _ } =>
+      RefusedNoConsumer { cause: EnvelopeUndeclared }
   }
 }
