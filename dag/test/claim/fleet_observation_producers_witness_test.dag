@@ -2,7 +2,8 @@ module test.claim.fleet_observation_producers_witness
 
 import gunbc.fleet_shell_transport_observation {
   fleet_shell_transport_observation,
-  fleet_shell_transport_refused_count,
+  fleet_shell_transport_unobserved_count,
+  still_ram_738_session_shell_transport_receipt_note,
   ShellTransportReachRefused,
   ShellTransportSucceeded,
   ShellTransportUnobserved,
@@ -42,19 +43,24 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn still_ram_738_shell_transport_refused_all_enrolled_hosts() -> Bool {
-  fleet_shell_transport_refused_count() == fleet_subsumption_hosts.length()
+test fn producer_unobserved_all_enrolled_hosts_not_stale_reach_refused() -> Bool {
+  fleet_shell_transport_unobserved_count() == fleet_subsumption_hosts.length()
     && fleet_subsumption_hosts.length() > 0
 }
 
-test fn srv3_shell_transport_is_reach_refused_not_success() -> Bool {
+test fn srv3_observation_stays_unobserved_with_dated_receipt_provenance() -> Bool {
   match fleet_shell_transport_observation(host: operator_host_srv3) {
-    ShellTransportReachRefused { observed_on: o, principal: _, detail: d, gap: g } =>
-      (o as String) == "2026-08-06"
-        && d.contains(s: "Permission denied")
-        && g.contains(s: "B2")
-    _ => false
+    ShellTransportUnobserved { reason: r } =>
+      string_contains(s: r, pattern: "dated session receipt")
+        && string_contains(s: r, pattern: "2026-08-06")
+        && string_contains(s: r, pattern: "Permission denied")
+    ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
+    ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
   }
+    && string_contains(
+      s: still_ram_738_session_shell_transport_receipt_note(host: operator_host_srv3),
+      pattern: "B2",
+    )
 }
 
 test fn session_producer_returns_unobserved_not_operator_declared_absent() -> Bool {
@@ -89,20 +95,20 @@ test fn build_cache_ci_endpoint_unavailable_not_absent() -> Bool {
     }
 }
 
-test fn shell_transport_not_succeeded_for_refused_hosts() -> Bool {
+test fn shell_transport_observation_not_authoritative_reach_refused() -> Bool {
   match fleet_shell_transport_observation(host: operator_host_srv1) {
     ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
-    ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => true
-    ShellTransportUnobserved { reason: _ } => false
+    ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
+    ShellTransportUnobserved { reason: _ } => true
   }
     && match fleet_shell_transport_observation(host: operator_host_srv2) {
       ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
-      ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => true
-      ShellTransportUnobserved { reason: _ } => false
+      ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
+      ShellTransportUnobserved { reason: _ } => true
     }
     && match fleet_shell_transport_observation(host: operator_host_srv4) {
       ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
-      ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => true
-      ShellTransportUnobserved { reason: _ } => false
+      ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
+      ShellTransportUnobserved { reason: _ } => true
     }
 }

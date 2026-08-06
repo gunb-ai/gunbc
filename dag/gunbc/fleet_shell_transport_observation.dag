@@ -91,9 +91,36 @@ fn fleet_shell_transport_observed_producer(host: HostIdentity) -> HostShellTrans
   }
 }
 
+// DATED SESSION RECEIPTS are pinned census rows for one principal/environment (2026-08-06).
+// They are NOT the live observation authority: fleet_shell_transport_observation keeps
+// producer-Unobserved as Unobserved and cites these rows only as non-authoritative provenance
+// (review 49707 — inverted fallback would graduate stale ReachRefused for principals with keys).
+
+fn still_ram_738_session_shell_transport_receipt_note(host: HostIdentity) -> String {
+  match still_ram_738_session_shell_transport(host: host) {
+    ShellTransportReachRefused { observed_on: o, principal: p, detail: d, gap: g } =>
+      concat(
+        concat(concat(concat(o as String, " "), p as String), concat(" ", d as String)),
+        concat("; gap: ", g as String),
+      )
+    ShellTransportSucceeded { observed_on: o, principal: p, detail: d } =>
+      concat(concat(concat(o as String, " "), p as String), concat(" ", d as String))
+    ShellTransportUnobserved { reason: r } => r
+  }
+}
+
 fn fleet_shell_transport_observation(host: HostIdentity) -> HostShellTransportObservation {
   match fleet_shell_transport_observed_producer(host: host) {
-    ShellTransportUnobserved { reason: _ } => still_ram_738_session_shell_transport(host: host)
+    ShellTransportUnobserved { reason: producer_reason } =>
+      ShellTransportUnobserved {
+        reason: concat(
+          concat(
+            producer_reason,
+            "; dated session receipt (principal-specific, not authoritative when producer unobserved): ",
+          ),
+          still_ram_738_session_shell_transport_receipt_note(host: host),
+        ),
+      }
     ShellTransportSucceeded { observed_on: o, principal: p, detail: d } =>
       ShellTransportSucceeded { observed_on: o, principal: p, detail: d }
     ShellTransportReachRefused { observed_on: o, principal: p, detail: d, gap: g } =>
@@ -101,20 +128,20 @@ fn fleet_shell_transport_observation(host: HostIdentity) -> HostShellTransportOb
   }
 }
 
-fn shell_transport_refused_count(hosts: List<HostIdentity>) -> Int {
+fn shell_transport_unobserved_count(hosts: List<HostIdentity>) -> Int {
   filter(
     hosts,
     h =>
       match fleet_shell_transport_observation(host: h) {
-        ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => true
+        ShellTransportUnobserved { reason: _ } => true
+        ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
         ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
-        ShellTransportUnobserved { reason: _ } => false
-      }
+      },
   ).length()
 }
 
-fn fleet_shell_transport_refused_count() -> Int {
-  shell_transport_refused_count(hosts: fleet_subsumption_hosts)
+fn fleet_shell_transport_unobserved_count() -> Int {
+  shell_transport_unobserved_count(hosts: fleet_subsumption_hosts)
 }
 
 fn srv3_network_reach_realizable() -> Bool {

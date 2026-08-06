@@ -11,7 +11,7 @@ import gunbc.membership_reconcile {
   membership_reconcile,
   membership_upsert_count,
 }
-import gunbc.ownership { Ownership, Owned }
+import gunbc.ownership { Ownership }
 import gunbc.runner_host_deploy {
   RunnerHostDeploy,
   runner_instance_names,
@@ -81,8 +81,10 @@ fn runner_slot_member_value_eq(a: RunnerSlotMember, b: RunnerSlotMember) -> Bool
   a.slot_dir as String == b.slot_dir as String
 }
 
+data runner_slot_member_ownership_scaffold_note: String = "Ownership is NOT asserted for every observed slot-dir under /opt/actions-runner. R5 teardown-owned-only requires a provenance signal (gunbc-managed systemd drop-in + unit template this lane writes) before apply lands; until host_effect observation can read that signal, ownership_of returns Absent so Removed out-of-band dirs yield MemberTeardownRefused rather than fabricated Owned (review 49707)."
+
 fn runner_slot_member_ownership(m: RunnerSlotMember) -> Ownership? {
-  Present { value: Owned }
+  Absent
 }
 
 fn runner_slot_membership_reconcile(
