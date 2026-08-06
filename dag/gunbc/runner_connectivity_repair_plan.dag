@@ -1,0 +1,109 @@
+module gunbc.runner_connectivity_repair_plan
+
+import std.types { String, NonEmptyStr, List, Bool, Int, list_length }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
+import gunbc.runner_connectivity_recovery {
+  RunnerConnectivityAction,
+  RunnerConnectedNoop,
+  RunnerIncarnationReplace,
+  RunnerRepairRefused,
+  RunnerLocalIncarnation,
+  runner_slot_unit_name,
+}
+
+data runner_repair_effect_authority_note: String = "REPAIR CHOREOGRAPHY over the shared HostEffect arms still-ram-738 lands on gunbc.host_effect — NOT a second effect coproduct. RunnerRepairEffectStep names the operator-specified arms (ObserveRunnerLocalState, ObserveGitHubRunnerRegistration, ReplaceRunnerIncarnation) in apply order. This module sequences them; host_effect_realize owns realization cells. ctrl is dead — no script delegation."
+
+data observe_runner_local_state_host_effect_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "ObserveRunnerLocalState",
+    field: WholeDeclaration,
+  }
+}
+
+data observe_github_runner_registration_host_effect_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "ObserveGitHubRunnerRegistration",
+    field: WholeDeclaration,
+  }
+}
+
+data replace_runner_incarnation_host_effect_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "ReplaceRunnerIncarnation",
+    field: WholeDeclaration,
+  }
+}
+
+type RunnerRepairEffectStep
+  = ObserveRunnerLocalState { slot: RunnerSlotIdentity }
+  | ObserveGitHubRunnerRegistration { slot: RunnerSlotIdentity }
+  | ReplaceRunnerIncarnation {
+      slot: RunnerSlotIdentity,
+      from: RunnerLocalIncarnation,
+      unit: NonEmptyStr,
+    }
+
+type RunnerRepairApplyPlan
+  = RepairNoop { reason: NonEmptyStr }
+  | RepairRefusedPlan { slot: RunnerSlotIdentity, reason: NonEmptyStr }
+  | RepairExecute { slot: RunnerSlotIdentity, steps: List<RunnerRepairEffectStep> }
+
+fn repair_effect_step_count(steps: List<RunnerRepairEffectStep>) -> Int {
+  list_length(items: steps)
+}
+
+fn replace_repair_steps(
+  slot: RunnerSlotIdentity,
+  from: RunnerLocalIncarnation,
+) -> List<RunnerRepairEffectStep> {
+  let unit = runner_slot_unit_name(slot: slot)
+  [
+    ObserveGitHubRunnerRegistration { slot: slot },
+    ReplaceRunnerIncarnation { slot: slot, from: from, unit: unit },
+    ObserveRunnerLocalState { slot: slot },
+    ObserveGitHubRunnerRegistration { slot: slot },
+  ]
+}
+
+fn project_connectivity_action_to_repair_plan(
+  action: RunnerConnectivityAction,
+) -> RunnerRepairApplyPlan {
+  match action {
+    RunnerConnectedNoop { local: _, remote: _ } =>
+      RepairNoop { reason: "local and remote registration agree; no repair steps" as NonEmptyStr }
+    RunnerIncarnationReplace { slot: slot, from: from, cause: _ } =>
+      RepairExecute {
+        slot: slot,
+        steps: replace_repair_steps(slot: slot, from: from),
+      }
+    RunnerRepairRefused { slot: slot, cause: _ } =>
+      RepairRefusedPlan {
+        slot: slot,
+        reason: "connectivity controller refused repair before actuation" as NonEmptyStr,
+      }
+  }
+}
+
+fn repair_plan_is_execute(plan: RunnerRepairApplyPlan) -> Bool {
+  match plan {
+    RepairExecute { slot: _, steps: _ } => true
+    RepairNoop { reason: _ } => false
+    RepairRefusedPlan { slot: _, reason: _ } => false
+  }
+}
+
+fn repair_execute_step_count(plan: RunnerRepairApplyPlan) -> Int {
+  match plan {
+    RepairExecute { slot: _, steps: steps } => repair_effect_step_count(steps: steps)
+    RepairNoop { reason: _ } => 0
+    RepairRefusedPlan { slot: _, reason: _ } => 0
+  }
+}

@@ -1,0 +1,133 @@
+module test.claim.runner_connectivity_repair_plan_witness
+
+import std.types { String, Bool, List, Timestamp, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
+import gunbc.runner_connectivity_recovery {
+  RunnerSlotConnectivitySnapshot,
+  RunnerLocalObservation,
+  RunnerRemoteObservation,
+  RunnerLocalIncarnation,
+  RunnerRemoteOffline,
+  RunnerRemoteOnline,
+  HostReachAdmitted,
+  decide_runner_connectivity_action,
+}
+import gunbc.runner_connectivity_repair_plan {
+  RepairExecute,
+  RepairNoop,
+  RepairRefusedPlan,
+  ObserveRunnerLocalState,
+  ObserveGitHubRunnerRegistration,
+  ReplaceRunnerIncarnation,
+  project_connectivity_action_to_repair_plan,
+  repair_plan_is_execute,
+  repair_execute_step_count,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn act_ts(s: String) -> Timestamp {
+  s as Timestamp
+}
+
+fn fixture_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
+}
+
+fn wedged_snapshot(act: Timestamp) -> RunnerSlotConnectivitySnapshot {
+  let slot = fixture_slot()
+  let inc = RunnerLocalIncarnation {
+    slot: slot,
+    process: ProcessIdentity {
+      boot_id: "boot-a" as NonEmptyStr,
+      pid: 4242,
+      start_time: "80000000" as NonEmptyStr,
+    },
+    unit: "actions-runner@srv1-01.service" as NonEmptyStr,
+  }
+  RunnerSlotConnectivitySnapshot {
+    slot: slot,
+    local: RunnerLocalObservation {
+      incarnation: inc,
+      systemd_active: true,
+      observed_at: act,
+    },
+    remote: RunnerRemoteObservation {
+      registration: RunnerRemoteOffline,
+      observed_at: act,
+      control_plane_error_burst: false,
+    },
+    confirmed_at: act,
+    last_restart_at: Absent,
+  }
+}
+
+test fn replace_action_projects_four_step_repair_sequence() -> Bool {
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let snap = wedged_snapshot(act: act)
+  let action = decide_runner_connectivity_action(
+    snap: snap,
+    prior: snap,
+    act_at: act,
+    reach: HostReachAdmitted,
+    allow_replace: true,
+  )
+  let plan = project_connectivity_action_to_repair_plan(action: action)
+  repair_plan_is_execute(plan: plan)
+    && repair_execute_step_count(plan: plan) == 4
+    && match plan {
+         RepairExecute { slot: _, steps: steps } =>
+           list_length(items: steps) == 4
+             && match steps.first() {
+                  ObserveGitHubRunnerRegistration { slot: _ } => true
+                  _ => false
+                }
+             && match steps.skip(n: 1).first() {
+                  ReplaceRunnerIncarnation { slot: _, from: _, unit: _ } => true
+                  _ => false
+                }
+             && match steps.skip(n: 2).first() {
+                  ObserveRunnerLocalState { slot: _ } => true
+                  _ => false
+                }
+             && match steps.skip(n: 3).first() {
+                  ObserveGitHubRunnerRegistration { slot: _ } => true
+                  _ => false
+                }
+         RepairNoop { reason: _ } => false
+         RepairRefusedPlan { slot: _, reason: _ } => false
+       }
+}
+
+test fn noop_action_projects_empty_repair_plan() -> Bool {
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let snap = wedged_snapshot(act: act)
+  let connected = RunnerSlotConnectivitySnapshot {
+    slot: snap.slot,
+    local: snap.local,
+    remote: RunnerRemoteObservation {
+      registration: RunnerRemoteOnline {
+        runner_name: "actions-runner@srv1-01.service" as NonEmptyStr,
+        labels: ["self-hosted"],
+      },
+      observed_at: act,
+      control_plane_error_burst: false,
+    },
+    confirmed_at: act,
+    last_restart_at: Absent,
+  }
+  let action = decide_runner_connectivity_action(
+    snap: connected,
+    prior: connected,
+    act_at: act,
+    reach: HostReachAdmitted,
+    allow_replace: true,
+  )
+  match project_connectivity_action_to_repair_plan(action: action) {
+    RepairNoop { reason: _ } => true
+    RepairExecute { slot: _, steps: _ } => false
+    RepairRefusedPlan { slot: _, reason: _ } => false
+  }
+}
