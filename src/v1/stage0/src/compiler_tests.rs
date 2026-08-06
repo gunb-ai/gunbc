@@ -1239,11 +1239,11 @@ mod compiler_tests {
                 });
                 let caller_ok = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "caller_ok.dag".to_string(),
-                    content: "module caller_ok\nimport mint_mod { mint }\nfn ok_call() -> Sealed { mint(\"ok\") }\n".to_string(),
+                    content: "module caller_ok\nimport mint_mod { mint, Sealed }\nfn ok_call() -> Sealed { mint(\"ok\") }\n".to_string(),
                 });
                 let caller_bad = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "caller_bad.dag".to_string(),
-                    content: "module caller_bad\nimport mint_mod { mint }\nfn bad_call() -> Sealed { mint(\"forged\") }\n".to_string(),
+                    content: "module caller_bad\nimport mint_mod { mint, Sealed }\nfn bad_call() -> Sealed { mint(\"forged\") }\n".to_string(),
                 });
                 let ok_result = crate::v1_compiler_compile::compile_sources(
                     std::rc::Rc::new(im::vector![mint_mod.clone(), caller_ok.clone()]),
@@ -1251,7 +1251,7 @@ mod compiler_tests {
                 );
                 assert!(
                     ok_result.diagnostics.iter().all(|d| !matches!(
-                        d.diagnostic,
+                        *d.diagnostic,
                         crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused { .. }
                     )),
                     "listed caller should compile clean, got: {:?}",
@@ -1263,7 +1263,7 @@ mod compiler_tests {
                 );
                 let admission_errors: Vec<_> = bad_result.diagnostics.iter()
                     .filter(|d| matches!(
-                        d.diagnostic,
+                        *d.diagnostic,
                         crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused { .. }
                     ))
                     .collect();
