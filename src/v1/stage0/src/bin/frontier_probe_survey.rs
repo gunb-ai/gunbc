@@ -3,12 +3,13 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 
 use v1_compiler::cli_run::{
     discover_source_root_reads_for_entry, emit_source_ref_dag_for_path,
     emit_source_root_ingest_manifest, parse_source_root_entry_admission, resolve_entry_graph,
 };
+use v1_compiler::std_content_hash::{content_hash_atom, content_hash_combine_structural};
 use v1_compiler::v1_interpreter::{
     self, free_monoid_symbol_value_to_dotted_string, ExecutionMode, InterpContext, Value,
 };
@@ -90,7 +91,11 @@ struct ProbeReceiptRow {
     located_stage: String,
     located_reason: String,
     detail: String,
+    assemble_detail_manifest: String,
+    rejection_chain: String,
+    overlap_roster_detail: String,
     probe_error: Option<String>,
+    subject: SurveySubjectPin,
 }
 
 fn dag_manifest_scalar_escape(s: &str) -> Result<String, String> {
@@ -331,30 +336,291 @@ fn detail_variant_emit(value: &Value, ctx: &InterpContext) -> Result<String, Str
     }
 }
 
+fn symbol_list_csv(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let mut parts = Vec::new();
+    for item in free_monoid_elems(value, ctx)? {
+        parts.push(value_symbol_name(item)?);
+    }
+    Ok(parts.join(","))
+}
+
+fn non_empty_symbol_chain_csv_flat(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let head = record_field(ctx, value, "head")?;
+    let tail = record_field(ctx, value, "tail")?;
+    let mut parts = vec![value_symbol_name(head)?];
+    for item in free_monoid_elems(tail, ctx)? {
+        parts.push(value_symbol_name(item)?);
+    }
+    Ok(parts.join(","))
+}
+
+fn symbol_list_dag_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let mut parts = Vec::new();
+    for item in free_monoid_elems(value, ctx)? {
+        parts.push(value_symbol_name(item)?);
+    }
+    let mut list = String::from("Empty");
+    while let Some(sym) = parts.pop() {
+        list = format!("Cons {{\n  head: {sym},\n  tail: {list}\n}}");
+    }
+    Ok(list)
+}
+
+fn grammar_choice_ambiguity_row_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let production = value_symbol_name(record_field(ctx, value, "production")?)?;
+    let left_list = symbol_list_dag_emit(record_field(ctx, value, "left_first_terminals")?, ctx)?;
+    let right_list = symbol_list_dag_emit(record_field(ctx, value, "right_first_terminals")?, ctx)?;
+    let overlap_list = symbol_list_dag_emit(record_field(ctx, value, "overlap_terminals")?, ctx)?;
+    let both_nullable = match record_field(ctx, value, "both_nullable")? {
+        Value::Bool(b) => {
+            if *b {
+                "true"
+            } else {
+                "false"
+            }
+        }
+        other => {
+            return Err(format!(
+                "both_nullable not Bool: {}",
+                other.type_label_public()
+            ));
+        }
+    };
+    Ok(format!(
+        "GrammarChoiceAmbiguityRow {{\n  production: {production},\n  left_first_terminals: {left_list},\n  right_first_terminals: {right_list},\n  overlap_terminals: {overlap_list},\n  both_nullable: {both_nullable}\n}}"
+    ))
+}
+
+fn non_empty_grammar_rows_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let head = grammar_choice_ambiguity_row_emit(record_field(ctx, value, "head")?, ctx)?;
+    let tail = record_field(ctx, value, "tail")?;
+    let mut tail_nodes: Vec<String> = Vec::new();
+    for item in free_monoid_elems(tail, ctx)? {
+        tail_nodes.push(grammar_choice_ambiguity_row_emit(item, ctx)?);
+    }
+    let mut list = String::from("Empty");
+    while let Some(node) = tail_nodes.pop() {
+        list = format!("Cons {{\n  head: {node},\n  tail: {list}\n}}");
+    }
+    Ok(format!(
+        "NonEmptyGrammarChoiceAmbiguityRows {{\n  head: {head},\n  tail: {list}\n}}"
+    ))
+}
+
+fn non_empty_symbol_chain_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let head = value_symbol_name(record_field(ctx, value, "head")?)?;
+    let tail = symbol_list_dag_emit(record_field(ctx, value, "tail")?, ctx)?;
+    Ok(format!(
+        "NonEmptySymbolChain {{\n  head: {head},\n  tail: {tail}\n}}"
+    ))
+}
+
+fn assemble_rejection_cause_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            let name = ctx.resolve(*variant_name);
+            if name == "GrammarChoiceOverlap" {
+                let rows = ctx
+                    .field(fields, "rows")
+                    .ok_or_else(|| format!("{name} missing rows"))?;
+                Ok(format!(
+                    "GrammarChoiceOverlap {{ rows: {} }}",
+                    non_empty_grammar_rows_emit(rows, ctx)?
+                ))
+            } else if name == "MaskedAssembleRefusal" {
+                let overlap_evidence = ctx
+                    .field(fields, "overlap_evidence")
+                    .ok_or_else(|| format!("{name} missing overlap_evidence"))?;
+                let remaining_chain = ctx
+                    .field(fields, "remaining_chain")
+                    .ok_or_else(|| format!("{name} missing remaining_chain"))?;
+                Ok(format!(
+                    "MaskedAssembleRefusal {{\n  overlap_evidence: {},\n  remaining_chain: {}\n}}",
+                    non_empty_grammar_rows_emit(overlap_evidence, ctx)?,
+                    non_empty_symbol_chain_emit(remaining_chain, ctx)?
+                ))
+            } else if name == "MaskedAssembleRefusalWithoutEvidence" {
+                let remaining_chain = ctx
+                    .field(fields, "remaining_chain")
+                    .ok_or_else(|| format!("{name} missing remaining_chain"))?;
+                Ok(format!(
+                    "MaskedAssembleRefusalWithoutEvidence {{\n  remaining_chain: {}\n}}",
+                    non_empty_symbol_chain_emit(remaining_chain, ctx)?
+                ))
+            } else if name == "AssembleMissingModule" {
+                let requested = ctx
+                    .field(fields, "requested")
+                    .ok_or_else(|| format!("{name} missing requested"))?;
+                Ok(format!(
+                    "AssembleMissingModule {{ requested: {} }}",
+                    qualified_name_emit(requested)?
+                ))
+            } else if name == "MissingModuleIdentityUnavailable" {
+                Ok("MissingModuleIdentityUnavailable".to_string())
+            } else if name == "OtherAssembleRefusal" {
+                let reason = ctx
+                    .field(fields, "reason")
+                    .ok_or_else(|| format!("{name} missing reason"))?;
+                Ok(format!(
+                    "OtherAssembleRefusal {{ reason: {} }}",
+                    value_symbol_name(reason)?
+                ))
+            } else {
+                Err(format!("unknown AssembleRejectionCause variant {name}"))
+            }
+        }
+        _ => Err("assemble cause not a variant".to_string()),
+    }
+}
+
+fn assemble_detail_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            let name = ctx.resolve(*variant_name);
+            if name == "NoFrontierProbeDetail" {
+                Ok("NoFrontierProbeDetail".to_string())
+            } else if name == "AssembleRejectionDetail" {
+                let chain = ctx
+                    .field(fields, "rejection_chain")
+                    .ok_or_else(|| format!("{name} missing rejection_chain"))?;
+                let cause = ctx
+                    .field(fields, "cause")
+                    .ok_or_else(|| format!("{name} missing cause"))?;
+                Ok(format!(
+                    "AssembleRejectionDetail {{\n  rejection_chain: {},\n  cause: {}\n}}",
+                    non_empty_symbol_chain_emit(chain, ctx)?,
+                    assemble_rejection_cause_emit(cause, ctx)?
+                ))
+            } else {
+                Err(format!("unknown assemble_detail variant {name}"))
+            }
+        }
+        _ => Err("assemble_detail not a variant".to_string()),
+    }
+}
+
+fn overlap_rows_detail_from_rows_value(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<String, String> {
+    let mut rows = Vec::new();
+    let head = record_field(ctx, value, "head")?;
+    rows.push(head);
+    for item in free_monoid_elems(record_field(ctx, value, "tail")?, ctx)? {
+        rows.push(item);
+    }
+    let mut out = Vec::new();
+    for row in rows {
+        let production = value_symbol_name(record_field(ctx, row, "production")?)?;
+        let left = symbol_list_csv(record_field(ctx, row, "left_first_terminals")?, ctx)?;
+        let right = symbol_list_csv(record_field(ctx, row, "right_first_terminals")?, ctx)?;
+        let overlap = symbol_list_csv(record_field(ctx, row, "overlap_terminals")?, ctx)?;
+        out.push(format!(
+            "{production}|left={left}|right={right}|overlap={overlap}"
+        ));
+    }
+    Ok(out.join(";"))
+}
+
+fn overlap_roster_detail_from_assemble_detail(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "AssembleRejectionDetail") => {
+            let cause = ctx
+                .field(fields, "cause")
+                .ok_or_else(|| "AssembleRejectionDetail missing cause".to_string())?;
+            match cause {
+                Value::Variant {
+                    variant_name: cause_name,
+                    fields: cause_fields,
+                    ..
+                } if ctx.sym_eq(*cause_name, "GrammarChoiceOverlap") => {
+                    let rows = ctx
+                        .field(cause_fields, "rows")
+                        .ok_or_else(|| "GrammarChoiceOverlap missing rows".to_string())?;
+                    overlap_rows_detail_from_rows_value(rows, ctx)
+                }
+                Value::Variant {
+                    variant_name: cause_name,
+                    fields: cause_fields,
+                    ..
+                } if ctx.sym_eq(*cause_name, "MaskedAssembleRefusal") => {
+                    let overlap_evidence =
+                        ctx.field(cause_fields, "overlap_evidence").ok_or_else(|| {
+                            "MaskedAssembleRefusal missing overlap_evidence".to_string()
+                        })?;
+                    overlap_rows_detail_from_rows_value(overlap_evidence, ctx)
+                }
+                _ => Ok(String::new()),
+            }
+        }
+        _ => Ok(String::new()),
+    }
+}
+
+fn rejection_chain_from_assemble_detail(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "AssembleRejectionDetail") => {
+            let chain = ctx
+                .field(fields, "rejection_chain")
+                .ok_or_else(|| "AssembleRejectionDetail missing rejection_chain".to_string())?;
+            non_empty_symbol_chain_csv_flat(chain, ctx)
+        }
+        _ => Ok(String::new()),
+    }
+}
+
 fn survey_manifest_needs_detail_imports(rows: &[ProbeReceiptRow]) -> bool {
-    rows.iter()
-        .any(|row| row.detail != "FrontierProbeDetailAbsent")
+    rows.iter().any(|row| {
+        row.detail != "FrontierProbeDetailAbsent"
+            || row.assemble_detail_manifest != "NoFrontierProbeDetail"
+    })
 }
 
 fn survey_manifest_import_block(rows: &[ProbeReceiptRow]) -> String {
-    if !survey_manifest_needs_detail_imports(rows) {
-        return String::from(
-            "import v2.compiler.self_host.frontier_probe_types { FrontierProbeReceipt }\n\
-             import v2.std.algebra { Cons, Empty }\n\
-             import v2.std.collection { List }\n\
-             import v2.std.logic { Int }\n\n",
+    let mut imports = String::from(
+        "import extdeps.git.object_store { GitSha1ObjectId }\n\
+         import std.content_hash { Fnv1a64Structural, Sha1Digest, Sha256Digest, as_content_hash_structural }\n\
+         import v2.compiler.self_host.frontier_probe_types {\n\
+           FrontierProbeReceipt,\n\
+           FrontierSurveyManifest,\n\
+           FrontierSurveySubject\n\
+         }\n\
+         import v2.std.algebra { Cons, Empty }\n\
+         import v2.std.collection { List }\n",
+    );
+    if survey_manifest_needs_detail_imports(rows) {
+        imports.push_str(
+            "import v2.compiler.source_authority { SourceRef, SourceRootCoverage }\n\
+             import std.content_hash { ContentHash, Fnv1a64 }\n\
+             import v2.std.cross_tree.import_model { SourceRootRef, V2Tree, DagTree }\n\
+             import v2.std.grammar_choice_ambiguity { GrammarChoiceAmbiguityRow, NonEmptyGrammarChoiceAmbiguityRows }\n\
+             import v2.std.qualified_name { qualified_name_from_dotted_string }\n",
         );
     }
-    String::from(
-        "import v2.compiler.self_host.frontier_probe_types { FrontierProbeReceipt }\n\
-         import v2.compiler.source_authority { SourceRef, SourceRootCoverage }\n\
-         import std.content_hash { ContentHash, Fnv1a64, Fnv1a64Structural }\n\
-         import v2.std.algebra { Cons, Empty }\n\
-         import v2.std.collection { List }\n\
-         import v2.std.cross_tree.import_model { SourceRootRef, V2Tree, DagTree }\n\
-         import v2.std.logic { Int }\n\
-         import v2.std.qualified_name { qualified_name_from_dotted_string }\n\n",
-    )
+    imports.push('\n');
+    imports
 }
 
 struct HostFailureReasons {
@@ -497,24 +763,46 @@ fn extract_probe_receipt(value: &Value, ctx: &InterpContext) -> Result<ProbeRece
     let stage = record_field(ctx, value, "located_stage")?;
     let reason = record_field(ctx, value, "located_reason")?;
     let detail = record_field(ctx, value, "detail")?;
+    let assemble_detail = record_field(ctx, value, "assemble_detail")?;
+    let assemble_detail_manifest = assemble_detail_emit(assemble_detail, ctx)?;
+    let rejection_chain = rejection_chain_from_assemble_detail(assemble_detail, ctx)?;
+    let overlap_roster_detail = overlap_roster_detail_from_assemble_detail(assemble_detail, ctx)?;
     Ok(ProbeReceiptRow {
         module_path,
         blocker_variant: blocker_variant_emit(blocker, ctx)?,
         located_stage: variant_name(ctx, stage)?,
         located_reason: value_symbol_name(reason)?,
         detail: detail_variant_emit(detail, ctx)?,
+        assemble_detail_manifest,
+        rejection_chain,
+        overlap_roster_detail,
         probe_error: None,
+        subject: SurveySubjectPin {
+            source_commit: String::new(),
+            source_tree: String::new(),
+            survey_executable: String::new(),
+            source_roots_digest: String::new(),
+            probe_policy_revision: String::new(),
+        },
     })
 }
 
-fn unknown_probe_row(module_path: &str, cause: &str) -> ProbeReceiptRow {
+fn unknown_probe_row(
+    module_path: &str,
+    cause: &str,
+    subject: &SurveySubjectPin,
+) -> ProbeReceiptRow {
     ProbeReceiptRow {
         module_path: module_path.replace('\\', "/"),
         blocker_variant: format!("UnknownProbeCause {{ reason: ^{cause} }}"),
         located_stage: "ProbeStageAssemble".to_string(),
         located_reason: format!("^{cause}"),
         detail: "FrontierProbeDetailAbsent".to_string(),
+        assemble_detail_manifest: "NoFrontierProbeDetail".to_string(),
+        rejection_chain: String::new(),
+        overlap_roster_detail: String::new(),
         probe_error: Some(cause.to_string()),
+        subject: subject.clone(),
     }
 }
 
@@ -583,16 +871,21 @@ fn run_probe_for_module(
 
 fn emit_receipt_row(row: &ProbeReceiptRow) -> String {
     format!(
-        "FrontierProbeReceipt {{\n  module_path: \"{}\",\n  blocker_class: {},\n  located_stage: {},\n  located_reason: {},\n  detail: {}\n}}",
+        "FrontierProbeReceipt {{\n  module_path: \"{}\",\n  blocker_class: {},\n  located_stage: {},\n  located_reason: {},\n  detail: {},\n  assemble_detail: {}\n}}",
         row.module_path.replace('\\', "/"),
         row.blocker_variant,
         row.located_stage,
         row.located_reason,
         row.detail,
+        row.assemble_detail_manifest,
     )
 }
 
-fn emit_survey_manifest(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), String> {
+fn emit_survey_manifest(
+    path: &Path,
+    rows: &[ProbeReceiptRow],
+    subject: &SurveySubjectPin,
+) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("mkdir {:?}: {e}", parent))?;
     }
@@ -606,9 +899,23 @@ fn emit_survey_manifest(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), Str
         "// GENERATED by frontier_probe_survey — execution receipt table. Regenerate via frontier_probe_survey bin.\n\
          module v2.test.workflow.host_frontier_probe_survey_manifest\n\n\
          {imports}\
-         data host_frontier_probe_survey_module_count: Int = {}\n\n\
-         data host_frontier_probe_survey: List<FrontierProbeReceipt> = {list}\n",
-        rows.len()
+         data host_frontier_probe_survey_manifest: FrontierSurveyManifest = FrontierSurveyManifest {{\n\
+           subject: FrontierSurveySubject {{\n\
+             source_commit: \"{source_commit}\",\n\
+             source_tree: GitSha1ObjectId {{\n\
+               digest: Sha1Digest {{ hex: \"{source_tree}\" }}\n\
+             }},\n\
+             survey_executable: Sha256Digest {{ hex: \"{survey_executable}\" }},\n\
+             source_roots_digest: Fnv1a64Structural {{ digest: \"{source_roots_digest}\" }},\n\
+             probe_policy_revision: as_content_hash_structural(structural: Fnv1a64Structural {{ digest: \"{probe_policy_revision}\" }})\n\
+           }},\n\
+           receipts: {list}\n\
+         }}\n",
+        source_commit = subject.source_commit,
+        source_tree = subject.source_tree,
+        survey_executable = subject.survey_executable,
+        source_roots_digest = subject.source_roots_digest,
+        probe_policy_revision = subject.probe_policy_revision,
     );
     fs::write(path, body).map_err(|e| format!("write survey manifest: {e}"))
 }
@@ -617,7 +924,7 @@ fn emit_tsv(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), String> {
     let mut out = fs::File::create(path).map_err(|e| format!("create tsv: {e}"))?;
     writeln!(
         out,
-        "module\tself_emit_ready\tblocker_class\tlocated_stage\tlocated_reason\tprobe_error"
+        "module\tsource_commit\tsource_tree\tsurvey_executable\tsource_roots_digest\tprobe_policy_revision\tself_emit_ready\tblocker_class\tlocated_stage\tlocated_reason\trejection_chain\toverlap_roster_detail\tprobe_error"
     )
     .map_err(|e| format!("write tsv header: {e}"))?;
     for row in rows {
@@ -628,12 +935,19 @@ fn emit_tsv(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), String> {
         };
         writeln!(
             out,
-            "{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.module_path,
+            row.subject.source_commit,
+            row.subject.source_tree,
+            row.subject.survey_executable,
+            row.subject.source_roots_digest,
+            row.subject.probe_policy_revision,
             self_emit,
             row.blocker_variant,
             row.located_stage,
             row.located_reason,
+            row.rejection_chain,
+            row.overlap_roster_detail,
             row.probe_error.as_deref().unwrap_or("")
         )
         .map_err(|e| format!("write tsv row: {e}"))?;
@@ -673,6 +987,234 @@ fn cluster_summary(rows: &[ProbeReceiptRow]) -> String {
     lines.join("\n")
 }
 
+struct SurveySubjectPin {
+    source_commit: String,
+    source_tree: String,
+    survey_executable: String,
+    source_roots_digest: String,
+    probe_policy_revision: String,
+}
+
+impl Clone for SurveySubjectPin {
+    fn clone(&self) -> Self {
+        Self {
+            source_commit: self.source_commit.clone(),
+            source_tree: self.source_tree.clone(),
+            survey_executable: self.survey_executable.clone(),
+            source_roots_digest: self.source_roots_digest.clone(),
+            probe_policy_revision: self.probe_policy_revision.clone(),
+        }
+    }
+}
+
+fn subjects_equal(left: &SurveySubjectPin, right: &SurveySubjectPin) -> bool {
+    left.source_commit == right.source_commit
+        && left.source_tree == right.source_tree
+        && left.survey_executable == right.survey_executable
+        && left.source_roots_digest == right.source_roots_digest
+        && left.probe_policy_revision == right.probe_policy_revision
+}
+
+fn attach_subject(row: ProbeReceiptRow, subject: &SurveySubjectPin) -> ProbeReceiptRow {
+    ProbeReceiptRow {
+        subject: subject.clone(),
+        ..row
+    }
+}
+
+fn validate_lowercase_hex(label: &str, value: &str, expected_len: usize) -> Result<(), String> {
+    if value.len() != expected_len {
+        return Err(format!(
+            "SurveyPinRefused: {label} length {} != {}",
+            value.len(),
+            expected_len
+        ));
+    }
+    if !value
+        .chars()
+        .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+    {
+        return Err(format!("SurveyPinRefused: {label} is not lowercase hex"));
+    }
+    Ok(())
+}
+
+fn git_output(args: &[&str]) -> Result<String, String> {
+    let out = Command::new("git")
+        .args(args)
+        .output()
+        .map_err(|e| format!("SurveyPinRefused: git {args:?} spawn failed: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "SurveyPinRefused: git {args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+fn ensure_clean_tree() -> Result<(), String> {
+    let porcelain = git_output(&["status", "--porcelain"])?;
+    if !porcelain.is_empty() {
+        return Err(
+            "SurveyPinRefused: dirty working tree — run from a clean detached worktree at the selected commit"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn frontier_probe_source_roots_digest_rust(source_roots: &[String]) -> String {
+    // SCAFFOLD — duplicates v2.compiler.self_host.frontier_probe_types
+    // frontier_probe_source_roots_digest (same structural fold). Dissolve-on: frontier_probe_survey
+    // self-emits from the .dag authority once emit crosses this module.
+    source_roots
+        .iter()
+        .fold(
+            content_hash_atom("frontier-probe-source-roots".to_string()),
+            |acc, root| content_hash_combine_structural(acc, content_hash_atom(root.clone())),
+        )
+        .digest
+        .clone()
+}
+
+fn frontier_probe_policy_revision_digest_rust() -> String {
+    // SCAFFOLD — duplicates frontier_probe_policy_revision() in frontier_probe_types.dag.
+    // Dissolve-on: same emit-crosses-module trigger as frontier_probe_source_roots_digest_rust.
+    content_hash_atom("frontier-probe-survey-policy-v1".to_string())
+        .digest
+        .clone()
+}
+
+fn verify_build_provenance(subject: &SurveySubjectPin) -> Result<(), String> {
+    const BUILD_DIRTY: Option<&str> = option_env!("FRONTIER_PROBE_SURVEY_BUILD_DIRTY");
+    if BUILD_DIRTY == Some("1") {
+        return Err(
+            "SurveyPinRefused: binary built from dirty worktree — rebuild from clean sources"
+                .to_string(),
+        );
+    }
+    const BUILD_COMMIT: Option<&str> = option_env!("FRONTIER_PROBE_SURVEY_BUILD_COMMIT");
+    const BUILD_TREE: Option<&str> = option_env!("FRONTIER_PROBE_SURVEY_BUILD_TREE");
+    match (BUILD_COMMIT, BUILD_TREE) {
+        (Some(build_commit), Some(build_tree))
+            if !build_commit.is_empty() && !build_tree.is_empty() =>
+        {
+            if subject.source_commit != build_commit {
+                return Err(format!(
+                    "SurveyPinRefused: binary built at commit {build_commit} but survey subject is {}",
+                    subject.source_commit
+                ));
+            }
+            if subject.source_tree != build_tree {
+                return Err(format!(
+                    "SurveyPinRefused: binary built at tree {build_tree} but survey subject tree is {}",
+                    subject.source_tree
+                ));
+            }
+            Ok(())
+        }
+        _ => Err(
+            "SurveyPinRefused: frontier_probe_survey missing embedded build provenance — rebuild with cargo build"
+                .to_string(),
+        ),
+    }
+}
+
+fn resolve_survey_subject(source_roots: &[String]) -> Result<SurveySubjectPin, String> {
+    ensure_clean_tree()?;
+    let source_commit = git_output(&["rev-parse", "HEAD"])?;
+    validate_lowercase_hex("source_commit", &source_commit, 40)?;
+    let source_tree = git_output(&["rev-parse", "HEAD^{tree}"])?;
+    validate_lowercase_hex("source_tree", &source_tree, 40)?;
+    let exe_path = std::env::current_exe()
+        .map_err(|e| format!("SurveyPinRefused: current_exe unavailable: {e}"))?;
+    let bytes = fs::read(&exe_path).map_err(|e| {
+        format!(
+            "SurveyPinRefused: read survey executable {:?}: {e}",
+            exe_path
+        )
+    })?;
+    use sha2::{Digest, Sha256};
+    let survey_executable = format!("{:x}", Sha256::digest(bytes));
+    validate_lowercase_hex("survey_executable", &survey_executable, 64)?;
+    let source_roots_digest = frontier_probe_source_roots_digest_rust(source_roots);
+    validate_lowercase_hex("source_roots_digest", &source_roots_digest, 16)?;
+    let probe_policy_revision = frontier_probe_policy_revision_digest_rust();
+    validate_lowercase_hex("probe_policy_revision", &probe_policy_revision, 16)?;
+    Ok(SurveySubjectPin {
+        source_commit,
+        source_tree,
+        survey_executable,
+        source_roots_digest,
+        probe_policy_revision,
+    })
+}
+
+fn resolve_and_verify_survey_subject(source_roots: &[String]) -> Result<SurveySubjectPin, String> {
+    let subject = resolve_survey_subject(source_roots)?;
+    verify_build_provenance(&subject)?;
+    Ok(subject)
+}
+
+fn load_probe_rows_from_tsv(path: &Path) -> Result<Vec<ProbeReceiptRow>, String> {
+    let body = fs::read_to_string(path).map_err(|e| format!("read tsv {:?}: {e}", path))?;
+    let mut rows = Vec::new();
+    for (lineno, line) in body.lines().enumerate() {
+        if lineno == 0 {
+            continue;
+        }
+        if line.trim().is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() < 13 {
+            return Err(format!(
+                "malformed tsv line {}: expected 13 subject/receipt columns, got {line}",
+                lineno + 1
+            ));
+        }
+        let subject = SurveySubjectPin {
+            source_commit: parts[1].to_string(),
+            source_tree: parts[2].to_string(),
+            survey_executable: parts[3].to_string(),
+            source_roots_digest: parts[4].to_string(),
+            probe_policy_revision: parts[5].to_string(),
+        };
+        rows.push(ProbeReceiptRow {
+            module_path: parts[0].to_string(),
+            subject,
+            blocker_variant: parts[7].to_string(),
+            located_stage: parts[8].to_string(),
+            located_reason: parts[9].to_string(),
+            rejection_chain: parts[10].to_string(),
+            overlap_roster_detail: parts[11].to_string(),
+            detail: "FrontierProbeDetailAbsent".to_string(),
+            assemble_detail_manifest: "NoFrontierProbeDetail".to_string(),
+            probe_error: if parts[12].is_empty() {
+                None
+            } else {
+                Some(parts[12].to_string())
+            },
+        });
+    }
+    if rows.is_empty() {
+        return Err("receipt tsv has zero data rows".to_string());
+    }
+    let first = &rows[0].subject;
+    for (idx, row) in rows.iter().enumerate().skip(1) {
+        if !subjects_equal(first, &row.subject) {
+            return Err(format!(
+                "SurveySubjectMismatch: row {} subject {} != row 1 subject {}",
+                idx + 1,
+                row.subject.source_commit,
+                first.source_commit
+            ));
+        }
+    }
+    Ok(rows)
+}
+
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
@@ -681,6 +1223,8 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut survey_dir: Option<PathBuf> = None;
     let mut only_modules: Vec<String> = Vec::new();
     let mut used_module_filter = false;
+    let mut emit_manifest_only = false;
+    let mut receipt_tsv: Option<PathBuf> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -710,6 +1254,13 @@ fn run() -> Result<ExitCode, ExitCode> {
                 i += 1;
                 survey_dir = Some(PathBuf::from(require_value(&args, i, "--survey-dir")?));
             }
+            "--emit-manifest-only" => {
+                emit_manifest_only = true;
+            }
+            "--receipt-tsv" => {
+                i += 1;
+                receipt_tsv = Some(PathBuf::from(require_value(&args, i, "--receipt-tsv")?));
+            }
             other => {
                 eprintln!("frontier_probe_survey: unknown argument: {other}");
                 return Err(ExitCode::from(2));
@@ -722,10 +1273,43 @@ fn run() -> Result<ExitCode, ExitCode> {
         eprintln!("frontier_probe_survey: provide at least one --source-root");
         return Err(ExitCode::from(2));
     }
+    let subject = resolve_and_verify_survey_subject(&source_roots).map_err(|msg| {
+        eprintln!("frontier_probe_survey: {msg}");
+        ExitCode::from(1)
+    })?;
     let survey_manifest = survey_manifest.ok_or_else(|| {
         eprintln!("frontier_probe_survey: --emit-survey-manifest required");
         ExitCode::from(2)
     })?;
+
+    if emit_manifest_only {
+        let tsv_path = receipt_tsv.ok_or_else(|| {
+            eprintln!("frontier_probe_survey: --emit-manifest-only requires --receipt-tsv");
+            ExitCode::from(2)
+        })?;
+        let rows = load_probe_rows_from_tsv(&tsv_path).map_err(|msg| {
+            eprintln!("frontier_probe_survey: {msg}");
+            ExitCode::from(1)
+        })?;
+        if !subjects_equal(&rows[0].subject, &subject) {
+            eprintln!(
+                "frontier_probe_survey: SurveySubjectMismatch: receipt tsv subject {} != current subject {}",
+                rows[0].subject.source_commit, subject.source_commit
+            );
+            return Err(ExitCode::from(1));
+        }
+        emit_survey_manifest(&survey_manifest, &rows, &rows[0].subject).map_err(|msg| {
+            eprintln!("frontier_probe_survey: {msg}");
+            ExitCode::from(1)
+        })?;
+        eprintln!(
+            "frontier_probe_survey: wrote {} ({} receipt(s), manifest-only)",
+            survey_manifest.display(),
+            rows.len()
+        );
+        return Ok(ExitCode::from(0));
+    }
+
     let survey_dir = survey_dir.unwrap_or_else(|| {
         survey_manifest
             .parent()
@@ -771,10 +1355,14 @@ fn run() -> Result<ExitCode, ExitCode> {
         match run_probe_for_module(&source_roots, &survey_dir, module_path) {
             Ok(row) => {
                 eprintln!(
-                    "  blocker={} stage={} reason={}",
-                    row.blocker_variant, row.located_stage, row.located_reason
+                    "  blocker={} stage={} reason={} chain={} overlap={}",
+                    row.blocker_variant,
+                    row.located_stage,
+                    row.located_reason,
+                    row.rejection_chain,
+                    row.overlap_roster_detail
                 );
-                rows.push(row);
+                rows.push(attach_subject(row, &subject));
             }
             Err(msg) => {
                 let cause = if msg.contains("EvalBudgetExceeded") || msg.contains("OOM") {
@@ -783,12 +1371,12 @@ fn run() -> Result<ExitCode, ExitCode> {
                     host_failure_reasons.runtime_error.as_str()
                 };
                 eprintln!("frontier_probe_survey: {module_path}: {msg} -> Unknown({cause})");
-                rows.push(unknown_probe_row(module_path, cause));
+                rows.push(unknown_probe_row(module_path, cause, &subject));
             }
         }
     }
 
-    emit_survey_manifest(&survey_manifest, &rows).map_err(|msg| {
+    emit_survey_manifest(&survey_manifest, &rows, &subject).map_err(|msg| {
         eprintln!("frontier_probe_survey: {msg}");
         ExitCode::from(1)
     })?;

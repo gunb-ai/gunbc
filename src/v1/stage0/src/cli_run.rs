@@ -3972,10 +3972,77 @@ fn append_test_floor_compile_clean_inject(sources: &mut Vec<Rc<v1_compiler_compi
 enum FloorCompileCleanReceipt {
     Skipped { reason: String },
     Refused { reason: String },
-    Compiled { ok: bool },
+    Compiled { ok: bool, failure_detail: String },
 }
 
 static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
+
+static REGEN_VERIFY_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
+static GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn record_regen_verify_gate_failure_detail(detail: String) {
+    if let Ok(mut guard) = REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
+        *guard = Some(detail);
+    }
+}
+
+pub fn consume_regen_verify_gate_failure_detail() -> String {
+    match REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
+        Ok(guard) => guard.clone().unwrap_or_else(|| {
+            "regen_verify failure detail unavailable (gate body did not run in this process)"
+                .to_string()
+        }),
+        Err(e) => format!("regen_verify failure detail refused: gate detail lock poisoned ({e})"),
+    }
+}
+
+pub fn record_generated_artifact_drift_gate_failure_detail(detail: String) {
+    if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
+        *guard = Some(detail);
+    }
+}
+
+#[cfg(test)]
+fn reset_regen_verify_gate_failure_detail_for_test() {
+    if let Ok(mut guard) = REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
+        *guard = None;
+    }
+}
+
+#[cfg(test)]
+fn reset_generated_artifact_drift_gate_failure_detail_for_test() {
+    if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
+        *guard = None;
+    }
+}
+
+pub fn consume_generated_artifact_drift_gate_failure_detail() -> String {
+    match GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
+        Ok(guard) => guard.clone().unwrap_or_else(|| {
+            "generated-artifact drift failure detail unavailable (gate body did not run in this process)"
+                .to_string()
+        }),
+        Err(e) => format!(
+            "generated-artifact drift failure detail refused: gate detail lock poisoned ({e})"
+        ),
+    }
+}
+
+fn format_first_compile_clean_hard_diagnostic(diagnostics: &im::Vector<Rc<ErrorNode>>) -> String {
+    diagnostics
+        .iter()
+        .find(|d| compile_clean_diagnostic_is_hard(d))
+        .map(|d| {
+            format!(
+                "compile-clean: {}",
+                diagnostic_to_message(d.diagnostic.clone())
+            )
+        })
+        .unwrap_or_else(|| {
+            "dag compile-clean gate failed: no hard diagnostic located in compile receipt"
+                .to_string()
+        })
+}
 
 /// Cost snapshot of the ONE compile-clean leg — the "receipt keys" half of the
 /// prelude-coverage-hole follow-up (`gunbc_ci_floor_batch_clamp_note` row (a)):
@@ -4091,7 +4158,7 @@ fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>
 fn floor_compile_clean_emit_ok_via_index(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index_roots: &[String],
-) -> bool {
+) -> (bool, String) {
     use crate::v1_compiler_artifact::RenderTarget;
     use crate::v1_compiler_complexity::empty_complexity_report;
     let index = process_shared_index(index_roots);
@@ -4107,12 +4174,15 @@ fn floor_compile_clean_emit_ok_via_index(
         Ok(resolved) => resolved,
         Err(msg) => {
             eprintln!("compile-clean: hard diagnostics:\n{msg}");
-            return false;
+            return (false, format!("compile-clean: {msg}"));
         }
     };
     if compile_clean_pipeline_has_hard_errors(compile_clean_diags.as_ref()) {
         eprint_compile_clean_hard_diagnostics(compile_clean_diags.as_ref());
-        return false;
+        return (
+            false,
+            format_first_compile_clean_hard_diagnostic(compile_clean_diags.as_ref()),
+        );
     }
     let newline_indices: Rc<im::Vector<Rc<NewlineIndex>>> =
         Rc::new(si.values().cloned().collect::<im::Vector<_>>());
@@ -4126,10 +4196,12 @@ fn floor_compile_clean_emit_ok_via_index(
     });
     let result = v1_compiler_compile::emit_resolved_for_target(resolved, RenderTarget::Dag);
     if result.files.is_empty() {
-        eprintln!("floor compile-clean: refused — compile produced zero files (empty emit set)");
-        return false;
+        let detail = "floor compile-clean: refused — compile produced zero files (empty emit set)"
+            .to_string();
+        eprintln!("{detail}");
+        return (false, detail);
     }
-    true
+    (true, String::new())
 }
 
 fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
@@ -4169,7 +4241,7 @@ fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
             let closure_units = sources.len() as u128;
             let leg_started = std::time::Instant::now();
             let _ = drain_module_typecheck_walls();
-            let ok = floor_compile_clean_emit_ok_via_index(sources, &index_roots);
+            let (ok, failure_detail) = floor_compile_clean_emit_ok_via_index(sources, &index_roots);
             let wall_ms = leg_started.elapsed().as_millis();
             let module_typecheck_walls = drain_module_typecheck_walls();
             write_floor_compile_clean_cost_receipt(
@@ -4186,7 +4258,7 @@ fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
                     pass_subject,
                 });
             }
-            FloorCompileCleanReceipt::Compiled { ok }
+            FloorCompileCleanReceipt::Compiled { ok, failure_detail }
         }
     }
 }
@@ -4247,7 +4319,7 @@ pub fn install_floor_compile_clean_receipt() -> Result<(), String> {
         "claim_executor: floor compile-clean — one whole-tree --target dag compile via shared index (gate consumes receipt; batch-2 resolves reuse the typed store)"
     );
     let receipt = produce_floor_compile_clean_receipt();
-    if let FloorCompileCleanReceipt::Compiled { ok } = &receipt {
+    if let FloorCompileCleanReceipt::Compiled { ok, .. } = &receipt {
         eprintln!("claim_executor: floor compile-clean receipt ok={ok}");
     }
     *guard = Some(receipt);
@@ -4299,7 +4371,32 @@ pub fn consume_floor_compile_clean_gate_verdict() -> bool {
             eprintln!("compile-clean gate: refused ({reason})");
             false
         }
-        Some(FloorCompileCleanReceipt::Compiled { ok }) => *ok,
+        Some(FloorCompileCleanReceipt::Compiled { ok, .. }) => *ok,
+    }
+}
+
+/// Failure-receipt companion for the compile-clean gate: reads the in-run receipt only.
+pub fn consume_floor_compile_clean_gate_failure_detail() -> String {
+    let guard = match FLOOR_COMPILE_CLEAN_RECEIPT.lock() {
+        Ok(g) => g,
+        Err(e) => {
+            return format!("compile-clean failure detail refused: receipt lock poisoned ({e})");
+        }
+    };
+    match guard.as_ref() {
+        None => "compile-clean failure detail unavailable: no in-run compile receipt".to_string(),
+        Some(FloorCompileCleanReceipt::Skipped { reason }) => {
+            format!("compile-clean gate skipped: {reason}")
+        }
+        Some(FloorCompileCleanReceipt::Refused { reason }) => reason.clone(),
+        Some(FloorCompileCleanReceipt::Compiled {
+            ok: true,
+            failure_detail: _,
+        }) => String::new(),
+        Some(FloorCompileCleanReceipt::Compiled {
+            ok: false,
+            failure_detail,
+        }) => failure_detail.clone(),
     }
 }
 
@@ -4502,7 +4599,7 @@ pub fn compile_clean_floor_verdict_whole_tree() -> Result<bool, String> {
         None => return Ok(true),
         Some(s) => s,
     };
-    Ok(floor_compile_clean_emit_ok_via_index(sources, &roots))
+    Ok(floor_compile_clean_emit_ok_via_index(sources, &roots).0)
 }
 
 /// CLI compile-clean verdict: same source closure and diagnostic policy as the floor,
@@ -5202,7 +5299,7 @@ mod compile_clean_via_index_verdict_equivalence {
         fn verdicts(&self) -> (bool, bool) {
             let raw = floor_compile_clean_emit_ok(self.sources.clone());
             let via_index =
-                floor_compile_clean_emit_ok_via_index(self.sources.clone(), &self.roots);
+                floor_compile_clean_emit_ok_via_index(self.sources.clone(), &self.roots).0;
             (raw, via_index)
         }
     }
@@ -34248,12 +34345,35 @@ mod witness_layer_roots_compile_clean_tests {
             reset_floor_compile_clean_receipt_for_test();
             install_floor_compile_clean_receipt_fixture(FloorCompileCleanReceipt::Compiled {
                 ok: false,
+                failure_detail: "compile-clean: synthetic hard diagnostic".to_string(),
             });
             assert!(
                 !consume_floor_compile_clean_gate_verdict(),
                 "gate must refuse when the installed receipt records compile failure"
             );
         });
+    }
+
+    #[test]
+    fn regen_verify_gate_failure_detail_unavailable_without_prior_record() {
+        reset_regen_verify_gate_failure_detail_for_test();
+        assert!(
+            consume_regen_verify_gate_failure_detail()
+                .contains("gate body did not run in this process"),
+            "missing record must refuse with a located message, not imply an empty success verdict"
+        );
+    }
+
+    #[test]
+    fn regen_verify_gate_failure_detail_round_trips_recorded_reason() {
+        reset_regen_verify_gate_failure_detail_for_test();
+        record_regen_verify_gate_failure_detail(
+            "Changed generated file(s): v1_compiler_emit_rust.rs".to_string(),
+        );
+        assert_eq!(
+            consume_regen_verify_gate_failure_detail(),
+            "Changed generated file(s): v1_compiler_emit_rust.rs"
+        );
     }
 
     /// §5 discriminating RED (end-to-end): real whole-tree compile with an injected broken module

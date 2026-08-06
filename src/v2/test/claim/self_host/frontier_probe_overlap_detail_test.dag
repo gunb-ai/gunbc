@@ -1,0 +1,177 @@
+module v2.test.self_host.frontier_probe_overlap_detail
+
+import v2.compiler.parse_diagnostic {
+  NoParseDiagnosticEvidence,
+  NonEmptyParseStageDiagnostics,
+  ParseStageDiagnostic,
+  non_empty_diagnostics_from_parse_stage,
+  parse_overlap_residue_stage_diagnostic_at
+}
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Unavailable,
+  port_locus
+}
+import v2.std.grammar_choice_ambiguity {
+  GrammarChoiceAmbiguityRow,
+  NonEmptyGrammarChoiceAmbiguityRows
+}
+import v2.compiler.self_host.frontier_probe_assemble_detail {
+  assemble_rejection_cause_from_parse_stage,
+  frontier_probe_assemble_detail_from_parse_stage,
+  frontier_probe_assemble_detail_from_rejection_with_overlap_stage,
+  frontier_probe_receipt_from_assemble_rejection
+}
+import v2.compiler.self_host.frontier_probe_types {
+  AssembleRejectionDetail,
+  FrontierProbeDetailAbsent,
+  GrammarChoiceOverlap,
+  MaskedAssembleRefusal,
+  NoFrontierProbeDetail,
+  ProbeStageEmit,
+  frontier_probe_receipt_without_assemble_detail,
+  RealizationGap
+}
+import v2.std.optional { Absent, Present, optional_absent, optional_present }
+import v2.std.algebra { Cons, Empty, length }
+import v2.std.logic { Bool }
+
+fn sample_overlap_row() -> GrammarChoiceAmbiguityRow {
+  GrammarChoiceAmbiguityRow {
+    production: ^dag_production_expr,
+    left_first_terminals: Cons { head: ^dag_token_ident, tail: Empty },
+    right_first_terminals: Cons { head: ^dag_token_kw_fn, tail: Empty },
+    overlap_terminals: Empty,
+    both_nullable: true
+  }
+}
+
+fn overlap_residue_stage_diagnostic(row: GrammarChoiceAmbiguityRow) -> ParseStageDiagnostic {
+  parse_overlap_residue_stage_diagnostic_at(
+    at: port_locus(port: ^parse_stage_locus_port),
+    row: row
+  )
+}
+
+test fn overlap_evidence_binds_exact_row_not_global_roster() -> Bool {
+  let row = sample_overlap_row()
+  let detail = frontier_probe_assemble_detail_from_parse_stage(
+    d: NonEmptyParseStageDiagnostics {
+      head: overlap_residue_stage_diagnostic(row: row),
+      tail: Empty
+    }
+  )
+  match detail {
+    AssembleRejectionDetail {
+      cause: GrammarChoiceOverlap { rows: rows },
+      rejection_chain: _
+    } =>
+      match rows {
+        NonEmptyGrammarChoiceAmbiguityRows {
+          head: bound,
+          tail: Empty
+        } => bound.production == row.production
+      }
+    _ => false
+  }
+}
+
+test fn masked_overlap_tail_preserves_overlap_evidence_and_remaining_chain() -> Bool {
+  let row = sample_overlap_row()
+  let cause = assemble_rejection_cause_from_parse_stage(
+    d: NonEmptyParseStageDiagnostics {
+      head: overlap_residue_stage_diagnostic(row: row),
+      tail: [
+        ParseStageDiagnostic {
+          diagnostic: Diagnostic {
+            reason: ^normalize_rejected,
+            at: port_locus(port: ^parse_stage_locus_port),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          },
+          evidence: NoParseDiagnosticEvidence
+        }
+      ]
+    }
+  )
+  match cause {
+    MaskedAssembleRefusal {
+      overlap_evidence: overlap_rows,
+      remaining_chain: chain
+    } =>
+      match overlap_rows {
+        NonEmptyGrammarChoiceAmbiguityRows {
+          head: bound,
+          tail: Empty
+        } => (bound.production == row.production)
+          && (chain.head == ^normalize_rejected)
+          && (length(xs: chain.tail) == 0)
+      }
+    _ => false
+  }
+}
+
+test fn emit_stage_receipt_has_no_assemble_detail() -> Bool {
+  match frontier_probe_receipt_without_assemble_detail(
+    module_path: "src/v2/compiler/example.dag",
+    blocker: RealizationGap,
+    located_stage: ProbeStageEmit,
+    located_reason: ^probe_emit_accept_self_host_bar_unbound,
+    detail: FrontierProbeDetailAbsent
+  ).assemble_detail {
+    NoFrontierProbeDetail => true
+    _ => false
+  }
+}
+
+test fn assemble_receipt_carries_nonempty_rejection_chain() -> Bool {
+  let row = sample_overlap_row()
+  let stage = NonEmptyParseStageDiagnostics {
+    head: overlap_residue_stage_diagnostic(row: row),
+    tail: Empty
+  }
+  let receipt = frontier_probe_receipt_from_assemble_rejection(
+    module_path: "src/v2/compiler/example.dag",
+    blocker: RealizationGap,
+    diagnostics: non_empty_diagnostics_from_parse_stage(d: stage),
+    detail: FrontierProbeDetailAbsent,
+    overlap_residue_stage: optional_present(value: stage)
+  )
+  match receipt.assemble_detail {
+    AssembleRejectionDetail { rejection_chain: chain, cause: cause } =>
+      match cause {
+        GrammarChoiceOverlap { rows: rows } =>
+          (chain.head == ^parse_grammar_choice_overlap_residue)
+            && (length(xs: chain.tail) == 0)
+            && (rows.head.production == row.production)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn overlap_stage_attaches_evidence_when_diagnostics_stripped() -> Bool {
+  let row = sample_overlap_row()
+  let stage = NonEmptyParseStageDiagnostics {
+    head: overlap_residue_stage_diagnostic(row: row),
+    tail: Empty
+  }
+  let stripped = non_empty_diagnostics_from_parse_stage(d: stage)
+  let detail = frontier_probe_assemble_detail_from_rejection_with_overlap_stage(
+    d: stripped,
+    overlap_residue_stage: optional_present(value: stage)
+  )
+  match detail {
+    AssembleRejectionDetail {
+      cause: GrammarChoiceOverlap { rows: rows },
+      rejection_chain: _
+    } =>
+      match rows {
+        NonEmptyGrammarChoiceAmbiguityRows {
+          head: bound,
+          tail: Empty
+        } => bound.production == row.production
+      }
+    _ => false
+  }
+}

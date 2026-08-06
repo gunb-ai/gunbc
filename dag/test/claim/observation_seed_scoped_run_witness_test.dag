@@ -2,7 +2,7 @@ module test.claim.observation_seed_scoped_run_witness
 
 import std.types { Bool }
 import std.measure { nanosecond, millisecond, nanosecond_count }
-import std.observation { CpuClock }
+import std.measure { CpuClock }
 import extdeps.render.ansi {
   ansi_carriage_return,
   ansi_line_feed,
