@@ -16,15 +16,20 @@ import std.citation {
   cited_representation_identity,
   citation_recorded_fact,
   CitationRecordedFact,
-  CitationAccessRefused,
-  CitationUnreachable,
-  CitationRateLimited,
-  ResponseObservedWithoutRepresentation,
-  HttpAccessRefused,
+  reconcile_citation_representation,
+  RepresentationMatch,
 }
 import extdeps.pin { Pin }
 import extdeps.version { VersionIdentity }
-import std.content_hash { Sha256Digest, sha256_hex_digest }
+import std.content_hash {
+  Sha256Digest,
+  sha256_hex_digest,
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_tagged_structural,
+  content_hash_combine_structural,
+  content_hash_eq_cryptographic,
+}
 import extdeps.http.server { MediaType, TopLevelApplication }
 import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -108,11 +113,52 @@ data x86_64_abi_pdf_identity: CitedRepresentationIdentity = cited_representation
 
 data x86_64_abi_pdf_draft_edition_note: String = "Document cover: Draft Version 0.99.6, dated July 2 2012 — NOT the filename 0.99. VersionIdentity carries the edition string 0.99.6."
 
-data x86_64_abi_pdf_wet_receipt_note: String = "RepresentationRetrieved row consumes a wet byte-extraction receipt: observed_identity is minted only through sha256_hex_digest on the retrieval hex — never a parallel Sha256Digest { hex: ... } constructor bypass. The hex string is the extraction output recorded by the wet observation workflow; out-of-band shell hashing is not repo evidence."
+data x86_64_abi_pdf_wet_receipt_note: String = "Pin establishment and byte retrieval are separate wet runs with distinct run_identity values. expected_identity on the pin is minted only from the pin-establishment receipt hex through sha256_hex_digest — never from the retrieval observation arm. The retrieval run independently hashes its own receipt hex into observed_identity. reconcile_citation_representation joins the two only after cited_representation_identity_eq; a malformed local receipt hex refuses as WetReceiptHexMalformed, never as an HTTP status."
+
+data x86_64_abi_pdf_pin_establishment_activity: ProvActivityId = "x86-64-abi-pdf-pin-establishment" as ProvActivityId
+
+data x86_64_abi_pdf_retrieval_activity: ProvActivityId = "wet-representation-retrieval" as ProvActivityId
+
+data x86_64_abi_pdf_pin_establishment_observed_at: EpochMs = 1785801600000
+
+data x86_64_abi_pdf_retrieval_observed_at: EpochMs = 1785844800000
+
+data x86_64_abi_pdf_pin_establishment_receipt_hex: String = "69e117a13b560b1b957c15f05a61b130ca56828f05dca951e27cb8e2ada14283"
 
 data x86_64_abi_pdf_wet_receipt_hex: String = "69e117a13b560b1b957c15f05a61b130ca56828f05dca951e27cb8e2ada14283"
 
-data x86_64_abi_pdf_retrieval_observed_at: EpochMs = 1785844800000
+fn x86_64_abi_pdf_wet_run_identity(activity: ProvActivityId, observed_at: EpochMs) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_tagged_structural(
+      tag: "x86-64-abi-pdf-wet-run-activity",
+      payload: content_hash_atom(value: activity as NonEmptyStr),
+    ),
+    right: content_hash_tagged_structural(
+      tag: "x86-64-abi-pdf-wet-run-observed-at",
+      payload: content_hash_atom(value: to_string(observed_at) as NonEmptyStr),
+    ),
+  )
+}
+
+data x86_64_abi_pdf_pin_establishment_run_identity: Fnv1a64Structural = x86_64_abi_pdf_wet_run_identity(
+  activity: x86_64_abi_pdf_pin_establishment_activity,
+  observed_at: x86_64_abi_pdf_pin_establishment_observed_at,
+)
+
+data x86_64_abi_pdf_retrieval_run_identity: Fnv1a64Structural = x86_64_abi_pdf_wet_run_identity(
+  activity: x86_64_abi_pdf_retrieval_activity,
+  observed_at: x86_64_abi_pdf_retrieval_observed_at,
+)
+
+type X86_64AbiPdfWetReceiptHexRefusalCause = WetReceiptHexMalformed { hex: String }
+
+type X86_64AbiPdfValidatedDigestConstruction = X86_64AbiPdfValidatedDigestConstructed(Sha256Digest) | X86_64AbiPdfValidatedDigestHexRefused { hex: String, cause: X86_64AbiPdfWetReceiptHexRefusalCause }
+
+type X86_64AbiPdfPinEstablishmentDigestConstruction = X86_64AbiPdfPinEstablishmentDigestConstructed(Sha256Digest) | X86_64AbiPdfPinEstablishmentDigestRefused { hex: String, cause: X86_64AbiPdfWetReceiptHexRefusalCause }
+
+type X86_64AbiPdfRetrievalObservationConstruction = X86_64AbiPdfRetrievalObserved(CitationRetrievalObservation) | X86_64AbiPdfRetrievalDigestHexRefused { hex: String, cause: X86_64AbiPdfWetReceiptHexRefusalCause }
+
+type X86_64AbiPdfPinRefusalCause = PinEstablishmentDigestHexRefused { hex: String, cause: X86_64AbiPdfWetReceiptHexRefusalCause }
 
 data x86_64_abi_application_pdf: MediaType = MediaType {
   top_level: TopLevelApplication,
@@ -120,9 +166,7 @@ data x86_64_abi_application_pdf: MediaType = MediaType {
   parameters: [],
 }
 
-type X86_64AbiPdfValidatedDigestConstruction = X86_64AbiPdfValidatedDigestConstructed(Sha256Digest) | X86_64AbiPdfValidatedDigestHexRefused { hex: String }
-
-type X86_64AbiPdfExpectedDigestConstruction = X86_64AbiPdfExpectedDigestConstructed(Sha256Digest) | X86_64AbiPdfExpectedDigestRefused { observation: CitationRetrievalObservation }
+type X86_64AbiPdfExpectedDigestConstruction = X86_64AbiPdfExpectedDigestConstructed(Sha256Digest) | X86_64AbiPdfExpectedDigestRefused { cause: X86_64AbiPdfPinRefusalCause }
 
 type X86_64AbiPdfCitationSelectorRefusalCause = X86_64AbiPdfCitationSelectorFragmentRefused { cause: NavigableUriRefusalCause } | X86_64AbiPdfCitationSelectorSafeSequenceRefused { cause: PdfProfileRefusalCause }
 
@@ -130,7 +174,7 @@ type X86_64AbiPdfCitationSelectorConstruction = X86_64AbiPdfCitationSelectorCons
 
 type X86_64AbiPdfNavigableUriProjection = X86_64AbiPdfNavigableUriProjected { uri: Uri } | X86_64AbiPdfNavigableUriRefused { cause: NavigableUriSafeRefusalCause }
 
-type X86_64AbiPdfPinConstruction = X86_64AbiPdfPinConstructed(Pin<CitedRepresentationIdentity>) | X86_64AbiPdfPinRefused { observation: CitationRetrievalObservation }
+type X86_64AbiPdfPinConstruction = X86_64AbiPdfPinConstructed(Pin<CitedRepresentationIdentity>) | X86_64AbiPdfPinRefused { cause: X86_64AbiPdfPinRefusalCause }
 
 type X86_64AbiCitationFactConstruction = X86_64AbiCitationFactConstructed(RecordedFact<CitationRecordedFact<CitationSelector>>) | X86_64AbiCitationFactRefused { pin: X86_64AbiPdfPinConstruction, selector: X86_64AbiPdfCitationSelectorConstruction }
 
@@ -139,90 +183,69 @@ type X86_64AbiEvidenceLinkConstruction = X86_64AbiEvidenceLinkConstructed(Eviden
 fn x86_64_abi_pdf_validated_digest_from_wet_receipt(hex: String) -> X86_64AbiPdfValidatedDigestConstruction {
   match sha256_hex_digest(hex: hex) {
     Present { value: digest } => X86_64AbiPdfValidatedDigestConstructed(digest)
-    Absent => X86_64AbiPdfValidatedDigestHexRefused { hex: hex }
+    Absent =>
+      X86_64AbiPdfValidatedDigestHexRefused {
+        hex: hex,
+        cause: WetReceiptHexMalformed { hex: hex },
+      }
   }
 }
 
-fn x86_64_abi_pdf_byte_extraction_from_receipt() -> CitationRetrievalObservation {
-  match x86_64_abi_pdf_validated_digest_from_wet_receipt(hex: x86_64_abi_pdf_wet_receipt_hex) {
+fn assemble_x86_64_abi_pdf_pin_establishment_digest() -> X86_64AbiPdfPinEstablishmentDigestConstruction {
+  match x86_64_abi_pdf_validated_digest_from_wet_receipt(hex: x86_64_abi_pdf_pin_establishment_receipt_hex) {
+    X86_64AbiPdfValidatedDigestConstructed(digest) => X86_64AbiPdfPinEstablishmentDigestConstructed(digest)
+    X86_64AbiPdfValidatedDigestHexRefused { hex: hex, cause: cause } =>
+      X86_64AbiPdfPinEstablishmentDigestRefused { hex: hex, cause: cause }
+  }
+}
+
+data x86_64_abi_pdf_pin_establishment_digest_construction: X86_64AbiPdfPinEstablishmentDigestConstruction = assemble_x86_64_abi_pdf_pin_establishment_digest()
+
+fn x86_64_abi_pdf_retrieval_observation_from_hex(hex: String) -> X86_64AbiPdfRetrievalObservationConstruction {
+  match x86_64_abi_pdf_validated_digest_from_wet_receipt(hex: hex) {
     X86_64AbiPdfValidatedDigestConstructed(digest) =>
-      RepresentationRetrieved {
-        request: CitationRetrievalRequest {
-          locator: x86_64_abi_pdf_authority.uri,
+      X86_64AbiPdfRetrievalObserved(
+        RepresentationRetrieved {
+          request: CitationRetrievalRequest {
+            locator: x86_64_abi_pdf_authority.uri,
+          },
+          observed_at: x86_64_abi_pdf_retrieval_observed_at,
+          http_status: 200,
+          observed: observed_cited_representation(
+            identity: x86_64_abi_pdf_identity,
+            media_type: x86_64_abi_application_pdf,
+            observed_identity: digest,
+          ),
         },
-        observed_at: x86_64_abi_pdf_retrieval_observed_at,
-        http_status: 200,
-        observed: observed_cited_representation(
-          identity: x86_64_abi_pdf_identity,
-          media_type: x86_64_abi_application_pdf,
-          observed_identity: digest,
-        ),
-      }
-    X86_64AbiPdfValidatedDigestHexRefused { hex: _ } =>
-      CitationAccessRefused {
-        request: CitationRetrievalRequest {
-          locator: x86_64_abi_pdf_authority.uri,
-        },
-        observed_at: x86_64_abi_pdf_retrieval_observed_at,
-        cause: HttpAccessRefused { status: 400 },
-      }
+      )
+    X86_64AbiPdfValidatedDigestHexRefused { hex: refused_hex, cause: cause } =>
+      X86_64AbiPdfRetrievalDigestHexRefused { hex: refused_hex, cause: cause }
   }
 }
 
-data x86_64_abi_pdf_byte_extraction: CitationRetrievalObservation = x86_64_abi_pdf_byte_extraction_from_receipt()
-
-fn x86_64_abi_pdf_expected_digest_from_extraction(
-  extraction: CitationRetrievalObservation,
-) -> X86_64AbiPdfExpectedDigestConstruction {
-  match extraction {
-    RepresentationRetrieved { observed: o, request: _, observed_at: _, http_status: _ } =>
-      X86_64AbiPdfExpectedDigestConstructed(o.observed_identity)
-    ResponseObservedWithoutRepresentation { request: r, observed_at: t, http_status: s } =>
-      X86_64AbiPdfExpectedDigestRefused {
-        observation: ResponseObservedWithoutRepresentation {
-          request: r,
-          observed_at: t,
-          http_status: s,
-        },
-      }
-    CitationAccessRefused { request: r, observed_at: t, cause: c } =>
-      X86_64AbiPdfExpectedDigestRefused {
-        observation: CitationAccessRefused {
-          request: r,
-          observed_at: t,
-          cause: c,
-        },
-      }
-    CitationUnreachable { request: r, observed_at: t, cause: c } =>
-      X86_64AbiPdfExpectedDigestRefused {
-        observation: CitationUnreachable {
-          request: r,
-          observed_at: t,
-          cause: c,
-        },
-      }
-    CitationRateLimited { request: r, observed_at: t, retry_after: ra } =>
-      X86_64AbiPdfExpectedDigestRefused {
-        observation: CitationRateLimited {
-          request: r,
-          observed_at: t,
-          retry_after: ra,
-        },
-      }
-  }
+fn assemble_x86_64_abi_pdf_retrieval_observation() -> X86_64AbiPdfRetrievalObservationConstruction {
+  x86_64_abi_pdf_retrieval_observation_from_hex(hex: x86_64_abi_pdf_wet_receipt_hex)
 }
+
+data x86_64_abi_pdf_byte_extraction_construction: X86_64AbiPdfRetrievalObservationConstruction = assemble_x86_64_abi_pdf_retrieval_observation()
 
 data x86_64_abi_pdf_draft_version: VersionIdentity = "0.99.6" as VersionIdentity
 
-fn x86_64_abi_pdf_fixture_observed_identity() -> X86_64AbiPdfExpectedDigestConstruction {
-  x86_64_abi_pdf_expected_digest_from_extraction(extraction: x86_64_abi_pdf_byte_extraction)
+fn assemble_x86_64_abi_pdf_expected_digest() -> X86_64AbiPdfExpectedDigestConstruction {
+  match x86_64_abi_pdf_pin_establishment_digest_construction {
+    X86_64AbiPdfPinEstablishmentDigestConstructed(digest) => X86_64AbiPdfExpectedDigestConstructed(digest)
+    X86_64AbiPdfPinEstablishmentDigestRefused { hex: hex, cause: cause } =>
+      X86_64AbiPdfExpectedDigestRefused {
+        cause: PinEstablishmentDigestHexRefused { hex: hex, cause: cause },
+      }
+  }
 }
 
-data x86_64_abi_pdf_expected_digest_construction: X86_64AbiPdfExpectedDigestConstruction = x86_64_abi_pdf_fixture_observed_identity()
+data x86_64_abi_pdf_expected_digest_construction: X86_64AbiPdfExpectedDigestConstruction = assemble_x86_64_abi_pdf_expected_digest()
 
 fn assemble_x86_64_abi_pdf_pin_construction() -> X86_64AbiPdfPinConstruction {
-  match x86_64_abi_pdf_expected_digest_construction {
-    X86_64AbiPdfExpectedDigestConstructed(digest) =>
+  match x86_64_abi_pdf_pin_establishment_digest_construction {
+    X86_64AbiPdfPinEstablishmentDigestConstructed(digest) =>
       X86_64AbiPdfPinConstructed(
         citation_exact_pin(
           source: x86_64_abi_subject_ref,
@@ -232,8 +255,10 @@ fn assemble_x86_64_abi_pdf_pin_construction() -> X86_64AbiPdfPinConstruction {
           expected_identity: digest,
         ),
       )
-    X86_64AbiPdfExpectedDigestRefused { observation: observation } =>
-      X86_64AbiPdfPinRefused { observation: observation }
+    X86_64AbiPdfPinEstablishmentDigestRefused { hex: hex, cause: cause } =>
+      X86_64AbiPdfPinRefused {
+        cause: PinEstablishmentDigestHexRefused { hex: hex, cause: cause },
+      }
   }
 }
 
@@ -243,9 +268,15 @@ data x86_64_abi_pdf_version_cover_sequence: PdfSafeParameterSequenceConstruction
   constructions: [pdf_open_page(page: 1)],
 )
 
+data x86_64_abi_syscall_convention_authoritative_page: PositiveInt = 125
+
 data x86_64_abi_pdf_syscall_convention_sequence: PdfSafeParameterSequenceConstruction = pdf_safe_parameter_sequence(
-  constructions: [pdf_open_page(page: 28)],
+  constructions: [pdf_open_page(page: x86_64_abi_syscall_convention_authoritative_page)],
 )
+
+fn x86_64_abi_syscall_citation_page_is_authoritative(page: PositiveInt) -> Bool {
+  page == x86_64_abi_syscall_convention_authoritative_page
+}
 
 fn x86_64_abi_pdf_fragment_selector_from_page(page: PositiveInt) -> X86_64AbiPdfCitationSelectorConstruction {
   match pdf_open_fragment_selector(
@@ -303,16 +334,16 @@ fn x86_64_abi_syscall_citation_fact_construction() -> X86_64AbiCitationFactConst
             selector: X86_64AbiPdfCitationSelectorRefused { cause: selector_cause },
           }
       }
-    X86_64AbiPdfPinRefused { observation: pin_observation } =>
+    X86_64AbiPdfPinRefused { cause: pin_cause } =>
       match x86_64_abi_pdf_syscall_fragment_selector {
         X86_64AbiPdfCitationSelectorConstructed(selector) =>
           X86_64AbiCitationFactRefused {
-            pin: X86_64AbiPdfPinRefused { observation: pin_observation },
+            pin: X86_64AbiPdfPinRefused { cause: pin_cause },
             selector: X86_64AbiPdfCitationSelectorConstructed(selector),
           }
         X86_64AbiPdfCitationSelectorRefused { cause: selector_cause } =>
           X86_64AbiCitationFactRefused {
-            pin: X86_64AbiPdfPinRefused { observation: pin_observation },
+            pin: X86_64AbiPdfPinRefused { cause: pin_cause },
             selector: X86_64AbiPdfCitationSelectorRefused { cause: selector_cause },
           }
       }
@@ -332,12 +363,12 @@ fn x86_64_abi_syscall_evidence_link_construction() -> X86_64AbiEvidenceLinkConst
           authority: x86_64_abi_pdf_authority,
           provenance: EvidenceProvenance {
             entity: "x86-64-abi-pdf-byte-extraction" as ProvEntityId,
-            activity: "wet-representation-retrieval" as ProvActivityId,
+            activity: x86_64_abi_pdf_retrieval_activity,
             agent: "gunbc-citation-extraction-receipt" as ProvAgentId,
           },
           freshness: EvidenceFreshness {
             maximum_conclusion: "x86-64-abi-linux-syscall-arg3-is-r10" as ClaimId,
-            basis: "draft-edition-0.99.6-page-28-syscall-register-convention",
+            basis: "draft-edition-0.99.6-page-125-syscall-register-convention",
           },
           fidelity: EvidenceFidelity {
             boundary: "raw-response-body-sha256" as NonEmptyStr,
@@ -359,6 +390,26 @@ fn x86_64_abi_syscall_evidence_link_construction() -> X86_64AbiEvidenceLinkConst
           selector: selector_construction,
         },
       }
+  }
+}
+
+fn witness_pin_establishment_and_retrieval_run_identities_differ() -> Bool {
+  x86_64_abi_pdf_pin_establishment_run_identity != x86_64_abi_pdf_retrieval_run_identity
+}
+
+fn witness_syscall_citation_reconciles_pin_and_retrieval() -> Bool {
+  match x86_64_abi_pdf_pin_construction {
+    X86_64AbiPdfPinConstructed(pin) =>
+      match x86_64_abi_pdf_byte_extraction_construction {
+        X86_64AbiPdfRetrievalObserved(observation) =>
+          match observation {
+            RepresentationRetrieved { observed: o, request: _, observed_at: _, http_status: _ } =>
+              reconcile_citation_representation(expected_pin: pin, observed: Present { value: o }) == RepresentationMatch
+            _ => false
+          }
+        X86_64AbiPdfRetrievalDigestHexRefused { hex: _, cause: _ } => false
+      }
+    X86_64AbiPdfPinRefused { cause: _ } => false
   }
 }
 

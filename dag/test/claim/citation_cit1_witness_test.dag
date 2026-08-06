@@ -31,6 +31,8 @@ import extdeps.standards.rfc_8118 {
   pdf_open_nameddest_wire_from_scalar_code_points,
   PdfOpenParameterSequence,
   PdfOpenParameterSequenceWire,
+  PdfOpenParameterSequenceWired,
+  pdf_open_parameter_sequence_wire,
   PdfOpenParameterSequenceWireRefused,
   navigable_uri_projection_from_sequence_wire,
 }
@@ -248,6 +250,17 @@ test fn project_navigable_uri_refuses_unencodable_nameddest_value() -> Bool {
         sequence_wire: PdfOpenParameterSequenceWireRefused { parameter: p, cause: cause },
       ) {
         NavigableUriRefused { cause: PdfOpenParameterPercentEncodeRefused { parameter: _, cause: _ } } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn pdf_open_parameter_sequence_wire_joins_multi_parameter_sequence_without_concat_fold() -> Bool {
+  match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1), pdf_open_nameddest(name: "a" as NonEmptyStr)]) {
+    SequenceConstructed(sequence) =>
+      match pdf_open_parameter_sequence_wire(sequence: sequence) {
+        PdfOpenParameterSequenceWired { wire: w } => w == "page=1&nameddest=a"
         _ => false
       }
     _ => false

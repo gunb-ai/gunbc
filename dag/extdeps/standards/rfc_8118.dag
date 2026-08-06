@@ -222,12 +222,55 @@ type PdfOpenParameterSequenceWire
       cause: UriPercentEncodeRefusalCause,
     }
 
-type PdfOpenParameterSequenceWireFoldState
-  = PdfOpenParameterSequenceWireBuilding { wires: List<String> }
-  | PdfOpenParameterSequenceWireFoldRefused {
+type PdfProfileParameterWireOutcome
+  = PdfProfileParameterWireEncoded { wire: String }
+  | PdfProfileParameterWireOutcomeRefused {
       parameter: PdfProfileParameter,
       cause: UriPercentEncodeRefusalCause,
     }
+
+fn pdf_profile_parameter_wire_outcome(parameter: PdfProfileParameter) -> PdfProfileParameterWireOutcome {
+  match pdf_profile_parameter_wire(parameter: parameter) {
+    PdfProfileParameterWired { wire: wire } => PdfProfileParameterWireEncoded { wire: wire }
+    PdfProfileParameterWireRefused { parameter: p, cause: cause } =>
+      PdfProfileParameterWireOutcomeRefused { parameter: p, cause: cause }
+  }
+}
+
+fn pdf_profile_parameter_wire_outcomes_first_refusal(
+  outcomes: List<PdfProfileParameterWireOutcome>,
+) -> Optional<PdfOpenParameterSequenceWireRefused> {
+  fold(
+    outcomes,
+    init: Absent,
+    f: fn(acc, outcome) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match outcome {
+            PdfProfileParameterWireOutcomeRefused { parameter: p, cause: cause } =>
+              Present {
+                value: PdfOpenParameterSequenceWireRefused { parameter: p, cause: cause },
+              }
+            PdfProfileParameterWireEncoded { wire: _ } => Absent
+          }
+      }
+    },
+  )
+}
+
+fn pdf_profile_parameter_wire_outcome_wires(outcomes: List<PdfProfileParameterWireOutcome>) -> List<String> {
+  fold(
+    outcomes,
+    init: [],
+    f: fn(wires, outcome) {
+      match outcome {
+        PdfProfileParameterWireEncoded { wire: wire } => wires |> list_push(wire)
+        PdfProfileParameterWireOutcomeRefused { parameter: _, cause: _ } => wires
+      }
+    },
+  )
+}
 
 type PdfOpenFragmentSelectorConstruction
   = PdfOpenFragmentSelectorConstructed(CitationSelector)
@@ -327,26 +370,13 @@ fn pdf_profile_parameter_wire(parameter: PdfProfileParameter) -> PdfProfileParam
 }
 
 fn pdf_open_parameter_sequence_wire(sequence: PdfOpenParameterSequence) -> PdfOpenParameterSequenceWire {
-  match fold(
-    sequence.parameters,
-    init: PdfOpenParameterSequenceWireBuilding { wires: [] },
-    f: fn(acc, parameter) {
-      match acc {
-        PdfOpenParameterSequenceWireFoldRefused { parameter: _, cause: _ } => acc
-        PdfOpenParameterSequenceWireBuilding { wires: wires } =>
-          match pdf_profile_parameter_wire(parameter: parameter) {
-            PdfProfileParameterWireRefused { parameter: p, cause: cause } =>
-              PdfOpenParameterSequenceWireFoldRefused { parameter: p, cause: cause }
-            PdfProfileParameterWired { wire: wire } =>
-              PdfOpenParameterSequenceWireBuilding { wires: concat(wires, [wire]) }
-          }
+  let outcomes = sequence.parameters |> map(p => pdf_profile_parameter_wire_outcome(parameter: p))
+  match pdf_profile_parameter_wire_outcomes_first_refusal(outcomes: outcomes) {
+    Present { value: refusal } => refusal
+    Absent =>
+      PdfOpenParameterSequenceWired {
+        wire: join(pdf_profile_parameter_wire_outcome_wires(outcomes: outcomes), "&"),
       }
-    },
-  ) {
-    PdfOpenParameterSequenceWireFoldRefused { parameter: p, cause: cause } =>
-      PdfOpenParameterSequenceWireRefused { parameter: p, cause: cause }
-    PdfOpenParameterSequenceWireBuilding { wires: wires } =>
-      PdfOpenParameterSequenceWired { wire: join(wires, "&") }
   }
 }
 
