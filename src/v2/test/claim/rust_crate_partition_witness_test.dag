@@ -33,22 +33,25 @@ import v2.workflow.rust_crate_partition {
   PartitionPolicy,
   ResolvePartitionRefused,
   ResolvePartitionOk,
+  Stage0DerivedMembershipRefused,
+  Stage0DerivedPartitionOk,
+  Stage0DerivedPartitionRefused,
   resolve_partition_outcome,
   rust_crate_partition_declared_core_target,
   rust_crate_partition_dissolve_on,
   rust_crate_partition_module_bearing_unit_target,
-  stage0_interim_explicit_assignment,
+  stage0_derived_partition_outcome,
   stage0_module_dag,
   stage0_module_dag_interface_grounding_debt_dissolve_on,
   stage0_module_dag_interface_grounding_is_debt,
-  stage0_module_bearing_unit_count,
+  stage0_module_bearing_unit_count_holds,
+  stage0_physical_crate_count_holds,
   stage0_partition_fold_ok,
   stage0_partition_member_coverage_consistent,
   Stage0PartitionReceiptFoldRefused,
   Stage0PartitionReceiptOk,
   Stage0PartitionReceiptResolveRefused,
   stage0_partition_receipt_outcome,
-  stage0_physical_crate_count,
   stage0_partition_row_lookups_resolved,
   stage0_single_crate_fold_outcome,
   stage0_partition_parameter,
@@ -166,11 +169,13 @@ test fn witness_partition_perturbation_member_coverage_holds() -> Bool {
 }
 
 test fn witness_interim_physical_crate_count_holds() -> Bool {
-  stage0_physical_crate_count() == rust_crate_partition_declared_core_target
+  stage0_physical_crate_count_holds(expected: rust_crate_partition_declared_core_target)
 }
 
 test fn witness_interim_module_bearing_unit_count_holds() -> Bool {
-  stage0_module_bearing_unit_count() == rust_crate_partition_module_bearing_unit_target
+  stage0_module_bearing_unit_count_holds(
+    expected: rust_crate_partition_module_bearing_unit_target
+  )
 }
 
 test fn witness_policy_partition_refuses_holds() -> Bool {
@@ -254,12 +259,18 @@ test fn witness_partition_r4_valid_on_interim_holds() -> Bool {
 
 test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
   let dag = stage0_module_dag()
-  match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: dag) {
-    ResolvePartitionOk { assignment: resolved } => {
-      let expected = stage0_interim_explicit_assignment()
-      (resolved |> count) == (expected |> count)
-    }
-    ResolvePartitionRefused { cause: _ } => false
+  match stage0_derived_partition_outcome() {
+    Stage0DerivedPartitionRefused { cause: _ } =>
+      match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: dag) {
+        ResolvePartitionRefused { cause: Stage0DerivedMembershipRefused { cause: _ } } => true
+        ResolvePartitionOk { assignment: _ } => false
+      }
+    Stage0DerivedPartitionOk { assignment: expected, members_by_unit: _ } =>
+      match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: dag) {
+        ResolvePartitionOk { assignment: resolved } =>
+          (resolved |> count) == (expected |> count)
+        ResolvePartitionRefused { cause: _ } => false
+      }
   }
 }
 
