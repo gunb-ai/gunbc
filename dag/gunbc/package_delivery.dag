@@ -55,7 +55,7 @@ import extdeps.tools.sha512sum {
 import extdeps.tools.npm
 import extdeps.tools.node
 import gunbc.host_layout {
-  srv1_codex_runtime_release_root,
+  srv1_provider_runtime_placement,
 }
 import extdeps.languages.json.emit {
   JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
@@ -817,7 +817,8 @@ fn lock_path_key_rel(key: NpmLockPathKey) -> NonEmptyStr? {
   }
 }
 
-data codex_runtime_release_parent: FilePath = srv1_codex_runtime_release_root
+data codex_runtime_release_parent: FilePath =
+  srv1_provider_runtime_placement().runtime_release_root
 
 data codex_runtime_receipt_sidecar_name: NonEmptyStr = ".gunbc-codex-runtime-receipt" as NonEmptyStr
 
@@ -835,7 +836,7 @@ fn admitted_and_executed_lock_bytes_agree(
   admitted_lock_bytes == executed_lock_bytes
 }
 
-data codex_runtime_bundle_receipt_note: String = "FULL cryptographic CodexRuntimeBundleReceipt: installed manifest+lock digests + target + digest-only admitted rows + installed-tree identity + native executable digest + npm+node toolchain + canonical protocol-schema bundle identity. Bundle root is content-addressed under gunbc.host_layout.srv1_codex_runtime_release_root/<receipt-hex> (not /tmp). Mutable Codex state lives under srv1_codex_runtime_mutable_state_root — never equate a content-derived path with immutability. Reuse requires sidecar + native digest + full rematerialized-tree identity match."
+data codex_runtime_bundle_receipt_note: String = "FULL cryptographic CodexRuntimeBundleReceipt: installed manifest+lock digests + target + digest-only admitted rows + installed-tree identity + native executable digest + npm+node toolchain + canonical protocol-schema bundle identity. Bundle root is content-addressed under gunbc.host_layout.ProviderRuntimePlacement.runtime_release_root/<receipt-hex> (srv1 via srv1_provider_runtime_placement; not /tmp). Mutable Codex state lives under runtime_mutable_state_root — never equate a content-derived path with immutability. Reuse requires sidecar + native digest + full rematerialized-tree identity match."
 
 type PackageTreeEntryKind
   = PackageTreeRegularFile {

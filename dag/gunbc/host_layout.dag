@@ -74,10 +74,24 @@ data belt_spawn_workdir_env_var_note: String = "The ONE authority for the enviro
 
 data belt_spawn_workdir_env_var: NonEmptyStr = "GUNBC_BELT_SPAWN_WORKDIR" as NonEmptyStr
 
-data srv1_provider_runtime_layout_note: String = "srv1 provider-runtime paths under /opt/gunbc/provider-runtime. release_root holds immutable package/exec content; mutable Codex state is separate in codex-state; evidence_root stores private content-addressed wire bytes (SHA-512 hex filenames) for provider account-standing captures."
+data provider_runtime_placement_note: String = "ONE host-parameterized placement for provider package/exec release trees, mutable provider state, and private wire-evidence roots. Parallel to GunbcHostLayout: a second host must be describable without minting a second set of path concepts. Claude/Cursor/Codex lanes consume this record; they do not re-author /opt/... roots. The flat srv1_* path data below are the once-written field values of srv1's row — the same dissolution pattern as gunbc_host_layout_note."
+
+type ProviderRuntimePlacement {
+  runtime_release_root: FilePath
+  runtime_mutable_state_root: FilePath
+  wire_evidence_root: FilePath
+}
 
 data srv1_codex_runtime_release_root: FilePath = "/opt/gunbc/provider-runtime/codex" as FilePath
 
 data srv1_codex_runtime_mutable_state_root: FilePath = "/opt/gunbc/provider-runtime/codex-state" as FilePath
 
 data srv1_provider_wire_evidence_root: FilePath = "/opt/gunbc/provider-runtime/evidence" as FilePath
+
+fn srv1_provider_runtime_placement() -> ProviderRuntimePlacement {
+  ProviderRuntimePlacement {
+    runtime_release_root: srv1_codex_runtime_release_root,
+    runtime_mutable_state_root: srv1_codex_runtime_mutable_state_root,
+    wire_evidence_root: srv1_provider_wire_evidence_root,
+  }
+}
