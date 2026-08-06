@@ -1,0 +1,248 @@
+{
+  "receipt": "claude_paired_entitlement_probe",
+  "date": "2026-08-06",
+  "authority": "docs/plans/provider-control-interface-audit.md section 4",
+  "purpose": "Live paired probe: direct claude stream-json versus Claude Agent SDK on identical credential binding, model, and prompt.",
+  "probe_parameters": {
+    "prompt": "Reply with exactly the single word ACK and nothing else.",
+    "model": "claude-haiku-4-5-20251001",
+    "sdk_version": "0.3.220",
+    "explicit_credential_home": "/home/briansrls/.worktrees/eager-raven-845/docs/probes/claude_paired_entitlement_probe/capture_2026-08-06T17-05-06-228Z/credential_state",
+    "source_home_observed": "/session-home",
+    "cwd": "/home/briansrls/.worktrees/eager-raven-845"
+  },
+  "host_toolchain": {
+    "node_version": "v22.22.3",
+    "claude_version": "2.1.223 (Claude Code)"
+  },
+  "arms": {
+    "direct_cli": {
+      "exit_code": 1,
+      "stdout_sha256": "0d102d1bc91eb5ca55cdcf4854c17d45538ce634825a317bf3a04e7ae1784a0c",
+      "stdout_empty": false,
+      "argv": [
+        "claude",
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--permission-mode",
+        "plan",
+        "--model",
+        "claude-haiku-4-5-20251001"
+      ],
+      "stdin_format": "stream-json user frame"
+    },
+    "sdk_query": {
+      "exit_code": 2,
+      "stdout_sha256": "77caad830910608b0a7c6cabc6c20d95b451da7651bd9c34705b821ebe08addb",
+      "raw_subprocess_sha256": "86d074c235b025d15009ea4cc9d1d290198eb9471aa887982835adf814d1f48b",
+      "sdk_module_root": "/home/briansrls/.worktrees/eager-raven-845/docs/probes/claude_paired_entitlement_probe/capture_2026-08-06T17-05-06-228Z/sdk-install",
+      "subprocess_wrapper": "/home/briansrls/.worktrees/eager-raven-845/docs/probes/claude_paired_entitlement_probe/claude-wrapper-tee.mjs"
+    }
+  },
+  "comparison": {
+    "direct_summary": {
+      "arm": "direct",
+      "event_count": 3,
+      "type_counts": {
+        "system": 1,
+        "assistant": 1,
+        "result": 1
+      },
+      "session_ids": [
+        "e9699d05-cb35-4aa6-a624-e796693e31c9"
+      ],
+      "rate_limit_events": [],
+      "terminal_result": {
+        "is_error": true,
+        "duration_api_ms": 0,
+        "num_turns": 1,
+        "stop_reason": "stop_sequence",
+        "session_id": "e9699d05-cb35-4aa6-a624-e796693e31c9",
+        "total_cost_usd": 0,
+        "usage": {
+          "input_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 0,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "",
+          "iterations": [],
+          "speed": "standard"
+        },
+        "modelUsage": {},
+        "permission_denials": [],
+        "terminal_reason": "api_error",
+        "fast_mode_state": "off",
+        "fast_mode_disabled_reason": "sdk_opt_in_required",
+        "subtype": "success",
+        "api_error_status": null,
+        "result": "Not logged in · Please run /login",
+        "type": "result",
+        "duration_ms": 248,
+        "uuid": "3ebf661a-0138-4f76-bb74-309a564472d6"
+      },
+      "auth_failure_observed": true,
+      "fable_mention_observed": false,
+      "opus_warning_observed": false,
+      "raw_event_types_preserved": [
+        "system",
+        "assistant",
+        "result"
+      ],
+      "stdout_empty": false
+    },
+    "sdk_parsed_summary": {
+      "arm": "sdk",
+      "event_count": 4,
+      "type_counts": {
+        "system": 1,
+        "assistant": 1,
+        "result": 1,
+        "gunbc_probe_adapter_error": 1
+      },
+      "session_ids": [
+        "ba5c4ba8-e08d-4f21-aa32-4ca43e385d5f"
+      ],
+      "rate_limit_events": [],
+      "terminal_result": {
+        "is_error": true,
+        "duration_api_ms": 0,
+        "num_turns": 1,
+        "stop_reason": "stop_sequence",
+        "session_id": "ba5c4ba8-e08d-4f21-aa32-4ca43e385d5f",
+        "total_cost_usd": 0,
+        "usage": {
+          "input_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 0,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "",
+          "iterations": [],
+          "speed": "standard"
+        },
+        "modelUsage": {},
+        "permission_denials": [],
+        "terminal_reason": "api_error",
+        "fast_mode_state": "off",
+        "fast_mode_disabled_reason": "sdk_opt_in_required",
+        "subtype": "success",
+        "api_error_status": null,
+        "result": "Not logged in · Please run /login",
+        "type": "result",
+        "duration_ms": 91,
+        "uuid": "ad373ea5-640c-444e-aaae-7c97beff6653"
+      },
+      "auth_failure_observed": true,
+      "fable_mention_observed": false,
+      "opus_warning_observed": false,
+      "raw_event_types_preserved": [
+        "system",
+        "assistant",
+        "result",
+        "gunbc_probe_adapter_error"
+      ],
+      "stdout_empty": false
+    },
+    "sdk_subprocess_raw_summary": {
+      "arm": "sdk_subprocess_raw",
+      "event_count": 4,
+      "type_counts": {
+        "control_response": 1,
+        "system": 1,
+        "assistant": 1,
+        "result": 1
+      },
+      "session_ids": [
+        "ba5c4ba8-e08d-4f21-aa32-4ca43e385d5f"
+      ],
+      "rate_limit_events": [],
+      "terminal_result": {
+        "is_error": true,
+        "duration_api_ms": 0,
+        "num_turns": 1,
+        "stop_reason": "stop_sequence",
+        "session_id": "ba5c4ba8-e08d-4f21-aa32-4ca43e385d5f",
+        "total_cost_usd": 0,
+        "usage": {
+          "input_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 0,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "",
+          "iterations": [],
+          "speed": "standard"
+        },
+        "modelUsage": {},
+        "permission_denials": [],
+        "terminal_reason": "api_error",
+        "fast_mode_state": "off",
+        "fast_mode_disabled_reason": "sdk_opt_in_required",
+        "subtype": "success",
+        "api_error_status": null,
+        "result": "Not logged in · Please run /login",
+        "type": "result",
+        "duration_ms": 91,
+        "uuid": "ad373ea5-640c-444e-aaae-7c97beff6653"
+      },
+      "auth_failure_observed": true,
+      "fable_mention_observed": true,
+      "opus_warning_observed": false,
+      "raw_event_types_preserved": [
+        "control_response",
+        "system",
+        "assistant",
+        "result"
+      ],
+      "stdout_empty": false
+    },
+    "native_rate_limit_tokens": {
+      "direct_cli": [],
+      "sdk_parsed": [],
+      "sdk_subprocess_raw": [],
+      "modeling_note": "ClaudeNativeRateLimitType should be NonEmptyStr at the carrier layer; recognised projections layer over the open token (audit §4.1)."
+    },
+    "session_id_match_direct_vs_sdk_raw": false,
+    "event_types_only_on_direct": [],
+    "event_types_only_on_sdk_subprocess_raw": [
+      "control_response"
+    ],
+    "event_types_dropped_by_sdk_parser": [
+      "control_response"
+    ],
+    "entitlement_probe_verdict": "both_arms_auth_failed_parity_on_unauthenticated_host",
+    "direct_cli_dissolves_for_realm": "undecided_probe_did_not_reach_entitlement_surface",
+    "audit_section_4_note": "Outcome is execution evidence only. Neither subscription preservation nor CLI dissolution is assumed."
+  },
+  "captures_relative_to": "/home/briansrls/.worktrees/eager-raven-845/docs/probes/claude_paired_entitlement_probe/capture_2026-08-06T17-05-06-228Z",
+  "redaction_note": "Raw captures may contain session identifiers. Secrets are not copied into this receipt."
+}
