@@ -6,6 +6,7 @@ import std.citation {
   CitationSelector,
   CitationSelectorConstructed,
   CitationSelectorRefused,
+  SelectorRefusalCause,
   fragment_selector,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -17,7 +18,6 @@ import extdeps.uri {
   UriPercentComponentEncoded,
   UriPercentComponentRefused,
   UriPercentEncodeRefusalCause,
-  UriPercentEncodeEmptyInputRefused,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -49,6 +49,7 @@ type NavigableUriRefusalCause
       parameter: PdfProfileParameter,
       cause: UriPercentEncodeRefusalCause,
     }
+  | CitationSelectorConstructionRefused { cause: SelectorRefusalCause }
 
 type NavigableUriProjection
   = NavigableUriProjected { uri: Uri }
@@ -411,12 +412,9 @@ fn pdf_open_fragment_selector(sequence: PdfOpenParameterSequence) -> PdfOpenFrag
         value: fragment as NonEmptyStr,
       ) {
         CitationSelectorConstructed(selector) => PdfOpenFragmentSelectorConstructed(selector)
-        CitationSelectorRefused { cause: _ } =>
+        CitationSelectorRefused { cause: cause } =>
           PdfOpenFragmentSelectorRefused {
-            cause: PdfOpenParameterPercentEncodeRefused {
-              parameter: OpenPage(PdfOpenPage { page: 1 }),
-              cause: UriPercentEncodeEmptyInputRefused,
-            },
+            cause: CitationSelectorConstructionRefused { cause: cause },
           }
       }
   }
