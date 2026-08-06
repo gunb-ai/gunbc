@@ -1,0 +1,58 @@
+module test.claim.cursor_sdk_dispatch_bridge_witness_test
+
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.cloud.gcp.secret_ref {
+  SecretRef,
+  HashPending,
+}
+import extdeps.cloud.gcp.gcp { GcpProjectId }
+import gunbc.dispatch_selection {
+  CursorApiKeySecretRef,
+  CursorLocalLoginRef,
+}
+import gunbc.cursor_sdk_local_binding {
+  CursorSdkLocalCredentialAdmitted,
+  CursorSdkLocalCredentialRefused,
+  cursor_sdk_local_credential_from_dispatch,
+  cursor_sdk_materialization_uses_secret_ref,
+}
+
+data witness_secret_ref: SecretRef = SecretRef {
+  project: "gunbc-dashboard" as GcpProjectId,
+  secret: "cursor-api-key" as NonEmptyStr,
+  version: "latest" as NonEmptyStr,
+  hash_state: HashPending,
+}
+
+test fn dispatch_secret_ref_admits_sdk_local_binding() -> Bool {
+  match cursor_sdk_local_credential_from_dispatch(
+    credential: CursorApiKeySecretRef { secret_ref: witness_secret_ref },
+  ) {
+    CursorSdkLocalCredentialAdmitted { credential: _, materialization: _ } => true
+    CursorSdkLocalCredentialRefused { reason: _ } => false
+  }
+}
+
+test fn dispatch_local_login_ref_refuses() -> Bool {
+  match cursor_sdk_local_credential_from_dispatch(credential: CursorLocalLoginRef) {
+    CursorSdkLocalCredentialRefused { reason } =>
+      string_contains(s: reason as String, pattern: "SecretRef")
+    CursorSdkLocalCredentialAdmitted { credential: _, materialization: _ } => false
+  }
+}
+
+test fn dispatch_secret_ref_materializes_via_secret_ref_arm() -> Bool {
+  match cursor_sdk_local_credential_from_dispatch(
+    credential: CursorApiKeySecretRef { secret_ref: witness_secret_ref },
+  ) {
+    CursorSdkLocalCredentialAdmitted { credential: _, materialization } =>
+      cursor_sdk_materialization_uses_secret_ref(materialization: materialization)
+    CursorSdkLocalCredentialRefused { reason: _ } => false
+  }
+}
+
+test fn cursor_sdk_dispatch_bridge_witness_keystone_holds() -> Bool {
+  dispatch_secret_ref_admits_sdk_local_binding()
+    && dispatch_local_login_ref_refuses()
+    && dispatch_secret_ref_materializes_via_secret_ref_arm()
+}

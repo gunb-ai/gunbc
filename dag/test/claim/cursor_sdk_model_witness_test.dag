@@ -1,0 +1,43 @@
+module test.claim.cursor_sdk_model_witness_test
+
+import std.types { Bool, String }
+import extdeps.llm.cursor_sdk_facts {
+  cursor_sdk_local_package_closure,
+  cursor_sdk_local_account_usage_unobservable,
+  cursor_sdk_local_usage_missing_capability,
+  cursor_sdk_api_key_never_in_argv_note,
+  cursor_sdk_local_package_unprovisioned_on_deployed_host,
+  cursor_sdk_local_provision_missing_capability,
+}
+
+test fn local_usage_standing_is_typed_capability_gap() -> Bool {
+  let gap = cursor_sdk_local_account_usage_unobservable()
+  gap.missing_capability == cursor_sdk_local_usage_missing_capability
+    && string_contains(s: gap.reason as String, pattern: "account-level")
+}
+
+test fn package_closure_matches_probe_receipt() -> Bool {
+  let closure = cursor_sdk_local_package_closure()
+  closure.package_name as String == "@cursor/sdk"
+    && closure.exact_version as String == "1.0.26"
+    && closure.install_script_count == 0
+    && closure.lock_entry_count == 124
+    && closure.root_integrity as String == "sha512-dU3WpJwrxv8yoMjs0DxBgZr5btAJEO+NrvFutl08b6l2+jcuemfFWUlSPBQ2xZAH7zIZun+sqfHvjT5NxW8woQ=="
+}
+
+test fn api_key_never_in_argv_note_is_authored() -> Bool {
+  string_contains(s: cursor_sdk_api_key_never_in_argv_note, pattern: "must not project to argv")
+}
+
+test fn srv1_package_provision_is_typed_gap() -> Bool {
+  let gap = cursor_sdk_local_package_unprovisioned_on_deployed_host()
+  gap.missing_capability == cursor_sdk_local_provision_missing_capability
+    && string_contains(s: gap.reason as String, pattern: "srv1")
+}
+
+test fn cursor_sdk_model_witness_keystone_holds() -> Bool {
+  local_usage_standing_is_typed_capability_gap()
+    && package_closure_matches_probe_receipt()
+    && api_key_never_in_argv_note_is_authored()
+    && srv1_package_provision_is_typed_gap()
+}

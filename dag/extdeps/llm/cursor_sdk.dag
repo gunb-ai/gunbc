@@ -1,0 +1,124 @@
+module extdeps.llm.cursor_sdk
+
+import std.types { String, NonEmptyStr, Bool, FilePath }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.llm.cursor_cli { CursorModelId }
+import extdeps.llm.cursor_sdk_facts {
+  CursorSdkPackageClosure,
+  CursorSdkLocalAccountUsageUnobservable,
+  cursor_sdk_local_package_closure,
+  cursor_sdk_local_account_usage_unobservable,
+  cursor_sdk_local_usage_missing_capability,
+  cursor_sdk_api_key_never_in_argv_note,
+  cursor_sdk_api_key_env_var,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cursor.com/docs/sdk/typescript"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.cursor_sdk",
+      decl_name: "CursorSdkLocalInvocation",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data cursor_sdk_authority_note: String = "Slice-E modeling only (provider-control-interface-audit §6, §12). No press trip, inventory wiring, or WorkerTurn fork — those wait on slices B/C. OBSERVED @cursor/sdk 1.0.26 via docs/probes/provider_interface_acquisition_2026-08-03.json. LocalAgentOptions.cwd is the belt-owned worktree; CloudAgentOptions is a separate workspace realization. Run.supports(operation) is queryable over stream|wait|cancel|conversation."
+
+type CursorSdkRunStatus
+  = CursorSdkRunning
+  | CursorSdkFinished
+  | CursorSdkError
+  | CursorSdkCancelled
+
+type CursorSdkRunResultStatus
+  = CursorSdkFinished
+  | CursorSdkError
+  | CursorSdkCancelled
+
+type CursorSdkRunOperation
+  = CursorSdkStreamOp
+  | CursorSdkWaitOp
+  | CursorSdkCancelOp
+  | CursorSdkConversationOp
+
+fn cursor_sdk_run_operation_wire(op: CursorSdkRunOperation) -> String {
+  match op {
+    CursorSdkStreamOp => "stream"
+    CursorSdkWaitOp => "wait"
+    CursorSdkCancelOp => "cancel"
+    CursorSdkConversationOp => "conversation"
+  }
+}
+
+type CursorControlInterface
+  = CursorSdkLocal
+  | CursorSdkCloud
+
+data cursor_sdk_belt_worktree_note: String = "Belt-owned local worktree (audit slice E): LocalAgentOptions.cwd points at the dashboard attempt worktree. cursor-agent -w/--worktree is deliberately unused — recorded in extdeps.llm.cursor_cli."
+
+type CursorSdkLocalWorkspace {
+  cwd: FilePath
+}
+
+type CursorSdkLocalCredential
+  = CursorSdkApiKeySecretRef { secret_ref: SecretRef }
+
+data cursor_sdk_credential_note: String = "API key materializes INTO the SDK call (Agent.create / Agent.prompt apiKey or CURSOR_API_KEY at process env), NEVER into argv. CursorApiKeySecretRef is the automation path; CursorLocalLoginRef is interactive-only and refuses at SDK local binding. Contrast extdeps.llm.cursor_cli CursorApiKeyArgument which puts --api-key on argv for the legacy CLI — that path is not the SDK local interface."
+
+type CursorSdkApiKeyMaterialization
+  = CursorSdkApiKeyFromSecretRef {
+      secret_ref: SecretRef
+    }
+  | CursorSdkApiKeyFromEnvironment {
+      env_var: NonEmptyStr
+    }
+
+fn cursor_sdk_materialize_api_key(
+  credential: CursorSdkLocalCredential,
+) -> CursorSdkApiKeyMaterialization {
+  match credential {
+    CursorSdkApiKeySecretRef { secret_ref: ref } =>
+      CursorSdkApiKeyFromSecretRef { secret_ref: ref }
+  }
+}
+
+type CursorSdkLocalInvocation {
+  credential: CursorSdkLocalCredential
+  model_id: CursorModelId
+  workspace: CursorSdkLocalWorkspace
+  prompt: NonEmptyStr
+}
+
+fn cursor_sdk_local_invocation(
+  credential: CursorSdkLocalCredential,
+  model_id: CursorModelId,
+  cwd: FilePath,
+  prompt: NonEmptyStr,
+) -> CursorSdkLocalInvocation {
+  CursorSdkLocalInvocation {
+    credential: credential,
+    model_id: model_id,
+    workspace: CursorSdkLocalWorkspace { cwd: cwd },
+    prompt: prompt,
+  }
+}
+
+data cursor_sdk_error_codes_note: String = "Stable backend codes from @cursor/sdk errors.d.ts. RunError.code carries the wire spelling on terminal turns."
+
+data cursor_sdk_error_authentication: NonEmptyStr = "authentication_error" as NonEmptyStr
+data cursor_sdk_error_rate_limit: NonEmptyStr = "rate_limit_error" as NonEmptyStr
+data cursor_sdk_error_agent_not_found: NonEmptyStr = "agent_not_found" as NonEmptyStr
+data cursor_sdk_error_agent_busy: NonEmptyStr = "agent_busy" as NonEmptyStr
