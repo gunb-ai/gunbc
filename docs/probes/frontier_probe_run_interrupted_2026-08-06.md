@@ -99,6 +99,8 @@ Any per-module cost figure for the probe remains **unmeasured**. It becomes meas
 
 Per operator direction the probe must **not** be trimmed to fit the host; a probe shrunk to fit a box measures a different question. On this evidence there is also nothing to shrink it *to*.
 
+**The retry is redesigned rather than repeated.** The most expensive property of the runs above is not that they died — it is that each death cost *everything*: the one-shot lost all 27 modules when module 1 was killed, six times over. The ruled execution model is therefore **27 independent module jobs** against one pinned subject, one receipt artifact per module, and a final exact-subject aggregator, so a killed job costs one interrupted row instead of the whole survey. Authority and full conditions: `v2.compiler.self_host.frontier_probe_survey` `frontier_probe_exact_head_closeout_note` — not restated here.
+
 ## Recipe defects found while rehearsing
 
 **1 — the mandated detached worktree and the default build path are mutually exclusive.** `ctrl-build` defaults to remote (`CTRL_BUILD_MODE=remote`) in these sessions, and BuildBuddy refuses a detached worktree: `remote config: get base branch and commit: unexpected branch state * (no branch)`. The closeout recipe requires a clean *detached* worktree, so `ctrl-build --local` is **required**, not a preference. Anyone following the recipe as written hits this first.
