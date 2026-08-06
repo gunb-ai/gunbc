@@ -252,7 +252,7 @@ one PR.** Structure:
   expected-average aggregate) · **the lens-door reintroduction (`ts-lens-door`)** — the
   floor's three seed-path compile sites route through the v2 door so
   `always_required_root_lenses` execute on CI, `empty_complexity_report` stamping deletes,
-  and `lens_contract_complexity` flips AuditOnly → Blocking with a planted-quadratic RED;
+  and `lens_contract_complexity_derived_kernel` flips AuditOnly → Blocking with a planted-quadratic RED;
   violations the probe's lens audit surfaced are fixed in-PR or landed as a counted typed
   quarantine roster (each row reason + dissolve-on — the §7 frontier shape, not a silent
   skip). **D4 rides in-PR with the branch-falsifier receipt** (see the delivery restructure
