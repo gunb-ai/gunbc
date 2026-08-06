@@ -383,7 +383,7 @@ data structural_bound_report: V1ComplexityInventoryRow = V1ComplexityInventoryRo
     destination: MigrateToV2LensComplexity,
     producer: FactsFromCostLens,
     phase: ParityC6LiveConsumers,
-    note: "The consumer-facing surface — ComplexityViolation, StructuralBoundResult, ComplexityReport — turning derived summaries into locatable findings. C6 needs this shape because lens_contract_complexity is AuditOnly with no consumer witness today, and a mode flip without a consumer is the inert-lens lie." as NonEmptyStr
+    note: "The consumer-facing surface — ComplexityViolation, StructuralBoundResult, ComplexityReport — turning derived summaries into locatable findings. C6 needs this shape because lens_contract_complexity_derived_kernel is AuditOnly with no consumer witness today, and a mode flip without a consumer is the inert-lens lie. It cites the derived-kernel row specifically: the C0(c) split replaced the mixed lens_contract_complexity row with that one plus lens_contract_complexity_optimality, and only the derived kernel is AuditOnly PENDING a consumer — optimality is AuditOnly permanently, so a consumer surface would not move it." as NonEmptyStr
   }
 }
 
