@@ -429,6 +429,8 @@ jobs:
           git merge --abort
           exit 1
           fi
+          echo "heal: admitting the staged commit writer via gunbc.commit_workflow admit_commit_writer before writing" >&2
+          "$(git rev-parse --show-toplevel 2>/dev/null || pwd)/target/release/gunbc" run --source-root dag --source-root src/v2 --entry dag/gunbc/commit_workflow.dag --function heal_admit
           git commit --no-verify --no-edit >/dev/null
           fi
           SEED_AHEAD_AFTER="$(git rev-list HEAD.."$BUILT_FROM" -- src/v1)"
