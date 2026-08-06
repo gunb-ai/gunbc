@@ -1284,6 +1284,47 @@ mod compiler_tests {
     }
 
     #[test]
+    fn constructor_call_admission_refuses_same_module_unlisted_sibling() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let mint_mod = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "mint_mod.dag".to_string(),
+                    content: "module mint_mod\ntype Sealed sole_constructor { tag: String }\nfn mint(tag: String) -> Sealed admit_callers: [decl_ref(module_path: \"caller_ok\", decl_name: \"ok_call\")] = Sealed { tag: tag }\n".to_string(),
+                });
+                let caller_ok = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "caller_ok.dag".to_string(),
+                    content: "module caller_ok\nimport mint_mod { mint, Sealed }\nfn ok_call() -> Sealed { mint(\"ok\") }\nfn sneak_call() -> Sealed { mint(\"sneak\") }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![mint_mod, caller_ok]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let admission_errors: Vec<_> = result.diagnostics.iter()
+                    .filter_map(|d| match &*d.diagnostic {
+                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused {
+                            caller_decl_name, ..
+                        } => Some(caller_decl_name.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(
+                    admission_errors.iter().any(|n| n == "sneak_call"),
+                    "expected ConstructorCallAdmissionRefused naming sneak_call (same module as the admitted sibling, but not admitted); got: {:?}",
+                    result.diagnostics
+                );
+                assert!(
+                    !admission_errors.iter().any(|n| n == "ok_call"),
+                    "ok_call is admitted by exact decl_ref and must not be refused; got: {:?}",
+                    admission_errors
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("constructor_call_admission_refuses_same_module_unlisted_sibling panicked");
+    }
+
+    #[test]
     fn sole_constructor_fieldless_newtype_witness() {
         // Discriminating witness: a field-less (empty-body) sole_constructor record.
         // EmittableGraph is Conj (multi-field) so the phantom property is inert there.

@@ -1657,14 +1657,22 @@ fn ct_constructor_call_admission_test() -> String {
     "    }\n\n")
 }
 
-// The discriminating control for the ConstructorReferenceAdmission de-fork.
-// mint_mod admits exactly caller_ok.ok_call. sneak_call sits in the SAME module and
-// is NOT admitted, so it separates the two authorities that briefly coexisted: an
-// exact DeclRefCoords check refuses it, while the module-grain check deleted from
-// 04_lookup.dag would have admitted it on the module match alone. Asserting
-// caller_decl_name is what makes this a discriminator rather than a second copy of
-// the cross-module test -- a refusal naming ok_call would mean the wall fired on the
-// wrong subject and still looked green.
+// Pins the GRAIN of the surviving constructor-admission authority: mint_mod admits
+// exactly caller_ok.ok_call, and sneak_call sits in the SAME module while not being
+// admitted, so a refusal naming sneak_call can only come from a decl-grain check.
+// Asserting caller_decl_name is what separates this from the cross-module test -- a
+// refusal naming ok_call would mean the wall fired on the wrong subject and still
+// looked green.
+//
+// WHAT THIS IS NOT: it is not a de-fork discriminator, and it would be dishonest to
+// enroll it as one. The module-grain check deleted from 04_lookup.dag admitted this
+// case on the module match, but 04_infer's exact DeclRefCoords check refused it
+// immediately after, so sneak_call was refused before the de-fork and is refused
+// after it. The de-fork's property is structural -- one decision site instead of two
+// -- and no behavioral witness can exhibit it, because a de-fork that changed
+// behavior would have been a bug. This test is new coverage of a case nothing
+// exercised, and the regression control that reds if the surviving check is ever
+// coarsened back to module grain.
 fn ct_constructor_call_admission_same_module_sibling_test() -> String {
   concat(
     "    #[test]\n",
