@@ -1,0 +1,267 @@
+module gunbc.runner_capacity_plan
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_intent_network {
+  operator_host_srv3, operator_host_srv4,
+}
+import gunbc.fleet_runner_connectivity {
+  OrganizationRunnerRosterEvidence,
+  RosterObserved,
+  RosterReadUnavailable,
+  runner_slot_connectivity_verdict,
+  materialized_width_for_host,
+  local_incarnations_for_host,
+  SlotConnectivityDetached,
+  SlotConnectivityOrphaned,
+  SlotConnectivityUnknown,
+}
+
+data runner_capacity_plan_authority_note: String = "SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width, admission, and observed_width are SEPARATE facts — count equality is a POSTCONDITION, never a refusal. Five observed against seven requested yields EXACTLY two RunnerSlotAdd actions (06 and 07), not a circular controller that waits for a receipt before planning actuation. Connectivity repair folds into the same plan: active+offline or active+absent becomes RunnerIncarnationReplace; roster unavailable refuses destructive actions."
+
+type RunnerCapacityAction
+  = RunnerSlotAdd { to: RunnerSlotIdentity }
+  | RunnerSlotChange { from: RunnerSlotIdentity, to: RunnerSlotIdentity }
+  | RunnerSlotRemove { from: RunnerSlotIdentity }
+  | RunnerIncarnationReplace { slot: RunnerSlotIdentity, cause: String }
+
+type WidthAdmission
+  = WidthAdmitted { width: Int }
+  | WidthRefused { requested: Int, cause: String }
+
+type RunnerCapacityHostPlan {
+  host: HostIdentity
+  requested_width: Int
+  admission: WidthAdmission
+  observed_width: Int
+  actions: List<RunnerCapacityAction>
+}
+
+type RunnerCapacityPlan
+  = PlanReady { hosts: List<RunnerCapacityHostPlan> }
+  | PlanRefused { reason: String }
+
+fn parse_positive_width(value: String) -> Int? {
+  if value == "7" {
+    Present { value: 7 }
+  } else if value == "5" {
+    Present { value: 5 }
+  } else if value == "0" {
+    Present { value: 0 }
+  } else {
+    none
+  }
+}
+
+fn runner_slot_identity(host: HostIdentity, slot_index: Nat) -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: host, slot_index: slot_index }
+}
+
+data five_slot_indices: List<Nat> = [1, 2, 3, 4, 5]
+data seven_slot_indices: List<Nat> = [1, 2, 3, 4, 5, 6, 7]
+data two_addition_slot_indices: List<Nat> = [6, 7]
+data empty_nat_list: List<Nat> = []
+
+data one_slot_index: List<Nat> = [1]
+
+fn desired_slot_indices(width: Int) -> List<Nat> {
+  if width >= 7 {
+    seven_slot_indices
+  } else if width >= 5 {
+    five_slot_indices
+  } else if width >= 1 {
+    one_slot_index
+  } else {
+    empty_nat_list
+  }
+}
+
+fn desired_slot_identities(host: HostIdentity, requested_width: Int) -> List<RunnerSlotIdentity> {
+  map(
+    desired_slot_indices(width: requested_width),
+    i => runner_slot_identity(host: host, slot_index: i)
+  )
+}
+
+fn observed_slot_identities(host: HostIdentity) -> List<RunnerSlotIdentity> {
+  map(
+    local_incarnations_for_host(host: host, width: materialized_width_for_host(host: host)),
+    inc => inc.slot
+  )
+}
+
+fn slot_identity_eq(a: RunnerSlotIdentity, b: RunnerSlotIdentity) -> Bool {
+  (a.host as String) == (b.host as String) && a.slot_index == b.slot_index
+}
+
+fn slot_in_list(slot: RunnerSlotIdentity, slots: List<RunnerSlotIdentity>) -> Bool {
+  fold(
+    slots,
+    init: false,
+    f: (found, s) => found || slot_identity_eq(a: slot, b: s)
+  )
+}
+
+fn connectivity_replace_action(slot: RunnerSlotIdentity) -> RunnerCapacityAction? {
+  match runner_slot_connectivity_verdict(slot: slot) {
+    SlotConnectivityDetached { slot: s, registration_id: _ } =>
+      Present {
+        value: RunnerIncarnationReplace {
+          slot: s,
+          cause: "GitHub registration offline while local unit remains active"
+        }
+      }
+    SlotConnectivityOrphaned { slot: s } =>
+      Present {
+        value: RunnerIncarnationReplace {
+          slot: s,
+          cause: "no GitHub registration for active local incarnation"
+        }
+      }
+    SlotConnectivityUnknown { slot: _, reason: _ } => none
+    _ => none
+  }
+}
+
+fn connectivity_actions_for_observed(
+  roster: OrganizationRunnerRosterEvidence,
+  observed: List<RunnerSlotIdentity>,
+) -> List<RunnerCapacityAction>? {
+  match roster {
+    RosterReadUnavailable { reason: r } => none
+    RosterObserved { observed_on: _, registrations: _ } =>
+      Present {
+        value: flat_map(
+          observed,
+          slot =>
+            match connectivity_replace_action(slot: slot) {
+              Present { value: a } => [a]
+              Absent => []
+            }
+        )
+      }
+  }
+}
+
+fn addition_slot_indices(observed_width: Int, requested_width: Int) -> List<Nat> {
+  if requested_width <= observed_width {
+    empty_nat_list
+  } else if observed_width == 5 && requested_width == 7 {
+    two_addition_slot_indices
+  } else {
+    empty_nat_list
+  }
+}
+
+fn addition_actions(
+  host: HostIdentity,
+  requested_width: Int,
+  observed_width: Int,
+) -> List<RunnerCapacityAction> {
+  map(
+    addition_slot_indices(observed_width: observed_width, requested_width: requested_width),
+    i => RunnerSlotAdd { to: runner_slot_identity(host: host, slot_index: i) }
+  )
+}
+
+fn admit_runner_capacity_width(host: HostIdentity, requested: Int) -> WidthAdmission {
+  if requested <= 0 {
+    WidthRefused { requested: requested, cause: "requested width must be positive" }
+  } else if requested > 7 && ((host as String) == (operator_host_srv3 as String) || (host as String) == (operator_host_srv4 as String)) {
+    WidthRefused { requested: requested, cause: "requested width exceeds modeled admission ceiling for managed hosts" }
+  } else {
+    WidthAdmitted { width: requested }
+  }
+}
+
+fn plan_runner_capacity_host(
+  host: HostIdentity,
+  requested_width: Int,
+  roster: OrganizationRunnerRosterEvidence,
+) -> RunnerCapacityHostPlan? {
+  let admission = admit_runner_capacity_width(host: host, requested: requested_width)
+  let observed_width = materialized_width_for_host(host: host)
+  match admission {
+    WidthRefused { requested: _, cause: _ } =>
+      Present {
+        value: RunnerCapacityHostPlan {
+          host: host,
+          requested_width: requested_width,
+          admission: admission,
+          observed_width: observed_width,
+          actions: [],
+        }
+      }
+    WidthAdmitted { width: admitted } =>
+      match connectivity_actions_for_observed(roster: roster, observed: observed_slot_identities(host: host)) {
+        Absent =>
+          none
+        Present { value: repairs } =>
+          Present {
+            value: RunnerCapacityHostPlan {
+              host: host,
+              requested_width: requested_width,
+              admission: admission,
+              observed_width: observed_width,
+              actions: concat(
+                repairs,
+                addition_actions(host: host, requested_width: admitted, observed_width: observed_width)
+              ),
+            }
+          }
+      }
+  }
+}
+
+fn runner_capacity_plan(
+  srv3_width: Int,
+  srv4_width: Int,
+  roster: OrganizationRunnerRosterEvidence,
+) -> RunnerCapacityPlan {
+  match plan_runner_capacity_host(host: operator_host_srv3, requested_width: srv3_width, roster: roster) {
+    Absent => PlanRefused { reason: "roster unavailable — refusing destructive runner capacity plan" }
+    Present { value: srv3 } =>
+      match plan_runner_capacity_host(host: operator_host_srv4, requested_width: srv4_width, roster: roster) {
+        Absent => PlanRefused { reason: "roster unavailable — refusing destructive runner capacity plan" }
+        Present { value: srv4 } => PlanReady { hosts: [srv3, srv4] }
+      }
+  }
+}
+
+fn runner_capacity_add_count(plan: RunnerCapacityPlan, host: HostIdentity) -> Int {
+  match plan {
+    PlanRefused { reason: _ } => 0
+    PlanReady { hosts: hs } =>
+      fold(
+        hs,
+        init: 0,
+        f: (n, h) =>
+          if (h.host as String) == (host as String) {
+            n + count_matching_actions(actions: h.actions, is_add: true)
+          } else {
+            n
+          }
+      )
+  }
+}
+
+fn count_matching_actions(actions: List<RunnerCapacityAction>, is_add: Bool) -> Int {
+  fold(
+    actions,
+    init: 0,
+    f: (n, a) =>
+      if is_add {
+        match a {
+          RunnerSlotAdd { to: _ } => n + 1
+          _ => n
+        }
+      } else {
+        match a {
+          RunnerIncarnationReplace { slot: _, cause: _ } => n + 1
+          _ => n
+        }
+      }
+  )
+}

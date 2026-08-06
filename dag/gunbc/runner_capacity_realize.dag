@@ -1,0 +1,142 @@
+module gunbc.runner_capacity_realize
+
+import std.types { String, Int, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.runner_capacity_plan {
+  RunnerCapacityPlan,
+  PlanReady,
+  PlanRefused,
+  RunnerCapacityHostPlan,
+  RunnerSlotAdd,
+  WidthAdmitted,
+  runner_capacity_plan,
+  runner_capacity_add_count,
+  addition_actions,
+}
+import gunbc.fleet_runner_connectivity { organization_runner_roster_evidence }
+import gunbc.runner_lifecycle {
+  runner_width_disk_preflight,
+  DiskHeadroomSufficient,
+  DiskHeadroomInsufficient,
+  DiskHeadroomUnobserved,
+}
+import gunbc.host_disk_observation { host_disk_observation }
+import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import product.placement_supply { HostIdentity }
+
+data runner_capacity_realize_authority_note: String = "PR C last mile: wires gunbc.apply mode=apply to runner_capacity_plan + disk preflight + ADD dispatch seam. Depends on PR A (#7939) for plan/roster and PR B (#7946) for HostEffect arms and runner_lifecycle ADD ordering. Convergence receipt is org-roster + slot lifecycle facts (host_runner_capacity_converged), never systemctl exit alone. Per-slot HostEffect realize remains scaffold until wet host_effect_apply transport lands; disk unobservable REFUSES at apply (never width-5 fallback)."
+
+type RunnerCapacityApplyOutcome
+  = RunnerCapacityApplySucceeded { add_actions_executed: Int }
+  | RunnerCapacityApplyRefused { reason: String }
+
+fn disk_preflight_refusal(host: HostIdentity, requested_width: Int) -> String? {
+  match runner_width_disk_preflight(
+    requested_width: requested_width,
+    disk: host_disk_observation(host: host),
+  ) {
+    DiskHeadroomSufficient { requested_width: _, required: _, observed_free: _ } => none
+    DiskHeadroomInsufficient { requested_width: w, required: _, observed_free: _ } =>
+      Present {
+        value: concat(
+          concat("disk headroom insufficient for width ", to_string(w)),
+          concat(" on ", host as String),
+        ),
+      }
+    DiskHeadroomUnobserved { requested_width: w, reason: r } =>
+      Present {
+        value: concat(
+          concat(concat("disk unobservable for width ", to_string(w)), concat(" on ", host as String)),
+          concat(": ", r),
+        ),
+      }
+  }
+}
+
+fn disk_preflight_refusal_for_host_plan(host_plan: RunnerCapacityHostPlan) -> String? {
+  match host_plan.admission {
+    WidthAdmitted { width: w } => disk_preflight_refusal(host: host_plan.host, requested_width: w)
+    _ => none
+  }
+}
+
+fn fold_disk_preflight_refusals(hosts: List<RunnerCapacityHostPlan>) -> String? {
+  fold(
+    hosts,
+    init: none,
+    f: (acc, h) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => disk_preflight_refusal_for_host_plan(host_plan: h)
+      },
+  )
+}
+
+fn count_add_actions_in_host_plan(host_plan: RunnerCapacityHostPlan) -> Int {
+  fold(
+    host_plan.actions,
+    init: 0,
+    f: (n, a) =>
+      match a {
+        RunnerSlotAdd { to: _ } => n + 1
+        _ => n
+      },
+  )
+}
+
+fn count_runner_slot_add_actions(plan: RunnerCapacityPlan) -> Int {
+  match plan {
+    PlanRefused { reason: _ } => 0
+    PlanReady { hosts: hs } =>
+      fold(
+        hs,
+        init: 0,
+        f: (n, h) => n + count_add_actions_in_host_plan(host_plan: h),
+      )
+  }
+}
+
+fn runner_capacity_reapply_plans_zero_additions(
+  srv3_width: Int,
+  srv4_width: Int,
+  observed_srv3: Int,
+  observed_srv4: Int,
+) -> Bool {
+  addition_actions(host: operator_host_srv3, requested_width: srv3_width, observed_width: observed_srv3).length() == 0
+    && addition_actions(host: operator_host_srv4, requested_width: srv4_width, observed_width: observed_srv4).length() == 0
+}
+
+fn runner_capacity_apply_plan(plan: RunnerCapacityPlan) -> RunnerCapacityApplyOutcome {
+  match plan {
+    PlanRefused { reason: r } => RunnerCapacityApplyRefused { reason: r }
+    PlanReady { hosts: hs } =>
+      match fold_disk_preflight_refusals(hosts: hs) {
+        Present { value: why } => RunnerCapacityApplyRefused { reason: why }
+        Absent => {
+          let adds = count_runner_slot_add_actions(plan: plan)
+          if adds > 0 {
+            RunnerCapacityApplyRefused {
+              reason: concat(
+                concat("RunnerCapacityApplyScaffold: ", to_string(adds)),
+                " RunnerSlotAdd actions planned; per-slot HostEffect realize scaffold awaits wet transport wiring (PR B arms bound in host_effect_apply)",
+              ),
+            }
+          } else {
+            RunnerCapacityApplySucceeded { add_actions_executed: 0 }
+          }
+        }
+      }
+  }
+}
+
+fn runner_capacity_apply_wet_exit(srv3_width: Int, srv4_width: Int) -> ProcessExit {
+  let plan = runner_capacity_plan(
+    srv3_width: srv3_width,
+    srv4_width: srv4_width,
+    roster: organization_runner_roster_evidence(),
+  )
+  match runner_capacity_apply_plan(plan: plan) {
+    RunnerCapacityApplyRefused { reason: r } => exit_failure(reason: r)
+    RunnerCapacityApplySucceeded { add_actions_executed: _ } => ExitSuccess
+  }
+}
