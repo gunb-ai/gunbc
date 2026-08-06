@@ -75,7 +75,7 @@ test fn w_release_features_align_test_crate_deps() -> Bool {
     && string_contains(s: ci_release_features, pattern: "test_hooks")
 }
 
-data ci_build_job_v1_compiler_unit_receipt_witness_note: String = "Executing consumer for gunbc.ci_build_job_v1_compiler_unit_receipt (A2 lane, smart-badger-549). THE PAIR IS THE PROOF: landed ordering + delivered unit identity + measured wall benefit must hold together with fleet run 31074449999 cited; RED controls refuse reverting to open/not-delivered without updating this witness."
+data ci_build_job_v1_compiler_unit_receipt_witness_note: String = "Executing consumer for gunbc.ci_build_job_v1_compiler_unit_receipt (A2 lane, smart-badger-549). THE PAIR IS THE PROOF: landed ordering + delivered unit identity + open wall benefit must hold together with fleet run 31077456733 job 92538509081 cited; RED controls refuse rung inflation (not-delivered unit, measured wall benefit, delivered fleet status without run id)."
 
 test fn w_receipt_one_profile_ordering_landed() -> Bool {
   one_profile_ordering_status == "landed"
@@ -85,21 +85,21 @@ test fn w_receipt_one_compiler_unit_delivered() -> Bool {
   one_compiler_unit_status == "delivered"
 }
 
-test fn w_receipt_wall_benefit_measured() -> Bool {
-  wall_benefit_status == "measured"
+test fn w_receipt_wall_benefit_open() -> Bool {
+  wall_benefit_status == "open"
 }
 
 test fn w_receipt_fleet_evidence_delivered_with_run() -> Bool {
   fleet_build_job_log_evidence_status == "delivered"
-    && fleet_build_job_log_evidence_run == "31074449999"
+    && fleet_build_job_log_evidence_run == "31077456733"
 }
 
 test fn red_one_compiler_unit_status_must_not_revert_undelivered() -> Bool {
   one_compiler_unit_status != "not delivered"
 }
 
-test fn red_wall_benefit_status_must_not_revert_open() -> Bool {
-  wall_benefit_status != "open"
+test fn red_wall_benefit_must_not_claim_measured() -> Bool {
+  wall_benefit_status != "measured"
 }
 
 test fn red_fleet_status_must_not_claim_delivered_without_run() -> Bool {
