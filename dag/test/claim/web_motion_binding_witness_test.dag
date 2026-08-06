@@ -1,4 +1,4 @@
-module test.claim.motion_binding_witness
+module test.claim.web_motion_binding_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int, List }
@@ -23,10 +23,7 @@ import extdeps.w3c.generic_sensor {
   sensor_access_outcome_exception_name, sensor_access_outcome_delivered_a_value,
   feature_detection_alone_establishes_availability, base_spec_defines_feature_tokens,
 }
-import gunbc.design.motion_binding {
-  BrowserProductRef, ObservedIdentity, IdentityObserved, IdentityReducedByPolicy,
-  IdentityUnobserved, identity_is_resolved,
-  MotionExecutionSubject, subject_identity_is_exact,
+import gunbc.web_motion_binding {
   BrowsingContextPosition, TopLevelContext, EmbeddedContext, BrowsingContextUnobserved,
   SecureContextState, SecureContextYes, SecureContextNo, SecureContextUnobserved,
   DocumentVisibility, DocumentVisible, DocumentVisibilityUnobserved,
@@ -40,10 +37,17 @@ import gunbc.design.motion_binding {
   StreamConnectionRefused, StreamActivatedNoReading, StreamNoEventsObserved,
   StreamHollowEventsObserved, StreamReadingsObserved, StreamUnobserved,
   stream_state_key, stream_delivered_a_value,
-  MotionBindingObservation, MotionReachability, MotionReachable, MotionUnreachable,
+  WebMotionObservation, MotionReachability, MotionReachable, MotionUnreachable,
   MotionReachabilityUnresolved, motion_reachability_key, derive_reachability,
   project_sensor_availability, unobserved_axis_count, observation_is_decisive,
+  project_binding_stream,
 }
+import extdeps.external_authority { ExternalSubjectRef }
+import gunbc.host_realization {
+  HostRealization, host_identity_is_exact, RefReducedByPolicy, RefNotProbed,
+  BrowserDocument, DomCssRenderer,
+}
+import gunbc.capability_binding { BindingStreamState, binding_stream_key }
 import gunbc.design.instrument_physical {
   SensorAvailability, SensorPresent, SensorAbsent, SensorPermissionNotRequested,
   SensorAvailabilityUnknown, sensor_availability_key,
@@ -53,26 +57,33 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data motion_binding_witness_note: String = "The two cited W3C contracts and the observation carrier that consumes them, each law beside the control that reds it. The central claim of this file is negative and is the reason the carrier exists: an observation that did not look cannot conclude. Its specimen is not invented — it is the 2026-08-05 capability probe, reconstructed below exactly as it ran, whose reported result was written up as a hardware verdict and was nothing of the kind."
 
-fn probe_subject() -> MotionExecutionSubject {
-  MotionExecutionSubject {
-    product: BrowserProductRef {
+fn probe_subject() -> HostRealization {
+  HostRealization {
+    platform: ExternalSubjectRef {
       declaration: DeclarationRef {
-        module_path: "extdeps.browser.chromium",
-        decl_name: "chromium",
+        module_path: "extdeps.os.macos",
+        decl_name: "macos",
         field: WholeDeclaration
       }
     },
-    product_build: IdentityReducedByPolicy { reported: "150.0.0.0" },
-    host_platform: IdentityReducedByPolicy { reported: "MacIntel" },
-    host_os_version: IdentityReducedByPolicy { reported: "Mac OS X 10_15_7" },
+    platform_revision: RefReducedByPolicy { reported: "Mac OS X 10_15_7" },
+    device_identity: RefNotProbed,
+    container_kind: BrowserDocument,
+    container: DeclarationRef {
+      module_path: "extdeps.browser.chromium",
+      decl_name: "chromium",
+      field: WholeDeclaration
+    },
+    container_build: RefReducedByPolicy { reported: "150.0.0.0" },
+    renderer: DomCssRenderer,
   }
 }
 
 data discredited_probe_note: String = "THE 2026-08-05 PROBE, RECONSTRUCTED FIELD BY FIELD. It ran inside an embedding context it never inspected, over a secure context it did read, with the DeviceMotionEvent interface exposed, the standard permission method absent, both feature policies unread, zero events, and no recorded window. Every Unobserved below is a thing that run did not do, and the claim under it is that this observation supports NO verdict about the machine."
 
-fn discredited_probe_observation() -> MotionBindingObservation {
-  MotionBindingObservation {
-    subject: probe_subject(),
+fn discredited_probe_observation() -> WebMotionObservation {
+  WebMotionObservation {
+    host: probe_subject(),
     api: DeviceMotionEventApi,
     browsing_context: BrowsingContextUnobserved,
     secure_context: SecureContextYes,
@@ -107,15 +118,15 @@ fn witness_the_probe_left_five_axes_unread_and_no_window() -> Bool {
   let o = discredited_probe_observation()
   unobserved_axis_count(o: o) == 5
     && !observation_is_decisive(o: o)
-    && !subject_identity_is_exact(s: probe_subject())
+    && !host_identity_is_exact(h: probe_subject())
 }
 
 data five_axes_note: String = "Five, counted rather than asserted: browsing context, visibility, focus, accelerometer policy, gyroscope policy. Interface exposure and secure context WERE read, the permission route was observed to be absent rather than unobserved, and the stream was genuinely watched — it just was not watched for a recorded length of time, which is why the window is a separate condition on decisiveness rather than a sixth unread axis."
 
 fn witness_only_a_reading_makes_motion_reachable() -> Bool {
   let base = discredited_probe_observation()
-  let reading = MotionBindingObservation {
-    subject: probe_subject(),
+  let reading = WebMotionObservation {
+    host: probe_subject(),
     api: DeviceMotionEventApi,
     browsing_context: TopLevelContext,
     secure_context: SecureContextYes,
@@ -138,9 +149,9 @@ fn witness_only_a_reading_makes_motion_reachable() -> Bool {
     && sensor_availability_key(a: project_sensor_availability(o: reading)) == "present"
 }
 
-fn observation_with_stream(s: MotionStreamState) -> MotionBindingObservation {
-  MotionBindingObservation {
-    subject: probe_subject(),
+fn observation_with_stream(s: MotionStreamState) -> WebMotionObservation {
+  WebMotionObservation {
+    host: probe_subject(),
     api: GenericSensorApi,
     browsing_context: TopLevelContext,
     secure_context: SecureContextYes,
@@ -253,13 +264,26 @@ fn witness_red_activation_without_a_reading_is_not_success() -> Bool {
     && sensor_lifecycle_key(s: SensorActivated) == "activated"
 }
 
-fn witness_reduced_user_agent_values_are_not_host_identity() -> Bool {
-  !identity_is_resolved(i: IdentityReducedByPolicy { reported: "Mac OS X 10_15_7" })
-    && !identity_is_resolved(i: IdentityUnobserved)
-    && identity_is_resolved(i: IdentityObserved { value: "15.6.1" })
+fn witness_the_web_stream_projects_into_the_neutral_binding_stream() -> Bool {
+  binding_stream_key(s: project_binding_stream(o: discredited_probe_observation())) == "activated-no-samples"
+    && binding_stream_key(s: project_binding_stream(o: observation_with_stream(s: StreamInterfaceNotExposed))) ==
+         "interface-unavailable"
+    && binding_stream_key(s: project_binding_stream(o: observation_with_stream(s: StreamPolicyBlocked))) ==
+         "policy-refused"
+    && binding_stream_key(s: project_binding_stream(o: observation_with_stream(
+         s: StreamReadingsObserved { count: 42, peak_milli_m_per_s2: 3100, sample_interval_ms: 16 }))) ==
+         "samples-observed"
 }
 
-test fn motion_binding_keystone_holds() -> Bool {
+data web_cannot_self_qualify_note: String = "The RED that keeps readability from becoming fitness across the seam: NO web stream arm projects to tap-discriminator-qualified. A browser reports events and samples; whether a knock was distinguishable is a judgement made over those samples against a declared requirement, so the web binding can never reach CapabilitySupported by projection alone."
+
+fn witness_red_no_web_arm_can_project_to_a_qualified_tap() -> Bool {
+  binding_stream_key(s: project_binding_stream(o: observation_with_stream(
+      s: StreamReadingsObserved { count: 9999, peak_milli_m_per_s2: 99999, sample_interval_ms: 1 }))) !=
+    "tap-discriminator-qualified"
+}
+
+test fn web_motion_binding_keystone_holds() -> Bool {
   witness_the_discredited_probe_resolves_nothing()
     && witness_red_silence_never_projects_to_an_absent_sensor()
     && witness_the_probe_left_five_axes_unread_and_no_window()
@@ -273,5 +297,6 @@ test fn motion_binding_keystone_holds() -> Bool {
     && witness_permission_prompt_is_not_a_grant()
     && witness_exposure_is_not_availability_and_every_failure_names_itself()
     && witness_red_activation_without_a_reading_is_not_success()
-    && witness_reduced_user_agent_values_are_not_host_identity()
+    && witness_the_web_stream_projects_into_the_neutral_binding_stream()
+    && witness_red_no_web_arm_can_project_to_a_qualified_tap()
 }

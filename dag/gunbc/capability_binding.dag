@@ -1,0 +1,191 @@
+module gunbc.capability_binding
+
+import std.types { String, Bool, Int, List, Milliseconds }
+import std.decl_ref { DeclarationRef }
+import gunbc.host_realization {
+  HostRealization, ApplicationContainerKind, RendererKind,
+  container_kind_key, renderer_kind_key, host_identity_is_exact,
+}
+
+data capability_binding_note: String = "SUPPORT IS NEVER AN OPERATING-SYSTEM BOOLEAN (operator ruling, 2026-08-06). WindowsSupported = true is not a fact anyone can act on: support depends on the operating system product AND build, the device model, the application container, the runtime build, the capability binding, the policy and permission, the hardware and driver, the observed stream, and finally the FITNESS of that stream for the interaction it is meant to serve. A Windows desktop with no integrated motion sensor runs the whole instrument perfectly and cannot satisfy 'smack the chassis'; a phone satisfies motion and has no hover at all. Those are differences in capability coverage, not in whether the product works.
+
+So the support matrix is a PROJECTION over executed observations, never an authored table, and this module carries the join that makes that projection possible: a host, a requirement, a provider, and what actually happened when they met."
+
+data physical_impulse_note: String = "THE ONE FACT EVERY BINDING PRODUCES, AND THE REASON THE BOBBER PHYSICS NEVER LEARNS WHERE MOTION CAME FROM. A web DeviceMotion event, a web Generic Sensor reading, a Windows sensor sample, an Apple Core Motion update, an Android SensorManager callback, a Linux IIO read and the deterministic sandbox button all converge here. The display consumes PhysicalImpulse and nothing else, so a new platform binding is a new producer and changes no physics, no projection and no roadmap semantics (DESIGN §2 Realization: one kernel, N handlers).
+
+source_binding is a symbolic reference to the binding that produced it, which is what keeps the synthetic path honest: a synthetic impulse is a real impulse from a real, named, explicitly synthetic source — it is never a fabricated hardware reading, and a receipt can always say which one moved the screen."
+
+type ImpulseDirection
+  = ImpulseUp
+  | ImpulseDown
+  | ImpulseLateral
+  | ImpulseDirectionUnresolved
+
+fn impulse_direction_key(d: ImpulseDirection) -> String {
+  match d {
+    ImpulseUp => "up"
+    ImpulseDown => "down"
+    ImpulseLateral => "lateral"
+    ImpulseDirectionUnresolved => "direction-unresolved"
+  }
+}
+
+type PhysicalImpulse {
+  source_binding: DeclarationRef
+  magnitude_milli_m_per_s2: Int
+  direction: ImpulseDirection
+  observed_at_ms: Milliseconds
+}
+
+data impulse_requirement_note: String = "A READABLE SENSOR IS NOT A FIT SENSOR, AND THIS IS THE DISTINCTION A SUPPORT MATRIX MOST OFTEN LOSES. The bob does not require 'an accelerometer'; it requires an interaction-quality contract — enough axes, a sample rate fast enough that a knock is not aliased away, a detection latency short enough that the response still feels caused, a declared answer to whether gravity is included in the signal, and a discriminating magnitude that separates a deliberate knock from someone typing. A sensor that streams beautifully and cannot tell a tap from a keystroke must REFUSE fitness for this use rather than passing because it read something. Every threshold here is a declared requirement of the interaction, which is what makes it a requirement rather than a tuned constant — and the cited precision floor of the motion standard is why a magnitude below it would not be measuring anything at all."
+
+type GravityHandling
+  = GravityIncluded
+  | GravityExcluded
+  | GravityHandlingUnspecified
+
+fn gravity_handling_key(g: GravityHandling) -> String {
+  match g {
+    GravityIncluded => "gravity-included"
+    GravityExcluded => "gravity-excluded"
+    GravityHandlingUnspecified => "gravity-unspecified"
+  }
+}
+
+type PhysicalImpulseRequirement {
+  axis_count: Int
+  minimum_sample_rate_hz: Int
+  maximum_detection_latency_ms: Milliseconds
+  gravity_handling: GravityHandling
+  minimum_discriminating_magnitude_milli_m_per_s2: Int
+}
+
+data bob_requirement_note: String = "The requirement the CRT bob is actually asking for, each number derived from the interaction rather than tuned. Three axes, because a knock on a chassis arrives on whichever face was struck. Fifty samples a second, because a knock's useful signal is a few tens of milliseconds long and a slower stream aliases it into nothing. A hundred and twenty milliseconds of detection latency, because past roughly that the response stops reading as caused by the knock and starts reading as an animation that happened nearby. Gravity excluded, because a constant one-gravity bias swamps the discriminator unless it is removed. And two thousand milli-m/s^2 — about a fifth of a gravity — as the discriminating floor, which is comfortably above the cited standard's own 0.1 m/s^2 precision limit and comfortably above the incidental motion of typing."
+
+data bob_impulse_requirement: PhysicalImpulseRequirement = PhysicalImpulseRequirement {
+  axis_count: 3,
+  minimum_sample_rate_hz: 50,
+  maximum_detection_latency_ms: 120,
+  gravity_handling: GravityExcluded,
+  minimum_discriminating_magnitude_milli_m_per_s2: 2000,
+}
+
+data capability_binding_join_note: String = "A binding is the join of a host, a requirement, and a provider — and the provider is a symbolic reference to ITS own authority, never an arm of an enumeration here. The W3C DeviceMotion contract, the W3C Generic Sensor contract, the Windows sensor namespace, Apple Core Motion, Android SensorManager, the Linux IIO subsystem and the synthetic source each belong in their own module, and combining the standards with the operating-system frameworks in a single motion-support file would fuse independently governed upstreams into one authority (DESIGN §3)."
+
+type CapabilityBinding {
+  host: HostRealization
+  requirement: DeclarationRef
+  provider: DeclarationRef
+}
+
+data binding_stream_note: String = "WHAT ACTUALLY HAPPENED, at the grain where the remedies differ. The arms split into three groups and the split is the point. An unavailable interface, a refused policy, a refused permission, unavailable hardware and a refused backend connection are OBSTACLES, each naming a different fix. Activation without samples, hollow samples and observed samples are DEGREES OF SILENCE AND SIGNAL, none of which is a verdict on the machine. And the two discriminator arms are FITNESS: a stream can deliver plentiful clean samples and still fail to separate a knock from typing, which is a refusal of this interaction rather than of the sensor. StreamUnobserved is a path nobody exercised, and it is never evidence of anything."
+
+type BindingStreamState
+  = InterfaceUnavailable
+  | PolicyRefused
+  | PermissionRefused
+  | HardwareUnavailable
+  | BackendConnectionRefused { error_name: String }
+  | ActivatedNoSamples { window_ms: Milliseconds }
+  | HollowSamplesObserved { count: Int, window_ms: Milliseconds }
+  | SamplesObserved { count: Int, frequency_hz: Int, noise_floor_milli: Int, peak_magnitude_milli: Int }
+  | TapDiscriminatorQualified { peak_magnitude_milli: Int, detection_latency_ms: Milliseconds }
+  | TapDiscriminatorRejected { reason: String }
+  | BindingStreamUnobserved
+
+fn binding_stream_key(s: BindingStreamState) -> String {
+  match s {
+    InterfaceUnavailable => "interface-unavailable"
+    PolicyRefused => "policy-refused"
+    PermissionRefused => "permission-refused"
+    HardwareUnavailable => "hardware-unavailable"
+    BackendConnectionRefused { error_name } => "backend-connection-refused"
+    ActivatedNoSamples { window_ms } => "activated-no-samples"
+    HollowSamplesObserved { count, window_ms } => "hollow-samples-observed"
+    SamplesObserved { count, frequency_hz, noise_floor_milli, peak_magnitude_milli } => "samples-observed"
+    TapDiscriminatorQualified { peak_magnitude_milli, detection_latency_ms } => "tap-discriminator-qualified"
+    TapDiscriminatorRejected { reason } => "tap-discriminator-rejected"
+    BindingStreamUnobserved => "unobserved"
+  }
+}
+
+type CapabilityBindingObservation {
+  binding: CapabilityBinding
+  stream: BindingStreamState
+  observation_window_ms: Milliseconds
+}
+
+data capability_verdict_note: String = "THE DERIVED VERDICT, PER CAPABILITY AND PER HOST, WITH AN EXPLICIT ALTERNATIVE WHEN IT DEGRADES. Supported means the interaction was actually qualified on this host — not that a sensor existed. Degraded means the product still works while THIS capability does not, and it must name both what is missing and what is offered instead, because a degradation with an unnamed alternative is just a failure with better manners. Unavailable carries the exact obstacle. Unobserved is the honest default and is never a soft no.
+
+THE RULE THE ALTERNATIVE EXISTS TO ENFORCE: a synthetic impulse may be the explicit alternative, and it may never masquerade as a hardware reading. It is named in the verdict, named in the receipt, and named on the impulse itself through source_binding, so a screen that bobbed can always say what moved it."
+
+type TargetCapabilityVerdict
+  = CapabilitySupported { qualified_peak_milli: Int }
+  | CapabilityDegraded { missing: String, explicit_alternative: String }
+  | CapabilityUnavailable { cause: String }
+  | CapabilityUnobserved
+
+fn capability_verdict_key(v: TargetCapabilityVerdict) -> String {
+  match v {
+    CapabilitySupported { qualified_peak_milli } => "supported"
+    CapabilityDegraded { missing, explicit_alternative } => "degraded"
+    CapabilityUnavailable { cause } => "unavailable"
+    CapabilityUnobserved => "unobserved"
+  }
+}
+
+data synthetic_alternative_label: String = "deterministic synthetic impulse, explicitly not a hardware reading"
+
+data verdict_derivation_note: String = "Only a QUALIFIED discriminator reaches supported. Observed samples alone do not: a stream that delivers values without ever qualifying a tap has proven readability and not fitness, so it degrades with the fitness named as what is missing. Every obstacle carries itself into the cause. Silence in all its forms degrades rather than refusing, because the product keeps working and only this one interaction does not — and each of those arms names the synthetic path as the alternative that is actually offered."
+
+fn derive_capability_verdict(o: CapabilityBindingObservation) -> TargetCapabilityVerdict {
+  match o.stream {
+    TapDiscriminatorQualified { peak_magnitude_milli, detection_latency_ms } =>
+      CapabilitySupported { qualified_peak_milli: peak_magnitude_milli }
+    TapDiscriminatorRejected { reason } =>
+      CapabilityDegraded { missing: reason, explicit_alternative: synthetic_alternative_label }
+    SamplesObserved { count, frequency_hz, noise_floor_milli, peak_magnitude_milli } =>
+      CapabilityDegraded {
+        missing: "samples arrive but no tap was discriminated in this window",
+        explicit_alternative: synthetic_alternative_label,
+      }
+    HollowSamplesObserved { count, window_ms } =>
+      CapabilityDegraded {
+        missing: "samples arrive carrying no values",
+        explicit_alternative: synthetic_alternative_label,
+      }
+    ActivatedNoSamples { window_ms } =>
+      CapabilityDegraded {
+        missing: "binding activated and delivered no sample in this window",
+        explicit_alternative: synthetic_alternative_label,
+      }
+    InterfaceUnavailable => CapabilityUnavailable { cause: "interface-unavailable" }
+    PolicyRefused => CapabilityUnavailable { cause: "policy-refused" }
+    PermissionRefused => CapabilityUnavailable { cause: "permission-refused" }
+    HardwareUnavailable => CapabilityUnavailable { cause: "hardware-unavailable" }
+    BackendConnectionRefused { error_name } => CapabilityUnavailable { cause: error_name }
+    BindingStreamUnobserved => CapabilityUnobserved
+  }
+}
+
+data fitness_is_measured_note: String = "Fitness is checked against the requirement's own numbers rather than against a feeling, so a stream that qualifies is one that met a declared contract. A qualified tap must clear the discriminating magnitude AND arrive inside the detection latency; clearing one without the other is not qualification, which is why both are conditions rather than a single score."
+
+fn stream_meets_requirement(s: BindingStreamState, r: PhysicalImpulseRequirement) -> Bool {
+  match s {
+    TapDiscriminatorQualified { peak_magnitude_milli, detection_latency_ms } =>
+      peak_magnitude_milli >= r.minimum_discriminating_magnitude_milli_m_per_s2 &&
+        detection_latency_ms <= r.maximum_detection_latency_ms
+    _ => false
+  }
+}
+
+data support_matrix_is_a_projection_note: String = "A support matrix is a fold over observation rows and is never authored. Adding an operating system, a container or a provider adds ROWS; it edits no function here. That is the whole reason the verdict is derived rather than declared, and it is what stops one machine's Chrome result from becoming a claim about Macs, about browsers, or about the product."
+
+fn verdicts_of(rows: List<CapabilityBindingObservation>) -> List<TargetCapabilityVerdict> {
+  map(rows, o => derive_capability_verdict(o: o))
+}
+
+fn any_capability_supported(rows: List<CapabilityBindingObservation>) -> Bool {
+  fold(rows, init: false, f: (acc, o) =>
+    acc || capability_verdict_key(v: derive_capability_verdict(o: o)) == "supported")
+}

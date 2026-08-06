@@ -1,7 +1,13 @@
-module gunbc.design.motion_binding
+module gunbc.web_motion_binding
 
 import std.types { String, Bool, Int, List, Milliseconds }
 import std.decl_ref { DeclarationRef }
+import gunbc.host_realization { HostRealization, ResolvedRef, ref_is_resolved, host_identity_is_exact }
+import gunbc.capability_binding {
+  BindingStreamState, InterfaceUnavailable, PolicyRefused, PermissionRefused,
+  BackendConnectionRefused, ActivatedNoSamples, HollowSamplesObserved, SamplesObserved,
+  BindingStreamUnobserved,
+}
 import extdeps.w3c.device_orientation_and_motion {
   PermissionState, PermissionGranted, PermissionDenied, PermissionPrompt,
   permission_state_wire,
@@ -18,47 +24,9 @@ data motion_binding_note: String = "AN OBSERVATION IS A RECEIPT IN THE OBSERVING
 
 WHY THIS CARRIER EXISTS AT ALL, stated as the receipt of a real failure rather than as a preference: a capability probe run on 2026-08-05 reported five motion interfaces exposed, a secure context, no permission prompt, and zero events, and that was written up as though it established that the host had no usable sensor. It established nothing of the kind. The probe ran inside an embedding context whose Permissions Policy it never read, listened only for devicemotion events, never constructed or started any of the three Generic Sensor interfaces it had just finished enumerating, recorded no observation window, and copied frozen User-Agent literals as though they were host identity. Its honest derived state was MotionReachabilityUnresolved. Every axis below exists because that probe conflated it with another one."
 
-data execution_subject_note: String = "The subject is a browser PRODUCT, named by a reference to that product's own authority module, never by a string. Chrome and Safari are distinct execution subjects and a result from one is never a fact about the other, nor about 'Mac browsers' as a class — so adding a second subject is a new row pointing at a new extdeps module, and edits nothing here (DESIGN §3: adding a fourth product cannot edit the kernel). A product module is authored when there is an actual observation to attribute to it; an unobserved product is a coverage obligation in this layer, not an Unobserved row authored inside an upstream."
+data web_binding_scope_note: String = "THIS MODULE IS ONE BINDING, NOT THE FRONTEND ARCHITECTURE (operator ruling, 2026-08-06). An earlier revision of it declared BrowserProductRef and MotionExecutionSubject as TOP-LEVEL types of a supposedly neutral motion observation, which quietly made the product a website and every other container a variant of one. Browsing context, secure context and Permissions Policy admission are real and load-bearing — they are simply WEB facts, belonging to the web realization of a capability rather than to the capability. The host now comes from gunbc.host_realization, where container, renderer, platform and device are separate axes, and the verdict comes from gunbc.capability_binding, where a Windows sensor, Core Motion, SensorManager, Linux IIO and the synthetic source produce the same fact this binding does.
 
-type BrowserProductRef {
-  declaration: DeclarationRef
-}
-
-data reduced_identity_note: String = "REPORTED IS NOT OBSERVED, AND THE USER-AGENT STRING IS THE STANDING EXAMPLE. Chrome freezes 'Mac OS X 10_15_7' and 'MacIntel' as literal values under User-Agent reduction, and reports a major-version-only build number, so reading them as the machine's real operating system, architecture or build is reading a constant as a measurement. IdentityReducedByPolicy keeps the reported bytes while refusing to call them identity; resolving it needs UA Client Hints where available, or a host-side observation, and until one of those runs the exact host stays honestly unresolved."
-
-type ObservedIdentity
-  = IdentityObserved { value: String }
-  | IdentityReducedByPolicy { reported: String }
-  | IdentityUnobserved
-
-fn identity_is_resolved(i: ObservedIdentity) -> Bool {
-  match i {
-    IdentityObserved { value } => true
-    IdentityReducedByPolicy { reported } => false
-    IdentityUnobserved => false
-  }
-}
-
-fn identity_display(i: ObservedIdentity) -> String {
-  match i {
-    IdentityObserved { value } => value
-    IdentityReducedByPolicy { reported } => concat("reduced: ", reported)
-    IdentityUnobserved => "unobserved"
-  }
-}
-
-type MotionExecutionSubject {
-  product: BrowserProductRef
-  product_build: ObservedIdentity
-  host_platform: ObservedIdentity
-  host_os_version: ObservedIdentity
-}
-
-fn subject_identity_is_exact(s: MotionExecutionSubject) -> Bool {
-  identity_is_resolved(i: s.product_build)
-    && identity_is_resolved(i: s.host_platform)
-    && identity_is_resolved(i: s.host_os_version)
-}
+The subject-identity carrier went with it: ObservedIdentity was a second spelling of ResolvedRef, one file apart, which is the §3 fork at its smallest scale. It is deleted in favour of the single authority, and the reduced-User-Agent arm survives there as RefReducedByPolicy."
 
 data browsing_context_note: String = "THE AXIS THE DISCREDITED PROBE NEVER READ, AND THE ONE MOST LIKELY TO HAVE EXPLAINED ITS RESULT. Sensor features are policy-controlled, and an embedded document is not granted them merely because the user allowed the top-level site: a parent must delegate the feature explicitly, and a browser's per-site 'motion sensors: allow' setting does not override a parent document's Permissions Policy. So a zero-event reading taken inside an embed is uninterpretable until the context is known, which is why this axis is recorded before any conclusion is drawn and why the decisive probe must be served top-level."
 
@@ -163,8 +131,8 @@ fn motion_api_key(a: MotionApi) -> String {
   }
 }
 
-type MotionBindingObservation {
-  subject: MotionExecutionSubject
+type WebMotionObservation {
+  host: HostRealization
   api: MotionApi
   browsing_context: BrowsingContextPosition
   secure_context: SecureContextState
@@ -193,7 +161,7 @@ fn motion_reachability_key(r: MotionReachability) -> String {
   }
 }
 
-fn derive_reachability(o: MotionBindingObservation) -> MotionReachability {
+fn derive_reachability(o: WebMotionObservation) -> MotionReachability {
   match o.stream {
     StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } =>
       MotionReachable { peak_milli_m_per_s2: peak_milli_m_per_s2 }
@@ -212,11 +180,11 @@ fn derive_reachability(o: MotionBindingObservation) -> MotionReachability {
   }
 }
 
-data projection_is_deliberately_lossy_note: String = "THE PROJECTION LOSES INFORMATION ON PURPOSE, AND THAT IS WHY THE OBSERVATION IS KEPT BESIDE IT. gunbc.design.instrument_physical's SensorAvailability is a five-state admission input, coarser than the observation above, and it is NOT widened here to match: admission needs to know whether an impulse source may be trusted, and everything that is not an observed reading answers no. So most arms land on SensorAvailabilityUnknown, and that is the honest result of a coarse target rather than a defect in the projection. The exact fact stays in the MotionBindingObservation and is what the receipt panel renders.
+data projection_is_deliberately_lossy_note: String = "THE PROJECTION LOSES INFORMATION ON PURPOSE, AND THAT IS WHY THE OBSERVATION IS KEPT BESIDE IT. gunbc.design.instrument_physical's SensorAvailability is a five-state admission input, coarser than the observation above, and it is NOT widened here to match: admission needs to know whether an impulse source may be trusted, and everything that is not an observed reading answers no. So most arms land on SensorAvailabilityUnknown, and that is the honest result of a coarse target rather than a defect in the projection. The exact fact stays in the WebMotionObservation and is what the receipt panel renders.
 
 TWO PROJECTIONS ARE RULED AND NOT NEGOTIABLE. StreamNoEventsObserved projects to SensorAvailabilityUnknown and NEVER to SensorAbsent (operator ruling, 2026-08-06): silence has at least seven candidate causes and naming one of them is the empty-observation narrow. StreamConnectionRefused likewise projects to Unknown rather than Absent — the spec's NotReadableError says the implementation could not connect, which is a statement about this attempt and not a proof that no hardware exists. Only StreamInterfaceNotExposed reaches SensorAbsent, because an interface that is not on the global object is genuinely not there to be used."
 
-fn project_sensor_availability(o: MotionBindingObservation) -> SensorAvailability {
+fn project_sensor_availability(o: WebMotionObservation) -> SensorAvailability {
   match o.stream {
     StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } => SensorPresent
     StreamInterfaceNotExposed => SensorAbsent
@@ -295,7 +263,7 @@ fn stream_unread(s: MotionStreamState) -> Int {
   }
 }
 
-fn unobserved_axis_count(o: MotionBindingObservation) -> Int {
+fn unobserved_axis_count(o: WebMotionObservation) -> Int {
   browsing_context_unread(c: o.browsing_context) +
     secure_context_unread(s: o.secure_context) +
     visibility_unread(v: o.visibility) +
@@ -307,6 +275,33 @@ fn unobserved_axis_count(o: MotionBindingObservation) -> Int {
     stream_unread(s: o.stream)
 }
 
-fn observation_is_decisive(o: MotionBindingObservation) -> Bool {
+fn observation_is_decisive(o: WebMotionObservation) -> Bool {
   unobserved_axis_count(o: o) == 0 && o.observation_window_ms > 0
 }
+
+data web_stream_projects_outward_note: String = "THE SEAM THAT MAKES THE WEB ONE PRODUCER AMONG SEVERAL. Everything above is web vocabulary; everything a consumer downstream sees is the neutral BindingStreamState that a Windows sensor, Core Motion, SensorManager, Linux IIO and the synthetic source also produce. So the bobber physics and the support projection never learn that a browser was involved, and adding a native binding adds a producer without editing either.
+
+The projection is deliberately NOT total in the optimistic direction: the web has no arm that reaches TapDiscriminatorQualified, because qualification is a fitness judgement made from samples rather than a state a browser reports. A web binding therefore cannot reach CapabilitySupported by projection alone — it gets there only once a discriminator actually runs over its samples and qualifies, which is exactly the readability-is-not-fitness rule stated as an unreachable arm rather than as a promise."
+
+fn project_binding_stream(o: WebMotionObservation) -> BindingStreamState {
+  match o.stream {
+    StreamInterfaceNotExposed => InterfaceUnavailable
+    StreamPolicyBlocked => PolicyRefused
+    StreamPermissionDenied => PermissionRefused
+    StreamConnectionRefused { error_name } => BackendConnectionRefused { error_name: error_name }
+    StreamActivatedNoReading { window_ms } => ActivatedNoSamples { window_ms: window_ms }
+    StreamNoEventsObserved { window_ms } => ActivatedNoSamples { window_ms: window_ms }
+    StreamHollowEventsObserved { count, window_ms } =>
+      HollowSamplesObserved { count: count, window_ms: window_ms }
+    StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } =>
+      SamplesObserved {
+        count: count,
+        frequency_hz: 0,
+        noise_floor_milli: 0,
+        peak_magnitude_milli: peak_milli_m_per_s2,
+      }
+    StreamUnobserved => BindingStreamUnobserved
+  }
+}
+
+data silence_projects_to_activated_no_samples_note: String = "Both web silences — no events at all, and an activated sensor that never read — project to ActivatedNoSamples, and that merge is a LOSS the web vocabulary keeps beside it rather than a claim. Downstream the two have the same remedy and the same verdict, so the neutral layer does not need to tell them apart; the receipt panel renders the exact web arm, which does."

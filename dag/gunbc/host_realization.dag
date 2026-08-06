@@ -1,0 +1,99 @@
+module gunbc.host_realization
+
+import std.types { String, Bool, Int, List }
+import std.decl_ref { DeclarationRef }
+import extdeps.external_authority { ExternalSubjectRef }
+
+data host_realization_note: String = "CONTAINER IS NOT RENDERER IS NOT OPERATING SYSTEM IS NOT CAPABILITY PROVIDER (operator ruling, 2026-08-06). Four things get fused into the word 'platform' and every fusion costs a real distinction: a native desktop application can render the very same DOM surface a website renders; a website can render through DOM or through WebGPU; a native shell can host today's instrument unchanged while adding typed platform capability bindings underneath it; and the same operating system can appear under several containers at once. So this module carries the axes separately and NONE of them is the product's semantics — a finish line, a camera, a detent and a physical impulse mean the same thing in Chrome, in a Windows shell, on a phone, and in an engine scene.
+
+WHAT THIS EXISTS TO PREVENT is a browser-shaped frontend architecture. The first cut of the motion observation carrier made BrowserProductRef, browsing context and secure context TOP-LEVEL fields of a supposedly neutral observation, which quietly declared that the product is a website and that every other container is a variant of one. It is the other way round: the web is one realization among several, grounded on its own terms, and it is not the preferred final container merely because it is the first one running."
+
+data container_kind_note: String = "WHERE THE PRODUCT PROCESS LIVES. This axis is a closed structural enumeration and is deliberately NOT a product enumeration — Chrome, Safari, a signed desktop build and a phone app are symbolic references to their own authorities, carried beside this kind rather than inside it, so adding a product is a new module and edits nothing here (DESIGN §3). An embedded web view is its own arm rather than a browser document, because its process lifetime, its permission surface and its policy delegation all belong to the hosting application instead of to a browser."
+
+type ApplicationContainerKind
+  = BrowserDocument
+  | NativeDesktopProcess
+  | NativeMobileProcess
+  | EmbeddedWebView
+  | CompanionDevice
+
+fn container_kind_key(c: ApplicationContainerKind) -> String {
+  match c {
+    BrowserDocument => "browser-document"
+    NativeDesktopProcess => "native-desktop-process"
+    NativeMobileProcess => "native-mobile-process"
+    EmbeddedWebView => "embedded-web-view"
+    CompanionDevice => "companion-device"
+  }
+}
+
+fn container_owns_its_process_lifetime(c: ApplicationContainerKind) -> Bool {
+  match c {
+    BrowserDocument => false
+    NativeDesktopProcess => true
+    NativeMobileProcess => true
+    EmbeddedWebView => false
+    CompanionDevice => true
+  }
+}
+
+data renderer_kind_note: String = "HOW A DECIDED PROJECTION BECOMES PIXELS AND ACCESSIBILITY STRUCTURE, and the product model must not know which one was chosen. This is a structural axis rather than a product one — there is no vendor here to enumerate — and it is orthogonal to the container above it: a native desktop process may render DOM inside a web view, and a browser document may render a WebGPU scene. Keeping the two apart is what leaves the route open from today's generated DOM instrument to a native or engine realization of the SAME projection, without touching roadmap semantics."
+
+type RendererKind
+  = DomCssRenderer
+  | WebGpuRenderer
+  | NativeWidgetRenderer
+  | GameEngineRenderer
+
+fn renderer_kind_key(r: RendererKind) -> String {
+  match r {
+    DomCssRenderer => "dom-css"
+    WebGpuRenderer => "webgpu"
+    NativeWidgetRenderer => "native-widget"
+    GameEngineRenderer => "game-engine"
+  }
+}
+
+data host_realization_identity_note: String = "Every identity here is a symbolic reference to the authority that owns it, never a name string, so a host is a join over real modules rather than over spellings (DESIGN §3 cite-the-symbol). The unresolved arm is a NAMED variant carrying its own cause rather than a bare optional, because there are several distinct reasons an identity goes unresolved and collapsing them into one absent value is the state-space conflation DESIGN's failure-mode list names first: a reduced User-Agent that reports a frozen literal, a probe that never asked, and a platform that publishes no such identity are three different situations with three different remedies, and only the first is fixed by reading UA Client Hints."
+
+type ResolvedRef
+  = RefResolved { declaration: DeclarationRef }
+  | RefReducedByPolicy { reported: String }
+  | RefNotProbed
+  | RefUnpublishedByPlatform
+
+fn ref_is_resolved(r: ResolvedRef) -> Bool {
+  match r {
+    RefResolved { declaration } => true
+    RefReducedByPolicy { reported } => false
+    RefNotProbed => false
+    RefUnpublishedByPlatform => false
+  }
+}
+
+fn resolved_ref_key(r: ResolvedRef) -> String {
+  match r {
+    RefResolved { declaration } => "resolved"
+    RefReducedByPolicy { reported } => "reduced-by-policy"
+    RefNotProbed => "not-probed"
+    RefUnpublishedByPlatform => "unpublished-by-platform"
+  }
+}
+
+type HostRealization {
+  platform: ExternalSubjectRef
+  platform_revision: ResolvedRef
+  device_identity: ResolvedRef
+  container_kind: ApplicationContainerKind
+  container: DeclarationRef
+  container_build: ResolvedRef
+  renderer: RendererKind
+}
+
+fn host_identity_is_exact(h: HostRealization) -> Bool {
+  ref_is_resolved(r: h.platform_revision) &&
+    ref_is_resolved(r: h.device_identity) &&
+    ref_is_resolved(r: h.container_build)
+}
+
+data host_identity_exactness_note: String = "A host whose revision, device and build are all resolved can carry a claim about THAT machine. A host missing any of them can still carry an observation — the observation is real — but a support statement derived from it is scoped to whatever was actually resolved, which in practice is usually the container kind and nothing more."
