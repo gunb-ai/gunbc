@@ -122,7 +122,11 @@ import v1.compiler.emit {
   service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared,
   emit_typed_let_shared
 }
-import v1.compiler.languages { wrap_shared_type }
+import v1.compiler.languages {
+  wrap_shared_type,
+  sharing_wrap_ctor_for_target,
+  sharing_type_is_wrapped_for_target
+}
 import v1.compiler.emit_core_support {
   EmitResult, TestProjection,
   escape_json_string, module_to_filename, make_indent,
@@ -234,7 +238,19 @@ fn empty_string_bool_map() -> Map<String, Bool> {
 }
 
 fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
-  string_length(s: type_name) >= 3 && substring(s: type_name, start: 0, end: 3) == "Rc<"
+  sharing_type_is_wrapped_for_target(target: Rust, type_name: type_name)
+}
+
+fn rust_shared_wrap_ctor(inner_expr: String) -> String {
+  sharing_wrap_ctor_for_target(target: Rust, inner_expr: inner_expr)
+}
+
+fn rust_shared_wrap_ctor_prefix() -> String {
+  "Rc::new("
+}
+
+fn rust_shared_wrap_ctor_suffix() -> String {
+  ")"
 }
 
 fn corpus_repr_is_faithful(corpus_repr: RustCorpusRepr) -> Bool {
@@ -482,7 +498,7 @@ fn is_host_text_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>,
 
 fn rust_seed_host_freemonoid_empty(carrier_name: String, corpus_repr: RustCorpusRepr) -> String? {
   match rust_seed_host_container_base(name: carrier_name, corpus_repr: corpus_repr) {
-    Present { value: _ } => Present { value: "Rc::new(vec![])" }
+    Present { value: _ } => Present { value: rust_shared_wrap_ctor(inner_expr: "vec![]") }
     Absent => none
   }
 }
@@ -510,7 +526,8 @@ fn rust_witness_parent_leaf(parent: String) -> Bool {
 data rust_witness_variant_arm_names_note: String = "Holds/Violates literals below are the two arms of std.witness.Witness<C> (dag/std/witness.dag) — not minted nicknames. Pattern position routes via variant_pattern_qualified_path like any other modeled enum; construction turbofish here keys type-arg resolution off the modeled arm names only."
 
 fn rust_peel_one_rc_type_node(type_node: Node, source_indices: Map<String, NewlineIndex>) -> Node {
-  if qualified_last_segment(name: type_node.name) != "Rc" {
+  let seg = qualified_last_segment(name: type_node.name)
+  if seg != "Rc" && seg != "Arc" {
     type_node
   } else {
     match type_node.children |> first {
@@ -529,7 +546,8 @@ fn rust_peel_one_rc_type_node(type_node: Node, source_indices: Map<String, Newli
 }
 
 fn rust_peel_all_rc_type_node(type_node: Node, source_indices: Map<String, NewlineIndex>) -> Node {
-  if qualified_last_segment(name: type_node.name) == "Rc" {
+  let seg = qualified_last_segment(name: type_node.name)
+  if seg == "Rc" || seg == "Arc" {
     rust_peel_all_rc_type_node(type_node: rust_peel_one_rc_type_node(type_node: type_node, source_indices: source_indices), source_indices: source_indices)
   } else {
     type_node
@@ -6422,7 +6440,7 @@ fn freemonoid_empty_from_emit_info(leaf_name: String, emit_info: EmitGraphInfo) 
 }
 
 fn emit_freemonoid_empty_rc_value() -> String {
-  "Rc::new(vec![])"
+  rust_shared_wrap_ctor(inner_expr: "vec![]")
 }
 
 fn emit_freemonoid_empty_variant_body() -> String {
@@ -6529,7 +6547,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
           concat(enum_name, "::", leaf_name)
         }
         if variant_ref_self_wraps(name: leaf_name, enum_name: enum_name, shared_types: shared_types, corpus_repr: emit_info.corpus_repr) {
-          concat("Rc::new(", body, ")")
+          rust_shared_wrap_ctor(inner_expr: body)
         } else { body }
       Absent =>
         match lookup_item_for_value_ref(resolved_name: resolved_name, registry: registry) {
@@ -6592,7 +6610,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
               concat(enum_name, "::", leaf_name)
             }
             if set_contains(shared_types, enum_name) {
-              concat("Rc::new(", qualified, ")")
+              rust_shared_wrap_ctor(inner_expr: qualified)
             } else { qualified }
             }
           Absent =>
@@ -6816,7 +6834,7 @@ fn rust_wrap_runtime_collection_result(call_str: String, function_name: String, 
     if rust_runtime_bridge_collection_result_needs_rc_elements(function_name: function_name, result_type: result_type) {
       concat("Rc::new((", call_str, ").into_iter().map(Rc::new).collect::<Vec<_>>())")
     } else {
-      concat("Rc::new(", call_str, ")")
+      rust_shared_wrap_ctor(inner_expr: call_str)
     }
   } else {
     call_str
@@ -6940,7 +6958,7 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
           }
       }
       if rc_name != "" && set_contains(shared_types, rc_name) {
-        concat("Rc::new(", raw, ")")
+        rust_shared_wrap_ctor(inner_expr: raw)
       } else { raw }
     _ => emit_error_expr(message: "emit_rust_expr_record_lit expected ExprRecordLit", target: Rust)
   }
@@ -7133,9 +7151,9 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
         if kv_type_str != "" {
           concat("v1_rt::rc_empty_map::<", kv_type_str, ">()")
         } else {
-          "Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */"
+          rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
         }
-      _ => "Rc::new(HashMap::new()) /* BRIDGE: empty_map return type unresolved */"
+      _ => rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map return type unresolved */")
     }
   } else if func == "empty_set" {
     match inferred {
@@ -7148,7 +7166,7 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
   }
 
   if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: func) {
-    concat("Rc::new(", call_str, ")")
+    rust_shared_wrap_ctor(inner_expr: call_str)
   } else { call_str }
 }
 
@@ -7210,7 +7228,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     let sharing = language_spec(target: Rust).sharing
     let spread = if needs_rc { apply_type_template1(template: sharing.deref_clone, arg0: base_str) } else { apply_type_template1(template: sharing.clone_value, arg0: base_str) }
     let raw = concat(type_name, " { ", fields_str, ", ..", spread, " }")
-    if needs_rc { return concat("Rc::new(", raw, ")") }
+    if needs_rc { return rust_shared_wrap_ctor(inner_expr: raw) }
     else { return raw }
   }
   if func == "to_string" {
@@ -7372,7 +7390,7 @@ fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry:
     ind1, "for ", emit_ident(name: variable, target: Rust), " in ", iter_str, " {\n",
     ind2, "__collect.push(", body_str, ");\n",
     ind1, "}\n",
-    ind1, "Rc::new(__collect)\n",
+    ind1, rust_shared_wrap_ctor(inner_expr: "__collect"), "\n",
     ind0, "}")
 }
 
@@ -7654,10 +7672,10 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
             if kv_type_str != "" {
               concat("v1_rt::rc_empty_map::<", kv_type_str, ">()")
             } else {
-              "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */"
+              rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: fold empty_map value type unresolved */")
             }
           } else if init_func == "empty_map" {
-            "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */"
+            rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: fold empty_map accumulator type unresolved */")
           } else if init_func == "empty_set" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
             emit_rust_empty_set_expr(set_type: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
           } else if init_func == "empty_set" {
@@ -7718,9 +7736,9 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
   let a_clone = apply_type_template1(template: sharing.clone_value, arg0: "a")
   let b_clone = apply_type_template1(template: sharing.clone_value, arg0: "b")
   if elem_type_str == "_" {
-    concat("Rc::new({ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })")
+    rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
   } else {
-    concat("Rc::new({ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })")
+    rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
   }
 }
 
@@ -7760,10 +7778,10 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
             let p = emit_ident(name: dag_name, target: Rust)
             let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: arg_value(n: a).children |> skip(1))
             let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-            concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", iter_str, " { __result.push(", body_str, "); } __result })")
-          _ => concat("Rc::new(", iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>())")
+            rust_shared_wrap_ctor(inner_expr: concat("{ let mut __result = Vec::new(); for ", p, " in ", iter_str, " { __result.push(", body_str, "); } __result }"))
+          _ => rust_shared_wrap_ctor(inner_expr: concat(iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>()"))
         }
-      Absent => concat("Rc::new(", iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>())")
+      Absent => rust_shared_wrap_ctor(inner_expr: concat(iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>()"))
     }
   }
 }
@@ -7786,16 +7804,16 @@ fn emit_rust_higher_order_method(ho_spec: HigherOrderMethodSpec, receiver: Node,
           let inner_iter = apply_type_template1(template: sharing.iter_owned, arg0: concat("(*", body_str, ")"))
           let bindings = seed_bindings(key: "param", value: p) |> map_insert("body", body_str) |> map_insert("iter", iter_str) |> map_insert("inner_iter", inner_iter)
           let raw = apply_named_template(template: ho_spec.inline_template, bindings: bindings)
-          if ho_spec.wraps_in_sharing { concat("Rc::new(", raw, ")") } else { raw }
+          if ho_spec.wraps_in_sharing { rust_shared_wrap_ctor(inner_expr: raw) } else { raw }
         _ =>
           let bindings = seed_bindings(key: "iter", value: iter_str) |> map_insert("arg", first_arg_str)
           let raw = apply_named_template(template: ho_spec.fn_ref_template, bindings: bindings)
-          if ho_spec.wraps_in_sharing { concat("Rc::new(", raw, ")") } else { raw }
+          if ho_spec.wraps_in_sharing { rust_shared_wrap_ctor(inner_expr: raw) } else { raw }
       }
     Absent =>
       let bindings = seed_bindings(key: "iter", value: iter_str) |> map_insert("arg", first_arg_str)
       let raw = apply_named_template(template: ho_spec.fn_ref_template, bindings: bindings)
-      if ho_spec.wraps_in_sharing { concat("Rc::new(", raw, ")") } else { raw }
+      if ho_spec.wraps_in_sharing { rust_shared_wrap_ctor(inner_expr: raw) } else { raw }
   }
 }
 
@@ -7840,7 +7858,7 @@ fn emit_rust_with_method_call(receiver: Node, args: List<Node>, registry: Map<St
   let sharing = language_spec(target: Rust).sharing
   let spread = if needs_rc { apply_type_template1(template: sharing.deref_clone, arg0: base_str) } else { apply_type_template1(template: sharing.clone_value, arg0: base_str) }
   let raw = concat(type_name, " { ", fields_str, ", ..", spread, " }")
-  if needs_rc { concat("Rc::new(", raw, ")") } else { raw }
+  if needs_rc { rust_shared_wrap_ctor(inner_expr: raw) } else { raw }
 }
 
 fn emit_rust_first_method_call(receiver: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -7879,7 +7897,7 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
   let bridge_name = rust_runtime_bridge_name(function_name: function_name)
   let lowered = concat("v1_rt::", emit_ident(name: bridge_name, target: Rust), "(", all_strs |> join(separator: ", "), ")")
   if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: function_name) {
-    concat("Rc::new(", lowered, ")")
+    rust_shared_wrap_ctor(inner_expr: lowered)
   } else { lowered }
   }
 }
@@ -7958,7 +7976,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
             let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
             let raw = apply_named_template(template: tmpl, bindings: bindings)
             if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: method_name) {
-              concat("Rc::new(", raw, ")")
+              rust_shared_wrap_ctor(inner_expr: raw)
             } else { raw }
           Absent =>
             emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, result_type: result_type, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -7978,7 +7996,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
           let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
           let raw = apply_named_template(template: tmpl, bindings: bindings)
           if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: method) {
-            concat("Rc::new(", raw, ")")
+            rust_shared_wrap_ctor(inner_expr: raw)
           } else { raw }
         Absent =>
           let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
@@ -8315,9 +8333,9 @@ fn rust_record_field_needs_box(scope: InferScope, emit_info: EmitGraphInfo, shar
 fn wrap_rust_record_field_value(raw: String, scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> String {
   let is_bounded_lattice_field = struct_name == "BoundedLattice"
   if rust_record_field_needs_fn_rc(scope: scope, struct_name: struct_name, field_name: field_name) {
-    concat("Rc::new(", raw, ")")
+    rust_shared_wrap_ctor(inner_expr: raw)
   } else if is_bounded_lattice_field && (field_name == "meet" || field_name == "join") {
-    concat("Rc::new(", raw, ")")
+    rust_shared_wrap_ctor(inner_expr: raw)
   } else if rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: struct_name, field_name: field_name) {
     concat("Box::new(", raw, ")")
   } else {
@@ -8461,7 +8479,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
             Absent => variant_name
           }
           if rc_name != "" && set_contains(shared_types, rc_name) {
-            concat("Rc::new(", raw, ")")
+            rust_shared_wrap_ctor(inner_expr: raw)
           } else { raw }
         Absent =>
           emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -8568,7 +8586,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                     let wrapped_val = wrap_rust_record_field_value(raw: fval0, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: r_sn, field_name: fname0)
                     let struct_lit = concat(r_sn, " {\n    ", emit_ident(name: fname0, target: Rust), ": ", wrapped_val, ",\n}")
                     if set_contains(shared_types, r_sn) {
-                      concat("Rc::new(", struct_lit, ")")
+                      rust_shared_wrap_ctor(inner_expr: struct_lit)
                     } else { struct_lit }
                   } else { fval0 }
                 Absent => fval0
@@ -8596,7 +8614,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
               let body = field_strs |> join(separator: "\n")
               let struct_lit = concat(resolved_sn, " {\n", body, "\n}")
               if set_contains(shared_types, resolved_sn) {
-                concat("Rc::new(", struct_lit, ")")
+                rust_shared_wrap_ctor(inner_expr: struct_lit)
               } else { struct_lit }
             Absent =>
               let vals = fields |> map(f =>
@@ -8756,7 +8774,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         let fields_str = all_field_strs |> join(separator: "\n")
         let raw = concat(display_tn, " {\n", fields_str, "\n}")
         if ctor_alias_resolved && set_contains(shared_types, ctor_name) {
-          concat("Rc::new(", raw, ")")
+          rust_shared_wrap_ctor(inner_expr: raw)
         } else { raw }
         }
       }
@@ -10035,7 +10053,7 @@ fn emit_shell_channel_expr(channel: String, is_optional: Bool) -> String {
   let base = if channel == "exit_success" { "output.status.success()" }
     else if channel == "stderr" { "stderr.clone()" }
     else if channel == "stdout_lines" {
-      "Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())"
+      rust_shared_wrap_ctor(inner_expr: "stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()")
     }
     else { "stdout.clone()" }
   if is_optional { concat("Some(", base, ")") } else { base }
@@ -10287,8 +10305,8 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
           }
         _ => value_inferred_type_is_rc_wrapped(value: value, shared_types: shared_types, scope: scope, emit_info: emit_info)
       }
-      let wrap_start = if needs_rc && !is_already_wrapped { "Rc::new(" } else { "" }
-      let wrap_end = if needs_rc && !is_already_wrapped { ")" } else { "" }
+      let wrap_start = if needs_rc && !is_already_wrapped { rust_shared_wrap_ctor_prefix() } else { "" }
+      let wrap_end = if needs_rc && !is_already_wrapped { rust_shared_wrap_ctor_suffix() } else { "" }
       concat("            ", wrap_start, val_str, wrap_end)
     }
   }
