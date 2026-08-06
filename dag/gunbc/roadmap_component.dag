@@ -147,16 +147,12 @@ fn dispatch_reserved_width() -> String {
   css_length_wire(l: dispatch_reserved_length())
 }
 
-data dispatch_session_chip_note: String = "The POST acknowledgement and the session observation are two different captions because they are two different facts. An ok POST renders `dispatch · accepted`; only the independent /sessions.json observation may show the session sentence, and at A2 that sentence is DECIDED by gunbc.roadmap_presentation.session_facts_view and carried on the wire under `facts`.
+data dispatch_session_chip_note: String = "The POST acknowledgement and the session observation are two different captions because they are two different facts. An ok POST renders `dispatch · accepted`: worktree/process creation returned success, or the idempotent request found the desired dispatch already accepted. Only the independent /sessions.json observation may show the session sentence — and at A2 that sentence is DECIDED by gunbc.roadmap_presentation.session_facts_view and carried on the wire under `facts`; this client paints it verbatim, so no session prose constant lives here anymore (operator blocker 5). The wording claims tmux/process presence only — never provider readiness, execution, or completion. The response's exact spawned/already_live wire label remains in the title channel.
 
-The observe-only posture independently renders `dispatch · disabled`; it is neither an accepted dispatch nor session evidence. Captions stay inside the reserved width derived from the caption set, so re-observation cannot reflow the row."
+The observe-only posture independently renders `dispatch · disabled`; it is neither an accepted dispatch nor session evidence. All three captions stay inside the reserved width derived from the caption set, so re-observation cannot reflow the row. The session chip remains type-distinct from the node's status chip at the head of the row."
 
 data dispatch_ack_prefix: String = "dispatch · "
 data dispatch_ack_word: String = "accepted"
-
-fn dispatch_ok_caption_for_status(status: String) -> String {
-  concat(dispatch_ack_prefix, dispatch_ack_word)
-}
 
 data sessions_route_path: String = "/sessions.json"
 data dashboard_instance_route_path: String = "/instance.json"
@@ -894,29 +890,24 @@ fn dispatch_terminal_apply_body() -> TsStmt {
       left: js_b_member(name: "textContent"),
       op: "=",
       right: ts_cond(
-        test: js_j_member(name: "caption"),
-        consequent: js_j_member(name: "caption"),
+        test: ts_ident(name: "ok"),
+        consequent: ts_lit_str(value: concat(dispatch_ack_prefix, dispatch_ack_word)),
         alternate: ts_cond(
-          test: ts_ident(name: "ok"),
-          consequent: ts_lit_str(value: concat(dispatch_ack_prefix, dispatch_ack_word)),
+          test: ts_binop(
+            left: ts_ident(name: "s"),
+            op: "===",
+            right: ts_lit_str(value: belt_dispatch_disabled_status_label())),
+          consequent: ts_binop(
+            left: ts_lit_str(value: dispatch_ack_prefix),
+            op: "+",
+            right: ts_ident(name: "s")),
           alternate: ts_cond(
             test: ts_binop(
-              left: ts_ident(name: "s"),
+              left: ts_ident(name: "band"),
               op: "===",
-              right: ts_lit_str(value: belt_dispatch_disabled_status_label())),
-            consequent: ts_binop(
-              left: ts_lit_str(value: dispatch_ack_prefix),
-              op: "+",
-              right: ts_ident(name: "s")),
-            alternate: ts_cond(
-              test: ts_binop(
-                left: ts_ident(name: "band"),
-                op: "===",
-                right: ts_lit_str(value: "fail")),
-              consequent: ts_lit_str(value: dispatch_caption_fail),
-              alternate: ts_lit_str(value: dispatch_caption_loud),
-            ),
-          ),
+              right: ts_lit_str(value: "fail")),
+            consequent: ts_lit_str(value: dispatch_caption_fail),
+            alternate: ts_lit_str(value: dispatch_caption_loud)),
         ),
       ),
     )),

@@ -7,6 +7,7 @@ import gunbc.package_delivery {
   codex_runtime_lock_path,
   codex_runtime_manifest_path,
   materialize_codex_runtime_bundle,
+  AdmittedCodexRuntimeSource,
   CodexRuntimeMaterialized,
 }
 import gunbc.codex_app_server_press {
@@ -20,7 +21,7 @@ import gunbc.codex_app_server_press {
   CodexPressLoginRequired,
   CodexPressUnavailable,
   CodexPressRefused,
-  AccountStandingReady,
+  AccountStandingAuthenticatedRateLimitsReadable,
   AccountStandingLoginRequired,
   AccountStandingQuotaReached,
   AccountStandingIncomplete,
@@ -31,17 +32,22 @@ import extdeps.shell
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data witness_note: String = "WET: materialize content-addressed Codex runtime, then observe account standing via observe_codex_account_preflight (ONE held-open initialize → account/read → account/rateLimits/read session with typed id correlation). Accepts account_ready OR login_required OR quota press_refused. Incomplete and unavailable are RED. Must NEVER claim turn_started. Excluded from hermetic discovery."
+data witness_note: String = "WET: materialize content-addressed Codex runtime, then observe account standing via observe_codex_account_preflight (ONE held-open initialize → account/read → account/rateLimits/read session with typed id correlation). Accepts account_authenticated_rate_limits_readable OR login_required OR quota press_refused. Incomplete and unavailable are RED. Must NEVER claim turn_started. Excluded from hermetic discovery and from the per-PR wet floor (integration job)."
 
 fn committed_codex_lock_text() -> String {
   filesystem_read(path: codex_runtime_lock_path as String).content
 }
 
+fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
+  AdmittedCodexRuntimeSource {
+    manifest_bytes: filesystem_read(path: codex_runtime_manifest_path as String).content,
+    lock_bytes: committed_codex_lock_text(),
+  }
+}
+
 test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started() -> Bool {
   match materialize_codex_runtime_bundle(
-    lock_text: committed_codex_lock_text(),
-    manifest_src: codex_runtime_manifest_path as FilePath,
-    lock_src: codex_runtime_lock_path as FilePath,
+    source: committed_admitted_codex_runtime_source(),
   ) {
     CodexRuntimeMaterialized { bundle } => {
       let path = codex_bundle_executable_path(bundle: bundle)
@@ -62,13 +68,13 @@ test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started()
             let projected = account_standing_projection(
               classification: receipt.standing.evidence.classification,
             )
-            let ready_ok = status == "account_ready"
+            let ready_ok = status == "account_authenticated_rate_limits_readable"
               && status != "turn_started"
-              && caption == "account ready"
+              && caption == "authenticated; rate limits readable"
               && standing_is_redacted_projection(summary: receipt.standing)
               && projected.contains("rate_limits_observed")
             match receipt.standing.evidence.classification {
-              AccountStandingReady => ready_ok
+              AccountStandingAuthenticatedRateLimitsReadable => ready_ok
               _ => false
             }
           }
@@ -90,7 +96,7 @@ test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started()
                 AccountStandingInitializeMissing => false
                 _ => false
               }
-          CodexPressUnavailable { reason: _ } => false
+          CodexPressUnavailable { reason: _, process: _ } => false
         }
       }
     }

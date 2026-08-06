@@ -820,6 +820,20 @@ data codex_runtime_release_parent: FilePath = srv1_codex_runtime_release_root
 
 data codex_runtime_receipt_sidecar_name: NonEmptyStr = ".gunbc-codex-runtime-receipt" as NonEmptyStr
 
+data admitted_codex_runtime_source_note: String = "ONE carrier binds the bytes adjudicated to the bytes executed. materialize_codex_runtime_bundle admits lock_bytes, then Filesystem.Write those exact lock_bytes and manifest_bytes into the build root before npm ci. A path-based copy of a second lock file is unwritable on this path — the admitted/executed fork is construction-closed."
+
+type AdmittedCodexRuntimeSource {
+  manifest_bytes: String
+  lock_bytes: String
+}
+
+fn admitted_and_executed_lock_bytes_agree(
+  admitted_lock_bytes: String,
+  executed_lock_bytes: String,
+) -> Bool {
+  admitted_lock_bytes == executed_lock_bytes
+}
+
 data codex_runtime_bundle_receipt_note: String = "FULL cryptographic CodexRuntimeBundleReceipt: installed manifest+lock digests + target + digest-only admitted rows + installed-tree identity + native executable digest + npm+node toolchain + canonical protocol-schema bundle identity. Bundle root is content-addressed under gunbc.host_layout.srv1_codex_runtime_release_root/<receipt-hex> (not /tmp). Mutable Codex state lives under srv1_codex_runtime_mutable_state_root — never equate a content-derived path with immutability. Reuse requires sidecar + native digest + full rematerialized-tree identity match."
 
 type PackageTreeEntryKind
@@ -1013,6 +1027,8 @@ fn package_tree_entry_canonical_line(entry: PackageTreeEntryReceipt) -> String {
 
 data package_tree_identity_mode_symlink_note: String = "Tree identity covers regular files AND symlinks. Each entry carries mode_octal plus either SHA-512 content (regular file) or symlink target. Enumeration uses GNU find -printf '%y\\t%m\\t%P\\t%l' so a content-preserving mode flip or symlink retarget refuses reuse."
 
+data package_materialized_tree_linux_find_note: String = "Installed-tree enumeration currently uses GNU find -printf (mode+symlink target). The first Codex runtime profile is therefore Linux-only; Darwin targets remain declared for package selection but reuse validation on Darwin requires a typed portable filesystem enumeration (dissolve-on)."
+
 fn observe_package_materialized_tree(
   root: FilePath,
   work_dir: FilePath,
@@ -1051,7 +1067,7 @@ fn observe_package_materialized_tree(
                   match cols.skip(n: 2).first() {
                     Absent => none
                     Present { value: rel } =>
-                      if rel == "" || (rel as String).starts_with(prefix: ".gunbc-") {
+                      if rel == "" || (rel as String) == (codex_runtime_receipt_sidecar_name as String) {
                         Present { value: so_far }
                       } else if kind_ch == "f" {
                         let abs = concat(root as String, concat("/", rel))
@@ -1452,6 +1468,95 @@ type CodexRuntimeReleaseOutcome
       cause: NonEmptyStr
     }
 
+fn validate_existing_codex_runtime_release(
+  existing_root: FilePath,
+  receipt: CodexRuntimeBundleReceipt,
+  native_executable_rel: NonEmptyStr,
+  expected_hex: String,
+  work_dir: FilePath,
+) -> CodexRuntimeReleaseOutcome {
+  match read_codex_runtime_receipt_sidecar(release_root: existing_root) {
+    Absent =>
+      CodexRuntimeReleaseReuseMismatch {
+        existing_root: existing_root,
+        cause: "existing release missing receipt sidecar" as NonEmptyStr,
+      }
+    Present { value: side_hex } =>
+      if side_hex != expected_hex {
+        CodexRuntimeReleaseReuseMismatch {
+          existing_root: existing_root,
+          cause: "existing release sidecar identity mismatch" as NonEmptyStr,
+        }
+      } else {
+        let existing_native = concat(
+          existing_root as String,
+          concat("/", native_executable_rel as String),
+        ) as FilePath
+        match observe_file_sha512(path: existing_native) {
+          Absent =>
+            CodexRuntimeReleaseReuseMismatch {
+              existing_root: existing_root,
+              cause: "existing release native digest observation refused" as NonEmptyStr,
+            }
+          Present { value: observed } =>
+            if (observed.hex as String) != (receipt.native_executable_digest.hex as String) {
+              CodexRuntimeReleaseReuseMismatch {
+                existing_root: existing_root,
+                cause: "existing release native digest mismatch" as NonEmptyStr,
+              }
+            } else {
+              let native_file = shell.Test.IsFile(path: existing_native)
+              let native_exec = shell.Test.IsExecutable(path: existing_native)
+              if native_file.is_file == false || native_exec.executable == false {
+                CodexRuntimeReleaseReuseMismatch {
+                  existing_root: existing_root,
+                  cause: "existing release native entry is not a regular executable file" as NonEmptyStr,
+                }
+              } else {
+                match observe_package_materialized_tree(
+                  root: existing_root,
+                  work_dir: work_dir,
+                ) {
+                  Absent =>
+                    CodexRuntimeReleaseReuseMismatch {
+                      existing_root: existing_root,
+                      cause: "existing release tree identity observation refused" as NonEmptyStr,
+                    }
+                  Present { value: tree } =>
+                    match content_hash_sha512_hex(hash: tree.tree_identity) {
+                      Absent =>
+                        CodexRuntimeReleaseReuseMismatch {
+                          existing_root: existing_root,
+                          cause: "existing release tree identity is not SHA-512" as NonEmptyStr,
+                        }
+                      Present { value: tree_hex } =>
+                        match content_hash_sha512_hex(
+                          hash: receipt.materialized_tree.tree_identity,
+                        ) {
+                          Absent =>
+                            CodexRuntimeReleaseReuseMismatch {
+                              existing_root: existing_root,
+                              cause: "expected receipt tree identity is not SHA-512" as NonEmptyStr,
+                            }
+                          Present { value: expected_tree_hex } =>
+                            if tree_hex != expected_tree_hex {
+                              CodexRuntimeReleaseReuseMismatch {
+                                existing_root: existing_root,
+                                cause: "existing release tree identity mismatch" as NonEmptyStr,
+                              }
+                            } else {
+                              CodexRuntimeReleaseReady { root: existing_root }
+                            }
+                        }
+                    }
+                }
+              }
+            }
+        }
+      }
+  }
+}
+
 fn release_codex_runtime_bundle_immutable(
   build_root: FilePath,
   receipt: CodexRuntimeBundleReceipt,
@@ -1473,102 +1578,73 @@ fn release_codex_runtime_bundle_immutable(
         let dest = concat(parent as String, concat("/", hex)) as FilePath
         let already = shell.Test.IsDirectory(path: dest)
         if already.is_directory {
-          match read_codex_runtime_receipt_sidecar(release_root: dest) {
-            Absent =>
-              CodexRuntimeReleaseReuseMismatch {
-                existing_root: dest,
-                cause: "existing release missing receipt sidecar" as NonEmptyStr,
-              }
-            Present { value: side_hex } =>
-              if side_hex != hex {
-                CodexRuntimeReleaseReuseMismatch {
-                  existing_root: dest,
-                  cause: "existing release sidecar identity mismatch" as NonEmptyStr,
-                }
-              } else {
-                let existing_native = concat(
-                  dest as String,
-                  concat("/", native_executable_rel as String),
-                ) as FilePath
-                match observe_file_sha512(path: existing_native) {
-                  Absent =>
-                    CodexRuntimeReleaseReuseMismatch {
-                      existing_root: dest,
-                      cause: "existing release native digest observation refused" as NonEmptyStr,
-                    }
-                  Present { value: observed } =>
-                    if (observed.hex as String) != (receipt.native_executable_digest.hex as String) {
-                      CodexRuntimeReleaseReuseMismatch {
-                        existing_root: dest,
-                        cause: "existing release native digest mismatch" as NonEmptyStr,
-                      }
-                    } else {
-                      let native_file = shell.Test.IsFile(path: existing_native)
-                      let native_exec = shell.Test.IsExecutable(path: existing_native)
-                      if native_file.is_file == false || native_exec.executable == false {
-                        CodexRuntimeReleaseReuseMismatch {
-                          existing_root: dest,
-                          cause: "existing release native entry is not a regular executable file" as NonEmptyStr,
-                        }
-                      } else {
-                      match observe_package_materialized_tree(
-                        root: dest,
-                        work_dir: build_root,
-                      ) {
-                        Absent =>
-                          CodexRuntimeReleaseReuseMismatch {
-                            existing_root: dest,
-                            cause: "existing release tree identity observation refused" as NonEmptyStr,
-                          }
-                        Present { value: tree } =>
-                          match content_hash_sha512_hex(hash: tree.tree_identity) {
-                            Absent =>
-                              CodexRuntimeReleaseReuseMismatch {
-                                existing_root: dest,
-                                cause: "existing release tree identity is not SHA-512" as NonEmptyStr,
-                              }
-                            Present { value: tree_hex } =>
-                              match content_hash_sha512_hex(
-                                hash: receipt.materialized_tree.tree_identity,
-                              ) {
-                                Absent =>
-                                  CodexRuntimeReleaseReuseMismatch {
-                                    existing_root: dest,
-                                    cause: "expected receipt tree identity is not SHA-512" as NonEmptyStr,
-                                  }
-                                Present { value: expected_tree_hex } =>
-                                  if tree_hex != expected_tree_hex {
-                                    CodexRuntimeReleaseReuseMismatch {
-                                      existing_root: dest,
-                                      cause: "existing release tree identity mismatch" as NonEmptyStr,
-                                    }
-                                  } else {
-                                    let _ = shell.Remove.RecursiveForce(path: build_root)
-                                    CodexRuntimeReleaseReady { root: dest }
-                                  }
-                              }
-                          }
-                      }
-                      }
-                    }
-                }
-              }
+          let validated = validate_existing_codex_runtime_release(
+            existing_root: dest,
+            receipt: receipt,
+            native_executable_rel: native_executable_rel,
+            expected_hex: hex,
+            work_dir: build_root,
+          )
+          match validated {
+            CodexRuntimeReleaseReady { root } => {
+              let _ = shell.Remove.RecursiveForce(path: build_root)
+              CodexRuntimeReleaseReady { root: root }
+            }
+            other => other
           }
         } else {
-          let moved = shell.Move.File(source: build_root, destination: dest)
-          if moved.success == false {
+          let publishing = concat(
+            parent as String,
+            concat("/.", concat(hex, ".publishing")),
+          ) as FilePath
+          let moved_pub = shell.Move.File(source: build_root, destination: publishing)
+          if moved_pub.success == false {
             CodexRuntimeReleaseFailed {
-              cause: "move build root to content-addressed release refused" as NonEmptyStr,
+              cause: "move build root to publishing staging refused" as NonEmptyStr,
             }
           } else if write_codex_runtime_receipt_sidecar(
-            release_root: dest,
+            release_root: publishing,
             receipt_identity: receipt.receipt_identity,
           ) == false {
+            let _ = shell.Remove.RecursiveForce(path: publishing)
             CodexRuntimeReleaseFailed {
-              cause: "receipt sidecar write refused" as NonEmptyStr,
+              cause: "receipt sidecar write refused on publishing staging" as NonEmptyStr,
             }
           } else {
-            CodexRuntimeReleaseReady { root: dest }
+            match validate_existing_codex_runtime_release(
+              existing_root: publishing,
+              receipt: receipt,
+              native_executable_rel: native_executable_rel,
+              expected_hex: hex,
+              work_dir: publishing,
+            ) {
+              CodexRuntimeReleaseReady { root: _ } => {
+                let renamed = shell.Move.File(source: publishing, destination: dest)
+                if renamed.success {
+                  CodexRuntimeReleaseReady { root: dest }
+                } else {
+                  let winner = shell.Test.IsDirectory(path: dest)
+                  let _ = shell.Remove.RecursiveForce(path: publishing)
+                  if winner.is_directory {
+                    validate_existing_codex_runtime_release(
+                      existing_root: dest,
+                      receipt: receipt,
+                      native_executable_rel: native_executable_rel,
+                      expected_hex: hex,
+                      work_dir: dest,
+                    )
+                  } else {
+                    CodexRuntimeReleaseFailed {
+                      cause: "atomic rename to content-addressed release refused" as NonEmptyStr,
+                    }
+                  }
+                }
+              }
+              mismatch => {
+                let _ = shell.Remove.RecursiveForce(path: publishing)
+                mismatch
+              }
+            }
           }
         }
       }
@@ -1791,24 +1867,24 @@ fn finish_codex_runtime_materialization_after_install(
                         cause: "npm/node toolchain observation refused" as NonEmptyStr,
                       }
                     Present { value: toolchain } =>
-                      match observe_package_materialized_tree(
-                        root: build_root,
-                        work_dir: staging_dir,
+                      match observe_protocol_schema_identity(
+                        native_executable: native_path,
+                        work_dir: build_root,
                       ) {
                         Absent =>
                           CodexRuntimeReceiptObservationRefused {
-                            cause: "installed tree identity observation refused" as NonEmptyStr,
+                            cause: "canonical protocol schema bundle identity observation refused" as NonEmptyStr,
                           }
-                        Present { value: tree } =>
-                          match observe_protocol_schema_identity(
-                            native_executable: native_path,
-                            work_dir: build_root,
+                        Present { value: protocol_id } =>
+                          match observe_package_materialized_tree(
+                            root: build_root,
+                            work_dir: staging_dir,
                           ) {
                             Absent =>
                               CodexRuntimeReceiptObservationRefused {
-                                cause: "canonical protocol schema bundle identity observation refused" as NonEmptyStr,
+                                cause: "installed tree identity observation refused" as NonEmptyStr,
                               }
-                            Present { value: protocol_id } => {
+                            Present { value: tree } => {
                               let ordered = sort_admitted_packages_by_lock_key(receipts: durable)
                               let receipt0 = CodexRuntimeBundleReceipt {
                                 manifest_digest: man_digest,
@@ -1888,11 +1964,9 @@ fn finish_codex_runtime_materialization_after_install(
 }
 
 fn materialize_codex_runtime_bundle(
-  lock_text: String,
-  manifest_src: FilePath,
-  lock_src: FilePath,
+  source: AdmittedCodexRuntimeSource,
 ) -> CodexRuntimeMaterialization {
-  match admit_codex_package_lock_text(text: lock_text) {
+  match admit_codex_package_lock_text(text: source.lock_bytes) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match observe_codex_npm_runtime_target() {
         CodexNpmRuntimeTargetObserved { target } =>
@@ -1948,21 +2022,21 @@ fn materialize_codex_runtime_bundle(
                               build.path as String,
                               "/package-lock.json",
                             ) as FilePath
-                            let copied_man = shell.Copy.File(
-                              source: manifest_src,
-                              destination: man_dest,
+                            let wrote_man = Filesystem.Write(
+                              path: man_dest as String,
+                              content: source.manifest_bytes,
                             )
-                            let copied_lock = shell.Copy.File(
-                              source: lock_src,
-                              destination: lock_dest,
+                            let wrote_lock = Filesystem.Write(
+                              path: lock_dest as String,
+                              content: source.lock_bytes,
                             )
-                            if copied_man.success == false {
+                            if wrote_man.success == false {
                               CodexRuntimeWorkspaceRefused {
-                                cause: "copy package.json failed" as NonEmptyStr,
+                                cause: "write admitted package.json bytes failed" as NonEmptyStr,
                               }
-                            } else if copied_lock.success == false {
+                            } else if wrote_lock.success == false {
                               CodexRuntimeWorkspaceRefused {
-                                cause: "copy package-lock.json failed" as NonEmptyStr,
+                                cause: "write admitted package-lock.json bytes failed" as NonEmptyStr,
                               }
                             } else {
                               let installed = npm.Ci.IgnoreScriptsOffline(

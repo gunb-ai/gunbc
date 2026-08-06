@@ -34,11 +34,13 @@ import gunbc.codex_app_server_press {
   CodexAccountPreflightSubject,
   CodexRuntimeBundleReceiptRef,
   ProviderProbeKey,
-  AccountStandingReady,
+  AccountStandingAuthenticatedRateLimitsReadable,
   AccountStandingLoginRequired,
   AccountStandingQuotaReached,
   AccountStandingInitializeMissing,
   AccountStandingIncomplete,
+  ProviderProcessReceipt,
+  ProviderProcessObservationFailed,
 }
 import gunbc.provider_turn_adjudication {
   automatic_recovery_authorized,
@@ -102,6 +104,13 @@ fn fixture_bundle_from_digest(digest: Sha512Digest) -> CodexRuntimeBundle {
   }
 }
 
+fn fixture_process_receipt() -> ProviderProcessReceipt {
+  ProviderProcessReceipt {
+    exit: ProviderProcessObservationFailed,
+    wire: none,
+  }
+}
+
 fn fixture_preflight_subject() -> CodexAccountPreflightSubject? {
   match fixture_digest() {
     Absent => none
@@ -115,6 +124,7 @@ fn fixture_preflight_subject() -> CodexAccountPreflightSubject? {
               bundle: fixture_bundle_from_digest(digest: digest),
               binding: binding,
               probe_key: "probe-fixture-1" as ProviderProbeKey,
+              codex_home: "/tmp/gunbc-codex-home-fixture" as FilePath,
             ),
           }
         _ => none
@@ -190,6 +200,7 @@ test fn preflight_subject_carries_runtime_receipt_and_probe_key() -> Bool {
     Absent => false
     Present { value: subject } =>
       (subject.probe_key as String) == "probe-fixture-1"
+        && (subject.credential.codex_home as String) == "/tmp/gunbc-codex-home-fixture"
         && match subject.runtime {
           CodexRuntimeBundleReceiptRef { receipt_identity: id } =>
             match fixture_digest() {
@@ -247,18 +258,19 @@ test fn account_ready_wire_status_is_not_turn_started_or_dispatch_accepted() -> 
           subject: subject,
           standing: standing,
           wire_evidence: none,
+          process: fixture_process_receipt(),
         },
       }
       let status = codex_press_outcome_wire_status(outcome: outcome)
       let caption = codex_press_outcome_operator_caption(outcome: outcome)
-      let ready_ok = status == "account_ready"
+      let ready_ok = status == "account_authenticated_rate_limits_readable"
         && status != "turn_started"
         && status != "accepted"
         && status != "spawned"
-        && caption == "account ready"
+        && caption == "authenticated; rate limits readable"
         && caption != "turn started"
       match evidence.classification {
-        AccountStandingReady => ready_ok
+        AccountStandingAuthenticatedRateLimitsReadable => ready_ok
         _ => false
       }
   }
@@ -332,7 +344,7 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
     _ => false
   }
   let ready_ok = match ok.classification {
-    AccountStandingReady => true
+    AccountStandingAuthenticatedRateLimitsReadable => true
     _ => false
   }
   let missing_ok = match missing.classification {
@@ -371,6 +383,7 @@ test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
           subject: subject,
           standing: account_standing_summary_from_evidence(evidence: evidence),
           wire_evidence: none,
+          process: fixture_process_receipt(),
         },
       }
       codex_press_outcome_wire_status(outcome: outcome) == "press_refused"
@@ -396,6 +409,7 @@ test fn login_required_wire_status_is_not_accepted_or_turn_started() -> Bool {
           subject: subject,
           standing: account_standing_summary_from_evidence(evidence: evidence),
           wire_evidence: none,
+          process: fixture_process_receipt(),
         },
       }
       codex_press_outcome_wire_status(outcome: outcome) == "login_required"
@@ -419,7 +433,7 @@ test fn unknown_frame_is_digested_not_silent() -> Bool {
     ),
   )
   match evidence.classification {
-    AccountStandingReady => count(evidence.unknown_frame_digests) == 1
+    AccountStandingAuthenticatedRateLimitsReadable => count(evidence.unknown_frame_digests) == 1
     _ => false
   }
 }

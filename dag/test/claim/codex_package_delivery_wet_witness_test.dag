@@ -15,6 +15,7 @@ import gunbc.package_delivery {
   acquire_and_admit_registry_artifact,
   RegistryArtifactAdmitted,
   materialize_codex_runtime_bundle,
+  AdmittedCodexRuntimeSource,
   CodexRuntimeMaterialized,
   observe_codex_npm_runtime_target,
   CodexNpmRuntimeTargetObserved,
@@ -96,11 +97,16 @@ test fn acquire_exact_target_pair_admits_wrapper_and_platform() -> Bool {
   }
 }
 
+fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
+  AdmittedCodexRuntimeSource {
+    manifest_bytes: filesystem_read(path: codex_runtime_manifest_path as String).content,
+    lock_bytes: committed_codex_lock_text(),
+  }
+}
+
 test fn materialize_codex_runtime_bundle_produces_native_executable() -> Bool {
   match materialize_codex_runtime_bundle(
-    lock_text: committed_codex_lock_text(),
-    manifest_src: codex_runtime_manifest_path as FilePath,
-    lock_src: codex_runtime_lock_path as FilePath,
+    source: committed_admitted_codex_runtime_source(),
   ) {
     CodexRuntimeMaterialized { bundle } =>
       count(bundle.admitted_packages) == 2
@@ -133,6 +139,23 @@ test fn materialize_codex_runtime_bundle_produces_native_executable() -> Bool {
             "/.gunbc-codex-runtime-receipt",
           ) as FilePath,
         ).is_file
+    _ => false
+  }
+}
+
+test fn materialize_identical_input_twice_reuses_same_release_identity() -> Bool {
+  let source = committed_admitted_codex_runtime_source()
+  match materialize_codex_runtime_bundle(source: source) {
+    CodexRuntimeMaterialized { bundle: first } =>
+      match materialize_codex_runtime_bundle(source: source) {
+        CodexRuntimeMaterialized { bundle: second } =>
+          (first.root as String) == (second.root as String)
+            && (first.receipt.receipt_identity as String)
+              == (second.receipt.receipt_identity as String)
+            && (first.receipt.materialized_tree.tree_identity as String)
+              == (second.receipt.materialized_tree.tree_identity as String)
+        _ => false
+      }
     _ => false
   }
 }
