@@ -1,6 +1,5 @@
 module v2.lens.complexity
 
-import v2.std.witness { witness_holds }
 
 fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
   true
@@ -22,7 +21,7 @@ fn complexity_projection_locus() -> Locus {
 
 fn complexity_variables_from_refine(xs: List<SizeVariable>) -> Witness<ComplexityVariables> {
   match refine(base: xs, by: complexity_variables_validation, at: complexity_projection_locus()) {
-    Accepted { value: refined, diagnostics: _ } => witness_holds(value: refined)
+    Accepted { value: refined, diagnostics: _ } => Holds { value: refined }
     Rejected { diagnostics } => Violates { diagnostic: diagnostics.head }
   }
 }
@@ -120,7 +119,7 @@ fn combine_complexity_variables(
     Holds { value: lv } =>
       match rhs {
         Holds { value: rv } =>
-          witness_holds(value: composite_complexity_variables(lhs: lv, rhs: rv))
+          Holds { value: composite_complexity_variables(lhs: lv, rhs: rv) }
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -130,19 +129,19 @@ fn combine_complexity_variables(
 fn complexity_variables_from_cost(cost: SymbolicCost) -> Witness<ComplexityVariables> {
   match cost {
     ConstantCost { value: _ } =>
-      witness_holds(value: empty_complexity_variables())
+      Holds { value: empty_complexity_variables() }
     LogCost { variable: v } =>
-      witness_holds(value: single_complexity_variable(size_var: v))
+      Holds { value: single_complexity_variable(size_var: v) }
     LinearCost { variable: v } =>
-      witness_holds(value: single_complexity_variable(size_var: v))
+      Holds { value: single_complexity_variable(size_var: v) }
     PolynomialCost { variable: v, degree: _ } =>
-      witness_holds(value: single_complexity_variable(size_var: v))
+      Holds { value: single_complexity_variable(size_var: v) }
     PolyLogCost { variable: v, exponent: _ } =>
-      witness_holds(value: single_complexity_variable(size_var: v))
+      Holds { value: single_complexity_variable(size_var: v) }
     ExponentialCost { variable: v, base: _ } =>
-      witness_holds(value: single_complexity_variable(size_var: v))
+      Holds { value: single_complexity_variable(size_var: v) }
     FactorialCost { variable: v } =>
-      witness_holds(value: single_complexity_variable(size_var: v))
+      Holds { value: single_complexity_variable(size_var: v) }
     SumCost { lhs: lhs, rhs: rhs } =>
       combine_complexity_variables(
         lhs: complexity_variables_from_cost(cost: lhs),
@@ -214,7 +213,7 @@ fn complexity_projection_diagnostic() -> Diagnostic {
 fn asymptotic_projection(cost_witness: Witness<SymbolicCost>) -> Witness<ComplexityBound> {
   match cost_witness {
     Holds { value: cost } =>
-      witness_holds(value: complexity_bound_from_cost(cost: cost))
+      Holds { value: complexity_bound_from_cost(cost: cost) }
     Violates { diagnostic: d } =>
       Violates { diagnostic: d }
   }
