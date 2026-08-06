@@ -196,7 +196,7 @@ data decision_order_note: String = "THE ORDER OF THE GUARDS IS THE ALGEBRA, and 
 fn alert_decision(
   admission: FalsifierAlertAdmission,
   receipt: AlertReceiptInput,
-  state: AlertIncidentState,
+  state: FalsifierAlertStateDecoding,
   now: EpochMs,
   escalation: EscalationRecipient,
   routings: List<FalsifierRouting>
