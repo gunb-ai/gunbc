@@ -198,6 +198,67 @@ test fn witness_inference_program_is_strictly_smaller_than_the_spine() -> Bool {
   inference > 0 && inference < host_standup_spine.length()
 }
 
+data synthetic_reordered_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
+  host: operator_host_srv3,
+  participation: [InferenceServingParticipation, CiRunnerParticipation],
+}
+
+data synthetic_forward_order_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
+  host: operator_host_srv3,
+  participation: [CiRunnerParticipation, InferenceServingParticipation],
+}
+
+data synthetic_duplicated_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
+  host: operator_host_srv3,
+  participation: [CiRunnerParticipation, CiRunnerParticipation, InferenceServingParticipation],
+}
+
+data witness_participation_set_semantics_note: String = "Participation is a set wearing a list's carrier, so the three enrollments below must be one program under BOTH readings -- the steps they select and the identity they derive. Selection was already order-blind and duplicate-blind because step_serves_any asks only whether SOME participation claims a step; identity was not, and joined whatever the caller happened to write. These conjuncts are the discriminating controls for that repair: each one reds against the pre-repair identity derivation, which is what distinguishes a real construction wall from a canonicalization function nobody calls."
+
+test fn witness_participation_order_does_not_change_program_identity() -> Bool {
+  let forward = assimilation_program_for(intent: synthetic_forward_order_enrollment)
+  let reversed = assimilation_program_for(intent: synthetic_reordered_enrollment)
+  forward.identity == reversed.identity
+    && program_step_count(program: forward) == program_step_count(program: reversed)
+}
+
+test fn witness_duplicate_participation_is_identity_neutral() -> Bool {
+  let once = assimilation_program_for(intent: synthetic_forward_order_enrollment)
+  let twice = assimilation_program_for(intent: synthetic_duplicated_enrollment)
+  once.identity == twice.identity
+    && program_step_count(program: once) == program_step_count(program: twice)
+}
+
+test fn witness_distinct_participation_changes_identity_and_obligations() -> Bool {
+  let ci = assimilation_program_for(intent: synthetic_ci_enrollment)
+  let inference = assimilation_program_for(intent: synthetic_inference_enrollment)
+  let both = assimilation_program_for(intent: synthetic_forward_order_enrollment)
+  ci.identity != inference.identity
+    && both.identity != ci.identity
+    && program_step_count(program: inference) < program_step_count(program: ci)
+}
+
+data witness_identity_is_exactly_canonical_note: String = "The DISCRIMINATING control, and the reason the three conjuncts above are not satisfied by any function that merely returns a constant. It pins the derived identity to an independently authored literal rather than to another projection of the same computation, and the literal is what the canonical roster REQUIRES it to be, not what the current code was measured to emit. Pre-repair, the duplicated enrollment joined its raw list and derived 'ci-runner+ci-runner+inference-serving'; this conjunct asserts that exact string is NOT the identity while the canonical two-label form IS. So it reds against the derivation this change replaced, which is what makes the repair a wall rather than a canonicalization helper sitting beside a still-writable path."
+
+test fn witness_program_identity_is_exactly_the_canonical_projection() -> Bool {
+  let duplicated = assimilation_program_for(intent: synthetic_duplicated_enrollment)
+  let reordered = assimilation_program_for(intent: synthetic_reordered_enrollment)
+  (duplicated.identity as String) == "ci-runner+inference-serving"
+    && (reordered.identity as String) == "ci-runner+inference-serving"
+    && (duplicated.identity as String) != "ci-runner+ci-runner+inference-serving"
+    && (reordered.identity as String) != "inference-serving+ci-runner"
+}
+
+test fn witness_single_participation_identities_are_distinct_labels() -> Bool {
+  (assimilation_program_for(intent: synthetic_ci_enrollment).identity as String) == "ci-runner"
+    && (assimilation_program_for(intent: synthetic_inference_enrollment).identity as String) == "inference-serving"
+}
+
+test fn witness_every_participation_is_in_the_canonical_roster() -> Bool {
+  fleet_participation_in_canonical_roster(p: CiRunnerParticipation)
+    && fleet_participation_in_canonical_roster(p: InferenceServingParticipation)
+}
+
 test fn witness_inference_enrollment_carries_no_runner_or_bmc_obligation() -> Bool {
   let cells = host_phase_cells_for_enrollment(intent: synthetic_inference_enrollment)
   let forbidden = filter(cells, c => cell_label_is_runner_only(c: c))
