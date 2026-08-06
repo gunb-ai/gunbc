@@ -276,6 +276,15 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
         "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
+        "{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"code\":\"rate_limit_reached\",\"message\":\"rate_limit_reached\"}}\n",
+      ),
+    ),
+  )
+  let quota_message_only = parse_account_trip_stdout_for_tests(
+    stdout: concat(
+      "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
+      concat(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
         "{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"message\":\"rate_limit_reached\"}}\n",
       ),
     ),
@@ -318,6 +327,10 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
     AccountStandingQuotaReached => true
     _ => false
   }
+  let quota_message_only_incomplete = match quota_message_only.classification {
+    AccountStandingIncomplete => true
+    _ => false
+  }
   let ready_ok = match ok.classification {
     AccountStandingReady => true
     _ => false
@@ -336,7 +349,7 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
   }
   let projected = account_standing_projection(classification: ok.classification)
   let projection_ok = projected == "initialize_ok; account_read_ok; rate_limits_observed"
-  login_ok && quota_ok && ready_ok && missing_ok && incomplete_ok && duplicate_ok && projection_ok
+  login_ok && quota_ok && quota_message_only_incomplete && ready_ok && missing_ok && incomplete_ok && duplicate_ok && projection_ok
 }
 
 test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
@@ -345,7 +358,7 @@ test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
         "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}\n",
-        "{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"message\":\"rate_limit_reached\"}}\n",
+        "{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"code\":\"rate_limit_reached\",\"message\":\"rate_limit_reached\"}}\n",
       ),
     ),
   )

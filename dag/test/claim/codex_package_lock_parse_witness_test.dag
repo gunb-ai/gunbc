@@ -15,6 +15,7 @@ import extdeps.npm {
   npm_registry_artifact_pin,
   NpmLockNodeMetadata,
   NpmLockNodeFlags,
+  NpmRegistryArtifact,
 }
 import extdeps.pin { ExactPin }
 import gunbc.package_delivery {
@@ -152,6 +153,7 @@ test fn selected_node_with_install_script_refuses() -> Bool {
             artifact: artifact,
             lock_node_key: "node_modules/@openai/codex" as NonEmptyStr,
             expect_optional: false,
+            expect_version: "0.146.0" as NonEmptyStr,
             expect_os: none,
             expect_cpu: none,
           ) {
@@ -165,6 +167,98 @@ test fn selected_node_with_install_script_refuses() -> Bool {
             } => false
           }
         }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn selected_node_wrong_version_keeps_key_but_refuses() -> Bool {
+  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match codex_wrapper_lookup(graph: graph) {
+        CodexWrapperUnique { node, artifact } => {
+          let wrong = NpmRegistryArtifact {
+            package: artifact.package,
+            version: "0.145.0" as NonEmptyStr,
+            resolved: artifact.resolved,
+            expected_integrity: artifact.expected_integrity,
+          }
+          match admit_codex_selected_node(
+            node: node,
+            artifact: wrong,
+            lock_node_key: "node_modules/@openai/codex" as NonEmptyStr,
+            expect_optional: false,
+            expect_version: "0.146.0" as NonEmptyStr,
+            expect_os: none,
+            expect_cpu: none,
+          ) {
+            CodexSelectedNodeIdentityRefused { lock_node_key, cause: _ } =>
+              (lock_node_key as String) == "node_modules/@openai/codex"
+            _ => false
+          }
+        }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn selected_node_wrong_optional_keeps_key_but_refuses() -> Bool {
+  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match codex_wrapper_lookup(graph: graph) {
+        CodexWrapperUnique { node, artifact } =>
+          match admit_codex_selected_node(
+            node: node,
+            artifact: artifact,
+            lock_node_key: "node_modules/@openai/codex" as NonEmptyStr,
+            expect_optional: true,
+            expect_version: "0.146.0" as NonEmptyStr,
+            expect_os: none,
+            expect_cpu: none,
+          ) {
+            CodexSelectedNodeIdentityRefused { lock_node_key, cause: _ } =>
+              (lock_node_key as String) == "node_modules/@openai/codex"
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn selected_platform_wrong_os_keeps_key_but_refuses() -> Bool {
+  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match codex_map_uname_to_npm_target(kernel: "Linux", machine: "aarch64") {
+        CodexNpmRuntimeTargetObserved { target } =>
+          match select_codex_exact_target_closure(graph: graph, target: target) {
+            CodexExactTargetClosureSelected {
+              wrapper: _,
+              platform,
+              target: _,
+              platform_lock_key: _,
+              native_executable_rel: _,
+            } =>
+              match platform {
+                CodexSelectedNodeAdmitted { node, artifact, lock_node_key } =>
+                  match admit_codex_selected_node(
+                    node: node,
+                    artifact: artifact,
+                    lock_node_key: lock_node_key,
+                    expect_optional: true,
+                    expect_version: "0.146.0-linux-arm64" as NonEmptyStr,
+                    expect_os: Present { value: "darwin" as NonEmptyStr },
+                    expect_cpu: Present { value: "arm64" as NonEmptyStr },
+                  ) {
+                    CodexSelectedNodeIdentityRefused { lock_node_key: _, cause: _ } => true
+                    _ => false
+                  }
+                _ => false
+              }
+            _ => false
+          }
         _ => false
       }
     _ => false

@@ -86,8 +86,9 @@ data codex_press_standing_evidence_note: String = "Account standing is derived f
 type AccountTripFrameDisposition
   = AccountTripResultOk
   | AccountTripLoginRequiredSignal
-  | AccountTripRpcError { message: NonEmptyStr }
+  | AccountTripQuotaSignal
   | AccountTripMissing
+  | AccountTripNativeCauseUnknown { message: NonEmptyStr }
 
 type AccountTripResponseObservation
   = AccountTripResponseAbsent
@@ -272,7 +273,7 @@ fn disposition_from_account_read_result(result: JsonValue) -> AccountTripFrameDi
           } else {
             AccountTripResultOk
           }
-        JsonMemberFound { value: _ } => AccountTripResultOk
+        JsonMemberFound { value: _ } => AccountTripMissing
         JsonMemberAbsent => AccountTripMissing
         JsonMemberDuplicated { count: _ } => AccountTripMissing
         JsonMemberNotAnObject => AccountTripMissing
@@ -282,17 +283,39 @@ fn disposition_from_account_read_result(result: JsonValue) -> AccountTripFrameDi
 
 fn disposition_from_rate_limits_result(result: JsonValue) -> AccountTripFrameDisposition {
   match json_object_unique_member(v: result, key: "rateLimits") {
-    JsonMemberFound { value: _ } => AccountTripResultOk
+    JsonMemberFound { value: JsonObject { members: _ } } => AccountTripResultOk
+    JsonMemberFound { value: JsonNull } => AccountTripMissing
+    JsonMemberFound { value: _ } => AccountTripMissing
     JsonMemberAbsent => AccountTripMissing
     JsonMemberDuplicated { count: _ } => AccountTripMissing
     JsonMemberNotAnObject => AccountTripMissing
   }
 }
 
+data account_trip_structured_error_code_note: String = "Business classifications Login/Quota are authorized only by typed result members or a structured JSON-RPC error `code` string that exactly matches a known native code. Free-text `message` alone yields AccountTripNativeCauseUnknown → Incomplete — never Ready/Login/Quota (provider-audit handback)."
+
+fn disposition_from_structured_rpc_error(err: JsonValue) -> AccountTripFrameDisposition {
+  match json_object_unique_member(v: err, key: "code") {
+    JsonMemberFound { value: JsonString { value: code } } =>
+      if code == "rate_limit_reached" || code == "quota_exceeded" {
+        AccountTripQuotaSignal
+      } else if code == "authentication_required" || code == "requiresOpenaiAuth" {
+        AccountTripLoginRequiredSignal
+      } else {
+        AccountTripNativeCauseUnknown { message: json_rpc_error_message(err: err) }
+      }
+    JsonMemberFound { value: JsonNumber { lexeme: n } } =>
+      AccountTripNativeCauseUnknown {
+        message: concat("json-rpc numeric error code ", n as String) as NonEmptyStr,
+      }
+    _ =>
+      AccountTripNativeCauseUnknown { message: json_rpc_error_message(err: err) }
+  }
+}
+
 fn disposition_for_id_response(id: Int, obj: JsonValue) -> AccountTripFrameDisposition {
   match json_object_unique_member(v: obj, key: "error") {
-    JsonMemberFound { value: err } =>
-      AccountTripRpcError { message: json_rpc_error_message(err: err) }
+    JsonMemberFound { value: err } => disposition_from_structured_rpc_error(err: err)
     JsonMemberAbsent =>
       match json_object_unique_member(v: obj, key: "result") {
         JsonMemberFound { value: result } =>
@@ -453,19 +476,6 @@ fn absorb_account_trip_line(
   }
 }
 
-fn rpc_error_looks_like_login(message: NonEmptyStr) -> Bool {
-  let m = message as String
-  m.contains("requiresOpenaiAuth")
-    || m.contains("authentication")
-    || m.contains("login")
-    || m.contains("auth")
-}
-
-fn rpc_error_looks_like_quota(message: NonEmptyStr) -> Bool {
-  let m = message as String
-  m.contains("rate_limit") || m.contains("quota") || m.contains("RateLimit")
-}
-
 fn classify_account_trip(acc: AccountTripParseAcc) -> AccountStandingClassification {
   if observation_is_duplicate(obs: acc.initialize)
     || observation_is_duplicate(obs: acc.account_read)
@@ -477,39 +487,24 @@ fn classify_account_trip(acc: AccountTripParseAcc) -> AccountStandingClassificat
     let rate = observation_to_disposition(obs: acc.rate_limits)
     match init {
       AccountTripMissing => AccountStandingInitializeMissing
-      AccountTripRpcError { message } =>
-        if rpc_error_looks_like_login(message: message) {
-          AccountStandingLoginRequired
-        } else {
-          AccountStandingIncomplete
-        }
+      AccountTripLoginRequiredSignal => AccountStandingLoginRequired
+      AccountTripQuotaSignal => AccountStandingIncomplete
+      AccountTripNativeCauseUnknown { message: _ } => AccountStandingIncomplete
       AccountTripResultOk =>
         match acct {
           AccountTripLoginRequiredSignal => AccountStandingLoginRequired
           AccountTripMissing => AccountStandingIncomplete
-          AccountTripRpcError { message } =>
-            if rpc_error_looks_like_login(message: message) {
-              AccountStandingLoginRequired
-            } else {
-              AccountStandingIncomplete
-            }
+          AccountTripQuotaSignal => AccountStandingIncomplete
+          AccountTripNativeCauseUnknown { message: _ } => AccountStandingIncomplete
           AccountTripResultOk =>
             match rate {
               AccountTripResultOk => AccountStandingReady
-              AccountTripRpcError { message } =>
-                if rpc_error_looks_like_quota(message: message) {
-                  AccountStandingQuotaReached
-                } else if rpc_error_looks_like_login(message: message) {
-                  AccountStandingLoginRequired
-                } else {
-                  AccountStandingIncomplete
-                }
-              AccountTripMissing => AccountStandingIncomplete
+              AccountTripQuotaSignal => AccountStandingQuotaReached
               AccountTripLoginRequiredSignal => AccountStandingLoginRequired
+              AccountTripMissing => AccountStandingIncomplete
+              AccountTripNativeCauseUnknown { message: _ } => AccountStandingIncomplete
             }
-          AccountTripLoginRequiredSignal => AccountStandingLoginRequired
         }
-      AccountTripLoginRequiredSignal => AccountStandingLoginRequired
     }
   }
 }
