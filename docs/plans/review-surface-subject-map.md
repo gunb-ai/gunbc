@@ -1,6 +1,7 @@
 # Review-surface subject map (declaration grain)
 
-**Status: planning worksheet under review. No code edits follow until the rows are agreed.**
+**Status: planning worksheet under review. No review-system implementation edits follow until the
+rows are agreed — this document and its temporary doc-graph registration are the only changes.**
 Deliberately not a `.dag` roster — landing a permanent registry with no consumer is the error this map
 exists to catch, and is already in the tree (finding 1).
 
@@ -135,7 +136,10 @@ review authorization receipt  ×  CI/check-freshness admission receipt  ×  oper
    enumeration; source order cannot change the population; the current first-match algorithm **fails**
    the ambiguity control; the subject is not independently writable `enclosing`/`field`/qualified-name
    strings; candidate display structure remains a projection, not identity; empty, unique and ambiguous
-   populations stay distinguishable. **Explicitly not in it:** `std.claim_evidence` aliases, the final
+   populations stay distinguishable; and **source order cannot change the population's canonical identity
+   or emitted ordering** — one mathematical candidate set must not be representable by several
+   order-sensitive lists, which is the HOST-0 list-identity defect in its general form. **Explicitly
+   not in it:** `std.claim_evidence` aliases, the final
    `GroundingVerdict`, the anemia corpus, any LLM call, any tally, any admission authority.
 3. **GROUNDING-DECIDE-0** — disjoint criterion propositions (see 3a) + structural evidence + exclusive
    resolution. This slice defines the proposition space.
