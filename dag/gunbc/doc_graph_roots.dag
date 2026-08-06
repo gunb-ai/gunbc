@@ -109,6 +109,17 @@ fn hand_authored_doc_path(b: HandAuthoredDocBind) -> String {
 data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "review-surface-subject-map",
+    primary_work: DeclarationRef { module_path: "v2.lens.registry.completeness", decl_name: "lens_registry_completeness_consolidated_roster_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.lens.grounding_ledger", decl_name: "structural_ledger_entry", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.lens.grounding", decl_name: "first_coincident_target", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.review_verdict", decl_name: "is_approving_verdict", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "every row in the map has been deleted, consumed by a named live edge, or transferred to a typed roadmap obligation with an owner and acceptance. The four bound works are the map's load-bearing subjects and each names its own end state: the completeness roster note's exemption for v2.lens.grounding_ledger cites consumption by v2.lens.grounding that does not exist, and dissolves when the ledger is deleted so the row disappears rather than being reworded; LedgerEntry is that inert module's carrier; first_coincident_target folds to the FIRST non-self match while GroundingWorklistEntry stores a single coincides_with string, which is the silent-pick defect blocking any exclusive-candidate review and dissolves when the candidate population becomes complete, zero/one/many explicit, and identified by DeclarationRef rather than presentation strings; MergeReadinessTally has no producer outside fixtures and a dormant consumer whose kernel has no in-tree driver, and its unread approval_count field dissolves when the two-approval rule becomes a typed obligation with a zero-approval RED. The map is a worksheet, not an authority: it registers here so it cannot sit unreachable, and it deletes outright rather than migrating to DESIGN." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "witness-evidence-lifecycle-design",
     primary_work: DeclarationRef { module_path: "v2.workflow.floor_discovery_producer", decl_name: "floor_discovery_process_dag_file", field: WholeDeclaration },
     additional_works: [
