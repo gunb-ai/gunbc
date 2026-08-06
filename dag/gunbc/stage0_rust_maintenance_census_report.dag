@@ -1,0 +1,209 @@
+module gunbc.stage0_rust_maintenance_census_report
+
+import gunbc.stage0_rust_host_observation {
+  GitObservationRefused,
+  RustManifestObserved,
+  RustManifestParseRefused,
+  RustManifestReadRefused,
+  RustSourceHostObservation,
+  current_stage0_rust_source_observation
+}
+import gunbc.stage0_rust_lifecycle_totality {
+  LifecycleTotalityDerived,
+  LifecycleTotalityObservationRefused,
+  LifecycleTotalityReceipt,
+  lifecycle_totality_receipt
+}
+import gunbc.stage0_rust_source_lifecycle_scaffold {
+  DeleteWith,
+  EmitFrom,
+  Generated,
+  HandScaffold,
+  RetainedKernel,
+  RustMaintenanceDisposition,
+  RustSourceLifecycleRow,
+  disposition_authority_rows,
+  list_concat_unique,
+  path_in_list
+}
+import v2.std.algebra { any, filter, length, list_map }
+import v2.std.collection { List }
+import v2.std.text { String }
+
+data stage0_rust_maintenance_census_report_note: String = "Lane F (dashboard node adhoc-8ddc666b-e43): the CURRENT hand-Rust denominator, replacing the stale 109-of-175 figure. Adds NO classification logic and NO filename literal — it is a pure projection over the already-derived gunbc.stage0_rust_lifecycle_totality LifecycleTotalityReceipt (itself computed from the repo-wide gunbc.stage0_rust_host_observation RustManifestObserved subject, i.e. every .rs path git tracks at HEAD, not a stage0-scoped subset) plus a per-RustMaintenanceDisposition-variant breakdown of gunbc.stage0_rust_source_lifecycle_scaffold disposition_authority_rows, restricted by identity join to paths the receipt actually classified. The four DESIGN section 5 invariants map onto the receipt's existing exact-path-set fields: missing_disposition_paths = unclassified_paths (a tracked path with no disposition — the honest 'resists classification' population, never a filename exception); extra_disposition_paths = stale_disposition_paths (a disposition/generated authority naming a path git no longer tracks); duplicate_disposition_paths = duplicate_disposition_paths ++ duplicate_generated_paths ++ duplicate_role_paths (any authority listing one path more than once); unknown_disposition_shape_paths = ill_formed_maintenance_disposition_paths (a disposition row whose payload fails rust_maintenance_disposition_well_formed). cross_axis_overlap_paths and role_without_disposition_paths are carried through unfiltered because they are additional receipt-native defect axes the mandate did not name but DESIGN section 5 forbids rounding off. Every list here is an identity-join result, never a count: two runs against the same pinned revision must return the same paths, not merely the same length."
+
+type RustMaintenanceCensusReport
+  = RustMaintenanceCensusDerived {
+      pinned_repository_revision: String,
+      tracked_rust_paths: List<String>,
+      generated_paths: List<String>,
+      emit_from_paths: List<String>,
+      retained_kernel_paths: List<String>,
+      delete_with_v1_paths: List<String>,
+      hand_scaffold_paths: List<String>,
+      unknown_disposition_variant_paths: List<String>,
+      missing_disposition_paths: List<String>,
+      extra_disposition_paths: List<String>,
+      duplicate_disposition_paths: List<String>,
+      unknown_disposition_shape_paths: List<String>,
+      cross_axis_overlap_paths: List<String>,
+      role_without_disposition_paths: List<String>
+    }
+  | RustMaintenanceCensusObservationRefused { detail: String }
+
+fn row_has_disposition_variant(
+  row: RustSourceLifecycleRow,
+  predicate: fn(RustMaintenanceDisposition) -> Bool
+) -> Bool {
+  any(xs: row.maintenance_dispositions, predicate: predicate)
+}
+
+fn is_generated_disposition(d: RustMaintenanceDisposition) -> Bool {
+  match d {
+    Generated { authority: authority } => true
+    EmitFrom { authority: authority } => false
+    DeleteWith { roadmap_node: roadmap_node } => false
+    RetainedKernel { reason: reason } => false
+    HandScaffold { reason: reason, dissolve_on: dissolve_on } => false
+  }
+}
+
+fn is_emit_from_disposition(d: RustMaintenanceDisposition) -> Bool {
+  match d {
+    Generated { authority: authority } => false
+    EmitFrom { authority: authority } => true
+    DeleteWith { roadmap_node: roadmap_node } => false
+    RetainedKernel { reason: reason } => false
+    HandScaffold { reason: reason, dissolve_on: dissolve_on } => false
+  }
+}
+
+fn is_delete_with_disposition(d: RustMaintenanceDisposition) -> Bool {
+  match d {
+    Generated { authority: authority } => false
+    EmitFrom { authority: authority } => false
+    DeleteWith { roadmap_node: roadmap_node } => true
+    RetainedKernel { reason: reason } => false
+    HandScaffold { reason: reason, dissolve_on: dissolve_on } => false
+  }
+}
+
+fn is_retained_kernel_disposition(d: RustMaintenanceDisposition) -> Bool {
+  match d {
+    Generated { authority: authority } => false
+    EmitFrom { authority: authority } => false
+    DeleteWith { roadmap_node: roadmap_node } => false
+    RetainedKernel { reason: reason } => true
+    HandScaffold { reason: reason, dissolve_on: dissolve_on } => false
+  }
+}
+
+fn is_hand_scaffold_disposition(d: RustMaintenanceDisposition) -> Bool {
+  match d {
+    Generated { authority: authority } => false
+    EmitFrom { authority: authority } => false
+    DeleteWith { roadmap_node: roadmap_node } => false
+    RetainedKernel { reason: reason } => false
+    HandScaffold { reason: reason, dissolve_on: dissolve_on } => true
+  }
+}
+
+fn disposition_category_paths(
+  rows: List<RustSourceLifecycleRow>,
+  tracked_paths: List<String>,
+  predicate: fn(RustMaintenanceDisposition) -> Bool
+) -> List<String> {
+  list_map(
+    xs: filter(
+      xs: rows,
+      predicate: fn(row) {
+        path_in_list(path: row.path, paths: tracked_paths)
+          && row_has_disposition_variant(row: row, predicate: predicate)
+      }
+    ),
+    f: fn(row) { row.path }
+  )
+}
+
+fn current_rust_maintenance_census_report() -> RustMaintenanceCensusReport {
+  let observation = current_stage0_rust_source_observation()
+  match observation {
+    RustManifestReadRefused { detail: detail } =>
+      RustMaintenanceCensusObservationRefused { detail: detail }
+    RustManifestParseRefused { detail: detail } =>
+      RustMaintenanceCensusObservationRefused { detail: detail }
+    GitObservationRefused { detail: detail } =>
+      RustMaintenanceCensusObservationRefused { detail: detail }
+    RustManifestObserved {
+      repository_revision: revision,
+      manifest_content_identity: _,
+      tracked_rust_repo_paths: _,
+      prior_tracked_rust_repo_paths: _,
+      cargo_bin_repo_paths: _
+    } =>
+      match lifecycle_totality_receipt(observation: observation) {
+        LifecycleTotalityObservationRefused =>
+          RustMaintenanceCensusObservationRefused {
+            detail: "lifecycle_totality_receipt refused a RustManifestObserved subject"
+          }
+        LifecycleTotalityDerived {
+          tracked_paths: tracked_paths,
+          generated_paths: generated_paths,
+          maintenance_disposition_paths: maintenance_disposition_paths,
+          unclassified_paths: unclassified_paths,
+          stale_disposition_paths: stale_disposition_paths,
+          duplicate_generated_paths: duplicate_generated_paths,
+          duplicate_disposition_paths: duplicate_disposition_paths,
+          duplicate_role_paths: duplicate_role_paths,
+          cross_axis_overlap_paths: cross_axis_overlap_paths,
+          role_without_disposition_paths: role_without_disposition_paths,
+          ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
+        } => {
+          let rows = disposition_authority_rows()
+          let all_duplicate_paths = list_map(
+            xs: filter(
+              xs: duplicate_disposition_paths,
+              predicate: fn(p) { true }
+            ),
+            f: fn(p) { p }
+          )
+          RustMaintenanceCensusDerived {
+            pinned_repository_revision: revision,
+            tracked_rust_paths: tracked_paths,
+            generated_paths: generated_paths,
+            emit_from_paths: disposition_category_paths(
+              rows: rows,
+              tracked_paths: maintenance_disposition_paths,
+              predicate: is_emit_from_disposition
+            ),
+            retained_kernel_paths: disposition_category_paths(
+              rows: rows,
+              tracked_paths: maintenance_disposition_paths,
+              predicate: is_retained_kernel_disposition
+            ),
+            delete_with_v1_paths: disposition_category_paths(
+              rows: rows,
+              tracked_paths: maintenance_disposition_paths,
+              predicate: is_delete_with_disposition
+            ),
+            hand_scaffold_paths: disposition_category_paths(
+              rows: rows,
+              tracked_paths: maintenance_disposition_paths,
+              predicate: is_hand_scaffold_disposition
+            ),
+            unknown_disposition_variant_paths: disposition_category_paths(
+              rows: rows,
+              tracked_paths: maintenance_disposition_paths,
+              predicate: is_generated_disposition
+            ),
+            missing_disposition_paths: unclassified_paths,
+            extra_disposition_paths: stale_disposition_paths,
+            duplicate_disposition_paths: all_duplicate_paths,
+            unknown_disposition_shape_paths: ill_formed_maintenance_disposition_paths,
+            cross_axis_overlap_paths: cross_axis_overlap_paths,
+            role_without_disposition_paths: role_without_disposition_paths
+          }
+        }
+      }
+  }
+}
