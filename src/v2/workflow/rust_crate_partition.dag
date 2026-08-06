@@ -408,11 +408,105 @@ fn stage0_module_bearing_unit_ids() -> List<CompilationUnitId> {
   ]
 }
 
+fn stage0_string_lists_equal_as_sets(
+  left: List<String>,
+  right: List<String>
+) -> Bool {
+  (left |> count) == (right |> count)
+    && left
+      |> fold(init: true, f: fn(ok, item) {
+        ok && any(xs: right, predicate: fn(s) { s == item })
+      })
+}
+
+data stage0_partition_enrolled_membership_baseline_note: String = "Frozen at C2 landing from origin/main hand per-crate module lists (pre-derivation). Independent oracle for derived membership equivalence — not row.modules, which is already populated from the same derivation at row construction."
+
 fn stage0_snoc_unique_string(xs: List<String>, item: String) -> List<String> {
   if any(xs: xs, predicate: fn(s) { s == item }) {
     xs
   } else {
     xs |> concat([item])
+  }
+}
+
+fn stage0_partition_unit_membership_baseline(unit_id: CompilationUnitId) -> List<String> {
+  if unit_id == stage0_unit_runtime {
+    ["v1_rt"]
+  } else if unit_id == stage0_unit_std_core {
+    [
+      "std_content_hash",
+      "std_coercion",
+      "std_currency",
+      "std_decl_ref",
+      "std_keyed_row",
+      "std_keyed_roster",
+      "std_roster_frontier",
+      "std_disposition",
+      "std_error_primitives",
+      "std_http_path",
+      "std_emit_model",
+      "std_magnitude",
+      "std_measure",
+      "std_types",
+      "std_unicode_types",
+      "std_lens_verdict",
+      "std_algebra",
+      "std_nat",
+      "std_node",
+      "std_syntax",
+      "std_computation",
+      "std_termination",
+      "std_induction",
+      "std_iteration",
+      "std_graph",
+      "extdeps_uri",
+      "extdeps_external_authority",
+      "extdeps_container_oci_digest",
+      "extdeps_units_dimensionless",
+      "extdeps_units_iec_80000_13",
+      "extdeps_units_iso8601",
+      "std_occurrence_identity",
+      "std_source_annotation",
+      "v1_std_core"
+    ]
+  } else if unit_id == stage0_unit_std_surface {
+    [
+      "std_effects",
+      "std_execution_mode",
+      "std_interface_summary",
+      "std_pareto",
+      "std_realization_schedule",
+      "std_trait_derive_shape"
+    ]
+  } else if unit_id == stage0_unit_extdeps_languages {
+    [
+      "extdeps_languages_dag_emit",
+      "extdeps_languages_dag_syntax",
+      "extdeps_languages_dag_types",
+      "extdeps_languages_go_emit",
+      "extdeps_languages_go_syntax",
+      "extdeps_languages_go_types",
+      "extdeps_languages_python_emit",
+      "extdeps_languages_python_syntax",
+      "extdeps_languages_python_types",
+      "extdeps_languages_rust_emit",
+      "extdeps_languages_rust_syntax",
+      "extdeps_languages_rust_types"
+    ]
+  } else if unit_id == stage0_unit_v1_infer {
+    [
+      "v1_compiler_infer_emit_info",
+      "v1_compiler_infer_env",
+      "v1_compiler_infer_items",
+      "v1_compiler_infer_occurrence_binding",
+      "v1_compiler_infer_service",
+      "v1_compiler_infer_sigs",
+      "v1_compiler_infer_types"
+    ]
+  } else if unit_id == stage0_unit_v1_artifact {
+    ["v1_compiler_artifact", "v1_compiler_languages"]
+  } else {
+    []
   }
 }
 
@@ -861,6 +955,17 @@ fn stage0_derived_explicit_assignment() -> Map<ModuleId, CompilationUnitId> {
   }
 }
 
+fn stage0_partition_derived_membership_matches_enrolled_baseline_holds() -> Bool {
+  stage0_module_bearing_unit_ids()
+    |> fold(init: true, f: fn(ok, unit_id) {
+      ok
+        && stage0_string_lists_equal_as_sets(
+          left: stage0_derived_unit_member_basenames(unit_id: unit_id),
+          right: stage0_partition_unit_membership_baseline(unit_id: unit_id)
+        )
+    })
+}
+
 fn stage0_partition_crate_row_membership_derived(row: Stage0PartitionCrateRow) -> List<String> {
   if row.unit_id == stage0_unit_emit_core {
     stage0_r3_emit_reexport_surface_modules()
@@ -870,10 +975,7 @@ fn stage0_partition_crate_row_membership_derived(row: Stage0PartitionCrateRow) -
 }
 
 fn stage0_partition_crate_rows_membership_derived_holds() -> Bool {
-  stage0_partition_crate_rows()
-    |> fold(init: true, f: fn(ok, row) {
-      ok && (row.modules == stage0_partition_crate_row_membership_derived(row: row))
-    })
+  stage0_partition_derived_membership_matches_enrolled_baseline_holds()
 }
 
 fn stage0_partition_membership_closure_covers_seeds() -> Bool {
@@ -1291,7 +1393,6 @@ fn stage0_module_bearing_crate_row(
   package_name: String,
   crate_dir: String,
   kind: Stage0PartitionCrateKind,
-  reexport_packages: List<String>,
   carries_non_empty_wrappers: Bool
 ) -> Stage0PartitionCrateRow {
   Stage0PartitionCrateRow {
@@ -1300,7 +1401,7 @@ fn stage0_module_bearing_crate_row(
     crate_dir: crate_dir,
     kind: kind,
     modules: stage0_derived_unit_member_basenames(unit_id: unit_id),
-    reexport_packages: reexport_packages,
+    reexport_packages: stage0_unit_reexport_packages(unit_id: unit_id),
     carries_non_empty_wrappers: carries_non_empty_wrappers
   }
 }
@@ -1312,7 +1413,6 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
       package_name: "v1-stage0-runtime",
       crate_dir: "src/v1/stage0_runtime",
       kind: Stage0FoundationCrate,
-      reexport_packages: [],
       carries_non_empty_wrappers: true
     ),
     stage0_module_bearing_crate_row(
@@ -1320,7 +1420,6 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
       package_name: "v1-stage0-std-core",
       crate_dir: "src/v1/stage0_std_core",
       kind: Stage0LayeredCoreCrate,
-      reexport_packages: ["v1-stage0-runtime"],
       carries_non_empty_wrappers: false
     ),
     stage0_module_bearing_crate_row(
@@ -1328,10 +1427,6 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
       package_name: "v1-stage0-std-surface",
       crate_dir: "src/v1/stage0_std_surface",
       kind: Stage0LayeredCoreCrate,
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-core"
-      ],
       carries_non_empty_wrappers: false
     ),
     stage0_module_bearing_crate_row(
@@ -1339,11 +1434,6 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
       package_name: "v1-stage0-extdeps-languages",
       crate_dir: "src/v1/stage0_extdeps_languages",
       kind: Stage0LayeredCoreCrate,
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-core",
-        "v1-stage0-std-surface"
-      ],
       carries_non_empty_wrappers: false
     ),
     stage0_module_bearing_crate_row(
@@ -1351,12 +1441,6 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
       package_name: "v1-stage0-v1-infer",
       crate_dir: "src/v1/stage0_v1_infer",
       kind: Stage0LayeredCoreCrate,
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-core",
-        "v1-stage0-std-surface",
-        "v1-stage0-extdeps-languages"
-      ],
       carries_non_empty_wrappers: false
     ),
     stage0_module_bearing_crate_row(
@@ -1364,13 +1448,6 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
       package_name: "v1-stage0-v1-artifact",
       crate_dir: "src/v1/stage0_v1_artifact",
       kind: Stage0LayeredCoreCrate,
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-core",
-        "v1-stage0-std-surface",
-        "v1-stage0-extdeps-languages",
-        "v1-stage0-v1-infer"
-      ],
       carries_non_empty_wrappers: false
     )
   ]
@@ -1383,7 +1460,7 @@ fn stage0_r3_emit_shell_crate_row() -> Stage0PartitionCrateRow {
     crate_dir: "src/v1/stage0_emit_core",
     kind: Stage0EmitCoreCrate,
     modules: stage0_r3_emit_reexport_surface_modules(),
-    reexport_packages: [],
+    reexport_packages: stage0_unit_reexport_packages(unit_id: stage0_unit_emit_core),
     carries_non_empty_wrappers: false
   }
 }
