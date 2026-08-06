@@ -15,7 +15,7 @@ import extdeps.languages.json.parse {
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray }
 import v2.std.algebra { list_snoc_item }
 
-data claude_agent_sdk_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.npmjs.com/package/@anthropic-ai/claude-agent-sdk/v/0.3.220"
@@ -32,11 +32,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
       field: WholeDeclaration
     }
   },
-  first_citation: claude_agent_sdk_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
-data claude_agent_sdk_stream_authority_note: String = "Upstream @anthropic-ai/claude-agent-sdk 0.3.220 (claude_agent_sdk_external_authority_anchor): SDKRateLimitInfo is a closed enum surface with no raw escape hatch, and the SDK parser drops unknown top-level stream-json message types. gunbc must capture beneath the parser and model ClaudeNativeRateLimitType as NonEmptyStr with recognised projections layered over it. Internal audit receipt: provider-control-interface-audit.md section 4.1."
+data claude_agent_sdk_stream_authority_note: String = "Upstream @anthropic-ai/claude-agent-sdk 0.3.220 (extdeps_external_authority_anchor): SDKRateLimitInfo is a closed enum surface with no raw escape hatch, and the SDK parser drops unknown top-level stream-json message types. gunbc must capture beneath the parser and model ClaudeNativeRateLimitType as NonEmptyStr with recognised projections layered over it. Internal audit receipt: provider-control-interface-audit.md section 4.1."
 
 data claude_stream_event_type_control_response: String = "control_response"
 data claude_stream_event_type_rate_limit_event: String = "rate_limit_event"
