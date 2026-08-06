@@ -63,7 +63,6 @@ import gunbc.roadmap_dispatch_actuator {
   codex_spawn_argv,
   dispatch_codex_home,
   dispatch_codex_exec_spec,
-  dispatch_spawn_commands_for_provider,
   dispatch_spawn_commands_for_instance,
   dispatch_spawn_commands_for_inventory,
   DispatchSpawnCommands,
@@ -97,6 +96,9 @@ import gunbc.dispatch_selection {
   dispatch_codex_default_model,
   dispatch_selection_standing_ineligible_reason,
   fixture_inventory_codex_only_available,
+  resolve_dispatch_selection,
+  DispatchSelectionResolved,
+  DispatchSelectionRefused,
 }
 import gunbc.provider_account { codex_roadmap_account_selection }
 import gunbc.dispatch_pipe_pane_emit {
@@ -170,18 +172,39 @@ test fn witness_brief_fill_includes_node_metadata() -> Bool {
 }
 
 test fn witness_dispatch_effort_ignores_intricacy() -> Bool {
-  let high = sized_with_intricacy(id: "high-node", intricacy: IntricacyHigh, title: "High")
-  let low = sized_with_intricacy(id: "low-node", intricacy: IntricacyLow, title: "Low")
-  match dispatch_actuator_selection(node_sizing: high.sizing) {
-    DispatchActuatorSelectionOk { provider: _, effort: high_effort, process_fingerprint: _ } =>
-      match dispatch_actuator_selection(node_sizing: low.sizing) {
-        DispatchActuatorSelectionOk { provider: _, effort: low_effort, process_fingerprint: _ } =>
-          reasoning_effort_label(effort: high_effort) == "medium"
-            && reasoning_effort_label(effort: low_effort) == "medium"
-            && high_effort == low_effort
-        DispatchActuatorSelectionRefused { reason: _ } => false
+  let instance = srv1_live_dashboard_instance()
+  let inventory = fixture_inventory_codex_only_available(instance: instance)
+  let high = resolve_dispatch_selection(
+    inventory: inventory,
+    request: default_provider_selection_request(),
+    node_sizing: Sized {
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      repo: "gunbc",
+      acceptance: PrsMerged,
+    },
+  )
+  let low = resolve_dispatch_selection(
+    inventory: inventory,
+    request: default_provider_selection_request(),
+    node_sizing: Sized {
+      intricacy: IntricacyLow,
+      volume: VolumeMedium,
+      repo: "gunbc",
+      acceptance: PrsMerged,
+    },
+  )
+  match high {
+    DispatchSelectionResolved { receipt: high_receipt } =>
+      match low {
+        DispatchSelectionResolved { receipt: low_receipt } =>
+          reasoning_effort_label(effort: high_receipt.applied_effort) == "medium"
+            && reasoning_effort_label(effort: low_receipt.applied_effort) == "medium"
+            && high_receipt.applied_effort == low_receipt.applied_effort
+        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } =>
+          false
       }
-    DispatchActuatorSelectionRefused { reason: _ } => false
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
 
