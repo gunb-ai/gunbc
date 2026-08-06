@@ -23,7 +23,7 @@ env:
   RUSTFLAGS: -D warnings
 jobs:
   build:
-    runs-on: [self-hosted, linux, arm64]
+    runs-on: [self-hosted, linux, arm64, ci-fleet-admit]
     timeout-minutes: 85
     steps:
       - name: Checkout
@@ -138,7 +138,7 @@ jobs:
           compression-level: 0
         timeout-minutes: 10
   regen:
-    runs-on: [self-hosted, linux, arm64]
+    runs-on: [self-hosted, linux, arm64, ci-fleet-admit]
     needs: [build]
     timeout-minutes: 35
     steps:
@@ -215,7 +215,7 @@ jobs:
           "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_plan --notice-title "self-host fixed-point (regen + staleness) — required; own regen job upstream of ci"
         timeout-minutes: 15
   ci:
-    runs-on: [self-hosted, linux, arm64]
+    runs-on: [self-hosted, linux, arm64, ci-fleet-admit]
     needs: [build, regen]
     timeout-minutes: 110
     steps:
@@ -350,7 +350,7 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_wet
   heal_generated_artifacts:
-    runs-on: [self-hosted, linux, arm64]
+    runs-on: [self-hosted, linux, arm64, ci-fleet-admit]
     needs: [build]
     timeout-minutes: 40
     if: github.event_name == 'pull_request'

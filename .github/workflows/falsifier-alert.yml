@@ -55,7 +55,7 @@ permissions:
   contents: read
 jobs:
   alert:
-    runs-on: [self-hosted, linux, arm64]
+    runs-on: [self-hosted, linux, arm64, ci-fleet-admit]
     timeout-minutes: 5
     steps:
       - name: Download floor component receipt (from the triggering run)
