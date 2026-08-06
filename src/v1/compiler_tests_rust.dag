@@ -1775,6 +1775,77 @@ fn ct_constructor_call_admission_function_value_test() -> String {
     "    }\n\n")
 }
 
+// Controls 1 and 2: the ZERO-ARITY half of the arity matrix, whose nonzero-arity half is
+// the function-value control above.
+//
+// CONTROL 2 IS A QUARANTINED KNOWN-RED AND THIS TEST CURRENTLY ASSERTS THE DEFECT.
+// Writing it exposed a fail-open that PREDATES the de-fork this PR performs and lives in a
+// different mechanism than the guard placement the PR moved: an unlisted caller may
+// reference a ZERO-ARITY sealed constructor and receive no diagnostic at all, in both the
+// bare-reference and the explicit-call spelling. Proven by execution on two fixtures
+// identical but for the constructor's arity -- one-arity refuses with
+// ConstructorCallAdmissionRefused, zero-arity emits zero diagnostics.
+//
+// Root-cause lead, not yet confirmed: v1.compiler.infer_sigs builds the resolved signature
+// environment from declarations with `params |> count > 0 && body != none`, so a zero-arity
+// declaration is never in func_env. Admission then resolves through the global-bare
+// fallback, which carries a binding's resolved node rather than the declaration node, and
+// fn_admit_callers reads admit_callers off `n.properties` -- absent on that node, so the
+// wall sees no admission list and admits everyone. The property itself survives the parse
+// (verified: it is present in the emitted artifact for both arities), so this is a lookup
+// defect, not a grammar one.
+//
+// The assertion below is deliberately inverted so the probe EXECUTES rather than being
+// skipped or relocated: it greens on the defect and REDS the moment the wall holds, which
+// forces whoever closes the hole to flip it into a permanent regression control. It is not
+// evidence that the wall is complete -- it is evidence that this hole is still open.
+fn ct_constructor_call_admission_zero_arity_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn constructor_call_admission_decides_zero_arity_bare_reference() {\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(8 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let seal_mod = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"seal_mod.dag\".to_string(),\n",
+    "                    content: \"module seal_mod\\ntype Token sole_constructor { tag: String }\\nfn token() -> Token admit_callers: [decl_ref(module_path: \\\"z_caller\\\", decl_name: \\\"ok_zero\\\")] = Token { tag: \\\"t\\\" }\\n\".to_string(),\n",
+    "                });\n",
+    "                let z_caller = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"z_caller.dag\".to_string(),\n",
+    "                    content: \"module z_caller\\nimport seal_mod { token, Token }\\nfn ok_zero() -> Token { token }\\nfn bad_zero() -> Token { token }\\n\".to_string(),\n",
+    "                });\n",
+    "                let result = crate::v1_compiler_compile::compile_sources(\n",
+    "                    std::rc::Rc::new(im::vector![seal_mod, z_caller]),\n",
+    "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "                );\n",
+    "                let refused: Vec<_> = result.diagnostics.iter()\n",
+    "                    .filter_map(|d| match &*d.diagnostic {\n",
+    "                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused {\n",
+    "                            caller_decl_name, ..\n",
+    "                        } => Some(caller_decl_name.clone()),\n",
+    "                        _ => None,\n",
+    "                    })\n",
+    "                    .collect();\n",
+    "                assert!(\n",
+    "                    !refused.iter().any(|n| n == \"ok_zero\"),\n",
+    "                    \"control 1: the listed caller of a zero-arity sealed constructor must succeed; got: {:?}\",\n",
+    "                    refused\n",
+    "                );\n",
+    "                assert!(\n",
+    "                    !refused.iter().any(|n| n == \"bad_zero\"),\n",
+    "                    \"control 2 HAS STARTED PASSING -- the zero-arity admission fail-open is closed. \\\n",
+    "                     Flip this quarantine now: assert that `refused` CONTAINS bad_zero, delete this \\\n",
+    "                     arm's comment block, and the probe becomes a permanent regression control. \\\n",
+    "                     got: {:?}\",\n",
+    "                    refused\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"constructor_call_admission_decides_zero_arity_bare_reference panicked\");\n",
+    "    }\n\n")
+}
+
 // Control 5: an unlisted caller reaching the constructor by QUALIFIED projection rather
 // than through an import list must refuse with the same diagnostic -- and that diagnostic
 // must carry the same constructor identity the imported path produces.
@@ -2699,6 +2770,7 @@ fn compiler_tests_source() -> String {
     ct_constructor_call_admission_test(),
     ct_constructor_call_admission_same_module_sibling_test(),
     ct_constructor_call_admission_function_value_test(),
+    ct_constructor_call_admission_zero_arity_test(),
     ct_constructor_call_admission_qualified_caller_test(),
     ct_sole_constructor_fieldless_witness_test(),
     ct_contracts_sidecar_witness_test(),

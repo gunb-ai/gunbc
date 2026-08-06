@@ -357,6 +357,11 @@ data ct_row_ct_constructor_call_admission_function_value_test: LanguageSourceSca
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
+data ct_row_ct_constructor_call_admission_zero_arity_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_constructor_call_admission_zero_arity_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
 data ct_row_ct_constructor_call_admission_qualified_caller_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_constructor_call_admission_qualified_caller_test",
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
@@ -458,6 +463,7 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   ct_row_ct_constructor_call_admission_test,
   ct_row_ct_constructor_call_admission_same_module_sibling_test,
   ct_row_ct_constructor_call_admission_function_value_test,
+  ct_row_ct_constructor_call_admission_zero_arity_test,
   ct_row_ct_constructor_call_admission_qualified_caller_test,
   ct_row_ct_sole_constructor_fieldless_witness_test,
   ct_row_ct_contracts_sidecar_witness_test,

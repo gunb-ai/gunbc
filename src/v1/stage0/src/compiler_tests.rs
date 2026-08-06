@@ -1373,6 +1373,50 @@ mod compiler_tests {
     }
 
     #[test]
+    fn constructor_call_admission_decides_zero_arity_bare_reference() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let seal_mod = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "seal_mod.dag".to_string(),
+                    content: "module seal_mod\ntype Token sole_constructor { tag: String }\nfn token() -> Token admit_callers: [decl_ref(module_path: \"z_caller\", decl_name: \"ok_zero\")] = Token { tag: \"t\" }\n".to_string(),
+                });
+                let z_caller = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "z_caller.dag".to_string(),
+                    content: "module z_caller\nimport seal_mod { token, Token }\nfn ok_zero() -> Token { token }\nfn bad_zero() -> Token { token }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![seal_mod, z_caller]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let refused: Vec<_> = result.diagnostics.iter()
+                    .filter_map(|d| match &*d.diagnostic {
+                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused {
+                            caller_decl_name, ..
+                        } => Some(caller_decl_name.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(
+                    !refused.iter().any(|n| n == "ok_zero"),
+                    "control 1: the listed caller of a zero-arity sealed constructor must succeed; got: {:?}",
+                    refused
+                );
+                assert!(
+                    !refused.iter().any(|n| n == "bad_zero"),
+                    "control 2 HAS STARTED PASSING -- the zero-arity admission fail-open is closed. \
+                     Flip this quarantine now: assert that `refused` CONTAINS bad_zero, delete this \
+                     arm's comment block, and the probe becomes a permanent regression control. \
+                     got: {:?}",
+                    refused
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("constructor_call_admission_decides_zero_arity_bare_reference panicked");
+    }
+
+    #[test]
     fn constructor_call_admission_qualified_caller_reports_undoubled_identity() {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
