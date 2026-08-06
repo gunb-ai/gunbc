@@ -54,6 +54,8 @@ import v2.std.refinement {
 }
 import v2.std.witness { Holds, Violates, Witness }
 
+data complexity_variables_list_carrier_note: String = "ComplexityVariables is the admitted SizeVariable list, not Refined around it. refine still validates at the from_refine boundary and refined_base projects once there; SizedComplexity stores the list so refined_base is never applied to a discovery-time Witness-nested carrier (PR 7765 CI: Holds layers around Refined made .base unreadable). dissolve-on: root-cause the discovery adaptive-width retention path that injected nested Holds, then Refined can return if it stays the single authority without a second wrap."
+
 fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
   true
 }
@@ -74,7 +76,8 @@ fn complexity_projection_locus() -> Locus {
 
 fn complexity_variables_from_refine(xs: List<SizeVariable>) -> Witness<ComplexityVariables> {
   match refine(base: xs, by: complexity_variables_validation, at: complexity_projection_locus()) {
-    Accepted { value: refined, diagnostics: _ } => Holds { value: refined }
+    Accepted { value: refined, diagnostics: _ } =>
+      Holds { value: refined_base(r: refined) }
     Rejected { diagnostics } => Violates { diagnostic: diagnostics.head }
   }
 }
@@ -82,17 +85,11 @@ fn complexity_variables_from_refine(xs: List<SizeVariable>) -> Witness<Complexit
 fn complexity_variables_unwrap_refine(xs: List<SizeVariable>) -> ComplexityVariables {
   match complexity_variables_from_refine(xs: xs) {
     Holds { value: variables } => variables
-
-    Violates { diagnostic: _ } =>
-      refined_vacuous_stub_pack(
-        base: xs,
-        by: complexity_variables_vacuous_validation,
-        at: complexity_projection_locus()
-      )
+    Violates { diagnostic: _ } => xs
   }
 }
 
-type ComplexityVariables = Refined<List<SizeVariable>>
+type ComplexityVariables = List<SizeVariable>
 
 type SizeIndexedAsymptoticClass
   = SizedLogClass
@@ -124,9 +121,7 @@ fn composite_complexity_variables(
   lhs: ComplexityVariables,
   rhs: ComplexityVariables
 ) -> ComplexityVariables {
-  complexity_variables_unwrap_refine(
-    xs: concat(refined_base(r: lhs), refined_base(r: rhs))
-  )
+  complexity_variables_unwrap_refine(xs: concat(lhs, rhs))
 }
 
 fn sized_complexity(
@@ -182,19 +177,19 @@ fn combine_complexity_variables(
 fn complexity_variables_from_cost(cost: SymbolicCost) -> Witness<ComplexityVariables> {
   match cost {
     ConstantCost { value: _ } =>
-      Holds { value: empty_complexity_variables() }
+      complexity_variables_from_refine(xs: Empty)
     LogCost { variable: v } =>
-      Holds { value: single_complexity_variable(size_var: v) }
+      complexity_variables_from_refine(xs: [v])
     LinearCost { variable: v } =>
-      Holds { value: single_complexity_variable(size_var: v) }
+      complexity_variables_from_refine(xs: [v])
     PolynomialCost { variable: v, degree: _ } =>
-      Holds { value: single_complexity_variable(size_var: v) }
+      complexity_variables_from_refine(xs: [v])
     PolyLogCost { variable: v, exponent: _ } =>
-      Holds { value: single_complexity_variable(size_var: v) }
+      complexity_variables_from_refine(xs: [v])
     ExponentialCost { variable: v, base: _ } =>
-      Holds { value: single_complexity_variable(size_var: v) }
+      complexity_variables_from_refine(xs: [v])
     FactorialCost { variable: v } =>
-      Holds { value: single_complexity_variable(size_var: v) }
+      complexity_variables_from_refine(xs: [v])
     SumCost { lhs: lhs, rhs: rhs } =>
       combine_complexity_variables(
         lhs: complexity_variables_from_cost(cost: lhs),
@@ -309,7 +304,7 @@ fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
         UnknownComplexity { diagnostic: _ } => false
         ConstantComplexity => true
         SizedComplexity { class: bc, variables: bv } =>
-          if refined_base(r: av) == refined_base(r: bv) {
+          if av == bv {
             asymptotic_class_dominates(
               a: asymptotic_class_from_sized_class(class: ac),
               b: asymptotic_class_from_sized_class(class: bc)
