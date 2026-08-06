@@ -24,16 +24,15 @@ import v2.std.text { String }
 
 data stage0_rust_lifecycle_totality_note: String = "C1 carrier (Lane C / v1-honest-frontier): derives exact path sets from gunbc.stage0_rust_host_observation RustManifestObserved — tracked, generated, well-formed maintenance-disposition, unclassified, stale, duplicate-within-authority (generated, disposition, role rows BEFORE deduplication), cross-axis overlap (generated ∩ disposition), role-without-disposition, ill-formed maintenance-disposition shape. stage0_rust_lifecycle_totality_underived_axes names C1 axes the brief requires but this carrier cannot derive yet (counted, not silent). Completeness is an identity join over exact paths, never a count oracle (DESIGN section 5). Discovery and decision each require every reported defect dimension to be explicitly zero — not incidental implication."
 
-type RetirementTrigger {}
+type LifecycleTotalityUnderivedAxis
+  = LifecycleTotalityRetirementTriggerUnmodeled
 
-type LifecycleTotalityUnderivedAxis = RetirementTrigger
+data lifecycle_totality_retirement_trigger_underived_reason: String = "RetirementTrigger carrier not modeled — cannot derive disposition-without-retirement-trigger path set until gunbc.stage0_rust_source_lifecycle_scaffold lands the authority (see zero_hand_maintained_rust_finish_line_attachment_note). Named LifecycleTotalityRetirementTriggerUnmodeled rather than a bare RetirementTrigger declaration: a bare RetirementTrigger already exists elsewhere in the tree as an unrelated RustHonestFrontierDeferredAxis variant (gunbc.stage0_rust_honest_frontier_projection), and gunbc.v1_complexity_capability_census documents a prior real incident of exactly this class — a top-level RetirementTrigger declaration shadowing that variant and breaking an unrelated module's CI. Declaring a placeholder RetirementTrigger type here would also pre-empt the name owed to the real carrier's single authority, gunbc.stage0_rust_source_lifecycle_scaffold, before it lands. This carrier fabricates neither."
 
-data lifecycle_totality_retirement_trigger_underived_reason: String = "RetirementTrigger carrier not modeled — cannot derive disposition-without-retirement-trigger path set until gunbc.stage0_rust_source_lifecycle_scaffold lands the authority (see zero_hand_maintained_rust_finish_line_attachment_note)"
-
-data lifecycle_totality_retirement_trigger_dissolve_on: String = "dissolve-on: RetirementTrigger carrier lands in gunbc.stage0_rust_source_lifecycle_scaffold and C1 derives exact disposition_without_retirement_trigger_paths via that single authority"
+data lifecycle_totality_retirement_trigger_dissolve_on: String = "dissolve-on: RetirementTrigger carrier lands in gunbc.stage0_rust_source_lifecycle_scaffold and C1 derives exact disposition_without_retirement_trigger_paths via that single authority; LifecycleTotalityRetirementTriggerUnmodeled retires in favor of the real carrier"
 
 data stage0_rust_lifecycle_totality_underived_axes: List<LifecycleTotalityUnderivedAxis> = [
-  RetirementTrigger {}
+  LifecycleTotalityRetirementTriggerUnmodeled
 ]
 
 data empty_string_list: List<String> = []
