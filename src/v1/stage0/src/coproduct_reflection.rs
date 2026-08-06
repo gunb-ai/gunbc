@@ -1034,10 +1034,11 @@ pub struct DeclFactsCorpusWalk {
     pub files_parsed: usize,
 }
 
-/// Parse-only whole-tree `decl_facts(roots)` substrate — shared by host builtin and emit audits.
-///
-/// Preserves the non-test corpus boundary for emit-only audits: `is_test_dag(rel)` skips
-/// before any `DeclFactRaw` row is materialized (same exclusion as the pre-#6158 walk).
+// decl_facts_corpus_walk parses every .dag under every pool_root independently,
+// taking module_path from each file's own module declaration. It does not consult
+// dependency-pool-index / the module source index used by compile/load. Where roots
+// shadow the same module path, this producer may emit facts for both the winning
+// source and the shadowed stub; compile binds only the winner.
 pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
     let mut out = Vec::new();
     let mut files_scanned = 0usize;

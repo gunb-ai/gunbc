@@ -152,35 +152,40 @@ fn decl_fact_lookup_by_qualified_name(qn: String, facts: List<DeclFact>) -> Decl
 fn decl_fact_optional_by_qualified_name(qn: String, facts: List<DeclFact>) -> Optional<DeclFact> {
   match decl_fact_lookup_by_qualified_name(qn: qn, facts: facts) {
     DeclFactUnique { fact: fact } => optional_present(value: fact)
-    _ => optional_absent()
+    DeclFactMissing => optional_absent()
+    DeclFactAmbiguous { candidates: _ } => optional_absent()
   }
 }
 
 fn decl_fact_lookup_is_missing(lookup: DeclFactLookup) -> Bool {
   match lookup {
     DeclFactMissing => true
-    _ => false
+    DeclFactUnique { fact: _ } => false
+    DeclFactAmbiguous { candidates: _ } => false
   }
 }
 
 fn decl_fact_lookup_is_unique(lookup: DeclFactLookup) -> Bool {
   match lookup {
     DeclFactUnique { fact: _ } => true
-    _ => false
+    DeclFactMissing => false
+    DeclFactAmbiguous { candidates: _ } => false
   }
 }
 
 fn decl_fact_lookup_is_ambiguous(lookup: DeclFactLookup) -> Bool {
   match lookup {
     DeclFactAmbiguous { candidates: _ } => true
-    _ => false
+    DeclFactMissing => false
+    DeclFactUnique { fact: _ } => false
   }
 }
 
 fn decl_fact_lookup_candidate_count(lookup: DeclFactLookup) -> Int {
   match lookup {
     DeclFactAmbiguous { candidates: cands } => length(xs: cands)
-    _ => 0
+    DeclFactMissing => 0
+    DeclFactUnique { fact: _ } => 0
   }
 }
 

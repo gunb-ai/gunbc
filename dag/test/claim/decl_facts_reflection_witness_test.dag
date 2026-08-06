@@ -7,7 +7,7 @@ import test.claim.decl_facts_reflection_witness_support {
   decl_facts_reflection_fact_node,
   decl_facts_reflection_fixture_facts,
   decl_facts_reflection_lookup,
-  decl_facts_reflection_lookup_with_appended_duplicate,
+  duplicate_qualified_identity_lookup_names_primary_and_shadow,
   decl_facts_reflection_nullary_value_projection,
   decl_facts_reflection_projection_variant_label_optional,
   decl_facts_reflection_resolved_nullary_parent,
@@ -38,6 +38,7 @@ data mechanism_single_authority_qn: String = "test.fixture.decl_facts_reflection
 data mechanism_realization_dispatch_qn: String = "test.fixture.decl_facts_reflection.specimens.mechanism_realization_dispatch"
 data missing_variant_specimen_qn: String = "test.fixture.decl_facts_reflection.specimens.missing_variant_specimen"
 data ambiguous_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.ambiguous_specimen.ambiguous_arm_specimen"
+data duplicate_shadowed_specimen_qn: String = "test.fixture.decl_facts_reflection_duplicate_qn.shadowed_module.shadowed_specimen"
 data unimported_globally_unique_specimen_qn: String = "test.fixture.decl_facts_reflection.unimported_globally_unique_user.unimported_globally_unique_specimen"
 data scaffold_named_field_bind_qn: String = "test.fixture.decl_facts_reflection.specimens.scaffold_named_field_bind"
 data whole_declaration_bind_qn: String = "test.fixture.decl_facts_reflection.specimens.disposition_scaffold"
@@ -185,13 +186,15 @@ test fn decl_facts_reflection_nullary_mechanism_projection_shape() -> Bool {
 }
 
 test fn decl_facts_reflection_lookup_ambiguous_arrives_at_consumer() -> Bool {
-  let lookup = decl_facts_reflection_lookup_with_appended_duplicate(qn: disposition_scaffold_qn)
-  decl_fact_lookup_is_ambiguous(lookup: lookup) && decl_fact_lookup_candidate_count(lookup: lookup) == 2
+  duplicate_qualified_identity_lookup_names_primary_and_shadow(
+    lookup: decl_facts_reflection_lookup(qn: duplicate_shadowed_specimen_qn)
+  )
 }
 
 test fn decl_fact_lookup_duplicate_qualified_identity_returns_ambiguous_both_candidates() -> Bool {
-  let lookup = decl_facts_reflection_lookup_with_appended_duplicate(qn: disposition_scaffold_qn)
-  decl_fact_lookup_is_ambiguous(lookup: lookup) && decl_fact_lookup_candidate_count(lookup: lookup) == 2
+  duplicate_qualified_identity_lookup_names_primary_and_shadow(
+    lookup: decl_facts_reflection_lookup(qn: duplicate_shadowed_specimen_qn)
+  )
 }
 
 test fn decl_facts_reflection_unimported_globally_unique_refuses_constructor_resolution() -> Bool {

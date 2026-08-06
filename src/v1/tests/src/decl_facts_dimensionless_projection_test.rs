@@ -149,6 +149,10 @@ fn declaration_identity_qualified_name(ctx: &InterpContext, projection: &Value) 
 const SPECIMENS_REL: &str = "dag/test/fixture/decl_facts_reflection/specimens.dag";
 const DISPOSITION_SCAFFOLD_QN: &str =
     "test.fixture.decl_facts_reflection.specimens.disposition_scaffold";
+const MECHANISM_SINGLE_AUTHORITY_QN: &str =
+    "test.fixture.decl_facts_reflection.specimens.mechanism_single_authority";
+const MISSING_VARIANT_SPECIMEN_QN: &str =
+    "test.fixture.decl_facts_reflection.specimens.missing_variant_specimen";
 
 fn specimens_ctx() -> InterpContext {
     let sources: Vec<Rc<SourceFile>> = resolve_imports_transitively_with_source_roots(
@@ -216,6 +220,59 @@ fn disposition_scaffold_marshals_coproduct_record_projection() {
         projection_kind_lexeme(&ctx, &projection),
         Some("DataInitializerRecordProjection".to_string()),
         "imported coproduct initializer must use coproduct record projection"
+    );
+}
+
+#[test]
+fn mechanism_single_authority_marshals_nullary_resolved_variant_projection() {
+    let ctx = specimens_ctx();
+    let projection = marshal_data_initializer_projection(&ctx, MECHANISM_SINGLE_AUTHORITY_QN)
+        .expect("nullary coproduct initializer must marshal without error");
+    assert_eq!(
+        projection_kind_lexeme(&ctx, &projection),
+        Some("DataInitializerNullaryProjection".to_string()),
+        "nullary variant initializer must use nullary projection"
+    );
+    let value_identity = edge_target_named(&ctx, &projection, "value_identity")
+        .expect("nullary projection must carry value_identity edge");
+    assert_eq!(
+        projection_kind_lexeme(&ctx, &value_identity),
+        Some("ResolvedVariantValueProjection".to_string()),
+        "nullary initializer must resolve variant value via declared type env"
+    );
+    assert_eq!(
+        projection_kind_lexeme(
+            &ctx,
+            &edge_target_named(&ctx, &value_identity, "parent_qualified_name")
+                .expect("resolved variant projection must carry parent_qualified_name")
+        ),
+        Some("std.disposition.ConstructionMechanism".to_string())
+    );
+    assert_eq!(
+        projection_kind_lexeme(
+            &ctx,
+            &edge_target_named(&ctx, &value_identity, "variant_name")
+                .expect("resolved variant projection must carry variant_name")
+        ),
+        Some("SingleAuthority".to_string())
+    );
+}
+
+#[test]
+fn missing_variant_specimen_field_marshals_missing_value_projection() {
+    let ctx = specimens_ctx();
+    let projection = marshal_data_initializer_projection(&ctx, MISSING_VARIANT_SPECIMEN_QN)
+        .expect("missing variant specimen must marshal without error");
+    assert_eq!(
+        projection_kind_lexeme(&ctx, &projection),
+        Some("DataInitializerRecordProjection".to_string())
+    );
+    let dissolves_to = edge_target_named(&ctx, &projection, "dissolves_to")
+        .expect("scaffold record projection must carry dissolves_to field");
+    assert_eq!(
+        projection_kind_lexeme(&ctx, &dissolves_to),
+        Some("VariantValueResolutionMissingProjection".to_string()),
+        "type-incorrect variant initializer must project missing, not refused"
     );
 }
 

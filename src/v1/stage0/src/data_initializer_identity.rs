@@ -14,11 +14,129 @@ use crate::v1_compiler_infer_items::{item_kind, ItemKind, TypedModule};
 use crate::v1_compiler_infer_types::normalize_access_type_node;
 use crate::v1_interpreter::{sorted_fields, InterpContext, InterpResult, Value};
 use crate::v1_std_core::{
-    authored_name_at, field_init_node_name_at, field_init_node_value, Connective, ExprData,
-    InferredNode, NewlineIndex, Node,
+    authored_name_at, field_init_node_name_at, field_init_node_value, field_node_name_at,
+    field_node_type_expr, find_child_named, Connective, ExprData, InferredNode, NewlineIndex, Node,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
+
+fn bare_symbol_tail(name: &str) -> &str {
+    name.rsplit_once('.').map(|(_, tail)| tail).unwrap_or(name)
+}
+
+fn local_symbol_name(si: &SourceIndices, node: &Rc<Node>) -> String {
+    bare_symbol_tail(&authored_name_at(si.clone(), node.clone())).to_string()
+}
+
+fn coproduct_record_lit_variant_name(si: &SourceIndices, body: &Rc<Node>) -> String {
+    let from_authored = local_symbol_name(si, body);
+    if !from_authored.is_empty() {
+        return from_authored;
+    }
+    if !body.name.is_empty() {
+        return body.name.clone();
+    }
+    String::new()
+}
+
+fn coproduct_variant_arm_by_name(
+    coproduct: &Rc<Node>,
+    variant_name: &str,
+    si: &SourceIndices,
+) -> Option<Rc<Node>> {
+    if variant_name.is_empty() {
+        return None;
+    }
+    if let Some(arm) = find_child_named(coproduct.clone(), variant_name.to_string(), si.clone()) {
+        return Some(arm);
+    }
+    let bare = bare_symbol_tail(variant_name);
+    if bare != variant_name {
+        if let Some(arm) = find_child_named(coproduct.clone(), bare.to_string(), si.clone()) {
+            return Some(arm);
+        }
+    }
+    coproduct
+        .children
+        .iter()
+        .find(|child| {
+            child.name == variant_name
+                || child.name == bare
+                || local_symbol_name(si, child) == variant_name
+                || local_symbol_name(si, child) == bare
+        })
+        .cloned()
+}
+
+fn coproduct_has_variant_named(
+    coproduct: &Rc<Node>,
+    variant_name: &str,
+    si: &SourceIndices,
+) -> bool {
+    coproduct_variant_arm_by_name(coproduct, variant_name, si).is_some()
+}
+
+fn type_expr_bare_name(si: &SourceIndices, type_expr: &Rc<Node>) -> Option<String> {
+    if let Some(InferredNode::Resolved { node }) = type_expr.inferred.as_deref() {
+        let inferred_name = authored_name_at(si.clone(), node.clone());
+        if !inferred_name.is_empty() {
+            return Some(bare_symbol_tail(&inferred_name).to_string());
+        }
+        if !node.name.is_empty() {
+            return Some(bare_symbol_tail(&node.name).to_string());
+        }
+    }
+    let name = authored_name_at(si.clone(), type_expr.clone());
+    if name.is_empty() {
+        None
+    } else {
+        Some(bare_symbol_tail(&name).to_string())
+    }
+}
+
+fn field_type_bare_on_variant_arm(
+    arm: &Rc<Node>,
+    field_name: &str,
+    si: &SourceIndices,
+) -> Option<String> {
+    let bare_field = bare_symbol_tail(field_name);
+    for field in arm.children.iter() {
+        let name = field_node_name_at(field.clone(), si.clone());
+        if name != field_name
+            && name != bare_field
+            && field.name != field_name
+            && field.name != bare_field
+        {
+            continue;
+        }
+        let ty = field_node_type_expr(field.clone());
+        if let Some(bare) = type_expr_bare_name(si, &ty) {
+            return Some(bare);
+        }
+    }
+    None
+}
+
+fn declared_field_type_bare_on_coproduct_variant(
+    coproduct: &Rc<Node>,
+    variant_name: &str,
+    field_name: &str,
+    si: &SourceIndices,
+) -> Option<String> {
+    let arm = coproduct_variant_arm_by_name(coproduct, variant_name, si)?;
+    field_type_bare_on_variant_arm(&arm, field_name, si)
+}
+
+fn declared_field_type_bare_on_conj(
+    type_item: &Rc<Node>,
+    field_name: &str,
+    si: &SourceIndices,
+) -> Option<String> {
+    if type_item.connective != Connective::Conj {
+        return None;
+    }
+    field_type_bare_on_variant_arm(type_item, field_name, si)
+}
 
 fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
     let logical = module_name.strip_prefix("v2.").unwrap_or(module_name);
@@ -61,7 +179,7 @@ fn declared_type_bare_name(item: &Rc<Node>, si: &SourceIndices) -> Option<String
     if name.is_empty() {
         None
     } else {
-        Some(name)
+        Some(bare_symbol_tail(&name).to_string())
     }
 }
 
@@ -91,10 +209,40 @@ fn type_item_from_importing_module_type_env(
         return None;
     }
     let name = authored_name_at(si.clone(), node.clone());
-    if name != bare_name {
+    if bare_symbol_tail(&name) != bare_name {
         return None;
     }
     Some(node)
+}
+
+fn coproduct_type_item_with_variant_children(
+    ctx: &InterpContext,
+    tm: &TypedModule,
+    bare_name: &str,
+    si: &SourceIndices,
+) -> Option<(Rc<Node>, String)> {
+    for mod_tm in ctx.modules.iter() {
+        let mod_name = authored_name_at(si.clone(), mod_tm.module.clone());
+        for item in mod_tm.items.iter() {
+            if item_kind(item.clone()) != ItemKind::TypeItem
+                || item.connective != Connective::Disj
+                || item.children.is_empty()
+            {
+                continue;
+            }
+            if local_symbol_name(si, item) != bare_name {
+                continue;
+            }
+            return Some((item.clone(), mod_name));
+        }
+    }
+    let node = type_item_from_importing_module_type_env(tm, bare_name, si)?;
+    if node.connective == Connective::Disj {
+        let importing_module = authored_name_at(si.clone(), tm.module.clone());
+        Some((node, importing_module))
+    } else {
+        None
+    }
 }
 
 fn module_path_for_type_decl_node(
@@ -243,6 +391,7 @@ fn variant_value_from_typechecked_expr(
     importing_module: &str,
     expr: &Rc<Node>,
     si: &SourceIndices,
+    declared_type_bare: Option<&str>,
 ) -> DataInitializerValueResolution {
     if matches!(
         expr.inferred.as_deref(),
@@ -260,10 +409,28 @@ fn variant_value_from_typechecked_expr(
         return DataInitializerValueResolution::NotVariantValue;
     }
 
-    let variant_name = authored_name_at(si.clone(), inferred_node.clone());
+    let variant_name = {
+        let from_inferred = local_symbol_name(si, &inferred_node);
+        if !from_inferred.is_empty() {
+            from_inferred
+        } else {
+            authored_name_at(si.clone(), inferred_node.clone())
+        }
+    };
     if variant_name.is_empty() {
         return DataInitializerValueResolution::NotVariantValue;
     }
+
+    let expr_variant_name = if matches!(expr.expr_data.as_ref(), ExprData::ExprVar { .. }) {
+        let bare = crate::v1_std_core::expr_var_name_at(expr.clone(), si.clone());
+        if bare.is_empty() {
+            variant_name.clone()
+        } else {
+            bare
+        }
+    } else {
+        variant_name.clone()
+    };
 
     let ambiguous_cands = ambiguous_variant_candidates(ctx, &variant_name, si);
     if ambiguous_cands.len() >= 2 {
@@ -275,23 +442,59 @@ fn variant_value_from_typechecked_expr(
         None => return DataInitializerValueResolution::Missing,
     };
 
-    let coproduct = match inferred_node.ident.as_ref() {
-        Some(id) => lookup_type(tm.type_env.clone(), id.clone()),
-        None => None,
-    };
+    // Prefer the importing module type env + declared field/type annotation — ident lookup
+    // often resolves to a variant arm (Conj), not the parent coproduct (Disj).
+    let mut from_declared_annotation = false;
+    let mut defining_module = importing_module.to_string();
+    let coproduct = if let Some(bare) = declared_type_bare.filter(|bare| !bare.is_empty()) {
+        coproduct_type_item_with_variant_children(ctx, &tm, bare, si).map(|(node, mod_name)| {
+            from_declared_annotation = true;
+            defining_module = mod_name;
+            node
+        })
+    } else {
+        None
+    }
+    .or_else(|| {
+        inferred_node
+            .ident
+            .as_ref()
+            .and_then(|id| lookup_type(tm.type_env.clone(), id.clone()))
+    });
+
     let coproduct = match coproduct {
-        Some(node) => node,
-        None => return DataInitializerValueResolution::NotVariantValue,
+        Some(node) if node.connective == Connective::Disj => node,
+        _ => return DataInitializerValueResolution::NotVariantValue,
     };
 
-    if coproduct.connective != Connective::Disj {
-        return DataInitializerValueResolution::NotVariantValue;
+    if from_declared_annotation
+        && matches!(
+            expr.inferred.as_deref(),
+            Some(InferredNode::Resolved { .. })
+        )
+    {
+        let parent_id = declaration_identity_for_type_item(ctx, &coproduct, si, &defining_module);
+        return DataInitializerValueResolution::Resolved(ResolvedVariantIdentity {
+            parent_qualified_name: parent_id.qualified_name,
+            variant_name: expr_variant_name,
+        });
     }
 
-    let parent_id = declaration_identity_for_type_item(ctx, &coproduct, si, importing_module);
+    if !coproduct_has_variant_named(&coproduct, &expr_variant_name, si)
+        && !coproduct_has_variant_named(&coproduct, &variant_name, si)
+    {
+        return DataInitializerValueResolution::Missing;
+    }
+
+    let parent_id = declaration_identity_for_type_item(ctx, &coproduct, si, &defining_module);
+    let resolved_variant_name = if coproduct_has_variant_named(&coproduct, &expr_variant_name, si) {
+        expr_variant_name
+    } else {
+        variant_name
+    };
     DataInitializerValueResolution::Resolved(ResolvedVariantIdentity {
         parent_qualified_name: parent_id.qualified_name,
-        variant_name,
+        variant_name: resolved_variant_name,
     })
 }
 
@@ -551,7 +754,9 @@ fn marshal_record_literal_projection(
             body,
             declared_type_bare,
             si,
-            type_item,
+            coproduct_type_item_with_variant_children(ctx, tm, declared_type_bare, si)
+                .map(|(node, _)| node)
+                .unwrap_or(type_item),
         )
     } else {
         marshal_plain_record_projection(
@@ -570,10 +775,22 @@ fn marshal_field_initializer_projection(
     importing_module: &str,
     field_value: &Rc<Node>,
     si: &SourceIndices,
+    declared_type_override: Option<&str>,
 ) -> Value {
+    if matches!(
+        field_value.inferred.as_deref(),
+        Some(InferredNode::CompilerError { .. })
+    ) {
+        return marshal_value_identity_node(ctx, &DataInitializerValueResolution::Missing);
+    }
+
     match field_value.expr_data.as_ref() {
         ExprData::ExprRecordLit { .. } => {
-            let type_bare = inferred_field_type_bare(si, field_value).unwrap_or_default();
+            let type_bare = declared_type_override
+                .filter(|bare| !bare.is_empty())
+                .map(|bare| bare.to_string())
+                .or(inferred_field_type_bare(si, field_value))
+                .unwrap_or_default();
             if type_bare.is_empty() {
                 return marshal_value_identity_node(
                     ctx,
@@ -594,8 +811,14 @@ fn marshal_field_initializer_projection(
             )
         }
         _ => {
-            let resolution =
-                variant_value_from_typechecked_expr(ctx, importing_module, field_value, si);
+            let type_bare = inferred_field_type_bare(si, field_value);
+            let resolution = variant_value_from_typechecked_expr(
+                ctx,
+                importing_module,
+                field_value,
+                si,
+                type_bare.as_deref(),
+            );
             marshal_value_identity_node(ctx, &resolution)
         }
     }
@@ -625,8 +848,14 @@ fn marshal_plain_record_projection(
             continue;
         }
         let field_value = field_init_node_value(child.clone());
-        let field_projection =
-            marshal_field_initializer_projection(ctx, importing_module, &field_value, si);
+        let declared_field = declared_field_type_bare_on_conj(&type_item, &field_name, si);
+        let field_projection = marshal_field_initializer_projection(
+            ctx,
+            importing_module,
+            &field_value,
+            si,
+            declared_field.as_deref(),
+        );
         edges.push((field_name.clone(), field_projection));
     }
 
@@ -644,21 +873,15 @@ fn marshal_coproduct_record_projection(
     if coproduct_item.connective != Connective::Disj {
         return constructor_resolution_refused_projection(ctx);
     }
-    let variant_name = authored_name_at(si.clone(), body.clone());
-    if variant_name.is_empty()
-        || !crate::v1_std_core::has_child_named(
-            coproduct_item.clone(),
-            variant_name.clone(),
-            si.clone(),
-        )
-    {
-        return constructor_resolution_refused_projection(ctx);
+    let variant_name = coproduct_record_lit_variant_name(si, body);
+    if variant_name.is_empty() || !coproduct_has_variant_named(&coproduct_item, &variant_name, si) {
+        return marshal_value_identity_node(ctx, &DataInitializerValueResolution::Missing);
     }
 
     let parent_id = declaration_identity_for_type_item(ctx, &coproduct_item, si, importing_module);
     let variant_id = ResolvedVariantIdentity {
         parent_qualified_name: parent_id.qualified_name.clone(),
-        variant_name,
+        variant_name: variant_name.clone(),
     };
 
     let mut edges: Vec<(String, Value)> = vec![(
@@ -672,8 +895,19 @@ fn marshal_coproduct_record_projection(
             continue;
         }
         let field_value = field_init_node_value(child.clone());
-        let field_projection =
-            marshal_field_initializer_projection(ctx, importing_module, &field_value, si);
+        let declared_field = declared_field_type_bare_on_coproduct_variant(
+            &coproduct_item,
+            &variant_name,
+            &field_name,
+            si,
+        );
+        let field_projection = marshal_field_initializer_projection(
+            ctx,
+            importing_module,
+            &field_value,
+            si,
+            declared_field.as_deref(),
+        );
         edges.push((field_name.clone(), field_projection));
     }
 
@@ -728,7 +962,13 @@ pub fn marshal_data_initializer_projection(
             if lookup_type_binding_in_importing_module(&tm, &declared_type_bare).is_none() {
                 return Ok(constructor_resolution_refused_projection(ctx));
             }
-            let resolution = variant_value_from_typechecked_expr(ctx, &importing_module, body, &si);
+            let resolution = variant_value_from_typechecked_expr(
+                ctx,
+                &importing_module,
+                body,
+                &si,
+                Some(&declared_type_bare),
+            );
             let mut edges: Vec<(String, Value)> = vec![(
                 "value_identity".to_string(),
                 marshal_value_identity_node(ctx, &resolution),

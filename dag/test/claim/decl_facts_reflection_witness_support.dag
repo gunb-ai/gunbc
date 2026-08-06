@@ -1,6 +1,5 @@
 module test.claim.decl_facts_reflection_witness_support
 
-import gunbc.ci_layer_roots { witness_layer_roots }
 import test.fixture.decl_facts_reflection.ambiguous_shared_b
 import test.fixture.decl_facts_reflection.ambiguous_specimen
 import test.fixture.decl_facts_reflection.globally_unique_carrier
@@ -23,13 +22,22 @@ import v2.std.data_initializer_identity {
   decl_fact_lookup_by_qualified_name,
   decl_fact_lookup_is_ambiguous,
   decl_fact_lookup_candidate_count,
+  decl_fact_optional_by_qualified_name,
   data_initializer_is_nullary_projection,
   data_initializer_is_record_projection,
   data_initializer_is_plain_record_projection,
   plain_record_parent_qualified_name_optional,
 }
 
-data decl_facts_reflection_fixture_pool_roots: List<String> = witness_layer_roots
+// Fixture-scoped pool: specimen rows + dimensionless positive-control deps only — not witness_layer_roots.
+data decl_facts_reflection_fixture_pool_roots: List<String> = [
+  "dag/test/fixture/decl_facts_reflection",
+  "dag/test/fixture/decl_facts_reflection_duplicate_qn/primary",
+  "dag/test/fixture/decl_facts_reflection_duplicate_qn/shadow",
+  "dag/extdeps/units",
+  "dag/extdeps/external_authority",
+  "dag/std",
+]
 
 data decl_facts_reflection_fixture_facts: List<DeclFact> = decl_facts(pool_roots: decl_facts_reflection_fixture_pool_roots)
 
@@ -37,22 +45,32 @@ fn decl_facts_reflection_lookup(qn: String) -> DeclFactLookup {
   decl_fact_lookup_by_qualified_name(qn: qn, facts: decl_facts_reflection_fixture_facts)
 }
 
-fn decl_facts_reflection_lookup_with_appended_duplicate(qn: String) -> DeclFactLookup {
-  match decl_facts_reflection_lookup(qn: qn) {
-    DeclFactUnique { fact: fact } =>
-      decl_fact_lookup_by_qualified_name(
-        qn: qn,
-        facts: list_snoc_item(xs: list_snoc_item(xs: Empty, item: fact), item: fact)
-      )
-    lookup => lookup
+fn decl_fact_lookup_candidate_rel_path_contains(lookup: DeclFactLookup, fragment: String) -> Bool {
+  match lookup {
+    DeclFactAmbiguous { candidates: cands } =>
+      fold(cands, init: false, f: fn(found, fact) {
+        found || fact.rel_path.contains(fragment)
+      })
+    DeclFactMissing => false
+    DeclFactUnique { fact: _ } => false
   }
 }
 
+fn duplicate_qualified_identity_lookup_names_primary_and_shadow(lookup: DeclFactLookup) -> Bool {
+  decl_fact_lookup_is_ambiguous(lookup: lookup)
+    && decl_fact_lookup_candidate_count(lookup: lookup) == 2
+    && decl_fact_lookup_candidate_rel_path_contains(
+      lookup: lookup,
+      fragment: "decl_facts_reflection_duplicate_qn/primary"
+    )
+    && decl_fact_lookup_candidate_rel_path_contains(
+      lookup: lookup,
+      fragment: "decl_facts_reflection_duplicate_qn/shadow"
+    )
+}
+
 fn decl_facts_reflection_fact(qn: String) -> Optional<DeclFact> {
-  match decl_facts_reflection_lookup(qn: qn) {
-    DeclFactUnique { fact: fact } => optional_present(value: fact)
-    _ => optional_absent()
-  }
+  decl_fact_optional_by_qualified_name(qn: qn, facts: decl_facts_reflection_fixture_facts)
 }
 
 fn decl_facts_reflection_fact_node(qn: String) -> Optional<Node> {
