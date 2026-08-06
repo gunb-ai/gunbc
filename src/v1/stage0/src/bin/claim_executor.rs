@@ -3559,6 +3559,10 @@ fn run_discovery_batch_node(
                 ms(st.reconcile_assembly),
                 ms(st.assembly_rewire),
             );
+            eprintln!(
+                "[discovery-post] beginning cost partition ({} resolve receipt(s))",
+                summary.entry_resolve_receipts.len()
+            );
             // Both halves come from the SAME per-entry spans here (`total_resolve_nanos`
             // and `total_stage_nanos` are accumulated entry by entry at the same two call
             // sites), so the discovery corpus can be partitioned against its own parent
@@ -3606,6 +3610,10 @@ fn run_discovery_batch_node(
                     )
                 );
             }
+            eprintln!(
+                "[discovery-post] projecting witness-row-cost ({} outcome(s))",
+                summary.witness_outcomes.len()
+            );
             let projected =
                 project_witness_cost_receipt(&execution_projection_source_roots, &summary);
             match &projected {
@@ -8961,7 +8969,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         None
     };
-    let falsifier_self_host_wet_budgets = if plan_function == "gunbc_falsifier_plan" {
+    let mut falsifier_self_host_wet_budgets = if plan_function == "gunbc_falsifier_plan" {
         FalsifierSelfHostWetBudgets {
             wall_budget_ms: match read_positive_budget_ms(
                 &plan_ctx,
@@ -9057,6 +9065,15 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         FalsifierSelfHostWetBudgets::default()
     };
+    if plan_function == "gunbc_ci_floor_plan" || plan_function == "gunbc_ci_plan_artifact_plan" {
+        match read_schedule_witness_entry_paths(&plan_ctx, "known_red_probe_roster") {
+            Ok(v) => falsifier_self_host_wet_budgets.hermetic_known_red_entry_paths = v,
+            Err(msg) => {
+                eprintln!("{msg}");
+                return Err(ExitCode::from(1));
+            }
+        }
+    }
     let batch_stop_policy = resolve_floor_batch_stop_policy(&plan_ctx, &plan_function);
     // THE COST WALL (Piece 3 derived clamp): the floor plan's per-batch clamp params, read
     // fail-closed at arm time (the fast-lane-budget pattern). Scoped to the full floor plan only:
