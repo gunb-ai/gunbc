@@ -26,6 +26,11 @@ worksheet-only vocabulary:
 "Could run", "is called by another domain function", and "has been observed executing" are three
 different facts. Conflating them is what produced the previous revision's `MergeReadinessTally` row.
 
+**Known weakness:** `FixtureExercised` and `SemanticEdge` are cumulative rather than exclusive — a
+declaration can have a call-graph consumer *and* execute only in fixtures. The liveness cell records
+the **highest** level reached and appends the execution qualifier (e.g. "`SemanticEdge`, fixture-only
+execution").
+
 ---
 
 ## The map
@@ -40,14 +45,15 @@ different facts. Conflating them is what produced the previous revision's `Merge
 | `gunbc.review_verdict.ReviewArtifact` / `ReviewVerdictReport` / `ParsedReport` / `ReviewVerdicts.Parse` | External-review ingestion **contract** | **None in tree.** GitHub/dashboard objects are upstream sources, not constructors of these carriers | None | `DeclaredOnly` | **Preserve separately.** Corrected: previous revision named GitHub/dashboard as "the producer", conflating an upstream source object with an in-tree capture adapter. No capture adapter, parser realization, report producer, or caller exists. |
 | `extdeps.github.pulls.PullReview` | Upstream review observation | REST projection | extdeps consumers | `SemanticEdge` | **Insufficient for reviewer identity.** Carries `id, body, state, commit_id, html_url` — **no `user`**, recorded as a typed coverage gap in its own `structural_coverage_gap_github_pull_review_response_residual`. So no honest `ReviewArtifact.reviewer`, no distinct-reviewer approval tally, no observed byline. This is the prerequisite for reviving #7539's distinct-reviewer logic. |
 | `gunbc.review_verdict.MergeReadinessTally` | Workflow recommendation input | **None outside fixtures** | `gunbc.code_change_workflow.evaluate_record_merge_ready` reads it; but `decide_code_change_transition` is referenced only by that module and its witness, and there is **no in-tree call to `CodeChangeWorkflow.DecideTransition`** | `SemanticEdge`, **dormant** | **Do not build the producer yet.** Corrected: previously called a "live gate". It is a dormant admission kernel missing both producer and driver. |
+| ↳ `MergeReadinessTally` count carriers (`approval_count`, `request_changes_count`, `blocking_finding_count`) | Count fields | Caller-authored arithmetic | Consumer asks only whether request-change and blocking counts are `> 0` | — | **Second state-space defect.** All three are `Int`, so a **negative** value behaves like zero and permits the transition; `approval_count` is not read at all. Use `Nat`/domain count carriers, or derive counts from retained populations — the review-composition receipt should retain the exact review/finding populations and derive counts rather than accept caller-authored arithmetic as primary authority. Zero-approval **and negative-count** RED controls before activation. |
 | ↳ `MergeReadinessTally.approval_count` | Approval-count field | Authored `2` in 5 witness fixtures | **Never read.** `code_change_workflow` checks only `head_sha`, `request_changes_count`, `blocking_finding_count`, `mergeable_clean` | — | **Defect (dormant).** A zero-approval tally would still permit `ChangeMergeReady`. `source_artifact_ids`, `repo`, `pr_number` likewise unconsumed. No RED plants this. The two-approval rule becomes a real typed obligation only in the composition slice. |
 | `gunbc.pr_digests.MergeReadinessVerdict` (`Ready` \| `NotReady{first_reason, more_reasons}`) + `JudgeMergeReadiness` | Second required aggregate | **None** | `code_change_workflow` refuses a missing digest independently of a missing tally | `SemanticEdge`, dormant | **Answer before building either producer:** are `MergeReadinessVerdict` and `MergeReadinessTally` complementary projections of one review-composition receipt, or two independently writable authorities over overlapping PR/review facts? Building the tally producer first calcifies the split. |
-| `gunbc.merge_admission{,_subject,_produce,_capture,_capture_transport,_current_context}`, `dag/tools/merge_admission_walk`, `gunbc.merge_lifecycle` | **Existing CI/check-freshness admission authority** — binds tested head, base tree, gate-roster identity, check conclusion | CI floor (pre-walk capture, floor stamping, current-target refresh) | CI floor scheduling | `LiveObserved` | **Missing from the previous revision entirely.** Not another review parser. Review work must not re-encode base-tree freshness, check coverage, or gate-roster identity in its own tally; conversely this authority must not learn about anemia verdicts, review prose, or model vendors. |
+| `gunbc.merge_admission`, `gunbc.merge_admission_subject`, `gunbc.merge_admission_produce`, `gunbc.merge_lifecycle`; `tools.merge_admission_capture`, `tools.merge_admission_capture_transport`, `tools.merge_admission_current_context`, `tools.merge_admission_walk` | **Existing CI/check-freshness admission authority** — binds tested head, base tree, gate-roster identity, check conclusion | CI floor (pre-walk capture, floor stamping, current-target refresh) | CI floor scheduling | `LiveObserved` — the CI run **executed** the pre-walk typed capture subprocess and produced its receipt, and executed the merge-admission and merge-lifecycle witnesses; not merely scheduled | **Missing from the previous revision entirely.** Not another review parser. Review work must not re-encode base-tree freshness, check coverage, or gate-roster identity in its own tally; conversely this authority must not learn about anemia verdicts, review prose, or model vendors. |
 | `gunbc.code_change_workflow` | Orchestration join (?) | Authored | Its witness | `SemanticEdge`, dormant | **Unresolved relationship row.** Is it the future join over review authorization × merge admission, a prototype to dissolve, or is another roadmap belt the correct composition point? Unanswered ⇒ "keep the tally and construct it" is premature. |
-| `gunbc.review_verdict.ReviewVerdict` | Workflow **recommendation**, not a criterion verdict | Parsed from artifacts (no realization) | `idea_pr_spine` | `DeclaredOnly` | **Rename/rehome to `ReviewRecommendation` when the external-review producer lands** — not an immediate independent rename against an inert path. |
+| `gunbc.review_verdict.ReviewVerdict` | Workflow **recommendation**, not a criterion verdict | `demo_spine_green` / `demo_spine_unknown` fixtures construct `Approve`, `ApproveWithComments`, `RequestChanges`; external-artifact parser realization **absent** | `idea_pr_spine.review_to_reduce` | `SemanticEdge`, fixture-only execution (`workflow_recursive_witness_test` calls and settles both demo spines) | **Rename/rehome to `ReviewRecommendation` when the external-review producer lands** — not an immediate independent rename against an inert path. |
 | `Reviewer` / `LlmReviewProvider` / `ReviewSource` / `ReviewProvider` | Who supplied a review | — | `idea_pr_spine`, `reviewer_source_witness_test` | `FixtureExercised` | **Not "four names for one thing"** (previous revision overstated). `Reviewer` models the observed actor/byline; `LlmReviewProvider` is a concrete-product subfield of an agent reviewer; `ReviewSource` is a lossy projection *from* `Reviewer`, not a second identity; `ReviewProvider` is a competing simpler identity used only by the demo spine. Disposition: preserve an **open-world observed byline** for imported artifacts, keep source as a projection, delete `ReviewProvider` with the demo spine unless a real consumer earns it, and keep concrete-product identity out of generic judgment semantics. Do not add `Qwen`/`Spark`/`Local`. |
 | `gunbc.tools.review`, `gunbc.tools.review_codex` | Vendor-specific execution + artifact posting | Anthropic / Codex | GitHub reviews (out-of-tree) | Effect-capable; **cadence unproven** — only `review_cycle` references are self-authored command strings | **Producer implementations.** They post prose `PullReview`s, not typed criterion evidence. The Spark path should produce an evidence link first and derive any posted prose from it. |
-| `gunbc.digest_render` | PR-review / readiness **presentation** prototype | Authored | Only `gunbc.plans.format_model_reconciliation` | `FixtureExercised` | **Added row.** Omitting it would let a parallel recommendation projection survive unnoticed. |
+| `gunbc.digest_render` | PR-review / readiness **presentation** prototype | Authored constructors/projections, **no caller** | **None.** `gunbc.plans.format_model_reconciliation` only *names* it in prose inside an `li(text: ...)` backlog item — it does not import it, call `project_pull_request_digest` or either renderer, or consume `PullRequestDigestView` | `DeclaredOnly` | **Presentation prototype: delete, consume, or derive from the eventual review-composition receipt.** Corrected — a prose mention is not a consumer edge; counting one is the same stale-citation class this worksheet exists to detect. |
 | `gunbc.workflow.types` review subset (`ReviewDimension`, `ReviewConcern`, `DimensionReviewOutput`, `DesignFinding`, `DesignReviewOutput`) | Parallel review vocabulary | None | None | `DeclaredOnly` | **Delete, rehome, or justify.** Note: the file carries a much wider dormant workflow schema; only the review subset is in scope here. `system_prompt_preamble` does not belong on a criterion carrier — a prompt is one judge realization's derived input. |
 | `gunbc.idea_pr_spine.Review { subject, reviewer, verdict }` | Workflow composition | `demo_spine_green` / `demo_spine_unknown` only | `review_to_reduce` → `ReduceVerdict` | `FixtureExercised`, **demo-only/inert** | **Recut after the map.** The provider that executed one judgment is not a property of a workflow stage. |
 
@@ -67,7 +73,19 @@ has neither. **Correction to the previous revision:** none of this shows a live 
 bad data — `code_change_workflow`'s kernel has no in-tree driver, so the repository does not establish
 that today's merge decision passes through it at all. Consequential semantically, not operationally.
 
-**3. Grounding cannot yet feed an exclusive-candidate review.** `ConceptByName` can carry multiple
+**3a. The exclusive proposition space is NOT established.** The constraint section below describes
+grounding as choosing among `Reference{authority}` / `ReferenceUri` / `ReferencePath` / `Role` /
+`StayString` / `GenuineProse`. That population comes from the inert `grounding_ledger`, and nothing
+establishes that its arms are mutually exclusive or complete: `ReferenceUri` and `ReferencePath` look
+like particular *reference targets*, while `GenuineProse` looks like a *reason for retaining a leaf
+string* — different axes, with no construction proving they cannot overlap. **Do not carry that
+coproduct forward merely because the ledger is being deleted.** A likely minimal outer partition is
+`GroundTo { authority: DeclarationRef } | RetainLeaf { reason: GroundingRetentionReason }`, where URI,
+path, role, prose, open registry, parse input and cited identifier may turn out to be exact authorities
+or retention reasons rather than peer top-level verdicts — a hypothesis for the DFS, not a ruling to
+encode. The proposition space is defined by GROUNDING-DECIDE-0, not by the population repair.
+
+**3b. Grounding cannot yet feed an exclusive-candidate review.** `ConceptByName` can carry multiple
 `QualifiedConcept`s under one name, but `first_coincident_target` folds to the **first** non-self match
 and `GroundingWorklistEntry` stores a single `coincides_with` **string**. The test corpus has no
 same-name ambiguity control. That is a silent-pick defect exactly where the proposed design assumes a
@@ -82,8 +100,9 @@ complete finite candidate population — and the worklist's `enclosing`/`field`/
 ## Constraints on the recut (recorded so worksheet and build cannot drift)
 
 **Grounding is exclusive-candidate, not conjunctive-readiness.** `ClaimReadinessPolicy` is a
-conjunction; grounding asks which *one* of `Reference{authority}` / `ReferenceUri` / `ReferencePath` /
-`Role` / `StayString` / `GenuineProse` holds. One `Claim` per candidate proposition through the generic
+conjunction; grounding asks which *one* proposition holds. **The proposition population itself is open
+— see finding 3a; the ledger's six arms are not established as disjoint or complete and must not be
+carried forward by default.** One `Claim` per candidate proposition through the generic
 layer, then a grounding-specific exclusive-resolution fold: exactly one supported and unchallenged
 resolves; zero supported is unresolved, never clean; two supported is conflict, never first-wins;
 support-and-challenge on one proposition is conflict; admission failure is refusal, not missing.
@@ -110,17 +129,23 @@ review authorization receipt  ×  CI/check-freshness admission receipt  ×  oper
 ## Sequence
 
 1. Correct and merge this worksheet.
-2. **Grounding population repair** — exact field identity, complete candidate authority population,
-   zero/one/many explicit, no first-wins, nonempty-and-duplicate-free controls. *This is the next code
-   PR, not the tally producer.*
-3. First roadmap shadow-review vertical: change → candidate set → one claim per candidate → structural
-   evidence → exclusive resolution → shadow projection. No merge authority.
-4. Spark judgment evidence, with the bindings above; malformed output / invented candidates / stale
+2. **GROUNDING-POP-0 — population only.** Exact field-grain subject → all coincident declaration
+   candidates → exact `DeclarationRef` identities → deduplicate only identical identities → explicit
+   zero/one/many population. Acceptance: two same-named concepts in different modules both survive
+   enumeration; source order cannot change the population; the current first-match algorithm **fails**
+   the ambiguity control; the subject is not independently writable `enclosing`/`field`/qualified-name
+   strings; candidate display structure remains a projection, not identity; empty, unique and ambiguous
+   populations stay distinguishable. **Explicitly not in it:** `std.claim_evidence` aliases, the final
+   `GroundingVerdict`, the anemia corpus, any LLM call, any tally, any admission authority.
+3. **GROUNDING-DECIDE-0** — disjoint criterion propositions (see 3a) + structural evidence + exclusive
+   resolution. This slice defines the proposition space.
+4. **REVIEW-SHADOW-0** — roadmap presentation of typed results. No merge authority.
+5. **SPARK-JUDGE-0** — judgment evidence, with the bindings above; malformed output / invented candidates / stale
    substrate / missing or duplicate receipts refuse.
-5. External-review capture, in parallel: enrich `PullReview` with reviewer identity, capture typed
+6. **External-review capture**, in parallel: enrich `PullReview` with reviewer identity, capture typed
    `ReviewArtifact`, preserve stale/foreign/unreadable states, produce one subject-bound receipt.
-6. Review composition: decide the relationship among native criteria, external recommendations,
+7. **REVIEW-COMPOSE-0** — decide the relationship among native criteria, external recommendations,
    `MergeReadinessVerdict`, `MergeReadinessTally`, and approval policy. The two-approval rule becomes a
    typed obligation here, with a zero-approval RED.
-7. Final admission composition: join the review-authorization receipt with the existing
+8. **REVIEW-ADMIT-0** — join the review-authorization receipt with the existing
    `merge_admission` receipt. Only then wire the roadmap merge-ready transition.
