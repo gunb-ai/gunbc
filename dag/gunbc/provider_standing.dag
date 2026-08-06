@@ -15,12 +15,15 @@ import extdeps.llm.cli_lifecycle {
 
 data provider_standing_authority_note: String = "SHARED CONTRACT for Claude and Cursor dispatch lanes (valiant-stag-845). ProviderReadiness decomposes per provider-control-interface-audit section 10 into six independent axes: installation, authentication, entitlement, limit, turn outcome, and tool environment. One arm must not erase another — the audit worked example (authenticated + weekly Opus warning + Fable rejected + Opus runnable) requires it. Limit observations carry an explicit ProviderLimitSubject; native limit tokens stay open (NonEmptyStr) with recognised projections layered over them, never a closed enum that drops upstream tokens (section 4.1). Standing facts reuse std.claim_evidence RecordedFact and EvidenceLink machinery (section 11); this module owns the proposition shapes only. ProviderAuthenticationStanding derives from token state, never from subscription profile metadata alone — profile-present-token-absent is a distinct refusal arm, not a gap that reads as authenticated (eager-raven-845 live observation, 2026-08-06)."
 
-data provider_standing_selection_note: String = "Selection eligibility consumes an admitted ProviderStanding bundle AND a ProviderLimitDispatchDraw naming which limit surface the pending dispatch would draw on. Every axis with an Unobserved arm is ineligible for automatic dispatch. Limit exhaustion blocks only when the observation subject covers that draw — a ProviderNativeLimitBucket exhausted on codex must not block a dispatch drawing on codex_bengalfox (deep-raven-684 live multibucket receipt, 2026-08-06). LimitDispatchDrawUnspecified retains account-scope-only blocking for standing-only callers; production selection must pass an explicit draw. LimitObservationUnobserved is silence and blocks; LimitCapabilityGapUnobservable is a grounded receipt that no headroom surface exists (Cursor local) and does not block. A rate-limit read proving the endpoint answered is not proof capacity exists. Never fabricate a healthy balance from silence (DESIGN 4b)."
+data provider_standing_selection_note: String = "Selection eligibility consumes an admitted ProviderStanding bundle AND a ProviderLimitDispatchDraw. LimitDispatchDrawAutomatic fail-closes on any observed ProviderNativeLimitBucket exhaustion (extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note). ProfileExactOverride may supply operator_asserted_native_limit_bucket on SelectCodex — attributed assertion, not a cited join. LimitDispatchDrawUnspecified is fail-closed like Automatic and must not be used for dispatch eligibility; standing-only callers should not call provider_standing_is_selection_eligible with Unspecified."
 
-data provider_standing_limit_dispatch_draw_note: String = "Limit blocking is dispatch-scoped, not standing-only. limit_subject_covers_dispatch_draw decides whether a limit observation is relevant to the work about to be dispatched. ProviderAccountLimit covers every draw at that credential; ProviderNativeLimitBucket covers only a matching native_key; ProviderModelLimit covers only a matching model. DISSOLVES ON: keen-wolf-740 native bucket decode lands on inventory rows — this predicate must stay compatible with ProviderNativeLimitBucket observations keyed by rateLimitsByLimitId limit_id."
+data provider_standing_limit_dispatch_draw_note: String = "Limit blocking is dispatch-scoped. LimitDispatchDrawAutomatic treats every ProviderNativeLimitBucket exhaustion/rate-limit/until-reset as blocking — relevance is undeterminable without a cited model-to-limitId join. LimitDispatchDrawNativeBucket blocks only on matching native_key. DISSOLVES ON: extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note — automatic becomes decidable when cited join lands."
+
+data provider_standing_automatic_native_bucket_join_undetermined_note: String = "Automatic dispatch refusal on native-bucket exhaustion is not account-scope promotion and not a capacity claim — the model cannot prove the draw avoids the named bucket."
 
 type ProviderLimitDispatchDraw
   = LimitDispatchDrawUnspecified
+  | LimitDispatchDrawAutomatic
   | LimitDispatchDrawAccount { credential: ProviderLimitCredentialIdentity }
   | LimitDispatchDrawModel {
       credential: ProviderLimitCredentialIdentity,
@@ -246,7 +249,15 @@ fn limit_subject_covers_dispatch_draw(
 ) -> Bool {
   match draw {
     LimitDispatchDrawUnspecified =>
-      limit_subject_is_account_scope(subject: subject)
+      match subject {
+        ProviderNativeLimitBucket { credential: _, native_key: _ } => true
+        _ => limit_subject_is_account_scope(subject: subject)
+      }
+    LimitDispatchDrawAutomatic =>
+      match subject {
+        ProviderNativeLimitBucket { credential: _, native_key: _ } => true
+        _ => limit_subject_is_account_scope(subject: subject)
+      }
     LimitDispatchDrawAccount { credential: draw_cred } =>
       match subject {
         ProviderAccountLimit { credential: subject_cred } =>
@@ -357,6 +368,49 @@ fn provider_standing_is_selection_eligible(
       provider_standing_bundle_is_selection_eligible(bundle: bundle, draw: draw)
     Absent => false
   }
+}
+
+fn first_blocking_native_limit_bucket_for_automatic_draw(
+  observations: List<ProviderLimitObservation>,
+) -> NonEmptyStr? {
+  fold(
+    observations,
+    init: none,
+    f: (acc, observation) => {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if limit_observation_blocks_dispatch(
+            observation: observation,
+            draw: LimitDispatchDrawAutomatic,
+          ) {
+            match observation {
+              LimitExhausted { subject: s, native_token: _ } =>
+                match s {
+                  ProviderNativeLimitBucket { credential: _, native_key: key } =>
+                    optional_present(value: key)
+                  _ => optional_absent()
+                }
+              LimitRateLimited { subject: s, native_token: _ } =>
+                match s {
+                  ProviderNativeLimitBucket { credential: _, native_key: key } =>
+                    optional_present(value: key)
+                  _ => optional_absent()
+                }
+              LimitUnavailableUntilReset { subject: s, native_token: _, reason: _ } =>
+                match s {
+                  ProviderNativeLimitBucket { credential: _, native_key: key } =>
+                    optional_present(value: key)
+                  _ => optional_absent()
+                }
+              _ => optional_absent()
+            }
+          } else {
+            optional_absent()
+          }
+      }
+    },
+  )
 }
 
 data dispatch_automatic_provider_preference_note: String = "AUTHORED preference order for automatic provider selection. Incidental inventory list order must never decide; this row is the sole authority. Filter ineligible offers by standing first, then walk this preference list and select the first eligible match, or refuse typed when none qualify."

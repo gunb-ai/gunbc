@@ -19,11 +19,23 @@ import extdeps.llm.cli_lifecycle {
 }
 import extdeps.llm.cursor_cli { cursor_model_auto }
 import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
   srv1_live_dashboard_instance,
   srv2_lab_dashboard_instance,
 }
 import gunbc.provider_account { codex_roadmap_account_selection }
 import gunbc.provider_standing {
+  ProviderStandingBundle,
+  ProviderAccountLimit,
+  ProviderNativeLimitBucket,
+  LimitCredentialUnspecified,
+  LimitExhausted,
+  LimitObservedAvailable,
+  InstallationReady,
+  AuthenticationAuthenticated,
+  EntitlementObservedAvailable,
+  TurnNotStarted,
+  ToolEnvironmentReady,
   provider_standing_from_fixture_bundle,
   provider_standing_from_observed_bundle,
   provider_standing_inventory_unobserved,
@@ -79,7 +91,57 @@ import gunbc.dispatch_selection {
   codex_offer_for_instance_with_standing,
   dispatch_selection_shape_mismatch_reason,
   dispatch_selection_standing_ineligible_reason,
+  dispatch_selection_automatic_native_bucket_join_undetermined_refusal,
+  codex_default_native_limit_bucket,
+  codex_bengalfox_native_limit_bucket,
   Unsized,
+}
+
+fn fixture_multibucket_codex_standing_inventory(
+  instance: HostDashboardInstance,
+) -> ProviderInventory {
+  ProviderInventory {
+    offers: [
+      fixture_codex_offer_with_standing(
+        instance: instance,
+        standing: provider_standing_from_fixture_bundle(
+          provider: ProviderInstance {
+            kind: CodexCliProvider,
+            host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+            executable: "codex" as NonEmptyStr,
+            observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+            state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+            credential_storage_method: ProviderInstanceFieldUnobserved {
+              reason: "fixture" as NonEmptyStr,
+            },
+            service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+          },
+          bundle: ProviderStandingBundle {
+            installation: InstallationReady,
+            authentication: AuthenticationAuthenticated,
+            entitlement: EntitlementObservedAvailable,
+            limits: [
+              LimitExhausted {
+                subject: ProviderNativeLimitBucket {
+                  credential: LimitCredentialUnspecified,
+                  native_key: codex_default_native_limit_bucket,
+                },
+                native_token: codex_default_native_limit_bucket,
+              },
+              LimitObservedAvailable {
+                subject: ProviderNativeLimitBucket {
+                  credential: LimitCredentialUnspecified,
+                  native_key: codex_bengalfox_native_limit_bucket,
+                },
+              },
+            ],
+            turn: TurnNotStarted,
+            tool_environment: ToolEnvironmentReady,
+          },
+        ),
+      ),
+    ],
+  }
 }
 
 test fn witness_automatic_codex_preserves_medium_effort() -> Bool {
@@ -351,6 +413,49 @@ test fn witness_exact_override_requires_explicit_provider_arm() -> Bool {
   }
 }
 
+test fn witness_automatic_multibucket_native_exhaustion_refuses_join_undetermined() -> Bool {
+  let inventory = fixture_multibucket_codex_standing_inventory(
+    instance: srv1_live_dashboard_instance(),
+  )
+  match resolve_dispatch_selection(
+    inventory: inventory,
+    request: default_provider_selection_request(),
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+      reason == dispatch_selection_automatic_native_bucket_join_undetermined_refusal(native_key: codex_default_native_limit_bucket)
+    DispatchSelectionResolved { receipt: _ } => false
+  }
+}
+
+test fn witness_explicit_override_bengalfox_admitted_from_same_inventory() -> Bool {
+  let inventory = fixture_multibucket_codex_standing_inventory(
+    instance: srv1_live_dashboard_instance(),
+  )
+  match resolve_dispatch_selection(
+    inventory: inventory,
+    request: SelectCodex {
+      profile: ProfileExactOverride,
+      account: codex_roadmap_account_selection(),
+      model: dispatch_codex_default_model,
+      effort: ReasoningMedium,
+      operator_asserted_native_limit_bucket: Present {
+        value: codex_bengalfox_native_limit_bucket,
+      },
+    },
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      match receipt.resolved_selection {
+        ResolvedCodex { selection: s } =>
+          receipt.provider_kind == CodexCliProvider
+            && s.model == dispatch_codex_default_model
+        _ => false
+      }
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+  }
+}
+
 test fn dispatch_selection_keystone_holds() -> Bool {
   witness_automatic_codex_preserves_medium_effort()
     && witness_intricacy_does_not_change_automatic_effort()
@@ -364,4 +469,6 @@ test fn dispatch_selection_keystone_holds() -> Bool {
     && witness_probe_bridge_ineligible_standing_refuses_selection()
     && witness_claude_request_refuses_on_codex_only_inventory()
     && witness_exact_override_requires_explicit_provider_arm()
+    && witness_automatic_multibucket_native_exhaustion_refuses_join_undetermined()
+    && witness_explicit_override_bengalfox_admitted_from_same_inventory()
 }

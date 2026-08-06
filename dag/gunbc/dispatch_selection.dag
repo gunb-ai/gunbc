@@ -15,13 +15,15 @@ import extdeps.llm.cli_lifecycle {
 import gunbc.provider_standing {
   ProviderStanding,
   ProviderLimitDispatchDraw,
-  LimitDispatchDrawUnspecified,
+  LimitDispatchDrawAutomatic,
   LimitDispatchDrawModel,
   LimitDispatchDrawNativeBucket,
   LimitCredentialUnspecified,
+  provider_standing_bundle,
   provider_standing_inventory_unobserved,
   provider_standing_is_selection_eligible,
   provider_standing_from_fixture_bundle,
+  first_blocking_native_limit_bucket_for_automatic_draw,
   fixture_standing_bundle_authenticated_available,
   fixture_standing_bundle_authenticated_unavailable_until_reset,
   fixture_standing_bundle_cursor_capability_gap,
@@ -135,6 +137,7 @@ type ProviderSelectionRequest
       account: CodexAccountSelection,
       model: NonEmptyStr,
       effort: ReasoningEffort,
+      operator_asserted_native_limit_bucket: NonEmptyStr?,
     }
   | SelectClaude {
       profile: ExecutionProfile,
@@ -242,22 +245,26 @@ data dispatch_claude_default_model: NonEmptyStr = "account-default" as NonEmptyS
 
 data codex_default_native_limit_bucket: NonEmptyStr = "codex" as NonEmptyStr
 data codex_bengalfox_native_limit_bucket: NonEmptyStr = "codex_bengalfox" as NonEmptyStr
-data codex_bengalfox_dispatch_model: NonEmptyStr = "gpt-5.3-codex-spark" as NonEmptyStr
 
-data dispatch_limit_draw_note: String = "Selection eligibility threads a ProviderLimitDispatchDraw derived from the offer and request. Codex account-default dispatches draw on the native codex bucket; spark model dispatches draw on codex_bengalfox (live rateLimitsByLimitId receipt, eager-raven-684 / keen-wolf-740). Native bucket exhaustion blocks only when the draw matches that bucket."
+data dispatch_limit_draw_note: String = "LimitDispatchDrawAutomatic fail-closes on any observed ProviderNativeLimitBucket exhaustion because model-to-limitId join is unobserved (extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note). ProfileExactOverride SelectCodex may carry operator_asserted_native_limit_bucket — a human-asserted native_key attribution recorded on the request, NOT a cited join and NOT inferred from model or limitName. DISSOLVES ON: cited model-to-bucket join lands; automatic draw becomes decidable without operator assertion."
 
-fn codex_native_limit_bucket_for_dispatch_model(model: NonEmptyStr) -> NonEmptyStr {
-  if model == codex_bengalfox_dispatch_model {
-    codex_bengalfox_native_limit_bucket
-  } else {
-    codex_default_native_limit_bucket
-  }
-}
+data codex_operator_asserted_native_limit_bucket_note: String = "Operator assertion path (deep-raven-684, 2026-08-06): ProfileExactOverride plus Present operator_asserted_native_limit_bucket names which native limit bucket the operator asserts this dispatch draws on. The system records the assertion; it does not observe or infer a model-to-bucket join. Absent assertion on override, or any non-override SelectCodex, uses LimitDispatchDrawAutomatic."
 
-fn codex_limit_dispatch_draw_for_model(model: NonEmptyStr) -> ProviderLimitDispatchDraw {
-  LimitDispatchDrawNativeBucket {
-    credential: LimitCredentialUnspecified,
-    native_key: codex_native_limit_bucket_for_dispatch_model(model: model),
+fn codex_limit_dispatch_draw_for_selection(
+  profile: ExecutionProfile,
+  operator_asserted_native_limit_bucket: NonEmptyStr?,
+) -> ProviderLimitDispatchDraw {
+  match profile {
+    ProfileExactOverride =>
+      match operator_asserted_native_limit_bucket {
+        Present { value: native_key } =>
+          LimitDispatchDrawNativeBucket {
+            credential: LimitCredentialUnspecified,
+            native_key: native_key,
+          }
+        Absent => LimitDispatchDrawAutomatic
+      }
+    _ => LimitDispatchDrawAutomatic
   }
 }
 
@@ -270,11 +277,10 @@ fn claude_limit_dispatch_draw_for_model(model: NonEmptyStr) -> ProviderLimitDisp
 
 fn limit_dispatch_draw_for_offer_automatic(offer: ProviderOffer) -> ProviderLimitDispatchDraw {
   match offer {
-    OfferCodex { offer: _ } =>
-      codex_limit_dispatch_draw_for_model(model: dispatch_codex_default_model)
+    OfferCodex { offer: _ } => LimitDispatchDrawAutomatic
     OfferClaude { offer: _ } =>
       claude_limit_dispatch_draw_for_model(model: dispatch_claude_default_model)
-    OfferCursor { offer: _ } => LimitDispatchDrawUnspecified
+    OfferCursor { offer: _ } => LimitDispatchDrawAutomatic
   }
 }
 
@@ -285,13 +291,54 @@ fn limit_dispatch_draw_for_offer_and_request(
   match request {
     SelectAutomatically { profile: _ } =>
       limit_dispatch_draw_for_offer_automatic(offer: offer)
-    SelectCodex { profile: _, account: _, model: model, effort: _ } =>
-      codex_limit_dispatch_draw_for_model(model: model)
+    SelectCodex {
+      profile: profile,
+      account: _,
+      model: _,
+      effort: _,
+      operator_asserted_native_limit_bucket: asserted,
+    } =>
+      codex_limit_dispatch_draw_for_selection(
+        profile: profile,
+        operator_asserted_native_limit_bucket: asserted,
+      )
     SelectClaude { profile: _, credential: _, model: model, effort: _, workflow_mode: _ } =>
       claude_limit_dispatch_draw_for_model(model: model)
     SelectCursor { profile: _, credential: _, model: _, agent_mode: _ } =>
-      LimitDispatchDrawUnspecified
+      LimitDispatchDrawAutomatic
   }
+}
+
+fn dispatch_selection_automatic_native_bucket_join_undetermined_refusal(
+  native_key: NonEmptyStr,
+) -> NonEmptyStr {
+  concat(
+    "automatic dispatch cannot prove avoidance of native limit bucket ",
+    native_key as String,
+    " — model-to-limitId join unobserved (extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note)",
+  ) as NonEmptyStr
+}
+
+fn automatic_refusal_reason_for_inventory(
+  inventory: ProviderInventory,
+) -> NonEmptyStr? {
+  fold(
+    inventory.offers,
+    init: none,
+    f: (acc, offer) => {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match provider_standing_bundle(standing: provider_offer_standing(offer: offer)) {
+            Present { value: bundle } =>
+              first_blocking_native_limit_bucket_for_automatic_draw(
+                observations: bundle.limits,
+              )
+            Absent => optional_absent()
+          }
+      }
+    },
+  )
 }
 data dispatch_claude_default_workflow_mode: NonEmptyStr = "default" as NonEmptyStr
 data dispatch_claude_default_credential_root: FilePath = "~/.claude" as FilePath
@@ -564,7 +611,7 @@ fn resolve_codex_offer(
             reason: reason,
           }
       }
-    SelectCodex { profile, account, model, effort } => {
+    SelectCodex { profile, account, model, effort, operator_asserted_native_limit_bucket: _ } => {
       let effort_result = match profile {
         ProfileAutomatic => {
           let resolved = ResolvedCodex {
@@ -756,6 +803,7 @@ fn provider_selection_request_for_kind(kind: ProviderKind) -> ProviderSelectionR
         account: codex_roadmap_account_selection(),
         model: dispatch_codex_default_model,
         effort: ReasoningMedium,
+        operator_asserted_native_limit_bucket: Absent,
       }
     ClaudeCliProvider =>
       SelectClaude {
@@ -794,7 +842,7 @@ fn provider_offer_standing(offer: ProviderOffer) -> ProviderStanding {
 fn offer_matches_request_shape(offer: ProviderOffer, request: ProviderSelectionRequest) -> Bool {
   match request {
     SelectAutomatically { profile: _ } => true
-    SelectCodex { profile: _, account: _, model: _, effort: _ } =>
+    SelectCodex { profile: _, account: _, model: _, effort: _, operator_asserted_native_limit_bucket: _ } =>
       match offer {
         OfferCodex { offer: _ } => true
         _ => false
@@ -917,7 +965,14 @@ fn dispatch_selection_refusal_reason_for_miss(
   request: ProviderSelectionRequest,
 ) -> NonEmptyStr {
   match request {
-    SelectAutomatically { profile: _ } => dispatch_selection_standing_ineligible_reason
+    SelectAutomatically { profile: _ } =>
+      match automatic_refusal_reason_for_inventory(inventory: inventory) {
+        Present { value: native_key } =>
+          dispatch_selection_automatic_native_bucket_join_undetermined_refusal(
+            native_key: native_key,
+          )
+        Absent => dispatch_selection_standing_ineligible_reason
+      }
     _ =>
       if inventory_has_shape_match(inventory: inventory, request: request) {
         dispatch_selection_standing_ineligible_reason
@@ -999,7 +1054,7 @@ fn selection_requests_match(
           s.effort == codex_default_effort
         _ => false
       }
-    SelectCodex { profile: _, account, model, effort } =>
+    SelectCodex { profile: _, account, model, effort, operator_asserted_native_limit_bucket: _ } =>
       match resolved {
         ResolvedCodex { selection: s, instance: _, account_binding: _ } =>
           s.account == account && s.model == model && s.effort == effort

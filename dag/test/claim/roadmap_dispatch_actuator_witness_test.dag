@@ -368,6 +368,7 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
       account: codex_roadmap_account_selection(),
       model: dispatch_codex_default_model,
       effort: ReasoningMedium,
+      operator_asserted_native_limit_bucket: Absent,
     },
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
@@ -429,6 +430,7 @@ test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool 
       account: codex_roadmap_account_selection(),
       model: dispatch_codex_default_model,
       effort: ReasoningMedium,
+      operator_asserted_native_limit_bucket: Absent,
     },
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false

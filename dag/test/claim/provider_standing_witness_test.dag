@@ -15,8 +15,7 @@ import gunbc.provider_standing {
   ProviderAccountLimit,
   ProviderNativeLimitBucket,
   LimitCredentialUnspecified,
-  LimitDispatchDrawUnspecified,
-  LimitDispatchDrawModel,
+  LimitDispatchDrawAutomatic,
   LimitDispatchDrawNativeBucket,
   LimitObservedAvailable,
   LimitUnavailableUntilReset,
@@ -56,9 +55,7 @@ import gunbc.dispatch_selection {
   fixture_codex_offer_with_standing,
   codex_default_native_limit_bucket,
   codex_bengalfox_native_limit_bucket,
-  codex_limit_dispatch_draw_for_model,
   dispatch_codex_default_model,
-  codex_bengalfox_dispatch_model,
   Unsized,
 }
 
@@ -90,7 +87,7 @@ test fn witness_limit_warning_does_not_block_selection() -> Bool {
       },
       bundle: bundle,
     ),
-    draw: LimitDispatchDrawUnspecified,
+    draw: LimitDispatchDrawAutomatic,
   )
 }
 
@@ -135,7 +132,7 @@ test fn witness_model_limit_rejection_does_not_block_account_selection() -> Bool
   )
 }
 
-test fn witness_native_bucket_exhaustion_blocks_matching_dispatch_draw_only() -> Bool {
+test fn witness_native_bucket_exhaustion_automatic_fail_closed_explicit_bengalfox_admitted() -> Bool {
   let bundle = ProviderStandingBundle {
     installation: InstallationReady,
     authentication: AuthenticationAuthenticated,
@@ -172,11 +169,14 @@ test fn witness_native_bucket_exhaustion_blocks_matching_dispatch_draw_only() ->
   )
   !provider_standing_is_selection_eligible(
     standing: standing,
-    draw: codex_limit_dispatch_draw_for_model(model: dispatch_codex_default_model),
+    draw: LimitDispatchDrawAutomatic,
   )
     && provider_standing_is_selection_eligible(
       standing: standing,
-      draw: codex_limit_dispatch_draw_for_model(model: codex_bengalfox_dispatch_model),
+      draw: LimitDispatchDrawNativeBucket {
+        credential: LimitCredentialUnspecified,
+        native_key: codex_bengalfox_native_limit_bucket,
+      },
     )
 }
 
@@ -185,7 +185,7 @@ test fn witness_unobserved_standing_is_ineligible() -> Bool {
     standing: ProviderStandingUnobserved {
       reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
     },
-    draw: LimitDispatchDrawUnspecified,
+    draw: LimitDispatchDrawAutomatic,
   )
 }
 
@@ -203,7 +203,7 @@ test fn witness_cursor_capability_gap_is_eligible() -> Bool {
       },
       bundle: fixture_standing_bundle_cursor_capability_gap(),
     ),
-    draw: LimitDispatchDrawUnspecified,
+    draw: LimitDispatchDrawAutomatic,
   )
 }
 
@@ -354,7 +354,7 @@ test fn witness_profile_present_token_absent_not_selection_eligible() -> Bool {
       },
       bundle: fixture_standing_bundle_claude_profile_present_token_absent(),
     ),
-    draw: LimitDispatchDrawUnspecified,
+    draw: LimitDispatchDrawAutomatic,
   )
 }
 
@@ -443,14 +443,14 @@ test fn witness_turn_outcome_unobserved_is_ineligible() -> Bool {
       },
       bundle: bundle,
     ),
-    draw: LimitDispatchDrawUnspecified,
+    draw: LimitDispatchDrawAutomatic,
   )
 }
 
 test fn provider_standing_keystone_holds() -> Bool {
   witness_limit_warning_does_not_block_selection()
     && witness_model_limit_rejection_does_not_block_account_selection()
-    && witness_native_bucket_exhaustion_blocks_matching_dispatch_draw_only()
+    && witness_native_bucket_exhaustion_automatic_fail_closed_explicit_bengalfox_admitted()
     && witness_unobserved_standing_is_ineligible()
     && witness_turn_outcome_unobserved_is_ineligible()
     && witness_cursor_capability_gap_is_eligible()
