@@ -1,0 +1,176 @@
+module gunbc.v1_complexity_decl_classification
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { Nat }
+import v2.std.algebra { filter, length }
+import v2.std.decl_index { DeclFact, decl_facts }
+import gunbc.v1_complexity_capability_census {
+  ComplexityCapabilityId,
+  V1ComplexityInventoryRow,
+  inventory_row_semantic_capability,
+}
+import gunbc.v1_complexity_decl_classification_types {
+  V1ComplexityDeclRole,
+  V1ComplexityDeclClassification,
+  AuthorityOf,
+}
+
+data v1_complexity_decl_classification_note: String = "C0(b2) of the v2 complexity capability parity program: derive the v1.compiler.complexity declaration population from DeclFact and classify every declaration exactly once. The population is OBSERVED from decl_facts over a pool that includes src/v1; the classification roster is the authored join keyed by decl_name. Witnesses prove bijection between population and roster, authority alignment with the C0(b1) inventory carriers, and that every semantic capability has at least one authority declaration."
+
+data v1_complexity_source_rel_path: String = "src/v1/complexity.dag"
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn decl_fact_is_v1_complexity(fact: DeclFact) -> Bool {
+  fact.rel_path == v1_complexity_source_rel_path
+}
+
+fn v1_complexity_decl_population(pool_roots: List<String>) -> List<DeclFact> {
+  filter(
+    xs: decl_facts(pool_roots: pool_roots),
+    predicate: decl_fact_is_v1_complexity
+  )
+}
+
+fn v1_complexity_decl_population_count(pool_roots: List<String>) -> Nat {
+  length(xs: v1_complexity_decl_population(pool_roots: pool_roots))
+}
+
+fn roster_contains_decl_name(roster: List<V1ComplexityDeclClassification>, name: String) -> Bool {
+  fold(roster, init: false, f: fn(found, row) {
+    if found {
+      true
+    } else {
+      string_eq(a: row.decl_name, b: name)
+    }
+  })
+}
+
+fn population_name_in_roster(fact: DeclFact, roster: List<V1ComplexityDeclClassification>) -> Bool {
+  roster_contains_decl_name(roster: roster, name: fact.name)
+}
+
+fn every_population_fact_classified(
+  facts: List<DeclFact>,
+  roster: List<V1ComplexityDeclClassification>
+) -> Bool {
+  fold(facts, init: true, f: fn(ok, fact) {
+    ok && population_name_in_roster(fact: fact, roster: roster)
+  })
+}
+
+fn classification_matches_fact(c: V1ComplexityDeclClassification, fact: DeclFact) -> Bool {
+  string_eq(a: c.decl_name, b: fact.name)
+}
+
+fn roster_name_in_population(
+  row: V1ComplexityDeclClassification,
+  facts: List<DeclFact>
+) -> Bool {
+  fold(facts, init: false, f: fn(found, fact) {
+    found || classification_matches_fact(c: row, fact: fact)
+  })
+}
+
+fn every_roster_row_matches_population(
+  roster: List<V1ComplexityDeclClassification>,
+  facts: List<DeclFact>
+) -> Bool {
+  fold(roster, init: true, f: fn(ok, row) {
+    ok && roster_name_in_population(row: row, facts: facts)
+  })
+}
+
+fn name_already_seen(names: List<String>, name: String) -> Bool {
+  fold(names, init: false, f: fn(found, n) {
+    found || string_eq(a: n, b: name)
+  })
+}
+
+fn roster_distinct_decl_names(roster: List<V1ComplexityDeclClassification>) -> List<String> {
+  fold(roster, init: [], f: fn(names, row) {
+    if name_already_seen(names: names, name: row.decl_name) {
+      names
+    } else {
+      concat(names, [row.decl_name])
+    }
+  })
+}
+
+fn roster_names_distinct(roster: List<V1ComplexityDeclClassification>) -> Bool {
+  length(xs: roster_distinct_decl_names(roster: roster)) == length(xs: roster)
+}
+
+fn classification_is_authority_for_capability(
+  c: V1ComplexityDeclClassification,
+  capability: ComplexityCapabilityId
+) -> Bool {
+  match c.role {
+    AuthorityOf { capability: cap } => cap == capability
+    _ => false
+  }
+}
+
+fn capability_has_authority_declaration(
+  capability: ComplexityCapabilityId,
+  roster: List<V1ComplexityDeclClassification>
+) -> Bool {
+  fold(roster, init: false, f: fn(found, row) {
+    found || classification_is_authority_for_capability(c: row, capability: capability)
+  })
+}
+
+fn inventory_row_capability(row: V1ComplexityInventoryRow) -> ComplexityCapabilityId? {
+  inventory_row_semantic_capability(row: row)
+}
+
+fn inventory_authority_carrier_matches_classification(
+  row: V1ComplexityInventoryRow,
+  roster: List<V1ComplexityDeclClassification>
+) -> Bool {
+  match inventory_row_capability(row: row) {
+    Present { value: cap_id } =>
+      fold(roster, init: false, f: fn(found, c) {
+        found || (
+          classification_is_authority_for_capability(c: c, capability: cap_id)
+            && string_eq(a: c.decl_name, b: row.v1_carrier.decl_name as String)
+        )
+      })
+    Absent => true
+  }
+}
+
+fn every_semantic_capability_has_authority(
+  inventory: List<V1ComplexityInventoryRow>,
+  roster: List<V1ComplexityDeclClassification>
+) -> Bool {
+  fold(inventory, init: true, f: fn(ok, row) {
+    match inventory_row_capability(row: row) {
+      Present { value: cap_id } =>
+        ok && capability_has_authority_declaration(capability: cap_id, roster: roster)
+      Absent => ok
+    }
+  })
+}
+
+fn every_inventory_authority_carrier_classified(
+  inventory: List<V1ComplexityInventoryRow>,
+  roster: List<V1ComplexityDeclClassification>
+) -> Bool {
+  fold(inventory, init: true, f: fn(ok, row) {
+    ok && inventory_authority_carrier_matches_classification(row: row, roster: roster)
+  })
+}
+
+fn population_matches_roster_count(
+  facts: List<DeclFact>,
+  roster: List<V1ComplexityDeclClassification>
+) -> Bool {
+  length(xs: facts) == length(xs: roster)
+}
+
+fn v1_complexity_decl_classification_roster_count(roster: List<V1ComplexityDeclClassification>) -> Nat {
+  length(xs: roster)
+}

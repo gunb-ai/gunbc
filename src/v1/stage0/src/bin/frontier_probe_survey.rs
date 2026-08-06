@@ -90,6 +90,9 @@ struct ProbeReceiptRow {
     located_stage: String,
     located_reason: String,
     detail: String,
+    assemble_detail_manifest: String,
+    rejection_chain: String,
+    overlap_roster_detail: String,
     probe_error: Option<String>,
 }
 
@@ -331,9 +334,266 @@ fn detail_variant_emit(value: &Value, ctx: &InterpContext) -> Result<String, Str
     }
 }
 
+fn symbol_list_csv(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let mut parts = Vec::new();
+    for item in free_monoid_elems(value, ctx)? {
+        parts.push(value_symbol_name(item)?);
+    }
+    Ok(parts.join(","))
+}
+
+fn non_empty_symbol_chain_csv_flat(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let head = record_field(ctx, value, "head")?;
+    let tail = record_field(ctx, value, "tail")?;
+    let mut parts = vec![value_symbol_name(head)?];
+    for item in free_monoid_elems(tail, ctx)? {
+        parts.push(value_symbol_name(item)?);
+    }
+    Ok(parts.join(","))
+}
+
+fn symbol_list_dag_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let mut parts = Vec::new();
+    for item in free_monoid_elems(value, ctx)? {
+        parts.push(value_symbol_name(item)?);
+    }
+    let mut list = String::from("Empty");
+    while let Some(sym) = parts.pop() {
+        list = format!("Cons {{\n  head: {sym},\n  tail: {list}\n}}");
+    }
+    Ok(list)
+}
+
+fn grammar_choice_ambiguity_row_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let production = value_symbol_name(record_field(ctx, value, "production")?)?;
+    let left_list = symbol_list_dag_emit(record_field(ctx, value, "left_first_terminals")?, ctx)?;
+    let right_list = symbol_list_dag_emit(record_field(ctx, value, "right_first_terminals")?, ctx)?;
+    let overlap_list = symbol_list_dag_emit(record_field(ctx, value, "overlap_terminals")?, ctx)?;
+    let both_nullable = match record_field(ctx, value, "both_nullable")? {
+        Value::Bool(b) => {
+            if *b {
+                "true"
+            } else {
+                "false"
+            }
+        }
+        other => {
+            return Err(format!(
+                "both_nullable not Bool: {}",
+                other.type_label_public()
+            ));
+        }
+    };
+    Ok(format!(
+        "GrammarChoiceAmbiguityRow {{\n  production: {production},\n  left_first_terminals: {left_list},\n  right_first_terminals: {right_list},\n  overlap_terminals: {overlap_list},\n  both_nullable: {both_nullable}\n}}"
+    ))
+}
+
+fn non_empty_grammar_rows_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let head = grammar_choice_ambiguity_row_emit(record_field(ctx, value, "head")?, ctx)?;
+    let tail = record_field(ctx, value, "tail")?;
+    let mut tail_nodes: Vec<String> = Vec::new();
+    for item in free_monoid_elems(tail, ctx)? {
+        tail_nodes.push(grammar_choice_ambiguity_row_emit(item, ctx)?);
+    }
+    let mut list = String::from("Empty");
+    while let Some(node) = tail_nodes.pop() {
+        list = format!("Cons {{\n  head: {node},\n  tail: {list}\n}}");
+    }
+    Ok(format!(
+        "NonEmptyGrammarChoiceAmbiguityRows {{\n  head: {head},\n  tail: {list}\n}}"
+    ))
+}
+
+fn non_empty_symbol_chain_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let head = value_symbol_name(record_field(ctx, value, "head")?)?;
+    let tail = symbol_list_dag_emit(record_field(ctx, value, "tail")?, ctx)?;
+    Ok(format!(
+        "NonEmptySymbolChain {{\n  head: {head},\n  tail: {tail}\n}}"
+    ))
+}
+
+fn assemble_rejection_cause_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            let name = ctx.resolve(*variant_name);
+            if name == "GrammarChoiceOverlap" {
+                let rows = ctx
+                    .field(fields, "rows")
+                    .ok_or_else(|| format!("{name} missing rows"))?;
+                Ok(format!(
+                    "GrammarChoiceOverlap {{ rows: {} }}",
+                    non_empty_grammar_rows_emit(rows, ctx)?
+                ))
+            } else if name == "MaskedAssembleRefusal" {
+                let overlap_evidence = ctx
+                    .field(fields, "overlap_evidence")
+                    .ok_or_else(|| format!("{name} missing overlap_evidence"))?;
+                let remaining_chain = ctx
+                    .field(fields, "remaining_chain")
+                    .ok_or_else(|| format!("{name} missing remaining_chain"))?;
+                Ok(format!(
+                    "MaskedAssembleRefusal {{\n  overlap_evidence: {},\n  remaining_chain: {}\n}}",
+                    non_empty_grammar_rows_emit(overlap_evidence, ctx)?,
+                    non_empty_symbol_chain_emit(remaining_chain, ctx)?
+                ))
+            } else if name == "MaskedAssembleRefusalWithoutEvidence" {
+                let remaining_chain = ctx
+                    .field(fields, "remaining_chain")
+                    .ok_or_else(|| format!("{name} missing remaining_chain"))?;
+                Ok(format!(
+                    "MaskedAssembleRefusalWithoutEvidence {{\n  remaining_chain: {}\n}}",
+                    non_empty_symbol_chain_emit(remaining_chain, ctx)?
+                ))
+            } else if name == "AssembleMissingModule" {
+                let requested = ctx
+                    .field(fields, "requested")
+                    .ok_or_else(|| format!("{name} missing requested"))?;
+                Ok(format!(
+                    "AssembleMissingModule {{ requested: {} }}",
+                    qualified_name_emit(requested)?
+                ))
+            } else if name == "MissingModuleIdentityUnavailable" {
+                Ok("MissingModuleIdentityUnavailable".to_string())
+            } else if name == "OtherAssembleRefusal" {
+                let reason = ctx
+                    .field(fields, "reason")
+                    .ok_or_else(|| format!("{name} missing reason"))?;
+                Ok(format!(
+                    "OtherAssembleRefusal {{ reason: {} }}",
+                    value_symbol_name(reason)?
+                ))
+            } else {
+                Err(format!("unknown AssembleRejectionCause variant {name}"))
+            }
+        }
+        _ => Err("assemble cause not a variant".to_string()),
+    }
+}
+
+fn assemble_detail_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            let name = ctx.resolve(*variant_name);
+            if name == "NoFrontierProbeDetail" {
+                Ok("NoFrontierProbeDetail".to_string())
+            } else if name == "AssembleRejectionDetail" {
+                let chain = ctx
+                    .field(fields, "rejection_chain")
+                    .ok_or_else(|| format!("{name} missing rejection_chain"))?;
+                let cause = ctx
+                    .field(fields, "cause")
+                    .ok_or_else(|| format!("{name} missing cause"))?;
+                Ok(format!(
+                    "AssembleRejectionDetail {{\n  rejection_chain: {},\n  cause: {}\n}}",
+                    non_empty_symbol_chain_emit(chain, ctx)?,
+                    assemble_rejection_cause_emit(cause, ctx)?
+                ))
+            } else {
+                Err(format!("unknown assemble_detail variant {name}"))
+            }
+        }
+        _ => Err("assemble_detail not a variant".to_string()),
+    }
+}
+
+fn overlap_rows_detail_from_rows_value(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<String, String> {
+    let mut rows = Vec::new();
+    let head = record_field(ctx, value, "head")?;
+    rows.push(head);
+    for item in free_monoid_elems(record_field(ctx, value, "tail")?, ctx)? {
+        rows.push(item);
+    }
+    let mut out = Vec::new();
+    for row in rows {
+        let production = value_symbol_name(record_field(ctx, row, "production")?)?;
+        let left = symbol_list_csv(record_field(ctx, row, "left_first_terminals")?, ctx)?;
+        let right = symbol_list_csv(record_field(ctx, row, "right_first_terminals")?, ctx)?;
+        let overlap = symbol_list_csv(record_field(ctx, row, "overlap_terminals")?, ctx)?;
+        out.push(format!(
+            "{production}|left={left}|right={right}|overlap={overlap}"
+        ));
+    }
+    Ok(out.join(";"))
+}
+
+fn overlap_roster_detail_from_assemble_detail(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "AssembleRejectionDetail") => {
+            let cause = ctx
+                .field(fields, "cause")
+                .ok_or_else(|| "AssembleRejectionDetail missing cause".to_string())?;
+            match cause {
+                Value::Variant {
+                    variant_name: cause_name,
+                    fields: cause_fields,
+                    ..
+                } if ctx.sym_eq(*cause_name, "GrammarChoiceOverlap") => {
+                    let rows = ctx
+                        .field(cause_fields, "rows")
+                        .ok_or_else(|| "GrammarChoiceOverlap missing rows".to_string())?;
+                    overlap_rows_detail_from_rows_value(rows, ctx)
+                }
+                Value::Variant {
+                    variant_name: cause_name,
+                    fields: cause_fields,
+                    ..
+                } if ctx.sym_eq(*cause_name, "MaskedAssembleRefusal") => {
+                    let overlap_evidence =
+                        ctx.field(cause_fields, "overlap_evidence").ok_or_else(|| {
+                            "MaskedAssembleRefusal missing overlap_evidence".to_string()
+                        })?;
+                    overlap_rows_detail_from_rows_value(overlap_evidence, ctx)
+                }
+                _ => Ok(String::new()),
+            }
+        }
+        _ => Ok(String::new()),
+    }
+}
+
+fn rejection_chain_from_assemble_detail(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "AssembleRejectionDetail") => {
+            let chain = ctx
+                .field(fields, "rejection_chain")
+                .ok_or_else(|| "AssembleRejectionDetail missing rejection_chain".to_string())?;
+            non_empty_symbol_chain_csv_flat(chain, ctx)
+        }
+        _ => Ok(String::new()),
+    }
+}
+
 fn survey_manifest_needs_detail_imports(rows: &[ProbeReceiptRow]) -> bool {
-    rows.iter()
-        .any(|row| row.detail != "FrontierProbeDetailAbsent")
+    rows.iter().any(|row| {
+        row.detail != "FrontierProbeDetailAbsent"
+            || row.assemble_detail_manifest != "NoFrontierProbeDetail"
+    })
 }
 
 fn survey_manifest_import_block(rows: &[ProbeReceiptRow]) -> String {
@@ -352,6 +612,7 @@ fn survey_manifest_import_block(rows: &[ProbeReceiptRow]) -> String {
          import v2.std.algebra { Cons, Empty }\n\
          import v2.std.collection { List }\n\
          import v2.std.cross_tree.import_model { SourceRootRef, V2Tree, DagTree }\n\
+         import v2.std.grammar_choice_ambiguity { GrammarChoiceAmbiguityRow, NonEmptyGrammarChoiceAmbiguityRows }\n\
          import v2.std.logic { Int }\n\
          import v2.std.qualified_name { qualified_name_from_dotted_string }\n\n",
     )
@@ -497,12 +758,19 @@ fn extract_probe_receipt(value: &Value, ctx: &InterpContext) -> Result<ProbeRece
     let stage = record_field(ctx, value, "located_stage")?;
     let reason = record_field(ctx, value, "located_reason")?;
     let detail = record_field(ctx, value, "detail")?;
+    let assemble_detail = record_field(ctx, value, "assemble_detail")?;
+    let assemble_detail_manifest = assemble_detail_emit(assemble_detail, ctx)?;
+    let rejection_chain = rejection_chain_from_assemble_detail(assemble_detail, ctx)?;
+    let overlap_roster_detail = overlap_roster_detail_from_assemble_detail(assemble_detail, ctx)?;
     Ok(ProbeReceiptRow {
         module_path,
         blocker_variant: blocker_variant_emit(blocker, ctx)?,
         located_stage: variant_name(ctx, stage)?,
         located_reason: value_symbol_name(reason)?,
         detail: detail_variant_emit(detail, ctx)?,
+        assemble_detail_manifest,
+        rejection_chain,
+        overlap_roster_detail,
         probe_error: None,
     })
 }
@@ -514,6 +782,9 @@ fn unknown_probe_row(module_path: &str, cause: &str) -> ProbeReceiptRow {
         located_stage: "ProbeStageAssemble".to_string(),
         located_reason: format!("^{cause}"),
         detail: "FrontierProbeDetailAbsent".to_string(),
+        assemble_detail_manifest: "NoFrontierProbeDetail".to_string(),
+        rejection_chain: String::new(),
+        overlap_roster_detail: String::new(),
         probe_error: Some(cause.to_string()),
     }
 }
@@ -583,12 +854,13 @@ fn run_probe_for_module(
 
 fn emit_receipt_row(row: &ProbeReceiptRow) -> String {
     format!(
-        "FrontierProbeReceipt {{\n  module_path: \"{}\",\n  blocker_class: {},\n  located_stage: {},\n  located_reason: {},\n  detail: {}\n}}",
+        "FrontierProbeReceipt {{\n  module_path: \"{}\",\n  blocker_class: {},\n  located_stage: {},\n  located_reason: {},\n  detail: {},\n  assemble_detail: {}\n}}",
         row.module_path.replace('\\', "/"),
         row.blocker_variant,
         row.located_stage,
         row.located_reason,
         row.detail,
+        row.assemble_detail_manifest,
     )
 }
 
@@ -617,7 +889,7 @@ fn emit_tsv(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), String> {
     let mut out = fs::File::create(path).map_err(|e| format!("create tsv: {e}"))?;
     writeln!(
         out,
-        "module\tself_emit_ready\tblocker_class\tlocated_stage\tlocated_reason\tprobe_error"
+        "module\tself_emit_ready\tblocker_class\tlocated_stage\tlocated_reason\trejection_chain\toverlap_roster_detail\tprobe_error"
     )
     .map_err(|e| format!("write tsv header: {e}"))?;
     for row in rows {
@@ -628,12 +900,14 @@ fn emit_tsv(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), String> {
         };
         writeln!(
             out,
-            "{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.module_path,
             self_emit,
             row.blocker_variant,
             row.located_stage,
             row.located_reason,
+            row.rejection_chain,
+            row.overlap_roster_detail,
             row.probe_error.as_deref().unwrap_or("")
         )
         .map_err(|e| format!("write tsv row: {e}"))?;
@@ -771,8 +1045,12 @@ fn run() -> Result<ExitCode, ExitCode> {
         match run_probe_for_module(&source_roots, &survey_dir, module_path) {
             Ok(row) => {
                 eprintln!(
-                    "  blocker={} stage={} reason={}",
-                    row.blocker_variant, row.located_stage, row.located_reason
+                    "  blocker={} stage={} reason={} chain={} overlap={}",
+                    row.blocker_variant,
+                    row.located_stage,
+                    row.located_reason,
+                    row.rejection_chain,
+                    row.overlap_roster_detail
                 );
                 rows.push(row);
             }
