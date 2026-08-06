@@ -59,6 +59,25 @@ permissions:
   actions: read
   contents: read
 jobs:
+  # Deliberately a SEPARATE job, not a step in `alert`. The property it checks is
+  # "does the alert reach its recipient", and a self-check wired ahead of the alert
+  # would answer a failure by suppressing the very notification it is defending —
+  # the failure arm widening into silence, which is the exact shape that produced
+  # this incident. Running beside the alert, it can only ever add a loud red; it
+  # can never subtract an alert.
+  #
+  # HONEST LIMIT: this job reds the falsifier-alert RUN, and nothing watches
+  # falsifier-alert run conclusions today — the same ambient-state problem this
+  # workflow was built to solve, now one level up. It is a real control (it runs,
+  # it reds on a broken alert, and it is discoverable from the run list), but it is
+  # not itself alerted on. That residue closes with the dissolve-on in the script.
+  selfcheck:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Alert notifies its recipient (executing control)
+        run: node .github/scripts/falsifier-alert-selfcheck.cjs
   alert:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
