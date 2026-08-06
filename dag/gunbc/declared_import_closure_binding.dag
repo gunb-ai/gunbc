@@ -48,22 +48,5 @@ fn binding_refuses(obs: DeclaredImportClosureBindingObservation) -> Bool {
 }
 
 fn row4_pool_coincidence_or_refuse(obs: DeclaredImportClosureBindingObservation) -> Bool {
-  match obs {
-    BindingObserved {
-      binding_source: Present { value: PoolCoincidence },
-      symbol_resolves: true,
-      definer_module: _,
-      blocking_hard_diagnostic_count: _
-    } => true
-    BindingObserved { symbol_resolves: false, blocking_hard_diagnostic_count: n, binding_source: _, definer_module: _ } => n > 0
-    BindingObserved { symbol_resolves: true, blocking_hard_diagnostic_count: n, binding_source: _, definer_module: _ } => n > 0
-    BindingObserved {
-      binding_source: Present { value: ListedImport },
-      symbol_resolves: true,
-      definer_module: _,
-      blocking_hard_diagnostic_count: _
-    } => false
-    BindingNotRunnable { cause: _ } => true
-    _ => false
-  }
+  binding_refuses(obs: obs) || binding_source_is_pool_coincidence(obs: obs)
 }
