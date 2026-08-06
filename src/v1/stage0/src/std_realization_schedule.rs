@@ -174,7 +174,7 @@ pub enum WitnessSpan {
 pub fn witness_envelope_compare_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Declared-versus-observed comparator for SpanEnrolled (Lane B, swift-wren-710). Joins ScheduledWitnessEnvelope.wall_budget to a measured wall figure — the gap verified by corpus grep: wall_budget was only content-hashed and well-formed, never compared to observation. CensoredMeasurementLowerBound is a lower bound under a kill, never Within/Exceeds. MissingSpan and SpanUnavailable refuse silent SpanUndeclared. RouteMismatch compares envelope.cadence to a derived cadence projection. BasisClockMismatch reuses std.measure ClockBasis — no second clock carrier.".to_string()
+            "Declared-versus-observed comparator for SpanEnrolled (Lane B, swift-wren-710). Joins ScheduledWitnessEnvelope.wall_budget to a measured wall figure — the gap verified by corpus grep: wall_budget was only content-hashed and well-formed, never compared to observation. CensoredMeasurementLowerBound is a lower bound under a kill, never Within/Exceeds. MissingSpan and SpanUnavailable refuse silent SpanUndeclared. RouteMismatch compares envelope.cadence enrollment wire to derived wire (std.witness_admission witness_consumer_cadence_enrollment_wire projection). BasisClockMismatch reuses std.measure ClockBasis — no second clock carrier.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -201,6 +201,9 @@ pub enum WitnessEnvelopeCompareVerdict {
     RouteMismatch {
         declared_cadence: String,
         derived_cadence: String,
+    },
+    UnrecognizedDeclaredCadence {
+        wire: String,
     },
     BasisClockMismatch {
         observed_clock: ClockBasis,
@@ -234,62 +237,77 @@ impl ObservedWallAtSubject {
     }
 }
 
+pub fn envelope_cadence_wire_is_recognized(cadence: String) -> bool {
+    (((((cadence.clone() == "per_pr".to_string()) || (cadence.clone() == "4h".to_string()))
+        || (cadence.clone() == "falsifier_substrate_long_lane".to_string()))
+        || (cadence.clone() == "offline_local_recipe".to_string()))
+        || (cadence.clone() == "no_consumer".to_string()))
+}
+
 pub fn compare_span_enrolled_wall_budget(
     envelope: Rc<ScheduledWitnessEnvelope>,
     basis: Rc<WitnessCostBasis>,
     observed: Rc<ObservedWallAtSubject>,
     derived_cadence: String,
 ) -> Rc<WitnessEnvelopeCompareVerdict> {
-    if (envelope.cadence.clone() != derived_cadence.clone()) {
-        Rc::new(WitnessEnvelopeCompareVerdict::RouteMismatch {
-            declared_cadence: envelope.cadence.clone(),
-            derived_cadence: derived_cadence.clone(),
+    if !envelope_cadence_wire_is_recognized(envelope.cadence.clone()) {
+        Rc::new(WitnessEnvelopeCompareVerdict::UnrecognizedDeclaredCadence {
+            wire: envelope.cadence.clone(),
         })
     } else {
-        match (*observed.clone()).clone() {
-            ObservedWallAtSubject::ObservedWallCensored { floor, clock, .. } => Rc::new(
-                WitnessEnvelopeCompareVerdict::CensoredMeasurementLowerBound {
-                    floor: floor.clone(),
-                    clock: clock.clone(),
-                },
-            ),
-            ObservedWallAtSubject::ObservedWallMissing => {
-                Rc::new(WitnessEnvelopeCompareVerdict::MissingMeasurement)
-            }
-            ObservedWallAtSubject::ObservedWallPresent {
-                duration, clock, ..
-            } => match (*basis.clone()).clone() {
-                WitnessCostBasis::EstimatedFromSiblingClass { .. } => {
-                    Rc::new(WitnessEnvelopeCompareVerdict::MissingBasis)
+        if (envelope.cadence.clone() != derived_cadence.clone()) {
+            Rc::new(WitnessEnvelopeCompareVerdict::RouteMismatch {
+                declared_cadence: envelope.cadence.clone(),
+                derived_cadence: derived_cadence.clone(),
+            })
+        } else {
+            match (*observed.clone()).clone() {
+                ObservedWallAtSubject::ObservedWallCensored { floor, clock, .. } => Rc::new(
+                    WitnessEnvelopeCompareVerdict::CensoredMeasurementLowerBound {
+                        floor: floor.clone(),
+                        clock: clock.clone(),
+                    },
+                ),
+                ObservedWallAtSubject::ObservedWallMissing => {
+                    Rc::new(WitnessEnvelopeCompareVerdict::MissingMeasurement)
                 }
-                WitnessCostBasis::MeasuredAtExactSubject {
-                    clock: basis_clock, ..
-                } => {
-                    if !clock_basis_eq(clock.clone(), basis_clock.clone()) {
-                        Rc::new(WitnessEnvelopeCompareVerdict::BasisClockMismatch {
-                            observed_clock: clock.clone(),
-                            declared_clock: basis_clock.clone(),
-                        })
-                    } else {
-                        if !clock_basis_eq(clock.clone(), ClockBasis::WallClock) {
-                            Rc::new(WitnessEnvelopeCompareVerdict::WallClockRequired {
-                                clock: clock.clone(),
+                ObservedWallAtSubject::ObservedWallPresent {
+                    duration, clock, ..
+                } => match (*basis.clone()).clone() {
+                    WitnessCostBasis::EstimatedFromSiblingClass { .. } => {
+                        Rc::new(WitnessEnvelopeCompareVerdict::MissingBasis)
+                    }
+                    WitnessCostBasis::MeasuredAtExactSubject {
+                        clock: basis_clock, ..
+                    } => {
+                        if !clock_basis_eq(clock.clone(), basis_clock.clone()) {
+                            Rc::new(WitnessEnvelopeCompareVerdict::BasisClockMismatch {
+                                observed_clock: clock.clone(),
+                                declared_clock: basis_clock.clone(),
                             })
                         } else {
-                            if (millisecond_count(duration.clone())
-                                > millisecond_count(envelope.wall_budget.clone()))
-                            {
-                                Rc::new(WitnessEnvelopeCompareVerdict::ExceedsDeclaredWallBudget {
-                                    observed: duration.clone(),
-                                    ceiling: envelope.wall_budget.clone(),
+                            if !clock_basis_eq(clock.clone(), ClockBasis::WallClock) {
+                                Rc::new(WitnessEnvelopeCompareVerdict::WallClockRequired {
+                                    clock: clock.clone(),
                                 })
                             } else {
-                                Rc::new(WitnessEnvelopeCompareVerdict::WithinDeclaredWallBudget)
+                                if (millisecond_count(duration.clone())
+                                    > millisecond_count(envelope.wall_budget.clone()))
+                                {
+                                    Rc::new(
+                                        WitnessEnvelopeCompareVerdict::ExceedsDeclaredWallBudget {
+                                            observed: duration.clone(),
+                                            ceiling: envelope.wall_budget.clone(),
+                                        },
+                                    )
+                                } else {
+                                    Rc::new(WitnessEnvelopeCompareVerdict::WithinDeclaredWallBudget)
+                                }
                             }
                         }
                     }
-                }
-            },
+                },
+            }
         }
     }
 }

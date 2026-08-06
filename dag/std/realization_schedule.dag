@@ -98,7 +98,7 @@ type WitnessSpan
       envelope: ScheduledWitnessEnvelope
     }
 
-data witness_envelope_compare_note: String = "Declared-versus-observed comparator for SpanEnrolled (Lane B, swift-wren-710). Joins ScheduledWitnessEnvelope.wall_budget to a measured wall figure — the gap verified by corpus grep: wall_budget was only content-hashed and well-formed, never compared to observation. CensoredMeasurementLowerBound is a lower bound under a kill, never Within/Exceeds. MissingSpan and SpanUnavailable refuse silent SpanUndeclared. RouteMismatch compares envelope.cadence to a derived cadence projection. BasisClockMismatch reuses std.measure ClockBasis — no second clock carrier."
+data witness_envelope_compare_note: String = "Declared-versus-observed comparator for SpanEnrolled (Lane B, swift-wren-710). Joins ScheduledWitnessEnvelope.wall_budget to a measured wall figure — the gap verified by corpus grep: wall_budget was only content-hashed and well-formed, never compared to observation. CensoredMeasurementLowerBound is a lower bound under a kill, never Within/Exceeds. MissingSpan and SpanUnavailable refuse silent SpanUndeclared. RouteMismatch compares envelope.cadence enrollment wire to derived wire (std.witness_admission witness_consumer_cadence_enrollment_wire projection). BasisClockMismatch reuses std.measure ClockBasis — no second clock carrier."
 
 type WitnessEnvelopeCompareVerdict
   = WithinDeclaredWallBudget
@@ -109,6 +109,7 @@ type WitnessEnvelopeCompareVerdict
   | MissingSpan
   | SpanUnavailableAtCompare { cause: NonEmptyStr }
   | RouteMismatch { declared_cadence: String, derived_cadence: String }
+  | UnrecognizedDeclaredCadence { wire: String }
   | BasisClockMismatch { observed_clock: ClockBasis, declared_clock: ClockBasis }
   | WallClockRequired { clock: ClockBasis }
 
@@ -117,13 +118,23 @@ type ObservedWallAtSubject
   | ObservedWallMissing
   | ObservedWallCensored { floor: Millisecond, clock: ClockBasis }
 
+fn envelope_cadence_wire_is_recognized(cadence: String) -> Bool {
+  cadence == "per_pr"
+    || cadence == "4h"
+    || cadence == "falsifier_substrate_long_lane"
+    || cadence == "offline_local_recipe"
+    || cadence == "no_consumer"
+}
+
 fn compare_span_enrolled_wall_budget(
   envelope: ScheduledWitnessEnvelope,
   basis: WitnessCostBasis,
   observed: ObservedWallAtSubject,
   derived_cadence: String,
 ) -> WitnessEnvelopeCompareVerdict {
-  if envelope.cadence != derived_cadence {
+  if !envelope_cadence_wire_is_recognized(cadence: envelope.cadence) {
+    UnrecognizedDeclaredCadence { wire: envelope.cadence }
+  } else if envelope.cadence != derived_cadence {
     RouteMismatch {
       declared_cadence: envelope.cadence,
       derived_cadence: derived_cadence,

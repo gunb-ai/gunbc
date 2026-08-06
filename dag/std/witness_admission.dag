@@ -35,3 +35,157 @@ type FrozenBaselineStanding
   | FrozenBaselineDebtStale { stale_count: Int }
 
 data witness_admission_predicate_dissolution_note: String = "witness_consumer_cadence_is_live / witness_admission_refusal_is_holds dissolved per review 39760 — workflow and tests match the coproducts directly (integration 39758 scaffold superseded on this branch)."
+
+data scheduled_envelope_cadence_wire_note: String = "Temporary wire decoder for ScheduledWitnessEnvelope.cadence (String on the enrollment carrier until that field migrates to WitnessConsumerCadence). THE ONLY home for enrollment wire strings — std.witness_placement and std.realization_schedule compare decode here and consume WitnessConsumerCadence. Dissolve-on: envelope.cadence becomes the closed coproduct and this decoder deletes."
+
+type ScheduledEnvelopeCadenceWireDecode
+  = EnvelopeCadenceDecoded { cadence: WitnessConsumerCadence }
+  | EnvelopeCadenceWireUnrecognized { wire: String }
+
+fn decode_scheduled_envelope_cadence_wire(cadence: String) -> ScheduledEnvelopeCadenceWireDecode {
+  if cadence == "per_pr" {
+    EnvelopeCadenceDecoded { cadence: DiscoverySelection }
+  } else if cadence == "4h" {
+    EnvelopeCadenceDecoded { cadence: FalsifierSelfHostWet }
+  } else if cadence == "falsifier_substrate_long_lane" {
+    EnvelopeCadenceDecoded { cadence: FalsifierSubstrateLongLane }
+  } else if cadence == "offline_local_recipe" {
+    EnvelopeCadenceDecoded { cadence: OfflineLocalRecipe }
+  } else if cadence == "no_consumer" {
+    EnvelopeCadenceDecoded { cadence: NoConsumer }
+  } else {
+    EnvelopeCadenceWireUnrecognized { wire: cadence }
+  }
+}
+
+fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumerCadence) -> Bool {
+  match a {
+    DiscoverySelection => match b {
+      DiscoverySelection => true
+      FalsifierSelfHostWet => false
+      FalsifierRehomedBinWet => false
+      FalsifierSubstrateLongLane => false
+      BinWitnessWet => false
+      QuarantineProbeExpectRed => false
+      OfflineLocalRecipe => false
+      FixtureExplicitRoster => false
+      NoConsumer => false
+    }
+    FalsifierSelfHostWet => match b {
+      DiscoverySelection => false
+      FalsifierSelfHostWet => true
+      FalsifierRehomedBinWet => false
+      FalsifierSubstrateLongLane => false
+      BinWitnessWet => false
+      QuarantineProbeExpectRed => false
+      OfflineLocalRecipe => false
+      FixtureExplicitRoster => false
+      NoConsumer => false
+    }
+    FalsifierRehomedBinWet => match b {
+      DiscoverySelection => false
+      FalsifierSelfHostWet => false
+      FalsifierRehomedBinWet => true
+      FalsifierSubstrateLongLane => false
+      BinWitnessWet => false
+      QuarantineProbeExpectRed => false
+      OfflineLocalRecipe => false
+      FixtureExplicitRoster => false
+      NoConsumer => false
+    }
+    FalsifierSubstrateLongLane => match b {
+      DiscoverySelection => false
+      FalsifierSelfHostWet => false
+      FalsifierRehomedBinWet => false
+      FalsifierSubstrateLongLane => true
+      BinWitnessWet => false
+      QuarantineProbeExpectRed => false
+      OfflineLocalRecipe => false
+      FixtureExplicitRoster => false
+      NoConsumer => false
+    }
+    BinWitnessWet => match b {
+      DiscoverySelection => false
+      FalsifierSelfHostWet => false
+      FalsifierRehomedBinWet => false
+      FalsifierSubstrateLongLane => false
+      BinWitnessWet => true
+      QuarantineProbeExpectRed => false
+      OfflineLocalRecipe => false
+      FixtureExplicitRoster => false
+      NoConsumer => false
+    }
+    QuarantineProbeExpectRed => match b {
+      DiscoverySelection => false
+      FalsifierSelfHostWet => false
+      FalsifierRehomedBinWet => false
+      FalsifierSubstrateLongLane => false
+      BinWitnessWet => false
+      QuarantineProbeExpectRed => true
+      OfflineLocalRecipe => false
+      FixtureExplicitRoster => false
+      NoConsumer => false
+    }
+    OfflineLocalRecipe => match b {
+      DiscoverySelection => false
+      FalsifierSelfHostWet => false
+      FalsifierRehomedBinWet => false
+      FalsifierSubstrateLongLane => false
+      BinWitnessWet => false
+      QuarantineProbeExpectRed => false
+      OfflineLocalRecipe => true
+      FixtureExplicitRoster => false
+      NoConsumer => false
+    }
+    FixtureExplicitRoster => match b {
+      DiscoverySelection => false
+      FalsifierSelfHostWet => false
+      FalsifierRehomedBinWet => false
+      FalsifierSubstrateLongLane => false
+      BinWitnessWet => false
+      QuarantineProbeExpectRed => false
+      OfflineLocalRecipe => false
+      FixtureExplicitRoster => true
+      NoConsumer => false
+    }
+    NoConsumer => match b {
+      DiscoverySelection => false
+      FalsifierSelfHostWet => false
+      FalsifierRehomedBinWet => false
+      FalsifierSubstrateLongLane => false
+      BinWitnessWet => false
+      QuarantineProbeExpectRed => false
+      OfflineLocalRecipe => false
+      FixtureExplicitRoster => false
+      NoConsumer => true
+    }
+  }
+}
+
+fn witness_consumer_cadence_executes(cadence: WitnessConsumerCadence) -> Bool {
+  match cadence {
+    QuarantineProbeExpectRed => true
+    FalsifierSelfHostWet => true
+    FalsifierRehomedBinWet => true
+    FalsifierSubstrateLongLane => true
+    BinWitnessWet => true
+    DiscoverySelection => false
+    OfflineLocalRecipe => false
+    FixtureExplicitRoster => false
+    NoConsumer => false
+  }
+}
+
+fn witness_consumer_cadence_enrollment_wire(cadence: WitnessConsumerCadence) -> String {
+  match cadence {
+    DiscoverySelection => "per_pr"
+    FalsifierSelfHostWet => "4h"
+    FalsifierSubstrateLongLane => "falsifier_substrate_long_lane"
+    OfflineLocalRecipe => "offline_local_recipe"
+    NoConsumer => "no_consumer"
+    FalsifierRehomedBinWet => "falsifier_rehomed_bin_wet"
+    BinWitnessWet => "bin_witness_wet"
+    QuarantineProbeExpectRed => "quarantine_probe_expect_red"
+    FixtureExplicitRoster => "fixture_explicit_roster"
+  }
+}

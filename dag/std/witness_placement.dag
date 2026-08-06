@@ -19,50 +19,43 @@ import std.witness_purpose {
   ResourceContract,
   TerminatingOneShot,
 }
+import std.witness_admission {
+  WitnessConsumerCadence,
+  DiscoverySelection,
+  FalsifierSelfHostWet,
+  FalsifierRehomedBinWet,
+  FalsifierSubstrateLongLane,
+  BinWitnessWet,
+  QuarantineProbeExpectRed,
+  OfflineLocalRecipe,
+  FixtureExplicitRoster,
+  NoConsumer,
+  decode_scheduled_envelope_cadence_wire,
+  EnvelopeCadenceDecoded,
+  EnvelopeCadenceWireUnrecognized,
+}
 
-data witness_placement_authority_note: String = "DERIVED witness placement (witness-evidence-lifecycle-design: route is a projection, never a source-tree declaration). Placement is computed from declared WitnessPurpose plus ScheduledWitnessEnvelope fields — not from path substrings such as test/claim/long/. Dissolve-on for long_lane_exclusion_note fires when floor admission consumes this projection. Allowed-to-remain (per-PR discovery) and has-an-executing-consumer (scheduled cadence) stay separate facts."
-
-data witness_envelope_cadence_wire_note: String = "ScheduledWitnessEnvelope.cadence remains String on the enrollment carrier (std.realization_schedule) until that authority migrates. This closed wire interpreter is the placement-side projection: known roster wires map to constructors; anything else is EnvelopeCadenceUnrecognized and placement REFUSES rather than guessing. Dissolve-on: envelope.cadence becomes a closed coproduct on ScheduledWitnessEnvelope and this interpreter deletes."
-
-type WitnessEnvelopeCadenceWire
-  = EnvelopeCadencePerPr
-  | EnvelopeCadenceFalsifierCadenceJob
-  | EnvelopeCadenceFalsifierSubstrateLongLane
-  | EnvelopeCadenceOfflineLocalRecipe
-  | EnvelopeCadenceNoConsumer
-  | EnvelopeCadenceUnrecognized { wire: String }
+data witness_placement_authority_note: String = "DERIVED witness placement (witness-evidence-lifecycle-design: route is a projection, never a source-tree declaration). Placement is computed from the full axis set — declared WitnessPurpose, effect/fidelity requirement, declared envelope cost bound, decoded WitnessConsumerCadence, and max_staleness — not from path substrings such as test/claim/long/ and not from purpose alone. Witness evaluation cost and entry resolution are separate denominators: shared setup belongs to materialization, not witness decomposition. Dissolve-on for long_lane_exclusion_note fires when floor admission consumes this projection. Allowed-to-remain (per-PR discovery) and has-an-executing-consumer (scheduled cadence) stay separate facts."
 
 type WitnessRoute
   = OrdinaryPerPr
   | PerPrWet
-  | Scheduled { cadence: String }
-  | OneShot
+  | Scheduled { cadence: WitnessConsumerCadence }
+  | OneShotUnavailable { cause: OneShotUnavailableCause }
   | RefusedNoConsumer { cause: WitnessPlacementRefusal }
 
+type OneShotUnavailableCause
+  = DeadlineNotTyped
+  | CompletionNotObserved
+
 type WitnessPlacementRefusal
-  = PurposeRequiresScheduledCadenceUndeclared
-  | OneShotPurposeOnScheduledCadence { cadence: String }
-  | CostExceedsFastLaneWithoutCadence
-  | NonExecutingCadence { cadence: String }
+  = CostExceedsFastLaneWithoutCadence
+  | NonExecutingCadence { cadence: WitnessConsumerCadence }
   | EnvelopeUndeclared
   | SpanUnavailableAtPlacement { cause: NonEmptyStr }
   | UnrecognizedEnvelopeCadence { wire: String }
-
-fn interpret_envelope_cadence_wire(cadence: String) -> WitnessEnvelopeCadenceWire {
-  if cadence == "per_pr" {
-    EnvelopeCadencePerPr
-  } else if cadence == "4h" {
-    EnvelopeCadenceFalsifierCadenceJob
-  } else if cadence == "falsifier_substrate_long_lane" {
-    EnvelopeCadenceFalsifierSubstrateLongLane
-  } else if cadence == "offline_local_recipe" {
-    EnvelopeCadenceOfflineLocalRecipe
-  } else if cadence == "no_consumer" {
-    EnvelopeCadenceNoConsumer
-  } else {
-    EnvelopeCadenceUnrecognized { wire: cadence }
-  }
-}
+  | OneShotUnavailableAtScheduledCadence { cadence: WitnessConsumerCadence }
+  | StalenessRequiresScheduledCadence { max_staleness: String }
 
 fn envelope_exceeds_fast_lane(
   envelope: ScheduledWitnessEnvelope,
@@ -71,21 +64,137 @@ fn envelope_exceeds_fast_lane(
   millisecond_count(m: envelope.wall_budget) > millisecond_count(m: fast_lane_budget)
 }
 
-fn derive_witness_route_scheduled_cadence(
+fn envelope_declares_scheduled_staleness(envelope: ScheduledWitnessEnvelope) -> Bool {
+  envelope.max_staleness != "0"
+}
+
+fn derive_route_for_scheduled_cadence(
   purpose: WitnessPurpose,
-  envelope: ScheduledWitnessEnvelope,
+  consumer_cadence: WitnessConsumerCadence,
 ) -> WitnessRoute {
   match purpose {
     TerminatingOneShot { pinned_subject: _, dissolution_trigger: _, deadline: _ } =>
       RefusedNoConsumer {
-        cause: OneShotPurposeOnScheduledCadence { cadence: envelope.cadence },
+        cause: OneShotUnavailableAtScheduledCadence { cadence: consumer_cadence },
       }
-    PopulationTotality { population: _ } => Scheduled { cadence: envelope.cadence }
-    BehavioralDiscriminator => Scheduled { cadence: envelope.cadence }
+    BehavioralDiscriminator => Scheduled { cadence: consumer_cadence }
     BoundaryCrossing { modeled_boundary: _, chosen_input: _ } =>
-      Scheduled { cadence: envelope.cadence }
-    ExternalFidelity { effect: _ } => Scheduled { cadence: envelope.cadence }
-    ResourceContract { bound: _ } => Scheduled { cadence: envelope.cadence }
+      Scheduled { cadence: consumer_cadence }
+    PopulationTotality { population: _ } => Scheduled { cadence: consumer_cadence }
+    ExternalFidelity { effect: _ } => Scheduled { cadence: consumer_cadence }
+    ResourceContract { bound: _ } => Scheduled { cadence: consumer_cadence }
+  }
+}
+
+fn derive_route_for_discovery_selection(
+  purpose: WitnessPurpose,
+  envelope: ScheduledWitnessEnvelope,
+  exceeds_fast_lane: Bool,
+) -> WitnessRoute {
+  match purpose {
+    TerminatingOneShot { pinned_subject: _, dissolution_trigger: _, deadline: _ } =>
+      OneShotUnavailable { cause: DeadlineNotTyped }
+    BehavioralDiscriminator =>
+      if envelope_declares_scheduled_staleness(envelope: envelope) {
+        RefusedNoConsumer {
+          cause: StalenessRequiresScheduledCadence {
+            max_staleness: envelope.max_staleness,
+          },
+        }
+      } else if exceeds_fast_lane {
+        RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
+      } else {
+        OrdinaryPerPr
+      }
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } =>
+      if envelope_declares_scheduled_staleness(envelope: envelope) {
+        RefusedNoConsumer {
+          cause: StalenessRequiresScheduledCadence {
+            max_staleness: envelope.max_staleness,
+          },
+        }
+      } else if exceeds_fast_lane {
+        RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
+      } else {
+        OrdinaryPerPr
+      }
+    PopulationTotality { population: _ } =>
+      if envelope_declares_scheduled_staleness(envelope: envelope) {
+        RefusedNoConsumer {
+          cause: StalenessRequiresScheduledCadence {
+            max_staleness: envelope.max_staleness,
+          },
+        }
+      } else if exceeds_fast_lane {
+        RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
+      } else {
+        OrdinaryPerPr
+      }
+    ExternalFidelity { effect: _ } =>
+      if envelope_declares_scheduled_staleness(envelope: envelope) {
+        RefusedNoConsumer {
+          cause: StalenessRequiresScheduledCadence {
+            max_staleness: envelope.max_staleness,
+          },
+        }
+      } else if exceeds_fast_lane {
+        RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
+      } else {
+        PerPrWet
+      }
+    ResourceContract { bound: _ } =>
+      if envelope_declares_scheduled_staleness(envelope: envelope) {
+        RefusedNoConsumer {
+          cause: StalenessRequiresScheduledCadence {
+            max_staleness: envelope.max_staleness,
+          },
+        }
+      } else if exceeds_fast_lane {
+        RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
+      } else {
+        OrdinaryPerPr
+      }
+  }
+}
+
+fn derive_route_for_bin_witness_wet(
+  purpose: WitnessPurpose,
+  envelope: ScheduledWitnessEnvelope,
+  exceeds_fast_lane: Bool,
+) -> WitnessRoute {
+  match purpose {
+    TerminatingOneShot { pinned_subject: _, dissolution_trigger: _, deadline: _ } =>
+      OneShotUnavailable { cause: DeadlineNotTyped }
+    BehavioralDiscriminator =>
+      if exceeds_fast_lane {
+        Scheduled { cadence: BinWitnessWet }
+      } else {
+        PerPrWet
+      }
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } =>
+      if exceeds_fast_lane {
+        Scheduled { cadence: BinWitnessWet }
+      } else {
+        PerPrWet
+      }
+    PopulationTotality { population: _ } =>
+      if exceeds_fast_lane {
+        Scheduled { cadence: BinWitnessWet }
+      } else {
+        PerPrWet
+      }
+    ExternalFidelity { effect: _ } =>
+      if exceeds_fast_lane {
+        Scheduled { cadence: BinWitnessWet }
+      } else {
+        PerPrWet
+      }
+    ResourceContract { bound: _ } =>
+      if exceeds_fast_lane {
+        Scheduled { cadence: BinWitnessWet }
+      } else {
+        PerPrWet
+      }
   }
 }
 
@@ -94,60 +203,56 @@ fn derive_witness_route(
   envelope: ScheduledWitnessEnvelope,
   fast_lane_budget: Millisecond,
 ) -> WitnessRoute {
-  let cadence_wire = interpret_envelope_cadence_wire(cadence: envelope.cadence)
-  match cadence_wire {
-    EnvelopeCadenceUnrecognized { wire } =>
+  let exceeds_fast_lane = envelope_exceeds_fast_lane(
+    envelope: envelope,
+    fast_lane_budget: fast_lane_budget,
+  )
+  match decode_scheduled_envelope_cadence_wire(cadence: envelope.cadence) {
+    EnvelopeCadenceWireUnrecognized { wire } =>
       RefusedNoConsumer { cause: UnrecognizedEnvelopeCadence { wire: wire } }
-    EnvelopeCadenceOfflineLocalRecipe =>
-      RefusedNoConsumer { cause: NonExecutingCadence { cadence: envelope.cadence } }
-    EnvelopeCadenceNoConsumer =>
-      RefusedNoConsumer { cause: NonExecutingCadence { cadence: envelope.cadence } }
-    EnvelopeCadencePerPr =>
-      match purpose {
-        TerminatingOneShot { pinned_subject: _, dissolution_trigger: _, deadline: _ } => OneShot
-        PopulationTotality { population: _ } =>
-          RefusedNoConsumer { cause: PurposeRequiresScheduledCadenceUndeclared }
-        ExternalFidelity { effect: _ } =>
-          if envelope_exceeds_fast_lane(
-            envelope: envelope,
-            fast_lane_budget: fast_lane_budget,
-          ) {
-            RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
-          } else {
-            PerPrWet
+    EnvelopeCadenceDecoded { cadence: consumer_cadence } =>
+      match consumer_cadence {
+        OfflineLocalRecipe =>
+          RefusedNoConsumer { cause: NonExecutingCadence { cadence: OfflineLocalRecipe } }
+        FixtureExplicitRoster =>
+          RefusedNoConsumer {
+            cause: NonExecutingCadence { cadence: FixtureExplicitRoster },
           }
-        BehavioralDiscriminator =>
-          if envelope_exceeds_fast_lane(
+        NoConsumer =>
+          RefusedNoConsumer { cause: NonExecutingCadence { cadence: NoConsumer } }
+        DiscoverySelection =>
+          derive_route_for_discovery_selection(
+            purpose: purpose,
             envelope: envelope,
-            fast_lane_budget: fast_lane_budget,
-          ) {
-            RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
-          } else {
-            OrdinaryPerPr
-          }
-        BoundaryCrossing { modeled_boundary: _, chosen_input: _ } =>
-          if envelope_exceeds_fast_lane(
+            exceeds_fast_lane: exceeds_fast_lane,
+          )
+        FalsifierSelfHostWet =>
+          derive_route_for_scheduled_cadence(
+            purpose: purpose,
+            consumer_cadence: FalsifierSelfHostWet,
+          )
+        FalsifierRehomedBinWet =>
+          derive_route_for_scheduled_cadence(
+            purpose: purpose,
+            consumer_cadence: FalsifierRehomedBinWet,
+          )
+        FalsifierSubstrateLongLane =>
+          derive_route_for_scheduled_cadence(
+            purpose: purpose,
+            consumer_cadence: FalsifierSubstrateLongLane,
+          )
+        QuarantineProbeExpectRed =>
+          derive_route_for_scheduled_cadence(
+            purpose: purpose,
+            consumer_cadence: QuarantineProbeExpectRed,
+          )
+        BinWitnessWet =>
+          derive_route_for_bin_witness_wet(
+            purpose: purpose,
             envelope: envelope,
-            fast_lane_budget: fast_lane_budget,
-          ) {
-            RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
-          } else {
-            OrdinaryPerPr
-          }
-        ResourceContract { bound: _ } =>
-          if envelope_exceeds_fast_lane(
-            envelope: envelope,
-            fast_lane_budget: fast_lane_budget,
-          ) {
-            RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
-          } else {
-            OrdinaryPerPr
-          }
+            exceeds_fast_lane: exceeds_fast_lane,
+          )
       }
-    EnvelopeCadenceFalsifierCadenceJob =>
-      derive_witness_route_scheduled_cadence(purpose: purpose, envelope: envelope)
-    EnvelopeCadenceFalsifierSubstrateLongLane =>
-      derive_witness_route_scheduled_cadence(purpose: purpose, envelope: envelope)
   }
 }
 

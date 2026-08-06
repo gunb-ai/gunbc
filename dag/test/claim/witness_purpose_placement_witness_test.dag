@@ -34,6 +34,13 @@ import std.realization_schedule {
   RouteMismatch,
   BasisClockMismatch,
   WallClockRequired,
+  UnrecognizedDeclaredCadence,
+}
+import std.witness_admission {
+  WitnessConsumerCadence,
+  DiscoverySelection,
+  FalsifierSelfHostWet,
+  FalsifierSubstrateLongLane,
 }
 import std.witness_purpose {
   WitnessPurpose,
@@ -49,14 +56,14 @@ import std.witness_placement {
   OrdinaryPerPr,
   PerPrWet,
   Scheduled,
-  OneShot,
+  OneShotUnavailable,
   RefusedNoConsumer,
   CostExceedsFastLaneWithoutCadence,
-  PurposeRequiresScheduledCadenceUndeclared,
-  OneShotPurposeOnScheduledCadence,
+  OneShotUnavailableAtScheduledCadence,
   EnvelopeUndeclared,
   SpanUnavailableAtPlacement,
   UnrecognizedEnvelopeCadence,
+  DeadlineNotTyped,
 }
 import std.nat { Nat }
 
@@ -94,7 +101,7 @@ test fn behavioral_discriminator_routes_ordinary_per_pr() -> Bool {
     OrdinaryPerPr => true
     PerPrWet => false
     Scheduled { cadence: _ } => false
-    OneShot => false
+    OneShotUnavailable { cause: _ } => false
     RefusedNoConsumer { cause: _ } => false
   }
 }
@@ -123,12 +130,12 @@ test fn external_fidelity_routes_per_pr_wet_not_ordinary() -> Bool {
         OrdinaryPerPr => true
         PerPrWet => false
         Scheduled { cadence: _ } => false
-        OneShot => false
+        OneShotUnavailable { cause: _ } => false
         RefusedNoConsumer { cause: _ } => false
       }
     OrdinaryPerPr => false
     Scheduled { cadence: _ } => false
-    OneShot => false
+    OneShotUnavailable { cause: _ } => false
     RefusedNoConsumer { cause: _ } => false
   }
 }
@@ -144,12 +151,12 @@ test fn over_fast_lane_envelope_refuses_without_cadence() -> Bool {
     OrdinaryPerPr => false
     PerPrWet => false
     Scheduled { cadence: _ } => false
-    OneShot => false
+    OneShotUnavailable { cause: _ } => false
     RefusedNoConsumer { cause: _ } => false
   }
 }
 
-test fn population_totality_requires_scheduled_cadence() -> Bool {
+test fn population_totality_within_budget_routes_ordinary_per_pr() -> Bool {
   let route = derive_witness_route(
     purpose: PopulationTotality {
       population: decl_ref(
@@ -161,11 +168,10 @@ test fn population_totality_requires_scheduled_cadence() -> Bool {
     fast_lane_budget: millisecond(count: 5000),
   )
   match route {
-    RefusedNoConsumer { cause: PurposeRequiresScheduledCadenceUndeclared } => true
-    OrdinaryPerPr => false
+    OrdinaryPerPr => true
     PerPrWet => false
     Scheduled { cadence: _ } => false
-    OneShot => false
+    OneShotUnavailable { cause: _ } => false
     RefusedNoConsumer { cause: _ } => false
   }
 }
@@ -182,10 +188,16 @@ test fn scheduled_envelope_routes_to_declared_cadence() -> Bool {
     fast_lane_budget: millisecond(count: 5000),
   )
   match route {
-    Scheduled { cadence: c } => c == "falsifier_substrate_long_lane"
+    Scheduled { cadence: c } =>
+      match c {
+        FalsifierSubstrateLongLane => true
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        _ => false
+      }
     OrdinaryPerPr => false
     PerPrWet => false
-    OneShot => false
+    OneShotUnavailable { cause: _ } => false
     RefusedNoConsumer { cause: _ } => false
   }
 }
@@ -210,6 +222,7 @@ test fn compare_within_declared_wall_budget() -> Bool {
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
     MissingSpan => false
     SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
   }
 }
 
@@ -233,6 +246,7 @@ test fn compare_exceeds_declared_wall_budget() -> Bool {
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
     MissingSpan => false
     SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
   }
 }
 
@@ -256,6 +270,7 @@ test fn compare_censored_is_lower_bound_not_verdict() -> Bool {
     MissingBasis => false
     MissingSpan => false
     SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
   }
 }
 
@@ -276,6 +291,7 @@ test fn compare_missing_measurement() -> Bool {
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
     MissingSpan => false
     SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
   }
 }
 
@@ -303,6 +319,7 @@ test fn compare_missing_basis_on_estimated() -> Bool {
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
     MissingSpan => false
     SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
   }
 }
 
@@ -325,6 +342,7 @@ test fn compare_missing_span_on_undeclared() -> Bool {
     MissingBasis => false
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
     SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
   }
 }
 
@@ -347,6 +365,7 @@ test fn compare_span_unavailable_at_compare() -> Bool {
     WallClockRequired { clock: _ } => false
     MissingBasis => false
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
   }
 }
 
@@ -360,8 +379,7 @@ test fn compare_route_mismatch() -> Bool {
     },
     derived_cadence: "falsifier_substrate_long_lane",
   ) {
-    RouteMismatch { declared_cadence: d, derived_cadence: r } =>
-      d == "per_pr" && r == "falsifier_substrate_long_lane"
+    RouteMismatch { declared_cadence: d, derived_cadence: r } => d == "per_pr" && r == "falsifier_substrate_long_lane"
     WithinDeclaredWallBudget => false
     ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
     MissingMeasurement => false
@@ -371,6 +389,7 @@ test fn compare_route_mismatch() -> Bool {
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
     MissingSpan => false
     SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
   }
 }
 
@@ -394,6 +413,7 @@ test fn compare_basis_clock_mismatch() -> Bool {
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
     MissingSpan => false
     SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
   }
 }
 
@@ -421,10 +441,11 @@ test fn compare_wall_clock_required_when_cpu_aligned() -> Bool {
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
     MissingSpan => false
     SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
   }
 }
 
-test fn terminating_one_shot_routes_one_shot() -> Bool {
+test fn terminating_one_shot_routes_one_shot_unavailable() -> Bool {
   let route = derive_witness_route(
     purpose: TerminatingOneShot {
       pinned_subject: fixture_subject_hash(),
@@ -438,7 +459,7 @@ test fn terminating_one_shot_routes_one_shot() -> Bool {
     fast_lane_budget: millisecond(count: 5000),
   )
   match route {
-    OneShot => true
+    OneShotUnavailable { cause: DeadlineNotTyped } => true
     OrdinaryPerPr => false
     PerPrWet => false
     Scheduled { cadence: _ } => false
@@ -475,22 +496,24 @@ test fn terminating_one_shot_on_scheduled_cadence_refuses() -> Bool {
   )
   match falsifier_job_route {
     RefusedNoConsumer {
-      cause: OneShotPurposeOnScheduledCadence { cadence: "4h" },
+      cause: OneShotUnavailableAtScheduledCadence {
+        cadence: FalsifierSelfHostWet,
+      },
     } =>
       match long_lane_route {
         RefusedNoConsumer {
-          cause: OneShotPurposeOnScheduledCadence {
-            cadence: "falsifier_substrate_long_lane",
+          cause: OneShotUnavailableAtScheduledCadence {
+            cadence: FalsifierSubstrateLongLane,
           },
         } => true
         Scheduled { cadence: _ } => false
-        OneShot => false
+        OneShotUnavailable { cause: _ } => false
         OrdinaryPerPr => false
         PerPrWet => false
         RefusedNoConsumer { cause: _ } => false
       }
     Scheduled { cadence: _ } => false
-    OneShot => false
+    OneShotUnavailable { cause: _ } => false
     OrdinaryPerPr => false
     PerPrWet => false
     RefusedNoConsumer { cause: _ } => false
@@ -508,7 +531,7 @@ test fn derive_route_from_span_refuses_without_enrollment() -> Bool {
     OrdinaryPerPr => false
     PerPrWet => false
     Scheduled { cadence: _ } => false
-    OneShot => false
+    OneShotUnavailable { cause: _ } => false
     RefusedNoConsumer { cause: _ } => false
   }
 }
@@ -524,7 +547,7 @@ test fn derive_route_from_span_span_unavailable() -> Bool {
     OrdinaryPerPr => false
     PerPrWet => false
     Scheduled { cadence: _ } => false
-    OneShot => false
+    OneShotUnavailable { cause: _ } => false
     RefusedNoConsumer { cause: EnvelopeUndeclared } => false
     RefusedNoConsumer { cause: _ } => false
   }
