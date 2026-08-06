@@ -19977,9 +19977,14 @@ fn declared_source_refs_blocks_skip(axis: DeclaredSourceRefAxis) -> bool {
 // `v2.lens.affected_set.self_confirmation` directly.
 // DELETE WHEN dissolved: `COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY`,
 // `COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY`, `AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY`,
-// `SELECTION_MECHANISM_SELF_RELEVANT_ROWS`, `compile_clean_verdict_affecting_touch`,
+// `SELECTION_MECHANISM_SELF_RELEVANT_ROWS`, `compile_clean_touched_path_norm`,
+// `compile_clean_touched_path_is_docs_only`, `compile_clean_touched_path_is_dag_source`,
+// `compile_clean_verdict_affecting_touch`, `compile_clean_verdict_derived_self_relevant_entries`,
 // `mechanism_derived_self_relevant_entries`, `derive_self_relevant_check_identities`,
 // `self_relevant_checks_blocks_skip`, and `CLI_RUN_AFFECTED_SET_SELF_CONFIRMATION_BRIDGE_MARKER`.
+// Mid-life parallel representations (no drift check until dissolution): roster rows mirror
+// `v2.lens.affected_set.self_confirmation`; docs/dag classification mirrors
+// `v2.workflow.floor_compile_clean_predicates`.
 // Receipt: `rg cli_run_affected_set_self_confirmation_bridge src/v1/stage0/src/cli_run.rs` == 1
 // until deletion; witness `affected_set_self_confirmation_test.dag`.
 pub(crate) const CLI_RUN_AFFECTED_SET_SELF_CONFIRMATION_BRIDGE_MARKER: &str =
