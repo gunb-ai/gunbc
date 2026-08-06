@@ -661,7 +661,7 @@ fn constructor_call_admission_diags(
                       make_error_node(
                         diagnostic: ConstructorCallAdmissionRefused {
                           constructor_module_path: bd.owner_module_path,
-                          constructor_decl_name: callee_name,
+                          constructor_decl_name: qualified_last_segment(name: callee_name),
                           caller_module_path: caller.module_path,
                           caller_decl_name: caller.decl_name,
                           permitted_callers: permitted |> map(p => decl_ref_coords_label(coords: p)),

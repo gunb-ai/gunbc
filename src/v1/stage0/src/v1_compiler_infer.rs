@@ -1067,7 +1067,7 @@ pub fn constructor_call_admission_diags(
                                     } else {
                                         Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
     constructor_module_path: bd.owner_module_path.clone(),
-    constructor_decl_name: callee_name.clone(),
+    constructor_decl_name: qualified_last_segment(callee_name.clone()),
     caller_module_path: caller.module_path.clone(),
     caller_decl_name: caller.decl_name.clone(),
     permitted_callers: Rc::new({ let mut __result = Vec::new(); for p in permitted.clone().iter().cloned() { __result.push(decl_ref_coords_label(p.clone())); } __result }),
