@@ -179,7 +179,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/linux/rusage.dag",
   "dag/extdeps/darwin/rusage.dag",
   "dag/extdeps/darwin/sysctl.dag",
-  "dag/extdeps/linux/procfs.dag"
+  "dag/extdeps/linux/procfs.dag",
+  "dag/extdeps/llm/claude_agent_sdk_stream.dag"
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
