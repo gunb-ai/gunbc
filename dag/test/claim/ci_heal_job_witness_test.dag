@@ -1,7 +1,10 @@
 module test.claim.ci_heal_job_witness
 
+import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import gunbc.ci_workflow {
   ci_workflow,
+  ci_floor_job_prelude_steps,
+  ci_regen_job,
   ci_heal_generated_artifacts_job,
   ci_heal_author_commit_upload_step,
   ci_build_job,
@@ -42,6 +45,10 @@ import gunbc.ci_heal_credential {
   ci_heal_branch_ref_expr,
   ci_regen_heal_if
 }
+import gunbc.ci_workflow_expressions {
+  ci_floor_runs_unless_cancelled_if,
+  ci_floor_upstream_red_refusal_script
+}
 
 import extdeps.github.actions {
   Job, Workflow, WorkflowPermissions, PermissionLevel, PermWrite, PermRead,
@@ -49,7 +56,7 @@ import extdeps.github.actions {
   Step, UsesStep, RunStep
 }
 
-data ci_heal_job_witness_note: String = "Green-by-execution proof that the CI auto-heal job is wired correctly, over the actual Job/Workflow model (not a grep). contents_write_is_scoped_to_heal_only pins least privilege. heal_job_needs_build_not_ci prevents heal from depending on ci. heal_commit_scope_is_auto_push_eligible_only: staging is auto_push_eligible_committed_artifact_paths() only — workflow YAML is AuthorCommitRequired and must never be git add'd. heal_workflow_drift_is_author_commit_required: detects drift, packages repair artifact, emits HealAuthorCommitRequired with regen command, never stages workflow paths. heal_author_commit_upload_step_enrolled: upload-artifact publishes heal-author-commit-required/ when workflow drift exists. heal_author_commit_upload_publishes_its_hidden_payload closes the gap that enrollment alone left open: the step being PRESENT was already witnessed while the artifact it published was empty on every run, because upload-artifact excludes hidden paths by default and this artifact's payload is entirely under .github/. Enrollment is not delivery, and only the second test tells them apart. author_commit_required_paths_all_carry_a_hidden_segment pins the premise the derivation rests on, so the day a non-hidden author-commit path is registered the flag stops being unconditionally true by accident. hidden_segment_predicate_discriminates is the RED control: it fixes both polarities on real corpus paths, so broadening the predicate to match every path, or narrowing it to miss a mid-path dot-directory, reds."
+data ci_heal_job_witness_note: String = "Green-by-execution proof that the CI auto-heal job is wired correctly, over the actual Job/Workflow model (not a grep). contents_write_is_scoped_to_heal_only pins least privilege. heal_job_needs_build_not_ci prevents heal from depending on ci. heal_commit_scope_is_auto_push_eligible_only: staging is auto_push_eligible_committed_artifact_paths() only — workflow YAML is AuthorCommitRequired and must never be git add'd. heal_workflow_drift_is_author_commit_required: detects drift, packages repair artifact, emits HealAuthorCommitRequired with regen command, never stages workflow paths. heal_author_commit_upload_step_enrolled: upload-artifact publishes heal-author-commit-required/ when workflow drift exists. heal_author_commit_upload_publishes_its_hidden_payload closes the gap that enrollment alone left open: the step being PRESENT was already witnessed while the artifact it published was empty on every run, because upload-artifact excludes hidden paths by default and this artifact's payload is entirely under .github/. Enrollment is not delivery, and only the second test tells them apart. author_commit_required_paths_all_carry_a_hidden_segment pins the premise the derivation rests on, so the day a non-hidden author-commit path is registered the flag stops being unconditionally true by accident. hidden_segment_predicate_discriminates is the RED control: it fixes both polarities on real corpus paths, so broadening the predicate to match every path, or narrowing it to miss a mid-path dot-directory, reds. THE FOUR FLOOR-PREFLIGHT WITNESSES ARE ONE GROUP AND MUST BE READ TOGETHER. floor_job_waits_on_the_heal_preflight pins the dependency so the expensive floor is ordered after the cheap preflights. floor_job_runs_even_when_an_upstream_job_failed pins the condition as !cancelled() and REFUSES BOTH failure() AND success() BY NAME. floor_refuses_an_already_red_branch_before_its_expensive_steps pins that the refusal lives in the prelude, which ci_job composes ahead of the floor step. floor_refusal_tolerates_a_skipped_heal_but_not_a_failed_one pins the asymmetry between heal and its siblings.\n\nWHY failure() IS REFUSED BY NAME, and it is the opposite of what an earlier revision of this witness asserted: the first cut of this change used `!failure() && !cancelled()`, and a review (review 49309) showed that is a fail-open on the only required merge gate. GitHub's troubleshooting-required-status-checks page states that a job skipped by a conditional REPORTS SUCCESS, and the live default-branch ruleset names exactly one required context, ci. So an upstream failure would have skipped ci, ci would have satisfied its own required check by being skipped, and GeneratedArtifactDriftGate would never have run - drift merging while only the non-required heal job was red. The dangerous edit is therefore no longer 'simplify the condition to success()'; it is 'reintroduce failure() into the condition', which reads as a tightening and is in fact the hole. That is what floor_job_runs_even_when_an_upstream_job_failed exists to red on, and why the refusal moved out of the job condition and into an executing first step that exits 1. heal_commit_scope_is_auto_push_eligible_only: staging is auto_push_eligible_committed_artifact_paths() only — workflow YAML is AuthorCommitRequired and must never be git add'd. heal_workflow_drift_is_author_commit_required: detects drift, packages repair artifact, emits HealAuthorCommitRequired with regen command, never stages workflow paths. heal_author_commit_upload_step_enrolled: upload-artifact publishes heal-author-commit-required/ when workflow drift exists."
 
 fn perm_is_write(p: PermissionLevel) -> Bool {
   match p { PermWrite => true  _ => false }
@@ -116,6 +123,61 @@ test fn heal_job_permissions_are_the_grant_authority() -> Bool {
 
 test fn heal_job_needs_build_not_ci() -> Bool {
   ci_heal_generated_artifacts_job().needs == ["build"]
+}
+
+test fn floor_job_waits_on_the_heal_preflight() -> Bool {
+  any(ci_job().needs, n => n == "heal_generated_artifacts")
+    && any(ci_job().needs, n => n == "build")
+    && any(ci_job().needs, n => n == "regen")
+}
+
+test fn floor_job_runs_even_when_an_upstream_job_failed() -> Bool {
+  match ci_job().if_condition {
+    Present { value: s } =>
+      (s == ci_floor_runs_unless_cancelled_if)
+        && string_contains(s: s, pattern: "!cancelled()")
+        && !string_contains(s: s, pattern: "failure()")
+        && !string_contains(s: s, pattern: "success()")
+    Absent => false
+  }
+}
+
+fn step_is_the_upstream_red_refusal(s: Step) -> Bool {
+  match s {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      r == ci_floor_upstream_red_refusal_script
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+test fn floor_refusal_is_exactly_the_first_step() -> Bool {
+  match list_head(xs: ci_job().steps) {
+    HeadFound { value: head } => step_is_the_upstream_red_refusal(s: head)
+    HeadAbsent => false
+  }
+}
+
+test fn floor_refuses_an_already_red_branch_before_its_expensive_steps() -> Bool {
+  fold(ci_job().steps, init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
+    && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "needs.build.result")
+    && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "needs.regen.result")
+    && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "needs.heal_generated_artifacts.result")
+    && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "FloorUpstreamAlreadyRed")
+    && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "exit 1")
+}
+
+test fn floor_refusal_reaches_only_the_job_whose_needs_it_names() -> Bool {
+  !fold(ci_regen_job().steps, init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
+    && !fold(ci_build_job().steps, init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
+    && !fold(ci_heal_generated_artifacts_job().steps, init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
+    && !fold(ci_floor_job_prelude_steps(), init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
+}
+
+test fn floor_refusal_tolerates_a_skipped_heal_but_not_a_failed_one() -> Bool {
+  string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "\"$HEAL\" = \"failure\"")
+    && !string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "\"$HEAL\" != \"success\"")
+    && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "\"$BUILD\" != \"success\"")
+    && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "\"$REGEN\" != \"success\"")
 }
 
 test fn heal_job_runs_on_pr_only() -> Bool {
