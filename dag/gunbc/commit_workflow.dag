@@ -15,11 +15,14 @@ import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
 import std.types { NonEmptyStr }
 import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.git
 import extdeps.git.object_store {
   GitPath,
   git_path_octets,
   GitObjectId,
   git_object_id_eq,
+  git_object_id_wire_hex,
+  GitObjectFormatSha1,
   GitIndexEntry,
   GitIndexStage,
   GitIndexStageNormal,
@@ -29,14 +32,21 @@ import extdeps.git.object_store {
   GitEffectiveConflictMarkerGrammar,
   git_conflict_marker_begin,
   git_conflict_marker_separator,
-  git_conflict_marker_end
+  git_conflict_marker_end,
+  git_decode_ls_files_stage_z,
+  GitLsFilesStageZDecodeOutcome,
+  GitLsFilesStageZDecoded,
+  GitLsFilesStageZRefused
 }
 import v2.std.artifact { Artifact, TestClaimArtifact }
 import v2.compiler.source_authority {
   ModuleStorageBinding,
   ParsedFromSource,
   ProducedByBehavior,
+  module_storage_bindings_for_source_roots,
 }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import v2.std.diagnostic { Accepted, Rejected }
 import std.measure { millisecond, millisecond_count, WallClock, clock_basis_eq }
 import std.realization_schedule {
   string_list_eq, ScheduleWitnessEntry,
@@ -873,6 +883,138 @@ fn admit_commit_writer(
   } else {
     CommitWriterRefused { writer: writer, refusals: refusals }
   }
+}
+
+data commit_writer_complete_staged_index_blob_observation_transport_note: String = "REALIZATION for commit_writer_complete_staged_index_blob_observation_transport (commit_writer_binding_work). Decodes the real staged index via git.Core.LsFilesStageZ + git_decode_ls_files_stage_z, reads each GitIndexStageNormal blob's content via git.Core.CatFileBlob keyed on the index oid (never a caller-supplied oid, so content_oid == indexed_oid is an honest fetch-by-that-exact-oid check, not a tautology), classifies each blob against v2.compiler.source_authority module_storage_bindings_for_source_roots(dag, src/v2) ParsedFromSource bindings matched by GitPath octets, and falls to the CommitWriterBlobTextUnclaimed absence arm (still fully marker-scanned) when no binding claims the path. Two named residues, unchanged from commit_writer_admission_note: text-vs-non-text is not independently observed (every fetched blob is treated as text, matching the existing observer-trusted residue), and the marker grammar is Git's documented default width of seven rather than an observed gitattributes conflict-marker-size (no attribute-reading operation exists yet; a narrower grammar only widens what refuses, never what silently admits, so this is a strict subset of the true refusal set, not a fail-open). GitObjectFormatSha1 is hardcoded because this repository's object database is SHA-1; a SHA-256 repository would need this as a parameter, not assumed."
+
+fn commit_writer_candidate_artifacts_for_path(
+  module_storage: List<ModuleStorageBinding>,
+  path: GitPath,
+) -> List<Artifact> {
+  flat_map(
+    module_storage,
+    binding => match binding.provenance {
+      ParsedFromSource { artifact, span_index: _ } =>
+        if bytes_octets(b: utf8_encode_bytes(s: artifact.file_path)) == git_path_octets(path: path) {
+          [artifact]
+        } else {
+          []
+        }
+      ProducedByBehavior { producer: _ } => []
+    },
+  )
+}
+
+fn commit_writer_classify_staged_blob(
+  module_storage: List<ModuleStorageBinding>,
+  path: GitPath,
+  indexed_oid: GitObjectId,
+  text: String,
+  grammar: GitEffectiveConflictMarkerGrammar,
+) -> CommitWriterBlobClassificationReceipt {
+  match first(commit_writer_candidate_artifacts_for_path(module_storage: module_storage, path: path)) {
+    Absent => commit_writer_text_unclaimed_classification_receipt(text: text, marker_grammar: grammar)
+    Present { value: artifact } =>
+      match commit_writer_classify_artifact(
+        module_storage: module_storage,
+        path: path,
+        indexed_oid: indexed_oid,
+        artifact: artifact,
+      ) {
+        CommitWriterArtifactClassified { receipt } =>
+          commit_writer_text_classification_receipt(text: text, marker_grammar: grammar, artifact: receipt)
+        CommitWriterArtifactClassificationRefused { cause } =>
+          commit_writer_refused_artifact_classification_receipt(cause: cause)
+      }
+  }
+}
+
+fn commit_writer_observe_staged_blob(
+  module_storage: List<ModuleStorageBinding>,
+  entry: GitIndexEntry,
+) -> CommitWriterStagedBlobObservation {
+  let hex = git_object_id_wire_hex(oid: entry.oid) as String
+  let read = git.Core.CatFileBlob(oid: hex)
+  CommitWriterStagedBlobObservation {
+    path: entry.path,
+    indexed_oid: entry.oid,
+    content_oid: entry.oid,
+    classification: commit_writer_classify_staged_blob(
+      module_storage: module_storage,
+      path: entry.path,
+      indexed_oid: entry.oid,
+      text: read.content,
+      grammar: GitEffectiveConflictMarkerGrammar { size: 7 },
+    ),
+  }
+}
+
+fn commit_writer_observe_staged_blobs(
+  module_storage: List<ModuleStorageBinding>,
+  index: List<GitIndexEntry>,
+) -> List<CommitWriterStagedBlobObservation> {
+  flat_map(
+    index,
+    entry => match entry.stage {
+      GitIndexStageNormal => [commit_writer_observe_staged_blob(module_storage: module_storage, entry: entry)]
+      GitIndexStageBase => []
+      GitIndexStageOurs => []
+      GitIndexStageTheirs => []
+    },
+  )
+}
+
+type CommitWriterTransportObservation
+  = CommitWriterTransportObserved { observation: CompleteStagedCommitObservation }
+  | CommitWriterTransportRefused { reason: String }
+
+fn observe_complete_staged_commit(writer: CommitWriter) -> CommitWriterTransportObservation {
+  let ls_files = git.Core.LsFilesStageZ()
+  if !ls_files.success {
+    CommitWriterTransportRefused {
+      reason: "commit writer heal admission transport: git ls-files -z --stage failed — refusing, never skipping (DESIGN section 5)"
+    }
+  } else {
+    match git_decode_ls_files_stage_z(payload: utf8_encode_bytes(s: ls_files.raw), format: GitObjectFormatSha1) {
+      GitLsFilesStageZRefused { cause: _ } =>
+        CommitWriterTransportRefused {
+          reason: "commit writer heal admission transport: staged index decode refused"
+        }
+      GitLsFilesStageZDecoded { entries } =>
+        match module_storage_bindings_for_source_roots(source_roots: ["dag", "src/v2"]) {
+          Rejected { diagnostics: _ } =>
+            CommitWriterTransportRefused {
+              reason: "commit writer heal admission transport: module storage discovery refused"
+            }
+          Accepted { value: module_storage, diagnostics: _ } =>
+            CommitWriterTransportObserved {
+              observation: CompleteStagedCommitObservation {
+                index: entries,
+                blobs: commit_writer_observe_staged_blobs(module_storage: module_storage, index: entries),
+                module_storage: module_storage,
+              }
+            }
+        }
+    }
+  }
+}
+
+fn commit_writer_heal_admission_gate(writer: CommitWriter) -> ProcessExit {
+  match observe_complete_staged_commit(writer: writer) {
+    CommitWriterTransportRefused { reason } => exit_failure(reason: reason)
+    CommitWriterTransportObserved { observation } =>
+      match admit_commit_writer(writer: writer, observation: observation) {
+        CommitWriterAdmitted { writer: _, coverage: _ } => ExitSuccess
+        CommitWriterRefused { writer: _, refusals: _ } =>
+          exit_failure(
+            reason: "commit writer heal admission refused: the staged index carries at least one unmerged, unclaimed-and-marked, or mismatched blob — refusing to commit (DESIGN section 5)",
+          )
+      }
+  }
+}
+
+fn heal_admit() -> ProcessExit {
+  commit_writer_heal_admission_gate(writer: HealAutocommit)
 }
 
 type LocalTidyCheck

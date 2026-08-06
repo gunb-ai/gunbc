@@ -893,6 +893,34 @@ service git.Core {
     readonly
     transport shell { argv: ["git", "-C", "{repo}", "ls-files", "-u", "--", "{path}"] }
   }
+
+  operation LsFilesStageZ {
+    input {}
+    output {
+      raw: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "ls-files", "-z", "--stage"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation CatFileBlob {
+    input { oid: String }
+    output {
+      content: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "cat-file", "-p", "{oid}"] }
+    exit {
+      0 => Unit
+      128 => String "Not a valid object name"
+    }
+  }
 }
 
 fn shape_git_worktree_add_argv(path: FilePath, branch: NonEmptyStr, remote_ref: GitRef) -> List<String> {
