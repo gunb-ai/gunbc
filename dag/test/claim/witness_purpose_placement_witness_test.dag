@@ -44,13 +44,9 @@ import std.witness_purpose {
   ExternalFidelity,
   TerminatingOneShot,
 }
-import std.nat { Nat }
 import std.witness_placement {
   derive_witness_route,
   derive_route_from_span,
-  witness_route_is_per_pr,
-  witness_route_has_executing_consumer,
-  witness_route_cadence_string,
   OrdinaryPerPr,
   PerPrWet,
   Scheduled,
@@ -59,7 +55,9 @@ import std.witness_placement {
   CostExceedsFastLaneWithoutCadence,
   PurposeRequiresScheduledCadenceUndeclared,
   EnvelopeUndeclared,
+  UnrecognizedEnvelopeCadence,
 }
+import std.nat { Nat }
 
 data witness_purpose_placement_witness_note: String = "First executing consumer for std.witness_purpose, std.witness_placement, and std.realization_schedule compare_witness_span_to_observed (Lane B, swift-wren-710). Uses ScheduledWitnessEnvelope — does NOT mint a parallel envelope carrier. RED controls: declared-vs-observed compare, censored lower bound, route derivation, SpanUnavailable."
 
@@ -102,10 +100,10 @@ test fn behavioral_discriminator_routes_ordinary_per_pr() -> Bool {
   let route = derive_witness_route(
     purpose: BehavioralDiscriminator,
     envelope: fixture_envelope(wall_budget_ms: 100),
-    fast_lane_budget_ms: 5000,
+    fast_lane_budget: millisecond(count: 5000),
   )
   match route {
-    OrdinaryPerPr => witness_route_is_per_pr(route: route)
+    OrdinaryPerPr => true
     PerPrWet => false
     Scheduled { cadence: _ } => false
     OneShot => false
@@ -117,7 +115,7 @@ test fn over_fast_lane_envelope_refuses_without_cadence() -> Bool {
   let route = derive_witness_route(
     purpose: BehavioralDiscriminator,
     envelope: fixture_envelope(wall_budget_ms: 6000),
-    fast_lane_budget_ms: 5000,
+    fast_lane_budget: millisecond(count: 5000),
   )
   match route {
     RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence } => true
@@ -138,7 +136,7 @@ test fn population_totality_requires_scheduled_cadence() -> Bool {
       ),
     },
     envelope: fixture_envelope(wall_budget_ms: 100),
-    fast_lane_budget_ms: 5000,
+    fast_lane_budget: millisecond(count: 5000),
   )
   match route {
     RefusedNoConsumer { cause: PurposeRequiresScheduledCadenceUndeclared } => true
@@ -159,12 +157,10 @@ test fn scheduled_envelope_routes_to_declared_cadence() -> Bool {
   let route = derive_witness_route(
     purpose: BehavioralDiscriminator,
     envelope: envelope,
-    fast_lane_budget_ms: 5000,
+    fast_lane_budget: millisecond(count: 5000),
   )
   match route {
-    Scheduled { cadence: c } =>
-      witness_route_has_executing_consumer(route: route)
-        && c == "falsifier_substrate_long_lane"
+    Scheduled { cadence: c } => c == "falsifier_substrate_long_lane"
     OrdinaryPerPr => false
     PerPrWet => false
     OneShot => false
@@ -381,10 +377,10 @@ test fn terminating_one_shot_routes_one_shot() -> Bool {
       deadline: "2026-12-31",
     },
     envelope: fixture_envelope(wall_budget_ms: 9000),
-    fast_lane_budget_ms: 5000,
+    fast_lane_budget: millisecond(count: 5000),
   )
   match route {
-    OneShot => witness_route_cadence_string(route: route) == "one_shot"
+    OneShot => true
     OrdinaryPerPr => false
     PerPrWet => false
     Scheduled { cadence: _ } => false
@@ -396,7 +392,7 @@ test fn derive_route_from_span_refuses_without_enrollment() -> Bool {
   let route = derive_route_from_span(
     purpose: BehavioralDiscriminator,
     span: SpanUndeclared,
-    fast_lane_budget_ms: 5000,
+    fast_lane_budget: millisecond(count: 5000),
   )
   match route {
     RefusedNoConsumer { cause: EnvelopeUndeclared } => true

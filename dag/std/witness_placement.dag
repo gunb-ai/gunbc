@@ -1,6 +1,5 @@
 module std.witness_placement
 
-import std.nat { Nat }
 import std.types { Bool, String }
 import std.measure { Millisecond, millisecond_count }
 import std.realization_schedule {
@@ -16,11 +15,19 @@ import std.witness_purpose {
   ExternalFidelity,
   ResourceContract,
   TerminatingOneShot,
-  witness_purpose_requires_scheduled_cadence,
-  witness_purpose_is_one_shot,
 }
 
 data witness_placement_authority_note: String = "DERIVED witness placement (witness-evidence-lifecycle-design: route is a projection, never a source-tree declaration). Placement is computed from declared WitnessPurpose plus ScheduledWitnessEnvelope fields — not from path substrings such as test/claim/long/. Dissolve-on for long_lane_exclusion_note fires when floor admission consumes this projection. Allowed-to-remain (per-PR discovery) and has-an-executing-consumer (scheduled cadence) stay separate facts."
+
+data witness_envelope_cadence_wire_note: String = "ScheduledWitnessEnvelope.cadence remains String on the enrollment carrier (std.realization_schedule) until that authority migrates. This closed wire interpreter is the placement-side projection: known roster wires map to constructors; anything else is EnvelopeCadenceUnrecognized and placement REFUSES rather than guessing. Dissolve-on: envelope.cadence becomes a closed coproduct on ScheduledWitnessEnvelope and this interpreter deletes."
+
+type WitnessEnvelopeCadenceWire
+  = EnvelopeCadencePerPr
+  | EnvelopeCadenceFalsifierCadenceJob
+  | EnvelopeCadenceFalsifierSubstrateLongLane
+  | EnvelopeCadenceOfflineLocalRecipe
+  | EnvelopeCadenceNoConsumer
+  | EnvelopeCadenceUnrecognized { wire: String }
 
 type WitnessRoute
   = OrdinaryPerPr
@@ -34,116 +41,116 @@ type WitnessPlacementRefusal
   | CostExceedsFastLaneWithoutCadence
   | NonExecutingCadence { cadence: String }
   | EnvelopeUndeclared
+  | UnrecognizedEnvelopeCadence { wire: String }
 
-fn cadence_is_per_pr(cadence: String) -> Bool {
-  cadence == "per_pr"
-}
-
-fn cadence_executes_on_floor(cadence: String) -> Bool {
-  cadence != "offline_local_recipe" && cadence != "no_consumer"
+fn interpret_envelope_cadence_wire(cadence: String) -> WitnessEnvelopeCadenceWire {
+  if cadence == "per_pr" {
+    EnvelopeCadencePerPr
+  } else if cadence == "4h" {
+    EnvelopeCadenceFalsifierCadenceJob
+  } else if cadence == "falsifier_substrate_long_lane" {
+    EnvelopeCadenceFalsifierSubstrateLongLane
+  } else if cadence == "offline_local_recipe" {
+    EnvelopeCadenceOfflineLocalRecipe
+  } else if cadence == "no_consumer" {
+    EnvelopeCadenceNoConsumer
+  } else {
+    EnvelopeCadenceUnrecognized { wire: cadence }
+  }
 }
 
 fn envelope_exceeds_fast_lane(
   envelope: ScheduledWitnessEnvelope,
-  fast_lane_budget_ms: Nat,
+  fast_lane_budget: Millisecond,
 ) -> Bool {
-  millisecond_count(m: envelope.wall_budget) > fast_lane_budget_ms
+  millisecond_count(m: envelope.wall_budget) > millisecond_count(m: fast_lane_budget)
 }
 
 fn derive_witness_route_from_envelope(
   purpose: WitnessPurpose,
   envelope: ScheduledWitnessEnvelope,
-  fast_lane_budget_ms: Nat,
+  fast_lane_budget: Millisecond,
 ) -> WitnessRoute {
-  if witness_purpose_is_one_shot(purpose: purpose) {
-    OneShot
-  } else if witness_purpose_requires_scheduled_cadence(purpose: purpose) {
-    if cadence_executes_on_floor(cadence: envelope.cadence) {
-      if cadence_is_per_pr(cadence: envelope.cadence) {
-        match purpose {
-          ExternalFidelity { effect: _ } => PerPrWet
-          PopulationTotality { population: _ } =>
-            RefusedNoConsumer { cause: PurposeRequiresScheduledCadenceUndeclared }
-          _ =>
-            RefusedNoConsumer { cause: PurposeRequiresScheduledCadenceUndeclared }
-        }
-      } else {
-        Scheduled { cadence: envelope.cadence }
-      }
-    } else {
+  let cadence_wire = interpret_envelope_cadence_wire(cadence: envelope.cadence)
+  match cadence_wire {
+    EnvelopeCadenceUnrecognized { wire } =>
+      RefusedNoConsumer { cause: UnrecognizedEnvelopeCadence { wire: wire } }
+    EnvelopeCadenceOfflineLocalRecipe =>
       RefusedNoConsumer { cause: NonExecutingCadence { cadence: envelope.cadence } }
-    }
-  } else if envelope_exceeds_fast_lane(
-    envelope: envelope,
-    fast_lane_budget_ms: fast_lane_budget_ms,
-  ) {
-    RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
-  } else {
-    match purpose {
-      ExternalFidelity { effect: _ } => PerPrWet
-      BehavioralDiscriminator => OrdinaryPerPr
-      BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => OrdinaryPerPr
-      ResourceContract { resource: _, bound: _ } => OrdinaryPerPr
-      PopulationTotality { population: _ } =>
-        RefusedNoConsumer { cause: PurposeRequiresScheduledCadenceUndeclared }
-      TerminatingOneShot { pinned_subject: _, dissolution_trigger: _, deadline: _ } => OneShot
-    }
+    EnvelopeCadenceNoConsumer =>
+      RefusedNoConsumer { cause: NonExecutingCadence { cadence: envelope.cadence } }
+    EnvelopeCadencePerPr =>
+      match purpose {
+        TerminatingOneShot { pinned_subject: _, dissolution_trigger: _, deadline: _ } => OneShot
+        PopulationTotality { population: _ } =>
+          RefusedNoConsumer { cause: PurposeRequiresScheduledCadenceUndeclared }
+        ExternalFidelity { effect: _ } =>
+          if envelope_exceeds_fast_lane(
+            envelope: envelope,
+            fast_lane_budget: fast_lane_budget,
+          ) {
+            RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
+          } else {
+            PerPrWet
+          }
+        BehavioralDiscriminator =>
+          if envelope_exceeds_fast_lane(
+            envelope: envelope,
+            fast_lane_budget: fast_lane_budget,
+          ) {
+            RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
+          } else {
+            OrdinaryPerPr
+          }
+        BoundaryCrossing { modeled_boundary: _, chosen_input: _ } =>
+          if envelope_exceeds_fast_lane(
+            envelope: envelope,
+            fast_lane_budget: fast_lane_budget,
+          ) {
+            RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
+          } else {
+            OrdinaryPerPr
+          }
+        ResourceContract { resource: _, bound: _ } =>
+          if envelope_exceeds_fast_lane(
+            envelope: envelope,
+            fast_lane_budget: fast_lane_budget,
+          ) {
+            RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
+          } else {
+            OrdinaryPerPr
+          }
+      }
+    EnvelopeCadenceFalsifierCadenceJob =>
+      Scheduled { cadence: envelope.cadence }
+    EnvelopeCadenceFalsifierSubstrateLongLane =>
+      Scheduled { cadence: envelope.cadence }
   }
 }
 
 fn derive_witness_route(
   purpose: WitnessPurpose,
   envelope: ScheduledWitnessEnvelope,
-  fast_lane_budget_ms: Nat,
+  fast_lane_budget: Millisecond,
 ) -> WitnessRoute {
   derive_witness_route_from_envelope(
     purpose: purpose,
     envelope: envelope,
-    fast_lane_budget_ms: fast_lane_budget_ms,
+    fast_lane_budget: fast_lane_budget,
   )
-}
-
-fn witness_route_cadence_string(route: WitnessRoute) -> String {
-  match route {
-    OrdinaryPerPr => "per_pr"
-    PerPrWet => "per_pr_wet"
-    Scheduled { cadence: cadence } => cadence
-    OneShot => "one_shot"
-    RefusedNoConsumer { cause: _ } => "refused"
-  }
-}
-
-fn witness_route_is_per_pr(route: WitnessRoute) -> Bool {
-  match route {
-    OrdinaryPerPr => true
-    PerPrWet => true
-    OneShot => true
-    Scheduled { cadence: _ } => false
-    RefusedNoConsumer { cause: _ } => false
-  }
-}
-
-fn witness_route_has_executing_consumer(route: WitnessRoute) -> Bool {
-  match route {
-    OrdinaryPerPr => true
-    PerPrWet => true
-    OneShot => true
-    Scheduled { cadence: cadence } => cadence_executes_on_floor(cadence: cadence)
-    RefusedNoConsumer { cause: _ } => false
-  }
 }
 
 fn derive_route_from_span(
   purpose: WitnessPurpose,
   span: WitnessSpan,
-  fast_lane_budget_ms: Nat,
+  fast_lane_budget: Millisecond,
 ) -> WitnessRoute {
   match span {
     SpanEnrolled { seams: _, cost_basis: _, envelope } =>
       derive_witness_route(
         purpose: purpose,
         envelope: envelope,
-        fast_lane_budget_ms: fast_lane_budget_ms,
+        fast_lane_budget: fast_lane_budget,
       )
     _ => RefusedNoConsumer { cause: EnvelopeUndeclared }
   }

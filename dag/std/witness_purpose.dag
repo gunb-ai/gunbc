@@ -3,14 +3,14 @@ module std.witness_purpose
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
 import std.measure { Millisecond }
-import std.types { Bool, NonEmptyStr }
+import std.types { NonEmptyStr }
 
 type WitnessResourceAxis
   = EvalWallTime
   | EvalThreadCpu
   | PeakMemory
 
-data witness_purpose_authority_note: String = "DECLARED witness purpose taxonomy (operator ruling 2026-08-04; DESIGN witness-cost-derives-from-purpose; discrete-cost-derivation section 10). What semantic fact the witness exists to prove — authored, not inferred from implementation. Cost and placement are DERIVED consequences and live on ScheduledWitnessEnvelope (std.realization_schedule SpanEnrolled), not here. Minting a second envelope carrier is forbidden (ScheduledWitnessEnvelope already pairs cadence, wall_budget, max_staleness with WitnessCostBasis)."
+data witness_purpose_authority_note: String = "DECLARED witness purpose taxonomy (operator ruling 2026-08-04; DESIGN witness-cost-derives-from-purpose; discrete-cost-derivation section 10). What semantic fact the witness exists to prove — authored, not inferred from implementation. Cost and placement are DERIVED consequences and live on ScheduledWitnessEnvelope (std.realization_schedule SpanEnrolled), not here. Minting a second envelope carrier is forbidden (ScheduledWitnessEnvelope already pairs cadence, wall_budget, max_staleness with WitnessCostBasis). Placement reads purpose arms directly via coproduct match in std.witness_placement — no Bool projection fns."
 
 data witness_purpose_terminating_one_shot_note: String = "TerminatingOneShot is strictly more demanding than naming a cadence (witness_deferral_freeze_purpose_frontier_note): pinned subject, mechanically checkable dissolution trigger, AND a deadline after which an undissolved survey REFUSES. Without the deadline every permanent witness can claim to be a one-shot."
 
@@ -25,25 +25,3 @@ type WitnessPurpose
       dissolution_trigger: DeclarationRef,
       deadline: NonEmptyStr,
     }
-
-fn witness_purpose_requires_scheduled_cadence(purpose: WitnessPurpose) -> Bool {
-  match purpose {
-    BehavioralDiscriminator => false
-    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
-    PopulationTotality { population: _ } => true
-    ExternalFidelity { effect: _ } => true
-    ResourceContract { resource: _, bound: _ } => false
-    TerminatingOneShot { pinned_subject: _, dissolution_trigger: _, deadline: _ } => false
-  }
-}
-
-fn witness_purpose_is_one_shot(purpose: WitnessPurpose) -> Bool {
-  match purpose {
-    TerminatingOneShot { pinned_subject: _, dissolution_trigger: _, deadline: _ } => true
-    BehavioralDiscriminator => false
-    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
-    PopulationTotality { population: _ } => false
-    ExternalFidelity { effect: _ } => false
-    ResourceContract { resource: _, bound: _ } => false
-  }
-}
