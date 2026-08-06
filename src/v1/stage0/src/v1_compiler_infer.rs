@@ -5133,6 +5133,7 @@ pub fn infer_expr_body(
                                     Rc::new(ExprData::ExprCall {
                                         call_semantics: Some(CallSemantics::PlainCallSemantics),
                                         descent_evidence: None,
+                                        callee_surface: CallCalleeSurface::NamedCallableCallee,
                                     }),
                                     Rc::new(vec![]),
                                     Some(Rc::new(InferredNode::Resolved {
@@ -5881,6 +5882,8 @@ pub fn infer_expr_body(
                                                     CallSemantics::PlainCallSemantics,
                                                 ),
                                                 descent_evidence: None,
+                                                callee_surface:
+                                                    CallCalleeSurface::NamedCallableCallee,
                                             }),
                                             typed_arg_nodes.clone(),
                                             Some(Rc::new(InferredNode::Resolved {
@@ -6181,6 +6184,7 @@ pub fn infer_expr_body(
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
     descent_evidence: None,
+    callee_surface: CallCalleeSurface::NamedCallableCallee,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: exp.clone(),
 })), span.clone(), node_name_span(texpr.clone())),
@@ -6194,6 +6198,7 @@ match bare_m.clone() {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
     descent_evidence: None,
+    callee_surface: CallCalleeSurface::NamedCallableCallee,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: map_t.clone(),
 })), span.clone(), node_name_span(texpr.clone())),
@@ -6203,6 +6208,7 @@ match bare_m.clone() {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
     descent_evidence: None,
+    callee_surface: CallCalleeSurface::NamedCallableCallee,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_map(): Map kernel container profile missing (compiler misconfigured)".to_string(),
     span: span.clone(),
@@ -6217,6 +6223,7 @@ match bare_m.clone() {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
     descent_evidence: None,
+    callee_surface: CallCalleeSurface::NamedCallableCallee,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: map_t.clone(),
 })), span.clone(), node_name_span(texpr.clone())),
@@ -6226,6 +6233,7 @@ match bare_m.clone() {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
     descent_evidence: None,
+    callee_surface: CallCalleeSurface::NamedCallableCallee,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_map(): Map kernel container profile missing (compiler misconfigured)".to_string(),
     span: span.clone(),
@@ -6245,6 +6253,7 @@ match bare_m.clone() {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
     descent_evidence: None,
+    callee_surface: CallCalleeSurface::NamedCallableCallee,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: exp.clone(),
 })), span.clone(), node_name_span(texpr.clone())),
@@ -6258,6 +6267,7 @@ match bare_s.clone() {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
     descent_evidence: None,
+    callee_surface: CallCalleeSurface::NamedCallableCallee,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: set_t.clone(),
 })), span.clone(), node_name_span(texpr.clone())),
@@ -6267,6 +6277,7 @@ match bare_s.clone() {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
     descent_evidence: None,
+    callee_surface: CallCalleeSurface::NamedCallableCallee,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_set(): Set kernel container profile missing (compiler misconfigured)".to_string(),
     span: span.clone(),
@@ -6281,6 +6292,7 @@ match bare_s.clone() {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
     descent_evidence: None,
+    callee_surface: CallCalleeSurface::NamedCallableCallee,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: set_t.clone(),
 })), span.clone(), node_name_span(texpr.clone())),
@@ -6290,6 +6302,7 @@ match bare_s.clone() {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
     descent_evidence: None,
+    callee_surface: CallCalleeSurface::NamedCallableCallee,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_set(): Set kernel container profile missing (compiler misconfigured)".to_string(),
     span: span.clone(),
@@ -6320,27 +6333,15 @@ match bare_s.clone() {
                                                             Some(CallSemantics::PlainCallSemantics)
                                                         };
                                                         Rc::new(InferResult {
-                                                            typed: make_named_expr_node(
-                                                                func_name.clone(),
-                                                                Rc::new(ExprData::ExprCall {
-                                                                    call_semantics: call_semantics
-                                                                        .clone(),
-                                                                    descent_evidence: None,
-                                                                }),
-                                                                typed_arg_nodes.clone(),
-                                                                Some(Rc::new(
-                                                                    InferredNode::Resolved {
-                                                                        node: bt.clone(),
-                                                                    },
-                                                                )),
-                                                                span.clone(),
-                                                                node_name_span(texpr.clone()),
-                                                            ),
-                                                            diagnostics: v1_rt::concat(
-                                                                arg_diags.clone(),
-                                                                tier2b.kernel_diags.clone(),
-                                                            ),
-                                                        })
+    typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
+    call_semantics: call_semantics.clone(),
+    descent_evidence: None,
+    callee_surface: CallCalleeSurface::NamedCallableCallee,
+}), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
+    node: bt.clone(),
+})), span.clone(), node_name_span(texpr.clone())),
+    diagnostics: v1_rt::concat(arg_diags.clone(), tier2b.kernel_diags.clone()),
+})
                                                     }
                                                 } else {
                                                     {
@@ -6380,6 +6381,7 @@ match bare_s.clone() {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
     descent_evidence: None,
+    callee_surface: CallCalleeSurface::NamedCallableCallee,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: resolved_type.clone(),
 })), span.clone(), node_name_span(texpr.clone())),
@@ -6440,6 +6442,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
     descent_evidence: None,
+    callee_surface: CallCalleeSurface::NamedCallableCallee,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: resolved_type.clone(),
 })), span.clone(), node_name_span(texpr.clone())),
@@ -6493,6 +6496,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                                         Rc::new(ExprData::ExprCall {
                                             call_semantics: Some(CallSemantics::PlainCallSemantics),
                                             descent_evidence: None,
+                                            callee_surface: CallCalleeSurface::NamedCallableCallee,
                                         }),
                                         mc_args.clone(),
                                         None,
@@ -11261,7 +11265,9 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprCall {
-                call_semantics: cs, ..
+                call_semantics: cs,
+                callee_surface,
+                ..
             } => {
                 let evidence = build_call_evidence(body.clone(), ctx.clone());
                 let source_type = body.children.clone().iter().cloned().fold(
@@ -11435,6 +11441,7 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
                     expr_data: Rc::new(ExprData::ExprCall {
                         call_semantics: cs.clone(),
                         descent_evidence: Some(evidence.clone()),
+                        callee_surface: callee_surface.clone(),
                     }),
                     ident: None,
                 })

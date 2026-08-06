@@ -835,7 +835,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
         Absent => ExprResolveResult { expr: texpr, diagnostics: [] }
       }
       ExprResolveResult { expr: map_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
-    ExprCall { call_semantics: cs, descent_evidence: de } =>
+    ExprCall { call_semantics: cs, descent_evidence: de, callee_surface: callee_surface } =>
 
       let arg_results = texpr.children |> map(arg_node =>
         let val = match arg_node.children |> first { Present { value: v } => v  Absent => arg_node }
@@ -844,7 +844,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       )
       let resolved_children = arg_results |> map(r => r.expr)
       let all_diags = flat_map(arg_results, r => r.diagnostics)
-      ExprResolveResult { expr: make_named_expr_node(name: expr_call_func_at(texpr: texpr, source_indices: env.source_indices), expr_data: ExprCall { call_semantics: cs, descent_evidence: de }, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: all_diags }
+      ExprResolveResult { expr: make_named_expr_node(name: expr_call_func_at(texpr: texpr, source_indices: env.source_indices), expr_data: ExprCall { call_semantics: cs, descent_evidence: de, callee_surface: callee_surface }, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: all_diags }
     ExprMethodCall { method_semantics: ms } =>
 
       let mc_results = texpr.children |> enumerate |> map(pair =>

@@ -344,7 +344,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
         DescentUnknown
       }
 
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       match parser_passthrough_state_expr(expr: expr, source_indices: si) {
         Present { value: state_expr } =>
           parser_state_expr_progress(
@@ -470,7 +470,7 @@ fn parser_block_state_progress(stmts: List<Node>, state_param: ParserStateParam,
 
 fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: Map<String, NewlineIndex>) -> ParserResultSource {
   match expr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let input_progress = match parser_state_arg_expr(call_node: expr, state_param: state_param, si: si) {
         Present { value: state_expr } =>
           parser_state_expr_progress(
@@ -607,7 +607,7 @@ fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_
 
 fn collect_parser_progress_edges(caller: String, body: Node, state_param: ParserStateParam, scc_name_set: Map<String, Bool>, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: Map<String, NewlineIndex>) -> List<ParserProgressEdge> {
   match body.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let own_edges = if set_has(m: scc_name_set, key: expr_call_func_at(texpr: body, source_indices: si)) {
         [ParserProgressEdge {
           caller: caller,
@@ -792,7 +792,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
         Absent => DescentUnknown
       }
 
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       parser_result_state_progress(
         source: parser_result_source_for_expr(
           expr: expr,
@@ -1115,7 +1115,7 @@ fn classify_parser_scc_recursion_pattern(members: List<String>, func_index: Map<
 
 fn count_self_calls(body: Node, func_name: String, si: Map<String, NewlineIndex>) -> Int {
   let own = match body.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let f = expr_call_func_at(texpr: body, source_indices: si)
       if f == func_name { 1 } else { 0 }
     _ => 0
@@ -1132,7 +1132,7 @@ fn max_path_self_calls(body: Node, func_name: String, si: Map<String, NewlineInd
 
 fn max_path_self_calls_with_cont(body: Node, func_name: String, continue_calls: Int, si: Map<String, NewlineIndex>) -> Int {
   match body.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let f = expr_call_func_at(texpr: body, source_indices: si)
       let own = if f == func_name { 1 } else { 0 }
       let arg_calls = body.children |> fold(init: 0, f: (acc, child) =>
@@ -1208,7 +1208,7 @@ fn max_path_self_calls_block(stmts: List<Node>, func_name: String, continue_call
 
 fn count_target_calls(body: Node, target_set: Map<String, Bool>, si: Map<String, NewlineIndex>) -> Int {
   let own = match body.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let f = expr_call_func_at(texpr: body, source_indices: si)
       if set_has(m: target_set, key: f) { 1 } else { 0 }
     _ => 0
@@ -1225,7 +1225,7 @@ fn max_path_target_calls(body: Node, target_set: Map<String, Bool>, si: Map<Stri
 
 fn max_path_target_calls_with_cont(body: Node, target_set: Map<String, Bool>, continue_calls: Int, si: Map<String, NewlineIndex>) -> Int {
   match body.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let f = expr_call_func_at(texpr: body, source_indices: si)
       let own = if set_has(m: target_set, key: f) { 1 } else { 0 }
       let arg_calls = body.children |> fold(init: 0, f: (acc, child) =>
@@ -1325,7 +1325,7 @@ fn target_call_has_arithmetic_descent(call_node: Node, target_set: Map<String, B
 
 fn scc_calls_have_arithmetic_descent(body: Node, target_set: Map<String, Bool>, func_index: Map<String, FuncEntry>, scc_measure_params: Map<String, Map<String, String>>, si: Map<String, NewlineIndex>) -> Bool {
   match body.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       target_call_has_arithmetic_descent(call_node: body, target_set: target_set, func_index: func_index, scc_measure_params: scc_measure_params, si: si)
       && (body.children |> all(child =>
         scc_calls_have_arithmetic_descent(body: child, target_set: target_set, func_index: func_index, scc_measure_params: scc_measure_params, si: si)
@@ -1439,7 +1439,7 @@ fn is_descending_expr(expr: Node) -> Bool {
 
 fn has_arithmetic_descent(body: Node, func_name: String, si: Map<String, NewlineIndex>) -> Bool {
   match body.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let own_ok = if expr_call_func_at(texpr: body, source_indices: si) == func_name {
         body.children |> any(arg_node => is_descending_expr(expr: arg_value(n: arg_node)))
       } else { false }
@@ -1451,7 +1451,7 @@ fn has_arithmetic_descent(body: Node, func_name: String, si: Map<String, Newline
 
 fn is_accessor_of_param(expr: Node, param_name: String, vars: Map<String, Bool>, si: Map<String, NewlineIndex>) -> Bool {
   match expr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let callee = expr_call_func_at(texpr: expr, source_indices: si)
       is_child_accessor_in_model(name: callee)
       && (expr.children |> any(arg_node =>
@@ -1526,7 +1526,7 @@ fn is_child_descent_expr(expr: Node, param_name: String, vars: Map<String, Bool>
 
 fn is_tree_size_preserving_wrapper(expr: Node, si: Map<String, NewlineIndex>) -> Bool {
   match expr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let callee = expr_call_func_at(texpr: expr, source_indices: si)
       is_tree_size_preserving(func_name: callee)
     _ => false
@@ -1542,7 +1542,7 @@ fn wrapper_inner_arg(expr: Node) -> Node {
 
 fn is_sub_value_extractor(expr: Node, si: Map<String, NewlineIndex>) -> Bool {
   match expr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let callee = expr_call_func_at(texpr: expr, source_indices: si)
       is_tree_size_reducing(func_name: callee)
     _ => false
@@ -1615,7 +1615,7 @@ fn list_passthrough_inner_arg(expr: Node, si: Map<String, NewlineIndex>) -> Node
 
 fn is_tokens_consuming_call(expr: Node, param_name: String, vars: Map<String, Bool>, si: Map<String, NewlineIndex>) -> Bool {
   match expr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       match consuming_tokens_arg(expr: expr, si: si) {
         Present { value: tokens_arg } => is_tokens_input_expr(expr: tokens_arg, param_name: param_name, vars: vars, si: si)
         Absent => false
@@ -1662,7 +1662,7 @@ fn is_tokens_input_expr(expr: Node, param_name: String, vars: Map<String, Bool>,
           is_tokens_input_expr(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars, si: si)
         _ => false
       }
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       if is_list_passthrough_call(expr: expr, si: si) {
         match list_passthrough_inner_arg(expr: expr, si: si) {
           Present { value: inner } => is_tokens_input_expr(expr: inner, param_name: param_name, vars: vars, si: si)
@@ -2010,7 +2010,7 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
         }
       )
       result.ok
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: si)
       let own_ok = if callee == func_name {
         body.children |> any(arg_node =>
@@ -2139,7 +2139,7 @@ fn classify_self_call_evidence(arg_expr: Node, param_name: String, descent_vars:
         else if vname == param_name { NonIncreasing }
         else { DescentUnknown }
 
-      ExprCall { call_semantics: _, descent_evidence: _ } =>
+      ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
         if is_tree_size_preserving_wrapper(expr: arg_expr, si: si) {
           classify_self_call_evidence(arg_expr: wrapper_inner_arg(expr: arg_expr), param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list, si: si)
         } else if is_sub_value_extractor(expr: arg_expr, si: si) {
@@ -2333,7 +2333,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
           }
         }
       merge_optional_evidence(a: cond_ev, b: merge_optional_evidence(a: then_ev, b: else_ev))
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: si)
       let own_evidence = if callee == func_name {
         let arg_evidence = body.children |> fold(init: DescentUnknown, f: (acc, arg_node) =>
@@ -2701,7 +2701,7 @@ fn extract_unknown_reason(expr: CostExpr) -> String {
 
 fn collect_local_call_edges_in_expr(caller: String, body: Node, local_func_set: Map<String, Bool>, si: Map<String, NewlineIndex>) -> List<CallEdge> {
   let this_edges = match body.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: si)
       if set_has(m: local_func_set, key: callee) { [CallEdge { caller: caller, callee: callee }] }
       else { [] }
@@ -2748,7 +2748,7 @@ fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: 
         else if vname == param_name { NonIncreasing }
         else { DescentUnknown }
 
-      ExprCall { call_semantics: _, descent_evidence: _ } =>
+      ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
         if is_tree_size_preserving_wrapper(expr: arg_expr, si: si) {
           classify_scc_call_progress(arg_expr: wrapper_inner_arg(expr: arg_expr), param_name: param_name, descent_vars: descent_vars, si: si)
         } else if is_sub_value_extractor(expr: arg_expr, si: si) {
@@ -2800,7 +2800,7 @@ fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: 
 fn collect_scc_child_edges(body: Node, caller: String, param_name: String, descent_vars: Map<String, Bool>, target_set: Map<String, Bool>, check_child: Bool, check_list: Bool, scc_measure_params: Map<String, Map<String, String>>, si: Map<String, NewlineIndex>) -> List<ParserProgressEdge> {
   match body.expr_data {
     ExprLambda => []
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: si)
       let own_edges = if set_has(m: target_set, key: callee) {
 
@@ -4556,7 +4556,7 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 
 fn collect_call_evidence(body: Node, target_set: Map<String, Bool>, si: Map<String, NewlineIndex>) -> List<List<SubValueRelation>> {
   match body.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: de } =>
+    ExprCall { call_semantics: _, descent_evidence: de, callee_surface: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: si)
       let own = if map_get(target_set, callee) != none {
         match de {
@@ -4637,7 +4637,7 @@ fn extract_shrink_factor(all_calls: List<List<SubValueRelation>>, param_index: I
 
 fn max_path_descending(body: Node, fn_name: String, param_index: Int, si: Map<String, NewlineIndex>) -> Int {
   match body.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: de } =>
+    ExprCall { call_semantics: _, descent_evidence: de, callee_surface: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: si)
       let own = if callee == fn_name {
         match de {

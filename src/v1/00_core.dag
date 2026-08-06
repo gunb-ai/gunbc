@@ -100,6 +100,10 @@ type MethodSemantics
   | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node?, size_effect: CollectionSizeEffect?, cost_shape: CostShape?, algebra_template: AlgebraFieldTemplate? }
   | ServiceMethodSemantics { service_name: String, op_params: List<Node> }
 
+type CallCalleeSurface
+  = NamedCallableCallee
+  | ComplexExpressionCallee
+
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError | CensusHeadsBodyStripped
 
 type ExprData
@@ -108,7 +112,11 @@ type ExprData
   | ExprError { kind: ExprErrorKind, message: String }
   | ExprVar { binding_kind: VarBindingKind? }
   | ExprFieldAccess { summary: FieldSummary? }
-  | ExprCall { call_semantics: CallSemantics?, descent_evidence: List<SubValueRelation>? }
+  | ExprCall {
+      call_semantics: CallSemantics?,
+      descent_evidence: List<SubValueRelation>?,
+      callee_surface: CallCalleeSurface,
+    }
   | ExprMethodCall { method_semantics: MethodSemantics? }
   | ExprMatch
   | ExprIf
@@ -1111,7 +1119,7 @@ fn expr_call_func_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> 
 
 fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
   match texpr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: de } => de
+    ExprCall { call_semantics: _, descent_evidence: de, callee_surface: _ } => de
     _ => none
   }
 }
@@ -1421,7 +1429,7 @@ fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
 
 fn expr_has_self_call(texpr: Node, fn_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   match texpr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       if expr_call_func_at(texpr: texpr, source_indices: source_indices) == fn_name { true }
       else { texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name, source_indices: source_indices)) }
     _ => texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name, source_indices: source_indices))
@@ -1430,7 +1438,7 @@ fn expr_has_self_call(texpr: Node, fn_name: String, source_indices: Map<String, 
 
 fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, source_indices: Map<String, NewlineIndex>) -> Bool {
   match texpr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       if expr_call_func_at(texpr: texpr, source_indices: source_indices) == fn_name {
         if in_tail == false { true }
         else { texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices)) }

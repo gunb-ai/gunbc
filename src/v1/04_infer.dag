@@ -2782,7 +2782,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     Absent =>
                       ok_infer(texpr: make_named_expr_node(
                         name: name,
-                        expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none, callee_surface: NamedCallableCallee },
                         children: [],
                         inferred: Present { value: Resolved { node: fsig.inferred } },
                         span: span,
@@ -2981,7 +2981,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       }
 
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let func_name = expr_call_func_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
       let call_args = texpr.children
@@ -3108,7 +3108,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         }
         InferResult {
           typed: make_named_expr_node(
-            name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+            name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none, callee_surface: NamedCallableCallee },
             children: typed_arg_nodes,
             inferred: Present { value: Resolved { node: resolved_type } },
             span: span,
@@ -3210,7 +3210,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               if node_is_keyed_collection(n: exp, source_indices: scope.type_env.source_indices) {
                 InferResult {
                   typed: make_named_expr_node(
-                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none, callee_surface: NamedCallableCallee },
                     children: typed_arg_nodes,
                     inferred: Present { value: Resolved { node: exp } },
                     span: span,
@@ -3224,7 +3224,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Present { value: map_t } =>
                     InferResult {
                       typed: make_named_expr_node(
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none, callee_surface: NamedCallableCallee },
                         children: typed_arg_nodes,
                         inferred: Present { value: Resolved { node: map_t } },
                         span: span,
@@ -3235,7 +3235,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Absent =>
                     InferResult {
                       typed: make_named_expr_node(
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none, callee_surface: NamedCallableCallee },
                         children: typed_arg_nodes,
                         inferred: Present { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
                         span: span,
@@ -3250,7 +3250,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Present { value: map_t } =>
                   InferResult {
                     typed: make_named_expr_node(
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none, callee_surface: NamedCallableCallee },
                       children: typed_arg_nodes,
                       inferred: Present { value: Resolved { node: map_t } },
                       span: span,
@@ -3261,7 +3261,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Absent =>
                   InferResult {
                     typed: make_named_expr_node(
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none, callee_surface: NamedCallableCallee },
                       children: typed_arg_nodes,
                       inferred: Present { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
                       span: span,
@@ -3278,7 +3278,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               if node_is_set_collection(n: exp, source_indices: scope.type_env.source_indices) {
                 InferResult {
                   typed: make_named_expr_node(
-                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none, callee_surface: NamedCallableCallee },
                     children: typed_arg_nodes,
                     inferred: Present { value: Resolved { node: exp } },
                     span: span,
@@ -3292,7 +3292,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Present { value: set_t } =>
                     InferResult {
                       typed: make_named_expr_node(
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none, callee_surface: NamedCallableCallee },
                         children: typed_arg_nodes,
                         inferred: Present { value: Resolved { node: set_t } },
                         span: span,
@@ -3303,7 +3303,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Absent =>
                     InferResult {
                       typed: make_named_expr_node(
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none, callee_surface: NamedCallableCallee },
                         children: typed_arg_nodes,
                         inferred: Present { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
                         span: span,
@@ -3318,7 +3318,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Present { value: set_t } =>
                   InferResult {
                     typed: make_named_expr_node(
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none, callee_surface: NamedCallableCallee },
                       children: typed_arg_nodes,
                       inferred: Present { value: Resolved { node: set_t } },
                       span: span,
@@ -3329,7 +3329,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Absent =>
                   InferResult {
                     typed: make_named_expr_node(
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none, callee_surface: NamedCallableCallee },
                       children: typed_arg_nodes,
                       inferred: Present { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
                       span: span,
@@ -3349,7 +3349,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
           InferResult {
             typed: make_named_expr_node(
-              name: func_name, expr_data: ExprCall { call_semantics: call_semantics, descent_evidence: none },
+              name: func_name, expr_data: ExprCall { call_semantics: call_semantics, descent_evidence: none, callee_surface: NamedCallableCallee },
               children: typed_arg_nodes,
               inferred: Present { value: Resolved { node: bt } },
               span: span,
@@ -3375,7 +3375,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             }
             InferResult {
               typed: make_named_expr_node(
-                name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none, callee_surface: NamedCallableCallee },
                 children: typed_arg_nodes,
                 inferred: Present { value: Resolved { node: resolved_type } },
                 span: span,
@@ -3420,7 +3420,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               }
               InferResult {
                 typed: make_named_expr_node(
-                  name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                  name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none, callee_surface: NamedCallableCallee },
                   children: typed_arg_nodes,
                   inferred: Present { value: Resolved { node: resolved_type } },
                   span: span,
@@ -3453,7 +3453,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Present { value: infer_expr(
                     texpr: make_named_expr_node(
                       name: dotted,
-                      expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none, callee_surface: NamedCallableCallee },
                       children: mc_args,
                       inferred: none,
                       span: span,
@@ -4992,7 +4992,7 @@ fn maybe_insert_match_field_relation(fp_acc: Map<String, SubValueRelation>, pnam
 
 fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext) -> Map<String, Map<String, SubValueRelation>> {
   match val.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
       match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
         Present { value: sig } =>
@@ -5160,7 +5160,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
           }
         _ => none
       }
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
       let from_provenance = match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
         Present { value: sig } =>
@@ -5417,7 +5417,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
           }
         _ => SubValueUnknown
       }
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let call_args = arg_expr.children
       match call_args |> first {
         Present { value: first_arg } =>
@@ -5584,7 +5584,7 @@ fn read_arg_provenance(arg_expr: Node, param_name: String, ctx: DescentContext) 
           }
         _ => SubValueUnknown
       }
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
     ExprMethodCall { method_semantics: _ } =>
       classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
@@ -5651,7 +5651,7 @@ fn descent_source_type(found: String, arg_node: Node, ctx: DescentContext) -> St
 
 fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
   match body.expr_data {
-    ExprCall { call_semantics: cs, descent_evidence: _ } =>
+    ExprCall { call_semantics: cs, descent_evidence: _, callee_surface: callee_surface } =>
 
       let evidence = build_call_evidence(call_node: body, ctx: ctx)
       let source_type = body.children |> fold(init: "", f: (found, arg_node) =>
@@ -5698,7 +5698,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         is_self_recursive: body.is_self_recursive,
         has_non_tail_self_call: body.has_non_tail_self_call,
         match_pattern: body.match_pattern,
-        expr_data: ExprCall { call_semantics: cs, descent_evidence: Present { value: evidence } }
+        expr_data: ExprCall { call_semantics: cs, descent_evidence: Present { value: evidence }, callee_surface: callee_surface }
       }
     ExprMatch =>
       let scrut = match_scrutinee(texpr: body)
@@ -5750,7 +5750,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let scrut_has_inductive = (scrut_type != "" && inductive_fields_for(env: ctx.type_env, type_name: scrut_type) |> count > 0) || scrut_inducing_field != none
 
       let scrut_variant_sig = match scrut.expr_data {
-        ExprCall { call_semantics: _, descent_evidence: _ } =>
+        ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
           let callee = expr_call_func_at(texpr: scrut, source_indices: ctx.type_env.source_indices)
           match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
             Present { value: sig } =>
@@ -6222,7 +6222,7 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
         }
       )
 
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let callee = expr_call_func_at(texpr: expr, source_indices: type_env.source_indices)
       compose_callee_provenance(callee: callee, arg_by_name: call_args_by_name(call: expr, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
 
@@ -6628,7 +6628,7 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
           } else { acc }
         Absent => acc
       }
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: type_env.source_indices)
       match func_sig_if_resolved(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
         Present { value: sig } =>

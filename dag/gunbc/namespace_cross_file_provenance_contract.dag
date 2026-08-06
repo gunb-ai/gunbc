@@ -55,28 +55,26 @@ fn lists_agree_at<A, B>(
   right: List<B>,
   agree: fn(A, B) -> Bool,
 ) -> ListsAgreementAtVerdict {
-  if count(left) != count(right) {
-    ListsDisagree
-  } else if (left |> count) == 0 {
-    ListsAgree
-  } else {
-    match left |> first {
-      Present { value: left_head } =>
-        match right |> first {
-          Present { value: right_head } =>
-            if agree(left_head, right_head) {
-              lists_agree_at(
-                left: left.skip(n: 1),
-                right: right.skip(n: 1),
-                agree: agree,
-              )
-            } else {
-              ListsDisagree
-            }
-          Absent => ListStructureBroken
-        }
-      Absent => ListStructureBroken
-    }
+  match left |> first {
+    Absent =>
+      match right |> first {
+        Absent => ListsAgree
+        Present { value: _ } => ListsDisagree
+      }
+    Present { value: left_head } =>
+      match right |> first {
+        Absent => ListsDisagree
+        Present { value: right_head } =>
+          if agree(left_head, right_head) {
+            lists_agree_at(
+              left: left.skip(n: 1),
+              right: right.skip(n: 1),
+              agree: agree,
+            )
+          } else {
+            ListsDisagree
+          }
+      }
   }
 }
 
@@ -128,17 +126,6 @@ fn provenance_provider_lists_agree(
     right: providers,
     agree: cross_file_binding_provenance_matches_provider,
   )
-}
-
-fn bound_population_agrees_with_provenances(
-  provenances: List<CrossFileBindingProvenance>,
-  population: BoundReferencePopulation
-) -> ListsAgreementAtVerdict {
-  match population {
-    AllReferencesBound { providers: providers } =>
-      provenance_provider_lists_agree(provenances: provenances, providers: providers)
-    ReferencePopulationRefused { first_failure: _, more_failures: _ } => ListsDisagree
-  }
 }
 
 fn assess_controlled_two_mention_provenance_projection(

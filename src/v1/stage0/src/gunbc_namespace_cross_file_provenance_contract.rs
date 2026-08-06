@@ -105,40 +105,35 @@ pub fn lists_agree_at<A: Clone, B: Clone>(
     mut agree: impl Fn(A, B) -> bool + Clone,
 ) -> ListsAgreementAtVerdict {
     loop {
-        if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
-            break ListsAgreementAtVerdict::ListsDisagree;
-        } else {
-            if ((left.clone().len() as i64) == 0) {
-                break ListsAgreementAtVerdict::ListsAgree;
-            } else {
-                match left.clone().first().cloned() {
-                    Some(left_head) => match right.clone().first().cloned() {
-                        Some(right_head) => {
-                            if agree(left_head.clone(), right_head.clone()) {
-                                {
-                                    let __tco_0 = Rc::new(
-                                        left.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
-                                    );
-                                    let __tco_1 = Rc::new(
-                                        right.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
-                                    );
-                                    left = __tco_0;
-                                    right = __tco_1;
-                                    continue;
-                                }
-                            } else {
-                                break ListsAgreementAtVerdict::ListsDisagree;
-                            }
+        match left.clone().first().cloned() {
+            None => match right.clone().first().cloned() {
+                None => {
+                    break ListsAgreementAtVerdict::ListsAgree;
+                }
+                Some(_) => {
+                    break ListsAgreementAtVerdict::ListsDisagree;
+                }
+            },
+            Some(left_head) => match right.clone().first().cloned() {
+                None => {
+                    break ListsAgreementAtVerdict::ListsDisagree;
+                }
+                Some(right_head) => {
+                    if agree(left_head.clone(), right_head.clone()) {
+                        {
+                            let __tco_0 =
+                                Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                            let __tco_1 =
+                                Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                            left = __tco_0;
+                            right = __tco_1;
+                            continue;
                         }
-                        None => {
-                            break ListsAgreementAtVerdict::ListStructureBroken;
-                        }
-                    },
-                    None => {
-                        break ListsAgreementAtVerdict::ListStructureBroken;
+                    } else {
+                        break ListsAgreementAtVerdict::ListsDisagree;
                     }
                 }
-            }
+            },
         }
     }
 }
@@ -204,21 +199,6 @@ pub fn provenance_provider_lists_agree(
         providers.clone(),
         cross_file_binding_provenance_matches_provider,
     )
-}
-
-pub fn bound_population_agrees_with_provenances(
-    provenances: Rc<Vec<Rc<CrossFileBindingProvenance>>>,
-    population: Rc<BoundReferencePopulation>,
-) -> ListsAgreementAtVerdict {
-    match (*population.clone()).clone() {
-        BoundReferencePopulation::AllReferencesBound {
-            providers: providers,
-            ..
-        } => provenance_provider_lists_agree(provenances.clone(), providers.clone()),
-        BoundReferencePopulation::ReferencePopulationRefused { .. } => {
-            ListsAgreementAtVerdict::ListsDisagree
-        }
-    }
 }
 
 pub fn assess_controlled_two_mention_provenance_projection(

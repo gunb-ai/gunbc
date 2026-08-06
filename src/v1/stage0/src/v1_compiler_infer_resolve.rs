@@ -2313,6 +2313,7 @@ pub fn resolve_expr_types(
             ExprData::ExprCall {
                 call_semantics: cs,
                 descent_evidence: de,
+                callee_surface,
                 ..
             } => {
                 let arg_results = Rc::new({
@@ -2362,6 +2363,7 @@ pub fn resolve_expr_types(
                         Rc::new(ExprData::ExprCall {
                             call_semantics: cs.clone(),
                             descent_evidence: de.clone(),
+                            callee_surface: callee_surface.clone(),
                         }),
                         resolved_children.clone(),
                         texpr.inferred.clone(),

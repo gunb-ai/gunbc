@@ -2390,7 +2390,7 @@ pub fn stamp_parsed_inferred(
 pub fn parsed_occurrence_role_expr_call_exclusion_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Occurrence transport for ExprCall (namespace-reference-derived-closure): make_call_expr keeps the callee identifier on the call node's authored_name when the callee is a bare ExprVar — children are argument expressions only. Named bare calls therefore record CallableOccurrence on the call node itself; only complex-callee calls (authored_name \"<expr>\") stay ParsedOccurrenceUnclassified. ExprCall children are never callee-reference carriers — stamp them all Unclassified so the first argument is not mis-tagged as the callee.".to_string()
+            "Occurrence transport for ExprCall (namespace-reference-derived-closure): make_call_expr keeps the callee identifier on the call node's authored_name when the callee is a bare ExprVar — children are argument expressions only. Named bare calls therefore record CallableOccurrence on the call node itself via ExprCall.callee_surface NamedCallableCallee; only complex-callee calls stay ParsedOccurrenceUnclassified via ComplexExpressionCallee. ExprCall children are never callee-reference carriers — stamp them all Unclassified so the first argument is not mis-tagged as the callee.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -2422,11 +2422,15 @@ pub fn parsed_occurrence_role_for_node(
                 } => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
                     category: OccurrenceCategory::MethodOccurrence,
                 }),
-                ExprData::ExprCall { .. } => match (node.name.clone() == "<expr>".to_string()) {
-                    true => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
-                    false => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
-                        category: OccurrenceCategory::CallableOccurrence,
-                    }),
+                ExprData::ExprCall { callee_surface, .. } => match callee_surface.clone() {
+                    CallCalleeSurface::ComplexExpressionCallee => {
+                        Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+                    }
+                    CallCalleeSurface::NamedCallableCallee => {
+                        Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                            category: OccurrenceCategory::CallableOccurrence,
+                        })
+                    }
                 },
                 ExprData::NoExprData => match node.body.clone() {
                     Some(_) => match node.type_annotation.clone() {
@@ -12410,6 +12414,7 @@ pub fn make_call_expr(
             Rc::new(ExprData::ExprCall {
                 call_semantics: None,
                 descent_evidence: None,
+                callee_surface: CallCalleeSurface::NamedCallableCallee,
             }),
             args.clone(),
             None,
@@ -12434,6 +12439,7 @@ pub fn make_call_expr(
             Rc::new(ExprData::ExprCall {
                 call_semantics: None,
                 descent_evidence: None,
+                callee_surface: CallCalleeSurface::ComplexExpressionCallee,
             }),
             args.clone(),
             None,

@@ -103,7 +103,7 @@ fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum, source_indice
 
 fn collect_called_func_names_into(texpr: Node, acc: UniqueAccum, source_indices: Map<String, NewlineIndex>) -> UniqueAccum {
   let this_acc = match texpr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let f = expr_call_func_at(texpr: texpr, source_indices: source_indices)
       if emit_map_has(m: acc.seen, key: f) { acc }
       else { UniqueAccum { seen: map_insert(acc.seen, f, true), result: list_push(acc.result, f) } }

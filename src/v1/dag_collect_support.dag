@@ -55,7 +55,7 @@ fn expr_data_variant(data: ExprData) -> String {
     ExprError { kind: _, message: _ } => "ExprError"
     ExprVar { binding_kind: _ } => "ExprVar"
     ExprFieldAccess { summary: _ } => "ExprFieldAccess"
-    ExprCall { call_semantics: _, descent_evidence: _ } => "ExprCall"
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } => "ExprCall"
     ExprMethodCall { method_semantics: _ } => "ExprMethodCall"
     ExprMatch => "ExprMatch"
     ExprIf => "ExprIf"

@@ -2586,7 +2586,7 @@ fn collect_value_ref_names(n: Node, source_indices: Map<String, NewlineIndex>, t
           if nm != "" { [nm] } else { [] }
         _ => []
       }
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let nm = authored_name_at(source_indices: source_indices, node: n)
       if nm != "" { [nm] } else { [] }
     ExprRecordLit { parent_enum: _ } =>
@@ -6872,7 +6872,7 @@ fn emit_rust_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scop
 
 fn emit_rust_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let f = expr_call_func_at(texpr: expr, source_indices: scope.type_env.source_indices)
       emit_typed_call_expr(func: f, args: expr.children, inferred: expr.inferred, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_call expected ExprCall", target: Rust)
@@ -7667,7 +7667,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let init_str = match args |> first {
     Present { value: init_arg } =>
       match arg_value(n: init_arg).expr_data {
-        ExprCall { call_semantics: _, descent_evidence: _ } =>
+        ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
           let init_func = expr_call_func_at(texpr: arg_value(n: init_arg), source_indices: scope.type_env.source_indices)
           if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
             let kv_type_str = rust_empty_map_kv_type_str(map_type: acc_type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices)
@@ -8921,7 +8921,7 @@ fn emit_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registr
 
 fn emit_rust_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
       let f = expr_call_func_at(texpr: frame.expr, source_indices: frame.scope.type_env.source_indices)
       let call_str = emit_typed_call(func: f, args: frame.expr.children, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
       concat("break ", call_str, ";")
@@ -9530,7 +9530,7 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String,
       match auth.expr_data {
         ExprVar { binding_kind: _ } =>
           concat("let request = client.", http_method, "(&url)\n    .header(\"Authorization\", format!(\"Bearer {}\", ", token_param, "));")
-        ExprCall { call_semantics: _, descent_evidence: _ } =>
+        ExprCall { call_semantics: _, descent_evidence: _, callee_surface: _ } =>
           let header_name = match auth.children |> first {
             Present { value: arg_node } => match arg_value(n: arg_node).expr_data {
               ExprLiteral { value: LitStr { value: s } } => s

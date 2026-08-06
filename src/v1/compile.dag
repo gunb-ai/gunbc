@@ -654,7 +654,7 @@ fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex
         },
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
-    ExprCall { call_semantics: call_semantics, descent_evidence: de } =>
+    ExprCall { call_semantics: call_semantics, descent_evidence: de, callee_surface: _ } =>
       let func = expr_call_func_at(texpr: expr_node, source_indices: source_indices)
       concat(
         "{\"kind\": \"ExprCall\", \"func\": ", json_quote(s: func),
