@@ -212,6 +212,13 @@ jobs:
           else
           echo "[floor-phase-journal] absent"
           fi
+          # 🟡 dissolve-on: ci_floor_wet_witness_row_outcome_receipt_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four receipt leaves: FileExists, header log, prefixed file read, and absent log. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_wet_witness_row_outcome_receipt_if contains no opaque shell command text.
+          if [ -f "target/floor-wet-witness-row-outcome-receipt.tsv" ]; then
+          echo "[wet-witness-row-outcome-receipt] batch entry function outcome detail"
+          sed 's/^/[wet-witness-row-outcome-receipt] /' "target/floor-wet-witness-row-outcome-receipt.tsv"
+          else
+          echo "[wet-witness-row-outcome-receipt] absent"
+          fi
           d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
           while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && ! [ -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
           if [ -f "$d/memory.peak" ]; then echo "[calibration] floor_peak_post=$(cat "$d/memory.peak") floor_outcome=${{ steps.floor.outcome }} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)"; else echo "[calibration] floor_peak_post floor_outcome=${{ steps.floor.outcome }} scope=unavailable (no memory.peak ancestor)"; fi
