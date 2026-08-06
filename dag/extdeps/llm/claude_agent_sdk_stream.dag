@@ -1,7 +1,8 @@
 module extdeps.llm.claude_agent_sdk_stream
 
 import std.types { String, List, Bool, NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.parse {
   parse_json,
@@ -22,6 +23,18 @@ data claude_agent_sdk_external_authority_anchor: ExternalAuthority = ExternalAut
 }
 
 data claude_agent_sdk_version: NonEmptyStr = "0.3.220"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.claude_agent_sdk_stream",
+      decl_name: "claude_stream_event_type_control_response",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: claude_agent_sdk_external_authority_anchor,
+  further_citations: []
+}
 
 data claude_agent_sdk_stream_authority_note: String = "Upstream @anthropic-ai/claude-agent-sdk 0.3.220 (claude_agent_sdk_external_authority_anchor): SDKRateLimitInfo is a closed enum surface with no raw escape hatch, and the SDK parser drops unknown top-level stream-json message types. gunbc must capture beneath the parser and model ClaudeNativeRateLimitType as NonEmptyStr with recognised projections layered over it. Internal audit receipt: provider-control-interface-audit.md section 4.1."
 
