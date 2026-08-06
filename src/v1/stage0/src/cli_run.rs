@@ -1792,6 +1792,38 @@ fn blocking_hard_diagnostic_count_for_symbol(
         .count() as i64
 }
 
+/// Classify binding on an already-resolved declared-import-closure compile. `graph: None` is not
+/// an observed refusal — the module never ingested — so it returns `NotRunnable` (P1(b), #7835).
+pub fn declared_import_closure_binding_observation_from_resolved(
+    resolved: &v1_compiler_compile::ResolvedPipelineResult,
+    consumer_module: &str,
+    symbol: &str,
+) -> DeclaredImportClosureBindingObservation {
+    let graph = match resolved.graph.as_ref() {
+        Some(g) => g.as_ref(),
+        None => {
+            return DeclaredImportClosureBindingObservation::NotRunnable(
+                "declared-import-closure compile produced no graph (parse/frontend refusal)"
+                    .to_string(),
+            );
+        }
+    };
+    let blocking = blocking_hard_diagnostic_count_for_symbol(resolved, consumer_module, symbol);
+    let definer = definer_module_for_name(graph, symbol);
+    let symbol_resolves = definer.is_some();
+    let binding_source = if symbol_resolves {
+        Some(classify_unlisted_import_binding_source(graph, consumer_module, symbol).0)
+    } else {
+        None
+    };
+    DeclaredImportClosureBindingObservation::Observed(DeclaredImportClosureBindingObserved {
+        binding_source,
+        definer_module: definer,
+        symbol_resolves,
+        blocking_hard_diagnostic_count: blocking,
+    })
+}
+
 /// Host realization backing the `observe_declared_import_closure_symbol_binding` builtin:
 /// compile an entry's **declared import-edge closure only** (no reference-derived widening) under
 /// primary-precedence `pool_roots`, then classify how `consumer_module` binds `symbol`.
@@ -1819,33 +1851,11 @@ pub fn observe_declared_import_closure_symbol_binding(
             );
         }
     };
-    let blocking = blocking_hard_diagnostic_count_for_symbol(&resolved, consumer_module, symbol);
-    let graph = match resolved.graph.as_ref() {
-        Some(g) => g.as_ref(),
-        None => {
-            return DeclaredImportClosureBindingObservation::Observed(
-                DeclaredImportClosureBindingObserved {
-                    binding_source: None,
-                    definer_module: None,
-                    symbol_resolves: false,
-                    blocking_hard_diagnostic_count: blocking,
-                },
-            );
-        }
-    };
-    let definer = definer_module_for_name(graph, symbol);
-    let symbol_resolves = definer.is_some();
-    let binding_source = if symbol_resolves {
-        Some(classify_unlisted_import_binding_source(graph, consumer_module, symbol).0)
-    } else {
-        None
-    };
-    DeclaredImportClosureBindingObservation::Observed(DeclaredImportClosureBindingObserved {
-        binding_source,
-        definer_module: definer,
-        symbol_resolves,
-        blocking_hard_diagnostic_count: blocking,
-    })
+    declared_import_closure_binding_observation_from_resolved(
+        resolved.as_ref(),
+        consumer_module,
+        symbol,
+    )
 }
 
 /// Host realization backing the `compile_dag_rust_emit_check` builtin: compile an in-memory
@@ -35229,6 +35239,56 @@ mod witness_layer_roots_compile_clean_tests {
             class_b_declared_import_pool_roots_from_source(&overlay),
             "live memoized pool roots must match the overlay authority on disk (identity join)"
         );
+    }
+
+    /// P1(b) discriminating control: `graph: None` must NOT read as
+    /// `symbol_resolves: false` with zero blocking diagnostics — that vacuously passes row 3.
+    #[test]
+    fn parse_failure_observation_is_not_runnable_not_seam_refusal() {
+        use crate::v1_compiler_complexity::empty_complexity_report;
+        let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
+            graph: None,
+            diagnostics: Rc::new(im::Vector::new()),
+            source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            complexity: empty_complexity_report(),
+            ownership: Rc::new(im::Vector::new()),
+            newline_indices: Rc::new(im::Vector::new()),
+        });
+        let observation = declared_import_closure_binding_observation_from_resolved(
+            resolved.as_ref(),
+            "v2.extdeps.languages.rust_test",
+            "rust_selection_policy_node",
+        );
+        assert!(
+            matches!(
+                observation,
+                DeclaredImportClosureBindingObservation::NotRunnable(_)
+            ),
+            "graph:None must be NotRunnable, not an observed seam refusal; got {observation:?}"
+        );
+        with_workspace_cwd(|| {
+            let malformed = "module broken.syntax\n@@@ not valid dag\n";
+            let compiled = compile_declared_import_closure_only_with_pool(
+                &class_b_declared_import_pool_roots(),
+                "broken/syntax.dag",
+                Some(malformed),
+            )
+            .expect("content override bypasses pool load");
+            if compiled.graph.is_none() {
+                let live = declared_import_closure_binding_observation_from_resolved(
+                    compiled.as_ref(),
+                    "broken.syntax",
+                    "rust_selection_policy_node",
+                );
+                assert!(
+                    matches!(
+                        live,
+                        DeclaredImportClosureBindingObservation::NotRunnable(_)
+                    ),
+                    "live malformed compile with graph:None must also be NotRunnable; got {live:?}"
+                );
+            }
+        });
     }
 
     /// Selection-control skip, the GREEN arm: a diff that touches nothing in the control

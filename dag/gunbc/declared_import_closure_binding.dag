@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.optional { Optional, Present, Absent }
 import gunbc.compile_clean_diagnostic_policy { UnlistedImportBindingSource, ListedImport, PoolCoincidence }
 
-data declared_import_closure_binding_charter_note: String = "THE CLASS B OBSERVATION SURFACE for declared-import-closure binding (#6985). Host twin of observe_declared_import_closure_symbol_binding: compile an entry under primary-precedence pool_roots using ONLY its declared import-edge closure (no reference-derived widening), then report whether consumer_module binds symbol and through which UnlistedImportBindingSource arm. MEASUREMENT ONLY — callers judge ListedImport vs PoolCoincidence vs refusal. ObservationProductionRefused is distinct from BindingObserved refusal so could-not-measure and setup failure never read as the subject passing (DESIGN §5)."
+data declared_import_closure_binding_charter_note: String = "THE CLASS B OBSERVATION SURFACE for declared-import-closure binding (#6985). Host twin of observe_declared_import_closure_symbol_binding: compile an entry under primary-precedence pool_roots using ONLY its declared import-edge closure (no reference-derived widening), then report whether consumer_module binds symbol and through which UnlistedImportBindingSource arm. MEASUREMENT ONLY — callers judge ListedImport vs PoolCoincidence vs refusal. ObservationProductionRefused is distinct from BindingObserved refusal so could-not-measure, setup failure, and compile graph:None (parse/frontend refusal — P1(b)) never read as the subject passing (DESIGN §5). BindingObserved requires a successfully ingested graph."
 
 type DeclaredImportClosureBindingObservation
   = BindingObserved {

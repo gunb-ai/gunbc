@@ -50,11 +50,37 @@ test fn row3_production_refused_is_false() -> Bool {
   )
 }
 
+test fn row3_compile_production_refused_is_false() -> Bool {
+  !row3_stripped_refuses_binding(
+    outcome: ObservationProductionRefused {
+      phase: "compile" as NonEmptyStr,
+      cause: "declared-import-closure compile produced no graph" as NonEmptyStr
+    }
+  )
+}
+
+test fn row3_not_runnable_observation_is_false() -> Bool {
+  !row3_stripped_refuses_binding(
+    outcome: ObservationProduced {
+      observation: BindingNotRunnable { cause: "could-not-measure" as NonEmptyStr }
+    }
+  )
+}
+
 test fn row4_production_refused_is_false() -> Bool {
   !row4_stripped_pool_coincidence_or_refuse(
     outcome: ObservationProductionRefused {
       phase: "mktemp" as NonEmptyStr,
       cause: "setup failed" as NonEmptyStr
+    }
+  )
+}
+
+test fn row4_compile_production_refused_is_false() -> Bool {
+  !row4_stripped_pool_coincidence_or_refuse(
+    outcome: ObservationProductionRefused {
+      phase: "compile" as NonEmptyStr,
+      cause: "declared-import-closure compile produced no graph" as NonEmptyStr
     }
   )
 }
