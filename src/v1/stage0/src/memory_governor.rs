@@ -985,15 +985,25 @@ impl Drop for AdmittedSlot {
 // ---- measurement lines consume these same readers) ----
 
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `dag/gunbc/runner_slot_allocation.dag`
-/// `gunbc_runner_slot_desired().memory_high` = `byte_size(16106127360)`; corroborated by
+/// `gunbc_runner_slot_desired().memory_high` = `byte_size(13958643712)`; corroborated by
 /// `gunbc.ci_floor_measurement.gunbc_ci_runner_slot_memory_high_live`, which derives from
 /// the same row and forbids a duplicate literal):
 /// uncapped-host MemAvailable cap for `read_host_budget_bytes`. When no cgroup limit
 /// binds, raw MemAvailable must not be the sole budget — uncapped hosts let the floor
 /// reach physical RAM and OOM-kill (runs 29180195694, srv3 2026-07-21 exit-137).
+///
+/// TRACKS THE .dag ROW BY HAND, and 2026-08-05 is the receipt for why that is debt
+/// rather than duplication-with-a-comment. This constant was 16_106_127_360 while the
+/// authority said 15GiB; the per-host allocation ruling moved the authority to 13GiB and
+/// nothing made this line follow — the doc comment above cited the old literal verbatim,
+/// so the citation would have gone false in the same commit that made the value stale.
+/// The mirror only binds on UNCAPPED hosts (every fleet slot has a cgroup memory.high, so
+/// production reads the real cgroup and never reaches here), which is exactly what makes
+/// the staleness quiet: it is invisible until a host without applied caps runs a floor —
+/// a dev machine, or srv3/srv4 slots 06/07 before converge lands.
 /// dissolve-on: v2 emit of stage0 host-budget constants from `gunbc.runner_slot_allocation`
 /// (self-host frontier row for `memory_governor` cgroup-budget readers).
-pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 16_106_127_360;
+pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 13_958_643_712;
 
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `dag/gunbc/runner_slot_allocation.dag`
 /// `gunbc_floor_minimum_viable_armed_budget` = `byte_size(12884901888)`; doomed/success witness
