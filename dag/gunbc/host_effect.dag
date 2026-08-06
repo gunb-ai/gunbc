@@ -17,6 +17,9 @@ import extdeps.bmc.webui.nbd_proxy_serve { NbdProxyServeTransportIntent }
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_converge { HostConverge }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
+import gunbc.auth.github_apps { gunbai_ci_declared }
 import std.effects {
   EffectShape,
   KeySource,
@@ -55,6 +58,15 @@ type HostEffect =
   | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
   | LiveDeployDigestReadback { port: Int }
   | DeployAccessPreflight {}
+  | EnsureActionsRunnerRelease { runner_release: ActionsRunnerRelease }
+  | EnsureRunnerSlotDirectory { slot: RunnerSlotIdentity, artifact: ActionsRunnerBinaryArtifact }
+  | EnsureRunnerJitWrapper { host_label: NonEmptyStr }
+  | EnsureRunnerSystemdTemplate { host_label: NonEmptyStr }
+  | EnsureRunnerMemoryCaps { slot: RunnerSlotIdentity }
+  | ActivateRunnerSlot { slot: RunnerSlotIdentity }
+  | ReplaceRunnerIncarnation { slot: RunnerSlotIdentity }
+  | ObserveRunnerLocalState { slot: RunnerSlotIdentity }
+  | ObserveGitHubRunnerRegistration { slot: RunnerSlotIdentity, organization: NonEmptyStr }
 
 type NodeControlPlane =
     HostOs { node: ComputeHost }

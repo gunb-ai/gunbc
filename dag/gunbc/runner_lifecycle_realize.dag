@@ -1,0 +1,82 @@
+module gunbc.runner_lifecycle_realize
+
+import gunbc.host_effect {
+  HostEffectIntent,
+  HostEffectEvidence,
+  HostEffectTransport,
+}
+import std.realization_reconcile { Reconciliation, NotConverged }
+import gunbc.runner_lifecycle { RunnerSlotIdentity }
+import extdeps.github.actions_runner { ActionsRunnerBinaryArtifact }
+import std.types { NonEmptyStr, String }
+
+fn runner_lifecycle_realize_scaffold(
+  effect_label: String,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  NotConverged {
+    reason: join(
+      [
+        "host_effect_apply: ",
+        effect_label,
+        " realization scaffold — gunbc.runner_lifecycle PR B (still-ram-738); ctrl is dead, no script delegation",
+      ],
+      "",
+    ),
+    applied: intent,
+  }
+}
+
+fn runner_lifecycle_realize_ensure_actions_runner_release(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "EnsureActionsRunnerRelease", intent: intent)
+}
+
+fn runner_lifecycle_realize_ensure_runner_slot_directory(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "EnsureRunnerSlotDirectory", intent: intent)
+}
+
+fn runner_lifecycle_realize_ensure_runner_jit_wrapper(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "EnsureRunnerJitWrapper", intent: intent)
+}
+
+fn runner_lifecycle_realize_ensure_runner_systemd_template(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "EnsureRunnerSystemdTemplate", intent: intent)
+}
+
+fn runner_lifecycle_realize_ensure_runner_memory_caps(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "EnsureRunnerMemoryCaps", intent: intent)
+}
+
+fn runner_lifecycle_realize_activate_runner_slot(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "ActivateRunnerSlot", intent: intent)
+}
+
+fn runner_lifecycle_realize_replace_runner_incarnation(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "ReplaceRunnerIncarnation", intent: intent)
+}
+
+fn runner_lifecycle_realize_observe_runner_local_state(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "ObserveRunnerLocalState", intent: intent)
+}
+
+fn runner_lifecycle_realize_observe_github_runner_registration(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "ObserveGitHubRunnerRegistration", intent: intent)
+}

@@ -1,0 +1,164 @@
+module gunbc.runner_slot_provision
+
+import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  MemberUpsert,
+  MemberTeardown,
+  MemberTeardownRefused,
+  membership_reconcile,
+  membership_upsert_count,
+}
+import gunbc.ownership { Ownership, Owned }
+import gunbc.runner_host_deploy {
+  RunnerHostDeploy,
+  runner_instance_names,
+}
+import extdeps.github.actions_runner {
+  ActionsRunnerBinaryArtifact,
+  actions_runner_release_2_334_0,
+  actions_runner_base_dir,
+  actions_runner_base_dir_ensure_script,
+  actions_runner_slot_extract_script,
+}
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_host_budget { declared_runner_count_for }
+
+// RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
+// ctrl is a dead repo; prior ctrl:install-actions-runner citations are void legacy pointers).
+// Per slot: cited ActionsRunnerRelease fetch+verify, base dir, extract, ownership, per-slot caps
+// BEFORE systemctl enable. srv3/srv4 materialization target is 7 slots; srv4 disk binding is
+// apply-time preflight in gunbc.runner_lifecycle runner_width_disk_preflight (not a row pin).
+
+data runner_slot_provision_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "host_effect_apply",
+    field: WholeDeclaration,
+  }
+}
+
+type RunnerSlotMember {
+  instance_name: NonEmptyStr
+  slot_dir: NonEmptyStr
+}
+
+type RunnerSlotObservation
+  = RunnerSlotsObserved { members: List<RunnerSlotMember> }
+  | RunnerSlotsUnobserved { host: HostIdentity, reason: NonEmptyStr }
+
+fn runner_slot_instance_dir(instance_name: NonEmptyStr) -> NonEmptyStr {
+  join([actions_runner_base_dir, "/", instance_name as String], "") as NonEmptyStr
+}
+
+fn runner_slot_member_from_instance_name(instance_name: String) -> RunnerSlotMember {
+  let name = instance_name as NonEmptyStr
+  RunnerSlotMember {
+    instance_name: name,
+    slot_dir: runner_slot_instance_dir(instance_name: name),
+  }
+}
+
+fn desired_runner_slot_members(deploy: RunnerHostDeploy) -> List<RunnerSlotMember> {
+  map(
+    runner_instance_names(deploy: deploy),
+    n => runner_slot_member_from_instance_name(instance_name: n),
+  )
+}
+
+fn runner_slot_member_key(m: RunnerSlotMember) -> NonEmptyStr {
+  m.instance_name
+}
+
+fn runner_slot_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a as String == b as String
+}
+
+fn runner_slot_member_value_eq(a: RunnerSlotMember, b: RunnerSlotMember) -> Bool {
+  a.slot_dir as String == b.slot_dir as String
+}
+
+fn runner_slot_member_ownership(m: RunnerSlotMember) -> Ownership? {
+  Present { value: Owned }
+}
+
+fn runner_slot_membership_reconcile(
+  desired: List<RunnerSlotMember>,
+  observed: List<RunnerSlotMember>,
+) -> MembershipPlan<RunnerSlotMember> {
+  membership_reconcile(
+    desired: desired,
+    observed: observed,
+    key_of: runner_slot_member_key,
+    key_eq: runner_slot_member_key_eq,
+    value_eq: runner_slot_member_value_eq,
+    ownership_of: runner_slot_member_ownership,
+  )
+}
+
+type RunnerSlotEnumerationPostcondition
+  = RunnerSlotEnumerationMatched
+  | RunnerSlotEnumerationMismatch {
+      host: HostIdentity
+      declared_count: Int
+      observed_count: Int
+    }
+
+fn runner_slot_enumeration_postcondition(
+  host: HostIdentity,
+  observed: List<RunnerSlotMember>,
+) -> RunnerSlotEnumerationPostcondition {
+  let declared = declared_runner_count_for(host: host)
+  let observed_count = length(observed)
+  if observed_count == declared {
+    RunnerSlotEnumerationMatched
+  } else {
+    RunnerSlotEnumerationMismatch {
+      host: host,
+      declared_count: declared,
+      observed_count: observed_count,
+    }
+  }
+}
+
+type RunnerSlotProvisionPlan {
+  host_label: NonEmptyStr
+  membership: MembershipPlan<RunnerSlotMember>
+  base_dir_script: String
+  upsert_extract_scripts: List<String>
+}
+
+fn runner_slot_provision_plan(
+  deploy: RunnerHostDeploy,
+  artifact: ActionsRunnerBinaryArtifact,
+  observed: List<RunnerSlotMember>,
+) -> RunnerSlotProvisionPlan {
+  let membership = runner_slot_membership_reconcile(
+    desired: desired_runner_slot_members(deploy: deploy),
+    observed: observed,
+  )
+  RunnerSlotProvisionPlan {
+    host_label: deploy.host_label,
+    membership: membership,
+    base_dir_script: actions_runner_base_dir_ensure_script(runner_user: deploy.runner_user),
+    upsert_extract_scripts: flat_map(membership.actions, a =>
+      match a {
+        MemberUpsert { member: m } =>
+          [actions_runner_slot_extract_script(
+            artifact: artifact,
+            slot_dir: m.slot_dir,
+            job_user: deploy.job_user,
+          )]
+        MemberTeardown { member: _ } => []
+        MemberTeardownRefused { member: _, cause: _ } => []
+      }
+    ),
+  }
+}
+
+fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> Bool {
+  membership_upsert_count(plan: plan.membership) > 0
+}

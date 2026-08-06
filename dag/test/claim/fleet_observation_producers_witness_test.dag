@@ -1,0 +1,108 @@
+module test.claim.fleet_observation_producers_witness
+
+import gunbc.fleet_shell_transport_observation {
+  fleet_shell_transport_observation,
+  fleet_shell_transport_refused_count,
+  ShellTransportReachRefused,
+  ShellTransportSucceeded,
+  ShellTransportUnobserved,
+}
+import gunbc.session_residency {
+  session_residency_shell_gated_census,
+  SessionsUnobserved,
+  SessionsObservedAbsent,
+  SessionsObservedPresent,
+  SessionsOperatorDeclaredAbsent,
+}
+import gunbc.host_disk_observation {
+  host_disk_fleet_unobserved_count,
+  host_disk_observation,
+  DiskUnobserved,
+  DiskObservationRefused,
+}
+import gunbc.host_swap_backing {
+  host_swap_backing_fleet_unobserved_count,
+  host_swap_backing_host_verdict,
+}
+import gunbc.build_cache_endpoint_observation {
+  build_cache_ci_endpoint_fleet_unavailable_count,
+  build_cache_ci_placement_observation,
+  build_cache_ci_endpoint_observation,
+}
+import gunbc.build_cache_instance {
+  EndpointObservationUnavailable,
+  ServerPlacementUnknown,
+}
+import gunbc.fleet_intent_network {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+import gunbc.host_phase_status { fleet_subsumption_hosts }
+import std.upsert_decision { UnknownRefused }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn still_ram_738_shell_transport_refused_all_enrolled_hosts() -> Bool {
+  fleet_shell_transport_refused_count() == fleet_subsumption_hosts.length()
+    && fleet_subsumption_hosts.length() > 0
+}
+
+test fn srv3_shell_transport_is_reach_refused_not_success() -> Bool {
+  match fleet_shell_transport_observation(host: operator_host_srv3) {
+    ShellTransportReachRefused { observed_on: o, principal: _, detail: d, gap: g } =>
+      (o as String) == "2026-08-06"
+        && d.contains(s: "Permission denied")
+        && g.contains(s: "B2")
+    _ => false
+  }
+}
+
+test fn session_producer_returns_unobserved_not_operator_declared_absent() -> Bool {
+  match session_residency_shell_gated_census(host: operator_host_srv3) {
+    SessionsUnobserved { reason: _ } => true
+    SessionsOperatorDeclaredAbsent { reason: _ } => false
+    SessionsObservedAbsent { observed_on: _ } => false
+    SessionsObservedPresent { observed_on: _, container_count: _ } => false
+  }
+}
+
+test fn disk_producer_unobserved_while_swap_backing_unknown_refused() -> Bool {
+  host_disk_fleet_unobserved_count() == fleet_subsumption_hosts.length()
+    && host_swap_backing_fleet_unobserved_count() == fleet_subsumption_hosts.length()
+    && match host_disk_observation(host: operator_host_srv3) {
+      DiskUnobserved { reason: _ } => true
+      DiskObservationRefused { detail: _ } => false
+      _ => false
+    }
+    && host_swap_backing_host_verdict(host: operator_host_srv3) == UnknownRefused
+}
+
+test fn build_cache_ci_endpoint_unavailable_not_absent() -> Bool {
+  build_cache_ci_endpoint_fleet_unavailable_count() == fleet_subsumption_hosts.length()
+    && match build_cache_ci_endpoint_observation(host: operator_host_srv3) {
+      EndpointObservationUnavailable { instance: _, reason: _ } => true
+      _ => false
+    }
+    && match build_cache_ci_placement_observation(host: operator_host_srv3) {
+      ServerPlacementUnknown { detail: _ } => true
+      _ => false
+    }
+}
+
+test fn shell_transport_not_succeeded_for_refused_hosts() -> Bool {
+  match fleet_shell_transport_observation(host: operator_host_srv1) {
+    ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
+    ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => true
+    ShellTransportUnobserved { reason: _ } => false
+  }
+    && match fleet_shell_transport_observation(host: operator_host_srv2) {
+      ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
+      ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => true
+      ShellTransportUnobserved { reason: _ } => false
+    }
+    && match fleet_shell_transport_observation(host: operator_host_srv4) {
+      ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
+      ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => true
+      ShellTransportUnobserved { reason: _ } => false
+    }
+}
