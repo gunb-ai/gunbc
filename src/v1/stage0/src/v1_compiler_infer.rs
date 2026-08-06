@@ -1468,6 +1468,24 @@ pub fn record_lit_expected_coproduct(
     }
 }
 
+pub fn record_lit_parent_enum_from_expected(
+    type_name: String,
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Option<String> {
+    match record_lit_variant_from_expected(Some(type_name.clone()), expected.clone(), scope.clone())
+    {
+        Some(_) => match record_lit_expected_coproduct(expected.clone(), scope.clone()) {
+            Some(coproduct) => Some(authored_name_at(
+                scope.type_env.clone().source_indices.clone(),
+                coproduct.clone(),
+            )),
+            None => None,
+        },
+        None => None,
+    }
+}
+
 pub fn record_lit_variant_from_expected(
     type_name: Option<String>,
     expected: Option<Rc<Node>>,
@@ -9139,7 +9157,11 @@ pub fn infer_record_lit(
                                 scope.type_env.clone().source_indices.clone(),
                                 owner.clone(),
                             )),
-                            None => None,
+                            None => record_lit_parent_enum_from_expected(
+                                type_name.clone().unwrap(),
+                                expected.clone(),
+                                scope.clone(),
+                            ),
                         },
                     };
                 let effective_lookup = match type_lookup.clone() {
