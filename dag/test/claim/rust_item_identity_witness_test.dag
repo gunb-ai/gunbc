@@ -29,8 +29,7 @@ test fn rust_item_identity_key_includes_impl_subject() -> Bool {
     start_line: 100,
     loc: 5
   }
-  rust_item_identity_key(item: item)
-    == "src/v1/stage0/src/cli_run.rs::impl_method::std::fmt::Display for Stage0CargoBinManifestParseRefusal::fmt"
+  rust_item_identity_key(item: item) == "src/v1/stage0/src/cli_run.rs::impl_method::std::fmt::Display for Stage0CargoBinManifestParseRefusal::fmt"
 }
 
 test fn rust_item_identity_key_omits_empty_impl_subject() -> Bool {
@@ -42,8 +41,7 @@ test fn rust_item_identity_key_omits_empty_impl_subject() -> Bool {
     start_line: 200,
     loc: 50
   }
-  rust_item_identity_key(item: item)
-    == "src/v1/stage0/src/cli_run.rs::fn::parse_stage0_cargo_manifest_bin_paths"
+  rust_item_identity_key(item: item) == "src/v1/stage0/src/cli_run.rs::fn::parse_stage0_cargo_manifest_bin_paths"
 }
 
 test fn seed_growth_admission_note_cites_seed_growth_authority() -> Bool {
@@ -53,7 +51,7 @@ test fn seed_growth_admission_note_cites_seed_growth_authority() -> Bool {
 }
 
 test fn g0_population_note_records_item_denominator() -> Bool {
-  string_contains(s: seed_growth_admission_g0_population_note, pattern: "8,359")
+  string_contains(s: seed_growth_admission_g0_population_note, pattern: "8,360")
     && string_contains(s: seed_growth_admission_g0_population_note, pattern: "cli_run.rs")
     && string_contains(s: seed_growth_admission_g0_population_note, pattern: "impl_method")
 }

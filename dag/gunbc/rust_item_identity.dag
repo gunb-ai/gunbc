@@ -1,6 +1,5 @@
 module gunbc.rust_item_identity
 
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
 
 data rust_item_identity_note: String = "ITEM-GRAIN identity for seed-growth admission (Lane swift-lynx-164, operator mandate 2026-08-06). std.decl_ref.DeclarationRef is the declaration-identity vocabulary for .dag modules and top-level Rust items, but it CANNOT cite an impl-block method: DeclField offers only WholeDeclaration or NamedField, and a trait-impl method is neither a field of its enum nor uniquely named across impl blocks. The Cargo-manifest bridge row proved this: six of seven hand-authored items were representable; the seventh (impl std::fmt::Display for Stage0CargoBinManifestParseRefusal) survives only as prose. THIS MODULE EXTENDS THE VOCABULARY before the G1 completeness join can be exact. Item identity is PRIMARY; LOC is secondary metadata trivially manipulated by formatting. Generated-vs-hand is derived from gunbc.generated_artifact and gunbc.stage0_emit_plan_generated authorities, never from filename heuristics alone."
@@ -29,9 +28,9 @@ type RustItemIdentity {
 }
 
 type RustItemDeclField
-  = WholeDeclaration
-  | NamedField { field_name: NonEmptyStr }
-  | ImplMethod {
+  = RustItemWhole
+  | RustItemNamedField { field_name: NonEmptyStr }
+  | RustItemImplMethod {
       impl_subject: NonEmptyStr,
       method_name: NonEmptyStr
     }
@@ -81,14 +80,14 @@ fn rust_item_kind_label(kind: RustItemKind) -> String {
 
 fn rust_item_declaration_ref_key(ref: RustItemDeclarationRef) -> String {
   match ref.field {
-    WholeDeclaration =>
+    RustItemWhole =>
       concat(concat(ref.module_path as String, "::"), ref.decl_name as String)
-    NamedField { field_name: field_name } =>
+    RustItemNamedField { field_name: field_name } =>
       concat(
         concat(concat(ref.module_path as String, "::"), ref.decl_name as String),
         concat("::", field_name as String)
       )
-    ImplMethod { impl_subject: impl_subject, method_name: method_name } =>
+    RustItemImplMethod { impl_subject: impl_subject, method_name: method_name } =>
       concat(
         concat(concat(ref.module_path as String, "::"), impl_subject as String),
         concat("::", method_name as String)

@@ -1,0 +1,149 @@
+module gunbc.cli_run_hand_rust_area_ledger
+
+import gunbc.plans.cli_run_hollowing_plan { cli_run_hollowing_plan }
+import std.types { Int, List, String }
+
+data cli_run_hand_rust_area_ledger_note: String = "LIVE ITEM-GRAIN ledger for cli_run.rs hand Rust (Lane swift-lynx-164). Supersedes cli_run_hollowing_plan §0 stale prose (26,773 LOC / 976 fns dated 2026-07-23). Measured at HEAD f16d936fed4 by scripts/rust_item_census.py + wc: 38,617 LOC, 1,820 Rust items, 1,347 top-level fns. Area grain follows the 16 functional areas in gunbc.plans.cli_run_hollowing_plan §2.1–2.16. NOT a per-function ledger (#7074 closed). NOT a deletion plan — instrument only."
+
+type CliRunHandRustAreaDisposition
+  = DeleteNow
+  | GenerateNow
+  | ThinHostBoundary
+  | DeleteWithV1
+  | RetainedKernel
+  | UnclassifiedStopLine
+
+type CliRunHandRustAreaRow {
+  area_id: String
+  area_title: String
+  disposition: CliRunHandRustAreaDisposition
+  hollowing_plan_disposition: String
+  anchor_symbols: List<String>
+}
+
+data cli_run_live_scale_receipt: String = "cli_run.rs LIVE SCALE (measured 2026-08-06): 38,617 LOC (was 26,773 in hollowing plan §0); 1,820 Rust items; 1,347 fns (rg '^\\s*(pub\\s+)?(async\\s+)?fn\\s+'). seed-shrink-census Chunk F (~4,165 LOC) remains the dissolution sign-off unit for CI orchestration only — the interim seed body is the other ~34.5k LOC classified below."
+
+fn cli_run_hand_rust_area_rows() -> List<CliRunHandRustAreaRow> {
+  [
+    CliRunHandRustAreaRow {
+      area_id: "2.1",
+      area_title: "Workspace & repo paths",
+      disposition: ThinHostBoundary,
+      hollowing_plan_disposition: "emit-when",
+      anchor_symbols: ["workspace_root", "repo_relative_path"]
+    },
+    CliRunHandRustAreaRow {
+      area_id: "2.2",
+      area_title: "CLI argv & bin dispatch",
+      disposition: RetainedKernel,
+      hollowing_plan_disposition: "seed-kernel-retained",
+      anchor_symbols: ["claim_batch", "claim_executor", "handle_run_with_options"]
+    },
+    CliRunHandRustAreaRow {
+      area_id: "2.3",
+      area_title: "Corpus discovery & file walk",
+      disposition: GenerateNow,
+      hollowing_plan_disposition: "emit-when",
+      anchor_symbols: ["collect_dag_files", "run_discovery_corpus"]
+    },
+    CliRunHandRustAreaRow {
+      area_id: "2.4",
+      area_title: "Resolve / typecheck entry orchestration",
+      disposition: GenerateNow,
+      hollowing_plan_disposition: "emit-when",
+      anchor_symbols: ["resolve_entry_graph", "load_both_closure"]
+    },
+    CliRunHandRustAreaRow {
+      area_id: "2.5",
+      area_title: "Reconcile & env merge",
+      disposition: GenerateNow,
+      hollowing_plan_disposition: "already-subsumed",
+      anchor_symbols: ["reconcile", "merge_envs"]
+    },
+    CliRunHandRustAreaRow {
+      area_id: "2.6",
+      area_title: "Typed module cache / memo",
+      disposition: GenerateNow,
+      hollowing_plan_disposition: "emit-when",
+      anchor_symbols: ["typed_module_cache", "resolved_graph_cache"]
+    },
+    CliRunHandRustAreaRow {
+      area_id: "2.7",
+      area_title: "Import & module-graph host facts",
+      disposition: ThinHostBoundary,
+      hollowing_plan_disposition: "emit-when",
+      anchor_symbols: ["import_resolution_facts", "module_declaration_facts"]
+    },
+    CliRunHandRustAreaRow {
+      area_id: "2.8",
+      area_title: "Reference / cross-tree edges",
+      disposition: GenerateNow,
+      hollowing_plan_disposition: "emit-when",
+      anchor_symbols: ["reference_resolution_facts", "reference_edges_as_import_facts"]
+    },
+    CliRunHandRustAreaRow {
+      area_id: "2.9",
+      area_title: "Affected-set & diff provenance",
+      disposition: GenerateNow,
+      hollowing_plan_disposition: "emit-when",
+      anchor_symbols: ["floor_diff_observe", "affected_set"]
+    },
+    CliRunHandRustAreaRow {
+      area_id: "2.10",
+      area_title: "Floor / witness execution",
+      disposition: GenerateNow,
+      hollowing_plan_disposition: "emit-when",
+      anchor_symbols: ["run_discovery_corpus", "run_witness_batch"]
+    },
+    CliRunHandRustAreaRow {
+      area_id: "2.11",
+      area_title: "Compile-clean shard scope",
+      disposition: ThinHostBoundary,
+      hollowing_plan_disposition: "partial",
+      anchor_symbols: ["dag_compile_clean_scope", "compile_clean"]
+    },
+    CliRunHandRustAreaRow {
+      area_id: "2.12",
+      area_title: "Regen oracle & self-host scope",
+      disposition: DeleteWithV1,
+      hollowing_plan_disposition: "delete-with-v1",
+      anchor_symbols: ["regen_input_sources", "regen_stage0"]
+    },
+    CliRunHandRustAreaRow {
+      area_id: "2.13",
+      area_title: "Host builtin bridge",
+      disposition: RetainedKernel,
+      hollowing_plan_disposition: "seed-kernel-retained",
+      anchor_symbols: ["eval_builtin", "filesystem_read"]
+    },
+    CliRunHandRustAreaRow {
+      area_id: "2.14",
+      area_title: "Lens census / hygiene host feeds",
+      disposition: GenerateNow,
+      hollowing_plan_disposition: "emit-when",
+      anchor_symbols: ["non_fold_residue", "fact_cardinality"]
+    },
+    CliRunHandRustAreaRow {
+      area_id: "2.15",
+      area_title: "Floor observability & adaptive width",
+      disposition: ThinHostBoundary,
+      hollowing_plan_disposition: "partial",
+      anchor_symbols: ["floor_materialization", "memory_governor"]
+    },
+    CliRunHandRustAreaRow {
+      area_id: "2.16",
+      area_title: "Test-migration debt builtins",
+      disposition: DeleteWithV1,
+      hollowing_plan_disposition: "delete-with-v1",
+      anchor_symbols: ["test_migration_debt"]
+    }
+  ]
+}
+
+fn cli_run_hand_rust_area_row_count() -> Int {
+  cli_run_hand_rust_area_rows().length()
+}
+
+fn cli_run_hand_rust_area_ledger_covers_sixteen_areas() -> Bool {
+  cli_run_hand_rust_area_row_count() == 16
+}

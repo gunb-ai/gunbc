@@ -1,0 +1,77 @@
+module test.claim.seed_growth_admission_witness
+
+import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
+import gunbc.seed_growth_admission {
+  SeedGrowthAdmissionComplete,
+  SeedGrowthAdmissionRefused,
+  seed_growth_admission_g0_population_note,
+  seed_growth_forward_freeze_policy_note,
+  seed_growth_join_declarations,
+  seed_growth_roster_all_declarations,
+  seed_growth_roster_citable_declaration_count,
+  seed_growth_roster_mechanical_checks_holds,
+  seed_growth_uncitable_item_keys
+}
+import gunbc.stage0_rust_host_observation { stage0_rust_observation_seed_growth_justification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.roster_frontier { declaration_ref_display_key }
+import v2.std.algebra { any, length }
+import v2.std.text { String }
+
+test fn seed_growth_roster_mechanical_checks_hold() -> Bool {
+  seed_growth_roster_mechanical_checks_holds()
+}
+
+test fn seed_growth_roster_has_nine_citable_declarations() -> Bool {
+  seed_growth_roster_citable_declaration_count() == 9
+}
+
+test fn seed_growth_join_roster_is_self_consistent() -> Bool {
+  let roster = seed_growth_roster_all_declarations()
+  match seed_growth_join_declarations(candidates: roster) {
+    SeedGrowthAdmissionComplete {
+      justified_items: justified,
+      stale_justifications: stale,
+      duplicate_justifications: dups,
+      uncitable_items: uncitable
+    } =>
+      length(xs: justified) == 9
+        && length(xs: stale) == 0
+        && length(xs: dups) == 0
+        && length(xs: uncitable) == 1
+    SeedGrowthAdmissionRefused { unjustified_additions: _, detail: _ } => false
+  }
+}
+
+test fn seed_growth_join_refuses_unknown_declaration() -> Bool {
+  let rogue = DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "totally_unjustified_hand_rust_symbol",
+    field: WholeDeclaration
+  }
+  match seed_growth_join_declarations(candidates: [rogue]) {
+    SeedGrowthAdmissionRefused { unjustified_additions: bad, detail: detail } =>
+      length(xs: bad) == 1
+        && string_contains(s: detail, pattern: "lack SeedGrowthJustification")
+    SeedGrowthAdmissionComplete { justified_items: _, stale_justifications: _, duplicate_justifications: _, uncitable_items: _ } =>
+      false
+  }
+}
+
+test fn forward_freeze_policy_requires_item_enumeration() -> Bool {
+  string_contains(s: seed_growth_forward_freeze_policy_note, pattern: "exact item identity")
+    && string_contains(s: seed_growth_forward_freeze_policy_note, pattern: "no netting")
+}
+
+test fn g0_population_note_supersedes_stale_cli_run_prose() -> Bool {
+  string_contains(s: seed_growth_admission_g0_population_note, pattern: "38,617")
+    && string_contains(s: seed_growth_admission_g0_population_note, pattern: "26,773")
+}
+
+test fn stage0_justification_rows_are_in_roster() -> Bool {
+  let roster = seed_growth_roster_all_declarations()
+  let stage0 = stage0_rust_observation_seed_growth_justification.hand_authored_declarations
+  let scoped = observation_scoped_run_seed_growth_justification().hand_authored_declarations
+  (stage0 |> all(r => roster |> any(x => declaration_ref_display_key(ref: r) == declaration_ref_display_key(ref: x))))
+    && (scoped |> all(r => roster |> any(x => declaration_ref_display_key(ref: r) == declaration_ref_display_key(ref: x))))
+}

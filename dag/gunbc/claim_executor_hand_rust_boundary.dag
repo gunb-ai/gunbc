@@ -1,0 +1,89 @@
+module gunbc.claim_executor_hand_rust_boundary
+
+import std.types { Int, List, String }
+
+data claim_executor_hand_rust_boundary_note: String = "TERMINAL BOUNDARY ledger for claim_executor.rs hand Rust (Lane swift-lynx-164). Measured at HEAD f16d936fed4: 13,497 LOC, 381 Rust items, 304 fns. CONTRACT: .dag owns plans, admission, scheduling, selection, outcome, and receipt semantics; Rust owns spawn, observe (time/memory/move bytes), and persist. Anything else in this file needs an explicit SeedGrowthJustification row. NOT a deletion plan — instrument only. Sibling cli_run.rs ledger: gunbc.cli_run_hand_rust_area_ledger."
+
+type ClaimExecutorRustRole
+  = DagOwnsSemantics
+  | RustOwnsHostPhysics
+  | SeedBridgeNeedsJustification
+  | UnclassifiedStopLine
+
+type ClaimExecutorBoundaryRow {
+  symbol_prefix: String
+  role: ClaimExecutorRustRole
+  detail: String
+}
+
+data claim_executor_live_scale_receipt: String = "claim_executor.rs LIVE SCALE (measured 2026-08-06): 13,497 LOC; 381 Rust items; 304 fns. Terminal shape: thin host boundary spawning/oberving witness runs; floor plan semantics live in src/v2/workflow/ci_floor_plan.dag."
+
+fn claim_executor_boundary_rows() -> List<ClaimExecutorBoundaryRow> {
+  [
+    ClaimExecutorBoundaryRow {
+      symbol_prefix: "batches_from_plan",
+      role: DagOwnsSemantics,
+      detail: "Batch structure derived from ci_floor_plan.dag output — Rust walks, does not invent plan shape"
+    },
+    ClaimExecutorBoundaryRow {
+      symbol_prefix: "walk_plan_from_plan",
+      role: DagOwnsSemantics,
+      detail: "Walk/obligations parsed from modeled plan values"
+    },
+    ClaimExecutorBoundaryRow {
+      symbol_prefix: "runnable_from_value",
+      role: DagOwnsSemantics,
+      detail: "Runnable profile projection from .dag-emitted plan records"
+    },
+    ClaimExecutorBoundaryRow {
+      symbol_prefix: "run_native_transport",
+      role: RustOwnsHostPhysics,
+      detail: "Spawn child process, observe wall time and RSS, move bytes across host boundary"
+    },
+    ClaimExecutorBoundaryRow {
+      symbol_prefix: "merge_admission_wire_read",
+      role: RustOwnsHostPhysics,
+      detail: "Read admission wire artifact from filesystem between phases"
+    },
+    ClaimExecutorBoundaryRow {
+      symbol_prefix: "write_compile_clean_cost_drift_receipt",
+      role: RustOwnsHostPhysics,
+      detail: "Persist measured cost receipt to disk"
+    },
+    ClaimExecutorBoundaryRow {
+      symbol_prefix: "read_positive_budget_ms",
+      role: RustOwnsHostPhysics,
+      detail: "Parse host env budget knobs — physics, not policy"
+    },
+    ClaimExecutorBoundaryRow {
+      symbol_prefix: "enforce_floor_compile_clean_clamp",
+      role: SeedBridgeNeedsJustification,
+      detail: "Policy clamp bridging compile-clean gate timing — candidate for workflow emit"
+    },
+    ClaimExecutorBoundaryRow {
+      symbol_prefix: "claim_result_for_outcome",
+      role: DagOwnsSemantics,
+      detail: "Maps host exit/status into typed ClaimResult — shape owned by workflow carriers"
+    },
+    ClaimExecutorBoundaryRow {
+      symbol_prefix: "group_batch_units",
+      role: DagOwnsSemantics,
+      detail: "Scheduler grouping over modeled Runnable rows"
+    }
+  ]
+}
+
+fn claim_executor_boundary_row_count() -> Int {
+  claim_executor_boundary_rows().length()
+}
+
+fn claim_executor_terminal_boundary_declared() -> Bool {
+  string_contains(
+    s: claim_executor_hand_rust_boundary_note,
+    pattern: ".dag owns plans"
+  )
+    && string_contains(
+      s: claim_executor_hand_rust_boundary_note,
+      pattern: "Rust owns spawn"
+    )
+}
