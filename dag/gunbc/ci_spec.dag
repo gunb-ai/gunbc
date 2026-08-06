@@ -252,7 +252,7 @@ fn ci_fmt_gate_line() -> String {
   "\"$CARGO_BIN\" fmt --all --check"
 }
 
-data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler-tests --release --no-run (compile-contract gate; no test execution), RE-ORDERED 2026-08-05 (operator ruling, PR A / fierce-heron-177): runs AFTER the release build so the gate reuses the release-profile v1-compiler artifact instead of forcing a second dev-profile compile. ci_release_features carries text_lookup_work_counter,interp_test_witness,test_hooks so release bins and the test crate share ONE release-profile v1-compiler artifact (feature-set union). Per-call depth instrumentation is default-off armed (record_call_env_depth is a relaxed-load guard until a test calls arm_call_env_depth_witness_for_test) — not removed by dropping features. Affected-set admission (pull_request only): compile_contract_admission_witness intersects the merge-base diff with src/v1/tests/**, src/v1/stage0/**, and the Cargo/toolchain build config; disjoint diffs skip with a typed CompileContractAdmissionReceipt (decision=Skip). Diff observation failure / empty diff / departed closure paths RUN unconditionally (fail-closed, never skip on unknown). push-to-main and scheduled controls run the gate unconditionally. Operation shape: v2.workflow.ci_v1_compiler_tests_compile_gate_emit (extdeps.cargo_build cargo.Build.Test)."
+data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler-tests --release --no-run (compile-contract gate; no test execution), RE-ORDERED 2026-08-05 (operator ruling, PR A / fierce-heron-177): runs AFTER the release build so the gate reuses the release-profile v1-compiler artifact instead of forcing a second dev-profile compile. ci_release_features carries text_lookup_work_counter,interp_test_witness,test_hooks so release bins and the test crate share ONE release-profile v1-compiler artifact (feature-set union). Per-call depth instrumentation is default-off armed (record_call_env_depth is a relaxed-load guard until a test calls arm_call_env_depth_witness_for_test). Affected-set admission (compile_contract_admission_witness + CompileContractAdmissionReceipt) was built per lane brief step 3, measured at 84-133s to skip an 18s compile (resolve_entry_graph_shared for one git diff), and REMOVED 2026-08-06 — the gate runs unconditionally on every build job. Operation shape: v2.workflow.ci_v1_compiler_tests_compile_gate_emit (extdeps.cargo_build cargo.Build.Test)."
 
 fn ci_retry_body_run(command: String) -> Run {
   Run {
@@ -439,80 +439,12 @@ fn ci_regen_floor_skip_shortcut_script() -> String {
   )
 }
 
-data compile_contract_admission_witness_bin: String = "compile_contract_admission_witness"
-
-data ci_compile_contract_admission_policy_note: String = "Affected-set-scoped compile-contract admission (pull_request only): compile_contract_admission_witness intersects the merge-base diff with the gate's exact input closure (src/v1/tests/**, src/v1/stage0/**, Cargo.toml, Cargo.lock, rust-toolchain.toml, path-dependency manifests, .cargo config). A PR diff touching none of those cannot change the v1-compiler-tests compile contract, so the gate exits 0 immediately with CompileContractAdmissionReceipt decision=Skip. Empty diff / diff observation failure / departed closure paths RUN the gate (fail-closed — unknown state never skips). COLD CONTROL: the skip is gated to pull_request via GITHUB_EVENT_NAME, so push-to-main and scheduled runs execute the gate UNCONDITIONALLY."
-
-fn ci_compile_contract_sccache_hit_count_shell() -> String {
-  "sccache --show-stats 2>/dev/null | awk '/Cache hits/ \{print $NF}' | head -1 || echo 0"
-}
-
-fn ci_compile_contract_sccache_miss_count_shell() -> String {
-  "sccache --show-stats 2>/dev/null | awk '/Cache misses/ \{print $NF}' | head -1 || echo 0"
-}
-
-fn ci_compile_contract_admission_shortcut_script() -> String {
-  concat(
-    concat("# ", concat(ci_compile_contract_admission_policy_note, "\n")),
-    concat(
-      "if [ \"$GITHUB_EVENT_NAME\" = \"pull_request\" ]; then\n",
-      concat(
-        concat(
-          concat("  _ci_compile_contract_decision=$(", concat(artifact_shell_path(name: compile_contract_admission_witness_bin), " 2>/dev/null || echo run_compile_contract)")),
-          "\n  if [ \"$_ci_compile_contract_decision\" = \"compile_contract_not_affected_skip\" ]; then\n"
-        ),
-        concat(
-          "    printf '%s\\n' \"CompileContractAdmissionReceipt: decision=Skip base=$\{GITHUB_BASE_SHA:-unknown} head=$\{GITHUB_SHA:-unknown} reason=diff_disjoint_from_input_closure\"\n",
-          concat("    exit 0\n", concat("  fi\n", "fi\n"))
-        )
-      )
-    )
-  )
-}
-
-fn ci_compile_contract_run_and_receipt_script() -> String {
-  concat(
-    concat("_compile_contract_sccache_hits_before=$(", concat(ci_compile_contract_sccache_hit_count_shell(), ")\n")),
-    concat(
-      concat("_compile_contract_sccache_misses_before=$(", concat(ci_compile_contract_sccache_miss_count_shell(), ")\n")),
-      concat(
-        "_compile_contract_start_ms=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1000))')\n",
-        concat(
-          ci_v1_compiler_tests_compile_gate_script(),
-          concat(
-            "_compile_contract_end_ms=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1000))')\n",
-            concat(
-              "_compile_contract_wall_ms=$((_compile_contract_end_ms - _compile_contract_start_ms))\n",
-              concat(
-                concat("_compile_contract_sccache_hits_after=$(", concat(ci_compile_contract_sccache_hit_count_shell(), ")\n")),
-                concat(
-                  concat("_compile_contract_sccache_misses_after=$(", concat(ci_compile_contract_sccache_miss_count_shell(), ")\n")),
-                  concat(
-                    "_compile_contract_sccache_hit_delta=$((_compile_contract_sccache_hits_after - _compile_contract_sccache_hits_before))\n",
-                    concat(
-                      "_compile_contract_sccache_miss_delta=$((_compile_contract_sccache_misses_after - _compile_contract_sccache_misses_before))\n",
-                      "printf '%s\\n' \"CompileContractAdmissionReceipt: decision=Run base=$\{GITHUB_BASE_SHA:-unknown} head=$\{GITHUB_SHA:-unknown} compile_wall_ms=$\{_compile_contract_wall_ms} sccache_hit_delta=$\{_compile_contract_sccache_hit_delta} sccache_miss_delta=$\{_compile_contract_sccache_miss_delta} reason=compile_contract_executed\"\n"
-                    )
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  )
-}
-
 fn ci_v1_compiler_tests_compile_gate_run_script() -> String {
   concat(
     "set -e\n",
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
-      concat(
-        ci_compile_contract_admission_shortcut_script(),
-        ci_compile_contract_run_and_receipt_script()
-      )
+      ci_v1_compiler_tests_compile_gate_script()
     )
   )
 }

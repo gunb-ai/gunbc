@@ -215,14 +215,6 @@ path = "src/bin/regen_floor_skip_witness.rs"
 name = "selection_control_skip_witness"
 path = "src/bin/selection_control_skip_witness.rs"
 
-# Host-physics CI witness: v1-compiler-tests compile-contract affected-set skip. Prints
-# compile_contract_not_affected_skip | run_compile_contract for the build-job compile gate
-# by intersecting the merge-base diff with the gate's input closure. Diff failure / empty diff
-# / departed paths → run_compile_contract (fail-closed; main + scheduled runs execute cold).
-[[bin]]
-name = "compile_contract_admission_witness"
-path = "src/bin/compile_contract_admission_witness.rs"
-
 # Host-physics floor witness for the v1 interpreter recorded-fixture record ->
 # hermetic-replay -> fail-closed lifecycle (DESIGN §5 determinism). Drives the real
 # claim_batch binary with --record/--hermetic/--fixture-store + mutates fixtures on

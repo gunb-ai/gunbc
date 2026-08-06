@@ -38,14 +38,14 @@ test fn w_gate_script_names_release_test_no_run_command() -> Bool {
     && !string_contains(s: script, pattern: "nextest")
 }
 
-test fn w_gate_run_script_enrolls_admission_and_receipt() -> Bool {
+test fn w_gate_run_script_is_cargo_test_no_run_only() -> Bool {
   let script = ci_v1_compiler_tests_compile_gate_run_script()
-  string_contains(s: script, pattern: "compile_contract_admission_witness")
-    && string_contains(s: script, pattern: "CompileContractAdmissionReceipt")
-    && string_contains(s: script, pattern: "decision=Skip")
-    && string_contains(s: script, pattern: "decision=Run")
-    && string_contains(s: script, pattern: "compile_wall_ms=")
-    && string_contains(s: script, pattern: "sccache_hit_delta=")
+  string_contains(s: script, pattern: "'test'")
+    && string_contains(s: script, pattern: "'v1-compiler-tests'")
+    && string_contains(s: script, pattern: "'--release'")
+    && string_contains(s: script, pattern: "'--no-run'")
+    && !string_contains(s: script, pattern: "compile_contract_admission_witness")
+    && !string_contains(s: script, pattern: "CompileContractAdmissionReceipt")
 }
 
 test fn w_gate_carrier_is_scaffold() -> Bool {
