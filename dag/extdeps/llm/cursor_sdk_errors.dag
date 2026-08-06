@@ -1,14 +1,27 @@
 module extdeps.llm.cursor_sdk_errors
 
 import std.types { String, NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "cursor.com/docs/sdk/typescript"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.cursor_sdk_errors",
+      decl_name: "cursor_sdk_error_authentication",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data cursor_sdk_error_codes_note: String = "Stable backend codes from @cursor/sdk errors.d.ts @ 1.0.26. RunError.code carries the wire spelling on terminal turns. Single authority for SDK wire codes — consumed by extdeps.llm.cursor_sdk and extdeps.llm.cursor_stream."
