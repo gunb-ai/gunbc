@@ -188,6 +188,7 @@ type CompilerDiagnostic
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
   | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: SourceSpan }
+  | CallArgumentDuplicate { callee: String, argument: String, span: SourceSpan }
   | CallPositionalDeficit { callee: String, parameter: String, supplied: Int, required: Int, span: SourceSpan }
   | CallNamedArgOnFunctionValue { callee: String, argument: String, span: SourceSpan }
   | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
@@ -313,6 +314,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     AmbiguousReference { name: _, candidates: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
     CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: s } => s
+    CallArgumentDuplicate { callee: _, argument: _, span: s } => s
     CallPositionalDeficit { callee: _, parameter: _, supplied: _, required: _, span: s } => s
     CallNamedArgOnFunctionValue { callee: _, argument: _, span: s } => s
     OccurrenceTransportViolation { refusal: refusal } =>
@@ -379,6 +381,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("call shape mismatch calling '", c, "': no parameter named '", a, "' (declared: [", join(ds, separator: ", "), "])")
     CallPositionalSurplus { callee: c, supplied: s, capacity: cap, span: _ } =>
       concat("call shape mismatch calling '", c, "': too many positional arguments: ", to_string(value: s), " supplied, ", to_string(value: cap), " positional parameter(s) declared")
+    CallArgumentDuplicate { callee: c, argument: a, span: _ } =>
+      concat("call shape mismatch calling '", c, "': argument '", a, "' supplied more than once")
     CallPositionalDeficit { callee: c, parameter: p, supplied: s, required: r, span: _ } =>
       concat("call shape mismatch calling '", c, "': missing required argument '", p, "' (", to_string(value: s), " of ", to_string(value: r), " required argument(s) supplied)")
     CallNamedArgOnFunctionValue { callee: c, argument: a, span: _ } =>
