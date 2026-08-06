@@ -1,0 +1,299 @@
+module gunbc.runner_broker_progress_watchdog
+
+import std.types { String, NonEmptyStr, Int, Bool, Duration, Timestamp, List }
+import std.disposition { Disposition, SingleAuthority, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
+
+data runner_broker_progress_watchdog_authority_disposition: Disposition = SingleAuthority
+
+data runner_broker_progress_watchdog_provisioning_note: String = "PART OF PROVISIONING, NOT A SIBLING UTILITY (operator ruling 2026-08-06). The ctrl-side incident patch is FROZEN AND RETIRED — behavior must not accumulate there. Every slot provisioned through gunbc.runner_lifecycle installs release, directory, JIT wrapper, systemd template, memory drop-ins, watchdog executable, watchdog service/timer, local observation producer, remote registration observer, replacement effect, and independent readback together. srv3-06/07 and srv4-06/07 get the watchdog in the SAME application that creates them."
+
+data runner_broker_progress_silence_bound_seconds: Duration = 600
+
+data runner_broker_progress_silence_bound_basis_note: String = "DERIVED, NOT TUNABLE: pinned Actions Runner v2.334.0 backs off on repeated message failures in tens of seconds, settling ~30-60s between retries. Ten minutes spans many expected retry envelopes while the incident wedges were silent 41 and 77 MINUTES — an order of magnitude past any healthy retry cadence. Do not treat this bound as a knob."
+
+data runner_watchdog_arm_reachability_stale_seconds: Duration = 5
+
+data runner_watchdog_arm_reachability_note: String = "STALE_SECONDS=5 proves only that the restart arm is REACHABLE in tests — label it an arm-reachability control, NOT a semantic bound. Semantic positive fixtures preserve the 41- and 77-minute incident wedges. The SIGPIPE ls|head regression is preserved as a typed refusal to reconstruct diagnostic reads through shell pipelines — enumerate and select diagnostic files directly."
+
+data runner_watchdog_registration_grace_seconds: Duration = 120
+
+data runner_watchdog_incident_wedge_41_minutes_seconds: Duration = 2460
+
+data runner_watchdog_incident_wedge_77_minutes_seconds: Duration = 4620
+
+data runner_watchdog_diagnostic_read_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.runner_lifecycle",
+    decl_name: "runner_slot_add_steps_ordered",
+    field: WholeDeclaration,
+  }
+}
+
+type ConnectivityEvidenceGrade
+  = ObservedEvidence
+  | OperatorDeclaredEvidence { reason: NonEmptyStr }
+
+type RunnerRemoteRegistration
+  = RunnerRemoteOnline { runner_name: NonEmptyStr, labels: List<String> }
+  | RunnerRemoteOffline
+  | RunnerRemoteAbsent
+  | RunnerRemoteBusy { detail: NonEmptyStr }
+
+type HostReachAdmission
+  = HostReachAdmitted
+  | HostReachRefused { host: HostIdentity, reason: NonEmptyStr }
+
+type BrokerProgressEvent
+  = AcquireAttempt
+  | ConnectionError
+  | Reconnection
+  | MessageReceived
+  | SessionCreation
+
+type BrokerProgressObservation
+  = BrokerProgressObserved {
+      last_event: BrokerProgressEvent,
+      last_at: Timestamp,
+      grade: ConnectivityEvidenceGrade,
+    }
+  | BrokerProgressSilent {
+      silence_seconds: Duration,
+      grade: ConnectivityEvidenceGrade,
+    }
+  | BrokerProgressUnobserved { reason: NonEmptyStr }
+
+type RunnerWorkerObservation
+  = RunnerWorkerAlive { detail: NonEmptyStr, grade: ConnectivityEvidenceGrade }
+  | RunnerWorkerAbsent { grade: ConnectivityEvidenceGrade }
+  | RunnerWorkerUnobserved { reason: NonEmptyStr }
+
+type RemoteRegistrationEvidence
+  = RemoteRegistrationObserved {
+      registration: RunnerRemoteRegistration,
+      registration_id: String,
+      grade: ConnectivityEvidenceGrade,
+    }
+  | RemoteRegistrationOperatorDeclared {
+      registration: RunnerRemoteRegistration,
+      reason: NonEmptyStr,
+    }
+  | RemoteRegistrationUnobserved { reason: NonEmptyStr }
+  | RemoteRegistrationRefused { reason: NonEmptyStr }
+
+type RunnerWatchdogVerdict
+  = WatchdogHealthy
+  | WatchdogRetrying { silence_seconds: Duration }
+  | WatchdogWedged { silence_seconds: Duration }
+  | WatchdogBusy
+  | WatchdogRefused { reason: NonEmptyStr }
+
+type RunnerWatchdogInputs {
+  remote: RemoteRegistrationEvidence
+  broker: BrokerProgressObservation
+  worker: RunnerWorkerObservation
+  registration_grace_elapsed: Bool
+  reach: HostReachAdmission
+}
+
+type RunnerRepairDecisionReceipt {
+  slot: RunnerSlotIdentity
+  local_process: ProcessIdentity
+  remote_registration_id: String
+  act_at: Timestamp
+}
+
+fn remote_registration_is_connected(reg: RunnerRemoteRegistration) -> Bool {
+  match reg {
+    RunnerRemoteOnline { runner_name: _, labels: _ } => true
+    RunnerRemoteOffline => false
+    RunnerRemoteAbsent => false
+    RunnerRemoteBusy { detail: _ } => false
+  }
+}
+
+fn remote_registration_needs_repair(reg: RunnerRemoteRegistration) -> Bool {
+  match reg {
+    RunnerRemoteOnline { runner_name: _, labels: _ } => false
+    RunnerRemoteOffline => true
+    RunnerRemoteAbsent => true
+    RunnerRemoteBusy { detail: _ } => false
+  }
+}
+
+fn remote_evidence_registration(ev: RemoteRegistrationEvidence) -> RunnerRemoteRegistration? {
+  match ev {
+    RemoteRegistrationObserved { registration: reg, registration_id: _, grade: _ } =>
+      Present { value: reg }
+    RemoteRegistrationOperatorDeclared { registration: reg, reason: _ } =>
+      Present { value: reg }
+    RemoteRegistrationUnobserved { reason: _ } => Absent
+    RemoteRegistrationRefused { reason: _ } => Absent
+  }
+}
+
+fn remote_registration_is_busy(reg: RunnerRemoteRegistration) -> Bool {
+  match reg {
+    RunnerRemoteBusy { detail: _ } => true
+    RunnerRemoteOnline { runner_name: _, labels: _ } => false
+    RunnerRemoteOffline => false
+    RunnerRemoteAbsent => false
+  }
+}
+
+fn broker_progress_event_resets_silence(event: BrokerProgressEvent) -> Bool {
+  match event {
+    AcquireAttempt => true
+    ConnectionError => true
+    Reconnection => true
+    MessageReceived => true
+    SessionCreation => true
+  }
+}
+
+fn broker_progress_silence_exceeds_bound(silence_seconds: Duration, bound: Duration) -> Bool {
+  silence_seconds >= bound
+}
+
+fn classify_runner_watchdog_verdict(
+  remote: RemoteRegistrationEvidence,
+  broker: BrokerProgressObservation,
+  worker: RunnerWorkerObservation,
+) -> RunnerWatchdogVerdict {
+  match remote {
+    RemoteRegistrationRefused { reason: r } =>
+      WatchdogRefused { reason: r }
+    RemoteRegistrationUnobserved { reason: r } =>
+      WatchdogRefused { reason: r }
+    RemoteRegistrationObserved { registration: _, registration_id: _, grade: _ } =>
+      classify_runner_watchdog_verdict_for_disconnected(
+        remote: remote,
+        broker: broker,
+        worker: worker,
+      )
+    RemoteRegistrationOperatorDeclared { registration: _, reason: _ } =>
+      classify_runner_watchdog_verdict_for_disconnected(
+        remote: remote,
+        broker: broker,
+        worker: worker,
+      )
+  }
+}
+
+fn classify_runner_watchdog_verdict_for_disconnected(
+  remote: RemoteRegistrationEvidence,
+  broker: BrokerProgressObservation,
+  worker: RunnerWorkerObservation,
+) -> RunnerWatchdogVerdict {
+  if match remote_evidence_registration(ev: remote) {
+       Present { value: reg } => remote_registration_is_connected(reg: reg)
+       Absent => false
+     } {
+    WatchdogHealthy
+  } else if match worker {
+         RunnerWorkerAlive { detail: _, grade: _ } => true
+         RunnerWorkerAbsent { grade: _ } => false
+         RunnerWorkerUnobserved { reason: _ } => false
+       } {
+    WatchdogBusy
+  } else {
+    match broker {
+      BrokerProgressUnobserved { reason: r } =>
+        WatchdogRefused { reason: r }
+      BrokerProgressObserved { last_event: _, last_at: _, grade: _ } =>
+        WatchdogRetrying { silence_seconds: 0 }
+      BrokerProgressSilent { silence_seconds: s, grade: _ } =>
+        if broker_progress_silence_exceeds_bound(
+          silence_seconds: s,
+          bound: runner_broker_progress_silence_bound_seconds,
+        ) {
+          WatchdogWedged { silence_seconds: s }
+        } else {
+          WatchdogRetrying { silence_seconds: s }
+        }
+    }
+  }
+}
+
+fn watchdog_verdict_is_wedged(verdict: RunnerWatchdogVerdict) -> Bool {
+  match verdict {
+    WatchdogWedged { silence_seconds: _ } => true
+    WatchdogHealthy => false
+    WatchdogRetrying { silence_seconds: _ } => false
+    WatchdogBusy => false
+    WatchdogRefused { reason: _ } => false
+  }
+}
+
+fn watchdog_replace_predicate_holds(
+  remote: RemoteRegistrationEvidence,
+  broker: BrokerProgressObservation,
+  worker: RunnerWorkerObservation,
+  registration_grace_elapsed: Bool,
+) -> Bool {
+  let verdict = classify_runner_watchdog_verdict(
+    remote: remote,
+    broker: broker,
+    worker: worker,
+  )
+  watchdog_verdict_is_wedged(verdict: verdict)
+    && registration_grace_elapsed
+    && match worker {
+         RunnerWorkerAbsent { grade: _ } => true
+         RunnerWorkerAlive { detail: _, grade: _ } => false
+         RunnerWorkerUnobserved { reason: _ } => false
+       }
+    && match remote_evidence_registration(ev: remote) {
+         Present { value: reg } => remote_registration_needs_repair(reg: reg)
+         Absent => false
+       }
+}
+
+fn reobservation_refuses_mutation(
+  receipt: RunnerRepairDecisionReceipt,
+  fresh_local_process: ProcessIdentity,
+  fresh_remote: RemoteRegistrationEvidence,
+  fresh_worker: RunnerWorkerObservation,
+  fresh_broker: BrokerProgressObservation,
+  act_at: Timestamp,
+) -> Bool {
+  if !process_identity_matches_receipt(
+    receipt: receipt,
+    found: fresh_local_process,
+  ) {
+    true
+  } else if match remote_evidence_registration(ev: fresh_remote) {
+         Present { value: reg } => remote_registration_is_connected(reg: reg)
+         Absent => false
+       } {
+    true
+  } else if match fresh_worker {
+         RunnerWorkerAlive { detail: _, grade: _ } => true
+         RunnerWorkerAbsent { grade: _ } => false
+         RunnerWorkerUnobserved { reason: _ } => true
+       } {
+    true
+  } else if match fresh_broker {
+         BrokerProgressUnobserved { reason: _ } => true
+         BrokerProgressObserved { last_event: _, last_at: _, grade: _ } => false
+         BrokerProgressSilent { silence_seconds: _, grade: _ } => false
+       } {
+    true
+  } else if receipt.act_at != act_at {
+    true
+  } else {
+    false
+  }
+}
+
+fn process_identity_matches_receipt(
+  receipt: RunnerRepairDecisionReceipt,
+  found: ProcessIdentity,
+) -> Bool {
+  (receipt.local_process.boot_id as String) == (found.boot_id as String)
+    && receipt.local_process.pid == found.pid
+    && (receipt.local_process.start_time as String) == (found.start_time as String)
+}

@@ -4,15 +4,20 @@ import std.types { String, Bool, List, Timestamp, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
+import gunbc.runner_broker_progress_watchdog {
+  RemoteRegistrationEvidence,
+  RemoteRegistrationObserved,
+  ObservedEvidence,
+  RunnerRemoteOffline,
+  RunnerRemoteOnline,
+}
 import gunbc.runner_connectivity_recovery {
   RunnerSlotConnectivitySnapshot,
   RunnerLocalObservation,
   RunnerRemoteObservation,
   RunnerLocalIncarnation,
-  RunnerRemoteOffline,
-  RunnerRemoteOnline,
   HostReachAdmitted,
-  decide_runner_connectivity_action,
+  decide_runner_connectivity_action_legacy,
 }
 import gunbc.runner_connectivity_repair_plan {
   RepairExecute,
@@ -55,7 +60,11 @@ fn wedged_snapshot(act: Timestamp) -> RunnerSlotConnectivitySnapshot {
       observed_at: act,
     },
     remote: RunnerRemoteObservation {
-      registration: RunnerRemoteOffline,
+      evidence: RemoteRegistrationObserved {
+        registration: RunnerRemoteOffline,
+        registration_id: "",
+        grade: ObservedEvidence,
+      },
       observed_at: act,
       control_plane_error_burst: false,
     },
@@ -67,7 +76,7 @@ fn wedged_snapshot(act: Timestamp) -> RunnerSlotConnectivitySnapshot {
 test fn replace_action_projects_four_step_repair_sequence() -> Bool {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let snap = wedged_snapshot(act: act)
-  let action = decide_runner_connectivity_action(
+  let action = decide_runner_connectivity_action_legacy(
     snap: snap,
     prior: snap,
     act_at: act,
@@ -108,9 +117,13 @@ test fn noop_action_projects_empty_repair_plan() -> Bool {
     slot: snap.slot,
     local: snap.local,
     remote: RunnerRemoteObservation {
-      registration: RunnerRemoteOnline {
-        runner_name: "actions-runner@srv1-01.service" as NonEmptyStr,
-        labels: ["self-hosted"],
+      evidence: RemoteRegistrationObserved {
+        registration: RunnerRemoteOnline {
+          runner_name: "actions-runner@srv1-01.service" as NonEmptyStr,
+          labels: ["self-hosted"],
+        },
+        registration_id: "reg-1",
+        grade: ObservedEvidence,
       },
       observed_at: act,
       control_plane_error_burst: false,
@@ -118,7 +131,7 @@ test fn noop_action_projects_empty_repair_plan() -> Bool {
     confirmed_at: act,
     last_restart_at: Absent,
   }
-  let action = decide_runner_connectivity_action(
+  let action = decide_runner_connectivity_action_legacy(
     snap: connected,
     prior: connected,
     act_at: act,

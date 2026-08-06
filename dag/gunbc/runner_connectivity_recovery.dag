@@ -11,10 +11,47 @@ import gunbc.build_cache_instance {
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
+import gunbc.runner_broker_progress_watchdog {
+  RunnerRemoteRegistration,
+  RunnerRemoteOnline,
+  RunnerRemoteOffline,
+  RunnerRemoteAbsent,
+  RunnerRemoteBusy,
+  HostReachAdmission,
+  HostReachAdmitted,
+  HostReachRefused,
+  RunnerWatchdogInputs,
+  RunnerWatchdogVerdict,
+  WatchdogHealthy,
+  WatchdogRetrying,
+  WatchdogWedged,
+  WatchdogBusy,
+  WatchdogRefused,
+  RemoteRegistrationEvidence,
+  RemoteRegistrationObserved,
+  RemoteRegistrationRefused,
+  RemoteRegistrationUnobserved,
+  RemoteRegistrationOperatorDeclared,
+  BrokerProgressObservation,
+  BrokerProgressSilent,
+  RunnerWorkerObservation,
+  RunnerWorkerAbsent,
+  RunnerWorkerAlive,
+  ObservedEvidence,
+  classify_runner_watchdog_verdict,
+  watchdog_replace_predicate_holds,
+  reobservation_refuses_mutation,
+  RunnerRepairDecisionReceipt,
+  remote_evidence_registration,
+  remote_registration_is_connected,
+  remote_registration_needs_repair,
+  remote_registration_is_busy,
+  runner_broker_progress_silence_bound_seconds,
+}
 
 data runner_connectivity_recovery_scope_disposition: Disposition = SingleAuthority
 
-data controller_not_watchdog_note: String = "THIS MODULE IS A CONTROLLER, NOT A WATCHDOG (operator ruling 2026-08-06). A naive offline-then-restart rule would, during the next GitHub outage, restart every unit simultaneously and storm an already-degraded control plane — the absorbing fallback in DESIGN section 5 wearing recovery clothes. Per-slot eligibility is therefore a CONJUNCTION of facts that must all hold, and fleet repair is CANARY-FIRST with a breaker that inhibits fanout when most slots share a common error burst. Freshness is construction: a plan carrying an observation older than the act it authorizes is unwritable as Replace, not merely discouraged. systemctl restart exit 0 is NOT success — the postcondition requires independent local AND remote read-back proving a new incarnation and an online registration."
+data runner_connectivity_watchdog_note: String = "PORTS the incident ctrl watchdog into gunbc (operator ruling 2026-08-06). Replace eligibility is the CONJUNCTION: remote registration offline/absent AND broker progress silent beyond the derived ten-minute bound AND no Runner.Worker alive AND registration grace elapsed. Offline-alone and quiet-locally-alone are both unsafe single-signal policies; only the conjunction is safe. Re-read immediately before mutation; fanout is canary-first with per-host cooldown. systemctl restart exit 0 is NOT success."
 
 type RunnerLocalIncarnation {
   slot: RunnerSlotIdentity
@@ -22,14 +59,8 @@ type RunnerLocalIncarnation {
   unit: NonEmptyStr
 }
 
-type RunnerRemoteRegistration
-  = RunnerRemoteOnline { runner_name: NonEmptyStr, labels: List<String> }
-  | RunnerRemoteOffline
-  | RunnerRemoteAbsent
-  | RunnerRemoteBusy { detail: NonEmptyStr }
-
 type RunnerRemoteObservation {
-  registration: RunnerRemoteRegistration
+  evidence: RemoteRegistrationEvidence
   observed_at: Timestamp
   control_plane_error_burst: Bool
 }
@@ -48,18 +79,23 @@ type RunnerSlotConnectivitySnapshot {
   last_restart_at: Timestamp?
 }
 
-type HostReachAdmission
-  = HostReachAdmitted
-  | HostReachRefused { host: HostIdentity, reason: NonEmptyStr }
+type HostReachAdmissionRefusedCause { reason: NonEmptyStr }
 
 type RunnerReplacementCause
   = RemoteRegistrationOfflineWhileLocalAlive
   | RemoteRegistrationAbsentWhileLocalAlive
   | AcquireJobWedgeSessionDead
+  | BrokerProgressWedged { silence_seconds: Duration }
 
 type RunnerRepairRefusalCause
   = RunnerStillConnected
   | RunnerRemotelyBusy
+  | RepairBlockedByRunnerWorker
+  | BrokerProgressStillRecent { silence_seconds: Duration }
+  | RegistrationGraceNotElapsed
+  | RemoteEvidenceRefused { reason: NonEmptyStr }
+  | RemoteEvidenceUnobserved { reason: NonEmptyStr }
+  | ReobservationRefused { reason: NonEmptyStr }
   | LocalProcessNotActive
   | ObservationStale { observed_at: Timestamp, act_at: Timestamp }
   | IncarnationChangedSinceObservation {
@@ -150,30 +186,23 @@ fn process_identity_eq(a: ProcessIdentity, b: ProcessIdentity) -> Bool {
     && (a.start_time as String) == (b.start_time as String)
 }
 
-fn remote_registration_is_connected(reg: RunnerRemoteRegistration) -> Bool {
-  match reg {
-    RunnerRemoteOnline { runner_name: _, labels: _ } => true
-    RunnerRemoteOffline => false
-    RunnerRemoteAbsent => false
-    RunnerRemoteBusy { detail: _ } => false
-  }
+fn remote_observation_registration(obs: RunnerRemoteObservation) -> RunnerRemoteRegistration? {
+  remote_evidence_registration(ev: obs.evidence)
 }
 
-fn remote_registration_needs_repair(reg: RunnerRemoteRegistration) -> Bool {
-  match reg {
-    RunnerRemoteOnline { runner_name: _, labels: _ } => false
+fn replacement_cause_for_watchdog(
+  reg: RunnerRemoteRegistration,
+  silence_seconds: Duration,
+) -> RunnerReplacementCause {
+  if match reg {
     RunnerRemoteOffline => true
     RunnerRemoteAbsent => true
-    RunnerRemoteBusy { detail: _ } => false
-  }
-}
-
-fn remote_registration_is_busy(reg: RunnerRemoteRegistration) -> Bool {
-  match reg {
-    RunnerRemoteBusy { detail: _ } => true
     RunnerRemoteOnline { runner_name: _, labels: _ } => false
-    RunnerRemoteOffline => false
-    RunnerRemoteAbsent => false
+    RunnerRemoteBusy { detail: _ } => false
+  } {
+    replacement_cause_for_remote(reg: reg)
+  } else {
+    BrokerProgressWedged { silence_seconds: silence_seconds }
   }
 }
 
@@ -224,7 +253,10 @@ fn classify_control_plane_standing(
     snapshots,
     init: 0,
     f: (acc, s) =>
-      if remote_registration_needs_repair(reg: s.remote.registration) {
+      if match remote_observation_registration(obs: s.remote) {
+           Present { value: reg } => remote_registration_needs_repair(reg: reg)
+           Absent => false
+         } {
         acc + 1
       } else {
         acc
@@ -250,16 +282,96 @@ fn classify_control_plane_standing(
 fn decide_runner_connectivity_action(
   snap: RunnerSlotConnectivitySnapshot,
   prior: RunnerSlotConnectivitySnapshot,
+  watchdog: RunnerWatchdogInputs,
   act_at: Timestamp,
-  reach: HostReachAdmission,
   allow_replace: Bool,
 ) -> RunnerConnectivityAction {
   let slot = snap.slot
-  if remote_registration_is_connected(reg: snap.remote.registration) {
-    RunnerConnectedNoop {
-      local: snap.local.incarnation,
-      remote: snap.remote.registration,
-    }
+  let verdict = classify_runner_watchdog_verdict(
+    remote: watchdog.remote,
+    broker: watchdog.broker,
+    worker: watchdog.worker,
+  )
+  match watchdog.remote {
+    RemoteRegistrationRefused { reason: r } =>
+      RunnerRepairRefused { slot: slot, cause: RemoteEvidenceRefused { reason: r } }
+    RemoteRegistrationUnobserved { reason: r } =>
+      RunnerRepairRefused { slot: slot, cause: RemoteEvidenceUnobserved { reason: r } }
+    RemoteRegistrationObserved { registration: _, registration_id: _, grade: _ } =>
+      decide_runner_connectivity_for_verdict(
+        snap: snap,
+        prior: prior,
+        watchdog: watchdog,
+        act_at: act_at,
+        allow_replace: allow_replace,
+        verdict: verdict,
+      )
+    RemoteRegistrationOperatorDeclared { registration: _, reason: _ } =>
+      decide_runner_connectivity_for_verdict(
+        snap: snap,
+        prior: prior,
+        watchdog: watchdog,
+        act_at: act_at,
+        allow_replace: allow_replace,
+        verdict: verdict,
+      )
+  }
+}
+
+fn decide_runner_connectivity_for_verdict(
+  snap: RunnerSlotConnectivitySnapshot,
+  prior: RunnerSlotConnectivitySnapshot,
+  watchdog: RunnerWatchdogInputs,
+  act_at: Timestamp,
+  allow_replace: Bool,
+  verdict: RunnerWatchdogVerdict,
+) -> RunnerConnectivityAction {
+  let slot = snap.slot
+  match verdict {
+    WatchdogHealthy =>
+      match remote_evidence_registration(ev: watchdog.remote) {
+        Present { value: reg } =>
+          RunnerConnectedNoop { local: snap.local.incarnation, remote: reg }
+        Absent =>
+          RunnerRepairRefused {
+            slot: slot,
+            cause: RemoteEvidenceUnobserved {
+              reason: "healthy verdict without registration payload" as NonEmptyStr,
+            },
+          }
+      }
+    WatchdogBusy =>
+      RunnerRepairRefused { slot: slot, cause: RepairBlockedByRunnerWorker }
+    WatchdogRetrying { silence_seconds: s } =>
+      RunnerRepairRefused {
+        slot: slot,
+        cause: BrokerProgressStillRecent { silence_seconds: s },
+      }
+    WatchdogRefused { reason: r } =>
+      RunnerRepairRefused { slot: slot, cause: RemoteEvidenceRefused { reason: r } }
+    WatchdogWedged { silence_seconds: s } =>
+      decide_wedged_runner_connectivity_action(
+        snap: snap,
+        prior: prior,
+        watchdog: watchdog,
+        act_at: act_at,
+        allow_replace: allow_replace,
+        silence_seconds: s,
+      )
+  }
+}
+
+fn decide_wedged_runner_connectivity_action(
+  snap: RunnerSlotConnectivitySnapshot,
+  prior: RunnerSlotConnectivitySnapshot,
+  watchdog: RunnerWatchdogInputs,
+  act_at: Timestamp,
+  allow_replace: Bool,
+  silence_seconds: Duration,
+) -> RunnerConnectivityAction {
+  let slot = snap.slot
+  if !watchdog.registration_grace_elapsed {
+    RunnerRepairRefused { slot: slot, cause: RegistrationGraceNotElapsed }
   } else if !process_identity_eq(
     a: snap.local.incarnation.process,
     b: prior.local.incarnation.process,
@@ -280,27 +392,26 @@ fn decide_runner_connectivity_action(
       slot: slot,
       cause: ObservationStale { observed_at: snap.confirmed_at, act_at: act_at },
     }
-  } else if remote_registration_is_busy(reg: snap.remote.registration) {
-    RunnerRepairRefused {
-      slot: slot,
-      cause: RunnerRemotelyBusy,
-    }
+  } else if match remote_observation_registration(obs: snap.remote) {
+         Present { value: reg } => remote_registration_is_busy(reg: reg)
+         Absent => false
+       } {
+    RunnerRepairRefused { slot: slot, cause: RunnerRemotelyBusy }
   } else if !snap.local.systemd_active {
-    RunnerRepairRefused {
-      slot: slot,
-      cause: LocalProcessNotActive,
-    }
-  } else if match reach {
+    RunnerRepairRefused { slot: slot, cause: LocalProcessNotActive }
+  } else if match watchdog.reach {
          HostReachRefused { host: _, reason: r } => true
          HostReachAdmitted => false
        } {
-    match reach {
+    match watchdog.reach {
       HostReachRefused { host: _, reason: r } =>
         RunnerRepairRefused { slot: slot, cause: HostReachAdmissionRefused { reason: r } }
       HostReachAdmitted =>
-        RunnerConnectedNoop {
-          local: snap.local.incarnation,
-          remote: snap.remote.registration,
+        RunnerRepairRefused {
+          slot: slot,
+          cause: RemoteEvidenceRefused {
+            reason: "reach refused without reason payload" as NonEmptyStr,
+          },
         }
     }
   } else if !restart_cooldown_elapsed(last_restart_at: snap.last_restart_at, act_at: act_at) {
@@ -308,23 +419,65 @@ fn decide_runner_connectivity_action(
       slot: slot,
       cause: RestartCooldownActive { seconds_remaining: runner_connectivity_restart_cooldown_seconds },
     }
-  } else if !remote_registration_needs_repair(reg: prior.remote.registration) {
+  } else if !watchdog_replace_predicate_holds(
+    remote: watchdog.remote,
+    broker: watchdog.broker,
+    worker: watchdog.worker,
+    registration_grace_elapsed: watchdog.registration_grace_elapsed,
+  ) {
     RunnerRepairRefused {
       slot: slot,
-      cause: ConditionNotPersistentAcrossReobservation,
+      cause: BrokerProgressStillRecent { silence_seconds: silence_seconds },
     }
+  } else if !match remote_observation_registration(obs: prior.remote) {
+         Present { value: reg } => remote_registration_needs_repair(reg: reg)
+         Absent => false
+       } {
+    RunnerRepairRefused { slot: slot, cause: ConditionNotPersistentAcrossReobservation }
   } else if !allow_replace {
-    RunnerRepairRefused {
-      slot: slot,
-      cause: CanaryAwaitingVerification,
-    }
+    RunnerRepairRefused { slot: slot, cause: CanaryAwaitingVerification }
   } else {
-    RunnerIncarnationReplace {
-      slot: slot,
-      from: snap.local.incarnation,
-      cause: replacement_cause_for_remote(reg: snap.remote.registration),
+    match remote_evidence_registration(ev: snap.remote.evidence) {
+      Present { value: reg } =>
+        RunnerIncarnationReplace {
+          slot: slot,
+          from: snap.local.incarnation,
+          cause: replacement_cause_for_watchdog(reg: reg, silence_seconds: silence_seconds),
+        }
+      Absent =>
+        RunnerRepairRefused {
+          slot: slot,
+          cause: RemoteEvidenceUnobserved {
+            reason: "wedged replace without registration payload" as NonEmptyStr,
+          },
+        }
     }
   }
+}
+
+fn decide_runner_connectivity_action_legacy(
+  snap: RunnerSlotConnectivitySnapshot,
+  prior: RunnerSlotConnectivitySnapshot,
+  act_at: Timestamp,
+  reach: HostReachAdmission,
+  allow_replace: Bool,
+) -> RunnerConnectivityAction {
+  decide_runner_connectivity_action(
+    snap: snap,
+    prior: prior,
+    watchdog: RunnerWatchdogInputs {
+      remote: snap.remote.evidence,
+      broker: BrokerProgressSilent {
+        silence_seconds: runner_broker_progress_silence_bound_seconds,
+        grade: ObservedEvidence,
+      },
+      worker: RunnerWorkerAbsent { grade: ObservedEvidence },
+      registration_grace_elapsed: true,
+      reach: reach,
+    },
+    act_at: act_at,
+    allow_replace: allow_replace,
+  )
 }
 
 fn action_is_replace(action: RunnerConnectivityAction) -> Bool {
@@ -373,7 +526,7 @@ fn plan_slot_connectivity_action(
   canary_slot: RunnerSlotIdentity,
   canary_verified: Bool,
 ) -> RunnerConnectivityAction {
-  decide_runner_connectivity_action(
+  decide_runner_connectivity_action_legacy(
     snap: snap,
     prior: prior,
     act_at: act_at,
@@ -405,35 +558,43 @@ fn verify_incarnation_replace_postcondition(
       reason: "successor local process not active after restart" as NonEmptyStr,
     }
   } else {
-    match after_remote.registration {
-      RunnerRemoteOnline { runner_name: name, labels: labels } =>
-        if labels == expected_labels {
-          ReplaceVerified {
-            slot: slot,
-            prior: prior,
-            successor: after_local.incarnation,
-            remote: RunnerRemoteOnline { runner_name: name, labels: labels },
-          }
-        } else {
-          ReplacePostconditionFailed {
-            slot: slot,
-            reason: "remote registration online but labels do not match intent" as NonEmptyStr,
-          }
+    match remote_evidence_registration(ev: after_remote.evidence) {
+      Present { value: reg } =>
+        match reg {
+          RunnerRemoteOnline { runner_name: name, labels: labels } =>
+            if labels == expected_labels {
+              ReplaceVerified {
+                slot: slot,
+                prior: prior,
+                successor: after_local.incarnation,
+                remote: RunnerRemoteOnline { runner_name: name, labels: labels },
+              }
+            } else {
+              ReplacePostconditionFailed {
+                slot: slot,
+                reason: "remote registration online but labels do not match intent" as NonEmptyStr,
+              }
+            }
+          RunnerRemoteOffline =>
+            ReplacePostconditionFailed {
+              slot: slot,
+              reason: "remote registration still offline after restart" as NonEmptyStr,
+            }
+          RunnerRemoteAbsent =>
+            ReplacePostconditionFailed {
+              slot: slot,
+              reason: "remote registration still absent after restart" as NonEmptyStr,
+            }
+          RunnerRemoteBusy { detail: _ } =>
+            ReplacePostconditionFailed {
+              slot: slot,
+              reason: "remote registration busy after restart" as NonEmptyStr,
+            }
         }
-      RunnerRemoteOffline =>
+      Absent =>
         ReplacePostconditionFailed {
           slot: slot,
-          reason: "remote registration still offline after restart" as NonEmptyStr,
-        }
-      RunnerRemoteAbsent =>
-        ReplacePostconditionFailed {
-          slot: slot,
-          reason: "remote registration still absent after restart" as NonEmptyStr,
-        }
-      RunnerRemoteBusy { detail: _ } =>
-        ReplacePostconditionFailed {
-          slot: slot,
-          reason: "remote registration busy after restart" as NonEmptyStr,
+          reason: "remote registration unobserved after restart" as NonEmptyStr,
         }
     }
   }

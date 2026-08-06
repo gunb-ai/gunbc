@@ -5,6 +5,11 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import gunbc.runner_broker_progress_watchdog {
+  RemoteRegistrationEvidence,
+  RemoteRegistrationObserved,
+  ObservedEvidence,
+}
 import gunbc.runner_connectivity_recovery {
   RunnerLocalIncarnation,
   RunnerLocalObservation,
@@ -30,7 +35,7 @@ import gunbc.runner_connectivity_recovery {
   ReplaceVerified,
   ReplacePostconditionFailed,
   process_identity_eq,
-  decide_runner_connectivity_action,
+  decide_runner_connectivity_action_legacy,
   plan_slot_connectivity_action,
   classify_control_plane_standing,
   verify_incarnation_replace_postcondition,
@@ -67,6 +72,33 @@ fn fixture_labels() -> List<String> {
   ["self-hosted", "linux", "arm64", "gunbc-heavy"]
 }
 
+fn remote_offline_evidence() -> RemoteRegistrationEvidence {
+  RemoteRegistrationObserved {
+    registration: RunnerRemoteOffline,
+    registration_id: "",
+    grade: ObservedEvidence,
+  }
+}
+
+fn remote_online_evidence(labels: List<String>) -> RemoteRegistrationEvidence {
+  RemoteRegistrationObserved {
+    registration: RunnerRemoteOnline {
+      runner_name: "actions-runner@srv1-01.service" as NonEmptyStr,
+      labels: labels,
+    },
+    registration_id: "reg-1",
+    grade: ObservedEvidence,
+  }
+}
+
+fn remote_busy_evidence() -> RemoteRegistrationEvidence {
+  RemoteRegistrationObserved {
+    registration: RunnerRemoteBusy { detail: "job assigned" as NonEmptyStr },
+    registration_id: "",
+    grade: ObservedEvidence,
+  }
+}
+
 fn wedged_snapshot(act_at: Timestamp) -> RunnerSlotConnectivitySnapshot {
   let slot = fixture_slot(host: operator_host_srv1, index: 1)
   let inc = fixture_incarnation(slot: slot, pid: 4242, start: "80000000")
@@ -78,7 +110,7 @@ fn wedged_snapshot(act_at: Timestamp) -> RunnerSlotConnectivitySnapshot {
       observed_at: act_at,
     },
     remote: RunnerRemoteObservation {
-      registration: RunnerRemoteOffline,
+      evidence: remote_offline_evidence(),
       observed_at: act_at,
       control_plane_error_burst: false,
     },
@@ -98,10 +130,7 @@ fn connected_snapshot(act_at: Timestamp, pid: Int, start: String) -> RunnerSlotC
       observed_at: act_at,
     },
     remote: RunnerRemoteObservation {
-      registration: RunnerRemoteOnline {
-        runner_name: "actions-runner@srv1-01.service" as NonEmptyStr,
-        labels: fixture_labels(),
-      },
+      evidence: remote_online_evidence(labels: fixture_labels()),
       observed_at: act_at,
       control_plane_error_burst: false,
     },
@@ -113,7 +142,7 @@ fn connected_snapshot(act_at: Timestamp, pid: Int, start: String) -> RunnerSlotC
 test fn wedged_slot_requests_incarnation_replace() -> Bool {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let snap = wedged_snapshot(act_at: act)
-  match decide_runner_connectivity_action(
+  match decide_runner_connectivity_action_legacy(
     snap: snap,
     prior: snap,
     act_at: act,
@@ -130,7 +159,7 @@ test fn connected_slot_is_noop() -> Bool {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let snap = connected_snapshot(act_at: act, pid: 5000, start: "90000000")
   action_is_noop(
-    action: decide_runner_connectivity_action(
+    action: decide_runner_connectivity_action_legacy(
       snap: snap,
       prior: snap,
       act_at: act,
@@ -148,14 +177,14 @@ test fn remotely_busy_slot_refuses_restart() -> Bool {
     slot: slot,
     local: RunnerLocalObservation { incarnation: inc, systemd_active: true, observed_at: act },
     remote: RunnerRemoteObservation {
-      registration: RunnerRemoteBusy { detail: "job assigned" as NonEmptyStr },
+      evidence: remote_busy_evidence(),
       observed_at: act,
       control_plane_error_burst: false,
     },
     confirmed_at: act,
     last_restart_at: Absent,
   }
-  match decide_runner_connectivity_action(
+  match decide_runner_connectivity_action_legacy(
     snap: snap,
     prior: snap,
     act_at: act,
@@ -170,7 +199,7 @@ test fn remotely_busy_slot_refuses_restart() -> Bool {
 
 test fn stale_observation_refuses_restart() -> Bool {
   let snap = wedged_snapshot(act_at: act_ts(s: "2026-08-06T20:00:00Z"))
-  match decide_runner_connectivity_action(
+  match decide_runner_connectivity_action_legacy(
     snap: snap,
     prior: snap,
     act_at: act_ts(s: "2026-08-06T20:05:00Z"),
@@ -236,14 +265,14 @@ test fn srv3_reach_refused_while_srv1_continues() -> Bool {
       observed_at: act,
     },
     remote: RunnerRemoteObservation {
-      registration: RunnerRemoteOffline,
+      evidence: remote_offline_evidence(),
       observed_at: act,
       control_plane_error_burst: false,
     },
     confirmed_at: act,
     last_restart_at: Absent,
   }
-  match decide_runner_connectivity_action(
+  match decide_runner_connectivity_action_legacy(
     snap: srv3,
     prior: srv3,
     act_at: act,
@@ -255,7 +284,7 @@ test fn srv3_reach_refused_while_srv1_continues() -> Bool {
     RunnerConnectedNoop { local: _, remote: _ } => false
   }
     && action_is_replace(
-         action: decide_runner_connectivity_action(
+         action: decide_runner_connectivity_action_legacy(
            snap: srv1,
            prior: srv1,
            act_at: act,
@@ -275,10 +304,7 @@ test fn postcondition_verifies_new_incarnation_and_remote_online() -> Bool {
     observed_at: act,
   }
   let after_remote = RunnerRemoteObservation {
-    registration: RunnerRemoteOnline {
-      runner_name: "actions-runner@srv1-01.service" as NonEmptyStr,
-      labels: fixture_labels(),
-    },
+    evidence: remote_online_evidence(labels: fixture_labels()),
     observed_at: act,
     control_plane_error_burst: false,
   }
@@ -304,10 +330,7 @@ test fn postcondition_fails_when_prior_process_survives() -> Bool {
     observed_at: act,
   }
   let after_remote = RunnerRemoteObservation {
-    registration: RunnerRemoteOnline {
-      runner_name: "actions-runner@srv1-01.service" as NonEmptyStr,
-      labels: fixture_labels(),
-    },
+    evidence: remote_online_evidence(labels: fixture_labels()),
     observed_at: act,
     control_plane_error_burst: false,
   }
@@ -327,7 +350,7 @@ test fn rerun_after_successful_replace_is_noop() -> Bool {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let snap = connected_snapshot(act_at: act, pid: 5151, start: "91000000")
   action_is_noop(
-    action: decide_runner_connectivity_action(
+    action: decide_runner_connectivity_action_legacy(
       snap: snap,
       prior: snap,
       act_at: act,
@@ -344,7 +367,7 @@ test fn control_plane_burst_classifies_degraded() -> Bool {
     slot: snap.slot,
     local: snap.local,
     remote: RunnerRemoteObservation {
-      registration: RunnerRemoteOffline,
+      evidence: remote_offline_evidence(),
       observed_at: act,
       control_plane_error_burst: true,
     },
