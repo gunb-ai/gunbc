@@ -3,6 +3,16 @@ module extdeps.llm.claude_agent_sdk_stream
 import std.types { String, List, Bool, NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray }
+import v2.std.algebra { list_snoc_item }
 
 data claude_agent_sdk_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -18,10 +28,65 @@ data claude_agent_sdk_stream_authority_note: String = "Upstream @anthropic-ai/cl
 data claude_stream_event_type_control_response: String = "control_response"
 data claude_stream_event_type_rate_limit_event: String = "rate_limit_event"
 
+data claude_sdk_parser_drop_receipt_path: String = "docs/probes/claude_paired_entitlement_probe/claude_sdk_parser_drop_receipt.json"
+
+type JsonStringListDecode
+  = JsonStringListOk { values: List<String> }
+  | JsonStringListFail
+
 fn list_contains_string(items: List<String>, needle: String) -> Bool {
   fold(items, init: false, f: fn(found, item) {
     if found { true } else { item == needle }
   })
+}
+
+fn decode_json_string_array(v: JsonValue) -> JsonStringListDecode {
+  match v {
+    JsonArray { elements: elems } =>
+      fold(elems, init: JsonStringListOk { values: [] }, f: fn(acc, head) {
+        match acc {
+          JsonStringListFail => JsonStringListFail
+          JsonStringListOk { values: vs } =>
+            match head {
+              JsonString { value: s } =>
+                JsonStringListOk { values: list_snoc_item(xs: vs, item: s) }
+              _ => JsonStringListFail
+            }
+        }
+      })
+    _ => JsonStringListFail
+  }
+}
+
+fn parser_drop_receipt_member_array(v: JsonValue, key: String) -> JsonValue {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: found } => found
+    JsonMemberAbsent => JsonArray { elements: [] }
+    JsonMemberDuplicated { count: _ } => JsonArray { elements: [] }
+    JsonMemberNotAnObject => JsonArray { elements: [] }
+  }
+}
+
+fn claude_sdk_parser_drop_receipt_holds(text: String) -> Bool {
+  match parse_json(s: text) {
+    Absent => false
+    Present { value: root } =>
+      let comparison = parser_drop_receipt_member_array(v: root, key: "comparison")
+      let raw_types_v = parser_drop_receipt_member_array(v: comparison, key: "sdk_subprocess_raw_event_types")
+      let parsed_types_v = parser_drop_receipt_member_array(v: comparison, key: "sdk_parsed_event_types")
+      match decode_json_string_array(v: raw_types_v) {
+        JsonStringListOk { values: raw_types } =>
+          match decode_json_string_array(v: parsed_types_v) {
+            JsonStringListOk { values: parsed_types } =>
+              claude_sdk_control_response_parser_drop_holds(
+                subprocess_raw_types: raw_types,
+                sdk_parsed_types: parsed_types
+              )
+            JsonStringListFail => false
+          }
+        JsonStringListFail => false
+      }
+  }
 }
 
 fn claude_sdk_control_response_parser_drop_holds(
