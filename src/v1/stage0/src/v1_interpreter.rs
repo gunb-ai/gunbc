@@ -6621,6 +6621,64 @@ fn compile_diagnostic_census_value(
     }
 }
 
+fn unlisted_import_binding_source_value(
+    source: crate::cli_run::UnlistedImportBindingSource,
+    ctx: &InterpContext,
+) -> Value {
+    let variant = match source {
+        crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
+        crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
+        crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
+    };
+    Value::Variant {
+        type_name: ctx.sym("UnlistedImportBindingSource"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(vec![]),
+    }
+}
+
+fn declared_import_closure_binding_value(
+    observation: crate::cli_run::DeclaredImportClosureBindingObservation,
+    ctx: &InterpContext,
+) -> Value {
+    match observation {
+        crate::cli_run::DeclaredImportClosureBindingObservation::Observed(observed) => {
+            let binding_source = match observed.binding_source {
+                Some(source) => {
+                    optional_present(unlisted_import_binding_source_value(source, ctx), ctx)
+                }
+                None => optional_absent(ctx),
+            };
+            Value::Variant {
+                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
+                variant_name: ctx.sym("BindingObserved"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("binding_source"), binding_source),
+                    (
+                        ctx.sym("definer_module"),
+                        Value::Str(observed.definer_module.unwrap_or_default()),
+                    ),
+                    (
+                        ctx.sym("symbol_resolves"),
+                        Value::Bool(observed.symbol_resolves),
+                    ),
+                    (
+                        ctx.sym("blocking_hard_diagnostic_count"),
+                        Value::Int(observed.blocking_hard_diagnostic_count),
+                    ),
+                ])),
+            }
+        }
+        crate::cli_run::DeclaredImportClosureBindingObservation::NotRunnable(cause) => {
+            Value::Variant {
+                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
+                variant_name: ctx.sym("BindingNotRunnable"),
+                fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), Value::Str(cause))])),
+            }
+        }
+    }
+}
+
 fn argv_materialization_value(
     result: Result<Vec<String>, ArgvRefusalCause>,
     path: &str,
@@ -11463,6 +11521,26 @@ macro_rules! v1_builtin_arms {
                     $ctx,
                 )))
             },
+
+            arm "free_call.observe_declared_import_closure_symbol_binding" { "observe_declared_import_closure_symbol_binding" } => {
+                let pool_roots = expect_str_list($positional.first().copied(), $name)?;
+                let entry_path = expect_str($positional.get(1).copied(), $name)?;
+                let consumer_module = expect_str($positional.get(2).copied(), $name)?;
+                let symbol = expect_str($positional.get(3).copied(), $name)?;
+                Ok(Some(declared_import_closure_binding_value(
+                    crate::cli_run::observe_declared_import_closure_symbol_binding(
+                        &pool_roots,
+                        &entry_path,
+                        &consumer_module,
+                        &symbol,
+                    ),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.class_b_import_closure_gate_not_affected_skip" { "class_b_import_closure_gate_not_affected_skip" } => Ok(Some(Value::Bool(
+                crate::cli_run::class_b_import_closure_gate_not_affected_skip_for_ci(),
+            ))),
 
             arm "free_call.witness_layer_roots_compile_clean_check" { "witness_layer_roots_compile_clean_check" } => Ok(Some(Value::Bool(
                 crate::cli_run::witness_layer_roots_compile_clean_check(),
