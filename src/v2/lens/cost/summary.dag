@@ -1,29 +1,12 @@
 module v2.lens.cost.summary
 
-import v2.lens.cost.expr {
-  CostExpr,
-  cost_const,
-  cost_expr_par,
-  cost_expr_seq
-}
-import v2.std.nat { Succ, Zero }
+import v2.lens.cost.expr { CostExpr, cost_expr_par, cost_expr_seq }
 
 data complexity_summary_pr1_scope_note: String = "PR1 carrier: work and span only — output_sizes, peak_space, effect_demand, and certainty deferred to later C2 slices. Span discrimination at this layer is STRUCTURAL: summary_sequential emits CostAdd while summary_parallel emits CostMax over the same operands; sequential.span != parallel.span compares constructors, not evaluated magnitudes. The semantic reading (sequential span 2 versus parallel span 1 on equal unit work) arrives when Lane A concrete CostExpr evaluation lands — not claimed here."
 
 type ComplexitySummary {
   work: CostExpr
   span: CostExpr
-}
-
-fn unit_cost_expr() -> CostExpr {
-  cost_const(value: Succ { prev: Zero })
-}
-
-fn unit_complexity_summary() -> ComplexitySummary {
-  ComplexitySummary {
-    work: unit_cost_expr(),
-    span: unit_cost_expr()
-  }
 }
 
 fn summary_sequential(left: ComplexitySummary, right: ComplexitySummary) -> ComplexitySummary {
@@ -38,24 +21,4 @@ fn summary_parallel(left: ComplexitySummary, right: ComplexitySummary) -> Comple
     work: cost_expr_seq(a: left.work, b: right.work),
     span: cost_expr_par(a: left.span, b: right.span)
   }
-}
-
-fn triple_sequential_shape() -> ComplexitySummary {
-  summary_sequential(
-    left: unit_complexity_summary(),
-    right: summary_sequential(
-      left: unit_complexity_summary(),
-      right: unit_complexity_summary()
-    )
-  )
-}
-
-fn triple_parallel_shape() -> ComplexitySummary {
-  summary_parallel(
-    left: unit_complexity_summary(),
-    right: summary_parallel(
-      left: unit_complexity_summary(),
-      right: unit_complexity_summary()
-    )
-  )
 }

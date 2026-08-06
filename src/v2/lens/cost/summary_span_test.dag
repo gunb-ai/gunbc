@@ -1,18 +1,47 @@
 module v2.test.lens_cost.summary_span
 
-import v2.lens.cost.expr { CostAdd, CostConst, CostExpr, CostMax }
+import v2.lens.cost.expr { CostAdd, CostConst, CostExpr, CostMax, cost_const }
 import v2.lens.cost.summary {
+  ComplexitySummary,
   summary_parallel,
-  summary_sequential,
-  triple_parallel_shape,
-  triple_sequential_shape,
-  unit_complexity_summary
+  summary_sequential
 }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.nat { Succ, Zero }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn unit_cost_expr() -> CostExpr {
+  cost_const(value: Succ { prev: Zero })
+}
+
+fn unit_complexity_summary() -> ComplexitySummary {
+  ComplexitySummary {
+    work: unit_cost_expr(),
+    span: unit_cost_expr()
+  }
+}
+
+fn triple_sequential_shape() -> ComplexitySummary {
+  summary_sequential(
+    left: unit_complexity_summary(),
+    right: summary_sequential(
+      left: unit_complexity_summary(),
+      right: unit_complexity_summary()
+    )
+  )
+}
+
+fn triple_parallel_shape() -> ComplexitySummary {
+  summary_parallel(
+    left: unit_complexity_summary(),
+    right: summary_parallel(
+      left: unit_complexity_summary(),
+      right: unit_complexity_summary()
+    )
+  )
+}
 
 fn is_pair_of_unit_costs(expr: CostExpr) -> Bool {
   match expr {
