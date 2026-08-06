@@ -1,0 +1,313 @@
+module gunbc.roadmap_instrument_tuner
+
+import std.types { Int, String, Bool, List }
+import std.markup { Fragment, Element, Attribute, attr }
+import gunbc.site.markup { txt, el, el_class, el_attrs }
+import extdeps.languages.css.properties {
+  Display, Gap, Padding, Border, BorderRadius, Background, Color, Cursor, FontFamily, FontSize,
+}
+import extdeps.languages.css.selectors { SelectorSubject, ClassSelector }
+import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl, serialize_rules }
+import gunbc.design.theme { role_var, SurfaceRole, BorderRole, TextRole, FocusRole }
+import gunbc.design.scale { scale_var, space_2, space_4, space_6, radius_3, text_12, font_mono }
+import gunbc.roadmap_component {
+  instrument_tuner_asset_path, instrument_tuner_root_class,
+  instrument_subject_class, instrument_reading_class,
+  instrument_depth_btn_class, instrument_mode_btn_class,
+}
+import gunbc.design.instrument_camera {
+  ProgramCamera, ProgramDepth, ProgramMode,
+  DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence,
+  ModeStatus, ModeRemaining, ModeWhy,
+  program_depth_key, program_mode_key, program_depth_index,
+  camera_initial, camera_wire, focus_finish_line,
+  FocusSubject, NoSubjectSelected,
+}
+import gunbc.design.instrument_audition {
+  ProgramReading, ReadingNoSubject, ReadingProgramShape, ReadingOutcomeStatus,
+  ReadingOutcomeRemaining, ReadingConstraint, ReadingNoConstraint, ReadingFront,
+  ReadingUnavailable, read_camera,
+}
+import gunbc.roadmap_instrument_sandbox {
+  instrument_css, instrument_refusal_class,
+  instrument_row_class, live_program_view_result, LiveViewDerived, LiveViewRefused,
+  cell, row, note,
+}
+import gunbc.roadmap_program_view { V1DeletionProgramView, RemainingShape }
+import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_line_key, V1FinishLineSpec }
+
+data instrument_tuner_note: String = "THE OPERABLE V1-DELETION TUNER at /sandbox/instrument/tuner — the declared follow-on to the static study. The study at /sandbox/instrument renders one server-side camera state with no client program; this page loads the modeled client asset from gunbc.roadmap_component so the camera persists in localStorage, finish-line selection follows the production roadmap's parity rule, wheel and arrow keys cross exactly one depth detent, and the depth/mode controls actually drive the pre-rendered reading rows. The world is still V0's live derived program view; only the camera is local instrument state."
+
+fn cls(name: String) -> SelectorSubject {
+  ClassSelector { name: name }
+}
+
+fn tuner_control_rules() -> List<BuildRule> {
+  [
+    StaticRule {
+      selector: cls(name: instrument_depth_btn_class),
+      decls: [
+        decl(prop: FontFamily, value: scale_var(t: font_mono)),
+        decl(prop: FontSize, value: scale_var(t: text_12)),
+        decl(prop: Padding, value: scale_var(t: space_4)),
+        decl(prop: Border, value: join(["1px solid ", role_var(r: BorderRole)], "")),
+        decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+        decl(prop: Background, value: role_var(r: SurfaceRole)),
+        decl(prop: Color, value: role_var(r: TextRole)),
+        decl(prop: Cursor, value: "pointer"),
+      ],
+    },
+    StaticRule {
+      selector: cls(name: join([instrument_depth_btn_class, ".is-active"], "")),
+      decls: [
+        decl(prop: Border, value: join(["1px solid ", role_var(r: FocusRole)], "")),
+      ],
+    },
+    StaticRule {
+      selector: cls(name: instrument_mode_btn_class),
+      decls: [
+        decl(prop: FontFamily, value: scale_var(t: font_mono)),
+        decl(prop: FontSize, value: scale_var(t: text_12)),
+        decl(prop: Padding, value: scale_var(t: space_4)),
+        decl(prop: Border, value: join(["1px solid ", role_var(r: BorderRole)], "")),
+        decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+        decl(prop: Background, value: role_var(r: SurfaceRole)),
+        decl(prop: Color, value: role_var(r: TextRole)),
+        decl(prop: Cursor, value: "pointer"),
+      ],
+    },
+    StaticRule {
+      selector: cls(name: join([instrument_mode_btn_class, ".is-active"], "")),
+      decls: [
+        decl(prop: Border, value: join(["1px solid ", role_var(r: FocusRole)], "")),
+      ],
+    },
+    StaticRule {
+      selector: cls(name: instrument_subject_class),
+      decls: [
+        decl(prop: Display, value: "flex"),
+        decl(prop: Gap, value: scale_var(t: space_6)),
+        decl(prop: Padding, value: scale_var(t: space_2)),
+        decl(prop: Cursor, value: "pointer"),
+      ],
+    },
+    StaticRule {
+      selector: cls(name: join([instrument_subject_class, ".instrument-subject-selected"], "")),
+      decls: [
+        decl(prop: Border, value: join(["1px solid ", role_var(r: FocusRole)], "")),
+      ],
+    },
+  ]
+}
+
+fn instrument_tuner_css() -> String {
+  join([instrument_css(), serialize_rules(rules: tuner_control_rules())], "\n")
+}
+
+fn program_depths() -> List<ProgramDepth> {
+  [DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence]
+}
+
+fn program_modes() -> List<ProgramMode> {
+  [ModeStatus, ModeRemaining, ModeWhy]
+}
+
+fn all_focus_subjects() -> List<FocusSubject> {
+  concat(
+    [NoSubjectSelected],
+    v1_exit_finish_lines() |> map(s => focus_finish_line(l: s.line)),
+  )
+}
+
+fn cameras_for_focus(f: FocusSubject) -> List<ProgramCamera> {
+  flat_map(program_depths(), d =>
+    map(program_modes(), m => ProgramCamera { depth: d, mode: m, focus: f }))
+}
+
+fn all_cameras() -> List<ProgramCamera> {
+  flat_map(all_focus_subjects(), f => cameras_for_focus(f: f))
+}
+
+fn remaining_text(r: RemainingShape) -> String {
+  join([
+    "depth ", to_string(r.sequential_depth),
+    " · open fronts ", to_string(r.open_fronts),
+    " · startable ", to_string(r.startable_now),
+    " · in flight ", to_string(r.in_flight),
+    " · dependency-held ", to_string(r.dependency_held),
+    " · contract-held ", to_string(r.contract_held),
+  ], "")
+}
+
+fn render_reading(label: String, r: ProgramReading) -> Fragment {
+  match r {
+    ReadingNoSubject => row(cells: [ cell(s: label), cell(s: "no subject selected") ])
+    ReadingProgramShape { remaining } =>
+      row(cells: [ cell(s: label), cell(s: "whole program"), cell(s: remaining_text(r: remaining)) ])
+    ReadingOutcomeStatus { name, node, accepted, open_fronts } => row(cells: [
+      cell(s: label),
+      cell(s: name),
+      cell(s: node),
+      cell(s: if accepted { "accepted" } else { "not accepted" }),
+      cell(s: join([to_string(open_fronts), " open fronts"], "")),
+    ])
+    ReadingOutcomeRemaining { name, remaining } =>
+      row(cells: [ cell(s: label), cell(s: name), cell(s: remaining_text(r: remaining)) ])
+    ReadingConstraint { subject, kind, headline, in_flight, depth } => row(cells: [
+      cell(s: label),
+      cell(s: join([kind, " constraint"], "")),
+      cell(s: subject),
+      cell(s: headline),
+      cell(s: if in_flight { "work observed" } else { "no work observed" }),
+    ])
+    ReadingNoConstraint { subject_key, reason } =>
+      row(cells: [ cell(s: label), cell(s: subject_key), cell(s: reason) ])
+    ReadingFront { key, name, closed, gates_accepted, gates_total } => row(cells: [
+      cell(s: label),
+      cell(s: name),
+      cell(s: join([to_string(gates_accepted), " of ", to_string(gates_total), " gates accepted"], "")),
+      cell(s: if closed { "closed" } else { "open" }),
+    ])
+    ReadingUnavailable { mode, subject_key, cause } =>
+      el_class("div", instrument_refusal_class, [
+        txt(join([label, " · ", subject_key, " — unavailable: ", cause], "")),
+      ])
+  }
+}
+
+fn reading_row(view: V1DeletionProgramView, camera: ProgramCamera) -> Fragment {
+  let key = camera_wire(c: camera)
+  let label = join([program_depth_key(d: camera.depth), " / ", program_mode_key(m: camera.mode)], "")
+  let initial = camera_wire(c: camera_initial) == key
+  el_attrs("div", concat(
+    [
+      attr(name: "class", value: instrument_reading_class),
+      attr(name: "data-reading-key", value: key),
+    ],
+    if initial { [] } else { [ attr(name: "hidden", value: "") ] },
+  ), [
+    render_reading(
+      label: label,
+      r: read_camera(camera: camera, view: view),
+    ),
+  ])
+}
+
+fn depth_button(d: ProgramDepth) -> Fragment {
+  el_attrs("button", [
+    attr(name: "type", value: "button"),
+    attr(name: "class", value: instrument_depth_btn_class),
+    attr(name: "data-depth", value: program_depth_key(d: d)),
+  ], [ txt(join([to_string(program_depth_index(d: d)), " · ", program_depth_key(d: d)], "")) ])
+}
+
+fn mode_button(m: ProgramMode) -> Fragment {
+  el_attrs("button", [
+    attr(name: "type", value: "button"),
+    attr(name: "class", value: instrument_mode_btn_class),
+    attr(name: "data-mode", value: program_mode_key(m: m)),
+  ], [ txt(program_mode_key(m: m)) ])
+}
+
+fn subject_row(spec: V1FinishLineSpec) -> Fragment {
+  let key = v1_finish_line_key(l: spec.line)
+  el_attrs("li", [
+    attr(name: "class", value: instrument_subject_class),
+    attr(name: "tabindex", value: "0"),
+    attr(name: "data-subject-key", value: key),
+  ], [
+    cell(s: spec.name),
+    cell(s: key),
+    cell(s: spec.claim),
+  ])
+}
+
+fn controls_section() -> Fragment {
+  el("section", [
+    el("h2", [ txt("camera controls") ]),
+    note(s: "Wheel and arrow keys cross exactly one detent. Depth and mode buttons set the camera directly; the reading below follows."),
+    el_class("div", instrument_row_class, map(program_depths(), d => depth_button(d: d))),
+    el_class("div", instrument_row_class, map(program_modes(), m => mode_button(m: m))),
+  ])
+}
+
+fn subjects_section() -> Fragment {
+  el("section", [
+    el("h2", [ txt("finish lines") ]),
+    note(s: "Selection follows the production roadmap: click the row, keyboard focus with focus-visible, re-select to clear, Escape clears. Controls on the row do not move selection."),
+    el("ul", map(v1_exit_finish_lines(), s => subject_row(spec: s))),
+  ])
+}
+
+fn readings_section(view: V1DeletionProgramView) -> Fragment {
+  el("section", [
+    el("h2", [ txt("reading") ]),
+    note(s: "One row per camera state, pre-rendered from the live derived world. The client program reveals the row that matches the persistent camera."),
+    el("div", map(all_cameras(), c => reading_row(view: view, camera: c))),
+  ])
+}
+
+fn tuner_main(view: V1DeletionProgramView) -> Fragment {
+  el_class("main", instrument_tuner_root_class, [
+    controls_section(),
+    subjects_section(),
+    readings_section(view: view),
+  ])
+}
+
+fn tuner_refusal_page(causes: List<String>) -> Fragment {
+  el_class("main", instrument_tuner_root_class, concat(
+    [ el_class("div", instrument_refusal_class, [ txt("program view refused — the tuner draws nothing rather than a smaller program") ]) ],
+    map(causes, c => el_class("div", instrument_refusal_class, [ txt(c) ])),
+  ))
+}
+
+fn instrument_tuner_page() -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [ attr(name: "lang", value: "en") ],
+    children: [
+      el("head", [
+        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8") ], children: [] },
+        Element {
+          tag: "meta",
+          attributes: [
+            attr(name: "name", value: "viewport"),
+            attr(name: "content", value: "width=device-width, initial-scale=1"),
+          ],
+          children: [],
+        },
+        el("style", [ txt(instrument_tuner_css()) ]),
+        el("title", [ txt("gunbc — v1-deletion tuner") ]),
+      ]),
+      el("body", [
+        el("header", [
+          el_class("div", "header-inner", [
+            el_class("span", "wordmark", [ txt("gunbc") ]),
+            el("h1", [ txt("v1-deletion tuner") ]),
+            el_attrs("button", [
+              attr(name: "class", value: "sound-toggle"),
+              attr(name: "type", value: "button"),
+            ], [ txt("sound") ]),
+            el_attrs("button", [
+              attr(name: "class", value: "theme-toggle"),
+              attr(name: "type", value: "button"),
+            ], [ txt("theme · auto") ]),
+          ]),
+        ]),
+        match live_program_view_result() {
+          LiveViewRefused { causes } => tuner_refusal_page(causes: causes)
+          LiveViewDerived { view } => tuner_main(view: view)
+        },
+        Element {
+          tag: "script",
+          attributes: [
+            attr(name: "src", value: instrument_tuner_asset_path),
+            attr(name: "defer", value: ""),
+          ],
+          children: [],
+        },
+      ]),
+    ],
+  }
+}

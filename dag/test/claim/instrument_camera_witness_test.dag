@@ -12,6 +12,7 @@ import gunbc.design.instrument_camera {
   focus_finish_line, focus_subject_eq,
   ProgramCamera, camera_initial, camera_step_depth, camera_set_mode, camera_select,
   camera_preserves_subject_across_depth, camera_preserves_subject_across_mode,
+  camera_wire, camera_from_wire, camera_wire_valid, camera_storage_key,
 }
 import gunbc.design.instrument_projection {
   SubjectPlacement, RefusalAggregate, NoActiveRefusal, ActiveRefusals, refusal_count,
@@ -160,6 +161,19 @@ fn witness_red_the_projection_never_spends_two_focal_budgets() -> Bool {
   }
 }
 
+fn witness_camera_wire_round_trips() -> Bool {
+  let c = camera_on(l: ProductsV1Free)
+  camera_wire_valid(w: camera_wire(c: c))
+    && camera_wire(c: camera_from_wire(w: camera_wire(c: c))) == camera_wire(c: c)
+    && focus_subject_key(f: camera_from_wire(w: camera_wire(c: c)).focus) == "products-v1-free"
+}
+
+fn witness_red_invalid_camera_wire_resets_to_initial() -> Bool {
+  focus_subject_key(f: camera_from_wire(w: "not-a-camera").focus) == "none"
+    && program_depth_key(d: camera_from_wire(w: "not-a-camera").depth) == "program"
+    && camera_storage_key == "gunbc.instrument.camera"
+}
+
 test fn instrument_camera_keystone_holds() -> Bool {
   witness_only_the_authoritative_view_may_write_a_domain_fact()
     && witness_red_no_instrument_owner_may_write_a_domain_fact()
@@ -175,4 +189,6 @@ test fn instrument_camera_keystone_holds() -> Bool {
     && witness_an_active_refusal_is_one_critical_subject_however_many_refuse()
     && witness_critical_interrupts_without_dethroning_the_derived_focal_subject()
     && witness_red_the_projection_never_spends_two_focal_budgets()
+    && witness_camera_wire_round_trips()
+    && witness_red_invalid_camera_wire_resets_to_initial()
 }
