@@ -322,7 +322,7 @@ pub fn namespace_cross_file_provenance_substrate_contract_holds(
 pub fn namespace_cross_file_provenance_closing_contract_holds_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Enrollment seam for row closure, not substrate mechanism. Hardcodes ParserEmbeddedSubstrateEvidence so witness_namespace_cross_file_provenance_closing_contract_holds stays RED until B2 supplies OrdinaryLoadedCompilationClosure — witness_namespace_cross_file_provenance_row_closure_awaits_ordinary_loaded_compilation proves the refusal is honest today.".to_string()
+            "Enrollment seam for row closure, not substrate mechanism. Hardcodes ParserEmbeddedSubstrateEvidence so witness_namespace_cross_file_provenance_closing_contract_holds stays RED until B2 supplies OrdinaryLoadedCompilationClosure — witness_row_closure_awaits_ordinary_loaded_compilation in namespace_cross_file_provenance_contract_witness_test proves the refusal is honest today.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

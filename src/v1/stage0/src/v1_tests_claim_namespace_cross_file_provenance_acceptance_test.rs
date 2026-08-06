@@ -19,7 +19,7 @@ use crate::std_types::Bool::*;
 pub fn namespace_cross_file_provenance_acceptance_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "THE DISCRIMINATING CLOSING VALIDATION for roadmap node namespace-cross-file-provenance. Row closure refuses ParserEmbeddedSubstrateEvidence until B2 lands an ordinary loaded compilation closure observation; the mechanism substrate path is witnessed separately in namespace_reference_derived_closure_production_witness_test. Governed placement: src/v1/tests/claim because production calls parser transport outside witness_layer_roots.".to_string()
+            "THE DISCRIMINATING CLOSING VALIDATION for roadmap node namespace-cross-file-provenance. Row closure refuses ParserEmbeddedSubstrateEvidence until B2 lands an ordinary loaded compilation closure observation; the mechanism substrate path is witnessed separately in namespace_reference_derived_closure_production_witness_test. The executing positive control for rung honesty lives in dag/test/claim/namespace_cross_file_provenance_contract_witness_test.dag (witness_row_closure_awaits_ordinary_loaded_compilation); this file's twin proves the same law on production transport. Governed placement: src/v1/tests/claim because production calls parser transport outside witness_layer_roots.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
