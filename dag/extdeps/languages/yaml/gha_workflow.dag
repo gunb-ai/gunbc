@@ -11,6 +11,7 @@ import extdeps.cron.schedule_model { render_cron_schedule }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, ActionRef,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch, Schedule, MergeGroup,
+  WorkflowRunCompleted, workflow_run_activity_completed,
   DispatchInput, DispatchInputType, InputString, InputBoolean, InputChoice, InputEnvironment,
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed,
   WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone,
@@ -153,6 +154,11 @@ fn workflow_trigger_entry(trigger: WorkflowTrigger) -> YamlKeyValue {
       ]))
     WorkflowCall { inputs: _ } =>
       kv(key: "workflow_call", value: YamlNull)
+    WorkflowRunCompleted { workflows: ws } =>
+      kv(key: "workflow_run", value: yaml_mapping(entries: [
+        kv(key: "workflows", value: string_list_flow(items: ws)),
+        kv(key: "types", value: string_list_flow(items: [workflow_run_activity_completed]))
+      ]))
     MergeGroup =>
       kv(key: "merge_group", value: YamlNull)
   }

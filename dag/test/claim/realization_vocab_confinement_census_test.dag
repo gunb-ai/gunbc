@@ -58,7 +58,7 @@ import v2.lens.realization_vocabulary_containment {
   target_ast_vocab_modules,
   target_ast_vocab_module_prefixes,
   realization_edge_path_prefixes,
-  realization_vocab_exception_paths,
+  realization_vocab_grandfathered_edge_keys,
 }
 import gunbc.guarantee_measurement { MeasurementRevision }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -77,7 +77,7 @@ fn confinement_witness_roster_total() -> Int {
   let exact = count(target_ast_vocab_modules)
   let prefixes = count(target_ast_vocab_module_prefixes)
   let edges = count(realization_edge_path_prefixes)
-  let exceptions = count(realization_vocab_exception_paths())
+  let exceptions = count(realization_vocab_grandfathered_edge_keys())
   exact + prefixes + edges + exceptions
 }
 

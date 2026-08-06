@@ -9073,13 +9073,37 @@ fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
     // (Option<u64>, String); if it ever grows a typed source enum, ground this check on
     // the enum instead of re-parsing its display label (§3, avoid a second representation).
     let degraded = !(source_label.contains("memory.max") || source_label.contains("memory.high"));
-    let cap = budget
-        .map(|b| (b / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize)
-        .unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)
-        .clamp(
-            TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
-            TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
+    // REFUSE rather than widen when no budget is readable (operator ruling 2026-08-05;
+    // authority `dag/gunbc/host_budget_source.dag` `HostBudgetUnreadable`).
+    //
+    // This was `.unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)`: a budget that could not
+    // be computed became the MOST PERMISSIVE cap available — top-as-answer conflated with
+    // top-as-ignorance, the absorbing fallback DESIGN section 5 forbids by name. It is not
+    // hypothetical. It OOM-killed the full witness corpus twice on a macOS dev machine
+    // (exit 137): nothing readable, cap defaults to the ceiling, nothing bounds the resolve,
+    // kernel ends the process. The deficit's frequency was zero by construction, so it never
+    // ranked for fixing, and the cost arrived as a dead process instead of a diagnostic.
+    //
+    // Every platform this runs on now has a modeled source — procfs on Linux, sysctl
+    // hw.memsize on Darwin — so reaching this arm means an unmodeled host, which is exactly
+    // when admitting against an invented bound is least defensible. Panicking here is a hard
+    // stop by design: this runs inside resolution, there is no caller that could honour a
+    // typed refusal without threading Result through the cache seam, and continuing is the
+    // one option ruled out.
+    let Some(budget_bytes) = budget else {
+        panic!(
+            "HostBudgetUnreadable: no modeled host memory source answered ({source_label}). \
+             The typed-module cache cap bounds the memory used to RESOLVE the corpus, so an \
+             unknown budget cannot be defaulted — the previous default was the ceiling, which \
+             OOM-killed this process rather than refusing. Declare one with \
+             GUNBC_MEMORY_BUDGET_BYTES, or model this platform's memory source \
+             (dag/gunbc/host_budget_source.dag)."
         );
+    };
+    let cap = ((budget_bytes / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize).clamp(
+        TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
+        TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
+    );
     (cap, source_label, degraded)
 }
 
@@ -9109,7 +9133,7 @@ fn typed_module_cache_cap(index: &MultiEntryIndex) -> usize {
         let (cap, source, degraded) = typed_module_cache_cap_derivation();
         if degraded {
             eprintln!(
-                "[floor-drain] degraded_budget_source: cap={cap} source={source} (no private cgroup memory.max/memory.high found; falling back to a host-shared signal)"
+                "[floor-drain] degraded_budget_source: cap={cap} source={source} (no private cgroup memory.max/memory.high found)"
             );
         }
         cap
@@ -16511,9 +16535,41 @@ pub fn current_rss_bytes() -> Option<u64> {
     proc_status_kb_field("VmRSS")
 }
 
-/// Peak resident set from `/proc/self/status` VmHWM (high water mark), in bytes.
+/// Peak resident set (high water mark) in bytes, read the PORTABLE way.
+///
+/// Authority: `dag/extdeps/posix/rusage.dag` for the interface, with the unit answered by
+/// `dag/extdeps/linux/rusage.dag` (kibibytes) and `dag/extdeps/darwin/rusage.dag` (bytes).
+///
+/// This used to be `proc_status_kb_field("VmHWM")` — a `/proc/self/status` read, which
+/// exists on exactly one kernel family. That made every consumer of peak RSS Linux-only and
+/// produced `VmHWM unavailable on this host` on macOS, a message read as "this platform
+/// cannot report peak residency". It can: POSIX `getrusage(RUSAGE_SELF)` returns the same
+/// quantity in `ru_maxrss` everywhere, and libc was already a dependency. The procfs read
+/// was a TRANSPORT choice, not a capability limit, and mistaking one for the other is what
+/// made the fact look unobservable.
+///
+/// POSIX deliberately leaves `ru_maxrss`'s unit unspecified, so the conversion is per
+/// implementation and permanent — no release reconciles them. Linux reports kibibytes,
+/// Darwin bytes; the Darwin figure was confirmed by execution (a bare python3 reported
+/// 15417344, which is 14.7 MiB read as bytes and an impossible 14.7 GiB read as kibibytes).
+/// Reading a Linux value as bytes would understate peak residency 1024x, in the direction
+/// that looks survivable.
 pub fn peak_rss_vhwm_bytes() -> Option<u64> {
-    proc_status_kb_field("VmHWM")
+    // SAFETY: `ru` is a live, fully-owned zeroed `rusage`; `getrusage` only writes it.
+    let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+    let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) };
+    if rc != 0 || ru.ru_maxrss <= 0 {
+        return None;
+    }
+    let raw = ru.ru_maxrss as u64;
+    #[cfg(target_os = "macos")]
+    {
+        Some(raw)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Some(raw.saturating_mul(1024))
+    }
 }
 
 /// `memory.events` `high` counter from the process leaf cgroup, when readable.
@@ -16737,7 +16793,23 @@ fn witness_admission_entry_function_keys_from_source(
                 }
             }
             let after = &content[search_from..];
-            let window = &after[..after.len().min(WINDOW)];
+            // WINDOW is a BYTE budget, but `after` is UTF-8: clamping with `min` alone
+            // slices mid-character whenever byte `WINDOW` lands inside a multi-byte char,
+            // and the admission rows this reads are prose that routinely contains one
+            // (em dash, arrow). That panicked the whole floor worker — exit 101, no
+            // terminal receipt — on a row whose reason string simply happened to put an
+            // em dash across byte 400. Every other slice in this function takes its
+            // offset from `find`/`split_once`, which return char boundaries; this fixed
+            // offset was the only unguarded one. Walk down to the nearest boundary so a
+            // long row is truncated rather than fatal.
+            let window_end = {
+                let mut end = after.len().min(WINDOW);
+                while end > 0 && !after.is_char_boundary(end) {
+                    end -= 1;
+                }
+                end
+            };
+            let window = &after[..window_end];
             let trimmed = window.trim_start();
             if !def_sig.is_empty() && trimmed.starts_with(def_sig) {
                 continue;
@@ -35800,6 +35872,48 @@ mod module_path_index_tests {
             vec!["OfflineLocalRecipe", "BinWitnessWet"],
             "classification variant names must project from the row fields"
         );
+    }
+
+    #[test]
+    fn row_scan_survives_a_multibyte_char_straddling_the_window_edge() {
+        // The 400-byte scan window is a BYTE budget over UTF-8 prose. This fixture puts an
+        // em dash so that the window edge falls strictly INSIDE it, which is what made the
+        // slice panic and kill the floor worker (exit 101, no terminal receipt). The pad is
+        // computed rather than eyeballed so the straddle is a property of the fixture, not
+        // of anyone's byte counting: the em dash starts one byte before the edge, so bytes
+        // 399..402 span it and 400 is not a boundary.
+        // `entry:` and `function:` come FIRST, mirroring the real rows: the scanner
+        // deliberately panics when it cannot find `entry:` within the window, and that
+        // refusal is correct behaviour, not the bug under test. Keeping them early isolates
+        // this test to the slice.
+        //
+        // The prose that follows is a long run of em dashes, so every byte in the window's
+        // neighbourhood belongs to a 3-byte char. The exact window edge depends on where the
+        // scanner sets `search_from`, an internal this test deliberately does NOT model —
+        // pinning it would make the fixture fail for the wrong reason the moment the scanner
+        // moves. Shifting the run by 0/1/2 ASCII bytes covers every residue class mod 3, so
+        // at least one iteration is guaranteed to put the edge strictly inside a character.
+        // That is what makes the sweep discriminating rather than merely likely.
+        for shift in 0..3 {
+            let synthetic = format!(
+                "module gunbc.ci_layer_roots\n\n  SubstrateLongLaneRow {{\n    \
+                 entry: \"dag/test/claim/long/x_test.dag\",\n    \
+                 function: \"w_x\",\n    \
+                 reason: \"{pad}{dashes} tail\",\n  }}\n",
+                pad = "x".repeat(shift),
+                dashes = "\u{2014}".repeat(200),
+            );
+            // Must not panic for any shift. The prose is truncated mid-run by design, so the
+            // claim is survival plus correct extraction of the keys that precede it.
+            let keys = super::witness_admission_entry_function_keys_from_source(
+                "synthetic.dag",
+                &synthetic,
+            );
+            assert!(
+                keys.iter().any(|k| k.contains("w_x")),
+                "shift {shift}: the row's keys precede the prose and must still extract; got {keys:?}"
+            );
+        }
     }
 
     #[test]
