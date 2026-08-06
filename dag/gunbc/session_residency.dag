@@ -56,11 +56,13 @@ data session_container_observations: List<ObservedSessionContainerCount> = [
   ObservedSessionContainerCount { host: operator_host_srv2, observed_on: "2026-08-06", container_count: 19 },
 ]
 
+data session_residency_negative_rows_bind_note: String = "THE BIND NAMES session_container_observations, THE ROW THAT WILL CARRY THE MISSING EVIDENCE, and it is written this way because the first draft named a declaration that does not exist anywhere in the tree. That draft bound to session_container_observations_srv3_srv4 — a plausible-sounding name for a row nobody has authored — which is the fabricated-symbol class DESIGN section 3 records (two such citations landed in one carrier inside two days and produced the cite-the-symbol ruling). A bind that resolves to nothing cannot be checked by the containment tree, so the scaffold's closure condition was unreadable by any machine and untrue by inspection.\n\nWhat closes this scaffold is srv3 and srv4 gaining OBSERVED rows in session_container_observations, at which point the two NoInteractiveSessions verdicts stop being operator-declared. The list exists today with the two observed hosts in it, so the bind resolves now and the condition is a statement about its membership rather than about a file someone intends to write."
+
 data session_residency_negative_rows_dissolve_on: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.session_residency",
-    decl_name: "session_container_observations_srv3_srv4",
+    decl_name: "session_container_observations",
     field: WholeDeclaration
   }
 }
