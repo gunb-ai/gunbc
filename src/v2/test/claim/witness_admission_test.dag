@@ -13,6 +13,7 @@ import std.witness_admission {
   BinWitnessWet,
   QuarantineProbeExpectRed,
   OfflineLocalRecipe,
+  FalsifierSelfHostWet,
   DiscoverySelection,
   NoConsumer
 }
@@ -79,6 +80,39 @@ test fn witness_field_access_wet_falsifier_consumer_holds() -> Bool {
     excluded_from_discovery: true
   ) {
     OfflineLocalRecipe => true
+    _ => false
+  }
+}
+
+test fn witness_self_host_logic_falsifier_wet_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "dag/test/claim/self_host_logic_behavioral_witness_test.dag",
+    function: "self_host_logic_behavioral_receipt_holds",
+    excluded_from_discovery: true
+  ) {
+    FalsifierSelfHostWet => true
+    _ => false
+  }
+}
+
+test fn witness_namespace_import_closure_falsifier_wet_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "dag/test/claim/namespace_import_closure_witness_test.dag",
+    function: "namespace_import_closure_receipt_holds",
+    excluded_from_discovery: true
+  ) {
+    FalsifierSelfHostWet => true
+    _ => false
+  }
+}
+
+test fn witness_dispatch_bijection_real_roster_falsifier_wet_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "dag/test/claim/interpreter_dispatch_bijection_real_roster_witness_test.dag",
+    function: "interpreter_dispatch_bijection_real_roster_red_holds",
+    excluded_from_discovery: true
+  ) {
+    FalsifierSelfHostWet => true
     _ => false
   }
 }

@@ -48,6 +48,8 @@ fn override_spellings(path_sep: String, or_op: String) -> ExpressionSpellings {
     arg_sep: default_expression_spellings.arg_sep,
     string_quote: default_expression_spellings.string_quote,
     or_op: or_op,
+    and_op: default_expression_spellings.and_op,
+    eq_op: default_expression_spellings.eq_op,
     interp_open: default_expression_spellings.interp_open,
     interp_close: default_expression_spellings.interp_close,
   }

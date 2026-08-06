@@ -1,6 +1,5 @@
 module v2.lens.realization_vocabulary_containment
 
-import std.roster_frontier { FrontierRow, frontier_row, frontier_units }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
 import v2.std.layer {
@@ -50,21 +49,129 @@ data realization_edge_path_prefixes: List<String> = [
   "dag/gunbc/assimilate/bmc_token_federation"
 ]
 
-data realization_vocab_exception_roster: List<FrontierRow> = [
-  frontier_row(
-    unit: "dag/gunbc/node_http_server_emit.dag",
-    reason: "srv1 dashboard static-server emitter consumes the typescript AST vocabulary outside the realization-edge prefixes (declared interim per the gunbc-served dashboard design, DESIGN open thread)",
-    dissolve_on: "gunbc serve (belt B) replaces the emitted-JS static server and this module deletes with the interim route; row deletes with it"
-  ),
-  frontier_row(
-    unit: "dag/tools/build_step.dag",
+type RealizationVocabDebtClass
+  = ProductLayerTargetAstDebt
+  | MisplacedRealizationEdge
+
+type RealizationVocabImportEdge {
+  importer_path: String
+  vocab_module: String
+}
+
+type RealizationVocabGrandfatheredEdgeRow {
+  edge: RealizationVocabImportEdge
+  debt_class: RealizationVocabDebtClass
+  reason: String
+  dissolve_on: String
+}
+
+data realization_vocab_grandfathered_edge_roster: List<RealizationVocabGrandfatheredEdgeRow> = [
+  RealizationVocabGrandfatheredEdgeRow {
+    edge: RealizationVocabImportEdge {
+      importer_path: "dag/gunbc/roadmap_component.dag",
+      vocab_module: "extdeps.languages.typescript.program"
+    },
+    debt_class: ProductLayerTargetAstDebt,
+    reason: "product-layer roadmap component authors target TypeScript AST outside realization-edge prefixes (TS-0 census 2026-08-06)",
+    dissolve_on: "TS-4..TS-6 migration: client behavior authored as language-independent site facts and emitted through the production TS target; hand-authored target AST deletes and this edge row deletes with it"
+  },
+  RealizationVocabGrandfatheredEdgeRow {
+    edge: RealizationVocabImportEdge {
+      importer_path: "dag/gunbc/design/theme_transition.dag",
+      vocab_module: "extdeps.languages.typescript.program"
+    },
+    debt_class: ProductLayerTargetAstDebt,
+    reason: "site theme-transition module authors target TypeScript AST for media-query/timer/listener behavior outside realization-edge prefixes (TS-0 census 2026-08-06)",
+    dissolve_on: "TS-5/TS-6 migration: theme reframe behavior modeled language-independently and emitted through the production TS target; hand-authored target AST deletes and this edge row deletes with it"
+  },
+  RealizationVocabGrandfatheredEdgeRow {
+    edge: RealizationVocabImportEdge {
+      importer_path: "dag/gunbc/node_http_server_emit.dag",
+      vocab_module: "extdeps.languages.typescript.program"
+    },
+    debt_class: MisplacedRealizationEdge,
+    reason: "srv1 dashboard static-server emitter consumes the typescript AST vocabulary outside the realization-edge prefixes (declared interim per the gunbc-served dashboard design)",
+    dissolve_on: "gunbc serve (belt B) replaces the emitted-JS static server and this module deletes with the interim route; edge row deletes with it"
+  },
+  RealizationVocabGrandfatheredEdgeRow {
+    edge: RealizationVocabImportEdge {
+      importer_path: "src/v2/workflow/effect_plan_bash_materialize.dag",
+      vocab_module: "v2.extdeps.languages.bash_build"
+    },
+    debt_class: MisplacedRealizationEdge,
+    reason: "EffectPlan bash materializer imports v2.extdeps.languages.bash_build outside realization-edge prefixes (shell-to-intent wave-A interim site; TS-0 census 2026-08-06)",
+    dissolve_on: "shell-to-intent phase 2/3: argv lowering routes through typed effects / emit rows at the realization boundary and bash_build containment closes here; edge row deletes"
+  },
+  RealizationVocabGrandfatheredEdgeRow {
+    edge: RealizationVocabImportEdge {
+      importer_path: "dag/tools/build_step.dag",
+      vocab_module: "v2.extdeps.languages.bash_build"
+    },
+    debt_class: MisplacedRealizationEdge,
     reason: "build-step tooling constructs bash via the bash-AST vocabulary outside the realization-edge prefixes (pre shell-to-intent phase-2 site)",
-    dissolve_on: "shell-to-intent phase 2/3: the site routes through typed effects / emit rows and the bash-AST containment wall closes; row deletes"
-  )
+    dissolve_on: "shell-to-intent phase 2/3: the site routes through typed effects / emit rows and the bash-AST containment wall closes; edge row deletes"
+  }
 ]
 
-fn realization_vocab_exception_paths() -> List<String> {
-  frontier_units(rows: realization_vocab_exception_roster)
+data empty_realization_vocab_edges: List<RealizationVocabImportEdge> = []
+
+data empty_realization_vocab_leaks: List<RealizationVocabularyLeak> = []
+
+data empty_realization_vocab_path_list: List<String> = []
+
+fn char_eq(a: Char, b: Char) -> Bool {
+  a == b
+}
+
+fn list_contains_str(xs: List<String>, target: String) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(acc, s) { acc || (s == target) }
+  )
+}
+
+fn realization_vocab_import_edge_eq(a: RealizationVocabImportEdge, b: RealizationVocabImportEdge) -> Bool {
+  (a.importer_path == b.importer_path) && (a.vocab_module == b.vocab_module)
+}
+
+fn realization_vocab_edge_from_fact(fact: LayerImportFact) -> RealizationVocabImportEdge {
+  RealizationVocabImportEdge {
+    importer_path: fact.path,
+    vocab_module: fact.import_module
+  }
+}
+
+fn realization_vocab_edge_grandfathered(edge: RealizationVocabImportEdge) -> Bool {
+  fold_list(
+    xs: realization_vocab_grandfathered_edge_roster,
+    empty: false,
+    cons: fn(acc, row) {
+      acc || realization_vocab_import_edge_eq(a: row.edge, b: edge)
+    }
+  )
+}
+
+fn realization_vocab_grandfathered_edges() -> List<RealizationVocabImportEdge> {
+  fold_list(
+    xs: realization_vocab_grandfathered_edge_roster,
+    empty: empty_realization_vocab_edges,
+    cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.edge) }
+  )
+}
+
+fn realization_vocab_grandfathered_edge_key(edge: RealizationVocabImportEdge) -> String {
+  concat(edge.importer_path, concat(" -> ", edge.vocab_module))
+}
+
+fn realization_vocab_grandfathered_edge_keys() -> List<String> {
+  fold_list(
+    xs: realization_vocab_grandfathered_edge_roster,
+    empty: empty_realization_vocab_path_list,
+    cons: fn(acc, row) {
+      list_snoc_item(xs: acc, item: realization_vocab_grandfathered_edge_key(edge: row.edge))
+    }
+  )
 }
 
 data realization_vocab_consumer_scan_roots: List<String> = [
@@ -82,20 +189,6 @@ data realization_vocab_consumer_scan_roots: List<String> = [
 type RealizationVocabularyLeak {
   path: String
   import_module: String
-}
-
-data empty_realization_vocab_leaks: List<RealizationVocabularyLeak> = []
-
-fn char_eq(a: Char, b: Char) -> Bool {
-  a == b
-}
-
-fn list_contains_str(xs: List<String>, target: String) -> Bool {
-  fold_list(
-    xs: xs,
-    empty: false,
-    cons: fn(acc, s) { acc || (s == target) }
-  )
 }
 
 fn path_has_any_prefix(prefixes: List<String>, path: String) -> Bool {
@@ -117,18 +210,18 @@ fn path_is_realization_edge(path: String) -> Bool {
 
 fn is_realization_vocab_leak_under(
   fact: LayerImportFact,
-  roster: List<String>,
   edge_prefixes: List<String>
 ) -> Bool {
   module_is_target_ast_vocab(module: fact.import_module)
     && (path_has_any_prefix(prefixes: edge_prefixes, path: fact.path) == false)
-    && (list_contains_str(xs: roster, target: fact.path) == false)
+    && (realization_vocab_edge_grandfathered(
+      edge: realization_vocab_edge_from_fact(fact: fact)
+    ) == false)
 }
 
-fn is_realization_vocab_leak(fact: LayerImportFact, roster: List<String>) -> Bool {
+fn is_realization_vocab_leak(fact: LayerImportFact) -> Bool {
   is_realization_vocab_leak_under(
     fact: fact,
-    roster: roster,
     edge_prefixes: realization_edge_path_prefixes
   )
 }
@@ -149,14 +242,13 @@ fn realization_edge_path_prefixes_without(excluded: String) -> List<String> {
 
 fn scan_facts_for_leaks_under(
   facts: List<LayerImportFact>,
-  roster: List<String>,
   edge_prefixes: List<String>
 ) -> List<RealizationVocabularyLeak> {
   fold_list(
     xs: facts,
     empty: empty_realization_vocab_leaks,
     cons: fn(acc, fact) {
-      if is_realization_vocab_leak_under(fact: fact, roster: roster, edge_prefixes: edge_prefixes) {
+      if is_realization_vocab_leak_under(fact: fact, edge_prefixes: edge_prefixes) {
         list_snoc_item(
           xs: acc,
           item: RealizationVocabularyLeak {
@@ -171,34 +263,27 @@ fn scan_facts_for_leaks_under(
   )
 }
 
-fn realization_vocab_leak_count(
-  facts: List<LayerImportFact>,
-  roster: List<String>
-) -> Int {
-  length(xs: scan_facts_for_leaks_under(facts: facts, roster: roster, edge_prefixes: realization_edge_path_prefixes))
+fn realization_vocab_leak_count(facts: List<LayerImportFact>) -> Int {
+  length(xs: scan_facts_for_leaks_under(facts: facts, edge_prefixes: realization_edge_path_prefixes))
 }
 
 fn realization_vocab_leak_count_with_edge_prefixes(
   facts: List<LayerImportFact>,
-  roster: List<String>,
   edge_prefixes: List<String>
 ) -> Int {
-  length(xs: scan_facts_for_leaks_under(facts: facts, roster: roster, edge_prefixes: edge_prefixes))
+  length(xs: scan_facts_for_leaks_under(facts: facts, edge_prefixes: edge_prefixes))
 }
 
-fn realization_vocab_containment_holds(
-  facts: List<LayerImportFact>,
-  roster: List<String>
-) -> Bool {
-  is_empty(xs: scan_facts_for_leaks_under(facts: facts, roster: roster, edge_prefixes: realization_edge_path_prefixes))
+fn realization_vocab_containment_holds(facts: List<LayerImportFact>) -> Bool {
+  is_empty(xs: scan_facts_for_leaks_under(facts: facts, edge_prefixes: realization_edge_path_prefixes))
 }
 
 fn realization_vocab_leak_count_canonical(facts: List<LayerImportFact>) -> Int {
-  realization_vocab_leak_count(facts: facts, roster: realization_vocab_exception_paths())
+  realization_vocab_leak_count(facts: facts)
 }
 
 fn realization_vocab_containment_holds_canonical(facts: List<LayerImportFact>) -> Bool {
-  realization_vocab_containment_holds(facts: facts, roster: realization_vocab_exception_paths())
+  realization_vocab_containment_holds(facts: facts)
 }
 
 fn realization_vocab_leak_count_live(scan_roots: List<String>) -> Int {
@@ -212,8 +297,6 @@ fn realization_vocab_containment_clean_live(scan_roots: List<String>) -> Bool {
     facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
   )
 }
-
-data empty_realization_vocab_path_list: List<String> = []
 
 fn realization_vocab_leak_candidate_paths_from_facts(facts: List<LayerImportFact>) -> List<String> {
   fold_list(
@@ -236,48 +319,78 @@ fn realization_vocab_live_leak_candidate_paths(scan_roots: List<String>) -> List
   )
 }
 
-fn realization_vocab_stale_roster_entries(
-  roster: List<String>,
-  live_leak_paths: List<String>
-) -> List<String> {
+fn realization_vocab_live_leak_edges_from_facts(facts: List<LayerImportFact>) -> List<RealizationVocabImportEdge> {
   fold_list(
-    xs: roster,
+    xs: facts,
+    empty: empty_realization_vocab_edges,
+    cons: fn(acc, fact) {
+      if module_is_target_ast_vocab(module: fact.import_module)
+        && (path_is_realization_edge(path: fact.path) == false) {
+        list_snoc_item(xs: acc, item: realization_vocab_edge_from_fact(fact: fact))
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn realization_vocab_live_leak_edges(scan_roots: List<String>) -> List<RealizationVocabImportEdge> {
+  realization_vocab_live_leak_edges_from_facts(
+    facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
+  )
+}
+
+fn realization_vocab_live_leak_edge_keys_from_facts(facts: List<LayerImportFact>) -> List<String> {
+  fold_list(
+    xs: realization_vocab_live_leak_edges_from_facts(facts: facts),
     empty: empty_realization_vocab_path_list,
-    cons: fn(acc, entry) {
-      if list_contains_str(xs: live_leak_paths, target: entry) {
+    cons: fn(acc, edge) {
+      list_snoc_item(xs: acc, item: realization_vocab_grandfathered_edge_key(edge: edge))
+    }
+  )
+}
+
+fn realization_vocab_stale_grandfathered_edges(
+  live_leak_edges: List<RealizationVocabImportEdge>
+) -> List<RealizationVocabImportEdge> {
+  fold_list(
+    xs: realization_vocab_grandfathered_edge_roster,
+    empty: empty_realization_vocab_edges,
+    cons: fn(acc, row) {
+      if fold_list(
+        xs: live_leak_edges,
+        empty: false,
+        cons: fn(found, edge) {
+          found || realization_vocab_import_edge_eq(a: row.edge, b: edge)
+        }
+      ) {
         acc
       } else {
-        list_snoc_item(xs: acc, item: entry)
+        list_snoc_item(xs: acc, item: row.edge)
       }
     }
   )
 }
 
 fn realization_vocab_roster_stale_count(
-  roster: List<String>,
-  live_leak_paths: List<String>
+  live_leak_edges: List<RealizationVocabImportEdge>
 ) -> Int {
-  length(xs: realization_vocab_stale_roster_entries(roster: roster, live_leak_paths: live_leak_paths))
+  length(xs: realization_vocab_stale_grandfathered_edges(live_leak_edges: live_leak_edges))
 }
 
-fn realization_vocab_roster_sound(
-  roster: List<String>,
-  live_leak_paths: List<String>
-) -> Bool {
-  is_empty(xs: realization_vocab_stale_roster_entries(roster: roster, live_leak_paths: live_leak_paths))
+fn realization_vocab_roster_sound(live_leak_edges: List<RealizationVocabImportEdge>) -> Bool {
+  is_empty(xs: realization_vocab_stale_grandfathered_edges(live_leak_edges: live_leak_edges))
 }
 
 fn realization_vocab_roster_stale_count_live(scan_roots: List<String>) -> Int {
   realization_vocab_roster_stale_count(
-    roster: realization_vocab_exception_paths(),
-    live_leak_paths: realization_vocab_live_leak_candidate_paths(scan_roots: scan_roots)
+    live_leak_edges: realization_vocab_live_leak_edges(scan_roots: scan_roots)
   )
 }
 
 fn realization_vocab_roster_sound_live(scan_roots: List<String>) -> Bool {
   realization_vocab_roster_sound(
-    roster: realization_vocab_exception_paths(),
-    live_leak_paths: realization_vocab_live_leak_candidate_paths(scan_roots: scan_roots)
+    live_leak_edges: realization_vocab_live_leak_edges(scan_roots: scan_roots)
   )
 }
 
