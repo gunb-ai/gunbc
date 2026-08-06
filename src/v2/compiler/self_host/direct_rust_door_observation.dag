@@ -1,36 +1,28 @@
 module v2.compiler.self_host.direct_rust_door_observation
 
-import v2.compiler.infer { infer }
-import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.self_host.candidate_generation {
-  mint_provenanced_rust_artifact,
-  provenanced_rust_artifact_seed_independent
+  ArtifactProduced,
+  AssemblyRejected,
+  EmissionRejected,
+  InferenceRejected,
+  ProducerReceiptRejected,
 }
-import v2.compiler.self_host.direct_rust_door_fixture {
-  direct_rust_door_admission,
-  direct_rust_door_expected_source,
-  direct_rust_door_ingest,
-  direct_rust_door_module_path,
-  direct_rust_door_target_model
+import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
+  ArtifactLeafEstablished,
+  ArtifactLeafRefused,
+  DirectRustDoorProductionGroup,
+  direct_rust_door_producer_identity_assessment,
+  direct_rust_door_seed_emitter_absence_assessment,
+  direct_rust_door_source_fidelity_assessment,
+  direct_rust_door_source_produced_assessment,
 }
-import v2.compiler.self_host.emitter_producer_provenance {
-  emission_qualifications_list_contains,
-  SourceProduced,
-  V2EmitterInterpreted
-}
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
-data direct_rust_door_observation_note: String = "Typed observation for the direct v2 Rust door source path (wise-ram-22 containment lane, PR A). WHY THIS EXISTS: witness_direct_rust_door_provenanced_artifact_holds conjoined six independent assertions into one Bool, and every Rejected arm discarded its diagnostics. The falsifier could therefore report that the door claim fails without reporting WHICH boundary fails, and a decomposition had to be hand-authored to learn it. This fold returns the FIRST failing boundary with the refusing diagnostic's reason Symbol, so a completed false is attributable by execution rather than by reconstruction. The reason is carried as a Symbol, not a file position, per DESIGN section 3 cite-the-symbol."
+data direct_rust_door_observation_note: String = "PURE FIRST-FAILURE PROJECTION of the canonical direct-door production group. This module used to run its own ingest-assemble-infer-mint composition, which made it a SECOND production authority answering the same question as the group — two folds, two schedule occurrences, one fact. It now takes an ALREADY-BUILT group and computes nothing expensive: there is deliberately no zero-argument entrypoint here, because one would recompute the group and silently reopen the duplicate walk this consolidation closed. A caller that wants this vocabulary supplies the group it already holds. The nine DirectRustDoorObservation variants are preserved verbatim so no consumer had to change."
 
-data direct_rust_door_observation_measured_note: String = "MEASURED 2026-08-04 on main (claim_batch, 600s budget, four separate runs): assemble_program_from_ingest ACCEPTS, infer over the assembled tree ACCEPTS, mint_provenanced_rust_artifact on the hand-authored direct_rust_door_inferred_tree ACCEPTS, and mint_provenanced_rust_artifact on infer(assemble(direct_rust_door_ingest())) REJECTS. Every stage passes in isolation; only the real composition fails. This fold's purpose is to name that rejection's reason rather than restate the Bool."
-
-data direct_rust_door_observation_arm_split_scaffold_note: String = "SCAFFOLD, marked (DESIGN 5 - a scaffold with a named trigger, not an unmarked workaround). CandidateRejected vs ReceiptRefused is discriminated by comparing the head diagnostic reason against ^direct_rust_door_producer_receipt_refused. That is symbol identity, not structure: mint_provenanced_rust_artifact returns one Outcome and gives its caller no structural way to tell WHICH of its two internal boundaries refused. The honest structural alternative - calling generate_rust_emission_candidate and mint_producer_emission_receipt separately here - would duplicate production composition inside an observation, a DESIGN 3 fork, so it is the worse trade today. DISSOLVE-ON: mint returns a boundary-tagged refusal (containment lane PR B, when production stage carriers gain origin and boundary fields); then this comparison and this note delete together and the two variants derive from the returned tag. MEASURED 2026-08-04: the live reason is NOT the receipt symbol, so the corpus today takes the CandidateRejected arm - generate_rust_emission_candidate refuses the real inferred tree while accepting the hand-authored fixture."
-
-data direct_rust_door_observation_parse_ambiguity_note: String = "MARKED WORKAROUND, with its defect named (DESIGN 5: noticing you are implementing a workaround IS the line-stop signal; the only landing states are the real fix or a declared scaffold). The two `let source_matches` / `let producer_ok` bindings below exist because a direct comparison is UNWRITABLE: `if artifact.producer_receipt.producer != V2EmitterInterpreted { ... } else { ... }` fails to parse. LANGUAGE DEFECT, reproduced by execution 2026-08-04: the parser reads `V2EmitterInterpreted {` as a variant literal, consumes the intended if-body as its fields, and then reports `expected LBrace, found keyword else` — a token several lines BELOW the actual ambiguity. The mislocated diagnostic is the expensive half: three separate repair attempts targeted the `else` form, which was never wrong, before the real cause was found. Same class as the escaped-brace receipt in DESIGN 5 (a confusing parse error with two real parser defects beneath it). SCOPE NOT ESTABLISHED: only `!=` against a bare constructor name in an if-condition was tested; whether other operators or positions share the ambiguity is unmeasured. DISSOLVE-ON: the grammar disambiguates a constructor name before an if-body brace (or the diagnostic locates the ambiguity rather than the downstream token) — then these two let bindings inline back into their conditions and this note deletes."
+data direct_rust_door_observation_measured_note: String = "MEASURED 2026-08-04 on main, and unchanged by the consolidation: assembly ACCEPTS, inference ACCEPTS, mint over the hand-authored fixture inferred tree ACCEPTS, and mint over the real infer(assemble(ingest)) REJECTS. Every stage passes in isolation; only the real composition fails, at emission."
 
 type DirectRustDoorObservation
   = AssemblyRefused { reason: Symbol }
@@ -43,63 +35,35 @@ type DirectRustDoorObservation
   | SourceProducedQualificationMissing
   | DirectRustDoorSourceProduced
 
-fn observe_direct_rust_door_provenance() -> DirectRustDoorObservation {
-  match assemble_program_from_ingest(
-    ingest: direct_rust_door_ingest(),
-    admission: direct_rust_door_admission(),
-    lm: dag_language_model()
-  ) {
-    Rejected { diagnostics: ds } => AssemblyRefused { reason: ds.head.reason }
-    Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
-        Rejected { diagnostics: ds } => InferenceRefused { reason: ds.head.reason }
-        Accepted { value: inferred, diagnostics: _ } =>
-          match mint_provenanced_rust_artifact(
-            inferred: inferred,
-            target: direct_rust_door_target_model(),
-            module_path: direct_rust_door_module_path
-          ) {
-            Rejected { diagnostics: ds } =>
-              let receipt_refused =
-                (ds.head.reason == ^direct_rust_door_producer_receipt_refused)
-              if receipt_refused {
-                ReceiptRefused { reason: ds.head.reason }
-              } else {
-                CandidateRejected { reason: ds.head.reason }
-              }
-            Accepted { value: artifact, diagnostics: _ } =>
-              let source_matches =
-                (artifact.source.carried == direct_rust_door_expected_source)
-              if !source_matches {
-                EmittedSourceMismatch
-              } else {
-                let producer_ok =
-                  (artifact.producer_receipt.producer == V2EmitterInterpreted)
-                if !producer_ok {
-                  WrongProducer
-                } else {
-                  if !provenanced_rust_artifact_seed_independent(artifact: artifact) {
-                    SeedEmitterReachable
-                  } else {
-                    if !emission_qualifications_list_contains(
-                      xs: artifact.producer_receipt.qualifications,
-                      wanted: SourceProduced
-                    ) {
-                      SourceProducedQualificationMissing
-                    } else {
-                      DirectRustDoorSourceProduced
-                    }
+fn project_direct_rust_door_observation(
+  group: DirectRustDoorProductionGroup
+) -> DirectRustDoorObservation {
+  match group.emission {
+    AssemblyRejected { diagnostics: ds } => AssemblyRefused { reason: ds.head.reason }
+    InferenceRejected { diagnostics: ds } => InferenceRefused { reason: ds.head.reason }
+    EmissionRejected { diagnostics: ds } => CandidateRejected { reason: ds.head.reason }
+    ProducerReceiptRejected { diagnostics: ds } => ReceiptRefused { reason: ds.head.reason }
+    ArtifactProduced { artifact: a } =>
+      match direct_rust_door_source_fidelity_assessment(artifact: a) {
+        ArtifactLeafRefused { cause: _ } => EmittedSourceMismatch
+        ArtifactLeafEstablished =>
+          match direct_rust_door_producer_identity_assessment(artifact: a) {
+            ArtifactLeafRefused { cause: _ } => WrongProducer
+            ArtifactLeafEstablished =>
+              match direct_rust_door_seed_emitter_absence_assessment(artifact: a) {
+                ArtifactLeafRefused { cause: _ } => SeedEmitterReachable
+                ArtifactLeafEstablished =>
+                  match direct_rust_door_source_produced_assessment(artifact: a) {
+                    ArtifactLeafRefused { cause: _ } => SourceProducedQualificationMissing
+                    ArtifactLeafEstablished => DirectRustDoorSourceProduced
                   }
-                }
               }
           }
       }
   }
 }
 
-data direct_rust_door_observation_arm_order_note: String = "ARM ORDER IS LOAD-BEARING (operator review 2026-08-04). provenanced_rust_artifact_seed_independent is a CONJUNCTION - it requires producer == V2EmitterInterpreted AND the seed emitter absent from the realized closure. Testing it first made WrongProducer unreachable by construction: a wrong producer fails the conjunction and was reported as SeedEmitterReachable, naming the wrong cause. The producer check therefore runs FIRST, so each arm names the fact that actually failed. Residual: the seed-independence predicate still fuses two facts, so SeedEmitterReachable is only precise once the producer is known correct. Dissolve-on: seed independence exposes its two conjuncts separately and each arm consumes its own predicate."
-
-data direct_rust_door_observation_totality_note: String = "Total over DirectRustDoorObservation with no wildcard arm (DESIGN 6 non-fold residue). A `_ => false` arm here would make the coproduct grow in silence: a ninth observation variant would land as false and read as an honest negative rather than an unhandled case. With no wildcard the match is non-exhaustive the moment a variant is added, which is a hard diagnostic from the compile-clean gate."
+data direct_rust_door_observation_totality_note: String = "Total over DirectRustDoorObservation with no wildcard arm (DESIGN 6 non-fold residue). A `_ => false` arm here would make the coproduct grow in silence: a tenth observation variant would land as false and read as an honest negative rather than an unhandled case."
 
 fn direct_rust_door_observation_establishes(o: DirectRustDoorObservation) -> Bool {
   match o {

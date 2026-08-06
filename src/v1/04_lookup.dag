@@ -16,7 +16,8 @@ import v1.std.core {
   ErrorNode,
 
   CardOptional,
-  error_type
+  error_type,
+  DeclRefCoords, fn_admit_callers, decl_ref_coords_label
 }
 
 import std.algebra {
@@ -47,7 +48,7 @@ import v1.compiler.infer_emit_info {
 
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, lookup_resolved_sig,
-  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous
+  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous, FuncSigCallerNotAdmitted
 }
 
 import v1.compiler.infer_service {
@@ -81,11 +82,9 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
   match lookup_resolved_sig(env: func_env, name: name) {
     FuncSigResolved { sig: sig } => FuncSigResolved { sig: sig }
     FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
-    FuncSigUnresolved =>
-      match func_sig_from_global_bare(type_env: type_env, name: name) {
-        Present { value: sig } => FuncSigResolved { sig: sig }
-        Absent => FuncSigUnresolved
-      }
+    FuncSigCallerNotAdmitted { function_name: fname, owner_module_path: om, admitted: adm } =>
+      FuncSigCallerNotAdmitted { function_name: fname, owner_module_path: om, admitted: adm }
+    FuncSigUnresolved => func_sig_from_global_bare(type_env: type_env, name: name)
   }
 }
 
@@ -94,6 +93,7 @@ fn func_sig_if_resolved(lookup: FuncSigLookup) -> ResolvedFuncSig? {
     FuncSigResolved { sig: sig } => Present { value: sig }
     FuncSigUnresolved => Absent
     FuncSigAmbiguous { candidates: _ } => Absent
+    FuncSigCallerNotAdmitted { function_name: _, owner_module_path: _, admitted: _ } => Absent
   }
 }
 
@@ -124,14 +124,83 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDecl? 
   }
 }
 
+fn func_decl_owner_module(func_env: ResolvedFuncEnv, name: String) -> String? {
+  match map_get(func_env.local, name) {
+    Present { value: _ } => Present { value: func_env.name }
+    Absent =>
+      match fold(func_env.parents, init: none, f: (found, p) =>
+        if found != none { found }
+        else {
+          match map_get(p.local, name) {
+            Present { value: _ } => Present { value: p.name }
+            Absent => none
+          }
+        }
+      ) {
+        Present { value: owner } => Present { value: owner }
+        Absent => none
+      }
+  }
+}
+
+fn func_decl_binding_for_call(
+  func_env: ResolvedFuncEnv,
+  type_env: TypeEnv,
+  name: String
+) -> BorrowedCensusDecl? {
+  match lookup_binding_by_name_local(env: type_env, name: name) {
+    Present { value: binding } =>
+      let owner_module_path = match map_get(type_env.str_bindings, name) {
+        Present { value: _ } => type_env.module_path
+        Absent =>
+          match func_decl_owner_module(func_env: func_env, name: name) {
+            Present { value: owner } => owner
+            Absent =>
+              match borrowed_census_decl(type_env: type_env, name: name) {
+                Present { value: bd } => bd.owner_module_path
+                Absent => type_env.module_path
+              }
+          }
+      }
+      Present {
+        value: BorrowedCensusDecl {
+          owner_module_path: owner_module_path,
+          node: binding.resolved
+        }
+      }
+    Absent =>
+      match borrowed_census_decl(type_env: type_env, name: name) {
+        Present { value: bd } => Present { value: bd }
+        Absent =>
+          match func_decl_owner_module(func_env: func_env, name: name) {
+            Present { value: owner } =>
+              match symbol_index_lookup(
+                index: type_env.symbol_index,
+                qualified_name: concat(owner, ".", name)
+              ) {
+                Present { value: node } =>
+                  Present {
+                    value: BorrowedCensusDecl {
+                      owner_module_path: owner,
+                      node: node
+                    }
+                  }
+                Absent => none
+              }
+            Absent => none
+          }
+      }
+  }
+}
+
 data census_reserved_method_name_note: String = "Census precedence law (main-parity): the whole-pool census never serves an algebra method-template name (filter/any/contains/…) as a bare fn sig or tail callable. Those names belong to the known-method bridge in the ExprCall arm — a census sig for the UNLOADED v2.std.algebra typed filter(xs, f) as a plain call and the runtime died NoSuchFunction where main rewrote to the builtin method. Loaded providers are unaffected: lookup_resolved_sig runs before the census fallback."
 
-fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig? {
+fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
   if algebra_method_template_name(name: name) {
-    return none
-  }
+    FuncSigUnresolved
+  } else {
   match infer_builtin_call_type(name: name) {
-    Present { value: _ } => none
+    Present { value: _ } => FuncSigUnresolved
     Absent =>
   let borrowed = match lookup_binding_by_name_local(env: type_env, name: name) {
     Present { value: binding } =>
@@ -142,7 +211,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig
     Present { value: bd } =>
       let node = bd.node
       match (node.params |> count) > 0 || node.inferred != none || node.type_annotation != none {
-        false => Absent
+        false => FuncSigUnresolved
         true =>
         let excluded = borrowed_generic_param_names(params: node.params, source_indices: type_env.source_indices)
         let raw_return = match node.inferred {
@@ -153,7 +222,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig
           }
         }
         if bd.owner_module_path == type_env.module_path {
-          Present { value: ResolvedFuncSig {
+          FuncSigResolved { sig: ResolvedFuncSig {
             name: name,
             params: node.params,
             inferred: raw_return,
@@ -162,18 +231,40 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig
             variant_provenance: empty_map()
           } }
         } else {
-          let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
-          Present { value: ResolvedFuncSig {
-            name: name,
-            params: node.params,
-            inferred: qualified_return,
-            is_async: false,
-            output_provenance: [],
-            variant_provenance: empty_map()
-          } }
+          match fn_admit_callers(n: node, source_indices: type_env.source_indices) {
+            Present { value: permitted } =>
+              if permitted |> any(p => p.module_path == type_env.module_path) {
+                let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
+                FuncSigResolved { sig: ResolvedFuncSig {
+                  name: name,
+                  params: node.params,
+                  inferred: qualified_return,
+                  is_async: false,
+                  output_provenance: [],
+                  variant_provenance: empty_map()
+                } }
+              } else {
+                FuncSigCallerNotAdmitted {
+                  function_name: name,
+                  owner_module_path: bd.owner_module_path,
+                  admitted: permitted |> map(p => decl_ref_coords_label(coords: p))
+                }
+              }
+            Absent =>
+              let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
+              FuncSigResolved { sig: ResolvedFuncSig {
+                name: name,
+                params: node.params,
+                inferred: qualified_return,
+                is_async: false,
+                output_provenance: [],
+                variant_provenance: empty_map()
+              } }
+          }
         }
       }
-    Absent => Absent
+    Absent => FuncSigUnresolved
+  }
   }
   }
 }

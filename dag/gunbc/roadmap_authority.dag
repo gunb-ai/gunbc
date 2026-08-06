@@ -316,12 +316,12 @@ fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContr
 
 data v2_emitter_producer_provenance_contract_note: String = "The validation is this node's red control stated almost verbatim. The ticket demands that 'a result recorded as made by the new generator, with no receipt from a run that actually produced it, has to be impossible to write', and witness_restored_binding_without_executed_receipt_does_not_authorize_reds asserts exactly that: a restored binding without an executed receipt does not authorize an emitter-produced claim. It is chosen over the suite's other twenty-six claims because it is the one that fails if the unrepresentability itself lapses, rather than one that checks a roster stayed in step."
 
-data v2_emitter_direct_rust_door_execution_contract_note: String = "THE TWO-CLAUSE CLOSING DISCRIMINATOR for v2-emitter-direct-rust-door. candidate_generation wires serialize_target through generate_rust_emission_candidate / emit (not translate-only). The bound acceptance witness still REDs on branch head: claim_batch FAIL on witness_v2_emitter_direct_rust_door_closing_contract_holds and sibling contract witnesses — ingest-path production admissions do not yet establish WrittenSourceIndependentOfSeedEmitter even though the wet fixture path reaches CargoGreen. MissingTranslationRuleRefuses is established through the rust_add missing-rules serialize refusal; the paired fixture suite proves that arm discriminates. The known-red explicit_witness_admission row stays enrolled until closing_contract_holds greens by execution, then deletes per v2_emitter_direct_rust_door_contract_dissolution_note."
+data v2_emitter_direct_rust_door_execution_contract_note: String = "THE CANONICAL CLOSING VALIDATION for v2-emitter-direct-rust-door, rebound to direct_rust_door_production_group_closing_expectation_holds. The production path is now observed through ProvenancedRustEmissionObservation, which LOCATES the failure instead of erasing it: assembly ACCEPTS and inference ACCEPTS on the real add_probe source, and emission REJECTS the real inferred tree. That supersedes the earlier reading — carried in this note until 2026-08-05 and in the node first_slice — that the pieces were joined and the last step was simply not called; candidate_generation does call emit, and emit is where the path stops. The prior binding to witness_v2_emitter_direct_rust_door_closing_contract_holds is deleted along with its fold, whose single SeedEmitterRequiredForWrittenSource arm answered for BOTH a rejected pipeline and a seed-dependent artifact — a state-space conflation that made the red unlocatable. MissingTranslationRuleRefuses remains established through the rust_add missing-rules serialize refusal and is carried as the group's one green leaf, which is what proves the parent's red is located rather than uniform. Group ALGEBRA is discriminated by planted-observation controls at zero production cost (v2.test.self_host.direct_rust_door_group_algebra). State the walk claim exactly: ONE production implementation authority, ONE production walk per group construction, TWO scheduled group constructions today, measured by v2.test.claim.schedule_occurrence_multiplicity_test against the live falsifier schedule. And state the location claim exactly: the in-memory group locates EmissionRejected; the scheduled executor receipt remains an unlocated Bool."
 
 fn v2_emitter_direct_rust_door_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_acceptance_test.dag" as FilePath,
-    function: "witness_v2_emitter_direct_rust_door_closing_contract_holds" as NonEmptyStr,
+    entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag" as FilePath,
+    function: "direct_rust_door_production_group_closing_expectation_holds" as NonEmptyStr,
   )
 }
 
@@ -1220,7 +1220,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Have the new compiler write out Rust source itself",
         boundary: "Read the source, work out the types, translate, and write real Rust to disk without the old generator deciding any of it. The old runner may still be what executes this; it just stops making the decisions.",
         displaced_cost: "Until the new compiler can write Rust on its own, every improvement has to go through the generator we are trying to delete.",
-        first_slice: "Carry the existing path one step further into writing source — the pieces are already there and joined, the last step is simply not called.",
+        first_slice: "Get the real inferred tree through emission. Reading the source and working out the types already succeed; translating and writing out the Rust is where the real path stops, and the fixture route never exercised that step because it starts from a hand-written tree.",
         red_control: "A deliberately missing Rust rule must refuse rather than guess, and taking the old generator away must leave the written source unchanged.",
         out_of_scope: "Not building the new generator as a native program yet, and no second set of Rust rules beside the ones we already have.",
         handback: "The written source, the compile result, which generator made it, and proof the old one was never called."
@@ -2500,13 +2500,13 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       intricacy: IntricacyMedium,
       volume: VolumeSmall,
       t: fields(
-        headline: "Missing and duplicate arguments: the interpreter-first parity pair",
-        boundary: "The interpreter itself does not refuse these today — a missing required arg decays to NoSuchVariable at read (or silence if unread); a duplicate label silently overwrites in bindings.insert — so a compile-only wall would diverge the authorities the other way. Land the refusals in call_function_inner FIRST (default-value-aware: param_node_default_value legitimately fills omissions), then mirror at the compile seam, keeping the two authorities in lockstep exactly as the label/surplus pair did.",
-        displaced_cost: "A missing argument surfacing as NoSuchVariable inside the body blames the wrong site; a duplicate silently taking the last value is unlocatable.",
-        first_slice: "The interpreter's duplicate-label refusal (no default interaction, cheapest half), then compile mirror, probe-paired.",
-        red_control: "Probes: duplicate label and missing non-default arg refuse on both authorities; controls: defaulted omissions and every corpus form stay green.",
+        headline: "Duplicate-argument half LANDED (gunbc#7847); missing-argument half remains",
+        boundary: "CORRECTED FRAMING (parent review, 2026-08-05): the defect is two ACTUALS resolving to the SAME PARAMETER, not 'duplicate labels' — positional-then-named onto one slot, or two labels both satisfying an underscore-shorthand parameter. Keyed by resolved binding target: a NAMED actual keys on its own label; a POSITIONAL actual keys on the parameter its index fills, matching call_function_inner. call_function_inner refuses (CallArgumentDuplicate) before the compile-seam mirror, keeping both authorities in agreement. Fixed a prior compile-seam bug where declared-parameter matching let underscore-shorthand steal a later exact-named match (false positive in cardinality.dag). Missing required arguments remain unrefused; param_node_default_value legitimately fills omissions and must stay green.",
+        displaced_cost: "Two actuals resolving to one parameter previously let the last-bound value win silently, unlocatable at the call site; a missing argument surfacing as NoSuchVariable inside the body blames the wrong site.",
+        first_slice: "DONE — the duplicate half: interpreter refusal in call_function_inner, compile-seam mirror keyed on resolved binding target (not label-string equality), guarantee-probe corpus rows and dark-suite witness migrated, disposition-count witnesses updated. Remaining: the missing-argument half, default-value-aware, probe-paired the same way.",
+        red_control: "Landed: mixed positional+named duplicate (one(1, a: 2)) refuses on both authorities; every corpus form incl. underscore-shorthand params stays green. Remaining: missing non-default arg refuses on both authorities; defaulted omissions stay green.",
         out_of_scope: "Label membership (landed sibling); the method seam.",
-        handback: "Both authorities' refusal sites, census delta, probe receipts."
+        handback: "Duplicate half: both authorities' refusal sites, census delta, probe receipts — delivered in gunbc#7847. Missing half: still owed."
       )
     ),
     active_sized(identity: "rn_GVLXWYYRQV47WTJLSSIFX7FLFM", id: "call-signature-resolution-coverage",

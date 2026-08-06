@@ -377,6 +377,31 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "consume_floor_compile_clean_gate_failure_detail".to_string(),
+            string_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "record_regen_verify_gate_failure_detail".to_string(),
+            unit_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "consume_regen_verify_gate_failure_detail".to_string(),
+            string_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "record_generated_artifact_drift_gate_failure_detail".to_string(),
+            unit_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "consume_generated_artifact_drift_gate_failure_detail".to_string(),
+            string_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "witness_compile_clean_cli_floor_verdicts_agree".to_string(),
             bool_type(),
         );

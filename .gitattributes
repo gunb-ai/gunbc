@@ -8,6 +8,7 @@
 # then regenerate from merged authorities before commit (charter four-case policy row 1).
 
 .gitattributes merge=generated-artifact
+.githooks/generated-artifact-merge merge=generated-artifact
 .githooks/pre-commit merge=generated-artifact
 .githooks/pre-push merge=generated-artifact
 .github/live-deploy-srv1-apply.sh merge=generated-artifact
@@ -207,6 +208,7 @@ src/v1/stage0/src/v1_tests_claim_v1_annotation_binding_test.rs merge=generated-a
 src/v1/stage0/src/v1_tests_claim_v1_annotation_capture_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_v1_annotation_erasure_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_v1_annotation_target_emission_test.rs merge=generated-artifact
+src/v1/stage0/src/v1_tests_claim_v1_complexity_eviction_hazard_test.rs merge=generated-artifact
 src/v1/stage0/src/wt_a.rs merge=generated-artifact
 src/v1/stage0/src/wt_b.rs merge=generated-artifact
 src/v1/stage0/src/wt_common.rs merge=generated-artifact

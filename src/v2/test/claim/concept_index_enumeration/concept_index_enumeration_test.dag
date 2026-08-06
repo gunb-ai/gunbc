@@ -16,7 +16,9 @@ type ConceptIndexWitnessCoproduct =
   | NullaryArm
   | NamedFieldArm { alpha: String, beta: Bool }
 
-data concept_index_enumeration_pool_roots: List<String> = ["src/v2/test/claim"]
+data concept_index_enumeration_pool_note: String = "The pool root is this witness family's OWN directory, so the parse-only pool is exactly the file declaring the subjects it asserts on. That is what keeps the cost derived from what the witness proves rather than from unrelated corpus growth (operator ruling 2026-08-04): the former root src/v2/test/claim parsed all 638 files beneath it and grew with every module anyone added anywhere, which is what pushed witness_coproduct_arms_parse_only to 6065ms thread-CPU against the 5000ms fast-lane budget (PR #7756, CI run 31017039134) and rehomed it to test/claim/long/. The types below are declared once and read by BOTH mechanisms — concept_decl_facts_live reads the loaded module registry, concept_decl_facts parses this directory — so the live and parse-only witnesses share one declaration instead of forking it."
+
+data concept_index_enumeration_pool_roots: List<String> = ["src/v2/test/claim/concept_index_enumeration"]
 
 fn idx() -> List<QualifiedConcept> {
   enumerate_concepts()
@@ -177,5 +179,18 @@ test fn witness_coproduct_arms_live() -> Bool {
   )
 }
 
-data coproduct_arms_parse_only_long_lane_note: String = "witness_coproduct_arms_parse_only rehomed to src/v2/test/claim/long/concept_index_enumeration_coproduct_parse_only_witness_test.dag (operator 5s rule, PR #7756 CI run 31017039134): parse_only_concept_matches over src/v2/test/claim exceeded 6065ms thread-CPU against the 5000ms fast-lane budget on a corpus grown by unrelated modules — the witness-evidence-lifecycle design receipt class (docs/plans/witness-evidence-lifecycle-design.md). Enrollment: falsifier_substrate_long_lane_rows, nightly falsifier batch 6."
-
+test fn witness_coproduct_arms_parse_only() -> Bool {
+  parse_only_concept_matches(
+    target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessCoproduct",
+    short_name: "ConceptIndexWitnessCoproduct",
+    field_count: 2,
+    check: fn(fields) {
+      fields_contains(fields: fields, fname: "NullaryArm", tname: "coproduct_nullary_payload")
+        && fields_contains(
+          fields: fields,
+          fname: "NamedFieldArm",
+          tname: "{ alpha: String, beta: Bool }"
+        )
+    }
+  )
+}

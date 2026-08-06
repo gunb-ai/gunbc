@@ -197,6 +197,7 @@ fn stage0_std_primitive_modules() -> List<String> {
     "std_magnitude",
     "std_measure",
     "std_types",
+    "std_unicode_types",
     "std_lens_verdict"
   ]
 }
@@ -375,6 +376,8 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "std_realization_schedule", to: "std_execution_mode"),
     stage0_module_dag_edge(from: "std_realization_schedule", to: "std_measure"),
     stage0_module_dag_edge(from: "std_realization_schedule", to: "std_pareto"),
+    stage0_module_dag_edge(from: "extdeps_uri", to: "std_unicode_types"),
+    stage0_module_dag_edge(from: "std_unicode_types", to: "std_types"),
     stage0_module_dag_edge(from: "extdeps_external_authority", to: "extdeps_uri"),
     stage0_module_dag_edge(from: "extdeps_external_authority", to: "std_roster_frontier"),
     stage0_module_dag_edge(from: "std_keyed_row", to: "std_types"),

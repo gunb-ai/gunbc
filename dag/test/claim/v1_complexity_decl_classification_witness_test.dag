@@ -1,0 +1,35 @@
+module test.claim.v1_complexity_decl_classification_witness_test
+
+import std.types { Bool, List }
+import gunbc.v1_complexity_decl_classification {
+  roster_names_distinct,
+  every_semantic_capability_has_authority,
+  every_inventory_authority_carrier_classified,
+  v1_complexity_decl_classification_roster_count,
+}
+import gunbc.v1_complexity_decl_classification_roster { v1_complexity_decl_classification_roster }
+import gunbc.v1_complexity_capability_census { v1_complexity_inventory_roster }
+
+data witness_note: String = "FAST-LANE structural hygiene for C0(b2): the declaration classification roster is internally consistent — distinct names, every semantic capability has an authority declaration, and every inventory authority carrier is classified as AuthorityOf at the matching decl_name. The decl_facts population join is deliberately in the long-lane companion because it pays a full witness-layer scan over a pool including src/v1."
+
+test fn w_classification_roster_names_are_distinct() -> Bool {
+  roster_names_distinct(roster: v1_complexity_decl_classification_roster)
+}
+
+test fn w_every_semantic_capability_has_authority_declaration() -> Bool {
+  every_semantic_capability_has_authority(
+    inventory: v1_complexity_inventory_roster,
+    roster: v1_complexity_decl_classification_roster
+  )
+}
+
+test fn w_every_inventory_authority_carrier_is_classified() -> Bool {
+  every_inventory_authority_carrier_classified(
+    inventory: v1_complexity_inventory_roster,
+    roster: v1_complexity_decl_classification_roster
+  )
+}
+
+test fn w_classification_roster_is_nonempty() -> Bool {
+  v1_complexity_decl_classification_roster_count(roster: v1_complexity_decl_classification_roster) > 0
+}

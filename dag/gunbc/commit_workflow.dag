@@ -4,6 +4,7 @@ import gunbc.ci_gate {
   Gate,
   EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
+  ProseRowIntroductionGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
@@ -36,13 +37,13 @@ import v2.compiler.source_authority {
   ParsedFromSource,
   ProducedByBehavior,
 }
-import std.measure { millisecond, millisecond_count }
+import std.measure { millisecond, millisecond_count, WallClock, clock_basis_eq }
 import std.realization_schedule {
   string_list_eq, ScheduleWitnessEntry,
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq,
   WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams, SpanEnrolled,
-  WitnessCostBasis, WitnessCostClock, WitnessCostWallEval, WitnessCostThreadCpuEval,
-  MeasuredAtExactSubject, EstimatedFromSiblingClass, witness_cost_clock_eq,
+  WitnessCostBasis,
+  MeasuredAtExactSubject, EstimatedFromSiblingClass,
   ScheduledWitnessEnvelope
 }
 import gunbc.ci_layer_roots {
@@ -950,6 +951,10 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
+    check: CommitSpecGate { gate: ProseRowIntroductionGate },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
     check: CommitSpecGate { gate: SourceRootIngestGate },
     surfaces: [FalsifierCadenceJob]
   },
@@ -1453,7 +1458,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
           }
         ],
         cost_basis: MeasuredAtExactSubject {
-          clock: WitnessCostWallEval,
+          clock: WallClock,
           duration: millisecond(count: 3),
           receipt: frontier_probe_witness_measure_receipt_read_failure
         },
@@ -1479,7 +1484,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
           }
         ],
         cost_basis: MeasuredAtExactSubject {
-          clock: WitnessCostWallEval,
+          clock: WallClock,
           duration: millisecond(count: 2),
           receipt: frontier_probe_witness_measure_receipt_hash_mismatch
         },
@@ -1505,7 +1510,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
           }
         ],
         cost_basis: MeasuredAtExactSubject {
-          clock: WitnessCostWallEval,
+          clock: WallClock,
           duration: millisecond(count: 3),
           receipt: frontier_probe_witness_measure_receipt_elision_boundary
         },
@@ -1531,7 +1536,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
           }
         ],
         cost_basis: MeasuredAtExactSubject {
-          clock: WitnessCostWallEval,
+          clock: WallClock,
           duration: millisecond(count: 784772),
           receipt: frontier_probe_witness_measure_receipt_below_cap
         },
@@ -1557,7 +1562,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
           }
         ],
         cost_basis: MeasuredAtExactSubject {
-          clock: WitnessCostWallEval,
+          clock: WallClock,
           duration: millisecond(count: 742109),
           receipt: frontier_probe_witness_measure_receipt_second_root
         },
@@ -1661,6 +1666,7 @@ fn gate_eq(a: Gate, b: Gate) -> Bool {
     DagCompileCleanGate => match b { DagCompileCleanGate => true  _ => false }
     GeneratedArtifactDriftGate => match b { GeneratedArtifactDriftGate => true  _ => false }
     ExtdepsScopePlacementGate => match b { ExtdepsScopePlacementGate => true  _ => false }
+    ProseRowIntroductionGate => match b { ProseRowIntroductionGate => true  _ => false }
     SourceRootIngestGate => match b { SourceRootIngestGate => true  _ => false }
     RegenVerifyGate => match b { RegenVerifyGate => true  _ => false }
     SelfHostReadsRealBytesGate => match b { SelfHostReadsRealBytesGate => true  _ => false }
@@ -1827,7 +1833,7 @@ fn witness_cost_basis_eq(a: WitnessCostBasis, b: WitnessCostBasis) -> Bool {
         duration: duration2,
         receipt: receipt2
       } =>
-        witness_cost_clock_eq(a: clock, b: clock2)
+        clock_basis_eq(a: clock, b: clock2)
           && (millisecond_count(m: duration) == millisecond_count(m: duration2))
           && (receipt == receipt2)
       EstimatedFromSiblingClass { clock: _, source_witness: _, basis: _ } => false
@@ -1839,7 +1845,7 @@ fn witness_cost_basis_eq(a: WitnessCostBasis, b: WitnessCostBasis) -> Bool {
         source_witness: source_witness2,
         basis: basis2
       } =>
-        witness_cost_clock_eq(a: clock, b: clock2)
+        clock_basis_eq(a: clock, b: clock2)
           && (source_witness == source_witness2)
           && (basis == basis2)
     }

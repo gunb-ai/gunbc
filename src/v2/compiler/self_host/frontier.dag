@@ -40,6 +40,7 @@ import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeDetailAbsent,
   FrontierProbeReceipt,
   FrontierProbeStage,
+  NoFrontierProbeDetail,
   NameResolutionGap,
   ProbeStageAssemble,
   ProbeStageSemanticDerivation,
@@ -59,7 +60,8 @@ import v2.compiler.self_host.frontier_probe_types {
   frontier_blocker_class_matches,
   frontier_probe_blocker_rank,
   frontier_probe_located_stage_for_blocker,
-  frontier_located_reason_is_stale_knowledge_attributed
+  frontier_located_reason_is_stale_knowledge_attributed,
+  frontier_probe_receipt_module_path
 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
@@ -240,7 +242,8 @@ fn execution_measured_seed_retained_row(
       blocker_class: measured_blocker,
       located_stage: located_stage,
       located_reason: located_reason,
-      detail: FrontierProbeDetailAbsent
+      detail: FrontierProbeDetailAbsent,
+      assemble_detail: NoFrontierProbeDetail
     },
     tractability_rank: tractability_rank_for(closure_reads: closure_reads, blocker: measured_blocker)
   }
@@ -1253,7 +1256,7 @@ fn compiler_frontier_roster_matches_survey_holds(survey: List<FrontierProbeRecei
     empty: true,
     cons: fn(ok, receipt) {
       ok && compiler_frontier_row_for_path_matches_probe(
-        target: receipt.module_path,
+        target: frontier_probe_receipt_module_path(receipt: receipt),
         receipt: receipt
       )
     }

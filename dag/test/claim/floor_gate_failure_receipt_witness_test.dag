@@ -1,0 +1,108 @@
+module test.claim.floor_gate_failure_receipt_witness
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.test_module_hygiene { failure_receipt_companion, Optional, Present }
+import gunbc.generated_artifact_assessment {
+  GeneratedArtifactObservation, GeneratedArtifactObserved, assess_generated_artifact_population,
+  first_failing_diagnostic_path
+}
+import gunbc.generated_artifact { CiYamlArtifact, GitignoreArtifact }
+import tools.dag_compile_clean_gate { dag_compile_clean_failure_reason }
+import tools.generated_artifact_gate { generated_artifact_drift_failure_reason }
+import tools.regen_verify_transport { regen_verify_failure_detail }
+import tools.regen_verify_gate { regen_verify_failure_reason }
+
+data witness_note: String = "Floor gate failure-receipt companions must name located reasons on Bool(false), not only returned Bool(false). Controls pin the naming convention via gunbc.test_module_hygiene.failure_receipt_companion and the reason projection helpers without re-running the expensive live gates."
+
+data planted_regen_stderr: String = "Stage0 is stale: 1 generated file(s) differ from fresh self-compile.\nChanged generated file(s): v1_compiler_emit_rust.rs\n"
+
+data planted_artifact_path: String = ".github/workflows/ci.yml"
+
+fn constructed_drift_observation(path: String) -> GeneratedArtifactObserved {
+  GeneratedArtifactObserved {
+    artifact: CiYamlArtifact,
+    path: path,
+    generated_content: "expected bytes",
+    committed_content: concat("expected bytes", "\n# drift"),
+    extra_validation: true
+  }
+}
+
+test fn regen_verify_failure_detail_names_drifted_file_holds() -> Bool {
+  string_contains(
+    s: regen_verify_failure_detail(stdout: "regen_divergence_count=1\n", stderr: planted_regen_stderr),
+    pattern: "v1_compiler_emit_rust.rs"
+  )
+}
+
+test fn regen_verify_failure_detail_refuses_empty_capture_holds() -> Bool {
+  string_contains(
+    s: regen_verify_failure_detail(stdout: "", stderr: ""),
+    pattern: "no diagnostic output"
+  )
+}
+
+test fn regen_verify_failure_reason_empty_only_on_success() -> Bool {
+  regen_verify_failure_reason(exit: ExitSuccess) == ""
+}
+
+test fn generated_artifact_drift_verdict_names_planted_path_holds() -> Bool {
+  let observations = [
+    constructed_drift_observation(path: planted_artifact_path),
+    GeneratedArtifactObserved {
+      artifact: GitignoreArtifact,
+      path: ".gitignore",
+      generated_content: "same",
+      committed_content: "same",
+      extra_validation: true
+    }
+  ]
+  string_contains(
+    s: first_failing_diagnostic_path(
+      expected: [CiYamlArtifact, GitignoreArtifact],
+      observations: observations
+    ),
+    pattern: planted_artifact_path
+  )
+    && !assess_generated_artifact_population(
+      expected: [CiYamlArtifact, GitignoreArtifact],
+      observations: observations
+    )
+}
+
+test fn generated_artifact_drift_failure_reason_empty_only_on_success() -> Bool {
+  generated_artifact_drift_failure_reason(exit: ExitSuccess) == ""
+    && string_contains(
+      s: generated_artifact_drift_failure_reason(
+        exit: exit_failure(
+          reason: concat("generated-artifact drift/validation failed: ", planted_artifact_path)
+        )
+      ),
+      pattern: planted_artifact_path
+    )
+}
+
+test fn dag_compile_clean_failure_reason_empty_only_on_success() -> Bool {
+  dag_compile_clean_failure_reason(exit: ExitSuccess) == ""
+    && string_contains(
+      s: dag_compile_clean_failure_reason(
+        exit: exit_failure(reason: "compile-clean: unresolved import in dag/test/example.dag")
+      ),
+      pattern: "dag/test/example.dag"
+    )
+}
+
+test fn floor_gate_failure_receipt_companion_names_holds() -> Bool {
+  match failure_receipt_companion(function: "dag_compile_clean_gate_passes") {
+    Present { value: companion } => companion == "dag_compile_clean_gate_failure_receipt"
+    _ => false
+  }
+    && match failure_receipt_companion(function: "generated_artifact_drift_gate_passes") {
+      Present { value: companion } => companion == "generated_artifact_drift_gate_failure_receipt"
+      _ => false
+    }
+    && match failure_receipt_companion(function: "regen_verify_gate_passes") {
+      Present { value: companion } => companion == "regen_verify_gate_failure_receipt"
+      _ => false
+    }
+}

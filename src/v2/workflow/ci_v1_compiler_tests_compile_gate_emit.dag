@@ -22,17 +22,18 @@ import v2.workflow.effect_plan_bash_materialize {
 data ci_v1_compiler_tests_compile_gate_extra_args: List<String> = [
   "-p",
   "v1-compiler-tests",
-  "--tests"
+  "--release",
+  "--no-run"
 ]
 
 data ci_v1_compiler_tests_compile_gate_cargo_path: String = "dag/extdeps/rust/cargo_build.dag"
 data ci_v1_compiler_tests_compile_gate_cargo_service: String = "cargo.Build"
-data ci_v1_compiler_tests_compile_gate_cargo_operation: String = "Check"
+data ci_v1_compiler_tests_compile_gate_cargo_operation: String = "Test"
 data ci_v1_compiler_tests_compile_gate_cargo_bin_env_var: String = "CARGO_BIN"
 
 data ci_v1_compiler_tests_compile_gate_refusal_prefix: String = "__GUNBC_EFFECT_PLAN_BASH_REFUSED__ v1-compiler-tests compile gate: "
 
-data ci_v1_compiler_tests_compile_gate_authority_note: String = "Build-job compile gate for the v1-compiler-tests workspace crate. Wave B typed carrier: one extdeps.cargo_build cargo.Build.Check invocation bound by name; Bash realization supplies HostEnvVar for ci_v1_compiler_tests_compile_gate_cargo_bin_env_var so the pin-rustup prelude env var renders through bash_build_word_var in effect_plan_bash_materialize — not a post-emission string substitution and not fused into the agnostic BoundOperationInvocation substrate. argv tail tokens remain declaration-derived; GitHub Actions run: is still a foreign-executor shell transport scaffold awaiting full orchestration emit."
+data ci_v1_compiler_tests_compile_gate_authority_note: String = "Build-job compile-contract gate for the v1-compiler-tests workspace crate. Wave B typed carrier: one extdeps.cargo_build cargo.Build.Test invocation (--release --no-run) bound by name; runs after the release build so v1-compiler is compiled once in release with the same feature set as the test crate. Bash realization supplies HostEnvVar for ci_v1_compiler_tests_compile_gate_cargo_bin_env_var so the pin-rustup prelude env var renders through bash_build_word_var in effect_plan_bash_materialize — not a post-emission string substitution and not fused into the agnostic BoundOperationInvocation substrate. argv tail tokens remain declaration-derived; GitHub Actions run: is still a foreign-executor shell transport scaffold awaiting full orchestration emit."
 
 data ci_v1_compiler_tests_compile_gate_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -43,7 +44,7 @@ data ci_v1_compiler_tests_compile_gate_shell_emit_scaffold: Disposition = Scaffo
   }
 }
 
-data ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Check(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await"
+data ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await"
 
 fn ci_v1_compiler_tests_compile_gate_check_step() -> BashBoundOperationInvocation {
   bash_bind_operation_invocation_host_env_executable(

@@ -720,8 +720,8 @@ test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Boo
         && count(extra_capabilities) == 0
         && validations |> any(validation => match validation {
           GunbcClaimValidation { entry, function } =>
-            (entry as String) == "src/v2/test/claim/long/v2_emitter_direct_rust_door_acceptance_test.dag"
-              && function == "witness_v2_emitter_direct_rust_door_closing_contract_holds"
+            (entry as String) == "src/v2/test/claim/long/direct_rust_door_production_group_test.dag"
+              && function == "direct_rust_door_production_group_closing_expectation_holds"
           CargoTestValidation { filter: _ } => false
           CargoFmtValidation => false
         })
