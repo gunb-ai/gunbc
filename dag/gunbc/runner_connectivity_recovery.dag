@@ -1,0 +1,452 @@
+module gunbc.runner_connectivity_recovery
+
+import std.types { String, NonEmptyStr, Int, Bool, List, Timestamp, Duration, list_length }
+import std.disposition { Disposition, SingleAuthority, Scaffold }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+import gunbc.build_cache_instance {
+  RunnerSlotIdentity,
+  ProcessIdentity,
+}
+import gunbc.fleet_intent_network {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+
+data runner_connectivity_recovery_scope_disposition: Disposition = SingleAuthority
+
+data controller_not_watchdog_note: String = "THIS MODULE IS A CONTROLLER, NOT A WATCHDOG (operator ruling 2026-08-06). A naive offline-then-restart rule would, during the next GitHub outage, restart every unit simultaneously and storm an already-degraded control plane — the absorbing fallback in DESIGN section 5 wearing recovery clothes. Per-slot eligibility is therefore a CONJUNCTION of facts that must all hold, and fleet repair is CANARY-FIRST with a breaker that inhibits fanout when most slots share a common error burst. Freshness is construction: a plan carrying an observation older than the act it authorizes is unwritable as Replace, not merely discouraged. systemctl restart exit 0 is NOT success — the postcondition requires independent local AND remote read-back proving a new incarnation and an online registration."
+
+type RunnerLocalIncarnation {
+  slot: RunnerSlotIdentity
+  process: ProcessIdentity
+  unit: NonEmptyStr
+}
+
+type RunnerRemoteRegistration
+  = RunnerRemoteOnline { runner_name: NonEmptyStr, labels: List<String> }
+  | RunnerRemoteOffline
+  | RunnerRemoteAbsent
+  | RunnerRemoteBusy { detail: NonEmptyStr }
+
+type RunnerRemoteObservation {
+  registration: RunnerRemoteRegistration
+  observed_at: Timestamp
+  control_plane_error_burst: Bool
+}
+
+type RunnerLocalObservation {
+  incarnation: RunnerLocalIncarnation
+  systemd_active: Bool
+  observed_at: Timestamp
+}
+
+type RunnerSlotConnectivitySnapshot {
+  slot: RunnerSlotIdentity
+  local: RunnerLocalObservation
+  remote: RunnerRemoteObservation
+  confirmed_at: Timestamp
+  last_restart_at: Timestamp?
+}
+
+type HostReachAdmission
+  = HostReachAdmitted
+  | HostReachRefused { host: HostIdentity, reason: NonEmptyStr }
+
+type RunnerReplacementCause
+  = RemoteRegistrationOfflineWhileLocalAlive
+  | RemoteRegistrationAbsentWhileLocalAlive
+  | AcquireJobWedgeSessionDead
+
+type RunnerRepairRefusalCause
+  = RunnerStillConnected
+  | RunnerRemotelyBusy
+  | LocalProcessNotActive
+  | ObservationStale { observed_at: Timestamp, act_at: Timestamp }
+  | IncarnationChangedSinceObservation {
+      expected: ProcessIdentity,
+      found: ProcessIdentity,
+    }
+  | HostReachAdmissionRefused { reason: NonEmptyStr }
+  | RestartCooldownActive { seconds_remaining: Int }
+  | ConditionNotPersistentAcrossReobservation
+  | ControlPlaneDegraded { reason: NonEmptyStr }
+  | CanaryAwaitingVerification
+
+type RunnerConnectivityAction
+  = RunnerConnectedNoop {
+      local: RunnerLocalIncarnation,
+      remote: RunnerRemoteRegistration,
+    }
+  | RunnerIncarnationReplace {
+      slot: RunnerSlotIdentity,
+      from: RunnerLocalIncarnation,
+      cause: RunnerReplacementCause,
+    }
+  | RunnerRepairRefused {
+      slot: RunnerSlotIdentity,
+      cause: RunnerRepairRefusalCause,
+    }
+
+type RunnerControlPlaneStanding
+  = RunnerControlPlaneHealthy
+  | RunnerControlPlaneDegraded {
+      offline_slots: Int,
+      total_slots: Int,
+      reason: NonEmptyStr,
+    }
+
+type IncarnationReplacePostcondition
+  = ReplaceVerified {
+      slot: RunnerSlotIdentity,
+      prior: RunnerLocalIncarnation,
+      successor: RunnerLocalIncarnation,
+      remote: RunnerRemoteRegistration,
+    }
+  | ReplacePostconditionFailed {
+      slot: RunnerSlotIdentity,
+      reason: NonEmptyStr,
+    }
+
+type FleetConnectivityRepairPlan {
+  standing: RunnerControlPlaneStanding
+  actions: List<RunnerConnectivityAction>
+}
+
+data runner_connectivity_observation_freshness_seconds: Duration = 120
+
+data runner_connectivity_restart_cooldown_seconds: Duration = 300
+
+data runner_connectivity_control_plane_degraded_fraction_threshold: Int = 75
+
+data runner_connectivity_rebind_healthy_note: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_standup",
+    decl_name: "RunnerSlotHealthy",
+    field: WholeDeclaration,
+  }
+}
+
+data timestamp_comparison_scaffold_note: String = "HONEST SCAFFOLD: Timestamp is String today and this module compares equality only until PR A lands a parsed observation clock. Freshness and cooldown therefore use same-moment equality as the zero-age case in witnesses and refuse when act_at differs from confirmed_at without a parseable ordering — the wall is real, the parser is deferred to the observation carrier."
+
+fn runner_slot_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  let idx = if slot.slot_index < 10 {
+    concat("0", slot.slot_index as String)
+  } else {
+    slot.slot_index as String
+  }
+  concat(
+    concat(
+      concat("actions-runner@", slot.host as String),
+      concat("-", idx),
+    ),
+    ".service",
+  ) as NonEmptyStr
+}
+
+fn process_identity_eq(a: ProcessIdentity, b: ProcessIdentity) -> Bool {
+  (a.boot_id as String) == (b.boot_id as String)
+    && a.pid == b.pid
+    && (a.start_time as String) == (b.start_time as String)
+}
+
+fn remote_registration_is_connected(reg: RunnerRemoteRegistration) -> Bool {
+  match reg {
+    RunnerRemoteOnline { runner_name: _, labels: _ } => true
+    RunnerRemoteOffline => false
+    RunnerRemoteAbsent => false
+    RunnerRemoteBusy { detail: _ } => false
+  }
+}
+
+fn remote_registration_needs_repair(reg: RunnerRemoteRegistration) -> Bool {
+  match reg {
+    RunnerRemoteOnline { runner_name: _, labels: _ } => false
+    RunnerRemoteOffline => true
+    RunnerRemoteAbsent => true
+    RunnerRemoteBusy { detail: _ } => false
+  }
+}
+
+fn remote_registration_is_busy(reg: RunnerRemoteRegistration) -> Bool {
+  match reg {
+    RunnerRemoteBusy { detail: _ } => true
+    RunnerRemoteOnline { runner_name: _, labels: _ } => false
+    RunnerRemoteOffline => false
+    RunnerRemoteAbsent => false
+  }
+}
+
+fn replacement_cause_for_remote(reg: RunnerRemoteRegistration) -> RunnerReplacementCause {
+  match reg {
+    RunnerRemoteOffline => RemoteRegistrationOfflineWhileLocalAlive
+    RunnerRemoteAbsent => RemoteRegistrationAbsentWhileLocalAlive
+    RunnerRemoteOnline { runner_name: _, labels: _ } => AcquireJobWedgeSessionDead
+    RunnerRemoteBusy { detail: _ } => AcquireJobWedgeSessionDead
+  }
+}
+
+fn observation_is_fresh(
+  observed_at: Timestamp,
+  act_at: Timestamp,
+  max_staleness_seconds: Duration,
+) -> Bool {
+  if observed_at != act_at {
+    false
+  } else {
+    max_staleness_seconds >= 0
+  }
+}
+
+fn restart_cooldown_elapsed(last_restart_at: Timestamp?, act_at: Timestamp) -> Bool {
+  match last_restart_at {
+    Absent => true
+    Present { value: restarted_at } => restarted_at != act_at
+  }
+}
+
+fn snapshots_have_control_plane_burst(
+  snapshots: List<RunnerSlotConnectivitySnapshot>,
+) -> Bool {
+  fold(
+    snapshots,
+    init: false,
+    f: (acc, s) => acc || s.remote.control_plane_error_burst,
+  )
+}
+
+fn classify_control_plane_standing(
+  snapshots: List<RunnerSlotConnectivitySnapshot>,
+  degraded_threshold_percent: Int,
+) -> RunnerControlPlaneStanding {
+  let total = list_length(items: snapshots)
+  let offline = fold(
+    snapshots,
+    init: 0,
+    f: (acc, s) =>
+      if remote_registration_needs_repair(reg: s.remote.registration) {
+        acc + 1
+      } else {
+        acc
+      },
+  )
+  let burst = snapshots_have_control_plane_burst(snapshots: snapshots)
+  if total == 0 {
+    RunnerControlPlaneHealthy
+  } else {
+    let threshold = (total * degraded_threshold_percent) / 100
+    if offline > threshold || burst {
+      RunnerControlPlaneDegraded {
+        offline_slots: offline,
+        total_slots: total,
+        reason: "common offline or control-plane error burst across the fleet; inhibit fanout and recover canary-first" as NonEmptyStr,
+      }
+    } else {
+      RunnerControlPlaneHealthy
+    }
+  }
+}
+
+fn decide_runner_connectivity_action(
+  snap: RunnerSlotConnectivitySnapshot,
+  prior: RunnerSlotConnectivitySnapshot,
+  act_at: Timestamp,
+  reach: HostReachAdmission,
+  allow_replace: Bool,
+) -> RunnerConnectivityAction {
+  let slot = snap.slot
+  if remote_registration_is_connected(reg: snap.remote.registration) {
+    RunnerConnectedNoop {
+      local: snap.local.incarnation,
+      remote: snap.remote.registration,
+    }
+  } else if !process_identity_eq(
+    a: snap.local.incarnation.process,
+    b: prior.local.incarnation.process,
+  ) {
+    RunnerRepairRefused {
+      slot: slot,
+      cause: IncarnationChangedSinceObservation {
+        expected: prior.local.incarnation.process,
+        found: snap.local.incarnation.process,
+      },
+    }
+  } else if !observation_is_fresh(
+    observed_at: snap.confirmed_at,
+    act_at: act_at,
+    max_staleness_seconds: runner_connectivity_observation_freshness_seconds,
+  ) {
+    RunnerRepairRefused {
+      slot: slot,
+      cause: ObservationStale { observed_at: snap.confirmed_at, act_at: act_at },
+    }
+  } else if remote_registration_is_busy(reg: snap.remote.registration) {
+    RunnerRepairRefused {
+      slot: slot,
+      cause: RunnerRemotelyBusy,
+    }
+  } else if !snap.local.systemd_active {
+    RunnerRepairRefused {
+      slot: slot,
+      cause: LocalProcessNotActive,
+    }
+  } else if match reach {
+         HostReachRefused { host: _, reason: r } => true
+         HostReachAdmitted => false
+       } {
+    match reach {
+      HostReachRefused { host: _, reason: r } =>
+        RunnerRepairRefused { slot: slot, cause: HostReachAdmissionRefused { reason: r } }
+      HostReachAdmitted =>
+        RunnerConnectedNoop {
+          local: snap.local.incarnation,
+          remote: snap.remote.registration,
+        }
+    }
+  } else if !restart_cooldown_elapsed(last_restart_at: snap.last_restart_at, act_at: act_at) {
+    RunnerRepairRefused {
+      slot: slot,
+      cause: RestartCooldownActive { seconds_remaining: runner_connectivity_restart_cooldown_seconds },
+    }
+  } else if !remote_registration_needs_repair(reg: prior.remote.registration) {
+    RunnerRepairRefused {
+      slot: slot,
+      cause: ConditionNotPersistentAcrossReobservation,
+    }
+  } else if !allow_replace {
+    RunnerRepairRefused {
+      slot: slot,
+      cause: CanaryAwaitingVerification,
+    }
+  } else {
+    RunnerIncarnationReplace {
+      slot: slot,
+      from: snap.local.incarnation,
+      cause: replacement_cause_for_remote(reg: snap.remote.registration),
+    }
+  }
+}
+
+fn action_is_replace(action: RunnerConnectivityAction) -> Bool {
+  match action {
+    RunnerIncarnationReplace { slot: _, from: _, cause: _ } => true
+    RunnerConnectedNoop { local: _, remote: _ } => false
+    RunnerRepairRefused { slot: _, cause: _ } => false
+  }
+}
+
+fn action_is_noop(action: RunnerConnectivityAction) -> Bool {
+  match action {
+    RunnerConnectedNoop { local: _, remote: _ } => true
+    RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+    RunnerRepairRefused { slot: _, cause: _ } => false
+  }
+}
+
+fn slot_key(slot: RunnerSlotIdentity) -> String {
+  concat(concat(slot.host as String, "-"), slot.slot_index as String)
+}
+
+fn plan_allows_replace_for_slot(
+  slot: RunnerSlotIdentity,
+  standing: RunnerControlPlaneStanding,
+  canary_slot: RunnerSlotIdentity,
+  canary_verified: Bool,
+) -> Bool {
+  match standing {
+    RunnerControlPlaneHealthy => true
+    RunnerControlPlaneDegraded { offline_slots: _, total_slots: _, reason: _ } =>
+      if canary_verified {
+        true
+      } else {
+        slot_key(slot: slot) == slot_key(slot: canary_slot)
+      }
+  }
+}
+
+fn plan_slot_connectivity_action(
+  snap: RunnerSlotConnectivitySnapshot,
+  prior: RunnerSlotConnectivitySnapshot,
+  act_at: Timestamp,
+  reach: HostReachAdmission,
+  standing: RunnerControlPlaneStanding,
+  canary_slot: RunnerSlotIdentity,
+  canary_verified: Bool,
+) -> RunnerConnectivityAction {
+  decide_runner_connectivity_action(
+    snap: snap,
+    prior: prior,
+    act_at: act_at,
+    reach: reach,
+    allow_replace: plan_allows_replace_for_slot(
+      slot: snap.slot,
+      standing: standing,
+      canary_slot: canary_slot,
+      canary_verified: canary_verified,
+    ),
+  )
+}
+
+fn verify_incarnation_replace_postcondition(
+  slot: RunnerSlotIdentity,
+  prior: RunnerLocalIncarnation,
+  after_local: RunnerLocalObservation,
+  after_remote: RunnerRemoteObservation,
+  expected_labels: List<String>,
+) -> IncarnationReplacePostcondition {
+  if process_identity_eq(a: prior.process, b: after_local.incarnation.process) {
+    ReplacePostconditionFailed {
+      slot: slot,
+      reason: "prior local process identity still present after restart" as NonEmptyStr,
+    }
+  } else if !after_local.systemd_active {
+    ReplacePostconditionFailed {
+      slot: slot,
+      reason: "successor local process not active after restart" as NonEmptyStr,
+    }
+  } else {
+    match after_remote.registration {
+      RunnerRemoteOnline { runner_name: name, labels: labels } =>
+        if labels == expected_labels {
+          ReplaceVerified {
+            slot: slot,
+            prior: prior,
+            successor: after_local.incarnation,
+            remote: RunnerRemoteOnline { runner_name: name, labels: labels },
+          }
+        } else {
+          ReplacePostconditionFailed {
+            slot: slot,
+            reason: "remote registration online but labels do not match intent" as NonEmptyStr,
+          }
+        }
+      RunnerRemoteOffline =>
+        ReplacePostconditionFailed {
+          slot: slot,
+          reason: "remote registration still offline after restart" as NonEmptyStr,
+        }
+      RunnerRemoteAbsent =>
+        ReplacePostconditionFailed {
+          slot: slot,
+          reason: "remote registration still absent after restart" as NonEmptyStr,
+        }
+      RunnerRemoteBusy { detail: _ } =>
+        ReplacePostconditionFailed {
+          slot: slot,
+          reason: "remote registration busy after restart" as NonEmptyStr,
+        }
+    }
+  }
+}
+
+fn host_reach_admission_for_fleet_host(host: HostIdentity) -> HostReachAdmission {
+  if (host as String) == (operator_host_srv3 as String)
+    || (host as String) == (operator_host_srv4 as String) {
+    HostReachRefused {
+      host: host,
+      reason: "host key login unavailable; located reach refusal while siblings continue" as NonEmptyStr,
+    }
+  } else {
+    HostReachAdmitted
+  }
+}
