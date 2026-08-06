@@ -75,11 +75,42 @@ If the memory bar binds, **these three are the first sharing target**, not the t
 | Width | Wall | Resolve | Outcome |
 |-------|------|---------|---------|
 | 1 (Serial) | 198,277 ms | 96,327 ms | Completed; 1 pre-existing witness fail (`witness_observed_hostname_reads_typed_op_hermetic`); `private_fallback=12026` |
-| 2 (ControlledWidthTwo) | — | — | **SIGKILL (exit 137)** ~5.5 min in, during dual index build + first typechecks |
+| 2 (ControlledWidthTwo) | — | — | **exit 137** at ~334 s wall (two runs); no completion summary |
 
-**Verdict vs #7941:** Width 2 failed on memory with the shared typed store armed. **#7941 predicted this configuration would underdeliver** and named the mechanism (private resolved graphs pin typed-module bytes; sharing the cache alone does not bound retention). This is a **confirmed diagnosis**, not a post-hoc explanation — the prediction was registered before this run.
+### Exit 137 cause analysis (measured, not inferred)
 
-Session cgroup `memory.max` ≈ 31 GiB; two whole-tree indexes plus shared store exceeded the envelope during early typecheck. Next term: resolved-graph pin and/or the three stable whole-pool heads (`pool_parse`, `pool_bare_census`, `both_closure_edges` — 518.5 MiB per worker, #7941).
+Exit 137 is SIGKILL. Three distinct causes matter; only cause 2 (own-cgroup OOM) supports "width 2 does not fit in the memory envelope" as an OOM kill.
+
+| Cause | Description | Evidence |
+|-------|-------------|----------|
+| 1 | Harness wall-clock cap | First width-2 runs died at **~334 s**; width-1 completed in **~198 s**. Not a 600 s CI cap, but consistent with an external ~5 min session limit. |
+| 2 | Own-cgroup OOM (`memory.events` `oom_kill` increments) | **Not proven** for the width-2 runs (see below). |
+| 3 | Kill from outside cgroup (host limiter, governor) | Possible for the ~334 s kills; `memory.events` `max=0`, `high=0` throughout instrumented run. |
+
+**Session cgroup readings** (`/sys/fs/cgroup`, this worktree session):
+
+| Field | Value |
+|-------|-------|
+| `memory.max` | 33,578,549,248 bytes (**31.27 GiB**) |
+| `memory.high` | `max` (unlimited) |
+| `memory.peak` | 14,154,764,288 bytes (**13.18 GiB**) |
+| `memory.events` | `low=0 high=0 max=0 oom=0 oom_kill=2 oom_group_kill=0` |
+
+**Instrumented width-2 re-run (2026-08-06T22:52Z):** cgroup counters sampled every 5 s during `GUNBC_P1_COHORT_WIDTH=2 target/release/p1_cohort_probe`.
+
+- Baseline `oom_kill=2` → post-run `oom_kill=2` (**Δ=0** during this workload).
+- `memory.peak` rose from 12.66 GiB → **13.18 GiB** then held; **never approached `memory.max`**.
+- Two worker threads active (TIDs at ~90% / ~74% CPU) for **18+ min** past the ~334 s kill wall of the earlier runs — **own-cgroup OOM did not recur at the earlier kill point**.
+- Run manually stopped (SIGTERM) after receipt capture; not an OOM kill.
+
+**Receipt sentence (honest):** width-2 terminated with **exit 137 at ~334 s wall on the first two attempts; no cgroup snapshot at kill time; own-cgroup `oom_kill` did not increment during the instrumented re-run; `memory.peak=13.18 GiB` against `memory.max=31.27 GiB` — exit 137 cause **undetermined** (cause 1 or 3 likely for the early kills; cause 2 **not demonstrated**).
+
+### Resource bar vs #7941 (what we can claim)
+
+The fleet resource bar is `memory.peak < 13 GiB`. Measured cgroup **`memory.peak=13.18 GiB` under width-2** — **fails the bar** even without an OOM kill. This is consistent with #7941's prediction that shared `typed_module_cache` alone underdelivers while each worker retains private graph/index shells, but the mechanism receipt is **peak pressure**, not "OOM killed."
+
+**Next-term candidate (#7941, do not act without operator):** `pool_parse` + `pool_bare_census` + `both_closure_edges` = **518.5 MiB** per worker, entry-count-independent, drop-order-stable — the only bounded duplication term identified.
+
 
 ## Counters
 
