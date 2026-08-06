@@ -24,6 +24,8 @@ import gunbc.provider_standing {
   AuthenticationAuthenticated,
   EntitlementObservedAvailable,
   TurnNotStarted,
+  TurnOutcomeUnobserved,
+  TurnFailed,
   ToolEnvironmentReady,
   provider_standing_from_fixture_bundle,
   provider_standing_is_selection_eligible,
@@ -350,10 +352,42 @@ test fn witness_profile_present_token_absent_claude_skipped_for_codex() -> Bool 
   }
 }
 
+test fn witness_turn_outcome_unobserved_is_ineligible() -> Bool {
+  let bundle = ProviderStandingBundle {
+    installation: InstallationReady,
+    authentication: AuthenticationAuthenticated,
+    entitlement: EntitlementObservedAvailable,
+    limits: [
+      LimitObservedAvailable {
+        subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
+      },
+    ],
+    turn: TurnOutcomeUnobserved {
+      reason: "no turn outcome observed at selection time" as NonEmptyStr,
+    },
+    tool_environment: ToolEnvironmentReady,
+  }
+  !provider_standing_is_selection_eligible(
+    standing: provider_standing_from_fixture_bundle(
+      provider: ProviderInstance {
+        kind: CodexCliProvider,
+        host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        executable: "codex" as NonEmptyStr,
+        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      },
+      bundle: bundle,
+    ),
+  )
+}
+
 test fn provider_standing_keystone_holds() -> Bool {
   witness_limit_warning_does_not_block_selection()
     && witness_model_limit_rejection_does_not_block_account_selection()
     && witness_unobserved_standing_is_ineligible()
+    && witness_turn_outcome_unobserved_is_ineligible()
     && witness_cursor_capability_gap_is_eligible()
     && witness_codex_unavailable_prefers_claude_over_codex()
     && witness_offer_list_order_does_not_change_automatic_selection()

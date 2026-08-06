@@ -179,6 +179,16 @@ fn tool_environment_standing_is_selection_eligible(
   }
 }
 
+fn turn_standing_is_selection_eligible(standing: ProviderTurnOutcome) -> Bool {
+  match standing {
+    TurnNotStarted => true
+    TurnSucceeded => true
+    TurnOutcomeUnobserved { reason: _ } => false
+    TurnFailed { reason: _ } => false
+    TurnRefused { reason: _ } => false
+  }
+}
+
 fn limit_subject_is_account_scope(subject: ProviderLimitSubject) -> Bool {
   match subject {
     ProviderAccountLimit { credential: _ } => true
@@ -217,6 +227,7 @@ fn provider_standing_bundle_is_selection_eligible(bundle: ProviderStandingBundle
     && authentication_standing_is_selection_eligible(standing: bundle.authentication)
     && entitlement_standing_is_selection_eligible(standing: bundle.entitlement)
     && limit_observations_are_selection_eligible(observations: bundle.limits)
+    && turn_standing_is_selection_eligible(standing: bundle.turn)
     && tool_environment_standing_is_selection_eligible(standing: bundle.tool_environment)
 }
 
