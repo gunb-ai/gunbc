@@ -415,12 +415,14 @@ fn roadmap_serve_invoke(
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
   request: ServeHttpRequest,
+  release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_for_instance(
     instance: srv1_live_dashboard_instance(),
     handler: handler,
     params: params,
     request: request,
+    release_revision: release_revision,
   )
 }
 
@@ -560,11 +562,13 @@ fn roadmap_serve_selection_response_for_instance(
 fn roadmap_serve_selection_response(
   sel: RouteSelection<RoadmapServeHandler>,
   request: ServeHttpRequest,
+  release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_for_instance(
     instance: srv1_live_dashboard_instance(),
     sel: sel,
     request: request,
+    release_revision: release_revision,
   )
 }
 
@@ -666,20 +670,32 @@ fn roadmap_serve_handle_srv1_lab(
   ))
 }
 
-fn roadmap_serve_handle_srv2_preview(method: String, path: String, body: String) -> ServeWireResponse {
+fn roadmap_serve_handle_srv2_preview(
+  method: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
+    release_revision: release_revision,
   ))
 }
 
-fn roadmap_serve_handle_srv2_lab(method: String, path: String, body: String) -> ServeWireResponse {
+fn roadmap_serve_handle_srv2_lab(
+  method: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
     instance: srv2_lab_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
+    release_revision: release_revision,
   ))
 }
