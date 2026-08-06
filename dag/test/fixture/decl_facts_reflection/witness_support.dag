@@ -2,21 +2,30 @@ module test.fixture.decl_facts_reflection.witness_support
 
 import std.types { List }
 import v2.std.decl_facts_skeleton {
-  DeclFactQualifiedNameResolution,
   decl_fact_skeleton_for_resolution,
   resolve_decl_fact_by_qualified_name,
 }
 import v2.std.decl_index { DeclFact, decl_facts }
-import v2.std.node { Node }
-import v2.std.collection { Absent, Present }
 
+// Single authority: specimen rows, duplicate_qn oracle (both roots), dimensionless positive-control deps.
 data decl_facts_reflection_fixture_pool_roots: List<String> = [
+  "dag/test/fixture/decl_facts_reflection",
+  "dag/test/fixture/decl_facts_reflection_duplicate_qn/primary",
+  "test/fixture_roots/decl_facts_reflection_duplicate_qn/shadow",
+  "dag/extdeps/units",
+  "dag/extdeps/external_authority",
+  "dag/std",
+]
+
+// Skeleton outer-constructor lexeme witnesses need only parse-tree facts under specimens/;
+// narrower than decl_facts_reflection_fixture_pool_roots — no duplicate_qn shadow or std closure.
+data decl_facts_skeleton_fixture_pool_roots: List<String> = [
   "dag/test/fixture/decl_facts_reflection",
 ]
 
-fn decl_facts_reflection_fixture_facts() -> List<DeclFact> {
-  decl_facts(pool_roots: decl_facts_reflection_fixture_pool_roots)
-}
+data decl_facts_reflection_fixture_facts: List<DeclFact> = decl_facts(pool_roots: decl_facts_reflection_fixture_pool_roots)
+
+data decl_facts_skeleton_fixture_facts: List<DeclFact> = decl_facts(pool_roots: decl_facts_skeleton_fixture_pool_roots)
 
 fn decl_fact_skeleton_for_qualified_name(
   facts: List<DeclFact>,

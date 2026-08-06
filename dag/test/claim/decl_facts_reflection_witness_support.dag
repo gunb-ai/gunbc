@@ -5,7 +5,10 @@ import test.fixture.decl_facts_reflection.ambiguous_specimen
 import test.fixture.decl_facts_reflection.globally_unique_carrier
 import test.fixture.decl_facts_reflection.specimens
 import test.fixture.decl_facts_reflection.unimported_globally_unique_user
-import v2.std.decl_index { DeclFact, decl_facts }
+import test.fixture.decl_facts_reflection.witness_support {
+  decl_facts_reflection_fixture_facts,
+}
+import v2.std.decl_index { DeclFact }
 import std.algebra { Empty }
 import v2.std.optional { optional_present, optional_absent }
 import v2.std.data_initializer_identity {
@@ -28,18 +31,6 @@ import v2.std.data_initializer_identity {
   data_initializer_is_plain_record_projection,
   plain_record_parent_qualified_name_optional,
 }
-
-// Fixture-scoped pool: specimen rows + dimensionless positive-control deps only — not witness_layer_roots.
-data decl_facts_reflection_fixture_pool_roots: List<String> = [
-  "dag/test/fixture/decl_facts_reflection",
-  "dag/test/fixture/decl_facts_reflection_duplicate_qn/primary",
-  "test/fixture_roots/decl_facts_reflection_duplicate_qn/shadow",
-  "dag/extdeps/units",
-  "dag/extdeps/external_authority",
-  "dag/std",
-]
-
-data decl_facts_reflection_fixture_facts: List<DeclFact> = decl_facts(pool_roots: decl_facts_reflection_fixture_pool_roots)
 
 fn decl_facts_reflection_lookup(qn: String) -> DeclFactLookup {
   decl_fact_lookup_by_qualified_name(qn: qn, facts: decl_facts_reflection_fixture_facts)
