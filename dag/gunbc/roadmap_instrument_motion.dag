@@ -68,7 +68,7 @@ fn frames_wire(t: SyntheticTapStrength, m: MotionPreference) -> String {
 data both_preferences_are_shipped_note: String = "Both sequences travel with the button, and the client picks by matchMedia. The reduced wire is not an empty string or a missing attribute — it is the at-rest frame gunbc.design.instrument_bob decides for MotionReduced, so a reduced-motion viewer gets a model answer rather than a renderer opting out. The receipt, the magnitudes and the straddle are identical under both."
 
 fn cls(name: String) -> SelectorSubject {
-  ClassSelector { class_name: name }
+  ClassSelector { name: name }
 }
 
 fn motion_rules() -> List<BuildRule> {
