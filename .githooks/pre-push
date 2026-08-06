@@ -6,9 +6,9 @@ cd "$ROOT"
 # 🟡 dissolve-on: githooks_repo_local_git_config_emit_shell — hook-emitted git config argv lines are the foreign-executor interim for a runtime-absent site; DISSOLVES WHEN shell→intent bash grammar rows read forward emit the converge block from the same reconcile_install_argv authority without concat-built medium strings (DESIGN §4 one-grammar-both-directions; githooks_pre_push_emit medium disposition family).
 # Idempotent repository-local Git integration bindings (gunbc.repo_local_git_config).
 # repo-local git config: merge.generated-artifact.driver
-git config --local merge.generated-artifact.driver true
+'git' 'config' '--local' 'merge.generated-artifact.driver' 'bash .githooks/generated-artifact-merge %O %A %B %P'
 # repo-local git config: core.hooksPath
-git config --local core.hooksPath .githooks
+'git' 'config' '--local' 'core.hooksPath' '.githooks'
 echo "[pre-push] cargo fmt --all --check"
 fmt_rc=0
 cargo fmt --all --check || fmt_rc=$?

@@ -614,6 +614,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_install_media_dissolve
   },
   WitnessExclusionRow {
+    pattern: "generated_artifact_merge_driver_real_execution_witness_test.dag",
+    classification: BinWitnessWet,
+    reason: excl_install_media_reason,
+    dissolve_on: excl_install_media_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "repo_local_git_config_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
@@ -1033,6 +1039,9 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_missing_target_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/host_build_cache_provision_real_execution_witness_test.dag", f: "provision_read_back_failure_not_converged_by_real_execution"),
   bin_wet(entry: "dag/test/claim/repo_local_git_config_real_execution_witness_test.dag", f: "repo_local_git_config_actuator_sets_local_bindings_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "divergent_generated_artifact_merge_refuses_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "one_sided_generated_artifact_change_merges_clean_by_real_execution"),
   bin_wet(entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag", f: "live_rust_observation_matches_actions_subject"),
   bin_wet(entry: "dag/test/claim/roadmap_receipt_continuity_live_witness_test.dag", f: "live_roadmap_acceptance_history_integrity_holds"),
   bin_wet(entry: "dag/test/claim/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution"),
@@ -1294,12 +1303,6 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery"
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/roadmap_program_view_witness_test.dag",
-    function: "witness_live_constraint_present_iff_line_unaccepted",
-    reason: "live_view() joins declared roadmap nodes, edges, receipts, and finish-line specs — measured ~3074ms cold locally but flaked at 5004ms in falsifier discovery-corpus batch 3 under host contention when ~6663 witnesses share the floor (run 30960560941, BudgetExceeded). Not caused by PR #7762 diff; borderline over the 5s fast-lane budget",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
-  },
-  SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_every_declaration_ref_resolves_exactly",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
@@ -1370,12 +1373,6 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "w_derived_population_is_nonempty",
     reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
     dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
-  },
-  SubstrateLongLaneRow {
-    entry: "dag/test/claim/roadmap_program_view_witness_test.dag",
-    function: "witness_live_constraint_present_iff_line_unaccepted",
-    reason: "live_view() joins declared roadmap nodes, edges, receipts, and finish-line specs — measured ~3074ms cold locally but flaked at 5004ms in falsifier discovery-corpus batch 3 under host contention when ~6663 witnesses share the floor (run 30960560941, BudgetExceeded). Not caused by PR #7762 diff; borderline over the 5s fast-lane budget",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/instrument_sandbox_live_witness_test.dag",
