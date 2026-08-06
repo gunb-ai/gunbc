@@ -319,6 +319,24 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_bin_wet_dissolve
   },
   WitnessExclusionRow {
+    pattern: "self_host_logic_behavioral_witness_test.dag",
+    classification: FalsifierSelfHostWet,
+    reason: "REHOME fulfilled 2026-08-06 (Lane D): falsifier_self_host_wet_cadence_active true; dag/test/claim/self_host_logic_behavioral_witness_test.dag::self_host_logic_behavioral_receipt_holds enrolled on falsifier_self_host_wet_template_entries; path policy keeps the wet receipt out of per-PR hermetic discovery while falsifier batch 2 is the executing consumer",
+    dissolve_on: excl_behavioral_receipt_dissolve
+  },
+  WitnessExclusionRow {
+    pattern: "namespace_import_closure_witness_test.dag",
+    classification: FalsifierSelfHostWet,
+    reason: "REHOME fulfilled 2026-08-06 (Lane D): falsifier_self_host_wet_cadence_active true; dag/test/claim/namespace_import_closure_witness_test.dag::namespace_import_closure_receipt_holds enrolled on falsifier_self_host_wet_template_entries; path policy keeps the wet receipt out of per-PR hermetic discovery while falsifier batch 2 is the executing consumer",
+    dissolve_on: excl_behavioral_receipt_dissolve
+  },
+  WitnessExclusionRow {
+    pattern: "interpreter_dispatch_bijection_real_roster_witness_test.dag",
+    classification: FalsifierSelfHostWet,
+    reason: "R1 real-crate bijection wet receipt (gunbc#7825): cargo-integration witness (git clone, gunbc run main_wet, cold cargo build in clone) enrolled on falsifier_self_host_wet_template_entries when cadence active; must not enter per-PR hermetic discovery",
+    dissolve_on: excl_behavioral_receipt_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "self_host_03_resolve_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
