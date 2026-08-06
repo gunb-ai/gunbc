@@ -58,6 +58,7 @@ import extdeps.uri {
   UriPercentComponentRefused,
   uri_hex_nibble_construction,
   UriHexNibbleOutOfRange,
+  UriPercentEncodeUnicodeScalarOutOfRangeRefused,
 }
 import std.types { Bool, NonEmptyStr }
 
@@ -231,7 +232,7 @@ data witness_unencodable_scalar_code_points: List<Int> = [1114112]
 
 test fn uri_percent_encode_component_refuses_code_point_beyond_unicode_max() -> Bool {
   match uri_percent_encode_code_points(code_points: witness_unencodable_scalar_code_points) {
-    UriPercentComponentRefused { cause: UriHexNibbleOutOfRange { digit: 1114112 } } => true
+    UriPercentComponentRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: 1114112 } } => true
     _ => false
   }
 }

@@ -2,7 +2,12 @@ module extdeps.standards.rfc_8118
 
 import std.types { NonEmptyStr, String, List, Bool }
 import std.integer { PositiveInt }
-import std.citation { CitationSelector, fragment_selector }
+import std.citation {
+  CitationSelector,
+  CitationSelectorConstructed,
+  CitationSelectorRefused,
+  fragment_selector,
+}
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri {
   Uri,
@@ -11,7 +16,8 @@ import extdeps.uri {
   uri_percent_encode_code_points,
   UriPercentComponentEncoded,
   UriPercentComponentRefused,
-  UriHexNibbleConstruction,
+  UriPercentEncodeRefusalCause,
+  UriPercentEncodeEmptyInputRefused,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -41,7 +47,7 @@ type NavigableUriRefusalCause
   = BaseLocatorAlreadyCarriesFragment { locator: NonEmptyStr }
   | PdfOpenParameterPercentEncodeRefused {
       parameter: PdfProfileParameter,
-      cause: UriHexNibbleConstruction,
+      cause: UriPercentEncodeRefusalCause,
     }
 
 type NavigableUriProjection
@@ -205,21 +211,21 @@ type PdfProfileParameterWire
   = PdfProfileParameterWired { wire: String }
   | PdfProfileParameterWireRefused {
       parameter: PdfProfileParameter,
-      cause: UriHexNibbleConstruction,
+      cause: UriPercentEncodeRefusalCause,
     }
 
 type PdfOpenParameterSequenceWire
   = PdfOpenParameterSequenceWired { wire: String }
   | PdfOpenParameterSequenceWireRefused {
       parameter: PdfProfileParameter,
-      cause: UriHexNibbleConstruction,
+      cause: UriPercentEncodeRefusalCause,
     }
 
 type PdfOpenParameterSequenceWireFoldState
   = PdfOpenParameterSequenceWireBuilding { wires: List<String> }
   | PdfOpenParameterSequenceWireFoldRefused {
       parameter: PdfProfileParameter,
-      cause: UriHexNibbleConstruction,
+      cause: UriPercentEncodeRefusalCause,
     }
 
 type PdfOpenFragmentSelectorConstruction
@@ -400,11 +406,18 @@ fn pdf_open_fragment_selector(sequence: PdfOpenParameterSequence) -> PdfOpenFrag
         cause: PdfOpenParameterPercentEncodeRefused { parameter: p, cause: cause },
       }
     PdfOpenParameterSequenceWired { wire: fragment } =>
-      PdfOpenFragmentSelectorConstructed(
-        fragment_selector(
-          conforms_to: extdeps_external_authority_anchor,
-          value: fragment as NonEmptyStr,
-        ),
-      )
+      match fragment_selector(
+        conforms_to: extdeps_external_authority_anchor,
+        value: fragment as NonEmptyStr,
+      ) {
+        CitationSelectorConstructed(selector) => PdfOpenFragmentSelectorConstructed(selector)
+        CitationSelectorRefused { cause: _ } =>
+          PdfOpenFragmentSelectorRefused {
+            cause: PdfOpenParameterPercentEncodeRefused {
+              parameter: OpenPage(PdfOpenPage { page: 1 }),
+              cause: UriPercentEncodeEmptyInputRefused,
+            },
+          }
+      }
   }
 }

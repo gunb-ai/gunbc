@@ -2,7 +2,7 @@ module gunbc.citation.pdf_safe_profile
 
 import std.types { NonEmptyStr, List, Bool }
 import std.integer { PositiveInt }
-import extdeps.uri { Uri, UriHexNibbleConstruction }
+import extdeps.uri { Uri, UriPercentEncodeRefusalCause }
 import extdeps.standards.rfc_8118 {
   PdfProfileParameter,
   PdfProfileParameterConstruction,
@@ -70,7 +70,7 @@ type NavigableUriSafeRefusalCause
   | BaseLocatorAlreadyCarriesFragmentFromRfc { locator: NonEmptyStr }
   | PdfOpenParameterPercentEncodeRefusedFromSafe {
       parameter: PdfProfileParameter,
-      cause: UriHexNibbleConstruction,
+      cause: UriPercentEncodeRefusalCause,
     }
 
 type NavigableUriSafeProjection

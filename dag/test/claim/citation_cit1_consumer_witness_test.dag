@@ -13,7 +13,6 @@ import extdeps.runtime.abi.sysv_amd64 {
   x86_64_abi_pdf_expected_digest_construction,
   x86_64_abi_syscall_evidence_link_construction,
   x86_64_abi_pdf_authority,
-  x86_64_abi_pdf_identity,
   X86_64AbiPdfExpectedDigestConstructed,
   X86_64AbiPdfCitationSelectorConstructed,
   X86_64AbiPdfNavigableUriProjected,
@@ -35,7 +34,7 @@ import extdeps.version { VersionIdentity }
 import extdeps.pin { pin_currency_gap, AuthoredPinHasNoReviewDate, ExactPin, Pin }
 import std.types { Bool, NonEmptyStr, List }
 import gunbc.citation.pdf_safe_profile { PdfOpenParameterPercentEncodeRefusedFromSafe }
-import extdeps.uri { UriHexNibbleOutOfRange }
+import extdeps.uri { UriPercentEncodeUnicodeScalarOutOfRangeRefused }
 import extdeps.standards.rfc_8118 { OpenNamedDest }
 
 data witness_unencodable_scalar_code_points: List<Int> = [1114112]
@@ -88,7 +87,7 @@ test fn x86_64_abi_consumer_refuses_unencodable_nameddest_navigable_uri() -> Boo
     X86_64AbiPdfNavigableUriRefused {
       cause: PdfOpenParameterPercentEncodeRefusedFromSafe {
         parameter: OpenNamedDest(_),
-        cause: UriHexNibbleOutOfRange { digit: 1114112 },
+        cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: 1114112 },
       },
     } => true
     _ => false
@@ -120,11 +119,19 @@ test fn x86_64_abi_syscall_citation_fact_binds_extraction_observation() -> Bool 
   match x86_64_abi_pdf_byte_extraction {
     RepresentationRetrieved { observed: o, request: _, observed_at: _, http_status: _ } =>
       match x86_64_abi_syscall_convention_citation_fact_construction {
-        X86_64AbiCitationFactConstructed(_) =>
-          match x86_64_abi_pdf_syscall_fragment_selector {
-            X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) => s.value == ("page=28" as NonEmptyStr)
-            _ => false
-          }
+        X86_64AbiCitationFactConstructed(fact) =>
+          cited_representation_identity_eq(
+            left: fact.value.cited.expected_pin.subject,
+            right: o.identity,
+          )
+            && match x86_64_abi_pdf_expected_digest_construction {
+              X86_64AbiPdfExpectedDigestConstructed(expected_digest) => o.observed_identity == expected_digest
+              _ => false
+            }
+            && match x86_64_abi_pdf_syscall_fragment_selector {
+              X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) => s.value == ("page=28" as NonEmptyStr)
+              _ => false
+            }
         _ => false
       }
     _ => false
