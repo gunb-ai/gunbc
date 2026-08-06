@@ -139,7 +139,7 @@ test fn witness_red_control_service_not_ready_reason_surfaces_on_blocked_apply()
 }
 
 test fn witness_digest_readback_script_is_bounded_and_post_mutation() -> Bool {
-  let port = deployment_plan_listen_port(spec: deployment_spec_srv1(release_revision: deploy_witness_release_revision))
+  let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
   let script = roadmap_site_digest_readback_script(port: port)
   string_contains(s: script, pattern: roadmap_site_roadmap_url_path)
     && string_contains(s: script, pattern: roadmap_site_dispatch_url_path)

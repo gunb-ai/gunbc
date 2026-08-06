@@ -1,6 +1,6 @@
 module gunbc.running_release_identity
 
-import std.types { Bool, CommitSha, Int, String }
+import std.types { Bool, CommitSha, Int, NonEmptyStr, String }
 import std.content_hash { Fnv1a64Structural, content_hash_validate_lower_hex_length }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_object, json_string }
 import extdeps.languages.json.parse {
@@ -17,6 +17,10 @@ data running_release_identity_note: String = "THE PROCESS IS THE AUTHORITY FOR W
 
 data release_revision_hex_digits: Int = 40
 
+data surface_bundle_identity_hex_digits: Int = 16
+
+data surface_identity_is_validated_note: String = "THE SURFACE IDENTITY IS A VALIDATED DIGEST, NOT WHATEVER STRING ARRIVED. It was carried as a bare String, which accepted any text a process put on the wire — including an empty member, a truncated digest, or a value from an entirely different hash family — and every comparison downstream then reduced to string equality against something that had never been shown to be a digest at all. A mismatch and a malformed member are different facts with different remedies, and a raw String could not tell them apart.\\n\\n16 lowercase hex digits is the fnv1a64 structural width, checked through content_hash_validate_lower_hex_length — the SAME authority the 40-digit revision check uses, one width apart. So the wire parser now refuses a malformed identity where it used to admit it, and Fnv1a64Structural is what reaches readiness, which is why a comparison there is between two digests rather than between two strings that might be digests."
+
 fn release_revision_text_valid(text: String) -> Bool {
   content_hash_validate_lower_hex_length(
     text: text,
@@ -26,13 +30,17 @@ fn release_revision_text_valid(text: String) -> Bool {
 
 data release_revision_validation_note: String = "Lowercase-hex validation routes through std.content_hash content_hash_validate_lower_hex_length rather than a private predicate, because 'exactly N lowercase hex digits' already has ONE authority in this corpus (DESIGN section 3) and a second copy would be a nickname that drifts. 40 digits is git's Sha1 object-name width, the same width extdeps.git.object_store refines GitObjectId to; the ancestry probes this revision feeds (extdeps.git.inspect MergeBaseIsAncestor) take CommitSha, so the wire fact stays CommitSha and is validated at every boundary it crosses rather than being trusted because it arrived."
 
+fn surface_bundle_identity_text_valid(text: String) -> Bool {
+  content_hash_validate_lower_hex_length(text: text, expected_hex_digits: surface_bundle_identity_hex_digits)
+}
+
 data running_release_revision_key: String = "revision"
 
 data running_release_surface_identity_key: String = "surface_bundle_identity"
 
 type RunningReleaseObservation {
   revision: CommitSha
-  surface_bundle_identity: String
+  surface_bundle_identity: Fnv1a64Structural
 }
 
 type RunningReleaseUnidentifiedCause
@@ -45,6 +53,7 @@ type RunningReleaseUnidentifiedCause
   | SurfaceBundleIdentityAbsent
   | SurfaceBundleIdentityDuplicated { count: Int }
   | SurfaceBundleIdentityNotAString
+  | SurfaceBundleIdentityMalformed { text: String }
 
 type RunningReleaseIdentity
   = RunningReleaseIdentified { observation: RunningReleaseObservation }
@@ -108,11 +117,17 @@ fn observe_running_release_identity(healthz_body: String) -> RunningReleaseIdent
                       Absent =>
                         RunningReleaseUnidentified { cause: SurfaceBundleIdentityNotAString }
                       Present { value: surface_text } =>
-                        RunningReleaseIdentified {
-                          observation: RunningReleaseObservation {
-                            revision: revision_text as CommitSha,
-                            surface_bundle_identity: surface_text,
-                          },
+                        if !surface_bundle_identity_text_valid(text: surface_text) {
+                          RunningReleaseUnidentified {
+                            cause: SurfaceBundleIdentityMalformed { text: surface_text },
+                          }
+                        } else {
+                          RunningReleaseIdentified {
+                            observation: RunningReleaseObservation {
+                              revision: revision_text as CommitSha,
+                              surface_bundle_identity: Fnv1a64Structural { digest: surface_text as NonEmptyStr },
+                            },
+                          }
                         }
                     }
                 }
@@ -143,7 +158,7 @@ fn running_release_surface_equals(
   match identity {
     RunningReleaseUnidentified { cause: _ } => false
     RunningReleaseIdentified { observation: obs } =>
-      obs.surface_bundle_identity == (expected.digest as String)
+      (obs.surface_bundle_identity.digest as String) == (expected.digest as String)
   }
 }
 

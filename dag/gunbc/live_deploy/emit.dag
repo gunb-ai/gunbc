@@ -1,6 +1,6 @@
 module gunbc.live_deploy.emit
 
-import std.types { String, List, Bool, NonEmptyStr, Int, FilePath }
+import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha }
 import gunbc.managed_directory {
   ManagedDirectory,
   managed_directory_mode_octal,
@@ -202,7 +202,27 @@ fn emit_pipeline_or_poison(p: Pipeline, refused: String) -> String {
 
 data emit_systemd_unit_serve_note: String = "The belt-B unit: ExecStart is `gunbc serve` (the seed binary answering every request through the ONE .dag entry gunbc.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch). User=briansrls, NOT root: claude auth exists only under briansrls on srv1 (parent lane verification 2026-07-20), so a root-run belt would spawn unauthed dead sessions; port 8080 is non-privileged so briansrls binds it. WorkingDirectory = the repo root — the source roots and entry are relative to it, and the belt's spawn workdir projects the same gunbc.host_layout fact."
 
-fn emit_systemd_unit_doc(spec: DeploymentSpec) -> Doc {
+data release_revision_binding_note: String = "WHERE THE LAUNCH REVISION COMES FROM IS ITSELF A MODELED FACT, BECAUSE TWO HONEST ANSWERS EXIST AND A THIRD IS A REFUSAL. The unit's ExecStart must name the release the process will report, and this repository renders that unit on two different occasions that genuinely differ in what they can know.\\n\\nRevisionBoundAtEmission is the production apply: the launcher observed one candidate, and the unit installed at the host bakes exactly that value, so the process reports the revision the deploy admitted and readiness compares against the same single subject.\\n\\nRevisionBoundAtInvocation is the COMMITTED script. A file frozen in Git cannot name a future deploy's revision — every constant it could contain is either fabricated (a placeholder identity nobody chose) or non-deterministic (the tree's HEAD at generation time, which redrafts the artifact on every commit and makes its drift gate permanently red). So the frozen artifact defers the value to invocation and refers to a shell parameter instead, which is the only spelling that is both static and true.\\n\\nRevisionNotInstalled is the retract fold, and it exists so that a retract cannot name a revision even accidentally. It is not a null revision or an empty string — the arm that would render ExecStart under it REFUSES with a poison marker, because a retract that reached the unit writer means the fold dispatched an install while tearing down. That is the same unreachable-arm discipline emit_deploy_teardown_dependency_refusal uses: loud, not silently benign (DESIGN section 5).\\n\\nRESIDUE, NAMED: the invocation form guards only unset-or-empty, via bash's own parameter expansion. Its 40-lowercase-hex SHAPE is validated by the serve binary before the graph compiles or the listener binds, so a malformed value still refuses — one boundary later than ideal. DISSOLVES WHEN the apply script carries a typed preflight step that validates the parameter's shape before any host mutation."
+
+type ReleaseRevisionBinding
+  = RevisionBoundAtEmission { revision: CommitSha }
+  | RevisionBoundAtInvocation { shell_variable: String }
+  | RevisionNotInstalled
+
+data release_revision_shell_variable: String = "GUNBC_RELEASE_REVISION"
+
+data release_revision_not_installed_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the systemd unit writer was reached with RevisionNotInstalled — a retract fold dispatched a unit install. This marker is not a valid release revision, so the golden drift gate reds rather than emitting a unit whose ExecStart names no release (DESIGN section 5: an unreachable arm refuses loudly, never fabricates)."
+
+fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
+  match binding {
+    RevisionBoundAtEmission { revision: r } => r as String
+    RevisionBoundAtInvocation { shell_variable: v } =>
+      join(["\"$", "\{", v, ":?live-deploy apply requires ", v, " (the 40-hex release revision to launch)", "\}", "\""], "")
+    RevisionNotInstalled => release_revision_not_installed_poison
+  }
+}
+
+fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
   let svc = spec.service
   let port = to_string(svc.listen.port)
   let host = svc.listen.host
@@ -222,7 +242,7 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec) -> Doc {
       " serve --source-root dag --source-root src/v2",
       " --entry dag/gunbc/roadmap_serve.dag --function ", svc.serve_function as String,
       " --host ", host, " --port ", port,
-      " --release-revision ", svc.release_revision as String,
+      " --release-revision ", release_revision_execstart_text(binding: revision),
     ], "")),
     doc_line_of(text: "Restart=on-failure"),
     doc_line_of(text: ""),
@@ -332,11 +352,11 @@ fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentSte
 
 data staged_unit_filename_note: String = "The staged filename reads from spec.service.unit_name for the same reason the install does: these two steps write and then install THE SAME FILE, and while both were the literal gunbc-roadmap.service that agreement was a coincidence of two independent constants rather than a fact. Parameterizing only the install side would have left the writer staging one name and the installer copying another — a deploy that fails on a missing file, which is at least loud, or worse installs a stale unit left in the stage directory from a previous run."
 
-fn apply_systemd_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
+fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> PipelineStep {
   deploy_raw(command: concat(
     concat(
       join(["cat > \"$_gunbc_stage/", spec.service.unit_name as String, "\" <<'GUNBC_UNIT_EOF'\n"], ""),
-      render(doc: emit_systemd_unit_doc(spec: spec), proto: live_deploy_protocol),
+      render(doc: emit_systemd_unit_doc(spec: spec, revision: revision), proto: live_deploy_protocol),
     ),
     "GUNBC_UNIT_EOF"
   ))
@@ -434,7 +454,7 @@ fn deploy_apply_preamble_steps(access: DeployAccess) -> List<PipelineStep> {
 
 data apply_tree_split_sync_note: String = "GunbcSourceTree apply is a SPLIT sync (review 40332, DESIGN 5 — the retract-side rmdir wall alone gave false assurance): the shared repo at /opt/gunbc/gunbc accumulates target-LOCAL git state the runner checkout never has — .git/worktrees/<name> registrations for every live dispatch worktree, the session branch refs those worktrees are on, and the objects their commits wrote into the shared store — so a single rsync --delete of ./ would destroy live agent sessions on every redeploy. The working tree syncs with --delete (stale sources must not linger) but excludes /.git; .git syncs ADDITIVELY (no --delete), which keeps origin/main fresh from the runner checkout (the belt's git worktree add resolves origin/main from these remote-tracking refs — srv1 does no fetch) while never deleting worktree metadata, session refs, or their objects. Accumulation of pruned-worktree residue is the safe direction and is reaped by git itself, never by deploy. Flags are -rlpt, not -a: the sync principal is the service user (emit_deploy_principal_note), so -a's owner/group replication would chgrp toward the runner's group and fail EPERM — ownership is the destination principal's by construction, never replicated from the source."
 
-fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
+fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   match art.kind {
     GunbcSourceTree => [
       deploy_raw(command: "sudo -n install -d -m 0755 /opt/gunbc"),
@@ -466,7 +486,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec) -> Li
       )),
     ]
     SystemdUnit => [
-      apply_systemd_unit_write_step(spec: spec),
+      apply_systemd_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: join([
         "sudo -n install -m 0644 \"$_gunbc_stage/", spec.service.unit_name as String, "\" ",
         art.path as String,
@@ -544,14 +564,14 @@ fn emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep) -> Lis
   [deploy_raw(command: concat(live_deploy_teardown_dependency_unreachable_poison, dep.package))]
 }
 
-fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: DeploymentSpec) -> List<PipelineStep> {
+fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   match effect {
     EffectUpsert { member: step } =>
       match step {
         Dependency { step: dep } => [
           ensure_apt_package_step(pkg: dep.package, privileged: true),
         ]
-        ArtifactStep { step: art } => emit_artifact_upsert(art: art, spec: spec)
+        ArtifactStep { step: art } => emit_artifact_upsert(art: art, spec: spec, revision: revision)
       }
     EffectTeardown { member: step } =>
       match step {
@@ -564,7 +584,8 @@ fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: Deploym
 fn apply_intent_from_effects(
   spec: DeploymentSpec,
   effects: List<MemberEffect<DeploymentStep>>,
-  access: DeployAccess
+  access: DeployAccess,
+  revision: ReleaseRevisionBinding
 ) -> Pipeline {
   Pipeline {
     steps: concat(
@@ -580,7 +601,7 @@ fn apply_intent_from_effects(
       concat(
         deploy_apply_preamble_steps(access: access),
         concat(
-          flat_map(effects, e => emit_deploy_member_effect(effect: e, spec: spec)),
+          flat_map(effects, e => emit_deploy_member_effect(effect: e, spec: spec, revision: revision)),
           [
             deploy_raw(command: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=apply verdict=converged")),
           ]
@@ -636,7 +657,7 @@ fn retract_intent_from_effects(
         concat(
           flat_map(
             effects,
-            e => emit_deploy_member_effect(effect: e, spec: spec),
+            e => emit_deploy_member_effect(effect: e, spec: spec, revision: RevisionNotInstalled),
           ),
           [
             deploy_raw(command: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=retract verdict=converged")),
@@ -657,7 +678,7 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
   )
 }
 
-fn live_deploy_apply_script_for(spec: DeploymentSpec) -> String {
+fn live_deploy_apply_script_for(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> String {
   match ci_deploy_srv1_access_or_refusal() {
     DeployAccessJobPrincipalRefused { refusal: r } =>
       deploy_access_job_principal_refused_emit_poison(refusal: r)
@@ -665,7 +686,7 @@ fn live_deploy_apply_script_for(spec: DeploymentSpec) -> String {
       match membership_effects(plan: deployment_apply_plan(spec: spec)) {
         EffectsReady { effects: es } =>
           emit_pipeline_or_poison(
-            p: apply_intent_from_effects(spec: spec, effects: es, access: access),
+            p: apply_intent_from_effects(spec: spec, effects: es, access: access, revision: revision),
             refused: live_deploy_apply_emit_refused_poison
           )
         ApplyRefused { refusals: rs } =>
@@ -702,18 +723,21 @@ fn live_deploy_retract_script_with_scoped_removal(spec: DeploymentSpec) -> Strin
   }
 }
 
-data expected_script_revision_is_a_parameter_note: String = "THE REVISION IS A PARAMETER HERE RATHER THAN A CONSTANT IN THIS MODULE, WHICH KEEPS A FIXTURE OUT OF PRODUCTION CODE. These two functions exist to state what the srv1 scripts should be, and the emitted ExecStart now depends on the launch revision — so they need one. Declaring a fixture sha beside the production emitter would put a hand-authored value on the same import surface the deploy path uses, one careless call away from being emitted at a real host. Taking it as a parameter means the only party that can supply a fixture is a witness, and the only party that can supply a real revision is the launcher that observed one."
+data expected_script_takes_no_revision_note: String = "THESE ARE NULLARY AGAIN, AND THAT IS THE POINT RATHER THAN A CONVENIENCE. They state what the COMMITTED srv1 scripts should be, and a file frozen in Git is generated once and read forever — so any revision it could name is wrong by construction. A constant would be a fabricated identity nobody chose; the generating tree's HEAD would redraft the artifact on every commit and leave its drift gate permanently red; a witness fixture would put a synthetic sha into a production artifact. All three were rejected.\\n\\nSo the apply artifact binds its revision at INVOCATION (RevisionBoundAtInvocation) and the retract artifact installs no release at all (RevisionNotInstalled). Neither needs an argument because neither knows a candidate, which is exactly true of a static file. The PRODUCTION apply path does know one — the launcher observed it — and supplies RevisionBoundAtEmission directly to live_deploy_apply_script_for, never through these."
 
-fn expected_live_deploy_apply_script(release_revision: CommitSha) -> String {
-  live_deploy_apply_script_for(spec: deployment_spec_srv1(release_revision: release_revision))
+fn expected_live_deploy_apply_script() -> String {
+  live_deploy_apply_script_for(
+    spec: deployment_spec_srv1(),
+    revision: RevisionBoundAtInvocation { shell_variable: release_revision_shell_variable },
+  )
 }
 
-fn expected_live_deploy_retract_script(release_revision: CommitSha) -> String {
-  live_deploy_retract_script_for(spec: deployment_spec_srv1(release_revision: release_revision))
+fn expected_live_deploy_retract_script() -> String {
+  live_deploy_retract_script_for(spec: deployment_spec_srv1())
 }
 
-fn live_deploy_systemd_unit_for(spec: DeploymentSpec) -> String {
-  render(doc: emit_systemd_unit_doc(spec: spec), proto: live_deploy_protocol)
+fn live_deploy_systemd_unit_for(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> String {
+  render(doc: emit_systemd_unit_doc(spec: spec, revision: revision), proto: live_deploy_protocol)
 }
 
 fn live_deploy_tree_sync_unit_for(spec: DeploymentSpec) -> String {
