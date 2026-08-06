@@ -8,7 +8,6 @@ import v2.std.operation_argv {
   operation_argv_bind_text_list
 }
 import v2.std.orchestration { FailFast }
-import v2.std.text { string_contains }
 import v2.workflow.ci_stage0_partition_compile_gate_emit {
   ci_stage0_partition_compile_gate_extra_args,
   ci_stage0_partition_compile_gate_intent,

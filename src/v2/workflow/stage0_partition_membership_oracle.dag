@@ -2,7 +2,7 @@ module v2.workflow.stage0_partition_membership_oracle
 
 import v2.std.algebra { any, fold_list }
 import v2.std.optional { Absent, Present }
-import v2.std.text { String, string_contains }
+import v2.std.text { String }
 import v2.workflow.rust_crate_partition {
   stage0_partition_crate_rows,
   stage0_partition_crate_rows_first_modules_for_package,

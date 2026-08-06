@@ -1,6 +1,5 @@
 module test.claim.stage0_partition_membership_oracle_witness
 
-import v2.std.text { string_contains }
 import v2.workflow.stage0_partition_membership_oracle {
   Stage0ModuleUseCrateObservation,
   Stage0PartitionMembershipOracleOk,
