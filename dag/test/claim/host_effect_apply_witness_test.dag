@@ -1,5 +1,7 @@
 module test.claim.host_effect_apply_witness
 
+import gunbc.host_effect { OneShot, ConvergeLoop, host_effect_drive_from_evidence }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn host_os_target() -> NodeControlPlane {
