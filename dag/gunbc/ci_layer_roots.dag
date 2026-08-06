@@ -3,7 +3,7 @@ module gunbc.ci_layer_roots
 import std.realization_schedule {
   ScheduleWitnessEntry, ExecutionWitnessKind, CorpusWitnessKind,
   ScopedWitnessBatch, ScopedWitnessBatchId, ScopedWitnessBatchResourceProfile,
-  RunnableBatchClamp, SequentialChildProcess, SelectionApplied,
+  RunnableBatchClamp, SequentialChildProcess, SelectionApplied, SelectionOff,
   scoped_witness_batch, runnable_resource_profile, runnable_memory_substantial,
 }
 import std.execution_mode { Hermetic }
@@ -983,7 +983,39 @@ data v1_claim_scoped_witness_batch: ScopedWitnessBatch = scoped_witness_batch(
   },
 )
 
-data scoped_witness_batches: List<ScopedWitnessBatch> = [v1_claim_scoped_witness_batch]
+data v1_claim_scoped_known_red_probe_batch_note: String = "Per-PR Hermetic expect_red ScopedWitnessBatch for known-red CorpusWitnessKind rows whose subject needs the dag plus src/v1 envelope (gunbc.explicit_witness_admission known_red_probe_v1_envelope_roster: src/v1 paths plus dag witnesses that import v1.*). The falsifier corpus-root probe batch cannot resolve these entries; running them there would treat resolve-refuse as expect-red success without executing the predicate (DESIGN section 5 specification-without-execution). This batch mirrors v1_claim_scoped_witness_batch's dag plus src/v1 witness-subject envelope and SequentialChildProcess isolation so the ordinary worker releases its discovery closure before this narrow envelope resolves. SelectionOff is deliberate: the roster is explicit-entry-only with no discovery scan_dirs, so affected-set selection has no skip surface — every enrolled row must execute every PR. SelectionApplied would arm the floor runner against the enclosing walk's witness_layer_roots (InheritedWalkSourceRoots) before the narrow subject resolve; measured on CI that pairing pinned a worker for 65 minutes at 15 GiB RSS plus 32 GiB swap on a single row without ever evaluating it (run 31005864132, batch 7). Running the same envelope as RunnableDiscoveryBatch in-process after the discovery corpus left ~8.9 GiB RSS and hit the 65-minute step cap with no witness output (run 31051694251 @ f9f762a). The 140-second batch-owned clamp is the measured 85.089s whole-batch wall times the family's 1.6x fleet-spread factor, rounded up to whole five seconds (local arm64, 2026-08-05, witness_namespace_cross_file_provenance_closing_contract_holds). Dissolve-on: known_red_probe_v1_envelope_roster empties — batch unenrolls from scoped_witness_batches beside this note."
+
+fn v1_claim_scoped_known_red_probe_batch_enrolled() -> Bool {
+  length(xs: known_red_probe_v1_envelope_roster()) > 0
+}
+
+fn v1_claim_scoped_known_red_probe_batch() -> ScopedWitnessBatch {
+  scoped_witness_batch(
+    batch_id: "v1-claim-scoped-known-red-probe" as ScopedWitnessBatchId,
+    source_roots: ["dag", "src/v1"],
+    entries: known_red_probe_v1_envelope_roster(),
+    scan_dirs: [],
+    node_frontier_selection: SelectionOff,
+    resource_profile: ScopedWitnessBatchResourceProfile {
+      runnable: runnable_resource_profile(
+        heavy_whole_tree_resolve: false,
+        spawns_host_compiler: false,
+        memory: runnable_memory_substantial(),
+        execution_mode: Hermetic,
+      ),
+      clamp: RunnableBatchClamp { overhead: second(count: 140), per_unit: millisecond(count: 0) },
+      process_isolation: SequentialChildProcess,
+    },
+  )
+}
+
+fn scoped_witness_batches() -> List<ScopedWitnessBatch> {
+  if v1_claim_scoped_known_red_probe_batch_enrolled() {
+    [v1_claim_scoped_witness_batch, v1_claim_scoped_known_red_probe_batch()]
+  } else {
+    [v1_claim_scoped_witness_batch]
+  }
+}
 
 data excl_no_fake_anomalies_reason: String = "The expectation-backfill WALL spawns claim_batch as a child process to read a passing corpus's own stderr, so it is Wet BY CONSTRUCTION — its whole subject is what the observation layer prints, which only exists when the effects really run. The Hermetic discovery corpus refuses it exactly as install_media_real_execution_wet_note describes ('no mock_response for operation Run — refusing to fabricate Unit'), and that refusal is correct: a mocked child emits no real observation stream, so a hermetic version of this witness could only ever pass vacuously. Landed into hermetic discovery by filename convention on first authoring (run 30178544618 @ b2411f0, batch 3) and re-homed to BinWitnessWet; then D6-rehomed to FalsifierRehomedBinWet (run 30220304152: ~85–90s/row vs bin_witness_wet_per_row_wall_budget_seconds=60, batch-4 FLOOR-BATCH-OVER-BUDGET)."
 

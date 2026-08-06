@@ -1,7 +1,7 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
-import gunbc.explicit_witness_admission { known_red_probe_corpus_roster, known_red_probe_v1_envelope_roster }
+import gunbc.explicit_witness_admission { known_red_probe_corpus_roster }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, scoped_witness_batches, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_silent_pick_gate_roster, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
@@ -426,16 +426,11 @@ fn gunbc_ci_floor_enrolled_runnable_labels_for(spec: CiSpec) -> List<String> {
   let corpus_labels = list_map(xs: corpus_plan_nodes(spec: spec), f: fn(node) {
     runnable_single_claim_function(r: runnable_for_node(node: node, spec: spec))
   })
-  let spec_labels = concat(concat(gate_labels, corpus_labels), map(scoped_witness_batches, batch => "__scoped_witness_batch__"))
-  let with_native = if gunbc_pr_native_batch_enrolled() {
+  let spec_labels = concat(concat(gate_labels, corpus_labels), map(scoped_witness_batches(), batch => "__scoped_witness_batch__"))
+  if gunbc_pr_native_batch_enrolled() {
     list_snoc_item(xs: spec_labels, item: runnable_single_claim_function(r: gunbc_pr_native_batch()))
   } else {
     spec_labels
-  }
-  if v1_claim_scoped_known_red_probe_batch_enrolled() {
-    list_snoc_item(xs: with_native, item: runnable_single_claim_function(r: gunbc_v1_claim_scoped_known_red_probe_batch()))
-  } else {
-    with_native
   }
 }
 
@@ -1285,37 +1280,10 @@ fn gunbc_ci_floor_ordinary_batches() -> List<List<Runnable>> {
     enrolled: gunbc_pr_native_batch_enrolled(),
     batch: gunbc_pr_native_batch()
   )
-  let with_scoped = fold(scoped_witness_batches, init: ordinary, f: fn(acc, batch) {
+  let with_scoped = fold(scoped_witness_batches(), init: ordinary, f: fn(acc, batch) {
     list_snoc_item(xs: acc, item: [RunnableScopedWitnessBatch { batch: batch }])
   })
-  falsifier_batches_append_if_enrolled(
-    acc: with_scoped,
-    enrolled: v1_claim_scoped_known_red_probe_batch_enrolled(),
-    batch: gunbc_v1_claim_scoped_known_red_probe_batch()
-  )
-}
-
-data v1_claim_scoped_known_red_probe_batch_note: String = "Per-PR Hermetic expect_red lane for known-red CorpusWitnessKind rows whose subject needs the dag plus src/v1 envelope (gunbc.explicit_witness_admission known_red_probe_v1_envelope_roster: src/v1 paths plus dag witnesses that import v1.*). The falsifier's corpus-root probe batch cannot resolve these entries; running them there would treat resolve-refuse as expect-red success without executing the predicate (DESIGN section 5 specification-without-execution). This batch mirrors v1_claim_scoped_witness_batch's dag plus src/v1 witness-subject envelope. SelectionOff is deliberate: the roster is explicit-entry-only with no discovery scan_dirs, so affected-set selection has no skip surface — every enrolled row must execute every PR. SelectionApplied would arm the floor runner against the enclosing walk's witness_layer_roots (InheritedWalkSourceRoots) before the narrow subject resolve; measured on CI that pairing pinned a worker for 65 minutes at 15 GiB RSS plus 32 GiB swap on a single row without ever evaluating it (run 31005864132, batch 7). Post-discovery witness_row_cost projections still inherit walk roots via claim_executor execution authority. ENROLLMENT COUPLING: enrolling this batch (known_red_probe_v1_envelope_roster becomes non-empty) requires adding its companion positional row to gunbc.ci_spec gunbc_ci_floor_batch_clamp_params in the same change — the clamp table is unconditional data while this batch is conditionally enrolled, so a roster-only edit that enrolls the batch without the clamp row fails with floor batch clamp params must cover N scheduled batches."
-
-fn v1_claim_scoped_known_red_probe_batch_enrolled() -> Bool {
-  length(xs: known_red_probe_v1_envelope_roster()) > 0
-}
-
-fn gunbc_v1_claim_scoped_known_red_probe_batch() -> Runnable {
-  RunnableDiscoveryBatch {
-    source_roots: ["dag", "src/v1"],
-    scan_dirs: [],
-    explicit_entries: known_red_probe_v1_envelope_roster(),
-    node_frontier_selection: SelectionOff,
-    exclude_substrings: [],
-    discovery_scope_dirs: [],
-    profile: runnable_resource_profile(
-      heavy_whole_tree_resolve: false,
-      spawns_host_compiler: false,
-      memory: runnable_memory_substantial(),
-      execution_mode: Hermetic
-    )
-  }
+  with_scoped
 }
 
 data gunbc_ci_witness_corpus_only_batches_note: String = "The pre-push local test gate (consumer: dag/gunbc/githooks_pre_push_emit.dag NEED_WITNESS). It is the SAME affected-set witness corpus CI runs (corpus_runnable_for(gunbc_ci_spec), SelectionApplied scoped to the push diff via the executor's git-diff observation), MINUS two lanes on purpose: (1) the whole-tree --target dag compile-clean gate (the compile-clean anchor batch of gunbc_ci_floor_plan, after the cheap-gate early batch) - infeasible per-push (~72min emit), CI-owned; and (2) the Wet execution + bin-witness lanes (execution_corpus_node / bin_witness_corpus_node) - they need prebuilt release witness bins and spawn a host compiler, so they stay CI-owned. This is a DECLARED scope narrowing, not a silent one (the enforcement-intent rule): the hermetic discovery corpus is the affected-set bulk and catches the resolve / typecheck / witness-logic red class before push; CI remains the whole wall. Selection stays fail-closed exactly as the floor (ci_spec_discovery_flip_note; compile_door_ledger; cli_run AFFECTED-SET REFUSAL): a diff-observation / provenance gap REFUSES with a typed, located diagnostic — it never widens to the whole corpus and never silently skips (DESIGN §5: refuse, never widen)."

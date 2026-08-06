@@ -2602,6 +2602,11 @@ fn run_batch_unit(
                 .iter()
                 .map(|row| (row.entry.clone(), row.function.clone()))
                 .collect();
+            let expect_red = discovery_entries_are_expect_red(
+                &explicit_entries,
+                &falsifier_self_host_wet_budgets.hermetic_known_red_entry_paths,
+                &falsifier_self_host_wet_budgets.known_red_entry_paths,
+            );
             let execution_authority_source_roots =
                 scoped_execution_authority_source_roots(execution_authority, &source_roots);
             vec![run_discovery_batch_node(
@@ -2618,7 +2623,7 @@ fn run_batch_unit(
                 fast_lane_eval_budget_ms,
                 None,
                 None,
-                false,
+                expect_red,
                 Some(ScopedReceiptBatch {
                     batch_id,
                     source_roots_digest,

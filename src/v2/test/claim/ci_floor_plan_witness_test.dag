@@ -70,10 +70,16 @@ import v2.workflow.ci_floor_plan {
   witness_floor_batch_clamp_params_cover_schedule,
   witness_floor_batch_clamp_overhead_all_positive,
   witness_floor_batch_clamp_rate_all_nonneg,
-  v1_claim_scoped_known_red_probe_batch_enrolled,
 }
 import gunbc.explicit_witness_admission { known_red_probe_corpus_roster, known_red_probe_v1_envelope_roster }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, v1_claim_scoped_witness_entries, v1_claim_scoped_witness_batch, scoped_witness_batches, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_substrate_long_lane_entries, bin_witness_wet_entries }
+import gunbc.ci_layer_roots {
+  witness_layer_roots, witness_discovery_scan_dirs,
+  v1_claim_scoped_witness_entries, v1_claim_scoped_witness_batch,
+  v1_claim_scoped_known_red_probe_batch, v1_claim_scoped_known_red_probe_batch_enrolled,
+  scoped_witness_batches, known_red_probe_roster,
+  falsifier_silent_pick_gate_entries, falsifier_substrate_long_lane_entries,
+  bin_witness_wet_entries
+}
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
   falsifier_self_host_wet_known_red_entries,
@@ -341,7 +347,8 @@ fn runnable_batch_index(batches: List<List<Runnable>>, target: Runnable) -> Int 
 
 test fn witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned() -> Bool {
   let target = RunnableScopedWitnessBatch { batch: v1_claim_scoped_witness_batch }
-  (length(xs: scoped_witness_batches) == 1)
+  (length(xs: scoped_witness_batches()) >= 1)
+    && (scoped_witness_batches().first() == v1_claim_scoped_witness_batch)
     && (length(xs: v1_claim_scoped_witness_entries) == 5)
     && fold(v1_claim_scoped_witness_entries, init: true, f: fn(ok, row) {
       ok && row.function == ""
@@ -359,8 +366,9 @@ test fn witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned() -> Bool {
     && witness_layer_roots == ["dag", "src/v2"]
 }
 
-test fn witness_scoped_batch_is_singleton_and_outside_positional_clamps() -> Bool {
+test fn witness_scoped_batches_own_clamps_outside_positional_table() -> Bool {
   let batches = gunbc_ci_floor_ordinary_batches()
+  let scoped_count = length(xs: scoped_witness_batches())
   let target = RunnableScopedWitnessBatch { batch: v1_claim_scoped_witness_batch }
   let v1_envelope_known_red_enrolled = v1_claim_scoped_known_red_probe_batch_enrolled()
   (batch_index_of(batches: batches, target: "dag_compile_clean_gate_passes") == 1)
@@ -371,19 +379,25 @@ test fn witness_scoped_batch_is_singleton_and_outside_positional_clamps() -> Boo
         inner || v1_claim_scoped_known_red_probe_batch_holds(r: r)
       })
     }))
-    && (length(xs: gunbc_ci_floor_batch_clamp_params) == length(xs: batches) - 1)
+    && (length(xs: gunbc_ci_floor_batch_clamp_params) == length(xs: batches) - scoped_count)
 }
 
 fn v1_claim_scoped_known_red_probe_batch_holds(r: Runnable) -> Bool {
   match r {
-    RunnableDiscoveryBatch { source_roots: roots, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
-      (roots == ["dag", "src/v1"])
-        && (length(xs: dirs) == 0)
-        && (length(xs: entries) == length(xs: known_red_probe_v1_envelope_roster()))
-        && (mode == SelectionOff)
-        && discovery_batch_declares_hermetic(r: r)
-        && (p.spawns_host_compiler == false)
-    RunnableScopedWitnessBatch { batch: _ } => false
+    RunnableScopedWitnessBatch { batch: batch } =>
+      (batch == v1_claim_scoped_known_red_probe_batch())
+        && (batch.source_roots == ["dag", "src/v1"])
+        && (length(xs: batch.scan_dirs) == 0)
+        && (length(xs: batch.entries) == length(xs: known_red_probe_v1_envelope_roster()))
+        && (batch.node_frontier_selection == SelectionOff)
+        && (batch.execution_authority == InheritedWalkSourceRoots {})
+        && execution_mode_eq(left: batch.execution_mode, right: Hermetic)
+        && (batch.resource_profile.process_isolation == SequentialChildProcess)
+        && match runnable_batch_clamp_source(r: r) {
+          RunnableOwnsBatchClamp { clamp: clamp } => (second_count(s: clamp.overhead) == 140) && (millisecond_count(m: clamp.per_unit) == 0)
+          _ => false
+        }
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }

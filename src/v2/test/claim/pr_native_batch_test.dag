@@ -3,7 +3,6 @@ module v2.test.claim.pr_native_batch_test
 import v2.workflow.ci_floor_plan {
   gunbc_pr_native_entries,
   gunbc_pr_native_batch_enrolled,
-  v1_claim_scoped_known_red_probe_batch_enrolled,
   gunbc_ci_floor_ordinary_batches,
   gunbc_ci_floor_realization_plan_for
 }
@@ -31,8 +30,8 @@ test fn witness_selected_native_bundle_enrolled() -> Bool {
 }
 
 test fn witness_floor_appends_one_selected_native_batch() -> Bool {
-  let conditional_appended_batches = (if gunbc_pr_native_batch_enrolled() { 1 } else { 0 }) + (if v1_claim_scoped_known_red_probe_batch_enrolled() { 1 } else { 0 })
-  length(xs: gunbc_ci_floor_ordinary_batches()) == length(xs: gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec).schedule) + length(xs: scoped_witness_batches) + conditional_appended_batches
+  let conditional_appended_batches = if gunbc_pr_native_batch_enrolled() { 1 } else { 0 }
+  length(xs: gunbc_ci_floor_ordinary_batches()) == length(xs: gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec).schedule) + length(xs: scoped_witness_batches()) + conditional_appended_batches
 }
 
 fn native_transition_receipt_fixture(selected: Int, native: Int, interpreted: Int, unavailable: Int, fallback: Int, verdict: NativeProductionTransitionVerdict) -> NativeWitnessProductionTransitionReceipt {
