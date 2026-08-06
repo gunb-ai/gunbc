@@ -15,7 +15,8 @@ import gunbc.cli_invoke {
 }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_cadence_is_active,
-  falsifier_self_host_wet_template_entries
+  falsifier_self_host_wet_template_entries,
+  dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet
 }
 import gunbc.explicit_witness_admission {
   ExplicitWitnessAdmission,
@@ -889,22 +890,6 @@ data bin_witness_wet_note: String = "The remaining excluded entries are the BIN-
 data bin_witness_wet_per_row_actions_log_observation_gap_note: String = "CLOSED (measured 2026-08-06, Lane D / still-bat-561): main push run 31060353614 job 92492124511 (post-#7857 instrumentation) discriminates the four collapsed states. Batch 4 `bin-witness-corpus` PASS (146 witnesses); worker wrote `target/floor-wet-witness-row-outcome-receipt.tsv` with 192 rows; coordinator replayed 192 `[wet-witness-row-outcome]` lines; post-step dumps TSV + phase journal; `live_rust_observation_matches_actions_subject` row shows `outcome=passed` (batch=4). Prior zero-row reads conflated the regen job's legitimate 0-row receipt (no wet discovery batches) with the per-PR ci worker — observation collapse, not batch-not-reached or transport failure. HISTORY: COUNTED OBSERVATION GAP opened 2026-08-02 (#7698 run 30765850510); mechanism landed #7698 worker receipt + coordinator replay; scheduling proof #7857; observation extension #7857 labels + journal persistence + post-step dump."
 
 data falsifier_self_host_wet_note: String = "The nightly falsifier Wet follow-on batch (gunbc_falsifier_batches batch 2 in v2.workflow.ci_floor_plan): explicit ExecutionWitnessKind rows whose fns realize the emit->compile->run->equals-seed self-host behavioral receipt chain (cargo build, process execution, real gunbc emit) — too heavy and fidelity-sensitive for per-PR hermetic discovery. Gate-4 std/logic (self_host_logic_behavioral_witness_test.dag) is the inaugural template migrated out of bin_witness_wet_entries; compiler modules enroll via v2.compiler.self_host.wet_receipt_enrollment when their frontier row flips SelfEmitted (green-only — never known-red). Runs SelectionApplied (always run, not predict-only) after the hermetic affected-set falsifier sweep. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry <entry> --functions <csv>. Dissolve-on: per-module self-host receipts graduate to continuous CI only when the emit-on-demand / self-host cutover lane proves each module's receipt is cheap enough for per-PR admission — until then this scheduled lane is the sole live consumer."
-
-fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet() -> Bool {
-  falsifier_self_host_wet_cadence_is_active()
-    && fold(
-      falsifier_self_host_wet_template_entries,
-      init: false,
-      f: fn(acc, row) {
-        if acc {
-          acc
-        } else {
-          row.entry == "dag/test/claim/interpreter_dispatch_bijection_real_roster_witness_test.dag"
-            && row.function == "interpreter_dispatch_bijection_real_roster_red_holds"
-        }
-      }
-    )
-}
 
 fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note() -> String {
   concat(

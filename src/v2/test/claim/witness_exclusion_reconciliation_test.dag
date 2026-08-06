@@ -13,9 +13,11 @@ import gunbc.ci_layer_roots {
   falsifier_self_host_wet_dark_lane_population,
   falsifier_self_host_wet_dark_lane_waiting_rows,
   dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note,
-  dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet,
   witness_exclusion_row_mentions_wet_lane_dark_state,
   witness_exclusion_row_waits_on_wet_lane_undarken
+}
+import v2.compiler.self_host.wet_receipt_enrollment {
+  dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet
 }
 import v2.workflow.witness_admission {
   witness_exclusion_rows_well_formed,

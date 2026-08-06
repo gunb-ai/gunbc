@@ -92,7 +92,7 @@ data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
   )
 ]
 
-fn interpreter_dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet() -> Bool {
+fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet() -> Bool {
   falsifier_self_host_wet_cadence_is_active()
     && fold(
       falsifier_self_host_wet_template_entries,
