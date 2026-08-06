@@ -54,13 +54,13 @@ fn healthz_projection_of_doc(doc: JsonValue) -> String? {
   if length(members) == healthz_surface_projection_member_count {
     Present { value: serialize_json(v: json_object(members: members)) }
   } else {
-    Absent
+    none
   }
 }
 
 fn healthz_surface_projection(body: String) -> String? {
   match parse_json(s: json_text_trim_trailing_lf(body: body)) {
-    Absent => Absent
+    Absent => none
     Present { value: doc } => healthz_projection_of_doc(doc: doc)
   }
 }
