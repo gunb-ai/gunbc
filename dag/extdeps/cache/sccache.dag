@@ -329,7 +329,7 @@ data sccache_local_facts: CacheInterfaceCatalogFacts = {
     value_shape: RawBytes
     locality: PerHostFilesystem
 
-    retention: { release_policy: ReleasedNever, capacity: CapacityBounded { limit: LimitUnobserved, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } } }
+    retention: { release_policy: ReleasedNever, capacity: CapacityBounded { limit: ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } } }
     atomicity: WriteThenRename
     auth: FilesystemPerms
     read_latency: LocalDiskUs

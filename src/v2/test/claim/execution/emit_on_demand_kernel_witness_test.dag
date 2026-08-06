@@ -76,7 +76,7 @@ data kernel_provider: CacheProvider = provider_row(
   scope: [],
   coverage: CoversAllComputations,
   tier: ArtifactTier { keying: ContentKeyed },
-  retention: persistent_retention(capacity: CapacityBounded { limit: LimitUnobserved, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
+  retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
 )
 
 fn kernel_closure_digest() -> Fnv1a64Structural {

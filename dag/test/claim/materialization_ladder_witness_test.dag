@@ -21,7 +21,7 @@ fn root_content_provider(id: String) -> CacheProvider {
     scope: empty_frame_path,
     coverage: CoversAllComputations,
     tier: CasTier { keying: ContentKeyed },
-    retention: persistent_retention(capacity: CapacityBounded { limit: LimitUnobserved, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
+    retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
   }
 }
 

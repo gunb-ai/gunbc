@@ -38,16 +38,22 @@ type PersistenceLocality
 // stays on InvalidationTrigger, and what remains here is capacity, the action
 // taken at capacity, the replacement order (if any), and storage lifetime.
 
-// LimitUnobserved and RuntimeDerivedLimit are different evidence with different
-// remedies: the first says a finite bound exists but its effective configured
-// value was never read (a vendor default that a runner may override); the
-// second says the bound is COMPUTED at execution from a named repository
-// authority, so the link to that authority is the fact worth keeping.
-type CapacityLimit
-  = ByteLimit { cap_bytes: ByteSize }
-  | EntryCountLimit { cap_entries: Int }
+// UNIT OUTER, EVIDENCE INNER. A first cut put the unit only on the arms that
+// carried a number (ByteLimit / EntryCountLimit) and let the other two states
+// stand alone — so RuntimeDerivedLimit and LimitUnobserved erased whether the
+// thing bounded was bytes, entries, or objects, and a consumer needing a BYTE
+// budget could not tell sccache (byte ceiling, value unread) from the typed
+// module cache (entry ceiling, value derived at run start). The unit is a fact
+// about the cache; the value's standing is a fact about our EVIDENCE for it.
+// Those are independent, so they are separate levels.
+type CapacityValue<T>
+  = ExactLimit { value: T }
   | RuntimeDerivedLimit { authority: DeclarationRef }
-  | LimitUnobserved
+  | EffectiveLimitUnobserved
+
+type CapacityLimit
+  = ByteCapacity { limit: CapacityValue<ByteSize> }
+  | EntryCountCapacity { limit: CapacityValue<Int> }
 
 type ReplacementStrategy = LeastRecentlyUsed | ProviderNativeReplacement
 
@@ -88,14 +94,26 @@ type ProviderRetention {
   capacity: CapacityPolicy
 }
 
-// Bounded growth holds when storage ends with the provider's scope, or when a
-// ceiling is known. TTL and LRU reach neither arm on their own.
-fn retention_is_bounded(r: ProviderRetention) -> Bool {
+// THREE PREDICATES, THREE ROLES — deliberately not one word "bounded".
+// A first cut had provider_for_bounded_role consult the GROWTH predicate, which
+// admits ReleasedAtProviderScopeExit + CapacityUnbounded: fine for a short
+// scoped memo whose frame ends, and exactly wrong for a promoted entry-scoped
+// memo that needs a byte ceiling INSIDE its frame. The 2026-07-10 20GiB kill
+// happened under a live scope, so scope release is evidence about growth over
+// time and never about peak. A role asks the predicate matching its obligation.
+
+// Growth over time: storage ends with the provider's scope, or a ceiling exists.
+fn retention_growth_is_bounded(r: ProviderRetention) -> Bool {
   match r.release_policy {
     ReleasedAtProviderScopeExit => true
-    ReleasedNever => capacity_is_bounded(c: r.capacity)
-    ReleasedManually => capacity_is_bounded(c: r.capacity)
+    ReleasedNever => retention_has_capacity_bound(r: r)
+    ReleasedManually => retention_has_capacity_bound(r: r)
   }
+}
+
+// A ceiling exists, whatever its unit and whoever knows its value.
+fn retention_has_capacity_bound(r: ProviderRetention) -> Bool {
+  capacity_is_bounded(c: r.capacity)
 }
 
 fn capacity_is_bounded(c: CapacityPolicy) -> Bool {
@@ -103,6 +121,28 @@ fn capacity_is_bounded(c: CapacityPolicy) -> Bool {
     CapacityUnbounded => false
     CapacityBounded { limit: _, at_capacity: _ } => true
     CapacityUnobserved => false
+  }
+}
+
+// A ceiling in BYTES whose value is in hand — the only state from which a real
+// store can size itself. A runtime-derived or unobserved value does not qualify:
+// both name a number nobody here holds.
+fn retention_has_exact_byte_bound(r: ProviderRetention) -> Bool {
+  match r.capacity {
+    CapacityUnbounded => false
+    CapacityUnobserved => false
+    CapacityBounded { limit: l, at_capacity: _ } => capacity_limit_exact_bytes_present(l: l)
+  }
+}
+
+fn capacity_limit_exact_bytes_present(l: CapacityLimit) -> Bool {
+  match l {
+    EntryCountCapacity { limit: _ } => false
+    ByteCapacity { limit: v } => match v {
+      ExactLimit { value: _ } => true
+      RuntimeDerivedLimit { authority: _ } => false
+      EffectiveLimitUnobserved => false
+    }
   }
 }
 

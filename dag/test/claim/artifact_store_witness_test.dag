@@ -51,7 +51,7 @@ data spacepacked_provider: CacheProvider = provider_row(
   scope: [],
   coverage: CoversAllComputations,
   tier: ArtifactTier { keying: ContentKeyed },
-  retention: persistent_retention(capacity: CapacityBounded { limit: LimitUnobserved, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
+  retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
 )
 
 data scopeexit_provider: CacheProvider = provider_row(

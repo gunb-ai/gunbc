@@ -8,7 +8,7 @@ import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   ProviderRetention, CapacityPolicy,
   CapacityUnbounded, CapacityBounded, CapacityUnobserved,
-  retention_is_bounded,
+  retention_growth_is_bounded,
   PersistenceLocality, InProcess, PerRunnerFilesystem, PerHostFilesystem, CrossHostNetwork
 }
 import std.materialization_ladder {
@@ -31,7 +31,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data catalog_materialization_note: String = "C0 (operator ruling, 2026-07-09): extdeps stays the ground-truth/interface layer - the catalog cites what a cache system IS - but every USE of a cache goes through materialization, so nobody re-invents memo. This projection is the only door from a catalog row into the ladder: provider = catalog row + role (scope, coverage); tier and keying are DERIVED from the cited facts, never restated at the provider site. RETENTION IS CARRIED, NOT VERDICTED (2026-08-06). The former mapping asserted two things it had not established: InProcess locality => ScopeExit by construction, which DISCARDED the row placement retention outright so an in-process provider could never carry a byte bound; and Ttl/Lru/SizeBounded => SpacePacked, which minted a space guarantee from an age bound and from a replacement ORDER. Both are gone. provider_from_catalog now carries facts.placement.retention through unchanged for EVERY locality, and the boundedness question moved to the role door provider_for_bounded_role, whose refusal names the missing axis. That split is deliberate: a witness-frame memo may be scope-released with unbounded capacity and remain legitimate under its frame envelope, while a promoted entry-scoped memo or a cross-run store must show a real ceiling - and only the consumer knows which it is. The EvictionPolicy/EvictionClass homonym the 2026-07-11 ambiguity wall found is dissolved rather than renamed: both vocabularies are now std.cache_interface.ProviderRetention, and required class is the derived predicate retention_is_bounded."
+data catalog_materialization_note: String = "C0 (operator ruling, 2026-07-09): extdeps stays the ground-truth/interface layer - the catalog cites what a cache system IS - but every USE of a cache goes through materialization, so nobody re-invents memo. This projection is the only door from a catalog row into the ladder: provider = catalog row + role (scope, coverage); tier and keying are DERIVED from the cited facts, never restated at the provider site. RETENTION IS CARRIED, NOT VERDICTED (2026-08-06). The former mapping asserted two things it had not established: InProcess locality => ScopeExit by construction, which DISCARDED the row placement retention outright so an in-process provider could never carry a byte bound; and Ttl/Lru/SizeBounded => SpacePacked, which minted a space guarantee from an age bound and from a replacement ORDER. Both are gone. provider_from_catalog now carries facts.placement.retention through unchanged for EVERY locality, and the boundedness question moved to the role door provider_for_bounded_role, whose refusal names the missing axis. That split is deliberate: a witness-frame memo may be scope-released with unbounded capacity and remain legitimate under its frame envelope, while a promoted entry-scoped memo or a cross-run store must show a real ceiling - and only the consumer knows which it is. The EvictionPolicy/EvictionClass homonym the 2026-07-11 ambiguity wall found is dissolved rather than renamed: both vocabularies are now std.cache_interface.ProviderRetention, and required class is the derived predicate retention_growth_is_bounded."
 
 data catalog_keying_note: String = "Keying projection is refuse-leaning (section 5): ContentAddressed and NativeInternal (the tool's internal hash of cited inputs) project to ContentKeyed; HandAuthored projects to ExistenceKeyed — a hand-authored key string is not proven content-complete until a key-completeness receipt upgrades it (extdeps.cache.key_completeness is that oracle's home); and prefix_fallback_allowed forces ExistenceKeyed regardless, because a prefix restore names a bucket, not an identity (the actions-cache staleness class, cousin of the #6352 build-if-absent wall)."
 
@@ -112,7 +112,7 @@ fn provider_for_bounded_role(
   coverage: CacheCoverage
 ) -> CatalogProviderProjection {
   let retention = catalog_retention(facts: facts)
-  if retention_is_bounded(r: retention) {
+  if retention_growth_is_bounded(r: retention) {
     provider_from_catalog(facts: facts, scope: scope, coverage: coverage)
   } else {
     ProjectionRefused {

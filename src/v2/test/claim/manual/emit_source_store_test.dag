@@ -29,7 +29,7 @@ data p3_provider: CacheProvider = provider_row(
   scope: [],
   coverage: CoversAllComputations,
   tier: ArtifactTier { keying: ContentKeyed },
-  retention: persistent_retention(capacity: CapacityBounded { limit: LimitUnobserved, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
+  retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
 )
 
 fn p3_key(emitter: String) -> ContentHash {
