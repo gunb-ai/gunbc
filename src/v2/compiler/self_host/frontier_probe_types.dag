@@ -1,5 +1,11 @@
 module v2.compiler.self_host.frontier_probe_types
 
+import extdeps.git.inspect
+import extdeps.git.object_store {
+  GitObjectId,
+  git_object_id_eq,
+  git_object_id_from_untagged_hex
+}
 import v2.compiler.source_authority {
   SourceRef,
   SourceRootCoverage,
@@ -8,13 +14,37 @@ import v2.compiler.source_authority {
   SourceRootManifestElided,
   SourceRootRowsMissing
 }
-import std.content_hash { ContentHash }
-import v2.std.optional { Optional }
+import std.algebra { FreeMonoid }
+import std.content_hash {
+  ContentHash,
+  ContentHashComparison,
+  ContentHashEqual,
+  Fnv1a64,
+  Fnv1a64Structural,
+  Sha256Digest,
+  as_content_hash_structural,
+  compare_content_hash,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_validate_lower_hex_length
+}
+import std.types { CommitSha, GitRef }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.grammar_choice_ambiguity {
+  GrammarChoiceAmbiguityRow,
+  NonEmptyGrammarChoiceAmbiguityRows
+}
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
+
+data frontier_nonempty_carrier_pattern_note: String = "NonEmptySymbolChain and NonEmptyGrammarChoiceAmbiguityRows join NonEmptyDiagnostics and NonEmptyProcessNodeIds as hand-rolled nonempty carriers beside the generic NonEmptyList refinement (fixture-only today). Counted here so the pattern is visible rather than silently repeated. Dissolve triggers: non_empty_symbol_chain_dissolve_trigger (this module); NonEmptyGrammarChoiceAmbiguityRows trigger on v2.std.grammar_choice_ambiguity."
+
+data non_empty_symbol_chain_dissolve_trigger: String = "migrate_when_nonempty_list_refinement_promoted — NonEmptySymbolChain dissolves into NonEmptyList<Symbol> when the refinement is promoted from v2.test.claim.manual.refinement_nonempty_list to std."
 
 data frontier_fixture_cemented_producer_note: String = "FixtureCemented is forward-declared for the fixture-free self-host bar; inhabited by the behavioral-equivalence probe when it detects injected fixtures cementing greens (e.g. add_arrow_eval_allocate_literal, pick-lit hardcoding) — not by frontier_classify_rejection_reason (assemble/emit stage only)."
 
@@ -56,13 +86,142 @@ type FrontierProbeDetail
 
 data frontier_probe_detail_note: String = "Survey receipts carry structural probe detail beside the reason symbol. MissingModule holds the QualifiedName sought (not only its dotted projection). SourceRootManifestElidedProbe records inline-manifest elision when the inline carrier cannot supply the closure. FrontierProbeClosurePopulationRefused records entry-binding and closure-population identity failures (duplicate refs, count mismatch, entry not exactly once). FrontierProbeCoverageRefused preserves the original SourceRootCoverage arm. SourceRefReadRefused carries the filesystem error string without fabricating missing-vs-unreadable. SourceRefContentHashMismatch carries expected and observed ContentHash beside the ref."
 
+type NonEmptySymbolChain {
+  head: Symbol
+  tail: FreeMonoid<Symbol>
+}
+
+type AssembleRejectionCause
+  = GrammarChoiceOverlap { rows: NonEmptyGrammarChoiceAmbiguityRows }
+  | MaskedAssembleRefusal {
+      overlap_evidence: NonEmptyGrammarChoiceAmbiguityRows,
+      remaining_chain: NonEmptySymbolChain
+    }
+  | MaskedAssembleRefusalWithoutEvidence {
+      remaining_chain: NonEmptySymbolChain
+    }
+  | AssembleMissingModule { requested: QualifiedName }
+  | MissingModuleIdentityUnavailable
+  | OtherAssembleRefusal { reason: Symbol }
+
+type FrontierProbeAssembleDetail
+  = NoFrontierProbeDetail
+  | AssembleRejectionDetail {
+      rejection_chain: NonEmptySymbolChain,
+      cause: AssembleRejectionCause
+    }
+
+data frontier_probe_overlap_detail_note: String = "AssembleRejectionDetail binds only parse-stage-carried evidence — never a global grammar roster. GrammarChoiceOverlap rows are extracted from ParseDiagnosticEvidence on the parse-stage diagnostic carrier. When overlap residue heads a chain with a nonempty tail and carries evidence, cause is MaskedAssembleRefusal; when the tail is nonempty but evidence is absent, MaskedAssembleRefusalWithoutEvidence preserves remaining_chain without absorbing into OtherAssembleRefusal. AssembleMissingModule in assemble_detail awaits parse-stage ModuleRootMissingEvidence; FrontierProbeDetail.MissingModule (#7762) is the structural resolve_module_not_found authority on detail. MissingModuleIdentityUnavailable remains when assemble cause cannot bind parse-stage evidence. Emit-stage receipts use NoFrontierProbeDetail."
+
 type FrontierProbeReceipt {
   module_path: String
   blocker_class: FrontierBlockerClass
   located_stage: FrontierProbeStage
   located_reason: Symbol
   detail: FrontierProbeDetail
+  assemble_detail: FrontierProbeAssembleDetail
 }
+
+fn frontier_probe_receipt_module_path(receipt: FrontierProbeReceipt) -> String {
+  receipt.module_path
+}
+
+fn frontier_probe_receipt_blocker_class(receipt: FrontierProbeReceipt) -> FrontierBlockerClass {
+  receipt.blocker_class
+}
+
+fn frontier_probe_receipt_located_reason(receipt: FrontierProbeReceipt) -> Symbol {
+  receipt.located_reason
+}
+
+fn frontier_probe_receipt_without_assemble_detail(
+  module_path: String,
+  blocker: FrontierBlockerClass,
+  located_stage: FrontierProbeStage,
+  located_reason: Symbol,
+  detail: FrontierProbeDetail
+) -> FrontierProbeReceipt {
+  FrontierProbeReceipt {
+    module_path: module_path,
+    blocker_class: blocker,
+    located_stage: located_stage,
+    located_reason: located_reason,
+    detail: detail,
+    assemble_detail: NoFrontierProbeDetail
+  }
+}
+
+data frontier_survey_subject_grounding_note: String = "FrontierSurveySubject pins one execution-measured survey: source_commit + source_tree (GitObjectId authority — operator GitTreeObjectId names the same tree-object fact), survey_executable Sha256Digest (binary built from that tree), ordered source_roots_digest Fnv1a64Structural, and probe_policy_revision ContentHash (structural family only). Every shard row must carry all five subject fields on the TSV wire; the seed bin load_probe_rows_from_tsv refuses SurveySubjectMismatch when any row disagrees with the first. FrontierProbeReceipt has no subject field and FrontierSurveyManifest carries one manifest-level subject — the per-row invariant is enforced only by the seed bin producer, not representable on the .dag carrier; manifests from any other producer carry no such guarantee. Honest next trigger: subject on each receipt (structural per-row requirement)."
+
+data frontier_survey_provenance_holes_note: String = "PROVENANCE HOLES (operator still-bat-561, 2026-08-04; survey review msg_e0b0c3ff) — status at #7763:\n\nHOLE 1 CLOSED (seed): resolve_survey_subject refuses dirty worktree; frontier_survey_commit_tree_binding_holds proves source_tree == tree(source_commit).\n\nHOLE 2 CLOSED (local build): build.rs embeds BUILD_COMMIT, BUILD_TREE, and BUILD_DIRTY; verify_build_provenance refuses missing/empty stamps, commit/tree mismatch, and dirty-worktree builds. Cross-machine binary provenance remains open.\n\nHOLE 3 CLOSED (seed TSV): all five subject fields per row including probe_policy_revision; load_probe_rows_from_tsv refuses SurveySubjectMismatch; manifest emits measured revision literal (not current-policy relabel). Per-row subject on FrontierProbeReceipt remains unmodeled — see frontier_survey_subject_grounding_note.\n\nCHAIN (last of four): #7776 vocabulary, #7762 final, and #7767 assemble diagnostics are merged; authoritative 27/27 awaits operator hold release, not predecessor land."
+
+type FrontierSurveySubject {
+  source_commit: CommitSha
+  source_tree: GitObjectId
+  survey_executable: Sha256Digest
+  source_roots_digest: Fnv1a64Structural
+  probe_policy_revision: ContentHash
+}
+
+type FrontierSurveyManifest {
+  subject: FrontierSurveySubject
+  receipts: List<FrontierProbeReceipt>
+}
+
+data frontier_probe_policy_revision_atom: Fnv1a64Structural = content_hash_atom(value: "frontier-probe-survey-policy-v1")
+
+fn frontier_probe_policy_revision() -> ContentHash {
+  as_content_hash_structural(structural: frontier_probe_policy_revision_atom)
+}
+
+fn frontier_probe_source_roots_digest(source_roots: List<String>) -> Fnv1a64Structural {
+  fold_list(
+    xs: source_roots,
+    empty: content_hash_atom(value: "frontier-probe-source-roots"),
+    cons: fn(acc, root) {
+      content_hash_combine_structural(left: acc, right: content_hash_atom(value: root))
+    }
+  )
+}
+
+fn frontier_survey_executable_sha256_holds(digest: Sha256Digest) -> Bool {
+  content_hash_validate_lower_hex_length(text: digest.hex, expected_hex_digits: 64)
+}
+
+fn frontier_survey_source_roots_digest_holds(digest: Fnv1a64Structural) -> Bool {
+  content_hash_validate_lower_hex_length(text: digest.digest, expected_hex_digits: 16)
+}
+
+fn frontier_survey_commit_tree_binding_holds(
+  commit: CommitSha,
+  tree: GitObjectId
+) -> Bool {
+  let result = git.Inspect.ShowTree(ref: commit as GitRef)
+  if !result.success {
+    false
+  } else {
+    match git_object_id_from_untagged_hex(hex: result.tree) {
+      Present { value: observed } => git_object_id_eq(left: observed, right: tree)
+      Absent => false
+    }
+  }
+}
+
+fn frontier_survey_subject_eq(
+  left: FrontierSurveySubject,
+  right: FrontierSurveySubject
+) -> Bool {
+  (left.source_commit == right.source_commit)
+    && git_object_id_eq(left: left.source_tree, right: right.source_tree)
+    && (left.survey_executable.hex == right.survey_executable.hex)
+    && (left.source_roots_digest.digest == right.source_roots_digest.digest)
+    && match compare_content_hash(left: left.probe_policy_revision, right: right.probe_policy_revision) {
+      ContentHashEqual => true
+      _ => false
+    }
+}
+
+data frontier_survey_build_provenance_note: String = "survey_executable SHA-256 alone does not prove the binary was built from source_tree — a clean worktree can still run a stale target/release/frontier_probe_survey. Closeout requires a build receipt binding commit, tree, compiler sources, probe executable digest, source-root set, and probe-policy revision from a clean detached worktree. The seed bin embeds FRONTIER_PROBE_SURVEY_BUILD_COMMIT, BUILD_TREE, and BUILD_DIRTY at compile time (build.rs); verify_build_provenance refuses missing/empty stamps, runtime commit/tree mismatch, and dirty-worktree builds (hole 2 closed for local build; cross-machine binary provenance open). TSV rows carry all five subject fields; load_probe_rows_from_tsv enforces per-row equality before aggregation (hole 3 — seed producer only; see frontier_survey_subject_grounding_note)."
 
 fn frontier_blocker_is_name_resolution_reason(reason: Symbol) -> Bool {
   reason == ^resolve_reason_unbound_symbol

@@ -1,0 +1,599 @@
+module test.claim.citation_cit0_witness
+
+import std.citation {
+  CitationTarget, CitationSelector,
+  CitedRepresentationIdentity, RepresentationByteDomain, RawResponseBody, RenderedText,
+  ExactPin,
+  CitationRetrievalRequest, CitationRetrievalObservation,
+  CitationUnreachable, RepresentationRetrieved, ResponseObservedWithoutRepresentation,
+  ObservingProductLayer, UpstreamModuleLayer,
+  CitationLayerAdmitted, CitationLayerRefusedUpstreamObservation,
+  admit_citation_retrieval_observation,
+  citation_recorded_fact,
+  citation_exact_pin,
+  citation_pin_expected_sha256,
+  citation_target,
+  cited_representation_identity,
+  cited_representation_identity_eq,
+  observed_cited_representation,
+  reconcile_citation_representation,
+  verify_citation_representation,
+  RepresentationMatch,
+  RepresentationMismatch,
+  RepresentationIdentityIncomparable,
+  ObservationMissing,
+  ObservedCitedRepresentation,
+  CitationRepresentationVerified,
+  CitationRepresentationMismatch,
+  CitationRepresentationIdentityIncomparable,
+  CitationRepresentationObservationMissing,
+  CitationVerificationRefused,
+  RequestLocatorMismatch,
+  HttpStatusNotSuccessful,
+  CitationUnreachableObservation,
+  CitationAccessRefusedObservation,
+  CitationRecordedFact,
+  CitationSelectorConstruction,
+  CitationSelectorConstructed,
+  CitationSelectorRefused,
+  text_quote_selector,
+  text_position_selector,
+  fragment_selector,
+  TextQuoteSelectorVariant,
+  TextPositionSelectorVariant,
+  FragmentSelectorVariant,
+  TextPositionEndBeforeStart,
+  CitationAccessRefused,
+  HttpAccessRefused,
+  DnsResolutionFailed,
+}
+import extdeps.pin { Pin, pin_currency_gap, AuthoredPinHasNoReviewDate }
+import std.claim_evidence { RecordedFactId, RecordedFact }
+import std.content_hash {
+  Sha256Digest,
+  sha256_hex_digest,
+  content_hash_from_structural_digest,
+  Fnv1a64,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef, external_subject_ref_eq }
+import extdeps.uri { Uri, Https, Http }
+import extdeps.version { VersionIdentity }
+import extdeps.http.server { MediaType, TopLevelApplication }
+import extdeps.standards.web_annotation { web_annotation_authority, extdeps_external_authority_anchor }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Bool, NonEmptyStr, EpochMs, HttpStatus }
+
+data witness_fragment_spec_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.rfc-editor.org/rfc/rfc8118#section-3",
+  },
+}
+
+data witness_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "example.test/cit0-fixture",
+  },
+}
+
+data witness_other_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "example.test/other-source",
+  },
+}
+
+data witness_mirror_access_route: Uri = Uri {
+  scheme: Https,
+  locator: "mirror.example.test/cit0-fixture",
+}
+
+data witness_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
+  declaration: DeclarationRef {
+    module_path: "test.claim.citation_cit0_witness",
+    decl_name: "witness_authority",
+    field: WholeDeclaration,
+  },
+}
+
+data witness_other_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
+  declaration: DeclarationRef {
+    module_path: "test.claim.citation_cit0_witness",
+    decl_name: "witness_other_authority",
+    field: WholeDeclaration,
+  },
+}
+
+data witness_fixture_identity: CitedRepresentationIdentity = cited_representation_identity(
+  source: witness_subject_ref,
+  access_route: witness_authority.uri,
+  byte_domain: RawResponseBody,
+)
+
+data witness_mirror_identity: CitedRepresentationIdentity = cited_representation_identity(
+  source: witness_subject_ref,
+  access_route: witness_mirror_access_route,
+  byte_domain: RawResponseBody,
+)
+
+data witness_other_identity: CitedRepresentationIdentity = cited_representation_identity(
+  source: witness_other_subject_ref,
+  access_route: witness_other_authority.uri,
+  byte_domain: RawResponseBody,
+)
+
+data witness_application_pdf: MediaType = MediaType {
+  top_level: TopLevelApplication,
+  subtype: "pdf",
+  parameters: [],
+}
+
+data witness_synthetic_sha256_hex: NonEmptyStr = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef" as NonEmptyStr
+
+data witness_synthetic_sha256_digest: Sha256Digest = Sha256Digest { hex: witness_synthetic_sha256_hex }
+
+data witness_other_sha256_hex: NonEmptyStr = "cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe" as NonEmptyStr
+
+data witness_other_sha256_digest: Sha256Digest = Sha256Digest { hex: witness_other_sha256_hex }
+
+data witness_citation_pin: Pin<CitedRepresentationIdentity> = citation_exact_pin(
+  source: witness_subject_ref,
+  access_route: witness_authority.uri,
+  byte_domain: RawResponseBody,
+  version: "witness-fixture-v1" as VersionIdentity,
+  expected_identity: witness_synthetic_sha256_digest,
+)
+
+data witness_mirror_route_pin: Pin<CitedRepresentationIdentity> = citation_exact_pin(
+  source: witness_subject_ref,
+  access_route: witness_mirror_access_route,
+  byte_domain: RawResponseBody,
+  version: "witness-fixture-v1" as VersionIdentity,
+  expected_identity: witness_synthetic_sha256_digest,
+)
+
+data witness_other_source_pin: Pin<CitedRepresentationIdentity> = citation_exact_pin(
+  source: witness_other_subject_ref,
+  access_route: witness_other_authority.uri,
+  byte_domain: RawResponseBody,
+  version: "witness-fixture-v1" as VersionIdentity,
+  expected_identity: witness_synthetic_sha256_digest,
+)
+
+data witness_observed_matching: ObservedCitedRepresentation = observed_cited_representation(
+  identity: witness_fixture_identity,
+  media_type: witness_application_pdf,
+  observed_identity: witness_synthetic_sha256_digest,
+)
+
+data witness_observed_mismatching: ObservedCitedRepresentation = observed_cited_representation(
+  identity: witness_fixture_identity,
+  media_type: witness_application_pdf,
+  observed_identity: witness_other_sha256_digest,
+)
+
+data witness_observed_wrong_source: ObservedCitedRepresentation = observed_cited_representation(
+  identity: witness_other_identity,
+  media_type: witness_application_pdf,
+  observed_identity: witness_synthetic_sha256_digest,
+)
+
+data witness_http_access_route: Uri = Uri {
+  scheme: Http,
+  locator: "example.test/cit0-fixture",
+}
+
+data witness_text_quote: CitationSelector = TextQuoteSelectorVariant(TextQuoteSelector {
+  exact: "grounded selector text" as NonEmptyStr,
+  prefix: none,
+  suffix: none,
+})
+
+data witness_citation_target: CitationTarget<CitationSelector> = citation_target(
+  expected_pin: witness_citation_pin,
+  selector: witness_text_quote,
+)
+
+data witness_pdf_fragment_wire: NonEmptyStr = "page=1" as NonEmptyStr
+
+data witness_pdf_fragment_selector: CitationSelector = FragmentSelectorVariant(FragmentSelector {
+  conforms_to: witness_fragment_spec_authority,
+  value: witness_pdf_fragment_wire,
+})
+
+data witness_false_web_annotation_fragment_selector: CitationSelector = FragmentSelectorVariant(FragmentSelector {
+  conforms_to: web_annotation_authority,
+  value: witness_pdf_fragment_wire,
+})
+
+data witness_citation_recorded_fact: RecordedFact<CitationRecordedFact<CitationSelector>> = citation_recorded_fact(
+  id: "cit0-fixture-fact" as RecordedFactId,
+  cited: witness_citation_target,
+)
+
+data witness_observed_at_midnight_utc: EpochMs = 1785801600000
+
+data witness_observed_at_noon_utc: EpochMs = 1785844800000
+
+data witness_upstream_unreachable_observation: CitationRetrievalObservation = CitationUnreachable {
+  request: CitationRetrievalRequest {
+    locator: witness_authority.uri,
+  },
+  observed_at: witness_observed_at_midnight_utc,
+  cause: DnsResolutionFailed,
+}
+
+data witness_access_refused_observation: CitationRetrievalObservation = CitationAccessRefused {
+  request: CitationRetrievalRequest {
+    locator: witness_authority.uri,
+  },
+  observed_at: witness_observed_at_midnight_utc,
+  cause: HttpAccessRefused { status: 403 },
+}
+
+data witness_representation_retrieved_observation: CitationRetrievalObservation = RepresentationRetrieved {
+  request: CitationRetrievalRequest {
+    locator: witness_authority.uri,
+  },
+  observed_at: witness_observed_at_noon_utc,
+  http_status: 200,
+  observed: witness_observed_matching,
+}
+
+test fn citation_target_carries_pin_and_selector_not_observation() -> Bool {
+  cited_representation_identity_eq(
+    left: witness_citation_target.expected_pin.subject,
+    right: witness_citation_pin.subject,
+  )
+    && match witness_citation_target.selector {
+      TextQuoteSelectorVariant(_) => true
+      FragmentSelectorVariant(_) => false
+      TextPositionSelectorVariant(_) => false
+    }
+}
+
+test fn citation_pin_pairs_symbolic_source_access_route_and_byte_domain() -> Bool {
+  external_subject_ref_eq(a: witness_citation_pin.subject.source, b: witness_subject_ref)
+    && witness_citation_pin.subject.access_route.locator == "example.test/cit0-fixture"
+    && witness_citation_pin.subject.byte_domain == RawResponseBody
+    && witness_citation_pin.selection == ExactPin
+    && witness_citation_pin.version == ("witness-fixture-v1" as VersionIdentity)
+    && match citation_pin_expected_sha256(pin: witness_citation_pin) {
+      Present { value: d } => d == witness_synthetic_sha256_digest
+      Absent => false
+    }
+}
+
+test fn citation_pin_subject_identifies_source_not_byte_domain_alone() -> Bool {
+  witness_citation_pin.subject.byte_domain == witness_other_source_pin.subject.byte_domain
+    && !external_subject_ref_eq(
+      a: witness_citation_pin.subject.source,
+      b: witness_other_source_pin.subject.source,
+    )
+}
+
+test fn different_access_routes_share_symbolic_subject() -> Bool {
+  external_subject_ref_eq(
+    a: witness_citation_pin.subject.source,
+    b: witness_mirror_route_pin.subject.source,
+  )
+    && witness_citation_pin.subject.access_route.locator != witness_mirror_route_pin.subject.access_route.locator
+    && witness_citation_pin.subject.access_route.locator == "example.test/cit0-fixture"
+    && witness_mirror_route_pin.subject.access_route.locator == "mirror.example.test/cit0-fixture"
+}
+
+test fn verification_receipt_binds_request_locator_to_target_access_route() -> Bool {
+  match verify_citation_representation(
+    target: witness_citation_target,
+    observation: witness_representation_retrieved_observation,
+  ) {
+    CitationRepresentationVerified { receipt: r } =>
+      match r.reconciliation {
+        RepresentationMatch =>
+          match r.observation {
+            RepresentationRetrieved { request: req, observed_at: _, http_status: _, observed: _ } =>
+              r.target.expected_pin.subject.access_route == req.locator
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn verification_refuses_request_locator_mismatch() -> Bool {
+  let wrong_route_observation = RepresentationRetrieved {
+    request: CitationRetrievalRequest {
+      locator: witness_mirror_access_route,
+    },
+    observed_at: witness_observed_at_noon_utc,
+    http_status: 200,
+    observed: witness_observed_matching,
+  }
+  match verify_citation_representation(
+    target: witness_citation_target,
+    observation: wrong_route_observation,
+  ) {
+    CitationVerificationRefused {
+      cause: RequestLocatorMismatch { expected: e, observed: o },
+    } =>
+      e.locator == "example.test/cit0-fixture"
+        && o.locator == "mirror.example.test/cit0-fixture"
+    _ => false
+  }
+}
+
+test fn verification_refuses_scheme_mismatch_on_same_locator() -> Bool {
+  let http_observation = RepresentationRetrieved {
+    request: CitationRetrievalRequest {
+      locator: witness_http_access_route,
+    },
+    observed_at: witness_observed_at_noon_utc,
+    http_status: 200,
+    observed: witness_observed_matching,
+  }
+  match verify_citation_representation(
+    target: witness_citation_target,
+    observation: http_observation,
+  ) {
+    CitationVerificationRefused {
+      cause: RequestLocatorMismatch { expected: e, observed: o },
+    } =>
+      e.scheme == Https && o.scheme == Http
+    _ => false
+  }
+}
+
+test fn verification_refuses_non_success_http_status() -> Bool {
+  let not_found_observation = RepresentationRetrieved {
+    request: CitationRetrievalRequest {
+      locator: witness_authority.uri,
+    },
+    observed_at: witness_observed_at_noon_utc,
+    http_status: 404,
+    observed: witness_observed_matching,
+  }
+  match verify_citation_representation(
+    target: witness_citation_target,
+    observation: not_found_observation,
+  ) {
+    CitationVerificationRefused { cause: HttpStatusNotSuccessful { status: 404 } } => true
+    _ => false
+  }
+}
+
+test fn verification_mismatch_is_not_named_verified() -> Bool {
+  match verify_citation_representation(
+    target: witness_citation_target,
+    observation: RepresentationRetrieved {
+      request: CitationRetrievalRequest { locator: witness_authority.uri },
+      observed_at: witness_observed_at_noon_utc,
+      http_status: 200,
+      observed: witness_observed_mismatching,
+    },
+  ) {
+    CitationRepresentationMismatch { receipt: r } =>
+      match r.reconciliation {
+        RepresentationMismatch { expected: _, observed: _ } => true
+        _ => false
+      }
+    CitationRepresentationVerified { receipt: _ } => false
+    _ => false
+  }
+}
+
+test fn verification_refuses_unreachable_observation_with_typed_cause() -> Bool {
+  match verify_citation_representation(
+    target: witness_citation_target,
+    observation: witness_upstream_unreachable_observation,
+  ) {
+    CitationVerificationRefused { cause: CitationUnreachableObservation { observation: _ } } => true
+    _ => false
+  }
+}
+
+test fn retrieval_observation_admitted_in_observing_layer() -> Bool {
+  match admit_citation_retrieval_observation(
+    layer: ObservingProductLayer,
+    observation: witness_upstream_unreachable_observation,
+  ) {
+    CitationLayerAdmitted => true
+    CitationLayerRefusedUpstreamObservation => false
+  }
+}
+
+test fn retrieval_observation_refused_in_upstream_module_layer() -> Bool {
+  match admit_citation_retrieval_observation(
+    layer: UpstreamModuleLayer {
+      module_path: "extdeps.router.verizon_cr1000a" as NonEmptyStr,
+    },
+    observation: witness_upstream_unreachable_observation,
+  ) {
+    CitationLayerRefusedUpstreamObservation => true
+    CitationLayerAdmitted => false
+  }
+}
+
+test fn citation_recorded_fact_feeds_claim_evidence_interface() -> Bool {
+  witness_citation_recorded_fact.id == ("cit0-fixture-fact" as RecordedFactId)
+    && witness_citation_recorded_fact.value.cited.expected_pin.subject.access_route.locator == "example.test/cit0-fixture"
+}
+
+test fn web_annotation_authority_is_cited_for_selectors() -> Bool {
+  web_annotation_authority.uri.locator == extdeps_external_authority_anchor.uri.locator
+}
+
+test fn text_position_selector_refuses_end_before_start() -> Bool {
+  match text_position_selector(start: 10, end: 2) {
+    CitationSelectorRefused { cause: TextPositionEndBeforeStart { start: s, end: e } } =>
+      s == 10 && e == 2
+    _ => false
+  }
+}
+
+test fn text_position_selector_admits_non_negative_range() -> Bool {
+  match text_position_selector(start: 0, end: 12) {
+    CitationSelectorConstructed(TextPositionSelectorVariant(_)) => true
+    _ => false
+  }
+}
+
+test fn citation_unreachable_carries_typed_cause_not_prose() -> Bool {
+  match witness_upstream_unreachable_observation {
+    CitationUnreachable { cause: DnsResolutionFailed, request: _, observed_at: _ } => true
+    _ => false
+  }
+}
+
+test fn citation_access_refused_carries_http_status() -> Bool {
+  match witness_access_refused_observation {
+    CitationAccessRefused { cause: HttpAccessRefused { status: s }, request: _, observed_at: _ } =>
+      s == 403
+    _ => false
+  }
+}
+
+test fn exact_citation_pin_currency_is_an_unfilled_gap() -> Bool {
+  match pin_currency_gap(pin: witness_citation_pin) {
+    AuthoredPinHasNoReviewDate => true
+    _ => false
+  }
+}
+
+test fn representation_retrieved_requires_http_status_and_observed_representation() -> Bool {
+  match witness_representation_retrieved_observation {
+    RepresentationRetrieved {
+      request: r,
+      observed_at: t,
+      http_status: s,
+      observed: o,
+    } =>
+      r.locator.locator == "example.test/cit0-fixture"
+        && t == witness_observed_at_noon_utc
+        && s == 200
+        && o.observed_identity == witness_synthetic_sha256_digest
+        && cited_representation_identity_eq(left: o.identity, right: witness_fixture_identity)
+    _ => false
+  }
+}
+
+test fn response_observed_without_representation_is_separate_arm() -> Bool {
+  match ResponseObservedWithoutRepresentation {
+    request: CitationRetrievalRequest { locator: witness_authority.uri },
+    observed_at: witness_observed_at_noon_utc,
+    http_status: 204,
+  } {
+    ResponseObservedWithoutRepresentation { http_status: s, request: _, observed_at: _ } => s == 204
+    _ => false
+  }
+}
+
+test fn citation_target_pin_subject_is_symbolic_not_bare_uri() -> Bool {
+  witness_citation_target.expected_pin.subject.access_route.locator == "example.test/cit0-fixture"
+    && external_subject_ref_eq(
+      a: witness_citation_target.expected_pin.subject.source,
+      b: witness_subject_ref,
+    )
+}
+
+test fn reconcile_mismatch_when_observed_differs_from_expected_red_echo() -> Bool {
+  match reconcile_citation_representation(
+    expected_pin: witness_citation_pin,
+    observed: Present { value: witness_observed_mismatching },
+  ) {
+    RepresentationMismatch { expected: e, observed: o } =>
+      e == witness_synthetic_sha256_digest && o == witness_other_sha256_digest
+    _ => false
+  }
+}
+
+test fn reconcile_match_when_observed_equals_expected() -> Bool {
+  match reconcile_citation_representation(
+    expected_pin: witness_citation_pin,
+    observed: Present { value: witness_observed_matching },
+  ) {
+    RepresentationMatch => true
+    _ => false
+  }
+}
+
+test fn reconcile_observation_missing_when_no_observed() -> Bool {
+  match reconcile_citation_representation(
+    expected_pin: witness_citation_pin,
+    observed: none,
+  ) {
+    ObservationMissing => true
+    _ => false
+  }
+}
+
+test fn reconcile_incomparable_on_identity_mismatch() -> Bool {
+  match reconcile_citation_representation(
+    expected_pin: witness_citation_pin,
+    observed: Present { value: witness_observed_wrong_source },
+  ) {
+    RepresentationIdentityIncomparable { expected: e, observed: o } =>
+      external_subject_ref_eq(a: e.source, b: witness_subject_ref)
+        && external_subject_ref_eq(a: o.source, b: witness_other_subject_ref)
+    _ => false
+  }
+}
+
+test fn reconcile_incomparable_on_byte_domain_mismatch() -> Bool {
+  let wrong_domain_identity = cited_representation_identity(
+    source: witness_subject_ref,
+    access_route: witness_authority.uri,
+    byte_domain: RenderedText,
+  )
+  let wrong_domain_observed = observed_cited_representation(
+    identity: wrong_domain_identity,
+    media_type: witness_application_pdf,
+    observed_identity: witness_synthetic_sha256_digest,
+  )
+  match reconcile_citation_representation(
+    expected_pin: witness_citation_pin,
+    observed: Present { value: wrong_domain_observed },
+  ) {
+    RepresentationIdentityIncomparable {
+      expected: e,
+      observed: o,
+    } =>
+      e.byte_domain == RawResponseBody && o.byte_domain == RenderedText
+    _ => false
+  }
+}
+
+test fn pdf_fragment_selector_conforms_to_rfc_8118_not_web_annotation() -> Bool {
+  match witness_pdf_fragment_selector {
+    FragmentSelectorVariant(s) => s.conforms_to.uri.locator == witness_fragment_spec_authority.uri.locator
+    _ => false
+  }
+}
+
+test fn pdf_fragment_selector_red_wrong_conforms_to_web_annotation() -> Bool {
+  match witness_false_web_annotation_fragment_selector {
+    FragmentSelectorVariant(s) =>
+      s.conforms_to.uri.locator != witness_fragment_spec_authority.uri.locator
+        && s.conforms_to.uri.locator == web_annotation_authority.uri.locator
+    _ => false
+  }
+}
+
+test fn citation_exact_pin_sha256_mint_is_validating_path() -> Bool {
+  match sha256_hex_digest(hex: witness_synthetic_sha256_hex as String) {
+    Present { value: d } => d == witness_synthetic_sha256_digest
+    Absent => false
+  }
+}
+
+test fn structural_fnv_is_not_citation_representation_pin_red() -> Bool {
+  match content_hash_from_structural_digest(digest: "0123456789abcdef") {
+    Present { value: structural_union } =>
+      match structural_union {
+        Fnv1a64(_) => true
+        _ => false
+      }
+    Absent => false
+  }
+}

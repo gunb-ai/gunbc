@@ -1,0 +1,51 @@
+module test.claim.long.v1_complexity_decl_classification_totality_test
+
+import std.types { Bool, List }
+import v2.std.decl_index { DeclFact, decl_facts }
+import gunbc.v1_complexity_decl_classification {
+  v1_complexity_decl_population,
+  v1_complexity_decl_population_count,
+  population_matches_roster_count,
+  every_population_fact_classified,
+  every_roster_row_matches_population,
+  roster_names_distinct,
+}
+import gunbc.v1_complexity_decl_classification_roster { v1_complexity_decl_classification_roster }
+
+data totality_witness_note: String = "The exact half of C0(b2) totality: derive the v1.compiler.complexity declaration population from decl_facts and prove bijection with the classification roster. In the long lane because each witness pays a full witness-layer decl_facts scan over a pool including src/v1 — the same envelope as test.claim.long.v1_complexity_capability_census_resolution_test."
+
+data totality_pool_roots: List<String> = ["dag", "src/v2", "src/v1"]
+
+data totality_population: List<DeclFact> = v1_complexity_decl_population(pool_roots: totality_pool_roots)
+
+test fn w_population_and_roster_counts_match() -> Bool {
+  population_matches_roster_count(
+    facts: totality_population,
+    roster: v1_complexity_decl_classification_roster
+  )
+}
+
+test fn w_every_population_declaration_is_classified() -> Bool {
+  every_population_fact_classified(
+    facts: totality_population,
+    roster: v1_complexity_decl_classification_roster
+  )
+}
+
+test fn w_every_classification_row_matches_population() -> Bool {
+  every_roster_row_matches_population(
+    roster: v1_complexity_decl_classification_roster,
+    facts: totality_population
+  )
+}
+
+test fn w_no_stale_classification_rows() -> Bool {
+  every_roster_row_matches_population(
+    roster: v1_complexity_decl_classification_roster,
+    facts: totality_population
+  ) && roster_names_distinct(roster: v1_complexity_decl_classification_roster)
+}
+
+test fn w_derived_population_is_nonempty() -> Bool {
+  v1_complexity_decl_population_count(pool_roots: totality_pool_roots) > 100
+}

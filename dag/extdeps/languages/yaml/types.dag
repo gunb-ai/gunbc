@@ -24,6 +24,39 @@ type YamlValue
   | YamlSequence { elements: List<YamlValue> }
   | YamlMapping { entries: List<YamlKeyValue> }
 
+type YamlValueKind
+  = YamlNullKind
+  | YamlBoolKind
+  | YamlIntKind
+  | YamlFloatKind
+  | YamlStringKind
+  | YamlSequenceKind
+  | YamlMappingKind
+
+fn yaml_value_kind(v: YamlValue) -> YamlValueKind {
+  match v {
+    YamlNull => YamlNullKind
+    YamlBool { value: _ } => YamlBoolKind
+    YamlInt { lexeme: _ } => YamlIntKind
+    YamlFloat { lexeme: _ } => YamlFloatKind
+    YamlString { value: _ } => YamlStringKind
+    YamlSequence { elements: _ } => YamlSequenceKind
+    YamlMapping { entries: _ } => YamlMappingKind
+  }
+}
+
+fn yaml_value_kind_token(k: YamlValueKind) -> String {
+  match k {
+    YamlNullKind => "null"
+    YamlBoolKind => "bool"
+    YamlIntKind => "int"
+    YamlFloatKind => "float"
+    YamlStringKind => "str"
+    YamlSequenceKind => "seq"
+    YamlMappingKind => "map"
+  }
+}
+
 data empty_yaml_values: List<YamlValue> = []
 
 fn yaml_string(s: String) -> YamlValue {

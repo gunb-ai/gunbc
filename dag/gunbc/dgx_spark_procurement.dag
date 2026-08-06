@@ -1,0 +1,81 @@
+module gunbc.dgx_spark_procurement
+
+import std.types { NonEmptyStr, String, List, Int, Bool }
+import product.placement_supply { HostIdentity }
+import extdeps.systems.types { IntegratedComputeSystemCatalogRow }
+import extdeps.systems.nvidia_fleet_lifecycle {
+  FleetLifecycleEnvelope,
+  DeviceIdentity,
+  fleet_lifecycle_operation_tool_name,
+}
+import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
+
+// SPARK-0 (2026-08-05). Three deliberately separate fact classes, per the brief: (1) the vendor catalog (extdeps.systems.nvidia) -- what NVIDIA documents the product to be; (2) operator procurement intent (this module) -- that two units were ordered and that srv5/srv6 are RESERVED identities for them; (3) deployment observation -- physical binding evidence (serials, MACs, IPs, installed OS build) that does not exist yet and must never be fabricated. A reserved identity is explicitly NOT enrollment: srv5/srv6 do not appear in gunbc.fleet_intent_network's operator_host_srv1..4 roster, gunbc.fleet_intent's ComputeHost list, or any phase matrix/compute offer -- those files (fleet_intent.dag, fleet_intent_network.dag) are out of scope for this change (HOST-0 / bold-eagle-107 is refactoring them in parallel) and are not touched here.
+type HardwareProcurementIntent {
+  vendor_catalog: IntegratedComputeSystemCatalogRow
+  unit_count: Int
+  reserved_identities: List<HostIdentity>
+  ordered_note: NonEmptyStr
+}
+
+data dgx_spark_procurement_intent: HardwareProcurementIntent = HardwareProcurementIntent {
+  vendor_catalog: nvidia_dgx_spark_4tb_catalog,
+  unit_count: 2,
+  reserved_identities: [srv5_reserved, srv6_reserved],
+  ordered_note: "2x NVIDIA DGX Spark ordered; not yet arrived as of 2026-08-05 (operator, relayed via bold-eagle-107 / HOST-0 SPARK-0 brief).",
+}
+
+data srv5_reserved: HostIdentity = "srv5"
+data srv6_reserved: HostIdentity = "srv6"
+
+type DgxSparkDeployment {
+  identity: HostIdentity
+  catalog: IntegratedComputeSystemCatalogRow
+  identity_observation: FleetLifecycleEnvelope
+}
+
+type DgxSparkAdmissionRefusalReason
+  = DeploymentAdmissionNoEvidence
+  | DeploymentAdmissionWrongTool { observed_tool: NonEmptyStr }
+  | DeploymentAdmissionHostMismatch { observed_host: NonEmptyStr, requested_identity: HostIdentity }
+
+type DgxSparkAdmissionOutcome
+  = DgxSparkDeploymentAdmitted { deployment: DgxSparkDeployment }
+  | DgxSparkDeploymentRefused { reason: DgxSparkAdmissionRefusalReason }
+
+// The construction wall: this can only ever be called with a real FleetLifecycleEnvelope carrying an actually-observed device_identity.py response, so a deployment cannot be admitted from catalog + intent alone -- that refusal is the deliverable this file exists to prove, not an incidental side effect. Per review 49071: presence of a device_identity.py envelope alone is not sufficient either -- the envelope's host (the orchestrator's target identity for the observation it actually ran) must equal the identity being admitted, or a valid observation of one host could otherwise bind a deployment for a different one. Per review 49094: the three closed refusal causes are a DgxSparkAdmissionRefusalReason coproduct, not free-text NonEmptyStr prose (DESIGN §3/§5 undeclared-sum), matching the sibling FleetLifecycleFailureClass pattern one file over.
+fn admit_dgx_spark_deployment(
+  identity: HostIdentity,
+  catalog: IntegratedComputeSystemCatalogRow,
+  identity_observation: FleetLifecycleEnvelope?
+) -> DgxSparkAdmissionOutcome {
+  match identity_observation {
+    Present { value: envelope } =>
+      if envelope.tool == fleet_lifecycle_operation_tool_name(op: DeviceIdentity) {
+        if identity == (envelope.host as HostIdentity) {
+          DgxSparkDeploymentAdmitted {
+            deployment: DgxSparkDeployment {
+              identity: identity,
+              catalog: catalog,
+              identity_observation: envelope,
+            }
+          }
+        } else {
+          DgxSparkDeploymentRefused {
+            reason: DeploymentAdmissionHostMismatch {
+              observed_host: envelope.host,
+              requested_identity: identity,
+            }
+          }
+        }
+      } else {
+        DgxSparkDeploymentRefused {
+          reason: DeploymentAdmissionWrongTool { observed_tool: envelope.tool }
+        }
+      }
+    Absent =>
+      DgxSparkDeploymentRefused {
+        reason: DeploymentAdmissionNoEvidence
+      }
+  }
+}

@@ -15,10 +15,10 @@ import gunbc.commit_workflow {
   roster_witness_spans_wellformed,
   witness_span_wellformed
 }
-import std.measure { millisecond }
+import std.measure { millisecond, WallClock }
 import std.realization_schedule {
   WitnessSeam, SpanSeams, SpanUndeclared, SpanEnrolled,
-  WitnessCostBasis, WitnessCostWallEval, MeasuredAtExactSubject,
+  WitnessCostBasis, MeasuredAtExactSubject,
   ScheduledWitnessEnvelope,
   CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq
 }
@@ -109,7 +109,7 @@ test fn witness_span_enrolled_accepts_measured_envelope() -> Bool {
       }
     ],
     cost_basis: MeasuredAtExactSubject {
-      clock: WitnessCostWallEval,
+      clock: WallClock,
       duration: millisecond(count: 3),
       receipt: "target/frontier-probe-survey/matrix_readthrough_claim_batch_receipt.log"
     },
@@ -127,7 +127,7 @@ test fn witness_span_enrolled_rejects_zero_wall_budget() -> Bool {
       WitnessSeam { producer: "FalsifierCadenceJob", consumer: "example_witness_holds" }
     ],
     cost_basis: MeasuredAtExactSubject {
-      clock: WitnessCostWallEval,
+      clock: WallClock,
       duration: millisecond(count: 100),
       receipt: "target/example-receipt.log"
     },

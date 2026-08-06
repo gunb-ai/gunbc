@@ -4,6 +4,7 @@ import std.types { CommitSha, NonEmptyStr, Bool, String, List, Int }
 import std.execution_mode { ExecutionMode, Hermetic, execution_mode_eq }
 import std.nat { Nat }
 import std.measure {
+  ClockBasis, CpuClock, WallClock, clock_basis_eq,
   Measure, Time, ByteSize, Watt,
   Second, Millisecond,
   byte_size, byte_size_count, watt, time_measure, measure_count
@@ -67,33 +68,16 @@ type WitnessSeam {
   consumer: String
 }
 
-data witness_cost_clock_note: String = "Which clock the duration carrier names (operator msg_e24f4cab, 2026-08-04): run_claim_timed builds performance receipts from wall_nanos (performance_receipt_from_witness) while the per-witness eval budget gate consumes thread CPU nanos (budget_completion_outcome). Both cross as std.measure Millisecond — without the clock tag a stored figure is not comparable to a threshold. claim_batch receipt logs cited on MeasuredAtExactSubject rows are WitnessCostWallEval unless re-measured on ThreadCpu."
-
-type WitnessCostClock
-  = WitnessCostWallEval
-  | WitnessCostThreadCpuEval
-
-fn witness_cost_clock_eq(a: WitnessCostClock, b: WitnessCostClock) -> Bool {
-  match a {
-    WitnessCostWallEval => match b {
-      WitnessCostWallEval => true
-      WitnessCostThreadCpuEval => false
-    }
-    WitnessCostThreadCpuEval => match b {
-      WitnessCostThreadCpuEval => true
-      WitnessCostWallEval => false
-    }
-  }
-}
+data witness_cost_clock_note: String = "Which clock the duration carrier names (operator msg_e24f4cab, 2026-08-04): run_claim_timed builds performance receipts from wall_nanos (performance_receipt_from_witness) while the per-witness eval budget gate consumes thread CPU nanos (budget_completion_outcome). Both cross as std.measure Millisecond — without the clock tag a stored figure is not comparable to a threshold. claim_batch receipt logs cited on MeasuredAtExactSubject rows are WallClock unless re-measured on thread CPU. THE CARRIER IS std.measure ClockBasis, and this note records why it is not a second one. A local WitnessCostClock = WitnessCostWallEval | WitnessCostThreadCpuEval stood here until 2026-08-05, minted one day before std.measure ClockBasis = CpuClock | WallClock and for the SAME stated reason — the sentence above, that an untagged figure is not comparable to a threshold, appears in both notes. Two carriers, one concept, one argument, two names is the section 3 nicknaming violation exactly, and it duplicates at the meaning layer where everything derived duplicates again. It was also not merely redundant, which is what made it urgent rather than tidy: the declared side of a cost comparison was tagged in this vocabulary while the observed side (gunbc.witness_row_cost, ObservationEvent durations) was tagged in ClockBasis, so witness_row_cost_verdict's BasisClockMismatch — the wall built to refuse a thread-CPU figure compared against a wall baseline — could not see across the two spellings. A fork that defeats the mechanism written to catch that mistake reports clean while comparing the two quantities it exists to keep apart. Dissolved by IMPORT rather than by re-declaration, so the arms below are the same values the observation side already carries and a cross-clock pair refuses on one comparator."
 
 type WitnessCostBasis
   = MeasuredAtExactSubject {
-      clock: WitnessCostClock,
+      clock: ClockBasis,
       duration: Millisecond,
       receipt: String
     }
   | EstimatedFromSiblingClass {
-      clock: WitnessCostClock,
+      clock: ClockBasis,
       source_witness: String,
       basis: String
     }

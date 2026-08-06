@@ -113,7 +113,7 @@ pub use crate::v1_compiler_infer_service::{
 };
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult, UniqueAccum};
 use crate::v1_compiler_infer_sigs::FuncSigLookup::{
-    FuncSigAmbiguous, FuncSigResolved, FuncSigUnresolved,
+    FuncSigAmbiguous, FuncSigCallerNotAdmitted, FuncSigResolved, FuncSigUnresolved,
 };
 pub use crate::v1_compiler_infer_sigs::{flatten_parent_envs, resolve_func_sigs};
 pub use crate::v1_compiler_infer_sigs::{
@@ -138,11 +138,12 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousReference, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
-    CallPositionalDeficit, CallPositionalSurplus, ConstructorCallAdmissionRefused, FieldNotFound,
-    FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
-    MethodExistenceUndecided, MethodNotFound, MissingField, ReceiverTypeUnestablished,
-    SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
+    AmbiguousReference, CallArgumentDuplicate, CallArgumentNameUnknown,
+    CallNamedArgOnFunctionValue, CallPositionalDeficit, CallPositionalSurplus,
+    ConstructorCallAdmissionRefused, FieldNotFound, FrontierOccurrenceBudgetExceeded,
+    InternalError, MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound,
+    MissingField, ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch,
+    UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -2679,6 +2680,10 @@ pub fn borrowed_callable_call_type(
     }
 }
 
+pub fn is_anonymous_bound_name(name: String) -> bool {
+    (name.clone() == "_".to_string())
+}
+
 pub fn call_arg_label_matches_param(param_name: String, arg_label: String) -> bool {
     (((param_name.clone() == arg_label.clone()) || (param_name.clone() == "_".to_string()))
         || (((v1_rt::string_length(&param_name) >= 1)
@@ -2698,6 +2703,65 @@ pub fn param_binds_positionally(
         }
         None => false,
     }
+}
+
+pub fn call_arg_bound_param_at_binding_key_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Runtime (v1_interpreter.rs call_function_inner) keys `bindings` differently per argument form: a NAMED actual is inserted under its own literal caller label (`bindings.insert(ctx.sym(name), ...)` — the raw label, never resolved through the underscore idiom to a declared name), while a POSITIONAL actual is inserted under the declared name it fills by running positional index (`bindings.insert(ctx.sym(&param_names[positional_idx]), ...)`). Two named actuals therefore collide only when they carry the SAME literal label, and a positional-then-named collision (`one(1, a: 2)`) only when the named label equals the positional slot's declared name (found by review 48724). Resolving a named actual's key through declared_names via call_arg_label_matches_param (the prior form of this function) is a DIFFERENT and wrong key: filter-then-first picks whichever declared param the caller-label test hits first in declaration order, and an underscore-named param (`_: Edge`) matches ANY label unconditionally, so a later exact-named actual (`child:` against declared `child`) could be shadowed into colliding with an unrelated earlier underscore-idiom actual (`e:` against declared `_`) even though the runtime keys them apart as \"e\" and \"child\" — the false positive measured live at src/v2/std/cardinality.dag's termination_proof_fold_step(acc:, e:, child:) call against fn termination_proof_fold_step(acc, _: Edge, child), which compiled clean before this correction and fails at this wall after it without the fix.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CallArgBoundParamAccum {
+    pub bound: Option<String>,
+    pub pos: i64,
+}
+
+pub fn call_arg_bound_param_at(
+    idx: i64,
+    typed_args: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    positionally_eligible_names: Rc<Vec<String>>,
+) -> Option<String> {
+    Rc::new(
+        typed_args
+            .clone()
+            .iter()
+            .cloned()
+            .take((idx.clone() + 1) as usize)
+            .collect::<Vec<_>>(),
+    )
+    .iter()
+    .cloned()
+    .fold(
+        Rc::new(CallArgBoundParamAccum {
+            bound: None,
+            pos: 0,
+        }),
+        |acc: Rc<CallArgBoundParamAccum>, ta: Rc<Node>| match arg_name_at(
+            ta.clone(),
+            source_indices.clone(),
+        ) {
+            Some(label) => Rc::new(CallArgBoundParamAccum {
+                bound: Some(label.clone()),
+                pos: acc.pos.clone(),
+            }),
+            None => Rc::new(CallArgBoundParamAccum {
+                bound: positionally_eligible_names
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(acc.pos.clone() as usize)
+                    .next(),
+                pos: (acc.pos.clone() + 1),
+            }),
+        },
+    )
+    .bound
+    .clone()
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2811,6 +2875,24 @@ pub fn direct_call_shape_diags(
             }
             __result
         });
+        let positionally_eligible_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in Rc::new({
+                let mut __result = Vec::new();
+                for p in sig_params.clone().iter().cloned() {
+                    if param_binds_positionally(p.clone(), source_indices.clone()) {
+                        __result.push(p);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(authored_name_at(source_indices.clone(), p.clone()));
+            }
+            __result
+        });
         let unknown_label_diags = Rc::new({
             let mut __result = Vec::new();
             for ta in typed_args.clone().iter().cloned() {
@@ -2890,6 +2972,84 @@ pub fn direct_call_shape_diags(
             } else {
                 Rc::new(vec![])
             };
+        let duplicate_label_diags = Rc::new({
+            let mut __result = Vec::new();
+            for pair in Rc::new(
+                typed_args
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                __result.extend(
+                    (*{
+                        let current_bound = call_arg_bound_param_at(
+                            pair.0.clone(),
+                            typed_args.clone(),
+                            source_indices.clone(),
+                            positionally_eligible_names.clone(),
+                        );
+                        match current_bound.clone() {
+                            Some(bound_name) => {
+                                let earlier_dup = {
+                                    let mut __found = false;
+                                    for other in Rc::new(
+                                        typed_args
+                                            .clone()
+                                            .iter()
+                                            .cloned()
+                                            .enumerate()
+                                            .map(|(i, v)| (i as i64, v))
+                                            .collect::<Vec<_>>(),
+                                    )
+                                    .iter()
+                                    .cloned()
+                                    {
+                                        if ((other.0.clone() < pair.0.clone())
+                                            && (call_arg_bound_param_at(
+                                                other.0.clone(),
+                                                typed_args.clone(),
+                                                source_indices.clone(),
+                                                positionally_eligible_names.clone(),
+                                            )
+                                            .as_deref()
+                                                == current_bound.clone().as_deref()))
+                                        {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                };
+                                if (earlier_dup.clone()
+                                    && !is_anonymous_bound_name(bound_name.clone()))
+                                {
+                                    Rc::new(vec![make_error_node(
+                                        Rc::new(CompilerDiagnostic::CallArgumentDuplicate {
+                                            callee: func_name.clone(),
+                                            argument: bound_name.clone(),
+                                            span: pair.1.clone().span.clone(),
+                                        }),
+                                        module_name.clone(),
+                                    )])
+                                } else {
+                                    Rc::new(vec![])
+                                }
+                            }
+                            None => Rc::new(vec![]),
+                        }
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
         let arity_scan = scan_call_shape_arity(
             sig_params.clone(),
             typed_args.clone(),
@@ -2910,8 +3070,8 @@ pub fn direct_call_shape_diags(
             None => Rc::new(vec![]),
         };
         v1_rt::concat(
-            unknown_label_diags.clone(),
-            v1_rt::concat(surplus_diags.clone(), deficit_diags.clone()),
+            v1_rt::concat(unknown_label_diags.clone(), surplus_diags.clone()),
+            v1_rt::concat(duplicate_label_diags.clone(), deficit_diags.clone()),
         )
     }
 }
@@ -3000,7 +3160,7 @@ pub fn function_value_named_application_wall_note() -> String {
 pub fn direct_call_shape_wall_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "WALL (DESIGN §5) — the compile seam now refuses the three direct-call shape states the interpreter refuses at runtime, so the two authorities agree instead of one refusing and the other absorbing. The runtime authority is v1_interpreter.rs call_function_inner: a caller label naming no declared parameter raises CallContractMismatch (accepting label x against a declared x, _x, or _ — the deliberately-unused-parameter idiom, mirrored here in call_arg_label_matches_param); a positional argument beyond the positional parameter list raises CallContractMismatch too; and a required parameter omitted without a declared default raises CallContractMismatch too (param_node_default_value legitimately fills omissions that carry a default — only non-default params count as required). Before this wall the compile seam was SILENT on all three, and the divergence was three-way (measured live, 2026-07-31, the probe-2 receipt in the guarantee-lane census): `sub(a: 10, bb: 3)` against `fn sub(a: Int, b: Int)` compiled with zero diagnostics, the interpreter refused it loudly, and the Rust emitter silently REORDERED it positionally — order_typed_call_args's name-match-else-positional arm bound bb's value to b, so the emitted realization computed an answer the interpreter refuses: two realizations of one program disagreeing silently, the exact state the guarantee ladder calls silent wrongness. The mechanism of the compile silence was the same absorbing fallback one seam over: direct_call_arg_mismatch_diags walks PARAMS and falls back positionally (`typed_args |> skip(pair.first) |> first`) when no arg carries the param's name, so a mislabeled arg is absorbed into a position and only its TYPE is ever judged — the label itself was never a checked fact. This wall checks application shape at the direct-call seam via direct_call_shape_diags: every labeled actual must name a declared parameter (modulo the underscore idiom); unlabeled actuals must fit within the positional capacity; and every required parameter (no default) must be supplied by name or positional slot — scan_call_shape_arity mirrors call_function_inner's binding walk, including the same positional-capacity predicate (a param binds positionally iff its type-expr child's authored name differs from its own). WHY THIS CHECK IS NOT UNDER module_skips_direct_call_arg_check: that exemption exists for the TYPE judgment, whose false-positive classes are representation gaps (brand aliases, optionality's two forms, anonymous literals, expansion depth — the conformance wall's four measured classes). A LABEL has no representation: it is a surface string matched against a declared surface string, the same exact-membership judgment the interpreter performs, so the exemption's reason does not reach it and the wall runs over every module including the compiler's own sources. All three diagnostics BLOCK (CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit — is_error_diagnostic and is_interpreter_blocking_diagnostic default arms), so a refused program never reaches emit — which retires the emission path's silent reorder for Accepted programs at this seam without touching order_typed_call_args: its positional arm remains the legitimate binding rule for unlabeled args, and the states it could absorb are no longer writable in an Accepted program. DELIBERATELY NOT WALLED, each with its trigger: (1) duplicate labels — the interpreter's bindings.insert silently overwrites, so a compile refusal would be STRICTER than the runtime authority and the two would disagree in the opposite direction; the honest sequence is to land the refusal in call_function_inner first, then mirror it here, and that pair is its own slice. (2) method/pipe-seam argument labels — this wall covers the direct-call seam (the sig != none branch); the method-call path binds its arguments through its own inference arms and is the method wall's territory. The subject grain of the climb, stated per the ladder's rung-honesty rule: the classes 'unknown argument label', 'positional surplus', and 'missing required argument' each move from mitigatable (runtime refusal on the interpretation path; silent wrong output or deferred NoSuchVariable on the emission path) to structurally guaranteed at the direct-call seam — no Accepted program contains one — while the method-pipe path and the unwalled duplicate-label class above stay at their measured rungs, named here rather than implied climbed. DEFICIT REQUIRED-GRAIN RULING (measured 2026-08-05, option b): the only writable shape where scan_call_shape_arity's required set (skip param_is_generic_decl, else require when not positionally supplied) diverges from call_function_inner's is_value_param (`type_expr authored name != param name`) is a param spelled `x: x<...>` — the param name equals the applied-type constructor with a non-leaf type-expr — corpus census `grep -rPno '\\b([a-z_][a-z0-9_]*): \\1<'` over dag/ src/v1/ src/v2/: 0 sites; params with no type-expr child are unwritable from authored surface. This seam refuses that shape as CallPositionalDeficit; the interpreter does not — compile is authoritative here because a non-positional param with no default and no supplied binding cannot be bound; matching the looser runtime predicate would copy an interpreter deficit for symmetry, not prevent silent wrongness. THE CENSUS RECEIPT, run before landing rather than promised after (2026-07-31): the label/surplus wall refused 28 live sites across the [src/v1, dag] regen closure and the dag + src/v2 compile-clean closure, and every one was the same defect — a parameter renamed at its declaration while call sites kept the old label, absorbed positionally ever since: to_string(i:) against the renamed value (8 sites, src/v1/compile.dag), arm_body(arm:) against n, is_import_slot_node(p:) against n, fold_list(init:) against this corpus's declared empty (17 sites, one file), and floor_discovery_walk_failure_refusal_reason(path:) against path_opt. All were relabeled to the declared authority in the same change. The fold_list rows carry the sharpest lesson about WHY compile must hold this fact even where runtime does not: those 17 sites never failed live because the interpreter grounds fold_list natively (label-blind), while call_function_inner would refuse the same label on the user-fn path — so the program's meaning depended on WHICH dispatch tier happened to serve the call, and the label's truth was untested precisely where it was wrong. The wall pins the label to the one declared authority regardless of tier, which is what keeps the call sites correct when the native grounding dissolves into the declared surface (the primitive-realization-single-authority trigger). MEASURED BLIND SPOT, stated rather than implied covered: 3 more to_string(i:) sites in src/v1/dag_collect.dag never reached the wall because their callee resolves NO sig at this seam (no import, global-bare miss) — the sig == none fallthrough routes to the method bridge and this wall never sees the call. They were found by grep on the fossil's shape and fixed with the rest, but the CLASS stays open: a call whose callee sig does not resolve is judged by nothing here, and that fallthrough closes with resolution coverage (the namespace lane), not with a wider label check.".to_string()
+            "WALL (DESIGN §5) — the compile seam now refuses the four direct-call shape states the interpreter refuses at runtime, so the two authorities agree instead of one refusing and the other absorbing. The runtime authority is v1_interpreter.rs call_function_inner: a caller label naming no declared parameter raises CallContractMismatch (accepting label x against a declared x, _x, or _ — the deliberately-unused-parameter idiom, mirrored here in call_arg_label_matches_param); a positional argument beyond the positional parameter list raises CallContractMismatch too; a required parameter omitted without a declared default raises CallContractMismatch too (param_node_default_value legitimately fills omissions that carry a default — only non-default params count as required); and a second actual binding under one already-bound parameter key raises CallContractMismatch too ('argument supplied more than once'). Before this wall the compile seam was SILENT on all four, and the divergence was three-way on the first two (measured live, 2026-07-31, the probe-2 receipt in the guarantee-lane census): `sub(a: 10, bb: 3)` against `fn sub(a: Int, b: Int)` compiled with zero diagnostics, the interpreter refused it loudly, and the Rust emitter silently REORDERED it positionally — order_typed_call_args's name-match-else-positional arm bound bb's value to b, so the emitted realization computed an answer the interpreter refuses: two realizations of one program disagreeing silently, the exact state the guarantee ladder calls silent wrongness. The mechanism of the compile silence was the same absorbing fallback one seam over: direct_call_arg_mismatch_diags walks PARAMS and falls back positionally (`typed_args |> skip(pair.first) |> first`) when no arg carries the param's name, so a mislabeled arg is absorbed into a position and only its TYPE is ever judged — the label itself was never a checked fact. This wall checks application shape at the direct-call seam via direct_call_shape_diags: every labeled actual must name a declared parameter (modulo the underscore idiom); unlabeled actuals must fit within the positional capacity; every required parameter (no default) must be supplied by name or positional slot — scan_call_shape_arity mirrors call_function_inner's binding walk, including the same positional-capacity predicate (a param binds positionally iff its type-expr child's authored name differs from its own); and no two actuals may resolve to the same declared parameter — call_arg_bound_param_at (binding-key discipline documented at call_arg_bound_param_at_binding_key_note) resolves each actual, named or positional, to the parameter it fills, mirroring exactly how call_function_inner keys `bindings`. WHY THIS CHECK IS NOT UNDER module_skips_direct_call_arg_check: that exemption exists for the TYPE judgment, whose false-positive classes are representation gaps (brand aliases, optionality's two forms, anonymous literals, expansion depth — the conformance wall's four measured classes). A LABEL has no representation: it is a surface string matched against a declared surface string, the same exact-membership judgment the interpreter performs, so the exemption's reason does not reach it and the wall runs over every module including the compiler's own sources. All four diagnostics BLOCK (CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallArgumentDuplicate — is_error_diagnostic and is_interpreter_blocking_diagnostic default arms), so a refused program never reaches emit — which retires the emission path's silent reorder for Accepted programs at this seam without touching order_typed_call_args: its positional arm remains the legitimate binding rule for unlabeled args, and the states it could absorb are no longer writable in an Accepted program. DELIBERATELY NOT WALLED, with its trigger: method/pipe-seam argument labels — this wall covers the direct-call seam (the sig != none branch); the method-call path binds its arguments through its own inference arms and is the method wall's territory. The subject grain of the climb, stated per the ladder's rung-honesty rule: the classes 'unknown argument label', 'positional surplus', 'missing required argument', and 'a caller label or slot is bound more than once' each move from mitigatable (runtime refusal on the interpretation path; silent wrong output or deferred NoSuchVariable on the emission path) to structurally guaranteed at the direct-call seam — no Accepted program contains one — while the method-pipe path stays at its measured rung, named here rather than implied climbed. DEFICIT REQUIRED-GRAIN RULING (measured 2026-08-05, option b): the only writable shape where scan_call_shape_arity's required set (skip param_is_generic_decl, else require when not positionally supplied) diverges from call_function_inner's is_value_param (`type_expr authored name != param name`) is a param spelled `x: x<...>` — the param name equals the applied-type constructor with a non-leaf type-expr — corpus census `grep -rPno '\\b([a-z_][a-z0-9_]*): \\1<'` over dag/ src/v1/ src/v2/: 0 sites; params with no type-expr child are unwritable from authored surface. This seam refuses that shape as CallPositionalDeficit; the interpreter does not — compile is authoritative here because a non-positional param with no default and no supplied binding cannot be bound; matching the looser runtime predicate would copy an interpreter deficit for symmetry, not prevent silent wrongness. THE CENSUS RECEIPT, run before landing rather than promised after (2026-07-31): the label/surplus wall refused 28 live sites across the [src/v1, dag] regen closure and the dag + src/v2 compile-clean closure, and every one was the same defect — a parameter renamed at its declaration while call sites kept the old label, absorbed positionally ever since: to_string(i:) against the renamed value (8 sites, src/v1/compile.dag), arm_body(arm:) against n, is_import_slot_node(p:) against n, fold_list(init:) against this corpus's declared empty (17 sites, one file), and floor_discovery_walk_failure_refusal_reason(path:) against path_opt. All were relabeled to the declared authority in the same change. The fold_list rows carry the sharpest lesson about WHY compile must hold this fact even where runtime does not: those 17 sites never failed live because the interpreter grounds fold_list natively (label-blind), while call_function_inner would refuse the same label on the user-fn path — so the program's meaning depended on WHICH dispatch tier happened to serve the call, and the label's truth was untested precisely where it was wrong. The wall pins the label to the one declared authority regardless of tier, which is what keeps the call sites correct when the native grounding dissolves into the declared surface (the primitive-realization-single-authority trigger). MEASURED BLIND SPOT, stated rather than implied covered: 3 more to_string(i:) sites in src/v1/dag_collect.dag never reached the wall because their callee resolves NO sig at this seam (no import, global-bare miss) — the sig == none fallthrough routes to the method bridge and this wall never sees the call. They were found by grep on the fossil's shape and fixed with the rest, but the CLASS stays open: a call whose callee sig does not resolve is judged by nothing here, and that fallthrough closes with resolution coverage (the namespace lane), not with a wider label check. (Corrected 2026-08-05: the duplicate-label class LANDED in the order this note originally specified — v1_interpreter.rs call_function_inner now refuses a second binding under one caller label (CallContractMismatch, 'argument supplied more than once') before this seam was given its mirror, CallArgumentDuplicate. The class 'a caller label is supplied more than once' therefore climbs from mitigatable (silent last-write-wins) to structurally guaranteed at the direct-call seam, alongside the other three; a whole-tree census at landing found zero live duplicate-label call sites, so the wall adds no new refusal to any existing corpus form.) (Corrected 2026-08-05, cursor review 48724: an interim version of the duplicate-label mirror keyed CallArgumentDuplicate on exact caller-label string equality, which overclaimed. The runtime authority (call_function_inner) keys `bindings` by resolved PARAMETER symbol, not by caller-label string, and populates that key from a positional bind exactly as it does from a named one — so a positional bind of the sole parameter followed by a same-parameter named actual (`one(1, a: 2)` against `fn one(a: Int)`) collides and refuses at runtime, a state the label-string-only compile check could not see (`Absent => false` for positional predecessors) and so compiled clean, reaching emit. CallArgumentDuplicate is now keyed the same way the runtime is: call_arg_bound_param_at resolves each actual — named or positional — to the declared parameter it fills (positional actuals against the interpreter's own filtered param_binds_positionally list, in running positional order; named actuals through call_arg_label_matches_param, the same underscore-idiom equality unknown-label matching already uses) and the wall refuses a second actual resolving to the same parameter, never comparing raw caller-label strings against each other. The measured false-negative this closes and its discriminating fixture: call_duplicate_mixed_red_source, a single-parameter positional-then-named collision that a label-string-only check could not distinguish from the corpus's positional-only and named-only green controls.) (Corrected 2026-08-05, live cardinality.dag false positive: the prior correction's 'resolves a NAMED actual through call_arg_label_matches_param to a declared parameter' also overclaimed. The runtime keys a named actual under its own LITERAL caller label, never resolved through the underscore idiom to a declared name; only a positional actual is keyed by resolved declared name. Resolving named actuals through declared_names let an underscore-named param (matching ANY label unconditionally) shadow an unrelated later exact-named actual into a false collision — measured live at termination_proof_fold_step(acc: acc, e: e, child: child) against fn termination_proof_fold_step(acc, _: Edge, child), which this wall wrongly refused on 'child' until call_arg_bound_param_at's named branch was corrected to bind directly to the caller's literal label.) (Corrected 2026-08-05, #7848 merge: this note previously described only the label/surplus/deficit trio or only the duplicate-label mirror depending on branch; merging the two PRs' parallel work on this same wall found no consistency defect between the two additions — both diagnostics BLOCK, both use the same declared-parameter binding discipline as their keying authority, and both honor the underscore idiom identically, so the merge is a union of coverage, not a reconciliation of conflicting semantics.) (Corrected 2026-08-05, review from parent session loyal-ant-382: the duplicate-binding key, as landed, keyed EVERY anonymous ('_') parameter under the same literal string regardless of position, so a signature with two or more anonymous parameters bound positionally (or a mix of positional and record-field/method-value invocation of the same signature) false-refused CallArgumentDuplicate on its second anonymous actual — a live specimen, provider_readiness_independence_claim in dag/gunbc/provider_readiness_claim_evidence.dag, carries exactly this shape. The class 'a caller label or slot is bound more than once' does NOT climb to structurally guaranteed for anonymous parameters and never claimed to on a correct reading — 'more than once' presupposes the binding is READ twice, and an anonymous parameter's body cannot read it at all, so two anonymous parameters filled at two positions are two distinct, unreadable slots, not one key bound twice. call_arg_bound_param_at's duplicate check (this file) now excludes a resolved binding of exactly '_' from the collision check via the top-level `is_anonymous_bound_name` function (the earlier-duplicate scan still runs unconditionally; its result is combined with `!is_anonymous_bound_name(name: bound_name)` in the final `if`) — an anonymous parameter can never collide with another anonymous parameter under this authority, named or positional. `is_anonymous_bound_name` is a top-level function rather than an inline comparison for the same reason `call_arg_label_matches_param` already is one in this file: 'what counts as anonymous' is a single fact the whole module should ask one authority for, not a `== '_'` literal repeated ad hoc at each call site that cares — the existing pattern, not a new one. The runtime mirror (v1_interpreter.rs call_function_inner) excludes '_' from its collision check the same way, but — unlike an outright exclusion from binding — still INSERTS the value under the '_' key on every anonymous bind: the insert is what the required-argument check (`param_supplied_at_call`, reading `bindings.contains_key`) depends on to see an anonymous parameter as filled, so removing the insert entirely (the fix's first, corrected draft) turned every anonymous-but-positionally-supplied parameter into a false CallPositionalDeficit/'missing required argument' one layer downstream of the duplicate check it was fixing. Harmless repeated overwrite under one dead key, never read by the body, is the correct shape here — not 'never bound' literally, but 'never checked for collision, and immaterial which write wins.' The two required regression fixtures: a call binding two-or-more anonymous parameters positionally (direct and via a stored function value) stays ACCEPTED; the existing named/mixed duplicate fixtures (call_duplicate_mixed_red_source, the cardinality.dag underscore-shadow control) stay RED, because those collide on a NAMED, readable label, not an anonymous one.)".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -4992,6 +5152,40 @@ pub fn infer_expr_body(
                         span.clone(),
                         scope.clone(),
                     ),
+                    FuncSigLookup::FuncSigCallerNotAdmitted {
+                        function_name: fname,
+                        owner_module_path: om,
+                        admitted: adm,
+                        ..
+                    } => Rc::new(InferResult {
+                        typed: semantic_expr_error_node(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "constructor call admission refused for '".to_string(),
+                                    fname.clone(),
+                                ),
+                                "'".to_string(),
+                            ),
+                            span.clone(),
+                        ),
+                        diagnostics: Rc::new(vec![make_error_node(
+                            Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
+                                constructor_module_path: om.clone(),
+                                constructor_decl_name: fname.clone(),
+                                caller_module_path: scope.module_name.clone(),
+                                caller_decl_name: if (scope.caller_decl_name.clone()
+                                    == "".to_string())
+                                {
+                                    "<unknown>".to_string()
+                                } else {
+                                    scope.caller_decl_name.clone()
+                                },
+                                permitted_callers: adm.clone(),
+                                span: span.clone(),
+                            }),
+                            scope.module_name.clone(),
+                        )]),
+                    }),
                     FuncSigLookup::FuncSigUnresolved => {
                         match lookup_binding_by_name(scope.type_env.clone(), name.clone()) {
                             Some(gbinding) => {
@@ -5344,6 +5538,39 @@ pub fn infer_expr_body(
                     span.clone(),
                     scope.clone(),
                 ),
+                FuncSigLookup::FuncSigCallerNotAdmitted {
+                    function_name: fname,
+                    owner_module_path: om,
+                    admitted: adm,
+                    ..
+                } => Rc::new(InferResult {
+                    typed: semantic_expr_error_node(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                "constructor call admission refused for '".to_string(),
+                                fname.clone(),
+                            ),
+                            "'".to_string(),
+                        ),
+                        span.clone(),
+                    ),
+                    diagnostics: Rc::new(vec![make_error_node(
+                        Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
+                            constructor_module_path: om.clone(),
+                            constructor_decl_name: fname.clone(),
+                            caller_module_path: scope.module_name.clone(),
+                            caller_decl_name: if (scope.caller_decl_name.clone() == "".to_string())
+                            {
+                                "<unknown>".to_string()
+                            } else {
+                                scope.caller_decl_name.clone()
+                            },
+                            permitted_callers: adm.clone(),
+                            span: span.clone(),
+                        }),
+                        scope.module_name.clone(),
+                    )]),
+                }),
                 _ => {
                     match constructor_reference_admission_early_refusal(
                         func_name.clone(),

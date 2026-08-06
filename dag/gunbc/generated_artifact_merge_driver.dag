@@ -1,0 +1,71 @@
+module gunbc.generated_artifact_merge_driver
+
+data generated_artifact_merge_driver_note: String = "THE MERGE DRIVER FOR merge=generated-artifact PATHS, AND WHY IT REFUSES INSTEAD OF ANSWERING `true`. The binding was `merge.generated-artifact.driver=true` — the shell builtin, which leaves the ours side in place and exits 0. Git then records the merge as CLEAN and the other side's bytes are gone with no signal. That is the absorbing fallback of DESIGN section 5 at the integration boundary: the driver's failure arm answered instead of refusing, and it destroyed the one fact worth keeping — that a provisional choice was made at all — so the deficit's frequency was zero by construction and nothing ranked it for fixing. MEASURED CLASS: PR #7836, twice in one session. Merging main into a branch that also touched src/v1/stage0/src/v1_compiler_infer.rs resolved the SEED to the branch side and dropped main's emit changes (103 lines, then 130 lines) while src/v1/04_infer.dag — the AUTHORITY — merged correctly and carried them. Git reported no conflict either time; the tree was left authority-ahead-of-seed, and the class surfaced a full CI cycle later as a red regen job, or not at all until someone happened to run regen_stage0 --verify. THE REFUSAL IS PRECISE, NOT A WIDEN, and this is measured rather than argued: git invokes a low-level merge driver ONLY when both sides changed the path relative to the merge base. Executed against git 2.x with a probe driver on a four-case matrix — one-sided theirs, one-sided ours, both sides identical, both sides different — the driver was invoked in exactly the fourth case; the first three merged clean with the correct content and never reached it. So driver invocation holds exactly when taking either side drops the other side's authority-derived content, and refusing there adds no stop to any merge that was previously correct. WHAT THE REFUSAL LEAVES BEHIND: the script does not write to the result file, so git keeps the ours side verbatim — clean bytes, NO conflict markers — and marks the path unmerged. The regenerators can therefore run against the worktree immediately, and a writer that would sweep the tree cannot commit marker text (there is none to sweep); the unmerged index stage is what the landed commit-writer admission already refuses on. RUNG (DESIGN section 4b), stated at its honest ceiling: this class moves from mitigatable — the regen gate detecting the bad transition a CI cycle after it exists — to MECHANICALLY PREVENTABLE at the merge boundary. It is NOT structural: the invalid state stays writable, because a resolver can still `git add` the provisional bytes without regenerating, and a clone that never converged the repo-local binding gets vanilla text merge. NEXT TRIGGER for the remaining climb, already a countable row rather than a new program: gunbc.commit_workflow commit_writer_binding_work — the DashboardAutocommit and heal-arm writers calling admit_commit_writer at their actual write boundary, whose unmerged-stage refusal is what turns this stop into one no writer can pass. Until those bindings land, an out-of-repository autocommit that stages and commits through the unmerged path defeats this refusal, and that is a stated residue, not an unnoticed one."
+
+data generated_artifact_merge_driver_script_path: String = ".githooks/generated-artifact-merge"
+
+data generated_artifact_merge_driver_shell_program: String = "bash"
+
+data generated_artifact_merge_driver_invocation_note: String = "The configured driver value invokes the script through `bash <path>` rather than executing it directly, so the binding does not depend on a file mode. A generated artifact is written by Filesystem.Write, which carries no executable-bit fact, and a driver that git could not spawn would fail the merge for a reason unrelated to the divergence it exists to report. The home is .githooks/ because that directory is already this repository's home for emitted repo-local Git integration scripts (the pre-commit hook there converges these same bindings); git invokes hooks by exact name, so a non-hook file beside them is inert. Placeholders are git's own: %O base, %A ours AND the result path git reads back, %B theirs, %P the pathname in the worktree."
+
+fn generated_artifact_merge_driver_config_value_at(script_path: String) -> String {
+  concat(
+    concat(generated_artifact_merge_driver_shell_program, " "),
+    concat(script_path, " %O %A %B %P")
+  )
+}
+
+fn generated_artifact_merge_driver_config_value() -> String {
+  generated_artifact_merge_driver_config_value_at(script_path: generated_artifact_merge_driver_script_path)
+}
+
+data generated_artifact_merge_driver_regen_command_parameter_note: String = "THE REGENERATION COMMAND IS A PARAMETER, NOT AN IMPORT, AND THE REASON IS THE ACYCLICITY LAW RATHER THAN TASTE. Its single authority is gunbc.ci_spec ci_heal_author_commit_regen_command, and importing it here would close a real cycle: gunbc.generated_artifact reads this module for the artifact path, and ci_spec reaches gunbc.generated_artifact through the heal roster. So the consumer that already sits downstream of both — gunbc.generated_artifact_emit — supplies it, and the string is still authored in exactly one place. Restating it here as a literal would have been the second representation this document forbids; taking it as a parameter keeps one authority and an acyclic graph."
+
+data generated_artifact_merge_driver_two_pass_regen_note: String = "STEP 3 IS NOT REDUNDANT WITH STEP 2. regen_stage0 emits the seed by running a binary built FROM the seed, so a single pass can self-verify at divergence 0 for the wrong reason: the binary that emitted the output predates the change it was emitting. The second build-and-verify is what makes the fixed point a claim about the merged authorities rather than about the stale binary. This recipe is the author-facing repair for an unmerged generated projection; the CI transport recipe is gunbc.proactive_verification_ledger spine_regen_recipe and is deliberately not restated here."
+
+fn generated_artifact_merge_driver_repair_steps(regen_command: String) -> List<String> {
+  [
+    concat("1. regenerate the derived projections: ", regen_command),
+    "2. rebuild and run the seed emitter: cargo build --release --bin regen_stage0 && target/release/regen_stage0",
+    "3. rebuild and verify AGAIN: cargo build --release --bin regen_stage0 && target/release/regen_stage0 --verify",
+    "   (the first pass runs a binary that predates the change it emits, so one pass can self-verify at divergence 0 for the wrong reason)",
+  ]
+}
+
+fn generated_artifact_merge_driver_diagnostic_lines(regen_command: String) -> List<String> {
+  concat(
+    [
+      "[generated-artifact] GeneratedArtifactConcurrentDivergence: $merged_path",
+      "  Both sides changed this generated projection since the merge base, so neither side's bytes are the projection of the MERGED authorities. Taking either side drops the other side's authority-derived content, and the tree is then authority-ahead-of-artifact with nothing to say so.",
+      "  Git resolved nothing here. The path is left UNMERGED and the worktree file carries the ours side verbatim — no conflict markers — so the regenerators run against it as-is.",
+      "  Do NOT resolve these bytes by hand or by picking a side. Regenerate them:",
+    ],
+    generated_artifact_merge_driver_repair_steps(regen_command: regen_command)
+  )
+}
+
+fn emit_driver_stderr_echo(line: String) -> String {
+  concat(concat("echo \"", line), "\" >&2\n")
+}
+
+fn emit_driver_diagnostic(regen_command: String) -> String {
+  fold(generated_artifact_merge_driver_diagnostic_lines(regen_command: regen_command), init: "", f: fn(acc, line) {
+    concat(acc, emit_driver_stderr_echo(line: line))
+  })
+}
+
+fn expected_generated_artifact_merge_driver_sh(regen_command: String) -> String {
+  concat(
+    concat(
+      "#!/usr/bin/env bash\n# GENERATED by dag/gunbc/generated_artifact_merge_driver.dag — DO NOT HAND-EDIT.\n",
+      concat(
+        "set -euo pipefail\n",
+        "# git merge driver for merge=generated-artifact paths. argv: %O base, %A ours (result), %B theirs, %P pathname.\nmerged_path=\"$4\"\n"
+      )
+    ),
+    concat(
+      emit_driver_diagnostic(regen_command: regen_command),
+      concat(emit_driver_stderr_echo(line: "4. git add -- $merged_path"), "exit 1\n")
+    )
+  )
+}

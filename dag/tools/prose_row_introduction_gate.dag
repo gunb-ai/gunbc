@@ -1,0 +1,189 @@
+module tools.prose_row_introduction_gate
+
+import std.types { GitRef, List, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.filesystem.filesystem_io
+import extdeps.git { ThreeDot }
+import extdeps.git
+import gunbc.prose_row_frontier {
+  ProseRowRef,
+  ProseRowDiffObservation, ProseRowsObserved, ProseRowDiffUnreadable,
+  prose_row_diff_observation, prose_rows_introduced,
+  prose_rows_refused, prose_rows_out_of_scope, prose_rows_render,
+}
+
+// THE PER-PR WALL over newly introduced prose-only `data NAME_note: String` rows, at the merge base so
+// the refusal is attributable to the change that caused it. DESIGN 4c makes the class debt; the kernel
+// in gunbc.prose_row_frontier decides membership; this module is only the execution.
+//
+// WHY THE BASE IS origin/main...HEAD AND NOT A FREEZE ANCHOR. The question this gate asks is `does THIS
+// CHANGE introduce a prose row under a migrated path`, which is exactly the merge base. Reading a fixed
+// anchor instead would judge the whole post-anchor population on every branch, so one row landing on
+// main would refuse every open lane — the defect diagnosed in gunbc#7644 and recorded in
+// tools.extdeps_scope_placement_gate scope_placement_base_split_note. That mistake is not repeated here.
+//
+// DIFF FAILURE AND UNREADABLE STRUCTURE REFUSE. An observation that could not read what changed is not
+// the verdict `nothing was introduced`; rendering it as one is the empty-observation narrow, which is
+// strictly worse than the widen DESIGN 5 already forbids because it is silently uncovered rather than
+// merely expensive.
+fn prose_row_gate_observation() -> ProseRowDiffObservation {
+  let diff = git.Core.DiffUnified0(
+    base: "origin/main" as GitRef,
+    head: "HEAD" as GitRef,
+    range: ThreeDot,
+  )
+  if diff.success {
+    prose_row_diff_observation(diff_text: diff.diff)
+  } else {
+    ProseRowDiffUnreadable {
+      reason: "git.Core.DiffUnified0(origin/main...HEAD) failed"
+    }
+  }
+}
+
+fn prose_row_refusal_reason(refused: List<ProseRowRef>, residue: List<ProseRowRef>) -> String {
+  let residue_count = residue |> count
+  concat(
+    "prose row introduction gate: THIS CHANGE introduces prose-only data NAME_note: String declaration(s) under a path whose prose has already been migrated to authored // annotations (gunbc.prose_row_frontier prose_row_migration_scope). Move the irreducible rationale into a leading // block above the declaration it explains, and put any date, review id, PR number, SHA, status, count or dissolution condition in a typed carrier (DESIGN section 4c). Refused: ",
+    concat(
+      prose_rows_render(rows: refused),
+      concat(
+        " | counted out-of-scope residue, reported and NOT enforced, rows: ",
+        concat(to_string(residue_count), concat(" — ", prose_rows_render(rows: residue)))
+      )
+    )
+  )
+}
+
+// THE VERDICT IS PURE, and deliberately so: it takes an observation and returns an exit, with no git
+// read and no write inside it. That is what lets the discriminating controls run the REAL decision on
+// synthetic diffs hermetically instead of exercising a lookalike. A verdict that could only be reached
+// through an effect would force its controls to either mock the effect or test a copy of the rule, and
+// a copy of the rule is the fork this repository spends its time removing.
+fn prose_row_introduction_verdict(observation: ProseRowDiffObservation) -> ProcessExit {
+  match observation {
+    ProseRowDiffUnreadable { reason: reason } => exit_failure(
+      reason: concat("prose row introduction gate: ", concat(reason, " — refusing, never skipping (DESIGN section 5)"))
+    )
+    ProseRowsObserved { added: added, removed: removed } => {
+      let introduced = prose_rows_introduced(added: added, removed: removed)
+      let refused = prose_rows_refused(introduced: introduced)
+      if (refused |> count) > 0 {
+        exit_failure(
+          reason: prose_row_refusal_reason(
+            refused: refused,
+            residue: prose_rows_out_of_scope(introduced: introduced)
+          )
+        )
+      } else {
+        ExitSuccess
+      }
+    }
+  }
+}
+
+data prose_row_receipt_path: String = "target/prose-row-introduction-receipt.tsv"
+
+// THE COUNTED RESIDUE RECEIPT, written on EVERY run including green ones, because the residue's whole
+// purpose is to stay observable while the wall's scope is bounded. It carries one located row per
+// introduced prose row with its disposition, so the widening order is driven by measurement rather than
+// by guesswork, and so a scoped green can never be read as corpus-wide coverage.
+//
+// IT IS NOT A VERDICT AND HAS NO PASS/FAIL ARM. Nothing reads this file to decide anything; refusal is
+// decided above, over the in-scope population only.
+//
+// HONEST LIMITATION, stated rather than elided: a file is the only channel a `.dag` gate has for a fact
+// it must report on a PASSING run — claim_executor derives a receipt companion from a witness's name
+// and evaluates it on failure only (gunbc.test_module_hygiene failure_receipt_companion_note). So this
+// residue is durable and located but reaches the run log only when the gate also refuses, where the
+// counts ride the refusal reason above. DISSOLVE-ON: an executor receipt channel for a passing gate;
+// then this write becomes that channel's projection and the file goes away.
+fn prose_row_receipt_row(row: ProseRowRef, disposition: String) -> String {
+  concat(disposition, concat("\t", concat(row.path, concat("\t", row.decl_name))))
+}
+
+fn prose_row_receipt_content(observation: ProseRowDiffObservation) -> String {
+  match observation {
+    ProseRowDiffUnreadable { reason: reason } =>
+      concat("disposition\tpath\tdecl_name\nunreadable\t\t", reason)
+    ProseRowsObserved { added: added, removed: removed } => {
+      let introduced = prose_rows_introduced(added: added, removed: removed)
+      concat(
+        "disposition\tpath\tdecl_name\n",
+        concat(
+          join(
+            prose_rows_refused(introduced: introduced)
+              |> map(row => prose_row_receipt_row(row: row, disposition: "refused_in_scope")),
+            "\n"
+          ),
+          concat(
+            "\n",
+            join(
+              prose_rows_out_of_scope(introduced: introduced)
+                |> map(row => prose_row_receipt_row(row: row, disposition: "counted_out_of_scope")),
+              "\n"
+            )
+          )
+        )
+      )
+    }
+  }
+}
+
+// A FAILED RECEIPT WRITE REFUSES, and finding out why cost a probe run. Filesystem.Write returns
+// `success`, and an earlier revision of this body ignored it: in a worktree with no `target/` directory
+// the write silently did nothing and the gate went on to report its verdict, so the counted residue —
+// the ONLY observability this bounded scope has — could vanish with nothing counting the loss. That is
+// the deficit-with-zero-frequency shape DESIGN 5 forbids, authored into the very mechanism added to
+// prevent it.
+//
+// So the write is checked and its failure is a typed, located refusal naming the path and the host's
+// own error. The alternative considered and rejected was creating the directory: that turns a missing
+// scratch dir into a silent success and puts this gate back where it started, guessing about state it
+// did not observe. In CI `target/` always exists because the release build precedes the floor.
+func run_prose_row_introduction_gate_body() -> ProcessExit {
+  let observation = prose_row_gate_observation()
+  let written = Filesystem.Write(
+    path: prose_row_receipt_path,
+    content: prose_row_receipt_content(observation: observation)
+  )
+  if written.success {
+    prose_row_introduction_verdict(observation: observation)
+  } else {
+    exit_failure(
+      reason: concat(
+        "prose row introduction gate: could not write the counted residue receipt to ",
+        concat(
+          prose_row_receipt_path,
+          concat(
+            " — the out-of-scope prose population is the only observability this path-scoped wall has, so a run that cannot record it refuses rather than reporting a clean tree (DESIGN section 5). Host error: ",
+            written.error
+          )
+        )
+      )
+    )
+  }
+}
+
+// The loudness half, mirroring tools.extdeps_scope_placement_gate: the floor witness collapses this
+// gate's ProcessExit to Bool, so without a companion a refusal reads as `returned Bool(false)` and
+// names neither the offending row nor the residue. This projects the SAME verdict rather than deciding
+// again, so there is never a second refusal authority to disagree with the first.
+fn prose_row_failure_reason(exit: ProcessExit) -> String {
+  match exit {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason: reason } => reason
+  }
+}
+
+func prose_row_gate_failure_receipt() -> String {
+  prose_row_failure_reason(exit: run_prose_row_introduction_gate_body())
+}
+
+func main() -> ProcessExit {
+  run_prose_row_introduction_gate_body()
+}
+
+func run_prose_row_introduction_gate() -> ProcessExit {
+  run_prose_row_introduction_gate_body()
+}

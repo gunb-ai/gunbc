@@ -48,11 +48,10 @@ test fn witness_g_class_is_the_live_night_figure() -> Bool {
     && render_label(r: g_render) == "G — yellow · 5300–6000 K"
 }
 
-test fn witness_signed_accent_is_g_and_live() -> Bool {
+data signed_accent_selection_witness_note: String = "WHAT IS LEFT TO CHECK ONCE THE SIGNATURE IS A REFERENCE. This claim used to repeat the three field comparisons in witness_g_class_is_the_live_night_figure verbatim, because signed_accent_render was a second literal that could drift from g_render. It is now g_render, so those comparisons are the same expression twice and prove nothing the sibling does not — §2. What survives is the part that is still falsifiable: WHICH class the signature selects. That is a real claim about the cited classification rather than about a copy, and it reds if the selection is re-pointed at another class."
+
+test fn witness_signed_accent_selects_the_g_class() -> Bool {
   signed_accent_render.spectral.code as String == "G"
-    && signed_accent_render.figure.hue == warm_starlight.hue
-    && signed_accent_render.figure.sat_pct == warm_starlight.sat_pct
-    && signed_accent_render.figure.light_pct == warm_starlight.light_pct
 }
 
 test fn witness_study_page_emits() -> Bool {

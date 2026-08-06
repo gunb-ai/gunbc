@@ -1,10 +1,15 @@
 module gunbc.runner_host_deploy
 
-import gunbc.repository { gunbc_repository }
 import std.types { NonEmptyStr, String, Int, List }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
-import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.github.app { GitHubAppInstallationId }
+import gunbc.auth.github_apps {
+  DeclaredGitHubApp,
+  gunbai_ci_declared,
+  gunbai_ci_declared_installation_id,
+  gunbai_ci_app_pem_secret
+}
 import extdeps.cache.sccache { SccacheBinaryRelease, sccache_release_0_15_0, sccache_install_script }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
@@ -17,22 +22,19 @@ data runner_host_deploy_upstream_installer: NonEmptyStr = "ctrl:scripts/session-
 data runner_host_deploy_upstream_fanout: NonEmptyStr = "ctrl:scripts/session-dashboard/host/deploy-runner-hosts.sh"
 
 type GithubAppRunnerConfig {
-  app_id: NonEmptyStr
-  installation_id: NonEmptyStr
-  org: NonEmptyStr
+  app: DeclaredGitHubApp
+  installation_id: GitHubAppInstallationId
   app_pem_secret: SecretRef
 }
 
+fn github_app_runner_org(config: GithubAppRunnerConfig) -> NonEmptyStr {
+  config.app.owner_login
+}
+
 data gunbc_ci_github_app: GithubAppRunnerConfig = GithubAppRunnerConfig {
-  app_id: "2653532",
-  installation_id: "104134109",
-  org: gunbc_repository.owner,
-  app_pem_secret: SecretRef {
-    project: fleet_secrets_gcp_project,
-    secret: "ci-github-app-private-key",
-    version: "latest",
-    hash_state: HashPending,
-  },
+  app: gunbai_ci_declared,
+  installation_id: gunbai_ci_declared_installation_id,
+  app_pem_secret: gunbai_ci_app_pem_secret,
 }
 
 type RunnerHostDeploy {

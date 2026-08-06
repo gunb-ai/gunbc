@@ -14,8 +14,25 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data jwt_registered_claims_note: String = "RFC 7519 REGISTERED CLAIMS BELONG TO THE IETF, NOT TO WHOEVER ISSUED THE TOKEN. Every provider that emits a JWT emits iss, sub, aud, exp and iat with the same meanings, so modeling them inside a vendor's module would coin the seventh copy of a concept the RFC already owns.\\n\\nEVERY ONE OF THEM IS OPTIONAL, and the first cut of this record got that exactly backwards. Section 4.1 says it in the registry's own preamble — none of the registered claims are intended to be mandatory to use or implement — and then repeats 'Use of this claim is OPTIONAL' under each individual claim. The earlier record made all six required, which encoded ONE OBSERVED TOKEN as the definition of the standard: the codex id_token happens to carry all of them, so a shape derived from it refuses every conforming JWT that omits a claim the RFC never demanded. A signed token with no jti is not malformed, and a model that cannot represent one is not describing RFC 7519.\\n\\nWHERE REQUIREMENT ACTUALLY LIVES IS THE PROFILE. OIDC Core section 2 requires iss, sub, aud, exp and iat in an ID Token — that is a real obligation, and it belongs to OIDC rather than to the JWT layer. Pushing it down here would make the base type unable to describe the many conforming JWTs that are not ID Tokens. So this record stays fully optional and extdeps.auth.oidc declares its own required core, which is the single-authority reading: the RFC owns the vocabulary, the profile owns the obligation."
 
-data jwt_numeric_date_note: String = "NumericDate is RFC 7519 section 2: a JSON numeric value counting seconds from the UNIX epoch, explicitly not milliseconds, and explicitly ignoring leap seconds. The unit matters enough to be typed rather than left as a bare Int — a millisecond value read as seconds lands in the year 58000 and passes every not-yet-expired check forever, which is a plausible wrong answer rather than an error.\\n\\nIT IS NOT AN INTEGER, and the first cut said it was. Section 2 defines the value as POSIX Seconds Since the Epoch 'other than that non-integer values can be represented' — the clause exists precisely to admit a fractional component. An Int carrier silently rounds a conforming exp, and rounding an expiry DOWN shortens a credential's life while rounding it UP extends it past the instant the issuer named; neither is a refusal, both are wrong answers.\\n\\nSo the carrier is a coproduct and the fractional case is a distinct arm rather than a lossy cast. Whole seconds stay exact Ints, which is what every arithmetic consumer here actually wants and what every token observed on this fleet carries. A fractional value keeps its digits verbatim, because converting them would need a decimal parse this module deliberately does not do — the same describe-do-not-parse boundary jwt_verification_boundary_note draws. The consequence is that arithmetic must MATCH, so a fractional date cannot be quietly truncated into a whole-second subtraction; it refuses instead."
-
+// NumericDate is RFC 7519 section 2: a JSON numeric value counting seconds from the UNIX epoch,
+// explicitly not milliseconds, and explicitly ignoring leap seconds. The unit matters enough to be
+// typed rather than left as a bare Int — a millisecond value read as seconds lands in the year 58000
+// and passes every not-yet-expired check forever, which is a plausible wrong answer rather than an
+// error.
+//
+// IT IS NOT AN INTEGER, and the first cut said it was. Section 2 defines the value as POSIX Seconds
+// Since the Epoch 'other than that non-integer values can be represented' — the clause exists
+// precisely to admit a fractional component. An Int carrier silently rounds a conforming exp, and
+// rounding an expiry DOWN shortens a credential's life while rounding it UP extends it past the
+// instant the issuer named; neither is a refusal, both are wrong answers.
+//
+// So the carrier is a coproduct and the fractional case is a distinct arm rather than a lossy cast.
+// Whole seconds stay exact Ints, which is what every arithmetic consumer here actually wants and what
+// every token observed on this fleet carries. A fractional value keeps its digits verbatim, because
+// converting them would need a decimal parse this module deliberately does not do — the same
+// describe-do-not-parse boundary it keeps everywhere else, reading what a token says without ever
+// resolving or verifying it. The consequence is that arithmetic must MATCH, so a fractional date
+// cannot be quietly truncated into a whole-second subtraction; it refuses instead.
 type NumericDate
   = NumericDateWholeSeconds { seconds: Int }
   | NumericDateFractionalSeconds {
@@ -23,8 +40,22 @@ type NumericDate
       fractional_digits: NonEmptyStr,
     }
 
-data numeric_date_lifetime_refusal_note: String = "The lifetime of two dates is only a whole number of seconds when BOTH are whole seconds, so the fractional arms refuse rather than truncating. A caller that genuinely needs sub-second resolution needs the decimal parse this module does not provide, and giving it a rounded value instead would answer a question it did not ask. The refusal names which side was fractional, so the diagnostic locates the token rather than reporting that arithmetic was unavailable.\\n\\nTHE ANSWER IS A std.measure.Second, NOT A BARE Int (review 45056). A seconds-valued duration returned as Int is the unit-modeling fork DESIGN forbids: the unit lives in the parameter's NAME, where nothing can check it, and the next consumer is free to read it as milliseconds. The wire-level NumericDate above stays a raw JSON-shaped value because that is genuinely what RFC 7519 puts on the wire — the extdeps boundary describes the artifact — but a DERIVED duration is an ordinary magnitude and belongs on the canonical carrier like every other one in the tree.\\n\\nSecond counts a Nat, which forces the third arm. A token whose expiry precedes its issuance has no non-negative lifetime, and the honest answer is a refusal rather than a wrapped negative or a clamp to zero — clamping would report a just-expired credential and a malformed one identically."
-
+// The lifetime of two dates is only a whole number of seconds when BOTH are whole seconds, so the
+// fractional arms refuse rather than truncating. A caller that genuinely needs sub-second resolution
+// needs the decimal parse this module does not provide, and giving it a rounded value instead would
+// answer a question it did not ask. The refusal names which side was fractional, so the diagnostic
+// locates the token rather than reporting that arithmetic was unavailable.
+//
+// THE ANSWER IS A std.measure.Second, NOT A BARE Int. A seconds-valued duration returned as Int is
+// the unit-modeling fork DESIGN forbids: the unit lives in the parameter's NAME, where nothing can
+// check it, and the next consumer is free to read it as milliseconds. The wire-level NumericDate
+// above stays a raw JSON-shaped value because that is genuinely what RFC 7519 puts on the wire — the
+// extdeps boundary describes the artifact — but a DERIVED duration is an ordinary magnitude and
+// belongs on the canonical carrier like every other one in the tree.
+//
+// Second counts a Nat, which forces the third arm. A token whose expiry precedes its issuance has no
+// non-negative lifetime, and the honest answer is a refusal rather than a wrapped negative or a clamp
+// to zero — clamping would report a just-expired credential and a malformed one identically.
 type NumericDateLifetime
   = LifetimeWholeSeconds { seconds: Second }
   | LifetimeNotWholeSeconds { reason: String }
@@ -55,12 +86,31 @@ fn numeric_date_lifetime(
   }
 }
 
-data jwt_compact_serialization_note: String = "RFC 7515 section 3.1: three base64url segments joined by dots — header, payload, signature. Branded so that a value carrying an opaque bearer token cannot be passed where a decodable one is expected. That distinction is load-bearing in practice rather than pedantic: an OAuth refresh token is frequently NOT a JWT, so code that decodes every token it is handed to read an expiry works on the access token and fails on the refresh token, and the failure looks like a corrupt credential rather than a category error."
-
+// RFC 7515 section 3.1: three base64url segments joined by dots — header, payload, signature. Branded
+// so that a value carrying an opaque bearer token cannot be passed where a decodable one is expected.
+// That distinction is load-bearing in practice rather than pedantic: an OAuth refresh token is
+// frequently NOT a JWT, so code that decodes every token it is handed to read an expiry works on the
+// access token and fails on the refresh token, and the failure looks like a corrupt credential rather
+// than a category error.
 type JwtCompactSerialization = NonEmptyStr where brand("JwtCompactSerialization")
 
-data jwt_string_or_uri_note: String = "RFC 7519 section 2 defines StringOrURI as any JSON string, with the added requirement that a value containing a colon MUST be a URI. THE FIRST CUT BRANDED THAT RULE WITHOUT ENFORCING IT: a brand over NonEmptyStr accepts urn:openai:amr:passkey and the malformed 9:30 identically, so the type asserted a constraint every cast was free to violate. A brand that states a rule it cannot check is the validation-standing-where-construction-was-available shape — it concedes the bad value is writable and then does not even flag it.\\n\\nThe rule is DECIDABLE, so it becomes shape. A value with no colon is a bare string and always admissible; a value with a colon is admissible only when the text before the first colon is a valid RFC 3986 scheme — ALPHA followed by any of ALPHA, DIGIT, plus, minus or dot. Everything else is refused with the raw value named. The two admissible cases are different arms, so a consumer that needs to know which it has reads the constructor instead of re-running string_contains.\\n\\nWHY NOT extdeps.uri.Uri: that model's scheme is a closed enum of http, https, file, ftp, javascript, data, vbscript and mailto. StringOrURI admits ANY registered or private scheme, and the values this fleet actually observes are urn: — so reusing that type would refuse a conforming token. The scheme is kept as decoded text rather than forced into an enum that does not span the space."
-
+// RFC 7519 section 2 defines StringOrURI as any JSON string, with the added requirement that a value
+// containing a colon MUST be a URI. THE FIRST CUT BRANDED THAT RULE WITHOUT ENFORCING IT: a brand over
+// NonEmptyStr accepts urn:openai:amr:passkey and the malformed 9:30 identically, so the type asserted
+// a constraint every cast was free to violate. A brand that states a rule it cannot check is the
+// validation-standing-where-construction-was-available shape — it concedes the bad value is writable
+// and then does not even flag it.
+//
+// The rule is DECIDABLE, so it becomes shape. A value with no colon is a bare string and always
+// admissible; a value with a colon is admissible only when the text before the first colon is a valid
+// RFC 3986 scheme — ALPHA followed by any of ALPHA, DIGIT, plus, minus or dot. Everything else is
+// refused with the raw value named. The two admissible cases are different arms, so a consumer that
+// needs to know which it has reads the constructor instead of re-running string_contains.
+//
+// WHY NOT extdeps.uri.Uri: that model's scheme is a closed enum of http, https, file, ftp, javascript,
+// data, vbscript and mailto. StringOrURI admits ANY registered or private scheme, and the values this
+// fleet actually observes are urn: — so reusing that type would refuse a conforming token. The scheme
+// is kept as decoded text rather than forced into an enum that does not span the space.
 type JwtStringOrUri
   = JwtBareString { value: NonEmptyStr }
   | JwtUriString { value: NonEmptyStr, scheme: NonEmptyStr }
@@ -150,8 +200,22 @@ fn jwt_string_or_uri_wire(value: JwtStringOrUri) -> NonEmptyStr {
   }
 }
 
-data jwt_audience_note: String = "aud IS A WIRE UNION AND THE FIRST CUT NORMALIZED IT AWAY. Section 4.1.3 states both forms: in the general case aud is an ARRAY of StringOrURI, and in the special case of a single audience it MAY be a single StringOrURI string. Modeling it as List only was not a simplification, it was a claim the spec does not make — that the array form is canonical and the string form is a degenerate encoding of it.\\n\\nThe difference is observable at the boundary this module exists to describe. A verifier that re-serializes a token it decoded must emit the form it received or the signature no longer covers the bytes, and a receiver comparing raw JSON sees a string where an array was written. Collapsing the two at ingest makes that round trip impossible to express, which is the same information loss the DecodeFidelity boundary is drawn to prevent.\\n\\njwt_audience_values exists for the consumers that genuinely only need membership — most audience checks are 'is my identifier among these' and do not care about the encoding. That projection is a DERIVED read over a faithful carrier, which is the right order; deriving it was never the problem, storing only the derived form was."
-
+// aud IS A WIRE UNION AND THE FIRST CUT NORMALIZED IT AWAY. Section 4.1.3 states both forms: in the
+// general case aud is an ARRAY of StringOrURI, and in the special case of a single audience it MAY be
+// a single StringOrURI string. Modeling it as List only was not a simplification, it was a claim the
+// spec does not make — that the array form is canonical and the string form is a degenerate encoding
+// of it.
+//
+// The difference is observable at the boundary this module exists to describe. A verifier that
+// re-serializes a token it decoded must emit the form it received or the signature no longer covers
+// the bytes, and a receiver comparing raw JSON sees a string where an array was written. Collapsing
+// the two at ingest makes that round trip impossible to express, which is the same information loss
+// the DecodeFidelity boundary is drawn to prevent.
+//
+// jwt_audience_values exists for the consumers that genuinely only need membership — most audience
+// checks are 'is my identifier among these' and do not care about the encoding. That projection is a
+// DERIVED read over a faithful carrier, which is the right order; deriving it was never the problem,
+// storing only the derived form was.
 type JwtAudience
   = JwtAudienceSingle { value: JwtStringOrUri }
   | JwtAudienceMultiple { values: List<JwtStringOrUri> }

@@ -9,6 +9,31 @@
 # issue (notifying watchers), sustained red heartbeats at most daily, and
 # transition-to-green closes it with a receipt.
 #
+# Every one of those is a COMMENT carrying the owner mention, because a mention
+# notifies only when it is created and only an issue's first body write is a
+# creation — see ALERT_MENTION below for the receipt on why the body alone was
+# not enough.
+#
+# THAT PROPERTY HAS NO EXECUTING CONSUMER, and the gap is named rather than left
+# implied. "Every notifying artifact carries the mention" is invisible to yaml
+# linting and to this workflow's own green conclusion — the alert ran successfully
+# for two days while notifying nobody — so it is exactly the class that wants a
+# check. A hand-authored JS harness beside this file was written and then REMOVED
+# (operator, 2026-08-06): every foreign-language artifact in this tree is emitted
+# from .dag (.github/live-deploy-srv1-apply.sh is the pattern), so hand-authoring
+# a second one here would add a hand-maintained realization rather than a scaffold
+# — and the substrate route is not merely inconvenient, it is blocked at the same
+# seam this file's own dissolve-on names: there is no workflow_run TRIGGER model
+# (extdeps.github.workflow_runs models runs as an API resource, not a trigger) and
+# gunbc.falsifier_workflow declares issues: none, so the alert's notifying
+# artifacts are not substrate objects and no lens has a Node tree to read.
+# The evidence the current shape is correct is therefore an unenrolled execution
+# receipt, not a live control: run at authoring against 70b422f3c, the heartbeat,
+# failing-set-changed, green-close and throttle-pagination scenarios all went RED
+# and the open-issue-body scenario stayed green. Next-rung trigger: the dissolve-on
+# below. When the alert becomes a typed effect row, these scenarios become ordinary
+# .dag witnesses under dag/test/claim and the property stops being unenforced.
+#
 # The open issue describes the CURRENT failure, not the first one. Earlier this
 # workflow wrote the body once at first red and thereafter only appended a
 # throttled heartbeat comment, so the body — the thing a human actually reads —
@@ -78,6 +103,26 @@ jobs:
               return;
             }
             const label = 'falsifier-alert';
+            // The single interim owner handle. It is deliberately ONE constant used
+            // by every notifying artifact rather than a literal repeated per call
+            // site: gunbc.falsifier_lane falsifier_lane_owner_roster_note records
+            // this mention as the only owner fact in the tree, and a second copy of
+            // it would be a second authority for that one fact.
+            //
+            // WHY IT IS ON THE COMMENTS AND NOT ONLY THE BODY: an @mention notifies
+            // when it is CREATED, and only the issue body's first write is a
+            // creation. Body edits send nothing (that is exactly why the rewrite
+            // above is safe to run every window), so an alert whose only mention
+            // lives in the body pings its recipient exactly once — at issue open —
+            // and then goes silent for the entire incident however long it runs and
+            // however many times the failing set changes underneath it. Receipt:
+            // issue #7737 opened 2026-08-03 and carried four github-actions comments
+            // across the next two days (one heartbeat, three failing-set-changed);
+            // none of them contained a mention, so the sustained-red heartbeat this
+            // workflow's header describes as its whole purpose delivered no
+            // notification after the first one. The mention therefore belongs on
+            // every artifact that notifies, which is every comment.
+            const ALERT_MENTION = '@briansrls';
             const runLine = `[run ${run.id}](${run.html_url}) · started ${run.run_started_at} · conclusion **${conclusion}**`;
 
             // ---- read the floor's own per-component receipt -------------------
@@ -289,7 +334,7 @@ jobs:
                 : runLine;
               const state = JSON.stringify({ first_red: firstRed, signature });
               const body = [
-                '@briansrls — the scheduled affected-set falsifier is RED.',
+                `${ALERT_MENTION} — the scheduled affected-set falsifier is RED.`,
                 '',
                 `First red: ${firstRed}`,
                 `Current: ${runLine}`,
@@ -330,7 +375,15 @@ jobs:
                 // Comments DO notify, so they stay throttled — except across a
                 // transition, which the throttle must not swallow.
                 const changed = prior.signature !== signature;
-                const { data: comments } = await github.rest.issues.listComments({
+                // Paginated deliberately. This endpoint returns comments oldest-first
+                // and accepts no sort/direction, so a single per_page=100 request
+                // returns the FIRST hundred: past that boundary `comments.length - 1`
+                // is the 100th comment, not the newest, and its age only grows — so
+                // the 20h throttle would silently invert into "heartbeat every run",
+                // turning the fix for a silent alert into an alert that spams. The
+                // throttle must read the actual newest comment or it is not a
+                // throttle.
+                const comments = await github.paginate(github.rest.issues.listComments, {
                   owner: context.repo.owner, repo: context.repo.repo,
                   issue_number: existing.number, per_page: 100,
                 });
@@ -345,7 +398,7 @@ jobs:
                     owner: context.repo.owner, repo: context.repo.repo,
                     issue_number: existing.number,
                     body: [
-                      `**The failing set changed** — this is a different incident from the one first reported.`,
+                      `${ALERT_MENTION} — **the failing set changed**; this is a different incident from the one first reported.`,
                       '',
                       `Previous: ${priorLine}`,
                       `Now: \`${signature}\``,
@@ -360,7 +413,7 @@ jobs:
                   await github.rest.issues.createComment({
                     owner: context.repo.owner, repo: context.repo.repo,
                     issue_number: existing.number,
-                    body: `Still red, unchanged failing set. Latest: ${runLine}\n\n${report}`,
+                    body: `${ALERT_MENTION} — still red, unchanged failing set. Latest: ${runLine}\n\n${report}`,
                   });
                 } else {
                   core.info(`red, signature unchanged (${signature}) — body refreshed, comment throttled`);
@@ -370,7 +423,10 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo,
                 issue_number: existing.number,
-                body: `GREEN again: ${runLine} — cold control restored; closing.\n\n${report}`,
+                // The clear is mentioned too. An incident that stops paging without
+                // saying it cleared leaves the recipient unable to tell "fixed" from
+                // "the alerting broke again" — the same ambiguity, one level up.
+                body: `${ALERT_MENTION} — GREEN again: ${runLine} — cold control restored; closing.\n\n${report}`,
               });
               await github.rest.issues.update({
                 owner: context.repo.owner, repo: context.repo.repo,
