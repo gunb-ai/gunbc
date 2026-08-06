@@ -349,9 +349,9 @@ test fn refusing_body_under_a_bound_yields_exactly_one_cause() -> Bool {
   }
 }
 
-data claim_conjunction_totality_note: String = "The conjunction enumerates EVERY test fn in this file, and that totality is the point rather than a convenience. An earlier revision listed three of them while the claim label asserted refusal and scoping behaviour the others established, so the claim could have gone green with its own label false - specification-without-execution at the claim seam, caught by review 49620. The rule this file now follows: a claim label may assert only what its conjunction executes, so adding a test fn without adding it here is the defect to watch for."
+data claim_conjunction_totality_note: String = "The conjunction enumerates EVERY other test fn in this file, and that totality is the point rather than a convenience. It is itself a `test fn` rather than a plain helper, which the corpus naming-hygiene walk requires and which is not a formality here: reached only from the claim `data` it would have been unreachable from every `test fn`, i.e. silently de-enrolled - the conjunction added to close a specification-without-execution finding, not executing. An earlier revision listed three of them while the claim label asserted refusal and scoping behaviour the others established, so the claim could have gone green with its own label false - specification-without-execution at the claim seam, caught by review 49620. The rule this file now follows: a claim label may assert only what its conjunction executes, so adding a test fn without adding it here is the defect to watch for."
 
-fn every_valuation_witness_holds() -> Bool {
+test fn every_valuation_witness_holds() -> Bool {
   unit_body_over_size_five_evaluates_to_five()
     && changing_the_bound_size_changes_the_derived_work()
     && binder_dependent_body_is_summed_not_treated_as_invariant()
