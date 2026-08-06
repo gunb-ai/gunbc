@@ -1,0 +1,450 @@
+module v2.lens.cost.valuation
+
+import std.algebra { Cons, Empty, FreeSemigroup }
+import std.decl_ref { DeclarationRef }
+import v2.lens.cost { SizeVariable }
+import v2.lens.cost.expr {
+  CostAdd,
+  CostConst,
+  CostEffect,
+  CostExpr,
+  CostExprRefusalCause,
+  CostLog,
+  CostMax,
+  CostMul,
+  CostRefused,
+  CostSum,
+  SizeAdd,
+  SizeConst,
+  SizeExpr,
+  SizeLength,
+  SizeMax,
+  SizeOf,
+  UngroundedLogArgument
+}
+import v2.std.algebra { fold_list, non_empty_append, non_empty_singleton }
+import v2.std.collection { List }
+import v2.std.diagnostic { Locus, textual_whole_file_locus }
+import v2.std.logic { Bool }
+import v2.std.nat { Nat, Succ, Zero, nat_add, nat_cata, nat_mul }
+import v2.std.optional { Absent, Optional, Present, optional_present }
+
+data cost_valuation_subject_note: String = "The subject of this module is SEMANTIC work, not hardware time: a CostExpr together with concrete SizeVariable bindings yields how much modelled work the expression denotes. Cycles, nanoseconds and machine calibration belong to the parity plan's C5 realization bridge and are deliberately absent here, so nothing in this module may acquire a duration, a rate or a calibration constant."
+
+type CostValuationBinding {
+  variable: SizeVariable
+  value: Nat
+}
+
+data unbound_size_disposition_note: String = "One fold, two DECLARED modes, never two evaluators - the sibling discrete-cost note's ruling is to keep one symbolic authority and add evaluation modes over it. RefuseUnboundSize is the valuation-at-a-concrete-input mode: the caller asserted a complete valuation, so a gap is a caller defect and refuses with the variable NAMED. ReportUnboundSize is the partial-valuation mode: no completeness was claimed, so an unbound variable is the honest UnresolvedCost state carrying the variables that remain free. Neither mode may answer zero for an unbound variable, which is the fabricated-plausible-output class DESIGN section 5 forbids outright and is exactly the value that reads as harmless in a cost report."
+
+type UnboundSizeDisposition
+  = RefuseUnboundSize
+  | ReportUnboundSize
+
+type CostEvaluationRefusal
+  = MissingSizeBinding { variable: SizeVariable, at: Locus }
+  | DuplicateSizeBinding { variable: SizeVariable, at: Locus }
+  | UnmodeledEffectCost { operation: DeclarationRef, at: Locus }
+  | ExpressionRefused { cause: CostExprRefusalCause, at: Locus }
+
+data cost_evaluation_nonempty_note: String = "The nonempty carrier (std.algebra FreeSemigroup) in the unresolved and refused arms is load-bearing, not decoration. An UnresolvedCost naming no free variable and a refusal carrying no cause are nonsense states, and the free-semigroup carrier makes them unwritable rather than merely unlikely - construction over validation, DESIGN section 5. Do not weaken either field to List."
+
+type CostEvaluation
+  = ExactCost { value: Nat }
+  | BoundedCost { lower: Nat, upper: Nat }
+  | UnresolvedCost { free_variables: FreeSemigroup<SizeVariable> }
+  | CostEvaluationRefused { causes: FreeSemigroup<CostEvaluationRefusal> }
+
+data cost_evaluation_arm_producer_note: String = "Producer status of the four arms in THIS slice, stated rather than left to be discovered. ExactCost, UnresolvedCost and CostEvaluationRefused each have executing producers and witnesses. BoundedCost does NOT: its seed is a size declared as a CEILING rather than a value, which is the sibling discrete-cost note's BoundedInput envelope and that note's scope. The arm is carried because the four-state shape is operator-specified and because every combinator here already propagates lower and upper monotonically, so the envelope lane adds a seed and no arithmetic. Until that seed lands the arm is declared-not-produced, which is a stated gap and not a claim of coverage."
+
+type CostValuationEnv {
+  bindings: List<CostValuationBinding>
+}
+
+type BindingScan {
+  seen: List<SizeVariable>
+  duplicates: List<SizeVariable>
+}
+
+fn cost_valuation_authority_locus() -> Locus {
+  textual_whole_file_locus(file: ^cost_valuation_authority_virtual_file)
+}
+
+fn size_variable_eq(a: SizeVariable, b: SizeVariable) -> Bool {
+  a.source == b.source
+}
+
+fn size_variable_in(xs: List<SizeVariable>, wanted: SizeVariable) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(acc, item) { acc || size_variable_eq(a: item, b: wanted) }
+  )
+}
+
+fn refuse(cause: CostEvaluationRefusal) -> CostEvaluation {
+  CostEvaluationRefused { causes: non_empty_singleton(item: cause) }
+}
+
+fn unresolved(variable: SizeVariable) -> CostEvaluation {
+  UnresolvedCost { free_variables: non_empty_singleton(item: variable) }
+}
+
+data env_scoping_note: String = "env_bind PREPENDS and lookup_bindings answers the HEAD-most match, so a CostSum binder shadows an outer binding of the same identity for the extent of the body and only for that extent. Removal on exit is structural rather than an unbind step: the extended environment is a local value, so the environment the caller holds is the one that was never modified. That is the scoping obligation discharged by construction rather than by remembering to undo something. The lookup is written as explicit head-first recursion instead of a fold precisely because the ANSWER DEPENDS ON DIRECTION, and a fold's direction is a property of fold_list rather than of this module."
+
+fn env_bind(env: CostValuationEnv, binding: CostValuationBinding) -> CostValuationEnv {
+  CostValuationEnv {
+    bindings: Cons { head: binding, tail: env.bindings }
+  }
+}
+
+fn lookup_bindings(
+  bindings: List<CostValuationBinding>,
+  variable: SizeVariable
+) -> Optional<Nat> {
+  match bindings {
+    Empty => Absent
+    Cons { head: h, tail: t } =>
+      if size_variable_eq(a: h.variable, b: variable) {
+        optional_present(value: h.value)
+      } else {
+        lookup_bindings(bindings: t, variable: variable)
+      }
+  }
+}
+
+fn env_lookup(env: CostValuationEnv, variable: SizeVariable) -> Optional<Nat> {
+  lookup_bindings(bindings: env.bindings, variable: variable)
+}
+
+fn unbound_size(
+  variable: SizeVariable,
+  disposition: UnboundSizeDisposition
+) -> CostEvaluation {
+  match disposition {
+    RefuseUnboundSize =>
+      refuse(
+        cause: MissingSizeBinding {
+          variable: variable,
+          at: cost_valuation_authority_locus()
+        }
+      )
+    ReportUnboundSize => unresolved(variable: variable)
+  }
+}
+
+fn bounded_or_exact(lower: Nat, upper: Nat) -> CostEvaluation {
+  if lower == upper {
+    ExactCost { value: lower }
+  } else {
+    BoundedCost { lower: lower, upper: upper }
+  }
+}
+
+fn combine_known(
+  lower: Nat,
+  upper: Nat,
+  other: CostEvaluation,
+  op: fn(Nat, Nat) -> Nat
+) -> CostEvaluation {
+  match other {
+    CostEvaluationRefused { causes: c } => CostEvaluationRefused { causes: c }
+    UnresolvedCost { free_variables: f } => UnresolvedCost { free_variables: f }
+    ExactCost { value: v } =>
+      bounded_or_exact(lower: op(lower, v), upper: op(upper, v))
+    BoundedCost { lower: l, upper: u } =>
+      bounded_or_exact(lower: op(lower, l), upper: op(upper, u))
+  }
+}
+
+data combine_evaluation_order_note: String = "Refusal dominates unresolved, and unresolved dominates a known magnitude. The order is forced rather than chosen: a refusal means the derivation is WRONG to continue, so it may not be masked by a sibling that happened to resolve, and an unresolved variable means the magnitude is not yet a number, so it may not be dropped in favour of the half that is. Causes and free variables ACCUMULATE on both sides instead of short-circuiting, because DESIGN section 5 requires each deficit's frequency to be countable and a discarded second cause is a deficit that never ranks for fixing. The op argument must be monotone in both arguments for the bound arithmetic to be sound; add, mul and max are, and nothing else is passed."
+
+fn combine_evaluation(
+  a: CostEvaluation,
+  b: CostEvaluation,
+  op: fn(Nat, Nat) -> Nat
+) -> CostEvaluation {
+  match a {
+    CostEvaluationRefused { causes: ca } =>
+      match b {
+        CostEvaluationRefused { causes: cb } =>
+          CostEvaluationRefused { causes: non_empty_append(left: ca, right: cb) }
+        _ => CostEvaluationRefused { causes: ca }
+      }
+    UnresolvedCost { free_variables: fa } =>
+      match b {
+        CostEvaluationRefused { causes: cb } => CostEvaluationRefused { causes: cb }
+        UnresolvedCost { free_variables: fb } =>
+          UnresolvedCost { free_variables: non_empty_append(left: fa, right: fb) }
+        _ => UnresolvedCost { free_variables: fa }
+      }
+    ExactCost { value: v } => combine_known(lower: v, upper: v, other: b, op: op)
+    BoundedCost { lower: l, upper: u } =>
+      combine_known(lower: l, upper: u, other: b, op: op)
+  }
+}
+
+fn evaluate_size_expr(
+  size: SizeExpr,
+  env: CostValuationEnv,
+  disposition: UnboundSizeDisposition
+) -> CostEvaluation {
+  match size {
+    SizeConst { value: v } => ExactCost { value: v }
+    SizeOf { variable: v } =>
+      match env_lookup(env: env, variable: v) {
+        Present { value: n } => ExactCost { value: n }
+        Absent => unbound_size(variable: v, disposition: disposition)
+      }
+    SizeLength { of: v } =>
+      match env_lookup(env: env, variable: v) {
+        Present { value: n } => ExactCost { value: n }
+        Absent => unbound_size(variable: v, disposition: disposition)
+      }
+    SizeAdd { left: l, right: r } =>
+      combine_evaluation(
+        a: evaluate_size_expr(size: l, env: env, disposition: disposition),
+        b: evaluate_size_expr(size: r, env: env, disposition: disposition),
+        op: nat_add
+      )
+    SizeMax { left: l, right: r } =>
+      combine_evaluation(
+        a: evaluate_size_expr(size: l, env: env, disposition: disposition),
+        b: evaluate_size_expr(size: r, env: env, disposition: disposition),
+        op: v2.std.nat.nat_max
+      )
+  }
+}
+
+type SummationState {
+  index: Nat
+  accumulated: CostEvaluation
+}
+
+data summation_semantics_note: String = "CostSum with binder i, upper u and body b denotes the sum of b evaluated at i = 0, 1, .. u-1: u iterations with the binder taking a distinct value in each. It is therefore evaluated by ITERATING the body under an extended environment, never by multiplying one body evaluation by the iteration count - the latter is correct only when the body is invariant in the binder, and silently wrong when it is not. Zero iterations produce exact zero, which is the empty sum and the one place a zero here is earned; it is paired with the missing-binding refusal so that a zero in a cost report is never ambiguous between nothing to do and nothing modelled."
+
+fn evaluate_summation(
+  binder: SizeVariable,
+  iterations: Nat,
+  env: CostValuationEnv,
+  evaluate_body: fn(CostValuationEnv) -> CostEvaluation
+) -> CostEvaluation {
+  nat_cata(
+    n: iterations,
+    zero: SummationState { index: Zero, accumulated: ExactCost { value: Zero } },
+    succ: fn(state) {
+      SummationState {
+        index: Succ { prev: state.index },
+        accumulated: combine_evaluation(
+          a: state.accumulated,
+          b: evaluate_body(
+            env_bind(
+              env: env,
+              binding: CostValuationBinding { variable: binder, value: state.index }
+            )
+          ),
+          op: nat_add
+        )
+      }
+    }
+  ).accumulated
+}
+
+data cost_log_evaluation_note: String = "A logarithm of a bound size is a real semantic magnitude, but an EXACT Nat-valued logarithm needs a floor-log authority std does not carry today, and minting one inside a lens module would be the re-invention DESIGN section 2 calls a failed decomposition. So the argument is still EVALUATED - which is what makes an unbound argument refuse or report rather than pass silently - and the magnitude itself is refused through the expression authority's own UngroundedLogArgument vocabulary rather than through a second cause vocabulary minted here. Dissolve-on: a cited integer-logarithm authority on std.nat, at which point the bound arm answers ExactCost and this note and its refusal arm go together."
+
+fn evaluate_cost_expr_in_env(
+  expr: CostExpr,
+  env: CostValuationEnv,
+  disposition: UnboundSizeDisposition
+) -> CostEvaluation {
+  match expr {
+    CostConst { value: v } => ExactCost { value: v }
+    CostAdd { left: l, right: r } =>
+      combine_evaluation(
+        a: evaluate_cost_expr_in_env(expr: l, env: env, disposition: disposition),
+        b: evaluate_cost_expr_in_env(expr: r, env: env, disposition: disposition),
+        op: nat_add
+      )
+    CostMul { left: l, right: r } =>
+      combine_evaluation(
+        a: evaluate_cost_expr_in_env(expr: l, env: env, disposition: disposition),
+        b: evaluate_cost_expr_in_env(expr: r, env: env, disposition: disposition),
+        op: nat_mul
+      )
+    CostMax { left: l, right: r } =>
+      combine_evaluation(
+        a: evaluate_cost_expr_in_env(expr: l, env: env, disposition: disposition),
+        b: evaluate_cost_expr_in_env(expr: r, env: env, disposition: disposition),
+        op: v2.std.nat.nat_max
+      )
+    CostSum { binder: bi, upper: u, body: bd } =>
+      match evaluate_size_expr(size: u, env: env, disposition: disposition) {
+        ExactCost { value: n } =>
+          evaluate_summation(
+            binder: bi,
+            iterations: n,
+            env: env,
+            evaluate_body: fn(inner) {
+              evaluate_cost_expr_in_env(
+                expr: bd,
+                env: inner,
+                disposition: disposition
+              )
+            }
+          )
+        BoundedCost { lower: lo, upper: hi } =>
+          combine_evaluation(
+            a: evaluate_summation(
+              binder: bi,
+              iterations: lo,
+              env: env,
+              evaluate_body: fn(inner) {
+                evaluate_cost_expr_in_env(
+                  expr: bd,
+                  env: inner,
+                  disposition: disposition
+                )
+              }
+            ),
+            b: evaluate_summation(
+              binder: bi,
+              iterations: hi,
+              env: env,
+              evaluate_body: fn(inner) {
+                evaluate_cost_expr_in_env(
+                  expr: bd,
+                  env: inner,
+                  disposition: disposition
+                )
+              }
+            ),
+            op: v2.std.nat.nat_max
+          )
+        UnresolvedCost { free_variables: f } => UnresolvedCost { free_variables: f }
+        CostEvaluationRefused { causes: c } => CostEvaluationRefused { causes: c }
+      }
+    CostLog { base: _, argument: a } =>
+      match evaluate_size_expr(size: a, env: env, disposition: disposition) {
+        CostEvaluationRefused { causes: c } => CostEvaluationRefused { causes: c }
+        UnresolvedCost { free_variables: f } => UnresolvedCost { free_variables: f }
+        _ =>
+          refuse(
+            cause: ExpressionRefused {
+              cause: UngroundedLogArgument {
+                argument: a,
+                at: cost_valuation_authority_locus()
+              },
+              at: cost_valuation_authority_locus()
+            }
+          )
+      }
+    CostEffect { operation: op } =>
+      refuse(
+        cause: UnmodeledEffectCost {
+          operation: op,
+          at: cost_valuation_authority_locus()
+        }
+      )
+    CostRefused { cause: c } =>
+      refuse(
+        cause: ExpressionRefused {
+          cause: c,
+          at: cost_valuation_authority_locus()
+        }
+      )
+  }
+}
+
+fn scan_bindings(bindings: List<CostValuationBinding>) -> BindingScan {
+  fold_list(
+    xs: bindings,
+    empty: BindingScan { seen: [], duplicates: [] },
+    cons: fn(acc, item) {
+      if size_variable_in(xs: acc.seen, wanted: item.variable) {
+        BindingScan {
+          seen: acc.seen,
+          duplicates: Cons { head: item.variable, tail: acc.duplicates }
+        }
+      } else {
+        BindingScan {
+          seen: Cons { head: item.variable, tail: acc.seen },
+          duplicates: acc.duplicates
+        }
+      }
+    }
+  )
+}
+
+data duplicate_binding_note: String = "A duplicate binding for one variable is refused rather than resolved by a first-wins or last-wins rule, because both rules answer a number for a question the caller asked two ways. Note the scope precisely: this checks the CALLER-supplied valuation only. A CostSum binder that shadows an outer binding of the same identity is not a duplicate - it is correct lexical scoping - and the two are kept apart by scanning the supplied list ONCE at entry, before any binder extends the environment."
+
+fn refuse_duplicate(variable: SizeVariable) -> CostEvaluation {
+  refuse(
+    cause: DuplicateSizeBinding {
+      variable: variable,
+      at: cost_valuation_authority_locus()
+    }
+  )
+}
+
+fn duplicate_binding_refusal(
+  duplicates: List<SizeVariable>
+) -> Optional<CostEvaluation> {
+  fold_list(
+    xs: duplicates,
+    empty: Absent,
+    cons: fn(acc, item) {
+      match acc {
+        Absent => Present { value: refuse_duplicate(variable: item) }
+        Present { value: v } =>
+          Present {
+            value: combine_evaluation(
+              a: v,
+              b: refuse_duplicate(variable: item),
+              op: nat_add
+            )
+          }
+      }
+    }
+  )
+}
+
+fn evaluate_cost_expr_with_disposition(
+  expr: CostExpr,
+  bindings: List<CostValuationBinding>,
+  disposition: UnboundSizeDisposition
+) -> CostEvaluation {
+  match duplicate_binding_refusal(
+    duplicates: scan_bindings(bindings: bindings).duplicates
+  ) {
+    Present { value: refusal } => refusal
+    Absent =>
+      evaluate_cost_expr_in_env(
+        expr: expr,
+        env: CostValuationEnv { bindings: bindings },
+        disposition: disposition
+      )
+  }
+}
+
+fn evaluate_cost_expr(
+  expr: CostExpr,
+  bindings: List<CostValuationBinding>
+) -> CostEvaluation {
+  evaluate_cost_expr_with_disposition(
+    expr: expr,
+    bindings: bindings,
+    disposition: RefuseUnboundSize
+  )
+}
+
+fn evaluate_cost_expr_partially(
+  expr: CostExpr,
+  bindings: List<CostValuationBinding>
+) -> CostEvaluation {
+  evaluate_cost_expr_with_disposition(
+    expr: expr,
+    bindings: bindings,
+    disposition: ReportUnboundSize
+  )
+}

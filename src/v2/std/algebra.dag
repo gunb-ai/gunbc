@@ -12,6 +12,7 @@ import std.algebra {
   Equal,
   Field,
   FreeMonoid,
+  FreeSemigroup,
   Greater,
   Group,
   Lattice,
@@ -690,6 +691,26 @@ fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
 
 fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
   list_append(left: xs, right: Cons { head: item, tail: Empty })
+}
+
+data free_semigroup_grounding_note: String = "FreeSemigroup is the free SEMIGROUP over T exactly as FreeMonoid is the free MONOID over T, so the pair is one algebraic axis read at two identities rather than a second sequence vocabulary (DESIGN section 2). The head field is the construction wall: an empty inhabitant has no representation, so a nonempty-by-obligation collection is UNWRITABLE empty rather than validated nonempty - the structurally-impossible rung of DESIGN section 4b rather than the mechanically-preventable one. This is deliberately NOT the Refined<List<T>> spelling the manual fixture v2.test.claim.manual.refinement_nonempty_list carries: a refinement predicate is a validation that concedes the empty state is writable. Convergence debt, stated with its trigger rather than left implicit - v2.std.diagnostic NonEmptyDiagnostics, v2.std.collection FiniteSet, v2.compiler.self_host.frontier_probe_types NonEmptySymbolChain and v2.std.grammar_choice_ambiguity NonEmptyGrammarChoiceAmbiguityRows are all this same shape monomorphised, and each dissolves onto FreeSemigroup at its own already-declared migrate_when_nonempty_list_refinement_promoted trigger. Those migrations are deliberately not carried by the lane that landed this authority, because a corpus-wide de-fork is not a consequence of the authority existing. The NonEmptyList ALIAS is likewise withheld until the manual fixture retires, so that one name never resolves to two declarations."
+
+fn non_empty_singleton<T>(item: T) -> FreeSemigroup<T> {
+  FreeSemigroup { head: item, tail: Empty }
+}
+
+fn non_empty_append<T>(left: FreeSemigroup<T>, right: FreeSemigroup<T>) -> FreeSemigroup<T> {
+  FreeSemigroup {
+    head: left.head,
+    tail: list_append(
+      left: list_snoc_item(xs: left.tail, item: right.head),
+      right: right.tail
+    )
+  }
+}
+
+fn non_empty_to_list<T>(xs: FreeSemigroup<T>) -> FreeMonoid<T> {
+  Cons { head: xs.head, tail: xs.tail }
 }
 
 fn list_init<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {

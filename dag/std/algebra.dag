@@ -122,6 +122,11 @@ type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
 
+type FreeSemigroup<T> {
+  head: T
+  tail: FreeMonoid<T>
+}
+
 type PartialFunction<K, V> {
   lookup: fn(K) -> V?
   empty: PartialFunction<K, V>

@@ -1,0 +1,299 @@
+module v2.test.lens_cost.valuation
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.lens.cost { SizeVariable }
+import v2.lens.cost.expr {
+  CostAdd,
+  CostConst,
+  CostEffect,
+  CostExpr,
+  CostSum,
+  SizeConst,
+  SizeExpr,
+  size_of
+}
+import v2.lens.cost.valuation {
+  BoundedCost,
+  CostEvaluation,
+  CostEvaluationRefused,
+  CostValuationBinding,
+  DuplicateSizeBinding,
+  ExactCost,
+  MissingSizeBinding,
+  UnmodeledEffectCost,
+  UnresolvedCost,
+  evaluate_cost_expr,
+  evaluate_cost_expr_partially
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.nat { Nat, Succ, Zero }
+import v2.std.node {
+  Atom,
+  Node,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data nat_1: Nat = Succ { prev: Zero }
+data nat_2: Nat = Succ { prev: nat_1 }
+data nat_3: Nat = Succ { prev: nat_2 }
+data nat_4: Nat = Succ { prev: nat_3 }
+data nat_5: Nat = Succ { prev: nat_4 }
+data nat_6: Nat = Succ { prev: nat_5 }
+data nat_7: Nat = Succ { prev: nat_6 }
+data nat_8: Nat = Succ { prev: nat_7 }
+data nat_9: Nat = Succ { prev: nat_8 }
+data nat_10: Nat = Succ { prev: nat_9 }
+
+fn synthetic_leaf(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data outer_leaf: Node = synthetic_leaf(identity: ^valuation_outer_size_atom)
+data inner_leaf: Node = synthetic_leaf(identity: ^valuation_inner_size_atom)
+
+data outer_variable: SizeVariable = SizeVariable { source: outer_leaf }
+data inner_variable: SizeVariable = SizeVariable { source: inner_leaf }
+
+fn bind(variable: SizeVariable, value: Nat) -> CostValuationBinding {
+  CostValuationBinding { variable: variable, value: value }
+}
+
+fn unit_loop_over(variable: SizeVariable) -> CostExpr {
+  CostSum {
+    binder: inner_variable,
+    upper: size_of(variable: variable),
+    body: CostConst { value: nat_1 }
+  }
+}
+
+fn is_exact(evaluation: CostEvaluation, expected: Nat) -> Bool {
+  match evaluation {
+    ExactCost { value: v } => v == expected
+    _ => false
+  }
+}
+
+test fn unit_body_over_size_five_evaluates_to_five() -> Bool {
+  is_exact(
+    evaluation: evaluate_cost_expr(
+      expr: unit_loop_over(variable: outer_variable),
+      bindings: [bind(variable: outer_variable, value: nat_5)]
+    ),
+    expected: nat_5
+  )
+}
+
+test fn changing_the_bound_size_changes_the_derived_work() -> Bool {
+  is_exact(
+    evaluation: evaluate_cost_expr(
+      expr: unit_loop_over(variable: outer_variable),
+      bindings: [bind(variable: outer_variable, value: nat_10)]
+    ),
+    expected: nat_10
+  ) && !is_exact(
+    evaluation: evaluate_cost_expr(
+      expr: unit_loop_over(variable: outer_variable),
+      bindings: [bind(variable: outer_variable, value: nat_10)]
+    ),
+    expected: nat_5
+  )
+}
+
+fn binder_dependent_loop() -> CostExpr {
+  CostSum {
+    binder: outer_variable,
+    upper: size_of(variable: outer_variable),
+    body: CostSum {
+      binder: inner_variable,
+      upper: size_of(variable: outer_variable),
+      body: CostConst { value: nat_1 }
+    }
+  }
+}
+
+test fn binder_dependent_body_is_summed_not_treated_as_invariant() -> Bool {
+  is_exact(
+    evaluation: evaluate_cost_expr(
+      expr: binder_dependent_loop(),
+      bindings: [bind(variable: outer_variable, value: nat_5)]
+    ),
+    expected: nat_10
+  )
+}
+
+test fn invariant_body_control_does_not_produce_the_summed_answer() -> Bool {
+  is_exact(
+    evaluation: evaluate_cost_expr(
+      expr: CostSum {
+        binder: outer_variable,
+        upper: size_of(variable: outer_variable),
+        body: CostConst { value: nat_1 }
+      },
+      bindings: [bind(variable: outer_variable, value: nat_5)]
+    ),
+    expected: nat_5
+  )
+}
+
+test fn missing_binding_refuses_and_never_becomes_zero() -> Bool {
+  match evaluate_cost_expr(
+    expr: unit_loop_over(variable: outer_variable),
+    bindings: []
+  ) {
+    CostEvaluationRefused { causes: c } =>
+      match c.head {
+        MissingSizeBinding { variable: v, at: _ } => v.source == outer_leaf
+        _ => false
+      }
+    ExactCost { value: _ } => false
+    _ => false
+  }
+}
+
+test fn missing_binding_under_partial_valuation_reports_the_free_variable() -> Bool {
+  match evaluate_cost_expr_partially(
+    expr: unit_loop_over(variable: outer_variable),
+    bindings: []
+  ) {
+    UnresolvedCost { free_variables: f } => f.head.source == outer_leaf
+    _ => false
+  }
+}
+
+test fn duplicate_bindings_refuse() -> Bool {
+  match evaluate_cost_expr(
+    expr: unit_loop_over(variable: outer_variable),
+    bindings: [
+      bind(variable: outer_variable, value: nat_5),
+      bind(variable: outer_variable, value: nat_10)
+    ]
+  ) {
+    CostEvaluationRefused { causes: c } =>
+      match c.head {
+        DuplicateSizeBinding { variable: v, at: _ } => v.source == outer_leaf
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn distinct_bindings_control_does_not_refuse() -> Bool {
+  is_exact(
+    evaluation: evaluate_cost_expr(
+      expr: unit_loop_over(variable: outer_variable),
+      bindings: [
+        bind(variable: outer_variable, value: nat_5),
+        bind(variable: inner_variable, value: nat_10)
+      ]
+    ),
+    expected: nat_5
+  )
+}
+
+fn shadowing_expr() -> CostExpr {
+  CostAdd {
+    left: CostSum {
+      binder: outer_variable,
+      upper: SizeConst { value: nat_2 },
+      body: unit_loop_over(variable: outer_variable)
+    },
+    right: unit_loop_over(variable: outer_variable)
+  }
+}
+
+test fn binder_shadowing_is_scoped_and_removed_on_exit() -> Bool {
+  is_exact(
+    evaluation: evaluate_cost_expr(
+      expr: shadowing_expr(),
+      bindings: [bind(variable: outer_variable, value: nat_3)]
+    ),
+    expected: nat_4
+  )
+}
+
+test fn shadowing_control_rejects_the_unshadowed_reading() -> Bool {
+  !is_exact(
+    evaluation: evaluate_cost_expr(
+      expr: shadowing_expr(),
+      bindings: [bind(variable: outer_variable, value: nat_3)]
+    ),
+    expected: nat_9
+  )
+}
+
+test fn zero_iterations_produce_exact_zero() -> Bool {
+  is_exact(
+    evaluation: evaluate_cost_expr(
+      expr: CostSum {
+        binder: inner_variable,
+        upper: SizeConst { value: Zero },
+        body: CostConst { value: nat_1 }
+      },
+      bindings: []
+    ),
+    expected: Zero
+  )
+}
+
+data effect_operation: DeclarationRef = DeclarationRef {
+  module_path: "v2.test.lens_cost.valuation",
+  decl_name: "unmodelled_effect_specimen",
+  field: WholeDeclaration
+}
+
+test fn cost_effect_refuses_until_an_effect_model_exists() -> Bool {
+  match evaluate_cost_expr(
+    expr: CostEffect { operation: effect_operation },
+    bindings: []
+  ) {
+    CostEvaluationRefused { causes: c } =>
+      match c.head {
+        UnmodeledEffectCost { operation: _, at: _ } => true
+        _ => false
+      }
+    ExactCost { value: _ } => false
+    _ => false
+  }
+}
+
+test fn cost_effect_under_partial_valuation_still_refuses() -> Bool {
+  match evaluate_cost_expr_partially(
+    expr: CostEffect { operation: effect_operation },
+    bindings: []
+  ) {
+    CostEvaluationRefused { causes: _ } => true
+    _ => false
+  }
+}
+
+data claim_cost_valuation: TestClaim = EqualsClaim {
+  label: "lens_cost/valuation: CostExpr evaluated at concrete SizeVariable bindings yields exact semantic work, refuses a missing or duplicated binding rather than answering zero, and scopes a CostSum binder to its body",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: outer_leaf,
+  rhs: if unit_body_over_size_five_evaluates_to_five()
+    && changing_the_bound_size_changes_the_derived_work()
+    && binder_shadowing_is_scoped_and_removed_on_exit() {
+    outer_leaf
+  } else {
+    synthetic_leaf(identity: ^valuation_claim_failed)
+  },
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
