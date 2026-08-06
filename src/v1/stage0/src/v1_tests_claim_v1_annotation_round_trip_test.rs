@@ -47,20 +47,20 @@ pub fn v1_annotation_round_trip_note() -> String {
 pub fn single_parse_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "ONE ARTIFACT AND ONE PARSE PER SOURCE VALUE, carried in a record so every consumer reads the same one, and THREADED rather than re-derived. Tokenizing the same source twice — once for the parser and once for the captures — is two runs of a fold that is supposed to produce one artifact, and it would mask a defect in which the two halves disagree.\n\nTwo cuts of this file got that wrong in two different ways, both caught by review, and the second is the reason the helpers below take a ParsedSource instead of a String. The FIRST cut had separate admitted_of and transport_of helpers, so the keyed projection paired a graph from one parse with an occurrence index from another — the keying resolves a subject id through the index, so ids were being resolved against a foreign table. The SECOND cut fixed the static call sites and still parsed the same source three times DYNAMICALLY: once for the `before` rows, once inside the renderer, once for the rendered result. One static call site is not one parse per execution, and a witness that states a one-pass invariant while re-deriving its own inputs is asserting something it does not do.\n\nThe rule the shape now enforces: a ParsedSource is produced once per distinct SOURCE TEXT and passed down. The round trip parses exactly twice by construction — the authored source, and the rendered source — because those are two different texts, which is the property.".to_string()
+            "ONE ARTIFACT AND ONE PARSE PER SOURCE VALUE, carried in a record so every consumer reads the same one, and THREADED rather than re-derived. Tokenizing the same source twice — once for the parser and once for the captures — is two runs of a fold that is supposed to produce one artifact, and it would mask a defect in which the two halves disagree.\n\nTwo cuts of this file got that wrong in two different ways, both caught by review, and the second is the reason the helpers below take a AnnotationParsedSource instead of a String. The FIRST cut had separate admitted_of and transport_of helpers, so the keyed projection paired a graph from one parse with an occurrence index from another — the keying resolves a subject id through the index, so ids were being resolved against a foreign table. The SECOND cut fixed the static call sites and still parsed the same source three times DYNAMICALLY: once for the `before` rows, once inside the renderer, once for the rendered result. One static call site is not one parse per execution, and a witness that states a one-pass invariant while re-deriving its own inputs is asserting something it does not do.\n\nThe rule the shape now enforces: a AnnotationParsedSource is produced once per distinct SOURCE TEXT and passed down. The round trip parses exactly twice by construction — the authored source, and the rendered source — because those are two different texts, which is the property.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ParsedSource {
+pub struct AnnotationParsedSource {
     pub artifact: Rc<V1LexArtifact>,
     pub parse: Rc<ParseWithTableResult>,
     pub admitted: Rc<AdmittedSourceAnnotations>,
 }
 
-pub fn parsed_of(source: String) -> Rc<ParsedSource> {
+pub fn annotation_parsed_of(source: String) -> Rc<AnnotationParsedSource> {
     {
         let artifact = tokenize_artifact(source.clone(), "rt.dag".to_string());
         let parse = parse_with_table(
@@ -72,7 +72,7 @@ pub fn parsed_of(source: String) -> Rc<ParsedSource> {
             ),
             empty_intern_table(),
         );
-        Rc::new(ParsedSource {
+        Rc::new(AnnotationParsedSource {
             artifact: artifact.clone(),
             parse: parse.clone(),
             admitted: admit_source_annotations(
@@ -93,7 +93,7 @@ pub fn parse_health_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn parse_is_clean(parsed: Rc<ParsedSource>) -> bool {
+pub fn annotation_parse_is_clean(parsed: Rc<AnnotationParsedSource>) -> bool {
     match parsed.parse.clone().result.clone().error.clone() {
         Some(_) => false,
         None => match parsed.parse.clone().result.clone().module.clone() {
@@ -112,8 +112,10 @@ pub fn admitted_rows_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn keyed_rows_of(parsed: Rc<ParsedSource>) -> Option<Rc<Vec<Rc<KeyedAnnotationRow>>>> {
-    if !parse_is_clean(parsed.clone()) {
+pub fn keyed_rows_of(
+    parsed: Rc<AnnotationParsedSource>,
+) -> Option<Rc<Vec<Rc<KeyedAnnotationRow>>>> {
+    if !annotation_parse_is_clean(parsed.clone()) {
         None
     } else {
         if ((parsed.admitted.clone().diagnostics.clone().len() as i64) > 0) {
@@ -128,7 +130,7 @@ pub fn keyed_rows_of(parsed: Rc<ParsedSource>) -> Option<Rc<Vec<Rc<KeyedAnnotati
 }
 
 pub fn admitted_keyed_rows(source: String) -> Option<Rc<Vec<Rc<KeyedAnnotationRow>>>> {
-    keyed_rows_of(parsed_of(source.clone()))
+    keyed_rows_of(annotation_parsed_of(source.clone()))
 }
 
 pub fn admitted_row_count(source: String) -> i64 {
@@ -157,7 +159,7 @@ pub fn rendered_source_note() -> String {
 }
 
 pub fn rendered_source_for_parsed(
-    parsed: Rc<ParsedSource>,
+    parsed: Rc<AnnotationParsedSource>,
     subject_name: String,
     decl: String,
 ) -> String {
@@ -181,7 +183,7 @@ pub fn rendered_source_for_parsed(
 
 pub fn rendered_source_for(source: String, subject_name: String, decl: String) -> String {
     rendered_source_for_parsed(
-        parsed_of(source.clone()),
+        annotation_parsed_of(source.clone()),
         subject_name.clone(),
         decl.clone(),
     )
@@ -196,7 +198,10 @@ pub fn authored_name_uniqueness_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn subjects_named_in(parsed: Rc<ParsedSource>, name: String) -> Rc<Vec<OccurrenceId>> {
+pub fn subjects_named_in(
+    parsed: Rc<AnnotationParsedSource>,
+    name: String,
+) -> Rc<Vec<OccurrenceId>> {
     parsed
         .parse
         .clone()
@@ -220,7 +225,7 @@ pub fn subjects_named_in(parsed: Rc<ParsedSource>, name: String) -> Rc<Vec<Occur
         )
 }
 
-pub fn subject_named_in(parsed: Rc<ParsedSource>, name: String) -> Option<OccurrenceId> {
+pub fn subject_named_in(parsed: Rc<AnnotationParsedSource>, name: String) -> Option<OccurrenceId> {
     {
         let matches = subjects_named_in(parsed.clone(), name.clone());
         if ((matches.clone().len() as i64) == 1) {
@@ -236,7 +241,7 @@ pub fn subject_named_in(parsed: Rc<ParsedSource>, name: String) -> Option<Occurr
 }
 
 pub fn subject_named(source: String, name: String) -> Option<OccurrenceId> {
-    subject_named_in(parsed_of(source.clone()), name.clone())
+    subject_named_in(annotation_parsed_of(source.clone()), name.clone())
 }
 
 pub fn evidence_predicate_note() -> String {
@@ -249,7 +254,7 @@ pub fn evidence_predicate_note() -> String {
 }
 
 pub fn round_trip_is_evidence_for(
-    before: Rc<ParsedSource>,
+    before: Rc<AnnotationParsedSource>,
     subject_name: String,
     decl: String,
 ) -> bool {
@@ -257,7 +262,7 @@ pub fn round_trip_is_evidence_for(
         None => false,
         Some(rows) => {
             (((rows.clone().len() as i64) > 0)
-                && match keyed_rows_of(parsed_of(rendered_source_for_parsed(
+                && match keyed_rows_of(annotation_parsed_of(rendered_source_for_parsed(
                     before.clone(),
                     subject_name.clone(),
                     decl.clone(),
@@ -271,7 +276,7 @@ pub fn round_trip_is_evidence_for(
 
 pub fn round_trip_is_evidence(source: String, subject_name: String) -> bool {
     round_trip_is_evidence_for(
-        parsed_of(source.clone()),
+        annotation_parsed_of(source.clone()),
         subject_name.clone(),
         declaration_text(),
     )
@@ -366,7 +371,11 @@ pub fn merged_rendering(source: String) -> String {
             Rc::new({
                 let mut __result = Vec::new();
                 for row in source_annotation_graph_rows(
-                    parsed_of(source.clone()).admitted.clone().graph.clone(),
+                    annotation_parsed_of(source.clone())
+                        .admitted
+                        .clone()
+                        .graph
+                        .clone(),
                 )
                 .iter()
                 .cloned()
@@ -452,7 +461,7 @@ pub fn mixed_refusal_source() -> String {
 
 pub fn bypassed_row_count(source: String) -> i64 {
     {
-        let parsed = parsed_of(source.clone());
+        let parsed = annotation_parsed_of(source.clone());
         (source_annotation_graph_rows(annotation_attachment_result_graph(bind_annotations(
             parsed.parse.clone().occurrence_transport.clone(),
             parsed.artifact.clone().annotations.clone(),
@@ -559,7 +568,7 @@ pub fn beta_declaration_text() -> String {
 
 pub fn reattached_block_text(rendered: String, name: String) -> String {
     {
-        let parsed = parsed_of(rendered.clone());
+        let parsed = annotation_parsed_of(rendered.clone());
         match subject_named_in(parsed.clone(), name.clone()) {
             None => "".to_string(),
             Some(subject) => match subject_annotation_blocks_for(
@@ -575,7 +584,7 @@ pub fn reattached_block_text(rendered: String, name: String) -> String {
 
 pub fn w_each_declaration_keeps_its_own_prose() -> bool {
     {
-        let parsed = parsed_of(two_decl_source());
+        let parsed = annotation_parsed_of(two_decl_source());
         let alpha_rendered =
             rendered_source_for_parsed(parsed.clone(), "alpha".to_string(), declaration_text());
         let beta_rendered =
@@ -616,16 +625,16 @@ pub fn malformed_tail_source() -> String {
 
 pub fn w_a_parse_error_is_not_evidence() -> bool {
     {
-        let good = parsed_of(alpha_named_source());
-        let bad = parsed_of(malformed_tail_source());
-        ((((parse_is_clean(good.clone()) && !parse_is_clean(bad.clone()))
+        let good = annotation_parsed_of(alpha_named_source());
+        let bad = annotation_parsed_of(malformed_tail_source());
+        ((((annotation_parse_is_clean(good.clone()) && !annotation_parse_is_clean(bad.clone()))
             && (admitted_row_count(malformed_tail_source()) == (0 - 1)))
             && !round_trip_is_evidence(malformed_tail_source(), "alpha".to_string()))
             && match keyed_rows_of(good.clone()) {
                 None => false,
                 Some(rows) => {
                     (((rows.clone().len() as i64) > 0)
-                        && match keyed_rows_of(Rc::new(ParsedSource {
+                        && match keyed_rows_of(Rc::new(AnnotationParsedSource {
                             artifact: good.artifact.clone(),
                             parse: Rc::new(ParseWithTableResult {
                                 result: bad.parse.clone().result.clone(),
@@ -670,7 +679,7 @@ pub fn duplicate_name_source() -> String {
 }
 
 pub fn subject_match_count(source: String, name: String) -> i64 {
-    (subjects_named_in(parsed_of(source.clone()), name.clone()).len() as i64)
+    (subjects_named_in(annotation_parsed_of(source.clone()), name.clone()).len() as i64)
 }
 
 pub fn w_a_duplicated_authored_name_refuses_as_subject() -> bool {
@@ -691,7 +700,7 @@ pub fn mixed_subject_note() -> String {
 
 pub fn w_mixed_subject_rows_cannot_reach_the_renderer() -> bool {
     {
-        let parsed = parsed_of(two_decl_source());
+        let parsed = annotation_parsed_of(two_decl_source());
         match subject_named_in(parsed.clone(), "alpha".to_string()) {
             None => false,
             Some(alpha) => match subject_annotation_blocks_for(
@@ -706,7 +715,11 @@ pub fn w_mixed_subject_rows_cannot_reach_the_renderer() -> bool {
                         && match subject_named(bare_source(), "alpha".to_string()) {
                             None => false,
                             Some(unannotated) => match subject_annotation_blocks_for(
-                                parsed_of(bare_source()).admitted.clone().graph.clone(),
+                                annotation_parsed_of(bare_source())
+                                    .admitted
+                                    .clone()
+                                    .graph
+                                    .clone(),
                                 unannotated.clone(),
                             ) {
                                 None => true,
