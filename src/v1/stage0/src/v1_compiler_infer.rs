@@ -1468,21 +1468,15 @@ pub fn record_lit_expected_coproduct(
     }
 }
 
-/// Stamp `Witness` as the record-literal parent when `lookup_variant_parent_enum`
-/// misses under a composed symbol index but the expression's expected type is
-/// `Witness<C>` and we are constructing `Holds` or `Violates`. Without this,
-/// eval emits a bare `Record { type_name: "Holds", .. }` instead of
-/// `Variant { type_name: "Witness", variant_name: "Holds", .. }`, and a later
-/// `Holds { value: .. }` wrap nests into `Holds { value: Holds { value: .. } }`.
 fn record_lit_witness_parent_from_expected(
-    type_name: &str,
+    type_name: String,
     expected: Option<Rc<Node>>,
     scope: Rc<InferScope>,
 ) -> Option<String> {
     if type_name != "Holds" && type_name != "Violates" {
         return None;
     }
-    record_lit_variant_from_expected(Some(type_name.to_string()), expected.clone(), scope.clone())
+    record_lit_variant_from_expected(Some(type_name.clone()), expected.clone(), scope.clone())
         .map(|_| "Witness".to_string())
 }
 
@@ -9158,7 +9152,7 @@ pub fn infer_record_lit(
                                 owner.clone(),
                             )),
                             None => record_lit_witness_parent_from_expected(
-                                type_name.clone().unwrap().as_str(),
+                                type_name.clone().unwrap(),
                                 expected.clone(),
                                 scope.clone(),
                             ),
