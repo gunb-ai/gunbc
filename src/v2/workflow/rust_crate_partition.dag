@@ -419,7 +419,9 @@ fn stage0_string_lists_equal_as_sets(
       })
 }
 
-data stage0_partition_enrolled_membership_baseline_note: String = "Frozen at C2 landing from origin/main hand per-crate module lists (pre-derivation). Independent oracle for derived membership equivalence — not row.modules, which is already populated from the same derivation at row construction."
+data stage0_partition_enrolled_membership_baseline_frozen_commit: String = "34210a0d07b706677650eb71b3e7fd139a158484"
+
+data stage0_partition_enrolled_membership_baseline_note: String = "Frozen at C2 landing from origin/main hand per-crate module lists (pre-derivation); commit pinned at stage0_partition_enrolled_membership_baseline_frozen_commit. Independent oracle for derived membership equivalence — not row.modules, which is populated from the same derivation at row construction. Baseline update: name the commit superseded; author from the graph change (which modules moved between units and why) as a reviewable baseline diff; never paste derivation output — if the only way to produce new expected values is to run the derivation under test, stop and ask."
 
 fn stage0_snoc_unique_string(xs: List<String>, item: String) -> List<String> {
   if any(xs: xs, predicate: fn(s) { s == item }) {
