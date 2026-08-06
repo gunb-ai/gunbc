@@ -48,11 +48,11 @@ struct FalsifierSelfHostWetBudgets {
     interp_eval_budget_ms: Option<u64>,
     /// Entry paths from `falsifier_self_host_wet_entries` (green wet roster).
     roster_entry_paths: Vec<String>,
-    /// Entry paths from `falsifier_self_host_wet_known_red_entries` — Wet expect_red
-    /// quarantine; arms the same self-host wall budget + expect_red invert.
+    /// Entry paths from `falsifier_self_host_wet_known_red_entries` — the Wet quarantine's
+    /// WALL budget only. Its polarity comes from `expected_red_witnesses` like every other
+    /// witness's; the path-grain hermetic twin of this field was deleted when function-grain
+    /// expectation replaced it, rather than left beside its successor.
     known_red_entry_paths: Vec<String>,
-    /// Hermetic known-red probe paths (`known_red_probe_entries`) — expect_red only.
-    hermetic_known_red_entry_paths: Vec<String>,
     silent_pick_wall_budget_ms: Option<u64>,
     silent_pick_entry_paths: Vec<String>,
     /// Paths requiring the long eval ceiling (`witness_long_eval_budget_entries`) — the
@@ -3890,22 +3890,34 @@ fn run_discovery_batch_node(
                     projected,
                     Some(refusal),
                 ),
-                None if tally.unexpected_failures.is_empty() => discovery_claim_result(
-                    format!("{label} (expect_red still-red OK)"),
-                    true,
-                    String::new(),
-                    node_frontier_selection,
-                    &summary,
-                    projected,
-                    None,
-                ),
+                // ACCOUNTING, not just emptiness: the batch passes only when every failure
+                // in the summary is matched by an agreement. `witness_outcomes` and
+                // `failures` are pushed in lockstep today, so the counts agree — but if a
+                // failure ever arrives without a per-witness identity, this arm must refuse
+                // rather than read "no unexpected failures" as "nothing failed". That would
+                // be the empty-observation narrow: an unmatchable failure rendered as the
+                // verdict "nothing is wrong".
+                None if tally.unexpected_failures.is_empty()
+                    && summary.failures.len() <= tally.agreements.len() =>
+                {
+                    discovery_claim_result(
+                        format!("{label} (expect_red still-red OK)"),
+                        true,
+                        String::new(),
+                        node_frontier_selection,
+                        &summary,
+                        projected,
+                        None,
+                    )
+                }
                 None => discovery_claim_result(
                     label,
                     false,
                     format!(
-                        "{} of {} discovery witness(es) failed unexpectedly: {}",
-                        tally.unexpected_failures.len(),
+                        "{} of {} discovery witness(es) failed ({} agreement(s) held): {}",
+                        summary.failures.len(),
                         summary.total,
+                        tally.agreements.len(),
                         summary.failures.join("; ")
                     ),
                     node_frontier_selection,
@@ -9214,16 +9226,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             known_red_entry_paths: match read_schedule_witness_entry_paths(
                 &plan_ctx,
                 "falsifier_self_host_wet_known_red_roster",
-            ) {
-                Ok(v) => v,
-                Err(msg) => {
-                    eprintln!("{msg}");
-                    return Err(ExitCode::from(1));
-                }
-            },
-            hermetic_known_red_entry_paths: match read_schedule_witness_entry_paths(
-                &plan_ctx,
-                "known_red_probe_roster",
             ) {
                 Ok(v) => v,
                 Err(msg) => {
