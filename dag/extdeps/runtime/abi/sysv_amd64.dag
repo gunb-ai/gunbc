@@ -1,79 +1,18 @@
 module extdeps.runtime.abi.sysv_amd64
 
 import std.abi { ArchitecturalRegister, CallingConvention }
-import std.types { Bool, NonEmptyStr, List }
-import std.citation {
-  CitedRepresentationIdentity,
-  CitationSelector,
-  CitationTarget,
-  citation_target,
-  RawResponseBody,
-  CitationRetrievalObservation,
-  RepresentationRetrieved,
-  CitationRetrievalRequest,
-  observed_cited_representation,
-  cited_representation_identity,
-  citation_recorded_fact,
-  CitationRecordedFact,
-}
-import extdeps.pin { Pin }
-import extdeps.version { VersionIdentity }
-import std.content_hash { Sha256Digest, sha256_hex_digest }
-import extdeps.http.server { MediaType, TopLevelApplication }
+import std.types { Bool, NonEmptyStr, String }
+import std.citation { CitedRepresentationIdentity, RawResponseBody, cited_representation_identity }
 import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.version { VersionIdentity }
+import extdeps.http.server { MediaType, TopLevelApplication }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.uri {
-  Uri,
-  Https,
-}
 import std.integer { PositiveInt }
-import gunbc.citation.pdf_safe_profile {
-  PdfSafeParameterSequenceConstruction,
-  SafeSequenceConstructed,
-  SafeSequenceConstructionRefused,
-  PdfProfileRefusalCause,
-  pdf_safe_parameter_sequence,
-  pdf_safe_parameter_sequence_to_rfc,
-  project_navigable_uri_safe,
-  NavigableUriSafeProjected,
-  NavigableUriSafeRefused,
-  NavigableUriSafeRefusalCause,
-  BaseLocatorAlreadyCarriesFragmentFromRfc,
-  PdfOpenParameterPercentEncodeRefusedFromSafe,
-}
-import extdeps.standards.rfc_8118 {
-  pdf_open_fragment_selector,
-  pdf_open_page,
-  rfc_pdf_open_parameter_sequence,
-  pdf_open_nameddest_wire_from_scalar_code_points,
-  navigable_uri_projection_from_sequence_wire,
-  SequenceConstructed,
-  PdfOpenFragmentSelectorConstructed,
-  PdfOpenFragmentSelectorRefused,
-  NavigableUriRefusalCause,
-  NavigableUriProjected,
-  NavigableUriRefused,
-  PdfProfileParameterWireRefused,
-  PdfProfileParameterWired,
-  PdfOpenParameterSequenceWired,
-  PdfOpenParameterPercentEncodeRefused,
-  BaseLocatorAlreadyCarriesFragment,
-}
-import std.claim_evidence {
-  RecordedFact,
-  RecordedFactId,
-  EvidenceLink,
-  EvidenceSupports,
-  EvidenceProvenance,
-  EvidenceFreshness,
-  EvidenceFidelity,
-  ClaimId,
-  InferenceRuleId,
-  ProvEntityId,
-  ProvActivityId,
-  ProvAgentId,
-}
-import gunbc.readback_independence { ReadBackProbe, ProbeMayEstablish }
+
+// Upstream System V AMD64 ABI authority: cited PDF document identity, edition, and
+// register/syscall calling-convention facts. Citation consumer receipts (pin, selector,
+// evidence links, wet observations) live in gunbc.citation.x86_64_abi_pdf_consumer.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -91,7 +30,7 @@ data x86_64_abi_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
     module_path: "extdeps.runtime.abi.sysv_amd64",
     decl_name: "x86_64_abi_specification",
     field: WholeDeclaration,
-  }
+  },
 }
 
 data x86_64_abi_pdf_identity: CitedRepresentationIdentity = cited_representation_identity(
@@ -102,20 +41,7 @@ data x86_64_abi_pdf_identity: CitedRepresentationIdentity = cited_representation
 
 data x86_64_abi_pdf_draft_edition_note: String = "Document cover: Draft Version 0.99.6, dated July 2 2012 — NOT the filename 0.99. VersionIdentity carries the edition string 0.99.6."
 
-// No independent expected pin is available: upstream PDF bytes are not retrieved on this path,
-// so digest reconciliation cannot detect drift. Citation facts stay below the digest-matched rung.
-
-type X86_64AbiPdfWetReceiptHexRefusalCause = WetReceiptHexMalformed { hex: String }
-
-type X86_64AbiPdfPinRefusalCause
-  = IndependentExpectedPinUnavailable
-  | PinEstablishmentReceiptHexRefused { hex: String, cause: X86_64AbiPdfWetReceiptHexRefusalCause }
-
-type X86_64AbiPdfCitationRungDisposition = BelowDigestMatchedRung { cause: X86_64AbiPdfPinRefusalCause }
-
-type X86_64AbiPdfValidatedDigestConstruction = X86_64AbiPdfValidatedDigestConstructed(Sha256Digest) | X86_64AbiPdfValidatedDigestHexRefused { hex: String, cause: X86_64AbiPdfWetReceiptHexRefusalCause }
-
-type X86_64AbiPdfRetrievalObservationConstruction = X86_64AbiPdfRetrievalObserved(CitationRetrievalObservation) | X86_64AbiPdfRetrievalDigestHexRefused { hex: String, cause: X86_64AbiPdfWetReceiptHexRefusalCause }
+data x86_64_abi_pdf_draft_version: VersionIdentity = "0.99.6" as VersionIdentity
 
 data x86_64_abi_application_pdf: MediaType = MediaType {
   top_level: TopLevelApplication,
@@ -123,254 +49,7 @@ data x86_64_abi_application_pdf: MediaType = MediaType {
   parameters: [],
 }
 
-type X86_64AbiPdfExpectedDigestConstruction = X86_64AbiPdfExpectedDigestUnavailable { cause: X86_64AbiPdfPinRefusalCause }
-
-type X86_64AbiPdfCitationSelectorRefusalCause = X86_64AbiPdfCitationSelectorFragmentRefused { cause: NavigableUriRefusalCause } | X86_64AbiPdfCitationSelectorSafeSequenceRefused { cause: PdfProfileRefusalCause }
-
-type X86_64AbiPdfCitationSelectorConstruction = X86_64AbiPdfCitationSelectorConstructed(CitationSelector) | X86_64AbiPdfCitationSelectorRefused { cause: X86_64AbiPdfCitationSelectorRefusalCause }
-
-type X86_64AbiPdfNavigableUriProjection = X86_64AbiPdfNavigableUriProjected { uri: Uri } | X86_64AbiPdfNavigableUriRefused { cause: NavigableUriSafeRefusalCause }
-
-type X86_64AbiPdfPinConstruction = X86_64AbiPdfPinConstructed(Pin<CitedRepresentationIdentity>) | X86_64AbiPdfPinRefused { cause: X86_64AbiPdfPinRefusalCause }
-
-type X86_64AbiCitationFactConstruction = X86_64AbiCitationFactConstructed(RecordedFact<CitationRecordedFact<CitationSelector>>) | X86_64AbiCitationFactRefused { pin: X86_64AbiPdfPinConstruction, selector: X86_64AbiPdfCitationSelectorConstruction }
-
-type X86_64AbiEvidenceLinkConstruction = X86_64AbiEvidenceLinkConstructed(EvidenceLink<CitationRecordedFact<CitationSelector>, ClaimId, ExternalAuthority, NonEmptyStr, ReadBackProbe>) | X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactConstruction }
-
-fn x86_64_abi_pdf_validated_digest_from_wet_receipt(hex: String) -> X86_64AbiPdfValidatedDigestConstruction {
-  match sha256_hex_digest(hex: hex) {
-    Present { value: digest } => X86_64AbiPdfValidatedDigestConstructed(digest)
-    Absent =>
-      X86_64AbiPdfValidatedDigestHexRefused {
-        hex: hex,
-        cause: WetReceiptHexMalformed { hex: hex },
-      }
-  }
-}
-
-fn x86_64_abi_pdf_retrieval_observation_from_hex(hex: String) -> X86_64AbiPdfRetrievalObservationConstruction {
-  match x86_64_abi_pdf_validated_digest_from_wet_receipt(hex: hex) {
-    X86_64AbiPdfValidatedDigestConstructed(digest) =>
-      X86_64AbiPdfRetrievalObserved(
-        RepresentationRetrieved {
-          request: CitationRetrievalRequest {
-            locator: x86_64_abi_pdf_authority.uri,
-          },
-          observed_at: 0,
-          http_status: 200,
-          observed: observed_cited_representation(
-            identity: x86_64_abi_pdf_identity,
-            media_type: x86_64_abi_application_pdf,
-            observed_identity: digest,
-          ),
-        },
-      )
-    X86_64AbiPdfValidatedDigestHexRefused { hex: refused_hex, cause: cause } =>
-      X86_64AbiPdfRetrievalDigestHexRefused { hex: refused_hex, cause: cause }
-  }
-}
-
-data x86_64_abi_pdf_draft_version: VersionIdentity = "0.99.6" as VersionIdentity
-
-data x86_64_abi_pdf_expected_digest_construction: X86_64AbiPdfExpectedDigestConstruction = X86_64AbiPdfExpectedDigestUnavailable { cause: IndependentExpectedPinUnavailable }
-
-fn assemble_x86_64_abi_pdf_pin_construction() -> X86_64AbiPdfPinConstruction {
-  X86_64AbiPdfPinRefused { cause: IndependentExpectedPinUnavailable }
-}
-
-data x86_64_abi_pdf_pin_construction: X86_64AbiPdfPinConstruction = assemble_x86_64_abi_pdf_pin_construction()
-
-data x86_64_abi_pdf_version_cover_sequence: PdfSafeParameterSequenceConstruction = pdf_safe_parameter_sequence(
-  constructions: [pdf_open_page(page: 1)],
-)
-
 data x86_64_abi_syscall_convention_authoritative_page: PositiveInt = 125
-
-data x86_64_abi_pdf_syscall_convention_sequence: PdfSafeParameterSequenceConstruction = pdf_safe_parameter_sequence(
-  constructions: [pdf_open_page(page: x86_64_abi_syscall_convention_authoritative_page)],
-)
-
-fn x86_64_abi_syscall_citation_page_is_authoritative(page: PositiveInt) -> Bool {
-  page == x86_64_abi_syscall_convention_authoritative_page
-}
-
-fn x86_64_abi_pdf_fragment_selector_from_page(page: PositiveInt) -> X86_64AbiPdfCitationSelectorConstruction {
-  match pdf_open_fragment_selector(
-    sequence: match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: page)]) {
-      SequenceConstructed(seq) => seq
-    },
-  ) {
-    PdfOpenFragmentSelectorConstructed(selector) => X86_64AbiPdfCitationSelectorConstructed(selector)
-    PdfOpenFragmentSelectorRefused { cause: cause } =>
-      X86_64AbiPdfCitationSelectorRefused {
-        cause: X86_64AbiPdfCitationSelectorFragmentRefused { cause: cause },
-      }
-  }
-}
-
-fn x86_64_abi_pdf_citation_selector_from_safe(
-  construction: PdfSafeParameterSequenceConstruction,
-) -> X86_64AbiPdfCitationSelectorConstruction {
-  match construction {
-    SafeSequenceConstructed(sequence) =>
-      match pdf_open_fragment_selector(
-        sequence: pdf_safe_parameter_sequence_to_rfc(sequence: sequence),
-      ) {
-        PdfOpenFragmentSelectorConstructed(selector) => X86_64AbiPdfCitationSelectorConstructed(selector)
-        PdfOpenFragmentSelectorRefused { cause: cause } =>
-          X86_64AbiPdfCitationSelectorRefused {
-            cause: X86_64AbiPdfCitationSelectorFragmentRefused { cause: cause },
-          }
-      }
-    SafeSequenceConstructionRefused { cause: cause } =>
-      X86_64AbiPdfCitationSelectorRefused {
-        cause: X86_64AbiPdfCitationSelectorSafeSequenceRefused { cause: cause },
-      }
-  }
-}
-
-data x86_64_abi_pdf_version_fragment_selector: X86_64AbiPdfCitationSelectorConstruction = x86_64_abi_pdf_citation_selector_from_safe(construction: x86_64_abi_pdf_version_cover_sequence)
-
-data x86_64_abi_pdf_syscall_fragment_selector: X86_64AbiPdfCitationSelectorConstruction = x86_64_abi_pdf_citation_selector_from_safe(construction: x86_64_abi_pdf_syscall_convention_sequence)
-
-data x86_64_abi_syscall_citation_rung_disposition: X86_64AbiPdfCitationRungDisposition = BelowDigestMatchedRung { cause: IndependentExpectedPinUnavailable }
-
-fn x86_64_abi_syscall_citation_fact_construction() -> X86_64AbiCitationFactConstruction {
-  match x86_64_abi_pdf_pin_construction {
-    X86_64AbiPdfPinConstructed(pin) =>
-      match x86_64_abi_pdf_syscall_fragment_selector {
-        X86_64AbiPdfCitationSelectorConstructed(selector) =>
-          X86_64AbiCitationFactConstructed(
-            citation_recorded_fact(
-              id: "x86-64-abi-linux-syscall-arg3-r10-citation" as RecordedFactId,
-              cited: citation_target(expected_pin: pin, selector: selector),
-            ),
-          )
-        X86_64AbiPdfCitationSelectorRefused { cause: selector_cause } =>
-          X86_64AbiCitationFactRefused {
-            pin: X86_64AbiPdfPinConstructed(pin),
-            selector: X86_64AbiPdfCitationSelectorRefused { cause: selector_cause },
-          }
-      }
-    X86_64AbiPdfPinRefused { cause: pin_cause } =>
-      match x86_64_abi_pdf_syscall_fragment_selector {
-        X86_64AbiPdfCitationSelectorConstructed(selector) =>
-          X86_64AbiCitationFactRefused {
-            pin: X86_64AbiPdfPinRefused { cause: pin_cause },
-            selector: X86_64AbiPdfCitationSelectorConstructed(selector),
-          }
-        X86_64AbiPdfCitationSelectorRefused { cause: selector_cause } =>
-          X86_64AbiCitationFactRefused {
-            pin: X86_64AbiPdfPinRefused { cause: pin_cause },
-            selector: X86_64AbiPdfCitationSelectorRefused { cause: selector_cause },
-          }
-      }
-  }
-}
-
-data x86_64_abi_syscall_convention_citation_fact_construction: X86_64AbiCitationFactConstruction = x86_64_abi_syscall_citation_fact_construction()
-
-fn x86_64_abi_syscall_evidence_link_construction() -> X86_64AbiEvidenceLinkConstruction {
-  match x86_64_abi_syscall_convention_citation_fact_construction {
-    X86_64AbiCitationFactConstructed(fact) =>
-      X86_64AbiEvidenceLinkConstructed(
-        EvidenceLink {
-          fact: fact,
-          direction: EvidenceSupports,
-          inference_rule: "citation-extraction-supports-syscall-arg3-claim" as InferenceRuleId,
-          authority: x86_64_abi_pdf_authority,
-          provenance: EvidenceProvenance {
-            entity: "x86-64-abi-pdf-byte-extraction" as ProvEntityId,
-            activity: "wet-representation-retrieval" as ProvActivityId,
-            agent: "gunbc-citation-extraction-receipt" as ProvAgentId,
-          },
-          freshness: EvidenceFreshness {
-            maximum_conclusion: "x86-64-abi-linux-syscall-arg3-is-r10" as ClaimId,
-            basis: "draft-edition-0.99.6-page-125-syscall-register-convention",
-          },
-          fidelity: EvidenceFidelity {
-            boundary: "raw-response-body-sha256" as NonEmptyStr,
-            losses: [],
-          },
-          probe_independence: ReadBackProbe {
-            label: "independent-byte-extraction-receipt" as NonEmptyStr,
-            subject: "x86-64-abi-pdf-raw-response-body" as NonEmptyStr,
-            effect_on_subject: ProbeMayEstablish {
-              mechanism: "wet retrieval hashes bytes independently of authored pin",
-            },
-          },
-        },
-      )
-    X86_64AbiCitationFactRefused { pin: pin_construction, selector: selector_construction } =>
-      X86_64AbiEvidenceLinkRefused {
-        fact: X86_64AbiCitationFactRefused {
-          pin: pin_construction,
-          selector: selector_construction,
-        },
-      }
-  }
-}
-
-fn witness_syscall_citation_below_digest_matched_rung() -> Bool {
-  match x86_64_abi_syscall_citation_rung_disposition {
-    BelowDigestMatchedRung { cause: IndependentExpectedPinUnavailable } => true
-  }
-}
-
-fn witness_syscall_evidence_link_binds_fact() -> Bool {
-  match x86_64_abi_syscall_evidence_link_construction() {
-    X86_64AbiEvidenceLinkConstructed(link) =>
-      match x86_64_abi_syscall_convention_citation_fact_construction {
-        X86_64AbiCitationFactConstructed(fact) => link.fact.id == fact.id
-        X86_64AbiCitationFactRefused { pin: _, selector: _ } => false
-      }
-    X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactConstructed(_) } => false
-    X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactRefused { pin: _, selector: _ } } => false
-  }
-}
-
-fn x86_64_abi_pdf_navigable_uri_from_safe(
-  construction: PdfSafeParameterSequenceConstruction,
-) -> X86_64AbiPdfNavigableUriProjection {
-  match project_navigable_uri_safe(
-    base: x86_64_abi_pdf_authority.uri,
-    construction: construction,
-  ) {
-    NavigableUriSafeProjected { uri: u } => X86_64AbiPdfNavigableUriProjected { uri: u }
-    NavigableUriSafeRefused { cause: cause } => X86_64AbiPdfNavigableUriRefused { cause: cause }
-  }
-}
-
-fn x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points(
-  name: NonEmptyStr,
-  code_points: List<Int>,
-) -> X86_64AbiPdfNavigableUriProjection {
-  match pdf_open_nameddest_wire_from_scalar_code_points(name: name, code_points: code_points) {
-    PdfProfileParameterWireRefused { parameter: p, cause: cause } =>
-      X86_64AbiPdfNavigableUriRefused {
-        cause: PdfOpenParameterPercentEncodeRefusedFromSafe { parameter: p, cause: cause },
-      }
-    PdfProfileParameterWired { wire: wire } =>
-      match navigable_uri_projection_from_sequence_wire(
-        base: x86_64_abi_pdf_authority.uri,
-        sequence_wire: PdfOpenParameterSequenceWired { wire: wire },
-      ) {
-        NavigableUriProjected { uri: u } => X86_64AbiPdfNavigableUriProjected { uri: u }
-        NavigableUriRefused { cause: BaseLocatorAlreadyCarriesFragment { locator: l } } =>
-          X86_64AbiPdfNavigableUriRefused {
-            cause: BaseLocatorAlreadyCarriesFragmentFromRfc { locator: l },
-          }
-        NavigableUriRefused { cause: PdfOpenParameterPercentEncodeRefused { parameter: p, cause: c } } =>
-          X86_64AbiPdfNavigableUriRefused {
-            cause: PdfOpenParameterPercentEncodeRefusedFromSafe { parameter: p, cause: c },
-          }
-      }
-  }
-}
-
-data x86_64_abi_pdf_version_navigable_uri_projection: X86_64AbiPdfNavigableUriProjection = x86_64_abi_pdf_navigable_uri_from_safe(construction: x86_64_abi_pdf_version_cover_sequence)
-
-data x86_64_abi_pdf_syscall_navigable_uri_projection: X86_64AbiPdfNavigableUriProjection = x86_64_abi_pdf_navigable_uri_from_safe(construction: x86_64_abi_pdf_syscall_convention_sequence)
 
 type Amd64Gpr = Rdi | Rsi | Rdx | R10 | R8 | R9 | Rax | Rcx
 
