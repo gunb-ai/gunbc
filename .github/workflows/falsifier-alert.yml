@@ -14,6 +14,26 @@
 # creation — see ALERT_MENTION below for the receipt on why the body alone was
 # not enough.
 #
+# THAT PROPERTY HAS NO EXECUTING CONSUMER, and the gap is named rather than left
+# implied. "Every notifying artifact carries the mention" is invisible to yaml
+# linting and to this workflow's own green conclusion — the alert ran successfully
+# for two days while notifying nobody — so it is exactly the class that wants a
+# check. A hand-authored JS harness beside this file was written and then REMOVED
+# (operator, 2026-08-06): every foreign-language artifact in this tree is emitted
+# from .dag (.github/live-deploy-srv1-apply.sh is the pattern), so hand-authoring
+# a second one here would add a hand-maintained realization rather than a scaffold
+# — and the substrate route is not merely inconvenient, it is blocked at the same
+# seam this file's own dissolve-on names: there is no workflow_run TRIGGER model
+# (extdeps.github.workflow_runs models runs as an API resource, not a trigger) and
+# gunbc.falsifier_workflow declares issues: none, so the alert's notifying
+# artifacts are not substrate objects and no lens has a Node tree to read.
+# The evidence the current shape is correct is therefore an unenrolled execution
+# receipt, not a live control: run at authoring against 70b422f3c, the heartbeat,
+# failing-set-changed, green-close and throttle-pagination scenarios all went RED
+# and the open-issue-body scenario stayed green. Next-rung trigger: the dissolve-on
+# below. When the alert becomes a typed effect row, these scenarios become ordinary
+# .dag witnesses under dag/test/claim and the property stops being unenforced.
+#
 # The open issue describes the CURRENT failure, not the first one. Earlier this
 # workflow wrote the body once at first red and thereafter only appended a
 # throttled heartbeat comment, so the body — the thing a human actually reads —
@@ -59,25 +79,6 @@ permissions:
   actions: read
   contents: read
 jobs:
-  # Deliberately a SEPARATE job, not a step in `alert`. The property it checks is
-  # "does the alert reach its recipient", and a self-check wired ahead of the alert
-  # would answer a failure by suppressing the very notification it is defending —
-  # the failure arm widening into silence, which is the exact shape that produced
-  # this incident. Running beside the alert, it can only ever add a loud red; it
-  # can never subtract an alert.
-  #
-  # HONEST LIMIT: this job reds the falsifier-alert RUN, and nothing watches
-  # falsifier-alert run conclusions today — the same ambient-state problem this
-  # workflow was built to solve, now one level up. It is a real control (it runs,
-  # it reds on a broken alert, and it is discoverable from the run list), but it is
-  # not itself alerted on. That residue closes with the dissolve-on in the script.
-  selfcheck:
-    runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - name: Alert notifies its recipient (executing control)
-        run: node .github/scripts/falsifier-alert-selfcheck.cjs
   alert:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
