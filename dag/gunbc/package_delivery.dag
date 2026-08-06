@@ -1474,7 +1474,7 @@ fn validate_existing_codex_runtime_release(
   receipt: CodexRuntimeBundleReceipt,
   native_executable_rel: NonEmptyStr,
   expected_hex: String,
-  work_dir: FilePath,
+  scratch_dir: FilePath,
 ) -> CodexRuntimeReleaseOutcome {
   match read_codex_runtime_receipt_sidecar(release_root: existing_root) {
     Absent =>
@@ -1516,7 +1516,7 @@ fn validate_existing_codex_runtime_release(
               } else {
                 match observe_package_materialized_tree(
                   root: existing_root,
-                  work_dir: work_dir,
+                  work_dir: scratch_dir,
                 ) {
                   Absent =>
                     CodexRuntimeReleaseReuseMismatch {
@@ -1558,10 +1558,70 @@ fn validate_existing_codex_runtime_release(
   }
 }
 
+data codex_runtime_release_publish_note: String = "Publication uses a UNIQUE same-parent staging directory (mktemp -d .<hex>.publishing.XXXXXX), never a deterministic .<hex>.publishing path. Tree-identity scratch (materialized-tree.canonical) is ALWAYS outside the publishing/release tree — passed as scratch_dir — so validation cannot plant a file into the tree it is measuring. Final install is GNU mv -T (no-target-directory): equivalent to renameat2(RENAME_NOREPLACE) for directories on Linux — never nests into an existing winner. On AlreadyExists, delete the contender staging tree and validate the winner with the same external scratch."
+
+fn relocate_build_root_to_unique_publishing(
+  build_root: FilePath,
+  parent: FilePath,
+  hex: String,
+) -> FilePath? {
+  let template = concat(
+    parent as String,
+    concat("/.", concat(hex, ".publishing.XXXXXX")),
+  ) as FilePath
+  let staged = shell.Mktemp.DirWithTemplate(template: template)
+  if staged.success == false {
+    none
+  } else {
+    let script = retained_foreign(
+      body: concat(
+        "rmdir '",
+        concat(
+          staged.path as String,
+          concat(
+            "' && mv -T '",
+            concat(
+              build_root as String,
+              concat("' '", concat(staged.path as String, "'")),
+            ),
+          ),
+        ),
+      ),
+      reason: "Exclusive unique publishing relocate: rmdir mktemp placeholder then mv -T build root onto that name" as NonEmptyStr,
+    )
+    let run = shell.Exec.Run(script: script)
+    if run.success == false {
+      let _ = shell.Remove.RecursiveForce(path: staged.path)
+      none
+    } else {
+      Present { value: staged.path }
+    }
+  }
+}
+
+fn rename_publishing_noreplace(
+  publishing: FilePath,
+  dest: FilePath,
+) -> Bool {
+  let script = retained_foreign(
+    body: concat(
+      "mv -T '",
+      concat(
+        publishing as String,
+        concat("' '", concat(dest as String, "'")),
+      ),
+    ),
+    reason: "Atomic no-nest publication rename (GNU mv -T / renameat2 RENAME_NOREPLACE equivalent for dirs)" as NonEmptyStr,
+  )
+  shell.Exec.Run(script: script).success
+}
+
 fn release_codex_runtime_bundle_immutable(
   build_root: FilePath,
   receipt: CodexRuntimeBundleReceipt,
   native_executable_rel: NonEmptyStr,
+  scratch_dir: FilePath,
+  release_parent: FilePath,
 ) -> CodexRuntimeReleaseOutcome {
   match content_hash_sha512_hex(hash: receipt.receipt_identity) {
     Absent =>
@@ -1569,7 +1629,7 @@ fn release_codex_runtime_bundle_immutable(
         cause: "receipt identity is not SHA-512" as NonEmptyStr,
       }
     Present { value: hex } => {
-      let parent = codex_runtime_release_parent
+      let parent = release_parent
       let made = shell.Mkdir.Parents(path: parent)
       if made.success == false {
         CodexRuntimeReleaseFailed {
@@ -1584,7 +1644,7 @@ fn release_codex_runtime_bundle_immutable(
             receipt: receipt,
             native_executable_rel: native_executable_rel,
             expected_hex: hex,
-            work_dir: build_root,
+            scratch_dir: scratch_dir,
           )
           match validated {
             CodexRuntimeReleaseReady { root } => {
@@ -1594,58 +1654,62 @@ fn release_codex_runtime_bundle_immutable(
             other => other
           }
         } else {
-          let publishing = concat(
-            parent as String,
-            concat("/.", concat(hex, ".publishing")),
-          ) as FilePath
-          let moved_pub = shell.Move.File(source: build_root, destination: publishing)
-          if moved_pub.success == false {
-            CodexRuntimeReleaseFailed {
-              cause: "move build root to publishing staging refused" as NonEmptyStr,
-            }
-          } else if write_codex_runtime_receipt_sidecar(
-            release_root: publishing,
-            receipt_identity: receipt.receipt_identity,
-          ) == false {
-            let _ = shell.Remove.RecursiveForce(path: publishing)
-            CodexRuntimeReleaseFailed {
-              cause: "receipt sidecar write refused on publishing staging" as NonEmptyStr,
-            }
-          } else {
-            match validate_existing_codex_runtime_release(
-              existing_root: publishing,
-              receipt: receipt,
-              native_executable_rel: native_executable_rel,
-              expected_hex: hex,
-              work_dir: publishing,
-            ) {
-              CodexRuntimeReleaseReady { root: _ } => {
-                let renamed = shell.Move.File(source: publishing, destination: dest)
-                if renamed.success {
-                  CodexRuntimeReleaseReady { root: dest }
-                } else {
-                  let winner = shell.Test.IsDirectory(path: dest)
-                  let _ = shell.Remove.RecursiveForce(path: publishing)
-                  if winner.is_directory {
-                    validate_existing_codex_runtime_release(
-                      existing_root: dest,
-                      receipt: receipt,
-                      native_executable_rel: native_executable_rel,
-                      expected_hex: hex,
-                      work_dir: dest,
-                    )
-                  } else {
-                    CodexRuntimeReleaseFailed {
-                      cause: "atomic rename to content-addressed release refused" as NonEmptyStr,
+          match relocate_build_root_to_unique_publishing(
+            build_root: build_root,
+            parent: parent,
+            hex: hex,
+          ) {
+            Absent =>
+              CodexRuntimeReleaseFailed {
+                cause: "unique publishing staging relocate refused" as NonEmptyStr,
+              }
+            Present { value: publishing } =>
+              if write_codex_runtime_receipt_sidecar(
+                release_root: publishing,
+                receipt_identity: receipt.receipt_identity,
+              ) == false {
+                let _ = shell.Remove.RecursiveForce(path: publishing)
+                CodexRuntimeReleaseFailed {
+                  cause: "receipt sidecar write refused on publishing staging" as NonEmptyStr,
+                }
+              } else {
+                match validate_existing_codex_runtime_release(
+                  existing_root: publishing,
+                  receipt: receipt,
+                  native_executable_rel: native_executable_rel,
+                  expected_hex: hex,
+                  scratch_dir: scratch_dir,
+                ) {
+                  CodexRuntimeReleaseReady { root: _ } => {
+                    if rename_publishing_noreplace(
+                      publishing: publishing,
+                      dest: dest,
+                    ) {
+                      CodexRuntimeReleaseReady { root: dest }
+                    } else {
+                      let winner = shell.Test.IsDirectory(path: dest)
+                      let _ = shell.Remove.RecursiveForce(path: publishing)
+                      if winner.is_directory {
+                        validate_existing_codex_runtime_release(
+                          existing_root: dest,
+                          receipt: receipt,
+                          native_executable_rel: native_executable_rel,
+                          expected_hex: hex,
+                          scratch_dir: scratch_dir,
+                        )
+                      } else {
+                        CodexRuntimeReleaseFailed {
+                          cause: "atomic no-replace rename to content-addressed release refused" as NonEmptyStr,
+                        }
+                      }
                     }
+                  }
+                  mismatch => {
+                    let _ = shell.Remove.RecursiveForce(path: publishing)
+                    mismatch
                   }
                 }
               }
-              mismatch => {
-                let _ = shell.Remove.RecursiveForce(path: publishing)
-                mismatch
-              }
-            }
           }
         }
       }
@@ -1924,6 +1988,8 @@ fn finish_codex_runtime_materialization_after_install(
                                     build_root: build_root,
                                     receipt: receipt,
                                     native_executable_rel: native_executable_rel,
+                                    scratch_dir: staging_dir,
+                                    release_parent: release_parent,
                                   ) {
                                     CodexRuntimeReleaseReady { root: release_root } => {
                                       let _ = shell.Remove.RecursiveForce(path: staging_dir)
