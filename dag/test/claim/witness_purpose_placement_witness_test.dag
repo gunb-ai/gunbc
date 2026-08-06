@@ -33,6 +33,7 @@ import std.realization_schedule {
   SpanUnavailableAtCompare,
   RouteMismatch,
   BasisClockMismatch,
+  WallClockRequired,
 }
 import std.witness_purpose {
   WitnessPurpose,
@@ -203,6 +204,7 @@ test fn compare_within_declared_wall_budget() -> Bool {
     MissingMeasurement => false
     RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
     BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
     MissingBasis => false
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
     MissingSpan => false
@@ -225,6 +227,7 @@ test fn compare_exceeds_declared_wall_budget() -> Bool {
     MissingMeasurement => false
     RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
     BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
     MissingBasis => false
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
     MissingSpan => false
@@ -248,6 +251,7 @@ test fn compare_censored_is_lower_bound_not_verdict() -> Bool {
     MissingMeasurement => false
     RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
     BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
     MissingBasis => false
     MissingSpan => false
     SpanUnavailableAtCompare { cause: _ } => false
@@ -266,6 +270,7 @@ test fn compare_missing_measurement() -> Bool {
     ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
     RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
     BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
     MissingBasis => false
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
     MissingSpan => false
@@ -293,6 +298,7 @@ test fn compare_missing_basis_on_estimated() -> Bool {
     MissingMeasurement => false
     RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
     BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
     MissingSpan => false
     SpanUnavailableAtCompare { cause: _ } => false
@@ -314,6 +320,7 @@ test fn compare_missing_span_on_undeclared() -> Bool {
     MissingMeasurement => false
     RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
     BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
     MissingBasis => false
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
     SpanUnavailableAtCompare { cause: _ } => false
@@ -336,6 +343,7 @@ test fn compare_span_unavailable_at_compare() -> Bool {
     MissingMeasurement => false
     RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
     BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
     MissingBasis => false
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
   }
@@ -357,6 +365,7 @@ test fn compare_route_mismatch() -> Bool {
     ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
     MissingMeasurement => false
     BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
     MissingBasis => false
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
     MissingSpan => false
@@ -375,10 +384,38 @@ test fn compare_basis_clock_mismatch() -> Bool {
     derived_cadence: "per_pr",
   ) {
     BasisClockMismatch { observed_clock: CpuClock, declared_clock: WallClock } => true
+    WallClockRequired { clock: _ } => false
     WithinDeclaredWallBudget => false
     ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
     MissingMeasurement => false
     RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+  }
+}
+
+test fn compare_wall_clock_required_when_cpu_aligned() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    basis: MeasuredAtExactSubject {
+      clock: CpuClock,
+      duration: millisecond(count: 1),
+      receipt: "fixture-cpu-basis",
+    },
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 50),
+      clock: CpuClock,
+    },
+    derived_cadence: "per_pr",
+  ) {
+    WallClockRequired { clock: CpuClock } => true
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
     MissingBasis => false
     CensoredMeasurementLowerBound { floor: _, clock: _ } => false
     MissingSpan => false

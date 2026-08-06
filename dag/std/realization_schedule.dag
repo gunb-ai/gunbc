@@ -110,6 +110,7 @@ type WitnessEnvelopeCompareVerdict
   | SpanUnavailableAtCompare { cause: NonEmptyStr }
   | RouteMismatch { declared_cadence: String, derived_cadence: String }
   | BasisClockMismatch { observed_clock: ClockBasis, declared_clock: ClockBasis }
+  | WallClockRequired { clock: ClockBasis }
 
 type ObservedWallAtSubject
   = ObservedWallPresent { duration: Millisecond, clock: ClockBasis }
@@ -138,6 +139,8 @@ fn compare_span_enrolled_wall_budget(
           MeasuredAtExactSubject { clock: basis_clock, duration: _, receipt: _ } =>
             if !clock_basis_eq(a: clock, b: basis_clock) {
               BasisClockMismatch { observed_clock: clock, declared_clock: basis_clock }
+            } else if !clock_basis_eq(a: clock, b: WallClock) {
+              WallClockRequired { clock: clock }
             } else if millisecond_count(m: duration) > millisecond_count(m: envelope.wall_budget) {
               ExceedsDeclaredWallBudget {
                 observed: duration,
