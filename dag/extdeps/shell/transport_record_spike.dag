@@ -1,0 +1,32 @@
+module extdeps.shell.transport_record_spike
+
+import std.types { String }
+
+type SpikeScript = { body: String } where sole_constructor
+
+service spike.Exec {
+  operation RunStdin {
+    input { script: SpikeScript }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["bash", "-s"]
+      stdin: script.body
+    }
+    exit { 0 => Unit  nonzero => String "spike failed" }
+    mock_response { 0 => { exit_code: 0, success: true, stdout: "", stderr: "" } "hermetic spike" }
+  }
+
+  operation CheckArgv {
+    input { command: SpikeScript }
+    output { exists: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["sh", "-c", "{command.body}"] }
+    exit { 0 => Unit  nonzero => String "spike check failed" }
+    mock_response { 0 => { exists: true } "hermetic spike check" }
+  }
+}
