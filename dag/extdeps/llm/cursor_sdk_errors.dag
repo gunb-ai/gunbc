@@ -1,0 +1,19 @@
+module extdeps.llm.cursor_sdk_errors
+
+import std.types { String, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cursor.com/docs/sdk/typescript"
+  }
+}
+
+data cursor_sdk_error_codes_note: String = "Stable backend codes from @cursor/sdk errors.d.ts @ 1.0.26. RunError.code carries the wire spelling on terminal turns. Single authority for SDK wire codes — consumed by extdeps.llm.cursor_sdk and extdeps.llm.cursor_stream."
+
+data cursor_sdk_error_authentication: NonEmptyStr = "authentication_error" as NonEmptyStr
+data cursor_sdk_error_rate_limit: NonEmptyStr = "rate_limit_error" as NonEmptyStr
+data cursor_sdk_error_agent_not_found: NonEmptyStr = "agent_not_found" as NonEmptyStr
+data cursor_sdk_error_agent_busy: NonEmptyStr = "agent_busy" as NonEmptyStr

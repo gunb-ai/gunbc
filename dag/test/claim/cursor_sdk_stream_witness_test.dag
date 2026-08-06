@@ -17,7 +17,7 @@ import extdeps.llm.cursor_stream {
   cursor_sdk_terminal_is_authentication_error,
   cursor_sdk_terminal_is_rate_limit_error,
 }
-import extdeps.llm.cursor_stream {
+import extdeps.llm.cursor_sdk_errors {
   cursor_sdk_error_authentication,
   cursor_sdk_error_rate_limit,
 }

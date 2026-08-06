@@ -16,9 +16,10 @@ import extdeps.languages.json.parse {
 import extdeps.languages.json.emit {
   JsonValue, JsonObject, JsonString, JsonNumber, JsonBool, JsonArray, JsonNull,
 }
-
-data cursor_sdk_error_authentication: NonEmptyStr = "authentication_error" as NonEmptyStr
-data cursor_sdk_error_rate_limit: NonEmptyStr = "rate_limit_error" as NonEmptyStr
+import extdeps.llm.cursor_sdk_errors {
+  cursor_sdk_error_authentication,
+  cursor_sdk_error_rate_limit,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

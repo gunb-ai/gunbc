@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
-import extdeps.llm.cursor_cli { CursorModelId }
+import extdeps.llm.cursor_cli { CursorModelId, cursor_api_key_env_var }
 import extdeps.llm.cursor_sdk_facts {
   CursorSdkPackageClosure,
   CursorSdkLocalAccountUsageUnobservable,
@@ -13,7 +13,6 @@ import extdeps.llm.cursor_sdk_facts {
   cursor_sdk_local_account_usage_unobservable,
   cursor_sdk_local_usage_missing_capability,
   cursor_sdk_api_key_never_in_argv_note,
-  cursor_sdk_api_key_env_var,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -95,6 +94,10 @@ fn cursor_sdk_materialize_api_key(
   }
 }
 
+fn cursor_sdk_environment_api_key_materialization() -> CursorSdkApiKeyMaterialization {
+  CursorSdkApiKeyFromEnvironment { env_var: cursor_api_key_env_var }
+}
+
 type CursorSdkLocalInvocation {
   credential: CursorSdkLocalCredential
   model_id: CursorModelId
@@ -116,9 +119,9 @@ fn cursor_sdk_local_invocation(
   }
 }
 
-data cursor_sdk_error_codes_note: String = "Stable backend codes from @cursor/sdk errors.d.ts. RunError.code carries the wire spelling on terminal turns."
-
-data cursor_sdk_error_authentication: NonEmptyStr = "authentication_error" as NonEmptyStr
-data cursor_sdk_error_rate_limit: NonEmptyStr = "rate_limit_error" as NonEmptyStr
-data cursor_sdk_error_agent_not_found: NonEmptyStr = "agent_not_found" as NonEmptyStr
-data cursor_sdk_error_agent_busy: NonEmptyStr = "agent_busy" as NonEmptyStr
+import extdeps.llm.cursor_sdk_errors {
+  cursor_sdk_error_authentication,
+  cursor_sdk_error_rate_limit,
+  cursor_sdk_error_agent_not_found,
+  cursor_sdk_error_agent_busy,
+}

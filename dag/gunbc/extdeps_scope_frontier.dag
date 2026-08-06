@@ -181,6 +181,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/darwin/sysctl.dag",
   "dag/extdeps/linux/procfs.dag",
   "dag/extdeps/llm/cursor_sdk.dag",
+  "dag/extdeps/llm/cursor_sdk_errors.dag",
   "dag/extdeps/llm/cursor_sdk_facts.dag",
   "dag/extdeps/llm/cursor_stream.dag",
 ]
