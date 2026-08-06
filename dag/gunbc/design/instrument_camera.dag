@@ -171,7 +171,7 @@ fn wheel_normalized_delta(delta_y: Int, delta_mode: Int, viewport_height: Int) -
   }
 }
 
-fn wheel_integrator_absorb(i: WheelIntegrator, delta_px: Int, threshold: Int) -> WheelIntegrator {
+fn wheel_integrator_absorb(i: WheelIntegrator, delta_px: Int) -> WheelIntegrator {
   WheelIntegrator { travel_px: i.travel_px + delta_px }
 }
 
@@ -195,10 +195,6 @@ fn wheel_integrator_consume_one_step(i: WheelIntegrator, threshold: Int) -> Whee
   } else {
     i
   }
-}
-
-fn wheel_step_direction(i: WheelIntegrator) -> DepthStep {
-  if i.travel_px > 0 { Inward } else { Outward }
 }
 
 fn wheel_owns_scroll_at_clamp(c: ProgramCamera, delta_px: Int) -> Bool {

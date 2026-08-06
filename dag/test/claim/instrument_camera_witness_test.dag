@@ -185,9 +185,8 @@ fn witness_seek_traverses_each_intermediate_detent() -> Bool {
 
 fn witness_wheel_below_threshold_accumulates_without_stepping() -> Bool {
   let i = wheel_integrator_absorb(
-    i: wheel_integrator_absorb(i: wheel_integrator_initial(), delta_px: 30, threshold: wheel_detent_threshold_px),
+    i: wheel_integrator_absorb(i: wheel_integrator_initial(), delta_px: 30),
     delta_px: 30,
-    threshold: wheel_detent_threshold_px,
   )
   wheel_integrator_steps_available(i: i, threshold: wheel_detent_threshold_px) == 0
 }
@@ -196,7 +195,6 @@ fn witness_wheel_threshold_crossing_admits_one_step() -> Bool {
   let i = wheel_integrator_absorb(
     i: wheel_integrator_initial(),
     delta_px: wheel_detent_threshold_px,
-    threshold: wheel_detent_threshold_px,
   )
   wheel_integrator_steps_available(i: i, threshold: wheel_detent_threshold_px) == 1
     && program_depth_key(
