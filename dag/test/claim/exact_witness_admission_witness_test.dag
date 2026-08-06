@@ -67,6 +67,7 @@ fn fixture_exact_admission_rows() -> List<ExplicitWitnessAdmission> {
       entry: fixture_entry,
       f: fixture_expected_red_function,
       kind: CorpusWitnessKind,
+      budget: FastLaneEvalBudget,
       reason: "fixture: an expected-red witness sharing a file with an ordinary green one",
       dissolve_on: "fixture: never - this row is authored by the witness, not by the roster"
     )
@@ -79,6 +80,7 @@ fn fixture_file_grain_admission_rows() -> List<ExplicitWitnessAdmission> {
       entry: fixture_entry,
       f: "",
       kind: CorpusWitnessKind,
+      budget: FastLaneEvalBudget,
       reason: "fixture: the file-grain shape this authority replaced",
       dissolve_on: "fixture: never - control only"
     )
