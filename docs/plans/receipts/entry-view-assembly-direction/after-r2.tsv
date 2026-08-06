@@ -1,0 +1,12 @@
+label	after-r2
+binary_sha256	2edd2f5728046ac328d8354136112522baf8d1ac98e4b48c342e0207b7bc0ea8
+exit	1
+wall_ms	97000
+exclusive_assembly_ms	26873.0
+peak_rss_kb	6081740
+pass	48
+fail	2
+[resolve-summary] 50 resolve(s) in 49635ms; 50 witness(es) in 73ms
+[entry-view-assembly] closure_env keys=50 hits=0 misses=50 root_env keys=57 hits=672 misses=57 rewired keys=50 hits=0 misses=50
+[resolve-split] load=28991.4ms parse=2299.9ms resolve=367.3ms normalize=340.2ms typecheck=12565.8ms parent_envs=4.3ms reconcile_assembly=135.3ms ownership=328.7ms
+[assembly-split] schedule=12.3ms probe=13.8ms graph=5.5ms symbol_index=3696.7ms pool_fill=1748.4ms symbol_index_merge=284.4ms variant_base=190.2ms root_symbol_index=292.6ms root_variant_base=4013.0ms environment=229.6ms diagnostics=3.6ms registry=39.9ms services=1417.3ms rewire_type_env=586.1ms rewire_import_str=6006.8ms rewire_func_env=119.9ms emit_info=1374.1ms other=135.3ms rewire_total_observation=6712.9ms
