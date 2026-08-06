@@ -88,6 +88,10 @@ data dgx_spark_network_ports: List<SystemNetworkPort> = [
   SystemNetworkPort { medium: ShortRangeWireless, product_name: "Bluetooth 5.4", bandwidth: none },
 ]
 
+// dgx_spark_catalog_row's memory field: on a UnifiedShared SoC the GPU-facing and
+// system-facing memory are one physical fact, not two independent ones, so it derives
+// from the already-cited nvidia_gb10_gpu_catalog row instead of re-asserting the same
+// 128 GiB / 273 GB/s literals a second time (review 49122; DESIGN §3 parallel-representation).
 fn dgx_spark_catalog_row(storage_capacity: ByteSize) -> IntegratedComputeSystemCatalogRow {
   IntegratedComputeSystemCatalogRow {
     vendor: nvidia,
@@ -96,10 +100,6 @@ fn dgx_spark_catalog_row(storage_capacity: ByteSize) -> IntegratedComputeSystemC
     cpu_architecture: Aarch64,
     cpu_core_clusters: dgx_spark_cpu_core_clusters,
     gpu: nvidia_gb10_gpu_catalog,
-    // On a UnifiedShared SoC the GPU-facing and system-facing memory are one physical
-    // fact, not two independent ones: derive both fields from the already-cited
-    // nvidia_gb10_gpu_catalog row instead of re-asserting the same 128 GiB / 273 GB/s
-    // literals a second time (review 49122; DESIGN §3 parallel-representation).
     memory: nvidia_gb10_gpu_catalog.memory,
     memory_bus_width: bit_width(count: 256),
     memory_data_rate: hertz(count: 4266000000),
