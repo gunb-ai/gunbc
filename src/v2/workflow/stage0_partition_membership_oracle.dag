@@ -1,6 +1,8 @@
 module v2.workflow.stage0_partition_membership_oracle
 
-import v2.std.algebra { any, fold_list }
+import std.algebra { Empty }
+import v2.std.algebra { any, fold_list, list_append, list_snoc_item }
+import v2.std.collection { List }
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 import v2.workflow.rust_crate_partition {
@@ -98,18 +100,24 @@ fn stage0_partition_membership_string_list_contains(
 fn stage0_partition_membership_source_line_use_crate_modules(line: String) -> List<String> {
   let module_name = stage0_oracle_use_crate_top_module(line: line)
   if module_name == "" {
-    []
+    Empty
   } else {
-    [stage0_oracle_top_level_module(referenced: module_name)]
+    list_snoc_item(
+      xs: Empty,
+      item: stage0_oracle_top_level_module(referenced: module_name)
+    )
   }
 }
 
 fn stage0_partition_membership_source_text_use_crate_modules(text: String) -> List<String> {
   fold_list(
     xs: text |> split(delimiter: "\n"),
-    empty: [],
+    empty: Empty,
     cons: fn(acc, line) {
-      acc |> concat(stage0_partition_membership_source_line_use_crate_modules(line: line))
+      list_append(
+        left: acc,
+        right: stage0_partition_membership_source_line_use_crate_modules(line: line)
+      )
     }
   )
 }
@@ -121,7 +129,10 @@ fn stage0_partition_membership_row_resolvable_module_basenames(
     xs: row.reexport_packages,
     empty: stage0_partition_row_member_basenames_derived(row: row),
     cons: fn(acc, pkg) {
-      acc |> concat(stage0_partition_crate_rows_first_modules_for_package(package_name: pkg))
+      list_append(
+        left: acc,
+        right: stage0_partition_crate_rows_first_modules_for_package(package_name: pkg)
+      )
     }
   )
 }
