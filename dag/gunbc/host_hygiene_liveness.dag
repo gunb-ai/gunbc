@@ -1,7 +1,8 @@
 module gunbc.host_hygiene_liveness
 
 import std.types { String, NonEmptyStr, Bool, List }
-import std.disposition { Disposition, Terminal }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { Second, second, second_count, measure_le }
 import std.realization_reconcile {
   ShowEffectiveRead,
@@ -16,81 +17,88 @@ import std.realization_reconcile {
   reconcile_grounded,
 }
 
-data gunbc_host_hygiene_liveness_scope_disposition: Disposition = Terminal {
-  reason: "Brief 4 deliverable (b): registration liveness. NRestarts is useless as slot health (it counts jobs-served under the ephemeral restart-per-job runner design, 400-950 across slots at diagnosis time, not failure). Real liveness mines the 'Listening for Jobs' journal line per slot and compares its age against a bound; zero-occupancy outages (a 2.5h-class incident) had no liveness signal before this. RED: a stopped listener on one slot must flip the fleet verdict within one cadence — fleet_green_from_listening is any-stale-fails, not majority-fails."
+data gunbc_host_hygiene_liveness_scope_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_runner_connectivity",
+    decl_name: "fleet_runner_connectivity_authority_disposition",
+    field: WholeDeclaration,
+  }
 }
 
-type SlotListeningObservation
-  = ListeningObserved { unit: NonEmptyStr, age: Second }
-  | ListeningNeverSeen { unit: NonEmptyStr }
-  | ListeningReadInaccessible { unit: NonEmptyStr, detail: NonEmptyStr }
+data session_started_observation_is_not_connectivity_note: String = "THIS MODULE IS NOT REGISTRATION CONNECTIVITY. The prior Terminal disposition titled 'registration liveness' was rung inflation: journal 'Listening for Jobs' timestamps emit once per runner incarnation and cannot distinguish a wedged broker session from a healthy one — the 2026-08-06 incident had 15 of 16 GitHub registrations offline while local units stayed active and continued logging that line. Real connectivity joins org-level GitHub registration status to stable slot identities in gunbc.fleet_runner_connectivity. What remains here is a RunnerSessionStarted diagnostic only."
 
-type SlotListeningVerdict
-  = ListeningFresh { unit: NonEmptyStr }
-  | ListeningStale { unit: NonEmptyStr, age: Second, bound: Second }
-  | ListeningUnknown { unit: NonEmptyStr, reason: NonEmptyStr }
+type RunnerSessionStartedObservation
+  = SessionStartedObserved { unit: NonEmptyStr, age: Second }
+  | SessionStartedNeverSeen { unit: NonEmptyStr }
+  | SessionStartedReadInaccessible { unit: NonEmptyStr, detail: NonEmptyStr }
 
-fn slot_listening_verdict(obs: SlotListeningObservation, bound: Second) -> SlotListeningVerdict {
+type RunnerSessionStartedVerdict
+  = SessionStartedFresh { unit: NonEmptyStr }
+  | SessionStartedStale { unit: NonEmptyStr, age: Second, bound: Second }
+  | SessionStartedUnknown { unit: NonEmptyStr, reason: NonEmptyStr }
+
+fn runner_session_started_verdict(obs: RunnerSessionStartedObservation, bound: Second) -> RunnerSessionStartedVerdict {
   match obs {
-    ListeningObserved { unit: u, age: a } =>
+    SessionStartedObserved { unit: u, age: a } =>
       if measure_le(a: a, b: bound) {
-        ListeningFresh { unit: u }
+        SessionStartedFresh { unit: u }
       } else {
-        ListeningStale { unit: u, age: a, bound: bound }
+        SessionStartedStale { unit: u, age: a, bound: bound }
       }
-    ListeningNeverSeen { unit: u } =>
-      ListeningUnknown { unit: u, reason: "no 'Listening for Jobs' line found in the unit's journal" as NonEmptyStr }
-    ListeningReadInaccessible { unit: u, detail: d } => ListeningUnknown { unit: u, reason: d }
+    SessionStartedNeverSeen { unit: u } =>
+      SessionStartedUnknown { unit: u, reason: "no 'Listening for Jobs' line found in the unit's journal" as NonEmptyStr }
+    SessionStartedReadInaccessible { unit: u, detail: d } => SessionStartedUnknown { unit: u, reason: d }
   }
 }
 
-fn slot_listening_verdict_healthy(v: SlotListeningVerdict) -> Bool {
+fn runner_session_started_verdict_fresh(v: RunnerSessionStartedVerdict) -> Bool {
   match v {
-    ListeningFresh { unit: _ } => true
-    ListeningStale { unit: _, age: _, bound: _ } => false
-    ListeningUnknown { unit: _, reason: _ } => false
+    SessionStartedFresh { unit: _ } => true
+    SessionStartedStale { unit: _, age: _, bound: _ } => false
+    SessionStartedUnknown { unit: _, reason: _ } => false
   }
 }
 
-fn slot_listening_verdict_unit(v: SlotListeningVerdict) -> NonEmptyStr {
+fn runner_session_started_verdict_unit(v: RunnerSessionStartedVerdict) -> NonEmptyStr {
   match v {
-    ListeningFresh { unit: u } => u
-    ListeningStale { unit: u, age: _, bound: _ } => u
-    ListeningUnknown { unit: u, reason: _ } => u
+    SessionStartedFresh { unit: u } => u
+    SessionStartedStale { unit: u, age: _, bound: _ } => u
+    SessionStartedUnknown { unit: u, reason: _ } => u
   }
 }
 
-type FleetListeningVerdict
-  = FleetListeningGreen
-  | FleetListeningRed { unhealthy: List<SlotListeningVerdict> }
+type FleetSessionStartedVerdict
+  = FleetSessionStartedGreen
+  | FleetSessionStartedRed { unhealthy: List<RunnerSessionStartedVerdict> }
 
-fn fleet_listening_verdict(verdicts: List<SlotListeningVerdict>) -> FleetListeningVerdict {
-  let unhealthy = filter(verdicts, v => !slot_listening_verdict_healthy(v: v))
+fn fleet_session_started_verdict(verdicts: List<RunnerSessionStartedVerdict>) -> FleetSessionStartedVerdict {
+  let unhealthy = filter(verdicts, v => !runner_session_started_verdict_fresh(v: v))
   if unhealthy.length() == 0 {
-    FleetListeningGreen
+    FleetSessionStartedGreen
   } else {
-    FleetListeningRed { unhealthy: unhealthy }
+    FleetSessionStartedRed { unhealthy: unhealthy }
   }
 }
 
-fn fleet_green_from_listening(verdicts: List<SlotListeningVerdict>) -> Bool {
-  match fleet_listening_verdict(verdicts: verdicts) {
-    FleetListeningGreen => true
-    FleetListeningRed { unhealthy: _ } => false
+fn fleet_green_from_session_started(verdicts: List<RunnerSessionStartedVerdict>) -> Bool {
+  match fleet_session_started_verdict(verdicts: verdicts) {
+    FleetSessionStartedGreen => true
+    FleetSessionStartedRed { unhealthy: _ } => false
   }
 }
 
-type FleetListeningEvidence {
+type FleetSessionStartedEvidence {
   slot_count: Int
 }
 
-fn fleet_listening_check_reason(verdicts: List<SlotListeningVerdict>) -> String? {
-  match fleet_listening_verdict(verdicts: verdicts) {
-    FleetListeningGreen => none
-    FleetListeningRed { unhealthy: u } =>
+fn fleet_session_started_check_reason(verdicts: List<RunnerSessionStartedVerdict>) -> String? {
+  match fleet_session_started_verdict(verdicts: verdicts) {
+    FleetSessionStartedGreen => none
+    FleetSessionStartedRed { unhealthy: u } =>
       Present {
         value: concat(
-          "stale or unknown registration listener(s): ",
+          "stale or unknown session-start listener(s): ",
           concat(
             to_string(u.length()),
             " slot(s) failed freshness",
@@ -100,11 +108,11 @@ fn fleet_listening_check_reason(verdicts: List<SlotListeningVerdict>) -> String?
   }
 }
 
-fn ground_fleet_listening(verdicts: List<SlotListeningVerdict>) -> Grounding<FleetListeningEvidence> {
-  match fleet_listening_check_reason(verdicts: verdicts) {
+fn ground_fleet_session_started(verdicts: List<RunnerSessionStartedVerdict>) -> Grounding<FleetSessionStartedEvidence> {
+  match fleet_session_started_check_reason(verdicts: verdicts) {
     Absent =>
       Grounds {
-        evidence: FleetListeningEvidence {
+        evidence: FleetSessionStartedEvidence {
           slot_count: verdicts.length(),
         }
       }
@@ -112,9 +120,9 @@ fn ground_fleet_listening(verdicts: List<SlotListeningVerdict>) -> Grounding<Fle
   }
 }
 
-fn reconcile_fleet_listening(
-  read: ShowEffectiveRead<List<SlotListeningVerdict>>,
-) -> Reconciliation<String, FleetListeningEvidence> {
+fn reconcile_fleet_session_started(
+  read: ShowEffectiveRead<List<RunnerSessionStartedVerdict>>,
+) -> Reconciliation<String, FleetSessionStartedEvidence> {
   match read {
     ReadAbsent { reason: why } =>
       reconcile_grounded(
@@ -126,17 +134,17 @@ fn reconcile_fleet_listening(
       reconcile_grounded(
         apply_effect: "host_hygiene_liveness.timer",
         show_read: read,
-        grounding: ground_fleet_listening(verdicts: verdicts)
+        grounding: ground_fleet_session_started(verdicts: verdicts)
       )
   }
 }
 
 data gunbc_host_hygiene_liveness_bound: Second = second(1800)
 
-data gunbc_host_hygiene_liveness_show_effective_read: ShowEffectiveRead<List<SlotListeningVerdict>> = ReadAbsent {
-  reason: "no live per-slot journal read has run on the fleet hosts yet; pure .dag model, the live verify is the later increment"
+data gunbc_host_hygiene_liveness_show_effective_read: ShowEffectiveRead<List<RunnerSessionStartedVerdict>> = ReadAbsent {
+  reason: "no live per-slot journal read has run on the fleet hosts yet; pure .dag model — this diagnostic is not registration connectivity (see gunbc.fleet_runner_connectivity)"
 }
 
-fn gunbc_host_hygiene_liveness_evidence() -> Reconciliation<String, FleetListeningEvidence> {
-  reconcile_fleet_listening(read: gunbc_host_hygiene_liveness_show_effective_read)
+fn gunbc_host_hygiene_liveness_evidence() -> Reconciliation<String, FleetSessionStartedEvidence> {
+  reconcile_fleet_session_started(read: gunbc_host_hygiene_liveness_show_effective_read)
 }

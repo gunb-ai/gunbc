@@ -1,0 +1,42 @@
+module test.claim.runner_capacity_plan_witness
+
+import std.logic { Bool }
+import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import gunbc.runner_capacity_plan {
+  runner_capacity_plan,
+  runner_capacity_add_count,
+  PlanReady,
+  PlanRefused,
+}
+import gunbc.fleet_runner_connectivity {
+  organization_runner_roster_evidence,
+  RosterReadUnavailable,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn seven_requested_with_five_observed_plans_exactly_two_additions_per_host() -> Bool {
+  let plan = runner_capacity_plan(
+    srv3_width: 7,
+    srv4_width: 7,
+    roster: organization_runner_roster_evidence()
+  )
+  match plan {
+    PlanReady { hosts: _ } =>
+      runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 2
+        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 2
+    PlanRefused { reason: _ } => false
+  }
+}
+
+test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
+  match runner_capacity_plan(
+    srv3_width: 7,
+    srv4_width: 7,
+    roster: RosterReadUnavailable { reason: "503" }
+  ) {
+    PlanRefused { reason: _ } => true
+    PlanReady { hosts: _ } => false
+  }
+}
