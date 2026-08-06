@@ -57,7 +57,7 @@ data mechanism_single_authority: ConstructionMechanism = SingleAuthority
 data mechanism_realization_dispatch: ConstructionMechanism = RealizationDispatch
 
 data missing_variant_specimen: Disposition = Scaffold {
-  dissolves_to: ZombieMechanism,
+  dissolves_to: Terminal { reason: "phantom-mechanism" },
   bind: DeclarationRef {
     module_path: "test.fixture.decl_facts_reflection.specimens",
     decl_name: "whole_declaration_anchor",
