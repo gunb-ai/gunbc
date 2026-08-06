@@ -352,7 +352,7 @@ test fn witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned() -> Bool {
     && execution_mode_eq(left: v1_claim_scoped_witness_batch.execution_mode, right: Hermetic)
     && (v1_claim_scoped_witness_batch.resource_profile.process_isolation == SequentialChildProcess)
     && match runnable_batch_clamp_source(r: target) {
-      RunnableOwnsBatchClamp { clamp: clamp } => (second_count(s: clamp.overhead) == 360) && (millisecond_count(m: clamp.per_unit) == 0)
+      RunnableOwnsBatchClamp { clamp: clamp } => (second_count(s: clamp.overhead) == 420) && (millisecond_count(m: clamp.per_unit) == 0)
       _ => false
     }
     && witness_layer_roots == ["dag", "src/v2"]

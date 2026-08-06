@@ -3217,6 +3217,18 @@ fn scoped_witness_head_sha() -> Result<String, String> {
     }
 }
 
+fn ensure_scoped_witness_receipt_ready() -> Result<(), String> {
+    let path = Path::new(SCOPED_WITNESS_RECEIPT_PATH);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+    }
+    if !path.exists() {
+        std::fs::write(path, SCOPED_WITNESS_RECEIPT_HEADER)
+            .map_err(|e| format!("write {}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
 fn initialize_scoped_witness_receipt() -> Result<(), String> {
     let path = Path::new(SCOPED_WITNESS_RECEIPT_PATH);
     if let Some(parent) = path.parent() {
@@ -3274,6 +3286,7 @@ fn append_scoped_witness_receipt_rows(
     summary: Option<&DiscoverySummary>,
     scheduling_detail: Option<&str>,
 ) -> Result<(), String> {
+    ensure_scoped_witness_receipt_ready()?;
     let head = scoped_witness_head_sha()?;
     let pairs: Vec<(String, String)> = entries
         .iter()
@@ -9137,7 +9150,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             if floor_worker_role.is_none() {
                 initialize_scoped_witness_receipt()
             } else {
-                Ok(())
+                ensure_scoped_witness_receipt_ready()
             }
         });
         if let Err(msg) = receipt_arm {
