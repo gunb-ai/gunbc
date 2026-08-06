@@ -651,15 +651,15 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   },
   WitnessExclusionRow {
     pattern: "codex_package_delivery_wet_witness_test.dag",
-    classification: BinWitnessWet,
-    reason: "wet real-execution class (install_media_real_execution_wet_note sibling): DownloadToFile + sha512sum DigestFile + npm cache add of admitted bytes + npm ci --offline --ignore-scripts; hermetic discovery refuses by construction. NOT enrolled on the per-PR witness floor (witness-time ruling: long/wet is not the remedy; composed runtime trip is an integration job with a durable receipt).",
-    dissolve_on: excl_bin_wet_dissolve
+    classification: OfflineLocalRecipe,
+    reason: "wet-integration class (wet_integration_offline_note posture): DownloadToFile + sha512sum DigestFile + npm cache add of admitted bytes + npm ci --offline --ignore-scripts + content-addressed release publish. Hermetic discovery refuses by construction. NOT enrolled on bin_witness_wet_entries (witness-time ruling: long/wet is not the remedy; composed runtime trip is an integration job with a durable receipt). Classifying BinWitnessWet without a roster row was UnexecutedDeferredWitness — coverage-by-illusion. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/codex_package_delivery_wet_witness_test.dag --functions <csv>.",
+    dissolve_on: "a scheduled integration/build-verification workflow enrolls these exact fns with durable receipts — then this exclusion deletes and the fns move onto that executing cadence (not the per-PR floor)"
   },
   WitnessExclusionRow {
     pattern: "codex_app_server_press_wet_witness_test.dag",
-    classification: BinWitnessWet,
-    reason: "wet real-execution class: materialize Codex runtime then typed app-server account-standing session; hermetic discovery refuses. NOT enrolled on the per-PR witness floor (witness-time ruling). Composed runtime/account trip is an integration/deployment job outside the floor.",
-    dissolve_on: excl_bin_wet_dissolve
+    classification: OfflineLocalRecipe,
+    reason: "wet-integration class (wet_integration_offline_note posture): materialize Codex runtime then typed app-server account-standing session. Hermetic discovery refuses. NOT enrolled on bin_witness_wet_entries (witness-time ruling). BinWitnessWet-without-roster was UnexecutedDeferredWitness. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/codex_app_server_press_wet_witness_test.dag --function press_account_trip_yields_standing_or_typed_refusal_never_turn_started.",
+    dissolve_on: "a scheduled integration/build-verification workflow enrolls the account-standing trip with a durable receipt — then this exclusion deletes and the fn moves onto that executing cadence (not the per-PR floor)"
   },
   WitnessExclusionRow {
     pattern: "resolution_divergence_silent_pick_gate_witness_test.dag",
