@@ -1,0 +1,28 @@
+module gunbc.plans.affected_set_self_confirmation
+
+import std.types { List }
+import gunbc.plan { Plan, HasTrigger }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, p, li, ul }
+
+fn affected_set_self_confirmation_body() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** 7933B follow-on (operator recut 2026-08-06). 7933A lands the broad stop-line first; this plan is the durable authority shape."),
+    h2(text: "7933B — true self-confirmation"),
+    p(text: "One authority produces host-consumed skip-block data. Mechanism declarations and validating checks are referenced symbolically (not a hardcoded path roster). Host consumes a generated or direct projection — no authored Rust twin. Unresolved mechanism or check identity REFUSES. Adding a new selection mechanism without a validating relation REFUSES."),
+    ul(items: [
+      li(text: "**Dissolves:** `cli_run_affected_set_stop_line_bridge` broad rule (7933A)."),
+      li(text: "**Keeps:** discriminating witnesses — mechanism-touch pair, #7915 repair-receipt pair, scope-only RED control (identity membership, not cardinality)."),
+      li(text: "**Receipt:** `gunbc.affected_set_stop_line` carrier retires when 7933B is live."),
+    ]),
+  ]
+}
+
+data affected_set_self_confirmation_plan: Plan = Plan {
+  slug: "affected-set-self-confirmation",
+  title: "Plan — affected-set true self-confirmation (7933B)",
+  body: affected_set_self_confirmation_body(),
+  dissolution: HasTrigger {
+    text: "7933B authority live: symbolic mechanism refs, generated/direct host projection, refusal on unresolved mechanism or check identity, refusal when a new selection mechanism lacks a validating relation — replaces the 7933A broad stop-line in cli_run.rs."
+  }
+}

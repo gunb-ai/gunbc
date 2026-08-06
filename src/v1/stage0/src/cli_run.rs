@@ -1138,10 +1138,10 @@ mod process_workspace_root_tests {
     }
 
     #[test]
-    fn affected_set_self_confirmation_bridge_scaffold_marker_is_declared() {
+    fn affected_set_stop_line_bridge_scaffold_marker_is_declared() {
         assert_eq!(
-            super::CLI_RUN_AFFECTED_SET_SELF_CONFIRMATION_BRIDGE_MARKER,
-            "cli_run_affected_set_self_confirmation_bridge"
+            super::CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER,
+            "cli_run_affected_set_stop_line_bridge"
         );
     }
 
@@ -5920,7 +5920,7 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_paths) {
         return Ok(false);
     }
-    if self_relevant_checks_blocks_skip(entry_path, touched_paths) {
+    if compile_clean_broad_stop_line_blocks_skip(entry_path, touched_paths) {
         return Ok(false);
     }
     Ok(true)
@@ -19971,57 +19971,25 @@ fn declared_source_refs_blocks_skip(axis: DeclaredSourceRefAxis) -> bool {
     )
 }
 
-// SCAFFOLD (§7 HAND-RUST — `cli_run_affected_set_self_confirmation_bridge`):
-// Lane: affected-set self-confirmation (calm-fox-44) — host-fed self-relevant check
-// identity derivation for floor discovery admission until discovery admission consumes
-// `v2.lens.affected_set.self_confirmation` directly.
+// SCAFFOLD (§7 HAND-RUST — `cli_run_affected_set_stop_line_bridge`):
+// Lane: 7933A temporary safety stop-line (calm-fox-44) — any non-docs .dag touch blocks
+// discovery skip for compile-clean shard_a and scope witness entries. BROAD interim rule,
+// not precise self-confirmation; see `gunbc.affected_set_stop_line` and 7933B plan.
 // DELETE WHEN dissolved: `COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY`,
-// `COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY`, `AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY`,
-// `SELECTION_MECHANISM_SELF_RELEVANT_ROWS`, `compile_clean_touched_path_norm`,
+// `COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY`, `compile_clean_touched_path_norm`,
 // `compile_clean_touched_path_is_docs_only`, `compile_clean_touched_path_is_dag_source`,
-// `compile_clean_verdict_affecting_touch`, `compile_clean_verdict_derived_self_relevant_entries`,
-// `mechanism_derived_self_relevant_entries`, `derive_self_relevant_check_identities`,
-// `self_relevant_checks_blocks_skip`, and `CLI_RUN_AFFECTED_SET_SELF_CONFIRMATION_BRIDGE_MARKER`.
-// Mid-life parallel representations (no drift check until dissolution): roster rows mirror
-// `v2.lens.affected_set.self_confirmation`; docs/dag classification mirrors
-// `v2.workflow.floor_compile_clean_predicates`.
-// Receipt: `rg 'pub\(crate\) const CLI_RUN_AFFECTED_SET_SELF_CONFIRMATION_BRIDGE_MARKER'
-// src/v1/stage0/src/cli_run.rs` == 1 until deletion; witness
-// `affected_set_self_confirmation_test.dag`.
-pub(crate) const CLI_RUN_AFFECTED_SET_SELF_CONFIRMATION_BRIDGE_MARKER: &str =
-    "cli_run_affected_set_self_confirmation_bridge";
+// `compile_clean_verdict_affecting_touch`, `compile_clean_broad_stop_line_blocks_skip`,
+// and `CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER`.
+// Receipt: `rg 'pub\(crate\) const CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER'
+// src/v1/stage0/src/cli_run.rs` == 1 until deletion; executing witness
+// `cargo test -p v1-compiler --lib stop_line`.
+pub(crate) const CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER: &str =
+    "cli_run_affected_set_stop_line_bridge";
 
 const COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY: &str =
     "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag";
 const COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY: &str =
     "dag/test/claim/dag_compile_clean_scope_witness_test.dag";
-const AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY: &str =
-    "src/v2/test/claim/affected_set_universe_test.dag";
-
-struct SelfRelevantCheckRow {
-    validating_entry: &'static str,
-    mechanism_module_paths: &'static [&'static str],
-}
-
-// Mirror `selection_mechanism_self_relevant_rows` in
-// `v2.lens.affected_set.self_confirmation` — per-check mechanism paths, not one flat union.
-const SELECTION_MECHANISM_SELF_RELEVANT_ROWS: &[SelfRelevantCheckRow] = &[
-    SelfRelevantCheckRow {
-        validating_entry: COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
-        mechanism_module_paths: &[
-            "src/v2/lens/module_graph.dag",
-            "src/v2/lens/affected_set.dag",
-            "src/v2/lens/affected_set/entry_selection.dag",
-            "src/v2/lens/affected_set/declared_source_ref_selection.dag",
-            "dag/tools/dag_compile_clean_scope.dag",
-            "src/v2/workflow/floor_compile_clean_predicates.dag",
-        ],
-    },
-    SelfRelevantCheckRow {
-        validating_entry: AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY,
-        mechanism_module_paths: &["src/v2/lens/affected_set.dag"],
-    },
-];
 
 fn compile_clean_touched_path_norm(path: &str) -> &str {
     path.strip_prefix("./").unwrap_or(path)
@@ -20045,53 +20013,17 @@ fn compile_clean_verdict_affecting_touch(touched_paths: &[String]) -> bool {
             .any(|p| compile_clean_touched_path_is_dag_source(p))
 }
 
-fn mechanism_derived_self_relevant_entries(touched_paths: &[String]) -> Vec<&'static str> {
-    let mut out = Vec::new();
-    for row in SELECTION_MECHANISM_SELF_RELEVANT_ROWS {
-        let row_touched = touched_paths.iter().any(|touched| {
-            row.mechanism_module_paths
-                .iter()
-                .any(|path| repo_paths_match_touched(path, touched))
-        });
-        if row_touched && !out.contains(&row.validating_entry) {
-            out.push(row.validating_entry);
-        }
+fn compile_clean_broad_stop_line_blocks_skip(entry_path: &str, touched_paths: &[String]) -> bool {
+    if !compile_clean_verdict_affecting_touch(touched_paths) {
+        return false;
     }
-    out.sort();
-    out.dedup();
-    out
-}
-
-fn compile_clean_verdict_derived_self_relevant_entries(
-    touched_paths: &[String],
-) -> Vec<&'static str> {
-    if compile_clean_verdict_affecting_touch(touched_paths) {
-        vec![
-            COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
-            COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
-        ]
-    } else {
-        Vec::new()
-    }
-}
-
-fn derive_self_relevant_check_identities(touched_paths: &[String]) -> Vec<&'static str> {
-    let mut out = mechanism_derived_self_relevant_entries(touched_paths);
-    for entry in compile_clean_verdict_derived_self_relevant_entries(touched_paths) {
-        if !out.contains(&entry) {
-            out.push(entry);
-        }
-    }
-    out.sort();
-    out.dedup();
-    out
-}
-
-fn self_relevant_checks_blocks_skip(entry_path: &str, touched_paths: &[String]) -> bool {
     let entry_rel = workspace_relative_repo_path(entry_path);
-    derive_self_relevant_check_identities(touched_paths)
-        .iter()
-        .any(|check| workspace_relative_repo_path(check) == entry_rel)
+    [
+        COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+        COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
+    ]
+    .iter()
+    .any(|check| workspace_relative_repo_path(check) == entry_rel)
 }
 
 fn entry_has_declared_source_refs(entry_path: &str, facts: &ModuleGraphFactsLive) -> bool {
@@ -20270,7 +20202,7 @@ fn entry_qualifies_for_skip_without_resolve(
     } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_entry_paths) {
         return Ok(false);
     }
-    if self_relevant_checks_blocks_skip(entry_path, touched_entry_paths) {
+    if compile_clean_broad_stop_line_blocks_skip(entry_path, touched_entry_paths) {
         return Ok(false);
     }
     if !diff_edits.overlapping_data_items.is_empty() {
@@ -35013,126 +34945,83 @@ mod witness_layer_roots_compile_clean_tests {
         );
     }
 
+    fn repair_receipt_touched_paths() -> Vec<String> {
+        vec![
+            "dag/extdeps/systems/nvidia.dag".to_string(),
+            "dag/test/claim/generated_artifact_drift_test.dag".to_string(),
+        ]
+    }
+
     /// #7915 receipt: repair PR touched only nvidia.dag and generated_artifact_drift_test.dag;
-    /// compile_clean_shard_a must be in the derived self-relevant identity set (not import-closure).
+    /// broad stop-line must block skip for compile_clean_shard_a (import-closure would miss it).
     #[test]
-    fn self_confirmation_repair_receipt_derives_shard_a_identity() {
-        let touched = vec![
-            "dag/extdeps/systems/nvidia.dag".to_string(),
-            "dag/test/claim/generated_artifact_drift_test.dag".to_string(),
-        ];
-        let derived = derive_self_relevant_check_identities(&touched);
-        assert!(
-            derived
-                .iter()
-                .any(|e| *e == COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY),
-            "repair receipt must derive shard-a identity: {derived:?}"
-        );
-        assert!(self_relevant_checks_blocks_skip(
+    fn stop_line_repair_receipt_blocks_shard_a_skip() {
+        let touched = repair_receipt_touched_paths();
+        assert!(compile_clean_broad_stop_line_blocks_skip(
             COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
             &touched
         ));
     }
 
-    /// Mechanism touch: module_graph.dag change must derive scope witness identity.
+    /// #7915 receipt: scope witness must also remain eligible on the same touch set.
     #[test]
-    fn self_confirmation_mechanism_touch_derives_scope_check() {
+    fn stop_line_repair_receipt_blocks_scope_skip() {
+        let touched = repair_receipt_touched_paths();
+        assert!(compile_clean_broad_stop_line_blocks_skip(
+            COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
+            &touched
+        ));
+    }
+
+    /// Mechanism-touch pair (7933A): any non-docs .dag change blocks scope witness skip.
+    #[test]
+    fn stop_line_mechanism_touch_dag_blocks_scope_skip() {
         let touched = vec!["src/v2/lens/module_graph.dag".to_string()];
-        let derived = derive_self_relevant_check_identities(&touched);
-        assert!(
-            derived
-                .iter()
-                .any(|e| *e == COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY),
-            "mechanism touch must derive scope witness: {derived:?}"
-        );
-        assert!(
-            !derived
-                .iter()
-                .any(|e| *e == AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY),
-            "module_graph touch must not derive universe witness (per-row paths): {derived:?}"
-        );
-    }
-
-    /// Per-row parity: dag/tools/dag_compile_clean_scope.dag must match by repo path, not module id.
-    #[test]
-    fn self_confirmation_mechanism_touch_compile_clean_scope_tool_derives_scope() {
-        let touched = vec!["dag/tools/dag_compile_clean_scope.dag".to_string()];
-        let derived = derive_self_relevant_check_identities(&touched);
-        assert!(
-            derived
-                .iter()
-                .any(|e| *e == COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY),
-            "compile_clean_scope tool touch must derive scope witness: {derived:?}"
-        );
-        assert!(self_relevant_checks_blocks_skip(
+        assert!(compile_clean_broad_stop_line_blocks_skip(
             COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
             &touched
         ));
     }
 
-    /// Per-row parity with `v2.lens.affected_set.self_confirmation`: affected_set.dag touch
-    /// derives universe + scope + shard_a (verdict axis), not universe on other mechanism paths.
+    /// Mechanism-touch pair (7933A): same .dag touch blocks shard_a skip under the broad rule.
     #[test]
-    fn self_confirmation_mechanism_touch_affected_set_derives_universe_identity() {
-        let touched = vec!["src/v2/lens/affected_set.dag".to_string()];
-        let derived = derive_self_relevant_check_identities(&touched);
-        for expected in [
-            AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY,
-            COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
+    fn stop_line_mechanism_touch_dag_blocks_shard_a_skip() {
+        let touched = vec!["src/v2/lens/module_graph.dag".to_string()];
+        assert!(compile_clean_broad_stop_line_blocks_skip(
             COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
-        ] {
-            assert!(
-                derived.iter().any(|e| *e == expected),
-                "affected_set touch must derive {expected}: {derived:?}"
-            );
-        }
+            &touched
+        ));
     }
 
-    /// Per-row parity: entry_selection.dag derives scope + shard_a only, not universe.
+    /// Docs-only touches must not trigger the broad stop-line.
     #[test]
-    fn self_confirmation_mechanism_touch_entry_selection_omits_universe() {
-        let touched = vec!["src/v2/lens/affected_set/entry_selection.dag".to_string()];
-        let derived = derive_self_relevant_check_identities(&touched);
-        assert!(
-            derived
-                .iter()
-                .any(|e| *e == COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY),
-            "entry_selection touch must derive scope witness: {derived:?}"
-        );
-        assert!(
-            !derived
-                .iter()
-                .any(|e| *e == AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY),
-            "entry_selection touch must not derive universe witness: {derived:?}"
-        );
+    fn stop_line_docs_only_touch_does_not_block() {
+        let touched = vec!["docs/plans/foo.md".to_string()];
+        assert!(!compile_clean_broad_stop_line_blocks_skip(
+            COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+            &touched
+        ));
     }
 
-    /// RED control: a broken derivation that omits shard_a must not block skip for the repair receipt.
+    /// RED control: a scope-only rule would not block shard_a; broad stop-line does on #7915 receipt.
     #[test]
-    fn self_confirmation_repair_receipt_red_control_shard_a_absent() {
-        let touched = vec![
-            "dag/extdeps/systems/nvidia.dag".to_string(),
-            "dag/test/claim/generated_artifact_drift_test.dag".to_string(),
-        ];
-        let scope_only = [COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY];
+    fn stop_line_repair_receipt_red_control_scope_only_omits_shard_a() {
+        let touched = repair_receipt_touched_paths();
+        let scope_only_blocks_shard_a = |entry: &str| {
+            compile_clean_verdict_affecting_touch(&touched)
+                && workspace_relative_repo_path(entry)
+                    == workspace_relative_repo_path(COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY)
+        };
         assert!(
-            !scope_only
-                .iter()
-                .any(|e| *e == COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY),
-            "synthetic RED subject must omit shard-a"
+            !scope_only_blocks_shard_a(COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY),
+            "scope-only subject must omit shard-a"
         );
         assert!(
-            !scope_only.iter().any(|e| {
-                workspace_relative_repo_path(e)
-                    == workspace_relative_repo_path(COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY)
-            }),
-            "scope-only identity set must not contain shard-a"
-        );
-        assert!(
-            derive_self_relevant_check_identities(&touched)
-                .iter()
-                .any(|e| *e == COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY),
-            "full derivation must include shard-a — RED control is the scope-only subject above"
+            compile_clean_broad_stop_line_blocks_skip(
+                COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+                &touched
+            ),
+            "broad stop-line must block shard-a on repair receipt"
         );
     }
 
