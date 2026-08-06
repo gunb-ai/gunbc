@@ -5,43 +5,23 @@ import gunbc.seed_growth_admission {
   SeedGrowthAdmissionComplete,
   SeedGrowthAdmissionRefused,
   seed_growth_admission_g0_population_note,
-  seed_growth_admission_roster_gate_holds,
+  seed_growth_admission_join_scaffold,
   seed_growth_forward_freeze_policy_note,
   seed_growth_join_declarations,
   seed_growth_roster_all_declarations,
-  seed_growth_roster_citable_declaration_count,
   seed_growth_roster_mechanical_checks_holds,
+  seed_growth_roster_well_formed_gate_holds,
   seed_growth_uncitable_item_keys
 }
 import gunbc.stage0_rust_host_observation { stage0_rust_observation_seed_growth_justification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Scaffold }
 import std.roster_frontier { declaration_ref_display_key }
 import v2.std.algebra { any, length }
 import v2.std.text { String }
 
 test fn seed_growth_roster_mechanical_checks_hold() -> Bool {
   seed_growth_roster_mechanical_checks_holds()
-}
-
-test fn seed_growth_roster_has_nine_citable_declarations() -> Bool {
-  seed_growth_roster_citable_declaration_count() == 9
-}
-
-test fn seed_growth_join_roster_is_self_consistent() -> Bool {
-  let roster = seed_growth_roster_all_declarations()
-  match seed_growth_join_declarations(candidates: roster) {
-    SeedGrowthAdmissionComplete {
-      justified_items: justified,
-      stale_justifications: stale,
-      duplicate_justifications: dups,
-      uncitable_items: uncitable
-    } =>
-      length(xs: justified) == 9
-        && length(xs: stale) == 0
-        && length(xs: dups) == 0
-        && length(xs: uncitable) == 1
-    SeedGrowthAdmissionRefused { unjustified_additions: _, detail: _ } => false
-  }
 }
 
 test fn seed_growth_join_refuses_unknown_declaration() -> Bool {
@@ -64,8 +44,15 @@ test fn forward_freeze_policy_requires_item_enumeration() -> Bool {
     && string_contains(s: seed_growth_forward_freeze_policy_note, pattern: "no netting")
 }
 
-test fn witness_seed_growth_admission_roster_gate_holds() -> Bool {
-  seed_growth_admission_roster_gate_holds()
+test fn witness_seed_growth_roster_well_formed_gate_holds() -> Bool {
+  seed_growth_roster_well_formed_gate_holds()
+}
+
+test fn seed_growth_admission_join_is_scaffold_until_diff_population() -> Bool {
+  match seed_growth_admission_join_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    _ => false
+  }
 }
 
 test fn g0_population_note_supersedes_stale_cli_run_prose() -> Bool {

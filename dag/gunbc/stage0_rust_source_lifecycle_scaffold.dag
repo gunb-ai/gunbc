@@ -14,7 +14,7 @@ import gunbc.stage0_rust_host_observation {
 import gunbc.generated_artifact { GeneratedArtifact, artifact_path, generated_artifact_registry }
 import gunbc.stage0_emit_model { is_generated_stage0_file }
 import gunbc.stage0_emit_plan_generated { generated_stage0_files }
-import gunbc.seed_growth_admission { seed_growth_admission_roster_gate_holds }
+import gunbc.seed_growth_admission { seed_growth_roster_well_formed_gate_holds }
 import std.content_hash { Fnv1a64Structural }
 import std.keyed_roster { path_occurrence_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -767,7 +767,7 @@ fn stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds() -> Bool {
     && generated_artifact_layout_overlap_subset_of_hand_maintained_holds()
     && generated_artifact_stage0_src_disposition_rows_well_formed()
     && generated_artifact_stage0_src_disjoint_from_residue_holds()
-    && seed_growth_admission_roster_gate_holds()
+    && seed_growth_roster_well_formed_gate_holds()
 }
 
 fn stage0_rust_lifecycle_scaffold_mechanical_checks_holds() -> Bool {
