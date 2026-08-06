@@ -10,8 +10,7 @@ import gunbc.seed_growth_admission {
   seed_growth_join_declarations,
   seed_growth_roster_all_declarations,
   seed_growth_roster_mechanical_checks_holds,
-  seed_growth_roster_well_formed_gate_holds,
-  seed_growth_uncitable_item_keys
+  seed_growth_roster_well_formed_gate_holds
 }
 import gunbc.stage0_rust_host_observation { stage0_rust_observation_seed_growth_justification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

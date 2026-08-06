@@ -59,10 +59,6 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
   ]
 }
 
-fn seed_growth_justification_declaration_count(j: SeedGrowthJustification) -> Int {
-  length(xs: j.hand_authored_declarations)
-}
-
 fn seed_growth_justification_well_formed(j: SeedGrowthJustification) -> Bool {
   j.reason != ""
     && j.trigger != ""
@@ -75,10 +71,6 @@ fn seed_growth_roster_all_declarations() -> List<DeclarationRef> {
     left: stage0_rust_observation_seed_growth_justification.hand_authored_declarations,
     right: observation_scoped_run_seed_growth_justification().hand_authored_declarations
   )
-}
-
-fn seed_growth_roster_citable_declaration_count() -> Int {
-  length(xs: seed_growth_roster_all_declarations())
 }
 
 fn seed_growth_roster_declaration_keys() -> List<String> {
