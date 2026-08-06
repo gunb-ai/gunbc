@@ -3,6 +3,23 @@ module v2.test.lens_grounding_ledger.grounding_ledger_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+data sample_targets: List<DeclarationRef> = [
+  DeclarationRef {
+    module_path: "extdeps.uri",
+    decl_name: "Uri",
+    field: WholeDeclaration,
+  },
+]
+
+fn sample_question(site_qn: String, field: String, coincides_with: String) -> GroundingQuestion {
+  grounding_question_for(
+    site_qn: site_qn,
+    field: field,
+    coincides_with: coincides_with,
+    admissible_targets: sample_targets
+  )
+}
+
 fn verdict_is_stay_string_decode_none(v: GroundingVerdict) -> Bool {
   match v {
     StayString { reason } => match reason { DecodeReturnedNone => true  UnrecognizedSiblingArm => false }
@@ -11,26 +28,12 @@ fn verdict_is_stay_string_decode_none(v: GroundingVerdict) -> Bool {
     ReferencePath => false
     Role => false
     GenuineProse => false
-    PendingJudge => false
   }
 }
 
 fn verdict_is_stay_string_unrecognized(v: GroundingVerdict) -> Bool {
   match v {
     StayString { reason } => match reason { DecodeReturnedNone => false  UnrecognizedSiblingArm => true }
-    Reference { authority: _ } => false
-    ReferenceUri => false
-    ReferencePath => false
-    Role => false
-    GenuineProse => false
-    PendingJudge => false
-  }
-}
-
-fn verdict_is_pending_judge(v: GroundingVerdict) -> Bool {
-  match v {
-    PendingJudge => true
-    StayString { reason: _ } => false
     Reference { authority: _ } => false
     ReferenceUri => false
     ReferencePath => false
@@ -47,65 +50,146 @@ fn verdict_is_any_reference(v: GroundingVerdict) -> Bool {
     StayString { reason: _ } => false
     Role => false
     GenuineProse => false
-    PendingJudge => false
   }
 }
 
-fn decided_by_is_structural(d: DecidedBy) -> Bool {
+fn decision_verdict_is(d: GroundingDecision, f: fn(GroundingVerdict) -> Bool) -> Bool {
   match d {
-    StructuralRule => true
-    Judge { rationale: _ } => false
-    OperatorReview { note: _ } => false
+    DecisionReached { judgment: j } => f(j.verdict)
+    JudgeRequired { question: _ } => false
+    DecisionRefused { cause: _ } => false
+  }
+}
+
+fn decision_is_structurally_decided(d: GroundingDecision) -> Bool {
+  match d {
+    DecisionReached { judgment: j } => judgment_authority_is_structural(a: j.decided_by)
+    JudgeRequired { question: _ } => false
+    DecisionRefused { cause: _ } => false
   }
 }
 
 test fn decode_optional_forces_stay_string() -> Bool {
-  verdict_is_stay_string_decode_none(
-    v: residue_forced_verdict(sibling_decode_optional: true, has_unrecognized_sibling: false)
+  decision_verdict_is(
+    d: residue_forced_decision(
+      question: sample_question(site_qn: "v2.model.Widget", field: "owner", coincides_with: "v2.model.Owner"),
+      sibling_decode_optional: true,
+      has_unrecognized_sibling: false
+    ),
+    f: verdict_is_stay_string_decode_none
   )
 }
 
 test fn unrecognized_sibling_forces_stay_string() -> Bool {
-  verdict_is_stay_string_unrecognized(
-    v: residue_forced_verdict(sibling_decode_optional: false, has_unrecognized_sibling: true)
+  decision_verdict_is(
+    d: residue_forced_decision(
+      question: sample_question(site_qn: "v2.model.Widget", field: "owner", coincides_with: "v2.model.Owner"),
+      sibling_decode_optional: false,
+      has_unrecognized_sibling: true
+    ),
+    f: verdict_is_stay_string_unrecognized
   )
 }
 
-test fn clean_candidate_routes_to_pending_judge() -> Bool {
-  verdict_is_pending_judge(
-    v: residue_forced_verdict(sibling_decode_optional: false, has_unrecognized_sibling: false)
+data clean_candidate_note: String = "The recut's load-bearing conjunct. This case previously returned PendingJudge -- a member of GroundingVerdict, so a consumer folding over verdicts saw it as an answer. It now returns JudgeRequired, which carries no verdict at all, and the question it carries is the bounded one the judge will be asked. The second and third conjuncts are what make this more than a rename: an undecided site is NOT reached, so it can never be counted as coverage."
+
+test fn clean_candidate_routes_to_judge_required_not_a_verdict() -> Bool {
+  let d = residue_forced_decision(
+    question: sample_question(site_qn: "v2.model.Link", field: "href", coincides_with: "extdeps.uri.Uri"),
+    sibling_decode_optional: false,
+    has_unrecognized_sibling: false
   )
+  judgment_awaits_judge(d: d)
+    && !judgment_is_reached(d: d)
+    && !decision_verdict_is(d: d, f: verdict_is_any_reference)
+}
+
+data judge_required_is_not_clearance_note: String = "The RED control for the wrong-clear class. A JudgeRequired decision must never satisfy the predicate a promotion bar reads as coverage, because that is exactly how an unreviewed tree comes to report itself as reviewed. Asserted against the SAME decision value that the clean-candidate conjunct above produces, so the two cannot drift apart."
+
+test fn judge_required_is_never_counted_as_a_clearance() -> Bool {
+  let undecided = residue_forced_decision(
+    question: sample_question(site_qn: "v2.model.Link", field: "href", coincides_with: "extdeps.uri.Uri"),
+    sibling_decode_optional: false,
+    has_unrecognized_sibling: false
+  )
+  let decided = residue_forced_decision(
+    question: sample_question(site_qn: "v2.model.Widget", field: "owner", coincides_with: "v2.model.Owner"),
+    sibling_decode_optional: true,
+    has_unrecognized_sibling: false
+  )
+  !judgment_is_reached(d: undecided)
+    && judgment_is_reached(d: decided)
+    && !judgment_awaits_judge(d: decided)
+}
+
+test fn refusal_is_distinct_from_both_answer_and_question() -> Bool {
+  let refused = DecisionRefused {
+    cause: CoincidenceTargetUnresolved { target: "extdeps.uri.Uri" }
+  }
+  judgment_refused(d: refused)
+    && !judgment_is_reached(d: refused)
+    && !judgment_awaits_judge(d: refused)
 }
 
 test fn residue_is_never_a_reference_verdict() -> Bool {
-  !verdict_is_any_reference(
-    v: residue_forced_verdict(sibling_decode_optional: true, has_unrecognized_sibling: false)
+  !decision_verdict_is(
+    d: residue_forced_decision(
+      question: sample_question(site_qn: "a", field: "b", coincides_with: "c"),
+      sibling_decode_optional: true,
+      has_unrecognized_sibling: false
+    ),
+    f: verdict_is_any_reference
   )
-    && !verdict_is_any_reference(
-      v: residue_forced_verdict(sibling_decode_optional: false, has_unrecognized_sibling: true)
+    && !decision_verdict_is(
+      d: residue_forced_decision(
+        question: sample_question(site_qn: "a", field: "b", coincides_with: "c"),
+        sibling_decode_optional: false,
+        has_unrecognized_sibling: true
+      ),
+      f: verdict_is_any_reference
     )
 }
 
 test fn structural_entry_residue_verdict_is_stay_string() -> Bool {
-  verdict_is_stay_string_decode_none(
-    v: structural_ledger_entry(
+  decision_verdict_is(
+    d: structural_ledger_entry(
       site_qn: "v2.model.Widget",
       field: "owner",
       coincides_with: "v2.model.Owner",
+      admissible_targets: sample_targets,
       sibling_decode_optional: true,
       has_unrecognized_sibling: false
-    ).verdict
+    ).decision,
+    f: verdict_is_stay_string_decode_none
   )
 }
 
+data structural_authority_note: String = "Provenance now comes from the shared kernel rather than a local DecidedBy enum, and this conjunct pins that the structural arm is what a mechanically forced outcome carries. It is also the control for the layering claim: the authority is a DeclarationRef naming the rule that decided, so a judgment can be traced to the code that produced it rather than to a label."
+
 test fn structural_entry_is_decided_by_structural_rule() -> Bool {
-  decided_by_is_structural(
+  decision_is_structurally_decided(
     d: structural_ledger_entry(
       site_qn: "v2.model.Link",
       field: "href",
       coincides_with: "extdeps.uri.Uri",
-      sibling_decode_optional: false,
+      admissible_targets: sample_targets,
+      sibling_decode_optional: true,
       has_unrecognized_sibling: false
-    ).decided_by
+    ).decision
   )
+}
+
+data question_is_bounded_note: String = "The judge's output space is closed by the QUESTION, not by trusting its answer. This asserts the bounded question actually carries the mechanically supplied candidates, which is what makes 'the model may not invent a target' a property of the input rather than a rule someone hopes the model follows."
+
+test fn judge_required_carries_the_admissible_targets() -> Bool {
+  match residue_forced_decision(
+    question: sample_question(site_qn: "v2.model.Link", field: "href", coincides_with: "extdeps.uri.Uri"),
+    sibling_decode_optional: false,
+    has_unrecognized_sibling: false
+  ) {
+    JudgeRequired { question: q } =>
+      q.admissible_targets.length() == 1 && q.site_qn == "v2.model.Link" && q.field == "href"
+    DecisionReached { judgment: _ } => false
+    DecisionRefused { cause: _ } => false
+  }
 }
