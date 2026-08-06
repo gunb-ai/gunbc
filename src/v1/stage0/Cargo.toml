@@ -6,6 +6,7 @@ edition = "2021"
 [features]
 default = []
 text_lookup_work_counter = []
+# Test-only interpreter instrumentation (default-off until armed). Compiled into shared release artifact; inert at runtime until armed.
 interp_test_witness = []
 test_hooks = []
 
