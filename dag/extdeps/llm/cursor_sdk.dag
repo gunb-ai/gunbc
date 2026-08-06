@@ -1,19 +1,11 @@
 module extdeps.llm.cursor_sdk
 
-import std.types { String, NonEmptyStr, Bool, FilePath }
+import std.types { String, NonEmptyStr, FilePath }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.llm.cursor_cli { CursorModelId, cursor_api_key_env_var }
-import extdeps.llm.cursor_sdk_facts {
-  CursorSdkPackageClosure,
-  CursorSdkLocalAccountUsageUnobservable,
-  cursor_sdk_local_package_closure,
-  cursor_sdk_local_account_usage_unobservable,
-  cursor_sdk_local_usage_missing_capability,
-  cursor_sdk_api_key_never_in_argv_note,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -117,11 +109,4 @@ fn cursor_sdk_local_invocation(
     workspace: CursorSdkLocalWorkspace { cwd: cwd },
     prompt: prompt,
   }
-}
-
-import extdeps.llm.cursor_sdk_errors {
-  cursor_sdk_error_authentication,
-  cursor_sdk_error_rate_limit,
-  cursor_sdk_error_agent_not_found,
-  cursor_sdk_error_agent_busy,
 }

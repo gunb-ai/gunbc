@@ -16,6 +16,11 @@ import gunbc.cursor_sdk_local_binding {
   cursor_sdk_local_credential_from_dispatch,
   cursor_sdk_materialization_uses_secret_ref,
 }
+import extdeps.llm.cursor_sdk {
+  CursorSdkApiKeyFromEnvironment,
+  cursor_sdk_environment_api_key_materialization,
+}
+import extdeps.llm.cursor_cli { cursor_api_key_env_var }
 
 data witness_secret_ref: SecretRef = SecretRef {
   project: "gunbc-dashboard" as GcpProjectId,
@@ -51,8 +56,16 @@ test fn dispatch_secret_ref_materializes_via_secret_ref_arm() -> Bool {
   }
 }
 
+test fn environment_materialization_consumes_cli_env_var() -> Bool {
+  match cursor_sdk_environment_api_key_materialization() {
+    CursorSdkApiKeyFromEnvironment { env_var } => env_var == cursor_api_key_env_var
+    _ => false
+  }
+}
+
 test fn cursor_sdk_dispatch_bridge_witness_keystone_holds() -> Bool {
   dispatch_secret_ref_admits_sdk_local_binding()
     && dispatch_local_login_ref_refuses()
     && dispatch_secret_ref_materializes_via_secret_ref_arm()
+    && environment_materialization_consumes_cli_env_var()
 }

@@ -7,10 +7,15 @@ import extdeps.llm.cursor_sdk {
   CursorSdkApiKeySecretRef,
   CursorSdkApiKeyMaterialization,
   CursorSdkApiKeyFromSecretRef,
+  CursorSdkApiKeyFromEnvironment,
   cursor_sdk_materialize_api_key,
+  cursor_sdk_environment_api_key_materialization,
+}
+import extdeps.llm.cursor_sdk_facts {
   cursor_sdk_local_account_usage_unobservable,
   CursorSdkLocalAccountUsageUnobservable,
 }
+import extdeps.llm.cursor_cli { cursor_api_key_env_var }
 import gunbc.dispatch_selection {
   CursorCredentialRef,
   CursorApiKeySecretRef,
