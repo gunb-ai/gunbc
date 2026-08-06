@@ -53,7 +53,7 @@ test fn decl_facts_reflection_two_unrelated_scaffold_arms_do_not_alias() -> Bool
           match variant_a {
             Present { value: va } =>
               match variant_b {
-                Present { value: vb } => va == "Scaffold" && vb == "Scaffold" && pa != pb
+                Present { value: vb } => va == "TaggedA" && vb == "TaggedB" && pa != pb
                 Absent => false
               }
             Absent => false
@@ -73,7 +73,7 @@ test fn decl_facts_reflection_two_unrelated_shared_nullary_arms_do_not_alias() -
             Present { value: va } =>
               match decl_facts_reflection_resolved_nullary_variant_name(qn: local_b_shared_nullary_qn) {
                 Present { value: vb } =>
-                  va == "SharedNullary" && vb == "SharedNullary" && pa != pb
+                  va == "SharedNullaryA" && vb == "SharedNullaryB" && pa != pb
                 Absent => false
               }
             Absent => false
