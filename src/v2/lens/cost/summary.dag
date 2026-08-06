@@ -1,0 +1,92 @@
+module v2.lens.cost.summary
+
+import v2.lens.cost.expr {
+  CostAdd,
+  CostConst,
+  CostExpr,
+  CostMax,
+  cost_const,
+  cost_expr_par,
+  cost_expr_seq
+}
+import v2.std.nat { Succ, Zero }
+
+type ComplexitySummary {
+  work: CostExpr
+  span: CostExpr
+}
+
+fn unit_cost_expr() -> CostExpr {
+  cost_const(value: Succ { prev: Zero })
+}
+
+fn unit_complexity_summary() -> ComplexitySummary {
+  ComplexitySummary {
+    work: unit_cost_expr(),
+    span: unit_cost_expr()
+  }
+}
+
+fn summary_sequential(left: ComplexitySummary, right: ComplexitySummary) -> ComplexitySummary {
+  ComplexitySummary {
+    work: cost_expr_seq(a: left.work, b: right.work),
+    span: cost_expr_seq(a: left.span, b: right.span)
+  }
+}
+
+fn summary_parallel(left: ComplexitySummary, right: ComplexitySummary) -> ComplexitySummary {
+  ComplexitySummary {
+    work: cost_expr_seq(a: left.work, b: right.work),
+    span: cost_expr_par(a: left.span, b: right.span)
+  }
+}
+
+fn triple_sequential_shape() -> ComplexitySummary {
+  summary_sequential(
+    left: unit_complexity_summary(),
+    right: summary_sequential(
+      left: unit_complexity_summary(),
+      right: unit_complexity_summary()
+    )
+  )
+}
+
+fn triple_parallel_shape() -> ComplexitySummary {
+  summary_parallel(
+    left: unit_complexity_summary(),
+    right: summary_parallel(
+      left: unit_complexity_summary(),
+      right: unit_complexity_summary()
+    )
+  )
+}
+
+fn cost_expr_is_unit(expr: CostExpr) -> Bool {
+  match expr {
+    CostConst { value: Succ { prev: Zero } } => true
+    _ => false
+  }
+}
+
+fn cost_expr_is_pair_of_units(expr: CostExpr) -> Bool {
+  match expr {
+    CostAdd {
+      left: CostConst { value: Succ { prev: Zero } },
+      right: CostConst { value: Succ { prev: Zero } }
+    } => true
+    _ => false
+  }
+}
+
+fn cost_expr_is_triple_of_units(expr: CostExpr) -> Bool {
+  match expr {
+    CostAdd {
+      left: CostConst { value: Succ { prev: Zero } },
+      right: CostAdd {
+        left: CostConst { value: Succ { prev: Zero } },
+        right: CostConst { value: Succ { prev: Zero } }
+      }
+    } => true
+    _ => false
+  }
+}

@@ -1,0 +1,63 @@
+module v2.test.lens_cost.summary_span
+
+import v2.lens.cost.expr { CostAdd, CostConst, CostMax }
+import v2.lens.cost.summary {
+  cost_expr_is_pair_of_units,
+  cost_expr_is_triple_of_units,
+  summary_parallel,
+  summary_sequential,
+  triple_parallel_shape,
+  triple_sequential_shape,
+  unit_complexity_summary
+}
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn sequential_summary_adds_work_and_span() -> Bool {
+  let left = unit_complexity_summary()
+  let right = unit_complexity_summary()
+  let combined = summary_sequential(left: left, right: right)
+  cost_expr_is_pair_of_units(expr: combined.work)
+    && cost_expr_is_pair_of_units(expr: combined.span)
+}
+
+test fn parallel_summary_adds_work_but_maxes_span() -> Bool {
+  let left = unit_complexity_summary()
+  let right = unit_complexity_summary()
+  let combined = summary_parallel(left: left, right: right)
+  match combined.span {
+    CostMax { left: _, right: _ } =>
+      cost_expr_is_pair_of_units(expr: combined.work)
+    _ => false
+  }
+}
+
+test fn equal_work_different_shape_derives_equal_work_different_span() -> Bool {
+  let sequential = triple_sequential_shape()
+  let parallel = triple_parallel_shape()
+  cost_expr_is_triple_of_units(expr: sequential.work)
+    && cost_expr_is_triple_of_units(expr: parallel.work)
+    && sequential.work == parallel.work
+    && sequential.span != parallel.span
+}
+
+test fn equal_work_different_span_red_control() -> Bool {
+  let left = unit_complexity_summary()
+  let right = unit_complexity_summary()
+  let sequential = summary_sequential(left: left, right: right)
+  let parallel = summary_parallel(left: left, right: right)
+  match sequential.span {
+    CostAdd { left: seq_l, right: seq_r } =>
+      match parallel.span {
+        CostMax { left: par_l, right: par_r } =>
+          seq_l == par_l
+            && seq_r == par_r
+            && sequential.work == parallel.work
+            && sequential.span != parallel.span
+        _ => false
+      }
+    _ => false
+  }
+}
