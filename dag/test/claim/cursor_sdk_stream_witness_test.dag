@@ -14,12 +14,11 @@ import extdeps.llm.cursor_stream {
   cursor_sdk_stream_reconcile_run_result,
   cursor_sdk_stream_classify_message_line,
   cursor_sdk_stream_classify_local_run_event,
-  cursor_sdk_terminal_is_authentication_error,
-  cursor_sdk_terminal_is_rate_limit_error,
 }
 import extdeps.llm.cursor_sdk_errors {
-  cursor_sdk_error_authentication,
-  cursor_sdk_error_rate_limit,
+  CursorSdkAuthenticationError,
+  CursorSdkRateLimitError,
+  CursorSdkErrorCodeOther,
 }
 
 data finished_result: String = "{\"id\":\"run-1\",\"status\":\"finished\",\"result\":\"ok\"}"
@@ -39,28 +38,27 @@ test fn finished_run_result_reconciles() -> Bool {
 }
 
 test fn auth_error_classifies() -> Bool {
-  let reconcile = cursor_sdk_stream_reconcile_run_result(raw: auth_error_result)
-  if !cursor_sdk_terminal_is_authentication_error(reconcile: reconcile) {
-    false
-  } else if cursor_sdk_terminal_is_rate_limit_error(reconcile: reconcile) {
-    false
-  } else {
-    match reconcile {
-      CursorSdkStreamTerminalsReconciled { error: err, status: CursorSdkTerminalError, raw: _ } =>
-        match err {
-          CursorSdkTerminalErrorObserved { message: _, code } =>
-            code == cursor_sdk_error_authentication as String
-          _ => false
-        }
-      _ => false
-    }
+  match cursor_sdk_stream_reconcile_run_result(raw: auth_error_result) {
+    CursorSdkStreamTerminalsReconciled { error: err, status: CursorSdkTerminalError, raw: _ } =>
+      match err {
+        CursorSdkTerminalErrorObserved { message: _, code: CursorSdkAuthenticationError } => true
+        CursorSdkTerminalErrorObserved { message: _, code: _ } => false
+        CursorSdkTerminalErrorAbsent => false
+      }
+    CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
   }
 }
 
 test fn rate_limit_error_classifies() -> Bool {
-  let reconcile = cursor_sdk_stream_reconcile_run_result(raw: rate_limit_result)
-  cursor_sdk_terminal_is_rate_limit_error(reconcile: reconcile)
-    && !cursor_sdk_terminal_is_authentication_error(reconcile: reconcile)
+  match cursor_sdk_stream_reconcile_run_result(raw: rate_limit_result) {
+    CursorSdkStreamTerminalsReconciled { error: err, status: CursorSdkTerminalError, raw: _ } =>
+      match err {
+        CursorSdkTerminalErrorObserved { message: _, code: CursorSdkRateLimitError } => true
+        CursorSdkTerminalErrorObserved { message: _, code: _ } => false
+        CursorSdkTerminalErrorAbsent => false
+      }
+    CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
+  }
 }
 
 test fn malformed_result_refuses() -> Bool {
@@ -103,10 +101,18 @@ test fn unknown_event_stays_unclassified() -> Bool {
 }
 
 test fn agent_report_text_does_not_classify_as_terminal_error() -> Bool {
-  let reconcile = cursor_sdk_stream_reconcile_run_result(
+  match cursor_sdk_stream_reconcile_run_result(
     raw: "{\"status\":\"error\",\"error\":{\"message\":\"you hit your usage limit\",\"code\":\"other\"}}",
-  )
-  !cursor_sdk_terminal_is_rate_limit_error(reconcile: reconcile)
+  ) {
+    CursorSdkStreamTerminalsReconciled { error: err, status: CursorSdkTerminalError, raw: _ } =>
+      match err {
+        CursorSdkTerminalErrorObserved { message: _, code: CursorSdkRateLimitError } => false
+        CursorSdkTerminalErrorObserved { message: _, code: CursorSdkErrorCodeOther { raw: _ } } => true
+        CursorSdkTerminalErrorObserved { message: _, code: _ } => true
+        CursorSdkTerminalErrorAbsent => true
+      }
+    CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
+  }
 }
 
 data malformed_error_subobject: String = "{\"status\":\"error\",\"error\":[{\"message\":\"bad\"}]}"

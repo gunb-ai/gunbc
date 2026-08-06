@@ -16,10 +16,7 @@ import extdeps.languages.json.parse {
 import extdeps.languages.json.emit {
   JsonValue, JsonObject, JsonString, JsonNumber, JsonBool, JsonArray, JsonNull,
 }
-import extdeps.llm.cursor_sdk_errors {
-  cursor_sdk_error_authentication,
-  cursor_sdk_error_rate_limit,
-}
+import extdeps.llm.cursor_sdk_errors { parse_cursor_sdk_error_code, CursorSdkErrorCode }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -71,7 +68,7 @@ type CursorSdkTerminalStatus
 type CursorSdkTerminalErrorWire
   = CursorSdkTerminalErrorObserved {
       message: String,
-      code: String,
+      code: CursorSdkErrorCode,
     }
   | CursorSdkTerminalErrorAbsent
 
@@ -143,14 +140,16 @@ fn cursor_sdk_error_from_object(v: JsonValue) -> CursorSdkTerminalErrorWire? {
           Present {
             value: CursorSdkTerminalErrorObserved {
               message: message,
-              code: json_string_value_or_empty(v: code_v),
+              code: parse_cursor_sdk_error_code(
+                raw: json_string_value_or_empty(v: code_v),
+              ),
             },
           }
         JsonMemberAbsent =>
           Present {
             value: CursorSdkTerminalErrorObserved {
               message: message,
-              code: "",
+              code: parse_cursor_sdk_error_code(raw: ""),
             },
           }
         JsonMemberDuplicated { count: _ } => none
@@ -274,33 +273,5 @@ fn cursor_sdk_stream_classify_local_run_event(raw: String) -> CursorSdkLocalRunS
         JsonMemberNotAnObject => none
       }
     Absent => none
-  }
-}
-
-fn cursor_sdk_terminal_is_authentication_error(
-  reconcile: CursorSdkStreamTerminalReconcile,
-) -> Bool {
-  match reconcile {
-    CursorSdkStreamTerminalsReconciled { status: _, error: err, raw: _ } =>
-      match err {
-        CursorSdkTerminalErrorObserved { message: _, code: code } =>
-          code == cursor_sdk_error_authentication as String
-        CursorSdkTerminalErrorAbsent => false
-      }
-    CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
-  }
-}
-
-fn cursor_sdk_terminal_is_rate_limit_error(
-  reconcile: CursorSdkStreamTerminalReconcile,
-) -> Bool {
-  match reconcile {
-    CursorSdkStreamTerminalsReconciled { status: _, error: err, raw: _ } =>
-      match err {
-        CursorSdkTerminalErrorObserved { message: _, code: code } =>
-          code == cursor_sdk_error_rate_limit as String
-        CursorSdkTerminalErrorAbsent => false
-      }
-    CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
   }
 }

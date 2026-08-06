@@ -8,6 +8,13 @@ import extdeps.llm.cursor_sdk_facts {
   cursor_sdk_api_key_never_in_argv_note,
   cursor_sdk_local_package_unprovisioned_on_deployed_host,
   cursor_sdk_local_provision_missing_capability,
+  cursor_sdk_package_name,
+  cursor_sdk_package_version,
+  cursor_sdk_probe_install_script_count,
+  cursor_sdk_probe_lock_entry_count,
+  cursor_sdk_probe_platform_gated_entry_count,
+  cursor_sdk_probe_lockfile_sha256,
+  cursor_sdk_probe_root_integrity,
 }
 
 test fn local_usage_standing_is_typed_capability_gap() -> Bool {
@@ -18,13 +25,13 @@ test fn local_usage_standing_is_typed_capability_gap() -> Bool {
 
 test fn package_closure_matches_probe_receipt() -> Bool {
   let closure = cursor_sdk_local_package_closure()
-  closure.package_name as String == "@cursor/sdk"
-    && closure.exact_version as String == "1.0.26"
-    && closure.install_script_count == 0
-    && closure.lock_entry_count == 124
-    && closure.platform_gated_entry_count == 13
-    && closure.lockfile_sha256 == "d45372139f3b3cfec9b32728a1e6994d4a212d9d286854e795ad67ed12ee2d70"
-    && closure.root_integrity as String == "sha512-dU3WpJwrxv8yoMjs0DxBgZr5btAJEO+NrvFutl08b6l2+jcuemfFWUlSPBQ2xZAH7zIZun+sqfHvjT5NxW8woQ=="
+  closure.package_name == cursor_sdk_package_name
+    && closure.exact_version == cursor_sdk_package_version
+    && closure.install_script_count == cursor_sdk_probe_install_script_count
+    && closure.lock_entry_count == cursor_sdk_probe_lock_entry_count
+    && closure.platform_gated_entry_count == cursor_sdk_probe_platform_gated_entry_count
+    && closure.lockfile_sha256 == cursor_sdk_probe_lockfile_sha256
+    && closure.root_integrity == cursor_sdk_probe_root_integrity
 }
 
 test fn api_key_never_in_argv_note_is_authored() -> Bool {
