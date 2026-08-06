@@ -1,0 +1,490 @@
+module gunbc.auth.github_apps
+
+import std.types { NonEmptyStr }
+import std.content_hash { ContentHash }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import extdeps.uri { Uri, Https }
+import extdeps.github.app {
+  GitHubAppId,
+  GitHubAppInstallationId,
+  GitHubAppInstallation,
+  GitHubAppPermission,
+  ObservedGitHubPermission,
+  ObservedGitHubPermissionName,
+  observed_access_for,
+  observed_permission_name,
+  first_duplicated_observed_permission,
+  as_observed_permission,
+  GitHubPermissionAxis,
+  GitHubAppPermissionAccess,
+  AppAccessRead,
+  AppAccessWrite,
+  GitHubAppPublicKeyFingerprint,
+  GitHubAppPermissionSetAdmission,
+  PermissionSetAdmitted,
+  PermissionSetDuplicateName,
+  admit_permission_set,
+  sha256_base64_key_fingerprint,
+  key_fingerprint_eq,
+  permission_access_at_least,
+  permission_access_in
+}
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+
+type DeclaredGitHubApp {
+  owner_login: NonEmptyStr
+  app_id: GitHubAppId
+  client_id: NonEmptyStr
+  slug: NonEmptyStr
+}
+
+data gunbai_bot_declared: DeclaredGitHubApp = DeclaredGitHubApp {
+  owner_login: "gunb-ai",
+  app_id: GitHubAppId { value: 3909950 },
+  client_id: "Iv23lidZeLYckmtvN3e8",
+  slug: "gunbai",
+}
+
+data gunbai_ci_declared: DeclaredGitHubApp = DeclaredGitHubApp {
+  owner_login: "gunb-ai",
+  app_id: GitHubAppId { value: 2653532 },
+  client_id: "Iv23liq8VGaImxKCyjaR",
+  slug: "gunbai-ci",
+}
+
+data gunbai_ci_app_pem_secret: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "ci-github-app-private-key",
+  version: "latest",
+  hash_state: HashPending,
+}
+
+data gunbai_ci_declared_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 104134109 }
+
+type ManagedGitHubAppKeyRole
+  = ActiveSigningKey
+  | RetiringSigningKey
+
+type ManagedGitHubAppKey {
+  fingerprint: GitHubAppPublicKeyFingerprint
+  role: ManagedGitHubAppKeyRole
+}
+
+data gunbai_bot_declared_key: ManagedGitHubAppKey = ManagedGitHubAppKey {
+  fingerprint: sha256_base64_key_fingerprint(digest: "B+ANMzYq0nhBn6L7STPkdsEw07QkdXXvbj0gjxvt5BQ="),
+  role: ActiveSigningKey,
+}
+
+fn app_settings_permissions_locator(app: DeclaredGitHubApp) -> Uri {
+  Uri {
+    scheme: Https
+    locator: concat(
+      concat(concat("github.com/organizations/", app.owner_login), "/settings/apps/"),
+      concat(app.slug, "/permissions")
+    )
+  }
+}
+
+type ObservedGitHubAppSigner {
+  app_id: GitHubAppId
+  secret_version: SecretRef
+  secret_content_hash: ContentHash
+  derived_public_fingerprint: GitHubAppPublicKeyFingerprint
+  github_registered_fingerprint: GitHubAppPublicKeyFingerprint
+}
+
+type SignerSealFailure
+  = SignerNamesDifferentApp {
+      observed_app_id: GitHubAppId
+      declared_app_id: GitHubAppId
+    }
+  | SignerFingerprintNotRegistered {
+      derived: GitHubAppPublicKeyFingerprint
+      registered: GitHubAppPublicKeyFingerprint
+    }
+
+type SignerCustody
+  = SignerCustodyObserved { signer: ObservedGitHubAppSigner }
+  | SignerMaterialAvailabilityUnobserved
+  | SignerMaterialAvailableForImport { source: SecretRef }
+  | SignerKeyGenerationRequired
+  | SignerReadbackFailed { cause: SignerSealFailure }
+
+fn app_key_settings_locator(app: DeclaredGitHubApp) -> Uri {
+  Uri {
+    scheme: Https
+    locator: concat(
+      concat(concat("github.com/organizations/", app.owner_login), "/settings/apps/"),
+      app.slug
+    )
+  }
+}
+
+data gunbai_bot_signer_custody: SignerCustody = SignerMaterialAvailabilityUnobserved
+
+fn signer_seal_failure(
+  signer: ObservedGitHubAppSigner,
+  app: DeclaredGitHubApp
+) -> SignerSealFailure? {
+  if signer.app_id.value != app.app_id.value {
+    Present {
+      value: SignerNamesDifferentApp {
+        observed_app_id: signer.app_id,
+        declared_app_id: app.app_id
+      }
+    }
+  } else if !key_fingerprint_eq(a: signer.derived_public_fingerprint, b: signer.github_registered_fingerprint) {
+    Present {
+      value: SignerFingerprintNotRegistered {
+        derived: signer.derived_public_fingerprint,
+        registered: signer.github_registered_fingerprint
+      }
+    }
+  } else {
+    none
+  }
+}
+
+fn signer_seals_app(signer: ObservedGitHubAppSigner, app: DeclaredGitHubApp) -> Bool {
+  match signer_seal_failure(signer: signer, app: app) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+type GitHubAppPermissionChangeRequest {
+  app: DeclaredGitHubApp
+  add: List<GitHubAppPermission>
+  settings_locator: Uri
+  reason: NonEmptyStr
+}
+
+type GitHubInstallationApprovalRequest {
+  app: DeclaredGitHubApp
+  installation: GitHubAppInstallationId
+  accept: List<GitHubAppPermission>
+  installation_locator: Uri
+  reason: NonEmptyStr
+}
+
+type InstallationReadbackCause
+  = InstallationReadbackNotAttempted
+  | InstallationReadbackFailed { detail: NonEmptyStr }
+
+type GitHubAppControlPlaneState
+  = PermissionObservationRefused { app: DeclaredGitHubApp, duplicate: ObservedGitHubPermissionName }
+  | SignerCustodyUnresolved { app: DeclaredGitHubApp, custody: SignerCustody }
+  | AppRegistrationUnobserved { app: DeclaredGitHubApp }
+  | InstallationUnobserved { app: DeclaredGitHubApp, reason: InstallationReadbackCause }
+  | AppRegistrationPermissionMissing { request: GitHubAppPermissionChangeRequest }
+  | InstallationPermissionApprovalPending { request: GitHubInstallationApprovalRequest }
+  | InstallationGrantObserved { installation: GitHubAppInstallation }
+
+type ObservedInstallation
+  = InstallationReadback { installation: GitHubAppInstallation }
+  | InstallationReadbackUnavailable { cause: InstallationReadbackCause }
+
+type ObservedAppRegistration
+  = AppRegistrationReadback { app_id: GitHubAppId, requested_permissions: List<ObservedGitHubPermission> }
+  | AppRegistrationReadbackUnavailable
+
+fn registration_missing_permissions(
+  requested: List<ObservedGitHubPermission>,
+  required: List<GitHubAppPermission>
+) -> List<GitHubAppPermission> {
+  filter(required, r => match observed_access_for(perms: requested, axis: r.name) {
+    Absent => true
+    Present { value: held } => !permission_access_at_least(held: held, requested: r.access)
+  })
+}
+
+fn installation_holds(installation: GitHubAppInstallation, required: GitHubAppPermission) -> Bool {
+  match observed_access_for(perms: installation.permissions, axis: required.name) {
+    Absent => false
+    Present { value: held } => permission_access_at_least(held: held, requested: required.access)
+  }
+}
+
+fn installation_missing_permissions(
+  installation: GitHubAppInstallation,
+  required: List<GitHubAppPermission>
+) -> List<GitHubAppPermission> {
+  filter(required, r => !installation_holds(installation: installation, required: r))
+}
+
+fn permission_set_duplicate(perms: List<GitHubAppPermission>) -> GitHubPermissionAxis? {
+  match admit_permission_set(perms: perms) {
+    PermissionSetAdmitted { permissions: _ } => none
+    PermissionSetDuplicateName { name } => Present { value: name }
+  }
+}
+
+fn registration_duplicate_observed_name(registration: ObservedAppRegistration) -> ObservedGitHubPermissionName? {
+  match registration {
+    AppRegistrationReadbackUnavailable => none
+    AppRegistrationReadback { app_id: _, requested_permissions } =>
+      first_duplicated_observed_permission(perms: requested_permissions)
+  }
+}
+
+fn installation_duplicate_observed_name(observed: ObservedInstallation) -> ObservedGitHubPermissionName? {
+  match observed {
+    InstallationReadbackUnavailable { cause: _ } => none
+    InstallationReadback { installation } =>
+      first_duplicated_observed_permission(perms: installation.permissions)
+  }
+}
+
+fn first_duplicate_permission_name(
+  registration: ObservedAppRegistration,
+  observed: ObservedInstallation,
+  required: List<GitHubAppPermission>
+) -> ObservedGitHubPermissionName? {
+  match permission_set_duplicate(perms: required) {
+    Present { value: axis } => Present { value: observed_permission_name(axis: axis) }
+    Absent => match registration_duplicate_observed_name(registration: registration) {
+      Present { value: n } => Present { value: n }
+      Absent => installation_duplicate_observed_name(observed: observed)
+    }
+  }
+}
+
+fn app_control_plane_state(
+  app: DeclaredGitHubApp,
+  custody: SignerCustody,
+  registration: ObservedAppRegistration,
+  observed: ObservedInstallation,
+  required: List<GitHubAppPermission>,
+  reason: NonEmptyStr
+) -> GitHubAppControlPlaneState {
+  match first_duplicate_permission_name(
+    registration: registration,
+    observed: observed,
+    required: required
+  ) {
+    Present { value: dup } => PermissionObservationRefused { app: app, duplicate: dup }
+    Absent => sealed_control_plane_state(
+      app: app,
+      custody: custody,
+      registration: registration,
+      observed: observed,
+      required: required,
+      reason: reason
+    )
+  }
+}
+
+fn sealed_control_plane_state(
+  app: DeclaredGitHubApp,
+  custody: SignerCustody,
+  registration: ObservedAppRegistration,
+  observed: ObservedInstallation,
+  required: List<GitHubAppPermission>,
+  reason: NonEmptyStr
+) -> GitHubAppControlPlaneState {
+  match custody {
+    SignerMaterialAvailabilityUnobserved =>
+      SignerCustodyUnresolved { app: app, custody: custody }
+    SignerMaterialAvailableForImport { source: _ } =>
+      SignerCustodyUnresolved { app: app, custody: custody }
+    SignerKeyGenerationRequired =>
+      SignerCustodyUnresolved { app: app, custody: custody }
+    SignerReadbackFailed { cause: _ } =>
+      SignerCustodyUnresolved { app: app, custody: custody }
+    SignerCustodyObserved { signer } =>
+      match signer_seal_failure(signer: signer, app: app) {
+        Present { value: cause } =>
+          SignerCustodyUnresolved {
+            app: app,
+            custody: SignerReadbackFailed { cause: cause }
+          }
+        Absent =>
+        match registration {
+          AppRegistrationReadbackUnavailable => AppRegistrationUnobserved { app: app }
+          AppRegistrationReadback { app_id: registration_app, requested_permissions } =>
+            if registration_app.value != app.app_id.value {
+              AppRegistrationUnobserved { app: app }
+            } else {
+              let registration_gap = registration_missing_permissions(
+                requested: requested_permissions,
+                required: required
+              )
+              if count(registration_gap) > 0 {
+                AppRegistrationPermissionMissing {
+                  request: GitHubAppPermissionChangeRequest {
+                    app: app,
+                    add: registration_gap,
+                    settings_locator: app_settings_permissions_locator(app: app),
+                    reason: reason
+                  }
+                }
+              } else {
+                match observed {
+                  InstallationReadbackUnavailable { cause } =>
+                    InstallationUnobserved { app: app, reason: cause }
+                  InstallationReadback { installation } =>
+                    if installation.app_id.value != app.app_id.value {
+                      InstallationUnobserved {
+                        app: app,
+                        reason: InstallationReadbackFailed {
+                          detail: "installation readback names a different app than the selected one"
+                        }
+                      }
+                    } else {
+                      let missing = installation_missing_permissions(installation: installation, required: required)
+                      if count(missing) == 0 {
+                        InstallationGrantObserved { installation: installation }
+                      } else {
+                        InstallationPermissionApprovalPending {
+                          request: GitHubInstallationApprovalRequest {
+                            app: app,
+                            installation: installation.installation_id,
+                            accept: missing,
+                            installation_locator: installation.html_url,
+                            reason: reason
+                          }
+                        }
+                      }
+                    }
+                }
+              }
+            }
+        }
+      }
+  }
+}
+
+type ActionOwner
+  = MachineOwner
+  | OperatorOwner
+
+type GitHubAppMachineAction
+  = DiscoverSignerMaterial { app: DeclaredGitHubApp }
+  | BindObservationProducer { required_observation: RequiredObservation }
+  | ImportSignerKeyVersion { app: DeclaredGitHubApp, source: SecretRef }
+  | ReReadSignerCustody { app: DeclaredGitHubApp }
+  | ReadBackAppRegistration { app: DeclaredGitHubApp }
+  | ReadBackInstallation { app: DeclaredGitHubApp }
+  | RepairPermissionObservation { app: DeclaredGitHubApp, duplicate: ObservedGitHubPermissionName }
+
+type GitHubAppOperatorAction
+  = ApplyAppPermissionChange
+  | AcceptInstallationPermissions
+  | GenerateAppSigningKey
+
+type ControlPlanePostcondition
+  = AppRegistrationRequestsPermissions { add: List<GitHubAppPermission> }
+  | InstallationHoldsPermissions { accept: List<GitHubAppPermission> }
+  | AppHasRegisteredSigningKey { app: DeclaredGitHubApp }
+
+type RequiredObservation
+  = AppRegistrationReadbackObservation
+  | InstallationReadbackObservation
+  | SignerFingerprintObservation
+
+type BoundObservationProducer {
+  producer: DeclarationRef
+}
+
+type ObservationProducer
+  = ObservationProducerAbsent { required_observation: RequiredObservation }
+  | ObservationProducerBound { bound: BoundObservationProducer }
+
+type GitHubAppNextAction
+  = NoActionRequired
+  | MachineActionRequired { action: GitHubAppMachineAction }
+  | OperatorActionRequired {
+      action: GitHubAppOperatorAction
+      locator: Uri
+      postcondition: ControlPlanePostcondition
+      readback: BoundObservationProducer
+    }
+
+data app_registration_observation: ObservationProducer = ObservationProducerAbsent {
+  required_observation: AppRegistrationReadbackObservation
+}
+
+data installation_observation: ObservationProducer = ObservationProducerAbsent {
+  required_observation: InstallationReadbackObservation
+}
+
+data signer_fingerprint_observation: ObservationProducer = ObservationProducerAbsent {
+  required_observation: SignerFingerprintObservation
+}
+
+fn operator_packet_or_producer_binding(
+  action: GitHubAppOperatorAction,
+  locator: Uri,
+  postcondition: ControlPlanePostcondition,
+  observation: ObservationProducer
+) -> GitHubAppNextAction {
+  match observation {
+    ObservationProducerAbsent { required_observation } =>
+      MachineActionRequired {
+        action: BindObservationProducer { required_observation: required_observation }
+      }
+    ObservationProducerBound { bound } =>
+      OperatorActionRequired {
+        action: action,
+        locator: locator,
+        postcondition: postcondition,
+        readback: bound
+      }
+  }
+}
+
+fn control_plane_next_action(state: GitHubAppControlPlaneState) -> GitHubAppNextAction {
+  match state {
+    InstallationGrantObserved { installation: _ } => NoActionRequired
+    PermissionObservationRefused { app, duplicate } =>
+      MachineActionRequired { action: RepairPermissionObservation { app: app, duplicate: duplicate } }
+    SignerCustodyUnresolved { app, custody } => match custody {
+      SignerMaterialAvailableForImport { source } =>
+        MachineActionRequired { action: ImportSignerKeyVersion { app: app, source: source } }
+      SignerReadbackFailed { cause: _ } =>
+        MachineActionRequired { action: ReReadSignerCustody { app: app } }
+      SignerCustodyObserved { signer: _ } =>
+        MachineActionRequired { action: ReReadSignerCustody { app: app } }
+      SignerKeyGenerationRequired =>
+        operator_packet_or_producer_binding(
+          action: GenerateAppSigningKey,
+          locator: app_key_settings_locator(app: app),
+          postcondition: AppHasRegisteredSigningKey { app: app },
+          observation: signer_fingerprint_observation
+        )
+      SignerMaterialAvailabilityUnobserved =>
+        MachineActionRequired { action: DiscoverSignerMaterial { app: app } }
+    }
+    AppRegistrationUnobserved { app } =>
+      MachineActionRequired { action: ReadBackAppRegistration { app: app } }
+    InstallationUnobserved { app, reason: _ } =>
+      MachineActionRequired { action: ReadBackInstallation { app: app } }
+    AppRegistrationPermissionMissing { request } =>
+      operator_packet_or_producer_binding(
+        action: ApplyAppPermissionChange,
+        locator: request.settings_locator,
+        postcondition: AppRegistrationRequestsPermissions { add: request.add },
+        observation: app_registration_observation
+      )
+    InstallationPermissionApprovalPending { request } =>
+      operator_packet_or_producer_binding(
+        action: AcceptInstallationPermissions,
+        locator: request.installation_locator,
+        postcondition: InstallationHoldsPermissions { accept: request.accept },
+        observation: installation_observation
+      )
+  }
+}
+
+fn next_action_owner(action: GitHubAppNextAction) -> ActionOwner {
+  match action {
+    NoActionRequired => MachineOwner
+    MachineActionRequired { action: _ } => MachineOwner
+    OperatorActionRequired { action: _, locator: _, postcondition: _, readback: _ } => OperatorOwner
+  }
+}
+
+fn key_fingerprint_matches(declared: ManagedGitHubAppKey, observed: ManagedGitHubAppKey) -> Bool {
+  key_fingerprint_eq(a: observed.fingerprint, b: declared.fingerprint)
+}

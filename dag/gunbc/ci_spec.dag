@@ -37,9 +37,10 @@ import gunbc.commit_workflow {
 }
 import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.repo_identity { gunbc_merge_target_ref }
-import gunbc.generated_artifact {
+import gunbc.heal_push_plan {
   auto_push_eligible_committed_artifact_paths,
-  author_commit_required_committed_artifact_paths
+  author_commit_required_committed_artifact_paths,
+  live_heal_push_refusal_cause_token
 }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
@@ -84,13 +85,13 @@ data gunbc_ci_ordinary_floor_budget_minutes: Minute = minute(count: 55)
 
 data gunbc_ci_admission_postcondition_budget_minutes: Minute = minute(count: 5)
 
-data gunbc_ci_walk_overhead_allowance_minutes: Minute = minute(count: 5)
+data gunbc_ci_walk_overhead_allowance_minutes: Minute = minute(count: 15)
 
 fn gunbc_ci_workflow_wrapper_budget_minutes() -> Minute {
   minute(count: minute_count(m: gunbc_ci_ordinary_floor_budget_minutes) + minute_count(m: gunbc_ci_admission_postcondition_budget_minutes) + minute_count(m: gunbc_ci_walk_overhead_allowance_minutes))
 }
 
-data gunbc_ci_two_population_budget_note: String = "The CI walk owns two disjoint wall allowances: 55 minutes for ordinary batches and 5 minutes for green-only admission postconditions. WalkPlan carries both so claim_executor, not the outer runner, prevents ordinary work from consuming the admission allowance. The wall spent OUTSIDE both populations — the pre-walk capture subprocess, plan resolve, finalization and receipt writes, phase-journal flushes — is neither ordinary nor postcondition work, so the GitHub step wrapper reserves the named gunbc_ci_walk_overhead_allowance_minutes term for it rather than silently letting a slow pre-walk eat the ordinary allowance from the outside (review 47517; the two watchdogs bound their own populations, and the wrapper is strictly the three-term sum, 65 minutes today). A budget refusal is located to its population inside the executor; a wrapper kill with both populations under budget is located to the overhead term."
+data gunbc_ci_two_population_budget_note: String = "The CI walk owns two disjoint wall allowances: 55 minutes for ordinary batches and 5 minutes for green-only admission postconditions. WalkPlan carries both so claim_executor, not the outer runner, prevents ordinary work from consuming the admission allowance. The wall spent OUTSIDE both populations — the pre-walk capture subprocess, plan resolve, finalization and receipt writes, phase-journal flushes — is neither ordinary nor postcondition work, so the GitHub step wrapper reserves the named gunbc_ci_walk_overhead_allowance_minutes term for it rather than silently letting a slow pre-walk eat the ordinary allowance from the outside (review 47517; the two watchdogs bound their own populations, and the wrapper is strictly the three-term sum, 75 minutes today). A budget refusal is located to its population inside the executor; a wrapper kill with both populations under budget is located to the overhead term. The overhead term was raised 5→15 minutes (2026-08-05): measured CI floor pre-walk plus eager compile-clean install routinely exceeds 10 minutes before the ordinary population clock starts, so a 5-minute allowance let the GitHub step wrapper kill the job while ordinary budget remained — silent wrapper kill, not ordinary exhaustion."
 
 data gunbc_ci_floor_batch_stop_policy_note: String = "Floor batch stop policy (operator ruling 2026-07-22, fail-fast lane): claim_executor's walk halt is event-scoped so cheap-gate-early reorder does not truncate main's ledger. pull_request → StopBeforeDependents (fail-fast: a cheap-gate red stops before compile/corpus). push (main) and schedule (falsifier) → FullLedger (record batch failure and continue; exit non-zero at end). Unknown/unrecognized events default to FullLedger — never silently stop-early and lose ledger (the absorbing fallback). Authority: gunbc_ci_floor_batch_stop_policy_for_github_event in v2.workflow.ci_floor_plan; consumer: claim_executor.rs run_walk (see gunbc_ci_floor_batch_stop_policy_claim_executor_seed_note)."
 
@@ -385,7 +386,6 @@ data plan_function_string_projection_note: String = "These two are the NAME PROJ
 data floor_plan_function: String = plan_function_name(p: CiFloorPlan)
 data plan_artifact_plan_function: String = plan_function_name(p: CiPlanArtifactPlan)
 
-
 fn scheduler_invoke_with(spec: CiSpec, plan_function: PlanFunction) -> String {
   claim_executor_run_plan_shell(
     source_roots: witness_layer_roots,
@@ -562,7 +562,17 @@ data ci_heal_author_commit_artifact_name: String = "heal-author-commit-required"
 
 data ci_heal_author_commit_regen_command: String = "gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet"
 
-data ci_heal_commit_push_note: String = "The heal COMMIT+PUSH+DISPATCH step creates and classifies a new subject. COMMIT SCOPE is auto-push-eligible artifacts only (auto_push_eligible_committed_artifact_paths): workflow projections under .github/workflows/** are AuthorCommitRequired because the GitHub App token lacks workflows:write and any push touching them is rejected — staging them would be a push the job knows will fail. Author-commit-required drift is detected by git diff on those paths BEFORE staging; when present the step packages the corrected bytes into heal-author-commit-required/, emits HealAuthorCommitRequired naming every affected path plus ci_heal_author_commit_regen_command, and exits 1 as a structural author obligation — never attempting the doomed push. A follow-up upload-artifact step publishes the repair bundle. Auto-push-eligible artifacts alone follow the prior HealNoChange / HealProduced / dispatch / SupersededByHealedHead flow. When BOTH populations drift, auto-push-eligible artifacts are committed and pushed first, then HealAuthorCommitRequired is reported for the workflow paths still requiring author commit. Missing registered paths are loudly skipped. HEAL PUSH HOOKS (crisp-bat-830 2026-08-01): git -c core.hooksPath= push is defensible because hooks are declared feedback-not-enforcement (charter forbids hook-as-wall); the heal writer's real safety wall is lane-1 commit-writer admission (countable follow-up), and an unattended writer disabling its own hooks is exactly why hooks cannot be presented as enforcement."
+fn path_has_hidden_segment(path: String) -> Bool {
+  string_contains(s: concat("/", path), pattern: "/.")
+}
+
+fn ci_heal_author_commit_artifact_includes_hidden_files() -> Bool {
+  any(author_commit_required_committed_artifact_paths(), p => path_has_hidden_segment(path: p))
+}
+
+data ci_heal_author_commit_artifact_hidden_files_note: String = "DERIVED, not asserted, and the derivation is the fix (loyal-ram-550 2026-08-05). actions/upload-artifact defaults include-hidden-files to false, and @actions/glob's excludeHiddenFiles skips any entry whose BASENAME starts with a dot BEFORE the descend step — so a dot-directory is never traversed and nothing beneath it is ever yielded. Every path this artifact can ever carry is author_commit_required_committed_artifact_paths(), which is .github/workflows/ci.yml and .github/workflows/falsifier.yml: the payload lives entirely under one hidden segment, so the upload published ZERO files on every run since it landed. MEASURED, not reasoned: run 31031996072 (PR #7857) emitted HealAuthorCommitRequired naming both paths — so the packaging block provably ran and populated the directory — and the very next step reported 'No files were found with the provided path: heal-author-commit-required'. PRICED: the artifact exists so an author can download the corrected bytes the GitHub App cannot push; because it was always empty, every author instead re-ran regen locally — six rounds across four PRs on 2026-08-05 alone (#7772; #7770 three times, twice on ci.yml and once on falsifier.yml; #7791; #7857), and the class predates that day (#7770, 2026-08-04). Counted from this lane's own dispatch receipts, so it is a floor on the real number rather than a census: it counts only the rounds this coordinator was asked about. WHY DERIVED RATHER THAN A LITERAL true: the flag is a consequence of the roster's shape, so it is read off the roster. Register a non-hidden author-commit path and it becomes false on its own; register another dotted one and it stays true. The always-empty state is therefore unwritable rather than re-checked (DESIGN §5 construction over validation) — a literal true would be a second representation of a fact the roster already carries, and would silently go wrong the day the roster changes. THE GENERAL CLASS IS NOT CLOSED HERE: any upload step whose payload is entirely hidden is always-empty, and this fix walls one step, not the class. The other two uploads in the corpus (release-bins.tgz, target/floor-component-receipt.json) carry no hidden segment and are unaffected — which is why this defect stayed local and invisible. dissolve-on: a lens deriving include-hidden-files for every upload step from its declared path population, at which point this fn is that lens's single consumer rather than a per-step derivation."
+
+data ci_heal_commit_push_note: String = "The heal COMMIT+PUSH+DISPATCH step creates and classifies a new subject. COMMIT SCOPE is auto-push-eligible artifacts only (auto_push_eligible_committed_artifact_paths): workflow projections under .github/workflows/** are AuthorCommitRequired because the credential that actually performs the heal push cannot write them — today that is the Actions GITHUB_TOKEN, whose permissions vocabulary has no workflows key at all, so the refusal is structural rather than a missing grant (bold-ant-81 #7766, which recut this from the earlier static 'the GitHub App lacks workflows:write' claim; the App path is modeled but unobserved). Any push touching them is rejected — staging them would be a push the job knows will fail. Author-commit-required drift is detected by git diff on those paths BEFORE staging; when present the step packages the corrected bytes into heal-author-commit-required/, emits HealAuthorCommitRequired naming every affected path plus ci_heal_author_commit_regen_command, and exits 1 as a structural author obligation — never attempting the doomed push. A follow-up upload-artifact step publishes the repair bundle. Auto-push-eligible artifacts alone follow the prior HealNoChange / HealProduced / dispatch / SupersededByHealedHead flow. When BOTH populations drift, auto-push-eligible artifacts are committed and pushed first, then HealAuthorCommitRequired is reported for the workflow paths still requiring author commit. Missing registered paths are loudly skipped. HEAL PUSH HOOKS (crisp-bat-830 2026-08-01): git -c core.hooksPath= push is defensible because hooks are declared feedback-not-enforcement (charter forbids hook-as-wall); the heal writer's real safety wall is lane-1 commit-writer admission (countable follow-up), and an unattended writer disabling its own hooks is exactly why hooks cannot be presented as enforcement."
 
 data ci_heal_commit_push_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -588,14 +598,18 @@ fn ci_heal_author_commit_drift_lines() -> List<String> {
   )
 }
 
+data ci_heal_author_commit_required_output: String = "heal_author_commit_required"
+
 fn ci_heal_author_commit_package_lines() -> List<String> {
   [
+    concat(concat("echo \"", ci_heal_author_commit_required_output), "=0\" >> \"$GITHUB_OUTPUT\""),
     "if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then",
     concat("  rm -rf \"", concat(ci_heal_author_commit_artifact_dir, "\"")),
     "  for p in $AUTHOR_COMMIT_DRIFT; do",
-    concat("    mkdir -p \"", concat(ci_heal_author_commit_artifact_dir, "/$(dirname \"$p\")\"")),
-    concat("    cp \"$p\" \"", concat(ci_heal_author_commit_artifact_dir, "/$p\"")),
+    concat("    if ! mkdir -p \"", concat(ci_heal_author_commit_artifact_dir, "/$(dirname \"$p\")\"; then echo \"::error::HealRepairBundleIncomplete path=$p\" >&2; exit 1; fi")),
+    concat("    if ! cp \"$p\" \"", concat(ci_heal_author_commit_artifact_dir, "/$p\"; then echo \"::error::HealRepairBundleIncomplete path=$p\" >&2; exit 1; fi")),
     "  done",
+    concat(concat("  echo \"", ci_heal_author_commit_required_output), "=1\" >> \"$GITHUB_OUTPUT\""),
     "fi"
   ]
 }
@@ -616,7 +630,7 @@ fn ci_heal_shell_lines() -> List<String> {
             "PRIOR_HEAD=$(git rev-parse HEAD)",
             "if git diff --cached --quiet; then",
             "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then",
-            concat("    echo \"::error::HealAuthorCommitRequired head=$PRIOR_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=GitHubAppLacksWorkflowsWrite regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2")),
+            concat("    echo \"::error::HealAuthorCommitRequired head=$PRIOR_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=", concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2")))),
             "    exit 1",
             "  fi",
             "  echo \"HealNoChange head=$PRIOR_HEAD\"",
@@ -645,7 +659,7 @@ fn gunbc_ci_heal_commit_push_script() -> String {
         concat(
           "  echo \"SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required\"\n",
           "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then\n",
-          concat("    echo \"::error::HealAuthorCommitRequired head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=GitHubAppLacksWorkflowsWrite regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2\n")),
+          concat("    echo \"::error::HealAuthorCommitRequired head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=", concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2\n")))),
           "  fi\n",
           "  exit 1\nfi\n"
         )

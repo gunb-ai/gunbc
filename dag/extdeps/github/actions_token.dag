@@ -1,0 +1,394 @@
+module extdeps.github.actions_token
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.actions { WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone }
+import extdeps.github.app {
+  GitHubPermissionAxis,
+  ActionsAxis, ArtifactMetadataAxis, AttestationsAxis, ChecksAxis, CodeQualityAxis,
+  ContentsAxis, DeploymentsAxis, DiscussionsAxis, IdTokenAxis, IssuesAxis,
+  MetadataAxis, ModelsAxis, PackagesAxis, PagesAxis, PullRequestsAxis,
+  RepositoryProjectsAxis, SecurityEventsAxis, StatusesAxis, VulnerabilityAlertsAxis,
+  WorkflowsAxis, AdministrationAxis, OrganizationSelfHostedRunnersAxis,
+  GitHubAppPermissionAccess,
+  AppAccessRead,
+  AppAccessWrite,
+  permission_access_at_least
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions"
+  }
+}
+
+data automatic_token_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/concepts/security/github_token"
+  }
+}
+
+data app_permissions_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/authentication/permissions-required-for-github-apps"
+  }
+}
+
+fn axis_actions_permissions_key(axis: GitHubPermissionAxis) -> NonEmptyStr? {
+  match axis {
+    ActionsAxis => Present { value: "actions" }
+    ArtifactMetadataAxis => Present { value: "artifact-metadata" }
+    AttestationsAxis => Present { value: "attestations" }
+    ChecksAxis => Present { value: "checks" }
+    CodeQualityAxis => Present { value: "code-quality" }
+    ContentsAxis => Present { value: "contents" }
+    DeploymentsAxis => Present { value: "deployments" }
+    DiscussionsAxis => Present { value: "discussions" }
+    IdTokenAxis => Present { value: "id-token" }
+    IssuesAxis => Present { value: "issues" }
+    MetadataAxis => none
+    ModelsAxis => Present { value: "models" }
+    PackagesAxis => Present { value: "packages" }
+    PagesAxis => Present { value: "pages" }
+    PullRequestsAxis => Present { value: "pull-requests" }
+    RepositoryProjectsAxis => none
+    SecurityEventsAxis => Present { value: "security-events" }
+    StatusesAxis => Present { value: "statuses" }
+    VulnerabilityAlertsAxis => Present { value: "vulnerability-alerts" }
+    WorkflowsAxis => none
+    AdministrationAxis => none
+    OrganizationSelfHostedRunnersAxis => none
+  }
+}
+
+// Two independent facts about one axis, deliberately NOT fused (operator
+// correction 2026-08-06). `axis_actions_permissions_key` answers whether an
+// axis is DECLARABLE in a workflow `permissions:` block. This answers what the
+// job token carries when nothing is declared. Absence of a configurable key is
+// therefore not absence of a grant, and conflating the two made the model call
+// a grant observed on the live token structurally impossible.
+//
+// Metadata is the live specimen: it has no configurable `permissions:` key, yet
+// the exact-head Actions job reports `Metadata: read`.
+//
+// Read-only by construction — there is no write variant, so an intrinsic grant
+// can never authorize a write, and observing a write-carrying intrinsic axis
+// would be a compile error at every consumer rather than a silent widening.
+type IntrinsicTokenGrant
+  = IntrinsicTokenGrantAbsent
+  | IntrinsicTokenGrantRead
+
+fn axis_intrinsic_token_grant(axis: GitHubPermissionAxis) -> IntrinsicTokenGrant {
+  match axis {
+    MetadataAxis => IntrinsicTokenGrantRead
+    ActionsAxis => IntrinsicTokenGrantAbsent
+    ArtifactMetadataAxis => IntrinsicTokenGrantAbsent
+    AttestationsAxis => IntrinsicTokenGrantAbsent
+    ChecksAxis => IntrinsicTokenGrantAbsent
+    CodeQualityAxis => IntrinsicTokenGrantAbsent
+    ContentsAxis => IntrinsicTokenGrantAbsent
+    DeploymentsAxis => IntrinsicTokenGrantAbsent
+    DiscussionsAxis => IntrinsicTokenGrantAbsent
+    IdTokenAxis => IntrinsicTokenGrantAbsent
+    IssuesAxis => IntrinsicTokenGrantAbsent
+    ModelsAxis => IntrinsicTokenGrantAbsent
+    PackagesAxis => IntrinsicTokenGrantAbsent
+    PagesAxis => IntrinsicTokenGrantAbsent
+    PullRequestsAxis => IntrinsicTokenGrantAbsent
+    RepositoryProjectsAxis => IntrinsicTokenGrantAbsent
+    SecurityEventsAxis => IntrinsicTokenGrantAbsent
+    StatusesAxis => IntrinsicTokenGrantAbsent
+    VulnerabilityAlertsAxis => IntrinsicTokenGrantAbsent
+    WorkflowsAxis => IntrinsicTokenGrantAbsent
+    AdministrationAxis => IntrinsicTokenGrantAbsent
+    OrganizationSelfHostedRunnersAxis => IntrinsicTokenGrantAbsent
+  }
+}
+
+type ActionsAccessSet
+  = ActionsAccessReadOrWrite
+  | ActionsAccessWriteOnly
+  | ActionsAccessReadOnly
+  | ActionsAccessNotAvailable
+
+fn axis_allowed_actions_access(axis: GitHubPermissionAxis) -> ActionsAccessSet {
+  match axis {
+    ActionsAxis => ActionsAccessReadOrWrite
+    ArtifactMetadataAxis => ActionsAccessReadOrWrite
+    AttestationsAxis => ActionsAccessReadOrWrite
+    ChecksAxis => ActionsAccessReadOrWrite
+    CodeQualityAxis => ActionsAccessReadOrWrite
+    ContentsAxis => ActionsAccessReadOrWrite
+    DeploymentsAxis => ActionsAccessReadOrWrite
+    DiscussionsAxis => ActionsAccessReadOrWrite
+    IdTokenAxis => ActionsAccessWriteOnly
+    IssuesAxis => ActionsAccessReadOrWrite
+    MetadataAxis => ActionsAccessNotAvailable
+    ModelsAxis => ActionsAccessReadOnly
+    PackagesAxis => ActionsAccessReadOrWrite
+    PagesAxis => ActionsAccessReadOrWrite
+    PullRequestsAxis => ActionsAccessReadOrWrite
+    RepositoryProjectsAxis => ActionsAccessNotAvailable
+    SecurityEventsAxis => ActionsAccessReadOrWrite
+    StatusesAxis => ActionsAccessReadOrWrite
+    VulnerabilityAlertsAxis => ActionsAccessReadOnly
+    WorkflowsAxis => ActionsAccessNotAvailable
+    AdministrationAxis => ActionsAccessNotAvailable
+    OrganizationSelfHostedRunnersAxis => ActionsAccessNotAvailable
+  }
+}
+
+fn actions_access_set_admits(set: ActionsAccessSet, access: GitHubAppPermissionAccess) -> Bool {
+  match set {
+    ActionsAccessNotAvailable => false
+    ActionsAccessReadOrWrite => match access {
+      AppAccessRead => true
+      AppAccessWrite => true
+    }
+    ActionsAccessWriteOnly => match access {
+      AppAccessRead => false
+      AppAccessWrite => true
+    }
+    ActionsAccessReadOnly => match access {
+      AppAccessRead => true
+      AppAccessWrite => false
+    }
+  }
+}
+
+// DECLARABILITY, not possession — renamed from actions_token_can_carry with the
+// intrinsic-grant correction. The token carries Metadata: read while Metadata
+// is undeclarable, so a single "can carry" predicate answered two questions and
+// had to be wrong about one of them. Ask effective_actions_grant for possession.
+fn actions_token_may_declare_permission(name: GitHubPermissionAxis) -> Bool {
+  match axis_actions_permissions_key(axis: name) {
+    Absent => false
+    Present { value: _ } => match axis_allowed_actions_access(axis: name) {
+      ActionsAccessNotAvailable => false
+      ActionsAccessReadOrWrite => true
+      ActionsAccessWriteOnly => true
+      ActionsAccessReadOnly => true
+    }
+  }
+}
+
+data workflows_permission_name: GitHubPermissionAxis = WorkflowsAxis
+
+// Declarability is sufficient here because an intrinsic grant is read-only by
+// construction (IntrinsicTokenGrant has no write variant), so no intrinsic
+// grant can authorize a workflow-file write. Workflows carries neither.
+fn actions_token_may_write_workflow_files() -> Bool {
+  actions_token_may_declare_permission(name: workflows_permission_name)
+}
+
+type GitHubWorkflowEvent
+  = PullRequestEvent
+  | PushEvent
+  | WorkflowDispatchEvent
+  | MergeGroupEvent
+  | ScheduleEvent
+
+type PullRequestOrigin
+  = SameRepositoryOrigin
+  | ForkedRepositoryOrigin
+  | OriginNotApplicable
+
+type RepositoryVisibility
+  = PublicRepository
+  | PrivateRepository
+
+type ActionsRepositoryPolicyObservation
+  = ActionsRepositoryPolicyUnobserved
+  | ActionsRepositoryPolicyObserved {
+      visibility: RepositoryVisibility
+      send_write_tokens_to_fork_pull_requests: Bool
+    }
+
+fn fork_write_tokens_reachable(policy: ActionsRepositoryPolicyObservation) -> Bool {
+  match policy {
+    ActionsRepositoryPolicyUnobserved => false
+    ActionsRepositoryPolicyObserved { visibility, send_write_tokens_to_fork_pull_requests: allowed } =>
+      match visibility {
+        PublicRepository => false
+        PrivateRepository => allowed
+      }
+  }
+}
+
+type EffectiveActionsJobGrant {
+  workflow: DeclarationRef
+  job: DeclarationRef
+  event: GitHubWorkflowEvent
+  origin: PullRequestOrigin
+  repository_policy: ActionsRepositoryPolicyObservation
+  permissions: WorkflowPermissions
+}
+
+fn permission_level_access(level: PermissionLevel) -> GitHubAppPermissionAccess? {
+  match level {
+    PermRead => Present { value: AppAccessRead }
+    PermWrite => Present { value: AppAccessWrite }
+    PermNone => none
+  }
+}
+
+fn axis_modeled_by_workflow_permissions(axis: GitHubPermissionAxis) -> Bool {
+  match axis {
+    ActionsAxis => true
+    ContentsAxis => true
+    IdTokenAxis => true
+    IssuesAxis => true
+    PullRequestsAxis => true
+    ArtifactMetadataAxis => false
+    AttestationsAxis => false
+    ChecksAxis => false
+    CodeQualityAxis => false
+    DeploymentsAxis => false
+    DiscussionsAxis => false
+    MetadataAxis => false
+    ModelsAxis => false
+    PackagesAxis => false
+    PagesAxis => false
+    RepositoryProjectsAxis => false
+    SecurityEventsAxis => false
+    StatusesAxis => false
+    VulnerabilityAlertsAxis => false
+    WorkflowsAxis => false
+    AdministrationAxis => false
+    OrganizationSelfHostedRunnersAxis => false
+  }
+}
+
+fn declared_level_for_axis(perms: WorkflowPermissions, axis: GitHubPermissionAxis) -> PermissionLevel? {
+  match axis {
+    ActionsAxis => perms.actions
+    ContentsAxis => perms.contents
+    IdTokenAxis => perms.id_token
+    IssuesAxis => perms.issues
+    PullRequestsAxis => perms.pull_requests
+    ArtifactMetadataAxis => none
+    AttestationsAxis => none
+    ChecksAxis => none
+    CodeQualityAxis => none
+    DeploymentsAxis => none
+    DiscussionsAxis => none
+    MetadataAxis => none
+    ModelsAxis => none
+    PackagesAxis => none
+    PagesAxis => none
+    RepositoryProjectsAxis => none
+    SecurityEventsAxis => none
+    StatusesAxis => none
+    VulnerabilityAlertsAxis => none
+    WorkflowsAxis => none
+    AdministrationAxis => none
+    OrganizationSelfHostedRunnersAxis => none
+  }
+}
+
+type ActionsGrantResolution
+  = ActionsGrantResolved { access: GitHubAppPermissionAccess }
+  | ActionsGrantNone
+  | ActionsGrantScopeUnavailable
+  | ActionsGrantAxisNotModeled
+  | ActionsGrantDeclaredAccessInvalid {
+      axis: GitHubPermissionAxis
+      declared: GitHubAppPermissionAccess
+      allowed: ActionsAccessSet
+    }
+  | ActionsGrantForkPolicyUnobserved
+
+type ForkWriteVerdict
+  = ForkWriteNotApplicable
+  | ForkWriteAllowed
+  | ForkWriteDowngradedToRead
+  | ForkWritePolicyUnobserved
+
+fn fork_write_verdict(grant: EffectiveActionsJobGrant) -> ForkWriteVerdict {
+  match grant.origin {
+    SameRepositoryOrigin => ForkWriteNotApplicable
+    OriginNotApplicable => ForkWriteNotApplicable
+    ForkedRepositoryOrigin => match grant.repository_policy {
+      ActionsRepositoryPolicyUnobserved => ForkWritePolicyUnobserved
+      ActionsRepositoryPolicyObserved { visibility: _, send_write_tokens_to_fork_pull_requests: _ } =>
+        if fork_write_tokens_reachable(policy: grant.repository_policy) {
+          ForkWriteAllowed
+        } else {
+          ForkWriteDowngradedToRead
+        }
+    }
+  }
+}
+
+fn resolve_declared_write(grant: EffectiveActionsJobGrant) -> ActionsGrantResolution {
+  match fork_write_verdict(grant: grant) {
+    ForkWriteNotApplicable => ActionsGrantResolved { access: AppAccessWrite }
+    ForkWriteAllowed => ActionsGrantResolved { access: AppAccessWrite }
+    ForkWriteDowngradedToRead => ActionsGrantResolved { access: AppAccessRead }
+    ForkWritePolicyUnobserved => ActionsGrantForkPolicyUnobserved
+  }
+}
+
+fn resolve_declared_access(
+  grant: EffectiveActionsJobGrant,
+  axis: GitHubPermissionAxis,
+  declared: GitHubAppPermissionAccess
+) -> ActionsGrantResolution {
+  if !actions_access_set_admits(set: axis_allowed_actions_access(axis: axis), access: declared) {
+    ActionsGrantDeclaredAccessInvalid {
+      axis: axis,
+      declared: declared,
+      allowed: axis_allowed_actions_access(axis: axis)
+    }
+  } else {
+    match declared {
+      AppAccessRead => ActionsGrantResolved { access: AppAccessRead }
+      AppAccessWrite => resolve_declared_write(grant: grant)
+    }
+  }
+}
+
+fn effective_actions_grant(
+  grant: EffectiveActionsJobGrant,
+  name: GitHubPermissionAxis
+) -> ActionsGrantResolution {
+  match axis_actions_permissions_key(axis: name) {
+    Absent => match axis_intrinsic_token_grant(axis: name) {
+      IntrinsicTokenGrantAbsent => ActionsGrantScopeUnavailable
+      IntrinsicTokenGrantRead => ActionsGrantResolved { access: AppAccessRead }
+    }
+    Present { value: _ } =>
+      if !axis_modeled_by_workflow_permissions(axis: name) {
+        ActionsGrantAxisNotModeled
+      } else {
+        match declared_level_for_axis(perms: grant.permissions, axis: name) {
+          Absent => ActionsGrantNone
+          Present { value: level } => match permission_level_access(level: level) {
+            Absent => ActionsGrantNone
+            Present { value: declared } =>
+              resolve_declared_access(grant: grant, axis: name, declared: declared)
+          }
+        }
+      }
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.actions_token",
+      decl_name: "EffectiveActionsJobGrant",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.actions_token.extdeps_external_authority_anchor,
+  further_citations: [
+    extdeps.github.actions_token.automatic_token_citation,
+    extdeps.github.actions_token.app_permissions_citation
+  ]
+}
