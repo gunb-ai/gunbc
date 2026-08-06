@@ -75,6 +75,7 @@ type WorkflowTrigger
   | Schedule { cron: CronSchedule }
   | WorkflowDispatch { inputs: List<DispatchInput> }
   | WorkflowCall { inputs: List<DispatchInput> }
+  | WorkflowRunCompleted { workflows: List<String> }
   | MergeGroup
 
 type PullRequestActivity
@@ -83,6 +84,8 @@ type PullRequestActivity
   | Reopened
   | ReadyForReview
   | Closed
+
+data workflow_run_trigger_citation_note: String = "workflow_run is the event GitHub delivers when a workflow run of ANOTHER workflow reaches a listed activity type (docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#workflow_run, read 2026-08-06). Two facts about the shape, both load-bearing. THE VARIANT IS COMPLETED-ONLY BY NAME, not by a types field. GitHub documents three activity types (requested, in_progress, completed) and the variant admits exactly one of them, so the activity is carried in the CONSTRUCTOR rather than as a list — a workflow that also wanted `requested` is a different trigger with a different admission story, not a longer list on this one, and an alert holding issues: write must not be able to widen its own activation surface by appending to a list. The day this repo needs a second activity, it is a second variant whose admission is argued separately, and every serializer match answers it fail-closed. THE WORKFLOWS FIELD IS List<String> AND NOT A MINTED WorkflowName. Workflow.name in this module is String, and the workflows filter refers to exactly that name, so a WorkflowName alias would be a second name for one carrier that adds no refinement — the hollow-alias class DESIGN carries as an open construction-wall thread. The referent is the name, so it shares the name's carrier. If Workflow.name ever gains a refinement, this field follows it there rather than being refined separately."
 
 data merge_group_event_citation_note: String = "merge_group is the event GitHub delivers when a merge queue needs checks on a queue-constructed tree (docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#merge_group, read 2026-07-16). The variant is nullary because checks_requested is the ONLY documented activity type and GitHub's default when the types filter is omitted — a types parameter with exactly one inhabitant carries no information (the phantom-parameter collapse ruling); the day upstream documents a second activity, the field returns as a closed modeled enum and every serializer match must answer it, fail-closed."
 
