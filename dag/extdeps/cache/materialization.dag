@@ -6,14 +6,16 @@ import extdeps.uri { Uri, Https }
 import std.types { Bool, Int, List, String }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
-  EvictionPolicy, Ttl, Lru, SizeBounded, Never, Manual,
+  ProviderRetention, CapacityPolicy,
+  CapacityUnbounded, CapacityBounded, CapacityUnobserved,
+  retention_is_bounded,
   PersistenceLocality, InProcess, PerRunnerFilesystem, PerHostFilesystem, CrossHostNetwork
 }
 import std.materialization_ladder {
   CacheProvider, CacheCoverage, Frame,
   ProviderTier, MemoTier, ArtifactTier, CasTier,
   CacheKeying, ContentKeyed, ExistenceKeyed,
-  provider_row, scope_exit_eviction, space_packed_eviction
+  provider_row
 }
 import extdeps.cache.types {
   CacheInterfaceCatalogFacts,
@@ -29,13 +31,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data catalog_materialization_note: String = "C0 (operator ruling, 2026-07-09): extdeps stays the ground-truth/interface layer — the catalog cites what a cache system IS — but every USE of a cache goes through materialization, so nobody re-invents memo. This projection is the only door from a catalog row into the ladder: provider = catalog row + role (scope, coverage); tier/keying/eviction are DERIVED from the cited facts, never restated at the provider site. The two eviction vocabularies are distinct concepts, not a fork — and since 2026-07-11 they carry distinct NAMES (the cross-parent no-ambiguity wall found the homonym): std.cache_interface.EvictionPolicy is the cited MECHANISM (Ttl/Lru/SizeBounded/Never/Manual — what the upstream does), the ladder's EvictionClass is the REQUIRED CLASS (ScopeExit derived from frame exit, or SpacePacked = bounded and sound-to-drop — rule 3). The mapping: InProcess locality => ScopeExit by construction (the process frame's exit IS the eviction); Ttl/Lru/SizeBounded => SpacePacked (bounded, dropping pure facts is sound); Never/Manual outside a process => ProjectionRefused — a store with unbounded or human-gated growth cannot satisfy rule 3, and the refusal points at the catalog row that needs a declared budget, typed and countable, never a silent shrink of the provider list."
+data catalog_materialization_note: String = "C0 (operator ruling, 2026-07-09): extdeps stays the ground-truth/interface layer - the catalog cites what a cache system IS - but every USE of a cache goes through materialization, so nobody re-invents memo. This projection is the only door from a catalog row into the ladder: provider = catalog row + role (scope, coverage); tier and keying are DERIVED from the cited facts, never restated at the provider site. RETENTION IS CARRIED, NOT VERDICTED (2026-08-06). The former mapping asserted two things it had not established: InProcess locality => ScopeExit by construction, which DISCARDED the row placement retention outright so an in-process provider could never carry a byte bound; and Ttl/Lru/SizeBounded => SpacePacked, which minted a space guarantee from an age bound and from a replacement ORDER. Both are gone. provider_from_catalog now carries facts.placement.retention through unchanged for EVERY locality, and the boundedness question moved to the role door provider_for_bounded_role, whose refusal names the missing axis. That split is deliberate: a witness-frame memo may be scope-released with unbounded capacity and remain legitimate under its frame envelope, while a promoted entry-scoped memo or a cross-run store must show a real ceiling - and only the consumer knows which it is. The EvictionPolicy/EvictionClass homonym the 2026-07-11 ambiguity wall found is dissolved rather than renamed: both vocabularies are now std.cache_interface.ProviderRetention, and required class is the derived predicate retention_is_bounded."
 
 data catalog_keying_note: String = "Keying projection is refuse-leaning (section 5): ContentAddressed and NativeInternal (the tool's internal hash of cited inputs) project to ContentKeyed; HandAuthored projects to ExistenceKeyed — a hand-authored key string is not proven content-complete until a key-completeness receipt upgrades it (extdeps.cache.key_completeness is that oracle's home); and prefix_fallback_allowed forces ExistenceKeyed regardless, because a prefix restore names a bucket, not an identity (the actions-cache staleness class, cousin of the #6352 build-if-absent wall)."
 
+// Refusal reasons name the MISSING AXIS, because the remedy differs: an
+// unobserved capacity needs a citation, a known-unbounded one needs a declared
+// ceiling. The old pair (NeverEvictionOutsideProcess / ManualEvictionOutside-
+// Process) named the old fused variants and could not say which fact was absent.
 type CatalogProjectionRefusalReason
-  = NeverEvictionOutsideProcess
-  | ManualEvictionOutsideProcess
+  = CapacityUnboundedForBoundedRole
+  | CapacityUnobservedForBoundedRole
+  | AtCapacityUnobservedForGracefulRole
 
 type CatalogProviderProjection
   = ProjectedProvider { provider: CacheProvider }
@@ -62,43 +69,17 @@ fn catalog_tier(p: CacheInterfaceCatalogPlacement, keying: CacheKeying) -> Provi
   }
 }
 
-fn catalog_bounded_projection(
-  facts: CacheInterfaceCatalogFacts,
-  scope: List<Frame>,
-  coverage: CacheCoverage,
-  tier: ProviderTier
-) -> CatalogProviderProjection {
-  match facts.placement.eviction {
-    Ttl { days: d } => ProjectedProvider {
-      provider: provider_row(
-        id: facts.identity,
-        scope: scope,
-        coverage: coverage,
-        tier: tier,
-        eviction: space_packed_eviction(budget: concat("cited ttl, days: ", to_string(d)))
-      )
-    }
-    Lru => ProjectedProvider {
-      provider: provider_row(
-        id: facts.identity,
-        scope: scope,
-        coverage: coverage,
-        tier: tier,
-        eviction: space_packed_eviction(budget: "cited lru, space-packed by the backend")
-      )
-    }
-    SizeBounded { cap_bytes: _ } => ProjectedProvider {
-      provider: provider_row(
-        id: facts.identity,
-        scope: scope,
-        coverage: coverage,
-        tier: tier,
-        eviction: space_packed_eviction(budget: "cited size-bounded cap")
-      )
-    }
-    Never => ProjectionRefused { interface: facts.identity, reason: NeverEvictionOutsideProcess }
-    Manual => ProjectionRefused { interface: facts.identity, reason: ManualEvictionOutsideProcess }
-  }
+// PRESERVE, do not pre-verdict. The former shape answered two questions at
+// once and got both wrong: every InProcess row was projected as ScopeExit with
+// facts.placement.eviction DISCARDED (so a promoted in-process provider could
+// not carry a byte bound at all), and Ttl / Lru / SizeBounded were all mapped
+// to SpacePacked (so an age bound and a replacement ORDER each minted a space
+// guarantee they never established). Retention now travels through unchanged
+// and the CONSUMER's obligation decides what it requires — a witness-frame memo
+// may legitimately be scope-released with unbounded capacity, while a promoted
+// entry-scoped memo or a cross-run store demands a real ceiling.
+fn catalog_retention(facts: CacheInterfaceCatalogFacts) -> ProviderRetention {
+  facts.placement.retention
 }
 
 fn provider_from_catalog(
@@ -108,19 +89,44 @@ fn provider_from_catalog(
 ) -> CatalogProviderProjection {
   let keying = catalog_keying(kd: facts.key_derivation)
   let tier = catalog_tier(p: facts.placement, keying: keying)
-  match facts.placement.locality {
-    InProcess => ProjectedProvider {
-      provider: provider_row(
-        id: facts.identity,
-        scope: scope,
-        coverage: coverage,
-        tier: tier,
-        eviction: scope_exit_eviction()
-      )
+  ProjectedProvider {
+    provider: provider_row(
+      id: facts.identity,
+      scope: scope,
+      coverage: coverage,
+      tier: tier,
+      retention: catalog_retention(facts: facts)
+    )
+  }
+}
+
+// ELIGIBILITY is a separate question from ACCOUNTING: a row may be classified
+// completely and still be ineligible for a role whose obligation it cannot
+// discharge. Accounting asks "is every cache classified?"; eligibility asks
+// "does THIS cache have enough facts for THIS role?"; completion asks "is every
+// provider the live plan requires eligible?". One predicate answering all three
+// is how a refusal count became a copied expected number instead of a finding.
+fn provider_for_bounded_role(
+  facts: CacheInterfaceCatalogFacts,
+  scope: List<Frame>,
+  coverage: CacheCoverage
+) -> CatalogProviderProjection {
+  let retention = catalog_retention(facts: facts)
+  if retention_is_bounded(r: retention) {
+    provider_from_catalog(facts: facts, scope: scope, coverage: coverage)
+  } else {
+    ProjectionRefused {
+      interface: facts.identity,
+      reason: bounded_role_refusal_reason(c: retention.capacity)
     }
-    PerRunnerFilesystem => catalog_bounded_projection(facts: facts, scope: scope, coverage: coverage, tier: tier)
-    PerHostFilesystem => catalog_bounded_projection(facts: facts, scope: scope, coverage: coverage, tier: tier)
-    CrossHostNetwork => catalog_bounded_projection(facts: facts, scope: scope, coverage: coverage, tier: tier)
+  }
+}
+
+fn bounded_role_refusal_reason(c: CapacityPolicy) -> CatalogProjectionRefusalReason {
+  match c {
+    CapacityUnbounded => CapacityUnboundedForBoundedRole
+    CapacityBounded { limit: _, at_capacity: _ } => CapacityUnobservedForBoundedRole
+    CapacityUnobserved => CapacityUnobservedForBoundedRole
   }
 }
 

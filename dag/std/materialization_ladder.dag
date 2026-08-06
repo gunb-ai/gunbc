@@ -6,6 +6,13 @@ import std.realization {
   Placement, LocalInProcess, LocalFilesystem, RemoteNetwork
 }
 import std.disposition { Disposition, Terminal }
+import std.cache_interface {
+  ProviderRetention,
+  CapacityPolicy,
+  ReleasedAtProviderScopeExit,
+  ReleasedNever,
+  retention_is_bounded,
+}
 
 data materialization_ladder_frame_path_predicate_contract: Disposition = Terminal {
   reason: "Structural coproduct/path readers over Frame/FrameKind (frame_eq, frame_path_*, declared_emergent_prefix, string_list_contains) — closed by the ladder's declared frame variants; discriminating corpus: dag/test/claim/materialization_ladder_witness_test.dag."
@@ -25,7 +32,7 @@ data materialization_ladder_value_binding_predicate_contract: Disposition = Term
 
 data materialization_ladder_ownership_convergence_note: String = "Section-3 convergence thread (like the fnv1a64 dual-surface row in DESIGN): v1.compiler.ownership (src/v1/ownership.dag, generated twin v1_compiler_ownership.rs) is the EVAL-FRAME INSTANCE of this ladder, built very early as the emitter's materialization decision. The mapping is exact: BindingUsage.consumers = FrameDemand sites at binding grain; binding_fan_out (Threaded excluded) = demand plurality — Threaded IS the iteration-carry/reduce-spine edge, excluded from plurality exactly as the spine's critical path is excluded from independence width; OwnershipDecision.SoleOwner = single-demand move (AcceptedSingleRecompute at value grain); fan_out>1 inside one function body (a shared-state frame) = the Share/clone decision; SharedError with consumer_count+sites = plurality refused in an affine-uniqueness context (a context-requirement refinement this std ladder does not yet model — the residue that keeps the v1 instance load-bearing); the v3-era zero arm (fan_out==0 and pure = dead code; ==0 with effect = valid, the effect IS the use) is DeadComputation / AcceptedEffectIsTheUse here. Two surfaces, one concept, tracked so the fork does not widen. Dissolution: when the emit stage migrates onto the v2/std spine, ownership decisions ground on this ladder (demand plurality per frame) and v1.compiler.ownership retires with the seed."
 
-data materialization_ladder_note: String = "The state x decision law for redundant computation (operator, 2026-07-09). One axis decides everything: WHEN the redundancy is knowable, and whether what was knowable was prepared for. Plurality is the primitive throughout: 0 demands of a pure computation = authored waste (DeadComputation, the degenerate rule-1); 0 demands of an effect = valid, the effect is the use; 1 undeclared demand = Recompute; >=2 demands = the rewire-vs-obligate split below. (1) Redundancy visible in the graph whose LCA frame is shared-state (one workspace/process — rewireable) = AUTHORED duplication = error; the fix is rewire/Share, never a cache. (2) Redundancy whose LCA is an isolation boundary (siblings execute apart by construction) cannot be rewired = a materialization obligation at the LCA — it MUST be discharged by a covering provider. (3) EXPECTED-emergent redundancy — a single demand today, but an enclosing frame declares re-demand (ReplayedFrame attempts>1 = retry/restart replay; UnboundedSiblingsFrame = server loop / recurring CI invocations over time) — obligates UP FRONT: prepare-before-demand, so checkpointing and cross-run caches are derived, not bolted on after the incident. (4) UNEXPECTED-emergent redundancy (discoverable only by measurement, e.g. the interpreter recompute-trace) is ACCEPTED — unavoidable by definition — but its finding converts it to state 2/3 for the next run; acceptance is typed, never silent. (5) A single undeclared pure demand is AcceptedSingleRecompute: a cache there is dead weight. Nature gates ride on top: FreshEffect (measurement/deploy/mutation) is never memoized and its duplication is intentional (ExemptFreshEffect); WorldRead is memoizable ONLY with a declared staleness envelope — a TTL is always one of two confessions, an unmodeled dependency (fix: put it in the key) or a tolerated staleness (fix: declare the envelope), and without the declaration a redundant WorldRead is RefusedUnmodeledWorldRead. Rule 3 (eviction) is by construction, not by check: CacheProvider cannot be written without an EvictionClass (the REQUIRED eviction class - distinct from std.cache_interface.EvictionPolicy, the cited upstream mechanism; distinct concepts carry distinct names, DESIGN 3) — ScopeExit for scoped carriers (eviction = frame exit, derived) or SpacePacked for the persistent tier (dropping pure facts is always sound, only ever costs recompute). Rule 4 keying wall: an ExistenceKeyed provider is refused even when it covers — existence is not identity (receipt: the build-if-absent stale-binary red, #6352). Relation to peers (DESIGN section 3, one concept per authority): std.realization.Materialization is the verdict vocabulary this ladder prescribes into; v2.std.materialize is the within-graph (shared-state) content-hash detector feeding state 1; v2.lens.duplicate_computation is the within-script command-grain demand extractor feeding the same groups. Mutable keyed state is a database, not a materialization — writable caches are out of scope by construction."
+data materialization_ladder_note: String = "The state x decision law for redundant computation (operator, 2026-07-09). One axis decides everything: WHEN the redundancy is knowable, and whether what was knowable was prepared for. Plurality is the primitive throughout: 0 demands of a pure computation = authored waste (DeadComputation, the degenerate rule-1); 0 demands of an effect = valid, the effect is the use; 1 undeclared demand = Recompute; >=2 demands = the rewire-vs-obligate split below. (1) Redundancy visible in the graph whose LCA frame is shared-state (one workspace/process — rewireable) = AUTHORED duplication = error; the fix is rewire/Share, never a cache. (2) Redundancy whose LCA is an isolation boundary (siblings execute apart by construction) cannot be rewired = a materialization obligation at the LCA — it MUST be discharged by a covering provider. (3) EXPECTED-emergent redundancy — a single demand today, but an enclosing frame declares re-demand (ReplayedFrame attempts>1 = retry/restart replay; UnboundedSiblingsFrame = server loop / recurring CI invocations over time) — obligates UP FRONT: prepare-before-demand, so checkpointing and cross-run caches are derived, not bolted on after the incident. (4) UNEXPECTED-emergent redundancy (discoverable only by measurement, e.g. the interpreter recompute-trace) is ACCEPTED — unavoidable by definition — but its finding converts it to state 2/3 for the next run; acceptance is typed, never silent. (5) A single undeclared pure demand is AcceptedSingleRecompute: a cache there is dead weight. Nature gates ride on top: FreshEffect (measurement/deploy/mutation) is never memoized and its duplication is intentional (ExemptFreshEffect); WorldRead is memoizable ONLY with a declared staleness envelope — a TTL is always one of two confessions, an unmodeled dependency (fix: put it in the key) or a tolerated staleness (fix: declare the envelope), and without the declaration a redundant WorldRead is RefusedUnmodeledWorldRead. Rule 3 (retention) is by construction, not by check: CacheProvider cannot be written without a ProviderRetention, and boundedness is DERIVED from it by retention_is_bounded — storage that ends with the provider's scope, or a known ceiling. The former EvictionClass forced a choice between those two and carried its budget as free text; a scoped carrier and a byte-bounded one are now the same product with different fields, and TTL or LRU alone reach neither arm (freshness is InvalidationTrigger, and a replacement ORDER is not a ceiling). Rule 4 keying wall: an ExistenceKeyed provider is refused even when it covers — existence is not identity (receipt: the build-if-absent stale-binary red, #6352). Relation to peers (DESIGN section 3, one concept per authority): std.realization.Materialization is the verdict vocabulary this ladder prescribes into; v2.std.materialize is the within-graph (shared-state) content-hash detector feeding state 1; v2.lens.duplicate_computation is the within-script command-grain demand extractor feeding the same groups. Mutable keyed state is a database, not a materialization — writable caches are out of scope by construction."
 
 type FrameKind
   = SharedStateFrame
@@ -52,9 +59,15 @@ type FrameDemand {
 
 type CacheKeying = ContentKeyed | ExistenceKeyed
 
-type EvictionClass
-  = ScopeExit
-  | SpacePacked { budget: String }
+// The former EvictionClass (ScopeExit | SpacePacked { budget: String }) made
+// lifetime and capacity MUTUALLY EXCLUSIVE, so "released at entry-scope exit
+// AND bounded by retained bytes AND refuses new stores at capacity" — the
+// exact shape of a promoted in-process memo — was unstateable. Its budget was
+// free text, which is not a capacity authority. Both are replaced by
+// std.cache_interface.ProviderRetention, and with the axes separated the
+// "required class" is a PREDICATE over retention (retention_is_bounded), not
+// a second vocabulary — so the EvictionClass/EvictionPolicy homonym the
+// cross-parent ambiguity wall once found is dissolved rather than renamed.
 
 type CacheCoverage
   = CoversAllComputations
@@ -72,7 +85,7 @@ type CacheProvider {
   scope: List<Frame>
   coverage: CacheCoverage
   tier: ProviderTier
-  eviction: EvictionClass
+  retention: ProviderRetention
 }
 
 data vacuity_lens_design_doc_provenance: String = "docs/plans/vacuity-lens-design.md (reachable via the registered gunbc.plans.inert_layer_lens carrier's link): its load-bearing review correction is about THIS file's AuthoredDuplication verdict — share f(x) in f(x)==f(x) makes the test MORE tautological; vacuity needs its own VacuityEvidence, not LadderVerdict. Migrates to the vacuity lens .dag carrier when it lands."
@@ -132,12 +145,16 @@ fn addressing_spans_isolation(a: ProviderAddressing) -> Bool {
   }
 }
 
-fn scope_exit_eviction() -> EvictionClass {
-  ScopeExit
+// Scope-release with capacity left as observed. A scoped carrier bounds growth
+// by its frame, but that is NOT a general peak-memory guarantee for the frame's
+// interior — the 2026-07-10 20GiB incident happened inside a live scope — so
+// the capacity fact travels beside it rather than being implied away.
+fn scope_released_retention(capacity: CapacityPolicy) -> ProviderRetention {
+  ProviderRetention { release_policy: ReleasedAtProviderScopeExit, capacity: capacity }
 }
 
-fn space_packed_eviction(budget: String) -> EvictionClass {
-  SpacePacked { budget: budget }
+fn persistent_retention(capacity: CapacityPolicy) -> ProviderRetention {
+  ProviderRetention { release_policy: ReleasedNever, capacity: capacity }
 }
 
 fn provider_row(
@@ -145,9 +162,9 @@ fn provider_row(
   scope: List<Frame>,
   coverage: CacheCoverage,
   tier: ProviderTier,
-  eviction: EvictionClass
+  retention: ProviderRetention
 ) -> CacheProvider {
-  CacheProvider { id: id, scope: scope, coverage: coverage, tier: tier, eviction: eviction }
+  CacheProvider { id: id, scope: scope, coverage: coverage, tier: tier, retention: retention }
 }
 
 type LadderVerdict

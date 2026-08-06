@@ -68,7 +68,7 @@ data resolved_graph_cache_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: StructuredArtifact
     locality: PerHostFilesystem
-    eviction: SizeBounded { cap_bytes: resolved_graph_cache_cap_bytes }
+    retention: { release_policy: ReleasedNever, capacity: CapacityBounded { limit: ByteLimit { cap_bytes: resolved_graph_cache_cap_bytes }, at_capacity: AtCapacityUnobserved } }
     atomicity: WriteThenRename
     auth: FilesystemPerms
     read_latency: LocalDiskUs

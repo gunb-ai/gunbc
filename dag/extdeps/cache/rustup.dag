@@ -57,7 +57,7 @@ data rustup_toolchain_store_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: FileTree
     locality: PerHostFilesystem
-    eviction: Never
+    retention: { release_policy: ReleasedNever, capacity: CapacityUnobserved }
     atomicity: PerFile
     auth: FilesystemPerms
     read_latency: LocalDiskUs

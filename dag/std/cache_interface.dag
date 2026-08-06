@@ -1,6 +1,7 @@
 module std.cache_interface
 
 import std.types { NonEmptyStr, Bool, Int, LogicalTime }
+import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
 import std.measure { Nano, ByteSize }
 
@@ -28,12 +29,82 @@ type PersistenceLocality
   | PerHostFilesystem
   | CrossHostNetwork
 
-type EvictionPolicy
-  = Ttl { days: Int }
-  | Lru
-  | SizeBounded { cap_bytes: ByteSize }
-  | Never
-  | Manual
+// The former single EvictionPolicy axis (Ttl | Lru | SizeBounded | Never | Manual)
+// fused four independent questions and forked a fifth. Ttl and Manual were a
+// second spelling of InvalidationTrigger's TtlExpiry / ManualPurge, which this
+// module already carries on key_derivation — so the old axis could not state
+// "bounded by bytes AND released at scope exit" while it happily stated one
+// concept twice. Splitting it is a §3 de-fork, not a new taxonomy: freshness
+// stays on InvalidationTrigger, and what remains here is capacity, the action
+// taken at capacity, the replacement order (if any), and storage lifetime.
+
+// LimitUnobserved and RuntimeDerivedLimit are different evidence with different
+// remedies: the first says a finite bound exists but its effective configured
+// value was never read (a vendor default that a runner may override); the
+// second says the bound is COMPUTED at execution from a named repository
+// authority, so the link to that authority is the fact worth keeping.
+type CapacityLimit
+  = ByteLimit { cap_bytes: ByteSize }
+  | EntryCountLimit { cap_entries: Int }
+  | RuntimeDerivedLimit { authority: DeclarationRef }
+  | LimitUnobserved
+
+type ReplacementStrategy = LeastRecentlyUsed | ProviderNativeReplacement
+
+type AtCapacityDisposition
+  = RefuseNewStore
+  | ReplaceExisting { strategy: ReplacementStrategy }
+  | AtCapacityUnobserved
+
+// Three states, because "known unbounded" and "not established" have different
+// remedies and only the bounded arm may ever discharge a boundedness
+// obligation. at_capacity nests INSIDE the bounded arm because full-store
+// behaviour only exists where a ceiling does — so CapacityUnbounded paired
+// with ReplaceExisting is unwritable rather than merely wrong.
+// A row that merely evicts by LRU has named a replacement ORDER and
+// established no ceiling: it is CapacityUnobserved until a capacity fact is
+// cited, which is exactly the inference provider_from_catalog used to make.
+type CapacityPolicy
+  = CapacityUnbounded
+  | CapacityBounded { limit: CapacityLimit, at_capacity: AtCapacityDisposition }
+  | CapacityUnobserved
+
+// Lifetime names no frame: the provider already carries its scope as
+// List<Frame>, so ReleasedAtProviderScopeExit says storage ends with THAT
+// scope rather than re-spelling "witness" or "entry" in a second place.
+type ReleasePolicy
+  = ReleasedAtProviderScopeExit
+  | ReleasedNever
+  | ReleasedManually
+
+// The product the old sum could not express. One vocabulary serves both the
+// cited mechanism and the ladder's required class: with the axes separated,
+// "required class" is a PREDICATE over retention (is growth bounded?), not a
+// second taxonomy — so the ScopeExit/SpacePacked homonym dissolves rather than
+// being renamed. Freshness is NOT an axis here: TtlExpiry and ManualPurge stay
+// on InvalidationTrigger, where they already lived.
+type ProviderRetention {
+  release_policy: ReleasePolicy
+  capacity: CapacityPolicy
+}
+
+// Bounded growth holds when storage ends with the provider's scope, or when a
+// ceiling is known. TTL and LRU reach neither arm on their own.
+fn retention_is_bounded(r: ProviderRetention) -> Bool {
+  match r.release_policy {
+    ReleasedAtProviderScopeExit => true
+    ReleasedNever => capacity_is_bounded(c: r.capacity)
+    ReleasedManually => capacity_is_bounded(c: r.capacity)
+  }
+}
+
+fn capacity_is_bounded(c: CapacityPolicy) -> Bool {
+  match c {
+    CapacityUnbounded => false
+    CapacityBounded { limit: _, at_capacity: _ } => true
+    CapacityUnobserved => false
+  }
+}
 
 type AtomicityModel = PerFile | WriteThenRename | WriteThenCommit | TwoPhase
 
@@ -133,7 +204,7 @@ type CacheInterfaceFacts {
   miss_semantics: CacheMissSemantics
   value_shape: ValueShape
   locality: PersistenceLocality
-  eviction: EvictionPolicy
+  retention: ProviderRetention
   atomicity: AtomicityModel
   auth: AuthScope
   read_latency: ReadLatencyClass

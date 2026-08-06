@@ -51,7 +51,7 @@ data buildbuddy_cas_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: RawBytes
     locality: CrossHostNetwork
-    eviction: Never
+    retention: { release_policy: ReleasedNever, capacity: CapacityUnobserved }
     atomicity: WriteThenCommit
     auth: ApiKey
     read_latency: LanMs

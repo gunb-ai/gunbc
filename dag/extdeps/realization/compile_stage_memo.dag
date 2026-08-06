@@ -51,7 +51,7 @@ data compile_stage_memo_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: StructuredArtifact
     locality: InProcess
-    eviction: Never
+    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityUnbounded }
     atomicity: PerFile
     auth: None
     read_latency: InProcessNs

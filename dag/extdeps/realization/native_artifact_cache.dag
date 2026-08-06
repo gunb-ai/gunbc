@@ -54,7 +54,7 @@ data native_artifact_cache_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: FileTree
     locality: PerRunnerFilesystem
-    eviction: Manual
+    retention: { release_policy: ReleasedManually, capacity: CapacityUnobserved }
     atomicity: WriteThenCommit
     auth: FilesystemPerms
     read_latency: LocalDiskUs

@@ -21,7 +21,7 @@ fn root_content_provider(id: String) -> CacheProvider {
     scope: empty_frame_path,
     coverage: CoversAllComputations,
     tier: CasTier { keying: ContentKeyed },
-    eviction: SpacePacked { budget: "10G local cache dir" }
+    retention: persistent_retention(capacity: CapacityBounded { limit: LimitUnobserved, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
   }
 }
 
@@ -31,7 +31,7 @@ fn rust_reference_provider() -> CacheProvider {
     scope: empty_frame_path,
     coverage: CoversAllComputations,
     tier: ReferenceTier,
-    eviction: ScopeExit
+    retention: scope_released_retention(capacity: CapacityUnbounded)
   }
 }
 
@@ -41,7 +41,7 @@ fn rust_clone_provider() -> CacheProvider {
     scope: empty_frame_path,
     coverage: CoversAllComputations,
     tier: CopyTier,
-    eviction: ScopeExit
+    retention: scope_released_retention(capacity: CapacityUnbounded)
   }
 }
 
@@ -120,7 +120,7 @@ test fn provider_scope_too_narrow_is_refused() -> Bool {
     scope: [wf(), job(name: "ci")],
     coverage: CoversAllComputations,
     tier: MemoTier { keying: ContentKeyed },
-    eviction: ScopeExit
+    retention: scope_released_retention(capacity: CapacityUnbounded)
   }
   let vs = materialization_ladder(
     demands: three_jobs_same_build(),
@@ -136,7 +136,7 @@ test fn existence_keyed_provider_is_refused() -> Bool {
     scope: empty_frame_path,
     coverage: CoversAllComputations,
     tier: MemoTier { keying: ExistenceKeyed },
-    eviction: ScopeExit
+    retention: scope_released_retention(capacity: CapacityUnbounded)
   }
   let vs = materialization_ladder(
     demands: three_jobs_same_build(),

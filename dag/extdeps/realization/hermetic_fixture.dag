@@ -60,7 +60,7 @@ data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: StructuredArtifact
     locality: PerHostFilesystem
-    eviction: Ttl { days: 30 }
+    retention: { release_policy: ReleasedNever, capacity: CapacityUnobserved }
     atomicity: PerFile
     auth: FilesystemPerms
     read_latency: LocalDiskUs
@@ -105,7 +105,7 @@ data hermetic_fixture_in_process_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: StructuredArtifact
     locality: InProcess
-    eviction: Never
+    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityUnbounded }
     atomicity: PerFile
     auth: None
     read_latency: InProcessNs

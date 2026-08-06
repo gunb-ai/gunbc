@@ -1,0 +1,118 @@
+module test.claim.cache_retention_axes_witness_test
+
+import std.types { Bool, String }
+import std.measure { byte_size }
+import std.decl_ref { WholeDeclaration }
+import std.cache_interface {
+  ProviderRetention,
+  ReleasedAtProviderScopeExit,
+  ReleasedNever,
+  CapacityUnbounded,
+  CapacityUnobserved,
+  CapacityBounded,
+  ByteLimit,
+  RuntimeDerivedLimit,
+  RefuseNewStore,
+  ReplaceExisting,
+  AtCapacityUnobserved,
+  ProviderNativeReplacement,
+  capacity_is_bounded,
+  retention_is_bounded,
+}
+
+data cache_retention_axes_note: String = "THE DISCRIMINATING CONTROLS for the retention axis split (operator ruling 2026-08-06). Every cell here is a PLANTED retention value, not a live corpus row, so a red is attributable to the algebra rather than to a catalog edit; the per-row dispositions are checked by each row consumer. Two cells prove the shape the old sum could not express AT ALL - scope release AND a capacity bound carried in one value - which is the whole reason the axis was split. One cell keeps the two negative states apart, because known-unbounded and not-established have different remedies and only the second is closed by a citation. One cell keeps refuse-new-store distinct from replacement, the distinction PR 2 rests on. The LRU and TTL halves are deliberately NOT tested here and the note below says why: both became unrepresentable rather than merely false, and an unrepresentable state has no value a predicate could be handed."
+
+data lru_ttl_unrepresentability_note: String = "WHERE THE LRU AND TTL HALVES ARE ACTUALLY CLOSED, stated here because an earlier draft of this file got it wrong in a way worth recording. That draft carried two functions named lru_without_capacity and ttl_without_capacity whose bodies were BYTE-IDENTICAL - both just CapacityUnobserved - so the names claimed a property no value in the test carried, and neither test could have failed for the reason its name gave. The real closure is at two different layers and NEITHER is a predicate over a planted retention value. (1) LRU is unrepresentable as a capacity claim: at_capacity nests inside the CapacityBounded arm, so ReplaceExisting { strategy: LeastRecentlyUsed } cannot be stated beside CapacityUnobserved or CapacityUnbounded at all - a type-level property, which is exactly why no test here exercises it and why the old fused axis needed one. (2) TTL is not on this axis: TtlExpiry lives on KeyDerivationFacts invalidation_triggers, so a TTL fact cannot reach a capacity verdict by any path. What remains testable is the predicate below - that an unobserved capacity does not satisfy a bounded role - plus the per-row dispositions, which are checked by each row consumer rather than restated here."
+
+fn capacity_not_established() -> ProviderRetention {
+  ProviderRetention {
+    release_policy: ReleasedNever,
+    capacity: CapacityUnobserved
+  }
+}
+
+fn scope_exit_byte_bounded_refuse_new() -> ProviderRetention {
+  ProviderRetention {
+    release_policy: ReleasedAtProviderScopeExit,
+    capacity: CapacityBounded {
+      limit: ByteLimit { cap_bytes: byte_size(count: 268435456) },
+      at_capacity: RefuseNewStore
+    }
+  }
+}
+
+fn scope_exit_runtime_derived_replace_existing() -> ProviderRetention {
+  ProviderRetention {
+    release_policy: ReleasedAtProviderScopeExit,
+    capacity: CapacityBounded {
+      limit: RuntimeDerivedLimit {
+        authority: {
+          module_path: "gunbc.host_budget_source",
+          decl_name: "HostBudgetResolution",
+          field: WholeDeclaration
+        }
+      },
+      at_capacity: ReplaceExisting { strategy: ProviderNativeReplacement }
+    }
+  }
+}
+
+test fn unobserved_capacity_never_satisfies_a_bounded_role() -> Bool {
+  let r = capacity_not_established()
+  !capacity_is_bounded(c: r.capacity) && !retention_is_bounded(r: r)
+}
+
+data scope_release_bounds_growth_note: String = "Scope release bounds GROWTH because storage ends with the frame; it says nothing about the peak reached INSIDE that frame, which is why the 2026-07-10 20GiB incident happened under a live scope. retention_is_bounded is the growth predicate, deliberately not a peak-memory guarantee, and a role that needs a peak bound asks the capacity axis."
+
+test fn scope_release_and_a_byte_ceiling_are_one_value() -> Bool {
+  let r = scope_exit_byte_bounded_refuse_new()
+  capacity_is_bounded(c: r.capacity) && retention_is_bounded(r: r)
+}
+
+test fn scope_release_and_a_runtime_derived_ceiling_are_one_value() -> Bool {
+  let r = scope_exit_runtime_derived_replace_existing()
+  capacity_is_bounded(c: r.capacity) && retention_is_bounded(r: r)
+}
+
+test fn refuse_new_store_is_distinct_from_replacement() -> Bool {
+  let refusing = scope_exit_byte_bounded_refuse_new()
+  let replacing = scope_exit_runtime_derived_replace_existing()
+  let a = match refusing.capacity {
+    CapacityUnbounded => false
+    CapacityUnobserved => false
+    CapacityBounded { limit: _, at_capacity: d } => match d {
+      RefuseNewStore => true
+      ReplaceExisting { strategy: _ } => false
+      AtCapacityUnobserved => false
+    }
+  }
+  let b = match replacing.capacity {
+    CapacityUnbounded => false
+    CapacityUnobserved => false
+    CapacityBounded { limit: _, at_capacity: d } => match d {
+      RefuseNewStore => false
+      ReplaceExisting { strategy: _ } => true
+      AtCapacityUnobserved => false
+    }
+  }
+  a && b
+}
+
+test fn unbounded_and_unobserved_capacity_are_different_states() -> Bool {
+  let known_unbounded = ProviderRetention {
+    release_policy: ReleasedNever,
+    capacity: CapacityUnbounded
+  }
+  let not_established = ProviderRetention {
+    release_policy: ReleasedNever,
+    capacity: CapacityUnobserved
+  }
+  let neither_is_bounded =
+    !retention_is_bounded(r: known_unbounded) && !retention_is_bounded(r: not_established)
+  let they_are_distinguishable = match known_unbounded.capacity {
+    CapacityUnbounded => true
+    CapacityUnobserved => false
+    CapacityBounded { limit: _, at_capacity: _ } => false
+  }
+  neither_is_bounded && they_are_distinguishable
+}

@@ -8,7 +8,7 @@ import std.materialization_ladder {
   CacheProvider, CoversAllComputations, ArtifactTier, ContentKeyed, SpacePacked, provider_row,
 }
 import std.artifact_store {
-  ArtifactStore, StoreReady, StoreRefusedEviction, store_over_provider, store_put, store_put_fold,
+  ArtifactStore, StoreReady, StoreRefusedRetention, store_over_provider, store_put, store_put_fold,
 }
 import std.realization { Share, Recompute }
 import std.realize_pack {
@@ -46,7 +46,7 @@ data meet_join_family_provider: CacheProvider = provider_row(
   scope: [],
   coverage: CoversAllComputations,
   tier: ArtifactTier { keying: ContentKeyed },
-  eviction: SpacePacked { budget: "meet join family native cache" }
+  retention: persistent_retention(capacity: CapacityBounded { limit: LimitUnobserved, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
 )
 
 fn meet_join_family_native_key_for(tree: InferredTree) -> ContentHash {
@@ -61,7 +61,7 @@ fn meet_join_family_native_key_for(tree: InferredTree) -> ContentHash {
 fn meet_join_family_test_store() -> ArtifactStore {
   match store_over_provider(provider: meet_join_family_provider, budget: byte_size(count: 1000000)) {
     StoreReady { store: s } => s
-    StoreRefusedEviction { provider_id: _, declared: _ } =>
+    StoreRefusedRetention { provider_id: _, declared: _ } =>
       ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
   }
 }
