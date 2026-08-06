@@ -17,6 +17,7 @@ import gunbc.ci_spec {
   gunbc_ci_workflow_wrapper_budget_minutes,
   ci_heal_author_commit_artifact_dir, ci_heal_author_commit_artifact_name,
   ci_heal_author_commit_required_output,
+  ci_heal_author_commit_artifact_includes_hidden_files,
   gunbc_ci_heal_repo_local_git_config_invoke,
 }
 import v2.workflow.ci_heal_revalidation_preflight_emit {
@@ -29,7 +30,6 @@ import gunbc.ci_heal_credential {
   ci_regen_heal_if
 }
 import gunbc.heal_push_plan { author_commit_required_committed_artifact_paths }
-import extdeps.github.effect { path_is_hidden }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec, ci_runner_target_ram_speed_budget, selected_ci_runner_target }
 import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
@@ -610,14 +610,6 @@ fn ci_heal_author_commit_upload_if() -> String {
   )
 }
 
-fn any_author_commit_path_is_hidden() -> Bool {
-  fold_list(
-    xs: author_commit_required_committed_artifact_paths(),
-    empty: false,
-    cons: fn(found, p) { found || path_is_hidden(path: p) }
-  )
-}
-
 fn ci_heal_author_commit_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload author-commit-required workflow repairs (the selected push credential cannot update .github/workflows/**)" },
@@ -630,7 +622,7 @@ fn ci_heal_author_commit_upload_step() -> Step {
         kv(key: "if-no-files-found", value: yaml_string(s: "error")),
         kv(
           key: "include-hidden-files",
-          value: yaml_bool(b: any_author_commit_path_is_hidden())
+          value: yaml_bool(b: ci_heal_author_commit_artifact_includes_hidden_files())
         ),
         kv(key: "retention-days", value: yaml_int(n: 7)),
         kv(key: "compression-level", value: yaml_int(n: 0))

@@ -2,7 +2,6 @@ module extdeps.github.effect
 
 import std.types { NonEmptyStr, CommitSha }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.filesystem_path_grant { absolute_path_segments }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.github.app {
@@ -78,20 +77,6 @@ fn path_has_prefix(path: NonEmptyStr, prefix: NonEmptyStr) -> Bool {
   } else {
     substring(s: path, start: 0, end: prefix_len) == prefix
   }
-}
-
-// Component-wise, not leading-character: upload-artifact's include-hidden-files
-// governs any path component under the upload root, and the heal repair bundle
-// copies each source path UNDER heal-author-commit-required/, so every hidden
-// component is nested there. A leading-character test answers the wrong question
-// and is correct today only because the required artifacts (.github/workflows/**,
-// .gitignore) happen to be hidden at their first segment.
-fn path_is_hidden(path: NonEmptyStr) -> Bool {
-  fold_list(
-    xs: absolute_path_segments(path: path),
-    empty: false,
-    cons: fn(found, segment) { found || starts_with(s: segment, prefix: ".") }
-  )
 }
 
 fn is_workflow_projection_path(path: RepositoryPath) -> Bool {
