@@ -3977,6 +3977,43 @@ enum FloorCompileCleanReceipt {
 
 static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
 
+static REGEN_VERIFY_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
+static GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn record_regen_verify_gate_failure_detail(detail: String) {
+    if let Ok(mut guard) = REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
+        *guard = Some(detail);
+    }
+}
+
+pub fn consume_regen_verify_gate_failure_detail() -> String {
+    match REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
+        Ok(guard) => guard.clone().unwrap_or_else(|| {
+            "regen_verify failure detail unavailable (gate body did not run in this process)"
+                .to_string()
+        }),
+        Err(e) => format!("regen_verify failure detail refused: gate detail lock poisoned ({e})"),
+    }
+}
+
+pub fn record_generated_artifact_drift_gate_failure_detail(detail: String) {
+    if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
+        *guard = Some(detail);
+    }
+}
+
+pub fn consume_generated_artifact_drift_gate_failure_detail() -> String {
+    match GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
+        Ok(guard) => guard.clone().unwrap_or_else(|| {
+            "generated-artifact drift failure detail unavailable (gate body did not run in this process)"
+                .to_string()
+        }),
+        Err(e) => format!(
+            "generated-artifact drift failure detail refused: gate detail lock poisoned ({e})"
+        ),
+    }
+}
+
 /// Cost snapshot of the ONE compile-clean leg — the "receipt keys" half of the
 /// prelude-coverage-hole follow-up (`gunbc_ci_floor_batch_clamp_note` row (a)):
 /// the leg's wall, its closure unit count (modules in the compiled closure — the
@@ -4303,6 +4340,27 @@ pub fn consume_floor_compile_clean_gate_verdict() -> bool {
     }
 }
 
+/// Failure-receipt companion for the compile-clean gate: reads the in-run receipt only.
+pub fn consume_floor_compile_clean_gate_failure_detail() -> String {
+    let guard = match FLOOR_COMPILE_CLEAN_RECEIPT.lock() {
+        Ok(g) => g,
+        Err(e) => {
+            return format!("compile-clean failure detail refused: receipt lock poisoned ({e})");
+        }
+    };
+    match guard.as_ref() {
+        None => "compile-clean failure detail unavailable: no in-run compile receipt".to_string(),
+        Some(FloorCompileCleanReceipt::Skipped { reason }) => {
+            format!("compile-clean gate skipped: {reason}")
+        }
+        Some(FloorCompileCleanReceipt::Refused { reason }) => reason.clone(),
+        Some(FloorCompileCleanReceipt::Compiled { ok: true }) => String::new(),
+        Some(FloorCompileCleanReceipt::Compiled { ok: false }) => {
+            "compile-clean gate failed".to_string()
+        }
+    }
+}
+
 #[cfg(test)]
 fn reset_floor_compile_clean_receipt_for_test() {
     let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT.lock().unwrap();
@@ -4567,11 +4625,15 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
+        CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => {
+            "ConstructorCallAdmissionRefused"
+        }
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
         CompilerDiagnostic::CallPositionalDeficit { .. } => "CallPositionalDeficit",
+        CompilerDiagnostic::CallArgumentDuplicate { .. } => "CallArgumentDuplicate",
         CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => "CallNamedArgOnFunctionValue",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
@@ -4603,11 +4665,16 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::ConstructorCallAdmissionRefused {
+            constructor_decl_name,
+            ..
+        } => constructor_decl_name.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
         CompilerDiagnostic::CallPositionalDeficit { parameter, .. } => parameter.clone(),
+        CompilerDiagnostic::CallArgumentDuplicate { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallNamedArgOnFunctionValue { argument, .. } => argument.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
@@ -12945,6 +13012,17 @@ pub fn append_failure_receipt_companion_loudness(
     }
 }
 
+/// Exposed to `.dag` witnesses via `seed_runner_bool_false_failure_detail` so CI can
+/// surface Lane B loudness on Bool(false) without a parallel naming authority.
+pub fn seed_runner_bool_false_failure_detail(
+    ctx: &v1_interpreter::InterpContext,
+    witness_function: &str,
+) -> String {
+    let mut detail = "returned Bool(false)".to_string();
+    append_failure_receipt_companion_loudness(&mut detail, ctx, witness_function);
+    detail
+}
+
 /// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).
 /// Empty string = no divergence detail (clean companion **or** companion not declared).
 /// Non-empty refusal sentinel on wrong type / non-missing interpreter error — never silent
@@ -15797,6 +15875,19 @@ fn witness_cost_eval_durations(
     .map_err(|e| format!("[witness-row-cost] REFUSED: eval duration constructor failed: {e}"))
 }
 
+/// Named witness timing row — wall is required (threshold clock); CPU is optional remedy discriminator.
+#[derive(Debug, Clone)]
+pub struct WitnessRowCost {
+    pub entry: String,
+    pub function: String,
+    pub eval_wall_nanos: u128,
+    pub eval_cpu_nanos: Option<u128>,
+    pub resolve_nanos: u128,
+    pub warm_nanos: u128,
+    pub outcome: String,
+    pub detail: String,
+}
+
 fn witness_cost_string_field(
     ctx: &v1_interpreter::InterpContext,
     fields: &[(v1_interpreter::Symbol, v1_interpreter::Value)],
@@ -15910,7 +16001,7 @@ fn witness_cost_nanosecond_count(
 pub fn project_witness_cost_receipt(
     source_roots: &[String],
     summary: &DiscoverySummary,
-) -> Result<Vec<(String, String, u128, u128, u128, String, String)>, String> {
+) -> Result<Vec<WitnessRowCost>, String> {
     use v1_interpreter::{run_in_context_with_args, ExecutionMode, Value};
 
     if summary.performance_receipts.len() != summary.witness_outcomes.len() {
@@ -16188,15 +16279,17 @@ pub fn project_witness_cost_receipt(
                          carries no wall duration"
                     )
                 })?;
-            projected_rows.push((
-                row_entry,
+            let eval_cpu_nanos = witness_cost_clock_nanos(&ctx, &eval, "clock_basis_cpu")?;
+            projected_rows.push(WitnessRowCost {
+                entry: row_entry,
                 function,
                 eval_wall_nanos,
-                witness_cost_nanosecond_count(&ctx, resolve, "resolve")?,
-                witness_cost_nanosecond_count(&ctx, warm, "warm")?,
+                eval_cpu_nanos,
+                resolve_nanos: witness_cost_nanosecond_count(&ctx, resolve, "resolve")?,
+                warm_nanos: witness_cost_nanosecond_count(&ctx, warm, "warm")?,
                 outcome,
-                outcome_detail,
-            ));
+                detail: outcome_detail,
+            });
         }
     }
     if projected_rows.len() != summary.witness_outcomes.len() {
@@ -16209,29 +16302,25 @@ pub fn project_witness_cost_receipt(
     Ok(projected_rows)
 }
 
-pub fn top_n_slowest_witnesses(
-    rows: &[(String, String, u128, u128, u128, String, String)],
-    n: usize,
-) -> Vec<(String, String, u128, u128, u128, String, String)> {
+pub fn top_n_slowest_witnesses(rows: &[WitnessRowCost], n: usize) -> Vec<WitnessRowCost> {
     let mut sorted = rows.to_vec();
     sorted.sort_by(|a, b| {
-        b.2.cmp(&a.2)
-            .then_with(|| a.1.cmp(&b.1))
-            .then_with(|| a.0.cmp(&b.0))
+        b.eval_wall_nanos
+            .cmp(&a.eval_wall_nanos)
+            .then_with(|| a.function.cmp(&b.function))
+            .then_with(|| a.entry.cmp(&b.entry))
     });
     sorted.truncate(n);
     sorted
 }
 
-pub fn compute_histogram_data(
-    rows: &[(String, String, u128, u128, u128, String, String)],
-) -> HistogramData {
+pub fn compute_histogram_data(rows: &[WitnessRowCost]) -> HistogramData {
     HistogramData {
         included: rows.len(),
         skipped: 0,
-        total: compute_percentiles(rows.iter().map(|row| row.4).collect()),
-        resolve: compute_percentiles(rows.iter().map(|row| row.3).collect()),
-        eval: compute_percentiles(rows.iter().map(|row| row.2).collect()),
+        total: compute_percentiles(rows.iter().map(|row| row.warm_nanos).collect()),
+        resolve: compute_percentiles(rows.iter().map(|row| row.resolve_nanos).collect()),
+        eval: compute_percentiles(rows.iter().map(|row| row.eval_wall_nanos).collect()),
     }
 }
 
@@ -26682,12 +26771,12 @@ mod discovery_summary_merge_tests {
         let rows =
             project_witness_cost_receipt(&source_roots(), &summary).expect("authored projection");
         assert_eq!(rows.len(), 2);
-        assert_eq!(rows[0].2, 7_000_000);
-        assert_eq!(rows[0].4, 107_000_000);
-        assert_eq!(rows[0].5, "Failed");
-        assert_eq!(rows[0].6, "returned Bool(false)");
-        assert_eq!(rows[1].5, "Refused");
-        assert_eq!(rows[1].6, "returned `String`, not Bool");
+        assert_eq!(rows[0].eval_wall_nanos, 7_000_000);
+        assert_eq!(rows[0].warm_nanos, 107_000_000);
+        assert_eq!(rows[0].outcome, "Failed");
+        assert_eq!(rows[0].detail, "returned Bool(false)");
+        assert_eq!(rows[1].outcome, "Refused");
+        assert_eq!(rows[1].detail, "returned `String`, not Bool");
     }
 
     #[test]
@@ -26716,16 +26805,16 @@ mod discovery_summary_merge_tests {
         let rows =
             project_witness_cost_receipt(&source_roots(), &summary).expect("authored projection");
         assert_eq!(rows.len(), 3);
-        assert_eq!(rows[0].1, "one_ns");
-        assert_eq!(rows[0].2, 1);
-        assert_eq!(rows[0].3, 7);
-        assert_eq!(rows[0].4, 8);
-        assert_eq!(rows[1].1, "sub_ms");
-        assert_eq!(rows[1].2, 999_999);
-        assert_eq!(rows[1].4, 1_000_006);
-        assert_eq!(rows[2].1, "one_ms");
-        assert_eq!(rows[2].2, 1_000_000);
-        assert_eq!(rows[2].4, 1_000_007);
+        assert_eq!(rows[0].function, "one_ns");
+        assert_eq!(rows[0].eval_wall_nanos, 1);
+        assert_eq!(rows[0].resolve_nanos, 7);
+        assert_eq!(rows[0].warm_nanos, 8);
+        assert_eq!(rows[1].function, "sub_ms");
+        assert_eq!(rows[1].eval_wall_nanos, 999_999);
+        assert_eq!(rows[1].warm_nanos, 1_000_006);
+        assert_eq!(rows[2].function, "one_ms");
+        assert_eq!(rows[2].eval_wall_nanos, 1_000_000);
+        assert_eq!(rows[2].warm_nanos, 1_000_007);
 
         let slowest = top_n_slowest_witnesses(&rows, rows.len());
         assert_eq!(
@@ -26809,10 +26898,10 @@ mod discovery_summary_merge_tests {
         let rows = project_witness_cost_receipt(&roots, &summary)
             .expect("real discovery summary must pass the authored projector");
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].0, entry);
-        assert_eq!(rows[0].1, function);
-        assert_eq!(rows[0].5, "Done");
-        assert_eq!(rows[0].6, "");
+        assert_eq!(rows[0].entry, entry);
+        assert_eq!(rows[0].function, function);
+        assert_eq!(rows[0].outcome, "Done");
+        assert_eq!(rows[0].detail, "");
     }
 }
 
