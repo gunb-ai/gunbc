@@ -3981,15 +3981,7 @@ pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_
 pub const CLASS_B_BINDING_REL: &str = "dag/gunbc/declared_import_closure_binding.dag";
 pub const CLASS_B_OVERLAY_REL: &str = "dag/gunbc/class_b_import_closure_overlay.dag";
 pub const CLASS_B_FIXTURES_PREFIX: &str = "fixtures/class_b_import_closure";
-
-pub const CLASS_B_DECLARED_POOL_ROOTS: &[&str] = &[
-    "dag/std",
-    "dag/extdeps",
-    "src/v2/extdeps/languages",
-    "src/v2/std",
-];
-
-pub const CLASS_B_WITNESS_LAYER_ROOTS: &[&str] = &["dag", "src/v2"];
+const CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME: &str = "class_b_declared_import_pool_roots";
 
 pub const CLASS_B_GATE_INPUT_ENTRIES: &[&str] = &[
     CLASS_B_ENTRY_REL,
@@ -4008,7 +4000,42 @@ pub const RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL: &str =
 pub const RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL: &str =
     "run_class_b_gate:input_closure_failed";
 
-fn class_b_pool_source_roots(workspace: &Path, pool_roots: &[&str]) -> Vec<PathBuf> {
+fn class_b_overlay_authority_content() -> &'static str {
+    static CONTENT: OnceLock<String> = OnceLock::new();
+    CONTENT
+        .get_or_init(|| {
+            let path = process_workspace_root().join(CLASS_B_OVERLAY_REL);
+            std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!(
+                    "class_b overlay authority: failed to read {}: {e}",
+                    path.display()
+                )
+            })
+        })
+        .as_str()
+}
+
+/// Project `class_b_declared_import_pool_roots` out of the overlay authority source text.
+pub(crate) fn class_b_declared_import_pool_roots_from_source(content: &str) -> Vec<String> {
+    string_list_data_from_module_source(
+        CLASS_B_OVERLAY_REL,
+        content,
+        CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME,
+        false,
+    )
+}
+
+/// The Class B rows 1–2 declared-import pool roots, read live from the single `.dag` authority.
+pub(crate) fn class_b_declared_import_pool_roots() -> Vec<String> {
+    static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
+    ROOTS
+        .get_or_init(|| {
+            class_b_declared_import_pool_roots_from_source(class_b_overlay_authority_content())
+        })
+        .clone()
+}
+
+fn class_b_pool_source_roots(workspace: &Path, pool_roots: &[String]) -> Vec<PathBuf> {
     pool_roots.iter().map(|rel| workspace.join(rel)).collect()
 }
 
@@ -4078,9 +4105,39 @@ fn collect_repo_files_under_prefix(
 /// verdict: witness-layer import closure of the gate transport modules (rows 3–4 wide pool),
 /// declared-import-pool closure of the subject entry (rows 1–2 minimal pool), perturbation
 /// fixtures, sorted.
+///
+/// 🟡 dissolve-on (two triggers, near then terminal):
+///
+/// NEAR — the import walk here duplicates the shape of `selection_control_input_sources` and
+/// `regen_input_sources`. They are NOT unified yet because regen's closure is guarded by a
+/// byte-identical oracle (`regen_stage0 --verify`) that this change is not in a position to
+/// re-verify, and the three differ in duplicate policy (refuse vs. superset) and entry
+/// selection (whole-root walk vs. declared list). DISSOLVES WHEN the walk is lifted to one
+/// parameterized helper (duplicate policy + entry source as arguments) and regen's byte oracle
+/// re-greens on it.
+///
+/// TERMINAL — owning lane: `docs/plans/affected-set-precompute-pruning.md`, whose **Step 5
+/// "delete Rust parallel"** (NOT STARTED, gated on Step 4) is what retires host-side selection
+/// Rust in favour of the `.dag` authority. This fn and
+/// `class_b_import_closure_gate_skip_label_for_ci` are new members of exactly that Rust-parallel
+/// set — a path/import-closure skip decision living in the seed rather than in `.dag` — so they
+/// inherit Step 5's terminal condition. They are ENUMERATED on that roster as an explicit
+/// deferral (the "Step 5 roster — CI skip-decision surfaces" row, extended by PR #7835), which
+/// is what makes this a declared, countable seed-retained surface rather than a silent escape
+/// hatch (DESIGN §7). Why deferred rather than modeled now: the decision must run BEFORE the
+/// floor resolves anything — that is its entire purpose — so a `.dag` consumer would pay the
+/// ~100s cold whole-pool resolve the skip exists to avoid; it therefore dissolves with the
+/// persistent content-keyed node store, not on its own schedule. Declared pool roots are NOT
+/// forked here: they are projected live from
+/// `gunbc.class_b_import_closure_overlay.class_b_declared_import_pool_roots` (same authority the
+/// transport and witnesses read).
+///
+/// Receipt bar, per DESIGN §5: this is a scaffold because the decision is *checkable* by
+/// execution — skip/run label arms (structural + 2 refusal), discriminating in both directions,
+/// plus bin unit tests and a live authority identity join for the declared pool roots.
 pub fn class_b_import_closure_input_sources(workspace: &Path) -> Result<Vec<String>, String> {
-    let witness_roots = class_b_pool_source_roots(workspace, CLASS_B_WITNESS_LAYER_ROOTS);
-    let pool_roots = class_b_pool_source_roots(workspace, CLASS_B_DECLARED_POOL_ROOTS);
+    let witness_roots = class_b_pool_source_roots(workspace, &witness_layer_roots());
+    let pool_roots = class_b_pool_source_roots(workspace, &class_b_declared_import_pool_roots());
     let mut seen = import_closure_dag_files(workspace, &witness_roots, CLASS_B_GATE_INPUT_ENTRIES)?;
     seen.extend(import_closure_dag_files(
         workspace,
@@ -35149,6 +35206,28 @@ mod witness_layer_roots_compile_clean_tests {
         assert_ne!(
             CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL,
             RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
+        );
+    }
+
+    #[test]
+    fn class_b_declared_pool_roots_reader_follows_synthetic_authority() {
+        let synthetic = "module gunbc.class_b_import_closure_overlay\n\n\
+             data class_b_declared_import_pool_roots: List<String> = [\"alpha\", \"beta\"]\n";
+        assert_eq!(
+            class_b_declared_import_pool_roots_from_source(synthetic),
+            vec!["alpha".to_string(), "beta".to_string()],
+            "the Class B pool-roots reader must FOLLOW the overlay authority, not a hardcoded copy"
+        );
+    }
+
+    #[test]
+    fn class_b_declared_pool_roots_matches_overlay_authority() {
+        let overlay = std::fs::read_to_string(workspace_root().join(CLASS_B_OVERLAY_REL))
+            .expect("read class_b overlay authority");
+        assert_eq!(
+            class_b_declared_import_pool_roots(),
+            class_b_declared_import_pool_roots_from_source(&overlay),
+            "live memoized pool roots must match the overlay authority on disk (identity join)"
         );
     }
 
