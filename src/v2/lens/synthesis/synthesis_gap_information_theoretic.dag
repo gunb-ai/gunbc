@@ -1,6 +1,6 @@
 module v2.test.lens_synthesis.synthesis_gap_information_theoretic
 
-import v2.lens.complexity { ComplexityBound, complexity_lens }
+import v2.lens.complexity { ComplexityBound, UnknownComplexity, complexity_lens }
 import v2.lens.synthesis {
   InformationTheoretic,
   SynthesisGap,
@@ -92,9 +92,10 @@ data claim_synthesis_gap_information_theoretic: TestClaim = EqualsClaim {
 }
 
 fn synthesis_gap_it_first_reason_node() -> Node {
-  match complexity_lens(n: synthesis_gap_it_input) {
-    Violates { diagnostic: _ } => synthesis_gap_it_sentinel
-    Holds { value: realization } =>
+  let realization = complexity_lens(n: synthesis_gap_it_input)
+  match realization {
+    UnknownComplexity { diagnostic: _ } => synthesis_gap_it_sentinel
+    _ =>
       match assess_information_theoretic(n: synthesis_gap_it_input, realization: realization) {
         SynthesisGap { realization_cost: _, lower_bound: _, report: r } =>
           match r.reason {

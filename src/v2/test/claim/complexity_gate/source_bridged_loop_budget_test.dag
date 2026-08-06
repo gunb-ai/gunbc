@@ -33,18 +33,15 @@ fn table_fixture_loop_tightened_budget_fails_dominance(
   body: Node,
   row: LensSubjectComplexityBudgetRow
 ) -> Bool {
-  match complexity_lens(n: body) {
-    Holds { value: computed } =>
-      !complexity_bound_dominates(
-        a: ConstantComplexity,
-        b: computed
-      )
-      && complexity_bound_dominates(
-        a: complexity_declared_budget_for_row(row: row, body: body),
-        b: computed
-      )
-    _ => false
-  }
+  let computed = complexity_lens(n: body)
+  !complexity_bound_dominates(
+    a: ConstantComplexity,
+    b: computed
+  )
+  && complexity_bound_dominates(
+    a: complexity_declared_budget_for_row(row: row, body: body),
+    b: computed
+  )
 }
 
 test fn table_fixture_loop_budget_claim_holds() -> Bool {

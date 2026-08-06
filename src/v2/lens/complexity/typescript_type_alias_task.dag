@@ -45,6 +45,6 @@ fn ts_task_actual_cost() -> Witness<SymbolicCost> {
   cost_lens(n: ts_task_complexity_input)
 }
 
-fn ts_task_actual_complexity() -> Witness<ComplexityBound> {
+fn ts_task_actual_complexity() -> ComplexityBound {
   complexity_lens(n: ts_task_complexity_input)
 }
