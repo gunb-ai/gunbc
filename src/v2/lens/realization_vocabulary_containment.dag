@@ -174,20 +174,6 @@ fn realization_vocab_grandfathered_edge_keys() -> List<String> {
   )
 }
 
-fn realization_vocab_exception_paths() -> List<String> {
-  fold_list(
-    xs: realization_vocab_grandfathered_edge_roster,
-    empty: empty_realization_vocab_path_list,
-    cons: fn(acc, row) {
-      if list_contains_str(xs: acc, target: row.edge.importer_path) {
-        acc
-      } else {
-        list_snoc_item(xs: acc, item: row.edge.importer_path)
-      }
-    }
-  )
-}
-
 data realization_vocab_consumer_scan_roots: List<String> = [
   "dag/std",
   "dag/extdeps",
