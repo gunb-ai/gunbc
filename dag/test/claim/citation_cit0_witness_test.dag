@@ -571,7 +571,7 @@ test fn pdf_fragment_selector_conforms_to_rfc_8118_not_web_annotation() -> Bool 
         conforms_to: witness_fragment_spec_authority,
         value: witness_pdf_fragment_wire,
       ) {
-        FragmentSelectorVariant(want) => got.value == want.value
+        CitationSelectorConstructed(FragmentSelectorVariant(want)) => got.value == want.value
         _ => false
       }
     _ => false
@@ -585,7 +585,7 @@ test fn pdf_fragment_selector_red_wrong_conforms_to_web_annotation() -> Bool {
         conforms_to: web_annotation_authority,
         value: witness_pdf_fragment_wire,
       ) {
-        FragmentSelectorVariant(want) => got.value == want.value
+        CitationSelectorConstructed(FragmentSelectorVariant(want)) => got.value == want.value
         _ => false
       }
     _ => false
