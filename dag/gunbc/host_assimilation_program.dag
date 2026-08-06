@@ -134,6 +134,8 @@ fn assimilation_program_for(intent: HostEnrollmentIntent) -> HostAssimilationPro
   }
 }
 
+data host_enrollment_participation_nonempty_note: String = "Enrollment participation is authored as a non-empty list at every fleet enrollment site today. An empty list would yield an empty program identity (invalid NonEmptyStr) and zero completion obligations; a NonEmptyList carrier on HostEnrollmentIntent is deferred until enrollment validation walls land."
+
 fn host_enrollment_program_identity(intent: HostEnrollmentIntent) -> NonEmptyStr {
   join(
     map(intent.participation, p => fleet_participation_label(p: p)),
@@ -163,11 +165,24 @@ data ci_runner_only_completion_inputs: List<AssimilationCompleteInput> = [
   RunnerSlotHealthy,
 ]
 
+fn assimilation_completion_inputs_for_one(p: FleetParticipation) -> List<AssimilationCompleteInput> {
+  match p {
+    CiRunnerParticipation =>
+      append(shared_completion_inputs, items: ci_runner_only_completion_inputs)
+    InferenceServingParticipation =>
+      shared_completion_inputs
+  }
+}
+
+data empty_assimilation_complete_input_list: List<AssimilationCompleteInput> = []
+
 fn assimilation_completion_inputs_for(participation: List<FleetParticipation>) -> List<AssimilationCompleteInput> {
   if participation_list_contains(ps: participation, wanted: CiRunnerParticipation) {
-    append(shared_completion_inputs, items: ci_runner_only_completion_inputs)
+    assimilation_completion_inputs_for_one(p: CiRunnerParticipation)
+  } else if participation_list_contains(ps: participation, wanted: InferenceServingParticipation) {
+    assimilation_completion_inputs_for_one(p: InferenceServingParticipation)
   } else {
-    shared_completion_inputs
+    empty_assimilation_complete_input_list
   }
 }
 
