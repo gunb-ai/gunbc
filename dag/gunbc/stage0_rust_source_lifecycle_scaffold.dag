@@ -540,11 +540,6 @@ data rust_source_lifecycle_residue_rows: List<RustSourceLifecycleRow> = [
     dissolve_on: residue_frontier_module_gap_dissolve_on
   ),
   residue_row(
-    path: "src/v1/stage0/src/data_initializer_identity.rs",
-    reason: residue_frontier_module_gap_reason,
-    dissolve_on: residue_frontier_module_gap_dissolve_on
-  ),
-  residue_row(
     path: "src/v1/stage0_core/src/lib.rs",
     reason: residue_stage0_core_lib_reason,
     dissolve_on: residue_stage0_core_lib_dissolve_on

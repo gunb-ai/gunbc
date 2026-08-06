@@ -117,17 +117,38 @@ fn field_type_bare_on_variant_arm(
     field_name: &str,
     si: &SourceIndices,
 ) -> Option<String> {
+    field_type_bare_on_record_fields(arm, field_name, si)
+}
+
+fn field_type_bare_on_record_fields(
+    node: &Rc<Node>,
+    field_name: &str,
+    si: &SourceIndices,
+) -> Option<String> {
     let bare_field = bare_symbol_tail(field_name);
-    for field in arm.children.iter() {
-        let name = field_node_name_at(field.clone(), si.clone());
-        if name != field_name
-            && name != bare_field
-            && field.name != field_name
-            && field.name != bare_field
+    for child in node.children.iter() {
+        let authored = authored_name_at(si.clone(), child.clone());
+        let declared = field_node_name_at(child.clone(), si.clone());
+        if authored != field_name
+            && authored != bare_field
+            && declared != field_name
+            && declared != bare_field
+            && child.name != field_name
+            && child.name != bare_field
         {
+            if child.connective == Connective::Conj {
+                if let Some(bare) = field_type_bare_on_record_fields(child, field_name, si) {
+                    return Some(bare);
+                }
+            }
             continue;
         }
-        let ty = normalize_access_type_node(field_node_type_expr(field.clone()));
+        let ty = child
+            .inferred
+            .as_ref()
+            .and_then(|inf| inferred_to_node(inf.clone()))
+            .unwrap_or_else(|| field_node_type_expr(child.clone()));
+        let ty = normalize_access_type_node(ty);
         if let Some(bare) = type_expr_bare_name(si, &ty) {
             return Some(bare);
         }
@@ -142,7 +163,12 @@ fn declared_field_type_bare_on_coproduct_variant(
     si: &SourceIndices,
 ) -> Option<String> {
     let arm = coproduct_variant_arm_by_name(coproduct, variant_name, si)?;
-    field_type_bare_on_variant_arm(&arm, field_name, si)
+    field_type_bare_on_variant_arm(&arm, field_name, si).or_else(|| {
+        arm.inferred
+            .as_ref()
+            .and_then(|inf| inferred_to_node(inf.clone()))
+            .and_then(|node| declared_field_type_bare_on_conj(&node, field_name, si))
+    })
 }
 
 fn declared_field_type_bare_on_conj(
@@ -154,6 +180,38 @@ fn declared_field_type_bare_on_conj(
         return None;
     }
     field_type_bare_on_variant_arm(type_item, field_name, si)
+}
+
+fn coproduct_type_item_parse_tree(
+    ctx: &InterpContext,
+    bare_name: &str,
+    si: &SourceIndices,
+) -> Option<(Rc<Node>, String)> {
+    for tm in ctx.modules.iter() {
+        let mod_name = authored_name_at(si.clone(), tm.module.clone());
+        for item in tm.items.iter() {
+            if item_kind(item.clone()) != ItemKind::TypeItem || item.connective != Connective::Disj
+            {
+                continue;
+            }
+            if local_symbol_name(si, item) != bare_name {
+                continue;
+            }
+            return Some((item.clone(), mod_name));
+        }
+    }
+    None
+}
+
+fn declared_field_type_on_coproduct_variant_parse_tree(
+    ctx: &InterpContext,
+    coproduct_bare: &str,
+    variant_name: &str,
+    field_name: &str,
+    si: &SourceIndices,
+) -> Option<String> {
+    let (coproduct, _) = coproduct_type_item_parse_tree(ctx, coproduct_bare, si)?;
+    declared_field_type_bare_on_coproduct_variant(&coproduct, variant_name, field_name, si)
 }
 
 fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
@@ -347,16 +405,19 @@ fn duplicate_bare_type_name_variant_candidates(
             {
                 continue;
             }
-            let bare = authored_name_at(si.clone(), item.clone());
+            let bare_key = local_symbol_name(si, item);
+            if bare_key.is_empty() {
+                continue;
+            }
             bare_to_entries
-                .entry(bare)
+                .entry(bare_key)
                 .or_default()
                 .push((mod_name.clone(), Rc::clone(item)));
         }
     }
 
     let mut cands = Vec::new();
-    for (bare, entries) in bare_to_entries {
+    for (_bare_key, entries) in bare_to_entries {
         if entries.len() < 2 {
             continue;
         }
@@ -368,8 +429,9 @@ fn duplicate_bare_type_name_variant_candidates(
             ) {
                 continue;
             }
+            let type_name = authored_name_at(si.clone(), item.clone());
             cands.push(ResolvedVariantIdentity {
-                parent_qualified_name: decl_logical_qualified_name(&mod_name, &bare),
+                parent_qualified_name: decl_logical_qualified_name(&mod_name, &type_name),
                 variant_name: variant_name.to_string(),
             });
         }
@@ -937,12 +999,27 @@ fn marshal_coproduct_record_projection(
             continue;
         }
         let field_value = field_init_node_value(child.clone());
-        let declared_field = declared_field_type_bare_on_coproduct_variant(
-            &coproduct_item,
+        let declared_field = declared_field_type_on_coproduct_variant_parse_tree(
+            ctx,
+            declared_type_bare,
             &variant_name,
             &field_name,
             si,
-        );
+        )
+        .or_else(|| {
+            declared_field_type_bare_on_coproduct_variant(
+                &coproduct_item,
+                &variant_name,
+                &field_name,
+                si,
+            )
+        })
+        .or_else(|| {
+            body.inferred
+                .as_ref()
+                .and_then(|inf| inferred_to_node(inf.clone()))
+                .and_then(|node| declared_field_type_bare_on_conj(&node, &field_name, si))
+        });
         let field_projection = marshal_field_initializer_projection(
             ctx,
             importing_module,
