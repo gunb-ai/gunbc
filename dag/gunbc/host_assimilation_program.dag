@@ -38,6 +38,8 @@ import gunbc.host_standup {
   assimilation_input_witness_from_green_place,
   assimilation_complete,
   host_standup_p3_gunbc_pinned_tree_landed,
+  assimilation_complete_input_eq,
+  assimilation_input_is_required,
 }
 import product.placement_supply { HostIdentity }
 
@@ -152,6 +154,54 @@ data ci_runner_program_identity_note: String = "The CI-runner program is the ide
 data ci_runner_enrollment_participation: List<FleetParticipation> = [CiRunnerParticipation]
 
 data inference_serving_enrollment_participation: List<FleetParticipation> = [InferenceServingParticipation]
+
+data both_participation_enrollment_participation: List<FleetParticipation> = [
+  InferenceServingParticipation,
+  CiRunnerParticipation,
+]
+
+data assimilation_completion_inputs_union_note: String = "Completion inputs derive as the union over enrolled participations, deduplicated by AssimilationCompleteInput identity, not as a priority chain over participation kinds. A host enrolled for both CI and inference must carry every obligation either role requires; ordering in the participation list must not drop CI-only inputs when inference is listed first."
+
+fn assimilation_completion_input_list_contains(
+  inputs: List<AssimilationCompleteInput>,
+  wanted: AssimilationCompleteInput,
+) -> Bool {
+  fold_list(
+    xs: inputs,
+    empty: false,
+    cons: fn(acc, r) {
+      if acc {
+        true
+      } else {
+        assimilation_complete_input_eq(a: r, b: wanted)
+      }
+    }
+  )
+}
+
+fn assimilation_completion_input_append_unique(
+  inputs: List<AssimilationCompleteInput>,
+  input: AssimilationCompleteInput,
+) -> List<AssimilationCompleteInput> {
+  if assimilation_completion_input_list_contains(inputs: inputs, wanted: input) {
+    inputs
+  } else {
+    append(inputs, [input])
+  }
+}
+
+fn assimilation_completion_inputs_union(
+  a: List<AssimilationCompleteInput>,
+  b: List<AssimilationCompleteInput>,
+) -> List<AssimilationCompleteInput> {
+  fold_list(
+    xs: b,
+    empty: a,
+    cons: fn(acc, input) {
+      assimilation_completion_input_append_unique(inputs: acc, input: input)
+    }
+  )
+}
 
 data assimilation_completion_input_classification_note: String = "Completion obligations are derived from participation beside the phase classification tables above, not as fixed fields on AssimilationCompleteGate. CiRunnerParticipation requires all four AssimilationCompleteInput arms because a CI runner host must be node-registered, resources-present, green-place coherent via the gunbc gate (not merely P3 modeled), and runner-slot healthy. InferenceServingParticipation requires only NodeRegistered and ResourcesPresent: an inference appliance has no GitHub Actions runner slot to health-check and no dashboard green-place pin to coherence-check, so those inputs are not obligations and cannot be supplied without fabricating evidence. GreenPlacePinCoherent and RunnerSlotHealthy are CI-only because they gate facts about executing CI work (dashboard pin coherence, Actions slot enforcement), not generic host readiness."
 
