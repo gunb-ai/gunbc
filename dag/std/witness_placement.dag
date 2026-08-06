@@ -115,7 +115,7 @@ fn derive_witness_route_from_envelope(
           } else {
             OrdinaryPerPr
           }
-        ResourceContract { resource: _, bound: _ } =>
+        ResourceContract { bound: _ } =>
           if envelope_exceeds_fast_lane(
             envelope: envelope,
             fast_lane_budget: fast_lane_budget,

@@ -112,6 +112,40 @@ test fn behavioral_discriminator_routes_ordinary_per_pr() -> Bool {
   }
 }
 
+test fn external_fidelity_routes_per_pr_wet_not_ordinary() -> Bool {
+  let envelope = fixture_envelope(wall_budget_ms: 100)
+  let fast_lane_budget = millisecond(count: 5000)
+  let wet_route = derive_witness_route(
+    purpose: ExternalFidelity {
+      effect: decl_ref(
+        module_path: "dag.test.claim.witness_purpose_placement_witness",
+        decl_name: "witness_purpose_placement_witness_note",
+      ),
+    },
+    envelope: envelope,
+    fast_lane_budget: fast_lane_budget,
+  )
+  let dry_route = derive_witness_route(
+    purpose: BehavioralDiscriminator,
+    envelope: envelope,
+    fast_lane_budget: fast_lane_budget,
+  )
+  match wet_route {
+    PerPrWet =>
+      match dry_route {
+        OrdinaryPerPr => true
+        PerPrWet => false
+        Scheduled { cadence: _ } => false
+        OneShot => false
+        RefusedNoConsumer { cause: _ } => false
+      }
+    OrdinaryPerPr => false
+    Scheduled { cadence: _ } => false
+    OneShot => false
+    RefusedNoConsumer { cause: _ } => false
+  }
+}
+
 test fn over_fast_lane_envelope_refuses_without_cadence() -> Bool {
   let route = derive_witness_route(
     purpose: BehavioralDiscriminator,
