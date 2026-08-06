@@ -32,7 +32,7 @@ import extdeps.shell
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data witness_note: String = "WET: materialize content-addressed Codex runtime, then observe account standing via observe_codex_account_preflight (ONE held-open initialize → account/read → account/rateLimits/read session with typed id correlation). Accepts account_authenticated_rate_limits_readable OR login_required OR quota press_refused. Incomplete and unavailable are RED. Must NEVER claim turn_started. Excluded from hermetic discovery and from the per-PR wet floor (integration job)."
+data witness_note: String = "WET: materialize content-addressed Codex runtime under an isolated release parent, then observe account standing via observe_codex_account_preflight with caller-supplied evidence_root + CODEX_HOME. Accepts account_authenticated_rate_limits_readable OR login_required OR quota press_refused. Incomplete and unavailable are RED. Must NEVER claim turn_started. Excluded from hermetic discovery and from the per-PR wet floor (integration job)."
 
 fn committed_codex_lock_text() -> String {
   filesystem_read(path: codex_runtime_lock_path as String).content
@@ -46,60 +46,73 @@ fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
 }
 
 test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started() -> Bool {
-  match materialize_codex_runtime_bundle(
-    source: committed_admitted_codex_runtime_source(),
-  ) {
-    CodexRuntimeMaterialized { bundle } => {
-      let path = codex_bundle_executable_path(bundle: bundle)
-      if shell.Test.IsFile(path: path).is_file == false {
-        false
-      } else {
-        match observe_codex_account_preflight(
-          bundle: bundle,
-          probe_key: "wet-account-trip-1" as ProviderProbeKey,
-        ) {
-          CodexPressAccountReady { receipt } => {
-            let status = codex_press_outcome_wire_status(
-              outcome: CodexPressAccountReady { receipt: receipt },
-            )
-            let caption = codex_press_outcome_operator_caption(
-              outcome: CodexPressAccountReady { receipt: receipt },
-            )
-            let projected = account_standing_projection(
-              classification: receipt.standing.evidence.classification,
-            )
-            let ready_ok = status == "account_authenticated_rate_limits_readable"
-              && status != "turn_started"
-              && caption == "authenticated; rate limits readable"
-              && standing_is_redacted_projection(summary: receipt.standing)
-              && projected.contains("rate_limits_observed")
-            match receipt.standing.evidence.classification {
-              AccountStandingAuthenticatedRateLimitsReadable => ready_ok
-              _ => false
+  let release_tmp = shell.Mktemp.Dir()
+  let evidence = shell.Mktemp.Dir()
+  let home = shell.Mktemp.Dir()
+  if release_tmp.success == false || evidence.success == false || home.success == false {
+    false
+  } else {
+    match materialize_codex_runtime_bundle(
+      source: committed_admitted_codex_runtime_source(),
+      release_parent: release_tmp.path,
+    ) {
+      CodexRuntimeMaterialized { bundle } => {
+        let path = codex_bundle_executable_path(bundle: bundle)
+        if shell.Test.IsFile(path: path).is_file == false {
+          false
+        } else {
+          match observe_codex_account_preflight(
+            bundle: bundle,
+            probe_key: "wet-account-trip-1" as ProviderProbeKey,
+            evidence_root: evidence.path,
+            codex_home: home.path,
+          ) {
+            CodexPressAccountReady { receipt } => {
+              let status = codex_press_outcome_wire_status(
+                outcome: CodexPressAccountReady { receipt: receipt },
+              )
+              let caption = codex_press_outcome_operator_caption(
+                outcome: CodexPressAccountReady { receipt: receipt },
+              )
+              let projected = account_standing_projection(
+                classification: receipt.standing.evidence.classification,
+              )
+              let ready_ok = status == "account_authenticated_rate_limits_readable"
+                && status != "turn_started"
+                && caption == "authenticated; rate limits readable"
+                && standing_is_redacted_projection(summary: receipt.standing)
+                && projected.contains("rate_limits_observed")
+                && (receipt.subject.credential.codex_home as String) == (home.path as String)
+              match receipt.standing.evidence.classification {
+                AccountStandingAuthenticatedRateLimitsReadable => ready_ok
+                _ => false
+              }
             }
+            CodexPressLoginRequired { reason, receipt } =>
+              codex_press_outcome_wire_status(
+                outcome: CodexPressLoginRequired { reason: reason, receipt: receipt },
+              ) == "login_required"
+                && standing_is_redacted_projection(summary: receipt.standing)
+                && match receipt.standing.evidence.classification {
+                  AccountStandingLoginRequired => true
+                  _ => false
+                }
+            CodexPressRefused { reason, receipt } =>
+              codex_press_outcome_wire_status(
+                outcome: CodexPressRefused { reason: reason, receipt: receipt },
+              ) == "press_refused"
+                && standing_is_redacted_projection(summary: receipt.standing)
+                && match receipt.standing.evidence.classification {
+                  AccountStandingQuotaReached => true
+                  AccountStandingIncomplete => false
+                  AccountStandingInitializeMissing => false
+                  _ => false
+                }
+            CodexPressUnavailable { reason: _, process: _ } => false
           }
-          CodexPressLoginRequired { reason, receipt } =>
-            codex_press_outcome_wire_status(
-              outcome: CodexPressLoginRequired { reason: reason, receipt: receipt },
-            ) == "login_required"
-              && standing_is_redacted_projection(summary: receipt.standing)
-              && match receipt.standing.evidence.classification {
-                AccountStandingLoginRequired => true
-                _ => false
-              }
-          CodexPressRefused { reason, receipt } =>
-            (reason as String).contains("quota")
-              && standing_is_redacted_projection(summary: receipt.standing)
-              && match receipt.standing.evidence.classification {
-                AccountStandingQuotaReached => true
-                AccountStandingIncomplete => false
-                AccountStandingInitializeMissing => false
-                _ => false
-              }
-          CodexPressUnavailable { reason: _, process: _ } => false
         }
       }
+      _ => false
     }
-    _ => false
   }
 }

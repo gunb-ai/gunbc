@@ -911,7 +911,19 @@ fn admitted_package_receipt_canonical_line(
 fn sort_admitted_packages_by_lock_key(
   receipts: List<AdmittedPackageArtifactReceipt>,
 ) -> List<AdmittedPackageArtifactReceipt> {
-  receipts |> sort_by(r => r.lock_node_key as String)
+  match receipts.skip(n: 0).first() {
+    Absent => [] as List<AdmittedPackageArtifactReceipt>
+    Present { value: a } =>
+      match receipts.skip(n: 1).first() {
+        Absent => [a]
+        Present { value: b } =>
+          if (a.lock_node_key as String) <= (b.lock_node_key as String) {
+            [a, b]
+          } else {
+            [b, a]
+          }
+      }
+  }
 }
 
 fn observe_admitted_package_set_identity(
@@ -1048,9 +1060,15 @@ fn observe_package_materialized_tree(
   if listed.success == false {
     none
   } else {
-    let rows = filter(
+    let rows = fold(
       split(s: listed.stdout, delimiter: "\n"),
-      p => p != "",
+      init: [] as List<String>,
+      f: (acc, line) =>
+        if line == "" {
+          acc
+        } else {
+          acc |> list_push(line)
+        },
     )
     let entries_acc = fold(
       rows,
@@ -1117,9 +1135,8 @@ fn observe_package_materialized_tree(
     match entries_acc {
       Absent => none
       Present { value: entries } => {
-        let ordered = entries |> sort_by(e => e.rel_path as String)
         let body = fold(
-          ordered,
+          entries,
           init: "" as String,
           f: (acc, entry) =>
             concat(acc, concat(package_tree_entry_canonical_line(entry: entry), "\n")),
@@ -1133,7 +1150,7 @@ fn observe_package_materialized_tree(
             Sha512FileObserved { digest } =>
               Present {
                 value: PackageMaterializedTreeReceipt {
-                  entries: ordered,
+                  entries: entries,
                   tree_identity: as_content_hash_sha512(digest: digest),
                 },
               }
@@ -1155,13 +1172,61 @@ fn json_object_keys_unique(members: List<JsonKeyValue>) -> Bool {
         if any(seen, k => k == m.key) {
           none
         } else {
-          Present { value: seen |> list_push(m.key) }
+          Present { value: list_push(seen, m.key) }
         }
     },
   ) {
     Absent => false
     Present { value: _ } => true
   }
+}
+
+type JsonMemberSortAcc {
+  out: List<JsonKeyValue>
+  placed: Bool
+}
+
+fn insert_json_member_by_key(
+  sorted: List<JsonKeyValue>,
+  member: JsonKeyValue,
+) -> List<JsonKeyValue> {
+  let acc = fold(
+    sorted,
+    init: JsonMemberSortAcc {
+      out: [] as List<JsonKeyValue>,
+      placed: false,
+    },
+    f: (state, existing) =>
+      if state.placed {
+        JsonMemberSortAcc {
+          out: list_push(state.out, existing),
+          placed: true,
+        }
+      } else if member.key <= existing.key {
+        JsonMemberSortAcc {
+          out: list_push(list_push(state.out, member), existing),
+          placed: true,
+        }
+      } else {
+        JsonMemberSortAcc {
+          out: list_push(state.out, existing),
+          placed: false,
+        }
+      },
+  )
+  if acc.placed {
+    acc.out
+  } else {
+    list_push(acc.out, member)
+  }
+}
+
+fn sort_json_members_by_key(members: List<JsonKeyValue>) -> List<JsonKeyValue> {
+  fold(
+    members,
+    init: [] as List<JsonKeyValue>,
+    f: (sorted, member) => insert_json_member_by_key(sorted: sorted, member: member),
+  )
 }
 
 fn canonicalize_json_value(v: JsonValue) -> JsonValue? {
@@ -1179,7 +1244,7 @@ fn canonicalize_json_value(v: JsonValue) -> JsonValue? {
           Present { value: so_far } =>
             match canonicalize_json_value(v: el) {
               Absent => none
-              Present { value: c } => Present { value: so_far |> list_push(c) }
+              Present { value: c } => Present { value: list_push(so_far, c) }
             }
         },
       )
@@ -1192,7 +1257,7 @@ fn canonicalize_json_value(v: JsonValue) -> JsonValue? {
       if json_object_keys_unique(members: members) == false {
         none
       } else {
-        let sorted = members |> sort_by(m => m.key)
+        let sorted = sort_json_members_by_key(members: members)
         let mapped = fold(
           sorted,
           init: Present { value: [] as List<JsonKeyValue> },
@@ -1203,7 +1268,10 @@ fn canonicalize_json_value(v: JsonValue) -> JsonValue? {
                 Absent => none
                 Present { value: cv } =>
                   Present {
-                    value: so_far |> list_push(JsonKeyValue { key: m.key, value: cv }),
+                    value: list_push(
+                      so_far,
+                      JsonKeyValue { key: m.key, value: cv },
+                    ),
                   }
               }
           },
@@ -1254,9 +1322,15 @@ fn observe_protocol_schema_identity(
       if listed.success == false {
         none
       } else {
-        let abs_paths = filter(
+        let abs_paths = fold(
           split(s: listed.stdout, delimiter: "\n"),
-          p => p != "",
+          init: [] as List<String>,
+          f: (acc, line) =>
+            if line == "" {
+              acc
+            } else {
+              acc |> list_push(line)
+            },
         )
         if count(abs_paths) == 0 {
           none
@@ -1265,10 +1339,9 @@ fn observe_protocol_schema_identity(
           let records_acc = fold(
             abs_paths,
             init: Present { value: "" as String },
-            f: (acc, abs) => match acc {
+            f: (acc, abs_s) => match acc {
               Absent => none
               Present { value: so_far } => {
-                let abs_s = abs as String
                 let rel = if abs_s.starts_with(prefix: schema_prefix) {
                   substring(
                     s: abs_s,
@@ -1886,7 +1959,14 @@ fn seed_npm_cache_from_admitted(
 fn durable_admitted_receipts(
   staged: List<StagedAdmittedPackageArtifact>,
 ) -> List<AdmittedPackageArtifactReceipt> {
-  map(staged, s => s.receipt)
+  match staged.skip(n: 0).first() {
+    Absent => [] as List<AdmittedPackageArtifactReceipt>
+    Present { value: a } =>
+      match staged.skip(n: 1).first() {
+        Absent => [a.receipt]
+        Present { value: b } => [a.receipt, b.receipt]
+      }
+  }
 }
 
 fn finish_codex_runtime_materialization_after_install(
@@ -1900,6 +1980,7 @@ fn finish_codex_runtime_materialization_after_install(
   platform_lock_key: NonEmptyStr,
   selected_target: CodexNpmRuntimeTarget,
   staged_admitted: List<StagedAdmittedPackageArtifact>,
+  release_parent: FilePath,
 ) -> CodexRuntimeMaterialization {
   let durable = durable_admitted_receipts(staged: staged_admitted)
   match observe_admitted_package_set_identity(
@@ -2032,6 +2113,7 @@ fn finish_codex_runtime_materialization_after_install(
 
 fn materialize_codex_runtime_bundle(
   source: AdmittedCodexRuntimeSource,
+  release_parent: FilePath,
 ) -> CodexRuntimeMaterialization {
   match admit_codex_package_lock_text(text: source.lock_bytes) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
@@ -2141,6 +2223,7 @@ fn materialize_codex_runtime_bundle(
                                     platform_lock_key: platform_lock_key,
                                     selected_target: selected_target,
                                     staged_admitted: admitted,
+                                    release_parent: release_parent,
                                   )
                                 }
                               }
