@@ -362,7 +362,23 @@ test fn fcr_failure_mode_edge_agrees_with_the_outcome_mapping() -> Bool {
     && fcr_mode_of(mode: "BudgetExceeded" as NonEmptyStr) == "BudgetExceeded"
     && fcr_mode_of(mode: "Infra" as NonEmptyStr) == "Infra"
     && fcr_mode_of(mode: "WitnessRed" as NonEmptyStr) == "WitnessRed"
+    && fcr_mode_of(mode: "StaleKnownRed" as NonEmptyStr) == "StaleKnownRed"
     && fcr_mode_of(mode: "not_reached" as NonEmptyStr) == "not_reached"
+}
+
+data fcr_stale_known_red_note: String = "A known-red witness that starts PASSING and a witness that regresses are opposite events with opposite remedies — delete the now-stale admission row, versus fix the code. This asserts the receipt keeps them apart in BOTH directions: StaleKnownRed carries its own mode AND its own outcome, so it can neither be read as an ordinary WitnessRed in the alert's class signature nor be mistaken for a component that is fine. The Done clause is the load-bearing half: an expected-red row that silently went green must not be admitted as success, or the roster accumulates rows nobody revisits."
+
+test fn fcr_stale_known_red_is_a_refusal_distinct_from_witness_red_and_from_done() -> Bool {
+  let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as NonEmptyStr)])
+  let red_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "WitnessRed" as NonEmptyStr)])
+  let stale_doc = floor_component_receipt_document(run_id: fcr_run_id, rows: stale_rows)
+  let red_doc = floor_component_receipt_document(run_id: fcr_run_id, rows: red_rows)
+  count(stale_rows) == 1
+    && string_contains(s: stale_doc, pattern: "\"failure_mode\": \"StaleKnownRed\"")
+    && string_contains(s: stale_doc, pattern: "\"outcome\": \"refused\"")
+    && string_contains(s: stale_doc, pattern: "\"diagnostic\"")
+    && !string_contains(s: stale_doc, pattern: "\"outcome\": \"done\"")
+    && !(stale_doc == red_doc)
 }
 
 test fn fcr_red_control_tag_built_row_records_no_mode_rather_than_guessing() -> Bool {
