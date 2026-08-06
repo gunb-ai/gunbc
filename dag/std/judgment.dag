@@ -22,7 +22,7 @@ type ReviewDecision<verdict, question, cause>
   | JudgeRequired { question: question }
   | DecisionRefused { cause: cause }
 
-fn judgment_is_reached(d: ReviewDecision) -> Bool {
+fn judgment_is_reached<verdict, question, cause>(d: ReviewDecision<verdict, question, cause>) -> Bool {
   match d {
     DecisionReached { judgment: _ } => true
     JudgeRequired { question: _ } => false
@@ -32,7 +32,7 @@ fn judgment_is_reached(d: ReviewDecision) -> Bool {
 
 data judgment_clearance_note: String = "The conjunct a promotion bar reads, stated once here so no consumer re-derives it and gets it wrong in the direction that matters. Only a REACHED decision can ever count as coverage: an unanswered question and a refusal are both absences of judgment, and counting either as a clearance is precisely the wrong-clear that a safety bar is built to make impossible. This is why the function is defined in terms of what IS decided rather than as a negation of refusal -- a future fourth state would then default to not-cleared rather than silently joining the cleared set."
 
-fn judgment_awaits_judge(d: ReviewDecision) -> Bool {
+fn judgment_awaits_judge<verdict, question, cause>(d: ReviewDecision<verdict, question, cause>) -> Bool {
   match d {
     DecisionReached { judgment: _ } => false
     JudgeRequired { question: _ } => true
@@ -40,7 +40,7 @@ fn judgment_awaits_judge(d: ReviewDecision) -> Bool {
   }
 }
 
-fn judgment_refused(d: ReviewDecision) -> Bool {
+fn judgment_refused<verdict, question, cause>(d: ReviewDecision<verdict, question, cause>) -> Bool {
   match d {
     DecisionReached { judgment: _ } => false
     JudgeRequired { question: _ } => false
