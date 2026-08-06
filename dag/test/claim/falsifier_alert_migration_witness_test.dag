@@ -58,6 +58,11 @@ import gunbc.falsifier_alert_residue {
   falsifier_alert_residue_registry,
   falsifier_alert_embedded_program_residue
 }
+import extdeps.github.issues {
+  IssueState, Open, Closed,
+  IssueStateRead, IssueStateFound, IssueStateUnmodelledWire,
+  parse_issue_state
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -422,4 +427,24 @@ test fn the_job_condition_is_distributed_so_precedence_needs_no_grouping() -> Bo
   let arm_schedule = "github.event.workflow_run.name == 'affected-set-falsifier' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event == 'schedule'"
   let arm_dispatch = "github.event.workflow_run.name == 'affected-set-falsifier' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event == 'workflow_dispatch'"
   c == concat(concat(arm_schedule, " || "), arm_dispatch)
+}
+
+data issue_state_read_claim_note: String = "The unmodelled-wire arm is claimed because it is the one that would otherwise be indistinguishable from a missing member. GitHub adding a state is a realistic future event, and the decode must report WHAT it saw rather than that it saw nothing."
+
+test fn an_unmodelled_issue_state_reports_what_it_saw() -> Bool {
+  match parse_issue_state(raw: "merged") {
+    IssueStateUnmodelledWire { raw: r } => r == "merged"
+    _ => false
+  }
+}
+
+test fn the_modelled_issue_states_decode() -> Bool {
+  match parse_issue_state(raw: "open") {
+    IssueStateFound { state: Open } =>
+      match parse_issue_state(raw: "closed") {
+        IssueStateFound { state: Closed } => true
+        _ => false
+      }
+    _ => false
+  }
 }

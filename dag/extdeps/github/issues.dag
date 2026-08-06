@@ -46,11 +46,17 @@ fn issue_state_wire_label(state: IssueState) -> String {
   }
 }
 
-fn parse_issue_state(raw: String) -> IssueState? {
+data issue_state_read_note: String = "The wire decode returns a THREE-state read rather than an optional, because `IssueState?` conflates two different facts behind one Absent: the member was missing, and the member was present carrying a value this module does not model. Those have different remedies — the first is a malformed or partial payload, the second is GitHub having added a state and this enum needing to grow — and an optional makes them indistinguishable at every call site. That is the empty-observation narrow DESIGN names: an observation that could not express what it saw rendered as the verdict `nothing was there`.\n\nIt is fixed BEFORE a consumer exists rather than after (flagged by review 49457, which reasonably suggested deferring until one lands). The reason not to defer: this same PR removes three Bool projections for exactly this class, and leaving a wildcard-to-Absent decode beside them would make the corpus teach both rules at once. The unmodelled value is carried in the refusal so a future consumer reports what it saw instead of what it failed to find."
+
+type IssueStateRead
+  = IssueStateFound { state: IssueState }
+  | IssueStateUnmodelledWire { raw: String }
+
+fn parse_issue_state(raw: String) -> IssueStateRead {
   match raw {
-    "open" => Present { value: Open }
-    "closed" => Present { value: Closed }
-    _ => none
+    "open" => IssueStateFound { state: Open }
+    "closed" => IssueStateFound { state: Closed }
+    _ => IssueStateUnmodelledWire { raw: raw }
   }
 }
 
