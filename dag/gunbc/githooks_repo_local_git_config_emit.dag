@@ -2,7 +2,7 @@ module gunbc.githooks_repo_local_git_config_emit
 
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.git { git_shell_join_argv }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.repo_local_git_config {
   RepoLocalGitConfigBinding,
   desired_repo_local_git_config_bindings,
@@ -22,10 +22,12 @@ data githooks_repo_local_git_config_emit_shell_emit_scaffold: Disposition = Scaf
 
 data githooks_repo_local_git_config_emit_dissolution_trigger: String = "🟡 dissolve-on: githooks_repo_local_git_config_emit_shell — hook-emitted git config argv lines are the foreign-executor interim for a runtime-absent site; DISSOLVES WHEN shell→intent bash grammar rows read forward emit the converge block from the same reconcile_install_argv authority without concat-built medium strings (DESIGN §4 one-grammar-both-directions; githooks_pre_push_emit medium disposition family)."
 
+data githooks_repo_local_git_config_emit_quoting_note: String = "THE EMITTED LINE QUOTES EVERY TOKEN, AND THE DEFECT THAT FORCED IT WAS REACHABLE, NOT HYPOTHETICAL. This emitter formerly rendered the install argv through extdeps.git git_shell_join_argv, which joins already-spelled words with single spaces and — by that module's own standing ruling (git_pathspec_exclude_note) — is a join and must never become a quoter, because quoting belongs to the emitting realization, the only layer that knows the target shell. Nothing quoted here, so the rendering was correct only while every binding value happened to be one shell word. The moment merge.generated-artifact.driver stopped being the single word `true` and became a driver invocation with placeholders, the emitted hook line degenerated into `git config --local merge.generated-artifact.driver bash .githooks/generated-artifact-merge %O %A %B %P` — seven arguments where git expects two, so the self-healing converge block would have failed on every hook invocation while looking entirely ordinary in the diff. Rendering through extdeps.exec.command shell_command_render fixes the class rather than this value: every token is single-quoted with embedded apostrophes escaped (witnessed in test.claim.argv_command_render), so a value carrying spaces, quotes, or shell metacharacters is emitted correctly by construction and no future binding can reintroduce the defect by being multi-word."
+
 fn emit_install_binding_line(binding: RepoLocalGitConfigBinding) -> String {
   concat(
     concat("# repo-local git config: ", binding.key),
-    concat("\n", concat(git_shell_join_argv(argv: reconcile_install_argv(binding: binding)), "\n"))
+    concat("\n", concat(shell_command_render(command: ArgvCommand { argv: reconcile_install_argv(binding: binding) }), "\n"))
   )
 }
 

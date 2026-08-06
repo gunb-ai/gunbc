@@ -523,6 +523,16 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     dissolution: HasTrigger { text: "live slice lands: ordinary sessions lose public-write credentials, git.PublicationTransport dispatch binds to PublicationAuthority, and shadow witness becomes regression control — then register as gunbc.plan.Plan row or delete with carriers" },
   },
   HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "c1-cost-expr-authority-design",
+    primary_work: DeclarationRef { module_path: "v2.lens.cost", decl_name: "cost_lens", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.plans.v2_complexity_capability_parity", decl_name: "v2_complexity_capability_parity_plan", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.lens.enforcement.complexity_contract_subject", decl_name: "complexity_derived_kernel_boundary", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "v2.lens.cost carries grounded SizeExpr/CostExpr with normalize_cost_expr_to_symbolic live, the C1 blocking-wall baseline roster is green post-carrier, bounded-summation and CostRefused witnesses execute green, and parity note C1 acceptance is met — then the carriers state the capability and this bind deletes with the doc." },
+  },
+  HandAuthoredDocBind {
     home: ProbeDoc,
     slug: "g1-cited-symbol-control-declaration-absent",
     primary_work: DeclarationRef { module_path: "v2.std.node", decl_name: "G1_planted_declaration_absent_control_RED", field: WholeDeclaration },

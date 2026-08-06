@@ -21,6 +21,25 @@ import gunbc.host_standup {
   SessionPlacementEnrollment,
   StandupAssimilationComplete,
   host_standup_spine,
+  AssimilationCompleteInput,
+  NodeRegistered,
+  ResourcesPresent,
+  GreenPlacePinCoherent,
+  RunnerSlotHealthy,
+  AssimilationInputWitness,
+  InputSatisfied,
+  InputGap,
+  AssimilationObligation,
+  AssimilationCompleteGate,
+  AssimilationCompleteVerdict,
+  AssimilationIncomplete,
+  AssimilationComplete,
+  host_standup_p3_green_place_input_witness,
+  assimilation_input_witness_from_green_place,
+  assimilation_complete,
+  host_standup_p3_gunbc_pinned_tree_landed,
+  assimilation_complete_input_eq,
+  assimilation_input_is_required,
 }
 import product.placement_supply { HostIdentity }
 
@@ -117,6 +136,8 @@ fn assimilation_program_for(intent: HostEnrollmentIntent) -> HostAssimilationPro
   }
 }
 
+data host_enrollment_participation_nonempty_note: String = "Enrollment participation is authored as a non-empty list at every fleet enrollment site today. An empty list would yield an empty program identity (invalid NonEmptyStr) and zero completion obligations; a NonEmptyList carrier on HostEnrollmentIntent is deferred until enrollment validation walls land."
+
 data fleet_participation_canonical_roster_note: String = "Participation has SET semantics but is carried as a List, and identity must not be able to tell the two apart. Step selection already reads the list as membership -- step_serves_any asks only whether SOME participation claims the step -- so order and repetition are invisible to which obligations exist. Deriving the identity from the raw list did let them through: [CiRunner, InferenceServing] and [InferenceServing, CiRunner] and [CiRunner, CiRunner, InferenceServing] select exactly the same steps while producing three different identity strings, which is a second representation of one program (DESIGN section 3) and would fork any consumer that keys on identity. The correction projects through a FIXED roster instead of reading the caller's list order: filtering the roster by membership yields at most one occurrence of each participation, in one order, whatever the caller wrote. That is the construction half -- a duplicate or a reordering cannot reach the identity, so there is no post-hoc canonicalization check to remember to call. The roster's own completeness is the residue this cannot construct away, and it is walled by an EXHAUSTIVE match in fleet_participation_in_canonical_roster: a newly added participation does not compile until it is stated there, and its witness reds if it is stated but left out of the roster."
 
 data fleet_participation_canonical_roster: List<FleetParticipation> = [
@@ -153,3 +174,131 @@ data ci_runner_program_identity_note: String = "The CI-runner program is the ide
 data ci_runner_enrollment_participation: List<FleetParticipation> = [CiRunnerParticipation]
 
 data inference_serving_enrollment_participation: List<FleetParticipation> = [InferenceServingParticipation]
+
+data both_participation_enrollment_participation: List<FleetParticipation> = [
+  InferenceServingParticipation,
+  CiRunnerParticipation,
+]
+
+data assimilation_completion_inputs_union_note: String = "Completion inputs derive as the union over enrolled participations, deduplicated by AssimilationCompleteInput identity, not as a priority chain over participation kinds. A host enrolled for both CI and inference must carry every obligation either role requires; ordering in the participation list must not drop CI-only inputs when inference is listed first."
+
+fn assimilation_completion_input_list_contains(
+  inputs: List<AssimilationCompleteInput>,
+  wanted: AssimilationCompleteInput,
+) -> Bool {
+  fold_list(
+    xs: inputs,
+    empty: false,
+    cons: fn(acc, r) {
+      if acc {
+        true
+      } else {
+        assimilation_complete_input_eq(a: r, b: wanted)
+      }
+    }
+  )
+}
+
+fn assimilation_completion_input_append_unique(
+  inputs: List<AssimilationCompleteInput>,
+  wanted_input: AssimilationCompleteInput,
+) -> List<AssimilationCompleteInput> {
+  if assimilation_completion_input_list_contains(inputs: inputs, wanted: wanted_input) {
+    inputs
+  } else {
+    append(inputs, [wanted_input])
+  }
+}
+
+fn assimilation_completion_inputs_union(
+  a: List<AssimilationCompleteInput>,
+  b: List<AssimilationCompleteInput>,
+) -> List<AssimilationCompleteInput> {
+  fold_list(
+    xs: b,
+    empty: a,
+    cons: fn(acc, wanted_input) {
+      assimilation_completion_input_append_unique(inputs: acc, wanted_input: wanted_input)
+    }
+  )
+}
+
+data assimilation_completion_input_classification_note: String = "Completion obligations are derived from participation beside the phase classification tables above, not as fixed fields on AssimilationCompleteGate. CiRunnerParticipation requires all four AssimilationCompleteInput arms because a CI runner host must be node-registered, resources-present, green-place coherent via the gunbc gate (not merely P3 modeled), and runner-slot healthy. InferenceServingParticipation requires only NodeRegistered and ResourcesPresent: an inference appliance has no GitHub Actions runner slot to health-check and no dashboard green-place pin to coherence-check, so those inputs are not obligations and cannot be supplied without fabricating evidence. GreenPlacePinCoherent and RunnerSlotHealthy are CI-only because they gate facts about executing CI work (dashboard pin coherence, Actions slot enforcement), not generic host readiness."
+
+data shared_completion_inputs: List<AssimilationCompleteInput> = [
+  NodeRegistered,
+  ResourcesPresent,
+]
+
+data ci_runner_only_completion_inputs: List<AssimilationCompleteInput> = [
+  GreenPlacePinCoherent,
+  RunnerSlotHealthy,
+]
+
+fn assimilation_completion_inputs_for_one(p: FleetParticipation) -> List<AssimilationCompleteInput> {
+  match p {
+    CiRunnerParticipation =>
+      append(shared_completion_inputs, items: ci_runner_only_completion_inputs)
+    InferenceServingParticipation =>
+      shared_completion_inputs
+  }
+}
+
+data empty_assimilation_complete_input_list: List<AssimilationCompleteInput> = []
+
+fn assimilation_completion_inputs_for(participation: List<FleetParticipation>) -> List<AssimilationCompleteInput> {
+  fold_list(
+    xs: participation,
+    empty: empty_assimilation_complete_input_list,
+    cons: fn(acc, p) {
+      assimilation_completion_inputs_union(
+        a: acc,
+        b: assimilation_completion_inputs_for_one(p: p)
+      )
+    }
+  )
+}
+
+fn default_unsatisfied_witness_for_input(input: AssimilationCompleteInput) -> AssimilationInputWitness {
+  match input {
+    NodeRegistered =>
+      InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" }
+    ResourcesPresent =>
+      InputGap { input: ResourcesPresent, interim_realization: "ctrl:resources-present-unmodeled" }
+    GreenPlacePinCoherent =>
+      assimilation_input_witness_from_green_place(w: host_standup_p3_green_place_input_witness())
+    RunnerSlotHealthy =>
+      InputGap { input: RunnerSlotHealthy, interim_realization: "gunbc.runner_slot_enforcement until P1 converged" }
+  }
+}
+
+fn assimilation_gate_unsatisfied_for_participation(participation: List<FleetParticipation>) -> AssimilationCompleteGate {
+  AssimilationCompleteGate {
+    obligations: map(
+      assimilation_completion_inputs_for(participation: participation),
+      fn(wanted_input) {
+        AssimilationObligation {
+          input: wanted_input,
+          witness: default_unsatisfied_witness_for_input(input: wanted_input),
+        }
+      }
+    ),
+  }
+}
+
+fn host_standup_default_assimilation_gate_unsatisfied() -> AssimilationCompleteGate {
+  assimilation_gate_unsatisfied_for_participation(participation: ci_runner_enrollment_participation)
+}
+
+fn host_standup_p3_fail_closed_blocks_complete() -> Bool {
+  !host_standup_p3_gunbc_pinned_tree_landed
+    && match assimilation_complete(
+      gate: host_standup_default_assimilation_gate_unsatisfied(),
+      required: assimilation_completion_inputs_for(participation: ci_runner_enrollment_participation),
+    ) {
+      AssimilationIncomplete { input: GreenPlacePinCoherent, reason: r } =>
+        string_contains(s: r, pattern: "#5948")
+      AssimilationComplete => false
+      AssimilationIncomplete { input: _, reason: _ } => true
+    }
+}
