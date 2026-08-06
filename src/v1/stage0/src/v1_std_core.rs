@@ -516,6 +516,11 @@ pub enum CompilerDiagnostic {
         capacity: i64,
         span: Rc<SourceSpan>,
     },
+    CallArgumentDuplicate {
+        callee: String,
+        argument: String,
+        span: Rc<SourceSpan>,
+    },
     CallPositionalDeficit {
         callee: String,
         parameter: String,
@@ -628,6 +633,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallPositionalSurplus { span: s, .. } => s.clone(),
+        CompilerDiagnostic::CallArgumentDuplicate { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallPositionalDeficit { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallNamedArgOnFunctionValue { span: s, .. } => s.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation {
@@ -671,6 +677,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::AmbiguousReference { name: n, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous reference '".to_string(), n.clone()), "': ".to_string()), ((cs.clone().len() as i64)).to_string()), " candidates: ".to_string()), cs.clone().join(&", ".to_string())), " — qualify by containment path, alias, or rename".to_string()),
     CompilerDiagnostic::CallArgumentNameUnknown { callee: c, argument: a, declared: ds, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': no parameter named '".to_string()), a.clone()), "' (declared: [".to_string()), ds.clone().join(&", ".to_string())), "])".to_string()),
     CompilerDiagnostic::CallPositionalSurplus { callee: c, supplied: s, capacity: cap, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': too many positional arguments: ".to_string()), (s.clone()).to_string()), " supplied, ".to_string()), (cap.clone()).to_string()), " positional parameter(s) declared".to_string()),
+    CompilerDiagnostic::CallArgumentDuplicate { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': argument '".to_string()), a.clone()), "' supplied more than once".to_string()),
     CompilerDiagnostic::CallPositionalDeficit { callee: c, parameter: p, supplied: s, required: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': missing required argument '".to_string()), p.clone()), "' (".to_string()), (s.clone()).to_string()), " of ".to_string()), (r.clone()).to_string()), " required argument(s) supplied)".to_string()),
     CompilerDiagnostic::CallNamedArgOnFunctionValue { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling function value '".to_string(), c.clone()), "': named argument '".to_string()), a.clone()), "' is not supported — use positional arguments".to_string()),
     CompilerDiagnostic::OccurrenceTransportViolation { refusal: refusal, .. } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
