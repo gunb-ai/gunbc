@@ -12,7 +12,6 @@ import extdeps.systems.nvidia_dgx_spark_pxe {
   FastOsRecoveryTarball,
   DgxOsIsoImage,
   spark_fastos_unattended_kernel_cmdline,
-  spark_pxe_secure_boot_prerequisite_satisfied,
   SecureBootDisabledForPxe,
   BootloaderEnrolledForPxe,
 }
@@ -134,9 +133,17 @@ test fn w_firmware_standing_refuses_secure_boot_default_without_enrollment() -> 
     SparkPxeFirmwareGapped { gaps: gs } => list_length(items: gs) == 1
     SparkPxeFirmwareReady => false
   }
-    && spark_pxe_secure_boot_prerequisite_satisfied(
-      p: BootloaderEnrolledForPxe { bootloader: spark_pxe_bootloader_filename },
-    )
+    && match evaluate_spark_pxe_firmware_standing(
+      config: SparkUefiPxeConfiguration {
+        secure_boot: BootloaderEnrolledForPxe { bootloader: spark_pxe_bootloader_filename },
+        network_stack_enabled: true,
+        ipv4_pxe_support_enabled: true,
+        nic_pxe_boot_enabled: true,
+      },
+    ) {
+      SparkPxeFirmwareReady => true
+      SparkPxeFirmwareGapped { gaps: _ } => false
+    }
 }
 
 test fn w_red_admission_without_observation_refuses() -> Bool {

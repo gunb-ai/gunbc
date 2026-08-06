@@ -1,6 +1,6 @@
 module gunbc.dgx_spark_pxe_boot
 
-import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.types { NonEmptyStr, String, List, Bool }
 import extdeps.uri { Uri }
 import extdeps.provisioning.network_boot { NetworkBootChain, NativeDhcpBootOptions }
 import extdeps.systems.nvidia_dgx_spark_pxe {
@@ -11,6 +11,7 @@ import extdeps.systems.nvidia_dgx_spark_pxe {
   TftpGrubConfig,
   TftpKernelImage,
   TftpInitrdImage,
+  spark_pxe_bootloader_filename,
   spark_pxe_tftp_relative_path,
   spark_pxe_http_install_image_path,
   spark_fastos_unattended_kernel_cmdline,
@@ -19,7 +20,6 @@ import extdeps.systems.nvidia_dgx_spark_pxe {
   SparkPxeSecureBootPrerequisite,
   SecureBootDisabledForPxe,
   BootloaderEnrolledForPxe,
-  spark_pxe_secure_boot_prerequisite_satisfied,
 }
 
 type PxeNetworkObservation {
@@ -57,6 +57,14 @@ fn pxe_network_gaps(observation: PxeNetworkObservation) -> List<PxeNetworkGap> {
   )
 }
 
+fn pxe_network_standing_from_gaps(gaps: List<PxeNetworkGap>) -> PxeNetworkStanding {
+  if list_length(items: gaps) == 0 {
+    PxeNetworkReady
+  } else {
+    PxeNetworkGapped { gaps: gaps }
+  }
+}
+
 fn evaluate_pxe_network_standing(observation: PxeNetworkObservation?) -> PxeNetworkStanding {
   match observation {
     Absent => PxeNetworkGapped {
@@ -67,12 +75,7 @@ fn evaluate_pxe_network_standing(observation: PxeNetworkObservation?) -> PxeNetw
         ClientAddressUnconfigured,
       ]
     }
-    Present { value: o } =>
-      if list_length(items: pxe_network_gaps(observation: o)) == 0 {
-        PxeNetworkReady
-      } else {
-        PxeNetworkGapped { gaps: pxe_network_gaps(observation: o) }
-      }
+    Present { value: o } => pxe_network_standing_from_gaps(gaps: pxe_network_gaps(observation: o))
   }
 }
 
@@ -95,7 +98,11 @@ type SparkPxeFirmwareStanding
 
 fn spark_pxe_firmware_gaps(config: SparkUefiPxeConfiguration) -> List<SparkPxeFirmwareGap> {
   concat(
-    if spark_pxe_secure_boot_prerequisite_satisfied(p: config.secure_boot) { [] } else { [SecureBootBlocksPxe] },
+    match config.secure_boot {
+      SecureBootDisabledForPxe => []
+      BootloaderEnrolledForPxe { bootloader: b } =>
+        if b == spark_pxe_bootloader_filename { [] } else { [SecureBootBlocksPxe] }
+    },
     concat(
       if config.network_stack_enabled { [] } else { [NetworkStackDisabled] },
       concat(
@@ -106,12 +113,16 @@ fn spark_pxe_firmware_gaps(config: SparkUefiPxeConfiguration) -> List<SparkPxeFi
   )
 }
 
-fn evaluate_spark_pxe_firmware_standing(config: SparkUefiPxeConfiguration) -> SparkPxeFirmwareStanding {
-  if list_length(items: spark_pxe_firmware_gaps(config: config)) == 0 {
+fn spark_pxe_firmware_standing_from_gaps(gaps: List<SparkPxeFirmwareGap>) -> SparkPxeFirmwareStanding {
+  if list_length(items: gaps) == 0 {
     SparkPxeFirmwareReady
   } else {
-    SparkPxeFirmwareGapped { gaps: spark_pxe_firmware_gaps(config: config) }
+    SparkPxeFirmwareGapped { gaps: gaps }
   }
+}
+
+fn evaluate_spark_pxe_firmware_standing(config: SparkUefiPxeConfiguration) -> SparkPxeFirmwareStanding {
+  spark_pxe_firmware_standing_from_gaps(gaps: spark_pxe_firmware_gaps(config: config))
 }
 
 type SparkUnattendedImageBoot {
