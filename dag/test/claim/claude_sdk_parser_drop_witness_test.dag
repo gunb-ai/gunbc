@@ -3,7 +3,6 @@ module test.claim.claude_sdk_parser_drop_witness
 import std.types { String, Bool, List }
 import extdeps.llm.claude_agent_sdk_stream {
   claude_sdk_control_response_parser_drop_holds,
-  list_contains_string,
   parser_drop_fixture_subprocess_raw_types,
   parser_drop_fixture_sdk_parsed_types,
   parser_drop_red_control_parsed_types,
@@ -19,28 +18,34 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject,
 }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray }
+import v2.std.algebra { list_snoc_item }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data claude_sdk_parser_drop_witness_note: String = "Audit section 4.1 confirmed BY EXECUTION on 2026-08-06: control_response is present in the Claude subprocess stream-json captured beneath @anthropic-ai/claude-agent-sdk 0.3.220 query(), and absent from the SDK parsed message surface. This is independent of subscription entitlement and does not require an authenticated host. The wet receipt lives at docs/probes/claude_paired_entitlement_probe/claude_sdk_parser_drop_receipt.json; these rows execute the derivation against that receipt and against the discriminating RED control."
+data claude_sdk_parser_drop_witness_note: String = "Audit section 4.1 confirmed BY EXECUTION on 2026-08-06: control_response is present in the Claude subprocess stream-json captured beneath @anthropic-ai/claude-agent-sdk 0.3.220 query(), and absent from the SDK parsed message surface. The wet witness decodes sdk_subprocess_raw_event_types and sdk_parsed_event_types from the committed receipt and re-derives the verdict through claude_sdk_control_response_parser_drop_holds — not by reading event_types_dropped_by_sdk_parser back from the same writer."
 
 data claude_sdk_parser_drop_receipt_path: String = "docs/probes/claude_paired_entitlement_probe/claude_sdk_parser_drop_receipt.json"
 
-fn json_string_list_contains(items: JsonValue, needle: String) -> Bool {
-  match items {
+type JsonStringListDecode
+  = JsonStringListOk { values: List<String> }
+  | JsonStringListFail
+
+fn decode_json_string_array(v: JsonValue) -> JsonStringListDecode {
+  match v {
     JsonArray { elements: elems } =>
-      fold(elems, init: false, f: fn(found, head) {
-        if found {
-          true
-        } else {
-          match head {
-            JsonString { value: s } => s == needle
-            _ => false
-          }
+      fold(elems, init: JsonStringListOk { values: [] }, f: fn(acc, head) {
+        match acc {
+          JsonStringListFail => JsonStringListFail
+          JsonStringListOk { values: vs } =>
+            match head {
+              JsonString { value: s } =>
+                JsonStringListOk { values: list_snoc_item(xs: vs, item: s) }
+              _ => JsonStringListFail
+            }
         }
       })
-    _ => false
+    _ => JsonStringListFail
   }
 }
 
@@ -58,8 +63,20 @@ fn receipt_decode_parser_drop_holds(text: String) -> Bool {
     Absent => false
     Present { value: root } =>
       let comparison = receipt_member_array(v: root, key: "comparison")
-      let dropped = receipt_member_array(v: comparison, key: "event_types_dropped_by_sdk_parser")
-      json_string_list_contains(items: dropped, needle: claude_stream_event_type_control_response)
+      let raw_types_v = receipt_member_array(v: comparison, key: "sdk_subprocess_raw_event_types")
+      let parsed_types_v = receipt_member_array(v: comparison, key: "sdk_parsed_event_types")
+      match decode_json_string_array(v: raw_types_v) {
+        JsonStringListOk { values: raw_types } =>
+          match decode_json_string_array(v: parsed_types_v) {
+            JsonStringListOk { values: parsed_types } =>
+              claude_sdk_control_response_parser_drop_holds(
+                subprocess_raw_types: raw_types,
+                sdk_parsed_types: parsed_types
+              )
+            JsonStringListFail => false
+          }
+        JsonStringListFail => false
+      }
   }
 }
 
@@ -75,6 +92,11 @@ test fn RED_parsed_surface_including_control_response_does_not_hold() -> Bool {
     subprocess_raw_types: parser_drop_fixture_subprocess_raw_types,
     sdk_parsed_types: parser_drop_red_control_parsed_types
   )
+}
+
+test fn RED_wet_receipt_dropped_array_alone_is_not_sufficient() -> Bool {
+  let forged = "{\"comparison\":{\"event_types_dropped_by_sdk_parser\":[\"control_response\"],\"sdk_subprocess_raw_event_types\":[\"system\"],\"sdk_parsed_event_types\":[\"control_response\",\"system\"]}}"
+  !receipt_decode_parser_drop_holds(text: forged)
 }
 
 test fn witness_wet_receipt_control_response_parser_drop_holds() -> Bool {
