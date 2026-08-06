@@ -14,6 +14,7 @@ import extdeps.runtime.abi.sysv_amd64 {
   x86_64_abi_syscall_citation_page_is_authoritative,
   x86_64_abi_pdf_fragment_selector_from_page,
   x86_64_abi_pdf_retrieval_observation_from_hex,
+  x86_64_abi_pdf_authority,
   witness_syscall_citation_below_digest_matched_rung,
   X86_64AbiPdfCitationSelectorConstructed,
   X86_64AbiPdfNavigableUriProjected,
@@ -38,7 +39,7 @@ import extdeps.version { VersionIdentity }
 import std.types { Bool, NonEmptyStr, List }
 import gunbc.citation.pdf_safe_profile { PdfOpenParameterPercentEncodeRefusedFromSafe }
 import extdeps.uri { UriPercentEncodeUnicodeScalarOutOfRangeRefused }
-import extdeps.standards.rfc_8118 { OpenNamedDest }
+import extdeps.standards.rfc_8118 { OpenNamedDest, extdeps_external_authority_anchor }
 
 data witness_unencodable_scalar_code_points: List<Int> = [1114112]
 
@@ -141,6 +142,8 @@ test fn x86_64_abi_syscall_citation_selector_conforms_to_rfc_8118() -> Bool {
   match x86_64_abi_pdf_syscall_fragment_selector {
     X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
       s.value == ("page=125" as NonEmptyStr)
+        && s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
+        && s.conforms_to.uri.locator != x86_64_abi_pdf_authority.uri.locator
     _ => false
   }
 }
