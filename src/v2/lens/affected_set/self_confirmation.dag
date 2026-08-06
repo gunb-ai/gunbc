@@ -1,0 +1,195 @@
+module v2.lens.affected_set.self_confirmation
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import v2.lens.module_graph {
+  entry_affected_by_touched_paths,
+  path_matches_touched
+}
+import v2.workflow.floor_compile_clean_predicates {
+  compile_clean_all_touched_paths_docs_universe,
+  compile_clean_touched_path_is_dag_source
+}
+import v2.std.algebra { any, contains, fold_list, length, list_snoc_item, Empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data self_confirmation_note: String = "Affected-set self-confirmation: derive the witness-entry identities that must be selected when a diff touches the selection mechanism or any compile-clean-verdict-affecting .dag module. Identity set, not count — the #7915 receipt (repair PR touched dag/extdeps/systems/nvidia.dag and dag/test/claim/generated_artifact_drift_test.dag only; batch-4 selection-skipped dag_compile_clean_shard_a_witness_test.dag because import-closure never reached dag/gunbc/ci_layer_roots). This authority names the repairing checks and the mechanism surfaces; the host skip bridge consumes self_relevant_checks_blocks_skip. Fail-closed: a provenance gap on mechanism resolution refuses (never narrows to skip, never widens to whole-corpus rerun)."
+
+type SelfRelevantCheckRow {
+  validating_entry: String
+  mechanism_module_paths: List<String>
+}
+
+data compile_clean_shard_a_validating_entry: String = "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag"
+
+data compile_clean_scope_validating_entry: String = "dag/test/claim/dag_compile_clean_scope_witness_test.dag"
+
+data affected_set_universe_validating_entry: String = "src/v2/test/claim/affected_set_universe_test.dag"
+
+data self_confirmation_empty_string_list: List<String> = []
+
+data selection_mechanism_self_relevant_rows: List<SelfRelevantCheckRow> = [
+  SelfRelevantCheckRow {
+    validating_entry: compile_clean_scope_validating_entry,
+    mechanism_module_paths: [
+      "src/v2/lens/module_graph.dag",
+      "src/v2/lens/affected_set.dag",
+      "src/v2/lens/affected_set/entry_selection.dag",
+      "src/v2/lens/affected_set/declared_source_ref_selection.dag",
+      "tools.dag_compile_clean_scope.dag",
+      "src/v2/workflow/floor_compile_clean_predicates.dag"
+    ]
+  },
+  SelfRelevantCheckRow {
+    validating_entry: affected_set_universe_validating_entry,
+    mechanism_module_paths: [
+      "src/v2/lens/affected_set.dag"
+    ]
+  }
+]
+
+data repair_receipt_nvidia_path: String = "dag/extdeps/systems/nvidia.dag"
+data repair_receipt_generated_artifact_drift_path: String = "dag/test/claim/generated_artifact_drift_test.dag"
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn path_in_list(path: String, paths: List<String>) -> Bool {
+  contains(xs: paths, item: path, eq: string_eq)
+}
+
+fn touched_paths_intersect(paths: List<String>, touched_paths: List<String>) -> Bool {
+  any(
+    xs: touched_paths,
+    predicate: fn(touched) {
+      any(
+        xs: paths,
+        predicate: fn(path) {
+          path_matches_touched(closure_path: path, touched_path: touched)
+        }
+      )
+    }
+  )
+}
+
+fn compile_clean_verdict_affecting_touch(touched_paths: List<String>) -> Bool {
+  length(xs: touched_paths) > 0
+    && compile_clean_all_touched_paths_docs_universe(touched_paths: touched_paths) == false
+    && any(
+      xs: touched_paths,
+      predicate: fn(path) {
+        compile_clean_touched_path_is_dag_source(path: path)
+      }
+    )
+}
+
+fn mechanism_derived_self_relevant_entries(
+  touched_paths: List<String>
+) -> List<String> {
+  fold_list(
+    xs: selection_mechanism_self_relevant_rows,
+    empty: Empty,
+    cons: fn(acc, row) {
+      if touched_paths_intersect(
+        paths: row.mechanism_module_paths,
+        touched_paths: touched_paths
+      ) {
+        if path_in_list(path: row.validating_entry, paths: acc) {
+          acc
+        } else {
+          list_snoc_item(xs: acc, item: row.validating_entry)
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn compile_clean_verdict_derived_self_relevant_entries(
+  touched_paths: List<String>
+) -> List<String> {
+  if compile_clean_verdict_affecting_touch(touched_paths: touched_paths) {
+    [compile_clean_shard_a_validating_entry, compile_clean_scope_validating_entry]
+  } else {
+    self_confirmation_empty_string_list
+  }
+}
+
+fn derive_self_relevant_check_identities(
+  touched_paths: List<String>
+) -> List<String> {
+  let mechanism = mechanism_derived_self_relevant_entries(touched_paths: touched_paths)
+  let verdict = compile_clean_verdict_derived_self_relevant_entries(
+    touched_paths: touched_paths
+  )
+  fold_list(
+    xs: verdict,
+    empty: mechanism,
+    cons: fn(acc, entry) {
+      if path_in_list(path: entry, paths: acc) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: entry)
+      }
+    }
+  )
+}
+
+fn self_relevant_check_identity_in_derived_set(
+  entry_path: String,
+  touched_paths: List<String>
+) -> Bool {
+  path_in_list(
+    path: entry_path,
+    paths: derive_self_relevant_check_identities(touched_paths: touched_paths)
+  )
+}
+
+fn self_relevant_check_selected_by_import_closure(
+  entry_path: String,
+  pool_roots: List<String>,
+  touched_paths: List<String>
+) -> Bool {
+  entry_affected_by_touched_paths(
+    entry_path: entry_path,
+    pool_roots: pool_roots,
+    touched_paths: touched_paths
+  )
+}
+
+fn self_relevant_check_selected(
+  entry_path: String,
+  pool_roots: List<String>,
+  touched_paths: List<String>
+) -> Bool {
+  self_relevant_check_identity_in_derived_set(
+    entry_path: entry_path,
+    touched_paths: touched_paths
+  )
+    || self_relevant_check_selected_by_import_closure(
+      entry_path: entry_path,
+      pool_roots: pool_roots,
+      touched_paths: touched_paths
+    )
+}
+
+fn self_relevant_checks_blocks_skip(
+  entry_path: String,
+  touched_paths: List<String>
+) -> Bool {
+  self_relevant_check_identity_in_derived_set(
+    entry_path: entry_path,
+    touched_paths: touched_paths
+  )
+}
+
+fn repair_receipt_touched_paths() -> List<String> {
+  [repair_receipt_nvidia_path, repair_receipt_generated_artifact_drift_path]
+}
+
+fn mechanism_touch_module_graph_paths() -> List<String> {
+  ["src/v2/lens/module_graph.dag"]
+}

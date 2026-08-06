@@ -1138,6 +1138,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn affected_set_self_confirmation_bridge_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_AFFECTED_SET_SELF_CONFIRMATION_BRIDGE_MARKER,
+            "cli_run_affected_set_self_confirmation_bridge"
+        );
+    }
+
+    #[test]
     fn truncate_histogram_label_respects_utf8_boundaries() {
         let max = 80;
         let s = "é".repeat(50); // 2-byte chars; byte slice at 79 would straddle
@@ -5910,6 +5918,9 @@ fn entry_eligible_for_discovery_skip_before_resolve(
             return Ok(false);
         }
     } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_paths) {
+        return Ok(false);
+    }
+    if self_relevant_checks_blocks_skip(entry_path, touched_paths) {
         return Ok(false);
     }
     Ok(true)
@@ -19960,6 +19971,114 @@ fn declared_source_refs_blocks_skip(axis: DeclaredSourceRefAxis) -> bool {
     )
 }
 
+// SCAFFOLD (§7 HAND-RUST — `cli_run_affected_set_self_confirmation_bridge`):
+// Lane: affected-set self-confirmation (calm-fox-44) — host-fed self-relevant check
+// identity derivation for floor discovery admission until discovery admission consumes
+// `v2.lens.affected_set.self_confirmation` directly.
+// DELETE WHEN dissolved: `COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY`,
+// `COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY`, `AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY`,
+// `SELECTION_MECHANISM_MODULE_PATHS`, `compile_clean_verdict_affecting_touch`,
+// `mechanism_derived_self_relevant_entries`, `derive_self_relevant_check_identities`,
+// `self_relevant_checks_blocks_skip`, and `CLI_RUN_AFFECTED_SET_SELF_CONFIRMATION_BRIDGE_MARKER`.
+// Receipt: `rg cli_run_affected_set_self_confirmation_bridge src/v1/stage0/src/cli_run.rs` == 1
+// until deletion; witness `affected_set_self_confirmation_test.dag`.
+pub(crate) const CLI_RUN_AFFECTED_SET_SELF_CONFIRMATION_BRIDGE_MARKER: &str =
+    "cli_run_affected_set_self_confirmation_bridge";
+
+const COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY: &str =
+    "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag";
+const COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY: &str =
+    "dag/test/claim/dag_compile_clean_scope_witness_test.dag";
+const AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY: &str =
+    "src/v2/test/claim/affected_set_universe_test.dag";
+
+const SELECTION_MECHANISM_MODULE_PATHS: &[&str] = &[
+    "src/v2/lens/module_graph.dag",
+    "src/v2/lens/affected_set.dag",
+    "src/v2/lens/affected_set/entry_selection.dag",
+    "src/v2/lens/affected_set/declared_source_ref_selection.dag",
+    "tools.dag_compile_clean_scope.dag",
+    "src/v2/workflow/floor_compile_clean_predicates.dag",
+];
+
+fn compile_clean_touched_path_norm(path: &str) -> &str {
+    path.strip_prefix("./").unwrap_or(path)
+}
+
+fn compile_clean_touched_path_is_docs_only(path: &str) -> bool {
+    compile_clean_touched_path_norm(path).starts_with("docs/")
+}
+
+fn compile_clean_touched_path_is_dag_source(path: &str) -> bool {
+    compile_clean_touched_path_norm(path).ends_with(".dag")
+}
+
+fn compile_clean_verdict_affecting_touch(touched_paths: &[String]) -> bool {
+    !touched_paths.is_empty()
+        && !touched_paths
+            .iter()
+            .all(|p| compile_clean_touched_path_is_docs_only(p))
+        && touched_paths
+            .iter()
+            .any(|p| compile_clean_touched_path_is_dag_source(p))
+}
+
+fn mechanism_derived_self_relevant_entries(touched_paths: &[String]) -> Vec<&'static str> {
+    let mechanism_touched = touched_paths.iter().any(|touched| {
+        SELECTION_MECHANISM_MODULE_PATHS
+            .iter()
+            .any(|path| repo_paths_match_touched(path, touched))
+    });
+    if !mechanism_touched {
+        return Vec::new();
+    }
+    let mut out = vec![
+        COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
+        AFFECTED_SET_UNIVERSE_VALIDATING_ENTRY,
+    ];
+    if touched_paths
+        .iter()
+        .any(|touched| repo_paths_match_touched("src/v2/lens/affected_set.dag", touched))
+    {
+        // universe row already included
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn compile_clean_verdict_derived_self_relevant_entries(
+    touched_paths: &[String],
+) -> Vec<&'static str> {
+    if compile_clean_verdict_affecting_touch(touched_paths) {
+        vec![
+            COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+            COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
+        ]
+    } else {
+        Vec::new()
+    }
+}
+
+fn derive_self_relevant_check_identities(touched_paths: &[String]) -> Vec<&'static str> {
+    let mut out = mechanism_derived_self_relevant_entries(touched_paths);
+    for entry in compile_clean_verdict_derived_self_relevant_entries(touched_paths) {
+        if !out.contains(&entry) {
+            out.push(entry);
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn self_relevant_checks_blocks_skip(entry_path: &str, touched_paths: &[String]) -> bool {
+    let entry_rel = workspace_relative_repo_path(entry_path);
+    derive_self_relevant_check_identities(touched_paths)
+        .iter()
+        .any(|check| workspace_relative_repo_path(check) == entry_rel)
+}
+
 fn entry_has_declared_source_refs(entry_path: &str, facts: &ModuleGraphFactsLive) -> bool {
     !declared_source_ref_paths_for_entry(entry_path, facts).is_empty()
 }
@@ -20134,6 +20253,9 @@ fn entry_qualifies_for_skip_without_resolve(
             return Ok(false);
         }
     } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_entry_paths) {
+        return Ok(false);
+    }
+    if self_relevant_checks_blocks_skip(entry_path, touched_entry_paths) {
         return Ok(false);
     }
     if !diff_edits.overlapping_data_items.is_empty() {
@@ -34873,6 +34995,69 @@ mod witness_layer_roots_compile_clean_tests {
         assert_ne!(
             SelectionControlRefusalCause::DiffObservationFailed.token(),
             SelectionControlRefusalCause::InputClosureFailed.token()
+        );
+    }
+
+    /// #7915 receipt: repair PR touched only nvidia.dag and generated_artifact_drift_test.dag;
+    /// compile_clean_shard_a must be in the derived self-relevant identity set (not import-closure).
+    #[test]
+    fn self_confirmation_repair_receipt_derives_shard_a_identity() {
+        let touched = vec![
+            "dag/extdeps/systems/nvidia.dag".to_string(),
+            "dag/test/claim/generated_artifact_drift_test.dag".to_string(),
+        ];
+        let derived = derive_self_relevant_check_identities(&touched);
+        assert!(
+            derived
+                .iter()
+                .any(|e| *e == COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY),
+            "repair receipt must derive shard-a identity: {derived:?}"
+        );
+        assert!(self_relevant_checks_blocks_skip(
+            COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+            &touched
+        ));
+    }
+
+    /// Mechanism touch: module_graph.dag change must derive scope witness identity.
+    #[test]
+    fn self_confirmation_mechanism_touch_derives_scope_check() {
+        let touched = vec!["src/v2/lens/module_graph.dag".to_string()];
+        let derived = derive_self_relevant_check_identities(&touched);
+        assert!(
+            derived
+                .iter()
+                .any(|e| *e == COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY),
+            "mechanism touch must derive scope witness: {derived:?}"
+        );
+    }
+
+    /// RED control: a broken derivation that omits shard_a must not block skip for the repair receipt.
+    #[test]
+    fn self_confirmation_repair_receipt_red_control_shard_a_absent() {
+        let touched = vec![
+            "dag/extdeps/systems/nvidia.dag".to_string(),
+            "dag/test/claim/generated_artifact_drift_test.dag".to_string(),
+        ];
+        let scope_only = [COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY];
+        assert!(
+            !scope_only
+                .iter()
+                .any(|e| *e == COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY),
+            "synthetic RED subject must omit shard-a"
+        );
+        assert!(
+            !scope_only.iter().any(|e| {
+                workspace_relative_repo_path(e)
+                    == workspace_relative_repo_path(COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY)
+            }),
+            "scope-only identity set must not contain shard-a"
+        );
+        assert!(
+            derive_self_relevant_check_identities(&touched)
+                .iter()
+                .any(|e| *e == COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY),
+            "full derivation must include shard-a — RED control is the scope-only subject above"
         );
     }
 
