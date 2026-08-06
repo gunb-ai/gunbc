@@ -54,7 +54,7 @@ import v2.std.refinement {
 }
 import v2.std.witness { Holds, Violates, Witness }
 
-data complexity_variables_list_carrier_note: String = "ComplexityVariables is List<SizeVariable> with no Refined/Witness carrier. The admits predicate is vacuous, so refine+Holds rewrap added no admission fact and under discovery (PR 7765) the Witness peel left Holds-wrapped lists that concat rejected as Record and that SizedComplexity stored as nested Holds. dissolve-on: root-cause the discovery shared-index path that injected the extra Holds layer; Refined may return only if it stays a single authority without a second wrap."
+data complexity_variables_list_carrier_note: String = "ComplexityVariables is List<SizeVariable> with no Refined/Witness carrier. The admits predicate is vacuous, so refine+Holds rewrap added no admission fact and under discovery (PR 7765) Witness peels left Holds-wrapped lists that concat rejected as Record. complexity_lens returns ComplexityBound directly (UnknownComplexity on cost Violates) so discovery cannot nest an extra Holds around the bound. dissolve-on: root-cause the discovery shared-index path that injected the extra Holds layer."
 
 fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
   true
@@ -206,16 +206,16 @@ fn complexity_projection_diagnostic() -> Diagnostic {
   }
 }
 
-fn asymptotic_projection(cost_witness: Witness<SymbolicCost>) -> Witness<ComplexityBound> {
+fn asymptotic_projection(cost_witness: Witness<SymbolicCost>) -> ComplexityBound {
   match cost_witness {
     Holds { value: cost } =>
-      Holds { value: complexity_bound_from_cost(cost: cost) }
+      complexity_bound_from_cost(cost: cost)
     Violates { diagnostic: d } =>
-      Violates { diagnostic: d }
+      unknown_complexity_with_diagnostic(diagnostic: d)
   }
 }
 
-fn complexity_lens(n: Node) -> Witness<ComplexityBound> {
+fn complexity_lens(n: Node) -> ComplexityBound {
   asymptotic_projection(cost_witness: cost_lens(n: n))
 }
 

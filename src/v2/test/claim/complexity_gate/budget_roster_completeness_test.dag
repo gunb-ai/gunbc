@@ -48,14 +48,10 @@ fn complexity_budget_row_dominates(row: LensSubjectComplexityBudgetRow) -> Bool 
       if !complexity_declared_budget_is_rated(budget: declared) {
         false
       } else {
-        match complexity_lens(n: body) {
-          Holds { value: computed } =>
-            complexity_bound_dominates(
-              a: declared,
-              b: computed
-            )
-          _ => false
-        }
+        complexity_bound_dominates(
+          a: declared,
+          b: complexity_lens(n: body)
+        )
       }
     Rejected { diagnostics: _ } => false
   }
