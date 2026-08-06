@@ -71,6 +71,24 @@ fn envelope_exceeds_fast_lane(
   millisecond_count(m: envelope.wall_budget) > millisecond_count(m: fast_lane_budget)
 }
 
+fn derive_witness_route_scheduled_cadence(
+  purpose: WitnessPurpose,
+  envelope: ScheduledWitnessEnvelope,
+) -> WitnessRoute {
+  match purpose {
+    TerminatingOneShot { pinned_subject: _, dissolution_trigger: _, deadline: _ } =>
+      RefusedNoConsumer {
+        cause: OneShotPurposeOnScheduledCadence { cadence: envelope.cadence },
+      }
+    PopulationTotality { population: _ } => Scheduled { cadence: envelope.cadence }
+    BehavioralDiscriminator => Scheduled { cadence: envelope.cadence }
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } =>
+      Scheduled { cadence: envelope.cadence }
+    ExternalFidelity { effect: _ } => Scheduled { cadence: envelope.cadence }
+    ResourceContract { bound: _ } => Scheduled { cadence: envelope.cadence }
+  }
+}
+
 fn derive_witness_route(
   purpose: WitnessPurpose,
   envelope: ScheduledWitnessEnvelope,
@@ -127,21 +145,9 @@ fn derive_witness_route(
           }
       }
     EnvelopeCadenceFalsifierCadenceJob =>
-      match purpose {
-        TerminatingOneShot { pinned_subject: _, dissolution_trigger: _, deadline: _ } =>
-          RefusedNoConsumer {
-            cause: OneShotPurposeOnScheduledCadence { cadence: envelope.cadence },
-          }
-        _ => Scheduled { cadence: envelope.cadence }
-      }
+      derive_witness_route_scheduled_cadence(purpose: purpose, envelope: envelope)
     EnvelopeCadenceFalsifierSubstrateLongLane =>
-      match purpose {
-        TerminatingOneShot { pinned_subject: _, dissolution_trigger: _, deadline: _ } =>
-          RefusedNoConsumer {
-            cause: OneShotPurposeOnScheduledCadence { cadence: envelope.cadence },
-          }
-        _ => Scheduled { cadence: envelope.cadence }
-      }
+      derive_witness_route_scheduled_cadence(purpose: purpose, envelope: envelope)
   }
 }
 
