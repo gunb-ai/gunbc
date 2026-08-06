@@ -15,7 +15,21 @@ import extdeps.llm.cli_lifecycle {
 
 data provider_standing_authority_note: String = "SHARED CONTRACT for Claude and Cursor dispatch lanes (valiant-stag-845). ProviderReadiness decomposes per provider-control-interface-audit section 10 into six independent axes: installation, authentication, entitlement, limit, turn outcome, and tool environment. One arm must not erase another — the audit worked example (authenticated + weekly Opus warning + Fable rejected + Opus runnable) requires it. Limit observations carry an explicit ProviderLimitSubject; native limit tokens stay open (NonEmptyStr) with recognised projections layered over them, never a closed enum that drops upstream tokens (section 4.1). Standing facts reuse std.claim_evidence RecordedFact and EvidenceLink machinery (section 11); this module owns the proposition shapes only. ProviderAuthenticationStanding derives from token state, never from subscription profile metadata alone — profile-present-token-absent is a distinct refusal arm, not a gap that reads as authenticated (eager-raven-845 live observation, 2026-08-06)."
 
-data provider_standing_selection_note: String = "Selection eligibility consumes an admitted ProviderStanding bundle. Every axis with an Unobserved arm is ineligible for automatic dispatch. LimitObservationUnobserved is silence and blocks; LimitCapabilityGapUnobservable is a grounded receipt that no headroom surface exists (Cursor local) and does not block — honesty about absence, not a fabricated healthy balance. A rate-limit read proving the endpoint answered is not proof capacity exists. LimitCapabilityGapUnobservable is distinct from observed-available and from unavailable-until-reset. Never fabricate a healthy balance from silence (DESIGN 4b)."
+data provider_standing_selection_note: String = "Selection eligibility consumes an admitted ProviderStanding bundle AND a ProviderLimitDispatchDraw naming which limit surface the pending dispatch would draw on. Every axis with an Unobserved arm is ineligible for automatic dispatch. Limit exhaustion blocks only when the observation subject covers that draw — a ProviderNativeLimitBucket exhausted on codex must not block a dispatch drawing on codex_bengalfox (deep-raven-684 live multibucket receipt, 2026-08-06). LimitDispatchDrawUnspecified retains account-scope-only blocking for standing-only callers; production selection must pass an explicit draw. LimitObservationUnobserved is silence and blocks; LimitCapabilityGapUnobservable is a grounded receipt that no headroom surface exists (Cursor local) and does not block. A rate-limit read proving the endpoint answered is not proof capacity exists. Never fabricate a healthy balance from silence (DESIGN 4b)."
+
+data provider_standing_limit_dispatch_draw_note: String = "Limit blocking is dispatch-scoped, not standing-only. limit_subject_covers_dispatch_draw decides whether a limit observation is relevant to the work about to be dispatched. ProviderAccountLimit covers every draw at that credential; ProviderNativeLimitBucket covers only a matching native_key; ProviderModelLimit covers only a matching model. DISSOLVES ON: keen-wolf-740 native bucket decode lands on inventory rows — this predicate must stay compatible with ProviderNativeLimitBucket observations keyed by rateLimitsByLimitId limit_id."
+
+type ProviderLimitDispatchDraw
+  = LimitDispatchDrawUnspecified
+  | LimitDispatchDrawAccount { credential: ProviderLimitCredentialIdentity }
+  | LimitDispatchDrawModel {
+      credential: ProviderLimitCredentialIdentity,
+      model: NonEmptyStr,
+    }
+  | LimitDispatchDrawNativeBucket {
+      credential: ProviderLimitCredentialIdentity,
+      native_key: NonEmptyStr,
+    }
 
 type ProviderLimitCredentialIdentity
   = LimitCredentialUnspecified
@@ -212,42 +226,135 @@ fn limit_subject_is_account_scope(subject: ProviderLimitSubject) -> Bool {
   }
 }
 
-fn limit_observation_blocks_selection(observation: ProviderLimitObservation) -> Bool {
+fn limit_credential_draw_matches(
+  subject_cred: ProviderLimitCredentialIdentity,
+  draw_cred: ProviderLimitCredentialIdentity,
+) -> Bool {
+  match subject_cred {
+    LimitCredentialUnspecified => true
+    LimitCredentialLabel { label: subject_label } =>
+      match draw_cred {
+        LimitCredentialUnspecified => true
+        LimitCredentialLabel { label: draw_label } => subject_label == draw_label
+      }
+  }
+}
+
+fn limit_subject_covers_dispatch_draw(
+  subject: ProviderLimitSubject,
+  draw: ProviderLimitDispatchDraw,
+) -> Bool {
+  match draw {
+    LimitDispatchDrawUnspecified =>
+      limit_subject_is_account_scope(subject: subject)
+    LimitDispatchDrawAccount { credential: draw_cred } =>
+      match subject {
+        ProviderAccountLimit { credential: subject_cred } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          )
+        ProviderWorkspaceLimit { workspace_account: _ } => false
+        ProviderModelLimit { credential: subject_cred, model: _ } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          )
+        ProviderNativeLimitBucket { credential: subject_cred, native_key: _ } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          )
+      }
+    LimitDispatchDrawModel { credential: draw_cred, model: draw_model } =>
+      match subject {
+        ProviderAccountLimit { credential: subject_cred } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          )
+        ProviderWorkspaceLimit { workspace_account: _ } => false
+        ProviderModelLimit { credential: subject_cred, model: subject_model } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          ) && subject_model == draw_model
+        ProviderNativeLimitBucket { credential: _, native_key: _ } => false
+      }
+    LimitDispatchDrawNativeBucket { credential: draw_cred, native_key: draw_key } =>
+      match subject {
+        ProviderAccountLimit { credential: subject_cred } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          )
+        ProviderWorkspaceLimit { workspace_account: _ } => false
+        ProviderModelLimit { credential: _, model: _ } => false
+        ProviderNativeLimitBucket { credential: subject_cred, native_key: subject_key } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          ) && subject_key == draw_key
+      }
+  }
+}
+
+fn limit_observation_blocks_dispatch(
+  observation: ProviderLimitObservation,
+  draw: ProviderLimitDispatchDraw,
+) -> Bool {
   match observation {
     LimitObservationUnobserved { reason: _ } => true
     LimitUnavailableUntilReset { subject: s, native_token: _, reason: _ } =>
-      limit_subject_is_account_scope(subject: s)
+      limit_subject_covers_dispatch_draw(subject: s, draw: draw)
     LimitExhausted { subject: s, native_token: _ } =>
-      limit_subject_is_account_scope(subject: s)
+      limit_subject_covers_dispatch_draw(subject: s, draw: draw)
     LimitRateLimited { subject: s, native_token: _ } =>
-      limit_subject_is_account_scope(subject: s)
+      limit_subject_covers_dispatch_draw(subject: s, draw: draw)
+    LimitRejected { subject: s, native_token: _, reason: _ } =>
+      match draw {
+        LimitDispatchDrawUnspecified => false
+        _ => limit_subject_covers_dispatch_draw(subject: s, draw: draw)
+      }
     LimitCapabilityGapUnobservable { reason: _ } => false
     LimitObservedAvailable { subject: _ } => false
     LimitWarning { subject: _, native_token: _, utilization_basis_points: _ } => false
-    LimitRejected { subject: _, native_token: _, reason: _ } => false
   }
 }
 
-fn limit_observations_are_selection_eligible(observations: List<ProviderLimitObservation>) -> Bool {
+fn limit_observations_are_selection_eligible(
+  observations: List<ProviderLimitObservation>,
+  draw: ProviderLimitDispatchDraw,
+) -> Bool {
   if list_length(items: observations) == 0 {
     false
   } else {
-    !any(observations, observation => limit_observation_blocks_selection(observation: observation))
+    !any(
+      observations,
+      observation => limit_observation_blocks_dispatch(observation: observation, draw: draw),
+    )
   }
 }
 
-fn provider_standing_bundle_is_selection_eligible(bundle: ProviderStandingBundle) -> Bool {
+fn provider_standing_bundle_is_selection_eligible(
+  bundle: ProviderStandingBundle,
+  draw: ProviderLimitDispatchDraw,
+) -> Bool {
   installation_standing_is_selection_eligible(standing: bundle.installation)
     && authentication_standing_is_selection_eligible(standing: bundle.authentication)
     && entitlement_standing_is_selection_eligible(standing: bundle.entitlement)
-    && limit_observations_are_selection_eligible(observations: bundle.limits)
+    && limit_observations_are_selection_eligible(observations: bundle.limits, draw: draw)
     && turn_standing_is_selection_eligible(standing: bundle.turn)
     && tool_environment_standing_is_selection_eligible(standing: bundle.tool_environment)
 }
 
-fn provider_standing_is_selection_eligible(standing: ProviderStanding) -> Bool {
+fn provider_standing_is_selection_eligible(
+  standing: ProviderStanding,
+  draw: ProviderLimitDispatchDraw,
+) -> Bool {
   match provider_standing_bundle(standing: standing) {
-    Present { value: bundle } => provider_standing_bundle_is_selection_eligible(bundle: bundle)
+    Present { value: bundle } =>
+      provider_standing_bundle_is_selection_eligible(bundle: bundle, draw: draw)
     Absent => false
   }
 }

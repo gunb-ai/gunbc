@@ -16,9 +16,14 @@ import gunbc.provider_standing {
   EntitlementObservationUnobserved,
   LimitObservationUnobserved,
   InstallationReady,
+  LimitDispatchDrawUnspecified,
   provider_standing_is_selection_eligible,
   provider_standing_from_observed_bundle,
   selection_fixture_standing_fact_id,
+}
+import gunbc.dispatch_selection {
+  codex_limit_dispatch_draw_for_model,
+  dispatch_codex_default_model,
 }
 import gunbc.provider_standing_probe_bridge {
   CodexProviderDashboardProbeObservation,
@@ -111,6 +116,7 @@ test fn witness_bridge_honest_limit_unobserved_blocks_even_when_authenticated() 
         observation: witness_codex_bridge_successful_probe_observation(),
       ),
     ),
+    draw: codex_limit_dispatch_draw_for_model(model: dispatch_codex_default_model),
   )
 }
 
@@ -135,6 +141,7 @@ test fn witness_bridge_profile_present_token_absent_refuses_through_mapper() -> 
         provider: fixture_codex_provider_instance(),
         bundle: bundle,
       ),
+      draw: LimitDispatchDrawUnspecified,
     )
 }
 

@@ -13,10 +13,15 @@ import gunbc.provider_standing {
   ProviderStandingFromFact,
   ProviderStandingUnobserved,
   ProviderAccountLimit,
+  ProviderNativeLimitBucket,
   LimitCredentialUnspecified,
+  LimitDispatchDrawUnspecified,
+  LimitDispatchDrawModel,
+  LimitDispatchDrawNativeBucket,
   LimitObservedAvailable,
   LimitUnavailableUntilReset,
   LimitRejected,
+  LimitExhausted,
   LimitWarning,
   LimitCapabilityGapUnobservable,
   ProviderModelLimit,
@@ -49,6 +54,11 @@ import gunbc.dispatch_selection {
   fixture_inventory_codex_then_claude,
   fixture_inventory_claude_then_codex,
   fixture_codex_offer_with_standing,
+  codex_default_native_limit_bucket,
+  codex_bengalfox_native_limit_bucket,
+  codex_limit_dispatch_draw_for_model,
+  dispatch_codex_default_model,
+  codex_bengalfox_dispatch_model,
   Unsized,
 }
 
@@ -80,6 +90,7 @@ test fn witness_limit_warning_does_not_block_selection() -> Bool {
       },
       bundle: bundle,
     ),
+    draw: LimitDispatchDrawUnspecified,
   )
 }
 
@@ -117,7 +128,56 @@ test fn witness_model_limit_rejection_does_not_block_account_selection() -> Bool
       },
       bundle: bundle,
     ),
+    draw: LimitDispatchDrawModel {
+      credential: LimitCredentialUnspecified,
+      model: "opus" as NonEmptyStr,
+    },
   )
+}
+
+test fn witness_native_bucket_exhaustion_blocks_matching_dispatch_draw_only() -> Bool {
+  let bundle = ProviderStandingBundle {
+    installation: InstallationReady,
+    authentication: AuthenticationAuthenticated,
+    entitlement: EntitlementObservedAvailable,
+    limits: [
+      LimitExhausted {
+        subject: ProviderNativeLimitBucket {
+          credential: LimitCredentialUnspecified,
+          native_key: codex_default_native_limit_bucket,
+        },
+        native_token: codex_default_native_limit_bucket,
+      },
+      LimitObservedAvailable {
+        subject: ProviderNativeLimitBucket {
+          credential: LimitCredentialUnspecified,
+          native_key: codex_bengalfox_native_limit_bucket,
+        },
+      },
+    ],
+    turn: TurnNotStarted,
+    tool_environment: ToolEnvironmentReady,
+  }
+  let standing = provider_standing_from_fixture_bundle(
+    provider: ProviderInstance {
+      kind: CodexCliProvider,
+      host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      executable: "codex" as NonEmptyStr,
+      observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    },
+    bundle: bundle,
+  )
+  !provider_standing_is_selection_eligible(
+    standing: standing,
+    draw: codex_limit_dispatch_draw_for_model(model: dispatch_codex_default_model),
+  )
+    && provider_standing_is_selection_eligible(
+      standing: standing,
+      draw: codex_limit_dispatch_draw_for_model(model: codex_bengalfox_dispatch_model),
+    )
 }
 
 test fn witness_unobserved_standing_is_ineligible() -> Bool {
@@ -125,6 +185,7 @@ test fn witness_unobserved_standing_is_ineligible() -> Bool {
     standing: ProviderStandingUnobserved {
       reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
     },
+    draw: LimitDispatchDrawUnspecified,
   )
 }
 
@@ -142,6 +203,7 @@ test fn witness_cursor_capability_gap_is_eligible() -> Bool {
       },
       bundle: fixture_standing_bundle_cursor_capability_gap(),
     ),
+    draw: LimitDispatchDrawUnspecified,
   )
 }
 
@@ -292,6 +354,7 @@ test fn witness_profile_present_token_absent_not_selection_eligible() -> Bool {
       },
       bundle: fixture_standing_bundle_claude_profile_present_token_absent(),
     ),
+    draw: LimitDispatchDrawUnspecified,
   )
 }
 
@@ -380,12 +443,14 @@ test fn witness_turn_outcome_unobserved_is_ineligible() -> Bool {
       },
       bundle: bundle,
     ),
+    draw: LimitDispatchDrawUnspecified,
   )
 }
 
 test fn provider_standing_keystone_holds() -> Bool {
   witness_limit_warning_does_not_block_selection()
     && witness_model_limit_rejection_does_not_block_account_selection()
+    && witness_native_bucket_exhaustion_blocks_matching_dispatch_draw_only()
     && witness_unobserved_standing_is_ineligible()
     && witness_turn_outcome_unobserved_is_ineligible()
     && witness_cursor_capability_gap_is_eligible()

@@ -14,6 +14,11 @@ import extdeps.llm.cli_lifecycle {
 }
 import gunbc.provider_standing {
   ProviderStanding,
+  ProviderLimitDispatchDraw,
+  LimitDispatchDrawUnspecified,
+  LimitDispatchDrawModel,
+  LimitDispatchDrawNativeBucket,
+  LimitCredentialUnspecified,
   provider_standing_inventory_unobserved,
   provider_standing_is_selection_eligible,
   provider_standing_from_fixture_bundle,
@@ -234,6 +239,60 @@ data dispatch_cursor_process_fingerprint: NonEmptyStr = "cursor-agent" as NonEmp
 
 data dispatch_codex_default_model: NonEmptyStr = "account-default" as NonEmptyStr
 data dispatch_claude_default_model: NonEmptyStr = "account-default" as NonEmptyStr
+
+data codex_default_native_limit_bucket: NonEmptyStr = "codex" as NonEmptyStr
+data codex_bengalfox_native_limit_bucket: NonEmptyStr = "codex_bengalfox" as NonEmptyStr
+data codex_bengalfox_dispatch_model: NonEmptyStr = "gpt-5.3-codex-spark" as NonEmptyStr
+
+data dispatch_limit_draw_note: String = "Selection eligibility threads a ProviderLimitDispatchDraw derived from the offer and request. Codex account-default dispatches draw on the native codex bucket; spark model dispatches draw on codex_bengalfox (live rateLimitsByLimitId receipt, eager-raven-684 / keen-wolf-740). Native bucket exhaustion blocks only when the draw matches that bucket."
+
+fn codex_native_limit_bucket_for_dispatch_model(model: NonEmptyStr) -> NonEmptyStr {
+  if model == codex_bengalfox_dispatch_model {
+    codex_bengalfox_native_limit_bucket
+  } else {
+    codex_default_native_limit_bucket
+  }
+}
+
+fn codex_limit_dispatch_draw_for_model(model: NonEmptyStr) -> ProviderLimitDispatchDraw {
+  LimitDispatchDrawNativeBucket {
+    credential: LimitCredentialUnspecified,
+    native_key: codex_native_limit_bucket_for_dispatch_model(model: model),
+  }
+}
+
+fn claude_limit_dispatch_draw_for_model(model: NonEmptyStr) -> ProviderLimitDispatchDraw {
+  LimitDispatchDrawModel {
+    credential: LimitCredentialUnspecified,
+    model: model,
+  }
+}
+
+fn limit_dispatch_draw_for_offer_automatic(offer: ProviderOffer) -> ProviderLimitDispatchDraw {
+  match offer {
+    OfferCodex { offer: _ } =>
+      codex_limit_dispatch_draw_for_model(model: dispatch_codex_default_model)
+    OfferClaude { offer: _ } =>
+      claude_limit_dispatch_draw_for_model(model: dispatch_claude_default_model)
+    OfferCursor { offer: _ } => LimitDispatchDrawUnspecified
+  }
+}
+
+fn limit_dispatch_draw_for_offer_and_request(
+  offer: ProviderOffer,
+  request: ProviderSelectionRequest,
+) -> ProviderLimitDispatchDraw {
+  match request {
+    SelectAutomatically { profile: _ } =>
+      limit_dispatch_draw_for_offer_automatic(offer: offer)
+    SelectCodex { profile: _, account: _, model: model, effort: _ } =>
+      codex_limit_dispatch_draw_for_model(model: model)
+    SelectClaude { profile: _, credential: _, model: model, effort: _, workflow_mode: _ } =>
+      claude_limit_dispatch_draw_for_model(model: model)
+    SelectCursor { profile: _, credential: _, model: _, agent_mode: _ } =>
+      LimitDispatchDrawUnspecified
+  }
+}
 data dispatch_claude_default_workflow_mode: NonEmptyStr = "default" as NonEmptyStr
 data dispatch_claude_default_credential_root: FilePath = "~/.claude" as FilePath
 
@@ -753,15 +812,28 @@ fn offer_matches_request_shape(offer: ProviderOffer, request: ProviderSelectionR
   }
 }
 
-fn offer_is_selection_eligible(offer: ProviderOffer) -> Bool {
-  provider_standing_is_selection_eligible(standing: provider_offer_standing(offer: offer))
+fn offer_is_selection_eligible(
+  offer: ProviderOffer,
+  request: ProviderSelectionRequest,
+) -> Bool {
+  provider_standing_is_selection_eligible(
+    standing: provider_offer_standing(offer: offer),
+    draw: limit_dispatch_draw_for_offer_and_request(offer: offer, request: request),
+  )
+}
+
+fn offer_is_selection_eligible_for_automatic(offer: ProviderOffer) -> Bool {
+  provider_standing_is_selection_eligible(
+    standing: provider_offer_standing(offer: offer),
+    draw: limit_dispatch_draw_for_offer_automatic(offer: offer),
+  )
 }
 
 fn accumulate_eligible_offer_kind(
   acc: List<ProviderKind>,
   offer: ProviderOffer,
 ) -> List<ProviderKind> {
-  if offer_is_selection_eligible(offer: offer) {
+  if offer_is_selection_eligible_for_automatic(offer: offer) {
     concat(acc, [provider_offer_kind(offer: offer)])
   } else {
     acc
@@ -824,7 +896,7 @@ fn find_offer_for_request(
     _ => {
       let matches = inventory.offers |> filter(offer =>
         offer_matches_request_shape(offer: offer, request: request)
-          && offer_is_selection_eligible(offer: offer)
+          && offer_is_selection_eligible(offer: offer, request: request)
       )
       matches.first()
     }
