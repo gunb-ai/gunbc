@@ -15,7 +15,8 @@ use crate::v1_compiler_infer_types::normalize_access_type_node;
 use crate::v1_interpreter::{sorted_fields, InterpContext, InterpResult, Value};
 use crate::v1_std_core::{
     authored_name_at, field_init_node_name_at, field_init_node_value, field_node_name_at,
-    field_node_type_expr, find_child_named, Connective, ExprData, InferredNode, NewlineIndex, Node,
+    field_node_type_expr, find_child_named, inferred_to_node, Connective, ExprData, InferredNode,
+    NewlineIndex, Node,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -77,18 +78,35 @@ fn coproduct_has_variant_named(
 }
 
 fn type_expr_bare_name(si: &SourceIndices, type_expr: &Rc<Node>) -> Option<String> {
-    if let Some(InferredNode::Resolved { node }) = type_expr.inferred.as_deref() {
-        let inferred_name = authored_name_at(si.clone(), node.clone());
+    let ty = if type_expr.connective == Connective::Conj
+        && type_expr.type_annotation.is_some()
+        && type_expr.children.len() == 1
+    {
+        type_expr.children[0].clone()
+    } else {
+        type_expr.clone()
+    };
+    let ty = normalize_access_type_node(ty);
+    if let Some(inferred) = ty
+        .inferred
+        .as_ref()
+        .and_then(|inf| inferred_to_node(inf.clone()))
+    {
+        let inferred_name = authored_name_at(si.clone(), inferred.clone());
         if !inferred_name.is_empty() {
             return Some(bare_symbol_tail(&inferred_name).to_string());
         }
-        if !node.name.is_empty() {
-            return Some(bare_symbol_tail(&node.name).to_string());
+        if !inferred.name.is_empty() {
+            return Some(bare_symbol_tail(&inferred.name).to_string());
         }
     }
-    let name = authored_name_at(si.clone(), type_expr.clone());
+    let name = authored_name_at(si.clone(), ty.clone());
     if name.is_empty() {
-        None
+        if ty.name.is_empty() {
+            None
+        } else {
+            Some(bare_symbol_tail(&ty.name).to_string())
+        }
     } else {
         Some(bare_symbol_tail(&name).to_string())
     }
@@ -109,7 +127,7 @@ fn field_type_bare_on_variant_arm(
         {
             continue;
         }
-        let ty = field_node_type_expr(field.clone());
+        let ty = normalize_access_type_node(field_node_type_expr(field.clone()));
         if let Some(bare) = type_expr_bare_name(si, &ty) {
             return Some(bare);
         }
@@ -786,6 +804,30 @@ fn marshal_field_initializer_projection(
 
     match field_value.expr_data.as_ref() {
         ExprData::ExprRecordLit { .. } => {
+            if let Some(override_bare) = declared_type_override.filter(|bare| !bare.is_empty()) {
+                let tm = typed_module_for_path(ctx, importing_module);
+                if let Some(tm) = tm {
+                    let coproduct =
+                        coproduct_type_item_with_variant_children(ctx, &tm, override_bare, si)
+                            .map(|(node, _)| node)
+                            .or_else(|| {
+                                type_item_from_importing_module_type_env(&tm, override_bare, si)
+                            });
+                    if let Some(coproduct) =
+                        coproduct.filter(|node| node.connective == Connective::Disj)
+                    {
+                        let variant_name = coproduct_record_lit_variant_name(si, field_value);
+                        if !variant_name.is_empty()
+                            && !coproduct_has_variant_named(&coproduct, &variant_name, si)
+                        {
+                            return marshal_value_identity_node(
+                                ctx,
+                                &DataInitializerValueResolution::Missing,
+                            );
+                        }
+                    }
+                }
+            }
             let type_bare = declared_type_override
                 .filter(|bare| !bare.is_empty())
                 .map(|bare| bare.to_string())
