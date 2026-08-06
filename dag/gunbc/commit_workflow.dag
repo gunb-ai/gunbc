@@ -1280,6 +1280,24 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/realization_vocabulary_containment/no_new_debt_gate_test.dag",
+      check_fns: [
+        "ts0_frozen_roadmap_component_is_rostered_holds",
+        "ts0_frozen_theme_transition_is_rostered_holds",
+        "ts0_frozen_effect_plan_bash_materialize_is_rostered_holds",
+        "ts0_frozen_roadmap_component_import_is_not_leak_holds",
+        "ts0_frozen_theme_transition_import_is_not_leak_holds",
+        "ts0_frozen_effect_plan_bash_materialize_import_is_not_leak_holds",
+        "ts0_unrostered_non_edge_import_is_leak_holds",
+        "ts0_frozen_population_containment_holds_holds"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/realization_vocabulary_containment/lens_unit/discriminators_test.dag",
       check_fns: [
         "fresh_non_edge_import_is_leak_holds",
@@ -1291,7 +1309,10 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "build_step_rostered_for_bash_build_holds",
         "bash_vocab_fresh_non_edge_import_is_leak_holds",
         "bash_vocab_realization_edge_import_is_not_leak_holds",
-        "node_http_server_emit_rostered_for_typescript_sidecar_holds"
+        "node_http_server_emit_rostered_for_typescript_sidecar_holds",
+        "roadmap_component_rostered_for_typescript_sidecar_holds",
+        "theme_transition_rostered_for_typescript_sidecar_holds",
+        "effect_plan_bash_materialize_rostered_for_bash_build_holds"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared

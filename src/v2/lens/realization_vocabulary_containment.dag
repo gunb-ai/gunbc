@@ -60,6 +60,21 @@ data realization_vocab_exception_roster: List<FrontierRow> = [
     unit: "dag/tools/build_step.dag",
     reason: "build-step tooling constructs bash via the bash-AST vocabulary outside the realization-edge prefixes (pre shell-to-intent phase-2 site)",
     dissolve_on: "shell-to-intent phase 2/3: the site routes through typed effects / emit rows and the bash-AST containment wall closes; row deletes"
+  ),
+  frontier_row(
+    unit: "dag/gunbc/roadmap_component.dag",
+    reason: "product-layer roadmap component imports extdeps.languages.typescript.program outside realization-edge prefixes (2,025 hand-authored ts_* call sites; TS-0 freeze per language-support-completion design)",
+    dissolve_on: "TS-4..TS-6 migration: client behavior authored as language-independent site facts and emitted through the production TS target; hand-authored target AST deletes and this row deletes with it"
+  ),
+  frontier_row(
+    unit: "dag/gunbc/design/theme_transition.dag",
+    reason: "site theme-transition module imports extdeps.languages.typescript.program outside realization-edge prefixes (media-query/timer/listener behavior authored as TS AST; TS-0 freeze)",
+    dissolve_on: "TS-5/TS-6 migration: theme reframe behavior modeled language-independently and emitted through the production TS target; hand-authored target AST deletes and this row deletes with it"
+  ),
+  frontier_row(
+    unit: "src/v2/workflow/effect_plan_bash_materialize.dag",
+    reason: "EffectPlan bash materializer imports v2.extdeps.languages.bash_build outside realization-edge prefixes (shell-to-intent wave-A interim site)",
+    dissolve_on: "shell-to-intent phase 2/3: argv lowering routes through typed effects / emit rows at the realization boundary and bash_build containment closes here; row deletes"
   )
 ]
 

@@ -129,6 +129,27 @@ test fn node_http_server_emit_rostered_for_typescript_sidecar_holds() -> Bool {
   )
 }
 
+test fn roadmap_component_rostered_for_typescript_sidecar_holds() -> Bool {
+  list_contains_str(
+    xs: realization_vocab_exception_paths(),
+    target: "dag/gunbc/roadmap_component.dag"
+  )
+}
+
+test fn theme_transition_rostered_for_typescript_sidecar_holds() -> Bool {
+  list_contains_str(
+    xs: realization_vocab_exception_paths(),
+    target: "dag/gunbc/design/theme_transition.dag"
+  )
+}
+
+test fn effect_plan_bash_materialize_rostered_for_bash_build_holds() -> Bool {
+  list_contains_str(
+    xs: realization_vocab_exception_paths(),
+    target: "src/v2/workflow/effect_plan_bash_materialize.dag"
+  )
+}
+
 data bash_orchestration_emit_module: String = "v2.extdeps.languages.bash_orchestration_emit"
 
 data bucket_d_emit_edge_import_facts: List<LayerImportFact> = [
