@@ -16,7 +16,6 @@ import extdeps.http.server {
 import std.markup { Fragment }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
-import gunbc.running_release_identity { running_release_healthz_members }
 import gunbc.roadmap_site_surface_render {
   roadmap_site_health_path,
   roadmap_site_roadmap_url_path,
@@ -27,7 +26,7 @@ import gunbc.roadmap_site_surface_render {
   site_artifact_digest,
   served_page_body,
   healthz_body_from_surface_artifacts,
-  healthz_surface_members,
+  healthz_body_with_release_identity,
 }
 import gunbc.roadmap_authority { expected_roadmap_md, authored_merged_prs, roadmap_authority }
 import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
@@ -163,19 +162,15 @@ fn roadmap_site_healthz_body() -> String {
 
 fn roadmap_site_healthz_body_for_release(release_revision: CommitSha) -> String {
   let bundle = materialize_live_roadmap_site_surface_bundle()
-  serialize_json(v: json_object(members: list_append(
-    healthz_surface_members(
-      roadmap: bundle.roadmap_md,
-      dispatch: bundle.dispatch_json,
-      daily: bundle.daily_html,
-      full: bundle.full_html,
-      dispatch_js: bundle.dispatch_js,
-    ),
-    running_release_healthz_members(
-      revision: release_revision,
-      surface_bundle_identity: bundle.bundle_identity,
-    ),
-  )))
+  healthz_body_with_release_identity(
+    roadmap: bundle.roadmap_md,
+    dispatch: bundle.dispatch_json,
+    daily: bundle.daily_html,
+    full: bundle.full_html,
+    dispatch_js: bundle.dispatch_js,
+    release_revision: release_revision,
+    surface_bundle_identity: bundle.bundle_identity,
+  )
 }
 
 data roadmap_site_healthz_body_for_release_note: String = "THE SERVED /healthz DOCUMENT, AND THE ONLY ONE A CLIENT EVER SEES. It is the bundle's surface members plus the two launch-identity members, assembled from the SAME materialized bundle the route renders from — so the digests published here are digests of the bodies this process actually serves, not of a second rendering that could differ. roadmap_site_healthz_body (surface only) is retained as the deploy-side EXPECTED projection: the deploying tree computes it to answer 'what should the surface be', while the running process answers 'what is the surface, and which release am I'. Those are two different questions asked of two different parties, which is why both functions exist and why neither is a copy of the other."

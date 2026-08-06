@@ -36,7 +36,7 @@ type RunningReleaseObservation {
 }
 
 type RunningReleaseUnidentifiedCause
-  = HealthzBodyUnparseable
+  = ReleaseIdentityBodyUnparseable
   | ReleaseRevisionAbsent
   | ReleaseRevisionDuplicated { count: Int }
   | ReleaseRevisionNotAnObject
@@ -84,7 +84,7 @@ fn running_release_member_string(lookup: JsonMemberLookup) -> String? {
 
 fn observe_running_release_identity(healthz_body: String) -> RunningReleaseIdentity {
   match parse_json(s: healthz_body) {
-    Absent => RunningReleaseUnidentified { cause: HealthzBodyUnparseable }
+    Absent => RunningReleaseUnidentified { cause: ReleaseIdentityBodyUnparseable }
     Present { value: doc } =>
       match json_object_unique_member(v: doc, key: running_release_revision_key) {
         JsonMemberAbsent => RunningReleaseUnidentified { cause: ReleaseRevisionAbsent }

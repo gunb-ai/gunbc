@@ -702,12 +702,14 @@ fn live_deploy_retract_script_with_scoped_removal(spec: DeploymentSpec) -> Strin
   }
 }
 
-fn expected_live_deploy_apply_script() -> String {
-  live_deploy_apply_script_for(spec: deployment_spec_srv1())
+data expected_script_revision_is_a_parameter_note: String = "THE REVISION IS A PARAMETER HERE RATHER THAN A CONSTANT IN THIS MODULE, WHICH KEEPS A FIXTURE OUT OF PRODUCTION CODE. These two functions exist to state what the srv1 scripts should be, and the emitted ExecStart now depends on the launch revision — so they need one. Declaring a fixture sha beside the production emitter would put a hand-authored value on the same import surface the deploy path uses, one careless call away from being emitted at a real host. Taking it as a parameter means the only party that can supply a fixture is a witness, and the only party that can supply a real revision is the launcher that observed one."
+
+fn expected_live_deploy_apply_script(release_revision: CommitSha) -> String {
+  live_deploy_apply_script_for(spec: deployment_spec_srv1(release_revision: release_revision))
 }
 
-fn expected_live_deploy_retract_script() -> String {
-  live_deploy_retract_script_for(spec: deployment_spec_srv1())
+fn expected_live_deploy_retract_script(release_revision: CommitSha) -> String {
+  live_deploy_retract_script_for(spec: deployment_spec_srv1(release_revision: release_revision))
 }
 
 fn live_deploy_systemd_unit_for(spec: DeploymentSpec) -> String {

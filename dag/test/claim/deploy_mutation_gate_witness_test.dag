@@ -1,5 +1,6 @@
 module test.claim.deploy_mutation_gate_witness
 
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data mutation_gate_marker: String = "deploy-mutation-gate-marker-c4e2"
@@ -44,7 +45,7 @@ test fn witness_wrong_host_unprivileged_both_deny_surfaces_host_reason_only() ->
 
 test fn witness_wrong_host_unprivileged_both_deny_refused_before_shell() -> Bool {
   match live_deploy_fold(
-    spec: deployment_spec_srv1(),
+    spec: deployment_spec_srv1(release_revision: deploy_witness_release_revision),
     effect: ShellCommand { script: concat("echo ", mutation_gate_marker, " && exit 99") },
     transport: LocalShell,
     access: ci_deploy_srv1_access,
@@ -106,7 +107,7 @@ test fn witness_right_host_privileged_gate_permits() -> Bool {
 
 test fn witness_wrong_host_privileged_refused_before_shell() -> Bool {
   match live_deploy_fold(
-    spec: deployment_spec_srv1(),
+    spec: deployment_spec_srv1(release_revision: deploy_witness_release_revision),
     effect: ShellCommand { script: concat("echo ", mutation_gate_marker, " && exit 99") },
     transport: LocalShell,
     access: ci_deploy_srv1_access,
@@ -127,7 +128,7 @@ test fn witness_wrong_host_privileged_refused_before_shell() -> Bool {
 
 test fn witness_right_host_unprivileged_refused_before_shell() -> Bool {
   match live_deploy_fold(
-    spec: deployment_spec_srv1(),
+    spec: deployment_spec_srv1(release_revision: deploy_witness_release_revision),
     effect: ShellCommand { script: concat("echo ", mutation_gate_marker, " && exit 99") },
     transport: LocalShell,
     access: ci_deploy_srv1_access,
@@ -146,7 +147,7 @@ test fn witness_right_host_unprivileged_refused_before_shell() -> Bool {
 
 test fn witness_right_host_privileged_may_apply() -> Bool {
   reconciliation_converged(r: live_deploy_fold(
-    spec: deployment_spec_srv1(),
+    spec: deployment_spec_srv1(release_revision: deploy_witness_release_revision),
     effect: ShellCommand { script: "true" },
     transport: LocalShell,
     access: ci_deploy_srv1_access,

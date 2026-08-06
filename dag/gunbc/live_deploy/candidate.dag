@@ -1,0 +1,74 @@
+module gunbc.live_deploy.candidate
+
+import extdeps.git
+import gunbc.output_policy { ExpectSuccess }
+import std.types { Bool, CommitSha, String }
+import std.content_hash { Fnv1a64Structural }
+import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
+import gunbc.running_release_identity {
+  RunningReleaseIdentity,
+  release_revision_text_valid,
+  running_release_revision_equals,
+  running_release_surface_equals,
+}
+
+data candidate_release_note: String = "THE PER-INVOCATION RELEASE, WHICH THE SLOT SPEC IS NOT. DeploymentSpec answers WHERE a deployment is placed — which instance root, which port, which unit name, which host — and every one of those facts is stable across deploys of blue or of green. CandidateRelease answers WHAT is being installed on this invocation, and every one of ITS facts changes on every deploy. Fusing them would put a mutable revision inside the static slot topology, which is why deployment_spec_srv1 takes the revision as a parameter rather than owning it: the slot identity stays a constant of the fleet model and the release travels beside it.\\n\\nTWO MEMBERS BECAUSE THE PROCESS REPORTS TWO. RunningReleaseObservation carries revision and surface_bundle_identity as separate wire members precisely because they fail independently, and a candidate that carried only one of them could not be compared against the half it omitted. So the candidate is the EXPECTATION and the observation is the READING, member for member, and readiness is the equality between them."
+
+data candidate_observed_once_note: String = "OBSERVED ONCE, AT THE PUBLIC LAUNCHER, BEFORE ANY HOST MUTATION — and the placement is the whole property. A revision rediscovered deeper in the chain (in the emitter, in readiness, in a retry arm) is a SECOND observation of a tree that the deploy itself may have changed underneath, so the unit could be emitted with one revision and verified against another, and every comparison downstream would still look internally consistent. Observing once means the launcher's reading is the only revision in the invocation and every later use is a reference to that one value, which is what makes 'the checkout's sha, the emitted launch sha, and the process-reported sha are equal' a claim with a single subject rather than three readings that happen to agree.\\n\\nIT IS THE DEPLOYING CHECKOUT, NOT A SLOT'S DISK HEAD. The distinction is the one the operator ruling turns on. This observation runs in the CI workspace that is performing the deploy, and answers 'which candidate am I installing' — a fact the deploying job is the only party that knows. Reading a git HEAD inside a slot tree ON THE HOST would answer a different question ('what does that directory contain'), and using it as the ACTIVE predecessor is exactly the disk-derived ordering the ruling struck down, because the disk diverges from the running process whenever a sync is interrupted or lands out of order. Observing the candidate here is safe for the same reason that one is not: nothing has been mutated yet, and the checkout is the deploying job's own workspace.\\n\\nTHE SURFACE HALF NEEDS NO OBSERVATION. expected_surface_identity is a pure function of this tree, so it is computed rather than read; carrying it on the candidate instead of recomputing it at the comparison site is what lets readiness detect that the deploying tree changed between launch and verification."
+
+type CandidateRelease {
+  revision: CommitSha
+  expected_surface_identity: Fnv1a64Structural
+}
+
+type CandidateUnobservableCause
+  = CandidateHeadCommitRefused
+  | CandidateRevisionEmpty
+  | CandidateRevisionMalformed { text: String }
+
+type CandidateObservation
+  = CandidateObserved { candidate: CandidateRelease }
+  | CandidateUnobservable { cause: CandidateUnobservableCause }
+
+data candidate_unobservable_causes_note: String = "THREE CAUSES, ALL REFUSALS, NONE OF THEM A DEFAULT. A deploy that cannot name the candidate it is installing has nothing to emit into ExecStart and nothing to verify the routed process against, so there is no arm here that proceeds with a placeholder, an abbreviated sha, or the string that happened to arrive. Refused means the probe itself did not answer (not a repository, git unavailable); Empty means it answered with nothing, which a bare success flag would have read as success; Malformed means it answered with something that is not a 40-digit lowercase object name — a tag, a branch, an abbreviated sha — which is the case a length-free check accepts and an ancestry probe then silently mis-answers.\\n\\nEmpty is kept distinct from Malformed rather than folded into it because their remedies differ: an empty stdout means the observation seam is broken, while a non-sha text means the seam works and the repository is in a state (detached, unborn, or a ref that does not resolve) the deploy must not paper over."
+
+fn observe_candidate_release() -> CandidateObservation {
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  if !head.success {
+    CandidateUnobservable { cause: CandidateHeadCommitRefused }
+  } else if (head.sha as String) == "" {
+    CandidateUnobservable { cause: CandidateRevisionEmpty }
+  } else if !release_revision_text_valid(text: head.sha as String) {
+    CandidateUnobservable { cause: CandidateRevisionMalformed { text: head.sha as String } }
+  } else {
+    CandidateObserved {
+      candidate: CandidateRelease {
+        revision: head.sha,
+        expected_surface_identity: materialize_live_roadmap_site_surface_bundle().bundle_identity,
+      },
+    }
+  }
+}
+
+data observe_candidate_release_is_a_function_note: String = "A FUNCTION AND NOT A TOP-LEVEL data, FOR THE REASON gunbc.stage0_rust_host_observation ALREADY PAID FOR. A top-level data declaration is evaluated by IMPORTING it, so a module that merely named this symbol in an import list would perform Git I/O as a consequence of loading — and that is not hypothetical: a dead import of exactly that shape reached git.Inspect.HeadCommit under the hermetic envelope and took down a 105-row discovery batch. As a function the effect is reachable only by CALLING it, so every witness in this lane may import CandidateRelease, the cause coproduct, and the comparison predicates without observing any host."
+
+fn candidate_unobservable_detail(cause: CandidateUnobservableCause) -> String {
+  match cause {
+    CandidateHeadCommitRefused =>
+      "CandidateHeadCommitRefused: git.Inspect.HeadCommit did not answer for the deploying checkout"
+    CandidateRevisionEmpty =>
+      "CandidateRevisionEmpty: git.Inspect.HeadCommit succeeded with an empty revision"
+    CandidateRevisionMalformed { text: t } =>
+      join(["CandidateRevisionMalformed: the deploying checkout reported '", t, "', which is not a 40-digit lowercase object name"], "")
+  }
+}
+
+fn candidate_release_matches_identity(
+  candidate: CandidateRelease,
+  identity: RunningReleaseIdentity,
+) -> Bool {
+  running_release_revision_equals(identity: identity, expected: candidate.revision)
+    && running_release_surface_equals(identity: identity, expected: candidate.expected_surface_identity)
+}
+
+data candidate_release_matches_identity_note: String = "THE CONJUNCTION EXISTS AS A CONVENIENCE FOR CALLERS THAT NEED BOTH, AND IT IS DELIBERATELY NOT THE ONLY SURFACE. running_release_revision_equals and running_release_surface_equals stay separately callable because a deploy must be able to say WHICH half failed — right revision with a stale surface means the graph did not rebind, right surface at an unexpected revision means another candidate won the route, and the two have different remedies. Consumers that must locate the failure call the halves and construct a typed cause; only a consumer that genuinely needs the single 'is this the release I admitted' bit calls this."

@@ -1,7 +1,8 @@
 module gunbc.roadmap_site_surface_render
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, CommitSha }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import gunbc.running_release_identity { running_release_healthz_members }
 import std.markup { Fragment }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.languages.json.emit {
@@ -79,3 +80,29 @@ fn healthz_body_from_surface_artifacts(
     dispatch_js: dispatch_js,
   )))
 }
+
+fn healthz_body_with_release_identity(
+  roadmap: RoadmapSiteSurfaceArtifact,
+  dispatch: RoadmapSiteSurfaceArtifact,
+  daily: RoadmapSiteSurfaceArtifact,
+  full: RoadmapSiteSurfaceArtifact,
+  dispatch_js: RoadmapSiteSurfaceArtifact,
+  release_revision: CommitSha,
+  surface_bundle_identity: Fnv1a64Structural,
+) -> String {
+  serialize_json(v: json_object(members: list_append(
+    healthz_surface_members(
+      roadmap: roadmap,
+      dispatch: dispatch,
+      daily: daily,
+      full: full,
+      dispatch_js: dispatch_js,
+    ),
+    running_release_healthz_members(
+      revision: release_revision,
+      surface_bundle_identity: surface_bundle_identity,
+    ),
+  )))
+}
+
+data healthz_body_with_release_identity_note: String = "THE SERVED DOCUMENT HAS EXACTLY ONE PRODUCER, AND THIS IS IT. The healthz handler renders it for the live bundle, the readiness healthy fixture renders it for a supplied bundle, and nothing else spells the document. That matters more here than in an ordinary factoring, because the readiness comparison decides whether a deploy converged: a second spelling of the served body would let the comparison agree with a document the route does not serve, which is the state-space the whole readiness contract exists to exclude.\\n\\nThe surface members come first and the identity members last, so the surface half of this document is a PREFIX of it in member order — but nothing downstream may depend on that, because the comparison projects members by KEY rather than by position (roadmap_site_healthz_surface_is_current). Order here is only the emitter's, not a contract."

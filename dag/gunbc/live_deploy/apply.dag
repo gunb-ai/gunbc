@@ -10,7 +10,15 @@ import gunbc.live_deploy.spec {
   deployment_route_spec,
   deployment_plan_listen_port,
 }
-import std.types { String }
+import std.types { String, CommitSha }
+import gunbc.live_deploy.candidate {
+  CandidateRelease,
+  CandidateObservation,
+  CandidateObserved,
+  CandidateUnobservable,
+  observe_candidate_release,
+  candidate_unobservable_detail,
+}
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   ci_deploy_srv1_operator_access,
@@ -73,9 +81,12 @@ type TailscaleServeStatusRead
   = TailscaleServeStatusObserved { json: String }
   | TailscaleServeStatusReadRefused { reason: String }
 
-fn srv1_blue_green_slot_selection(status_json: String) -> BlueGreenSlotSelection {
-  let blue = deployment_spec_srv1()
-  let green = deployment_spec_srv1_green()
+fn srv1_blue_green_slot_selection(
+  status_json: String,
+  release_revision: CommitSha,
+) -> BlueGreenSlotSelection {
+  let blue = deployment_spec_srv1(release_revision: release_revision)
+  let green = deployment_spec_srv1_green(release_revision: release_revision)
   let proxies = tailscale_serve_status_proxy_targets(status_json: status_json, mount: ServeRootMount)
   let blue_proxy = tailscale_serve_proxy_url(endpoint: blue.names.tailscale_serve_endpoint)
   let green_proxy = tailscale_serve_proxy_url(endpoint: green.names.tailscale_serve_endpoint)
@@ -403,33 +414,42 @@ fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffect
   live_deploy_access_preflight_for(access: ci_deploy_srv1_access)
 }
 
-fn live_deploy_apply_srv1_with_access(access: DeployAccess) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn live_deploy_apply_srv1_with_access(
+  access: DeployAccess,
+  candidate: CandidateRelease,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match tailscale_serve_status_read(transport: access.transport) {
     TailscaleServeStatusReadRefused { reason } =>
       NotConverged { reason: reason, applied: live_deploy_preflight_intent(access: access) }
     TailscaleServeStatusObserved { json } =>
       live_deploy_blue_green_cutover_with_selection(
-        selection: srv1_blue_green_slot_selection(status_json: json),
+        selection: srv1_blue_green_slot_selection(
+          status_json: json,
+          release_revision: candidate.revision,
+        ),
         transport: access.transport,
         access: access,
       )
   }
 }
 
-fn live_deploy_retract_srv1_with_access(access: DeployAccess) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn live_deploy_retract_srv1_with_access(
+  access: DeployAccess,
+  candidate: CandidateRelease,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_retract_via_transport(
-    spec: deployment_spec_srv1(),
+    spec: deployment_spec_srv1(release_revision: candidate.revision),
     transport: access.transport,
     access: access
   )
 }
 
-fn live_deploy_apply_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_apply_srv1_with_access(access: ci_deploy_srv1_access)
+fn live_deploy_apply_srv1(candidate: CandidateRelease) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_apply_srv1_with_access(access: ci_deploy_srv1_access, candidate: candidate)
 }
 
-fn live_deploy_retract_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_retract_srv1_with_access(access: ci_deploy_srv1_access)
+fn live_deploy_retract_srv1(candidate: CandidateRelease) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_retract_srv1_with_access(access: ci_deploy_srv1_access, candidate: candidate)
 }
 
 fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> ProcessExit {
@@ -443,21 +463,39 @@ fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffec
   }
 }
 
+data live_deploy_candidate_observed_at_launcher_note: String = "THE ONE OBSERVATION POINT OF THE INVOCATION, AND IT IS HERE BECAUSE HERE IS BEFORE EVERY MUTATION. The preflight has not run, no rsync has touched the host, no unit has been written; the deploying checkout is exactly the tree the job was handed. Observing later — inside the cutover, inside the emitter, inside a readiness retry — would read a tree the deploy itself may have altered, and would give the invocation two revisions that both look right locally.\n\nA REFUSAL HERE STOPS THE LINE BEFORE ANYTHING IS TOUCHED. A deploy that cannot name the release it is installing has nothing to write into ExecStart and nothing to verify the routed process against, so it exits with the typed cause rather than proceeding with a placeholder. This is the cheapest possible place to refuse: nothing has been mutated, so there is no half-applied state to reason about and no rollback to perform."
+
 fn live_deploy_wet_with_access(access: DeployAccess) -> ProcessExit {
-  let preflight = live_deploy_access_preflight_for(access: access)
-  if !reconciliation_converged(r: preflight) {
-    live_deploy_reconciliation_exit(r: preflight)
-  } else {
-    live_deploy_reconciliation_exit(r: live_deploy_apply_srv1_with_access(access: access))
+  match observe_candidate_release() {
+    CandidateUnobservable { cause: why } =>
+      exit_failure(reason: candidate_unobservable_detail(cause: why))
+    CandidateObserved { candidate: candidate } => {
+      let preflight = live_deploy_access_preflight_for(access: access)
+      if !reconciliation_converged(r: preflight) {
+        live_deploy_reconciliation_exit(r: preflight)
+      } else {
+        live_deploy_reconciliation_exit(
+          r: live_deploy_apply_srv1_with_access(access: access, candidate: candidate)
+        )
+      }
+    }
   }
 }
 
 fn live_deploy_retract_wet_with_access(access: DeployAccess) -> ProcessExit {
-  let preflight = live_deploy_access_preflight_for(access: access)
-  if !reconciliation_converged(r: preflight) {
-    live_deploy_reconciliation_exit(r: preflight)
-  } else {
-    live_deploy_reconciliation_exit(r: live_deploy_retract_srv1_with_access(access: access))
+  match observe_candidate_release() {
+    CandidateUnobservable { cause: why } =>
+      exit_failure(reason: candidate_unobservable_detail(cause: why))
+    CandidateObserved { candidate: candidate } => {
+      let preflight = live_deploy_access_preflight_for(access: access)
+      if !reconciliation_converged(r: preflight) {
+        live_deploy_reconciliation_exit(r: preflight)
+      } else {
+        live_deploy_reconciliation_exit(
+          r: live_deploy_retract_srv1_with_access(access: access, candidate: candidate)
+        )
+      }
+    }
   }
 }
 

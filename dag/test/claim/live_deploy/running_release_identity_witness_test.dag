@@ -1,0 +1,213 @@
+module test.claim.live_deploy.running_release_identity_witness_test
+
+import std.types { Bool, String, CommitSha }
+import std.realization_reconcile { Grounding, Grounds, DoesNotGround }
+import test.claim.live_deploy.deploy_release_fixture {
+  deploy_witness_release_revision,
+  deploy_witness_other_release_revision,
+  deploy_witness_third_release_revision,
+}
+import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
+import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, HealthzEffectiveRead }
+import gunbc.roadmap_site_surface_render { healthz_body_with_release_identity }
+import gunbc.roadmap_site_surface_expect {
+  roadmap_site_healthz_surface_is_current,
+  healthz_surface_projection,
+}
+import gunbc.running_release_identity {
+  RunningReleaseIdentity,
+  RunningReleaseIdentified,
+  RunningReleaseUnidentified,
+  ReleaseIdentityBodyUnparseable,
+  ReleaseRevisionAbsent,
+  ReleaseRevisionDuplicated,
+  ReleaseRevisionMalformed,
+  SurfaceBundleIdentityAbsent,
+  observe_running_release_identity,
+  running_release_revision_equals,
+  running_release_surface_equals,
+  release_revision_text_valid,
+}
+import gunbc.live_deploy.readiness { ground_service_ready_from_healthz_with_bundle, ServiceReadyEvidence }
+
+data witness_subject_note: String = "THE PROPERTY UNDER TEST IS THAT A DEPLOY CANNOT GREEN AGAINST A PROCESS IT DID NOT INSTALL, and every witness here is written to fail if that stops holding. The mechanism is small — the running process states which release it was launched as, and readiness compares that statement against the release this invocation admitted — so the witnesses are correspondingly small and each isolates one way the comparison could go wrong.\\n\\nWhat makes them discriminating rather than decorative: the healthy case and every refusal case are built from the SAME producer (healthz_body_with_release_identity) differing in exactly one input. A refusal that fired because the fixture was malformed in some incidental way would also fire on the healthy fixture, and the healthy fixture is asserted to ground. So each red is attributable to the one axis it varies."
+
+fn witness_bundle() -> RoadmapSiteSurfaceBundle {
+  materialize_live_roadmap_site_surface_bundle()
+}
+
+fn healthz_body_at_revision(revision: CommitSha) -> String {
+  let bundle = witness_bundle()
+  healthz_body_with_release_identity(
+    roadmap: bundle.roadmap_md,
+    dispatch: bundle.dispatch_json,
+    daily: bundle.daily_html,
+    full: bundle.full_html,
+    dispatch_js: bundle.dispatch_js,
+    release_revision: revision,
+    surface_bundle_identity: bundle.bundle_identity,
+  )
+}
+
+fn ground_body_against(body: String, expected_revision: CommitSha) -> Grounding<ServiceReadyEvidence> {
+  ground_service_ready_from_healthz_with_bundle(
+    read: HealthzEffectiveRead { body: body, probe_error: "" },
+    bundle: witness_bundle(),
+    expected_revision: expected_revision,
+  )
+}
+
+fn grounding_refuses(g: Grounding<ServiceReadyEvidence>) -> Bool {
+  match g {
+    DoesNotGround { reason: _ } => true
+    Grounds { evidence: _ } => false
+  }
+}
+
+fn grounding_refusal_mentions(g: Grounding<ServiceReadyEvidence>, fragment: String) -> Bool {
+  match g {
+    DoesNotGround { reason: why } => string_contains(s: why, pattern: fragment)
+    Grounds { evidence: _ } => false
+  }
+}
+
+data positive_control_note: String = "THE POSITIVE CONTROL, AND IT IS FIRST BECAUSE EVERY OTHER WITNESS HERE DEPENDS ON IT. A readiness gate that refused everything would satisfy all four refusal witnesses below and would be catastrophically wrong — it is precisely the permanently-refusing shape this lane exists to avoid. So the corpus states, before anything else, that a process launched as the admitted revision and serving this tree's surface GROUNDS. If this witness ever fails, the refusals below prove nothing."
+
+test fn witness_matching_release_and_surface_grounds() -> Bool {
+  match ground_body_against(
+    body: healthz_body_at_revision(revision: deploy_witness_release_revision),
+    expected_revision: deploy_witness_release_revision,
+  ) {
+    Grounds { evidence: _ } => true
+    DoesNotGround { reason: _ } => false
+  }
+}
+
+data launched_as_a_disk_becomes_b_note: String = "LAUNCHED AS A, DISK BECAME B — THE CASE THE FILESYSTEM RECEIPT COULD NOT SEE. The process answering the port was started at revision A and binds that identity for its whole lifetime; the deploy that is now running admitted revision B and has already synced B's tree to disk beneath it. Every disk-derived authority — a receipt file, the slot's git HEAD, the presence of B's sources — now says B, and every one of them is wrong about what is being SERVED, because gunbc serve bound its graph and its identity once at process start and has not restarted yet.\\n\\nThis is the exact window in which the previous mechanism reported success: something answered, the disk said B, the deploy greened, and the route kept serving A. The witness states that the comparison now refuses, and that it refuses with the revision cause rather than a generic one — because 'the pre-restart process is still answering' and 'the graph did not rebind' are different remedies and the operator must be told which."
+
+test fn witness_process_launched_as_a_refuses_deploy_of_b() -> Bool {
+  let a_body = healthz_body_at_revision(revision: deploy_witness_release_revision)
+  let g = ground_body_against(body: a_body, expected_revision: deploy_witness_other_release_revision)
+  grounding_refuses(g: g)
+    && grounding_refusal_mentions(g: g, fragment: "ReleaseRevisionMismatch")
+    && grounding_refusal_mentions(g: g, fragment: deploy_witness_release_revision as String)
+    && grounding_refusal_mentions(g: g, fragment: deploy_witness_other_release_revision as String)
+}
+
+data third_revision_note: String = "THE ORDERED CASE: a third candidate C arrives while the process is still A and the disk is B. The process is unmoved by either — it reports A — so a deploy of C refuses for the same reason a deploy of B did, and the refusal names A as what is running rather than B. A mechanism that had quietly adopted the disk's answer would name B here, which is what makes this witness distinguishable from the previous one rather than a restatement of it."
+
+test fn witness_third_candidate_still_sees_launched_revision() -> Bool {
+  let a_body = healthz_body_at_revision(revision: deploy_witness_release_revision)
+  let g = ground_body_against(body: a_body, expected_revision: deploy_witness_third_release_revision)
+  grounding_refuses(g: g)
+    && grounding_refusal_mentions(g: g, fragment: deploy_witness_release_revision as String)
+    && !grounding_refusal_mentions(g: g, fragment: deploy_witness_other_release_revision as String)
+}
+
+data no_launch_identity_note: String = "NO LAUNCH IDENTITY IS A REFUSAL, NOT AN ADVANCE AND NOT AN ABSENCE. The body here is the bundle's own surface projection — exactly what a process launched before the identity channel existed answers with — and it is well-formed, parseable, and carries this tree's surface digests. Everything a surface-only readiness asks for is satisfied. The witness states that it still does not ground, and that the cause is the unreadable identity rather than a stale surface, because the surface is not stale: the fact that is missing is which release is serving it.\\n\\nThis arm is the migration state and it dissolves by deploying once. It stays enrolled afterward as the control that the refusal is real — a mechanism that greened on a body with no identity would have re-admitted the entire class silently."
+
+test fn witness_body_without_release_identity_refuses() -> Bool {
+  let surface_only = witness_bundle().healthz_body
+  let g = ground_body_against(body: surface_only, expected_revision: deploy_witness_release_revision)
+  grounding_refuses(g: g)
+    && grounding_refusal_mentions(g: g, fragment: "ReleaseIdentityUnreadable")
+    && !grounding_refusal_mentions(g: g, fragment: "ServedSurfaceStale")
+}
+
+data wrong_surface_note: String = "RIGHT RELEASE, WRONG SURFACE — the other half of the pair, and the reason the wire carries two members. The observed body states the admitted revision, so the revision comparison passes; its artifact digests are not this tree's, so the surface comparison refuses. A single fused identity digest could not produce this verdict at all: it would report one mismatch and leave the operator to guess whether the process is old or its graph failed to rebind."
+
+test fn witness_correct_revision_with_stale_surface_refuses() -> Bool {
+  let stale = "{\"status\": \"ok\", \"service\": \"gunbc-roadmap\", \"artifacts\": {\"/ROADMAP.md\": \"0000000000000000\"}, \"revision\": \"0123456789abcdef0123456789abcdef01234567\", \"surface_bundle_identity\": \"0000000000000000\"}"
+  let g = ground_body_against(body: stale, expected_revision: deploy_witness_release_revision)
+  grounding_refuses(g: g)
+    && grounding_refusal_mentions(g: g, fragment: "ServedSurfaceStale")
+    && !grounding_refusal_mentions(g: g, fragment: "ReleaseRevisionMismatch")
+}
+
+data surface_projection_note: String = "THE PROJECTION CHANGE, STATED AS A CLAIM RATHER THAN ASSUMED. Adding members to the served document would have broken a whole-body surface comparison outright — every deploy would refuse, forever, which is a broken check wearing the costume of a strict one. The witness asserts the property the projection buys: the surface-only document and the full document with identity members have the SAME surface projection, so the surface verdict is unchanged by the presence of the identity members.\\n\\nThe second conjunct is what keeps this from being vacuous: the two documents are NOT equal as strings. If someone reverted the projection to whole-body equality, the first conjunct would fail while the second still held, and the failure would be located here rather than surfacing as a mysteriously permanently-red deploy."
+
+test fn witness_surface_projection_ignores_identity_members() -> Bool {
+  let surface_only = witness_bundle().healthz_body
+  let with_identity = healthz_body_at_revision(revision: deploy_witness_release_revision)
+  let same_surface = match healthz_surface_projection(body: surface_only) {
+    Absent => false
+    Present { value: a } =>
+      match healthz_surface_projection(body: with_identity) {
+        Absent => false
+        Present { value: b } => a == b
+      }
+  }
+  same_surface
+    && surface_only != with_identity
+    && roadmap_site_healthz_surface_is_current(bundle: witness_bundle(), observed_body: with_identity)
+}
+
+data identity_observation_note: String = "THE OBSERVATION ITSELF, BELOW THE READINESS GATE. These state that the wire form round-trips and that its refusal arms are reachable from real bodies rather than only from hand-constructed values. The malformed cases matter more than they look: an uppercase 40-digit hex string and a 39-digit one both LOOK like object names, and a validator checking only 'is it hex' or only 'is it 40 characters' accepts one of them. Both are refused, and the valid one is accepted, so the predicate is shown to discriminate rather than merely to reject."
+
+test fn witness_identity_round_trips_from_served_body() -> Bool {
+  let body = healthz_body_at_revision(revision: deploy_witness_release_revision)
+  let identity = observe_running_release_identity(healthz_body: body)
+  running_release_revision_equals(identity: identity, expected: deploy_witness_release_revision)
+    && running_release_surface_equals(identity: identity, expected: witness_bundle().bundle_identity)
+    && !running_release_revision_equals(identity: identity, expected: deploy_witness_other_release_revision)
+}
+
+test fn witness_absent_identity_is_typed_absent_not_unparseable() -> Bool {
+  match observe_running_release_identity(healthz_body: witness_bundle().healthz_body) {
+    RunningReleaseUnidentified { cause: why } =>
+      match why {
+        ReleaseRevisionAbsent => true
+        ReleaseIdentityBodyUnparseable => false
+        ReleaseRevisionDuplicated { count: _ } => false
+        ReleaseRevisionMalformed { text: _ } => false
+        SurfaceBundleIdentityAbsent => false
+        _ => false
+      }
+    RunningReleaseIdentified { observation: _ } => false
+  }
+}
+
+test fn witness_unparseable_body_is_typed_unparseable() -> Bool {
+  match observe_running_release_identity(healthz_body: "not json at all") {
+    RunningReleaseUnidentified { cause: why } =>
+      match why {
+        ReleaseIdentityBodyUnparseable => true
+        _ => false
+      }
+    RunningReleaseIdentified { observation: _ } => false
+  }
+}
+
+test fn witness_revision_shape_validation_discriminates() -> Bool {
+  release_revision_text_valid(text: deploy_witness_release_revision as String)
+    && !release_revision_text_valid(text: "0123456789ABCDEF0123456789ABCDEF01234567")
+    && !release_revision_text_valid(text: "0123456789abcdef0123456789abcdef0123456")
+    && !release_revision_text_valid(text: "main")
+    && !release_revision_text_valid(text: "")
+}
+
+test fn witness_malformed_revision_on_the_wire_refuses() -> Bool {
+  let body = "{\"status\": \"ok\", \"service\": \"gunbc-roadmap\", \"artifacts\": {}, \"revision\": \"main\", \"surface_bundle_identity\": \"0000000000000000\"}"
+  match observe_running_release_identity(healthz_body: body) {
+    RunningReleaseUnidentified { cause: why } =>
+      match why {
+        ReleaseRevisionMalformed { text: t } => t == "main"
+        _ => false
+      }
+    RunningReleaseIdentified { observation: _ } => false
+  }
+}
+
+test fn witness_duplicate_revision_member_refuses() -> Bool {
+  let body = "{\"revision\": \"0123456789abcdef0123456789abcdef01234567\", \"revision\": \"89abcdef0123456789abcdef0123456789abcdef\", \"surface_bundle_identity\": \"0000000000000000\"}"
+  match observe_running_release_identity(healthz_body: body) {
+    RunningReleaseUnidentified { cause: why } =>
+      match why {
+        ReleaseRevisionDuplicated { count: n } => n == 2
+        _ => false
+      }
+    RunningReleaseIdentified { observation: _ } => false
+  }
+}
+
+data duplicate_member_note: String = "TWO REVISION MEMBERS MEANS TWO WRITERS, AND PICKING EITHER WOULD BE A FABRICATED ANSWER ABOUT WHICH PROCESS IS RUNNING. A JSON reader that takes the first or the last would answer plausibly and be right half the time; the observation refuses instead. This is the one arm a hand-written extractor almost always gets wrong, which is why it is stated here rather than left to the general parser's reputation."

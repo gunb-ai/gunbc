@@ -1,9 +1,18 @@
 module gunbc.roadmap_site_surface_expect
 
-import std.types { String, Bool, NonEmptyStr }
+import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import extdeps.languages.json.grammar { json_text_trim_trailing_lf }
-import extdeps.languages.json.parse { json_text_parseable }
+import extdeps.languages.json.parse {
+  json_text_parseable,
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_object, serialize_json }
 import extdeps.http.server { media_type_wire_label, application_json_utf8 }
 import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact, HealthzEffectiveRead }
 
@@ -13,10 +22,53 @@ fn roadmap_site_healthz_json_string_parses(body: String) -> Bool {
   json_text_parseable(s: json_text_trim_trailing_lf(body: body))
 }
 
+data healthz_surface_projection_note: String = "THE SURFACE COMPARISON PROJECTS MEMBERS BY KEY; IT DOES NOT COMPARE WHOLE BODIES, AND THE CHANGE IS FORCED RATHER THAN STYLISTIC. This was `observed == expected` over the entire document, which was correct for exactly as long as the served /healthz body contained nothing but the surface. The running process now also reports its release identity (gunbc.running_release_identity), so whole-body equality would compare surface AND identity in one string and refuse on every deploy — a check that can never pass is not a stricter check, it is a broken one, and it would have produced precisely the permanently-refusing shape this lane exists to remove.\\n\\nMore importantly, fusing them is wrong even where it would pass. revision and surface_bundle_identity are separate members because they fail independently and their remedies differ; a single string equality over both cannot say which half diverged, so the deploy could report 'stale surface' when the real fact was 'another candidate won the route'. Projecting the surface keys out and comparing only those keeps the surface verdict a statement about the surface, and leaves the revision verdict to the revision comparison that owns it.\\n\\nBOTH SIDES ARE ROUND-TRIPPED THROUGH THE SAME PARSER AND EMITTER, deliberately. Comparing a re-serialized observed document against a locally-emitted expected string would make the check sensitive to any asymmetry in escaping or number spelling between the wire and the emitter, and the resulting failure would look exactly like a stale surface. Normalizing both through parse-then-serialize makes the comparison a claim about the VALUES, which is what 'is the surface current' means, rather than about two independent spellings of them. An unparseable or structurally-missing projection is Absent and never equals anything — a document that cannot be projected has not proven it is current."
+
+data healthz_surface_status_key: String = "status"
+data healthz_surface_service_key: String = "service"
+data healthz_surface_artifacts_key: String = "artifacts"
+data healthz_surface_projection_member_count: Int = 3
+
+fn healthz_projected_member_or_empty(doc: JsonValue, key: String) -> List<JsonKeyValue> {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } => [json_kv(key: key, value: v)]
+    JsonMemberAbsent => []
+    JsonMemberDuplicated { count: _ } => []
+    JsonMemberNotAnObject => []
+  }
+}
+
+fn healthz_projected_members(doc: JsonValue) -> List<JsonKeyValue> {
+  list_append(
+    list_append(
+      healthz_projected_member_or_empty(doc: doc, key: healthz_surface_status_key),
+      healthz_projected_member_or_empty(doc: doc, key: healthz_surface_service_key),
+    ),
+    healthz_projected_member_or_empty(doc: doc, key: healthz_surface_artifacts_key),
+  )
+}
+
+fn healthz_surface_projection(body: String) -> String? {
+  match parse_json(s: json_text_trim_trailing_lf(body: body)) {
+    Absent => Absent
+    Present { value: doc } =>
+      if length(healthz_projected_members(doc: doc)) == healthz_surface_projection_member_count {
+        serialize_json(v: json_object(members: healthz_projected_members(doc: doc)))
+      } else {
+        Absent
+      }
+  }
+}
+
 fn roadmap_site_healthz_surface_is_current(bundle: RoadmapSiteSurfaceBundle, observed_body: String) -> Bool {
-  let observed = json_text_trim_trailing_lf(body: observed_body)
-  let expected = json_text_trim_trailing_lf(body: bundle.healthz_body)
-  observed == expected
+  match healthz_surface_projection(body: observed_body) {
+    Absent => false
+    Present { value: observed } =>
+      match healthz_surface_projection(body: bundle.healthz_body) {
+        Absent => false
+        Present { value: expected } => observed == expected
+      }
+  }
 }
 
 fn healthz_body_json_well_formed(body: String) -> Bool {
