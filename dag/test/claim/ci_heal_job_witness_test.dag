@@ -52,7 +52,7 @@ import gunbc.ci_workflow_expressions {
 
 import extdeps.github.actions {
   Job, Workflow, WorkflowPermissions, PermissionLevel, PermWrite, PermRead,
-  WorkflowDispatch, Push, PullRequest, Schedule, WorkflowCall, MergeGroup,
+  WorkflowDispatch, Push, PullRequest, Schedule, WorkflowCall, MergeGroup, WorkflowRunCompleted,
   Step, UsesStep, RunStep
 }
 
@@ -218,6 +218,7 @@ test fn workflow_dispatch_carries_optional_exact_healed_sha_input() -> Bool {
       PullRequest { branches: _, types: _ } => false
       Schedule { cron: _ } => false
       WorkflowCall { inputs: _ } => false
+      WorkflowRunCompleted { workflows: _ } => false
       MergeGroup => false
     }
   })

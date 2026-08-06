@@ -128,6 +128,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/browser/chromium.dag",
   "dag/extdeps/container/oci/digest.dag",
   "dag/extdeps/git/publication_transport.dag",
+  "dag/extdeps/github/issues.dag",
+  "dag/extdeps/github/workflow_run_event.dag",
   "dag/extdeps/languages/bash/subject.dag",
   "dag/extdeps/languages/c/subject.dag",
   "dag/extdeps/languages/cpp/subject.dag",
