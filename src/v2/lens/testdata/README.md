@@ -2,16 +2,13 @@
 
 `anemia_confirm_eval_corpus.json` is the **single-authority** ground-truth set for evaluating the
 anemia-lens CONFIRM judge (the leaf-side §2 decomposition detector — see DESIGN.md §2). Do **not**
-vendor a copy; point at this file. The design rationale lives in the anemia-lens design doc (PR #5302,
-not yet on `main`).
+vendor a copy; point at this file. The historical design proposal is archived in closed-unmerged
+PR #5302.
 
-**Consumer status: none today.** An earlier revision of this paragraph said the corpus was consumed
-cross-repo by `ctrl`'s coherence gate. That claim is retired, not merely annotated: `ctrl/` is being
-deleted (see `docs/plans/srvn-buildcache-provisioning-design.md`), and the only occurrence of that
-relationship in the current tree was this sentence asserting it. A named consumer that exists only in
-the prose describing it is not evidence of execution (DESIGN §5, specification-without-execution), and
-citing it as one is how an unexecuted corpus comes to read as an enrolled gate. The corpus itself
-remains valid and labelled; what it lacks is a consumer, and the JUDGE-1 slice is what supplies one.
+**Consumer status: none in the current tree.** An earlier revision named a `ctrl` coherence-gate
+consumer that no longer exists. This corpus is a fixed historical decision-eval, not an enrolled gate.
+A future consumer must be wired and independently observed before the corpus is described as live
+coverage.
 
 **What this corpus is.** A fixed, labelled **decision-eval**: each row is one
 `(declared_type, signal, coincides_with)` input plus the correct verdict (`expected_confirm`). The judge
