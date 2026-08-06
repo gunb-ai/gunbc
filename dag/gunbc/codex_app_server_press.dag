@@ -1,12 +1,7 @@
 module gunbc.codex_app_server_press
 
 import std.types { NonEmptyStr, String, FilePath, List, Bool, Int }
-import std.content_hash {
-  ContentHash,
-  content_hash_of_value,
-}
-import gunbc.roadmap_workflow_command { AttemptKey }
-import gunbc.roadmap_model { RoadmapNodeIdentity }
+import std.content_hash { ContentHash }
 import gunbc.provider_interface_binding {
   ProviderInterfaceBinding,
   ProviderInterfaceResolved,
@@ -14,6 +9,13 @@ import gunbc.provider_interface_binding {
   project_codex_app_server_stdio_binding,
 }
 import gunbc.package_delivery { CodexRuntimeBundle }
+import gunbc.codex_runtime_bundle { codex_bundle_identity }
+import gunbc.provider_wire_evidence {
+  ProviderWireEvidenceReceipt,
+  retain_provider_wire_capture,
+  retain_private_evidence_bytes_detailed,
+}
+import gunbc.host_layout { srv1_provider_wire_evidence_root }
 import extdeps.llm.codex_app_server {
   CodexAppServerMethod,
   CodexAppServerInitialize,
@@ -21,6 +23,8 @@ import extdeps.llm.codex_app_server {
   CodexAppServerAccountRateLimitsRead,
   CodexAppServerThreadStart,
   CodexAppServerTurnStart,
+  CodexAppServerStdio,
+  CodexAppServerExecutable,
   codex_app_server_initialize_request_line,
   codex_app_server_account_read_request_line,
   codex_app_server_rate_limits_read_request_line,
@@ -41,15 +45,18 @@ import extdeps.languages.json.parse {
 
 data codex_press_note: String = "Account-standing observation for the Codex app-server specimen. This module does NOT claim a provider turn: thread/start and turn/start are target itinerary only until a subjectful WorkerTurn binding lands. An account-ready result must never be labeled turn-started."
 
-data codex_press_specimen_node_identity: RoadmapNodeIdentity = "codex-app-server-press-vertical" as RoadmapNodeIdentity
+data codex_press_hermetic_evidence_root: FilePath = "/tmp/gunbc-codex-press-evidence" as FilePath
 
-type CodexPressStart {
-  node_identity: RoadmapNodeIdentity
-  attempt_key: AttemptKey
-  turn_key: String
-  binding: ProviderInterfaceBinding
-  workspace_root: FilePath
-  head_sha: String
+type CodexRuntimeBundleReceiptRef {
+  receipt_identity: ContentHash
+}
+
+type ProviderProbeKey = NonEmptyStr
+
+type CodexAccountPreflightSubject {
+  runtime: CodexRuntimeBundleReceiptRef
+  interface: ProviderInterfaceBinding
+  probe_key: ProviderProbeKey
 }
 
 type CodexPressItinerary = List<CodexAppServerMethod>
@@ -62,7 +69,7 @@ fn codex_press_account_trip_methods() -> CodexPressItinerary {
   ]
 }
 
-data codex_press_turn_itinerary_target_note: String = "TARGET plan only — not executed by observe_codex_press_account_trip. A TurnStarted constructor must not exist until both thread/start and turn/start responses supply exact provider IDs joined to a WorkerTurn."
+data codex_press_turn_itinerary_target_note: String = "TARGET plan only — not executed by observe_codex_account_preflight. A TurnStarted constructor must not exist until both thread/start and turn/start responses supply exact provider IDs joined to a WorkerTurn."
 
 fn codex_press_turn_itinerary_target() -> CodexPressItinerary {
   concat(
@@ -75,81 +82,18 @@ fn codex_press_method_itinerary() -> CodexPressItinerary {
   codex_press_turn_itinerary_target()
 }
 
-type CodexPressStartAdmission
-  = CodexPressStartAdmitted {
-      start: CodexPressStart
-      itinerary: CodexPressItinerary
-    }
-  | CodexPressBindingUnavailable {
-      reason: NonEmptyStr
-    }
-
-fn admit_codex_press_start(
-  node_identity: RoadmapNodeIdentity,
-  attempt_key: AttemptKey,
-  turn_key: String,
-  bundle: CodexRuntimeBundle,
-  workspace_root: FilePath,
-  head_sha: String,
-) -> CodexPressStartAdmission {
-  match project_codex_app_server_stdio_binding(bundle: bundle) {
-    ProviderInterfaceResolved { binding } => {
-      let present = shell.Test.IsFile(path: binding.executable.path)
-      if present.is_file == false {
-        CodexPressBindingUnavailable {
-          reason: "bundled Codex native executable absent at binding path" as NonEmptyStr,
-        }
-      } else {
-        CodexPressStartAdmitted {
-          start: CodexPressStart {
-            node_identity: node_identity,
-            attempt_key: attempt_key,
-            turn_key: turn_key,
-            binding: binding,
-            workspace_root: workspace_root,
-            head_sha: head_sha,
-          },
-          itinerary: codex_press_account_trip_methods(),
-        }
-      }
-    }
-    RequiredProviderInterfaceUnavailable { interface: _, reason } =>
-      CodexPressBindingUnavailable { reason: reason }
-  }
-}
-
-fn admit_codex_press_start_projected(
-  node_identity: RoadmapNodeIdentity,
-  attempt_key: AttemptKey,
-  turn_key: String,
-  bundle: CodexRuntimeBundle,
-  workspace_root: FilePath,
-  head_sha: String,
-) -> CodexPressStartAdmission {
-  match project_codex_app_server_stdio_binding(bundle: bundle) {
-    ProviderInterfaceResolved { binding } =>
-      CodexPressStartAdmitted {
-        start: CodexPressStart {
-          node_identity: node_identity,
-          attempt_key: attempt_key,
-          turn_key: turn_key,
-          binding: binding,
-          workspace_root: workspace_root,
-          head_sha: head_sha,
-        },
-        itinerary: codex_press_account_trip_methods(),
-      }
-    RequiredProviderInterfaceUnavailable { interface: _, reason } =>
-      CodexPressBindingUnavailable { reason: reason }
-  }
-}
-
-data codex_press_standing_evidence_note: String = "Account standing is derived from ONE held-open app-server --stdio session: three JSON-RPC requests (ids 1/2/3) with per-id result/error correlation, stderr retained, and SHA-512 digests of unknown NDJSON frames. Ready requires all three expected results. Incomplete is refused (RED). Login/quota are typed arms. methods_attempted is the typed itinerary, never a free-form string that can disagree with the outcome."
+data codex_press_standing_evidence_note: String = "Account standing is derived from ONE held-open app-server --stdio session: three JSON-RPC requests (ids 1/2/3) with per-id typed result/error correlation and duplicate-id refusal. Wire capture is retained privately under gunbc.host_layout.srv1_provider_wire_evidence_root via gunbc.provider_wire_evidence (SHA-512 content-addressed stdout/stderr). Unknown NDJSON frames are digested SHA-512 through the same retention path. Ready requires AccountTripResponseUnique on ids 1/2/3 with typed result bodies. Incomplete is refused (RED). Login/quota are typed arms. methods_attempted is the typed itinerary, never a free-form string that can disagree with the outcome."
 
 type AccountTripFrameDisposition
   = AccountTripResultOk
+  | AccountTripLoginRequiredSignal
   | AccountTripRpcError { message: NonEmptyStr }
   | AccountTripMissing
+
+type AccountTripResponseObservation
+  = AccountTripResponseAbsent
+  | AccountTripResponseUnique { response: AccountTripFrameDisposition }
+  | AccountTripResponseDuplicate { id: Int, count: Int }
 
 type AccountStandingClassification
   = AccountStandingReady
@@ -160,11 +104,11 @@ type AccountStandingClassification
 
 type CodexAccountStandingEvidence {
   itinerary: CodexPressItinerary
-  initialize: AccountTripFrameDisposition
-  account_read: AccountTripFrameDisposition
-  rate_limits: AccountTripFrameDisposition
+  initialize: AccountTripResponseObservation
+  account_read: AccountTripResponseObservation
+  rate_limits: AccountTripResponseObservation
   unknown_frame_digests: List<ContentHash>
-  stderr_digest: ContentHash
+  stderr_digest: ContentHash?
   classification: AccountStandingClassification
 }
 
@@ -173,9 +117,9 @@ type CodexAccountStandingSummary {
 }
 
 type CodexAccountStandingReceipt {
-  node_identity: RoadmapNodeIdentity
-  attempt_key: AttemptKey
+  subject: CodexAccountPreflightSubject
   standing: CodexAccountStandingSummary
+  wire_evidence: ProviderWireEvidenceReceipt?
 }
 
 type CodexPressOutcome
@@ -184,31 +128,31 @@ type CodexPressOutcome
     }
   | CodexPressLoginRequired {
       reason: NonEmptyStr
-      standing: CodexAccountStandingSummary
+      receipt: CodexAccountStandingReceipt
     }
   | CodexPressUnavailable {
       reason: NonEmptyStr
     }
   | CodexPressRefused {
       reason: NonEmptyStr
-      standing: CodexAccountStandingSummary
+      receipt: CodexAccountStandingReceipt
     }
 
 fn codex_press_outcome_wire_status(outcome: CodexPressOutcome) -> String {
   match outcome {
     CodexPressAccountReady { receipt: _ } => "account_ready"
-    CodexPressLoginRequired { reason: _, standing: _ } => "login_required"
+    CodexPressLoginRequired { reason: _, receipt: _ } => "login_required"
     CodexPressUnavailable { reason: _ } => "unavailable"
-    CodexPressRefused { reason: _, standing: _ } => "press_refused"
+    CodexPressRefused { reason: _, receipt: _ } => "press_refused"
   }
 }
 
 fn codex_press_outcome_operator_caption(outcome: CodexPressOutcome) -> String {
   match outcome {
     CodexPressAccountReady { receipt: _ } => "account ready"
-    CodexPressLoginRequired { reason: _, standing: _ } => "login required"
+    CodexPressLoginRequired { reason: _, receipt: _ } => "login required"
     CodexPressUnavailable { reason: _ } => "unavailable"
-    CodexPressRefused { reason, standing: _ } =>
+    CodexPressRefused { reason, receipt: _ } =>
       if (reason as String).contains("quota") {
         "quota exhausted"
       } else {
@@ -238,6 +182,19 @@ fn standing_is_redacted_projection(summary: CodexAccountStandingSummary) -> Bool
   s.contains("@") == false
     && s.contains("access_token") == false
     && s.contains("refresh_token") == false
+}
+
+fn binding_from_initialize_session(
+  bundle: CodexRuntimeBundle,
+  projected: ProviderInterfaceBinding,
+) -> ProviderInterfaceBinding {
+  ProviderInterfaceBinding {
+    interface: projected.interface,
+    transport: CodexAppServerStdio,
+    executable: projected.executable,
+    runtime_identity: codex_bundle_identity(bundle: bundle),
+    protocol_schema_identity: bundle.receipt.protocol_schema_identity,
+  }
 }
 
 fn codex_press_account_trip_script(executable: FilePath) -> String {
@@ -290,67 +247,176 @@ fn json_rpc_error_message(err: JsonValue) -> NonEmptyStr {
   }
 }
 
-fn disposition_from_rpc_object(obj: JsonValue) -> AccountTripFrameDisposition {
+fn disposition_from_initialize_result(result: JsonValue) -> AccountTripFrameDisposition {
+  match json_object_unique_member(v: result, key: "userAgent") {
+    JsonMemberFound { value: JsonString { value: ua } } =>
+      if ua == "" {
+        AccountTripMissing
+      } else {
+        AccountTripResultOk
+      }
+    JsonMemberAbsent => AccountTripMissing
+    JsonMemberDuplicated { count: _ } => AccountTripMissing
+    JsonMemberNotAnObject => AccountTripMissing
+  }
+}
+
+fn disposition_from_account_read_result(result: JsonValue) -> AccountTripFrameDisposition {
+  match json_object_unique_member(v: result, key: "requiresOpenaiAuth") {
+    JsonMemberFound { value: JsonBool { value: true } } => AccountTripLoginRequiredSignal
+    _ =>
+      match json_object_unique_member(v: result, key: "account") {
+        JsonMemberFound { value: JsonNull } => AccountTripLoginRequiredSignal
+        JsonMemberFound { value: JsonObject { members: ms } } =>
+          if count(ms) == 0 {
+            AccountTripMissing
+          } else {
+            AccountTripResultOk
+          }
+        JsonMemberFound { value: _ } => AccountTripResultOk
+        JsonMemberAbsent => AccountTripMissing
+        JsonMemberDuplicated { count: _ } => AccountTripMissing
+        JsonMemberNotAnObject => AccountTripMissing
+      }
+  }
+}
+
+fn disposition_from_rate_limits_result(result: JsonValue) -> AccountTripFrameDisposition {
+  match json_object_unique_member(v: result, key: "rateLimits") {
+    JsonMemberFound { value: _ } => AccountTripResultOk
+    JsonMemberAbsent => AccountTripMissing
+    JsonMemberDuplicated { count: _ } => AccountTripMissing
+    JsonMemberNotAnObject => AccountTripMissing
+  }
+}
+
+fn disposition_for_id_response(id: Int, obj: JsonValue) -> AccountTripFrameDisposition {
   match json_object_unique_member(v: obj, key: "error") {
     JsonMemberFound { value: err } =>
       AccountTripRpcError { message: json_rpc_error_message(err: err) }
     JsonMemberAbsent =>
       match json_object_unique_member(v: obj, key: "result") {
-        JsonMemberFound { value: _ } => AccountTripResultOk
-        _ => AccountTripMissing
+        JsonMemberFound { value: result } =>
+          if id == 1 {
+            disposition_from_initialize_result(result: result)
+          } else if id == 2 {
+            disposition_from_account_read_result(result: result)
+          } else if id == 3 {
+            disposition_from_rate_limits_result(result: result)
+          } else {
+            AccountTripMissing
+          }
+        JsonMemberAbsent => AccountTripMissing
+        JsonMemberDuplicated { count: _ } => AccountTripMissing
+        JsonMemberNotAnObject => AccountTripMissing
       }
-    _ => AccountTripMissing
+    JsonMemberDuplicated { count: _ } => AccountTripMissing
+    JsonMemberNotAnObject => AccountTripMissing
+  }
+}
+
+fn absorb_id_response(
+  current: AccountTripResponseObservation,
+  id: Int,
+  disposition: AccountTripFrameDisposition,
+) -> AccountTripResponseObservation {
+  match current {
+    AccountTripResponseAbsent =>
+      AccountTripResponseUnique { response: disposition }
+    AccountTripResponseUnique { response: _ } =>
+      AccountTripResponseDuplicate { id: id, count: 2 }
+    AccountTripResponseDuplicate { id: id, count: n } =>
+      AccountTripResponseDuplicate { id: id, count: n + 1 }
+  }
+}
+
+fn observation_is_duplicate(obs: AccountTripResponseObservation) -> Bool {
+  match obs {
+    AccountTripResponseDuplicate { id: _, count: _ } => true
+    _ => false
+  }
+}
+
+fn observation_to_disposition(obs: AccountTripResponseObservation) -> AccountTripFrameDisposition {
+  match obs {
+    AccountTripResponseAbsent => AccountTripMissing
+    AccountTripResponseUnique { response: r } => r
+    AccountTripResponseDuplicate { id: _, count: _ } => AccountTripMissing
   }
 }
 
 type AccountTripParseAcc {
-  initialize: AccountTripFrameDisposition
-  account_read: AccountTripFrameDisposition
-  rate_limits: AccountTripFrameDisposition
+  initialize: AccountTripResponseObservation
+  account_read: AccountTripResponseObservation
+  rate_limits: AccountTripResponseObservation
   unknown_frame_digests: List<ContentHash>
 }
 
 fn empty_account_trip_parse_acc() -> AccountTripParseAcc {
   AccountTripParseAcc {
-    initialize: AccountTripMissing,
-    account_read: AccountTripMissing,
-    rate_limits: AccountTripMissing,
+    initialize: AccountTripResponseAbsent,
+    account_read: AccountTripResponseAbsent,
+    rate_limits: AccountTripResponseAbsent,
     unknown_frame_digests: [],
   }
 }
 
-fn absorb_account_trip_line(acc: AccountTripParseAcc, line: String) -> AccountTripParseAcc {
+fn digest_retained_line(line: String, evidence_root: FilePath) -> ContentHash? {
+  match retain_private_evidence_bytes_detailed(root: evidence_root, bytes: line) {
+    Absent => none
+    Present { value: retained } => Present { value: retained.content_digest }
+  }
+}
+
+fn push_unknown_digest(
+  acc: AccountTripParseAcc,
+  line: String,
+  evidence_root: FilePath,
+) -> AccountTripParseAcc {
+  match digest_retained_line(line: line, evidence_root: evidence_root) {
+    Absent =>
+      AccountTripParseAcc {
+        initialize: acc.initialize,
+        account_read: acc.account_read,
+        rate_limits: acc.rate_limits,
+        unknown_frame_digests: acc.unknown_frame_digests,
+      }
+    Present { value: digest } =>
+      AccountTripParseAcc {
+        initialize: acc.initialize,
+        account_read: acc.account_read,
+        rate_limits: acc.rate_limits,
+        unknown_frame_digests: acc.unknown_frame_digests |> list_push(digest),
+      }
+  }
+}
+
+fn absorb_account_trip_line(
+  acc: AccountTripParseAcc,
+  line: String,
+  evidence_root: FilePath,
+) -> AccountTripParseAcc {
   let trimmed = line.trim()
   if trimmed == "" {
     acc
   } else {
     match parse_json(s: trimmed) {
-      Absent =>
-        AccountTripParseAcc {
-          initialize: acc.initialize,
-          account_read: acc.account_read,
-          rate_limits: acc.rate_limits,
-          unknown_frame_digests: acc.unknown_frame_digests |> list_push(
-            content_hash_of_value(value: trimmed as NonEmptyStr),
-          ),
-        }
+      Absent => push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root)
       Present { value: parsed } =>
         match json_object_unique_member(v: parsed, key: "id") {
           JsonMemberFound { value: idv } =>
             match json_rpc_id_as_int(v: idv) {
               Absent =>
-                AccountTripParseAcc {
-                  initialize: acc.initialize,
-                  account_read: acc.account_read,
-                  rate_limits: acc.rate_limits,
-                  unknown_frame_digests: acc.unknown_frame_digests |> list_push(
-                    content_hash_of_value(value: trimmed as NonEmptyStr),
-                  ),
-                }
+                push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root)
               Present { value: n } =>
+                let disposition = disposition_for_id_response(id: n, obj: parsed)
                 if n == 1 {
                   AccountTripParseAcc {
-                    initialize: disposition_from_rpc_object(obj: parsed),
+                    initialize: absorb_id_response(
+                      current: acc.initialize,
+                      id: n,
+                      disposition: disposition,
+                    ),
                     account_read: acc.account_read,
                     rate_limits: acc.rate_limits,
                     unknown_frame_digests: acc.unknown_frame_digests,
@@ -358,7 +424,11 @@ fn absorb_account_trip_line(acc: AccountTripParseAcc, line: String) -> AccountTr
                 } else if n == 2 {
                   AccountTripParseAcc {
                     initialize: acc.initialize,
-                    account_read: disposition_from_rpc_object(obj: parsed),
+                    account_read: absorb_id_response(
+                      current: acc.account_read,
+                      id: n,
+                      disposition: disposition,
+                    ),
                     rate_limits: acc.rate_limits,
                     unknown_frame_digests: acc.unknown_frame_digests,
                   }
@@ -366,29 +436,19 @@ fn absorb_account_trip_line(acc: AccountTripParseAcc, line: String) -> AccountTr
                   AccountTripParseAcc {
                     initialize: acc.initialize,
                     account_read: acc.account_read,
-                    rate_limits: disposition_from_rpc_object(obj: parsed),
+                    rate_limits: absorb_id_response(
+                      current: acc.rate_limits,
+                      id: n,
+                      disposition: disposition,
+                    ),
                     unknown_frame_digests: acc.unknown_frame_digests,
                   }
                 } else {
-                  AccountTripParseAcc {
-                    initialize: acc.initialize,
-                    account_read: acc.account_read,
-                    rate_limits: acc.rate_limits,
-                    unknown_frame_digests: acc.unknown_frame_digests |> list_push(
-                      content_hash_of_value(value: trimmed as NonEmptyStr),
-                    ),
-                  }
+                  push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root)
                 }
             }
           _ =>
-            AccountTripParseAcc {
-              initialize: acc.initialize,
-              account_read: acc.account_read,
-              rate_limits: acc.rate_limits,
-              unknown_frame_digests: acc.unknown_frame_digests |> list_push(
-                      content_hash_of_value(value: trimmed as NonEmptyStr),
-              ),
-            }
+            push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root)
         }
     }
   }
@@ -408,82 +468,73 @@ fn rpc_error_looks_like_quota(message: NonEmptyStr) -> Bool {
 }
 
 fn classify_account_trip(acc: AccountTripParseAcc) -> AccountStandingClassification {
-  match acc.initialize {
-    AccountTripMissing => AccountStandingInitializeMissing
-    AccountTripRpcError { message } =>
-      if rpc_error_looks_like_login(message: message) {
-        AccountStandingLoginRequired
-      } else {
-        AccountStandingIncomplete
-      }
-    AccountTripResultOk =>
-      match acc.account_read {
-        AccountTripMissing => AccountStandingIncomplete
-        AccountTripRpcError { message } =>
-          if rpc_error_looks_like_login(message: message) {
-            AccountStandingLoginRequired
-          } else {
-            AccountStandingIncomplete
-          }
-        AccountTripResultOk =>
-          match acc.rate_limits {
-            AccountTripResultOk => AccountStandingReady
-            AccountTripRpcError { message } =>
-              if rpc_error_looks_like_quota(message: message) {
-                AccountStandingQuotaReached
-              } else if rpc_error_looks_like_login(message: message) {
-                AccountStandingLoginRequired
-              } else {
-                AccountStandingIncomplete
-              }
-            AccountTripMissing => AccountStandingIncomplete
-          }
-      }
-  }
-}
-
-fn also_scan_login_in_result_text(stdout: String, classification: AccountStandingClassification) -> AccountStandingClassification {
-  if stdout.contains("requiresOpenaiAuth") || stdout.contains("authentication required") {
-    match classification {
-      AccountStandingReady => AccountStandingLoginRequired
-      AccountStandingIncomplete => AccountStandingLoginRequired
-      other => other
-    }
-  } else if stdout.contains("rate_limit_reached") {
-    match classification {
-      AccountStandingReady => AccountStandingQuotaReached
-      AccountStandingIncomplete => AccountStandingQuotaReached
-      other => other
-    }
+  if observation_is_duplicate(obs: acc.initialize)
+    || observation_is_duplicate(obs: acc.account_read)
+    || observation_is_duplicate(obs: acc.rate_limits) {
+    AccountStandingIncomplete
   } else {
-    classification
+    let init = observation_to_disposition(obs: acc.initialize)
+    let acct = observation_to_disposition(obs: acc.account_read)
+    let rate = observation_to_disposition(obs: acc.rate_limits)
+    match init {
+      AccountTripMissing => AccountStandingInitializeMissing
+      AccountTripRpcError { message } =>
+        if rpc_error_looks_like_login(message: message) {
+          AccountStandingLoginRequired
+        } else {
+          AccountStandingIncomplete
+        }
+      AccountTripResultOk =>
+        match acct {
+          AccountTripLoginRequiredSignal => AccountStandingLoginRequired
+          AccountTripMissing => AccountStandingIncomplete
+          AccountTripRpcError { message } =>
+            if rpc_error_looks_like_login(message: message) {
+              AccountStandingLoginRequired
+            } else {
+              AccountStandingIncomplete
+            }
+          AccountTripResultOk =>
+            match rate {
+              AccountTripResultOk => AccountStandingReady
+              AccountTripRpcError { message } =>
+                if rpc_error_looks_like_quota(message: message) {
+                  AccountStandingQuotaReached
+                } else if rpc_error_looks_like_login(message: message) {
+                  AccountStandingLoginRequired
+                } else {
+                  AccountStandingIncomplete
+                }
+              AccountTripMissing => AccountStandingIncomplete
+              AccountTripLoginRequiredSignal => AccountStandingLoginRequired
+            }
+          AccountTripLoginRequiredSignal => AccountStandingLoginRequired
+        }
+      AccountTripLoginRequiredSignal => AccountStandingLoginRequired
+    }
   }
 }
 
 fn parse_account_trip_session(
   stdout: String,
   stderr: String,
+  evidence_root: FilePath,
 ) -> CodexAccountStandingEvidence {
   let acc = fold(
     split(s: stdout, delimiter: "\n"),
     init: empty_account_trip_parse_acc(),
-    f: (a, line) => absorb_account_trip_line(acc: a, line: line),
+    f: (a, line) => absorb_account_trip_line(acc: a, line: line, evidence_root: evidence_root),
   )
-  let classified0 = classify_account_trip(acc: acc)
-  let classified = also_scan_login_in_result_text(
-    stdout: stdout,
-    classification: classified0,
-  )
+  let stderr_bytes = if stderr == "" { "(empty-stderr)" } else { stderr }
+  let stderr_digest = digest_retained_line(line: stderr_bytes, evidence_root: evidence_root)
   CodexAccountStandingEvidence {
     itinerary: codex_press_account_trip_methods(),
     initialize: acc.initialize,
     account_read: acc.account_read,
     rate_limits: acc.rate_limits,
     unknown_frame_digests: acc.unknown_frame_digests,
-    stderr_digest: content_hash_of_value(
-      value: if stderr == "" { "(empty-stderr)" as NonEmptyStr } else { stderr as NonEmptyStr },
-    ),
-    classification: classified,
+    stderr_digest: stderr_digest,
+    classification: classify_account_trip(acc: acc),
   }
 }
 
@@ -514,99 +565,108 @@ fn split_gunbc_stdio_capture(combined: String) -> GunbcStdioCapture {
   }
 }
 
-fn outcome_from_standing_evidence(
-  evidence: CodexAccountStandingEvidence,
-  node_identity: RoadmapNodeIdentity,
-  attempt_key: AttemptKey,
-) -> CodexPressOutcome {
-  let standing = account_standing_summary_from_evidence(evidence: evidence)
-  match evidence.classification {
-    AccountStandingReady =>
-      CodexPressAccountReady {
-        receipt: CodexAccountStandingReceipt {
-          node_identity: node_identity,
-          attempt_key: attempt_key,
-          standing: standing,
-        },
-      }
+fn preflight_subject_from_bundle(
+  bundle: CodexRuntimeBundle,
+  binding: ProviderInterfaceBinding,
+  probe_key: ProviderProbeKey,
+) -> CodexAccountPreflightSubject {
+  CodexAccountPreflightSubject {
+    runtime: CodexRuntimeBundleReceiptRef {
+      receipt_identity: bundle.receipt.receipt_identity,
+    },
+    interface: binding,
+    probe_key: probe_key,
+  }
+}
+
+fn outcome_from_standing_receipt(receipt: CodexAccountStandingReceipt) -> CodexPressOutcome {
+  let classification = receipt.standing.evidence.classification
+  match classification {
+    AccountStandingReady => CodexPressAccountReady { receipt: receipt }
     AccountStandingLoginRequired =>
       CodexPressLoginRequired {
         reason: "codex app-server account trip requires login" as NonEmptyStr,
-        standing: standing,
+        receipt: receipt,
       }
     AccountStandingQuotaReached =>
       CodexPressRefused {
         reason: "codex quota exhausted at account/rateLimits/read" as NonEmptyStr,
-        standing: standing,
+        receipt: receipt,
       }
     AccountStandingInitializeMissing =>
       CodexPressRefused {
         reason: "codex app-server trip missing initialize result" as NonEmptyStr,
-        standing: standing,
+        receipt: receipt,
       }
     AccountStandingIncomplete =>
       CodexPressRefused {
         reason: "codex app-server account trip incomplete" as NonEmptyStr,
-        standing: standing,
+        receipt: receipt,
       }
   }
 }
 
 fn parse_account_trip_stdout_for_tests(stdout: String) -> CodexAccountStandingEvidence {
-  parse_account_trip_session(stdout: stdout, stderr: "")
-}
-
-fn observe_codex_press_account_trip(
-  binding: ProviderInterfaceBinding,
-  node_identity: RoadmapNodeIdentity,
-  attempt_key: AttemptKey,
-) -> CodexPressOutcome {
-  let script = retained_foreign(
-    body: codex_press_account_trip_script(executable: binding.executable.path),
-    reason: "Codex app-server held-open account session; stdout/stderr captured for typed NDJSON id correlation" as NonEmptyStr,
+  parse_account_trip_session(
+    stdout: stdout,
+    stderr: "",
+    evidence_root: codex_press_hermetic_evidence_root,
   )
-  let run = shell.Exec.Run(script: script)
-  if run.success == false {
-    CodexPressUnavailable {
-      reason: "codex app-server account trip exec refused" as NonEmptyStr,
-    }
-  } else {
-    let capture = split_gunbc_stdio_capture(combined: run.stdout)
-    let evidence = parse_account_trip_session(
-      stdout: capture.stdout,
-      stderr: capture.stderr,
-    )
-    outcome_from_standing_evidence(
-      evidence: evidence,
-      node_identity: node_identity,
-      attempt_key: attempt_key,
-    )
-  }
 }
 
-fn press_codex_app_server_for_bundle(
+fn observe_codex_account_preflight(
   bundle: CodexRuntimeBundle,
-  node_identity: RoadmapNodeIdentity,
-  attempt_key: AttemptKey,
-  turn_key: String,
-  workspace_root: FilePath,
-  head_sha: String,
+  probe_key: ProviderProbeKey,
 ) -> CodexPressOutcome {
-  match admit_codex_press_start(
-    node_identity: node_identity,
-    attempt_key: attempt_key,
-    turn_key: turn_key,
-    bundle: bundle,
-    workspace_root: workspace_root,
-    head_sha: head_sha,
-  ) {
-    CodexPressBindingUnavailable { reason } =>
+  match project_codex_app_server_stdio_binding(bundle: bundle) {
+    RequiredProviderInterfaceUnavailable { interface: _, reason } =>
       CodexPressUnavailable { reason: reason }
-    CodexPressStartAdmitted { start, itinerary: _ } =>
-      observe_codex_press_account_trip(
-        binding: start.binding,
-        node_identity: start.node_identity,
-        attempt_key: start.attempt_key,
-      )
+    ProviderInterfaceResolved { binding: projected } => {
+      let present = shell.Test.IsFile(path: projected.executable.path)
+      if present.is_file == false {
+        CodexPressUnavailable {
+          reason: "bundled Codex native executable absent at binding path" as NonEmptyStr,
+        }
+      } else {
+        let script = retained_foreign(
+          body: codex_press_account_trip_script(executable: projected.executable.path),
+          reason: "Codex app-server held-open account session; stdout/stderr captured for typed NDJSON id correlation" as NonEmptyStr,
+        )
+        let run = shell.Exec.Run(script: script)
+        let capture = split_gunbc_stdio_capture(combined: run.stdout)
+        let wire_evidence = retain_provider_wire_capture(
+          evidence_root: srv1_provider_wire_evidence_root,
+          stdout: capture.stdout,
+          stderr: capture.stderr,
+          success: run.success,
+        )
+        let evidence = parse_account_trip_session(
+          stdout: capture.stdout,
+          stderr: capture.stderr,
+          evidence_root: srv1_provider_wire_evidence_root,
+        )
+        let session_binding = binding_from_initialize_session(
+          bundle: bundle,
+          projected: projected,
+        )
+        let subject = preflight_subject_from_bundle(
+          bundle: bundle,
+          binding: session_binding,
+          probe_key: probe_key,
+        )
+        let receipt = CodexAccountStandingReceipt {
+          subject: subject,
+          standing: account_standing_summary_from_evidence(evidence: evidence),
+          wire_evidence: wire_evidence,
+        }
+        if run.success == false {
+          CodexPressUnavailable {
+            reason: "codex app-server account trip exec refused" as NonEmptyStr,
+          }
+        } else {
+          outcome_from_standing_receipt(receipt: receipt)
+        }
+      }
+    }
   }
 }

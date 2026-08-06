@@ -39,6 +39,7 @@ import gunbc.package_delivery {
   CodexExactTargetClosureSelected,
   admit_codex_selected_node,
   CodexSelectedNodeInstallScriptRefused,
+  CodexSelectedNodeIdentityRefused,
   CodexSelectedNodeAdmitted,
   admit_codex_registry_artifact_locator,
   CodexRegistryLocatorAdmitted,
@@ -150,9 +151,13 @@ test fn selected_node_with_install_script_refuses() -> Bool {
             node: with_script,
             artifact: artifact,
             lock_node_key: "node_modules/@openai/codex" as NonEmptyStr,
+            expect_optional: false,
+            expect_os: none,
+            expect_cpu: none,
           ) {
             CodexSelectedNodeInstallScriptRefused { lock_node_key } =>
               (lock_node_key as String) == "node_modules/@openai/codex"
+            CodexSelectedNodeIdentityRefused { lock_node_key: _, cause: _ } => false
             CodexSelectedNodeAdmitted {
               node: _,
               artifact: _,
