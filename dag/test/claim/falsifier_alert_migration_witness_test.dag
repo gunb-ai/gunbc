@@ -49,6 +49,15 @@ import gunbc.floor_component_receipt_document {
   floor_component_receipt_subject_matches_event,
   floor_component_receipt_subject_admitted
 }
+import gunbc.falsifier_alert_residue {
+  LanguageNormalFormResidue,
+  ResidueTarget, ECMAScript,
+  ResidueRuntime, GithubScriptAction,
+  ResidueKind, ExecutableSourceString,
+  ResidueDisposition, ReplaceWithLanguageIndependentBehavior,
+  falsifier_alert_residue_registry,
+  falsifier_alert_embedded_program_residue
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -359,4 +368,26 @@ test fn a_receipt_about_another_tree_is_refused_by_head_sha() -> Bool {
       }
     Absent => false
   }
+}
+
+data falsifier_alert_residue_claim_note: String = "ALERT-0's carrier has an executing consumer HERE, which is the difference between a declared residue and a comment. A registry nothing reads is the inert-carrier tier DESIGN §6 names — it looks like accounting and enforces nothing — so the row's disposition and dissolution trigger are asserted rather than merely written. The RED that discriminates this claim is changing the disposition to EmitFromModel, which is exactly the wrong turn this row exists to prevent: it is the decision to build a JavaScript emitter instead of deleting the JavaScript."
+
+test fn the_embedded_program_is_declared_as_replaceable_residue() -> Bool {
+  match falsifier_alert_embedded_program_residue {
+    LanguageNormalFormResidue {
+      site: site,
+      target: ECMAScript,
+      runtime: GithubScriptAction,
+      kind: ExecutableSourceString,
+      disposition: ReplaceWithLanguageIndependentBehavior,
+      dissolves_on: trigger
+    } =>
+      (site as String) == ".github/workflows/falsifier-alert.yml"
+        && (trigger as String) != ""
+    _ => false
+  }
+}
+
+test fn the_residue_registry_carries_exactly_the_declared_row() -> Bool {
+  count(falsifier_alert_residue_registry) == 1
 }
