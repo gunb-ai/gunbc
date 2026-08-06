@@ -114,6 +114,8 @@ data inventory_declared_standing_unobserved_reason: NonEmptyStr = "inventory row
 
 data selection_fixture_standing_fact_id: RecordedFactId = "dispatch-selection-standing-fixture" as RecordedFactId
 
+data provider_standing_live_probe_fact_id: RecordedFactId = "provider-standing-live-dashboard-probe" as RecordedFactId
+
 fn provider_standing_inventory_unobserved() -> ProviderStanding {
   ProviderStandingUnobserved { reason: inventory_declared_standing_unobserved_reason }
 }
@@ -122,9 +124,21 @@ fn provider_standing_from_fixture_bundle(
   provider: ProviderInstance,
   bundle: ProviderStandingBundle,
 ) -> ProviderStanding {
+  provider_standing_from_observed_bundle(
+    fact_id: selection_fixture_standing_fact_id,
+    provider: provider,
+    bundle: bundle,
+  )
+}
+
+fn provider_standing_from_observed_bundle(
+  fact_id: RecordedFactId,
+  provider: ProviderInstance,
+  bundle: ProviderStandingBundle,
+) -> ProviderStanding {
   ProviderStandingFromFact {
     fact: RecordedFact {
-      id: selection_fixture_standing_fact_id,
+      id: fact_id,
       value: ProviderStandingObservationFact {
         provider: provider,
         bundle: bundle,

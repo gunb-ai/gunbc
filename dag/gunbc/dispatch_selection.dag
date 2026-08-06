@@ -23,6 +23,7 @@ import gunbc.provider_standing {
   dispatch_automatic_provider_preference,
   select_first_preferred_kind,
 }
+import gunbc.provider_standing_live_probes { provider_standing_from_live_codex_probes }
 import extdeps.llm.cursor_cli { CursorModelId, cursor_model_auto }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.roadmap_model {
@@ -248,7 +249,7 @@ data dispatch_selection_standing_ineligible_reason: NonEmptyStr = "no provider o
 
 data dispatch_selection_shape_mismatch_reason: NonEmptyStr = "no provider offer matches the requested selection shape" as NonEmptyStr
 
-data dispatch_production_standing_unobserved_refusal_note: String = "Production inventory rows carry ProviderStandingUnobserved until the observation layer wires RecordedFact standing (eager-raven-845 / nimble-owl-833). dispatch_cli_provider and dispatch_selection_for_instance refuse automatic and explicit selection at this boundary rather than reusing the prior rung-inflated ProviderAuthenticated inventory literal. Spawn-shape witnesses use fixture_inventory_* builders until observation lands."
+data dispatch_production_standing_unobserved_refusal_note: String = "Production Codex inventory rows carry probe-derived ProviderStandingFromFact via provider_standing_from_live_codex_probes (dashboard version + login-status probes). Entitlement and account-limit axes stay honestly unobserved at this bridge; selection refuses when those axes block eligibility. RecordedFact standing observations (nimble-owl-833) supersede probe-derived bundles. Spawn-shape witnesses use fixture_inventory_* builders."
 
 fn dispatch_temporal_unobserved() -> DispatchTemporalBounds {
   DispatchTemporalUnobserved { reason: dispatch_selection_temporal_unobserved_reason }
@@ -322,7 +323,10 @@ fn dispatch_execution_receipt(
   }
 }
 
-fn codex_offer_for_instance(instance: HostDashboardInstance) -> CodexOffer {
+fn codex_offer_for_instance_with_standing(
+  instance: HostDashboardInstance,
+  standing: ProviderStanding,
+) -> CodexOffer {
   CodexOffer {
     instance: ProviderInstance {
       kind: CodexCliProvider,
@@ -348,11 +352,18 @@ fn codex_offer_for_instance(instance: HostDashboardInstance) -> CodexOffer {
       selection: codex_roadmap_account_selection(),
       evidence: codex_roadmap_account_evidence,
     ),
-    standing: provider_standing_inventory_unobserved(),
+    standing: standing,
     default_effort: ReasoningMedium,
     deep: DeepUnavailable,
     process_fingerprint: dispatch_codex_process_fingerprint,
   }
+}
+
+fn codex_offer_for_instance(instance: HostDashboardInstance) -> CodexOffer {
+  codex_offer_for_instance_with_standing(
+    instance: instance,
+    standing: provider_standing_from_live_codex_probes(instance: instance),
+  )
 }
 
 fn provider_inventory_for_instance(instance: HostDashboardInstance) -> ProviderInventory {
@@ -940,22 +951,20 @@ fn inventory_includes_provider_kind(
 }
 
 fn automatic_codex_behavior_preservation_holds(instance: HostDashboardInstance) -> Bool {
-  let codex_offer = codex_offer_for_instance(instance: instance)
+  let shell = codex_offer_for_instance_with_standing(
+    instance: instance,
+    standing: provider_standing_inventory_unobserved(),
+  )
   let inventory = ProviderInventory {
     offers: [
       OfferCodex {
-        offer: CodexOffer {
-          instance: codex_offer.instance,
-          account_state_root: codex_offer.account_state_root,
-          account_binding: codex_offer.account_binding,
+        offer: codex_offer_for_instance_with_standing(
+          instance: instance,
           standing: provider_standing_from_fixture_bundle(
-            provider: codex_offer.instance,
+            provider: shell.instance,
             bundle: fixture_standing_bundle_authenticated_available(),
           ),
-          default_effort: codex_offer.default_effort,
-          deep: codex_offer.deep,
-          process_fingerprint: codex_offer.process_fingerprint,
-        },
+        ),
       },
     ],
   }
@@ -971,11 +980,11 @@ fn automatic_codex_behavior_preservation_holds(instance: HostDashboardInstance) 
   ) {
     DispatchSelectionResolved { receipt } =>
       receipt.provider_kind == CodexCliProvider
-        && receipt.applied_effort == codex_offer.default_effort
+        && receipt.applied_effort == shell.default_effort
         && selection_requests_match(
           requested: receipt.requested_selection,
           resolved: receipt.resolved_selection,
-          codex_default_effort: codex_offer.default_effort,
+          codex_default_effort: shell.default_effort,
         )
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
@@ -1016,17 +1025,11 @@ fn fixture_codex_offer_with_standing(
   instance: HostDashboardInstance,
   standing: ProviderStanding,
 ) -> ProviderOffer {
-  let base = codex_offer_for_instance(instance: instance)
   OfferCodex {
-    offer: CodexOffer {
-      instance: base.instance,
-      account_state_root: base.account_state_root,
-      account_binding: base.account_binding,
+    offer: codex_offer_for_instance_with_standing(
+      instance: instance,
       standing: standing,
-      default_effort: base.default_effort,
-      deep: base.deep,
-      process_fingerprint: base.process_fingerprint,
-    },
+    ),
   }
 }
 
@@ -1057,12 +1060,16 @@ fn fixture_inventory_claude_then_codex(
 }
 
 fn fixture_inventory_codex_only_available(instance: HostDashboardInstance) -> ProviderInventory {
+  let shell = codex_offer_for_instance_with_standing(
+    instance: instance,
+    standing: provider_standing_inventory_unobserved(),
+  )
   ProviderInventory {
     offers: [
       fixture_codex_offer_with_standing(
         instance: instance,
         standing: provider_standing_from_fixture_bundle(
-          provider: codex_offer_for_instance(instance: instance).instance,
+          provider: shell.instance,
           bundle: fixture_standing_bundle_authenticated_available(),
         ),
       ),
@@ -1073,7 +1080,10 @@ fn fixture_inventory_codex_only_available(instance: HostDashboardInstance) -> Pr
 fn fixture_inventory_codex_and_cursor_available(
   instance: HostDashboardInstance,
 ) -> ProviderInventory {
-  let base = codex_offer_for_instance(instance: instance)
+  let base = codex_offer_for_instance_with_standing(
+    instance: instance,
+    standing: provider_standing_inventory_unobserved(),
+  )
   let cursor_instance = ProviderInstance {
     kind: CursorCliProvider,
     host: ProviderInstanceFieldUnobserved {

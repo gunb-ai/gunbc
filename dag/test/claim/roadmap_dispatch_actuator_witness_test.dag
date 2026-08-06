@@ -89,16 +89,33 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_current_attempt_events_projection_argv_for_instance,
 }
 import gunbc.dispatch_selection {
+  dispatch_selection_standing_ineligible_reason,
+  default_provider_selection_request,
+  resolve_dispatch_selection,
+  fixture_codex_offer_with_standing,
+  codex_offer_for_instance,
+  codex_offer_for_instance_with_standing,
+  fixture_inventory_codex_only_available,
+  DispatchSelectionRefused,
+  DispatchSelectionResolved,
+  ProviderInventory,
+  OfferCodex,
   ProfileAutomatic,
   ProviderSelectionRequest,
   SelectCodex,
-  default_provider_selection_request,
   dispatch_codex_default_model,
-  dispatch_selection_standing_ineligible_reason,
-  fixture_inventory_codex_only_available,
-  resolve_dispatch_selection,
-  DispatchSelectionResolved,
-  DispatchSelectionRefused,
+  resolved_process_fingerprint,
+}
+import gunbc.provider_standing {
+  provider_standing_from_observed_bundle,
+  provider_standing_inventory_unobserved,
+  selection_fixture_standing_fact_id,
+}
+import gunbc.provider_standing_probe_bridge {
+  CodexProviderDashboardProbeObservation,
+  CodexStateRootPresent,
+  ProviderDashboardExecProbeReported,
+  provider_standing_bundle_from_codex_dashboard_probes,
 }
 import gunbc.provider_account { codex_roadmap_account_selection }
 import gunbc.dispatch_pipe_pane_emit {
@@ -248,19 +265,50 @@ test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
     && string_contains(s: join(cmd.args, separator: "\0"), pattern: "CLAUDE_CODE_NO_FLICKER=1")
 }
 
-test fn witness_production_automatic_selection_refuses_unobserved_standing() -> Bool {
-  match dispatch_cli_provider() {
-    Present { value: _ } => false
-    none => true
+test fn witness_probe_bridge_ineligible_standing_refuses_actuator_selection() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let inventory = ProviderInventory {
+    offers: [
+      fixture_codex_offer_with_standing(
+        instance: instance,
+        standing: provider_standing_from_observed_bundle(
+          fact_id: selection_fixture_standing_fact_id,
+          provider: codex_offer_for_instance_with_standing(
+            instance: instance,
+            standing: provider_standing_inventory_unobserved(),
+          ).instance,
+          bundle: provider_standing_bundle_from_codex_dashboard_probes(
+            observation: CodexProviderDashboardProbeObservation {
+              state_root: CodexStateRootPresent,
+              runtime: ProviderDashboardExecProbeReported {
+                succeeded: true,
+                stdout: "codex-cli 0.145.0",
+                stderr: "",
+              },
+              auth: ProviderDashboardExecProbeReported {
+                succeeded: true,
+                stdout: "",
+                stderr: "Logged in using ChatGPT",
+              },
+            },
+          ),
+        ),
+      ),
+    ],
+  }
+  match resolve_dispatch_selection(
+    inventory: inventory,
+    request: default_provider_selection_request(),
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+      reason == dispatch_selection_standing_ineligible_reason
+    DispatchSelectionResolved { receipt: _ } => false
   }
 }
 
 test fn witness_actuator_automatic_selection_refuses_with_standing_reason() -> Bool {
-  match dispatch_actuator_selection(node_sizing: Unsized) {
-    DispatchActuatorSelectionRefused { reason } =>
-      reason == dispatch_selection_standing_ineligible_reason
-    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint: _ } => false
-  }
+  witness_probe_bridge_ineligible_standing_refuses_actuator_selection()
 }
 
 test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
@@ -274,10 +322,16 @@ test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
 }
 
 test fn witness_codex_npm_launcher_fingerprint_is_live_receipt() -> Bool {
-  match dispatch_tmux_session_scope(node_id: nid(s: "codex-fingerprint")) {
-    Present { value: scope } =>
-      scope.expected_process_fingerprint == ("node" as NonEmptyStr)
-    none => false
+  match resolve_dispatch_selection(
+    inventory: fixture_inventory_codex_only_available(
+      instance: srv1_live_dashboard_instance(),
+    ),
+    request: default_provider_selection_request(),
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      resolved_process_fingerprint(resolved: receipt.resolved_selection) == ("node" as NonEmptyStr)
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
 
@@ -456,7 +510,7 @@ test fn witness_provider_projection_is_exact_bounded_capability() -> Bool {
 }
 
 test fn codex_provider_v0_argv_keystone_holds() -> Bool {
-  witness_production_automatic_selection_refuses_unobserved_standing()
+  witness_probe_bridge_ineligible_standing_refuses_actuator_selection()
     && witness_actuator_automatic_selection_refuses_with_standing_reason()
     && witness_codex_npm_launcher_fingerprint_is_live_receipt()
     && witness_codex_argv_is_unattended_but_sandboxed()

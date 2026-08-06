@@ -1,6 +1,6 @@
 module test.claim.dispatch_selection_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, NonEmptyStr }
 import gunbc.roadmap_model {
   IntricacyHigh,
   IntricacyLow,
@@ -25,9 +25,18 @@ import gunbc.roadmap_dashboard_instance {
 import gunbc.provider_account { codex_roadmap_account_selection }
 import gunbc.provider_standing {
   provider_standing_from_fixture_bundle,
+  provider_standing_from_observed_bundle,
+  provider_standing_inventory_unobserved,
+  selection_fixture_standing_fact_id,
   fixture_standing_bundle_authenticated_available,
   fixture_standing_bundle_authenticated_unavailable_until_reset,
   fixture_standing_bundle_cursor_capability_gap,
+}
+import gunbc.provider_standing_probe_bridge {
+  CodexProviderDashboardProbeObservation,
+  CodexStateRootPresent,
+  ProviderDashboardExecProbeReported,
+  provider_standing_bundle_from_codex_dashboard_probes,
 }
 import gunbc.dispatch_selection {
   CursorLocalLoginRef,
@@ -40,6 +49,11 @@ import gunbc.dispatch_selection {
   SelectAutomatically,
   SelectCodex,
   SelectCursor,
+  ProviderInventory,
+  OfferCodex,
+  OfferCursor,
+  CursorOffer,
+  dispatch_cursor_process_fingerprint,
   CodexCredentialBinding,
   CodexProviderControl,
   DispatchModelNamed,
@@ -60,6 +74,9 @@ import gunbc.dispatch_selection {
   provider_selection_request_for_kind,
   fixture_inventory_codex_only_available,
   fixture_inventory_codex_and_cursor_available,
+  fixture_codex_offer_with_standing,
+  codex_offer_for_instance,
+  codex_offer_for_instance_with_standing,
   dispatch_selection_shape_mismatch_reason,
   dispatch_selection_standing_ineligible_reason,
   Unsized,
@@ -124,18 +141,56 @@ test fn witness_deep_profile_refuses_without_realization() -> Bool {
 
 test fn witness_srv1_inventory_includes_codex() -> Bool {
   inventory_includes_provider_kind(
-    inventory: provider_inventory_for_instance(
-      instance: srv1_live_dashboard_instance(),
-    ),
+    inventory: ProviderInventory {
+      offers: [
+        fixture_codex_offer_with_standing(
+          instance: srv1_live_dashboard_instance(),
+          standing: provider_standing_inventory_unobserved(),
+        ),
+      ],
+    },
     kind: CodexCliProvider,
   )
 }
 
 test fn witness_srv2_inventory_includes_cursor() -> Bool {
+  let instance = srv2_lab_dashboard_instance()
   inventory_includes_provider_kind(
-    inventory: provider_inventory_for_instance(
-      instance: srv2_lab_dashboard_instance(),
-    ),
+    inventory: ProviderInventory {
+      offers: [
+        fixture_codex_offer_with_standing(
+          instance: instance,
+          standing: provider_standing_inventory_unobserved(),
+        ),
+        OfferCursor {
+          offer: CursorOffer {
+            instance: ProviderInstance {
+              kind: CursorCliProvider,
+              host: ProviderInstanceFieldUnobserved {
+                reason: "fixture cursor inventory row" as NonEmptyStr,
+              },
+              executable: "cursor-agent" as NonEmptyStr,
+              observed_version: ProviderInstanceFieldUnobserved {
+                reason: "fixture cursor inventory row" as NonEmptyStr,
+              },
+              state_directory: ProviderInstanceFieldUnobserved {
+                reason: "fixture cursor inventory row" as NonEmptyStr,
+              },
+              credential_storage_method: ProviderInstanceFieldUnobserved {
+                reason: "fixture cursor inventory row" as NonEmptyStr,
+              },
+              service_identity: ProviderInstanceFieldUnobserved {
+                reason: "fixture cursor inventory row" as NonEmptyStr,
+              },
+            },
+            credential: CursorLocalLoginRef,
+            standing: provider_standing_inventory_unobserved(),
+            default_model: cursor_model_auto,
+            process_fingerprint: dispatch_cursor_process_fingerprint,
+          },
+        },
+      ],
+    },
     kind: CursorCliProvider,
   )
 }
@@ -231,9 +286,39 @@ test fn witness_wrong_selection_shape_refuses() -> Bool {
   }
 }
 
-test fn witness_production_automatic_selection_refuses_unobserved_standing() -> Bool {
-  match dispatch_selection_for_instance(
-    instance: srv1_live_dashboard_instance(),
+test fn witness_probe_bridge_ineligible_standing_refuses_selection() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let inventory = ProviderInventory {
+    offers: [
+      fixture_codex_offer_with_standing(
+        instance: instance,
+        standing: provider_standing_from_observed_bundle(
+          fact_id: selection_fixture_standing_fact_id,
+          provider: codex_offer_for_instance_with_standing(
+            instance: instance,
+            standing: provider_standing_inventory_unobserved(),
+          ).instance,
+          bundle: provider_standing_bundle_from_codex_dashboard_probes(
+            observation: CodexProviderDashboardProbeObservation {
+              state_root: CodexStateRootPresent,
+              runtime: ProviderDashboardExecProbeReported {
+                succeeded: true,
+                stdout: "codex-cli 0.145.0" as String,
+                stderr: "" as String,
+              },
+              auth: ProviderDashboardExecProbeReported {
+                succeeded: true,
+                stdout: "" as String,
+                stderr: "Logged in using ChatGPT" as String,
+              },
+            },
+          ),
+        ),
+      ),
+    ],
+  }
+  match resolve_dispatch_selection(
+    inventory: inventory,
     request: default_provider_selection_request(),
     node_sizing: Unsized,
   ) {
@@ -276,7 +361,7 @@ test fn dispatch_selection_keystone_holds() -> Bool {
     && witness_receipt_records_requested_and_resolved()
     && witness_carrier_notes_record_directive_addendum()
     && witness_wrong_selection_shape_refuses()
-    && witness_production_automatic_selection_refuses_unobserved_standing()
+    && witness_probe_bridge_ineligible_standing_refuses_selection()
     && witness_claude_request_refuses_on_codex_only_inventory()
     && witness_exact_override_requires_explicit_provider_arm()
 }
