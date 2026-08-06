@@ -5,6 +5,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.git.hooks { zero_sha }
 import extdeps.git.object_store { git_sha1_object_id, git_object_id_wire_hex }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.github.actions { github_event_path_env }
 import extdeps.languages.json.emit { JsonValue, JsonString }
 import extdeps.languages.json.parse {
   parse_json,
@@ -25,8 +26,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data push_event_note: String = "The push webhook payload's `before` member: the full commit SHA of the branch tip immediately before this push. GitHub documents that this is the zero SHA when a branch or tag is created. extdeps owns the wire shape; gunbc.diff_baseline owns the policy that maps it to an affected-set baseline."
-
-data github_event_path_env: NonEmptyStr = "GITHUB_EVENT_PATH"
 
 data push_event_before_member: String = "before"
 

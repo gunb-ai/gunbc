@@ -1389,6 +1389,12 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "ambient_pool_provider_preserves_listed_import",
     reason: "Class B row 2 (#7835), cold-control pattern (c): falsifier long-lane backstop for selection misses; per-PR merge-blocking consumer is run_class_b_import_closure_gate on source_root_ingest_gate. Two cold observe_declared_import_closure_symbol_binding calls (baseline + perturbed) over class_b_declared_import_pool_roots. CI run 30986525413 measured 48868.8ms (>5s fast-lane budget; ceiling — row 2 is the cold observe, row 1 was warm). Shrinking pool from witness_layer_roots (~3044 modules) to declared-import footprint (~696) is a stronger control, not a budget remedy.",
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run with class_b_declared_import_pool_roots and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag",
+    function: "realization_vocab_live_corpus_receipt_holds",
+    reason: "TS-0/LANG-2 live-corpus containment receipt: layer_import_facts_live over realization_vocab_consumer_scan_roots exceeds the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note). The five current leak edges are frozen at (importer_path, vocab_module) identity grain on realization_vocab_grandfathered_edge_roster; this row is the irreducible census that every live leak edge is grandfathered and containment holds corpus-wide. Per-PR mechanism coverage stays in no_new_debt_gate_test.dag and the existing synthetic/scanner/roster-soundness receipts.",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or the witness-evidence-lifecycle program derives per-witness execution requirements and this row dissolves with test/claim/long/ dir grain"
   }
 ]
 

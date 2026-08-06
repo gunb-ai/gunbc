@@ -42,10 +42,9 @@ import extdeps.git {
   git_diff_name_status_field_separator,
   git_remote_ref_parts
 }
-import extdeps.github.actions { github_event_name_env, github_base_ref_env, github_event_name_push }
+import extdeps.github.actions { github_event_name_env, github_base_ref_env, github_event_name_push, github_event_path_env }
 import extdeps.github.actions_environment { github_sha_variable_name }
 import extdeps.github.push_event {
-  github_event_path_env,
   push_before_from_event_path,
   PushBeforeObserved,
   PushBeforeAbsent,

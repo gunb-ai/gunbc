@@ -1,0 +1,229 @@
+module gunbc.floor_component_receipt_document
+
+import std.types { NonEmptyStr, String, CommitSha }
+import extdeps.languages.json.emit {
+  JsonValue, JsonString, JsonNumber,
+  json_object, json_kv, json_string, json_int, json_array,
+  serialize_json
+}
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject
+}
+import extdeps.github.workflow_run_event { WorkflowRunEvent }
+
+data floor_component_receipt_document_purpose_note: String = "ALERT-3. The floor writes a per-component receipt as JSON built directly from typed rows, and until now there was no carrier for the DOCUMENT itself and no way back: the receipt could be produced but not read, so its only consumer decoded it by hand in another language and every field access was an unchecked guess about a shape nothing declared. This module gives the document a type and derives BOTH directions across it — document to JSON, and JSON to document or a typed, located refusal.\n\nWHY BOTH DIRECTIONS MATTER HERE and not just the writing one: the receipt crosses a real trust boundary. It is uploaded by one workflow run, downloaded by another, and rendered by a program holding issues: write. A decoder that cannot refuse is a decoder that will render whatever it is handed, and the failure mode is not a crash — it is a confident, wrong issue body describing a state that no run was ever in. Refusal is the point of the return direction, which is why every arm of the decoding names what did not decode rather than substituting a default."
+
+data floor_component_receipt_document_member_authority_note: String = "THE MEMBER NAMES ARE DECLARED HERE ONCE AND CONSUMED BY BOTH SIDES. The encoder in gunbc.floor_component_receipt imports these constants rather than repeating the literals it used to carry inline, so the writer and the reader cannot drift: renaming a member is one edit, and a member this module can read is by construction a member that module writes. Two independent string tables for one wire shape is exactly the second representation DESIGN §3 forbids, and it is the specific defect that makes decoders rot silently — the writer changes a key, the reader keeps looking for the old one, and the field simply reads as absent forever."
+
+data receipt_member_schema: String = "schema"
+data receipt_member_run_id: String = "run_id"
+data receipt_member_component_count: String = "component_count"
+data receipt_member_affected_set_cold_control: String = "affected_set_cold_control"
+data receipt_member_unsuccessful_components: String = "unsuccessful_components"
+data receipt_member_components: String = "components"
+data receipt_member_selection_degradation: String = "selection_degradation"
+
+data receipt_member_workflow_name: String = "workflow_name"
+data receipt_member_head_sha: String = "head_sha"
+
+data floor_component_receipt_subject_note: String = "THE SUBJECT IS WHAT MAKES THE RECEIPT ATTRIBUTABLE, and its absence is the gap this row closes. A receipt that says only `here are some component outcomes` cannot answer the one question its consumer must ask before rendering it: IS THIS ABOUT THE RUN I AM LOOKING AT. Without a subject the alert downloads an artifact named floor-component-receipt from a run id it was given and trusts the association, so a stale artifact, a mismatched run-id parameter, or an artifact from a different workflow entirely all render as the current state of the current run with no way to notice.\n\nThe subject binds four facts: the workflow identity, the GitHub run id, the head SHA, and the receipt schema revision. Workflow and run id answer WHICH RUN; head SHA answers WHICH TREE, which is the fact an operator actually acts on and which a run id alone does not give; the schema revision answers WHETHER THIS READER UNDERSTANDS IT, and it is part of the subject rather than a sibling field because a document whose schema this reader does not know is not a document with an unreadable body — it is a document about something this reader cannot speak about at all."
+
+type FloorComponentReceiptSubject {
+  schema: NonEmptyStr
+  workflow_name: NonEmptyStr
+  run_id: NonEmptyStr
+  head_sha: CommitSha
+}
+
+type FloorComponentReceiptDocument {
+  subject: FloorComponentReceiptSubject
+  component_count: Int
+  components: List<JsonValue>
+  unsuccessful_components: List<JsonValue>
+  affected_set_control: JsonValue
+  selection_degradation: JsonValue
+}
+
+data floor_component_receipt_component_grain_note: String = "COMPONENTS ARE CARRIED AT JSON GRAIN INSIDE THE DOCUMENT, AND THAT IS A DECLARED BOUNDARY RATHER THAN LAZINESS. The document's own identity — subject, counts, which components were unsuccessful — is fully typed and fully round-tripped, because that is what the consumer decides on. A component's INTERIOR is a projection of std.observation.ObservationEvent, whose decoding is a separate and larger obligation: ObservationEvent carries transitions, outcomes with per-variant payloads, measured walls with unavailability causes, and a clock basis, and a half-decoding of it here would be a second, weaker representation of a coproduct that already has an authority — the §3 fork this module's own member-name note argues against.\n\nWHAT THAT COSTS, STATED PLAINLY: a component whose interior is malformed is not caught by this decoder. It is caught by the consumer that reads a field it needs, and that consumer must answer an absent field rather than defaulting it. DISSOLVE-ON: gunbc.floor_component_receipt gains a total ObservationEvent decoder — the reverse of floor_component_row_json — at which point components become List<FloorComponentRow> here and this note deletes. Until then the honest claim is that the document is typed and the component interiors are transported, not that the whole receipt is validated."
+
+type FloorComponentReceiptDecoding
+  = ReceiptDecoded { document: FloorComponentReceiptDocument }
+  | ReceiptNotJson { detail: String }
+  | ReceiptMemberAbsent { member: String }
+  | ReceiptMemberMalformed { member: String, detail: String }
+  | ReceiptSchemaUnknown { observed: String, expected: NonEmptyStr }
+
+type ReceiptText
+  = ReceiptTextFound { text: String }
+  | ReceiptTextFailed { decoding: FloorComponentReceiptDecoding }
+
+fn receipt_text_at(v: JsonValue, key: String) -> ReceiptText {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberAbsent => ReceiptTextFailed { decoding: ReceiptMemberAbsent { member: key } }
+    JsonMemberDuplicated { count: _ } =>
+      ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is duplicated" } }
+    JsonMemberNotAnObject =>
+      ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "enclosing value is not a JSON object" } }
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonString { value: s } =>
+          if s == "" {
+            ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is the empty string" } }
+          } else {
+            ReceiptTextFound { text: s }
+          }
+        JsonNumber { lexeme: l } => ReceiptTextFound { text: l as String }
+        JsonNull =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is null" } }
+        JsonBool { value: _ } =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is a bool, expected a string" } }
+        JsonArray { elements: _ } =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is an array, expected a string" } }
+        JsonObject { members: _ } =>
+          ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is an object, expected a string" } }
+      }
+  }
+}
+
+type ReceiptElements
+  = ReceiptElementsFound { elements: List<JsonValue> }
+  | ReceiptElementsFailed { decoding: FloorComponentReceiptDecoding }
+
+fn receipt_array_at(v: JsonValue, key: String) -> ReceiptElements {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberAbsent => ReceiptElementsFailed { decoding: ReceiptMemberAbsent { member: key } }
+    JsonMemberDuplicated { count: _ } =>
+      ReceiptElementsFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is duplicated" } }
+    JsonMemberNotAnObject =>
+      ReceiptElementsFailed { decoding: ReceiptMemberMalformed { member: key, detail: "enclosing value is not a JSON object" } }
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonArray { elements: es } => ReceiptElementsFound { elements: es }
+        JsonString { value: _ } =>
+          ReceiptElementsFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is a string, expected an array" } }
+        JsonNumber { lexeme: _ } =>
+          ReceiptElementsFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is a number, expected an array" } }
+        JsonNull =>
+          ReceiptElementsFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is null, expected an array" } }
+        JsonBool { value: _ } =>
+          ReceiptElementsFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is a bool, expected an array" } }
+        JsonObject { members: _ } =>
+          ReceiptElementsFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is an object, expected an array" } }
+      }
+  }
+}
+
+fn receipt_value_at_or_null(v: JsonValue, key: String) -> JsonValue {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: found } => found
+    JsonMemberAbsent => JsonNull
+    JsonMemberDuplicated { count: _ } => JsonNull
+    JsonMemberNotAnObject => JsonNull
+  }
+}
+
+fn floor_component_receipt_subject_json(subject: FloorComponentReceiptSubject) -> List<JsonKeyValue> {
+  [
+    json_kv(key: receipt_member_schema, value: json_string(s: subject.schema as String)),
+    json_kv(key: receipt_member_workflow_name, value: json_string(s: subject.workflow_name as String)),
+    json_kv(key: receipt_member_run_id, value: json_string(s: subject.run_id as String)),
+    json_kv(key: receipt_member_head_sha, value: json_string(s: subject.head_sha as String))
+  ]
+}
+
+fn floor_component_receipt_document_json(doc: FloorComponentReceiptDocument) -> JsonValue {
+  json_object(members: concat(
+    floor_component_receipt_subject_json(subject: doc.subject),
+    [
+      json_kv(key: receipt_member_component_count, value: json_int(n: doc.component_count)),
+      json_kv(key: receipt_member_affected_set_cold_control, value: doc.affected_set_control),
+      json_kv(key: receipt_member_unsuccessful_components, value: json_array(elements: doc.unsuccessful_components)),
+      json_kv(key: receipt_member_components, value: json_array(elements: doc.components)),
+      json_kv(key: receipt_member_selection_degradation, value: doc.selection_degradation)
+    ]
+  ))
+}
+
+fn floor_component_receipt_document_text(doc: FloorComponentReceiptDocument) -> String {
+  serialize_json(v: floor_component_receipt_document_json(doc: doc))
+}
+
+fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptyStr) -> FloorComponentReceiptDecoding {
+  match parse_json(s: text) {
+    Absent => ReceiptNotJson { detail: "receipt is not valid JSON" }
+    Present { value: doc } =>
+      match receipt_text_at(v: doc, key: receipt_member_schema) {
+        ReceiptTextFailed { decoding: d } => d
+        ReceiptTextFound { text: schema } =>
+          if schema != (expected_schema as String) {
+            ReceiptSchemaUnknown { observed: schema, expected: expected_schema }
+          } else {
+            match receipt_text_at(v: doc, key: receipt_member_workflow_name) {
+              ReceiptTextFailed { decoding: d } => d
+              ReceiptTextFound { text: workflow_name } =>
+                match receipt_text_at(v: doc, key: receipt_member_run_id) {
+                  ReceiptTextFailed { decoding: d } => d
+                  ReceiptTextFound { text: run_id } =>
+                    match receipt_text_at(v: doc, key: receipt_member_head_sha) {
+                      ReceiptTextFailed { decoding: d } => d
+                      ReceiptTextFound { text: head_sha } =>
+                        match receipt_array_at(v: doc, key: receipt_member_components) {
+                          ReceiptElementsFailed { decoding: d } => d
+                          ReceiptElementsFound { elements: components } =>
+                            match receipt_array_at(v: doc, key: receipt_member_unsuccessful_components) {
+                              ReceiptElementsFailed { decoding: d } => d
+                              ReceiptElementsFound { elements: unsuccessful } =>
+                                ReceiptDecoded {
+                                  document: FloorComponentReceiptDocument {
+                                    subject: FloorComponentReceiptSubject {
+                                      schema: schema as NonEmptyStr,
+                                      workflow_name: workflow_name as NonEmptyStr,
+                                      run_id: run_id as NonEmptyStr,
+                                      head_sha: head_sha as CommitSha
+                                    },
+                                    component_count: count(components),
+                                    components: components,
+                                    unsuccessful_components: unsuccessful,
+                                    affected_set_control: receipt_value_at_or_null(v: doc, key: receipt_member_affected_set_cold_control),
+                                    selection_degradation: receipt_value_at_or_null(v: doc, key: receipt_member_selection_degradation)
+                                  }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+data floor_component_receipt_subject_match_note: String = "THE ALERT REFUSES A RECEIPT WHOSE SUBJECT DOES NOT MATCH THE EVENT IT IS REACTING TO. This is the check the whole subject exists for, and each coordinate catches a different real failure. A run-id mismatch means the artifact came from a different run than the event describes — the download was misparameterized, or an artifact was resolved from a cached or retried run. A workflow mismatch means the receipt is from a different workflow entirely, which the shared artifact name makes possible. A head-SHA mismatch means the receipt is about a different tree, which is the one an operator would act on wrongly without ever suspecting it, because the run id would look right.\n\nMISMATCH IS A REFUSAL, NOT A DEGRADED RENDER. The tempting arm — report the components but note the subject is uncertain — is the absorbing fallback: it produces a plausible issue body from data of unknown provenance, and the uncertainty note is exactly the part a reader skims. An unmatched receipt is reported as an explicit unknown about the run, which is what the alert already does for a missing receipt, so the two blind cases behave the same way rather than one of them being quietly worse."
+
+type ReceiptSubjectMatch
+  = ReceiptSubjectMatches
+  | ReceiptSubjectRunIdMismatch { receipt: NonEmptyStr, event: NonEmptyStr }
+  | ReceiptSubjectWorkflowMismatch { receipt: NonEmptyStr, event: String }
+  | ReceiptSubjectHeadShaMismatch { receipt: CommitSha, event: CommitSha }
+
+fn floor_component_receipt_subject_matches_event(
+  subject: FloorComponentReceiptSubject,
+  event: WorkflowRunEvent
+) -> ReceiptSubjectMatch {
+  if (subject.run_id as String) != (event.run_id as String) {
+    ReceiptSubjectRunIdMismatch { receipt: subject.run_id, event: event.run_id }
+  } else if (subject.workflow_name as String) != event.workflow_name {
+    ReceiptSubjectWorkflowMismatch { receipt: subject.workflow_name, event: event.workflow_name }
+  } else if (subject.head_sha as String) != (event.head_sha as String) {
+    ReceiptSubjectHeadShaMismatch { receipt: subject.head_sha, event: event.head_sha }
+  } else {
+    ReceiptSubjectMatches
+  }
+}
+
+data floor_component_receipt_no_bool_projection_note: String = "THERE IS DELIBERATELY NO floor_component_receipt_subject_admitted PREDICATE. One was added here and then removed in the same change that removed the admission and notification Bool projections (review 49414 caught that this one survived the sweep, correctly — an exception in the module that binds the receipt to the run it describes is the worst place to keep one). The three mismatch arms are three different incidents: a run-id mismatch is a misparameterized or retried download, a workflow mismatch is a receipt from another workflow sharing the artifact name, and a head-SHA mismatch is a receipt about a different TREE — the one an operator would act on wrongly while the run id looked right. A Bool answers `is this the right receipt` and discards which of those it was, at exactly the boundary where the alert is deciding what to say about a run. Callers match."

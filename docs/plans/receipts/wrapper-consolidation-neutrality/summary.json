@@ -1,0 +1,19 @@
+{
+  "receipt_id": "wrapper-consolidation-neutrality",
+  "date": "2026-08-06",
+  "subject": "sharing_wrap_ctor_for_target consolidation without prelude alias flip",
+  "method": {
+    "base": "origin/main (std::rc::Rc prelude, pre-consolidation emitter)",
+    "after": "consolidation-only worktree: languages.dag + 05_emit_rust.dag authority routing, prelude unchanged std::rc::Rc, stage0 regen",
+    "vehicle": "p1_cohort_probe serial 50-entry cohort",
+    "excludes": "prelude alias flip, Arc stage0, Send+Sync test, C1 store",
+    "replicates_per_arm": 1
+  },
+  "results": {
+    "wall_ms": { "base": 174019, "consolidation": 175000, "delta_pct": 0.56 },
+    "resolve_ms": { "base": 79781.273, "consolidation": 80187.176, "delta_pct": 0.51 },
+    "prelude": { "base": "std::rc::Rc", "consolidation": "std::rc::Rc" }
+  },
+  "verdict": "No regression detectable at this resolution; both metrics within half a percent on a single paired run (n=1 per arm), which does not resolve an effect of that size either way. Half a percent does not change whether a single-authority wrap constructor is worth having on section-3 grounds independent of cost.",
+  "operator_bar_reference": "arc-1-shareability-frontier used 5% regression bar for alias flip; consolidation single-run deltas are ~0.5%"
+}
