@@ -6,7 +6,11 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.termination { DescentEvidence, Strict, NonIncreasing, DescentUnknown, evidence_rank }
 import gunbc.design.salience { attraction_travel_max_px }
 import gunbc.design.instrument_physical { instrument_displacement_max_px }
-import gunbc.capability_binding { PhysicalImpulse, ImpulseDown, ImpulseUp }
+import gunbc.capability_binding {
+  PhysicalImpulse, ImpulseDown, ImpulseUp,
+  SyntheticTapStrength, SyntheticTapLight, SyntheticTapFirm, SyntheticTapKnock,
+  synthetic_tap_impulse, synthetic_tap_binding, impulse_is_synthetic,
+}
 import gunbc.design.instrument_bob {
   BobPhase, BobAtRest, BobRinging, BobSettled, bob_phase_key,
   BobState, bob_at_rest,
@@ -17,6 +21,9 @@ import gunbc.design.instrument_bob {
   apply_impulse, halve_n_times, amplitude_after, advance, advance_descent_evidence,
   half_lives_to_settle, settle_time_ms, max_settle_time_ms,
   bob_is_within_register_bound, bob_carries_no_domain_fact, bob_displacement_px,
+  bob_half_period_ms, oscillation_sign, signed_displacement_px,
+  BobFrame, bob_frames, max_frame_count, frames_are_within_bound, frame_is_within_bound,
+  settled_frame_count, frames_terminate_exactly_once, frames_cross_rest,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -27,7 +34,7 @@ fn an_impulse(magnitude: Int) -> PhysicalImpulse {
   PhysicalImpulse {
     source_binding: DeclarationRef {
       module_path: "gunbc.capability_binding",
-      decl_name: "synthetic_alternative_label",
+      decl_name: "synthetic_tap_impulse",
       field: WholeDeclaration
     },
     magnitude_milli_m_per_s2: magnitude,
@@ -124,7 +131,7 @@ fn witness_reduced_motion_removes_travel_and_keeps_the_impulse() -> Bool {
     && bob_phase_key(p: reduced.phase) == "at-rest"
     && full.amplitude_milli_px > 0
     && i.magnitude_milli_m_per_s2 == impulse_reference_magnitude_milli
-    && i.source_binding.decl_name == "synthetic_alternative_label"
+    && i.source_binding.decl_name == "synthetic_tap_impulse"
     && motion_preference_key(m: MotionReduced) == "reduced"
 }
 
@@ -151,7 +158,57 @@ fn witness_the_physics_is_blind_to_which_binding_produced_the_impulse() -> Bool 
     && synthetic.source_binding.module_path != hardware.source_binding.module_path
 }
 
+data frame_sequence_witness_note: String = "The deterministic frame sequence is what makes the bob judgeable without a browser: the whole response is a finite list computed with no clock and no host, so a physics regression is a diff over a list rather than something someone has to watch for. These claims assert the four properties a renderer relies on — it is deterministic, it terminates exactly once, every frame stays inside the envelope in BOTH directions, and it actually crosses rest rather than sagging."
+
+fn a_knock_sequence() -> List<BobFrame> {
+  bob_frames(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull, interval_ms: 16)
+}
+
+fn witness_the_frame_sequence_is_deterministic() -> Bool {
+  let a = a_knock_sequence()
+  let b = a_knock_sequence()
+  a.length() == b.length()
+    && a.length() > 1
+    && fold(a, init: 0, f: (acc, f) => acc + f.displacement_px) ==
+         fold(b, init: 0, f: (acc, f) => acc + f.displacement_px)
+}
+
+fn witness_the_sequence_terminates_exactly_once_and_is_bounded() -> Bool {
+  let fs = a_knock_sequence()
+  frames_terminate_exactly_once(fs: fs)
+    && settled_frame_count(fs: fs) == 1
+    && fs.length() <= max_frame_count(interval_ms: 16)
+    && frames_are_within_bound(fs: fs)
+}
+
+data crosses_rest_note: String = "A bobber crosses the waterline; a sag does not. The sequence must contain displacement on BOTH sides of rest, and the first excursion must be downward because a knock pushes the plate away from the hand rather than toward it."
+
+fn witness_the_plate_bobs_rather_than_sagging() -> Bool {
+  frames_cross_rest(fs: a_knock_sequence())
+    && oscillation_sign(elapsed_ms: 0) == 0 - 1
+    && oscillation_sign(elapsed_ms: bob_half_period_ms) == 1
+    && oscillation_sign(elapsed_ms: bob_half_period_ms * 2) == 0 - 1
+}
+
+fn witness_red_a_frame_outside_the_envelope_is_rejected_in_both_directions() -> Bool {
+  frame_is_within_bound(f: BobFrame { at_ms: 0, displacement_px: bob_max_travel_px, phase: BobRinging })
+    && frame_is_within_bound(f: BobFrame { at_ms: 0, displacement_px: 0 - bob_max_travel_px, phase: BobRinging })
+    && !frame_is_within_bound(f: BobFrame { at_ms: 0, displacement_px: bob_max_travel_px + 1, phase: BobRinging })
+    && !frame_is_within_bound(f: BobFrame { at_ms: 0, displacement_px: 0 - (bob_max_travel_px + 1), phase: BobRinging })
+}
+
+fn witness_reduced_motion_yields_one_still_frame() -> Bool {
+  let fs = bob_frames(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionReduced, interval_ms: 16)
+  fs.length() == 1
+    && fold(fs, init: true, f: (acc, f) => acc && f.displacement_px == 0)
+}
+
 test fn instrument_bob_keystone_holds() -> Bool {
+  witness_the_frame_sequence_is_deterministic()
+    && witness_the_sequence_terminates_exactly_once_and_is_bounded()
+    && witness_the_plate_bobs_rather_than_sagging()
+    && witness_red_a_frame_outside_the_envelope_is_rejected_in_both_directions()
+    && witness_reduced_motion_yields_one_still_frame()
   witness_a_harder_smack_never_travels_further_than_the_bound()
     && witness_a_gentler_knock_travels_proportionally_less()
     && witness_the_bob_stays_under_the_registers_attraction_travel()

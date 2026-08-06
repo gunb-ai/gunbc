@@ -172,3 +172,101 @@ data displacement_projection_note: String = "The renderer receives whole pixels;
 fn bob_displacement_px(s: BobState) -> Int {
   s.amplitude_milli_px / 1000
 }
+
+data oscillation_note: String = "A BOBBER CROSSES THE WATERLINE, WHICH IS WHAT MAKES IT A BOB RATHER THAN A SAG. The envelope above says how far the plate may travel at a given moment; this says which side of rest it is on. The sign flips every half-period, so the plate rides down, back up through rest, and down again with less reach each time — the shape a float actually makes. Period and half-life are independent constants on purpose: the half-life decides how long the ringing lasts, the period decides how quickly it oscillates within that, and tying them together would have made one of the two unadjustable."
+
+data bob_half_period_ms: Milliseconds = 90
+
+fn oscillation_sign(elapsed_ms: Milliseconds) -> Int {
+  if (elapsed_ms / bob_half_period_ms) % 2 == 0 {
+    0 - 1
+  } else {
+    1
+  }
+}
+
+data first_excursion_is_downward_note: String = "The first half-period is negative because a knock on a chassis pushes the plate DOWN before it rebounds. Starting upward would read as the screen jumping toward the hand that hit it."
+
+fn signed_displacement_milli(s: BobState) -> Int {
+  s.amplitude_milli_px * oscillation_sign(elapsed_ms: s.elapsed_ms)
+}
+
+fn signed_displacement_px(s: BobState) -> Int {
+  signed_displacement_milli(s: s) / 1000
+}
+
+data frame_sequence_note: String = "THE DETERMINISTIC FRAME SEQUENCE, which is what makes the bob judgeable without a browser. Given an impulse and a preference, the whole response is a finite list of frames — a time, a signed displacement, and a phase — computed with no clock, no randomness and no host. The same impulse always yields byte-identical frames, so a renderer becomes a consumer of a decided sequence rather than the place the motion is invented, and a regression in the physics is a diff over a list rather than something someone has to watch for.
+
+The recursion is bounded by a frame budget derived from the settle time rather than by waiting for the settled phase, so termination is structural: the list cannot be longer than the budget even if the envelope were somehow changed to stop decaying."
+
+type BobFrame {
+  at_ms: Milliseconds
+  displacement_px: Int
+  phase: BobPhase
+}
+
+data frame_budget_is_a_count_not_a_duration_note: String = "A FRAME COUNT IS NOT A DURATION, AND THE SUBSTRATE CAUGHT IT TWICE. Dividing the settle time by a frame interval is arithmetic on two Milliseconds values, and the branded carrier propagates through the quotient — so a branch returning a bare zero disagreed with a branch returning a duration, and the typechecker refused rather than handing back a count wearing a time unit.
+
+The first repair reached for a cast and was refused in turn, which was the more instructive answer: Milliseconds is a REFINEMENT of Int rather than a separate representation, so 'as Int' is a cast from Int to Int and means nothing. The brand is not something a value carries and can shed on request; it is something a POSITION requires. So the honest move is to let the brand fall away at a boundary that asks for a plain Int — frame_budget takes counts and durations as bare magnitudes and returns a count, and max_settle_time_ms flows into it because a Milliseconds is admissible wherever an Int is. No conversion happens because none is needed; what changes is which type the position demands."
+
+fn frame_budget(settle_ms: Int, interval: Int) -> Int {
+  if interval <= 0 {
+    0
+  } else {
+    (settle_ms / interval) + 2
+  }
+}
+
+fn max_frame_count(interval_ms: Milliseconds) -> Int {
+  frame_budget(settle_ms: max_settle_time_ms(), interval: interval_ms)
+}
+
+fn bob_frames_from(s: BobState, interval_ms: Milliseconds, budget: Int) -> List<BobFrame> {
+  if budget <= 0 {
+    []
+  } else {
+    let next = advance(s: s, dt_ms: interval_ms)
+    let frame = BobFrame {
+      at_ms: next.elapsed_ms,
+      displacement_px: signed_displacement_px(s: next),
+      phase: next.phase,
+    }
+    match next.phase {
+      BobSettled => [frame]
+      _ => concat([frame], bob_frames_from(s: next, interval_ms: interval_ms, budget: budget - 1))
+    }
+  }
+}
+
+fn bob_frames(i: PhysicalImpulse, m: MotionPreference, interval_ms: Milliseconds) -> List<BobFrame> {
+  let start = apply_impulse(i: i, m: m)
+  match start.phase {
+    BobAtRest => [BobFrame { at_ms: 0, displacement_px: 0, phase: BobAtRest }]
+    _ => bob_frames_from(s: start, interval_ms: interval_ms, budget: max_frame_count(interval_ms: interval_ms))
+  }
+}
+
+data frame_bound_note: String = "Every frame in a sequence stays inside the envelope in BOTH directions, which is the bound restated over the signed value: a plate that travelled nine pixels down would violate the register just as surely as one that travelled nine pixels up."
+
+fn frame_is_within_bound(f: BobFrame) -> Bool {
+  f.displacement_px <= bob_max_travel_px && f.displacement_px >= (0 - bob_max_travel_px)
+}
+
+fn frames_are_within_bound(fs: List<BobFrame>) -> Bool {
+  all(fs, f => frame_is_within_bound(f: f))
+}
+
+data terminates_once_note: String = "Exactly one frame in a sequence is settled, and counting is a stronger claim than checking the last one: it says the sequence reaches rest AND stops there, so a recursion that kept emitting frames past settling would fail even though its final frame looked correct."
+
+fn settled_frame_count(fs: List<BobFrame>) -> Int {
+  fold(fs, init: 0, f: (acc, x) => if bob_phase_key(p: x.phase) == "settled" { acc + 1 } else { acc })
+}
+
+fn frames_terminate_exactly_once(fs: List<BobFrame>) -> Bool {
+  settled_frame_count(fs: fs) == 1
+}
+
+fn frames_cross_rest(fs: List<BobFrame>) -> Bool {
+  fold(fs, init: false, f: (acc, x) => acc || x.displacement_px < 0)
+    && fold(fs, init: false, f: (acc, x) => acc || x.displacement_px > 0)
+}

@@ -472,3 +472,91 @@ fn coverage_state_is_a_support_claim(s: BindingCoverageState) -> Bool {
 }
 
 data coverage_is_never_support_note: String = "Total and constantly false, and that IS the claim: no coverage state is a support statement, not even Implemented — implemented means the binding exists and can be probed, while support is a verdict derived from an executed observation on an exact host. If a fifth state is ever added that DOES assert support, this match forces the author to write the arm and a reviewer sees a true in a function whose name says there should not be one."
+
+data coverage_provider_note: String = "A DEFERRED TARGET CANNOT CITE A MODULE THAT DOES NOT EXIST, AND POINTING AT ONE ANYWAY WOULD BE A FABRICATED SYMBOL (DESIGN §3 cite-the-symbol). There is no Core Motion module, no Windows sensor module and no Linux IIO module in this tree, because nothing has consumed them yet — so a coverage row for those targets names the upstream it INTENDS to cite as prose, and says plainly that it is not yet modelled. When the module lands, the row flips to the modelled arm and the reference becomes resolvable, which makes the migration decidable by symbol resolution rather than by someone remembering. The prose arm is therefore the honest shape for exactly as long as the absence is real, and no longer."
+
+type CoverageProvider
+  = ProviderModelled { declaration: DeclarationRef }
+  | ProviderNotYetModelled { intended_upstream: String }
+
+fn coverage_provider_is_modelled(p: CoverageProvider) -> Bool {
+  match p {
+    ProviderModelled { declaration } => true
+    ProviderNotYetModelled { intended_upstream } => false
+  }
+}
+
+type BindingCoverageTarget {
+  platform: String
+  provider: CoverageProvider
+  state: BindingCoverageState
+}
+
+data coverage_targets_note: String = "Seeded with the targets that have a real near-term reason and nothing else. Three are implemented in this lane; one is probed immediately after it; four are deferred behind a named trigger that is a CONSUMER appearing, not a date. No row asserts support, no row carries a placeholder observation, and there is deliberately no row for a platform nobody has a reason to reach — an empty space is more honest than a Deferred row invented to look thorough."
+
+data coverage_targets: List<BindingCoverageTarget> = [
+  BindingCoverageTarget {
+    platform: "any",
+    provider: ProviderModelled { declaration: synthetic_tap_binding },
+    state: CoverageImplemented { receipt: synthetic_tap_binding },
+  },
+  BindingCoverageTarget {
+    platform: "web",
+    provider: ProviderModelled {
+      declaration: DeclarationRef {
+        module_path: "extdeps.w3c.device_orientation_and_motion",
+        decl_name: "devicemotion_event_type",
+        field: WholeDeclaration
+      }
+    },
+    state: CoverageProbeRequired,
+  },
+  BindingCoverageTarget {
+    platform: "web",
+    provider: ProviderModelled {
+      declaration: DeclarationRef {
+        module_path: "extdeps.w3c.accelerometer",
+        decl_name: "LinearAccelerationSensor",
+        field: WholeDeclaration
+      }
+    },
+    state: CoverageProbeRequired,
+  },
+  BindingCoverageTarget {
+    platform: "macos",
+    provider: ProviderNotYetModelled { intended_upstream: "Apple Core Motion, if a public macOS laptop binding exists at all" },
+    state: CoverageProbeRequired,
+  },
+  BindingCoverageTarget {
+    platform: "windows",
+    provider: ProviderNotYetModelled { intended_upstream: "Windows.Devices.Sensors.Accelerometer" },
+    state: CoverageDeferred { trigger: "a Windows test host or a Windows consumer exists" },
+  },
+  BindingCoverageTarget {
+    platform: "ios",
+    provider: ProviderNotYetModelled { intended_upstream: "Apple Core Motion" },
+    state: CoverageDeferred { trigger: "mobile instrument work begins" },
+  },
+  BindingCoverageTarget {
+    platform: "android",
+    provider: ProviderNotYetModelled { intended_upstream: "Android SensorManager" },
+    state: CoverageDeferred { trigger: "an Android consumer begins" },
+  },
+  BindingCoverageTarget {
+    platform: "linux",
+    provider: ProviderNotYetModelled { intended_upstream: "Linux Industrial I/O subsystem" },
+    state: CoverageDeferred { trigger: "Linux host integration begins" },
+  },
+]
+
+fn coverage_targets_asserting_support() -> Int {
+  fold(coverage_targets, init: 0, f: (acc, t) =>
+    if coverage_state_is_a_support_claim(s: t.state) { acc + 1 } else { acc })
+}
+
+fn deferred_targets_all_name_a_trigger() -> Bool {
+  all(coverage_targets, t => match t.state {
+    CoverageDeferred { trigger } => trigger != ""
+    _ => true
+  })
+}

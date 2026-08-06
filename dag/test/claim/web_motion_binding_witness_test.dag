@@ -30,9 +30,17 @@ import gunbc.web_motion_binding {
   DocumentFocus, DocumentFocused, DocumentFocusUnobserved,
   InterfaceExposure, InterfaceExposed, InterfaceNotExposed, InterfaceExposureUnobserved,
   PolicyAdmission, PolicyAllowsFeature, PolicyBlocksFeature, PolicyAdmissionUnobserved,
-  PermissionObservation, PermissionObservedAs, PermissionMethodAbsent,
-  PermissionObservationUnobserved,
-  MotionApi, DeviceMotionEventApi, GenericSensorApi,
+  PermissionObservation, PermissionObservedAs, PermissionObservationUnobserved,
+  WebMotionProvider, DeviceMotionEventProvider, AccelerometerProvider,
+  LinearAccelerationSensorProvider, GravitySensorProvider, web_provider_key,
+  PermissionMethodExposure, PermissionMethodExposed, PermissionMethodAbsent,
+  PermissionMethodExposureUnobserved, permission_method_exposure_key,
+  ObservationContradiction, ReadingsUnderInsecureContext, ReadingsUnderBlockedPolicy,
+  ReadingsUnderDeniedPermission, contradiction_key,
+  WebMotionObservationAdmission, ObservationAdmitted, ObservationContradicted,
+  admit_web_observation, observation_contradictions, observation_is_coherent,
+  observation_is_decisive_and_coherent,
+  web_sample_receipt, frequency_from_interval,
   MotionStreamState, StreamInterfaceNotExposed, StreamPolicyBlocked, StreamPermissionDenied,
   StreamConnectionRefused, StreamActivatedNoReading, StreamNoEventsObserved,
   StreamHollowEventsObserved, StreamReadingsObserved, StreamUnobserved,
@@ -44,10 +52,18 @@ import gunbc.web_motion_binding {
 }
 import extdeps.external_authority { ExternalSubjectRef }
 import gunbc.host_realization {
-  HostRealization, host_identity_is_exact, RefReducedByPolicy, RefNotProbed,
-  BrowserDocument, DomCssRenderer,
+  HostRealization, host_identity_is_exact, RefResolved, RefReducedByPolicy, RefNotProbed,
+  BrowserDocument, DomCssRenderer, PrimaryInstrument,
 }
-import gunbc.capability_binding { BindingStreamState, binding_stream_key }
+import gunbc.capability_binding {
+  BindingStreamState, binding_stream_key,
+  SampleLifecycle, LifecycleActivated, LifecycleActivationUnobserved,
+}
+import extdeps.w3c.accelerometer {
+  AccelerometerSensor, LinearAccelerationSensor, GravitySensor,
+  accelerometer_interface_name, interface_suits_a_knock_detector,
+  maintained_for_existing_deployments, upstream_recommends_device_orientation_for_new_projects,
+}
 import gunbc.design.instrument_physical {
   SensorAvailability, SensorPresent, SensorAbsent, SensorPermissionNotRequested,
   SensorAvailabilityUnknown, sensor_availability_key,
@@ -55,7 +71,7 @@ import gunbc.design.instrument_physical {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data motion_binding_witness_note: String = "The two cited W3C contracts and the observation carrier that consumes them, each law beside the control that reds it. The central claim of this file is negative and is the reason the carrier exists: an observation that did not look cannot conclude. Its specimen is not invented — it is the 2026-08-05 capability probe, reconstructed below exactly as it ran, whose reported result was written up as a hardware verdict and was nothing of the kind."
+data web_motion_binding_witness_note: String = "The web realization's own axes, the exact providers, and the projection outward — each law beside the control that reds it. The central claim stays negative: an observation that did not look cannot conclude. Its specimen is the 2026-08-05 capability probe, reconstructed field by field."
 
 fn probe_subject() -> HostRealization {
   HostRealization {
@@ -68,23 +84,32 @@ fn probe_subject() -> HostRealization {
     },
     platform_revision: RefReducedByPolicy { reported: "Mac OS X 10_15_7" },
     device_identity: RefNotProbed,
+    role: PrimaryInstrument,
     container_kind: BrowserDocument,
-    container: DeclarationRef {
-      module_path: "extdeps.browser.chromium",
-      decl_name: "chromium",
+    container_product: DeclarationRef {
+      module_path: "extdeps.browser.google_chrome",
+      decl_name: "google_chrome",
       field: WholeDeclaration
     },
-    container_build: RefReducedByPolicy { reported: "150.0.0.0" },
+    container_product_build: RefReducedByPolicy { reported: "150.0.0.0" },
+    runtime_engine: RefResolved {
+      declaration: DeclarationRef {
+        module_path: "extdeps.browser.chromium",
+        decl_name: "chromium",
+        field: WholeDeclaration
+      }
+    },
+    runtime_engine_build: RefNotProbed,
     renderer: DomCssRenderer,
   }
 }
 
-data discredited_probe_note: String = "THE 2026-08-05 PROBE, RECONSTRUCTED FIELD BY FIELD. It ran inside an embedding context it never inspected, over a secure context it did read, with the DeviceMotionEvent interface exposed, the standard permission method absent, both feature policies unread, zero events, and no recorded window. Every Unobserved below is a thing that run did not do, and the claim under it is that this observation supports NO verdict about the machine."
+data discredited_probe_note: String = "THE 2026-08-05 PROBE, RECONSTRUCTED FIELD BY FIELD. It ran inside an embedding context it never inspected, over a secure context it did read, with DeviceMotionEvent exposed, the standard permission method absent, the permission STATE never established, both feature policies unread, zero events, and no recorded window."
 
 fn discredited_probe_observation() -> WebMotionObservation {
   WebMotionObservation {
     host: probe_subject(),
-    api: DeviceMotionEventApi,
+    provider: DeviceMotionEventProvider,
     browsing_context: BrowsingContextUnobserved,
     secure_context: SecureContextYes,
     visibility: DocumentVisibilityUnobserved,
@@ -92,19 +117,29 @@ fn discredited_probe_observation() -> WebMotionObservation {
     interface_exposure: InterfaceExposed,
     accelerometer_policy: PolicyAdmissionUnobserved,
     gyroscope_policy: PolicyAdmissionUnobserved,
-    permission: PermissionMethodAbsent,
+    permission_method: PermissionMethodAbsent,
+    permission: PermissionObservationUnobserved,
     stream: StreamNoEventsObserved { window_ms: 0 },
     observation_window_ms: 0,
   }
 }
 
 fn witness_the_discredited_probe_resolves_nothing() -> Bool {
-  let o = discredited_probe_observation()
-  match derive_reachability(o: o) {
+  match derive_reachability(o: discredited_probe_observation()) {
     MotionReachabilityUnresolved { pending } => true
     MotionReachable { peak_milli_m_per_s2 } => false
     MotionUnreachable { obstacle } => false
   }
+}
+
+data six_not_five_note: String = "SIX UNREAD AXES, NOT FIVE — and the sixth is the one the earlier model hid. Splitting permission-method exposure from permission STATE moved this count, because the probe observed that the standard asking route was absent and never established whether readings were actually permitted. The old carrier counted that as a fully read axis, so the count said decisive while the prose said unknown. The count now agrees with the prose: browsing context, visibility, focus, both feature policies, and the permission state."
+
+fn witness_the_probe_left_six_axes_unread_and_no_window() -> Bool {
+  let o = discredited_probe_observation()
+  unobserved_axis_count(o: o) == 6
+    && !observation_is_decisive(o: o)
+    && !host_identity_is_exact(h: probe_subject())
+    && permission_method_exposure_key(e: PermissionMethodAbsent) == "request-permission-method-absent"
 }
 
 fn witness_red_silence_never_projects_to_an_absent_sensor() -> Bool {
@@ -114,45 +149,10 @@ fn witness_red_silence_never_projects_to_an_absent_sensor() -> Bool {
          sensor_availability_key(a: SensorAbsent)
 }
 
-fn witness_the_probe_left_five_axes_unread_and_no_window() -> Bool {
-  let o = discredited_probe_observation()
-  unobserved_axis_count(o: o) == 5
-    && !observation_is_decisive(o: o)
-    && !host_identity_is_exact(h: probe_subject())
-}
-
-data five_axes_note: String = "Five, counted rather than asserted: browsing context, visibility, focus, accelerometer policy, gyroscope policy. Interface exposure and secure context WERE read, the permission route was observed to be absent rather than unobserved, and the stream was genuinely watched — it just was not watched for a recorded length of time, which is why the window is a separate condition on decisiveness rather than a sixth unread axis."
-
-fn witness_only_a_reading_makes_motion_reachable() -> Bool {
-  let base = discredited_probe_observation()
-  let reading = WebMotionObservation {
-    host: probe_subject(),
-    api: DeviceMotionEventApi,
-    browsing_context: TopLevelContext,
-    secure_context: SecureContextYes,
-    visibility: DocumentVisible,
-    focus: DocumentFocused,
-    interface_exposure: InterfaceExposed,
-    accelerometer_policy: PolicyAllowsFeature,
-    gyroscope_policy: PolicyAllowsFeature,
-    permission: PermissionObservedAs { state: PermissionGranted },
-    stream: StreamReadingsObserved { count: 42, peak_milli_m_per_s2: 3100, sample_interval_ms: 16 },
-    observation_window_ms: 4000,
-  }
-  match derive_reachability(o: reading) {
-    MotionReachable { peak_milli_m_per_s2 } => peak_milli_m_per_s2 == 3100
-    MotionUnreachable { obstacle } => false
-    MotionReachabilityUnresolved { pending } => false
-  }
-    && observation_is_decisive(o: reading)
-    && unobserved_axis_count(o: reading) == 0
-    && sensor_availability_key(a: project_sensor_availability(o: reading)) == "present"
-}
-
 fn observation_with_stream(s: MotionStreamState) -> WebMotionObservation {
   WebMotionObservation {
     host: probe_subject(),
-    api: GenericSensorApi,
+    provider: LinearAccelerationSensorProvider,
     browsing_context: TopLevelContext,
     secure_context: SecureContextYes,
     visibility: DocumentVisible,
@@ -160,6 +160,7 @@ fn observation_with_stream(s: MotionStreamState) -> WebMotionObservation {
     interface_exposure: InterfaceExposed,
     accelerometer_policy: PolicyAllowsFeature,
     gyroscope_policy: PolicyAllowsFeature,
+    permission_method: PermissionMethodExposed,
     permission: PermissionObservedAs { state: PermissionGranted },
     stream: s,
     observation_window_ms: 4000,
@@ -170,24 +171,17 @@ fn reachability_of(s: MotionStreamState) -> String {
   motion_reachability_key(r: derive_reachability(o: observation_with_stream(s: s)))
 }
 
-data exact_obstacle_note: String = "An obstacle is unreachable ONLY when the observation names it. The three that qualify are an interface that is not on the global object, a policy that blocked construction, and a permission that was refused — each of which points at a different remedy. A refused hardware connection does NOT qualify: the spec's NotReadableError says this attempt could not connect, which is a fact about the attempt, so it stays unresolved and keeps the machine's hardware an open question."
+data refused_connection_note: String = "A REFUSED CONNECTION DESCRIBES ONE ATTEMPT, NOT A MACHINE — and an earlier revision derived unreachable from it while this file's own note said the opposite. The note had the stronger reading and the code now matches it: NotReadableError leaves hardware reachability unresolved. A binding-attempt verdict may still say that THIS attempt was refused, which is a different question at a different grain."
 
 fn witness_only_named_obstacles_are_unreachable() -> Bool {
   reachability_of(s: StreamInterfaceNotExposed) == "unreachable"
     && reachability_of(s: StreamPolicyBlocked) == "unreachable"
     && reachability_of(s: StreamPermissionDenied) == "unreachable"
-    && reachability_of(s: StreamConnectionRefused { error_name: "NotReadableError" }) == "unreachable"
+    && reachability_of(s: StreamConnectionRefused { error_name: "NotReadableError" }) == "unresolved"
     && reachability_of(s: StreamActivatedNoReading { window_ms: 4000 }) == "unresolved"
     && reachability_of(s: StreamNoEventsObserved { window_ms: 4000 }) == "unresolved"
     && reachability_of(s: StreamHollowEventsObserved { count: 12, window_ms: 4000 }) == "unresolved"
     && reachability_of(s: StreamUnobserved) == "unresolved"
-}
-
-fn witness_red_a_refused_connection_is_not_an_absent_sensor() -> Bool {
-  let o = observation_with_stream(s: StreamConnectionRefused { error_name: "NotReadableError" })
-  sensor_availability_key(a: project_sensor_availability(o: o)) == "availability-unknown"
-    && sensor_availability_key(a: project_sensor_availability(o: o)) !=
-         sensor_availability_key(a: SensorAbsent)
 }
 
 fn witness_only_an_unexposed_interface_reaches_absent() -> Bool {
@@ -195,9 +189,9 @@ fn witness_only_an_unexposed_interface_reaches_absent() -> Bool {
       "absent"
     && sensor_availability_key(a: project_sensor_availability(o: observation_with_stream(s: StreamPolicyBlocked))) ==
       "availability-unknown"
+    && sensor_availability_key(a: project_sensor_availability(o: observation_with_stream(s: StreamConnectionRefused { error_name: "NotReadableError" }))) ==
+      "availability-unknown"
 }
-
-data hollow_vs_silent_note: String = "The two states the WebIDL's nullability creates and a naive probe fuses. Hollow events ARRIVED and carried nothing; silence means nothing arrived at all. They have different remedies — one says the dispatch path works and the values do not, the other says the dispatch path itself did not run — so they are separate arms with separate counts, and neither is permitted to conclude."
 
 fn witness_hollow_events_are_distinct_from_silence() -> Bool {
   stream_state_key(s: StreamHollowEventsObserved { count: 12, window_ms: 4000 }) !=
@@ -213,8 +207,6 @@ fn witness_a_null_axis_is_not_a_zero_axis() -> Bool {
     && !acceleration_carries_any_value(a: DeviceMotionAcceleration { x: AxisNull, y: AxisNull, z: AxisNull })
     && acceleration_carries_any_value(a: DeviceMotionAcceleration { x: AxisNull, y: AxisValue { milli_units: 0 }, z: AxisNull })
 }
-
-data cited_upstream_facts_note: String = "The upstream facts the whole correction rests on, asserted here so they red if a later edit softens them: hollow emission is advisory rather than required, and devicemotion dispatch needs BOTH named permissions. Neither is our judgement — both are quoted in the cited modules — but both are load-bearing enough that the corpus should notice if they are quietly changed."
 
 fn witness_hollow_emission_is_advisory_and_dispatch_needs_both_permissions() -> Bool {
   !hollow_event_emission_is_required
@@ -243,8 +235,6 @@ fn witness_permission_prompt_is_not_a_grant() -> Bool {
     && permission_state_wire(s: PermissionPrompt) == "prompt"
 }
 
-data constructor_presence_note: String = "The Generic Sensor specification's own warning, turned into a claim the corpus holds: exposure is not availability. The lifecycle is what interrogates the platform, and every one of its failure modes carries a distinct upstream exception name, which is exactly the information a constructor-name census cannot produce."
-
 fn witness_exposure_is_not_availability_and_every_failure_names_itself() -> Bool {
   !feature_detection_alone_establishes_availability
     && !base_spec_defines_feature_tokens
@@ -264,32 +254,119 @@ fn witness_red_activation_without_a_reading_is_not_success() -> Bool {
     && sensor_lifecycle_key(s: SensorActivated) == "activated"
 }
 
-fn witness_the_web_stream_projects_into_the_neutral_binding_stream() -> Bool {
-  binding_stream_key(s: project_binding_stream(o: discredited_probe_observation())) == "activated-no-samples"
-    && binding_stream_key(s: project_binding_stream(o: observation_with_stream(s: StreamInterfaceNotExposed))) ==
-         "interface-unavailable"
-    && binding_stream_key(s: project_binding_stream(o: observation_with_stream(s: StreamPolicyBlocked))) ==
-         "policy-refused"
-    && binding_stream_key(s: project_binding_stream(o: observation_with_stream(
-         s: StreamReadingsObserved { count: 42, peak_milli_m_per_s2: 3100, sample_interval_ms: 16 }))) ==
-         "samples-observed"
+data exact_provider_witness_note: String = "The provider is the exact interface, not a family. GenericSensorApi could not say which constructor was tried nor whether gravity would have been included; the three concrete sensors differ on precisely that, and only one of them suits a knock detector."
+
+fn witness_the_provider_is_an_exact_interface() -> Bool {
+  web_provider_key(p: DeviceMotionEventProvider) == "DeviceMotionEvent"
+    && web_provider_key(p: LinearAccelerationSensorProvider) == "LinearAccelerationSensor"
+    && web_provider_key(p: AccelerometerProvider) != web_provider_key(p: GravitySensorProvider)
+    && interface_suits_a_knock_detector(i: LinearAccelerationSensor)
+    && !interface_suits_a_knock_detector(i: AccelerometerSensor)
+    && !interface_suits_a_knock_detector(i: GravitySensor)
+    && accelerometer_interface_name(i: LinearAccelerationSensor) == "LinearAccelerationSensor"
 }
 
-data web_cannot_self_qualify_note: String = "The RED that keeps readability from becoming fitness across the seam: NO web stream arm projects to tap-discriminator-qualified. A browser reports events and samples; whether a knock was distinguishable is a judgement made over those samples against a declared requirement, so the web binding can never reach CapabilitySupported by projection alone."
+data upstream_route_note: String = "The Accelerometer extension itself says it is maintained for existing deployments and points new projects at Device Orientation and Motion for cross-engine support. That is why both routes are probed rather than either: DeviceMotion for breadth, LinearAccelerationSensor because a Generic Sensor lifecycle names its failure where a silent event stream names nothing."
+
+fn witness_the_upstream_names_device_motion_the_cross_engine_route() -> Bool {
+  maintained_for_existing_deployments
+    && upstream_recommends_device_orientation_for_new_projects
+}
+
+data projection_honesty_note: String = "THE THREE FABRICATIONS THIS CONTROL CLOSES. No events must not become an activation; an unmeasured frequency must not become zero hertz; an unmeasured noise floor must not become a perfect signal. The neutral silence arm now carries a lifecycle that says activation was never observed, and the sample receipt carries unobserved on every axis the web route does not supply."
+
+fn witness_the_web_stream_projects_without_inventing_facts() -> Bool {
+  binding_stream_key(s: project_binding_stream(o: discredited_probe_observation())) ==
+      "no-samples-observed-activation-unobserved"
+    && binding_stream_key(s: project_binding_stream(o: observation_with_stream(s: StreamActivatedNoReading { window_ms: 4000 }))) ==
+      "no-samples-observed-activated"
+    && binding_stream_key(s: project_binding_stream(o: observation_with_stream(s: StreamInterfaceNotExposed))) ==
+      "interface-unavailable"
+    && binding_stream_key(s: project_binding_stream(o: observation_with_stream(
+         s: StreamReadingsObserved { count: 42, peak_milli_m_per_s2: 3100, sample_interval_ms: 16 }))) ==
+      "samples-observed"
+}
+
+fn witness_red_an_unmeasured_frequency_is_not_zero_hertz() -> Bool {
+  match frequency_from_interval(sample_interval_ms: 16) {
+    FrequencyObserved { hz } => hz == 62
+    FrequencyUnobserved => false
+  }
+    && match frequency_from_interval(sample_interval_ms: 0) {
+         FrequencyUnobserved => true
+         FrequencyObserved { hz } => false
+       }
+}
+
+data web_cannot_self_qualify_note: String = "The RED that keeps readability from becoming fitness across the seam: no web stream arm projects to a qualified tap. A browser reports events and samples; whether a knock was distinguishable is a judgement made over those samples against a declared requirement, and the web receipt leaves the noise floor and axis count unobserved, so it could not qualify even if it tried."
 
 fn witness_red_no_web_arm_can_project_to_a_qualified_tap() -> Bool {
   binding_stream_key(s: project_binding_stream(o: observation_with_stream(
       s: StreamReadingsObserved { count: 9999, peak_milli_m_per_s2: 99999, sample_interval_ms: 1 }))) !=
-    "tap-discriminator-qualified"
+    "tap-qualified"
+}
+
+data contradiction_note: String = "An observation can be complete and still be impossible, and the earlier derivation read only the stream. Readings under an insecure context, a blocked policy, or a denied permission are each refused by the cited contracts, so they are located contradictions rather than verdicts — named separately because their remedies differ."
+
+fn contradicted_observation(c: ObservationContradiction) -> WebMotionObservation {
+  let base = observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 })
+  match c {
+    ReadingsUnderInsecureContext => WebMotionObservation {
+      host: base.host, provider: base.provider, browsing_context: base.browsing_context,
+      secure_context: SecureContextNo, visibility: base.visibility, focus: base.focus,
+      interface_exposure: base.interface_exposure, accelerometer_policy: base.accelerometer_policy,
+      gyroscope_policy: base.gyroscope_policy, permission_method: base.permission_method,
+      permission: base.permission, stream: base.stream,
+      observation_window_ms: base.observation_window_ms,
+    }
+    ReadingsUnderBlockedPolicy => WebMotionObservation {
+      host: base.host, provider: base.provider, browsing_context: base.browsing_context,
+      secure_context: base.secure_context, visibility: base.visibility, focus: base.focus,
+      interface_exposure: base.interface_exposure, accelerometer_policy: PolicyBlocksFeature,
+      gyroscope_policy: base.gyroscope_policy, permission_method: base.permission_method,
+      permission: base.permission, stream: base.stream,
+      observation_window_ms: base.observation_window_ms,
+    }
+    ReadingsUnderDeniedPermission => WebMotionObservation {
+      host: base.host, provider: base.provider, browsing_context: base.browsing_context,
+      secure_context: base.secure_context, visibility: base.visibility, focus: base.focus,
+      interface_exposure: base.interface_exposure, accelerometer_policy: base.accelerometer_policy,
+      gyroscope_policy: base.gyroscope_policy, permission_method: base.permission_method,
+      permission: PermissionObservedAs { state: PermissionDenied }, stream: base.stream,
+      observation_window_ms: base.observation_window_ms,
+    }
+  }
+}
+
+fn is_contradicted(o: WebMotionObservation) -> Bool {
+  match admit_web_observation(o: o) {
+    ObservationContradicted { contradictions } => contradictions.length() > 0
+    ObservationAdmitted { observation } => false
+  }
+}
+
+fn witness_red_a_contradictory_observation_refuses_rather_than_deriving() -> Bool {
+  is_contradicted(o: contradicted_observation(c: ReadingsUnderInsecureContext))
+    && is_contradicted(o: contradicted_observation(c: ReadingsUnderBlockedPolicy))
+    && is_contradicted(o: contradicted_observation(c: ReadingsUnderDeniedPermission))
+    && !is_contradicted(o: observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 }))
+    && !observation_is_coherent(o: contradicted_observation(c: ReadingsUnderInsecureContext))
+    && observation_is_coherent(o: discredited_probe_observation())
+    && contradiction_key(c: ReadingsUnderInsecureContext) != contradiction_key(c: ReadingsUnderBlockedPolicy)
+}
+
+fn witness_decisiveness_requires_coherence_too() -> Bool {
+  let coherent_full = observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 })
+  observation_is_decisive_and_coherent(o: coherent_full)
+    && !observation_is_decisive_and_coherent(o: contradicted_observation(c: ReadingsUnderBlockedPolicy))
+    && !observation_is_decisive_and_coherent(o: discredited_probe_observation())
 }
 
 test fn web_motion_binding_keystone_holds() -> Bool {
   witness_the_discredited_probe_resolves_nothing()
+    && witness_the_probe_left_six_axes_unread_and_no_window()
     && witness_red_silence_never_projects_to_an_absent_sensor()
-    && witness_the_probe_left_five_axes_unread_and_no_window()
-    && witness_only_a_reading_makes_motion_reachable()
     && witness_only_named_obstacles_are_unreachable()
-    && witness_red_a_refused_connection_is_not_an_absent_sensor()
     && witness_only_an_unexposed_interface_reaches_absent()
     && witness_hollow_events_are_distinct_from_silence()
     && witness_a_null_axis_is_not_a_zero_axis()
@@ -297,6 +374,11 @@ test fn web_motion_binding_keystone_holds() -> Bool {
     && witness_permission_prompt_is_not_a_grant()
     && witness_exposure_is_not_availability_and_every_failure_names_itself()
     && witness_red_activation_without_a_reading_is_not_success()
-    && witness_the_web_stream_projects_into_the_neutral_binding_stream()
+    && witness_the_provider_is_an_exact_interface()
+    && witness_the_upstream_names_device_motion_the_cross_engine_route()
+    && witness_the_web_stream_projects_without_inventing_facts()
+    && witness_red_an_unmeasured_frequency_is_not_zero_hertz()
     && witness_red_no_web_arm_can_project_to_a_qualified_tap()
+    && witness_red_a_contradictory_observation_refuses_rather_than_deriving()
+    && witness_decisiveness_requires_coherence_too()
 }

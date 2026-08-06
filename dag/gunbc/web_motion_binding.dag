@@ -3,10 +3,20 @@ module gunbc.web_motion_binding
 import std.types { String, Bool, Int, List, Milliseconds }
 import std.decl_ref { DeclarationRef }
 import gunbc.host_realization { HostRealization, ResolvedRef, ref_is_resolved, host_identity_is_exact }
+import extdeps.w3c.accelerometer {
+  AccelerometerInterface, AccelerometerSensor, LinearAccelerationSensor, GravitySensor,
+  accelerometer_interface_name, interface_suits_a_knock_detector,
+}
 import gunbc.capability_binding {
   BindingStreamState, InterfaceUnavailable, PolicyRefused, PermissionRefused,
-  BackendConnectionRefused, ActivatedNoSamples, HollowSamplesObserved, SamplesObserved,
+  BackendConnectionRefused, NoSamplesObserved, HollowSamplesObserved, SamplesObserved,
   BindingStreamUnobserved,
+  SampleLifecycle, LifecycleActivated, LifecycleActivationUnobserved,
+  SampleReceipt, FrequencyObservation, FrequencyObserved, FrequencyUnobserved,
+  NoiseFloorObservation, NoiseFloorObserved, NoiseFloorUnobserved,
+  AxisCountObservation, AxisCountObserved, AxisCountUnobserved,
+  GravityNormalization, GravityNormalized, GravityNotNormalized, GravityNormalizationUnobserved,
+  NegativeControl, NegativeControlNotRun,
 }
 import extdeps.w3c.device_orientation_and_motion {
   PermissionState, PermissionGranted, PermissionDenied, PermissionPrompt,
@@ -64,15 +74,30 @@ type PolicyAdmission
 
 data permission_observation_note: String = "The absence of the spec's requestPermission() method is a fact about the ENGINE, not about whether permission is required. An engine may apply its own per-site sensor permission without ever prompting and without implementing the standard's asking route, so PermissionMethodAbsent records that the standard route was unavailable and leaves the actual permission state to be observed some other way — it does not mean granted."
 
+data permission_axes_are_two_note: String = "METHOD EXPOSURE AND PERMISSION STATE ARE DIFFERENT AXES, AND FUSING THEM MADE AN OBSERVATION CALL ITSELF DECISIVE WHILE THE PERMISSION STAYED UNKNOWN (review finding, 2026-08-06). An earlier revision had one carrier whose PermissionMethodAbsent arm counted as a fully read axis — while this module's own note correctly said that method absence establishes nothing about the state, because an engine may apply its own per-site permission without ever implementing the standard's asking route. So the count said observed and the prose said unknown, and the count won.
+
+They are now two fields. Exposure is about the API surface and is genuinely observable by looking. State is about whether readings are admitted and is observable only by asking or by reading the Permissions API — so an engine with no requestPermission method has an OBSERVED exposure and an UNOBSERVED state, which is exactly the operator's Chrome receipt and is no longer mistakable for a complete reading."
+
+type PermissionMethodExposure
+  = PermissionMethodExposed
+  | PermissionMethodAbsent
+  | PermissionMethodExposureUnobserved
+
+fn permission_method_exposure_key(e: PermissionMethodExposure) -> String {
+  match e {
+    PermissionMethodExposed => "request-permission-method-exposed"
+    PermissionMethodAbsent => "request-permission-method-absent"
+    PermissionMethodExposureUnobserved => "request-permission-method-unobserved"
+  }
+}
+
 type PermissionObservation
   = PermissionObservedAs { state: PermissionState }
-  | PermissionMethodAbsent
   | PermissionObservationUnobserved
 
 fn permission_observation_key(p: PermissionObservation) -> String {
   match p {
     PermissionObservedAs { state } => permission_state_wire(s: state)
-    PermissionMethodAbsent => "request-permission-method-absent"
     PermissionObservationUnobserved => "permission-unobserved"
   }
 }
@@ -120,20 +145,37 @@ fn stream_delivered_a_value(s: MotionStreamState) -> Bool {
 
 data observation_window_note: String = "An observation with no window is not a measurement of silence, so the window is a field of the observation rather than an optional annotation on it. A window of zero means nothing was watched, which is a different claim from a window that elapsed and stayed quiet."
 
-type MotionApi
-  = DeviceMotionEventApi
-  | GenericSensorApi
+data exact_provider_note: String = "GENERIC-SENSOR WAS TOO COARSE TO SAY WHAT WAS TESTED (review finding, 2026-08-06). An earlier revision split the web into DeviceMotionEventApi and GenericSensorApi, and the second arm cannot say which constructor was tried, whether gravity was included in what it would have returned, or which specification's policy facts applied — three interfaces with three different meanings collapsed into one word. The provider is now the exact interface, each grounded in the specification that defines it: DeviceMotionEvent from Device Orientation and Motion, and the three concrete sensors from the Accelerometer extension."
 
-fn motion_api_key(a: MotionApi) -> String {
-  match a {
-    DeviceMotionEventApi => "device-motion-event"
-    GenericSensorApi => "generic-sensor"
+type WebMotionProvider
+  = DeviceMotionEventProvider
+  | AccelerometerProvider
+  | LinearAccelerationSensorProvider
+  | GravitySensorProvider
+
+fn web_provider_key(p: WebMotionProvider) -> String {
+  match p {
+    DeviceMotionEventProvider => "DeviceMotionEvent"
+    AccelerometerProvider => "Accelerometer"
+    LinearAccelerationSensorProvider => "LinearAccelerationSensor"
+    GravitySensorProvider => "GravitySensor"
+  }
+}
+
+data provider_gravity_note: String = "Gravity handling per provider, projected from the two cited specifications rather than restated: the Accelerometer extension says which of its three interfaces removes gravity, and DeviceMotionEvent supplies both an acceleration field and an accelerationIncludingGravity field, so its handling depends on which field a consumer reads and is honestly reported as consumer-selected rather than fixed."
+
+fn provider_removes_gravity(p: WebMotionProvider) -> Bool {
+  match p {
+    DeviceMotionEventProvider => true
+    AccelerometerProvider => interface_suits_a_knock_detector(i: AccelerometerSensor)
+    LinearAccelerationSensorProvider => interface_suits_a_knock_detector(i: LinearAccelerationSensor)
+    GravitySensorProvider => interface_suits_a_knock_detector(i: GravitySensor)
   }
 }
 
 type WebMotionObservation {
   host: HostRealization
-  api: MotionApi
+  provider: WebMotionProvider
   browsing_context: BrowsingContextPosition
   secure_context: SecureContextState
   visibility: DocumentVisibility
@@ -141,6 +183,7 @@ type WebMotionObservation {
   interface_exposure: InterfaceExposure
   accelerometer_policy: PolicyAdmission
   gyroscope_policy: PolicyAdmission
+  permission_method: PermissionMethodExposure
   permission: PermissionObservation
   stream: MotionStreamState
   observation_window_ms: Milliseconds
@@ -168,7 +211,10 @@ fn derive_reachability(o: WebMotionObservation) -> MotionReachability {
     StreamInterfaceNotExposed => MotionUnreachable { obstacle: "interface-not-exposed" }
     StreamPolicyBlocked => MotionUnreachable { obstacle: "policy-blocked" }
     StreamPermissionDenied => MotionUnreachable { obstacle: "permission-denied" }
-    StreamConnectionRefused { error_name } => MotionUnreachable { obstacle: error_name }
+    StreamConnectionRefused { error_name } =>
+      MotionReachabilityUnresolved {
+        pending: concat("the backend refused this connection attempt with ", concat(error_name, "; that describes one attempt, not the machine")),
+      }
     StreamActivatedNoReading { window_ms } =>
       MotionReachabilityUnresolved { pending: "activated but no reading within the observation window" }
     StreamNoEventsObserved { window_ms } =>
@@ -251,8 +297,15 @@ fn policy_unread(p: PolicyAdmission) -> Int {
 fn permission_unread(p: PermissionObservation) -> Int {
   match p {
     PermissionObservedAs { state } => 0
-    PermissionMethodAbsent => 0
     PermissionObservationUnobserved => 1
+  }
+}
+
+fn permission_method_unread(e: PermissionMethodExposure) -> Int {
+  match e {
+    PermissionMethodExposed => 0
+    PermissionMethodAbsent => 0
+    PermissionMethodExposureUnobserved => 1
   }
 }
 
@@ -272,6 +325,7 @@ fn unobserved_axis_count(o: WebMotionObservation) -> Int {
     policy_unread(p: o.accelerometer_policy) +
     policy_unread(p: o.gyroscope_policy) +
     permission_unread(p: o.permission) +
+    permission_method_unread(e: o.permission_method) +
     stream_unread(s: o.stream)
 }
 
@@ -283,25 +337,139 @@ data web_stream_projects_outward_note: String = "THE SEAM THAT MAKES THE WEB ONE
 
 The projection is deliberately NOT total in the optimistic direction: the web has no arm that reaches TapDiscriminatorQualified, because qualification is a fitness judgement made from samples rather than a state a browser reports. A web binding therefore cannot reach CapabilitySupported by projection alone — it gets there only once a discriminator actually runs over its samples and qualifies, which is exactly the readability-is-not-fitness rule stated as an unreachable arm rather than as a promise."
 
+data frequency_is_derived_not_invented_note: String = "Sample rate is DERIVED from the interval the observation actually carries, and stays unobserved when it does not. A reading whose sample interval is known gives a frequency by division; a reading with no interval gives FrequencyUnobserved, never zero. The noise floor and the observed axis count have no web source at all on this route today — the event carries neither — so both stay unobserved and a qualification needing them refuses on those dimensions rather than reading a fabricated zero as a pass."
+
+fn frequency_from_interval(sample_interval_ms: Milliseconds) -> FrequencyObservation {
+  if sample_interval_ms > 0 {
+    FrequencyObserved { hz: 1000 / sample_interval_ms }
+  } else {
+    FrequencyUnobserved
+  }
+}
+
+fn web_sample_receipt(count: Int, peak_milli: Int, sample_interval_ms: Milliseconds) -> SampleReceipt {
+  SampleReceipt {
+    count: count,
+    frequency: frequency_from_interval(sample_interval_ms: sample_interval_ms),
+    noise_floor: NoiseFloorUnobserved,
+    observed_axes: AxisCountUnobserved,
+    gravity: GravityNormalizationUnobserved,
+    peak_magnitude_milli: peak_milli,
+    detection_latency_ms: 0,
+    negative_control: NegativeControlNotRun,
+  }
+}
+
 fn project_binding_stream(o: WebMotionObservation) -> BindingStreamState {
   match o.stream {
     StreamInterfaceNotExposed => InterfaceUnavailable
     StreamPolicyBlocked => PolicyRefused
     StreamPermissionDenied => PermissionRefused
     StreamConnectionRefused { error_name } => BackendConnectionRefused { error_name: error_name }
-    StreamActivatedNoReading { window_ms } => ActivatedNoSamples { window_ms: window_ms }
-    StreamNoEventsObserved { window_ms } => ActivatedNoSamples { window_ms: window_ms }
+    StreamActivatedNoReading { window_ms } =>
+      NoSamplesObserved { lifecycle: LifecycleActivated, window_ms: window_ms }
+    StreamNoEventsObserved { window_ms } =>
+      NoSamplesObserved { lifecycle: LifecycleActivationUnobserved, window_ms: window_ms }
     StreamHollowEventsObserved { count, window_ms } =>
       HollowSamplesObserved { count: count, window_ms: window_ms }
     StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } =>
       SamplesObserved {
-        count: count,
-        frequency_hz: 0,
-        noise_floor_milli: 0,
-        peak_magnitude_milli: peak_milli_m_per_s2,
+        receipt: web_sample_receipt(
+          count: count,
+          peak_milli: peak_milli_m_per_s2,
+          sample_interval_ms: sample_interval_ms),
       }
     StreamUnobserved => BindingStreamUnobserved
   }
 }
 
-data silence_projects_to_activated_no_samples_note: String = "Both web silences — no events at all, and an activated sensor that never read — project to ActivatedNoSamples, and that merge is a LOSS the web vocabulary keeps beside it rather than a claim. Downstream the two have the same remedy and the same verdict, so the neutral layer does not need to tell them apart; the receipt panel renders the exact web arm, which does."
+data silence_carries_its_lifecycle_note: String = "THE TWO WEB SILENCES STAY DISTINGUISHABLE DOWNSTREAM, AND AN EARLIER REVISION MERGED THEM WHILE CALLING IT A LOSS RATHER THAN A FABRICATION (review finding, 2026-08-06). No events at all and an activated sensor that never read are different facts: the first says the dispatch path never ran, the second says it ran and produced nothing, and only the second involves a sensor object that reached the activated lifecycle state. Projecting the first into an arm named ActivatedNoSamples asserted an activation that never happened — and a witness pinned it, which made the invention load-bearing. The neutral arm now carries the lifecycle, so the merge is a real widening of the remedy rather than a claim about what occurred."
+
+data coherence_admission_note: String = "AN OBSERVATION CAN BE COMPLETE AND STILL BE IMPOSSIBLE, AND THE EARLIER DERIVATION READ ONLY THE STREAM (review finding, 2026-08-06). Nothing stopped a record from carrying an insecure context, a blocked policy, a denied permission AND arriving readings at once — and derive_reachability, which matches on the stream arm alone, would have called that reachable. Every one of those combinations is refused by the cited contracts: the interfaces are [SecureContext], readings are unavailable to a document the policy does not admit, and devicemotion dispatches only when both named permissions are granted. So a contradiction is a located refusal rather than a verdict, and completeness alone no longer makes an observation decisive.
+
+The three contradictions are named individually rather than folded into one because their remedies differ: an insecure origin is fixed by serving over HTTPS, a blocked policy by delegating the feature, and a denied permission by asking again."
+
+type ObservationContradiction
+  = ReadingsUnderInsecureContext
+  | ReadingsUnderBlockedPolicy
+  | ReadingsUnderDeniedPermission
+
+fn contradiction_key(c: ObservationContradiction) -> String {
+  match c {
+    ReadingsUnderInsecureContext => "readings-under-insecure-context"
+    ReadingsUnderBlockedPolicy => "readings-under-blocked-policy"
+    ReadingsUnderDeniedPermission => "readings-under-denied-permission"
+  }
+}
+
+fn stream_carries_readings(s: MotionStreamState) -> Bool {
+  match s {
+    StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } => true
+    StreamHollowEventsObserved { count, window_ms } => true
+    _ => false
+  }
+}
+
+fn contradiction_when(holds: Bool, c: ObservationContradiction) -> List<ObservationContradiction> {
+  if holds {
+    [c]
+  } else {
+    []
+  }
+}
+
+fn insecure_contradiction(o: WebMotionObservation) -> List<ObservationContradiction> {
+  match o.secure_context {
+    SecureContextNo =>
+      contradiction_when(holds: stream_carries_readings(s: o.stream), c: ReadingsUnderInsecureContext)
+    _ => []
+  }
+}
+
+fn policy_contradiction(o: WebMotionObservation) -> List<ObservationContradiction> {
+  match o.accelerometer_policy {
+    PolicyBlocksFeature =>
+      contradiction_when(holds: stream_carries_readings(s: o.stream), c: ReadingsUnderBlockedPolicy)
+    _ => []
+  }
+}
+
+fn permission_contradiction(o: WebMotionObservation) -> List<ObservationContradiction> {
+  match o.permission {
+    PermissionObservedAs { state } => match state {
+      PermissionDenied =>
+        contradiction_when(holds: stream_carries_readings(s: o.stream), c: ReadingsUnderDeniedPermission)
+      _ => []
+    }
+    _ => []
+  }
+}
+
+fn observation_contradictions(o: WebMotionObservation) -> List<ObservationContradiction> {
+  concat(
+    insecure_contradiction(o: o),
+    concat(policy_contradiction(o: o), permission_contradiction(o: o)))
+}
+
+type WebMotionObservationAdmission
+  = ObservationAdmitted { observation: WebMotionObservation }
+  | ObservationContradicted { contradictions: List<ObservationContradiction> }
+
+fn admit_web_observation(o: WebMotionObservation) -> WebMotionObservationAdmission {
+  let found = observation_contradictions(o: o)
+  if found.length() == 0 {
+    ObservationAdmitted { observation: o }
+  } else {
+    ObservationContradicted { contradictions: found }
+  }
+}
+
+data decisiveness_note: String = "Decisive now means three things together: every axis was read, the window was positive, and the axes do not contradict each other. Exact host identity is deliberately NOT one of them — an observation from a partially identified host is still a real, useful observation — and the durable support claim is gated separately, in gunbc.capability_binding, where it belongs."
+
+fn observation_is_coherent(o: WebMotionObservation) -> Bool {
+  observation_contradictions(o: o).length() == 0
+}
+
+fn observation_is_decisive_and_coherent(o: WebMotionObservation) -> Bool {
+  observation_is_decisive(o: o) && observation_is_coherent(o: o)
+}

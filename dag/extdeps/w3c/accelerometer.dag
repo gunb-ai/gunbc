@@ -1,0 +1,111 @@
+module extdeps.w3c.accelerometer
+
+import std.types { String, Bool, Int, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/accelerometer/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.w3c.accelerometer",
+      decl_name: "AccelerometerInterface",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data accelerometer_note: String = "Cited upstream: W3C Accelerometer, Candidate Recommendation Draft, 14 May 2026. This is a SEPARATE specification from the Generic Sensor base and therefore a separate authority (DESIGN §3): the base defines the Sensor framework and explicitly delegates concrete interfaces, feature tokens and semantics to extension specifications, and this is that extension. The three concrete interfaces a motion consumer can actually construct live here, not there.
+
+It contains no browser and no platform behavior. Whether an engine implements these interfaces, and whether a machine's hardware can serve them, are execution facts about that engine and that host."
+
+data spec_edition: String = "Candidate Recommendation Draft, 14 May 2026"
+
+data maintenance_posture_note: String = "THE UPSTREAM'S OWN GUIDANCE, RECORDED BECAUSE IT DECIDES WHICH ROUTE IS PRIMARY. The specification states: 'This specification is maintained for existing deployments. Multiple browser engines have expressed concerns about this specification. For new projects, developers should use Device Orientation and Motion, which has cross-engine support.'
+
+That is the upstream telling us the cross-engine route is Device Orientation and Motion, and it is why a consumer should probe BOTH rather than either: DeviceMotion as the primary route because it has the breadth, and LinearAccelerationSensor as a separately observed secondary route because it answers a question DeviceMotion cannot — a Generic Sensor lifecycle produces a NAMED error when it cannot connect, where a silent DeviceMotion stream names nothing. Dropping the secondary probe would give up the only route that can distinguish a missing backend from a missing permission from a missing sensor."
+
+data maintained_for_existing_deployments: Bool = true
+data upstream_recommends_device_orientation_for_new_projects: Bool = true
+
+data interface_family_note: String = "Three interfaces, and the inheritance is load-bearing rather than incidental: LinearAccelerationSensor and GravitySensor both EXTEND Accelerometer in the IDL, so all three expose the same three nullable axes and differ only in what the reading means. That difference is entirely about gravity, which is why a consumer choosing among them is really declaring how it wants gravity handled."
+
+type AccelerometerInterface
+  = AccelerometerSensor
+  | LinearAccelerationSensor
+  | GravitySensor
+
+fn accelerometer_interface_name(i: AccelerometerInterface) -> String {
+  match i {
+    AccelerometerSensor => "Accelerometer"
+    LinearAccelerationSensor => "LinearAccelerationSensor"
+    GravitySensor => "GravitySensor"
+  }
+}
+
+data gravity_semantics_note: String = "WHAT EACH INTERFACE MEASURES, QUOTED, because this is the fact that selects one. Accelerometer reports 'the acceleration applied to the X, Y and Z axis of a device that hosts the sensor', which includes gravity. LinearAccelerationSensor reports 'acceleration that is applied to the device that hosts the sensor, without the contribution of a gravity force'. GravitySensor reports 'the acceleration due to gravity about the corresponding axes'.
+
+A knock detector wants gravity gone: a constant one-gravity bias sits far above any plausible discriminating threshold and would swamp it. So LinearAccelerationSensor is the interface a tap discriminator should ask for, and that choice is DERIVED from the requirement's declared gravity handling rather than picked."
+
+type GravityContribution
+  = GravityContributionIncluded
+  | GravityContributionRemoved
+  | GravityContributionOnly
+
+fn interface_gravity_contribution(i: AccelerometerInterface) -> GravityContribution {
+  match i {
+    AccelerometerSensor => GravityContributionIncluded
+    LinearAccelerationSensor => GravityContributionRemoved
+    GravitySensor => GravityContributionOnly
+  }
+}
+
+fn interface_suits_a_knock_detector(i: AccelerometerInterface) -> Bool {
+  match interface_gravity_contribution(i: i) {
+    GravityContributionRemoved => true
+    GravityContributionIncluded => false
+    GravityContributionOnly => false
+  }
+}
+
+data axes_are_nullable_note: String = "All three interfaces declare 'readonly attribute double? x' and likewise y and z — nullable, exactly as the Device Orientation and Motion event fields are. So the event-versus-value distinction survives on this route too: a reading can arrive with every axis null, and a consumer counting readings is counting something weaker than values."
+
+data axis_x_property: String = "x"
+data axis_y_property: String = "y"
+data axis_z_property: String = "z"
+data axis_count: Int = 3
+data axes_are_nullable: Bool = true
+
+data reference_frame_note: String = "The spec's AccelerometerLocalCoordinateSystem enum, defaulting to device. It matters for a chassis knock because the device frame is fixed to the hardware while the screen frame rotates with the display, so a knock's axis decomposition differs between them; the default is the one that describes the physical object being struck."
+
+type AccelerometerReferenceFrame
+  = DeviceFrame
+  | ScreenFrame
+
+fn reference_frame_wire(f: AccelerometerReferenceFrame) -> String {
+  match f {
+    DeviceFrame => "device"
+    ScreenFrame => "screen"
+  }
+}
+
+data default_reference_frame: String = "device"
+
+data policy_token_note: String = "THE TOKEN IS CITED, AND ITS HOME IS NOT THIS SPECIFICATION. The sensor permission name and sensor feature name are both 'accelerometer', and this spec takes that token as defined in Device Orientation and Motion. So the same string grounds both web routes from a single upstream home, which is why extdeps.w3c.device_orientation_and_motion carries it and this module references the relationship rather than minting a second copy (DESIGN §3)."
+
+data accelerometer_permission_name: String = "accelerometer"
+
+data secure_context_note: String = "All three interfaces are declared [SecureContext, Exposed=Window], so none of them exists on an insecure origin and none is available to a worker."
+
+data interfaces_are_secure_context_only: Bool = true
+
+data unit_label: String = "m/s^2"
