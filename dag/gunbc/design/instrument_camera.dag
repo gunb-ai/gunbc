@@ -61,6 +61,22 @@ fn program_depth_index(d: ProgramDepth) -> Int {
   }
 }
 
+fn program_depths() -> List<ProgramDepth> {
+  [DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence]
+}
+
+fn instrument_user_depths() -> List<ProgramDepth> {
+  [DepthProgram, DepthOutcome, DepthFront]
+}
+
+fn instrument_depth_keys() -> List<String> {
+  map(program_depths(), d => program_depth_key(d: d))
+}
+
+fn instrument_user_depth_keys() -> List<String> {
+  map(instrument_user_depths(), d => program_depth_key(d: d))
+}
+
 data depth_ordering_note: String = "program_depth_index exists so a detent crossing is DERIVED rather than authored: one wheel threshold or one arrow key moves the index by exactly one, and the dial's rendered position is the index. Authoring a per-pair transition table would be the same ordering said twice."
 
 data depth_detent_step_note: String = "A depth change crosses AT MOST ONE detent, by construction: step_depth takes a direction, not a target, so no caller can jump from the outermost detent to the innermost in one gesture and no continuous zoom can exist. Clamping at the ends is deliberate and is not an absorbing fallback — the request is fully answered ('you are already at the outermost detent'), nothing is widened, and a caller that wants to know whether it moved compares the returned depth."
@@ -99,6 +115,14 @@ fn program_mode_key(m: ProgramMode) -> String {
     ModeRemaining => "remaining"
     ModeWhy => "why"
   }
+}
+
+fn program_modes() -> List<ProgramMode> {
+  [ModeStatus, ModeRemaining, ModeWhy]
+}
+
+fn instrument_mode_keys() -> List<String> {
+  map(program_modes(), m => program_mode_key(m: m))
 }
 
 data focus_is_a_key_not_a_fact_note: String = "FocusSubject carries the finish line's KEY, not its spec. That is what keeps the camera structurally unable to hold a program fact: a key is an identity the authoritative view can resolve, while a spec would be a copy of V0's claim living in local state, free to drift from the thing it names. Selecting nothing is a real state — the instrument opens with no subject chosen — so it is a variant rather than an empty string."

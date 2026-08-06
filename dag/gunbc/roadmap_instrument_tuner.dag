@@ -20,6 +20,7 @@ import gunbc.design.instrument_camera {
   DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence,
   ModeStatus, ModeRemaining, ModeWhy,
   program_depth_key, program_mode_key, program_depth_index,
+  program_depths, program_modes, instrument_user_depths,
   camera_initial, camera_wire, focus_finish_line,
   FocusSubject, NoSubjectSelected,
 }
@@ -102,18 +103,6 @@ fn tuner_control_rules() -> List<BuildRule> {
 
 fn instrument_tuner_css() -> String {
   join([instrument_css(), serialize_rules(rules: tuner_control_rules())], "\n")
-}
-
-fn program_depths() -> List<ProgramDepth> {
-  [DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence]
-}
-
-fn instrument_user_depths() -> List<ProgramDepth> {
-  [DepthProgram, DepthOutcome, DepthFront]
-}
-
-fn program_modes() -> List<ProgramMode> {
-  [ModeStatus, ModeRemaining, ModeWhy]
 }
 
 fn all_focus_subjects() -> List<FocusSubject> {

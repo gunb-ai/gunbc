@@ -13,11 +13,12 @@ import gunbc.design.instrument_camera {
   camera_storage_key, camera_wire, camera_initial, camera_wire_sep,
   ProgramCamera, DepthFront,
   wheel_detent_threshold_px, wheel_gesture_reset_interval,
+  instrument_user_depths, instrument_user_depth_keys, program_depth_key,
 }
 import std.measure { millisecond_count }
 import gunbc.roadmap_instrument_tuner {
   instrument_tuner_css, instrument_tuner_camera_population_joined,
-  reading_row, instrument_user_depths,
+  reading_row,
 }
 import gunbc.roadmap_program_view { V1DeletionProgramView, RemainingShape, ProposedCarrierAbsent }
 import extdeps.languages.html_fragment { serialize_fragment }
@@ -80,7 +81,8 @@ fn witness_the_page_pre_renders_every_camera_state() -> Bool {
 }
 
 fn witness_the_page_exposes_only_mvp_depth_controls() -> Bool {
-  count(instrument_user_depths()) == 3
+  map(instrument_user_depths(), d => program_depth_key(d: d)) == instrument_user_depth_keys()
+    && count(instrument_user_depth_keys()) == 3
 }
 
 fn witness_exactly_one_initial_reading_row_is_visible_in_html() -> Bool {

@@ -44,6 +44,7 @@ import gunbc.design.instrument_camera {
   program_mode_key, ModeStatus, ModeRemaining, ModeWhy,
   focus_subject_key, NoSubjectSelected,
   wheel_detent_threshold_px, wheel_gesture_reset_interval,
+  instrument_depth_keys, instrument_user_depth_keys, instrument_mode_keys,
 }
 import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_line_key }
 import extdeps.web_audio {
@@ -2999,32 +3000,6 @@ data js_instrument_normalize_wheel_fn: String = "gunbcNormalizeWheelDelta"
 data js_instrument_consume_wheel_fn: String = "gunbcConsumeWheelTravel"
 data js_instrument_handle_wheel_fn: String = "gunbcHandleInstrumentWheel"
 data js_instrument_wheel_threshold_const: String = "INSTRUMENT_WHEEL_THRESHOLD"
-
-fn instrument_user_depth_keys() -> List<String> {
-  [
-    program_depth_key(d: DepthProgram),
-    program_depth_key(d: DepthOutcome),
-    program_depth_key(d: DepthFront),
-  ]
-}
-
-fn instrument_depth_keys() -> List<String> {
-  [
-    program_depth_key(d: DepthProgram),
-    program_depth_key(d: DepthOutcome),
-    program_depth_key(d: DepthFront),
-    program_depth_key(d: DepthNode),
-    program_depth_key(d: DepthEvidence),
-  ]
-}
-
-fn instrument_mode_keys() -> List<String> {
-  [
-    program_mode_key(m: ModeStatus),
-    program_mode_key(m: ModeRemaining),
-    program_mode_key(m: ModeWhy),
-  ]
-}
 
 fn instrument_focus_keys() -> List<String> {
   concat(
