@@ -45,6 +45,7 @@ import gunbc.package_delivery {
   admit_codex_registry_artifact_locator,
   CodexRegistryLocatorAdmitted,
   CodexRegistryLocatorRefused,
+  admitted_and_executed_lock_bytes_agree,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -332,6 +333,17 @@ test fn lockfile_v2_text_refuses() -> Bool {
     NpmPackageLockParseRefused { cause: _ } => true
     NpmPackageLockParsed { manager: _, nodes: _, unsupported: _, graph: _ } => false
   }
+}
+
+test fn admitted_and_executed_lock_bytes_disagree_when_forked() -> Bool {
+  admitted_and_executed_lock_bytes_agree(
+    admitted_lock_bytes: committed_codex_lock_text(),
+    executed_lock_bytes: "{\"lockfileVersion\":3,\"packages\":{}}",
+  ) == false
+    && admitted_and_executed_lock_bytes_agree(
+      admitted_lock_bytes: committed_codex_lock_text(),
+      executed_lock_bytes: committed_codex_lock_text(),
+    )
 }
 
 test fn link_node_is_unsupported_not_half_modeled() -> Bool {

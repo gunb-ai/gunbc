@@ -69,3 +69,14 @@ fn codex_app_server_account_read_request_line() -> NonEmptyStr {
 fn codex_app_server_rate_limits_read_request_line() -> NonEmptyStr {
   "\{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"account/rateLimits/read\",\"params\":\{\}\}" as NonEmptyStr
 }
+
+data codex_app_server_response_shape_note: String = "Response carriers for initialize / account/read / account/rateLimits/read are grounded here as cited wire field keys from the 0.146 generate-json-schema ClientRequest companion responses. Full AST decoder types that bind protocol_schema_identity are the dissolve-on; until then product modules MUST consume these keys rather than invent alternate spellings."
+
+data codex_initialize_result_user_agent_key: NonEmptyStr = "userAgent" as NonEmptyStr
+data codex_account_read_result_requires_openai_auth_key: NonEmptyStr = "requiresOpenaiAuth" as NonEmptyStr
+data codex_account_read_result_account_key: NonEmptyStr = "account" as NonEmptyStr
+data codex_rate_limits_result_rate_limits_key: NonEmptyStr = "rateLimits" as NonEmptyStr
+data codex_structured_error_code_rate_limit_reached: NonEmptyStr = "rate_limit_reached" as NonEmptyStr
+data codex_structured_error_code_quota_exceeded: NonEmptyStr = "quota_exceeded" as NonEmptyStr
+data codex_structured_error_code_authentication_required: NonEmptyStr = "authentication_required" as NonEmptyStr
+
