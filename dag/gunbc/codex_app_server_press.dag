@@ -40,6 +40,7 @@ import extdeps.llm.codex_app_server {
 }
 import gunbc.retained_shell_script { retained_foreign }
 import extdeps.shell
+import extdeps.shell.exec
 import extdeps.languages.json.emit {
   JsonValue, JsonObject, JsonString, JsonNumber, JsonBool, JsonArray, JsonNull,
 }
@@ -104,7 +105,7 @@ fn codex_press_method_itinerary() -> CodexPressItinerary {
   codex_press_turn_itinerary_target()
 }
 
-data codex_press_standing_evidence_note: String = "Account standing is derived from ONE held-open app-server --stdio session: three JSON-RPC requests (ids 1/2/3) with per-id typed result/error correlation and duplicate-id refusal. Wire capture is retained privately under gunbc.host_layout.srv1_provider_wire_evidence_root via gunbc.provider_wire_evidence (SHA-512 content-addressed stdout/stderr). Unknown NDJSON frames are digested SHA-512 through the same retention path. Ready requires AccountTripResponseUnique on ids 1/2/3 with typed result bodies. Incomplete is refused (RED). Login/quota are typed arms. methods_attempted is the typed itinerary, never a free-form string that can disagree with the outcome."
+data codex_press_standing_evidence_note: String = "Account standing is derived from ONE held-open app-server --stdio session: three JSON-RPC requests (ids 1/2/3) with per-id typed result/error correlation and duplicate-id refusal. Wire capture is retained privately under gunbc.host_layout.srv1_provider_wire_evidence_root via gunbc.provider_wire_evidence (SHA-512 content-addressed stdout/stderr). Unknown NDJSON frames are digested SHA-512 through the same retention path; retention failure is Incomplete, never silent drop. AuthenticatedRateLimitsReadable requires AccountTripResponseUnique on ids 1/2/3 with typed result bodies AND retained wire evidence. Incomplete is refused (RED). Login/quota are typed arms. methods_attempted is the typed itinerary, never a free-form string that can disagree with the outcome."
 
 type AccountTripFrameDisposition
   = AccountTripResultOk

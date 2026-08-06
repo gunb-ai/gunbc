@@ -45,6 +45,7 @@ import extdeps.package {
 import extdeps.version { VersionIdentity }
 import extdeps.http.client
 import extdeps.shell
+import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io
 import extdeps.tools.sha512sum {
   sha512sum_observe_file,
@@ -1267,17 +1268,17 @@ fn observe_protocol_schema_identity(
             f: (acc, abs) => match acc {
               Absent => none
               Present { value: so_far } => {
-                let rel =
-                  if (abs as String).starts_with(prefix: schema_prefix) {
-                    substring(
-                      s: abs as String,
-                      start: schema_prefix.length(),
-                      end: (abs as String).length(),
-                    )
-                  } else {
-                    abs as String
-                  }
-                let raw = Filesystem.Read(path: abs as String)
+                let abs_s = abs as String
+                let rel = if abs_s.starts_with(prefix: schema_prefix) {
+                  substring(
+                    s: abs_s,
+                    start: schema_prefix.length(),
+                    end: abs_s.length(),
+                  )
+                } else {
+                  abs_s
+                }
+                let raw = Filesystem.Read(path: abs_s)
                 if raw.success == false {
                   none
                 } else {
