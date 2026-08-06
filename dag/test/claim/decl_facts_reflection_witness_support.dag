@@ -1,7 +1,13 @@
 module test.claim.decl_facts_reflection_witness_support
 
 import gunbc.ci_layer_roots { witness_layer_roots }
+import test.fixture.decl_facts_reflection.ambiguous_shared_b
+import test.fixture.decl_facts_reflection.ambiguous_specimen
+import test.fixture.decl_facts_reflection.globally_unique_carrier
+import test.fixture.decl_facts_reflection.specimens
+import test.fixture.decl_facts_reflection.unimported_globally_unique_user
 import v2.std.decl_index { DeclFact, decl_facts }
+import std.algebra { Empty }
 import v2.std.optional { optional_present, optional_absent }
 import v2.std.data_initializer_identity {
   projection_kind_lexeme_optional,
@@ -36,7 +42,7 @@ fn decl_facts_reflection_lookup_with_appended_duplicate(qn: String) -> DeclFactL
     DeclFactUnique { fact: fact } =>
       decl_fact_lookup_by_qualified_name(
         qn: qn,
-        facts: list_snoc_item(xs: decl_facts_reflection_fixture_facts, item: fact)
+        facts: list_snoc_item(xs: list_snoc_item(xs: Empty, item: fact), item: fact)
       )
     lookup => lookup
   }

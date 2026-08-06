@@ -147,7 +147,7 @@ fn declaration_identity_qualified_name(ctx: &InterpContext, projection: &Value) 
 }
 
 const SPECIMENS_REL: &str = "dag/test/fixture/decl_facts_reflection/specimens.dag";
-const DISPOSITION_SCaffold_QN: &str =
+const DISPOSITION_SCAFFOLD_QN: &str =
     "test.fixture.decl_facts_reflection.specimens.disposition_scaffold";
 
 fn specimens_ctx() -> InterpContext {
@@ -160,9 +160,57 @@ fn specimens_ctx() -> InterpContext {
 }
 
 #[test]
+#[ignore = "whole-tree resolve (~minutes); run with: cargo test witness_layer_decl_facts_disposition_scaffold -- --ignored --nocapture"]
+fn witness_layer_decl_facts_disposition_scaffold_fact_is_coproduct_record() {
+    use v1_compiler::cli_run::whole_tree_resolved_ctx;
+    use v1_compiler::coproduct_reflection::eval_decl_facts;
+
+    let roots = vec!["dag".to_string(), "src/v2".to_string()];
+    let whole = whole_tree_resolved_ctx(&roots, &[], ExecutionMode::Hermetic)
+        .expect("witness layer whole-tree resolve");
+    let facts = eval_decl_facts(&whole.ctx, &roots).expect("decl_facts must complete");
+    let qn_key = whole.ctx.sym("qualified_name");
+    let node_key = whole.ctx.sym("node");
+    let mut found = false;
+    match &facts {
+        Value::List(rows) => {
+            for row in rows.iter() {
+                let fields = match row {
+                    Value::Record { fields, .. } => fields,
+                    _ => continue,
+                };
+                let qn = match fields.iter().find(|(k, _)| *k == qn_key) {
+                    Some((_, Value::Str(s))) => s.as_str(),
+                    _ => continue,
+                };
+                if qn != DISPOSITION_SCAFFOLD_QN {
+                    continue;
+                }
+                found = true;
+                let node = fields
+                    .iter()
+                    .find(|(k, _)| *k == node_key)
+                    .map(|(_, v)| v)
+                    .expect("DeclFact.node");
+                assert_eq!(
+                    projection_kind_lexeme(&whole.ctx, node),
+                    Some("DataInitializerRecordProjection".to_string()),
+                    "witness-layer decl_facts must marshal disposition_scaffold as coproduct record"
+                );
+            }
+        }
+        _ => panic!("expected list"),
+    }
+    assert!(
+        found,
+        "disposition_scaffold must appear in witness-layer decl_facts"
+    );
+}
+
+#[test]
 fn disposition_scaffold_marshals_coproduct_record_projection() {
     let ctx = specimens_ctx();
-    let projection = marshal_data_initializer_projection(&ctx, DISPOSITION_SCaffold_QN)
+    let projection = marshal_data_initializer_projection(&ctx, DISPOSITION_SCAFFOLD_QN)
         .expect("disposition scaffold must marshal without error");
     assert_eq!(
         projection_kind_lexeme(&ctx, &projection),

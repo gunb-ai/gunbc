@@ -190,17 +190,8 @@ test fn decl_facts_reflection_lookup_ambiguous_arrives_at_consumer() -> Bool {
 }
 
 test fn decl_fact_lookup_duplicate_qualified_identity_returns_ambiguous_both_candidates() -> Bool {
-  match decl_fact_lookup_by_qualified_name(qn: disposition_scaffold_qn, facts: decl_facts_reflection_fixture_facts) {
-    DeclFactUnique { fact: fact } =>
-      match decl_fact_lookup_by_qualified_name(
-        qn: disposition_scaffold_qn,
-        facts: list_snoc_item(xs: decl_facts_reflection_fixture_facts, item: fact)
-      ) {
-        DeclFactAmbiguous { candidates: cands } => length(xs: cands) == 2
-        _ => false
-      }
-    _ => false
-  }
+  let lookup = decl_facts_reflection_lookup_with_appended_duplicate(qn: disposition_scaffold_qn)
+  decl_fact_lookup_is_ambiguous(lookup: lookup) && decl_fact_lookup_candidate_count(lookup: lookup) == 2
 }
 
 test fn decl_facts_reflection_unimported_globally_unique_refuses_constructor_resolution() -> Bool {
