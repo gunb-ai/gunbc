@@ -50,6 +50,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_magnitude",
         "std_measure",
         "std_types",
+        "std_unicode_types",
         "std_lens_verdict",
         "std_algebra",
         "std_nat",

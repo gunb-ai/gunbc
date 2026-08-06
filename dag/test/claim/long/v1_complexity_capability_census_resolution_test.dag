@@ -1,0 +1,122 @@
+module test.claim.long.v1_complexity_capability_census_resolution_test
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import v2.lens.complexity { complexity_variables_admits, complexity_variables_vacuous_validation }
+import v2.std.refinement { VacuousValidation, VacuousAdmits, vacuous_admits_marker }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.types { String, NonEmptyStr, Bool, List }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
+import v2.std.decl_index { DeclFact, decl_facts }
+import v2.std.decl_ref_resolution {
+  resolve_declaration_ref,
+  declaration_ref_resolves,
+  cited_declaration_ref_refusal_count,
+  DeclarationRefResolved,
+  DeclarationRefModuleAbsent,
+  DeclarationRefDeclarationAbsent,
+  DeclarationRefAmbiguous,
+}
+import gunbc.v1_complexity_capability_census {
+  v1_complexity_inventory_roster,
+  capability_all_declaration_refs,
+  capability_cited_carrier,
+  call_graph_and_scc,
+  asymptotic_class_and_dominance,
+}
+
+data resolution_witness_note: String = "The exact half of C0(b1) citation hygiene, in the long lane because each witness pays a full witness-layer decl_facts scan — the same reason test.claim.long.cited_symbol_resolution_witness_test lives here (operator 5s fast-lane rule). This replaces the previous revision's string_contains check, which could green when a name survived only inside a note, appeared as a substring of another declaration, was ambiguous across modules, or named a declaration of the wrong kind. Resolution here is the repository's single resolution authority: a typed DeclarationRef resolves to exactly one declaration_identity or refuses with one of five typed arms."
+
+data file_is_observed_not_authored_note: String = "The census no longer authors a file path beside each symbol. A resolved declaration_identity carries rel_path as an OBSERVED property, so the file a capability lives in is derived from resolution rather than being a second authored identity that can drift from the first. That was the operator's structural point: CitedSymbol { symbol, file } is two identities for one declaration."
+
+data census_resolution_pool_note: String = "The pool must contain the seed, because half of every row's citations point into v1.compiler.complexity — the module this census is ABOUT. witness_layer_roots is [dag, src/v2] and deliberately excludes src/v1, so resolving against it would refuse every v1 carrier with DeclarationRefModuleAbsent and the witness would be measuring its own pool rather than the citations. The wider envelope follows the precedent ci_layer_roots already sets for v1-subject witnesses (compile_clean_source_roots appends src/v1; v1_claim_scoped_witness_batch runs at [dag, src/v1]), and it is scoped to this witness rather than widening the shared roster."
+
+data census_resolution_pool_roots: List<String> = ["dag", "src/v2", "src/v1"]
+
+data census_resolution_facts: List<DeclFact> = decl_facts(pool_roots: census_resolution_pool_roots)
+
+data census_resolution_modules: List<ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: census_resolution_pool_roots)
+
+test fn census_every_declaration_ref_resolves_exactly() -> Bool {
+  cited_declaration_ref_refusal_count(
+    refs: capability_all_declaration_refs(rows: v1_complexity_inventory_roster),
+    facts: census_resolution_facts,
+    modules: census_resolution_modules
+  ) == 0
+}
+
+data census_resolution_red_controls_note: String = "Three planted refusals, one per failure mode the substring check could not see. A declaration that does not exist must refuse with DeclarationRefDeclarationAbsent rather than greening because the spelling appears in a note; a module that does not exist must refuse with DeclarationRefModuleAbsent. Both are controlled fixtures authored here, which is the oracle form the repository sanctions — this witness authors the input and the expected verdict."
+
+test fn census_absent_declaration_refuses() -> Bool {
+  match resolve_declaration_ref(
+    ref: decl_ref(module_path: "v1.compiler.complexity", decl_name: "this_declaration_does_not_exist_in_the_seed"),
+    facts: census_resolution_facts,
+    modules: census_resolution_modules
+  ) {
+    DeclarationRefDeclarationAbsent { reference: _ } => true
+    _ => false
+  }
+}
+
+test fn census_absent_module_refuses() -> Bool {
+  match resolve_declaration_ref(
+    ref: decl_ref(module_path: "v1.compiler.this_module_does_not_exist", decl_name: "classify_complexity"),
+    facts: census_resolution_facts,
+    modules: census_resolution_modules
+  ) {
+    DeclarationRefModuleAbsent { reference: _ } => true
+    _ => false
+  }
+}
+
+data census_prose_only_name_note: String = "The discriminating control for the exact defect the operator named: a name that survives only inside a note string must NOT resolve. 'basis Derived' appears verbatim in the seed's cost_account_space_from_summary note, so a substring check finds it; as a DeclarationRef it is not a declaration and resolution refuses. This is the difference between the old check and this one, executed."
+
+test fn census_prose_only_name_does_not_resolve() -> Bool {
+  !declaration_ref_resolves(
+    ref: decl_ref(module_path: "v1.compiler.complexity", decl_name: "Derived"),
+    facts: census_resolution_facts,
+    modules: census_resolution_modules
+  )
+}
+
+test fn census_resolved_identity_carries_observed_path() -> Bool {
+  match capability_cited_carrier(c: asymptotic_class_and_dominance) {
+    Absent => false
+    Present { value: r } =>
+      match resolve_declaration_ref(
+        ref: r,
+        facts: census_resolution_facts,
+        modules: census_resolution_modules
+      ) {
+        DeclarationRefResolved { declaration_identity: id } =>
+          string_contains(s: id.rel_path, pattern: "lens/cost.dag") &&
+          id.name == "asymptotic_class_of_cost"
+        _ => false
+      }
+  }
+}
+
+data census_substrate_carrier_resolves_note: String = "The integration finding's citation, resolved exactly rather than matched: std.graph really declares graph_multi_node_scc_members, so the claim that the SCC capability already lives in shared substrate rests on a resolved declaration identity and not on a name appearing in a file."
+
+test fn census_shared_substrate_carrier_resolves() -> Bool {
+  match capability_cited_carrier(c: call_graph_and_scc) {
+    Absent => false
+    Present { value: r } =>
+      match resolve_declaration_ref(
+        ref: r,
+        facts: census_resolution_facts,
+        modules: census_resolution_modules
+      ) {
+        DeclarationRefResolved { declaration_identity: id } =>
+          id.name == "graph_multi_node_scc_members" &&
+          string_contains(s: id.rel_path, pattern: "graph.dag")
+        _ => false
+      }
+  }
+}
+
+data w_admission_predicate_is_vacuous_note: String = "CENSUS FINDING, moved here from the fast lane because its imports were measurably expensive (see closure_cost_note in the fast-lane companion: this control's v2.lens closure cost an unrelated witness ~1.1s of its 5s budget). The control itself is unchanged and strengthened from the original: asserting that complexity_variables_admits EXISTS establishes nothing, since a real implementation satisfies that too. This uses the tree's own typed admission — v2.lens.complexity declares complexity_variables_vacuous_validation as a VacuousValidation carrying vacuous_admits_marker, which IS the module stating its predicate admits everything — and executes the predicate beside it. Synthesizing a rejected input is not available as a control precisely because the predicate rejects nothing; that is the finding."
+
+test fn census_complexity_admission_predicate_is_vacuous_by_execution() -> Bool {
+  complexity_variables_admits(xs: []) &&
+  complexity_variables_vacuous_validation.vacuous == vacuous_admits_marker
+}
