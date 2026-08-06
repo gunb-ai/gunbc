@@ -26,7 +26,7 @@ import gunbc.falsifier_alert_admission {
   AlertRefusedActivityNotCompleted,
   AlertRefusedEventUnreadable,
   falsifier_alert_admit,
-  falsifier_alert_is_admitted
+  falsifier_alert_job_condition
 }
 import gunbc.falsifier_alert_state {
   FalsifierAlertState,
@@ -37,9 +37,9 @@ import gunbc.falsifier_alert_state {
   SuppressWithinWindow,
   falsifier_alert_state_from_payload,
   falsifier_alert_notification_decision,
-  falsifier_alert_notification_notifies,
-  falsifier_alert_heartbeat_window_ms
+  falsifier_alert_heartbeat_window
 }
+import std.measure { Millisecond, millisecond, millisecond_count }
 import gunbc.floor_component_receipt_document {
   FloorComponentReceiptSubject,
   FloorComponentReceiptDecoding,
@@ -47,8 +47,7 @@ import gunbc.floor_component_receipt_document {
   ReceiptSubjectMatch, ReceiptSubjectMatches,
   ReceiptSubjectRunIdMismatch, ReceiptSubjectWorkflowMismatch, ReceiptSubjectHeadShaMismatch,
   floor_component_receipt_decode_with,
-  floor_component_receipt_subject_matches_event,
-  floor_component_receipt_subject_admitted
+  floor_component_receipt_subject_matches_event
 }
 import gunbc.falsifier_alert_residue {
   LanguageNormalFormResidue,
@@ -137,7 +136,10 @@ test fn workflow_run_event_non_json_refuses() -> Bool {
 }
 
 test fn trust_wall_admits_the_scheduled_main_falsifier_run() -> Bool {
-  falsifier_alert_is_admitted(admission: admission_of(json: trusted_event_json()))
+  match admission_of(json: trusted_event_json()) {
+    AlertAdmitted { event: e } => e.workflow_name == "affected-set-falsifier"
+    _ => false
+  }
 }
 
 test fn trust_wall_refuses_a_fork_head_repository() -> Bool {
@@ -216,7 +218,7 @@ test fn legacy_state_notifies_exactly_once_as_a_migration() -> Bool {
     signature: "a:b:c" as NonEmptyStr
   )
   match d {
-    NotifyMigratedToTypedState => falsifier_alert_notification_notifies(d: d)
+    NotifyMigratedToTypedState => true
     _ => false
   }
 }
@@ -241,19 +243,20 @@ test fn an_unchanged_signature_is_suppressed_inside_the_window() -> Bool {
     signature: "a:b:c" as NonEmptyStr
   )
   match d {
-    SuppressWithinWindow { silent_for: s } => s == 1 && !falsifier_alert_notification_notifies(d: d)
+    SuppressWithinWindow { silent_for: s } => millisecond_count(m: s) == 1
     _ => false
   }
 }
 
 test fn an_unchanged_signature_heartbeats_once_the_window_elapses() -> Bool {
   let d = falsifier_alert_notification_decision(
-    now: 5000 + falsifier_alert_heartbeat_window_ms,
+    now: 5000 + millisecond_count(m: falsifier_alert_heartbeat_window),
     decoding: falsifier_alert_state_from_payload(payload: current_state_marker(first_red: 1000, signature: "a:b:c", last: 5000)),
     signature: "a:b:c" as NonEmptyStr
   )
   match d {
-    NotifyHeartbeatDue { silent_for: s } => s == falsifier_alert_heartbeat_window_ms
+    NotifyHeartbeatDue { silent_for: s } =>
+      millisecond_count(m: s) == millisecond_count(m: falsifier_alert_heartbeat_window)
     _ => false
   }
 }
@@ -335,7 +338,11 @@ fn subject_match_against_trusted_event(receipt: String) -> ReceiptSubjectMatch? 
 
 test fn a_receipt_from_the_triggering_run_matches() -> Bool {
   match subject_match_against_trusted_event(receipt: trusted_receipt()) {
-    Present { value: m } => floor_component_receipt_subject_admitted(m: m)
+    Present { value: m } =>
+      match m {
+        ReceiptSubjectMatches => true
+        _ => false
+      }
     Absent => false
   }
 }
@@ -394,4 +401,24 @@ test fn the_embedded_program_is_declared_as_replaceable_residue() -> Bool {
 
 test fn the_residue_registry_carries_exactly_the_declared_row() -> Bool {
   count(falsifier_alert_residue_registry) == 1
+}
+
+data falsifier_alert_job_condition_claim_note: String = "The job-level condition is the OUTER half of a wall enforced twice, so it gets its own claim: the in-program checks above prove nothing about the text GitHub evaluates before the job starts. It is asserted on the SERIALIZED output because that string is what GitHub reads, and it is derived from the same constants the in-program wall uses — so a change to the expected workflow or branch that reached only one of the two enforcement points reds here."
+
+test fn the_job_condition_lowers_from_the_same_constants_as_the_wall() -> Bool {
+  let c = falsifier_alert_job_condition()
+  c.contains(s: "github.event.workflow_run.name == 'affected-set-falsifier'")
+    && c.contains(s: "github.event.workflow_run.head_branch == 'main'")
+    && c.contains(s: "github.event.workflow_run.event == 'schedule'")
+    && c.contains(s: "github.event.workflow_run.event == 'workflow_dispatch'")
+    && c.contains(s: "&&")
+    && c.contains(s: "||")
+}
+
+data falsifier_alert_condition_precedence_note: String = "The Or is asserted to be PARENTHESIZED, which is the arm that would silently change meaning. GitHub binds && tighter than ||, so without the grouping this condition reads as `(name == X && head_branch == main && event == schedule) || event == workflow_dispatch` — and that right arm admits a workflow_dispatch run of ANY workflow on ANY branch, which is the trust wall failing open on its outer half while every in-program claim above still passes. Nothing else in this file would catch it."
+
+test fn the_job_condition_parenthesizes_the_originating_event_alternation() -> Bool {
+  falsifier_alert_job_condition().contains(
+    s: "(github.event.workflow_run.event == 'schedule' || github.event.workflow_run.event == 'workflow_dispatch')"
+  )
 }

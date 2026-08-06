@@ -483,7 +483,7 @@ fn floor_component_receipt_json_value(
   if selection_present {
     json_object(members: concat(base, [
       json_kv(
-        key: "selection_degradation",
+        key: receipt_member_selection_degradation,
         value: selection_degradation_receipt_json(
           selection_mode_tag: selection_mode_tag,
           selected: selected,

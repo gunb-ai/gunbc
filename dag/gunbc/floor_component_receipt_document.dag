@@ -226,11 +226,4 @@ fn floor_component_receipt_subject_matches_event(
   }
 }
 
-fn floor_component_receipt_subject_admitted(m: ReceiptSubjectMatch) -> Bool {
-  match m {
-    ReceiptSubjectMatches => true
-    ReceiptSubjectRunIdMismatch { receipt: _, event: _ } => false
-    ReceiptSubjectWorkflowMismatch { receipt: _, event: _ } => false
-    ReceiptSubjectHeadShaMismatch { receipt: _, event: _ } => false
-  }
-}
+data floor_component_receipt_no_bool_projection_note: String = "THERE IS DELIBERATELY NO floor_component_receipt_subject_admitted PREDICATE. One was added here and then removed in the same change that removed the admission and notification Bool projections (review 49414 caught that this one survived the sweep, correctly — an exception in the module that binds the receipt to the run it describes is the worst place to keep one). The three mismatch arms are three different incidents: a run-id mismatch is a misparameterized or retried download, a workflow mismatch is a receipt from another workflow sharing the artifact name, and a head-SHA mismatch is a receipt about a different TREE — the one an operator would act on wrongly while the run id looked right. A Bool answers `is this the right receipt` and discards which of those it was, at exactly the boundary where the alert is deciding what to say about a run. Callers match."
