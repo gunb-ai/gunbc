@@ -489,10 +489,6 @@ data residue_frontier_module_gap_reason: String = "frontier module with behavior
 
 data residue_frontier_module_gap_dissolve_on: String = "dissolve-on: the module basename appears on hand_maintained_stage0_filenames() or generated_stage0_files and this residue row deletes"
 
-data residue_stage0_core_lib_reason: String = "src/v1/stage0_core/src/lib.rs exists on disk but is absent from stage0_partition_crate_rows — authority contradiction surfaced for operator resolution"
-
-data residue_stage0_core_lib_dissolve_on: String = "dissolve-on: stage0_partition_crate_rows enrolls src/v1/stage0_core OR the crate deletes"
-
 fn residue_row(path: String, reason: String, dissolve_on: String) -> RustSourceLifecycleRow {
   RustSourceLifecycleRow {
     path: path,
@@ -538,11 +534,6 @@ data rust_source_lifecycle_residue_rows: List<RustSourceLifecycleRow> = [
     path: "src/v1/stage0/src/v2_compiler_source_authority.rs",
     reason: residue_frontier_module_gap_reason,
     dissolve_on: residue_frontier_module_gap_dissolve_on
-  ),
-  residue_row(
-    path: "src/v1/stage0_core/src/lib.rs",
-    reason: residue_stage0_core_lib_reason,
-    dissolve_on: residue_stage0_core_lib_dissolve_on
   )
 ]
 
@@ -773,4 +764,4 @@ fn stage0_rust_lifecycle_scaffold_mechanical_checks_holds() -> Bool {
     && manifest_state_verdict_scaffold_holds()
 }
 
-data rust_source_lifecycle_partition_contradiction_note: String = "OPEN: src/v1/stage0_core/src/lib.rs is tracked on disk but stage0_partition_crate_rows has no src/v1/stage0_core row. Residue row surfaces the contradiction; operator resolves via partition row or crate deletion."
+data rust_source_lifecycle_partition_contradiction_note: String = "CLOSED (sharp-fox-403): legacy src/v1/stage0_core monolith boundary crate deleted — partition crates are the sole stage0 crate authority; residue row removed from rust_source_lifecycle_residue_rows."

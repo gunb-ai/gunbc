@@ -40,7 +40,8 @@ import v2.std.compilers.compilation_unit {
   PartitionFoldOutcome,
   PartitionFoldRefusalCause,
   partition_fold_outcome,
-  partition_provenance_hand_explicit
+  partition_provenance_hand_explicit,
+  partition_unit_members
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Node, Symbol }
@@ -91,6 +92,8 @@ type Stage0PartitionCrateRow {
 data rust_crate_partition_note: String = "Rust R3 workflow realization of the shared CompilationUnit home (emitted-crate-partition-design.md §2/§13). resolve_partition_outcome is the sole entry for the assignment Map; partition_fold_outcome is the sole producer of interface + deps. Phase 0: HandExplicit provenance + ExplicitPartition interim ~8-crate layered grouping (dissolves to PolicyPartition when balanced crates≈cores policy lands)."
 
 data rust_crate_partition_dissolve_on: String = "dissolve-on: rust_crate_partition_interim_explicit — replace ExplicitPartition assignment with PolicyPartition { target_crate_count: declared_core_target } when balanced partition policy lands; provenance flips HandExplicit → PolicyDerived."
+
+data stage0_partition_membership_closure_note: String = "Per-crate module membership is DERIVED: explicit unit seed assignment plus transitive closure over stage0_cross_unit_import_edges (from imports to). The hand-maintained per-unit module roster is deleted — seeds are the only explicit placement; closure is the construction wall. stage0_partition_membership_use_crate_oracle in v1.compiler.stage0_crates is the independent referent at regen: it reads emitted module bodies for use crate:: edges and refuses when a referenced top-level module is outside the derived closure (plus lower-crate reexports for layered rows). Closure alone under-approximates when an edge is missing; the oracle reads the realization rather than the declaration."
 
 data rust_crate_partition_declared_core_target: Int = 7
 
@@ -177,56 +180,109 @@ fn stage0_module_id(basename: String) -> ModuleId {
   basename as NonEmptyStr
 }
 
-fn stage0_runtime_modules() -> List<String> {
+fn stage0_partition_unit_module_basenames(unit_id: CompilationUnitId) -> List<String> {
+  stage0_partition_unit_member_module_ids(unit_id: unit_id) |> map(m => m as String)
+}
+
+fn module_id_list_contains(xs: List<ModuleId>, item: ModuleId) -> Bool {
+  any(xs: xs, predicate: fn(m) { m == item })
+}
+
+fn module_id_list_snoc_unique(xs: List<ModuleId>, item: ModuleId) -> List<ModuleId> {
+  if module_id_list_contains(xs: xs, item: item) {
+    xs
+  } else {
+    xs |> concat([item])
+  }
+}
+
+fn module_dag_forward_closure_extend(
+  closure: List<ModuleId>,
+  edges: List<ModuleDagEdge>
+) -> List<ModuleId> {
+  edges
+    |> fold(init: closure, f: fn(acc, edge) {
+      if module_id_list_contains(xs: acc, item: edge.from)
+        && !module_id_list_contains(xs: acc, item: edge.to) {
+        acc |> concat([edge.to])
+      } else {
+        acc
+      }
+    })
+}
+
+fn module_dag_forward_closure_fixpoint(
+  seeds: List<ModuleId>,
+  edges: List<ModuleDagEdge>,
+  remaining_steps: Int
+) -> List<ModuleId> {
+  if remaining_steps == 0 {
+    seeds
+  } else {
+    let next = module_dag_forward_closure_extend(closure: seeds, edges: edges)
+    if (next |> count) == (seeds |> count) {
+      next
+    } else {
+      module_dag_forward_closure_fixpoint(
+        seeds: next,
+        edges: edges,
+        remaining_steps: remaining_steps - 1
+      )
+    }
+  }
+}
+
+fn module_dag_forward_closure(
+  seeds: List<ModuleId>,
+  edges: List<ModuleDagEdge>
+) -> List<ModuleId> {
+  module_dag_forward_closure_fixpoint(
+    seeds: seeds,
+    edges: edges,
+    remaining_steps: 64
+  )
+}
+
+fn stage0_module_bearing_unit_ids() -> List<CompilationUnitId> {
+  [
+    stage0_unit_runtime,
+    stage0_unit_std_core,
+    stage0_unit_std_surface,
+    stage0_unit_extdeps_languages,
+    stage0_unit_v1_infer,
+    stage0_unit_v1_artifact
+  ]
+}
+
+fn stage0_unit_runtime_seed_basenames() -> List<String> {
   ["v1_rt"]
 }
 
-fn stage0_std_primitive_modules() -> List<String> {
+fn stage0_unit_std_core_seed_basenames() -> List<String> {
   [
     "std_content_hash",
     "std_coercion",
     "std_currency",
-    "std_decl_ref",
-    "std_keyed_row",
-    "std_keyed_roster",
-    "std_roster_frontier",
     "std_disposition",
-    "std_error_primitives",
-    "std_http_path",
     "std_emit_model",
+    "std_http_path",
     "std_magnitude",
     "std_measure",
-    "std_types",
-    "std_unicode_types",
-    "std_lens_verdict"
+    "std_lens_verdict",
+    "std_nat",
+    "std_syntax",
+    "std_iteration",
+    "std_graph",
+    "extdeps_external_authority",
+    "extdeps_container_oci_digest",
+    "extdeps_units_dimensionless",
+    "extdeps_units_iec_80000_13",
+    "extdeps_units_iso8601",
+    "v1_std_core"
   ]
 }
 
-fn stage0_std_core_modules() -> List<String> {
-  stage0_std_primitive_modules()
-    |> concat([
-      "std_algebra",
-      "std_nat",
-      "std_node",
-      "std_syntax",
-      "std_computation",
-      "std_termination",
-      "std_induction",
-      "std_iteration",
-      "std_graph",
-      "extdeps_uri",
-      "extdeps_external_authority",
-      "extdeps_container_oci_digest",
-      "extdeps_units_dimensionless",
-      "extdeps_units_iec_80000_13",
-      "extdeps_units_iso8601",
-      "std_occurrence_identity",
-      "std_source_annotation",
-      "v1_std_core"
-    ])
-}
-
-fn stage0_std_surface_modules() -> List<String> {
+fn stage0_unit_std_surface_seed_basenames() -> List<String> {
   [
     "std_effects",
     "std_execution_mode",
@@ -237,7 +293,7 @@ fn stage0_std_surface_modules() -> List<String> {
   ]
 }
 
-fn stage0_extdeps_language_modules() -> List<String> {
+fn stage0_unit_extdeps_languages_seed_basenames() -> List<String> {
   [
     "extdeps_languages_dag_emit",
     "extdeps_languages_dag_syntax",
@@ -254,11 +310,7 @@ fn stage0_extdeps_language_modules() -> List<String> {
   ]
 }
 
-fn stage0_extdeps_modules() -> List<String> {
-  stage0_extdeps_language_modules()
-}
-
-fn stage0_v1_infer_modules() -> List<String> {
+fn stage0_unit_v1_infer_seed_basenames() -> List<String> {
   [
     "v1_compiler_infer_emit_info",
     "v1_compiler_infer_env",
@@ -270,8 +322,134 @@ fn stage0_v1_infer_modules() -> List<String> {
   ]
 }
 
-fn stage0_v1_artifact_modules() -> List<String> {
+fn stage0_unit_v1_artifact_seed_basenames() -> List<String> {
   ["v1_compiler_artifact", "v1_compiler_languages"]
+}
+
+fn stage0_unit_seed_basenames(unit_id: CompilationUnitId) -> List<String> {
+  if unit_id == stage0_unit_runtime {
+    stage0_unit_runtime_seed_basenames()
+  } else if unit_id == stage0_unit_std_core {
+    stage0_unit_std_core_seed_basenames()
+  } else if unit_id == stage0_unit_std_surface {
+    stage0_unit_std_surface_seed_basenames()
+  } else if unit_id == stage0_unit_extdeps_languages {
+    stage0_unit_extdeps_languages_seed_basenames()
+  } else if unit_id == stage0_unit_v1_infer {
+    stage0_unit_v1_infer_seed_basenames()
+  } else if unit_id == stage0_unit_v1_artifact {
+    stage0_unit_v1_artifact_seed_basenames()
+  } else {
+    []
+  }
+}
+
+fn stage0_assignment_has_module(
+  assignment: Map<ModuleId, CompilationUnitId>,
+  module: ModuleId
+) -> Bool {
+  match v2.std.collection.map_get(assignment, module) {
+    Accepted { value: Present { value: _ }, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+    Accepted { value: Absent, diagnostics: _ } => false
+  }
+}
+
+fn stage0_accumulate_unit_assignment(
+  assignment: Map<ModuleId, CompilationUnitId>,
+  unit_id: CompilationUnitId,
+  edges: List<ModuleDagEdge>
+) -> Map<ModuleId, CompilationUnitId> {
+  let seeds = stage0_unit_seed_basenames(unit_id: unit_id)
+    |> map(basename => stage0_module_id(basename: basename))
+  let closed = module_dag_forward_closure(seeds: seeds, edges: edges)
+  closed
+    |> fold(init: assignment, f: fn(acc, member_module) {
+      if stage0_assignment_has_module(assignment: acc, module: member_module) {
+        acc
+      } else {
+        map_insert(acc, member_module, unit_id)
+      }
+    })
+}
+
+fn stage0_derived_explicit_assignment() -> Map<ModuleId, CompilationUnitId> {
+  let edges = stage0_cross_unit_import_edges()
+  stage0_module_bearing_unit_ids()
+    |> fold(init: empty_map(), f: fn(assignment, unit_id) {
+      stage0_accumulate_unit_assignment(
+        assignment: assignment,
+        unit_id: unit_id,
+        edges: edges
+      )
+    })
+}
+
+fn stage0_partition_unit_member_module_ids(unit_id: CompilationUnitId) -> List<ModuleId> {
+  module_dag_forward_closure(
+    seeds: stage0_unit_seed_basenames(unit_id: unit_id)
+      |> map(basename => stage0_module_id(basename: basename)),
+    edges: stage0_cross_unit_import_edges()
+  )
+}
+
+fn stage0_partition_unit_member_basenames_derived(unit_id: CompilationUnitId) -> List<String> {
+  stage0_partition_unit_member_module_ids(unit_id: unit_id) |> map(m => m as String)
+}
+
+fn stage0_partition_row_member_basenames_derived(row: Stage0PartitionCrateRow) -> List<String> {
+  if row.unit_id == stage0_unit_emit_core {
+    stage0_r3_emit_reexport_surface_modules()
+  } else {
+    stage0_partition_unit_member_basenames_derived(unit_id: row.unit_id)
+  }
+}
+
+fn stage0_partition_crate_row_membership_derived(row: Stage0PartitionCrateRow) -> List<String> {
+  stage0_partition_row_member_basenames_derived(row: row)
+}
+
+fn stage0_partition_crate_rows_membership_derived_holds() -> Bool {
+  stage0_partition_crate_rows()
+    |> fold(init: true, f: fn(ok, row) {
+      ok && (row.modules == stage0_partition_crate_row_membership_derived(row: row))
+    })
+}
+
+fn stage0_partition_membership_closure_covers_seeds_holds() -> Bool {
+  let edges = stage0_cross_unit_import_edges()
+  stage0_module_bearing_unit_ids()
+    |> fold(init: true, f: fn(ok, unit_id) {
+      let seeds = stage0_unit_seed_basenames(unit_id: unit_id)
+        |> map(basename => stage0_module_id(basename: basename))
+      let closed = module_dag_forward_closure(seeds: seeds, edges: edges)
+      ok && seeds
+        |> fold(init: true, f: fn(seed_ok, seed) {
+          seed_ok && module_id_list_contains(xs: closed, item: seed)
+        })
+    })
+}
+
+fn stage0_partition_crate_resolvable_member_basenames(row: Stage0PartitionCrateRow) -> List<String> {
+  let own = stage0_partition_row_member_basenames_derived(row: row)
+  row.reexport_packages
+    |> fold(init: own, f: fn(acc, package_name) {
+      acc |> concat(stage0_partition_crate_rows_first_modules_for_package(package_name: package_name))
+    })
+}
+
+fn stage0_partition_crate_rows_first_modules_for_package(
+  package_name: String
+) -> List<String> {
+  stage0_partition_crate_rows()
+    |> filter(row => row.package_name == package_name)
+    |> fold(init: [], f: fn(acc, row) {
+      if (acc |> count) == 0 {
+        stage0_partition_row_member_basenames_derived(row: row)
+      } else {
+        acc
+      }
+    })
 }
 
 fn stage0_r3_emit_reexport_surface_modules() -> List<String> {
@@ -286,13 +464,24 @@ fn stage0_r3_emit_reexport_surface_modules() -> List<String> {
   ]
 }
 
+fn stage0_all_partitioned_module_ids() -> List<ModuleId> {
+  let edges = stage0_cross_unit_import_edges()
+  stage0_module_bearing_unit_ids()
+    |> fold(init: [], f: fn(acc, unit_id) {
+      let closed = module_dag_forward_closure(
+        seeds: stage0_unit_seed_basenames(unit_id: unit_id)
+          |> map(basename => stage0_module_id(basename: basename)),
+        edges: edges
+      )
+      closed
+        |> fold(init: acc, f: fn(ids, member_module) {
+          module_id_list_snoc_unique(xs: ids, item: member_module)
+        })
+    })
+}
+
 fn stage0_all_partitioned_modules() -> List<String> {
-  stage0_runtime_modules()
-    |> concat(stage0_std_core_modules())
-    |> concat(stage0_std_surface_modules())
-    |> concat(stage0_extdeps_modules())
-    |> concat(stage0_v1_infer_modules())
-    |> concat(stage0_v1_artifact_modules())
+  stage0_all_partitioned_module_ids() |> map(m => m as String)
 }
 
 fn stage0_assign_modules_to_unit(
@@ -307,31 +496,11 @@ fn stage0_assign_modules_to_unit(
 }
 
 fn stage0_interim_explicit_assignment() -> Map<ModuleId, CompilationUnitId> {
-  stage0_assign_modules_to_unit(
-    assignment: stage0_assign_modules_to_unit(
-      assignment: stage0_assign_modules_to_unit(
-        assignment: stage0_assign_modules_to_unit(
-          assignment: stage0_assign_modules_to_unit(
-            assignment: stage0_assign_modules_to_unit(
-              assignment: empty_map(),
-              modules: stage0_runtime_modules(),
-              unit_id: stage0_unit_runtime
-            ),
-            modules: stage0_std_core_modules(),
-            unit_id: stage0_unit_std_core
-          ),
-          modules: stage0_std_surface_modules(),
-          unit_id: stage0_unit_std_surface
-        ),
-        modules: stage0_extdeps_language_modules(),
-        unit_id: stage0_unit_extdeps_languages
-      ),
-      modules: stage0_v1_infer_modules(),
-      unit_id: stage0_unit_v1_infer
-    ),
-    modules: stage0_v1_artifact_modules(),
-    unit_id: stage0_unit_v1_artifact
-  )
+  stage0_derived_explicit_assignment()
+}
+
+fn stage0_partition_package_names() -> List<String> {
+  stage0_partition_crate_rows() |> map(row => row.package_name)
 }
 
 fn stage0_interim_explicit_partition() -> ExplicitPartition {
@@ -572,57 +741,71 @@ fn stage0_partition_member_coverage_consistent(
   }
 }
 
+fn stage0_module_bearing_crate_row(
+  unit_id: CompilationUnitId,
+  package_name: String,
+  crate_dir: String,
+  kind: Stage0PartitionCrateKind,
+  reexport_packages: List<String>,
+  carries_non_empty_wrappers: Bool
+) -> Stage0PartitionCrateRow {
+  Stage0PartitionCrateRow {
+    unit_id: unit_id,
+    package_name: package_name,
+    crate_dir: crate_dir,
+    kind: kind,
+    modules: stage0_partition_unit_module_basenames(unit_id: unit_id),
+    reexport_packages: reexport_packages,
+    carries_non_empty_wrappers: carries_non_empty_wrappers
+  }
+}
+
 fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
   [
-    Stage0PartitionCrateRow {
+    stage0_module_bearing_crate_row(
       unit_id: stage0_unit_runtime,
       package_name: "v1-stage0-runtime",
       crate_dir: "src/v1/stage0_runtime",
       kind: Stage0FoundationCrate,
-      modules: stage0_runtime_modules(),
       reexport_packages: [],
       carries_non_empty_wrappers: true
-    },
-    Stage0PartitionCrateRow {
+    ),
+    stage0_module_bearing_crate_row(
       unit_id: stage0_unit_std_core,
       package_name: "v1-stage0-std-core",
       crate_dir: "src/v1/stage0_std_core",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_std_core_modules(),
       reexport_packages: ["v1-stage0-runtime"],
       carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
+    ),
+    stage0_module_bearing_crate_row(
       unit_id: stage0_unit_std_surface,
       package_name: "v1-stage0-std-surface",
       crate_dir: "src/v1/stage0_std_surface",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_std_surface_modules(),
       reexport_packages: [
         "v1-stage0-runtime",
         "v1-stage0-std-core"
       ],
       carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
+    ),
+    stage0_module_bearing_crate_row(
       unit_id: stage0_unit_extdeps_languages,
       package_name: "v1-stage0-extdeps-languages",
       crate_dir: "src/v1/stage0_extdeps_languages",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_extdeps_language_modules(),
       reexport_packages: [
         "v1-stage0-runtime",
         "v1-stage0-std-core",
         "v1-stage0-std-surface"
       ],
       carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
+    ),
+    stage0_module_bearing_crate_row(
       unit_id: stage0_unit_v1_infer,
       package_name: "v1-stage0-v1-infer",
       crate_dir: "src/v1/stage0_v1_infer",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_v1_infer_modules(),
       reexport_packages: [
         "v1-stage0-runtime",
         "v1-stage0-std-core",
@@ -630,13 +813,12 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
         "v1-stage0-extdeps-languages"
       ],
       carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
+    ),
+    stage0_module_bearing_crate_row(
       unit_id: stage0_unit_v1_artifact,
       package_name: "v1-stage0-v1-artifact",
       crate_dir: "src/v1/stage0_v1_artifact",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_v1_artifact_modules(),
       reexport_packages: [
         "v1-stage0-runtime",
         "v1-stage0-std-core",
@@ -645,7 +827,7 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
         "v1-stage0-v1-infer"
       ],
       carries_non_empty_wrappers: false
-    }
+    )
   ]
 }
 

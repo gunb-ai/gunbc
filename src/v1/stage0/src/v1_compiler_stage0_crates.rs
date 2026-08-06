@@ -11,6 +11,8 @@ use self::Stage0ModuleOwnerLookup::*;
 use self::Stage0ModuleOwnerRefusalCause::*;
 use self::Stage0PackageCrateDirLookup::*;
 use self::Stage0PackageCrateDirRefusalCause::*;
+use self::Stage0PartitionMembershipOracleOutcome::*;
+use self::Stage0PartitionMembershipOracleRefusalCause::*;
 use self::Stage0PartitionRowDepsOutcome::*;
 use self::Stage0PartitionRowSpecOutcome::*;
 use self::Stage0ReexportPathDepsOutcome::*;
@@ -24,7 +26,9 @@ use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::
 pub use crate::gunbc_stage0_crate_partition_generated::{
     GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
 };
-pub use crate::v1_compiler_emit_rust::{emit_cargo_dep, emit_non_empty_wrappers};
+pub use crate::v1_compiler_emit_rust::{
+    emit_cargo_dep, emit_non_empty_wrappers, rust_pub_use_module_name, rust_use_crate_marker,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::TextFile;
@@ -1073,6 +1077,270 @@ pub fn emit_stage0_crate_boundary_files_outcome(
             }
         },
     )
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Stage0ModuleUseCrateObservation {
+    pub module_basename: String,
+    pub source_text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum Stage0PartitionMembershipOracleRefusalCause {
+    Stage0PartitionMembershipUseCrateOutsideClosure {
+        module_basename: String,
+        referenced_module: String,
+        package_name: String,
+    },
+}
+impl Stage0PartitionMembershipOracleRefusalCause {
+    pub fn module_basename(&self) -> String {
+        match self {
+            Stage0PartitionMembershipOracleRefusalCause::Stage0PartitionMembershipUseCrateOutsideClosure { module_basename: __val, .. } => __val.clone(),
+        }
+    }
+    pub fn referenced_module(&self) -> String {
+        match self {
+            Stage0PartitionMembershipOracleRefusalCause::Stage0PartitionMembershipUseCrateOutsideClosure { referenced_module: __val, .. } => __val.clone(),
+        }
+    }
+    pub fn package_name(&self) -> String {
+        match self {
+            Stage0PartitionMembershipOracleRefusalCause::Stage0PartitionMembershipUseCrateOutsideClosure { package_name: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum Stage0PartitionMembershipOracleOutcome {
+    Stage0PartitionMembershipOracleOk,
+    Stage0PartitionMembershipOracleRefused {
+        cause: Rc<Stage0PartitionMembershipOracleRefusalCause>,
+    },
+}
+impl Stage0PartitionMembershipOracleOutcome {
+    pub fn cause(&self) -> Rc<Stage0PartitionMembershipOracleRefusalCause> {
+        match self {
+            Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleOk => {
+                panic!("no cause on unit variant")
+            }
+            Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleRefused {
+                cause: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn stage0_generated_row_modules_for_package(package_name: String) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for row in generated_partition_crate_rows().iter().cloned() {
+            if (row.package_name.clone() == package_name.clone()) {
+                __result.push(row);
+            }
+        }
+        __result
+    })
+    .iter()
+    .cloned()
+    .fold(Rc::new(vec![]), |acc: Rc<Vec<String>>, row: _| {
+        if ((acc.clone().len() as i64) == 0) {
+            row.modules.clone()
+        } else {
+            acc.clone()
+        }
+    })
+}
+
+pub fn stage0_generated_spec_resolvable_module_basenames(
+    modules: Rc<Vec<String>>,
+    reexport_packages: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    reexport_packages.clone().iter().cloned().fold(
+        modules.clone(),
+        |acc: Rc<Vec<String>>, pkg: String| {
+            v1_rt::concat(acc, stage0_generated_row_modules_for_package(pkg.clone()))
+        },
+    )
+}
+
+pub fn stage0_partition_membership_source_line_use_crate_modules(line: String) -> Rc<Vec<String>> {
+    if (rust_use_crate_marker(line.clone()) == "".to_string()) {
+        Rc::new(vec![])
+    } else {
+        {
+            let module_name = rust_pub_use_module_name(line.clone());
+            if (module_name.clone() == "".to_string()) {
+                Rc::new(vec![])
+            } else {
+                Rc::new(vec![
+                    stage0_partition_membership_use_crate_top_level_module(module_name.clone()),
+                ])
+            }
+        }
+    }
+}
+
+pub fn stage0_partition_membership_source_text_use_crate_modules(text: String) -> Rc<Vec<String>> {
+    Rc::new(
+        text.clone()
+            .split(&"\n".to_string())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )
+    .iter()
+    .cloned()
+    .fold(Rc::new(vec![]), |acc: Rc<Vec<String>>, line: String| {
+        v1_rt::concat(
+            acc,
+            stage0_partition_membership_source_line_use_crate_modules(line.clone()),
+        )
+    })
+}
+
+pub fn stage0_partition_membership_string_list_contains(
+    xs: Rc<Vec<String>>,
+    needle: String,
+) -> bool {
+    {
+        let mut __found = false;
+        for item in xs.clone().iter().cloned() {
+            if (item.clone() == needle.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn stage0_partition_membership_oracle_refusal_message(
+    cause: Rc<Stage0PartitionMembershipOracleRefusalCause>,
+) -> String {
+    match (*cause.clone()).clone() {
+    Stage0PartitionMembershipOracleRefusalCause::Stage0PartitionMembershipUseCrateOutsideClosure { module_basename, referenced_module, package_name, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("stage0 partition membership oracle refused: module ".to_string(), module_basename.clone()), " references crate::".to_string()), referenced_module.clone()), " outside derived closure for package ".to_string()), package_name.clone()),
+}
+}
+
+pub fn stage0_partition_membership_use_crate_top_level_module(referenced: String) -> String {
+    match Rc::new(
+        referenced
+            .clone()
+            .split(&"::".to_string())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )
+    .first()
+    .cloned()
+    {
+        Some(head) => head.clone(),
+        None => referenced.clone(),
+    }
+}
+
+pub fn stage0_partition_membership_observation_oracle_outcome(
+    observation: Rc<Stage0ModuleUseCrateObservation>,
+    package_name: String,
+    resolvable_modules: Rc<Vec<String>>,
+) -> Rc<Stage0PartitionMembershipOracleOutcome> {
+    stage0_partition_membership_source_text_use_crate_modules(observation.source_text.clone()).iter().cloned().fold(Rc::new(Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleOk), |inner: Rc<Stage0PartitionMembershipOracleOutcome>, referenced_module: String| match (*inner.clone()).clone() {
+    Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleRefused { cause: _, .. } => inner.clone(),
+    Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleOk => if stage0_partition_membership_string_list_contains(resolvable_modules.clone(), stage0_partition_membership_use_crate_top_level_module(referenced_module.clone())) {
+        Rc::new(Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleOk)
+    } else {
+        Rc::new(Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleRefused {
+    cause: Rc::new(Stage0PartitionMembershipOracleRefusalCause::Stage0PartitionMembershipUseCrateOutsideClosure {
+    module_basename: observation.module_basename.clone(),
+    referenced_module: referenced_module.clone(),
+    package_name: package_name.clone(),
+}),
+})
+    },
+})
+}
+
+pub fn stage0_partition_membership_oracle_for_generated_row_outcome(
+    row: Rc<GeneratedPartitionCrateRow>,
+    observations: Rc<Vec<Rc<Stage0ModuleUseCrateObservation>>>,
+) -> Rc<Stage0PartitionMembershipOracleOutcome> {
+    match row.kind.clone() {
+        GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => {
+            Rc::new(Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleOk)
+        }
+        GeneratedPartitionCrateKind::GeneratedFoundationCrate => {
+            let resolvable = stage0_generated_spec_resolvable_module_basenames(
+                row.modules.clone(),
+                row.reexport_packages.clone(),
+            );
+            Rc::new({ let mut __result = Vec::new(); for obs in observations.clone().iter().cloned() { if { let mut __found = false; for m in row.modules.clone().iter().cloned() { if (m.clone() == obs.module_basename.clone()) { __found = true; break; } } __found } { __result.push(obs); } } __result }).iter().cloned().fold(Rc::new(Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleOk), |acc: Rc<Stage0PartitionMembershipOracleOutcome>, observation: Rc<Stage0ModuleUseCrateObservation>| match (*acc.clone()).clone() {
+    Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleRefused { cause: _, .. } => acc.clone(),
+    Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleOk => stage0_partition_membership_observation_oracle_outcome(observation.clone(), row.package_name.clone(), resolvable.clone()),
+})
+        }
+        GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => {
+            let resolvable = stage0_generated_spec_resolvable_module_basenames(
+                row.modules.clone(),
+                row.reexport_packages.clone(),
+            );
+            Rc::new({ let mut __result = Vec::new(); for obs in observations.clone().iter().cloned() { if { let mut __found = false; for m in row.modules.clone().iter().cloned() { if (m.clone() == obs.module_basename.clone()) { __found = true; break; } } __found } { __result.push(obs); } } __result }).iter().cloned().fold(Rc::new(Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleOk), |acc: Rc<Stage0PartitionMembershipOracleOutcome>, observation: Rc<Stage0ModuleUseCrateObservation>| match (*acc.clone()).clone() {
+    Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleRefused { cause: _, .. } => acc.clone(),
+    Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleOk => stage0_partition_membership_observation_oracle_outcome(observation.clone(), row.package_name.clone(), resolvable.clone()),
+})
+        }
+    }
+}
+
+pub fn stage0_partition_membership_oracle_outcome(
+    observations: Rc<Vec<Rc<Stage0ModuleUseCrateObservation>>>,
+) -> Rc<Stage0PartitionMembershipOracleOutcome> {
+    generated_partition_crate_rows().iter().cloned().fold(
+        Rc::new(Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleOk),
+        |acc: Rc<Stage0PartitionMembershipOracleOutcome>, row: _| match (*acc.clone()).clone() {
+            Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleRefused {
+                cause: _,
+                ..
+            } => acc.clone(),
+            Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleOk => {
+                stage0_partition_membership_oracle_for_generated_row_outcome(
+                    row.clone(),
+                    observations.clone(),
+                )
+            }
+        },
+    )
+}
+
+pub fn stage0_partition_membership_oracle_holds(
+    observations: Rc<Vec<Rc<Stage0ModuleUseCrateObservation>>>,
+) -> bool {
+    match (*stage0_partition_membership_oracle_outcome(observations.clone())).clone() {
+        Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleOk => true,
+        Stage0PartitionMembershipOracleOutcome::Stage0PartitionMembershipOracleRefused {
+            cause: _,
+            ..
+        } => false,
+    }
+}
+
+pub fn stage0_partition_membership_oracle_for_observations_holds(
+    observations: Rc<Vec<Rc<Stage0ModuleUseCrateObservation>>>,
+) -> bool {
+    stage0_partition_membership_oracle_holds(observations.clone())
+}
+
+pub fn stage0_partition_membership_oracle_for_observations_outcome(
+    observations: Rc<Vec<Rc<Stage0ModuleUseCrateObservation>>>,
+) -> Rc<Stage0PartitionMembershipOracleOutcome> {
+    stage0_partition_membership_oracle_outcome(observations.clone())
+}
+
+pub fn stage0_partition_membership_oracle_for_observations_refusal_message(
+    cause: Rc<Stage0PartitionMembershipOracleRefusalCause>,
+) -> String {
+    stage0_partition_membership_oracle_refusal_message(cause.clone())
 }
 
 pub fn stage0_crate_boundary_emit_outcome() -> Rc<Stage0CrateBoundaryEmitOutcome> {

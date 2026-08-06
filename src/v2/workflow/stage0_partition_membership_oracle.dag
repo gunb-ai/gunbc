@@ -1,0 +1,259 @@
+module v2.workflow.stage0_partition_membership_oracle
+
+import std.algebra { Empty }
+import v2.std.algebra { any, fold_list, list_append, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+import v2.workflow.rust_crate_partition {
+  stage0_partition_crate_rows,
+  stage0_partition_crate_rows_first_modules_for_package,
+  stage0_partition_row_member_basenames_derived,
+  stage0_unit_emit_core,
+  Stage0PartitionCrateRow
+}
+
+data stage0_partition_membership_oracle_note: String = "Independent completeness oracle (sharp-fox-403 C3): scan emitted stage0 module bodies for use crate:: top-level module refs and refuse when any ref falls outside the derived closure for that crate row (own unit closure plus lower reexport-package closures). Closure over stage0_cross_unit_import_edges is the construction wall; this scan reads the realization rather than the declaration and catches a missing edge that would silently under-approximate closure membership."
+
+type Stage0ModuleUseCrateObservation {
+  module_basename: String
+  source_text: String
+}
+
+type Stage0PartitionMembershipOracleRefusalCause
+  = Stage0PartitionMembershipUseCrateOutsideClosure {
+      module_basename: String
+      referenced_module: String
+      package_name: String
+    }
+
+type Stage0PartitionMembershipOracleOutcome
+  = Stage0PartitionMembershipOracleOk
+  | Stage0PartitionMembershipOracleRefused {
+      cause: Stage0PartitionMembershipOracleRefusalCause
+    }
+
+fn stage0_oracle_use_crate_marker(line: String) -> String {
+  if string_contains(s: line, pattern: "pub use crate::") {
+    "pub use crate::"
+  } else if string_contains(s: line, pattern: "use crate::") {
+    "use crate::"
+  } else {
+    ""
+  }
+}
+
+fn stage0_oracle_use_after_marker(line: String, marker: String) -> String {
+  match line |> split(delimiter: marker) |> skip(1) |> first {
+    Present { value: rest } => rest
+    Absent => ""
+  }
+}
+
+fn stage0_oracle_use_crate_top_module(line: String) -> String {
+  let marker = stage0_oracle_use_crate_marker(line: line)
+  if marker == "" {
+    ""
+  } else {
+    let rest = stage0_oracle_use_after_marker(line: line, marker: marker)
+    if rest == "" {
+      ""
+    } else if string_contains(s: rest, pattern: "::{") {
+      match rest |> split(delimiter: "::{") |> first {
+        Present { value: path } => path
+        Absent => ""
+      }
+    } else if string_contains(s: rest, pattern: "::*") {
+      match rest |> split(delimiter: "::*") |> first {
+        Present { value: path } => path
+        Absent => ""
+      }
+    } else {
+      match rest |> split(delimiter: ";") |> first {
+        Present { value: without_semi } =>
+          let segments = without_semi |> split(delimiter: "::")
+          if (segments |> count) <= 1 {
+            ""
+          } else {
+            segments |> fold(init: { idx: 0, path: "" }, f: (acc, seg) =>
+              if acc.idx < (segments |> count) - 1 {
+                let next = if acc.path == "" { seg } else { concat(acc.path, "::", seg) }
+                { idx: acc.idx + 1, path: next }
+              } else {
+                acc
+              }
+            ).path
+          }
+        Absent => ""
+      }
+    }
+  }
+}
+
+fn stage0_partition_membership_string_list_contains(
+  xs: List<String>,
+  needle: String
+) -> Bool {
+  any(xs: xs, predicate: fn(item) { item == needle })
+}
+
+fn stage0_partition_membership_source_line_use_crate_modules(line: String) -> List<String> {
+  let module_name = stage0_oracle_use_crate_top_module(line: line)
+  if module_name == "" {
+    Empty
+  } else {
+    list_snoc_item(
+      xs: Empty,
+      item: stage0_oracle_top_level_module(referenced: module_name)
+    )
+  }
+}
+
+fn stage0_partition_membership_source_text_use_crate_modules(text: String) -> List<String> {
+  fold_list(
+    xs: text |> split(delimiter: "\n"),
+    empty: Empty,
+    cons: fn(acc, line) {
+      list_append(
+        left: acc,
+        right: stage0_partition_membership_source_line_use_crate_modules(line: line)
+      )
+    }
+  )
+}
+
+fn stage0_partition_membership_row_resolvable_module_basenames(
+  row: Stage0PartitionCrateRow
+) -> List<String> {
+  fold_list(
+    xs: row.reexport_packages,
+    empty: stage0_partition_row_member_basenames_derived(row: row),
+    cons: fn(acc, pkg) {
+      list_append(
+        left: acc,
+        right: stage0_partition_crate_rows_first_modules_for_package(package_name: pkg)
+      )
+    }
+  )
+}
+
+fn stage0_partition_membership_oracle_refusal_message(
+  cause: Stage0PartitionMembershipOracleRefusalCause
+) -> String {
+  match cause {
+    Stage0PartitionMembershipUseCrateOutsideClosure {
+      module_basename: module_basename,
+      referenced_module: referenced_module,
+      package_name: package_name
+    } =>
+      concat(
+        "stage0 partition membership oracle refused: module ",
+        module_basename,
+        " references crate::",
+        referenced_module,
+        " outside derived closure for package ",
+        package_name
+      )
+  }
+}
+
+fn stage0_oracle_top_level_module(referenced: String) -> String {
+  match referenced |> split(delimiter: "::") |> first {
+    Present { value: head } => head
+    Absent => referenced
+  }
+}
+
+fn stage0_partition_membership_observation_oracle_outcome(
+  observation: Stage0ModuleUseCrateObservation,
+  package_name: String,
+  resolvable_modules: List<String>
+) -> Stage0PartitionMembershipOracleOutcome {
+  fold_list(
+    xs: stage0_partition_membership_source_text_use_crate_modules(text: observation.source_text),
+    empty: Stage0PartitionMembershipOracleOk,
+    cons: fn(acc, referenced_module) {
+      match acc {
+        Stage0PartitionMembershipOracleRefused { cause: _ } => acc
+        Stage0PartitionMembershipOracleOk =>
+          if stage0_partition_membership_string_list_contains(
+            xs: resolvable_modules,
+            needle: stage0_oracle_top_level_module(referenced: referenced_module)
+          ) {
+            Stage0PartitionMembershipOracleOk
+          } else {
+            Stage0PartitionMembershipOracleRefused {
+              cause: Stage0PartitionMembershipUseCrateOutsideClosure {
+                module_basename: observation.module_basename,
+                referenced_module: referenced_module,
+                package_name: package_name
+              }
+            }
+          }
+      }
+    }
+  )
+}
+
+fn stage0_partition_membership_oracle_for_row_outcome(
+  row: Stage0PartitionCrateRow,
+  observations: List<Stage0ModuleUseCrateObservation>
+) -> Stage0PartitionMembershipOracleOutcome {
+  if row.unit_id == stage0_unit_emit_core {
+    Stage0PartitionMembershipOracleOk
+  } else {
+    let resolvable = stage0_partition_membership_row_resolvable_module_basenames(row: row)
+    let member_basenames = stage0_partition_row_member_basenames_derived(row: row)
+    fold_list(
+      xs: observations,
+      empty: Stage0PartitionMembershipOracleOk,
+      cons: fn(acc, observation) {
+        match acc {
+          Stage0PartitionMembershipOracleRefused { cause: _ } => acc
+          Stage0PartitionMembershipOracleOk =>
+            if member_basenames |> any(m => m == observation.module_basename) {
+              stage0_partition_membership_observation_oracle_outcome(
+                observation: observation,
+                package_name: row.package_name,
+                resolvable_modules: resolvable
+              )
+            } else {
+              acc
+            }
+        }
+      }
+    )
+  }
+}
+
+fn stage0_partition_membership_oracle_outcome(
+  observations: List<Stage0ModuleUseCrateObservation>
+) -> Stage0PartitionMembershipOracleOutcome {
+  fold_list(
+    xs: stage0_partition_crate_rows(),
+    empty: Stage0PartitionMembershipOracleOk,
+    cons: fn(acc, row) {
+      match acc {
+        Stage0PartitionMembershipOracleRefused { cause: _ } => acc
+        Stage0PartitionMembershipOracleOk =>
+          if row.unit_id == stage0_unit_emit_core {
+            acc
+          } else {
+            stage0_partition_membership_oracle_for_row_outcome(
+              row: row,
+              observations: observations
+            )
+          }
+      }
+    }
+  )
+}
+
+fn stage0_partition_membership_oracle_holds(
+  observations: List<Stage0ModuleUseCrateObservation>
+) -> Bool {
+  match stage0_partition_membership_oracle_outcome(observations: observations) {
+    Stage0PartitionMembershipOracleOk => true
+    Stage0PartitionMembershipOracleRefused { cause: _ } => false
+  }
+}
