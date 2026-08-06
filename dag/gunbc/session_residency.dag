@@ -18,19 +18,44 @@ type SessionResidency
   = HostsInteractiveSessions
   | NoInteractiveSessions
 
+data session_residency_evidence_note: String = "THE VERDICT AND THE EVIDENCE FOR IT ARE DIFFERENT FACTS, and collapsing them is what made the first draft of this module unable to say what it knew. That draft answered only HostsInteractiveSessions | NoInteractiveSessions, so 'srv2 was counted running nineteen session containers this morning' and 'the operator states srv3 has none, because nobody could log in to check' produced the identical row. The asymmetry then had to live in prose beside the function, where no consumer and no witness can read it.\n\nIT MATTERS BECAUSE THE TWO NEGATIVE ARMS GRANT CAPACITY. A host classified session-free is charged no reservation and is admitted more runner slots, so the difference between a counted zero and an unobserved zero is the difference between a derived width and a borrowed premise — the same distinction gunbc.ci_floor_measurement enforces when it refuses to lend one host's overhead measurement to another. SessionsOperatorDeclaredAbsent is an override, honestly named as one; SessionsObservedAbsent is a receipt; and SessionsUnobserved is neither, which is why it charges."
+
+type SessionResidencyEvidence
+  = SessionsObservedPresent { observed_on: NonEmptyStr, container_count: Int }
+  | SessionsObservedAbsent { observed_on: NonEmptyStr }
+  | SessionsOperatorDeclaredAbsent { reason: String }
+  | SessionsUnobserved { reason: String }
+
+fn host_session_evidence(host: HostIdentity) -> SessionResidencyEvidence {
+  if (host as String) == (operator_host_srv1 as String) {
+    SessionsObservedPresent { observed_on: "2026-08-06", container_count: 19 }
+  } else if (host as String) == (operator_host_srv2 as String) {
+    SessionsObservedPresent { observed_on: "2026-08-06", container_count: 19 }
+  } else if (host as String) == (operator_host_srv3 as String) {
+    SessionsOperatorDeclaredAbsent {
+      reason: "operator states srv3 carries no interactive sessions; NOT observed by the session that wrote this row, because the fleet-automation key is authorized for no user on srv3 (the B2 gap in gunbc.plans.fleet_subsumption_manual_gaps) and a direct login was refused. The fleet's own history agrees: srv3 was stood up through the modeled path as a CI host and has never carried a dashboard instance."
+    }
+  } else if (host as String) == (operator_host_srv4 as String) {
+    SessionsOperatorDeclaredAbsent {
+      reason: "operator states srv4 carries no interactive sessions; NOT observed, because srv4 failed host-key verification from this session. Same standing history as srv3 — stood up as a CI host through the modeled path, never a dashboard instance."
+    }
+  } else {
+    SessionsUnobserved {
+      reason: "host is not classified in gunbc.session_residency, so whether interactive session containers live on it is unknown rather than known to be no"
+    }
+  }
+}
+
 data session_residency_observation_note: String = "GROUNDING, with its asymmetry stated rather than smoothed over. The two POSITIVE rows are observed: on 2026-08-06 srv1 and srv2 each showed 19 container cgroups under /sys/fs/cgroup/sessions.slice/, counted directly on the hosts. The dashboard deploy job is also pinned to srv1 alone (.github/workflows/ci.yml deploy_dashboard_srv1, runs-on includes the srv1 label), which is consistent.\n\nThe two NEGATIVE rows are OPERATOR-DECLARED, not observed by the session that wrote this row: srv3 refused a direct key login (the fleet-automation key is authorized for no user there — the B2 gap in gunbc.plans.fleet_subsumption_manual_gaps) and srv4 failed host-key verification, so neither could be counted. The operator states srv3 and srv4 carry no sessions, and the fleet's own history agrees — both were stood up through the modeled path as CI hosts and neither has ever had a dashboard instance.\n\nWhy that asymmetry is acceptable HERE and would not be everywhere: the negative rows are the ones that GRANT capacity. A host wrongly marked NoInteractiveSessions is charged nothing and gets more runner slots, so an error in that direction overcommits — which means these two rows should be the first thing re-checked when srv3/srv4 become reachable, and they carry a dissolve-on saying so."
 
+data session_residency_is_projected_note: String = "THE VERDICT IS A PROJECTION OF THE EVIDENCE, not a second hand-authored table beside it. Both were authored per host in the first draft, which is two representations of one fact (DESIGN section 2): flipping srv3 to observed-present without also flipping its verdict would have left the module asserting a contradiction that nothing could see. Here the only per-host authoring is the evidence, and the verdict cannot disagree with it because it is computed from it."
+
 fn host_session_residency(host: HostIdentity) -> SessionResidency {
-  if (host as String) == (operator_host_srv1 as String) {
-    HostsInteractiveSessions
-  } else if (host as String) == (operator_host_srv2 as String) {
-    HostsInteractiveSessions
-  } else if (host as String) == (operator_host_srv3 as String) {
-    NoInteractiveSessions
-  } else if (host as String) == (operator_host_srv4 as String) {
-    NoInteractiveSessions
-  } else {
-    HostsInteractiveSessions
+  match host_session_evidence(host: host) {
+    SessionsObservedPresent { observed_on: _, container_count: _ } => HostsInteractiveSessions
+    SessionsObservedAbsent { observed_on: _ } => NoInteractiveSessions
+    SessionsOperatorDeclaredAbsent { reason: _ } => NoInteractiveSessions
+    SessionsUnobserved { reason: _ } => HostsInteractiveSessions
   }
 }
 
@@ -43,26 +68,33 @@ fn host_carries_interactive_sessions(host: HostIdentity) -> Bool {
   }
 }
 
-data observed_session_container_counts_note: String = "The counts are recorded as a dated observation rather than as the authority, because they are a SNAPSHOT: session containers come and go continuously, and 19 is what two hosts happened to be running at one moment on 2026-08-06. What the snapshot establishes is the QUALITATIVE fact this module exists to carry — that sessions are resident on srv1 and srv2 in quantity — which is stable in a way the number is not. A consumer wanting the number should observe it, not read it here."
+data observed_session_container_counts_note: String = "THE COUNTS RIDE ON THE EVIDENCE ARM AND NOWHERE ELSE. An earlier revision carried them a second time, in a standalone session_container_observations list beside the verdict table — two authorings of one measurement, which is the parallel ledger DESIGN section 2 forbids and which a witness had to police by cross-checking the two against each other. The count now exists only inside SessionsObservedPresent, so the observation and the classification it supports cannot disagree.\n\nThe number itself is a SNAPSHOT and is not the authority for anything: session containers come and go continuously, and 19 is what two hosts happened to be running at one moment on 2026-08-06. What it establishes is the qualitative fact this module carries — that sessions are resident on srv1 and srv2 in quantity — which is stable in a way the number is not. A consumer wanting a live count should observe it."
 
-type ObservedSessionContainerCount {
-  host: HostIdentity
-  observed_on: NonEmptyStr
-  container_count: Int
+data session_residency_scaffold_bind_note: String = "A SCAFFOLD BIND IS A FORWARD REFERENCE, and getting that backwards cost this row two revisions. v2.lens.disposition_redundancy reads the bind as the SUCCESSOR: a scaffold whose bind target is present is redundant debt that must dissolve, and an absent target is the normal outstanding state. So binding to anything already in this module — the observation list, or the count function below — declares the debt paid while it plainly is not.\n\nThe first draft got the direction right by accident and the name wrong: session_container_observations_srv3_srv4 named nothing anyone had planned to author, which is a forward reference to a fiction rather than to a successor.\n\nWHAT ACTUALLY CLOSES THIS is a MODELED PRODUCER of session-residency observations — the same thing gunbc.host_swap_backing is waiting for and refuses to fake, on the same reasoning: a probe run by a person is not a producer, and hand-entering the result would rebuild the parallel ledger rather than close the gap. session_residency_observed_producer is that successor, deliberately not authored here, and when it exists srv3 and srv4 stop being SessionsOperatorDeclaredAbsent and this scaffold dissolves. operator_declared_absent_host_count is the observable proxy for the same condition — 2 today, 0 when closed — and the witness pins it; it is NOT the bind, precisely because it exists."
+
+fn host_absence_is_operator_declared(host: HostIdentity) -> Bool {
+  match host_session_evidence(host: host) {
+    SessionsOperatorDeclaredAbsent { reason: _ } => true
+    SessionsObservedPresent { observed_on: _, container_count: _ } => false
+    SessionsObservedAbsent { observed_on: _ } => false
+    SessionsUnobserved { reason: _ } => false
+  }
 }
 
-data session_container_observations: List<ObservedSessionContainerCount> = [
-  ObservedSessionContainerCount { host: operator_host_srv1, observed_on: "2026-08-06", container_count: 19 },
-  ObservedSessionContainerCount { host: operator_host_srv2, observed_on: "2026-08-06", container_count: 19 },
-]
-
-data session_residency_negative_rows_bind_note: String = "THE BIND NAMES session_container_observations, THE ROW THAT WILL CARRY THE MISSING EVIDENCE, and it is written this way because the first draft named a declaration that does not exist anywhere in the tree. That draft bound to session_container_observations_srv3_srv4 — a plausible-sounding name for a row nobody has authored — which is the fabricated-symbol class DESIGN section 3 records (two such citations landed in one carrier inside two days and produced the cite-the-symbol ruling). A bind that resolves to nothing cannot be checked by the containment tree, so the scaffold's closure condition was unreadable by any machine and untrue by inspection.\n\nWhat closes this scaffold is srv3 and srv4 gaining OBSERVED rows in session_container_observations, at which point the two NoInteractiveSessions verdicts stop being operator-declared. The list exists today with the two observed hosts in it, so the bind resolves now and the condition is a statement about its membership rather than about a file someone intends to write."
+fn operator_declared_absent_host_count() -> Int {
+  count(
+    filter(
+      [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
+      h => host_absence_is_operator_declared(host: h)
+    )
+  )
+}
 
 data session_residency_negative_rows_dissolve_on: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.session_residency",
-    decl_name: "session_container_observations",
+    decl_name: "session_residency_observed_producer",
     field: WholeDeclaration
   }
 }

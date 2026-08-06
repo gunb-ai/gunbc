@@ -12,7 +12,14 @@ import gunbc.session_residency {
   NoInteractiveSessions,
   host_session_residency,
   host_carries_interactive_sessions,
-  session_container_observations,
+  SessionResidencyEvidence,
+  SessionsObservedPresent,
+  SessionsObservedAbsent,
+  SessionsOperatorDeclaredAbsent,
+  SessionsUnobserved,
+  host_session_evidence,
+  host_absence_is_operator_declared,
+  operator_declared_absent_host_count,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -47,11 +54,28 @@ test fn residency_and_bool_projection_agree() -> Bool {
   )
 }
 
-data observation_supports_the_positive_rows_note: String = "The recorded container counts must actually support the hosts they are cited for: an observation row naming a host that this module classifies as session-free would be evidence contradicting its own conclusion, which is the shape a stale receipt takes when a host's role changes and only one of the two rows is updated."
+data observation_supports_the_positive_rows_note: String = "The recorded container counts must actually support the hosts they are cited for: an observed-present arm carrying zero containers would be evidence contradicting its own conclusion, which is the shape a stale receipt takes when a host's role changes and only part of the row is updated. The verdict is projected from the evidence, so the two cannot disagree about DIRECTION; this row checks that the evidence is internally coherent."
 
-test fn every_observed_host_is_classified_as_hosting_sessions() -> Bool {
+test fn observed_present_arms_carry_a_positive_count() -> Bool {
   all(
-    session_container_observations,
-    o => host_carries_interactive_sessions(host: o.host) && o.container_count > 0
+    [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
+    h =>
+      match host_session_evidence(host: h) {
+        SessionsObservedPresent { observed_on: _, container_count: n } =>
+          n > 0 && host_carries_interactive_sessions(host: h)
+        SessionsObservedAbsent { observed_on: _ } => !host_carries_interactive_sessions(host: h)
+        SessionsOperatorDeclaredAbsent { reason: _ } => !host_carries_interactive_sessions(host: h)
+        SessionsUnobserved { reason: _ } => host_carries_interactive_sessions(host: h)
+      }
   )
+}
+
+data evidence_grade_of_the_capacity_granting_rows_note: String = "THE TWO ROWS THAT GRANT CAPACITY ARE ASSERTED TO BE OPERATOR-DECLARED, NOT OBSERVED, and this witness exists so that the distinction cannot quietly change in either direction. srv3 and srv4 are classified session-free, which is what admits them seven runner slots instead of five; that classification rests on the operator's statement plus fleet history, because neither host was reachable from the session that wrote it (srv3 refused a key login, srv4 failed host-key verification).\n\nIf someone upgrades those rows to SessionsObservedAbsent without an actual observation, this reds — which is the point, since a fabricated receipt is worse than an honest declaration. If a real observation lands and the count drops to zero, this also reds, and that failure is the scaffold gunbc.session_residency session_residency_negative_rows_dissolve_on telling its owner to dissolve it."
+
+test fn managed_host_absence_is_declared_not_observed() -> Bool {
+  host_absence_is_operator_declared(host: operator_host_srv3)
+    && host_absence_is_operator_declared(host: operator_host_srv4)
+    && !host_absence_is_operator_declared(host: operator_host_srv1)
+    && !host_absence_is_operator_declared(host: operator_host_srv2)
+    && operator_declared_absent_host_count() == 2
 }
