@@ -1,0 +1,83 @@
+module v2.test.claim.stage0_partition_emitted_reference_oracle
+
+import v2.std.compilers.compilation_unit { CompilationUnitId }
+import gunbc.stage0_crate_partition_generated {
+  GeneratedPartitionCrateRow,
+  GeneratedFoundationCrate,
+  generated_partition_crate_rows
+}
+import v2.workflow.rust_crate_partition {
+  Stage0FoundationCrate,
+  Stage0LayeredCoreCrate,
+  Stage0PartitionCrateRow,
+  stage0_partition_emitted_membership_lists_oracle_holds,
+  stage0_partition_emitted_membership_oracle_holds,
+  stage0_partition_emitted_membership_oracle_refusal_propagates_holds,
+  stage0_partition_emitted_row_matches_authority_row,
+  rust_crate_partition_declared_core_target
+}
+
+data stage0_partition_emitted_reference_oracle_witness_note: String = "C3 emitted-reference oracle witness: committed generated_partition_crate_rows must match stage0_partition_crate_rows_outcome per package_name (modules + reexport_packages as order-independent sets). Independent of C2's frozen baseline — this catches stale or hand-edited generated artifacts. RED controls: planted module-list mismatch; emitted row that diverges from a matching authority row."
+
+test fn stage0_partition_emitted_membership_oracle_holds_witness() -> Bool {
+  stage0_partition_emitted_membership_oracle_holds()
+}
+
+test fn stage0_partition_emitted_membership_oracle_refusal_propagates_witness_holds() -> Bool {
+  stage0_partition_emitted_membership_oracle_refusal_propagates_holds()
+}
+
+test fn stage0_partition_emitted_membership_oracle_row_count_holds() -> Bool {
+  (generated_partition_crate_rows |> count) == rust_crate_partition_declared_core_target
+}
+
+test fn stage0_partition_emitted_membership_oracle_red_wrong_module_holds() -> Bool {
+  !stage0_partition_emitted_membership_lists_oracle_holds(
+    emitted_modules: ["v1_rt", "stage0_oracle_phantom_module"],
+    authority_modules: ["v1_rt"]
+  )
+}
+
+test fn stage0_partition_emitted_membership_oracle_red_missing_module_holds() -> Bool {
+  !stage0_partition_emitted_membership_lists_oracle_holds(
+    emitted_modules: ["v1_rt"],
+    authority_modules: ["v1_rt", "std_algebra"]
+  )
+}
+
+test fn stage0_partition_emitted_row_matches_authority_row_red_holds() -> Bool {
+  let emitted = GeneratedPartitionCrateRow {
+    package_name: "v1-stage0-runtime",
+    crate_dir: "src/v1/stage0_runtime",
+    kind: GeneratedFoundationCrate,
+    modules: ["v1_rt"],
+    reexport_packages: [],
+    carries_non_empty_wrappers: true
+  }
+  let authority_ok = Stage0PartitionCrateRow {
+    unit_id: "stage0-unit-runtime" as CompilationUnitId,
+    package_name: "v1-stage0-runtime",
+    crate_dir: "src/v1/stage0_runtime",
+    kind: Stage0FoundationCrate,
+    modules: ["v1_rt"],
+    reexport_packages: [],
+    carries_non_empty_wrappers: true
+  }
+  let authority_bad = Stage0PartitionCrateRow {
+    unit_id: "stage0-unit-runtime" as CompilationUnitId,
+    package_name: "v1-stage0-runtime",
+    crate_dir: "src/v1/stage0_runtime",
+    kind: Stage0LayeredCoreCrate,
+    modules: ["v1_rt", "stage0_oracle_phantom_module"],
+    reexport_packages: [],
+    carries_non_empty_wrappers: true
+  }
+  stage0_partition_emitted_row_matches_authority_row(
+    emitted: emitted,
+    authority: authority_ok
+  )
+    && !stage0_partition_emitted_row_matches_authority_row(
+      emitted: emitted,
+      authority: authority_bad
+    )
+}
