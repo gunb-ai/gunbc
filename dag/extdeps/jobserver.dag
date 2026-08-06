@@ -27,9 +27,15 @@ fn derive_jobserver_tokens(nproc: HardwareThreadCount, mem_total: ByteSize, cfg:
   hardware_thread_count(count: nat_min(a: cpu_bound, b: mem_bound))
 }
 
-fn jobserver_build_pool_bytes(nproc: HardwareThreadCount, mem_total: ByteSize, cfg: JobserverConfig) -> ByteSize {
-  let tokens = derive_jobserver_tokens(nproc: nproc, mem_total: mem_total, cfg: cfg)
+fn jobserver_build_pool_bytes_for_tokens(tokens: HardwareThreadCount, cfg: JobserverConfig) -> ByteSize {
   measure_scale_fraction_floor(m: cfg.mib_per_job, num: hardware_thread_count_value(t: tokens), den: 1)
+}
+
+fn jobserver_build_pool_bytes(nproc: HardwareThreadCount, mem_total: ByteSize, cfg: JobserverConfig) -> ByteSize {
+  jobserver_build_pool_bytes_for_tokens(
+    tokens: derive_jobserver_tokens(nproc: nproc, mem_total: mem_total, cfg: cfg),
+    cfg: cfg,
+  )
 }
 
 type JobserverCitation

@@ -1,0 +1,103 @@
+module test.claim.host_capacity_solve_witness
+
+import gunbc.host_capacity_solve {
+  joint_capacity_solve_srv3_under_declared_pool,
+  joint_capacity_solve_srv3_current_topology,
+  live_capacity_admission_for_host,
+  LiveCapacityAdmitted,
+  LiveCapacityCandidateOnly,
+  LiveCapacityRefused,
+  JointCapacitySolved,
+  JointCapacitySolveUnsound,
+  JointCapacityFeasible,
+  JointCapacityInfeasible,
+  JointCapacityRamOvercommit,
+  JointCapacityTokensExceedDerived,
+  JointCapacityCandidate,
+  joint_capacity_slot_score,
+  CapacityEvidenceOperatorDeclared,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import std.measure { measure_scale_fraction_floor, byte_size_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn joint_solve_double_counted_topology_refuses_seven_slots_at_derived_tokens() -> Bool {
+  match joint_capacity_solve_srv3_current_topology(max_slots: 7, max_tokens: 62) {
+    JointCapacitySolveUnsound { reason: _ } => true
+    JointCapacitySolved { best: b, feasible_count: _, placement: _ } =>
+      match b {
+        JointCapacityFeasible { candidate: c, runner_pool: _, compile_pool: _, throughput_score: _ } =>
+          c.runner_slots < 7
+        JointCapacityInfeasible { candidate: _, reason: _ } => true
+      }
+  }
+}
+
+test fn joint_solve_declared_pool_admits_more_than_five_slots() -> Bool {
+  match joint_capacity_solve_srv3_under_declared_pool(max_slots: 8, max_tokens: 62) {
+    JointCapacitySolveUnsound { reason: _ } => false
+    JointCapacitySolved { best: b, feasible_count: fc, placement: _ } =>
+      fc > 0
+        && match b {
+          JointCapacityFeasible { candidate: c, runner_pool: _, compile_pool: _, throughput_score: score } =>
+            c.runner_slots >= 6 && score > 0
+          JointCapacityInfeasible { candidate: _, reason: _ } => false
+        }
+  }
+}
+
+test fn joint_solve_declared_pool_runner_charge_below_full_memory_max() -> Bool {
+  match joint_capacity_solve_srv3_under_declared_pool(max_slots: 8, max_tokens: 62) {
+    JointCapacitySolveUnsound { reason: _ } => false
+    JointCapacitySolved { best: b, feasible_count: _, placement: _ } =>
+      match b {
+        JointCapacityFeasible { candidate: c, runner_pool: rp, compile_pool: _, throughput_score: _ } =>
+          c.runner_slots >= 6
+            && byte_size_count(b: rp) < byte_size_count(b: measure_scale_fraction_floor(m: gunbc_runner_slot_desired().memory_max, num: c.runner_slots, den: 1))
+        JointCapacityInfeasible { candidate: _, reason: _ } => false
+      }
+  }
+}
+
+test fn joint_solve_tokens_above_derived_cap_refuses() -> Bool {
+  match joint_capacity_solve_srv3_under_declared_pool(max_slots: 5, max_tokens: 128) {
+    JointCapacitySolveUnsound { reason: _ } => false
+    JointCapacitySolved { best: b, feasible_count: _, placement: _ } =>
+      all(
+        [b],
+        r =>
+          match r {
+            JointCapacityInfeasible { candidate: c, reason: reason } =>
+              hardware_thread_count_value(t: c.build_tokens) == 128
+                && match reason {
+                  JointCapacityTokensExceedDerived { requested: req, derived_cap: cap } =>
+                    hardware_thread_count_value(t: req) == 128
+                      && hardware_thread_count_value(t: cap) < 128
+                  _ => false
+                }
+            JointCapacityFeasible { candidate: c, runner_pool: _, compile_pool: _, throughput_score: _ } =>
+              hardware_thread_count_value(t: c.build_tokens) < 128
+          }
+      )
+  }
+}
+
+test fn srv3_live_capacity_is_candidate_only_until_session_observed() -> Bool {
+  match live_capacity_admission_for_host(
+    host: operator_host_srv3,
+    solved: joint_capacity_solve_srv3_under_declared_pool(max_slots: 8, max_tokens: 62)
+  ) {
+    LiveCapacityRefused { reason: _ } => false
+    LiveCapacityCandidateOnly { solved: _, evidence: CapacityEvidenceOperatorDeclared, reason: _ } => true
+    LiveCapacityAdmitted { solved: _, evidence: _ } => false
+  }
+}
+
+test fn joint_capacity_slot_score_is_runner_slots() -> Bool {
+  joint_capacity_slot_score(slots: 7) == 7
+    && joint_capacity_slot_score(slots: 5) == 5
+    && joint_capacity_slot_score(slots: 0) == 0
+}

@@ -1,0 +1,479 @@
+module gunbc.host_capacity_solve
+
+import std.types { Int, String, List, Bool }
+import std.nat { Nat }
+import std.measure {
+  ByteSize, byte_size, byte_size_count,
+  measure_scale_fraction_floor,
+  HardwareThreadCount, hardware_thread_count, hardware_thread_count_value,
+}
+import std.disposition { Disposition, SingleAuthority, Scaffold }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+import extdeps.jobserver {
+  JobserverConfig,
+  JobserverCitation,
+  JobserverCited,
+  JobserverAbsent,
+  derive_jobserver_tokens,
+  jobserver_build_pool_bytes_for_tokens,
+  jobserver_config,
+}
+import extdeps.cpu { cpu_facts_threads }
+import gunbc.ci_fleet { gunbc_ci_host, ComputeOffer, srv3_offer }
+import gunbc.fleet_intent { compute_host_primary_cpu, compute_host_ram_bytes_total }
+import gunbc.ci_floor_measurement {
+  gunbc_ci_host_fixed_overhead_for,
+  HostFixedOverheadMeasured,
+  HostFixedOverheadAllowance,
+  HostFixedOverheadUnmeasured,
+}
+import gunbc.ci_runner_placement { host_os_usable_ram_bytes, host_session_slice_resolution, SessionSliceCharged, SessionSliceNotApplicable, SessionSliceUnsized }
+import gunbc.session_residency { host_session_evidence, SessionsObservedAbsent, SessionsOperatorDeclaredAbsent, SessionsObservedPresent, SessionsUnobserved }
+import gunbc.fleet_host_budget {
+  host_allocation_conserves,
+  oomd_actuation_floor,
+  CompilePoolPlacement,
+  CompilePoolSliceDeclared,
+  CompilePoolInRunnerSlots,
+  gunbc_compile_pool_placement,
+}
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slot_desired,
+  gunbc_runner_cores_per_slot,
+}
+import gunbc.runner_host_deploy { runner_index_seq }
+import gunbc.fleet_container {
+  gha_runner_container,
+  container_baseline_bytes,
+  BaselineResolved,
+  BaselineUnmeasured,
+}
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.host_layout { gunbc_managed_compile_pool_slice }
+
+data host_capacity_solve_authority_disposition: Disposition = SingleAuthority
+
+// THE JOINT SOLVE EXISTS BECAUSE A WIDTH AND A TOKEN COUNT ARE NOT INDEPENDENT KNOBS. #7891 corrected
+// the capacity MODEL — per-host width as a minimum over axes, sessions charged by residency — but left
+// the fleet at 20 live runners with activation refused fleet-wide because CompilePoolInRunnerSlots
+// produces no managed-pool readiness. Flipping srv3 to CompilePoolSliceDeclared without shrinking
+// runner_pool double-counts compile RSS: the 14GiB per-slot measurements largely INCLUDE compile demand
+// that would move into the pool, so adding both full slot ceilings AND tokens×mib_per_job reproduces
+// the 206.5GiB sum against ~125GiB usable that makes seven slots plus the derived pool impossible
+// before overhead.
+//
+// THIS MODULE OWNS THE BOUNDED FINITE SOLVE the operator ruling names: enumerate candidate
+// (runner_slots, build_tokens), derive runner_pool and compile_pool with compile RSS separated from
+// runner non-compile residency when the topology declares a managed pool, filter by RAM, sessions,
+// overhead, headroom, and realization constraints, and select the best feasible candidate under an
+// explicit throughput objective. It does NOT hand-author srv3's answer — it derives it from inputs.
+// Runner count alone is not a capacity win; the acceptance receipt measures completed floor jobs per
+// hour under comparable saturation.
+//
+// HONEST RESIDUAL: non-compile residency today derives from the gha_runner idle baseline (300MiB),
+// which is a LOWER bound on per-slot charge, not the measured non-compile peak the flip wants. A
+// candidate width derived from it may undershoot actuatable width until
+// srv3_non_compile_residency_observed lands (dissolve-on scaffold at module end). Undershoot is the
+// SILENT error direction: host_allocation_conserves reds on overcommit and says nothing when the
+// width is too low — unfalsifiable in the direction this baseline errs. srv3_non_compile_residency_observed
+// is the only closure; treating the idle baseline as safe because it is conservative misses that asymmetry.
+
+type CapacityEvidenceGrade
+  = CapacityEvidenceObserved
+  | CapacityEvidenceOperatorDeclared
+  | CapacityEvidenceUnobserved
+
+// OPERATOR-DECLARED EVIDENCE MAY GRANT CANDIDATE CAPACITY AND MUST NOT GRANT LIVE CAPACITY. srv3's
+// session-free row is SessionsOperatorDeclaredAbsent — good enough to keep seven as a candidate width,
+// not good enough to actuate on. Observed arms advance live capacity; operator-declared and unobserved
+// arms cap at candidate only.
+
+fn session_absence_evidence_grade(host: HostIdentity) -> CapacityEvidenceGrade {
+  match host_session_evidence(host: host) {
+    SessionsObservedAbsent { observed_on: _ } => CapacityEvidenceObserved
+    SessionsOperatorDeclaredAbsent { reason: _ } => CapacityEvidenceOperatorDeclared
+    SessionsObservedPresent { observed_on: _, container_count: _ } => CapacityEvidenceObserved
+    SessionsUnobserved { reason: _ } => CapacityEvidenceUnobserved
+  }
+}
+
+type RunnerNonCompileResidency
+  = NonCompileResidencyMeasured { bytes: ByteSize, provenance: String }
+  | NonCompileResidencyDerivedIdle { bytes: ByteSize }
+  | NonCompileResidencyUnresolved { reason: String }
+
+// PER-SLOT RAM CHARGE WHEN COMPILE RSS LIVES IN THE POOL, stated as a charge not a cgroup cap. The
+// runner cgroup may still carry memory_max for enforcement, but the HOST BUDGET sums non-compile
+// residency only — otherwise compile_pool and runner_pool double-count the same RSS. Today the idle
+// baseline (314572800 bytes from gha_runner_container) is the derived charge: a measured LOWER bound
+// on runner-only demand, NOT the 14GiB ceiling that included cache-miss compiles. That lower bound
+// undershoots actuatable width silently — conservation refuses overcommit, never under-admission —
+// so srv3_non_compile_residency_observed (dissolve-on scaffold below) is required to close the gap.
+
+fn resolve_runner_non_compile_residency() -> RunnerNonCompileResidency {
+  match container_baseline_bytes(c: gha_runner_container) {
+    BaselineResolved { bytes: b } => NonCompileResidencyDerivedIdle { bytes: b }
+    BaselineUnmeasured { reason: r } =>
+      NonCompileResidencyUnresolved { reason: concat("gha_runner idle baseline unmeasured: ", r) }
+  }
+}
+
+fn per_slot_runner_pool_charge(placement: CompilePoolPlacement, residency: RunnerNonCompileResidency) -> ByteSize? {
+  match placement {
+    CompilePoolInRunnerSlots => Present { value: gunbc_runner_slot_desired().memory_max }
+    CompilePoolSliceDeclared { slice_unit: _ } =>
+      match residency {
+        NonCompileResidencyMeasured { bytes: b, provenance: _ } => Present { value: b }
+        NonCompileResidencyDerivedIdle { bytes: b } => Present { value: b }
+        NonCompileResidencyUnresolved { reason: _ } => none
+      }
+  }
+}
+
+type JointCapacityCandidate {
+  runner_slots: Int
+  build_tokens: HardwareThreadCount
+}
+
+type JointCapacityRefusalReason
+  = JointCapacityRamOvercommit { runner_pool: ByteSize, compile_pool: ByteSize, host_ram: ByteSize }
+  | JointCapacityNonPositive { detail: String }
+  | JointCapacityResidencyUnresolved { reason: String }
+  | JointCapacitySessionSliceUnsized { reason: String }
+  | JointCapacityFixedOverheadUnmeasured
+  | JointCapacityJobserverAbsent
+  | JointCapacityTokensExceedDerived { requested: HardwareThreadCount, derived_cap: HardwareThreadCount }
+
+type JointCapacityFeasibility
+  = JointCapacityFeasible {
+      candidate: JointCapacityCandidate
+      runner_pool: ByteSize
+      compile_pool: ByteSize
+      throughput_score: Int
+    }
+  | JointCapacityInfeasible { candidate: JointCapacityCandidate, reason: JointCapacityRefusalReason }
+
+// THROUGHPUT OBJECTIVE (review 49656): build_tokens is ONE shared jobserver pool across concurrent
+// slots (compile_pool = jobserver_build_pool_bytes_for_tokens is host-wide, not per-slot). A
+// slots×tokens product double-counts token capacity and makes selection slot-max whenever RAM
+// permits. Selection is therefore slot-max under the RAM feasibility wall; build_tokens tie-breaks
+// equal slot counts only.
+
+data joint_capacity_objective_note: String = "Joint capacity selection maximizes runner_slots among RAM-feasible candidates; build_tokens is a shared host-wide jobserver pool, not an independent per-slot multiplier. throughput_score records runner_slots; feasibility_better_than compares slots first, then tokens."
+
+fn joint_capacity_slot_score(slots: Int) -> Int {
+  if slots <= 0 { 0 } else { slots }
+}
+
+fn feasibility_better_than(left: JointCapacityFeasibility, right: JointCapacityFeasibility) -> Bool {
+  match left {
+    JointCapacityFeasible { candidate: lc, runner_pool: _, compile_pool: _, throughput_score: _ } =>
+      match right {
+        JointCapacityFeasible { candidate: rc, runner_pool: _, compile_pool: _, throughput_score: _ } =>
+          if lc.runner_slots > rc.runner_slots { true }
+          else if lc.runner_slots < rc.runner_slots { false }
+          else {
+            hardware_thread_count_value(t: lc.build_tokens) > hardware_thread_count_value(t: rc.build_tokens)
+          }
+        JointCapacityInfeasible { candidate: _, reason: _ } => true
+      }
+    JointCapacityInfeasible { candidate: _, reason: _ } => false
+  }
+}
+
+fn host_fixed_overhead_resolved(host: HostIdentity) -> ByteSize? {
+  match gunbc_ci_host_fixed_overhead_for(host: host) {
+    HostFixedOverheadMeasured { bytes: b, provenance: _ } => Present { value: b }
+    HostFixedOverheadAllowance { bytes: b, reason: _ } => Present { value: b }
+    HostFixedOverheadUnmeasured => none
+  }
+}
+
+fn evaluate_joint_candidate(
+  host: HostIdentity,
+  host_ram: ByteSize,
+  session_pool: ByteSize,
+  overhead: ByteSize,
+  placement: CompilePoolPlacement,
+  residency: RunnerNonCompileResidency,
+  citation: JobserverCitation,
+  nproc: HardwareThreadCount,
+  candidate: JointCapacityCandidate,
+) -> JointCapacityFeasibility {
+  if candidate.runner_slots <= 0 || hardware_thread_count_value(t: candidate.build_tokens) <= 0 {
+    JointCapacityInfeasible {
+      candidate: candidate,
+      reason: JointCapacityNonPositive { detail: "runner_slots and build_tokens must be positive" },
+    }
+  } else {
+    match per_slot_runner_pool_charge(placement: placement, residency: residency) {
+      Absent =>
+        JointCapacityInfeasible {
+          candidate: candidate,
+          reason: JointCapacityResidencyUnresolved {
+            reason: "runner non-compile residency unresolved under CompilePoolSliceDeclared",
+          },
+        }
+      Present { value: per_slot } =>
+        match citation {
+          JobserverAbsent =>
+            JointCapacityInfeasible {
+              candidate: candidate,
+              reason: JointCapacityJobserverAbsent,
+            }
+          JobserverCited { config: cfg, provenance: _ } => {
+            let derived_cap = derive_jobserver_tokens(nproc: nproc, mem_total: host_ram, cfg: cfg)
+            if hardware_thread_count_value(t: candidate.build_tokens) > hardware_thread_count_value(t: derived_cap) {
+              JointCapacityInfeasible {
+                candidate: candidate,
+                reason: JointCapacityTokensExceedDerived {
+                  requested: candidate.build_tokens,
+                  derived_cap: derived_cap,
+                },
+              }
+            } else {
+              let runner_pool = measure_scale_fraction_floor(m: per_slot, num: candidate.runner_slots, den: 1)
+              let compile_pool = jobserver_build_pool_bytes_for_tokens(tokens: candidate.build_tokens, cfg: cfg)
+              let headroom = oomd_actuation_floor(host: host_ram)
+              if host_allocation_conserves(
+                host: host_ram,
+                overhead: overhead,
+                headroom: headroom,
+                runner_pool: runner_pool,
+                session_pool: session_pool,
+                compile_pool: compile_pool
+              ) {
+                JointCapacityFeasible {
+                  candidate: candidate,
+                  runner_pool: runner_pool,
+                  compile_pool: compile_pool,
+                  throughput_score: joint_capacity_slot_score(slots: candidate.runner_slots),
+                }
+              } else {
+                JointCapacityInfeasible {
+                  candidate: candidate,
+                  reason: JointCapacityRamOvercommit {
+                    runner_pool: runner_pool,
+                    compile_pool: compile_pool,
+                    host_ram: host_ram,
+                  },
+                }
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+fn fold_best_feasible(acc: JointCapacityFeasibility?, item: JointCapacityFeasibility) -> JointCapacityFeasibility? {
+  match acc {
+    Absent => match item {
+      JointCapacityFeasible { candidate: _, runner_pool: _, compile_pool: _, throughput_score: _ } => Present { value: item }
+      JointCapacityInfeasible { candidate: _, reason: _ } => none
+    }
+    Present { value: best } =>
+      if feasibility_better_than(left: item, right: best) {
+        match item {
+          JointCapacityFeasible { candidate: _, runner_pool: _, compile_pool: _, throughput_score: _ } => Present { value: item }
+          JointCapacityInfeasible { candidate: _, reason: _ } => Present { value: best }
+        }
+      } else {
+        Present { value: best }
+      }
+  }
+}
+
+fn slot_candidates_up_to(max_slots: Int) -> List<Int> {
+  if max_slots <= 0 { [] }
+  else { runner_index_seq(n: max_slots) }
+}
+
+data joint_capacity_token_milestones: List<Int> = [1, 8, 16, 32, 48, 62, 64, 96, 128]
+
+fn token_candidates_up_to(max_tokens: Int) -> List<Int> {
+  filter(joint_capacity_token_milestones, t => t <= max_tokens)
+}
+
+fn candidates_for_bounds(max_slots: Int, max_tokens: Int) -> List<JointCapacityCandidate> {
+  fold(
+    slot_candidates_up_to(max_slots: max_slots),
+    init: [],
+    f: (acc, slots) =>
+      fold(
+        token_candidates_up_to(max_tokens: max_tokens),
+        init: acc,
+        f: (inner, tokens) =>
+          concat(
+            inner,
+            [JointCapacityCandidate { runner_slots: slots, build_tokens: hardware_thread_count(count: tokens) }]
+          )
+      )
+  )
+}
+
+type JointCapacitySolveResult
+  = JointCapacitySolved {
+      best: JointCapacityFeasibility
+      feasible_count: Int
+      placement: CompilePoolPlacement
+    }
+  | JointCapacitySolveUnsound { reason: String }
+
+fn joint_capacity_solve_for_host(
+  host: HostIdentity,
+  offer: ComputeOffer,
+  placement: CompilePoolPlacement,
+  max_slots: Int,
+  max_tokens: Int,
+) -> JointCapacitySolveResult {
+  match compute_host_primary_cpu(host: offer.supply.physical) {
+    Absent =>
+      JointCapacitySolveUnsound { reason: concat("no primary CPU facts for host ", host) }
+    Present { value: cpu } =>
+      match host_fixed_overhead_resolved(host: host) {
+        Absent =>
+          JointCapacitySolveUnsound { reason: concat("host fixed overhead unmeasured: ", host) }
+        Present { value: overhead } =>
+          match host_session_slice_resolution(host: host) {
+            SessionSliceUnsized { reason: r } =>
+              JointCapacitySolveUnsound { reason: r }
+            SessionSliceNotApplicable =>
+              joint_capacity_solve_with_inputs(
+                host: host,
+                host_ram: host_os_usable_ram_bytes(),
+                session_pool: byte_size(0),
+                overhead: overhead,
+                placement: placement,
+                residency: resolve_runner_non_compile_residency(),
+                citation: jobserver_config,
+                nproc: cpu_facts_threads(cpu: cpu),
+                max_slots: max_slots,
+                max_tokens: max_tokens
+              )
+            SessionSliceCharged { bytes: session_pool } =>
+              joint_capacity_solve_with_inputs(
+                host: host,
+                host_ram: host_os_usable_ram_bytes(),
+                session_pool: session_pool,
+                overhead: overhead,
+                placement: placement,
+                residency: resolve_runner_non_compile_residency(),
+                citation: jobserver_config,
+                nproc: cpu_facts_threads(cpu: cpu),
+                max_slots: max_slots,
+                max_tokens: max_tokens
+              )
+          }
+      }
+  }
+}
+
+fn joint_capacity_solve_with_inputs(
+  host: HostIdentity,
+  host_ram: ByteSize,
+  session_pool: ByteSize,
+  overhead: ByteSize,
+  placement: CompilePoolPlacement,
+  residency: RunnerNonCompileResidency,
+  citation: JobserverCitation,
+  nproc: HardwareThreadCount,
+  max_slots: Int,
+  max_tokens: Int,
+) -> JointCapacitySolveResult {
+  let candidates = candidates_for_bounds(max_slots: max_slots, max_tokens: max_tokens)
+  let evaluated = map(
+    candidates,
+    c =>
+      evaluate_joint_candidate(
+        host: host,
+        host_ram: host_ram,
+        session_pool: session_pool,
+        overhead: overhead,
+        placement: placement,
+        residency: residency,
+        citation: citation,
+        nproc: nproc,
+        candidate: c
+      )
+  )
+  let feasible_count = fold(evaluated, init: 0, f: (n, e) =>
+    match e {
+      JointCapacityFeasible { candidate: _, runner_pool: _, compile_pool: _, throughput_score: _ } => n + 1
+      JointCapacityInfeasible { candidate: _, reason: _ } => n
+    }
+  )
+  let best = fold(evaluated, init: none, f: (acc, e) => fold_best_feasible(acc: acc, item: e))
+  match best {
+    Absent =>
+      JointCapacitySolveUnsound {
+        reason: concat("no feasible (runner_slots, build_tokens) candidate in enumerated bounds for ", host),
+      }
+    Present { value: b } =>
+      JointCapacitySolved {
+        best: b,
+        feasible_count: feasible_count,
+        placement: placement,
+      }
+  }
+}
+
+fn joint_capacity_solve_srv3_under_declared_pool(max_slots: Int, max_tokens: Int) -> JointCapacitySolveResult {
+  joint_capacity_solve_for_host(
+    host: operator_host_srv3,
+    offer: srv3_offer,
+    placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    max_slots: max_slots,
+    max_tokens: max_tokens
+  )
+}
+
+fn joint_capacity_solve_srv3_current_topology(max_slots: Int, max_tokens: Int) -> JointCapacitySolveResult {
+  joint_capacity_solve_for_host(
+    host: operator_host_srv3,
+    offer: srv3_offer,
+    placement: gunbc_compile_pool_placement,
+    max_slots: max_slots,
+    max_tokens: max_tokens
+  )
+}
+
+type LiveCapacityAdmission
+  = LiveCapacityAdmitted { solved: JointCapacitySolveResult, evidence: CapacityEvidenceGrade }
+  | LiveCapacityCandidateOnly { solved: JointCapacitySolveResult, evidence: CapacityEvidenceGrade, reason: String }
+  | LiveCapacityRefused { reason: String }
+
+fn live_capacity_admission_for_host(host: HostIdentity, solved: JointCapacitySolveResult) -> LiveCapacityAdmission {
+  match solved {
+    JointCapacitySolveUnsound { reason: r } => LiveCapacityRefused { reason: r }
+    JointCapacitySolved { best: _, feasible_count: _, placement: _ } =>
+      match session_absence_evidence_grade(host: host) {
+        CapacityEvidenceObserved =>
+          LiveCapacityAdmitted { solved: solved, evidence: CapacityEvidenceObserved }
+        CapacityEvidenceOperatorDeclared =>
+          LiveCapacityCandidateOnly {
+            solved: solved,
+            evidence: CapacityEvidenceOperatorDeclared,
+            reason: "session absence is operator-declared, not observed — candidate capacity only",
+          }
+        CapacityEvidenceUnobserved =>
+          LiveCapacityCandidateOnly {
+            solved: solved,
+            evidence: CapacityEvidenceUnobserved,
+            reason: "session residency unobserved — candidate capacity only",
+          }
+      }
+  }
+}
+
+// Aspiration bind: srv3_non_compile_residency_observed is not yet authored; names the dissolve target, not a live symbol (review 49648).
+
+data srv3_non_compile_residency_observed_dissolve_on: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_capacity_solve",
+    decl_name: "srv3_non_compile_residency_observed",
+    field: WholeDeclaration,
+  }
+}
