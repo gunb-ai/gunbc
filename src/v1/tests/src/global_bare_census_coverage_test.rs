@@ -3,7 +3,7 @@
 //! `global_bare` binds a bare cross-module reference iff the name is globally
 //! unique. These probes isolate which declaration shapes the census covers.
 
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_sources, SourceFile};
 use v1_compiler::v1_std_core::is_interpreter_blocking_diagnostic;

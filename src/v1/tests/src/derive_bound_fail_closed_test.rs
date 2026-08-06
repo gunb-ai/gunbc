@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::std_computation::ShrinkFactor;
 use v1_compiler::std_induction::{derive_bound, CostBound};

@@ -4526,7 +4526,7 @@ fn emit_prelude(imported_names: List<String>, local_type_names: List<String>) ->
   let base = concat(
     "use im::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
     "use crate::v1_rt::\{VecCompat, VecJoin\};\n",
-    "use std::rc::Rc;\n",
+    "use std::sync::Arc as Rc;\n",
     "use crate::v1_rt;")
   let wrapper_use = "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;"
   concat(base, wrapper_use)
@@ -10648,7 +10648,7 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, cr
     let core_mod = module_to_filename(name: "v1.std.core")
     concat(base,
       "\nuse im::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
-      "use std::rc::Rc;\n",
+      "use std::sync::Arc as Rc;\n",
       "use ", crate_name, "::", pipeline_mod, ";\n",
       "use ", crate_name, "::", pipeline_mod, "::PipelineResult;\n",
       "use ", crate_name, "::", core_mod, "::", "{",

@@ -5,7 +5,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use std::sync::OnceLock;
 use std::time::Instant;
 
@@ -1476,7 +1476,7 @@ mod tests {
             .keys()
             .find(|path| path.ends_with("compiler_tests.rs"))
             .expect("compiler_tests.rs in emitted stage0 roster");
-        let bad = "intern_table.clone(),\n                        std::rc::Rc::new(HashMap::new()),\n                        crate::v1_compiler_infer_env::empty_symbol_index()";
+        let bad = "intern_table.clone(),\n                        Rc::new(HashMap::new()),\n                        crate::v1_compiler_infer_env::empty_symbol_index()";
         assert!(
             !emitted[key].contains(bad),
             "fresh emit of compiler_tests.rs still passes removed global_bare arg"

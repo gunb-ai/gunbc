@@ -6,14 +6,13 @@ edition = "2021"
 [features]
 default = []
 text_lookup_work_counter = []
-# Test-only interpreter instrumentation (default-off until armed). Compiled into shared release artifact; inert at runtime until armed.
 interp_test_witness = []
 test_hooks = []
 
 [dependencies]
 # Persistent value carriers (ctrl#1533 phase 2). `im` and `im-rc` are the same
 # crate source; build.rs switches on CARGO_PKG_NAME to set cfg(threadsafe),
-# which flips one alias in that crate's util.rs -- Ref<A> = std::rc::Rc for
+# which flips one alias in that crate's util.rs -- Ref<A> = Rc for
 # im-rc, std::sync::Arc for im. Public API, macro set, and algorithms are
 # identical; the only feature im-rc adds is `pool`, which we do not request.
 # It provides BOTH carriers v2.std.value_carrier declares: HashMap is a hash
@@ -28,7 +27,7 @@ test_hooks = []
 # index; cross-entry reuse is real (measured 92.5% typed_module_cache hit rate
 # over 80 sequential discovery entries), but sharing it needs Send payloads,
 # and an outer Arc cannot make a value Send when its interior is im_rc-backed.
-# NOT Send yet: the Value substrate is still std::rc::Rc. That is the
+# NOT Send yet: the Value substrate is still Rc. That is the
 # follow-on step, gated on this swap's measured cost -- im refcounts
 # atomically, so this taxes every collection op including the interpreter
 # hot path.

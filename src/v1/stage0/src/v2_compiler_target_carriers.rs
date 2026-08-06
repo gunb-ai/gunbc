@@ -8,7 +8,7 @@ use crate::usv_pilot_v2_std_node::{
     Node, NodeKind,
 };
 use im::{vector as vec, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]

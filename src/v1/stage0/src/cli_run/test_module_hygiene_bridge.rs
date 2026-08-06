@@ -5,7 +5,7 @@ use crate::v1_std_core::{authored_name_at, expr_call_func_at, expr_var_name_at, 
 use im::HashMap;
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 const TEST_MODULE_HYGIENE_ENTRY: &str = "dag/gunbc/test_module_hygiene.dag";
 

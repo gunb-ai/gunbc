@@ -8,7 +8,7 @@ use crate::wt_common::Flag::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 pub fn wt_b_wired(q: Flag) -> Flag {
     q

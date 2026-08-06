@@ -8,7 +8,7 @@
 use im::HashMap;
 use std::env;
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::v1_compiler_artifact::RenderTarget;

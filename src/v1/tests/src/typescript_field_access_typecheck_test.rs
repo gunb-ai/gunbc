@@ -24,7 +24,7 @@
 //! confirm that. If a runner ever lacks `npx`, the skip is honest and names
 //! its dissolution trigger rather than silently passing.
 
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};

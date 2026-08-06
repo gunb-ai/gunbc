@@ -12,7 +12,7 @@
 //! policy, and a genuinely-unbound name stays `UnresolvedType` — the refusal is typed,
 //! never a blanket.
 
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_rt::{

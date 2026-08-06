@@ -190,7 +190,7 @@ type MoneyAmount<S> = Measure<Currency, S>
 
 #[test]
 fn measure_dag_rust_emit_terminates() {
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
     use v1_compiler::cli_run;
     use v1_compiler::v1_compiler_artifact::RenderTarget;
     use v1_compiler::v1_compiler_compile::compile_sources;
@@ -223,7 +223,7 @@ fn measure_dag_rust_emit_terminates() {
 
 #[test]
 fn measure_dag_v2_loads_without_field_errors() {
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
     let roots: Vec<String> = crate::helpers::source_roots()
         .iter()
         .map(|p| p.to_string_lossy().to_string())

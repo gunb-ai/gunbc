@@ -1,7 +1,7 @@
 // Seed-retained dep surface for v2.compiler.use_site_verdict pilot (Wave 2 Band A).
 // Dissolve-on: v2.std.node self-emits; seed-linked extern imports replace this scaffold.
 use im::{vector as vec, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 pub type Symbol = String;
 

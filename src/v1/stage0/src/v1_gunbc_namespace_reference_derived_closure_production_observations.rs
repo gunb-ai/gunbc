@@ -32,7 +32,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 pub fn namespace_reference_derived_closure_production_observations_note() -> String {
     thread_local! {

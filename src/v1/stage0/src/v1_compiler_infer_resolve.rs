@@ -57,7 +57,7 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 pub fn is_unit_variant_node(variant: Rc<Node>) -> bool {
     ((variant.children.clone().len() as i64) == 0)
@@ -1598,7 +1598,6 @@ pub fn resolve_node_bounded(
                         } else {
                             if ((n.children.clone().len() as i64) == 0) {
                                 {
-                                    let n_is_callable = ((n.params.clone().len() as i64) > 0);
                                     let n_target_is_coproduct_container =
                                         match n.inferred.clone().as_deref().cloned() {
                                             Some(InferredNode::Resolved {
@@ -1619,8 +1618,7 @@ pub fn resolve_node_bounded(
                                             }
                                             _ => false,
                                         };
-                                    if ((n_is_callable.clone()
-                                        || is_recursive_type_for(env.clone(), n.clone()))
+                                    if (is_recursive_type_for(env.clone(), n.clone())
                                         || n_target_is_coproduct_container.clone())
                                     {
                                         Rc::new(NodeResolveResult {
@@ -1754,6 +1752,8 @@ pub fn resolve_node_bounded(
                                                 } else {
                                                     false
                                                 };
+                                                let n_is_callable =
+                                                    ((n.params.clone().len() as i64) > 0);
                                                 let n_is_type_var = if (n.inferred.clone() != None)
                                                 {
                                                     is_type_variable(
@@ -1762,13 +1762,14 @@ pub fn resolve_node_bounded(
                                                 } else {
                                                     false
                                                 };
-                                                if (((is_width_nat_type_literal(n.clone())
+                                                if ((((is_width_nat_type_literal(n.clone())
                                                     || is_kernel_type(authored_name(
                                                         env.clone(),
                                                         n.clone(),
                                                     )))
                                                     || n_is_type_var.clone())
                                                     || n_is_error.clone())
+                                                    || n_is_callable.clone())
                                                 {
                                                     Rc::new(NodeResolveResult {
                                                         resolved: n.clone(),

@@ -28,6 +28,7 @@ use v1_compiler::cli_run::{
     typed_module_cache_content_keys_for_test, with_typecheck_compute_count_receipt, workspace_root,
     ClaimOutcome, MultiEntryIndex,
 };
+use v1_compiler::v1_compiler_infer::TypecheckModuleResult;
 use v1_compiler::v1_interpreter::ExecutionMode;
 
 /// A 5-module corpus with a deliberately-shared prefix: entries `u.a` and `u.b` both import
@@ -484,4 +485,12 @@ fn shared_typecheck_distinct_compute_count_is_order_invariant() {
             "entry order must not change the distinct module-content computation set"
         );
     });
+}
+
+/// Arc-1 shareability frontier: `TypecheckModuleResult` must be `Send + Sync` for cross-worker
+/// materialization. Generated carriers use `Rc` as an `Arc` alias (`use std::sync::Arc as Rc`).
+#[test]
+fn typecheck_module_result_assert_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<TypecheckModuleResult>();
 }

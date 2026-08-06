@@ -8,7 +8,7 @@ use crate::usv_pilot_v2_std_node::{
     node_rebuild, node_synthetic, Behavior, Connective, Edge, EdgeLabel, Node, NodeKind, Symbol,
 };
 use im::{vector as vec, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Locus {

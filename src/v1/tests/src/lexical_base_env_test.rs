@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use std::time::{Duration, Instant};
 
 use v1_compiler::cli_run;
@@ -69,7 +69,6 @@ fn run() -> Int { countdown(n: 200) }
     let ctx =
         cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
 
-    v1_interpreter::arm_call_env_depth_witness_for_test();
     match v1_interpreter::run_in_context(&ctx, "run", false) {
         Ok(Value::Int(0)) => {}
         other => panic!("expected Int(0), got {other:?}"),
@@ -135,7 +134,6 @@ fn run() -> Int { countdown(n: 5) }
     let ctx =
         cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
 
-    v1_interpreter::arm_call_env_depth_witness_for_test();
     match v1_interpreter::run_in_context(&ctx, "run", true) {
         Ok(Value::Int(0)) => {}
         other => panic!("expected Int(0), got {other:?}"),

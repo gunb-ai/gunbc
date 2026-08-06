@@ -16,7 +16,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Output};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::recorded_fixture::{value_from_fixture_json, RecordedFixtureStore};

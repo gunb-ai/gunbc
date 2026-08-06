@@ -3,7 +3,7 @@
 use im::HashMap;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{

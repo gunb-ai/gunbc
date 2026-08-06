@@ -4,7 +4,7 @@ use im::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 

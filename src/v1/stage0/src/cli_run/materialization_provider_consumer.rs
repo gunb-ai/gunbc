@@ -5,7 +5,7 @@ use crate::resolved_graph_cache::{
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 use std::cell::{Cell, RefCell};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.materialization_provider_consumer_scaffold;
 // witness: dag/test/claim/materialization_provider_consumer_hand_rust_witness_test.dag).

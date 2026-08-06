@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::resolved_graph_cache::{
     deserialize_fixture_payload_for_test, serialize_fixture_payload_for_test,

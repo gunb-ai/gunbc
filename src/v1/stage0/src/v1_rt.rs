@@ -5,7 +5,7 @@
 
 use im::{HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::cell::{Cell, RefCell};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 #[cfg(feature = "text_lookup_work_counter")]
 thread_local! {

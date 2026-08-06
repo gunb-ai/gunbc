@@ -22,7 +22,7 @@
 //! census-ambiguous, the gate suppresses the diagnostic by design, and the arm fails
 //! for a reason that has nothing to do with import precedence.
 
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use crate::helpers::{compile_multi, diagnostic_messages};
 use v1_compiler::v1_compiler_compile::{front_end_sources, normalize_graph, SourceFile};

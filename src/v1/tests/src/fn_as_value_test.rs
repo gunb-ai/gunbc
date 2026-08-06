@@ -10,7 +10,7 @@
 //!   witness; blocked on a floor ExpectFail mechanism
 //!   (claim_witness_corpus_ci_runner.dag ExpectFail rows currently have no consumer).
 use std::fs;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use v1_compiler::cli_run;

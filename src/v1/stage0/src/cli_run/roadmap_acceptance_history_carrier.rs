@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use serde::{Deserialize, Serialize};
 
@@ -421,7 +421,7 @@ mod tests {
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::ExecutionMode;
     use im::HashMap;
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
 
     fn empty_ctx() -> InterpContext {
         let graph = ResolvedGraph {

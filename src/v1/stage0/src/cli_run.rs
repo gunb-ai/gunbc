@@ -3,8 +3,8 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::Arc as Rc;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
@@ -417,7 +417,7 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
     authority_text: &str,
     ctx: &v1_interpreter::InterpContext,
 ) -> v1_interpreter::InterpResult<v1_interpreter::Value> {
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
 
     use v1_interpreter::{list_value, sorted_fields, Value};
 
@@ -512,7 +512,7 @@ mod roadmap_acceptance_history_projection_tests {
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::{ExecutionMode, InterpContext};
     use im::HashMap;
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
 
     fn empty_ctx() -> InterpContext {
         let graph = ResolvedGraph {
@@ -1867,7 +1867,7 @@ pub(crate) fn string_list_data_from_module_source(
         crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.clone(), source_index);
-    let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
+    let result = crate::v1_compiler_parse::parse(tokens, Rc::new(source_indices));
     if let Some(err) = result.error.as_ref() {
         panic!(
             "lens table reader: parse error in {module_rel_path}: {}",
@@ -1979,7 +1979,7 @@ pub(crate) fn witness_exclusion_rows_from_module_source(
         crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.clone(), source_index);
-    let source_indices = std::rc::Rc::new(source_indices);
+    let source_indices = Rc::new(source_indices);
     let result = crate::v1_compiler_parse::parse(tokens, source_indices.clone());
     if let Some(err) = result.error.as_ref() {
         panic!(
@@ -4672,7 +4672,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
         CompilerDiagnostic::CallPositionalDeficit { .. } => "CallPositionalDeficit",
-        CompilerDiagnostic::CallArgumentDuplicate { .. } => "CallArgumentDuplicate",
         CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => "CallNamedArgOnFunctionValue",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
@@ -4713,7 +4712,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
         CompilerDiagnostic::CallPositionalDeficit { parameter, .. } => parameter.clone(),
-        CompilerDiagnostic::CallArgumentDuplicate { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallNamedArgOnFunctionValue { argument, .. } => argument.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
@@ -5259,7 +5257,7 @@ mod compile_clean_via_index_verdict_equivalence {
     use super::{floor_compile_clean_emit_ok, floor_compile_clean_emit_ok_via_index};
     use crate::v1_compiler_compile::SourceFile;
     use std::fs;
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
 
     struct Corpus {
         dir: std::path::PathBuf,
@@ -17639,7 +17637,7 @@ fn owned_data_decl_record_to_value(
     rec: &OwnedDataDeclRecord,
     ctx: &v1_interpreter::InterpContext,
 ) -> v1_interpreter::Value {
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
     use v1_interpreter::{sorted_fields, Value};
     let initializer = match &rec.initializer {
         OwnedDataDeclInitializer::BoolWitnessClaim {
@@ -20542,7 +20540,7 @@ fn realize_advisory_optional_int(
     ctx: &v1_interpreter::InterpContext,
     v: Option<i64>,
 ) -> v1_interpreter::Value {
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
     use v1_interpreter::Value;
     match v {
         Some(n) => Value::Variant {
@@ -22248,6 +22246,7 @@ mod floor_skip_frontier_tests {
     use im::HashMap;
     use std::collections::HashSet;
     use std::path::PathBuf;
+    use std::sync::Arc as Rc;
 
     fn workspace_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -22263,10 +22262,8 @@ mod floor_skip_frontier_tests {
 
     fn data_item_line(
         fixture: &str,
-        source_indices: &std::rc::Rc<
-            HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>,
-        >,
-        graph: &std::rc::Rc<ResolvedGraph>,
+        source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+        graph: &Rc<ResolvedGraph>,
         name: &str,
     ) -> i64 {
         for module in graph.modules.iter() {
@@ -22819,7 +22816,7 @@ mod floor_witness_a_prove {
         start: i64,
         end: i64,
     ) -> Value {
-        use std::rc::Rc;
+        use std::sync::Arc as Rc;
         Value::Record {
             type_name: ctx.sym("FloorDiffLineTouch"),
             fields: Rc::new(vec![
@@ -27629,7 +27626,7 @@ fn parse_module_node_tolerant(rel: &str, content: &str) -> Option<Rc<crate::v1_s
         crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.clone(), source_index);
-    let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
+    let result = crate::v1_compiler_parse::parse(tokens, Rc::new(source_indices));
     if result.error.is_some() {
         return None;
     }
@@ -30314,7 +30311,7 @@ mod resolution_divergence_census_tests {
         ResolutionDivergencePhaseState, WholeTreeCtx,
     };
     use crate::v1_interpreter::ExecutionMode::Wet;
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
 
     fn write_fixture(root: &std::path::Path, rel: &str, content: &str) {
         let path = root.join(rel);
@@ -30722,7 +30719,7 @@ fn caller() -> Bool {
         use crate::v1_interpreter::InterpContext;
         use im::HashMap;
         use im::Vector;
-        use std::rc::Rc;
+        use std::sync::Arc as Rc;
 
         let graph = ResolvedGraph {
             modules: Rc::new(Vector::new()),
@@ -31601,7 +31598,7 @@ pub(crate) fn non_fold_residue_units_from_module_source(
         crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.clone(), source_index);
-    let source_indices = std::rc::Rc::new(source_indices);
+    let source_indices = Rc::new(source_indices);
     let result = crate::v1_compiler_parse::parse(tokens, source_indices.clone());
     if let Some(err) = result.error.as_ref() {
         panic!(
@@ -37452,7 +37449,7 @@ mod import_closure_equivalence_tests {
     use im::HashMap;
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
 
     fn workspace_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -37948,6 +37945,7 @@ mod process_resolve_store_tests {
 
 #[cfg(test)]
 mod peel_alias_fixpoint_termination {
+    use std::sync::Arc as Rc;
     // Seed-retention receipt (DESIGN §7): the bounded wall-clock timeout,
     // !Send fixture thread, and in-memory CompileResult RED harness are host
     // test orchestration, retained in cli_run.rs until ROADMAP row
@@ -37975,8 +37973,8 @@ mod peel_alias_fixpoint_termination {
             );
             let base =
                 crate::v1_std_core::leaf_node_with_span("PeelFixpointProbe".to_string(), span);
-            let n = std::rc::Rc::new(crate::v1_std_core::Node {
-                children: std::rc::Rc::new(im::vector![elem]),
+            let n = Rc::new(crate::v1_std_core::Node {
+                children: Rc::new(im::vector![elem]),
                 ..(*base).clone()
             });
             // The strip-tree mechanism: the name resolves via SymbolIndex.global_bare
@@ -37984,35 +37982,33 @@ mod peel_alias_fixpoint_termination {
             // (build_symbol_index_census stores unresolved stubs), so
             // resolve_node(n) == n — the resolve fixed point the recurse arm
             // loops on (measured: 3M+ iterations of one peel call pre-guard).
-            let census_binding = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeBinding {
+            let census_binding = Rc::new(crate::v1_compiler_infer_env::TypeBinding {
                 name: "PeelFixpointProbe".to_string(),
                 resolved: n.clone(),
-                provenance: std::rc::Rc::new(
-                    crate::std_induction::SubValueRelation::SubValueUnknown,
-                ),
+                provenance: Rc::new(crate::std_induction::SubValueRelation::SubValueUnknown),
             });
             let global_bare = crate::v1_rt::rc_map_insert(
                 crate::v1_rt::rc_empty_map(),
                 "PeelFixpointProbe".to_string(),
-                std::rc::Rc::new(
+                Rc::new(
                     crate::v1_compiler_infer_env::GlobalBareLookupState::GlobalBareUniqueBinding {
                         module_path: "".to_string(),
                         binding: census_binding,
                     },
                 ),
             );
-            let symbol_index = std::rc::Rc::new(crate::v1_compiler_infer_env::SymbolIndex {
+            let symbol_index = Rc::new(crate::v1_compiler_infer_env::SymbolIndex {
                 entries: crate::v1_rt::rc_empty_map(),
                 global_bare,
                 services: crate::v1_rt::rc_empty_map(),
             });
-            let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
+            let env = Rc::new(crate::v1_compiler_infer_env::TypeEnv {
                 module_path: "".to_string(),
                 bindings: crate::v1_rt::rc_empty_map(),
                 str_bindings: crate::v1_rt::rc_empty_map(),
                 ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
-                parents: std::rc::Rc::new(im::vector![]),
-                recursive_types: std::rc::Rc::new(im::vector![]),
+                parents: Rc::new(im::vector![]),
+                recursive_types: Rc::new(im::vector![]),
                 recursive_type_set: crate::v1_rt::rc_empty_map(),
                 inductive_fields: crate::v1_rt::rc_empty_map(),
                 source_indices: crate::v1_rt::rc_empty_map(),
@@ -38118,7 +38114,7 @@ fn record_probe() -> Int {
 }
 "#;
         let result = crate::v1_compiler_compile::compile_sources(
-            std::rc::Rc::new(im::vector![std::rc::Rc::new(
+            Rc::new(im::vector![Rc::new(
                 crate::v1_compiler_compile::SourceFile {
                     path: "peel_consumer_probe.dag".to_string(),
                     content: source.to_string(),
@@ -38172,7 +38168,7 @@ mod sigs_env_flat_parents {
     // it construction itself re-becomes path-counted and the watchdog fires);
     // (2) linearization preserves the old walk's shadowing order exactly
     // (own local, then closure-of-last-import before earlier imports).
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
 
     fn w2_sig(fn_name: &str, marker: &str) -> Rc<crate::v1_compiler_infer_sigs::ResolvedFuncSig> {
         Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncSig {

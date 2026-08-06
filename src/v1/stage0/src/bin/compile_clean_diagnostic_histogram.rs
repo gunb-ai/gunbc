@@ -19,7 +19,7 @@
 
 use std::collections::BTreeMap;
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::cli_run::{
     compile_clean_diagnostic_histogram_key, compile_clean_whole_tree_hard_diagnostics,

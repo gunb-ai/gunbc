@@ -1,7 +1,7 @@
 #![allow(clippy::disallowed_macros)]
 
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::cli_run::{discover_source_root_reads, load_sources_for_entry};
 use v1_compiler::v1_compiler_compile::compile_to_resolved;

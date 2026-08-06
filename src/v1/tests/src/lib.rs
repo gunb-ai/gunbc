@@ -79,7 +79,6 @@ mod group_completion_construction_test;
 mod gunbhub_serve_program_test;
 #[cfg(test)]
 mod html_markup_smoke_test;
-#[cfg(test)]
 mod import_visibility_pool_coincidence_test;
 #[cfg(test)]
 mod int_pow_bounded_test;
@@ -117,13 +116,11 @@ mod measure_periphery_emit_test;
 mod measure_value_arg_unit_collapse_test;
 #[cfg(test)]
 mod module_authority_resolution_test;
-#[cfg(test)]
 mod namespace_alias_decl_test;
 #[cfg(test)]
 mod namespace_unique_on_chain_policy_test;
 #[cfg(test)]
 mod nested_fold_generic_param_emit_test;
-#[cfg(test)]
 mod nested_list_alias_emit_test;
 #[cfg(test)]
 mod node_keyed_graph_artifact_codec_test;

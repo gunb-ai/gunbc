@@ -6,7 +6,7 @@ fn closure_stub_v2_std_text_source() -> String {
   concat(
     "// Generated closure stub — dissolve-on: derive from emitted ref set\n",
     "// Source module: v2.std.text (closure projection; std_algebra + std_types only)\n\n",
-    "use std::rc::Rc;\n",
+    "use std::sync::Arc as Rc;\n",
     "use crate::std_algebra::FreeMonoid::\{Cons, Empty\};\n",
     "use crate::std_types::Char;\n\n",
     "pub type String = Rc<crate::std_algebra::FreeMonoid<Char>>;\n\n",

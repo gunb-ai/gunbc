@@ -3,7 +3,7 @@
 use im::HashMap;
 use std::collections::HashSet;
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{collect_rest_transport_operations, DeclaredRestTransportOp};

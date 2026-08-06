@@ -1,6 +1,6 @@
 use im::HashMap;
 use std::process::Command;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::v1_compiler_parse::parse_with_table;
 use v1_compiler::v1_compiler_tokenize::tokenize;

@@ -1,7 +1,7 @@
 use crate::v1_rt::VecCompat;
 use im::HashMap;
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use crate::cli_run::{
     collect_dag_files_tolerant, extract_module_path, is_test_dag, repo_rel, workspace_root,

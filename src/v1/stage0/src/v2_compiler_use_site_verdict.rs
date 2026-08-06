@@ -9,7 +9,7 @@ use crate::usv_pilot_v2_std_node::{
     NamedEdgeTargetLookup, Node, NodeKind, Symbol,
 };
 use im::{vector as vec, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]

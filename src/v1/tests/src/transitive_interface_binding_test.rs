@@ -9,7 +9,7 @@
 //! checker genuinely reads the transitive structure rather than waving projections
 //! through, so a fail-open flatten cannot pass both arms.
 
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use crate::helpers::{compile_multi, diagnostic_messages};
 use v1_compiler::v1_compiler_compile::{front_end_sources, normalize_graph, SourceFile};

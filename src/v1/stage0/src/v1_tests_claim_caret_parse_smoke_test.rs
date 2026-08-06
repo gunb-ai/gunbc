@@ -19,7 +19,7 @@ pub use crate::v1_std_core::{ErrorNode, NewlineIndex, Node, TokenShape};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 pub fn caret_parse_smoke_parser_transport_enrollment() -> String {
     thread_local! {

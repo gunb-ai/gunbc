@@ -7,7 +7,7 @@
 //! `SUB_QUADRATIC_DOUBLING_BUDGET`). It is a discriminating proxy for §6 baseline measurement
 //! on synthetic chains; the whole-corpus `dag_compile_clean_gate` wall-clock is tracked separately.
 
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use std::time::{Duration, Instant};
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};

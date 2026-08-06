@@ -7,7 +7,7 @@
 //! `v1.compiler.dag_collect_support` is witness-layer importable.
 
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::v1_compiler_dag_collect_support::{
     dag_collect_fp_memo_reset, dag_node_bag_hash, dag_node_seq_hash, dag_node_surface_fingerprint,

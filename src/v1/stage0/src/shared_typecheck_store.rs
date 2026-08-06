@@ -16,7 +16,7 @@
 //! worker A's byte snapshot against its own intern table without a cross-representation straddle.
 
 use std::collections::HashMap as StdHashMap;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use std::sync::Arc;
 
 use crate::v1_compiler_infer::TypecheckModuleResult;

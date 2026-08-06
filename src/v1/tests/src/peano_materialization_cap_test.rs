@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::std_induction::{
     cost_bound_is_sum_bound, cost_constant, master_theorem, sum_bound, CostBound, RecurrenceForm,

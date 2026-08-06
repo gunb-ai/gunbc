@@ -1,6 +1,6 @@
 use im::HashMap;
 use std::path::Path;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use crate::v1_compiler_parse::parse;
 use crate::v1_compiler_tokenize::tokenize;

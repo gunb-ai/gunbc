@@ -1,6 +1,6 @@
 use std::cell::Cell;
 use std::fs;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 

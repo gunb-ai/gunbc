@@ -8,7 +8,7 @@
 //! triage invariants (not declaration counts). Dissolve-on: namespace lane owns roster
 //! sizing in a single authority and these gates move there — delete this module.
 
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::cli_run::{bare_ref_reachability_for_name, BareRefReachability};
 use v1_compiler::v1_compiler_compile::{front_end_sources, SourceFile};

@@ -4,7 +4,7 @@ use crate::helpers::*;
 use im::HashMap;
 use im::OrdSet as BTreeSet;
 use serde_json::Value;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::SourceFile;
 use v1_compiler::v1_std_core::CompilerDiagnostic;
@@ -1170,7 +1170,7 @@ fn bare_import_wildcard_survives_pipeline() {
 
 #[test]
 fn discovery_corpus_blocks_typecheck_like_strict() {
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
     use v1_compiler::v1_std_core::{
         is_discovery_corpus_blocking_diagnostic, is_interpreter_blocking_diagnostic, no_span,
         CompilerDiagnostic,
@@ -1196,7 +1196,7 @@ fn discovery_corpus_blocks_typecheck_like_strict() {
 
 #[test]
 fn discovery_corpus_advisory_set_is_exactly_unlisted_import_use() {
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
     use v1_compiler::v1_std_core::{
         is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
         is_interpreter_blocking_diagnostic, no_span, CompilerDiagnostic,
@@ -1640,7 +1640,7 @@ fn census_heads_fn_stand_in_is_fail_loud_not_empty() {
 #[test]
 fn census_heads_fn_stand_in_preserves_body_presence_discriminator() {
     use im::HashMap;
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
     use v1_compiler::cli_run::{census_heads_module_node_for_test, is_census_heads_fn_stand_in};
     use v1_compiler::v1_compiler_infer::local_binding_for_item;
     use v1_compiler::v1_compiler_parse::parse_with_table;
@@ -1685,7 +1685,7 @@ fn census_heads_fn_stand_in_preserves_body_presence_discriminator() {
 #[test]
 fn census_heads_preserves_declaration_children_for_types() {
     use im::HashMap;
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
     use v1_compiler::cli_run::census_heads_module_node_for_test;
     use v1_compiler::v1_compiler_parse::parse_with_table;
     use v1_compiler::v1_compiler_tokenize::tokenize;
@@ -1740,7 +1740,7 @@ fn census_heads_preserves_declaration_children_for_types() {
 #[test]
 fn census_heads_fn_stand_in_naive_infer_expr_refuses_not_succeeds() {
     use im::HashMap;
-    use std::rc::Rc;
+    use std::sync::Arc as Rc;
     use v1_compiler::cli_run::census_heads_fn_stand_in_for_test;
     use v1_compiler::v1_compiler_infer::{infer_expr, InferScope};
     use v1_compiler::v1_compiler_infer_env::empty_type_env;

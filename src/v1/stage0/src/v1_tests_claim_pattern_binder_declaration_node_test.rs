@@ -34,7 +34,7 @@ pub use crate::v1_std_core::{CompilerDiagnostic, ExprData, MatchPattern, Newline
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 pub fn pattern_binder_declaration_node_parser_transport_enrollment() -> String {
     thread_local! {

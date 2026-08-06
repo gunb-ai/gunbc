@@ -3,7 +3,7 @@
 
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use crate::v1_rt::{VecCompat, VecJoin};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use crate::v1_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;

@@ -14,8 +14,8 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use v1_compiler::cli_run::{
-    run_discovery_corpus_with_options, workspace_root, DiscoveryCorpusOptions,
-    DiscoveryWidthPolicy, NodeFrontierSelectionMode,
+    run_discovery_corpus_with_options, typecheck_compute_count, workspace_root,
+    DiscoveryCorpusOptions, DiscoveryWidthPolicy, NodeFrontierSelectionMode,
 };
 use v1_compiler::memory_governor::MemoryGovernor;
 use v1_compiler::v1_interpreter::ExecutionMode;
@@ -47,12 +47,6 @@ fn main() -> ExitCode {
         source_roots
     );
 
-    let governor = Arc::new(MemoryGovernor::from_environment(
-        std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(1),
-    ));
-
     let options = DiscoveryCorpusOptions {
         node_frontier_selection: NodeFrontierSelectionMode::Off,
         execution_authority_source_roots: source_roots.clone(),
@@ -60,22 +54,40 @@ fn main() -> ExitCode {
         ..Default::default()
     };
 
+    // Arc-1 / P1 cohort receipts require width-1 (Serial inline drain), not adaptive ramp.
+    let width_policy = if std::env::var("GUNBC_P1_COHORT_ADAPTIVE")
+        .ok()
+        .as_deref()
+        .map(|v| matches!(v, "1" | "true" | "TRUE"))
+        .unwrap_or(false)
+    {
+        let governor = Arc::new(MemoryGovernor::from_environment(
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1),
+        ));
+        DiscoveryWidthPolicy::Adaptive(governor)
+    } else {
+        DiscoveryWidthPolicy::Serial
+    };
+
     match run_discovery_corpus_with_options(
         &source_roots,
         &[],
         &explicit_entries,
         ExecutionMode::Wet,
-        DiscoveryWidthPolicy::Adaptive(governor),
+        width_policy,
         options,
     ) {
         Ok(summary) => {
             eprintln!(
-                "p1_cohort_probe: PASS total={} skipped={} failures={} resolve_ms={:.3} eval_ms={:.3}",
+                "p1_cohort_probe: PASS total={} skipped={} failures={} resolve_ms={:.3} eval_ms={:.3} typecheck_compute_count={}",
                 summary.total,
                 summary.skipped,
                 summary.failures.len(),
                 summary.total_resolve_nanos as f64 / 1.0e6,
                 summary.total_measured_nanos as f64 / 1.0e6,
+                typecheck_compute_count(),
             );
             if summary.failures.is_empty() {
                 ExitCode::SUCCESS

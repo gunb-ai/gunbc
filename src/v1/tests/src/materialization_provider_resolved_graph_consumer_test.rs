@@ -5,7 +5,7 @@
 use im::Vector;
 use std::fs;
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use v1_compiler::cli_run::{
     load_sources_for_entry, materialization_provider_ctx_build_count_for_test,

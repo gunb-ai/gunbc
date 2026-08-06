@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use std::sync::Arc;
 use std::thread;
 use std::time::Instant;

@@ -19,7 +19,7 @@
 //! that whole-tree-resolve grounding lands; this test proves the enumeration
 //! SUBSTRATE works wherever resolve succeeds.
 
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::cli_run::{self, whole_tree_resolved_ctx, WholeTreeCtx};
 use v1_compiler::coproduct_reflection::eval_fn_arrow_decl_facts_live;

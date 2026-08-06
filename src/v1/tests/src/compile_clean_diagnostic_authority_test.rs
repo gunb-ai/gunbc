@@ -12,7 +12,7 @@
 //! hard and `unlisted_import_use_alone_is_not_hard` fails. The genuine-error and
 //! mixed cases keep it from being satisfied by a blanket `false`.
 
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::cli_run::compile_clean_pipeline_has_hard_errors;
 use v1_compiler::std_types::SourceSpan;

@@ -36,7 +36,7 @@ impl Drop for CacheEnvGuard {
 
 use im::HashMap;
 use im::Vector;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use v1_compiler::cli_run::{
     build_multi_entry_index, load_sources_for_entry, make_eval_context,
     materialization_provider_ctx_build_count_for_test, provider_bootstrap_store_skip_count,
@@ -850,7 +850,7 @@ fn provider_disposition_four_arm_matrix() {
         let (g1, _) = resolve_entry_with_index(&index, &a).expect("cold resolve");
         let (g2, _) = resolve_entry_with_index(&index, &a).expect("repeat resolve");
         assert!(
-            std::rc::Rc::ptr_eq(&g1, &g2),
+            Rc::ptr_eq(&g1, &g2),
             "repeat resolve must share memo after cold build"
         );
     });
@@ -865,10 +865,7 @@ fn provider_disposition_four_arm_matrix() {
         let (g1, _) = resolve_entry_with_index(&index, &a).expect("v3 disk hit");
         let index2 = build_multi_entry_index(&roots);
         let (g2, _) = resolve_entry_with_index(&index2, &a).expect("v3 disk repeat");
-        assert!(
-            std::rc::Rc::ptr_eq(&g1, &g2),
-            "v3 disk hit must install into share"
-        );
+        assert!(Rc::ptr_eq(&g1, &g2), "v3 disk hit must install into share");
         assert_eq!(
             decode_count(),
             decodes_before + 1,
@@ -1180,7 +1177,7 @@ fn same_subject_resolves_share_one_graph_store_hits_v2_disk() {
         let (g1, _) = resolve_entry_with_index(&index, &a).expect("build resolve");
         let (g2, _) = resolve_entry_with_index(&index, &a).expect("repeat resolve");
         assert!(
-            std::rc::Rc::ptr_eq(&g1, &g2),
+            Rc::ptr_eq(&g1, &g2),
             "repeat resolve must serve the shared reference, not a rebuild"
         );
         assert_eq!(
@@ -1199,7 +1196,7 @@ fn same_subject_resolves_share_one_graph_store_hits_v2_disk() {
         );
         let (g4, _) = resolve_entry_with_index(&index2, &a).expect("memo after disk install");
         assert!(
-            std::rc::Rc::ptr_eq(&g3, &g4),
+            Rc::ptr_eq(&g3, &g4),
             "disk hit must install into share; repeat must serve by reference"
         );
         assert_eq!(

@@ -5,7 +5,7 @@
 //! re-export chain where the consumer imports a coproduct arm through a proxy.
 
 use im::HashMap;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::v1_compiler_compile::{front_end_sources, normalize_graph, SourceFile};
 use v1_compiler::v1_compiler_infer::{

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 

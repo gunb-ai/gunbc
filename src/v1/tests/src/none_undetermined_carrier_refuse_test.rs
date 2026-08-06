@@ -13,7 +13,7 @@
 //! at v2 self-host (ROADMAP hand-MAINTAINED→zero terminal).
 //! Checkable receipt: `dag/test/retirement/none_undetermined_carrier_refuse_retained.dag`.
 
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use v1_compiler::v1_compiler_emit_rust::emit_none_keyword_for_resolved_type;
 use v1_compiler::v1_std_core::{make_span, Cardinality, Connective, ExprData, InferredNode, Node};
 

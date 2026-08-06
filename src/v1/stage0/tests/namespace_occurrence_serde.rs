@@ -3,7 +3,7 @@
 // (dag/test/claim/namespace_occurrence_transport_test.dag). v1-test class: this file
 // deletes with src/v1 once its behavior is carried per the v1-test-migration coverage bar.
 use im::HashMap;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::std_occurrence_identity::{
     occurrence_id_allocator_initial, OccurrenceCategory, OccurrenceContainmentPath,

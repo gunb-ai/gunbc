@@ -3,7 +3,7 @@
 use im::HashMap;
 use im::{vector as vec, Vector as Vec};
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 use v1_compiler::v1_rt::VecCompat;
 
 use v1_compiler::cli_run::workspace_root;

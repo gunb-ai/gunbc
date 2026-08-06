@@ -1,6 +1,6 @@
 use std::fs;
 use std::process::Command;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
 use v1_compiler::v1_interpreter::{self, Value};

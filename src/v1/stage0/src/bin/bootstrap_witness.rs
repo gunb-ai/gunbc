@@ -2,7 +2,7 @@
 
 use im::HashMap;
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
@@ -902,7 +902,7 @@ fn ci_full_dag() {
     );
 
     let dag_result = v1_compiler::v1_compiler_compile::compile_sources(
-        std::rc::Rc::new(dag_sources.clone().into()),
+        Rc::new(dag_sources.clone().into()),
         v1_compiler::v1_compiler_artifact::RenderTarget::Rust,
     );
 
@@ -1069,7 +1069,7 @@ fn bootstrap_l4_structural() {
 fn generate_weather_structural_tests() -> String {
     r#"use v1_compiled::examples_weather::*;
 use v1_compiled::examples_weather::Condition::*;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 
 #[test]

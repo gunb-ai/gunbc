@@ -11,7 +11,7 @@
 //! they live in the seed test surface; they migrate with the kernel when its
 //! dissolve-on (binary-medium emission rows) fires.
 
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::resolved_graph_cache::{
     node_keyed_graph_decode, node_keyed_graph_encode, node_keyed_graph_row_facts,

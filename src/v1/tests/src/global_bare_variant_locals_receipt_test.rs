@@ -4,7 +4,7 @@
 //! present in BOTH module `variant_fold.locals` and shared `global_bare_variant_locals`).
 
 use im::HashMap;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::v1_compiler_compile::{front_end_sources, normalize_graph, SourceFile};
 use v1_compiler::v1_compiler_infer::{

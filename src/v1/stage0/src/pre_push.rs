@@ -8,6 +8,7 @@ use std::collections::BTreeSet;
 use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
+use std::sync::Arc as Rc;
 
 use super::{make_eval_context, resolve_entry_graph_shared, witness_layer_roots};
 use crate::v1_interpreter::{self, ExecutionMode, Value};
@@ -117,9 +118,7 @@ fn load_active_gates(plan: &PlanCtx, changed: &[String]) -> Result<Vec<ActiveGat
 }
 
 fn string_list_to_value(items: &[String]) -> Value {
-    Value::List(std::rc::Rc::new(
-        items.iter().cloned().map(Value::Str).collect(),
-    ))
+    Value::List(Rc::new(items.iter().cloned().map(Value::Str).collect()))
 }
 
 fn string_list_from_value(val: &Value, field: &str) -> Result<Vec<String>, String> {

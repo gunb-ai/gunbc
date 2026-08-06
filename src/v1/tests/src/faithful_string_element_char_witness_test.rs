@@ -1,5 +1,5 @@
 use im::OrdSet as BTreeSet;
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::v1_compiler_emit_rust::{
     render_rust_text_carrier, rust_applied_type_base, rust_named_type_base,

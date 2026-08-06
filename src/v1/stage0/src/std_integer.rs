@@ -14,7 +14,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 pub type Int8 =
     crate::std_machine_constraints::Compose<i64, crate::std_machine_constraints::MachineWidth<()>>;

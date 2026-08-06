@@ -21,7 +21,7 @@ use crate::v1_std_core::CompilerDiagnostic::SourceAnnotationRefused;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 pub fn annotation_bind_authority_note() -> String {
     thread_local! {

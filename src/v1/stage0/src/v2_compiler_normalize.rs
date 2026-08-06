@@ -4,7 +4,7 @@
 // is emitted-only and the behavioral harness is modeled (sn_scaffold_dissolution_trigger).
 
 use im::{vector as vec, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use crate::usv_pilot_v2_std_algebra::list_snoc_item;
 use crate::usv_pilot_v2_std_node::{node_rebuild, Behavior, Connective, Node, NodeKind};

@@ -18,7 +18,7 @@ pub use crate::v1_std_core::{Cardinality, Connective, ErrorNode, ExprData, Infer
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 pub fn filesystem_read_result_type_note() -> String {
     thread_local! {

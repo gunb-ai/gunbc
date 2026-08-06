@@ -7,8 +7,8 @@ const SCAFFOLD_NOTE: &str = "SCAFFOLD \u{2014} dissolve-on: when src/v1 .dag is 
 
 use im::HashMap;
 use std::process::ExitCode;
-use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc as Rc;
 use std::sync::{Arc, Mutex};
 
 fn main() -> ExitCode {

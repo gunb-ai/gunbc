@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;

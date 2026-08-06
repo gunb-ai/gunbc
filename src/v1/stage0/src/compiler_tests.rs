@@ -2,6 +2,7 @@
 mod compiler_tests {
     use crate::v1_compiler_tokenize::tokenize;
     use im::HashMap;
+    use std::sync::Arc as Rc;
 
     /// Find workspace root by walking up from the current directory looking for Cargo.toml + dag/
     fn workspace_root() -> std::path::PathBuf {
@@ -65,11 +66,11 @@ mod compiler_tests {
     /// Build SourceFile vec from discovered .dag files.
     fn source_files_from(
         pairs: &[(String, String)],
-    ) -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
+    ) -> Vec<Rc<crate::v1_compiler_compile::SourceFile>> {
         pairs
             .iter()
             .map(|(path, content)| {
-                std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: path.clone(),
                     content: content.clone(),
                 })
@@ -77,7 +78,7 @@ mod compiler_tests {
             .collect()
     }
 
-    fn parse_module_or_panic(path: &str, content: &str) -> std::rc::Rc<crate::v1_std_core::Node> {
+    fn parse_module_or_panic(path: &str, content: &str) -> Rc<crate::v1_std_core::Node> {
         let tokens = tokenize(content.to_string(), path.to_string());
         let mut source_indices = HashMap::new();
         source_indices.insert(
@@ -86,7 +87,7 @@ mod compiler_tests {
         );
         let parsed = crate::v1_compiler_parse::parse_with_table(
             tokens.clone(),
-            std::rc::Rc::new(source_indices),
+            Rc::new(source_indices),
             crate::v1_std_core::empty_intern_table(),
         );
         if let Some(err) = parsed.result.error.as_ref() {
@@ -135,17 +136,16 @@ mod compiler_tests {
     fn resolve_source_closure(
         entry_pairs: Vec<(String, String)>,
         roots: &[&str],
-    ) -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
+    ) -> Vec<Rc<crate::v1_compiler_compile::SourceFile>> {
         let index = build_source_index(roots);
-        let mut seen =
-            HashMap::<String, std::rc::Rc<crate::v1_compiler_compile::SourceFile>>::new();
+        let mut seen = HashMap::<String, Rc<crate::v1_compiler_compile::SourceFile>>::new();
         let mut queue = Vec::new();
 
         for (path, content) in entry_pairs {
             let module_path = module_path_from_source(&path, &content);
             seen.insert(
                 module_path,
-                std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: path.clone(),
                     content: content.clone(),
                 }),
@@ -161,7 +161,7 @@ mod compiler_tests {
                 if let Some((path, file_content)) = index.get(&module_path).cloned() {
                     seen.insert(
                         module_path,
-                        std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        Rc::new(crate::v1_compiler_compile::SourceFile {
                             path: path.clone(),
                             content: file_content.clone(),
                         }),
@@ -177,7 +177,7 @@ mod compiler_tests {
     }
 
     /// Build the self-compile source closure from src/v1 entry modules with dag as a dependency pool.
-    fn self_compile_sources() -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
+    fn self_compile_sources() -> Vec<Rc<crate::v1_compiler_compile::SourceFile>> {
         resolve_source_closure(discover_dag_files("src/v1"), &["src/v1", "dag"])
     }
 
@@ -235,7 +235,7 @@ mod compiler_tests {
             "module test\ntype Foo { x: Int }\n".to_string(),
             "test.dag".to_string(),
         );
-        let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+        let result = crate::v1_compiler_parse::parse(tokens, Rc::new(im::HashMap::new()));
         assert!(
             result.module.is_some(),
             "valid module should parse successfully"
@@ -262,8 +262,7 @@ mod compiler_tests {
                     last.shape
                 );
 
-                let result =
-                    crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+                let result = crate::v1_compiler_parse::parse(tokens, Rc::new(im::HashMap::new()));
 
                 assert!(
                     result.module.is_some(),
@@ -287,11 +286,11 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
-                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let source = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "test.dag".to_string(),
                     content: "module test\ntype Foo { x: Int, name: String }\nfn add(a: Int, b: Int) -> Int { a + b }\n".to_string(),
                 });
-                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![source]), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let result = crate::v1_compiler_compile::compile_sources(Rc::new(im::vector![source]), crate::v1_compiler_artifact::RenderTarget::Rust);
 
                 assert!(
                     !result.files.is_empty(),
@@ -323,11 +322,11 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
-                let left_source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let left_source = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "occurrence_sidecar_left.dag".to_string(),
                     content: "module occurrence.sidecar_left\nfn shared(x: Int) -> Int { x }\n".to_string(),
                 });
-                let right_source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let right_source = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "occurrence_sidecar_right.dag".to_string(),
                     content: "module occurrence.sidecar_right\nfn shared(x: Int) -> Int { x }\n".to_string(),
                 });
@@ -344,13 +343,13 @@ mod compiler_tests {
                         left_source.content.clone(),
                         left_source.path.clone(),
                     ),
-                    std::rc::Rc::new(expected_source_indices),
+                    Rc::new(expected_source_indices),
                     crate::v1_std_core::empty_intern_table(),
                     crate::std_occurrence_identity::occurrence_id_allocator_initial(),
                 );
                 assert!(expected_left.result.error.is_none());
                 let resolved = crate::v1_compiler_compile::compile_to_resolved(
-                    std::rc::Rc::new(im::vector![left_source.clone(), right_source]),
+                    Rc::new(im::vector![left_source.clone(), right_source]),
                 );
                 let graph = resolved
                     .graph
@@ -374,7 +373,7 @@ mod compiler_tests {
                     }
                     let module_bytes = serde_json::to_vec(typed_module)
                         .expect("serialize typed module occurrence sidecar");
-                    let decoded_module: std::rc::Rc<crate::v1_compiler_infer_items::TypedModule> =
+                    let decoded_module: Rc<crate::v1_compiler_infer_items::TypedModule> =
                         serde_json::from_slice(&module_bytes)
                             .expect("deserialize typed module occurrence sidecar");
                     assert_eq!(&decoded_module, typed_module);
@@ -394,7 +393,7 @@ mod compiler_tests {
 
                 let graph_bytes = serde_json::to_vec(graph)
                     .expect("serialize resolved graph occurrence sidecar");
-                let decoded_graph: std::rc::Rc<crate::v1_compiler_infer_items::ResolvedGraph> =
+                let decoded_graph: Rc<crate::v1_compiler_infer_items::ResolvedGraph> =
                     serde_json::from_slice(&graph_bytes)
                         .expect("deserialize resolved graph occurrence sidecar");
                 assert_eq!(&decoded_graph, graph);
@@ -404,7 +403,7 @@ mod compiler_tests {
 
                 let resolved_bytes = serde_json::to_vec(&resolved)
                     .expect("serialize resolved pipeline occurrence sidecar");
-                let decoded: std::rc::Rc<crate::v1_compiler_compile::ResolvedPipelineResult> =
+                let decoded: Rc<crate::v1_compiler_compile::ResolvedPipelineResult> =
                     serde_json::from_slice(&resolved_bytes)
                         .expect("deserialize resolved pipeline occurrence sidecar");
                 assert_eq!(decoded, resolved);
@@ -424,20 +423,20 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
-                let module_a = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let module_a = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "module_a.dag".to_string(),
                     content: "module module_a\ntype Widget { x: String }\ntype Gadget { y: String }\n".to_string(),
                 });
-                let module_b = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let module_b = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "module_b.dag".to_string(),
                     content: "module module_b\nimport module_a { Gadget }\nfn use_widget(w: Widget) -> Widget { w }\n".to_string(),
                 });
-                let module_c = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let module_c = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "module_c.dag".to_string(),
                     content: "module module_c\nimport module_a { Widget }\nfn use_widget(w: Widget) -> Widget { w }\n".to_string(),
                 });
                 let result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![module_a, module_b, module_c]),
+                    Rc::new(im::vector![module_a, module_b, module_c]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let unlisted: Vec<_> = result.diagnostics.iter()
@@ -479,7 +478,7 @@ mod compiler_tests {
             .spawn(|| {
                 let compile_one = |path: &str, content: &str| {
                     crate::v1_compiler_compile::compile_sources(
-                        std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                        Rc::new(im::vector![Rc::new(
                             crate::v1_compiler_compile::SourceFile {
                                 path: path.to_string(),
                                 content: content.to_string(),
@@ -536,37 +535,6 @@ mod compiler_tests {
     }
 
     #[test]
-    fn call_deficit_red_witness() {
-        let result = std::thread::Builder::new()
-            .stack_size(8 * 1024 * 1024)
-            .spawn(|| {
-                let compile_one = |path: &str, content: &str| {
-                    crate::v1_compiler_compile::compile_sources(
-                        std::rc::Rc::new(im::vector![std::rc::Rc::new(
-                            crate::v1_compiler_compile::SourceFile {
-                                path: path.to_string(),
-                                content: content.to_string(),
-                            }
-                        )]),
-                        crate::v1_compiler_artifact::RenderTarget::Rust,
-                    )
-                };
-                let deficit = compile_one(
-                    "deficit.dag",
-                    "module deficit\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(1) }\n",
-                );
-                assert!(
-                    deficit.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallPositionalDeficit { .. })),
-                    "a call supplying fewer required arguments than declared must refuse — the interpreter refuses the same call (missing required argument), got: {:?}",
-                    deficit.diagnostics
-                );
-            })
-            .expect("failed to spawn thread")
-            .join();
-        result.expect("call_deficit_red_witness panicked");
-    }
-
-    #[test]
     fn call_shape_duplicate_wall_witness() {
         // DISCRIMINATING RED for the duplicate-label half of
         // call-missing-and-duplicate-wall (roadmap rn_EXUHLON5V24YU7Z4XLJFWEZO33,
@@ -583,7 +551,7 @@ mod compiler_tests {
             .spawn(|| {
                 let compile_one = |path: &str, content: &str| {
                     crate::v1_compiler_compile::compile_sources(
-                        std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                        Rc::new(im::vector![Rc::new(
                             crate::v1_compiler_compile::SourceFile {
                                 path: path.to_string(),
                                 content: content.to_string(),
@@ -621,7 +589,7 @@ mod compiler_tests {
                 // the check leaves `bindings` fully populated (last-write-wins) and `run`
                 // succeeds, so the test only reds when the duplicate check itself fires.
                 let resolved = crate::v1_compiler_compile::compile_to_resolved(
-                    std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                    Rc::new(im::vector![Rc::new(
                         crate::v1_compiler_compile::SourceFile {
                             path: "duplicate_rt.dag".to_string(),
                             content: "module duplicate_rt\nfn two(a: Int) -> Int { a }\nfn f() -> Int { two(a: 1, a: 2) }\n".to_string(),
@@ -655,7 +623,7 @@ mod compiler_tests {
                 // that would mask the true defect (the same false-discriminator this
                 // file's named+named check above already guards against).
                 let resolved_np = crate::v1_compiler_compile::compile_to_resolved(
-                    std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                    Rc::new(im::vector![Rc::new(
                         crate::v1_compiler_compile::SourceFile {
                             path: "duplicate_named_then_positional_rt.dag".to_string(),
                             content: "module duplicate_named_then_positional_rt\nfn two(a: Int) -> Int { a }\nfn f() -> Int { two(a: 1, 2) }\n".to_string(),
@@ -694,6 +662,37 @@ mod compiler_tests {
     }
 
     #[test]
+    fn call_deficit_red_witness() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let compile_one = |path: &str, content: &str| {
+                    crate::v1_compiler_compile::compile_sources(
+                        Rc::new(im::vector![Rc::new(
+                            crate::v1_compiler_compile::SourceFile {
+                                path: path.to_string(),
+                                content: content.to_string(),
+                            }
+                        )]),
+                        crate::v1_compiler_artifact::RenderTarget::Rust,
+                    )
+                };
+                let deficit = compile_one(
+                    "deficit.dag",
+                    "module deficit\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(1) }\n",
+                );
+                assert!(
+                    deficit.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallPositionalDeficit { .. })),
+                    "a call supplying fewer required arguments than declared must refuse — the interpreter refuses the same call (missing required argument), got: {:?}",
+                    deficit.diagnostics
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("call_deficit_red_witness panicked");
+    }
+
+    #[test]
     fn function_value_named_application_controls_witness() {
         // Operator-required controls for higher-order named application (P0).
         // Direct declaration calls keep named args; function-value calls are positional-only.
@@ -702,7 +701,7 @@ mod compiler_tests {
             .spawn(|| {
                 let compile_one = |path: &str, content: &str| {
                     crate::v1_compiler_compile::compile_sources(
-                        std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                        Rc::new(im::vector![Rc::new(
                             crate::v1_compiler_compile::SourceFile {
                                 path: path.to_string(),
                                 content: content.to_string(),
@@ -773,7 +772,7 @@ mod compiler_tests {
                     semantic.diagnostics
                 );
                 let resolved = crate::v1_compiler_compile::compile_to_resolved(
-                    std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                    Rc::new(im::vector![Rc::new(
                         crate::v1_compiler_compile::SourceFile {
                             path: "semantic_swap.dag".to_string(),
                             content: "module semantic_swap\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn host(agree: fn(Int, Int) -> Bool, a: Int, b: Int) -> Bool { agree(a, b) }\nfn correct_order() -> Bool { host(cmp, 1, 2) }\nfn swapped_order() -> Bool { host(cmp, 2, 1) }\n".to_string(),
@@ -816,7 +815,7 @@ mod compiler_tests {
         // argument-label wall lands, this probe must FLIP (refusal) and become a
         // permanent regression control per DESIGN §4b(4).
         let field_named = crate::v1_compiler_compile::compile_sources(
-            std::rc::Rc::new(im::vector![std::rc::Rc::new(
+            Rc::new(im::vector![Rc::new(
                 crate::v1_compiler_compile::SourceFile {
                     path: "field_method_named_hole.dag".to_string(),
                     content: "module field_method_named_hole\ntype Cfg { callback: fn(Int, Int) -> Bool }\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn witness() -> Bool { host(Cfg { callback: cmp }) }\nfn host(cfg: Cfg) -> Bool { cfg.callback(a: 1, b: 2) }\n".to_string(),
@@ -847,12 +846,12 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
-                let red = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let red = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "red.dag".to_string(),
                     content: "module red\nfn f(xs: List<Int>) -> List<Int> { xs |> filter_map(x => x) }\nfn g(xs: List<Int>) -> Bool { xs |> starts_with(\"x\") }\nfn h(xs: List<Int>) -> String { xs |> to_upper() }\n".to_string(),
                 });
                 let red_result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![red]),
+                    Rc::new(im::vector![red]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let missing: Vec<_> = red_result.diagnostics.iter()
@@ -866,12 +865,12 @@ mod compiler_tests {
                 // POSITIVE CONTROLS the wall must not touch: algebra method templates
                 // resolve at tier0, and `count` is in the declared std.methods roster
                 // even though free_monoid_scalar_templates omits it (the measured fork).
-                let green = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let green = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "green.dag".to_string(),
                     content: "module green\nfn p(xs: List<Int>) -> List<Int> { xs |> filter(x => x > 1) |> map(x => x + 1) }\nfn q(xs: List<Int>) -> Int { xs |> fold(0, (a, x) => a + x) }\nfn r(s: String) -> Int { s |> count }\n".to_string(),
                 });
                 let green_result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![green]),
+                    Rc::new(im::vector![green]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 // The positive control asserts ZERO diagnostics, not merely no
@@ -896,7 +895,7 @@ mod compiler_tests {
                 };
                 let compile_one = |path: &str, content: String| {
                     crate::v1_compiler_compile::compile_sources(
-                        std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                        Rc::new(im::vector![Rc::new(
                             crate::v1_compiler_compile::SourceFile {
                                 path: path.to_string(),
                                 content,
@@ -1004,10 +1003,10 @@ mod compiler_tests {
                 // What THIS control pins is the remaining half, the classification of
                 // an admitted one: COUNTED and NON-BLOCKING. Blocking it fabricates a
                 // refusal over the 18 measured sites; dropping it restores #7479 silence.
-                let unestablished_diag = std::rc::Rc::new(
+                let unestablished_diag = Rc::new(
                     crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished {
                         method: "probe".to_string(),
-                        span: std::rc::Rc::new(crate::std_types::SourceSpan {
+                        span: Rc::new(crate::std_types::SourceSpan {
                             file: "probe.dag".to_string(), start: 0, end: 0,
                         }),
                     });
@@ -1034,12 +1033,12 @@ mod compiler_tests {
                 let budget_row = rows.iter()
                     .find(|r| r.receiver_shape == "Primitive()")
                     .expect("expected at least one anonymous-receiver row to bound");
-                let probe_span = || std::rc::Rc::new(crate::std_types::SourceSpan {
+                let probe_span = || Rc::new(crate::std_types::SourceSpan {
                     file: "probe.dag".to_string(), start: 0, end: 0,
                 });
                 let unestablished_at = |n: usize| {
-                    std::rc::Rc::new((0..n).map(|_| std::rc::Rc::new(crate::v1_std_core::ErrorNode {
-                        diagnostic: std::rc::Rc::new(crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished {
+                    Rc::new((0..n).map(|_| Rc::new(crate::v1_std_core::ErrorNode {
+                        diagnostic: Rc::new(crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished {
                             method: budget_row.method.clone(),
                             span: probe_span(),
                         }),
@@ -1104,12 +1103,12 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
-                let red = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let red = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "red.dag".to_string(),
                     content: "module red\nfn f() -> Int { \"a string\" }\ndata d: Int = \"a string\"\n".to_string(),
                 });
                 let red_result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![red]),
+                    Rc::new(im::vector![red]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let mismatches: Vec<_> = red_result.diagnostics.iter()
@@ -1122,12 +1121,12 @@ mod compiler_tests {
                 );
                 // POSITIVE CONTROLS: conforming declarations, and the optional-cardinality
                 // case (`first` yields Int? for a declared Int?) which must not red.
-                let green = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let green = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "green.dag".to_string(),
                     content: "module green\nfn a() -> Int { 42 }\nfn b() -> String { \"fine\" }\ndata c: Int = 7\nfn e(xs: List<Int>) -> Int? { xs |> first }\n".to_string(),
                 });
                 let green_result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![green]),
+                    Rc::new(im::vector![green]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 assert!(
@@ -1142,12 +1141,12 @@ mod compiler_tests {
                 // carries no alias, brand, coproduct or cardinality representation
                 // between the two sides either, so the same positive-establishment
                 // argument that admits Int-vs-String admits List<Int>-vs-List<String>.
-                let container_red = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let container_red = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "container_red.dag".to_string(),
                     content: "module container_red\nfn f() -> List<Int> { [\"a\", \"b\"] }\ndata d: List<String> = [1, 2]\n".to_string(),
                 });
                 let container_result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![container_red]),
+                    Rc::new(im::vector![container_red]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let container_mismatches: Vec<_> = container_result.diagnostics.iter()
@@ -1161,12 +1160,12 @@ mod compiler_tests {
                 // POSITIVE CONTROL for the same widening: matching element types, and a
                 // container of a NON-ground element, which stays unjudged rather than
                 // guessed at.
-                let container_green = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let container_green = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "container_green.dag".to_string(),
                     content: "module container_green\nfn g() -> List<Int> { [1, 2] }\ndata h: List<String> = [\"x\"]\n".to_string(),
                 });
                 let container_green_result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![container_green]),
+                    Rc::new(im::vector![container_green]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 assert!(
@@ -1185,16 +1184,16 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
-                let module_a = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let module_a = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "module_a.dag".to_string(),
                     content: "module module_a\ntype Sealed sole_constructor { x: String }\nfn make_sealed(v: String) -> Sealed { Sealed { x: v } }\n".to_string(),
                 });
-                let module_b = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let module_b = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "module_b.dag".to_string(),
                     content: "module module_b\nimport module_a { Sealed }\nfn bad_ctor(v: String) -> Sealed { Sealed { x: v } }\n".to_string(),
                 });
                 let result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![module_a, module_b]),
+                    Rc::new(im::vector![module_a, module_b]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let sole_ctor_errors: Vec<_> = result.diagnostics.iter()
@@ -1233,20 +1232,20 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
-                let mint_mod = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let mint_mod = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "mint_mod.dag".to_string(),
                     content: "module mint_mod\ntype Sealed sole_constructor { tag: String }\nfn mint(tag: String) -> Sealed admit_callers: [decl_ref(module_path: \"caller_ok\", decl_name: \"ok_call\")] = Sealed { tag: tag }\n".to_string(),
                 });
-                let caller_ok = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let caller_ok = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "caller_ok.dag".to_string(),
-                    content: "module caller_ok\nimport mint_mod { mint, Sealed }\nfn ok_call() -> Sealed { mint(\"ok\") }\n".to_string(),
+                    content: "module caller_ok\nimport mint_mod { mint }\nfn ok_call() -> Sealed { mint(\"ok\") }\n".to_string(),
                 });
-                let caller_bad = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let caller_bad = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "caller_bad.dag".to_string(),
-                    content: "module caller_bad\nimport mint_mod { mint, Sealed }\nfn bad_call() -> Sealed { mint(\"forged\") }\n".to_string(),
+                    content: "module caller_bad\nimport mint_mod { mint }\nfn bad_call() -> Sealed { mint(\"forged\") }\n".to_string(),
                 });
                 let ok_result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![mint_mod.clone(), caller_ok.clone()]),
+                    Rc::new(im::vector![mint_mod.clone(), caller_ok.clone()]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 assert!(
@@ -1258,7 +1257,7 @@ mod compiler_tests {
                     ok_result.diagnostics
                 );
                 let bad_result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![mint_mod, caller_bad]),
+                    Rc::new(im::vector![mint_mod, caller_bad]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let admission_errors: Vec<_> = bad_result.diagnostics.iter()
@@ -1293,16 +1292,16 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
-                let module_a = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let module_a = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "module_a.dag".to_string(),
                     content: "module module_a\ntype FieldlessFoo sole_constructor { }\nfn make_fieldless() -> FieldlessFoo { FieldlessFoo { } }\nfn identity(f: FieldlessFoo) -> FieldlessFoo { f }\n".to_string(),
                 });
-                let module_b = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let module_b = Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "module_b.dag".to_string(),
                     content: "module module_b\nimport module_a { FieldlessFoo }\nfn bad_ctor() -> FieldlessFoo { FieldlessFoo { } }\n".to_string(),
                 });
                 let result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![module_a, module_b]),
+                    Rc::new(im::vector![module_a, module_b]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let sole_ctor_errors: Vec<_> = result.diagnostics.iter()
@@ -1342,7 +1341,7 @@ mod compiler_tests {
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
                 let entry_pairs = discover_dag_files("dag/extdeps/llm");
-                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &["dag"]).into());
+                let sources = Rc::new(resolve_source_closure(entry_pairs, &["dag"]).into());
                 let result = crate::v1_compiler_compile::compile_sources(
                     sources,
                     crate::v1_compiler_artifact::RenderTarget::Rust,
@@ -1398,10 +1397,8 @@ mod compiler_tests {
                         "{} should end with Eof",
                         file
                     );
-                    let result = crate::v1_compiler_parse::parse(
-                        tokens,
-                        std::rc::Rc::new(im::HashMap::new()),
-                    );
+                    let result =
+                        crate::v1_compiler_parse::parse(tokens, Rc::new(im::HashMap::new()));
                     assert!(
                         result.module.is_some(),
                         "{} should parse successfully, error: {:?}",
@@ -1426,7 +1423,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources = std::rc::Rc::new(self_compile_sources().into());
+                let sources = Rc::new(self_compile_sources().into());
                 let result = crate::v1_compiler_compile::resolve_sources(sources);
 
                 let errors: Vec<_> = result
@@ -1458,8 +1455,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources: std::rc::Rc<im::Vector<_>> =
-                    std::rc::Rc::new(self_compile_sources().into());
+                let sources: Rc<im::Vector<_>> = Rc::new(self_compile_sources().into());
                 let source_count = sources.len();
                 let result = crate::v1_compiler_compile::compile_sources(
                     sources,
@@ -1515,7 +1511,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources = std::rc::Rc::new(self_compile_sources().into());
+                let sources = Rc::new(self_compile_sources().into());
 
                 let result = crate::v1_compiler_compile::compile_sources(
                     sources,
@@ -1883,38 +1879,38 @@ mod compiler_tests {
 
     fn shaped_type_node(
         name: &str,
-        children: Vec<std::rc::Rc<crate::v1_std_core::Node>>,
-    ) -> std::rc::Rc<crate::v1_std_core::Node> {
+        children: Vec<Rc<crate::v1_std_core::Node>>,
+    ) -> Rc<crate::v1_std_core::Node> {
         let span = crate::v1_std_core::make_span(0, name.len() as i64);
-        std::rc::Rc::new(crate::v1_std_core::Node {
+        Rc::new(crate::v1_std_core::Node {
             name: name.to_string(),
             ident: None,
             span: span.clone(),
             ident_span: Some(span),
-            children: std::rc::Rc::new(children.into()),
+            children: Rc::new(children.into()),
             connective: crate::v1_std_core::Connective::NoConnective,
-            params: std::rc::Rc::new(im::Vector::new()),
+            params: Rc::new(im::Vector::new()),
             inferred: None,
             return_cardinality: crate::v1_std_core::Cardinality::Required,
-            uses: std::rc::Rc::new(im::Vector::new()),
+            uses: Rc::new(im::Vector::new()),
             body: None,
             transport: None,
-            properties: std::rc::Rc::new(im::Vector::new()),
+            properties: Rc::new(im::Vector::new()),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
+            expr_data: Rc::new(crate::v1_std_core::ExprData::NoExprData),
         })
     }
 
-    fn named_type_node(name: &str) -> std::rc::Rc<crate::v1_std_core::Node> {
+    fn named_type_node(name: &str) -> Rc<crate::v1_std_core::Node> {
         shaped_type_node(name, Vec::new())
     }
 
     #[test]
     fn rust_btree_set_ord_eligibility_requires_nominal_carrier_shape() {
-        let source_indices = std::rc::Rc::new(HashMap::new());
+        let source_indices = Rc::new(HashMap::new());
         let empty_emit = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();
         let symbol = named_type_node("Symbol");
         let diff_id = shaped_type_node("DiffId", vec![symbol.clone()]);
@@ -1988,7 +1984,7 @@ mod compiler_tests {
                 "Diagnostics".to_string()
             )
         );
-        let empty_shared = std::rc::Rc::new(im::OrdSet::new());
+        let empty_shared = Rc::new(im::OrdSet::new());
         assert_eq!(
             crate::v1_compiler_emit_rust::render_rust_diagnostics_carrier_applied(
                 empty_shared.clone()
@@ -1997,7 +1993,7 @@ mod compiler_tests {
         );
         let mut shared_ned_inner = im::OrdSet::new();
         shared_ned_inner.insert("NonEmptyDiagnostics".to_string());
-        let shared_ned = std::rc::Rc::new(shared_ned_inner);
+        let shared_ned = Rc::new(shared_ned_inner);
         assert_eq!(
             crate::v1_compiler_emit_rust::render_rust_diagnostics_carrier_applied(shared_ned),
             "Option<Rc<NonEmptyDiagnostics>>"
@@ -2024,7 +2020,7 @@ mod compiler_tests {
             "Witness".to_string()
         ));
         let diagnostics_node = named_type_node("Diagnostics");
-        let source_indices = std::rc::Rc::new(HashMap::new());
+        let source_indices = Rc::new(HashMap::new());
         assert!(
             crate::v1_compiler_emit_rust::is_host_diagnostics_carrier_type(
                 diagnostics_node.clone(),
@@ -2087,10 +2083,10 @@ mod compiler_tests {
         // applied-type bases must route through rust_fn_sig_leaf_name, not authored_name_at
         // verbatim — rustc reports 'expected one of `,` or `>`, found `.`' in generic position.
         // RED if render_rust_applied_type regresses to dotted verbatim emit.
-        let source_indices = std::rc::Rc::new(HashMap::new());
-        let shared = std::rc::Rc::new(im::OrdSet::new());
-        let generics = std::rc::Rc::new(im::Vector::new());
-        let variant_to_enum = std::rc::Rc::new(HashMap::new());
+        let source_indices = Rc::new(HashMap::new());
+        let shared = Rc::new(im::OrdSet::new());
+        let generics = Rc::new(im::Vector::new());
+        let variant_to_enum = Rc::new(HashMap::new());
         let env = crate::v1_compiler_infer_env::empty_type_env();
         let arg = named_type_node("Int");
         let applied = shaped_type_node("std.algebra.FreeMonoid", vec![arg]);
@@ -2233,7 +2229,7 @@ mod compiler_tests {
                         crate::v1_rt::rc_map_insert(
                             crate::v1_rt::rc_empty_map::<
                                 String,
-                                std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                                Rc<crate::v1_std_core::NewlineIndex>,
                             >(),
                             si.file.clone(),
                             si.clone(),
@@ -2268,10 +2264,7 @@ mod compiler_tests {
 
                 let t_stage = Instant::now();
                 let resolve_si = sources.iter().fold(
-                    crate::v1_rt::rc_empty_map::<
-                        String,
-                        std::rc::Rc<crate::v1_std_core::NewlineIndex>,
-                    >(),
+                    crate::v1_rt::rc_empty_map::<String, Rc<crate::v1_std_core::NewlineIndex>>(),
                     |acc, s| {
                         crate::v1_rt::rc_map_insert(
                             acc,
@@ -2284,7 +2277,7 @@ mod compiler_tests {
                     },
                 );
                 let graph = crate::v1_compiler_resolve::resolve_modules(
-                    std::rc::Rc::new(modules.into()),
+                    Rc::new(modules.into()),
                     resolve_si,
                 );
                 let resolve_total = t_stage.elapsed();
@@ -2303,7 +2296,7 @@ mod compiler_tests {
 
                 let t_stage = Instant::now();
                 let source_indices = sources.iter().fold(
-                    HashMap::<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>::new(),
+                    HashMap::<String, Rc<crate::v1_std_core::NewlineIndex>>::new(),
                     |mut acc, source| {
                         acc.insert(
                             source.path.clone(),
@@ -2317,7 +2310,7 @@ mod compiler_tests {
                 );
                 let typed = crate::v1_compiler_infer::reconcile(
                     graph,
-                    std::rc::Rc::new(source_indices),
+                    Rc::new(source_indices),
                     intern_table_p.clone(),
                 );
                 let reconcile_total = t_stage.elapsed();
@@ -2425,7 +2418,7 @@ mod compiler_tests {
                         crate::v1_rt::rc_map_insert(
                             crate::v1_rt::rc_empty_map::<
                                 String,
-                                std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                                Rc<crate::v1_std_core::NewlineIndex>,
                             >(),
                             si.file.clone(),
                             si.clone(),
@@ -2444,10 +2437,7 @@ mod compiler_tests {
                 // 1b. Resolve
                 let t = Instant::now();
                 let resolve_si = sources.iter().fold(
-                    crate::v1_rt::rc_empty_map::<
-                        String,
-                        std::rc::Rc<crate::v1_std_core::NewlineIndex>,
-                    >(),
+                    crate::v1_rt::rc_empty_map::<String, Rc<crate::v1_std_core::NewlineIndex>>(),
                     |acc, s| {
                         crate::v1_rt::rc_map_insert(
                             acc,
@@ -2460,7 +2450,7 @@ mod compiler_tests {
                     },
                 );
                 let graph = crate::v1_compiler_resolve::resolve_modules(
-                    std::rc::Rc::new(modules.into()),
+                    Rc::new(modules.into()),
                     resolve_si,
                 );
                 let resolve_elapsed = t.elapsed();
@@ -2494,10 +2484,7 @@ mod compiler_tests {
                 // 2. Normalize
                 let t = Instant::now();
                 let source_indices = newline_indices.iter().cloned().fold(
-                    crate::v1_rt::rc_empty_map::<
-                        String,
-                        std::rc::Rc<crate::v1_std_core::NewlineIndex>,
-                    >(),
+                    crate::v1_rt::rc_empty_map::<String, Rc<crate::v1_std_core::NewlineIndex>>(),
                     |acc, index| {
                         crate::v1_rt::rc_map_insert(acc, index.file.clone(), index.clone())
                     },
@@ -2566,7 +2553,7 @@ mod compiler_tests {
 
                 // 6. Emit
                 let artifact_plan = crate::v1_compiler_compile::default_artifact_plan(
-                    std::rc::Rc::new(
+                    Rc::new(
                         typed
                             .modules
                             .iter()
@@ -2680,7 +2667,7 @@ mod compiler_tests {
                         crate::v1_rt::rc_map_insert(
                             crate::v1_rt::rc_empty_map::<
                                 String,
-                                std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                                Rc<crate::v1_std_core::NewlineIndex>,
                             >(),
                             si.file.clone(),
                             si.clone(),
@@ -2696,10 +2683,7 @@ mod compiler_tests {
                     modules.push(m);
                 }
                 let resolve_si = sources.iter().fold(
-                    crate::v1_rt::rc_empty_map::<
-                        String,
-                        std::rc::Rc<crate::v1_std_core::NewlineIndex>,
-                    >(),
+                    crate::v1_rt::rc_empty_map::<String, Rc<crate::v1_std_core::NewlineIndex>>(),
                     |acc, s| {
                         crate::v1_rt::rc_map_insert(
                             acc,
@@ -2712,7 +2696,7 @@ mod compiler_tests {
                     },
                 );
                 let graph = crate::v1_compiler_resolve::resolve_modules(
-                    std::rc::Rc::new(modules.into()),
+                    Rc::new(modules.into()),
                     resolve_si,
                 );
                 let setup_time = t0.elapsed();
@@ -2724,12 +2708,10 @@ mod compiler_tests {
                 );
                 eprintln!("  Modules to reconcile: {}\n", graph.modules.len());
 
-                let mut mi_raw = HashMap::<
-                    String,
-                    std::rc::Rc<crate::v1_compiler_infer_items::TypedModule>,
-                >::new();
-                let source_indices = std::rc::Rc::new(sources.iter().fold(
-                    HashMap::<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>::new(),
+                let mut mi_raw =
+                    HashMap::<String, Rc<crate::v1_compiler_infer_items::TypedModule>>::new();
+                let source_indices = Rc::new(sources.iter().fold(
+                    HashMap::<String, Rc<crate::v1_std_core::NewlineIndex>>::new(),
                     |mut acc, source| {
                         acc.insert(
                             source.path.clone(),
@@ -2743,7 +2725,7 @@ mod compiler_tests {
                 ));
                 let mut variant_surfaces = crate::v1_rt::rc_empty_map::<
                     String,
-                    std::rc::Rc<crate::v1_compiler_infer::VariantExportSurface>,
+                    Rc<crate::v1_compiler_infer::VariantExportSurface>,
                 >();
 
                 for resolved in graph.modules.iter() {
@@ -2754,7 +2736,7 @@ mod compiler_tests {
 
                     eprint!("  {:>35} ({:>3} items) ... ", name, item_count);
 
-                    let module_index = std::rc::Rc::new(mi_raw.clone());
+                    let module_index = Rc::new(mi_raw.clone());
 
                     let t_unres = Instant::now();
                     let _unres = crate::v1_compiler_infer::build_type_env_unresolved(
@@ -2829,7 +2811,7 @@ mod compiler_tests {
                         crate::v1_compiler_infer_env::empty_symbol_index(),
                         crate::v1_rt::rc_empty_map::<
                             String,
-                            std::rc::Rc<crate::v1_compiler_infer_env::TypeBinding>,
+                            Rc<crate::v1_compiler_infer_env::TypeBinding>,
                         >(),
                     );
                     let full_elapsed = t_full.elapsed();

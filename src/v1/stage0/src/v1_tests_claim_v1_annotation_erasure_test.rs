@@ -22,7 +22,7 @@ pub use crate::v1_std_core::{InternTable, NewlineIndex};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 pub fn v1_annotation_erasure_offline_recipe() -> String {
     thread_local! {

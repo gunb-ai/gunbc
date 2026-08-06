@@ -14,7 +14,7 @@
 //! Size is derived from the boundary it crosses (DESIGN, witness-cost ruling): three keys
 //! per axis — one collision plus one from each side — is the requirement plus one.
 
-use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 use v1_compiler::std_induction::SubValueRelation;
 use v1_compiler::v1_compiler_compile::{front_end_sources, SourceFile};
