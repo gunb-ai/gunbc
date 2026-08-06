@@ -19985,8 +19985,9 @@ fn declared_source_refs_blocks_skip(axis: DeclaredSourceRefAxis) -> bool {
 // Mid-life parallel representations (no drift check until dissolution): roster rows mirror
 // `v2.lens.affected_set.self_confirmation`; docs/dag classification mirrors
 // `v2.workflow.floor_compile_clean_predicates`.
-// Receipt: `rg cli_run_affected_set_self_confirmation_bridge src/v1/stage0/src/cli_run.rs` == 1
-// until deletion; witness `affected_set_self_confirmation_test.dag`.
+// Receipt: `rg 'pub\(crate\) const CLI_RUN_AFFECTED_SET_SELF_CONFIRMATION_BRIDGE_MARKER'
+// src/v1/stage0/src/cli_run.rs` == 1 until deletion; witness
+// `affected_set_self_confirmation_test.dag`.
 pub(crate) const CLI_RUN_AFFECTED_SET_SELF_CONFIRMATION_BRIDGE_MARKER: &str =
     "cli_run_affected_set_self_confirmation_bridge";
 
