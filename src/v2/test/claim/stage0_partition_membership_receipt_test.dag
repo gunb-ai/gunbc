@@ -5,7 +5,7 @@ import v2.workflow.rust_crate_partition {
   stage0_derived_assignment_succeeds_on_enrolled_graph,
   stage0_partition_crate_rows,
   stage0_partition_crate_row_membership_derived,
-  stage0_partition_crate_rows_membership_derived_holds,
+  stage0_partition_derived_membership_matches_enrolled_baseline_holds,
   stage0_partition_membership_closure_covers_seeds,
   stage0_partition_membership_order_independence,
   stage0_partition_witness_assignment_conflict_refuses_holds,
@@ -16,14 +16,14 @@ import v2.workflow.rust_crate_partition {
   stage0_physical_crate_count
 }
 
-data stage0_partition_membership_receipt_note: String = "C2 equivalence receipt: stage0_partition_crate_rows membership derives order-independently from per-unit raw reaches plus a global owner rule (SharedDependencyThroughPackage | AssignmentConflict). Convergence budget is |domain|. RED controls: zero-step raw reach refuses; two-unit owner ambiguity refuses; forward vs reversed unit-order iteration yields identical membership."
+data stage0_partition_membership_receipt_note: String = "C2 equivalence receipt: derived per-unit membership matches a frozen baseline from origin/main hand lists (independent oracle — not row.modules, which is populated from the same derivation). Order-independence, convergence budget |domain|, and typed collision policy witnessed separately. RED controls: zero-step raw reach refuses; two-unit owner ambiguity refuses; forward vs reversed unit-order iteration yields identical membership."
 
 test fn stage0_partition_membership_closure_covers_seeds_holds() -> Bool {
   stage0_partition_membership_closure_covers_seeds()
 }
 
-test fn stage0_partition_derived_membership_equals_row_modules_holds() -> Bool {
-  stage0_partition_crate_rows_membership_derived_holds()
+test fn stage0_partition_derived_membership_matches_enrolled_baseline_witness_holds() -> Bool {
+  stage0_partition_derived_membership_matches_enrolled_baseline_holds()
 }
 
 test fn stage0_partition_derived_assignment_succeeds_on_enrolled_graph_holds() -> Bool {
