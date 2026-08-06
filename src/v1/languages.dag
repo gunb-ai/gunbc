@@ -104,6 +104,10 @@ type ImportRule {
 type SharingStrategy {
   needs_sharing: Bool
   wrap_template: String
+  wrap_type_prefix: String
+  wrap_ctor_template: String
+  wrap_ctor_open: String
+  wrap_ctor_close: String
 
   clone_value: String
   deref_clone: String
@@ -389,6 +393,10 @@ fn rust_spec() -> LanguageSpec {
     sharing: SharingStrategy {
       needs_sharing: true,
       wrap_template: "Rc<{0}>",
+      wrap_type_prefix: "Rc<",
+      wrap_ctor_template: "Rc::new({0})",
+      wrap_ctor_open: "Rc::new(",
+      wrap_ctor_close: ")",
       clone_value: "{0}.clone()",
       deref_clone: "(*{0}).clone()",
       field_clone: "{0}.{1}.clone()",
@@ -534,6 +542,10 @@ fn python_spec() -> LanguageSpec {
     sharing: SharingStrategy {
       needs_sharing: false,
       wrap_template: "{0}",
+      wrap_type_prefix: "",
+      wrap_ctor_template: "{0}",
+      wrap_ctor_open: "",
+      wrap_ctor_close: "",
       clone_value: "{0}",
       deref_clone: "{0}",
       field_clone: "{0}.{1}",
@@ -679,6 +691,10 @@ fn go_spec() -> LanguageSpec {
     sharing: SharingStrategy {
       needs_sharing: false,
       wrap_template: "{0}",
+      wrap_type_prefix: "",
+      wrap_ctor_template: "{0}",
+      wrap_ctor_open: "",
+      wrap_ctor_close: "",
       clone_value: "{0}",
       deref_clone: "{0}",
       field_clone: "{0}.{1}",
@@ -824,6 +840,10 @@ fn dag_spec() -> LanguageSpec {
     sharing: SharingStrategy {
       needs_sharing: true,
       wrap_template: "Rc<{0}>",
+      wrap_type_prefix: "Rc<",
+      wrap_ctor_template: "Rc::new({0})",
+      wrap_ctor_open: "Rc::new(",
+      wrap_ctor_close: ")",
       clone_value: "{0}.clone()",
       deref_clone: "(*{0}).clone()",
       field_clone: "{0}.{1}.clone()",
@@ -1018,4 +1038,28 @@ fn expression_semantics_for_target(target: RenderTarget) -> ExpressionSemantics 
 fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
   let tmpl = sharing_for_target(target: target).wrap_template
   replace(tmpl, "{0}", inner)
+}
+
+fn sharing_wrap_ctor_for_target(target: RenderTarget, inner_expr: String) -> String {
+  let tmpl = sharing_for_target(target: target).wrap_ctor_template
+  replace(tmpl, "{0}", inner_expr)
+}
+
+fn sharing_wrap_ctor_open_for_target(target: RenderTarget) -> String {
+  sharing_for_target(target: target).wrap_ctor_open
+}
+
+fn sharing_wrap_ctor_close_for_target(target: RenderTarget) -> String {
+  sharing_for_target(target: target).wrap_ctor_close
+}
+
+fn sharing_type_is_wrapped_for_target(target: RenderTarget, type_name: String) -> Bool {
+  let prefix = sharing_for_target(target: target).wrap_type_prefix
+  let prefix_len = string_length(s: prefix)
+  if prefix_len == 0 {
+    false
+  } else {
+    string_length(s: type_name) >= prefix_len
+      && substring(s: type_name, start: 0, end: prefix_len) == prefix
+  }
 }

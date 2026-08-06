@@ -1,0 +1,20 @@
+module gunbc.ci_build_job_v1_compiler_unit_receipt
+
+import std.types { String }
+
+data ci_build_job_v1_compiler_unit_receipt_note: String = "CI-performance authority for the A2 build-job lane (operator ruling smart-badger-549, 2026-08-06). Corrects rung inflation from #7868: ordering landed but the one-compiler-unit claim was not fleet-delivered (run 31062435170 showed a second Compiling v1-compiler on the gate step). Status lines below are the honest program reading; execution evidence for the fix lives in PR #7910 and its fleet run. Wall-clock benefit is NOT claimed until a controlled measurement lands; unit-reuse evidence is a cargo fingerprint fact (second invocation omits Compiling for a fresh unit)."
+
+data one_profile_ordering_status: String = "landed"
+data one_compiler_unit_status: String = "delivered"
+data wall_benefit_status: String = "open"
+
+data pr7868_landed_pull_request: String = "7868"
+data pr7868_fleet_counterexample_run: String = "31062435170"
+data pr7910_fix_pull_request: String = "7910"
+
+data machine_unit_identity_note: String = "Machine-level acceptance (local controlled repro, RUSTC_WRAPPER unset, CARGO_INCREMENTAL=0, CI-shaped release bin set + cargo test -p v1-compiler-tests --release --no-run). The shared release lib unit identity across build and gate is ONE artifact: cargo fingerprint dir v1-compiler-591811ee6f9846da / lib-v1_compiler.json with profile=2040997289075261528, config=2069994364910194474, compile_kind=0, features=[default, interp_test_witness, test_hooks, text_lookup_work_counter]. BEFORE fix (broken package-relative .git rerun-if-changed restored): after build the lib unit is 591811ee6f9846da; the second cargo invocation logs fingerprint dirty for v1-compiler lib with StaleDepFingerprint\{build_script_build\} and StaleItem(MissingFile\{src/v1/stage0/.git/HEAD\}) — rustc re-executes on the SAME unit identity. AFTER fix (#7910): after build lib unit 591811ee6f9846da; second invocation produces no dirty line for v1-compiler lib and reuses target/release/deps/libv1_compiler-591811ee6f9846da.rlib (gate Finished in 23s warm). Log line count is weaker evidence; the fingerprint identity + dirty-or-fresh disposition is the acceptance bar."
+
+data fleet_build_job_log_evidence_run: String = "31077456733"
+data fleet_build_job_log_evidence_job: String = "92538509081"
+data fleet_build_job_log_evidence_status: String = "delivered"
+data fleet_build_job_log_evidence_note: String = "Fleet build job run 31077456733 job 92538509081 (srv1-04, head 5a0414cf32). TWO cargo invocations in one job: (1) release build prints Compiling v1-compiler then Finished release in 21.13s; (2) compile-contract gate prints Compiling v1-compiler-tests then Finished release in 17.61s with NO Compiling v1-compiler line — the dependent invocation reused the first invocation's v1-compiler unit (cargo omits Compiling for a fresh unit). Quoted: 2026-08-06T06:36:48.5552454Z Compiling v1-compiler v0.1.0 (.../src/v1/stage0); 2026-08-06T06:37:08.6981353Z Finished release in 21.13s; 2026-08-06T06:37:08.8943777Z Compiling v1-compiler-tests v0.1.0 (.../src/v1/tests); 2026-08-06T06:37:26.4211587Z Finished release in 17.61s. Counterexample run 31062435170 printed Compiling v1-compiler on the gate step. Wall-clock benefit not claimed from this receipt."

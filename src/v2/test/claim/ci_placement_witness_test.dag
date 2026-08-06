@@ -150,13 +150,13 @@ fn placement_shadow_missing_identity() -> CommitCheckEnrollment {
   }
 }
 
-test fn ci_placement_shadow_report_spans_all_57_rows_holds() -> Bool {
+test fn ci_placement_shadow_report_spans_all_58_rows_holds() -> Bool {
   let report = placement_shadow_report(
     roster: commit_gate_roster,
     basis: PlacementShadowSignedBasis { receipts: [] }
   )
   match report.rows.length() {
-    57 => true
+    58 => true
     _ => false
   }
 }

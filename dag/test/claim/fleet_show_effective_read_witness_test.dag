@@ -68,21 +68,23 @@ test fn witness_srv1_slice_cap_infinity_drifts_against_pool_budget() -> Bool {
   match slice_property_memory_max_verdict(
     read: read,
     property: systemd_memory_max_property,
-    expected: gunbc_runner_pool_budget,
+    expected: gunbc_runner_pool_budget_for(host: operator_host_srv1),
   ) {
     Present { value: Drifted } => true
     _ => false
   }
 }
 
-test fn witness_srv2_slice_cap_converges_to_pool_budget() -> Bool {
+data srv2_slice_cap_drift_note: String = "THIS WITNESS FLIPPED FROM CONVERGED TO DRIFTED, and the flip is the fact rather than a broken test. The srv2 fixture is a real 2026-07-03 readback of system-actions-runner.slice MemoryMax = 85899345920 (80GiB), which equalled the declared slice cap for as long as that cap was a fleet-wide literal. The 2026-08-05 per-host ruling derives srv2's cap as 5 x 14GiB = 75161927680 (70GiB), so the same untouched observation now legitimately disagrees with the declaration.\n\nDRIFTED IS THE CORRECT VERDICT AND MUST NOT BE PAPERED OVER: srv2's live slice really is carved 10GiB wider than the fleet now declares, and it stays that way until a converge applies the new cap. Asserting Converged here would have required either reconciling the declaration toward the live readback — which gunbc.runner_slot_allocation's authority note forbids in terms ('never reconcile this row toward live readback') — or editing the fixture, which would be falsifying an observation to keep a test green. The sibling srv1 width witness already carries exactly this shape for exactly this reason (srv1_width_drift_note), so the file is consistent rather than newly compromised.\n\nDissolve-on: a post-apply readback of srv2's slice replaces the fixture row, at which point this witness flips back to asserting convergence against the derived cap."
+
+test fn witness_srv2_slice_cap_drifts_after_per_host_recarve() -> Bool {
   let read = runner_slice_cap_live_read_typed(row: gunbc_srv2_runner_slice_cap_fixture_row)
   match slice_property_memory_max_verdict(
     read: read,
     property: systemd_memory_max_property,
-    expected: gunbc_runner_pool_budget,
+    expected: gunbc_runner_pool_budget_for(host: operator_host_srv2),
   ) {
-    Present { value: VerdictConverged } => true
+    Present { value: Drifted } => true
     _ => false
   }
 }
@@ -108,7 +110,7 @@ test fn witness_srv1_width_drifts_from_declared_count_after_recarve() -> Bool {
     Present { value: read } =>
       runner_width_converge_verdict(
         observed: read.active_count,
-        desired: declared_runner_count()
+        desired: declared_runner_count_for(host: operator_host_srv1)
       ) == gunbc.host_converge.Drifted
     Absent => false
   }
@@ -119,7 +121,7 @@ test fn witness_srv2_width_drifts_from_declared_count() -> Bool {
     Present { value: read } =>
       runner_width_converge_verdict(
         observed: read.active_count,
-        desired: declared_runner_count()
+        desired: declared_runner_count_for(host: operator_host_srv2)
       ) == gunbc.host_converge.Drifted
     Absent => false
   }

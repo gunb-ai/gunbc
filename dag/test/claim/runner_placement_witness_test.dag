@@ -10,11 +10,11 @@ test fn witness_live_plan_is_conservation_sound() -> Bool {
   match live_plan() {
     PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
       hosts.length() == fleet_intent_offers.length()
-        && total == declared_runner_count() * fleet_intent_offers.length()
+        && total == fold(hosts, init: 0, f: (n, h) => n + h.runner_count)
         && all(hosts, h =>
-            h.runner_count == declared_runner_count()
+            h.runner_count == declared_runner_count_for(host: h.identity)
               && byte_size_count(b: h.per_runner_memory_cap) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
-              && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_pool_budget)
+              && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_pool_budget_for(host: h.identity))
               && hardware_thread_count_value(t: h.build_tokens) > 0
           )
     PlanUnsound { reason: _ } => false
@@ -41,7 +41,7 @@ test fn witness_live_session_plan_fail_closed() -> Bool {
 
 test fn witness_live_effective_runners_derives_declared_count() -> Bool {
   match effective_runners_per_host() {
-    RunnersPerHostDerived { count: c } => c == declared_runner_count()
+    RunnersPerHostDerived { count: c } => c == declared_runner_count_for(host: operator_host_srv3)
     RunnersPerHostUnsound { reason: _ } => false
   }
 }

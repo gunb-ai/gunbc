@@ -8,10 +8,80 @@ test fn allocation_conserves_when_pools_fit() -> Bool {
     host: byte_size(134217728000),
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
-    runner_pool: gunbc_runner_pool_budget,
+    runner_pool: gunbc_runner_pool_budget_for(host: operator_host_srv1),
     session_pool: byte_size(0),
     compile_pool: byte_size(0)
   )
+}
+
+data per_host_width_red_controls_note: String = "THE FOUR CONTROLS BELOW ARE THE POINT OF THE PER-HOST SPLIT, and each one goes red against a specific way of getting this wrong rather than against a changed number. Every input is the live authority except the WIDTH under test, which is perturbed by exactly one slot — so a control cannot pass by coincidence and cannot be repaired by editing a literal.\n\nThe pair matters more than either half. Asserting only that the committed widths fit would be satisfied by a wall that returns true for everything, which is exactly the wall this change replaced (it charged session_pool: 0 on every host and would have passed srv1 at seven slots). Asserting only the refusals would be satisfied by a wall that refuses everything. Together they pin the boundary at the slot, in both directions, on both host classes.\n\nWhy srv1 refuses at 6 and srv3 refuses at 8: srv1 owes the sessions reservation its roster entry declares and carries the legacy overhead allowance, srv3 owes neither and carries the measured bound. Same per-slot ceiling, same host RAM, different admissible width — which is the whole claim, stated as arithmetic that fails if either per-host fact is wrong."
+
+fn conserves_at_width(host: HostIdentity, slots: Int) -> Bool {
+  host_allocation_conserves(
+    host: host_os_usable_ram_bytes(),
+    overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead_for(host: host)),
+    headroom: oomd_actuation_floor(host: host_os_usable_ram_bytes()),
+    runner_pool: gunbc_runner_slot_demand_sum_memory_max(
+      slots: slots,
+      per_slot: gunbc_runner_slot_desired().memory_max
+    ),
+    session_pool: host_session_slice_bytes(host: host),
+    compile_pool: byte_size(0)
+  )
+}
+
+test fn committed_width_fits_on_every_host() -> Bool {
+  all(
+    gunbc_committed_runner_slot_allocations(),
+    a => conserves_at_width(host: a.host, slots: a.slots_per_host)
+  )
+}
+
+data boundary_is_pinned_on_the_memory_axis_note: String = "THE +1 CONTROL RUNS AGAINST host_memory_admitted_width, NOT AGAINST THE COMMITTED WIDTH, because this wall answers a question about RAM and the committed width is a minimum over more axes than RAM. srv4 is exactly where the two part company: memory admits 7 and its declared disk cap commits 5, so asserting that srv4's committed width plus one fails conservation would assert that six slots do not fit in srv4's RAM — which is false, and would be a test failing for a true reason.\n\nThe control keeps its discriminating power by moving to the axis it belongs on: for every host, one more slot than MEMORY admits must fail the memory wall. Passing srv4 would then require the memory model to be wrong, not the disk cap to be edited. The committed width keeps its own claim in the row above, which is the weaker and still necessary one — whatever is committed must fit."
+
+test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool {
+  all(
+    gunbc_committed_runner_slot_allocations(),
+    a => !conserves_at_width(host: a.host, slots: host_memory_admitted_width(host: a.host) + 1)
+  )
+}
+
+data committed_width_never_exceeds_memory_admission_note: String = "The minimum cannot exceed either of its arguments, and this row is the executable form of that: no host may commit a width its RAM does not admit. It goes red if a future axis is folded into gunbc_runner_slots_per_host with the comparison inverted, which is the one edit that would turn a constraint into a grant."
+
+test fn committed_width_never_exceeds_memory_admission() -> Bool {
+  all(
+    gunbc_committed_runner_slot_allocations(),
+    a => a.slots_per_host <= host_memory_admitted_width(host: a.host)
+  )
+}
+
+data srv4_commits_below_its_memory_admission_note: String = "srv4 IS THE DISCRIMINATING CASE FOR THE WHOLE MINIMUM, and without it the two axes could be collapsed back into one without any witness noticing. It is the only host where a second constraint binds: memory admits 7, its declared disk cap admits 5, and it commits 5. A change that dropped the disk axis, or that folded it in with the wrong comparison, would raise srv4 to 7 and red here — which is the failure mode this pins, since that change is precisely the one that provisions two slots onto a 500GB disk."
+
+test fn srv4_commits_the_disk_cap_not_the_memory_admission() -> Bool {
+  host_memory_admitted_width(host: operator_host_srv4) == 7
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 5
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 7
+}
+
+test fn session_hosts_refuse_the_managed_width() -> Bool {
+  conserves_at_width(host: operator_host_srv3, slots: 7)
+    && !conserves_at_width(host: operator_host_srv1, slots: 7)
+    && !conserves_at_width(host: operator_host_srv2, slots: 7)
+}
+
+test fn charging_zero_sessions_would_have_admitted_the_overcommit() -> Bool {
+  host_allocation_conserves(
+    host: host_os_usable_ram_bytes(),
+    overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead_for(host: operator_host_srv1)),
+    headroom: oomd_actuation_floor(host: host_os_usable_ram_bytes()),
+    runner_pool: gunbc_runner_slot_demand_sum_memory_max(
+      slots: 6,
+      per_slot: gunbc_runner_slot_desired().memory_max
+    ),
+    session_pool: byte_size(0),
+    compile_pool: byte_size(0)
+  )
+    && !conserves_at_width(host: operator_host_srv1, slots: 6)
 }
 
 test fn allocation_unsound_when_runner_pool_overcommits() -> Bool {
@@ -30,7 +100,7 @@ test fn sessions_subtract_from_the_same_budget() -> Bool {
     host: byte_size(134217728000),
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
-    runner_pool: gunbc_runner_pool_budget,
+    runner_pool: gunbc_runner_pool_budget_for(host: operator_host_srv1),
     session_pool: gunbc.fleet_host_budget.session_pool_bytes(active_sessions: 40),
     compile_pool: byte_size(0)
   )

@@ -50,8 +50,8 @@
 # into an unchanged "Still red". An open issue reads as an accurate live description
 # of the current state, so a stale one is worse than
 # none. The body is therefore rewritten every red window (body edits do not
-# notify, so this costs no noise), and the failing set plus its failure class is
-# carried as a signature: a red that CHANGES CLASS is a different incident from a
+# notify, so this costs no noise), and the failing component/class set plus its
+# failure class is carried as a signature: a red that CHANGES CLASS is a different incident from a
 # red that persists, and it bypasses the comment throttle rather than being
 # suppressed by it.
 #
@@ -115,8 +115,8 @@ jobs:
             // above is safe to run every window), so an alert whose only mention
             // lives in the body pings its recipient exactly once — at issue open —
             // and then goes silent for the entire incident however long it runs and
-            // however many times the failing set changes underneath it. Receipt:
-            // issue #7737 opened 2026-08-03 and carried four github-actions comments
+            // however many times the failing component/class set changes underneath
+            // it. Receipt: issue #7737 opened 2026-08-03 and carried four github-actions comments
             // across the next two days (one heartbeat, three failing-set-changed);
             // none of them contained a mention, so the sustained-red heartbeat this
             // workflow's header describes as its whole purpose delivered no
@@ -223,27 +223,53 @@ jobs:
               return lines.join('\n');
             }
 
-            // ---- failing-set / failure-class signature -------------------------
+            // ---- failing component/class signature ------------------------------
             // The signature is what makes a red that CHANGED CLASS distinguishable
             // from a red that merely persists. They are different incidents with
             // different remedies (re-basis a dated ceiling vs. fix a witness vs.
             // repair a runner), and the 20h heartbeat throttle below is keyed on it
             // so a transition is never suppressed as "still red".
             //
-            // It is derived from the receipt's own identities — component index,
-            // label, and the outcome tag the floor already emits — never from
-            // rendered prose. `refused` (a deliberate stop at a declared ceiling,
-            // which is where BudgetExceeded lands) and `failed` are distinct tags in
-            // the receipt, so a BudgetExceeded -> WitnessRed transition changes this
-            // string. An unreadable receipt gets its own signature carrying the
-            // cause: it is an unknown, never folded into any known failing set.
+            // IT IS NOT A FAILING *SET* AND NO LONGER CLAIMS TO BE. Its members are
+            // COMPONENTS — batch-grain rows — so two different witnesses failing
+            // inside one component are one member, and the prose says "failing
+            // component/class set" everywhere for that reason. Exact failing-witness
+            // identities are deliberately absent rather than approximated: the
+            // receipt does not carry them, and recovering them by parsing a
+            // component's diagnostic prose is the string-classification the receipt
+            // module already refuses at its seed boundary. That waits for typed
+            // witness identities on the receipt, not for a regex here.
+            //
+            // FAILURE_MODE IS PART OF THE KEY, and its absence was a real hole. The
+            // outcome tag alone is many-to-one over the floor's failure vocabulary:
+            // floor_component_outcome_of_failure_mode maps BOTH Infra and WitnessRed
+            // to `failed` (gunbc.floor_component_receipt records why — one is the
+            // fleet's fault, one is the witness owner's, and they route to different
+            // people). So an Infra -> WitnessRed transition — a change of owner, not
+            // just of symptom — produced a byte-identical signature and was absorbed
+            // into "still red, unchanged". The mode already rides on every emitted
+            // row, so keying on it costs nothing and closes that arm.
+            //
+            // Every part is derived from the receipt's own identities — never from
+            // rendered prose. An unreadable receipt gets its own signature carrying
+            // the cause: it is an unknown, never folded into any known failing
+            // component/class set.
             function signatureOf(r) {
               if (!r.ok) return `receipt-unavailable:${r.cause}`;
               const bad = Array.isArray(r.doc.unsuccessful_components)
                 ? r.doc.unsuccessful_components : [];
               if (bad.length === 0) return 'no-unsuccessful-components';
               return bad
-                .map((c) => `${c.index}:${c.label}:${c.outcome}`)
+                .map((c) => {
+                  // A row written before failure_mode was emitted, or one built
+                  // through the tag constructor that genuinely never saw a mode,
+                  // reads as an explicit unknown rather than being silently dropped
+                  // from the key — dropping it would recreate the collapse above.
+                  const mode = typeof c.failure_mode === 'string' && c.failure_mode !== ''
+                    ? c.failure_mode
+                    : 'mode-unrecorded';
+                  return `${c.index}:${c.label}:${mode}:${c.outcome}`;
+                })
                 .sort()
                 .join('|');
             }
@@ -339,7 +365,7 @@ jobs:
                 `First red: ${firstRed}`,
                 `Current: ${runLine}`,
                 '',
-                '## Current failing set',
+                '## Current failing component/class set',
                 '',
                 report,
                 '',
@@ -350,7 +376,8 @@ jobs:
                 'This issue auto-closes when a scheduled run goes green. The body above',
                 'is REWRITTEN every red window, so it always describes the current',
                 'failure rather than the first one. Comments are throttled to at most',
-                'every 20h while the failing set and its failure class are unchanged; a',
+                'every 20h while the failing component/class set and its failure class are',
+                'unchanged; a',
                 'change in either is a different incident and comments immediately.',
                 '',
                 `<!-- falsifier-alert-state: ${state} -->`,
@@ -398,7 +425,7 @@ jobs:
                     owner: context.repo.owner, repo: context.repo.repo,
                     issue_number: existing.number,
                     body: [
-                      `${ALERT_MENTION} — **the failing set changed**; this is a different incident from the one first reported.`,
+                      `${ALERT_MENTION} — **the failing component/class set changed**; this is a different incident from the one first reported.`,
                       '',
                       `Previous: ${priorLine}`,
                       `Now: \`${signature}\``,
@@ -408,12 +435,12 @@ jobs:
                       report,
                     ].join('\n'),
                   });
-                  core.notice(`falsifier failing set changed: ${prior.signature} -> ${signature}`);
+                  core.notice(`falsifier failing component/class set changed: ${prior.signature} -> ${signature}`);
                 } else if (heartbeatDue) {
                   await github.rest.issues.createComment({
                     owner: context.repo.owner, repo: context.repo.repo,
                     issue_number: existing.number,
-                    body: `${ALERT_MENTION} — still red, unchanged failing set. Latest: ${runLine}\n\n${report}`,
+                    body: `${ALERT_MENTION} — still red, unchanged failing component/class set. Latest: ${runLine}\n\n${report}`,
                   });
                 } else {
                   core.info(`red, signature unchanged (${signature}) — body refreshed, comment throttled`);

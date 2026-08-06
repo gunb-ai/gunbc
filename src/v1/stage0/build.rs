@@ -10,11 +10,16 @@ fn git_output(args: &[&str]) -> Option<String> {
 }
 
 fn main() {
-    // Re-run when git HEAD moves; also when this script or the survey bin change so
-    // BUILD_DIRTY is recomputed after local source edits (defense-in-depth — survey
-    // time ensure_clean_tree and verify_build_provenance still gate the run).
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    println!("cargo:rerun-if-changed=.git/refs/heads");
+    // Re-run when this script or the survey bin change so BUILD_DIRTY is recomputed
+    // after local source edits (defense-in-depth — survey time ensure_clean_tree and
+    // verify_build_provenance still gate the run).
+    //
+    // Do NOT declare cargo:rerun-if-changed on .git/HEAD here. Package-relative paths
+    // like `.git/HEAD` do not exist (checkout .git lives at workspace root; worktrees
+    // use a gitdir: pointer file). A missing rerun-if-changed target makes every
+    // subsequent cargo invocation treat the build script as stale, forcing a second
+    // v1-compiler compile when alternating cargo build and cargo test. Pointing at
+    // the real HEAD path would be worse: every commit would invalidate the shared lib.
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src/bin/frontier_probe_survey.rs");
 
