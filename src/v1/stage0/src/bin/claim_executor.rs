@@ -1804,8 +1804,18 @@ enum ExpectedRedDisposition {
     /// `String` at the point it builds `ClaimOutcome::RuntimeError`, so a pre-evaluation refusal
     /// and a mid-evaluation fault arrive indistinguishable. They are not split here by sniffing
     /// that message — recovering a class from prose the seed just formatted is the exact
-    /// mechanism `budget_refusal` exists to avoid. Dissolve-on: `ClaimOutcome` carries the typed
-    /// error through instead of a formatted string, at which point this arm splits in two.
+    /// mechanism `budget_refusal` exists to avoid, and it is the shape that let a reworded error
+    /// silently demote a budget refusal to a witness failure. Collapsing two states that cannot
+    /// be observed here, and saying so, is the honest rung; fabricating the distinction would be
+    /// rung inflation in a table whose whole purpose is rung honesty.
+    ///
+    /// Dissolve-on: NOT a separate trigger — the same one `gunbc.witness_row_cost`
+    /// `witness_cost_timed_out_seed_deferral_note` already carries for this seam, because it is
+    /// the same fact: the typed error does not survive the marshalling of `ClaimOutcome` across
+    /// the interpreter boundary. When witness execution is realized from `.dag` rather than
+    /// interpreted in the seed bin (the witness-realization lane), the typed error is in hand at
+    /// the point of judgement and this arm splits in two. Pointed at the existing note rather
+    /// than minting a second ledger entry for one cause (DESIGN §6, one fact one home).
     InfrastructureOrReferentFailure,
     /// No observation exists for this rostered witness — it was not selected, was skipped, or
     /// never reported. ABSENT EVIDENCE IS NOT A VERDICT: it is neither agreement nor failure,
