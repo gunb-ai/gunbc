@@ -1,6 +1,7 @@
 module std.occurrence_binding_candidates
 
-import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha }
+import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, FilePath, SourceSpan }
+import std.algebra { FreeMonoid, Empty, Cons }
 import std.occurrence_binding {
   OccurrenceBound,
   OccurrenceUnbound,
@@ -9,6 +10,8 @@ import std.occurrence_binding {
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceIndexEntry,
+  OccurrenceIndex,
+  OccurrenceProjection,
   OccurrenceTransport,
   OccurrenceTransportRefusal,
   OccurrenceTransportValidated,
@@ -18,6 +21,7 @@ import std.occurrence_identity {
   ReferenceOccurrence,
   OccurrenceCategory,
   TypeOccurrence,
+  LexicalValueOccurrence,
   OccurrenceContainmentPath,
   occurrence_containment_path_is_prefix_of,
   occurrence_containment_paths_equal,
@@ -26,6 +30,9 @@ import std.occurrence_identity {
   AuthoredTokenOrdinal,
   authored_token_ordinal_before,
   authored_token_ordinal_eq,
+  OccurrenceIdAllocator,
+  occurrence_id_allocator_initial,
+  alloc_occurrence_id,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.roster_frontier { declaration_ref_eq }
@@ -173,6 +180,82 @@ fn declaration_exposure_eq(
       match right {
         RootExposure => true
         _ => false
+      }
+  }
+}
+
+data declaration_exposure_from_containment_note: String = "Single authority for declaration exposure from containment prefix shape and module path. OccurrenceCategory is never consulted. DeclarationExposureGrounding selects how module-root and direct-module-child shapes map to DeclarationExposure: NamespaceStructuralRootExposure (N2 resolve path — empty ancestors => RootExposure); ModuleLocalMemberExposure (in-module binding walk — module-root and direct-module-child => ModuleExposure); CrossFileProviderExportedExposure (cross-file provider declarations exported to consumers — module-root and direct-module-child => RootExposure at derivation, never via a post-hoc upgrade). Nested declarations always derive LexicalExposure via occurrence_containment_parent_scope."
+
+type DeclarationExposureGrounding
+  = NamespaceStructuralRootExposure
+  | ModuleLocalMemberExposure
+  | CrossFileProviderExportedExposure
+
+fn occurrence_containment_parent_scope(
+  ancestors: FreeMonoid<OccurrenceId>
+) -> OccurrenceContainmentPath? {
+  match reverse(ancestors) {
+    Empty => none
+    Cons { head: parent_terminal, tail: parent_ancestors_reversed } =>
+      Present {
+        value: OccurrenceContainmentPath {
+          ancestors: reverse(parent_ancestors_reversed),
+          terminal: parent_terminal,
+        },
+      }
+  }
+}
+
+fn declaration_exposure_module_local_member(
+  module_path: NonEmptyStr,
+  containment: OccurrenceContainmentPath
+) -> DeclarationExposure {
+  match occurrence_containment_parent_scope(ancestors: containment.ancestors) {
+    Absent =>
+      ModuleExposure { module: module_path }
+    Present { value: exposing_scope } =>
+      match exposing_scope.ancestors {
+        Empty =>
+          ModuleExposure { module: module_path }
+        Cons { head: _, tail: _ } =>
+          LexicalExposure { exposing_scope: exposing_scope }
+      }
+  }
+}
+
+fn declaration_exposure_from_containment(
+  module_path: NonEmptyStr,
+  containment: OccurrenceContainmentPath,
+  grounding: DeclarationExposureGrounding,
+) -> DeclarationExposure {
+  match grounding {
+    NamespaceStructuralRootExposure =>
+      match containment.ancestors {
+        Empty => RootExposure
+        Cons { head: _, tail: Empty } =>
+          ModuleExposure { module: module_path }
+        Cons { head: _, tail: Cons { head: _, tail: _ } } =>
+          match occurrence_containment_parent_scope(ancestors: containment.ancestors) {
+            Present { value: exposing_scope } =>
+              LexicalExposure { exposing_scope: exposing_scope }
+            Absent =>
+              ModuleExposure { module: module_path }
+          }
+      }
+    ModuleLocalMemberExposure =>
+      declaration_exposure_module_local_member(
+        module_path: module_path,
+        containment: containment,
+      )
+    CrossFileProviderExportedExposure =>
+      match declaration_exposure_module_local_member(
+        module_path: module_path,
+        containment: containment,
+      ) {
+        ModuleExposure { module: _ } => RootExposure
+        LexicalExposure { exposing_scope: exposing_scope } =>
+          LexicalExposure { exposing_scope: exposing_scope }
+        RootExposure => RootExposure
       }
   }
 }
@@ -1011,6 +1094,1118 @@ fn direct_module_dependencies_from_bound_population(
     ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
       DirectModuleDependencyPopulationRefused {
         population: population,
+      }
+  }
+}
+
+data module_path_file_row_note: String = "ModulePathFileRow is the parser-embedded storage-realization join for cross-file binding provenance at the N3-B substrate seam: one symbolic module path maps to exactly one authored file path. Single authority for path⇄module binding is v2.compiler.source_authority.ModuleStorageBinding / ModuleStorageIndex (module_storage_binding_authority_note); this row is a scaffold projection of that fact from parser-walk inputs until B2 wires OrdinaryLoadedCompilationClosure through source_authority directly. Deliberately separate from OccurrenceModulePathRow (module membership only) and from import lists (transitional loading data). File projection refuses when either side of a bound reference lacks a row — never fabricates a path from module_to_filename heuristics at this seam. Duplicate identical rows are ModulePathFileDuplicateSame; conflicting paths for one module are ModulePathFileConflict — last-write-wins map_insert is forbidden."
+
+data module_path_file_row_dissolution_note: String = "Dissolve-on: cross-file binding production consumes ModuleStorageBinding rows from v2.compiler.source_authority (module_storage_binding_module_dotted × module_storage_binding_file_path) on OrdinaryLoadedCompilationClosure; ModulePathFileRow, ModulePathFileIndex, and this note delete in the completing change. Until then parser-walk supplies rows with ParsedFromSource provenance only."
+
+type ModulePathFileRow {
+  module_path: NonEmptyStr
+  file_path: FilePath
+}
+
+type ModulePathFileIndexRefusal
+  = ModulePathFileDuplicateSame { module_path: NonEmptyStr, file_path: FilePath }
+  | ModulePathFileConflict {
+      module_path: NonEmptyStr,
+      first_file: FilePath,
+      second_file: FilePath,
+    }
+
+type ModulePathFileIndexBuild {
+  entries: Map<String, FilePath>
+  refusal: ModulePathFileIndexRefusal?
+}
+
+type ModulePathFileIndex
+  = ModulePathFileIndexReady { entries: Map<String, FilePath> }
+  | ModulePathFileIndexRefused { refusal: ModulePathFileIndexRefusal }
+
+fn module_path_file_index_fold_step(
+  build: ModulePathFileIndexBuild,
+  row: ModulePathFileRow
+) -> ModulePathFileIndexBuild {
+  match build.refusal {
+    Present { value: _ } => build
+    Absent =>
+      let key = row.module_path as String
+      match map_get(build.entries, key) {
+        Absent =>
+          ModulePathFileIndexBuild {
+            entries: map_insert(build.entries, key, row.file_path),
+            refusal: none,
+          }
+        Present { value: existing } =>
+          if (existing as String) == (row.file_path as String) {
+            ModulePathFileIndexBuild {
+              entries: build.entries,
+              refusal: Present {
+                value: ModulePathFileDuplicateSame {
+                  module_path: row.module_path,
+                  file_path: row.file_path,
+                },
+              },
+            }
+          } else {
+            ModulePathFileIndexBuild {
+              entries: build.entries,
+              refusal: Present {
+                value: ModulePathFileConflict {
+                  module_path: row.module_path,
+                  first_file: existing,
+                  second_file: row.file_path,
+                },
+              },
+            }
+          }
+      }
+  }
+}
+
+fn module_path_file_index_from_rows(rows: List<ModulePathFileRow>) -> ModulePathFileIndex {
+  let build = fold(
+    rows,
+    init: ModulePathFileIndexBuild {
+      entries: empty_map(),
+      refusal: none,
+    },
+    f: (acc, row) => module_path_file_index_fold_step(build: acc, row: row),
+  )
+  match build.refusal {
+    Present { value: refusal } =>
+      ModulePathFileIndexRefused { refusal: refusal }
+    Absent =>
+      ModulePathFileIndexReady { entries: build.entries }
+  }
+}
+
+data cross_file_binding_provenance_note: String = "CrossFileBindingProvenance is the file-grain post-bind receipt parallel to BoundReferenceProvider: which reference resolved to which declaration, and which storage file each side's authored text belongs to. It is produced only from OccurrenceBound providers after joining consumer_module and provider_module through ModulePathFileRow — a missing row is ReferenceBindingProjectionFilePathMissing, never a silent omission. Same-file ruling (carrier law, parallel to DirectModuleDependency): consumer_file == provider_file rows are retained as binding receipts; the file-dependency projection emits NO self-edge from them."
+
+type CrossFileBindingProvenance {
+  reference_occurrence: OccurrenceId
+  declaration_occurrence: OccurrenceId
+  consumer_file: FilePath
+  provider_file: FilePath
+}
+
+fn file_for_module_path(
+  module_files: Map<String, FilePath>,
+  module_path: NonEmptyStr
+) -> FilePath? {
+  map_get(module_files, module_path as String)
+}
+
+fn cross_file_binding_provenance_from_provider(
+  provider: BoundReferenceProvider,
+  module_files: Map<String, FilePath>
+) -> CrossFileBindingProvenanceProjection {
+  match file_for_module_path(module_files: module_files, module_path: provider.consumer_module) {
+    Absent =>
+      CrossFileBindingProvenanceProjectionFilePathMissing {
+        module_path: provider.consumer_module,
+      }
+    Present { value: consumer_file } =>
+      match file_for_module_path(module_files: module_files, module_path: provider.provider_module) {
+        Absent =>
+          CrossFileBindingProvenanceProjectionFilePathMissing {
+            module_path: provider.provider_module,
+          }
+        Present { value: provider_file } =>
+          CrossFileBindingProvenanceProjectionBound {
+            provenance: CrossFileBindingProvenance {
+              reference_occurrence: provider.reference_occurrence,
+              declaration_occurrence: provider.declaration_occurrence,
+              consumer_file: consumer_file,
+              provider_file: provider_file,
+            },
+          }
+      }
+  }
+}
+
+type CrossFileBindingProvenanceProjection
+  = CrossFileBindingProvenanceProjectionBound { provenance: CrossFileBindingProvenance }
+  | CrossFileBindingProvenanceProjectionFilePathMissing { module_path: NonEmptyStr }
+
+type CrossFileBindingProvenancePopulation
+  = AllCrossFileBindingsBound { provenances: List<CrossFileBindingProvenance> }
+  | CrossFileBindingPopulationBindingRefused { population: BoundReferencePopulation }
+  | CrossFileBindingPopulationRefused {
+      first_failure: CrossFileBindingProvenanceProjection
+      more_failures: List<CrossFileBindingProvenanceProjection>
+    }
+
+type CrossFileBindingProvenanceBuild {
+  module_files: Map<String, FilePath>
+  provenances_reversed: List<CrossFileBindingProvenance>
+  first_failure: CrossFileBindingProvenanceProjection?
+  more_failures_reversed: List<CrossFileBindingProvenanceProjection>
+}
+
+fn cross_file_binding_provenance_fold_step(
+  acc: CrossFileBindingProvenanceBuild,
+  provider: BoundReferenceProvider
+) -> CrossFileBindingProvenanceBuild {
+  let projection = cross_file_binding_provenance_from_provider(provider: provider, module_files: acc.module_files)
+  match projection {
+    CrossFileBindingProvenanceProjectionBound { provenance: provenance } =>
+      CrossFileBindingProvenanceBuild {
+        module_files: acc.module_files,
+        provenances_reversed: concat([provenance], acc.provenances_reversed),
+        first_failure: acc.first_failure,
+        more_failures_reversed: acc.more_failures_reversed,
+      }
+    CrossFileBindingProvenanceProjectionFilePathMissing { module_path: _ } =>
+      match acc.first_failure {
+        Absent =>
+          CrossFileBindingProvenanceBuild {
+            module_files: acc.module_files,
+            provenances_reversed: acc.provenances_reversed,
+            first_failure: Present { value: projection },
+            more_failures_reversed: acc.more_failures_reversed,
+          }
+        Present { value: _ } =>
+          CrossFileBindingProvenanceBuild {
+            module_files: acc.module_files,
+            provenances_reversed: acc.provenances_reversed,
+            first_failure: acc.first_failure,
+            more_failures_reversed: concat([projection], acc.more_failures_reversed),
+          }
+      }
+  }
+}
+
+fn cross_file_binding_provenance_from_bound_population(
+  population: BoundReferencePopulation,
+  module_files: Map<String, FilePath>
+) -> CrossFileBindingProvenancePopulation {
+  match population {
+    ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
+      CrossFileBindingPopulationBindingRefused { population: population }
+    AllReferencesBound { providers: providers } =>
+      let build = fold(
+        providers,
+        init: CrossFileBindingProvenanceBuild {
+          module_files: module_files,
+          provenances_reversed: [],
+          first_failure: none,
+          more_failures_reversed: [],
+        },
+        f: (acc, provider) => cross_file_binding_provenance_fold_step(acc: acc, provider: provider),
+      )
+      match build.first_failure {
+        Absent =>
+          AllCrossFileBindingsBound {
+            provenances: reverse(build.provenances_reversed),
+          }
+        Present { value: first_failure } =>
+          CrossFileBindingPopulationRefused {
+            first_failure: first_failure,
+            more_failures: reverse(build.more_failures_reversed),
+          }
+      }
+  }
+}
+
+data direct_file_dependency_note: String = "DirectFileDependency is the file-grain projection of accepted cross-file bindings (namespace-reference-derived-closure clause e / P2aReferenceDependencyProjection7515): it dedupes CrossFileBindingProvenance down to distinct (consumer_file, provider_file) pairs required by the bindings — the reference-derived successor to import-list loading edges at storage grain. Same-file ruling: consumer_file == provider_file rows are preserved in the provenance population; this projection emits NO self-edge. Dedup happens ONLY here via a two-level index (Map consumer_file → Set provider_file), with first-seen provider files accumulated in provider-traversal order (prepend during fold, single reverse at end)."
+
+type DirectFileDependency {
+  consumer_file: FilePath
+  provider_file: FilePath
+}
+
+type DirectFileDependencyDedupBuild {
+  providers_by_consumer: Map<FilePath, Set<String>>
+  edges_first_seen: List<DirectFileDependency>
+}
+
+fn direct_file_dependency_from_provenance(
+  provenance: CrossFileBindingProvenance
+) -> DirectFileDependency {
+  DirectFileDependency {
+    consumer_file: provenance.consumer_file,
+    provider_file: provenance.provider_file,
+  }
+}
+
+fn direct_file_dependency_dedup_step(
+  acc: DirectFileDependencyDedupBuild,
+  provenance: CrossFileBindingProvenance
+) -> DirectFileDependencyDedupBuild {
+  let edge = direct_file_dependency_from_provenance(provenance: provenance)
+  if edge.consumer_file == edge.provider_file {
+    acc
+  } else {
+    match map_get(acc.providers_by_consumer, edge.consumer_file) {
+      Absent =>
+        DirectFileDependencyDedupBuild {
+          providers_by_consumer: map_insert(
+            acc.providers_by_consumer,
+            edge.consumer_file,
+            set_insert(empty_set(), edge.provider_file as String),
+          ),
+          edges_first_seen: concat([edge], acc.edges_first_seen),
+        }
+      Present { value: existing_providers } =>
+        if set_contains(existing_providers, edge.provider_file as String) {
+          acc
+        } else {
+          DirectFileDependencyDedupBuild {
+            providers_by_consumer: map_insert(
+              acc.providers_by_consumer,
+              edge.consumer_file,
+              set_insert(existing_providers, edge.provider_file as String),
+            ),
+            edges_first_seen: concat([edge], acc.edges_first_seen),
+          }
+        }
+    }
+  }
+}
+
+fn provider_files_for_consumer_file(
+  provenances: List<CrossFileBindingProvenance>,
+  consumer_file: FilePath
+) -> List<FilePath> {
+  reverse(
+    fold(
+      provenances,
+      init: DirectFileDependencyDedupBuild {
+        providers_by_consumer: empty_map(),
+        edges_first_seen: [],
+      },
+      f: (acc, provenance) =>
+        match provenance.consumer_file == consumer_file {
+          true => direct_file_dependency_dedup_step(acc: acc, provenance: provenance)
+          false => acc
+        },
+    ).edges_first_seen,
+  )
+    |> map(edge => edge.provider_file)
+}
+
+fn direct_file_dependencies_from_provenances(
+  provenances: List<CrossFileBindingProvenance>
+) -> List<DirectFileDependency> {
+  reverse(
+    fold(
+      provenances,
+      init: DirectFileDependencyDedupBuild {
+        providers_by_consumer: empty_map(),
+        edges_first_seen: [],
+      },
+      f: (acc, provenance) => direct_file_dependency_dedup_step(acc: acc, provenance: provenance),
+    ).edges_first_seen,
+  )
+}
+
+type DirectFileDependencyBuild
+  = DirectFileDependencyListReady { dependencies: List<DirectFileDependency> }
+  | DirectFileDependencyPopulationRefused {
+      population: CrossFileBindingProvenancePopulation
+    }
+
+fn direct_file_dependencies_from_cross_file_population(
+  population: CrossFileBindingProvenancePopulation
+) -> DirectFileDependencyBuild {
+  match population {
+    AllCrossFileBindingsBound { provenances: provenances } =>
+      DirectFileDependencyListReady {
+        dependencies: direct_file_dependencies_from_provenances(provenances: provenances),
+      }
+    CrossFileBindingPopulationBindingRefused { population: _ } =>
+      DirectFileDependencyPopulationRefused {
+        population: population,
+      }
+    CrossFileBindingPopulationRefused { first_failure: _, more_failures: _ } =>
+      DirectFileDependencyPopulationRefused {
+        population: population,
+      }
+  }
+}
+
+fn reference_derived_provider_files_for_consumer(
+  population: BoundReferencePopulation,
+  module_files: Map<String, FilePath>,
+  consumer_file: FilePath
+) -> ReferenceDerivedProviderFileProjection {
+  match cross_file_binding_provenance_from_bound_population(
+    population: population,
+    module_files: module_files,
+  ) {
+    AllCrossFileBindingsBound { provenances: provenances } =>
+      ReferenceDerivedProviderFileProjectionReady {
+        provider_files: provider_files_for_consumer_file(
+          provenances: provenances,
+          consumer_file: consumer_file,
+        ),
+      }
+    CrossFileBindingPopulationBindingRefused { population: _ } =>
+      ReferenceDerivedProviderFileProjectionBindingRefused { population: population }
+    CrossFileBindingPopulationRefused { first_failure: first_failure, more_failures: more_failures } =>
+      ReferenceDerivedProviderFileProjectionFileRefused {
+        first_failure: first_failure,
+        more_failures: more_failures,
+      }
+  }
+}
+
+type ReferenceDerivedProviderFileProjection
+  = ReferenceDerivedProviderFileProjectionReady { provider_files: List<FilePath> }
+  | ReferenceDerivedProviderFileProjectionBindingRefused { population: BoundReferencePopulation }
+  | ReferenceDerivedProviderFileProjectionFileRefused {
+      first_failure: CrossFileBindingProvenanceProjection
+      more_failures: List<CrossFileBindingProvenanceProjection>
+    }
+
+data reference_derived_dependency_projection_note: String = "ReferenceDerivedDependencyProjection is the clause-(e) seam exposing BOTH products required by namespace-reference-derived-closure and its N3-C successor: (1) binding_provenance — one CrossFileBindingProvenance per accepted reference, occurrence grain, NO collapse; (2) file_dependencies — distinct (consumer_file, provider_file) edges with repeated-mention collapse ONLY here. bound_population is carried intact for pool-perturbation differential (N3-C): a pool coincidence can reselect the target declaration while leaving the target-file set unchanged, so file_dependencies alone is insufficient."
+
+type ReferenceDerivedDependencyProjection
+  = ReferenceDerivedDependencyProjectionReady {
+      binding_provenance: List<CrossFileBindingProvenance>,
+      file_dependencies: List<DirectFileDependency>,
+      bound_population: BoundReferencePopulation,
+    }
+  | ReferenceDerivedDependencyProjectionBindingRefused { population: BoundReferencePopulation }
+  | ReferenceDerivedDependencyProjectionFileRefused {
+      first_failure: CrossFileBindingProvenanceProjection
+      more_failures: List<CrossFileBindingProvenanceProjection>
+    }
+
+fn reference_derived_dependency_projection(
+  population: BoundReferencePopulation,
+  module_files: Map<String, FilePath>
+) -> ReferenceDerivedDependencyProjection {
+  match cross_file_binding_provenance_from_bound_population(
+    population: population,
+    module_files: module_files,
+  ) {
+    AllCrossFileBindingsBound { provenances: provenances } =>
+      ReferenceDerivedDependencyProjectionReady {
+        binding_provenance: provenances,
+        file_dependencies: direct_file_dependencies_from_provenances(provenances: provenances),
+        bound_population: population,
+      }
+    CrossFileBindingPopulationBindingRefused { population: refused_population } =>
+      ReferenceDerivedDependencyProjectionBindingRefused { population: refused_population }
+    CrossFileBindingPopulationRefused { first_failure: first_failure, more_failures: more_failures } =>
+      ReferenceDerivedDependencyProjectionFileRefused {
+        first_failure: first_failure,
+        more_failures: more_failures,
+      }
+  }
+}
+
+data structural_binding_walk_refusal_note: String = "StructuralBindingWalkRefused wraps the exact index-build refusal payload (transport / module-path / exposure / authored-order / declaration-bucket). Coarse unit variants that discard nested refusal evidence are forbidden (operator blocker 6 / review on PR 7515)."
+
+type StructuralBindingIndexRefusal
+  = StructuralBindingTransportRefusal {
+      refusal: OccurrenceTransportRefusal,
+    }
+  | StructuralBindingModulePathRefusal {
+      refusal: OccurrenceModulePathIndexRefusal,
+    }
+  | StructuralBindingExposureRefusal {
+      refusal: DeclarationExposureIndexRefusal,
+    }
+  | StructuralBindingAuthoredOrderRefusal {
+      refusal: AuthoredOrderIndexRefusal,
+    }
+  | StructuralBindingDeclarationBucketRefusal {
+      occurrence: OccurrenceId,
+    }
+
+type StructuralBindingWalk
+  = StructuralBindingWalkReady { population: BoundReferencePopulation }
+  | StructuralBindingWalkRefused { refusal: StructuralBindingIndexRefusal }
+
+data reference_derived_dependency_binding_reference_filter_note: String = "Clause-(e) structural walks bind only value/callable references that can induce cross-file file dependencies. TypeOccurrence references are N2's resolve_type_reference_containment_binding lane — parser-produced return-type annotations must not refuse the whole population when Int is not module-declared. Parser witnesses that need per-name resolution already avoid whole-transport walks for this reason; production assembled-closure projection applies the same boundary here."
+
+fn reference_derived_dependency_binding_references(
+  references: List<ReferenceOccurrence>
+) -> List<ReferenceOccurrence> {
+  fold(
+    references,
+    init: [],
+    f: (acc, reference) =>
+      match reference.category {
+        TypeOccurrence => acc
+        _ => concat(acc, [reference])
+      },
+  )
+}
+
+fn structural_binding_walk_selected_references(
+  transport: OccurrenceTransport,
+  inputs: OccurrenceBindingCandidateInputs,
+  references: List<ReferenceOccurrence>
+) -> StructuralBindingWalk {
+  match occurrence_candidate_index_build(transport: transport, inputs: inputs) {
+    OccurrenceCandidateIndexTransportRefused { refusal: refusal } =>
+      StructuralBindingWalkRefused {
+        refusal: StructuralBindingTransportRefusal { refusal: refusal },
+      }
+    OccurrenceCandidateIndexModulePathRefused { refusal: refusal } =>
+      StructuralBindingWalkRefused {
+        refusal: StructuralBindingModulePathRefusal { refusal: refusal },
+      }
+    OccurrenceCandidateIndexExposureRefused { refusal: refusal } =>
+      StructuralBindingWalkRefused {
+        refusal: StructuralBindingExposureRefusal { refusal: refusal },
+      }
+    OccurrenceCandidateIndexAuthoredOrderRefused { refusal: refusal } =>
+      StructuralBindingWalkRefused {
+        refusal: StructuralBindingAuthoredOrderRefusal { refusal: refusal },
+      }
+    OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: occurrence } =>
+      StructuralBindingWalkRefused {
+        refusal: StructuralBindingDeclarationBucketRefusal {
+          occurrence: occurrence,
+        },
+      }
+    OccurrenceCandidateIndexReady { index: index } =>
+      StructuralBindingWalkReady {
+        population: bound_reference_population_from_projections(
+          projections: resolve_all_references_via_structural_candidates(
+            transport: transport,
+            index: index,
+            references: references,
+          ),
+        ),
+      }
+  }
+}
+
+fn structural_binding_walk(
+  transport: OccurrenceTransport,
+  inputs: OccurrenceBindingCandidateInputs
+) -> StructuralBindingWalk {
+  structural_binding_walk_selected_references(
+    transport: transport,
+    inputs: inputs,
+    references: transport.references,
+  )
+}
+
+data cross_file_binding_closure_assembly_note: String = "Cross-file binding closure assembly rekeys each independently parsed OccurrenceTransport into one closure-scoped OccurrenceIdAllocator before merge (occurrence_identity_scope_law): raw concatenation of isolated parse scopes is forbidden because standalone parses mint colliding ids. Foreign-module module-root declarations (ModuleExposure) upgrade to RootExposure for cross-file candidate lookup; nested lexical declarations keep LexicalExposure and never become globally visible. Parser transport production lives in v1.gunbc.occurrence_binding_parser_walk; this carrier is the dag-closure authority consumed by production admissions and by parser witnesses."
+
+type CrossFileBindingClosureRow {
+  transport: OccurrenceTransport,
+  inputs: OccurrenceBindingCandidateInputs,
+  module_path: NonEmptyStr,
+  file_path: FilePath,
+}
+
+type AssembledCrossFileBindingClosureRefusal
+  = AssembledCrossFileBindingClosureModulePathFileRefused {
+      refusal: ModulePathFileIndexRefusal,
+    }
+
+type AssembledCrossFileBindingClosure
+  = AssembledCrossFileBindingClosureReady {
+      transport: OccurrenceTransport,
+      inputs: OccurrenceBindingCandidateInputs,
+      module_files: List<ModulePathFileRow>,
+      consumer_file: FilePath,
+    }
+  | AssembledCrossFileBindingClosureRefused {
+      refusal: AssembledCrossFileBindingClosureRefusal,
+    }
+
+type OccurrenceIdRemapState {
+  allocator: OccurrenceIdAllocator
+  remap: Map<Int, OccurrenceId>
+}
+
+fn occurrence_id_remap_state_with_fresh_map(
+  allocator: OccurrenceIdAllocator
+) -> OccurrenceIdRemapState {
+  OccurrenceIdRemapState {
+    allocator: allocator,
+    remap: empty_map(),
+  }
+}
+
+type OccurrenceIdRemapResult {
+  id: OccurrenceId
+  state: OccurrenceIdRemapState
+}
+
+fn remap_occurrence_id(
+  id: OccurrenceId,
+  state: OccurrenceIdRemapState
+) -> OccurrenceIdRemapResult {
+  match map_get(state.remap, id.value) {
+    Present { value: remapped } =>
+      OccurrenceIdRemapResult { id: remapped, state: state }
+    Absent =>
+      let alloc_result = alloc_occurrence_id(alloc: state.allocator)
+      OccurrenceIdRemapResult {
+        id: alloc_result.id,
+        state: OccurrenceIdRemapState {
+          allocator: alloc_result.alloc,
+          remap: map_insert(state.remap, id.value, alloc_result.id),
+        },
+      }
+  }
+}
+
+type OccurrenceContainmentRemapResult {
+  path: OccurrenceContainmentPath
+  state: OccurrenceIdRemapState
+}
+
+fn remap_containment_path(
+  path: OccurrenceContainmentPath,
+  state: OccurrenceIdRemapState
+) -> OccurrenceContainmentRemapResult {
+  let ancestor_build = fold(
+    path.ancestors,
+    init: OccurrenceAncestorRemapBuild {
+      ancestors: Empty,
+      state: state,
+    },
+    f: (acc, ancestor) => {
+      let remapped = remap_occurrence_id(id: ancestor, state: acc.state)
+      OccurrenceAncestorRemapBuild {
+        ancestors: concat(acc.ancestors, [remapped.id]),
+        state: remapped.state,
+      }
+    },
+  )
+  let terminal_remapped = remap_occurrence_id(id: path.terminal, state: ancestor_build.state)
+  OccurrenceContainmentRemapResult {
+    path: OccurrenceContainmentPath {
+      ancestors: ancestor_build.ancestors,
+      terminal: terminal_remapped.id,
+    },
+    state: terminal_remapped.state,
+  }
+}
+
+type OccurrenceAncestorRemapBuild {
+  ancestors: FreeMonoid<OccurrenceId>
+  state: OccurrenceIdRemapState
+}
+
+type OccurrenceTransportRekeyResult {
+  transport: OccurrenceTransport
+  state: OccurrenceIdRemapState
+}
+
+fn rekey_occurrence_transport(
+  transport: OccurrenceTransport,
+  state: OccurrenceIdRemapState
+) -> OccurrenceTransportRekeyResult {
+  let index_build = fold(
+    transport.index.entries,
+    init: OccurrenceIndexRekeyBuild {
+      entries: [],
+      state: state,
+    },
+    f: (acc, entry) => {
+      let occurrence_remapped = remap_occurrence_id(id: entry.projection.occurrence, state: acc.state)
+      let containment_remapped = remap_containment_path(path: entry.containment, state: occurrence_remapped.state)
+      OccurrenceIndexRekeyBuild {
+        entries: concat([
+          OccurrenceIndexEntry {
+            projection: OccurrenceProjection {
+              occurrence: occurrence_remapped.id,
+              authored_name: entry.projection.authored_name,
+              diagnostic_span: entry.projection.diagnostic_span,
+            },
+            containment: containment_remapped.path,
+          },
+        ], acc.entries),
+        state: containment_remapped.state,
+      }
+    },
+  )
+  let declaration_build = fold(
+    transport.declarations,
+    init: OccurrenceDeclarationRekeyBuild {
+      declarations: [],
+      state: index_build.state,
+    },
+    f: (acc, declaration) => {
+      let occurrence_remapped = remap_occurrence_id(id: declaration.occurrence, state: acc.state)
+      let containment_remapped = remap_containment_path(path: declaration.containment, state: occurrence_remapped.state)
+      OccurrenceDeclarationRekeyBuild {
+        declarations: concat([
+          DeclarationOccurrence {
+            occurrence: occurrence_remapped.id,
+            containment: containment_remapped.path,
+            category: declaration.category,
+            diagnostic_span: declaration.diagnostic_span,
+          },
+        ], acc.declarations),
+        state: containment_remapped.state,
+      }
+    },
+  )
+  let reference_build = fold(
+    transport.references,
+    init: OccurrenceReferenceRekeyBuild {
+      references: [],
+      state: declaration_build.state,
+    },
+    f: (acc, reference) => {
+      let occurrence_remapped = remap_occurrence_id(id: reference.occurrence, state: acc.state)
+      let containment_remapped = remap_containment_path(path: reference.containment, state: occurrence_remapped.state)
+      OccurrenceReferenceRekeyBuild {
+        references: concat([
+          ReferenceOccurrence {
+            occurrence: occurrence_remapped.id,
+            containment: containment_remapped.path,
+            category: reference.category,
+            diagnostic_span: reference.diagnostic_span,
+          },
+        ], acc.references),
+        state: containment_remapped.state,
+      }
+    },
+  )
+  OccurrenceTransportRekeyResult {
+    transport: OccurrenceTransport {
+      index: OccurrenceIndex { entries: reverse(index_build.entries) },
+      declarations: reverse(declaration_build.declarations),
+      references: reverse(reference_build.references),
+    },
+    state: reference_build.state,
+  }
+}
+
+type OccurrenceIndexRekeyBuild {
+  entries: List<OccurrenceIndexEntry>
+  state: OccurrenceIdRemapState
+}
+
+type OccurrenceDeclarationRekeyBuild {
+  declarations: List<DeclarationOccurrence>
+  state: OccurrenceIdRemapState
+}
+
+type OccurrenceReferenceRekeyBuild {
+  references: List<ReferenceOccurrence>
+  state: OccurrenceIdRemapState
+}
+
+type OccurrenceBindingInputsRekeyResult {
+  inputs: OccurrenceBindingCandidateInputs
+  state: OccurrenceIdRemapState
+}
+
+fn rekey_occurrence_binding_inputs(
+  inputs: OccurrenceBindingCandidateInputs,
+  state: OccurrenceIdRemapState
+) -> OccurrenceBindingInputsRekeyResult {
+  let module_path_build = fold(
+    inputs.module_paths,
+    init: OccurrenceModulePathRekeyBuild { module_paths: [], state: state },
+    f: (acc, row) => {
+      let remapped = remap_occurrence_id(id: row.occurrence, state: acc.state)
+      OccurrenceModulePathRekeyBuild {
+        module_paths: concat([
+          OccurrenceModulePathRow {
+            occurrence: remapped.id,
+            module_path: row.module_path,
+          },
+        ], acc.module_paths),
+        state: remapped.state,
+      }
+    },
+  )
+  let exposure_build = fold(
+    inputs.exposure_rows,
+    init: OccurrenceExposureRekeyBuild { exposure_rows: [], state: module_path_build.state },
+    f: (acc, row) => {
+      let remapped = remap_occurrence_id(id: row.occurrence, state: acc.state)
+      match row.exposure {
+        LexicalExposure { exposing_scope: scope } => {
+          let scope_remapped = remap_containment_path(path: scope, state: remapped.state)
+          OccurrenceExposureRekeyBuild {
+            exposure_rows: concat([
+              DeclarationExposureRow {
+                occurrence: remapped.id,
+                exposure: LexicalExposure { exposing_scope: scope_remapped.path },
+              },
+            ], acc.exposure_rows),
+            state: scope_remapped.state,
+          }
+        }
+        ModuleExposure { module: module } =>
+          OccurrenceExposureRekeyBuild {
+            exposure_rows: concat([
+              DeclarationExposureRow {
+                occurrence: remapped.id,
+                exposure: ModuleExposure { module: module },
+              },
+            ], acc.exposure_rows),
+            state: remapped.state,
+          }
+        RootExposure =>
+          OccurrenceExposureRekeyBuild {
+            exposure_rows: concat([
+              DeclarationExposureRow {
+                occurrence: remapped.id,
+                exposure: RootExposure,
+              },
+            ], acc.exposure_rows),
+            state: remapped.state,
+          }
+      }
+    },
+  )
+  let order_build = fold(
+    inputs.authored_order_rows,
+    init: OccurrenceOrderRekeyBuild { authored_order_rows: [], state: exposure_build.state },
+    f: (acc, row) => {
+      let remapped = remap_occurrence_id(id: row.occurrence, state: acc.state)
+      OccurrenceOrderRekeyBuild {
+        authored_order_rows: concat([
+          AuthoredOrderRow {
+            occurrence: remapped.id,
+            ordinal: row.ordinal,
+          },
+        ], acc.authored_order_rows),
+        state: remapped.state,
+      }
+    },
+  )
+  OccurrenceBindingInputsRekeyResult {
+    inputs: OccurrenceBindingCandidateInputs {
+      module_paths: reverse(module_path_build.module_paths),
+      exposure_rows: reverse(exposure_build.exposure_rows),
+      authored_order_rows: reverse(order_build.authored_order_rows),
+    },
+    state: order_build.state,
+  }
+}
+
+type OccurrenceModulePathRekeyBuild {
+  module_paths: List<OccurrenceModulePathRow>
+  state: OccurrenceIdRemapState
+}
+
+type OccurrenceExposureRekeyBuild {
+  exposure_rows: List<DeclarationExposureRow>
+  state: OccurrenceIdRemapState
+}
+
+type OccurrenceOrderRekeyBuild {
+  authored_order_rows: List<AuthoredOrderRow>
+  state: OccurrenceIdRemapState
+}
+
+fn merge_occurrence_transports(
+  left: OccurrenceTransport,
+  right: OccurrenceTransport
+) -> OccurrenceTransport {
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: concat(left.index.entries, right.index.entries),
+    },
+    declarations: concat(left.declarations, right.declarations),
+    references: concat(left.references, right.references),
+  }
+}
+
+fn occurrence_binding_inputs_append(
+  left: OccurrenceBindingCandidateInputs,
+  right: OccurrenceBindingCandidateInputs
+) -> OccurrenceBindingCandidateInputs {
+  OccurrenceBindingCandidateInputs {
+    module_paths: concat(left.module_paths, right.module_paths),
+    exposure_rows: concat(left.exposure_rows, right.exposure_rows),
+    authored_order_rows: concat(left.authored_order_rows, right.authored_order_rows),
+  }
+}
+
+fn cross_file_binding_closure_row(
+  transport: OccurrenceTransport,
+  module_path: NonEmptyStr,
+  file_path: FilePath,
+  exposure_rows: List<DeclarationExposureRow>,
+  module_paths: List<OccurrenceModulePathRow>,
+  authored_order_rows: List<AuthoredOrderRow>,
+) -> CrossFileBindingClosureRow {
+  CrossFileBindingClosureRow {
+    transport: transport,
+    inputs: OccurrenceBindingCandidateInputs {
+      module_paths: module_paths,
+      exposure_rows: exposure_rows,
+      authored_order_rows: authored_order_rows,
+    },
+    module_path: module_path,
+    file_path: file_path,
+  }
+}
+
+type AssembledCrossFileFold {
+  transport: OccurrenceTransport,
+  inputs: OccurrenceBindingCandidateInputs,
+  module_files: List<ModulePathFileRow>,
+  remap_state: OccurrenceIdRemapState,
+}
+
+fn assemble_cross_file_binding_closure(
+  consumer: CrossFileBindingClosureRow,
+  providers: List<CrossFileBindingClosureRow>
+) -> AssembledCrossFileBindingClosure {
+  let consumer_module_file = ModulePathFileRow {
+    module_path: consumer.module_path,
+    file_path: consumer.file_path,
+  }
+  let consumer_rekeyed = rekey_occurrence_transport(
+    transport: consumer.transport,
+    state: occurrence_id_remap_state_with_fresh_map(
+      allocator: occurrence_id_allocator_initial(),
+    ),
+  )
+  let consumer_inputs_rekeyed = rekey_occurrence_binding_inputs(
+    inputs: consumer.inputs,
+    state: consumer_rekeyed.state,
+  )
+  let folded = fold(
+    providers,
+    init: AssembledCrossFileFold {
+      transport: consumer_rekeyed.transport,
+      inputs: consumer_inputs_rekeyed.inputs,
+      module_files: [consumer_module_file],
+      remap_state: consumer_inputs_rekeyed.state,
+    },
+    f: (acc, provider_row) => {
+      let provider_rekeyed = rekey_occurrence_transport(
+        transport: provider_row.transport,
+        state: occurrence_id_remap_state_with_fresh_map(
+          allocator: acc.remap_state.allocator,
+        ),
+      )
+      let provider_inputs_rekeyed = rekey_occurrence_binding_inputs(
+        inputs: provider_row.inputs,
+        state: provider_rekeyed.state,
+      )
+      AssembledCrossFileFold {
+        transport: merge_occurrence_transports(left: acc.transport, right: provider_rekeyed.transport),
+        inputs: occurrence_binding_inputs_append(left: acc.inputs, right: provider_inputs_rekeyed.inputs),
+        module_files: concat(acc.module_files, [
+          ModulePathFileRow {
+            module_path: provider_row.module_path,
+            file_path: provider_row.file_path,
+          },
+        ]),
+        remap_state: provider_inputs_rekeyed.state,
+      }
+    },
+  )
+  match module_path_file_index_from_rows(rows: folded.module_files) {
+    ModulePathFileIndexRefused { refusal: refusal } =>
+      AssembledCrossFileBindingClosureRefused {
+        refusal: AssembledCrossFileBindingClosureModulePathFileRefused {
+          refusal: refusal,
+        },
+      }
+    ModulePathFileIndexReady { entries: _ } =>
+      AssembledCrossFileBindingClosureReady {
+        transport: folded.transport,
+        inputs: folded.inputs,
+        module_files: folded.module_files,
+        consumer_file: consumer.file_path,
+      }
+  }
+}
+
+type AssembledClosureDependencyProjectionRefusal
+  = AssembledClosureDependencyProjectionStructuralRefused {
+      refusal: StructuralBindingIndexRefusal,
+    }
+  | AssembledClosureDependencyProjectionModulePathFileRefused {
+      refusal: ModulePathFileIndexRefusal,
+    }
+  | AssembledClosureDependencyProjectionBindingRefused {
+      population: BoundReferencePopulation,
+    }
+  | AssembledClosureDependencyProjectionFileRefused {
+      first_failure: CrossFileBindingProvenanceProjection,
+      more_failures: List<CrossFileBindingProvenanceProjection>,
+    }
+
+type AssembledClosureDependencyProjection
+  = AssembledClosureDependencyProjectionReady {
+      projection: ReferenceDerivedDependencyProjection,
+    }
+  | AssembledClosureDependencyProjectionRefused {
+      refusal: AssembledClosureDependencyProjectionRefusal,
+    }
+
+fn reference_derived_dependency_projection_for_assembled_closure(
+  closure: AssembledCrossFileBindingClosure
+) -> AssembledClosureDependencyProjection {
+  match closure {
+    AssembledCrossFileBindingClosureRefused { refusal: refusal } =>
+      AssembledClosureDependencyProjectionRefused {
+        refusal: AssembledClosureDependencyProjectionModulePathFileRefused {
+          refusal: match refusal {
+            AssembledCrossFileBindingClosureModulePathFileRefused { refusal: module_refusal } =>
+              module_refusal
+          },
+        },
+      }
+    AssembledCrossFileBindingClosureReady {
+      transport: transport,
+      inputs: inputs,
+      module_files: module_file_rows,
+      consumer_file: _,
+    } =>
+      match module_path_file_index_from_rows(rows: module_file_rows) {
+        ModulePathFileIndexRefused { refusal: refusal } =>
+          AssembledClosureDependencyProjectionRefused {
+            refusal: AssembledClosureDependencyProjectionModulePathFileRefused {
+              refusal: refusal,
+            },
+          }
+        ModulePathFileIndexReady { entries: module_files } =>
+          match structural_binding_walk_selected_references(
+            transport: transport,
+            inputs: inputs,
+            references: reference_derived_dependency_binding_references(
+              references: transport.references,
+            ),
+          ) {
+            StructuralBindingWalkReady { population: population } =>
+              match reference_derived_dependency_projection(
+                population: population,
+                module_files: module_files,
+              ) {
+                ReferenceDerivedDependencyProjectionReady {
+                  binding_provenance: binding_provenance,
+                  file_dependencies: file_dependencies,
+                  bound_population: bound_population,
+                } =>
+                  AssembledClosureDependencyProjectionReady {
+                    projection: ReferenceDerivedDependencyProjectionReady {
+                      binding_provenance: binding_provenance,
+                      file_dependencies: file_dependencies,
+                      bound_population: bound_population,
+                    },
+                  }
+                ReferenceDerivedDependencyProjectionBindingRefused { population: refused_population } =>
+                  AssembledClosureDependencyProjectionRefused {
+                    refusal: AssembledClosureDependencyProjectionBindingRefused {
+                      population: refused_population,
+                    },
+                  }
+                ReferenceDerivedDependencyProjectionFileRefused {
+                  first_failure: first_failure,
+                  more_failures: more_failures,
+                } =>
+                  AssembledClosureDependencyProjectionRefused {
+                    refusal: AssembledClosureDependencyProjectionFileRefused {
+                      first_failure: first_failure,
+                      more_failures: more_failures,
+                    },
+                  }
+              }
+            StructuralBindingWalkRefused { refusal: refusal } =>
+              AssembledClosureDependencyProjectionRefused {
+                refusal: AssembledClosureDependencyProjectionStructuralRefused {
+                  refusal: refusal,
+                },
+              }
+          }
+      }
+  }
+}
+
+type ReferenceDerivedProviderFilesForAssembledClosure
+  = ReferenceDerivedProviderFilesForAssembledClosureReady { provider_files: List<FilePath> }
+  | ReferenceDerivedProviderFilesForAssembledClosureRefused {
+      refusal: AssembledClosureDependencyProjectionRefusal,
+    }
+
+fn reference_derived_provider_files_for_assembled_closure(
+  closure: AssembledCrossFileBindingClosure
+) -> ReferenceDerivedProviderFilesForAssembledClosure {
+  match reference_derived_dependency_projection_for_assembled_closure(closure: closure) {
+    AssembledClosureDependencyProjectionReady {
+      projection: ReferenceDerivedDependencyProjectionReady {
+        file_dependencies: dependencies,
+        binding_provenance: _,
+        bound_population: _,
+      },
+    } =>
+      ReferenceDerivedProviderFilesForAssembledClosureReady {
+        provider_files: dependencies |> map(edge => edge.provider_file),
+      }
+    AssembledClosureDependencyProjectionRefused { refusal: refusal } =>
+      ReferenceDerivedProviderFilesForAssembledClosureRefused { refusal: refusal }
+  }
+}
+
+type ReferenceDerivedClauseEProductionRefusal
+  = ReferenceDerivedClauseEProductionProjectionRefused {
+      refusal: AssembledClosureDependencyProjectionRefusal,
+    }
+  | ReferenceDerivedClauseEProductionAssemblyRefused {
+      refusal: AssembledCrossFileBindingClosureRefusal,
+    }
+  | ReferenceDerivedClauseEProductionConsumerParseRefused {
+      file: FilePath,
+    }
+  | ReferenceDerivedClauseEProductionProviderParseRefused {
+      file: FilePath,
+    }
+
+type ReferenceDerivedClauseEProduction
+  = ReferenceDerivedClauseEProductionReady {
+      projection: ReferenceDerivedDependencyProjection,
+      consumer_file: FilePath,
+    }
+  | ReferenceDerivedClauseEProductionRefused {
+      refusal: ReferenceDerivedClauseEProductionRefusal,
+    }
+
+fn reference_derived_clause_e_production_from_assembled_closure(
+  closure: AssembledCrossFileBindingClosure
+) -> ReferenceDerivedClauseEProduction {
+  match closure {
+    AssembledCrossFileBindingClosureRefused { refusal: refusal } =>
+      ReferenceDerivedClauseEProductionRefused {
+        refusal: ReferenceDerivedClauseEProductionAssemblyRefused {
+          refusal: refusal,
+        },
+      }
+    AssembledCrossFileBindingClosureReady {
+      transport: _,
+      inputs: _,
+      module_files: _,
+      consumer_file: consumer_file,
+    } =>
+      match reference_derived_dependency_projection_for_assembled_closure(closure: closure) {
+        AssembledClosureDependencyProjectionReady {
+          projection: ReferenceDerivedDependencyProjectionReady {
+            binding_provenance: provenances,
+            file_dependencies: dependencies,
+            bound_population: bound_population,
+          },
+        } =>
+          ReferenceDerivedClauseEProductionReady {
+            projection: ReferenceDerivedDependencyProjectionReady {
+              binding_provenance: provenances,
+              file_dependencies: dependencies,
+              bound_population: bound_population,
+            },
+            consumer_file: consumer_file,
+          }
+        AssembledClosureDependencyProjectionRefused { refusal: refusal } =>
+          ReferenceDerivedClauseEProductionRefused {
+            refusal: ReferenceDerivedClauseEProductionProjectionRefused {
+              refusal: refusal,
+            },
+          }
       }
   }
 }

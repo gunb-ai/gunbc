@@ -1,0 +1,172 @@
+module test.fixture.cross_file_clause_e_fixture
+
+import std.types { String, NonEmptyStr, FilePath, SourceSpan }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIndexEntry,
+  OccurrenceIndex,
+  OccurrenceProjection,
+  OccurrenceTransport,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  LexicalValueOccurrence,
+  OccurrenceContainmentPath,
+  AuthoredTokenOrdinal,
+}
+import std.occurrence_binding_candidates {
+  OccurrenceModulePathRow,
+  OccurrenceBindingCandidateInputs,
+  AuthoredOrderRow,
+  CrossFileBindingClosureRow,
+  AssembledCrossFileBindingClosure,
+  DeclarationExposureRow,
+  assemble_cross_file_binding_closure,
+  cross_file_binding_closure_row,
+  declaration_exposure_from_containment,
+  CrossFileProviderExportedExposure,
+}
+
+data cross_file_clause_e_fixture_note: String = "Controlled cross-file clause-(e) fixture for witness tests only — hand-built transports exercising projection law. NOT production authority; production admissions must consume parser-produced closures via v1.gunbc.namespace_reference_derived_closure_clause_e_production."
+
+fn cross_file_clause_e_fixture_span() -> SourceSpan {
+  SourceSpan { file: "app/consumer.dag", start: 1, end: 2 }
+}
+
+fn cross_file_clause_e_fixture_path(terminal: OccurrenceId) -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath {
+    ancestors: [OccurrenceId { value: 20 }],
+    terminal: terminal,
+  }
+}
+
+fn cross_file_clause_e_fixture_index_entry(
+  occurrence: OccurrenceId,
+  authored_name: String,
+) -> OccurrenceIndexEntry {
+  OccurrenceIndexEntry {
+    projection: OccurrenceProjection {
+      occurrence: occurrence,
+      authored_name: authored_name,
+      diagnostic_span: cross_file_clause_e_fixture_span(),
+    },
+    containment: cross_file_clause_e_fixture_path(terminal: occurrence),
+  }
+}
+
+fn cross_file_clause_e_fixture_provider_transport() -> OccurrenceTransport {
+  let helper = OccurrenceId { value: 300 }
+  let helper_path = cross_file_clause_e_fixture_path(terminal: helper)
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [cross_file_clause_e_fixture_index_entry(occurrence: helper, authored_name: "helper")],
+    },
+    declarations: [
+      DeclarationOccurrence {
+        occurrence: helper,
+        containment: helper_path,
+        category: LexicalValueOccurrence,
+        diagnostic_span: cross_file_clause_e_fixture_span(),
+      },
+    ],
+    references: [],
+  }
+}
+
+fn cross_file_clause_e_fixture_consumer_transport() -> OccurrenceTransport {
+  let ref_one = OccurrenceId { value: 200 }
+  let ref_two = OccurrenceId { value: 201 }
+  let ref_one_path = cross_file_clause_e_fixture_path(terminal: ref_one)
+  let ref_two_path = cross_file_clause_e_fixture_path(terminal: ref_two)
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        cross_file_clause_e_fixture_index_entry(occurrence: ref_one, authored_name: "helper"),
+        cross_file_clause_e_fixture_index_entry(occurrence: ref_two, authored_name: "helper"),
+      ],
+    },
+    declarations: [],
+    references: [
+      ReferenceOccurrence {
+        occurrence: ref_one,
+        containment: ref_one_path,
+        category: LexicalValueOccurrence,
+        diagnostic_span: cross_file_clause_e_fixture_span(),
+      },
+      ReferenceOccurrence {
+        occurrence: ref_two,
+        containment: ref_two_path,
+        category: LexicalValueOccurrence,
+        diagnostic_span: cross_file_clause_e_fixture_span(),
+      },
+    ],
+  }
+}
+
+fn cross_file_clause_e_fixture_module_path(dotted: String) -> NonEmptyStr {
+  dotted as NonEmptyStr
+}
+
+fn cross_file_clause_e_fixture_authored_order(occurrence: OccurrenceId) -> AuthoredOrderRow {
+  AuthoredOrderRow {
+    occurrence: occurrence,
+    ordinal: AuthoredTokenOrdinal { value: occurrence.value },
+  }
+}
+
+fn cross_file_clause_e_fixture_consumer_row() -> CrossFileBindingClosureRow {
+  let transport = cross_file_clause_e_fixture_consumer_transport()
+  let consumer_module = cross_file_clause_e_fixture_module_path(dotted: "app.consumer")
+  CrossFileBindingClosureRow {
+    transport: transport,
+    inputs: OccurrenceBindingCandidateInputs {
+      module_paths: [
+        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 200 }, module_path: consumer_module },
+        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 201 }, module_path: consumer_module },
+      ],
+      exposure_rows: [],
+      authored_order_rows: [
+        cross_file_clause_e_fixture_authored_order(occurrence: OccurrenceId { value: 200 }),
+        cross_file_clause_e_fixture_authored_order(occurrence: OccurrenceId { value: 201 }),
+      ],
+    },
+    module_path: consumer_module,
+    file_path: "app/consumer.dag",
+  }
+}
+
+fn cross_file_clause_e_fixture_provider_row() -> CrossFileBindingClosureRow {
+  let transport = cross_file_clause_e_fixture_provider_transport()
+  let provider_module = cross_file_clause_e_fixture_module_path(dotted: "app.provider")
+  let helper = OccurrenceId { value: 300 }
+  let helper_path = cross_file_clause_e_fixture_path(terminal: helper)
+  cross_file_binding_closure_row(
+    transport: transport,
+    module_path: provider_module,
+    file_path: "app/provider.dag",
+    exposure_rows: [
+      DeclarationExposureRow {
+        occurrence: helper,
+        exposure: declaration_exposure_from_containment(
+          module_path: provider_module,
+          containment: helper_path,
+          grounding: CrossFileProviderExportedExposure,
+        ),
+      },
+    ],
+    module_paths: [
+      OccurrenceModulePathRow { occurrence: helper, module_path: provider_module },
+    ],
+    authored_order_rows: [cross_file_clause_e_fixture_authored_order(occurrence: helper)],
+  )
+}
+
+fn cross_file_clause_e_fixture_assembled_closure() -> AssembledCrossFileBindingClosure {
+  assemble_cross_file_binding_closure(
+    consumer: cross_file_clause_e_fixture_consumer_row(),
+    providers: [cross_file_clause_e_fixture_provider_row()],
+  )
+}
+
+fn cross_file_clause_e_fixture_provider_file() -> FilePath {
+  "app/provider.dag"
+}

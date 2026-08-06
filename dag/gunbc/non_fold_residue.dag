@@ -15,6 +15,8 @@ data non_fold_residue_authority_note: String = "Single authority for the non-fol
 
 data non_fold_residue_lens_precision_note: String = "Lens-precision bound (2026-07-14, receipt carried over from the Rust const): fleet_converge_cli.dag::converge_cli_applied_knob_count went wildcard the same day (#6598 enumerated HostEffect's then-3 variants; #6586 grew it to 15 on an independent base — green alone, red together; main went compile-red). The fn is one-special-variant dispatch (ConvergePlan knob count, else fallback). The nfr scan covers param-scrutinee matches only, so a field-scrutinee site (intent.effect) is scan-invisible and a roster row for it would be STALE — recorded here as a precision note, not a row."
 
+data non_fold_residue_lists_agree_at_precision_note: String = "Lens-precision bound (review 48425/48733): dag/gunbc/namespace_cross_file_provenance_contract.dag::lists_agree_at is intentionally unrostered. Its Absent => false arms are on list-head Option projection, not match-on-closed-coproduct-param with a top-level wildcard, so nfr_residue_sites never reports it; a roster row landed in 6dcf9289a67 and was deleted in a4f53019847 when stale_roster_count=1. lists_agree_at_nfr_disposition_note in the contract module is the owning disposition authority. Dissolve-on: list agreement becomes a total std carrier and the helper deletes with the note."
+
 data non_fold_residue_stale_row_ruling_note: String = "2026-07-20 stale-row-removal receipt (carried over from the Rust const): create_double_init_collapsible and create_effect_is_dedupable were rostered AND declared kernel-permanent in cla_is_kernel_permanent_fn, so the analyzer never reports them as live sites and the rows could only ever count as stale. DESIGN §6 makes the classes mutually exclusive — a non-fold residue is either a named irreducible kernel or un-migrated modeling, there is no third — so a declared kernel must not also carry a burn-down row; the kernel declaration is the authority. Attribution (checked, not assumed): main was already red on non_fold_residue_clean_holds / non_fold_residue_no_unrostered_or_stale before #6848 merged — the scheduled cold falsifier failed exactly those witnesses at 2026-07-20T14:12Z on main at 73eea76dd7 (#6914); per-PR ci stayed green because affected-set selection did not run the corpus-read nfr witnesses for those diffs (the masking class the dated reason strings below describe)."
 
 data nfr_reason_local_tidy: String = "one-special-variant dispatch (LocalTidyCargoFmtCheck special, else the glob fallback), landed with the shell-to-dag bash de-fork (#6751); surfaced by the whole-corpus receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (the masking class); declared so the ratchet re-arms"
@@ -88,10 +90,6 @@ data nfr_dissolve_binding_outcome_resolution_wildcard: String = "assess_referenc
 data nfr_reason_content_hash_structural_refusal: String = "ContentHash family structural filter at SourceRef list digest boundary (PR #7762): only Fnv1a64Structural participates in population digest; other family arms refuse as SourceRefContentHashStructuralNonFnv1a64 rather than silently coercing cross-family hashes. Declared at landing so the ratchet re-arms."
 
 data nfr_dissolve_content_hash_structural_refusal: String = "SourceRef digest construction grounds each ContentHash family at inhabitance and the wildcard arm becomes a total match — row deletes with that fold (std.content_hash family grounding)"
-
-data nfr_reason_class_b_binding_projection: String = "Class B declared-import-closure observation projection (match on DeclaredImportClosureBindingObservation with off-variant wildcard refusal arms) landed with #7835 observe_declared_import_closure_symbol_binding builtin; callers judge ListedImport vs PoolCoincidence vs refusal — the match is the typed verdict fold over the host observation carrier, not business policy; declared at landing so the ratchet re-arms"
-
-data nfr_dissolve_class_b_binding_projection: String = "the observation carrier's verdict partition becomes derived from inhabitance (total match over BindingObserved vs BindingNotRunnable and over UnlistedImportBindingSource) and the wildcard arms delete with their rows"
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
@@ -818,21 +816,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/host_standup.dag::assimilation_complete_input_eq" },
     reason: nfr_reason_structural_eq_backfill,
     trigger: TriggerProse { text: nfr_dissolve_derived_equality },
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_listed_import" },
-    reason: nfr_reason_class_b_binding_projection,
-    trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_pool_coincidence" },
-    reason: nfr_reason_class_b_binding_projection,
-    trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_refused_at_intended_seam" },
-    reason: nfr_reason_class_b_binding_projection,
-    trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
   },
 ]
 

@@ -118,7 +118,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag",
     f: "witness_namespace_reference_derived_closure_closing_contract_holds",
     kind: CorpusWitnessKind,
-    reason: "the discriminating closing validation for roadmap node namespace-reference-derived-closure, RED BY DESIGN while its six-clause production admission frontier carries typed unavailable rows naming #7515 and the Class-B pool-independence wall. The separately discovered fixture suite executes P1 and proves every clause rejects its planted wrong output; this witness imports no fixture admissions and is bound directly by namespace_reference_derived_closure_execution_contract, so zero implementation progress cannot verify as complete.",
+    reason: "the discriminating closing validation for roadmap node namespace-reference-derived-closure, RED BY DESIGN while its production admission seam carries a typed unavailable row for every clause. The separately discovered fixture suite executes P1 and proves every clause rejects its planted wrong output; this witness imports none of those fixtures. Bound directly by namespace_reference_derived_closure_execution_contract.",
     dissolve_on: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall"
   ),
   known_red_probe(
@@ -323,7 +323,7 @@ fn known_red_entry_is_v1_scoped(entry: String) -> Bool {
 
 data known_red_v1_envelope_dag_entries: List<String> = []
 
-data known_red_v1_envelope_dag_entries_note: String = "dag/test/claim witnesses that import v1.* AND are enrolled QuarantineProbeExpectRed in explicit_witness_admissions — both are required for known_red_probe_v1_envelope_roster. Path prefix alone cannot detect v1 imports; this list names dag witnesses that need the dag plus src/v1 envelope beside v1_claim_scoped_witness_batch. Empty while no known-red row needs that envelope; enrolling a row here without the companion clamp row in gunbc_ci_floor_batch_clamp_params fails the ENROLLMENT COUPLING clause in v1_claim_scoped_known_red_probe_batch_note. Dissolve-on when closure-independent binding makes the envelope unnecessary."
+data known_red_v1_envelope_dag_entries_note: String = "dag/test/claim witnesses that import v1.* AND are enrolled QuarantineProbeExpectRed in explicit_witness_admissions — both are required for known_red_probe_v1_envelope_roster. Path prefix alone cannot detect v1 imports; this list names dag witnesses that need the dag plus src/v1 envelope beside v1_claim_scoped_witness_batch. Empty while no known-red row needs that envelope; enrolling a row here enrolls v1_claim_scoped_known_red_probe_batch in gunbc.ci_layer_roots scoped_witness_batches with its batch-owned 220s clamp. Dissolve-on when closure-independent binding makes the envelope unnecessary."
 
 fn known_red_entry_is_v1_envelope_dag_entry(entry: String) -> Bool {
   fold(
