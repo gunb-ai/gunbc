@@ -317,3 +317,22 @@ fn execution_contract_validation_summary(
       )
   }
 }
+
+fn validation_consumes_affected_set_window(validation: ValidationOperation) -> Bool {
+  match validation {
+    GunbcClaimValidation { entry: _, function: _ } => true
+    CargoTestValidation { filter: _ } => false
+    CargoFmtValidation => false
+  }
+}
+
+fn execution_contract_needs_diff_window(contract: WorkItemExecutionContract) -> Bool {
+  match contract {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities: _ } =>
+      any(
+        validations,
+        validation => validation_consumes_affected_set_window(validation: validation),
+      )
+  }
+}

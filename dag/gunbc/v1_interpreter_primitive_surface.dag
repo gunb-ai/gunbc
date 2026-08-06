@@ -951,6 +951,15 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.seed_runner_bool_false_failure_detail" },
+      form: FreeCall,
+      authored_spelling: "seed_runner_bool_false_failure_detail",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "free_call.doc_graph_orphan_count" },
       form: FreeCall,
       authored_spelling: "doc_graph_orphan_count",
