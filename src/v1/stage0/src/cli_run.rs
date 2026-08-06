@@ -16737,7 +16737,23 @@ fn witness_admission_entry_function_keys_from_source(
                 }
             }
             let after = &content[search_from..];
-            let window = &after[..after.len().min(WINDOW)];
+            // WINDOW is a BYTE budget, but `after` is UTF-8: clamping with `min` alone
+            // slices mid-character whenever byte `WINDOW` lands inside a multi-byte char,
+            // and the admission rows this reads are prose that routinely contains one
+            // (em dash, arrow). That panicked the whole floor worker — exit 101, no
+            // terminal receipt — on a row whose reason string simply happened to put an
+            // em dash across byte 400. Every other slice in this function takes its
+            // offset from `find`/`split_once`, which return char boundaries; this fixed
+            // offset was the only unguarded one. Walk down to the nearest boundary so a
+            // long row is truncated rather than fatal.
+            let window_end = {
+                let mut end = after.len().min(WINDOW);
+                while end > 0 && !after.is_char_boundary(end) {
+                    end -= 1;
+                }
+                end
+            };
+            let window = &after[..window_end];
             let trimmed = window.trim_start();
             if !def_sig.is_empty() && trimmed.starts_with(def_sig) {
                 continue;
@@ -35800,6 +35816,48 @@ mod module_path_index_tests {
             vec!["OfflineLocalRecipe", "BinWitnessWet"],
             "classification variant names must project from the row fields"
         );
+    }
+
+    #[test]
+    fn row_scan_survives_a_multibyte_char_straddling_the_window_edge() {
+        // The 400-byte scan window is a BYTE budget over UTF-8 prose. This fixture puts an
+        // em dash so that the window edge falls strictly INSIDE it, which is what made the
+        // slice panic and kill the floor worker (exit 101, no terminal receipt). The pad is
+        // computed rather than eyeballed so the straddle is a property of the fixture, not
+        // of anyone's byte counting: the em dash starts one byte before the edge, so bytes
+        // 399..402 span it and 400 is not a boundary.
+        // `entry:` and `function:` come FIRST, mirroring the real rows: the scanner
+        // deliberately panics when it cannot find `entry:` within the window, and that
+        // refusal is correct behaviour, not the bug under test. Keeping them early isolates
+        // this test to the slice.
+        //
+        // The prose that follows is a long run of em dashes, so every byte in the window's
+        // neighbourhood belongs to a 3-byte char. The exact window edge depends on where the
+        // scanner sets `search_from`, an internal this test deliberately does NOT model —
+        // pinning it would make the fixture fail for the wrong reason the moment the scanner
+        // moves. Shifting the run by 0/1/2 ASCII bytes covers every residue class mod 3, so
+        // at least one iteration is guaranteed to put the edge strictly inside a character.
+        // That is what makes the sweep discriminating rather than merely likely.
+        for shift in 0..3 {
+            let synthetic = format!(
+                "module gunbc.ci_layer_roots\n\n  SubstrateLongLaneRow {{\n    \
+                 entry: \"dag/test/claim/long/x_test.dag\",\n    \
+                 function: \"w_x\",\n    \
+                 reason: \"{pad}{dashes} tail\",\n  }}\n",
+                pad = "x".repeat(shift),
+                dashes = "\u{2014}".repeat(200),
+            );
+            // Must not panic for any shift. The prose is truncated mid-run by design, so the
+            // claim is survival plus correct extraction of the keys that precede it.
+            let keys = super::witness_admission_entry_function_keys_from_source(
+                "synthetic.dag",
+                &synthetic,
+            );
+            assert!(
+                keys.iter().any(|k| k.contains("w_x")),
+                "shift {shift}: the row's keys precede the prose and must still extract; got {keys:?}"
+            );
+        }
     }
 
     #[test]
