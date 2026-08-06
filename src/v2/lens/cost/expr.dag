@@ -66,7 +66,7 @@ fn cost_const(value: Nat) -> CostExpr {
   CostConst { value: value }
 }
 
-fn cost_log(base: Nat, argument: SizeExpr) -> CostExpr {
+fn cost_log_expr(base: Nat, argument: SizeExpr) -> CostExpr {
   CostLog { base: base, argument: argument }
 }
 

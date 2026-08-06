@@ -1,6 +1,6 @@
 # C1 — SizeExpr / CostExpr authority in `v2.lens.cost`
 
-> **Status: CARRIERS LANDED in PR #7888 (2026-08-06).** C0 signal received: `v2.lens.cost.expr` carries grounded `SizeExpr`/`CostExpr`, `normalize_cost_expr_to_symbolic`, closed `CostExprRefusalCause`, and discriminating witnesses in `bounded_summation_test.dag`. Design note landed in #7879; carrier in #7888. `cost_lens` / `symbolic_cost_fold` unchanged.
+> **Status: CARRIER CANDIDATE (open PR #7888, 2026-08-06).** Proposes `v2.lens.cost.expr` with `SizeExpr`/`CostExpr`, `normalize_cost_expr_to_symbolic`, closed `CostExprRefusalCause`, and witnesses in `bounded_summation_test.dag` / `expr_refusal_test.dag`. **Delivery** is when those symbols execute on main after merge — not while the PR is open. Design authority is this note (`docs/plans/c1-cost-expr-authority-design.md`); `cost_lens` / `symbolic_cost_fold` unchanged in C1.
 >
 > **Authority:** [`v2-complexity-capability-parity.md`](v2-complexity-capability-parity.md) §5–§7 item 2. This note is the C1 design deliverable requested by the lane brief.
 
@@ -16,7 +16,7 @@
 | `symbolic_cost_dominates`, `asymptotic_class_of_cost` | yes | comparison machinery on `SymbolicCost` |
 | `cost_lens` / `symbolic_cost_fold` | yes | blocking wall over the Node kernel |
 | `llvm_instruction_cost` | yes | **registered** owner `v2.lens.registry` `lens_owned_fn_llvm_instruction_cost` |
-| `SizeExpr`, `CostExpr`, binder-carrying sum, cost max, extern channel | **yes** (`v2.lens.cost.expr`) | landed C1 carrier (#7888); `CostEffect` replaces extern channel |
+| `SizeExpr`, `CostExpr`, binder-carrying sum, cost max, extern channel | **candidate** (`v2.lens.cost.expr`) | absent on main until carrier merges; `CostEffect` replaces extern channel |
 
 **`src/v1/complexity.dag`** lines 70–95 (promotion source, **not** port target):
 
@@ -47,7 +47,7 @@ type SizeExpr
 **Grounding choices:**
 
 - **`SizeOf` / `SizeLength`** both carry `SizeVariable { source: Node }`, the identity `v2.lens.cost` already owns. Collection length is not a separate string name; it is the size of a grounded value node (the same grain `loop_bound_measure` already uses).
-- **INTERIM (C1):** size identity grounds on the existing `SizeVariable` carrier — not cited as the end state. Parity note §6 originally named `ValueIdentity`, which **does not exist in the tree** (confirmed independently; correction landing in #7821). C1 uses `SizeVariable` with an explicit dissolution trigger: **`SizeLength.of` refines to `ValueIdentity` when `discrete-cost-derivation` `CostSubject.input` lands** — at which point `SizeVariable`-only collection length is deleted, not kept in parallel.
+- **INTERIM (C1):** size identity grounds on the existing `SizeVariable` carrier — not cited as the end state. Parity note §6 originally named `ValueIdentity`, which **does not exist in the tree** (corrected in `gunbc.plans.v2_complexity_capability_parity`). C1 uses `SizeVariable` with an explicit dissolution trigger: **`SizeLength.of` refines to `ValueIdentity` when `discrete-cost-derivation` `CostSubject.input` lands** — at which point `SizeVariable`-only collection length is deleted, not kept in parallel.
 - **`DeclarationRef`** is reserved for *callable / effect* identity (`CostEffect`), not collection size. Mixing declaration paths with size expressions would re-open the string-nickname class under a typed wrapper.
 
 ### 2.2 `CostExpr`
@@ -87,9 +87,9 @@ type CostExpr
 type CostExprRefusalCause
   = UnboundedIteration { at: v2.std.diagnostic.Locus }
   | UngroundedLogArgument { argument: SizeExpr, at: v2.std.diagnostic.Locus }
+  | InvalidLogBase { base: v2.std.nat.Nat, at: v2.std.diagnostic.Locus }
   | UnmodeledEffect { operation: DeclarationRef, at: v2.std.diagnostic.Locus }
   | UnresolvedSize { variable: SizeVariable, at: v2.std.diagnostic.Locus }
-  | EffectModelAbsent { operation: DeclarationRef, at: v2.std.diagnostic.Locus }
 ```
 
 Projection: `CostRefused { cause }` → `UnknownCost { diagnostic: cost_expr_refusal_diagnostic(cause) }` where `cost_expr_refusal_diagnostic` is **total** over the coproduct and maps each variant to a `Diagnostic` whose `reason` symbol is the cause constructor (countable by variant, not by string contents).
@@ -119,7 +119,8 @@ Mirrors v1 `simplify_cost` / asymptotic reading, reusing existing `symbolic_sequ
 | `CostMul` | `symbolic_product` |
 | `CostMax` | `symbolic_max` |
 | `CostSum { binder, upper, body }` | `symbolic_product(normalize_size(upper), normalize(body))` — iterative bound × per-iteration body |
-| `CostLog { argument: SizeOf v }` | `LogCost { variable: v }` |
+| `CostLog { base: 0 or 1, … }` | `CostRefused { InvalidLogBase }` — degenerate log bases refuse (fail-closed) |
+| `CostLog { argument: SizeOf v }` (valid base) | `LogCost { variable: v }` |
 | `CostLog { argument: _ }` (compound) | `CostRefused { UngroundedLogArgument }` at projection — log of a non-atomic size is not normalized to a single `LogCost` without evaluation |
 | `CostEffect` | `CostRefused { UnmodeledEffect }` until effect demand lands (C3) |
 | `CostRefused` | `UnknownCost` via §3 diagnostic map |
@@ -195,27 +196,29 @@ The installed PATH binary cannot parse current `.dag` syntax (qualified type pat
 
 1. `CostSum` inhabitance witness — `cost_loop_expr` produces `CostSum`, projects to `LinearCost`.
 2. RED control — projection of `CostSum` with zero body must **not** claim linear (stays `zero_cost`).
-3. `CostExprRefusalCause` arms stay in sync with `cost_expr_refusal_diagnostic` — exhaustive match is the enforcement (compile refusal on drift); runtime variant-count witnesses deleted as self-referential per review 49220.
+3. `CostExprRefusalCause` arms stay in sync with `cost_expr_refusal_diagnostic` — exhaustive match is the enforcement (compile refusal on drift).
+4. Invalid log bases — `CostLog` with base `Zero` or `Succ{Zero}` refuses `InvalidLogBase`; base `2` projects to `LogCost` (non-degeneracy control).
+5. `CostEffect` — projects `UnmodeledEffect` refusal with typed diagnostic (witnessed in `expr_refusal_test.dag`).
 
 ## 7. Contradictions and open items found in the tree
 
 | Item | Plan says | Tree says | Resolution |
 | --- | --- | --- | --- |
-| `ValueIdentity` for collection/function identity | §6 (present-tense, now corrected in #7821) | **No `type ValueIdentity` anywhere** | **Interim:** `SizeVariable`; dissolve when `CostSubject.input: ValueIdentity` lands |
+| `ValueIdentity` for collection/function identity | parity note §6 | **No `type ValueIdentity` anywhere** | **Interim:** `SizeVariable`; dissolve when `CostSubject.input: ValueIdentity` lands |
 | `CostInternTable` keyed by `String` | migrate in C4 | v1 only | C1 does not touch; C4 uses `DeclarationRef`-keyed memo |
 | `SymbolicCost` already has `SumCost`/`ProductCost` | C1 adds binder sum | true | C1 adds **binder-carrying** `CostSum` on `CostExpr`; `SymbolicCost.SumCost` remains flat binary — no rename collision |
 | `UnknownCost` vs `CostRefused` | countable cause | `UnknownCost` already uses `Diagnostic` | Rich layer gets `CostExprRefusalCause`; projection bridges to existing `UnknownCost` |
-| C0(b) census rows | inform disposition | b1/b2 on main (#7821/#7840) | Census on main; carrier compatible |
-| Premature WIP carrier | wait for C0 | reverted in `5c87cbb69`, re-landed after C0 signal | **Carriers in-tree** in `v2.lens.cost.expr` + `bounded_summation_test.dag` (#7888) |
+| C0 census / classification | inform disposition | `gunbc.v1_complexity_capability_census`, `gunbc.v1_complexity_decl_classification_roster` on main | C0(a–c) complete; carrier compatible |
+| Carrier delivery | symbols on main | `v2.lens.cost.expr` candidate until merge | delivery when `normalize_cost_expr_to_symbolic` runs on main |
 
 ## 8. Carrier landing checklist (post-C0 signal)
 
-1. ~~Add §2 types + §3 `CostExprRefusalCause` to `v2.lens.cost` (submodule `cost/expr.dag`).~~ **Done** — `src/v2/lens/cost/expr.dag`.
-2. ~~Add §4 normalization functions; **do not** edit `symbolic_cost_fold` / `cost_lens`.~~ **Done**.
-3. ~~Add witnesses §6; enroll in CI discovery if per-PR.~~ **Done** — `bounded_summation_test.dag`.
-4. Run baseline roster green on CI. **Pending merge (#7888)**.
-5. `llvm_instruction_cost` — **no edit**. **Done** (untouched).
-6. ~~Flip PR #7879 to ready only after (4).~~ **Done** — design note merged (#7879); carrier in #7888.
+1. Add §2 types + §3 `CostExprRefusalCause` to `v2.lens.cost` (`v2.lens.cost.expr`). **Candidate on branch; pending main delivery.**
+2. Add §4 normalization functions; **do not** edit `symbolic_cost_fold` / `cost_lens`. **Candidate.**
+3. Add witnesses §6 (`bounded_summation_test.dag`, `expr_refusal_test.dag`). **Candidate.**
+4. Run 22/22 baseline roster green on CI at final head. **Pending.**
+5. `llvm_instruction_cost` — **no edit**. **Unchanged.**
+6. Design note on main (`docs/plans/c1-cost-expr-authority-design.md`). **Delivered.**
 
 ## Dissolution trigger
 
