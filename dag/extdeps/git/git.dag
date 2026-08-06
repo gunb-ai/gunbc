@@ -894,28 +894,28 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repo}", "ls-files", "-u", "--", "{path}"] }
   }
 
-  operation LsFilesStageZ {
-    input {}
+  operation LsFilesStageZInRepo {
+    input { repo: FilePath }
     output {
       raw: String from "stdout"
       success: Bool from "exit_success"
     }
     readonly
-    transport shell { argv: ["git", "ls-files", "-z", "--stage"] }
+    transport shell { argv: ["git", "-C", "{repo}", "ls-files", "-z", "--stage"] }
     exit {
       0 => Unit
       128 => String "Not a git repository"
     }
   }
 
-  operation CatFileBlob {
-    input { oid: String }
+  operation CatFileBlobInRepo {
+    input { repo: FilePath, oid: String }
     output {
       content: String from "stdout"
       success: Bool from "exit_success"
     }
     readonly
-    transport shell { argv: ["git", "cat-file", "-p", "{oid}"] }
+    transport shell { argv: ["git", "-C", "{repo}", "cat-file", "-p", "{oid}"] }
     exit {
       0 => Unit
       128 => String "Not a valid object name"
