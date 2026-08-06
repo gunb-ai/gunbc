@@ -15,10 +15,6 @@ import gunbc.provider_wire_evidence {
   retain_provider_wire_capture,
   retain_private_evidence_bytes_detailed,
 }
-import gunbc.host_layout {
-  srv1_provider_wire_evidence_root,
-  srv1_roadmap_codex_home,
-}
 import extdeps.llm.codex_app_server {
   CodexAppServerMethod,
   CodexAppServerInitialize,
@@ -57,7 +53,7 @@ data codex_press_note: String = "Account-standing observation for the Codex app-
 
 data codex_press_hermetic_evidence_root: FilePath = "/tmp/gunbc-codex-press-evidence" as FilePath
 
-data account_trip_digest_mode_note: String = "Hermetic parse helpers (parse_account_trip_stdout_for_tests) use AccountTripDigestStructural — content_hash_of_value fingerprints with zero host effects, so discovery stays mock-free. Wet observe_codex_account_preflight uses AccountTripDigestRetainPrivateSha512 (Mkdir+Write+sha512sum under srv1_provider_wire_evidence_root). Structural digests are NOT durable content identities; private SHA-512 retention is."
+data account_trip_digest_mode_note: String = "Hermetic parse helpers (parse_account_trip_stdout_for_tests) use AccountTripDigestStructural — content_hash_of_value fingerprints with zero host effects, so discovery stays mock-free. Wet observe_codex_account_preflight uses AccountTripDigestRetainPrivateSha512 under a caller-supplied evidence_root. Structural digests are NOT durable content identities; private SHA-512 retention is."
 
 data account_standing_authenticated_rate_limits_readable_note: String = "Formerly AccountStandingReady. Empty rateLimits:{} still classifies here because this PR only establishes authentication + rateLimits readability. Decoding QuotaAvailable|QuotaReached|SpendControlReached|StandingUnknown from the pinned protocol schema is the dissolve-on for reclaiming a stronger Ready name."
 
@@ -105,7 +101,7 @@ fn codex_press_method_itinerary() -> CodexPressItinerary {
   codex_press_turn_itinerary_target()
 }
 
-data codex_press_standing_evidence_note: String = "Account standing is derived from ONE held-open app-server --stdio session: three JSON-RPC requests (ids 1/2/3) with per-id typed result/error correlation and duplicate-id refusal. Wire capture is retained privately under gunbc.host_layout.srv1_provider_wire_evidence_root via gunbc.provider_wire_evidence (SHA-512 content-addressed stdout/stderr). Unknown NDJSON frames are digested SHA-512 through the same retention path; retention failure is Incomplete, never silent drop. AuthenticatedRateLimitsReadable requires AccountTripResponseUnique on ids 1/2/3 with typed result bodies AND retained wire evidence. Incomplete is refused (RED). Login/quota are typed arms. methods_attempted is the typed itinerary, never a free-form string that can disagree with the outcome."
+data codex_press_standing_evidence_note: String = "Account standing is derived from ONE held-open app-server --stdio session: three JSON-RPC requests (ids 1/2/3) with per-id typed result/error correlation and duplicate-id refusal. Wire capture is retained privately under a caller-supplied evidence_root via gunbc.provider_wire_evidence (SHA-512 content-addressed stdout/stderr). Unknown NDJSON frames are digested SHA-512 through the same retention path; retention failure is Incomplete, never silent drop. AuthenticatedRateLimitsReadable requires AccountTripResponseUnique on ids 1/2/3 with typed result bodies AND retained wire evidence. Incomplete is refused (RED). Login/quota are typed arms. methods_attempted is the typed itinerary, never a free-form string that can disagree with the outcome. Production placement supplies gunbc.host_layout.srv1_provider_wire_evidence_root and srv1_roadmap_codex_home."
 
 type AccountTripFrameDisposition
   = AccountTripResultOk
@@ -820,6 +816,8 @@ fn process_receipt_from_capture(
 fn observe_codex_account_preflight(
   bundle: CodexRuntimeBundle,
   probe_key: ProviderProbeKey,
+  evidence_root: FilePath,
+  codex_home: FilePath,
 ) -> CodexPressOutcome {
   match project_codex_app_server_stdio_binding(bundle: bundle) {
     RequiredProviderInterfaceUnavailable { interface: _, reason } =>
@@ -841,7 +839,6 @@ fn observe_codex_account_preflight(
           },
         }
       } else {
-        let codex_home = srv1_roadmap_codex_home
         let script = retained_foreign(
           body: codex_press_account_trip_script(
             executable: projected.executable.path,
@@ -852,7 +849,7 @@ fn observe_codex_account_preflight(
         let run = shell.Exec.Run(script: script)
         let capture = split_gunbc_stdio_capture(combined: run.stdout)
         let wire_evidence = retain_provider_wire_capture(
-          evidence_root: srv1_provider_wire_evidence_root,
+          evidence_root: evidence_root,
           stdout: capture.stdout,
           stderr: capture.stderr,
           success: run.success,
@@ -873,7 +870,7 @@ fn observe_codex_account_preflight(
             let evidence = parse_account_trip_session(
               stdout: capture.stdout,
               stderr: capture.stderr,
-              evidence_root: srv1_provider_wire_evidence_root,
+              evidence_root: evidence_root,
               mode: AccountTripDigestRetainPrivateSha512,
             )
             let session_binding = binding_from_initialize_session(
