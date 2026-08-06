@@ -415,10 +415,11 @@ test fn the_job_condition_lowers_from_the_same_constants_as_the_wall() -> Bool {
     && c.contains(s: "||")
 }
 
-data falsifier_alert_condition_precedence_note: String = "The Or is asserted to be PARENTHESIZED, which is the arm that would silently change meaning. GitHub binds && tighter than ||, so without the grouping this condition reads as `(name == X && head_branch == main && event == schedule) || event == workflow_dispatch` — and that right arm admits a workflow_dispatch run of ANY workflow on ANY branch, which is the trust wall failing open on its outer half while every in-program claim above still passes. Nothing else in this file would catch it."
+data falsifier_alert_condition_precedence_note: String = "The condition is asserted to be DISTRIBUTED — the workflow and branch equalities appearing in BOTH originating-event arms — because that is what makes it precedence-safe without parentheses. The factored shape `A && B && (s || d)` is what a reader would naturally write, and GitHub's tighter && binding turns it into `(A && B && s) || d` if the parentheses are ever lost, whose right arm admits a workflow_dispatch run of any workflow on any branch. This claim reds if the condition is refactored into the factored shape, which is the refactor that looks like a simplification and is not."
 
-test fn the_job_condition_parenthesizes_the_originating_event_alternation() -> Bool {
-  falsifier_alert_job_condition().contains(
-    s: "(github.event.workflow_run.event == 'schedule' || github.event.workflow_run.event == 'workflow_dispatch')"
-  )
+test fn the_job_condition_is_distributed_so_precedence_needs_no_grouping() -> Bool {
+  let c = falsifier_alert_job_condition()
+  let arm_schedule = "github.event.workflow_run.name == 'affected-set-falsifier' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event == 'schedule'"
+  let arm_dispatch = "github.event.workflow_run.name == 'affected-set-falsifier' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event == 'workflow_dispatch'"
+  c == concat(concat(arm_schedule, " || "), arm_dispatch)
 }

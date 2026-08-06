@@ -102,7 +102,9 @@ fn falsifier_alert_workflow_run_field(field: String) -> Expression {
   ContextAccess { context: Github, path: ["event", "workflow_run", field] }
 }
 
-fn falsifier_alert_job_condition_expression() -> Expression {
+data falsifier_alert_condition_distributed_note: String = "THE CONDITION IS BUILT IN DISTRIBUTED FORM — `A && B && schedule || A && B && dispatch` — rather than factored with a parenthesized alternation, and the repetition is deliberate. GitHub binds && tighter than ||, so the factored shape `A && B && (s || d)` REQUIRES the parentheses to mean what it reads as; without them it parses as `(A && B && s) || d`, whose right arm admits a workflow_dispatch run of ANY workflow on ANY branch. That is the trust wall failing open on its outer half while every in-program check still passes — the worst kind of defect here, because nothing downstream would notice.\n\nThe first attempt answered that by making extdeps.github.expressions parenthesize every Or. review 49430 refused it: that module is read in both directions and the parser has no grouping construct, so emission would have gained syntax ingest could not read (DESIGN §4). The distributed form needs no grouping at all — it is already correct under upstream's own precedence — so the hazard is answered at the authoring site and the shared grammar is untouched. Both arms are derived from the same constants, so they cannot disagree about the workflow or the branch."
+
+fn falsifier_alert_originating_event_arm(event_name: String) -> Expression {
   LogicalAnd {
     left: Equals {
       left: falsifier_alert_workflow_run_field(field: "name"),
@@ -113,17 +115,18 @@ fn falsifier_alert_job_condition_expression() -> Expression {
         left: falsifier_alert_workflow_run_field(field: "head_branch"),
         right: StringLiteral { value: falsifier_alert_expected_head_branch as String }
       },
-      right: LogicalOr {
-        left: Equals {
-          left: falsifier_alert_workflow_run_field(field: "event"),
-          right: StringLiteral { value: github_event_name_schedule }
-        },
-        right: Equals {
-          left: falsifier_alert_workflow_run_field(field: "event"),
-          right: StringLiteral { value: github_event_name_workflow_dispatch }
-        }
+      right: Equals {
+        left: falsifier_alert_workflow_run_field(field: "event"),
+        right: StringLiteral { value: event_name }
       }
     }
+  }
+}
+
+fn falsifier_alert_job_condition_expression() -> Expression {
+  LogicalOr {
+    left: falsifier_alert_originating_event_arm(event_name: github_event_name_schedule),
+    right: falsifier_alert_originating_event_arm(event_name: github_event_name_workflow_dispatch)
   }
 }
 
