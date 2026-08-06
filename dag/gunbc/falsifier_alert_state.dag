@@ -80,7 +80,7 @@ fn falsifier_alert_state_number_at(v: JsonValue, key: String) -> FalsifierAlertS
               if n < 0 {
                 StateNumberMalformed { detail: concat(key, " is negative") }
               } else {
-                StateNumberFound { value: n as EpochMs }
+                StateNumberFound { value: n }
               }
           }
         JsonString { value: _ } =>

@@ -1,0 +1,362 @@
+module test.claim.falsifier_alert_migration_witness_test
+
+import std.types { Bool, Int, String, NonEmptyStr, EpochMs, CommitSha }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
+import extdeps.languages.yaml.types { yaml_mapping }
+import extdeps.github.actions { WorkflowTrigger, WorkflowRunCompleted, MergeGroup }
+import extdeps.github.workflow_run_event {
+  WorkflowRunEvent,
+  WorkflowRunEventObservation,
+  WorkflowRunEventObserved,
+  WorkflowRunEventMemberAbsent,
+  WorkflowRunEventMemberMalformed,
+  WorkflowRunEventMalformed,
+  workflow_run_event_from_json
+}
+import extdeps.github.workflow_runs { Success, Failure }
+import gunbc.falsifier_alert_admission {
+  FalsifierAlertAdmission,
+  AlertAdmitted,
+  AlertRefusedWorkflowNotObserved,
+  AlertRefusedRepositoryNotOwned,
+  AlertRefusedHeadBranchNotMain,
+  AlertRefusedOriginatingEventNotAdmitted,
+  AlertRefusedActivityNotCompleted,
+  AlertRefusedEventUnreadable,
+  falsifier_alert_admit,
+  falsifier_alert_is_admitted
+}
+import gunbc.falsifier_alert_state {
+  FalsifierAlertState,
+  FalsifierAlertStateDecoding,
+  CurrentState, LegacyStateWithoutLastNotification, StateAbsent, StateMalformed,
+  FalsifierAlertNotificationDecision,
+  NotifyIncidentChanged, NotifyHeartbeatDue, NotifyMigratedToTypedState, NotifyFirstRed,
+  SuppressWithinWindow,
+  falsifier_alert_state_from_payload,
+  falsifier_alert_notification_decision,
+  falsifier_alert_notification_notifies,
+  falsifier_alert_heartbeat_window_ms
+}
+import gunbc.floor_component_receipt_document {
+  FloorComponentReceiptSubject,
+  FloorComponentReceiptDecoding,
+  ReceiptDecoded, ReceiptNotJson, ReceiptMemberAbsent, ReceiptMemberMalformed, ReceiptSchemaUnknown,
+  ReceiptSubjectMatch, ReceiptSubjectMatches,
+  ReceiptSubjectRunIdMismatch, ReceiptSubjectWorkflowMismatch, ReceiptSubjectHeadShaMismatch,
+  floor_component_receipt_decode_with,
+  floor_component_receipt_subject_matches_event,
+  floor_component_receipt_subject_admitted
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data falsifier_alert_migration_witness_note: String = "ALERT-0..3's executing evidence. Every claim here runs against a FIXTURE authored in this file — a hand-written event payload, a hand-written state marker, a hand-written receipt — never against the live tree or a live API, because what is under test is a decision procedure and its inputs are exactly the discriminating ones. The fixtures are the smallest payloads that cross the boundary being tested plus the one field that decides it, per DESIGN's witness-cost rule.\n\nEACH GREEN CLAIM IS PAIRED WITH A RED CONTROL that fails for the intended reason, because a decoder that accepted everything and a wall that admitted everything would both pass the positive half alone. The admission claims are the ones this matters most for: a trust wall proven only by admitting a good event is indistinguishable from `return true`."
+
+data alert_expected_schema: NonEmptyStr = "floor-component-receipt/v1"
+
+fn trusted_event_json() -> String {
+  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000001,\"name\":\"affected-set-falsifier\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000001\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
+}
+
+fn fork_event_json() -> String {
+  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000002,\"name\":\"affected-set-falsifier\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000002\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"attacker/gunbc\"},\"event\":\"pull_request\"}}"
+}
+
+fn non_main_event_json() -> String {
+  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000003,\"name\":\"affected-set-falsifier\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000003\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"topic/experiment\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
+}
+
+fn other_workflow_event_json() -> String {
+  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000004,\"name\":\"ci\",\"conclusion\":\"success\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000004\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
+}
+
+fn event_missing_conclusion_json() -> String {
+  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000005,\"name\":\"affected-set-falsifier\",\"conclusion\":null,\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000005\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
+}
+
+fn admission_of(json: String) -> FalsifierAlertAdmission {
+  falsifier_alert_admit(observation: workflow_run_event_from_json(text: json))
+}
+
+test fn workflow_run_completed_trigger_projects_workflow_run_key() -> Bool {
+  let emitted = serialize_yaml(v: yaml_mapping(entries: [
+    workflow_trigger_entry(trigger: WorkflowRunCompleted { workflows: ["affected-set-falsifier"] })
+  ]))
+  emitted.contains(s: "workflow_run")
+    && emitted.contains(s: "affected-set-falsifier")
+    && emitted.contains(s: "completed")
+}
+
+test fn workflow_run_trigger_is_not_the_merge_group_projection() -> Bool {
+  let emitted = serialize_yaml(v: yaml_mapping(entries: [
+    workflow_trigger_entry(trigger: WorkflowRunCompleted { workflows: ["affected-set-falsifier"] })
+  ]))
+  !emitted.contains(s: "merge_group")
+}
+
+test fn workflow_run_event_decodes_every_declared_field() -> Bool {
+  match workflow_run_event_from_json(text: trusted_event_json()) {
+    WorkflowRunEventObserved { event: e } =>
+      (e.run_id as String) == "31000000001"
+        && e.workflow_name == "affected-set-falsifier"
+        && e.head_branch == "main"
+        && e.originating_event == "schedule"
+        && e.activity == "completed"
+        && e.repository_full_name == "gunb-ai/gunbc"
+        && e.head_repository_full_name == "gunb-ai/gunbc"
+        && (e.head_sha as String) == "0123456789abcdef0123456789abcdef01234567"
+    _ => false
+  }
+}
+
+test fn workflow_run_event_null_conclusion_is_located_not_absorbed() -> Bool {
+  match workflow_run_event_from_json(text: event_missing_conclusion_json()) {
+    WorkflowRunEventMemberMalformed { member: m, detail: _ } => m == "conclusion"
+    _ => false
+  }
+}
+
+test fn workflow_run_event_non_json_refuses() -> Bool {
+  match workflow_run_event_from_json(text: "not json at all") {
+    WorkflowRunEventMalformed { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn trust_wall_admits_the_scheduled_main_falsifier_run() -> Bool {
+  falsifier_alert_is_admitted(admission: admission_of(json: trusted_event_json()))
+}
+
+test fn trust_wall_refuses_a_fork_head_repository() -> Bool {
+  match admission_of(json: fork_event_json()) {
+    AlertRefusedRepositoryNotOwned { observed: o, expected: _ } => o == "attacker/gunbc"
+    _ => false
+  }
+}
+
+test fn trust_wall_refuses_a_non_main_head_branch() -> Bool {
+  match admission_of(json: non_main_event_json()) {
+    AlertRefusedHeadBranchNotMain { observed: o, expected: _ } => o == "topic/experiment"
+    _ => false
+  }
+}
+
+test fn trust_wall_refuses_a_different_workflow() -> Bool {
+  match admission_of(json: other_workflow_event_json()) {
+    AlertRefusedWorkflowNotObserved { observed: o, expected: _ } => o == "ci"
+    _ => false
+  }
+}
+
+test fn trust_wall_refuses_an_unreadable_event() -> Bool {
+  match admission_of(json: "{}") {
+    AlertRefusedEventUnreadable { observation: _ } => true
+    _ => false
+  }
+}
+
+fn current_state_marker(first_red: Int, signature: String, last: Int) -> String {
+  concat(
+    concat(concat("{\"first_red\":", first_red as String), concat(",\"signature\":\"", signature)),
+    concat(concat("\",\"last_notification_at\":", last as String), "}")
+  )
+}
+
+fn legacy_state_marker(first_red: Int, signature: String) -> String {
+  concat(
+    concat(concat("{\"first_red\":", first_red as String), concat(",\"signature\":\"", signature)),
+    "\"}"
+  )
+}
+
+test fn current_state_marker_round_trips() -> Bool {
+  match falsifier_alert_state_from_payload(payload: current_state_marker(first_red: 1000, signature: "6:witness discovery:WitnessRed:failed", last: 5000)) {
+    CurrentState { state: s } =>
+      s.first_red == 1000
+        && s.last_notification_at == 5000
+        && (s.signature as String) == "6:witness discovery:WitnessRed:failed"
+    _ => false
+  }
+}
+
+test fn legacy_marker_is_its_own_state_not_malformed() -> Bool {
+  match falsifier_alert_state_from_payload(payload: legacy_state_marker(first_red: 1000, signature: "6:witness discovery:failed")) {
+    LegacyStateWithoutLastNotification { first_red: f, signature: _ } => f == 1000
+    _ => false
+  }
+}
+
+test fn malformed_marker_is_not_read_as_legacy() -> Bool {
+  match falsifier_alert_state_from_payload(payload: "{\"first_red\":\"not-a-number\",\"signature\":\"x\"}") {
+    StateMalformed { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn legacy_state_notifies_exactly_once_as_a_migration() -> Bool {
+  let d = falsifier_alert_notification_decision(
+    now: 9999999,
+    decoding: falsifier_alert_state_from_payload(payload: legacy_state_marker(first_red: 1000, signature: "a:b:c")),
+    signature: "a:b:c" as NonEmptyStr
+  )
+  match d {
+    NotifyMigratedToTypedState => falsifier_alert_notification_notifies(d: d)
+    _ => false
+  }
+}
+
+test fn a_changed_signature_always_notifies_even_inside_the_window() -> Bool {
+  let d = falsifier_alert_notification_decision(
+    now: 5001,
+    decoding: falsifier_alert_state_from_payload(payload: current_state_marker(first_red: 1000, signature: "6:discovery:Infra:failed", last: 5000)),
+    signature: "6:discovery:WitnessRed:failed" as NonEmptyStr
+  )
+  match d {
+    NotifyIncidentChanged { previous: p, current: c } =>
+      (p as String) == "6:discovery:Infra:failed" && (c as String) == "6:discovery:WitnessRed:failed"
+    _ => false
+  }
+}
+
+test fn an_unchanged_signature_is_suppressed_inside_the_window() -> Bool {
+  let d = falsifier_alert_notification_decision(
+    now: 5001,
+    decoding: falsifier_alert_state_from_payload(payload: current_state_marker(first_red: 1000, signature: "a:b:c", last: 5000)),
+    signature: "a:b:c" as NonEmptyStr
+  )
+  match d {
+    SuppressWithinWindow { silent_for: s } => s == 1 && !falsifier_alert_notification_notifies(d: d)
+    _ => false
+  }
+}
+
+test fn an_unchanged_signature_heartbeats_once_the_window_elapses() -> Bool {
+  let d = falsifier_alert_notification_decision(
+    now: 5000 + falsifier_alert_heartbeat_window_ms,
+    decoding: falsifier_alert_state_from_payload(payload: current_state_marker(first_red: 1000, signature: "a:b:c", last: 5000)),
+    signature: "a:b:c" as NonEmptyStr
+  )
+  match d {
+    NotifyHeartbeatDue { silent_for: s } => s == falsifier_alert_heartbeat_window_ms
+    _ => false
+  }
+}
+
+fn receipt_json(schema: String, workflow: String, run_id: String, head_sha: String) -> String {
+  concat(
+    concat(
+      concat(concat("{\"schema\":\"", schema), concat("\",\"workflow_name\":\"", workflow)),
+      concat(concat("\",\"run_id\":\"", run_id), concat("\",\"head_sha\":\"", head_sha))
+    ),
+    "\",\"component_count\":0,\"affected_set_cold_control\":null,\"unsuccessful_components\":[],\"components\":[]}"
+  )
+}
+
+fn trusted_receipt() -> String {
+  receipt_json(
+    schema: "floor-component-receipt/v1",
+    workflow: "affected-set-falsifier",
+    run_id: "31000000001",
+    head_sha: "0123456789abcdef0123456789abcdef01234567"
+  )
+}
+
+test fn receipt_document_decodes_its_subject() -> Bool {
+  match floor_component_receipt_decode_with(text: trusted_receipt(), expected_schema: alert_expected_schema) {
+    ReceiptDecoded { document: d } =>
+      (d.subject.run_id as String) == "31000000001"
+        && (d.subject.workflow_name as String) == "affected-set-falsifier"
+        && d.component_count == 0
+    _ => false
+  }
+}
+
+test fn receipt_with_an_unknown_schema_refuses() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_json(schema: "floor-component-receipt/v2", workflow: "affected-set-falsifier", run_id: "1", head_sha: "abc"),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptSchemaUnknown { observed: o, expected: _ } => o == "floor-component-receipt/v2"
+    _ => false
+  }
+}
+
+test fn receipt_missing_its_subject_refuses_by_member() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: "{\"schema\":\"floor-component-receipt/v1\",\"components\":[]}",
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptMemberAbsent { member: m } => m == "workflow_name"
+    _ => false
+  }
+}
+
+test fn receipt_that_is_not_json_refuses() -> Bool {
+  match floor_component_receipt_decode_with(text: "<html>404</html>", expected_schema: alert_expected_schema) {
+    ReceiptNotJson { detail: _ } => true
+    _ => false
+  }
+}
+
+fn trusted_event() -> WorkflowRunEvent? {
+  match workflow_run_event_from_json(text: trusted_event_json()) {
+    WorkflowRunEventObserved { event: e } => Present { value: e }
+    _ => none
+  }
+}
+
+fn subject_match_against_trusted_event(receipt: String) -> ReceiptSubjectMatch? {
+  match floor_component_receipt_decode_with(text: receipt, expected_schema: alert_expected_schema) {
+    ReceiptDecoded { document: d } =>
+      match trusted_event() {
+        Present { value: e } =>
+          Present { value: floor_component_receipt_subject_matches_event(subject: d.subject, event: e) }
+        Absent => none
+      }
+    _ => none
+  }
+}
+
+test fn a_receipt_from_the_triggering_run_matches() -> Bool {
+  match subject_match_against_trusted_event(receipt: trusted_receipt()) {
+    Present { value: m } => floor_component_receipt_subject_admitted(m: m)
+    Absent => false
+  }
+}
+
+test fn a_receipt_from_another_run_is_refused_by_run_id() -> Bool {
+  let other = receipt_json(
+    schema: "floor-component-receipt/v1",
+    workflow: "affected-set-falsifier",
+    run_id: "39999999999",
+    head_sha: "0123456789abcdef0123456789abcdef01234567"
+  )
+  match subject_match_against_trusted_event(receipt: other) {
+    Present { value: m } =>
+      match m {
+        ReceiptSubjectRunIdMismatch { receipt: r, event: _ } => (r as String) == "39999999999"
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn a_receipt_about_another_tree_is_refused_by_head_sha() -> Bool {
+  let other = receipt_json(
+    schema: "floor-component-receipt/v1",
+    workflow: "affected-set-falsifier",
+    run_id: "31000000001",
+    head_sha: "ffffffffffffffffffffffffffffffffffffffff"
+  )
+  match subject_match_against_trusted_event(receipt: other) {
+    Present { value: m } =>
+      match m {
+        ReceiptSubjectHeadShaMismatch { receipt: _, event: _ } => true
+        _ => false
+      }
+    Absent => false
+  }
+}

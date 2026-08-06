@@ -64,7 +64,7 @@ fn clock_unix_millis_read() -> ClockUnixMillisRead {
           detail: concat("clock unix millis reading is negative: ", result.unix_millis)
         }
       } else {
-        ClockUnixMillisObserved { millis: n as EpochMs }
+        ClockUnixMillisObserved { millis: n }
       }
   }
 }
