@@ -65,7 +65,7 @@ test fn equal_work_different_shape_derives_equal_work_different_span() -> Bool {
     && sequential.span != parallel.span
 }
 
-test fn equal_work_different_span_red_control() -> Bool {
+test fn equal_work_span_operands_match_exactly() -> Bool {
   let left = unit_complexity_summary()
   let right = unit_complexity_summary()
   let sequential = summary_sequential(left: left, right: right)
