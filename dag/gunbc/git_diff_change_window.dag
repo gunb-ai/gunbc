@@ -1,0 +1,346 @@
+module gunbc.git_diff_change_window
+
+import extdeps.git.object_store {
+  GitObjectId,
+  git_object_id_from_untagged_hex,
+  git_object_id_wire_hex
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonString,
+  JsonNull,
+  JsonBool,
+  JsonNumber,
+  JsonArray,
+  JsonObject,
+  serialize_json,
+  json_string,
+  json_kv,
+  json_object
+}
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject
+}
+import std.types { String, NonEmptyStr, GitRef, Int }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_eq_structural,
+}
+data git_diff_change_window_note: String = "Git realization of an exact affected-set comparison window. Producers observe merge-base(head, target_generation) in a Git worktree and persist a head- and window-identity-addressed receipt; consumers (gunbc.diff_baseline, floor_diff_observe) read the path named by GUNBC_DIFF_WINDOW_PATH. This module is Git-specific — other SCM realizations carry their own native receipts beneath a future compatibility envelope."
+
+data gunbc_diff_window_path_env: NonEmptyStr = "GUNBC_DIFF_WINDOW_PATH"
+
+data git_diff_window_schema: String = "gunbc-git-diff-window/v2"
+
+data git_diff_window_absent_identity_label: String = "git-diff-window-absent"
+
+data git_diff_window_target_member: String = "target_ref"
+data git_diff_window_target_generation_member: String = "target_generation"
+data git_diff_window_base_member: String = "base_object_id"
+data git_diff_window_head_member: String = "head_object_id"
+data git_diff_window_identity_member: String = "window_identity"
+data git_diff_window_relation_member: String = "relation"
+data git_diff_window_relation_observed: String = "observed_merge_base"
+
+type GitObservedMergeBase {}
+
+type GitExactDiffWindow {
+  target: GitRef,
+  target_generation: GitObjectId,
+  base: GitObjectId,
+  head: GitObjectId,
+  relation: GitObservedMergeBase,
+  window_identity: Fnv1a64Structural,
+}
+
+type GitDiffWindowObservation
+  = GitDiffWindowObserved { window: GitExactDiffWindow }
+  | GitDiffWindowMalformed { detail: String }
+  | GitDiffWindowReadRefused { path: String, cause: String }
+
+type GitMergeBaseObservation
+  = GitMergeBaseObserved {
+      target: GitRef,
+      target_generation: GitObjectId,
+      base: GitObjectId,
+      head: GitObjectId,
+    }
+  | GitMergeBaseProgramUnavailable { program: String, reason: String }
+  | GitMergeBaseExecutionFailed {
+      program: String,
+      exit_code: Int,
+      stdout: String,
+      stderr: String,
+    }
+  | GitMergeBaseOutputMalformed { stdout: String }
+
+type GitTargetGenerationObservation
+  = GitTargetGenerationObserved { generation: GitObjectId }
+  | GitTargetGenerationProgramUnavailable { program: String, reason: String }
+  | GitTargetGenerationExecutionFailed {
+      program: String,
+      exit_code: Int,
+      stdout: String,
+      stderr: String,
+    }
+  | GitTargetGenerationOutputMalformed { stdout: String }
+
+type ChangeWindowPreparationRefusal
+  = ChangeWindowMergeBaseRefused { observation: GitMergeBaseObservation }
+  | ChangeWindowTargetGenerationRefused { observation: GitTargetGenerationObservation }
+  | ChangeWindowHeadObjectIdRefused { head_hex: String }
+  | ChangeWindowPersistenceRefused { path: String, cause: String }
+
+type GitDiffWindowPrepareOutcome
+  = GitDiffWindowPrepared { path: String, window: GitExactDiffWindow }
+  | GitDiffWindowPrepareRefused { cause: ChangeWindowPreparationRefusal }
+
+fn git_diff_window_required_string(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonString { value: raw } =>
+          let line = trim(raw)
+          if line == "" { none } else { Present { value: line } }
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
+      }
+  }
+}
+
+fn git_diff_window_git_object_id_from_member(doc: JsonValue, key: String) -> GitObjectId? {
+  match git_diff_window_required_string(doc: doc, key: key) {
+    Absent => none
+    Present { value: hex } => git_object_id_from_untagged_hex(hex: hex)
+  }
+}
+
+fn git_diff_window_identity_of(
+  target: GitRef,
+  target_generation: GitObjectId,
+  base: GitObjectId,
+  head: GitObjectId,
+) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_combine_structural(
+      left: content_hash_combine_structural(
+        left: content_hash_atom(value: target as NonEmptyStr),
+        right: content_hash_atom(
+          value: git_object_id_wire_hex(oid: target_generation) as NonEmptyStr
+        ),
+      ),
+      right: content_hash_combine_structural(
+        left: content_hash_atom(value: git_object_id_wire_hex(oid: base) as NonEmptyStr),
+        right: content_hash_atom(value: git_object_id_wire_hex(oid: head) as NonEmptyStr),
+      ),
+    ),
+    right: content_hash_atom(value: git_diff_window_relation_observed as NonEmptyStr),
+  )
+}
+
+fn git_diff_window_absent_identity() -> Fnv1a64Structural {
+  content_hash_atom(value: git_diff_window_absent_identity_label as NonEmptyStr)
+}
+
+fn git_diff_window_identity_hex(identity: Fnv1a64Structural) -> String {
+  identity.digest as String
+}
+
+fn git_diff_window_identities_equal(
+  left: Fnv1a64Structural,
+  right: Fnv1a64Structural,
+) -> Bool {
+  content_hash_eq_structural(left: left, right: right)
+}
+
+fn git_exact_diff_window_for_verification(
+  target: GitRef,
+  target_generation: GitObjectId,
+  base: GitObjectId,
+  head: GitObjectId,
+) -> GitExactDiffWindow {
+  let identity = git_diff_window_identity_of(
+    target: target,
+    target_generation: target_generation,
+    base: base,
+    head: head,
+  )
+  GitExactDiffWindow {
+    target: target,
+    target_generation: target_generation,
+    base: base,
+    head: head,
+    relation: GitObservedMergeBase {},
+    window_identity: identity,
+  }
+}
+
+fn git_diff_window_json(window: GitExactDiffWindow) -> String {
+  serialize_json(
+    v: json_object(
+      members: [
+        json_kv(key: "schema", value: json_string(s: git_diff_window_schema)),
+        json_kv(key: git_diff_window_target_member, value: json_string(s: window.target as String)),
+        json_kv(
+          key: git_diff_window_target_generation_member,
+          value: json_string(s: git_object_id_wire_hex(oid: window.target_generation) as String)
+        ),
+        json_kv(
+          key: git_diff_window_base_member,
+          value: json_string(s: git_object_id_wire_hex(oid: window.base) as String)
+        ),
+        json_kv(
+          key: git_diff_window_head_member,
+          value: json_string(s: git_object_id_wire_hex(oid: window.head) as String)
+        ),
+        json_kv(
+          key: git_diff_window_identity_member,
+          value: json_string(s: git_diff_window_identity_hex(identity: window.window_identity))
+        ),
+        json_kv(
+          key: git_diff_window_relation_member,
+          value: json_string(s: git_diff_window_relation_observed)
+        ),
+      ]
+    )
+  )
+}
+
+fn git_diff_window_from_json(text: String) -> GitDiffWindowObservation {
+  match parse_json(s: text) {
+    Absent =>
+      GitDiffWindowMalformed { detail: "git diff window payload is not valid JSON" }
+    Present { value: doc } =>
+      match git_diff_window_required_string(doc: doc, key: "schema") {
+        Absent =>
+          GitDiffWindowMalformed { detail: "git diff window payload missing schema member" }
+        Present { value: schema } =>
+          if schema != git_diff_window_schema {
+            GitDiffWindowMalformed {
+              detail: concat("git diff window schema must be ", git_diff_window_schema)
+            }
+          } else {
+            match git_diff_window_required_string(doc: doc, key: git_diff_window_target_member) {
+              Absent =>
+                GitDiffWindowMalformed { detail: "git diff window target_ref is missing" }
+              Present { value: target } =>
+                match git_diff_window_git_object_id_from_member(
+                  doc: doc,
+                  key: git_diff_window_target_generation_member
+                ) {
+                  Absent =>
+                    GitDiffWindowMalformed {
+                      detail: "git diff window target_generation is missing or not a valid git object id"
+                    }
+                  Present { value: target_generation } =>
+                    match git_diff_window_git_object_id_from_member(
+                      doc: doc,
+                      key: git_diff_window_base_member
+                    ) {
+                      Absent =>
+                        GitDiffWindowMalformed {
+                          detail: "git diff window base_object_id is missing or not a valid git object id"
+                        }
+                      Present { value: base } =>
+                        match git_diff_window_git_object_id_from_member(
+                          doc: doc,
+                          key: git_diff_window_head_member
+                        ) {
+                          Absent =>
+                            GitDiffWindowMalformed {
+                              detail: "git diff window head_object_id is missing or not a valid git object id"
+                            }
+                          Present { value: head } =>
+                            match git_diff_window_required_string(
+                              doc: doc,
+                              key: git_diff_window_relation_member
+                            ) {
+                              Absent =>
+                                GitDiffWindowMalformed {
+                                  detail: "git diff window relation must be observed_merge_base"
+                                }
+                              Present { value: relation } =>
+                                if relation != git_diff_window_relation_observed {
+                                  GitDiffWindowMalformed {
+                                    detail: "git diff window relation must be observed_merge_base"
+                                  }
+                                } else if git_object_id_wire_hex(oid: base) == git_object_id_wire_hex(oid: head) {
+                                  GitDiffWindowMalformed {
+                                    detail: "git diff window base_object_id equals head_object_id — self-compare refused"
+                                  }
+                                } else {
+                                  let derived = git_diff_window_identity_of(
+                                    target: target as GitRef,
+                                    target_generation: target_generation,
+                                    base: base,
+                                    head: head,
+                                  )
+                                  match git_diff_window_required_string(
+                                    doc: doc,
+                                    key: git_diff_window_identity_member
+                                  ) {
+                                    Absent =>
+                                      GitDiffWindowMalformed {
+                                        detail: "git diff window window_identity is missing"
+                                      }
+                                    Present { value: identity_hex } =>
+                                      if git_diff_window_identity_hex(identity: derived) != identity_hex {
+                                        GitDiffWindowMalformed {
+                                          detail: "git diff window window_identity does not match derived identity"
+                                        }
+                                      } else {
+                                        GitDiffWindowObserved {
+                                          window: GitExactDiffWindow {
+                                            target: target as GitRef,
+                                            target_generation: target_generation,
+                                            base: base,
+                                            head: head,
+                                            relation: GitObservedMergeBase {},
+                                            window_identity: derived,
+                                          }
+                                        }
+                                      }
+                                  }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn git_diff_window_from_path(path: String) -> GitDiffWindowObservation {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    git_diff_window_from_json(text: read.content)
+  } else {
+    GitDiffWindowReadRefused {
+      path: path,
+      cause: read.error
+    }
+  }
+}
+
+fn git_diff_window_env_assignment(path: String) -> String {
+  concat(
+    concat(gunbc_diff_window_path_env as String, "="),
+    path
+  )
+}

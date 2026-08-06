@@ -19,6 +19,7 @@ import std.measure {
   watt,
   bit_width,
   byte_size,
+  ByteSize,
   gibibyte,
   gibibyte_to_byte_size,
   hertz,
@@ -87,7 +88,7 @@ data dgx_spark_network_ports: List<SystemNetworkPort> = [
   SystemNetworkPort { medium: ShortRangeWireless, product_name: "Bluetooth 5.4", bandwidth: none },
 ]
 
-fn dgx_spark_catalog_row(storage_capacity_bytes: Int) -> IntegratedComputeSystemCatalogRow {
+fn dgx_spark_catalog_row(storage_capacity: ByteSize) -> IntegratedComputeSystemCatalogRow {
   IntegratedComputeSystemCatalogRow {
     vendor: nvidia,
     model: "NVIDIA DGX Spark",
@@ -103,7 +104,7 @@ fn dgx_spark_catalog_row(storage_capacity_bytes: Int) -> IntegratedComputeSystem
     memory_bus_width: bit_width(count: 256),
     memory_data_rate: hertz(count: 4266000000),
     memory_bandwidth: nvidia_gb10_gpu_catalog.memory_bandwidth,
-    storage_capacity: byte_size(count: storage_capacity_bytes),
+    storage_capacity: storage_capacity,
     network_ports: dgx_spark_network_ports,
     external_power_supply: watt(count: 240),
     soc_thermal_design_power: watt(count: 140),
@@ -111,9 +112,9 @@ fn dgx_spark_catalog_row(storage_capacity_bytes: Int) -> IntegratedComputeSystem
 }
 
 data nvidia_dgx_spark_1tb_catalog: IntegratedComputeSystemCatalogRow = dgx_spark_catalog_row(
-  storage_capacity_bytes: 1000000000000,
+  storage_capacity: byte_size(count: 1000000000000),
 )
 
 data nvidia_dgx_spark_4tb_catalog: IntegratedComputeSystemCatalogRow = dgx_spark_catalog_row(
-  storage_capacity_bytes: 4000000000000,
+  storage_capacity: byte_size(count: 4000000000000),
 )
