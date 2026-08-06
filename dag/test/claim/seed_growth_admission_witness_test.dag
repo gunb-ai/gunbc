@@ -64,7 +64,7 @@ test fn forward_freeze_policy_requires_item_enumeration() -> Bool {
     && string_contains(s: seed_growth_forward_freeze_policy_note, pattern: "no netting")
 }
 
-test fn seed_growth_admission_roster_gate_holds() -> Bool {
+test fn witness_seed_growth_admission_roster_gate_holds() -> Bool {
   seed_growth_admission_roster_gate_holds()
 }
 
