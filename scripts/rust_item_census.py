@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """G0: exact Rust-item census for seed-growth admission lane.
 
+SCAFFOLD — see gunbc.seed_growth_admission seed_growth_g0_census_host_scaffold.
+Dissolves when rust_item_host_observation modeled producer lands.
+
 Enumerates every top-level Rust item in git-tracked .rs files.
 Primary denominator is item identity; LOC is secondary metadata.
 

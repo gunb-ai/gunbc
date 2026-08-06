@@ -95,4 +95,6 @@ fn rust_item_declaration_ref_key(ref: RustItemDeclarationRef) -> String {
   }
 }
 
+data rust_item_host_observation_scaffold_note: String = "MODELED G0 PRODUCER (not yet implemented). Replaces scripts/rust_item_census.py: merge-base and HEAD populations of RustItemIdentity rows parsed through dag/extdeps/languages/rust grammar authority (or an enrolled witness realization), not regex beside the grammar. Dissolve-on: producer lands and enrolls; Python script deleted; gunbc.seed_growth_admission seed_growth_g0_census_host_scaffold retires."
+
 data rust_item_identity_extension_proposal_note: String = "PROPOSED std.decl_ref EXTENSION (report before G1 lands). Add ImplMethod { impl_subject: NonEmptyStr, method_name: NonEmptyStr } to DeclField. Rationale: the seventh Cargo-manifest item is impl std::fmt::Display for Stage0CargoBinManifestParseRefusal — an impl-block method, not a field of the enum. MIGRATION: existing DeclarationRef rows remain valid (WholeDeclaration / NamedField unchanged). New seed-growth justifications cite impl methods via ImplMethod. Dissolve-on: when std.decl_ref adopts ImplMethod, rust_item_identity.RustItemDeclField deletes in favor of the std type."
