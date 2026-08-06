@@ -1,0 +1,191 @@
+module v2.lens.cost.expr
+
+import std.decl_ref { DeclarationRef }
+import v2.lens.cost {
+  ConstantCost,
+  LinearCost,
+  LogCost,
+  SizeVariable,
+  SymbolicCost,
+  UnknownCost,
+  constant_cost,
+  linear_in_node,
+  symbolic_max,
+  symbolic_product,
+  symbolic_sequential,
+  unit_cost,
+  zero_cost
+}
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Locus,
+  Textual,
+  Unavailable,
+  WholeFile,
+  textual_whole_file_locus
+}
+import v2.std.nat { Nat, Succ, Zero }
+import v2.std.node { Node }
+
+data cost_expr_authority_note: String = "C1 (v2-complexity-capability-parity): SizeExpr and CostExpr are the single richer expression authority in v2.lens.cost. SymbolicCost is their normalized asymptotic projection via normalize_cost_expr_to_symbolic — one authority with two levels of detail, never two competing cost types. Grounded identities per design note c1-cost-expr-authority-design: SizeOf/SizeLength carry SizeVariable (interim until ValueIdentity lands); CostEffect replaces CostExtern; CostRefused carries a closed CostExprRefusalCause coproduct instead of free-text CostUnknown. The blocking cost_lens fold over SymbolicCost is unchanged in C1."
+
+type SizeExpr
+  = SizeConst { value: Nat }
+  | SizeOf { variable: SizeVariable }
+  | SizeLength { of: SizeVariable }
+  | SizeAdd { left: SizeExpr, right: SizeExpr }
+  | SizeMax { left: SizeExpr, right: SizeExpr }
+
+type CostExprRefusalCause
+  = UnboundedIteration { at: Locus }
+  | UngroundedLogArgument { argument: SizeExpr, at: Locus }
+  | UnmodeledEffect { operation: DeclarationRef, at: Locus }
+  | UnresolvedSize { variable: SizeVariable, at: Locus }
+  | EffectModelAbsent { operation: DeclarationRef, at: Locus }
+
+type CostExpr
+  = CostConst { value: Nat }
+  | CostAdd { left: CostExpr, right: CostExpr }
+  | CostMul { left: CostExpr, right: CostExpr }
+  | CostMax { left: CostExpr, right: CostExpr }
+  | CostSum { binder: SizeVariable, upper: SizeExpr, body: CostExpr }
+  | CostLog { base: Nat, argument: SizeExpr }
+  | CostEffect { operation: DeclarationRef }
+  | CostRefused { cause: CostExprRefusalCause }
+
+fn size_const(value: Nat) -> SizeExpr {
+  SizeConst { value: value }
+}
+
+fn size_of(variable: SizeVariable) -> SizeExpr {
+  SizeOf { variable: variable }
+}
+
+fn size_length(of: SizeVariable) -> SizeExpr {
+  SizeLength { of: of }
+}
+
+fn cost_const(value: Nat) -> CostExpr {
+  CostConst { value: value }
+}
+
+fn cost_expr_authority_locus() -> Locus {
+  textual_whole_file_locus(file: ^cost_expr_authority_virtual_file)
+}
+
+fn cost_expr_refusal_diagnostic(cause: CostExprRefusalCause) -> Diagnostic {
+  match cause {
+    UnboundedIteration { at: loc } =>
+      Diagnostic {
+        reason: ^cost_expr_refusal_unbounded_iteration,
+        at: loc,
+        correction: Unavailable { reason: AmbiguousIntent }
+      }
+    UngroundedLogArgument { argument: _, at: loc } =>
+      Diagnostic {
+        reason: ^cost_expr_refusal_ungrounded_log_argument,
+        at: loc,
+        correction: Unavailable { reason: AmbiguousIntent }
+      }
+    UnmodeledEffect { operation: _, at: loc } =>
+      Diagnostic {
+        reason: ^cost_expr_refusal_unmodeled_effect,
+        at: loc,
+        correction: Unavailable { reason: AmbiguousIntent }
+      }
+    UnresolvedSize { variable: _, at: loc } =>
+      Diagnostic {
+        reason: ^cost_expr_refusal_unresolved_size,
+        at: loc,
+        correction: Unavailable { reason: AmbiguousIntent }
+      }
+    EffectModelAbsent { operation: _, at: loc } =>
+      Diagnostic {
+        reason: ^cost_expr_refusal_effect_model_absent,
+        at: loc,
+        correction: Unavailable { reason: AmbiguousIntent }
+      }
+  }
+}
+
+data cost_expr_refusal_cause_variant_count_debt_note: String = "Dissolve-on: substrate-derived coproduct cardinality replaces any hand-maintained variant count. Today enforcement is the exhaustive match in cost_expr_refusal_diagnostic — adding a CostExprRefusalCause arm without updating that match is a compile refusal, not a runtime count witness."
+
+fn cost_loop_expr(binder: SizeVariable, iterations: SizeExpr, body: CostExpr) -> CostExpr {
+  match body {
+    CostConst { value: Zero } => CostConst { value: Zero }
+    _ => CostSum { binder: binder, upper: iterations, body: body }
+  }
+}
+
+fn normalize_size_expr_to_bound(size: SizeExpr) -> SymbolicCost {
+  match size {
+    SizeConst { value: Zero } => zero_cost()
+    SizeConst { value: Succ { prev: Zero } } => unit_cost()
+    SizeConst { value: _ } => unit_cost()
+    SizeOf { variable: v } => LinearCost { variable: v }
+    SizeLength { of: v } => LinearCost { variable: v }
+    SizeAdd { left: l, right: r } =>
+      symbolic_sequential(
+        a: normalize_size_expr_to_bound(size: l),
+        b: normalize_size_expr_to_bound(size: r)
+      )
+    SizeMax { left: l, right: r } =>
+      symbolic_max(
+        a: normalize_size_expr_to_bound(size: l),
+        b: normalize_size_expr_to_bound(size: r)
+      )
+  }
+}
+
+fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> SymbolicCost {
+  match expr {
+    CostConst { value: Zero } => zero_cost()
+    CostConst { value: Succ { prev: Zero } } => unit_cost()
+    CostConst { value: v } => constant_cost(value: v)
+    CostAdd { left: l, right: r } =>
+      symbolic_sequential(
+        a: normalize_cost_expr_to_symbolic(expr: l),
+        b: normalize_cost_expr_to_symbolic(expr: r)
+      )
+    CostMul { left: l, right: r } =>
+      symbolic_product(
+        a: normalize_cost_expr_to_symbolic(expr: l),
+        b: normalize_cost_expr_to_symbolic(expr: r)
+      )
+    CostMax { left: l, right: r } =>
+      symbolic_max(
+        a: normalize_cost_expr_to_symbolic(expr: l),
+        b: normalize_cost_expr_to_symbolic(expr: r)
+      )
+    CostSum { binder: _, upper: u, body: bd } =>
+      symbolic_product(
+        a: normalize_size_expr_to_bound(size: u),
+        b: normalize_cost_expr_to_symbolic(expr: bd)
+      )
+    CostLog { base: _, argument: a } =>
+      match a {
+        SizeOf { variable: v } => LogCost { variable: v }
+        _ =>
+          UnknownCost {
+            diagnostic: cost_expr_refusal_diagnostic(
+              cause: UngroundedLogArgument {
+                argument: a,
+                at: cost_expr_authority_locus()
+              }
+            )
+          }
+      }
+    CostEffect { operation: op } =>
+      UnknownCost {
+        diagnostic: cost_expr_refusal_diagnostic(
+          cause: UnmodeledEffect {
+            operation: op,
+            at: cost_expr_authority_locus()
+          }
+        )
+      }
+    CostRefused { cause: c } =>
+      UnknownCost { diagnostic: cost_expr_refusal_diagnostic(cause: c) }
+  }
+}
