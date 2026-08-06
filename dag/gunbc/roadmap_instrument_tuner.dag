@@ -36,7 +36,7 @@ import gunbc.roadmap_instrument_sandbox {
 import gunbc.roadmap_program_view { V1DeletionProgramView, RemainingShape }
 import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_line_key, V1FinishLineSpec }
 
-data instrument_tuner_note: String = "THE OPERABLE V1-DELETION TUNER at /sandbox/instrument/tuner — the declared follow-on to the static study. The study at /sandbox/instrument renders one server-side camera state with no client program; this page loads the modeled client asset from gunbc.roadmap_component so the camera persists in localStorage, finish-line selection follows the production roadmap's parity rule, wheel and arrow keys cross exactly one depth detent, and the depth/mode controls actually drive the pre-rendered reading rows. The world is still V0's live derived program view; only the camera is local instrument state."
+data instrument_tuner_note: String = "THE OPERABLE V1-DELETION TUNER at /sandbox/instrument/tuner — the declared follow-on to the static study. The study at /sandbox/instrument renders one server-side camera state with no client program; this page loads the modeled client asset from gunbc.roadmap_component so the camera persists in localStorage, finish-line selection follows the production roadmap's parity rule, wheel and arrow keys admit one detent per admitted threshold (distant depth labels decompose into adjacent steps), and the depth/mode controls actually drive the pre-rendered reading rows. The world is still V0's live derived program view; only the camera is local instrument state."
 
 fn cls(name: String) -> SelectorSubject {
   ClassSelector { name: name }
@@ -234,7 +234,7 @@ fn subject_row(spec: V1FinishLineSpec) -> Fragment {
 fn controls_section() -> Fragment {
   el("section", [
     el("h2", [ txt("camera controls") ]),
-    note(s: "Wheel and arrow keys cross exactly one detent. Depth buttons traverse each intermediate detent toward the label — no direct jumps. Mode buttons switch reading projection."),
+    note(s: "Wheel and arrow keys admit one detent per threshold crossing; distant depth labels decompose into adjacent steps. Mode buttons switch reading projection."),
     el_class("div", instrument_row_class, map(instrument_user_depths(), d => depth_button(d: d))),
     el_class("div", instrument_row_class, map(program_modes(), m => mode_button(m: m))),
   ])

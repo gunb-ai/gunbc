@@ -2974,7 +2974,7 @@ fn sandbox_client_js_source() -> String {
 
 data instrument_tuner_asset_path: String = "/assets/instrument-tuner.js"
 
-data instrument_tuner_client_note: String = "THE OPERABLE HALF OF THE V1-DELETION INSTRUMENT (declared follow-on to gunbc.roadmap_instrument_sandbox exemplar_note). Modeled as a TsProgram via serialize_typescript_program — persistent camera in localStorage, selection parity with row_selection_bind_statements, thresholded wheel integrator and seek-depth buttons that traverse each intermediate detent, detent click only when depth actually changes, MVP user depths (program/outcome/front) on controls. Never writes a program fact."
+data instrument_tuner_client_note: String = "THE OPERABLE HALF OF THE V1-DELETION INSTRUMENT (declared follow-on to gunbc.roadmap_instrument_sandbox exemplar_note). Modeled as a TsProgram via serialize_typescript_program — persistent camera in localStorage, selection parity with row_selection_bind_statements, thresholded wheel integrator (one detent per admitted threshold) and seek-depth buttons that decompose distant targets into adjacent steps, detent click only when depth actually changes, MVP user depths (program/outcome/front) on controls. Never writes a program fact."
 
 data instrument_subject_class: String = "instrument-subject"
 data instrument_subject_selected_class: String = "instrument-subject-selected"
@@ -3765,7 +3765,7 @@ fn instrument_tuner_client_program() -> TsProgram {
     ts_nocheck: false,
     header_lines: [
       "gunbc v1-deletion instrument tuner — emitted from gunbc.roadmap_component.instrument_tuner_client_program",
-      "Persistent camera, selection parity, one-detent depth movement, working controls.",
+      "Persistent camera, selection parity, one detent per admitted threshold, working controls.",
     ],
     statements: concat(
       sound_preamble_statements(),
