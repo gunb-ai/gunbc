@@ -1,0 +1,312 @@
+module gunbc.design.motion_binding
+
+import std.types { String, Bool, Int, List, Milliseconds }
+import std.decl_ref { DeclarationRef }
+import extdeps.w3c.device_orientation_and_motion {
+  PermissionState, PermissionGranted, PermissionDenied, PermissionPrompt,
+  permission_state_wire,
+}
+import extdeps.w3c.generic_sensor {
+  SensorAccessOutcome, sensor_access_outcome_key,
+}
+import gunbc.design.instrument_physical {
+  SensorAvailability, SensorPresent, SensorAbsent, SensorPermissionNotRequested,
+  SensorPermissionDenied, SensorAvailabilityUnknown, sensor_availability_key,
+}
+
+data motion_binding_note: String = "AN OBSERVATION IS A RECEIPT IN THE OBSERVING LAYER, NEVER A PROPERTY OF THE OBSERVED UPSTREAM (DESIGN §3 external upstream decomposition). The two W3C contracts live in extdeps.w3c.*; what a particular browser build on a particular machine did with those contracts is produced HERE, by this repository, and is a fact about an execution rather than about the standard. This module carries the axes independently because they fail independently: a frame can be embedded, a policy can block, a permission can be denied, an interface can be exposed but never started, a sensor can activate and never read, and events can arrive carrying nothing. Every one of those is a different remedy, so none of them may collapse into a single sensor_available flag.
+
+WHY THIS CARRIER EXISTS AT ALL, stated as the receipt of a real failure rather than as a preference: a capability probe run on 2026-08-05 reported five motion interfaces exposed, a secure context, no permission prompt, and zero events, and that was written up as though it established that the host had no usable sensor. It established nothing of the kind. The probe ran inside an embedding context whose Permissions Policy it never read, listened only for devicemotion events, never constructed or started any of the three Generic Sensor interfaces it had just finished enumerating, recorded no observation window, and copied frozen User-Agent literals as though they were host identity. Its honest derived state was MotionReachabilityUnresolved. Every axis below exists because that probe conflated it with another one."
+
+data execution_subject_note: String = "The subject is a browser PRODUCT, named by a reference to that product's own authority module, never by a string. Chrome and Safari are distinct execution subjects and a result from one is never a fact about the other, nor about 'Mac browsers' as a class — so adding a second subject is a new row pointing at a new extdeps module, and edits nothing here (DESIGN §3: adding a fourth product cannot edit the kernel). A product module is authored when there is an actual observation to attribute to it; an unobserved product is a coverage obligation in this layer, not an Unobserved row authored inside an upstream."
+
+type BrowserProductRef {
+  declaration: DeclarationRef
+}
+
+data reduced_identity_note: String = "REPORTED IS NOT OBSERVED, AND THE USER-AGENT STRING IS THE STANDING EXAMPLE. Chrome freezes 'Mac OS X 10_15_7' and 'MacIntel' as literal values under User-Agent reduction, and reports a major-version-only build number, so reading them as the machine's real operating system, architecture or build is reading a constant as a measurement. IdentityReducedByPolicy keeps the reported bytes while refusing to call them identity; resolving it needs UA Client Hints where available, or a host-side observation, and until one of those runs the exact host stays honestly unresolved."
+
+type ObservedIdentity
+  = IdentityObserved { value: String }
+  | IdentityReducedByPolicy { reported: String }
+  | IdentityUnobserved
+
+fn identity_is_resolved(i: ObservedIdentity) -> Bool {
+  match i {
+    IdentityObserved { value } => true
+    IdentityReducedByPolicy { reported } => false
+    IdentityUnobserved => false
+  }
+}
+
+fn identity_display(i: ObservedIdentity) -> String {
+  match i {
+    IdentityObserved { value } => value
+    IdentityReducedByPolicy { reported } => concat("reduced: ", reported)
+    IdentityUnobserved => "unobserved"
+  }
+}
+
+type MotionExecutionSubject {
+  product: BrowserProductRef
+  product_build: ObservedIdentity
+  host_platform: ObservedIdentity
+  host_os_version: ObservedIdentity
+}
+
+fn subject_identity_is_exact(s: MotionExecutionSubject) -> Bool {
+  identity_is_resolved(i: s.product_build)
+    && identity_is_resolved(i: s.host_platform)
+    && identity_is_resolved(i: s.host_os_version)
+}
+
+data browsing_context_note: String = "THE AXIS THE DISCREDITED PROBE NEVER READ, AND THE ONE MOST LIKELY TO HAVE EXPLAINED ITS RESULT. Sensor features are policy-controlled, and an embedded document is not granted them merely because the user allowed the top-level site: a parent must delegate the feature explicitly, and a browser's per-site 'motion sensors: allow' setting does not override a parent document's Permissions Policy. So a zero-event reading taken inside an embed is uninterpretable until the context is known, which is why this axis is recorded before any conclusion is drawn and why the decisive probe must be served top-level."
+
+type BrowsingContextPosition
+  = TopLevelContext
+  | EmbeddedContext
+  | BrowsingContextUnobserved
+
+type SecureContextState
+  = SecureContextYes
+  | SecureContextNo
+  | SecureContextUnobserved
+
+type DocumentVisibility
+  = DocumentVisible
+  | DocumentHidden
+  | DocumentVisibilityUnobserved
+
+type DocumentFocus
+  = DocumentFocused
+  | DocumentUnfocused
+  | DocumentFocusUnobserved
+
+type InterfaceExposure
+  = InterfaceExposed
+  | InterfaceNotExposed
+  | InterfaceExposureUnobserved
+
+data policy_admission_note: String = "Permissions Policy admission is read per feature, because the devicemotion dispatch precondition names TWO of them and either one can be the reason for silence. PolicyAdmissionUnobserved is the state the discredited probe was actually in and is never a synonym for allowed."
+
+type PolicyAdmission
+  = PolicyAllowsFeature
+  | PolicyBlocksFeature
+  | PolicyAdmissionUnobserved
+
+data permission_observation_note: String = "The absence of the spec's requestPermission() method is a fact about the ENGINE, not about whether permission is required. An engine may apply its own per-site sensor permission without ever prompting and without implementing the standard's asking route, so PermissionMethodAbsent records that the standard route was unavailable and leaves the actual permission state to be observed some other way — it does not mean granted."
+
+type PermissionObservation
+  = PermissionObservedAs { state: PermissionState }
+  | PermissionMethodAbsent
+  | PermissionObservationUnobserved
+
+fn permission_observation_key(p: PermissionObservation) -> String {
+  match p {
+    PermissionObservedAs { state } => permission_state_wire(s: state)
+    PermissionMethodAbsent => "request-permission-method-absent"
+    PermissionObservationUnobserved => "permission-unobserved"
+  }
+}
+
+data stream_state_note: String = "THE OUTCOME AXIS, AND EVERY ARM CARRIES WHAT MAKES IT CHECKABLE. A duration accompanies every silence, because zero events in an unrecorded window is not a bounded claim and cannot be compared against a later run. A count accompanies every arrival. Hollow and value-bearing events are separate arms because the WebIDL declares the acceleration fields nullable at both the struct and the axis grain, so an event that arrived carrying nothing is a genuinely different observation from one that carried a reading — and from no event at all. StreamUnobserved is the state of a path that was never exercised, which is where the three Generic Sensor interfaces sat in the discredited probe: enumerated, never started."
+
+type MotionStreamState
+  = StreamInterfaceNotExposed
+  | StreamPolicyBlocked
+  | StreamPermissionDenied
+  | StreamConnectionRefused { error_name: String }
+  | StreamActivatedNoReading { window_ms: Milliseconds }
+  | StreamNoEventsObserved { window_ms: Milliseconds }
+  | StreamHollowEventsObserved { count: Int, window_ms: Milliseconds }
+  | StreamReadingsObserved { count: Int, peak_milli_m_per_s2: Int, sample_interval_ms: Milliseconds }
+  | StreamUnobserved
+
+fn stream_state_key(s: MotionStreamState) -> String {
+  match s {
+    StreamInterfaceNotExposed => "interface-not-exposed"
+    StreamPolicyBlocked => "policy-blocked"
+    StreamPermissionDenied => "permission-denied"
+    StreamConnectionRefused { error_name } => "connection-refused"
+    StreamActivatedNoReading { window_ms } => "activated-no-reading"
+    StreamNoEventsObserved { window_ms } => "no-events-observed"
+    StreamHollowEventsObserved { count, window_ms } => "hollow-events-observed"
+    StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } => "readings-observed"
+    StreamUnobserved => "unobserved"
+  }
+}
+
+fn stream_delivered_a_value(s: MotionStreamState) -> Bool {
+  match s {
+    StreamInterfaceNotExposed => false
+    StreamPolicyBlocked => false
+    StreamPermissionDenied => false
+    StreamConnectionRefused { error_name } => false
+    StreamActivatedNoReading { window_ms } => false
+    StreamNoEventsObserved { window_ms } => false
+    StreamHollowEventsObserved { count, window_ms } => false
+    StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } => true
+    StreamUnobserved => false
+  }
+}
+
+data observation_window_note: String = "An observation with no window is not a measurement of silence, so the window is a field of the observation rather than an optional annotation on it. A window of zero means nothing was watched, which is a different claim from a window that elapsed and stayed quiet."
+
+type MotionApi
+  = DeviceMotionEventApi
+  | GenericSensorApi
+
+fn motion_api_key(a: MotionApi) -> String {
+  match a {
+    DeviceMotionEventApi => "device-motion-event"
+    GenericSensorApi => "generic-sensor"
+  }
+}
+
+type MotionBindingObservation {
+  subject: MotionExecutionSubject
+  api: MotionApi
+  browsing_context: BrowsingContextPosition
+  secure_context: SecureContextState
+  visibility: DocumentVisibility
+  focus: DocumentFocus
+  interface_exposure: InterfaceExposure
+  accelerometer_policy: PolicyAdmission
+  gyroscope_policy: PolicyAdmission
+  permission: PermissionObservation
+  stream: MotionStreamState
+  observation_window_ms: Milliseconds
+}
+
+data reachability_note: String = "REACHABILITY IS DERIVED, AND ITS DEFAULT IS UNRESOLVED RATHER THAN UNREACHABLE. Only an observed reading makes motion reachable. Only an EXACT observed obstacle makes it unreachable, and the obstacle is carried so the remedy is named — a blocked policy is fixed by delegating a feature, a denied permission by asking, an unexposed interface by a different engine, a refused connection by a different machine or backend. Everything else is unresolved: not a soft no, but the absence of a verdict. The distinction is the whole point of the carrier, because the failure that produced it was exactly a probe reporting unresolved as absent."
+
+type MotionReachability
+  = MotionReachable { peak_milli_m_per_s2: Int }
+  | MotionUnreachable { obstacle: String }
+  | MotionReachabilityUnresolved { pending: String }
+
+fn motion_reachability_key(r: MotionReachability) -> String {
+  match r {
+    MotionReachable { peak_milli_m_per_s2 } => "reachable"
+    MotionUnreachable { obstacle } => "unreachable"
+    MotionReachabilityUnresolved { pending } => "unresolved"
+  }
+}
+
+fn derive_reachability(o: MotionBindingObservation) -> MotionReachability {
+  match o.stream {
+    StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } =>
+      MotionReachable { peak_milli_m_per_s2: peak_milli_m_per_s2 }
+    StreamInterfaceNotExposed => MotionUnreachable { obstacle: "interface-not-exposed" }
+    StreamPolicyBlocked => MotionUnreachable { obstacle: "policy-blocked" }
+    StreamPermissionDenied => MotionUnreachable { obstacle: "permission-denied" }
+    StreamConnectionRefused { error_name } => MotionUnreachable { obstacle: error_name }
+    StreamActivatedNoReading { window_ms } =>
+      MotionReachabilityUnresolved { pending: "activated but no reading within the observation window" }
+    StreamNoEventsObserved { window_ms } =>
+      MotionReachabilityUnresolved { pending: "no events within the observation window; hollow emission is advisory, so silence names no cause" }
+    StreamHollowEventsObserved { count, window_ms } =>
+      MotionReachabilityUnresolved { pending: "events arrived carrying null motion fields; the spec's advisory hint for a never-providing implementation, which is not a determination" }
+    StreamUnobserved =>
+      MotionReachabilityUnresolved { pending: "this path was never exercised" }
+  }
+}
+
+data projection_is_deliberately_lossy_note: String = "THE PROJECTION LOSES INFORMATION ON PURPOSE, AND THAT IS WHY THE OBSERVATION IS KEPT BESIDE IT. gunbc.design.instrument_physical's SensorAvailability is a five-state admission input, coarser than the observation above, and it is NOT widened here to match: admission needs to know whether an impulse source may be trusted, and everything that is not an observed reading answers no. So most arms land on SensorAvailabilityUnknown, and that is the honest result of a coarse target rather than a defect in the projection. The exact fact stays in the MotionBindingObservation and is what the receipt panel renders.
+
+TWO PROJECTIONS ARE RULED AND NOT NEGOTIABLE. StreamNoEventsObserved projects to SensorAvailabilityUnknown and NEVER to SensorAbsent (operator ruling, 2026-08-06): silence has at least seven candidate causes and naming one of them is the empty-observation narrow. StreamConnectionRefused likewise projects to Unknown rather than Absent — the spec's NotReadableError says the implementation could not connect, which is a statement about this attempt and not a proof that no hardware exists. Only StreamInterfaceNotExposed reaches SensorAbsent, because an interface that is not on the global object is genuinely not there to be used."
+
+fn project_sensor_availability(o: MotionBindingObservation) -> SensorAvailability {
+  match o.stream {
+    StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } => SensorPresent
+    StreamInterfaceNotExposed => SensorAbsent
+    StreamPermissionDenied => SensorPermissionDenied
+    StreamPolicyBlocked => SensorAvailabilityUnknown
+    StreamConnectionRefused { error_name } => SensorAvailabilityUnknown
+    StreamActivatedNoReading { window_ms } => SensorAvailabilityUnknown
+    StreamNoEventsObserved { window_ms } => SensorAvailabilityUnknown
+    StreamHollowEventsObserved { count, window_ms } => SensorAvailabilityUnknown
+    StreamUnobserved => SensorAvailabilityUnknown
+  }
+}
+
+data unobserved_axis_census_note: String = "How many axes a run left unread, so an observation's own completeness is a number the receipt can show rather than a judgement a reader has to make. A decisive run reads all of them; the discredited probe left five unread and still reached a conclusion."
+
+fn browsing_context_unread(c: BrowsingContextPosition) -> Int {
+  match c {
+    TopLevelContext => 0
+    EmbeddedContext => 0
+    BrowsingContextUnobserved => 1
+  }
+}
+
+fn secure_context_unread(s: SecureContextState) -> Int {
+  match s {
+    SecureContextYes => 0
+    SecureContextNo => 0
+    SecureContextUnobserved => 1
+  }
+}
+
+fn visibility_unread(v: DocumentVisibility) -> Int {
+  match v {
+    DocumentVisible => 0
+    DocumentHidden => 0
+    DocumentVisibilityUnobserved => 1
+  }
+}
+
+fn focus_unread(f: DocumentFocus) -> Int {
+  match f {
+    DocumentFocused => 0
+    DocumentUnfocused => 0
+    DocumentFocusUnobserved => 1
+  }
+}
+
+fn exposure_unread(e: InterfaceExposure) -> Int {
+  match e {
+    InterfaceExposed => 0
+    InterfaceNotExposed => 0
+    InterfaceExposureUnobserved => 1
+  }
+}
+
+fn policy_unread(p: PolicyAdmission) -> Int {
+  match p {
+    PolicyAllowsFeature => 0
+    PolicyBlocksFeature => 0
+    PolicyAdmissionUnobserved => 1
+  }
+}
+
+fn permission_unread(p: PermissionObservation) -> Int {
+  match p {
+    PermissionObservedAs { state } => 0
+    PermissionMethodAbsent => 0
+    PermissionObservationUnobserved => 1
+  }
+}
+
+fn stream_unread(s: MotionStreamState) -> Int {
+  match s {
+    StreamUnobserved => 1
+    _ => 0
+  }
+}
+
+fn unobserved_axis_count(o: MotionBindingObservation) -> Int {
+  browsing_context_unread(c: o.browsing_context) +
+    secure_context_unread(s: o.secure_context) +
+    visibility_unread(v: o.visibility) +
+    focus_unread(f: o.focus) +
+    exposure_unread(e: o.interface_exposure) +
+    policy_unread(p: o.accelerometer_policy) +
+    policy_unread(p: o.gyroscope_policy) +
+    permission_unread(p: o.permission) +
+    stream_unread(s: o.stream)
+}
+
+fn observation_is_decisive(o: MotionBindingObservation) -> Bool {
+  unobserved_axis_count(o: o) == 0 && o.observation_window_ms > 0
+}
