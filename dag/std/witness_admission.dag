@@ -36,11 +36,57 @@ type FrozenBaselineStanding
 
 data witness_admission_predicate_dissolution_note: String = "witness_consumer_cadence_is_live / witness_admission_refusal_is_holds dissolved per review 39760 — workflow and tests match the coproducts directly (integration 39758 scaffold superseded on this branch)."
 
-data scheduled_envelope_cadence_wire_note: String = "Temporary wire decoder for ScheduledWitnessEnvelope.cadence (String on the enrollment carrier until that field migrates to WitnessConsumerCadence). THE ONLY home for enrollment wire strings — std.witness_placement and std.realization_schedule compare decode here and consume WitnessConsumerCadence. Dissolve-on: envelope.cadence becomes the closed coproduct and this decoder deletes."
+data scheduled_envelope_cadence_wire_note: String = "Temporary wire decoder for ScheduledWitnessEnvelope.cadence (String on the enrollment carrier until that field migrates to WitnessConsumerCadence). THE ONLY home for enrollment wire strings — decode_scheduled_envelope_cadence_wire and compare_declared_derived_enrollment_cadence_wires are the sole round-trip table (five wires: per_pr, 4h, falsifier_substrate_long_lane, offline_local_recipe, no_consumer). Cadences without an enrollment wire (BinWitnessWet, explicit roster, etc.) are carried as WitnessConsumerCadence on admission rows, never as envelope.cadence strings. Dissolve-on: envelope.cadence becomes the closed coproduct and this decoder deletes."
+
+data scheduled_envelope_max_staleness_wire_note: String = "Temporary wire decoder for ScheduledWitnessEnvelope.max_staleness until std.measure lands a typed staleness/deadline carrier. Closed enrollment wires only: 0 (per-PR immediate) and 4h (scheduled tolerance). Anything else is MaxStalenessWireUnrecognized and placement/compare refuse rather than inferring from a bare-string sentinel."
 
 type ScheduledEnvelopeCadenceWireDecode
   = EnvelopeCadenceDecoded { cadence: WitnessConsumerCadence }
   | EnvelopeCadenceWireUnrecognized { wire: String }
+
+type ScheduledEnvelopeMaxStalenessWireDecode
+  = MaxStalenessPerPrImmediate
+  | MaxStalenessScheduledTolerance { wire: String }
+  | MaxStalenessWireUnrecognized { wire: String }
+
+type EnrollmentCadenceWireCompare
+  = EnrollmentCadenceWiresMatch
+  | EnrollmentCadenceWireMismatch {
+      declared_cadence: String,
+      derived_cadence: String,
+    }
+  | EnrollmentCadenceWireUnrecognized { wire: String }
+
+fn decode_scheduled_envelope_max_staleness_wire(
+  staleness: String,
+) -> ScheduledEnvelopeMaxStalenessWireDecode {
+  if staleness == "0" {
+    MaxStalenessPerPrImmediate
+  } else if staleness == "4h" {
+    MaxStalenessScheduledTolerance { wire: staleness }
+  } else {
+    MaxStalenessWireUnrecognized { wire: staleness }
+  }
+}
+
+fn compare_declared_derived_enrollment_cadence_wires(
+  declared_cadence: String,
+  derived_cadence: String,
+) -> EnrollmentCadenceWireCompare {
+  match decode_scheduled_envelope_cadence_wire(cadence: declared_cadence) {
+    EnvelopeCadenceWireUnrecognized { wire } =>
+      EnrollmentCadenceWireUnrecognized { wire: wire }
+    EnvelopeCadenceDecoded { cadence: _ } =>
+      if declared_cadence != derived_cadence {
+        EnrollmentCadenceWireMismatch {
+          declared_cadence: declared_cadence,
+          derived_cadence: derived_cadence,
+        }
+      } else {
+        EnrollmentCadenceWiresMatch
+      }
+  }
+}
 
 fn decode_scheduled_envelope_cadence_wire(cadence: String) -> ScheduledEnvelopeCadenceWireDecode {
   if cadence == "per_pr" {
@@ -173,19 +219,5 @@ fn witness_consumer_cadence_executes(cadence: WitnessConsumerCadence) -> Bool {
     OfflineLocalRecipe => false
     FixtureExplicitRoster => false
     NoConsumer => false
-  }
-}
-
-fn witness_consumer_cadence_enrollment_wire(cadence: WitnessConsumerCadence) -> String {
-  match cadence {
-    DiscoverySelection => "per_pr"
-    FalsifierSelfHostWet => "4h"
-    FalsifierSubstrateLongLane => "falsifier_substrate_long_lane"
-    OfflineLocalRecipe => "offline_local_recipe"
-    NoConsumer => "no_consumer"
-    FalsifierRehomedBinWet => "falsifier_rehomed_bin_wet"
-    BinWitnessWet => "bin_witness_wet"
-    QuarantineProbeExpectRed => "quarantine_probe_expect_red"
-    FixtureExplicitRoster => "fixture_explicit_roster"
   }
 }

@@ -20,6 +20,12 @@ import std.content_hash {
   fnv1a64_structural_hex_digest
 }
 import std.algebra { Empty, Cons }
+import std.witness_admission {
+  compare_declared_derived_enrollment_cadence_wires,
+  EnrollmentCadenceWiresMatch,
+  EnrollmentCadenceWireMismatch,
+  EnrollmentCadenceWireUnrecognized,
+}
 
 type CostBasis
   = Predicted
@@ -98,7 +104,7 @@ type WitnessSpan
       envelope: ScheduledWitnessEnvelope
     }
 
-data witness_envelope_compare_note: String = "Declared-versus-observed comparator for SpanEnrolled (Lane B, swift-wren-710). Joins ScheduledWitnessEnvelope.wall_budget to a measured wall figure — the gap verified by corpus grep: wall_budget was only content-hashed and well-formed, never compared to observation. CensoredMeasurementLowerBound is a lower bound under a kill, never Within/Exceeds. MissingSpan and SpanUnavailable refuse silent SpanUndeclared. RouteMismatch compares envelope.cadence enrollment wire to derived wire (std.witness_admission witness_consumer_cadence_enrollment_wire projection). BasisClockMismatch reuses std.measure ClockBasis — no second clock carrier."
+data witness_envelope_compare_note: String = "Declared-versus-observed comparator for SpanEnrolled (Lane B, swift-wren-710). Joins ScheduledWitnessEnvelope.wall_budget to a measured wall figure — the gap verified by corpus grep: wall_budget was only content-hashed and well-formed, never compared to observation. CensoredMeasurementLowerBound is a lower bound under a kill, never Within/Exceeds. MissingSpan and SpanUnavailable refuse silent SpanUndeclared. RouteMismatch uses std.witness_admission compare_declared_derived_enrollment_cadence_wires (single decode authority). BasisClockMismatch reuses std.measure ClockBasis — no second clock carrier."
 
 type WitnessEnvelopeCompareVerdict
   = WithinDeclaredWallBudget
@@ -118,50 +124,43 @@ type ObservedWallAtSubject
   | ObservedWallMissing
   | ObservedWallCensored { floor: Millisecond, clock: ClockBasis }
 
-fn envelope_cadence_wire_is_recognized(cadence: String) -> Bool {
-  cadence == "per_pr"
-    || cadence == "4h"
-    || cadence == "falsifier_substrate_long_lane"
-    || cadence == "offline_local_recipe"
-    || cadence == "no_consumer"
-}
-
 fn compare_span_enrolled_wall_budget(
   envelope: ScheduledWitnessEnvelope,
   basis: WitnessCostBasis,
   observed: ObservedWallAtSubject,
   derived_cadence: String,
 ) -> WitnessEnvelopeCompareVerdict {
-  if !envelope_cadence_wire_is_recognized(cadence: envelope.cadence) {
-    UnrecognizedDeclaredCadence { wire: envelope.cadence }
-  } else if envelope.cadence != derived_cadence {
-    RouteMismatch {
-      declared_cadence: envelope.cadence,
-      derived_cadence: derived_cadence,
-    }
-  } else {
-    match observed {
-      ObservedWallCensored { floor, clock } =>
-        CensoredMeasurementLowerBound { floor: floor, clock: clock }
-      ObservedWallMissing => MissingMeasurement
-      ObservedWallPresent { duration, clock } =>
-        match basis {
-          EstimatedFromSiblingClass { clock: _, source_witness: _, basis: _ } => MissingBasis
-          MeasuredAtExactSubject { clock: basis_clock, duration: _, receipt: _ } =>
-            if !clock_basis_eq(a: clock, b: basis_clock) {
-              BasisClockMismatch { observed_clock: clock, declared_clock: basis_clock }
-            } else if !clock_basis_eq(a: clock, b: WallClock) {
-              WallClockRequired { clock: clock }
-            } else if millisecond_count(m: duration) > millisecond_count(m: envelope.wall_budget) {
-              ExceedsDeclaredWallBudget {
-                observed: duration,
-                ceiling: envelope.wall_budget,
+  match compare_declared_derived_enrollment_cadence_wires(
+    declared_cadence: envelope.cadence,
+    derived_cadence: derived_cadence,
+  ) {
+    EnrollmentCadenceWireUnrecognized { wire } =>
+      UnrecognizedDeclaredCadence { wire: wire }
+    EnrollmentCadenceWireMismatch { declared_cadence: d, derived_cadence: r } =>
+      RouteMismatch { declared_cadence: d, derived_cadence: r }
+    EnrollmentCadenceWiresMatch =>
+      match observed {
+        ObservedWallCensored { floor, clock } =>
+          CensoredMeasurementLowerBound { floor: floor, clock: clock }
+        ObservedWallMissing => MissingMeasurement
+        ObservedWallPresent { duration, clock } =>
+          match basis {
+            EstimatedFromSiblingClass { clock: _, source_witness: _, basis: _ } => MissingBasis
+            MeasuredAtExactSubject { clock: basis_clock, duration: _, receipt: _ } =>
+              if !clock_basis_eq(a: clock, b: basis_clock) {
+                BasisClockMismatch { observed_clock: clock, declared_clock: basis_clock }
+              } else if !clock_basis_eq(a: clock, b: WallClock) {
+                WallClockRequired { clock: clock }
+              } else if millisecond_count(m: duration) > millisecond_count(m: envelope.wall_budget) {
+                ExceedsDeclaredWallBudget {
+                  observed: duration,
+                  ceiling: envelope.wall_budget,
+                }
+              } else {
+                WithinDeclaredWallBudget
               }
-            } else {
-              WithinDeclaredWallBudget
-            }
-        }
-    }
+          }
+      }
   }
 }
 

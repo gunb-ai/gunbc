@@ -31,8 +31,12 @@ import std.witness_admission {
   FixtureExplicitRoster,
   NoConsumer,
   decode_scheduled_envelope_cadence_wire,
+  decode_scheduled_envelope_max_staleness_wire,
   EnvelopeCadenceDecoded,
   EnvelopeCadenceWireUnrecognized,
+  MaxStalenessPerPrImmediate,
+  MaxStalenessScheduledTolerance,
+  MaxStalenessWireUnrecognized,
 }
 
 data witness_placement_authority_note: String = "DERIVED witness placement (witness-evidence-lifecycle-design: route is a projection, never a source-tree declaration). Placement is computed from the full axis set — declared WitnessPurpose, effect/fidelity requirement, declared envelope cost bound, decoded WitnessConsumerCadence, and max_staleness — not from path substrings such as test/claim/long/ and not from purpose alone. Witness evaluation cost and entry resolution are separate denominators: shared setup belongs to materialization, not witness decomposition. Dissolve-on for long_lane_exclusion_note fires when floor admission consumes this projection. Allowed-to-remain (per-PR discovery) and has-an-executing-consumer (scheduled cadence) stay separate facts."
@@ -56,16 +60,13 @@ type WitnessPlacementRefusal
   | UnrecognizedEnvelopeCadence { wire: String }
   | OneShotUnavailableAtScheduledCadence { cadence: WitnessConsumerCadence }
   | StalenessRequiresScheduledCadence { max_staleness: String }
+  | UnrecognizedMaxStalenessWire { wire: String }
 
 fn envelope_exceeds_fast_lane(
   envelope: ScheduledWitnessEnvelope,
   fast_lane_budget: Millisecond,
 ) -> Bool {
   millisecond_count(m: envelope.wall_budget) > millisecond_count(m: fast_lane_budget)
-}
-
-fn envelope_declares_scheduled_staleness(envelope: ScheduledWitnessEnvelope) -> Bool {
-  envelope.max_staleness != "0"
 }
 
 fn derive_route_for_scheduled_cadence(
@@ -91,65 +92,58 @@ fn derive_route_for_discovery_selection(
   envelope: ScheduledWitnessEnvelope,
   exceeds_fast_lane: Bool,
 ) -> WitnessRoute {
+  match decode_scheduled_envelope_max_staleness_wire(staleness: envelope.max_staleness) {
+    MaxStalenessWireUnrecognized { wire } =>
+      RefusedNoConsumer { cause: UnrecognizedMaxStalenessWire { wire: wire } }
+    MaxStalenessScheduledTolerance { wire: _ } =>
+      RefusedNoConsumer {
+        cause: StalenessRequiresScheduledCadence {
+          max_staleness: envelope.max_staleness,
+        },
+      }
+    MaxStalenessPerPrImmediate =>
+      derive_route_for_discovery_selection_per_pr_immediate(
+        purpose: purpose,
+        envelope: envelope,
+        exceeds_fast_lane: exceeds_fast_lane,
+      )
+  }
+}
+
+fn derive_route_for_discovery_selection_per_pr_immediate(
+  purpose: WitnessPurpose,
+  envelope: ScheduledWitnessEnvelope,
+  exceeds_fast_lane: Bool,
+) -> WitnessRoute {
   match purpose {
     TerminatingOneShot { pinned_subject: _, dissolution_trigger: _, deadline: _ } =>
       OneShotUnavailable { cause: DeadlineNotTyped }
     BehavioralDiscriminator =>
-      if envelope_declares_scheduled_staleness(envelope: envelope) {
-        RefusedNoConsumer {
-          cause: StalenessRequiresScheduledCadence {
-            max_staleness: envelope.max_staleness,
-          },
-        }
-      } else if exceeds_fast_lane {
+      if exceeds_fast_lane {
         RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
       } else {
         OrdinaryPerPr
       }
     BoundaryCrossing { modeled_boundary: _, chosen_input: _ } =>
-      if envelope_declares_scheduled_staleness(envelope: envelope) {
-        RefusedNoConsumer {
-          cause: StalenessRequiresScheduledCadence {
-            max_staleness: envelope.max_staleness,
-          },
-        }
-      } else if exceeds_fast_lane {
+      if exceeds_fast_lane {
         RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
       } else {
         OrdinaryPerPr
       }
     PopulationTotality { population: _ } =>
-      if envelope_declares_scheduled_staleness(envelope: envelope) {
-        RefusedNoConsumer {
-          cause: StalenessRequiresScheduledCadence {
-            max_staleness: envelope.max_staleness,
-          },
-        }
-      } else if exceeds_fast_lane {
+      if exceeds_fast_lane {
         RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
       } else {
         OrdinaryPerPr
       }
     ExternalFidelity { effect: _ } =>
-      if envelope_declares_scheduled_staleness(envelope: envelope) {
-        RefusedNoConsumer {
-          cause: StalenessRequiresScheduledCadence {
-            max_staleness: envelope.max_staleness,
-          },
-        }
-      } else if exceeds_fast_lane {
+      if exceeds_fast_lane {
         RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
       } else {
         PerPrWet
       }
     ResourceContract { bound: _ } =>
-      if envelope_declares_scheduled_staleness(envelope: envelope) {
-        RefusedNoConsumer {
-          cause: StalenessRequiresScheduledCadence {
-            max_staleness: envelope.max_staleness,
-          },
-        }
-      } else if exceeds_fast_lane {
+      if exceeds_fast_lane {
         RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence }
       } else {
         OrdinaryPerPr
