@@ -764,16 +764,6 @@ fn stage0_module_id_lists_equal_as_sets(
       })
 }
 
-fn stage0_unit_reexports_package(
-  claimer: CompilationUnitId,
-  owner: CompilationUnitId
-) -> Bool {
-  stage0_package_name_list_contains(
-    xs: stage0_unit_reexport_packages(unit_id: claimer),
-    package: stage0_package_name_for_unit(unit_id: owner)
-  )
-}
-
 fn stage0_unit_raw_reach_extend_once(
   members: List<ModuleId>,
   edges: List<ModuleDagEdge>
@@ -813,17 +803,6 @@ fn stage0_unit_raw_reach_fixpoint(
       remaining_steps: remaining_steps - 1
     )
   }
-}
-
-fn stage0_unit_reexports_package(
-  claimer: CompilationUnitId,
-  owner: CompilationUnitId
-) -> Bool {
-  stage0_derivation_unit_reexports_package(
-    ctx: Stage0PartitionDerivationContextEnrolled,
-    claimer: claimer,
-    owner: owner
-  )
 }
 
 fn stage0_unit_raw_reach_outcome(
