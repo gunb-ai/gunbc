@@ -24,7 +24,6 @@ import extdeps.llm.codex_app_server {
   CodexAppServerThreadStart,
   CodexAppServerTurnStart,
   CodexAppServerStdio,
-  CodexAppServerExecutable,
   codex_app_server_initialize_request_line,
   codex_app_server_account_read_request_line,
   codex_app_server_rate_limits_read_request_line,
