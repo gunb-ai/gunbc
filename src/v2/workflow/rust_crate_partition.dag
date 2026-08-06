@@ -1119,6 +1119,24 @@ fn stage0_partition_witness_assignment_conflict_cause_carries_reachers_holds() -
   }
 }
 
+data stage0_partition_red_control_synthetic_module: String = "synthetic_unassigned_module"
+
+fn stage0_string_list_contains(xs: List<String>, item: String) -> Bool {
+  any(xs: xs, predicate: fn(s) { s == item })
+}
+
+fn stage0_partition_red_control_synthetic_module_not_in_derived_holds() -> Bool {
+  stage0_module_bearing_unit_ids()
+    |> fold(init: true, f: fn(ok, unit_id) {
+      let derived = stage0_derived_unit_member_basenames(unit_id: unit_id)
+      ok
+        && !stage0_string_list_contains(
+          xs: derived,
+          item: stage0_partition_red_control_synthetic_module
+        )
+    })
+}
+
 fn stage0_r3_emit_reexport_surface_modules() -> List<String> {
   [
     "v1_compiler_artifact",
