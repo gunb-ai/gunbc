@@ -11,7 +11,8 @@ import gunbc.falsifier_alert_state {
   FalsifierAlertState,
   FalsifierAlertStateDecoding,
   CurrentState, LegacyStateWithoutLastNotification, StateAbsent, StateMalformed,
-  falsifier_alert_heartbeat_window
+  falsifier_alert_heartbeat_window,
+  falsifier_alert_state_from_payload
 }
 import gunbc.floor_component_receipt_document {
   ReceiptDecoded, ReceiptNotJson,
@@ -381,5 +382,75 @@ test fn a_non_notifying_arm_carries_no_notification_at_all() -> Bool {
   match alert_decision_notification(d: quiet) {
     Absent => !alert_decision_notifies(d: quiet)
     Present { value: _ } => false
+  }
+}
+
+data payload_driven_claims_note: String = "THE SAME SIX ARMS, REACHED THROUGH THE PAYLOAD DECODER RATHER THAN THROUGH A HAND-BUILT STATE VALUE. The claims above construct CurrentState and StateMalformed directly, which isolates the decision but skips the seam that produces them in production: the alert reads a JSON marker out of an issue body, and falsifier_alert_state_from_payload is what turns those bytes into the coproduct. A decision that is correct on hand-built inputs and a decoder that is correct in isolation can still disagree about which value a given marker denotes, and no witness on either side alone would see it.\\n\\nThese six moved here when FalsifierAlertNotificationDecision was deleted. They previously exercised a SECOND throttle implementation in gunbc.falsifier_alert_state that computed the same window comparison, the same signature comparison and the same silent_for as alert_decision_red — one rule, two copies, and the copy had no production consumer at all. A review read the overlap as intentional lane staging; it was not, it was a fork, and forked rules stay in agreement only by diligence. The rule now lives once and these witnesses point at it, so the payload-decoder coverage they carry survived the consolidation instead of being deleted with the machinery."
+
+fn state_marker_current(first_red: Int, signature: String, last: Int) -> String {
+  concat(
+    concat(concat("{\"first_red\":", first_red as String), concat(",\"signature\":\"", signature)),
+    concat(concat("\",\"last_notification_at\":", last as String), "}")
+  )
+}
+
+fn state_marker_legacy(first_red: Int, signature: String) -> String {
+  concat(
+    concat(concat("{\"first_red\":", first_red as String), concat(",\"signature\":\"", signature)),
+    "\"}"
+  )
+}
+
+fn decide_from_marker(admission: FalsifierAlertAdmission, payload: String, now: Int) -> AlertDecision {
+  decide(admission: admission, receipt: red_receipt(), state: falsifier_alert_state_from_payload(payload: payload), now: now)
+}
+
+data absence_is_not_a_payload_note: String = "AN ABSENT MARKER IS NOT AN EMPTY PAYLOAD, AND THIS CLAIM PINS THE DIFFERENCE. StateAbsent means the issue body carried no marker at all; falsifier_alert_state_from_payload never produces it, because by the time bytes reach the decoder a marker was found. Absence is decided one seam earlier, by whoever searched the body.\\n\\nThis witness was first written as `an empty payload opens a first red` and it FAILED, which is the useful part: an empty string is not valid JSON, so it decodes to StateMalformed and the alert refuses. That is the correct answer and the fixture was the thing that was wrong — but the failure is worth keeping as a claim rather than a deleted mistake, because the tempting repair is on the wrong side. Making the decoder map an empty payload to StateAbsent would turn `I read a marker and could not understand it` into `there was no marker`, which is the empty-observation narrow DESIGN names: an unreadable incident record would silently start a NEW incident and overwrite the old one. The refusal is load-bearing, so it is asserted."
+
+test fn an_empty_payload_refuses_rather_than_reading_as_an_absent_marker() -> Bool {
+  match decide_from_marker(admission: red_admission(), payload: "", now: 9999999) {
+    RefuseMalformedState { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn a_decoded_legacy_marker_notifies_exactly_once_as_a_migration() -> Bool {
+  match decide_from_marker(admission: red_admission(), payload: state_marker_legacy(first_red: 1000, signature: "a:b:c"), now: 9999999) {
+    NotifyLegacyStateMigration { first_red: f, signature: _, notification: _ } => f == 1000
+    _ => false
+  }
+}
+
+test fn a_decoded_changed_signature_always_notifies_even_inside_the_window() -> Bool {
+  let marker = state_marker_current(first_red: 1000, signature: "6:discovery:Infra:failed", last: 5000)
+  match decide_from_marker(admission: red_admission(), payload: marker, now: 5001) {
+    RefreshAndNotifyChangedClass { previous: p, current: _, notification: _ } =>
+      (p as String) == "6:discovery:Infra:failed"
+    _ => false
+  }
+}
+
+test fn a_decoded_unchanged_signature_is_suppressed_inside_the_window() -> Bool {
+  let sig = signature_of_fixture(component: one_failing_component) as String
+  match decide_from_marker(admission: red_admission(), payload: state_marker_current(first_red: 1000, signature: sig, last: 5000), now: 5001) {
+    RefreshIssueWithoutNotification { signature: _, silent_for: s } => millisecond_count(m: s) == 1
+    _ => false
+  }
+}
+
+test fn a_decoded_unchanged_signature_heartbeats_once_the_window_elapses() -> Bool {
+  let sig = signature_of_fixture(component: one_failing_component) as String
+  let marker = state_marker_current(first_red: 1000, signature: sig, last: 5000)
+  match decide_from_marker(admission: red_admission(), payload: marker, now: 5000 + millisecond_count(m: falsifier_alert_heartbeat_window)) {
+    RefreshAndNotifyHeartbeat { signature: _, silent_for: s, notification: _ } =>
+      millisecond_count(m: s) == millisecond_count(m: falsifier_alert_heartbeat_window)
+    _ => false
+  }
+}
+
+test fn a_decoded_malformed_marker_refuses_instead_of_starting_a_new_incident() -> Bool {
+  match decide_from_marker(admission: red_admission(), payload: "{\"first_red\":\"not-a-number\",\"signature\":\"x\"}", now: 9999999) {
+    RefuseMalformedState { detail: _ } => true
+    _ => false
   }
 }
