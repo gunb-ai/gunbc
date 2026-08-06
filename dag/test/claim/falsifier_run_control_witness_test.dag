@@ -49,5 +49,10 @@ test fn falsifier_yml_cold_controls_carry_prerequisite_if() -> Bool {
 
 test fn falsifier_prerequisite_if_discriminates_from_bare_always() -> Bool {
   falsifier_control_prerequisite_if != "always()"
-    && string_contains(s: falsifier_control_prerequisite_if, pattern: "release_build")
+    && string_contains(s: falsifier_control_prerequisite_if, pattern: "release_bins")
+}
+
+test fn falsifier_prerequisite_if_cites_same_job_step() -> Bool {
+  !string_contains(s: falsifier_control_prerequisite_if, pattern: "release_build")
+    && string_contains(s: falsifier_control_prerequisite_if, pattern: "steps.release_bins.outcome")
 }
