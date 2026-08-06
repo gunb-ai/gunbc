@@ -195,15 +195,15 @@ test fn witness_actions_token_refusal_is_kind_not_grant() -> Bool {
 
 test fn witness_actions_token_scope_vocabulary_has_no_workflows() -> Bool {
   !actions_token_may_write_workflow_files()
-    && actions_token_can_carry(name: ContentsAxis)
-    && actions_token_can_carry(name: ActionsAxis)
-    && actions_token_can_carry(name: PullRequestsAxis)
-    && actions_token_can_carry(name: SecurityEventsAxis)
-    && actions_token_can_carry(name: ModelsAxis)
-    && !actions_token_can_carry(name: MetadataAxis)
-    && !actions_token_can_carry(name: RepositoryProjectsAxis)
-    && !actions_token_can_carry(name: AdministrationAxis)
-    && !actions_token_can_carry(name: OrganizationSelfHostedRunnersAxis)
+    && actions_token_may_declare_permission(name: ContentsAxis)
+    && actions_token_may_declare_permission(name: ActionsAxis)
+    && actions_token_may_declare_permission(name: PullRequestsAxis)
+    && actions_token_may_declare_permission(name: SecurityEventsAxis)
+    && actions_token_may_declare_permission(name: ModelsAxis)
+    && !actions_token_may_declare_permission(name: MetadataAxis)
+    && !actions_token_may_declare_permission(name: RepositoryProjectsAxis)
+    && !actions_token_may_declare_permission(name: AdministrationAxis)
+    && !actions_token_may_declare_permission(name: OrganizationSelfHostedRunnersAxis)
 }
 
 test fn witness_axis_wire_names_are_a_bijection() -> Bool {

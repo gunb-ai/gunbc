@@ -61,7 +61,7 @@ import extdeps.github.actions_token {
   ActionsAccessNotAvailable,
   axis_allowed_actions_access,
   actions_access_set_admits,
-  actions_token_can_carry,
+  actions_token_may_declare_permission,
   permission_level_access,
   effective_actions_grant
 }
@@ -85,6 +85,10 @@ import gunbc.auth.github_credential {
   PushBindingActionMismatch,
   PushBindingInputDuplicated,
   PushBindingInputUnsupported,
+  CredentialCapability,
+  CredentialGrants,
+  CredentialScopeNotGranted,
+  actions_job_capability,
   credential_authorizes
 }
 import gunbc.ci_heal_credential {
@@ -234,7 +238,6 @@ test fn witness_unobserved_fork_policy_refuses_rather_than_assuming() -> Bool {
 test fn witness_scope_unavailable_is_not_scope_none() -> Bool {
   let g = grant_with(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
   is_scope_unavailable(r: effective_actions_grant(grant: g, name: WorkflowsAxis))
-    && is_scope_unavailable(r: effective_actions_grant(grant: g, name: MetadataAxis))
     && is_scope_unavailable(r: effective_actions_grant(grant: g, name: RepositoryProjectsAxis))
     && is_scope_unavailable(r: effective_actions_grant(grant: g, name: AdministrationAxis))
     && is_scope_unavailable(r: effective_actions_grant(grant: g, name: OrganizationSelfHostedRunnersAxis))
@@ -243,28 +246,60 @@ test fn witness_scope_unavailable_is_not_scope_none() -> Bool {
     && is_axis_not_modeled(r: effective_actions_grant(grant: g, name: ChecksAxis))
 }
 
+// A configurable `permissions:` key and an intrinsic job-token grant are
+// different facts (operator correction 2026-08-06). The exact-head Actions job
+// reports `Metadata: read` while Metadata has NO configurable key, so mapping
+// "no key" to ScopeUnavailable declared an observed grant structurally
+// impossible. Both polarities are fixed here: Metadata is undeclarable AND
+// granted read, while the keyless axes that carry no intrinsic grant stay
+// unavailable — so re-fusing the two facts in either direction reds.
+test fn witness_undeclarable_axis_may_still_be_granted() -> Bool {
+  let g = grant_with(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
+  !actions_token_may_declare_permission(name: MetadataAxis)
+    && is_read(r: effective_actions_grant(grant: g, name: MetadataAxis))
+    && !is_scope_unavailable(r: effective_actions_grant(grant: g, name: MetadataAxis))
+    && is_scope_unavailable(r: effective_actions_grant(grant: g, name: WorkflowsAxis))
+    && is_scope_unavailable(r: effective_actions_grant(grant: g, name: RepositoryProjectsAxis))
+    && is_scope_unavailable(r: effective_actions_grant(grant: g, name: AdministrationAxis))
+}
+
+// The correction resolves an intrinsic grant at its OBSERVED access and no
+// higher. A read grant satisfies a read request and refuses a write one, so
+// widening the intrinsic carrier to write would red here rather than silently
+// authorizing a write the live token does not carry.
+test fn witness_intrinsic_read_grant_refuses_a_write_request() -> Bool {
+  let g = grant_with(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
+  match actions_job_capability(grant: g, required: GitHubAppPermission { name: MetadataAxis, access: AppAccessRead }) {
+    CredentialGrants => true
+    _ => false
+  } && match actions_job_capability(grant: g, required: GitHubAppPermission { name: MetadataAxis, access: AppAccessWrite }) {
+    CredentialScopeNotGranted { missing: _ } => true
+    _ => false
+  }
+}
+
 test fn witness_permissions_key_table_matches_cited_vocabulary() -> Bool {
-  actions_token_can_carry(name: ActionsAxis)
-    && actions_token_can_carry(name: ArtifactMetadataAxis)
-    && actions_token_can_carry(name: AttestationsAxis)
-    && actions_token_can_carry(name: ChecksAxis)
-    && actions_token_can_carry(name: CodeQualityAxis)
-    && actions_token_can_carry(name: ContentsAxis)
-    && actions_token_can_carry(name: DeploymentsAxis)
-    && actions_token_can_carry(name: DiscussionsAxis)
-    && actions_token_can_carry(name: IdTokenAxis)
-    && actions_token_can_carry(name: IssuesAxis)
-    && actions_token_can_carry(name: PackagesAxis)
-    && actions_token_can_carry(name: PagesAxis)
-    && actions_token_can_carry(name: PullRequestsAxis)
-    && actions_token_can_carry(name: SecurityEventsAxis)
-    && actions_token_can_carry(name: StatusesAxis)
-    && actions_token_can_carry(name: VulnerabilityAlertsAxis)
-    && !actions_token_can_carry(name: MetadataAxis)
-    && !actions_token_can_carry(name: RepositoryProjectsAxis)
-    && !actions_token_can_carry(name: WorkflowsAxis)
-    && !actions_token_can_carry(name: AdministrationAxis)
-    && !actions_token_can_carry(name: OrganizationSelfHostedRunnersAxis)
+  actions_token_may_declare_permission(name: ActionsAxis)
+    && actions_token_may_declare_permission(name: ArtifactMetadataAxis)
+    && actions_token_may_declare_permission(name: AttestationsAxis)
+    && actions_token_may_declare_permission(name: ChecksAxis)
+    && actions_token_may_declare_permission(name: CodeQualityAxis)
+    && actions_token_may_declare_permission(name: ContentsAxis)
+    && actions_token_may_declare_permission(name: DeploymentsAxis)
+    && actions_token_may_declare_permission(name: DiscussionsAxis)
+    && actions_token_may_declare_permission(name: IdTokenAxis)
+    && actions_token_may_declare_permission(name: IssuesAxis)
+    && actions_token_may_declare_permission(name: PackagesAxis)
+    && actions_token_may_declare_permission(name: PagesAxis)
+    && actions_token_may_declare_permission(name: PullRequestsAxis)
+    && actions_token_may_declare_permission(name: SecurityEventsAxis)
+    && actions_token_may_declare_permission(name: StatusesAxis)
+    && actions_token_may_declare_permission(name: VulnerabilityAlertsAxis)
+    && !actions_token_may_declare_permission(name: MetadataAxis)
+    && !actions_token_may_declare_permission(name: RepositoryProjectsAxis)
+    && !actions_token_may_declare_permission(name: WorkflowsAxis)
+    && !actions_token_may_declare_permission(name: AdministrationAxis)
+    && !actions_token_may_declare_permission(name: OrganizationSelfHostedRunnersAxis)
 }
 
 test fn witness_two_access_vocabularies_differ_only_by_the_absence_level() -> Bool {

@@ -66,6 +66,50 @@ fn axis_actions_permissions_key(axis: GitHubPermissionAxis) -> NonEmptyStr? {
   }
 }
 
+// Two independent facts about one axis, deliberately NOT fused (operator
+// correction 2026-08-06). `axis_actions_permissions_key` answers whether an
+// axis is DECLARABLE in a workflow `permissions:` block. This answers what the
+// job token carries when nothing is declared. Absence of a configurable key is
+// therefore not absence of a grant, and conflating the two made the model call
+// a grant observed on the live token structurally impossible.
+//
+// Metadata is the live specimen: it has no configurable `permissions:` key, yet
+// the exact-head Actions job reports `Metadata: read`.
+//
+// Read-only by construction — there is no write variant, so an intrinsic grant
+// can never authorize a write, and observing a write-carrying intrinsic axis
+// would be a compile error at every consumer rather than a silent widening.
+type IntrinsicTokenGrant
+  = IntrinsicTokenGrantAbsent
+  | IntrinsicTokenGrantRead
+
+fn axis_intrinsic_token_grant(axis: GitHubPermissionAxis) -> IntrinsicTokenGrant {
+  match axis {
+    MetadataAxis => IntrinsicTokenGrantRead
+    ActionsAxis => IntrinsicTokenGrantAbsent
+    ArtifactMetadataAxis => IntrinsicTokenGrantAbsent
+    AttestationsAxis => IntrinsicTokenGrantAbsent
+    ChecksAxis => IntrinsicTokenGrantAbsent
+    CodeQualityAxis => IntrinsicTokenGrantAbsent
+    ContentsAxis => IntrinsicTokenGrantAbsent
+    DeploymentsAxis => IntrinsicTokenGrantAbsent
+    DiscussionsAxis => IntrinsicTokenGrantAbsent
+    IdTokenAxis => IntrinsicTokenGrantAbsent
+    IssuesAxis => IntrinsicTokenGrantAbsent
+    ModelsAxis => IntrinsicTokenGrantAbsent
+    PackagesAxis => IntrinsicTokenGrantAbsent
+    PagesAxis => IntrinsicTokenGrantAbsent
+    PullRequestsAxis => IntrinsicTokenGrantAbsent
+    RepositoryProjectsAxis => IntrinsicTokenGrantAbsent
+    SecurityEventsAxis => IntrinsicTokenGrantAbsent
+    StatusesAxis => IntrinsicTokenGrantAbsent
+    VulnerabilityAlertsAxis => IntrinsicTokenGrantAbsent
+    WorkflowsAxis => IntrinsicTokenGrantAbsent
+    AdministrationAxis => IntrinsicTokenGrantAbsent
+    OrganizationSelfHostedRunnersAxis => IntrinsicTokenGrantAbsent
+  }
+}
+
 type ActionsAccessSet
   = ActionsAccessReadOrWrite
   | ActionsAccessWriteOnly
@@ -117,7 +161,11 @@ fn actions_access_set_admits(set: ActionsAccessSet, access: GitHubAppPermissionA
   }
 }
 
-fn actions_token_can_carry(name: GitHubPermissionAxis) -> Bool {
+// DECLARABILITY, not possession — renamed from actions_token_can_carry with the
+// intrinsic-grant correction. The token carries Metadata: read while Metadata
+// is undeclarable, so a single "can carry" predicate answered two questions and
+// had to be wrong about one of them. Ask effective_actions_grant for possession.
+fn actions_token_may_declare_permission(name: GitHubPermissionAxis) -> Bool {
   match axis_actions_permissions_key(axis: name) {
     Absent => false
     Present { value: _ } => match axis_allowed_actions_access(axis: name) {
@@ -131,8 +179,11 @@ fn actions_token_can_carry(name: GitHubPermissionAxis) -> Bool {
 
 data workflows_permission_name: GitHubPermissionAxis = WorkflowsAxis
 
+// Declarability is sufficient here because an intrinsic grant is read-only by
+// construction (IntrinsicTokenGrant has no write variant), so no intrinsic
+// grant can authorize a workflow-file write. Workflows carries neither.
 fn actions_token_may_write_workflow_files() -> Bool {
-  actions_token_can_carry(name: workflows_permission_name)
+  actions_token_may_declare_permission(name: workflows_permission_name)
 }
 
 type GitHubWorkflowEvent
@@ -307,7 +358,10 @@ fn effective_actions_grant(
   name: GitHubPermissionAxis
 ) -> ActionsGrantResolution {
   match axis_actions_permissions_key(axis: name) {
-    Absent => ActionsGrantScopeUnavailable
+    Absent => match axis_intrinsic_token_grant(axis: name) {
+      IntrinsicTokenGrantAbsent => ActionsGrantScopeUnavailable
+      IntrinsicTokenGrantRead => ActionsGrantResolved { access: AppAccessRead }
+    }
     Present { value: _ } =>
       if !axis_modeled_by_workflow_permissions(axis: name) {
         ActionsGrantAxisNotModeled
