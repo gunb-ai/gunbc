@@ -29,7 +29,7 @@ data google_chrome_note: String = "Google Chrome the DISTRIBUTION, which is not 
 The module is deliberately narrow. It carries the distribution's identity and the one behaviour a motion receipt actually depends on, which is User-Agent reduction. Everything else Chrome does belongs to a fact row someone needs."
 
 type GoogleChrome
-  = GoogleChromeDistribution
+  = | GoogleChromeDistribution
 
 data google_chrome: GoogleChrome = GoogleChromeDistribution
 

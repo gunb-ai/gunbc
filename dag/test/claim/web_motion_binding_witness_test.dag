@@ -59,6 +59,10 @@ import gunbc.capability_binding {
   BindingStreamState, binding_stream_key,
   SampleLifecycle, LifecycleActivated, LifecycleActivationUnobserved,
 }
+import extdeps.browser.google_chrome {
+  GoogleChrome, GoogleChromeDistribution, google_chrome,
+  frozen_macos_platform_token, frozen_macos_os_version_token, value_is_frozen_ua_token,
+}
 import extdeps.w3c.accelerometer {
   AccelerometerSensor, LinearAccelerationSensor, GravitySensor,
   accelerometer_interface_name, interface_suits_a_knock_detector,
@@ -362,7 +366,20 @@ fn witness_decisiveness_requires_coherence_too() -> Bool {
     && !observation_is_decisive_and_coherent(o: discredited_probe_observation())
 }
 
+data frozen_token_note: String = "The fixture's reduced values are the CITED frozen literals, not a coincidence, and this claim is what makes that checkable. Chrome reports 'Mac OS X 10_15_7' and 'MacIntel' as constants under User-Agent reduction regardless of the machine, so a receipt carrying them has recorded what Chrome always says. Asserting the fixture against the cited tokens means a future edit that swapped in a real-looking version string would red rather than quietly turning a constant into a measurement.
+
+It also puts extdeps.browser.google_chrome into a closure that actually typechecks. An earlier revision referenced that module only through DeclarationRef strings, so nothing compiled it and a one-arm coproduct written without its leading pipe — parsed as a type alias — reached CI unseen. A symbolic reference proves a name; only an import proves the module."
+
+fn witness_the_reduced_values_are_the_cited_frozen_tokens() -> Bool {
+  value_is_frozen_ua_token(v: frozen_macos_os_version_token)
+    && value_is_frozen_ua_token(v: frozen_macos_platform_token)
+    && !value_is_frozen_ua_token(v: "15.6.1")
+    && frozen_macos_os_version_token == "Mac OS X 10_15_7"
+    && frozen_macos_platform_token == "MacIntel"
+}
+
 test fn web_motion_binding_keystone_holds() -> Bool {
+  witness_the_reduced_values_are_the_cited_frozen_tokens()
   witness_the_discredited_probe_resolves_nothing()
     && witness_the_probe_left_six_axes_unread_and_no_window()
     && witness_red_silence_never_projects_to_an_absent_sensor()
