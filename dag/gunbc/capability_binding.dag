@@ -1,9 +1,10 @@
 module gunbc.capability_binding
 
 import std.types { String, Bool, Int, List, Milliseconds }
-import std.decl_ref { DeclarationRef }
+import std.integer { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.host_realization {
-  HostRealization, ApplicationContainerKind, RendererKind,
+  HostRealization, ApplicationContainerKind, RendererKind, HostRole,
   container_kind_key, renderer_kind_key, host_identity_is_exact,
 }
 
@@ -11,9 +12,9 @@ data capability_binding_note: String = "SUPPORT IS NEVER AN OPERATING-SYSTEM BOO
 
 So the support matrix is a PROJECTION over executed observations, never an authored table, and this module carries the join that makes that projection possible: a host, a requirement, a provider, and what actually happened when they met."
 
-data physical_impulse_note: String = "THE ONE FACT EVERY BINDING PRODUCES, AND THE REASON THE BOBBER PHYSICS NEVER LEARNS WHERE MOTION CAME FROM. A web DeviceMotion event, a web Generic Sensor reading, a Windows sensor sample, an Apple Core Motion update, an Android SensorManager callback, a Linux IIO read and the deterministic sandbox button all converge here. The display consumes PhysicalImpulse and nothing else, so a new platform binding is a new producer and changes no physics, no projection and no roadmap semantics (DESIGN §2 Realization: one kernel, N handlers).
+data physical_impulse_note: String = "THE ONE FACT EVERY BINDING PRODUCES, AND THE REASON THE BOBBER PHYSICS NEVER LEARNS WHERE MOTION CAME FROM. A web DeviceMotion event, a web LinearAccelerationSensor reading, a Windows sensor sample, an Apple Core Motion update, an Android SensorManager callback, a Linux IIO read and the deterministic synthetic tap all converge here. The display consumes PhysicalImpulse and nothing else, so a new platform binding is a new producer and changes no physics, no projection and no roadmap semantics (DESIGN §2 Realization: one kernel, N handlers).
 
-source_binding is a symbolic reference to the binding that produced it, which is what keeps the synthetic path honest: a synthetic impulse is a real impulse from a real, named, explicitly synthetic source — it is never a fabricated hardware reading, and a receipt can always say which one moved the screen."
+MAGNITUDE IS A Nat, NOT A SIGNED Int (review finding, 2026-08-06 — and this repeats a mistake the corpus already paid for once). gunbc.design.instrument_physical's amplitude_note records the same defect being fixed there: a signed amplitude let two disturbances cancel and pass a budget, so the carrier became Nat and a negative amplitude lost its constructor. Direction is a separate field here for exactly that reason, so a signed magnitude would have been a second encoding of direction sitting beside the real one — two representations of one fact, disagreeing at will."
 
 type ImpulseDirection
   = ImpulseUp
@@ -32,12 +33,25 @@ fn impulse_direction_key(d: ImpulseDirection) -> String {
 
 type PhysicalImpulse {
   source_binding: DeclarationRef
-  magnitude_milli_m_per_s2: Int
+  magnitude_milli_m_per_s2: Nat
   direction: ImpulseDirection
   observed_at_ms: Milliseconds
 }
 
-data impulse_requirement_note: String = "A READABLE SENSOR IS NOT A FIT SENSOR, AND THIS IS THE DISTINCTION A SUPPORT MATRIX MOST OFTEN LOSES. The bob does not require 'an accelerometer'; it requires an interaction-quality contract — enough axes, a sample rate fast enough that a knock is not aliased away, a detection latency short enough that the response still feels caused, a declared answer to whether gravity is included in the signal, and a discriminating magnitude that separates a deliberate knock from someone typing. A sensor that streams beautifully and cannot tell a tap from a keystroke must REFUSE fitness for this use rather than passing because it read something. Every threshold here is a declared requirement of the interaction, which is what makes it a requirement rather than a tuned constant — and the cited precision floor of the motion standard is why a magnitude below it would not be measuring anything at all."
+data requirement_standing_note: String = "THESE THRESHOLDS ARE AUDITION CANDIDATES, NOT A SIGNED CONTRACT (review finding, 2026-08-06). The cited W3C sources ground the units, the interface behaviour, the nullability and the quantisation floor; they do NOT ground a product's choice of three axes, fifty hertz, a hundred and twenty milliseconds and two thousand milli-m/s^2. An earlier revision of this module wrote justifications for each number that READ as derivations and were in fact hypotheses — the most dangerous shape a constant can take, because it looks settled. The standing is therefore carried in the type, and the requirement cannot be described as signed until three auditions have actually run: synthetic bob testing establishing acceptable response latency, idle and typing negative controls establishing a magnitude threshold that discriminates, and at least one real stream establishing attainable sampling behaviour."
+
+type RequirementStanding
+  = AuditionProvisional { pending: String }
+  | RequirementSigned { audition_receipt: DeclarationRef }
+
+fn requirement_is_signed(s: RequirementStanding) -> Bool {
+  match s {
+    AuditionProvisional { pending } => false
+    RequirementSigned { audition_receipt } => true
+  }
+}
+
+data impulse_requirement_note: String = "A READABLE SENSOR IS NOT A FIT SENSOR, AND THIS IS THE DISTINCTION A SUPPORT MATRIX MOST OFTEN LOSES. The bob does not require 'an accelerometer'; it requires an interaction-quality contract — enough axes, a sample rate fast enough that a knock is not aliased away, a detection latency short enough that the response still feels caused, a declared answer to whether gravity is included in the signal, and a discriminating magnitude that separates a deliberate knock from someone typing. A sensor that streams beautifully and cannot tell a tap from a keystroke must REFUSE fitness for this use rather than passing because it read something."
 
 type GravityHandling
   = GravityIncluded
@@ -53,24 +67,165 @@ fn gravity_handling_key(g: GravityHandling) -> String {
 }
 
 type PhysicalImpulseRequirement {
-  axis_count: Int
-  minimum_sample_rate_hz: Int
+  axis_count: Nat
+  minimum_sample_rate_hz: Nat
   maximum_detection_latency_ms: Milliseconds
   gravity_handling: GravityHandling
-  minimum_discriminating_magnitude_milli_m_per_s2: Int
+  minimum_discriminating_magnitude_milli_m_per_s2: Nat
+  standing: RequirementStanding
 }
 
-data bob_requirement_note: String = "The requirement the CRT bob is actually asking for, each number derived from the interaction rather than tuned. Three axes, because a knock on a chassis arrives on whichever face was struck. Fifty samples a second, because a knock's useful signal is a few tens of milliseconds long and a slower stream aliases it into nothing. A hundred and twenty milliseconds of detection latency, because past roughly that the response stops reading as caused by the knock and starts reading as an animation that happened nearby. Gravity excluded, because a constant one-gravity bias swamps the discriminator unless it is removed. And two thousand milli-m/s^2 — about a fifth of a gravity — as the discriminating floor, which is comfortably above the cited standard's own 0.1 m/s^2 precision limit and comfortably above the incidental motion of typing."
+data bob_requirement_candidate_note: String = "The candidate values and the reasoning that produced them, labelled as reasoning rather than as measurement. Three axes, because a knock on a chassis arrives on whichever face was struck. Fifty samples a second, because a knock's useful signal is a few tens of milliseconds long and a slower stream would alias it. A hundred and twenty milliseconds of detection latency, because past roughly that a response stops reading as caused. Gravity excluded, because a constant one-gravity bias would swamp the discriminator. Two thousand milli-m/s^2 as the discriminating floor, which is above the cited standard's own 0.1 m/s^2 precision limit and is BELIEVED to be above the incidental motion of typing — the belief the negative control exists to test."
 
-data bob_impulse_requirement: PhysicalImpulseRequirement = PhysicalImpulseRequirement {
+data bob_impulse_requirement_candidate: PhysicalImpulseRequirement = PhysicalImpulseRequirement {
   axis_count: 3,
   minimum_sample_rate_hz: 50,
   maximum_detection_latency_ms: 120,
   gravity_handling: GravityExcluded,
   minimum_discriminating_magnitude_milli_m_per_s2: 2000,
+  standing: AuditionProvisional {
+    pending: "needs three auditions: synthetic bob response latency, idle/typing negative control for the magnitude floor, and one real stream for attainable sample rate",
+  },
 }
 
-data capability_binding_join_note: String = "A binding is the join of a host, a requirement, and a provider — and the provider is a symbolic reference to ITS own authority, never an arm of an enumeration here. The W3C DeviceMotion contract, the W3C Generic Sensor contract, the Windows sensor namespace, Apple Core Motion, Android SensorManager, the Linux IIO subsystem and the synthetic source each belong in their own module, and combining the standards with the operating-system frameworks in a single motion-support file would fuse independently governed upstreams into one authority (DESIGN §3)."
+data observed_quantity_note: String = "AN UNOBSERVED QUANTITY IS NOT ZERO (review finding, 2026-08-06). An earlier revision projected a web reading into a sample receipt carrying frequency_hz: 0 and noise_floor_milli: 0 because the web observation supplied neither — and a zero noise floor is not an absence, it is a claim of a perfect signal, which is the strongest possible statement about a quantity nobody measured. Each measured axis therefore carries its own observed-or-not coproduct, and a qualification that needs a dimension nobody observed REFUSES on that dimension rather than reading the fabricated zero as a pass."
+
+type FrequencyObservation
+  = FrequencyObserved { hz: Nat }
+  | FrequencyUnobserved
+
+type NoiseFloorObservation
+  = NoiseFloorObserved { magnitude_milli: Nat }
+  | NoiseFloorUnobserved
+
+type AxisCountObservation
+  = AxisCountObserved { n: Nat }
+  | AxisCountUnobserved
+
+type GravityNormalization
+  = GravityNormalized
+  | GravityNotNormalized
+  | GravityNormalizationUnobserved
+
+data negative_control_note: String = "THE CONTROL THAT MAKES A THRESHOLD A DISCRIMINATOR RATHER THAN A TRIPWIRE. A magnitude floor only separates a knock from typing if someone has actually typed underneath it and watched the peak stay below. Without that, the floor is a number chosen from intuition and the qualification proves only that SOME motion exceeded it. NegativeControlNotRun is therefore a rejection cause and not a neutral state: a qualification with no negative control has not established discrimination, it has established sensitivity."
+
+type NegativeControl
+  = NegativeControlPassed { idle_peak_milli: Nat }
+  | NegativeControlFailed { idle_peak_milli: Nat }
+  | NegativeControlNotRun
+
+type SampleReceipt {
+  count: Nat
+  frequency: FrequencyObservation
+  noise_floor: NoiseFloorObservation
+  observed_axes: AxisCountObservation
+  gravity: GravityNormalization
+  peak_magnitude_milli: Nat
+  detection_latency_ms: Milliseconds
+  negative_control: NegativeControl
+}
+
+data qualification_is_minted_note: String = "THE DEFECT THIS TYPE EXISTS TO CLOSE, STATED PLAINLY BECAUSE IT WAS MINE. An earlier revision of this module carried a free coproduct arm named TapDiscriminatorQualified whose fields a caller filled in, and derive_capability_verdict mapped it straight to CapabilitySupported. A separate function stream_meets_requirement existed, checked two of the requirement's five declared dimensions, and was NEVER CALLED by the verdict. So 'qualified' was a caller's assertion and 'supported' was reachable by writing the word — in a module whose entire subject is refusing unearned claims (DESIGN §5: the tell that a check was validation standing where construction was available).
+
+It is now a construction. TapQualified has exactly one minter, qualify_tap, which is total over all five requirement dimensions plus the negative control and cannot produce the qualified arm while any cause stands. CapabilitySupported consumes that receipt. There is no path from an authored value to a supported verdict."
+
+type TapQualificationCause
+  = MagnitudeBelowFloor
+  | LatencyAboveBudget
+  | InsufficientAxes
+  | SampleRateBelowMinimum
+  | GravityNotHandledAsRequired
+  | NegativeControlNotSatisfied
+  | RequirementDimensionUnobserved
+
+fn tap_cause_key(c: TapQualificationCause) -> String {
+  match c {
+    MagnitudeBelowFloor => "magnitude-below-floor"
+    LatencyAboveBudget => "latency-above-budget"
+    InsufficientAxes => "insufficient-axes"
+    SampleRateBelowMinimum => "sample-rate-below-minimum"
+    GravityNotHandledAsRequired => "gravity-not-handled-as-required"
+    NegativeControlNotSatisfied => "negative-control-not-satisfied"
+    RequirementDimensionUnobserved => "requirement-dimension-unobserved"
+  }
+}
+
+type TapQualification
+  = TapQualified { receipt: SampleReceipt }
+  | TapRejected { receipt: SampleReceipt, causes: List<TapQualificationCause> }
+
+fn cause_when(holds: Bool, c: TapQualificationCause) -> List<TapQualificationCause> {
+  if holds {
+    [c]
+  } else {
+    []
+  }
+}
+
+fn axes_cause(r: PhysicalImpulseRequirement, s: SampleReceipt) -> List<TapQualificationCause> {
+  match s.observed_axes {
+    AxisCountUnobserved => [RequirementDimensionUnobserved]
+    AxisCountObserved { n } => cause_when(holds: n < r.axis_count, c: InsufficientAxes)
+  }
+}
+
+fn rate_cause(r: PhysicalImpulseRequirement, s: SampleReceipt) -> List<TapQualificationCause> {
+  match s.frequency {
+    FrequencyUnobserved => [RequirementDimensionUnobserved]
+    FrequencyObserved { hz } => cause_when(holds: hz < r.minimum_sample_rate_hz, c: SampleRateBelowMinimum)
+  }
+}
+
+fn gravity_cause(r: PhysicalImpulseRequirement, s: SampleReceipt) -> List<TapQualificationCause> {
+  match r.gravity_handling {
+    GravityHandlingUnspecified => []
+    GravityIncluded => match s.gravity {
+      GravityNormalized => [GravityNotHandledAsRequired]
+      GravityNotNormalized => []
+      GravityNormalizationUnobserved => [RequirementDimensionUnobserved]
+    }
+    GravityExcluded => match s.gravity {
+      GravityNormalized => []
+      GravityNotNormalized => [GravityNotHandledAsRequired]
+      GravityNormalizationUnobserved => [RequirementDimensionUnobserved]
+    }
+  }
+}
+
+fn negative_control_cause(s: SampleReceipt) -> List<TapQualificationCause> {
+  match s.negative_control {
+    NegativeControlPassed { idle_peak_milli } => []
+    NegativeControlFailed { idle_peak_milli } => [NegativeControlNotSatisfied]
+    NegativeControlNotRun => [NegativeControlNotSatisfied]
+  }
+}
+
+fn tap_rejection_causes(r: PhysicalImpulseRequirement, s: SampleReceipt) -> List<TapQualificationCause> {
+  concat(
+    concat(
+      concat(
+        concat(
+          cause_when(
+            holds: s.peak_magnitude_milli < r.minimum_discriminating_magnitude_milli_m_per_s2,
+            c: MagnitudeBelowFloor),
+          cause_when(
+            holds: s.detection_latency_ms > r.maximum_detection_latency_ms,
+            c: LatencyAboveBudget)),
+        axes_cause(r: r, s: s)),
+      rate_cause(r: r, s: s)),
+    concat(gravity_cause(r: r, s: s), negative_control_cause(s: s)))
+}
+
+fn qualify_tap(r: PhysicalImpulseRequirement, s: SampleReceipt) -> TapQualification {
+  let causes = tap_rejection_causes(r: r, s: s)
+  if causes.length() == 0 {
+    TapQualified { receipt: s }
+  } else {
+    TapRejected { receipt: s, causes: causes }
+  }
+}
+
+data capability_binding_join_note: String = "A binding is the join of a host, a requirement, and a provider — and the provider is a symbolic reference to ITS own authority, never an arm of an enumeration here. The W3C Device Orientation and Motion contract, the W3C Accelerometer extension's concrete interfaces, the Windows sensor namespace, Apple Core Motion, Android SensorManager, the Linux IIO subsystem and the synthetic source each belong in their own module, and combining the standards with the operating-system frameworks in a single motion-support file would fuse independently governed upstreams into one authority (DESIGN §3)."
 
 type CapabilityBinding {
   host: HostRealization
@@ -78,7 +233,20 @@ type CapabilityBinding {
   provider: DeclarationRef
 }
 
-data binding_stream_note: String = "WHAT ACTUALLY HAPPENED, at the grain where the remedies differ. The arms split into three groups and the split is the point. An unavailable interface, a refused policy, a refused permission, unavailable hardware and a refused backend connection are OBSTACLES, each naming a different fix. Activation without samples, hollow samples and observed samples are DEGREES OF SILENCE AND SIGNAL, none of which is a verdict on the machine. And the two discriminator arms are FITNESS: a stream can deliver plentiful clean samples and still fail to separate a knock from typing, which is a refusal of this interaction rather than of the sensor. StreamUnobserved is a path nobody exercised, and it is never evidence of anything."
+data binding_stream_note: String = "WHAT ACTUALLY HAPPENED, at the grain where the remedies differ, and with the two fitness arms replaced by one that cannot be authored. Obstacles name a different fix each. The silence and signal arms are degrees, none of which is a verdict on the machine. Fitness arrives only as a TapQualification, which has one minter.
+
+NoSamplesObserved CARRIES ITS LIFECYCLE rather than assuming one (review finding, 2026-08-06). An earlier revision projected the web's no-events-at-all into an arm literally named ActivatedNoSamples, so an observation that never constructed a sensor was recorded as one that had reached the activated lifecycle state and then gone quiet. Those are different facts with different next steps — one says the dispatch path never ran, the other says it ran and produced nothing — and the projection was pinned by a witness, which made the fabrication load-bearing."
+
+type SampleLifecycle
+  = LifecycleActivated
+  | LifecycleActivationUnobserved
+
+fn sample_lifecycle_key(l: SampleLifecycle) -> String {
+  match l {
+    LifecycleActivated => "activated"
+    LifecycleActivationUnobserved => "activation-unobserved"
+  }
+}
 
 type BindingStreamState
   = InterfaceUnavailable
@@ -86,11 +254,10 @@ type BindingStreamState
   | PermissionRefused
   | HardwareUnavailable
   | BackendConnectionRefused { error_name: String }
-  | ActivatedNoSamples { window_ms: Milliseconds }
-  | HollowSamplesObserved { count: Int, window_ms: Milliseconds }
-  | SamplesObserved { count: Int, frequency_hz: Int, noise_floor_milli: Int, peak_magnitude_milli: Int }
-  | TapDiscriminatorQualified { peak_magnitude_milli: Int, detection_latency_ms: Milliseconds }
-  | TapDiscriminatorRejected { reason: String }
+  | NoSamplesObserved { lifecycle: SampleLifecycle, window_ms: Milliseconds }
+  | HollowSamplesObserved { count: Nat, window_ms: Milliseconds }
+  | SamplesObserved { receipt: SampleReceipt }
+  | TapOutcome { qualification: TapQualification }
   | BindingStreamUnobserved
 
 fn binding_stream_key(s: BindingStreamState) -> String {
@@ -100,11 +267,13 @@ fn binding_stream_key(s: BindingStreamState) -> String {
     PermissionRefused => "permission-refused"
     HardwareUnavailable => "hardware-unavailable"
     BackendConnectionRefused { error_name } => "backend-connection-refused"
-    ActivatedNoSamples { window_ms } => "activated-no-samples"
+    NoSamplesObserved { lifecycle, window_ms } => concat("no-samples-observed-", sample_lifecycle_key(l: lifecycle))
     HollowSamplesObserved { count, window_ms } => "hollow-samples-observed"
-    SamplesObserved { count, frequency_hz, noise_floor_milli, peak_magnitude_milli } => "samples-observed"
-    TapDiscriminatorQualified { peak_magnitude_milli, detection_latency_ms } => "tap-discriminator-qualified"
-    TapDiscriminatorRejected { reason } => "tap-discriminator-rejected"
+    SamplesObserved { receipt } => "samples-observed"
+    TapOutcome { qualification } => match qualification {
+      TapQualified { receipt } => "tap-qualified"
+      TapRejected { receipt, causes } => "tap-rejected"
+    }
     BindingStreamUnobserved => "unobserved"
   }
 }
@@ -115,90 +284,123 @@ type CapabilityBindingObservation {
   observation_window_ms: Milliseconds
 }
 
-data capability_verdict_note: String = "THE DERIVED VERDICT, PER CAPABILITY AND PER HOST, WITH AN EXPLICIT ALTERNATIVE WHEN IT DEGRADES. Supported means the interaction was actually qualified on this host — not that a sensor existed. Degraded means the product still works while THIS capability does not, and it must name both what is missing and what is offered instead, because a degradation with an unnamed alternative is just a failure with better manners. Unavailable carries the exact obstacle. Unobserved is the honest default and is never a soft no.
+data typed_cause_note: String = "Causes that participate in a decision are typed rather than prose (review finding, 2026-08-06). A free String cause cannot be matched on, counted, or compared across rows, so a support matrix built from prose causes can only be read by a human — which is the same class as an inert lens one layer out. The degradation's alternative is likewise a reference to the declared binding that provides it, so 'there is an alternative' is a resolvable fact rather than a sentence asserting one."
 
-THE RULE THE ALTERNATIVE EXISTS TO ENFORCE: a synthetic impulse may be the explicit alternative, and it may never masquerade as a hardware reading. It is named in the verdict, named in the receipt, and named on the impulse itself through source_binding, so a screen that bobbed can always say what moved it."
+type CapabilityObstacle
+  = ObstacleInterfaceUnavailable
+  | ObstaclePolicyRefused
+  | ObstaclePermissionRefused
+  | ObstacleHardwareUnavailable
+  | ObstacleBackendConnectionRefused { error_name: String }
+
+fn obstacle_key(o: CapabilityObstacle) -> String {
+  match o {
+    ObstacleInterfaceUnavailable => "interface-unavailable"
+    ObstaclePolicyRefused => "policy-refused"
+    ObstaclePermissionRefused => "permission-refused"
+    ObstacleHardwareUnavailable => "hardware-unavailable"
+    ObstacleBackendConnectionRefused { error_name } => "backend-connection-refused"
+  }
+}
+
+type DegradationCause
+  = DegradedTapRejected { causes: List<TapQualificationCause> }
+  | DegradedSamplesWithoutQualification
+  | DegradedSamplesCarryNoValues
+  | DegradedNoSamplesInWindow { lifecycle: SampleLifecycle }
+
+fn degradation_key(d: DegradationCause) -> String {
+  match d {
+    DegradedTapRejected { causes } => "tap-rejected"
+    DegradedSamplesWithoutQualification => "samples-without-qualification"
+    DegradedSamplesCarryNoValues => "samples-carry-no-values"
+    DegradedNoSamplesInWindow { lifecycle } => "no-samples-in-window"
+  }
+}
+
+data capability_verdict_note: String = "THE DERIVED VERDICT, PER CAPABILITY AND PER HOST, WITH A RESOLVABLE ALTERNATIVE WHEN IT DEGRADES. Supported means the interaction was actually QUALIFIED on this host against a total check of every declared dimension — not that a sensor existed and not that a caller said so. Degraded means the product still works while this capability does not, and it names both a typed missing cause and a reference to the binding offered instead. Unavailable carries a typed obstacle. Unobserved is the honest default and is never a soft no.
+
+A synthetic impulse may be the explicit alternative and may never masquerade as a hardware reading: it is named in the verdict by reference, named on the impulse through source_binding, and the predicate that says so derives from the producing binding rather than from a flag."
 
 type TargetCapabilityVerdict
-  = CapabilitySupported { qualified_peak_milli: Int }
-  | CapabilityDegraded { missing: String, explicit_alternative: String }
-  | CapabilityUnavailable { cause: String }
+  = CapabilitySupported { receipt: SampleReceipt }
+  | CapabilityDegraded { missing: DegradationCause, alternative: DeclarationRef }
+  | CapabilityUnavailable { obstacle: CapabilityObstacle }
   | CapabilityUnobserved
 
 fn capability_verdict_key(v: TargetCapabilityVerdict) -> String {
   match v {
-    CapabilitySupported { qualified_peak_milli } => "supported"
-    CapabilityDegraded { missing, explicit_alternative } => "degraded"
-    CapabilityUnavailable { cause } => "unavailable"
+    CapabilitySupported { receipt } => "supported"
+    CapabilityDegraded { missing, alternative } => "degraded"
+    CapabilityUnavailable { obstacle } => "unavailable"
     CapabilityUnobserved => "unobserved"
   }
 }
-
-data synthetic_alternative_label: String = "deterministic synthetic impulse, explicitly not a hardware reading"
-
-data verdict_derivation_note: String = "Only a QUALIFIED discriminator reaches supported. Observed samples alone do not: a stream that delivers values without ever qualifying a tap has proven readability and not fitness, so it degrades with the fitness named as what is missing. Every obstacle carries itself into the cause. Silence in all its forms degrades rather than refusing, because the product keeps working and only this one interaction does not — and each of those arms names the synthetic path as the alternative that is actually offered."
-
-fn derive_capability_verdict(o: CapabilityBindingObservation) -> TargetCapabilityVerdict {
-  match o.stream {
-    TapDiscriminatorQualified { peak_magnitude_milli, detection_latency_ms } =>
-      CapabilitySupported { qualified_peak_milli: peak_magnitude_milli }
-    TapDiscriminatorRejected { reason } =>
-      CapabilityDegraded { missing: reason, explicit_alternative: synthetic_alternative_label }
-    SamplesObserved { count, frequency_hz, noise_floor_milli, peak_magnitude_milli } =>
-      CapabilityDegraded {
-        missing: "samples arrive but no tap was discriminated in this window",
-        explicit_alternative: synthetic_alternative_label,
-      }
-    HollowSamplesObserved { count, window_ms } =>
-      CapabilityDegraded {
-        missing: "samples arrive carrying no values",
-        explicit_alternative: synthetic_alternative_label,
-      }
-    ActivatedNoSamples { window_ms } =>
-      CapabilityDegraded {
-        missing: "binding activated and delivered no sample in this window",
-        explicit_alternative: synthetic_alternative_label,
-      }
-    InterfaceUnavailable => CapabilityUnavailable { cause: "interface-unavailable" }
-    PolicyRefused => CapabilityUnavailable { cause: "policy-refused" }
-    PermissionRefused => CapabilityUnavailable { cause: "permission-refused" }
-    HardwareUnavailable => CapabilityUnavailable { cause: "hardware-unavailable" }
-    BackendConnectionRefused { error_name } => CapabilityUnavailable { cause: error_name }
-    BindingStreamUnobserved => CapabilityUnobserved
-  }
-}
-
-data fitness_is_measured_note: String = "Fitness is checked against the requirement's own numbers rather than against a feeling, so a stream that qualifies is one that met a declared contract. A qualified tap must clear the discriminating magnitude AND arrive inside the detection latency; clearing one without the other is not qualification, which is why both are conditions rather than a single score."
-
-fn stream_meets_requirement(s: BindingStreamState, r: PhysicalImpulseRequirement) -> Bool {
-  match s {
-    TapDiscriminatorQualified { peak_magnitude_milli, detection_latency_ms } =>
-      peak_magnitude_milli >= r.minimum_discriminating_magnitude_milli_m_per_s2 &&
-        detection_latency_ms <= r.maximum_detection_latency_ms
-    _ => false
-  }
-}
-
-data support_matrix_is_a_projection_note: String = "A support matrix is a fold over observation rows and is never authored. Adding an operating system, a container or a provider adds ROWS; it edits no function here. That is the whole reason the verdict is derived rather than declared, and it is what stops one machine's Chrome result from becoming a claim about Macs, about browsers, or about the product."
-
-fn verdicts_of(rows: List<CapabilityBindingObservation>) -> List<TargetCapabilityVerdict> {
-  map(rows, o => derive_capability_verdict(o: o))
-}
-
-fn any_capability_supported(rows: List<CapabilityBindingObservation>) -> Bool {
-  fold(rows, init: false, f: (acc, o) =>
-    acc || capability_verdict_key(v: derive_capability_verdict(o: o)) == "supported")
-}
-
-data synthetic_tap_note: String = "THE ONE PROVIDER THAT IS OURS, AND IT IS A SOURCE RATHER THAN A SIMULATION. Every other provider models an external upstream and lives in its own extdeps authority; the synthetic tap is authored input produced by this repository, so it lives here, in the product layer, beside the verdict it serves as an alternative to. It is deterministic — the same strength yields the same impulse, with no clock and no randomness — which is what lets the bob be judged, demonstrated and regression-tested on hardware that has no accelerometer at all, i.e. every CI runner and quite possibly the laptop in front of the operator.
-
-It is NOT a fallback and must never be selected because something else failed. It is a first-class source a person chooses, it names itself on every impulse it produces through source_binding, and the verdict that offers it as an alternative says the word synthetic out loud. A synthetic impulse presented as a hardware reading would be the fabricated-plausible-output failure aimed at the one place a person cannot check by looking."
 
 data synthetic_tap_binding: DeclarationRef = DeclarationRef {
   module_path: "gunbc.capability_binding",
   decl_name: "synthetic_tap_impulse",
   field: WholeDeclaration
 }
+
+fn derive_capability_verdict(o: CapabilityBindingObservation) -> TargetCapabilityVerdict {
+  match o.stream {
+    TapOutcome { qualification } => match qualification {
+      TapQualified { receipt } => CapabilitySupported { receipt: receipt }
+      TapRejected { receipt, causes } =>
+        CapabilityDegraded {
+          missing: DegradedTapRejected { causes: causes },
+          alternative: synthetic_tap_binding,
+        }
+    }
+    SamplesObserved { receipt } =>
+      CapabilityDegraded {
+        missing: DegradedSamplesWithoutQualification,
+        alternative: synthetic_tap_binding,
+      }
+    HollowSamplesObserved { count, window_ms } =>
+      CapabilityDegraded {
+        missing: DegradedSamplesCarryNoValues,
+        alternative: synthetic_tap_binding,
+      }
+    NoSamplesObserved { lifecycle, window_ms } =>
+      CapabilityDegraded {
+        missing: DegradedNoSamplesInWindow { lifecycle: lifecycle },
+        alternative: synthetic_tap_binding,
+      }
+    InterfaceUnavailable => CapabilityUnavailable { obstacle: ObstacleInterfaceUnavailable }
+    PolicyRefused => CapabilityUnavailable { obstacle: ObstaclePolicyRefused }
+    PermissionRefused => CapabilityUnavailable { obstacle: ObstaclePermissionRefused }
+    HardwareUnavailable => CapabilityUnavailable { obstacle: ObstacleHardwareUnavailable }
+    BackendConnectionRefused { error_name } =>
+      CapabilityUnavailable { obstacle: ObstacleBackendConnectionRefused { error_name: error_name } }
+    BindingStreamUnobserved => CapabilityUnobserved
+  }
+}
+
+data verdict_row_note: String = "A VERDICT WITHOUT ITS BINDING IS NOT A SUPPORT FACT (review finding, 2026-08-06). An earlier revision folded a list of observations into a bare Bool, which meant one supported binding could answer yes over a list spanning different devices, different requirements and different providers — the join keys the whole module exists to preserve, discarded at the last step. Rows retain the binding, so a matrix can be read by host, by provider or by requirement, and a support claim is always scoped to the one it was measured on."
+
+type CapabilityVerdictRow {
+  binding: CapabilityBinding
+  verdict: TargetCapabilityVerdict
+}
+
+fn verdict_rows(rows: List<CapabilityBindingObservation>) -> List<CapabilityVerdictRow> {
+  map(rows, o => CapabilityVerdictRow {
+    binding: o.binding,
+    verdict: derive_capability_verdict(o: o),
+  })
+}
+
+data durable_support_claim_note: String = "A durable support claim needs an EXACT host, which is a stricter condition than a useful observation. An observation from a reduced or partially identified host is real and worth rendering; it simply cannot become a row asserting that this exact target is supported, because nobody can say which target it was. So the gate is separate from the verdict rather than folded into it."
+
+fn row_supports_a_durable_claim(r: CapabilityVerdictRow) -> Bool {
+  capability_verdict_key(v: r.verdict) == "supported" && host_identity_is_exact(h: r.binding.host)
+}
+
+data synthetic_tap_note: String = "THE ONE PROVIDER THAT IS OURS, AND IT IS A SOURCE RATHER THAN A SIMULATION. Every other provider models an external upstream and lives in its own extdeps authority; the synthetic tap is authored input produced by this repository, so it lives here, beside the verdict it serves as an alternative to. It is deterministic — the same strength yields the same impulse, with no clock and no randomness — which is what lets the bob be judged, demonstrated and regression-tested on hardware that has no accelerometer at all.
+
+It is NOT a fallback and must never be selected because something else failed. It is a first-class source a person chooses, it names itself on every impulse it produces, and the verdict that offers it as an alternative carries a reference to it rather than a sentence about it."
 
 type SyntheticTapStrength
   = SyntheticTapLight
@@ -213,9 +415,9 @@ fn synthetic_tap_strength_key(t: SyntheticTapStrength) -> String {
   }
 }
 
-data synthetic_tap_strength_note: String = "Three strengths rather than a slider, because the point of the control is to demonstrate the response and its bound: a light tap that barely moves the plate, a firm one that reads as a clear knock, and a full knock that reaches the clamp. A continuous input would let a viewer wander through the range without ever seeing the two ends that carry the argument. The magnitudes are denominated against the same milli-m/s^2 axis a real reading arrives on, so the synthetic and physical paths are comparable rather than merely compatible."
+data synthetic_tap_strength_note: String = "Three strengths rather than a slider, because the point of the control is to demonstrate the response AND its bound: a light tap that barely moves the plate and sits below the discriminating floor, a firm one that clears it, and a full knock that reaches the clamp. A continuous input lets a viewer wander the range without ever seeing the two ends that carry the argument."
 
-fn synthetic_tap_magnitude_milli(t: SyntheticTapStrength) -> Int {
+fn synthetic_tap_magnitude_milli(t: SyntheticTapStrength) -> Nat {
   match t {
     SyntheticTapLight => 900
     SyntheticTapFirm => 2600
@@ -232,7 +434,7 @@ fn synthetic_tap_impulse(t: SyntheticTapStrength, at_ms: Milliseconds) -> Physic
   }
 }
 
-data synthetic_is_never_a_hardware_claim_note: String = "The predicate a receipt uses to label an impulse honestly, and the reason it is a function of the BINDING rather than of a flag: an impulse cannot be marked synthetic by whoever renders it, because the mark is derived from which producer made it. A hardware reading routed through a synthetic label, or the reverse, is not expressible."
+data synthetic_is_never_a_hardware_claim_note: String = "The predicate a receipt uses to label an impulse honestly, derived from which producer made it rather than from a flag whoever renders it could set. A hardware reading routed through a synthetic label, or the reverse, is not expressible."
 
 fn impulse_is_synthetic(i: PhysicalImpulse) -> Bool {
   i.source_binding.module_path == synthetic_tap_binding.module_path &&
@@ -242,3 +444,31 @@ fn impulse_is_synthetic(i: PhysicalImpulse) -> Bool {
 fn synthetic_tap_clears_requirement(t: SyntheticTapStrength, r: PhysicalImpulseRequirement) -> Bool {
   synthetic_tap_magnitude_milli(t: t) >= r.minimum_discriminating_magnitude_milli_m_per_s2
 }
+
+data coverage_frontier_note: String = "COVERAGE OBLIGATIONS, NOT SUPPORT CLAIMS. Every platform this product could eventually reach is a target with a typed disposition and, where deferred, an explicit trigger. There is no WindowsSupported here, no MacUnsupported, and no placeholder observation standing in for a run that never happened: a target nobody has probed is ProbeRequired or Deferred, both of which say plainly that nothing is known. The page renders this so the gap between what is implemented and what is merely intended is visible rather than inferred."
+
+type BindingCoverageState
+  = CoverageImplemented { receipt: DeclarationRef }
+  | CoverageProbeRequired
+  | CoverageProbeBlocked { cause: String }
+  | CoverageDeferred { trigger: String }
+
+fn coverage_state_key(s: BindingCoverageState) -> String {
+  match s {
+    CoverageImplemented { receipt } => "implemented"
+    CoverageProbeRequired => "probe-required"
+    CoverageProbeBlocked { cause } => "probe-blocked"
+    CoverageDeferred { trigger } => "deferred"
+  }
+}
+
+fn coverage_state_is_a_support_claim(s: BindingCoverageState) -> Bool {
+  match s {
+    CoverageImplemented { receipt } => false
+    CoverageProbeRequired => false
+    CoverageProbeBlocked { cause } => false
+    CoverageDeferred { trigger } => false
+  }
+}
+
+data coverage_is_never_support_note: String = "Total and constantly false, and that IS the claim: no coverage state is a support statement, not even Implemented — implemented means the binding exists and can be probed, while support is a verdict derived from an executed observation on an exact host. If a fifth state is ever added that DOES assert support, this match forces the author to write the arm and a reviewer sees a true in a function whose name says there should not be one."

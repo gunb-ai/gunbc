@@ -8,14 +8,15 @@ data host_realization_note: String = "CONTAINER IS NOT RENDERER IS NOT OPERATING
 
 WHAT THIS EXISTS TO PREVENT is a browser-shaped frontend architecture. The first cut of the motion observation carrier made BrowserProductRef, browsing context and secure context TOP-LEVEL fields of a supposedly neutral observation, which quietly declared that the product is a website and that every other container is a variant of one. It is the other way round: the web is one realization among several, grounded on its own terms, and it is not the preferred final container merely because it is the first one running."
 
-data container_kind_note: String = "WHERE THE PRODUCT PROCESS LIVES. This axis is a closed structural enumeration and is deliberately NOT a product enumeration — Chrome, Safari, a signed desktop build and a phone app are symbolic references to their own authorities, carried beside this kind rather than inside it, so adding a product is a new module and edits nothing here (DESIGN §3). An embedded web view is its own arm rather than a browser document, because its process lifetime, its permission surface and its policy delegation all belong to the hosting application instead of to a browser."
+data container_kind_note: String = "WHERE THE PRODUCT PROCESS LIVES. This axis is a closed structural enumeration and is deliberately NOT a product enumeration — Chrome, Safari, a signed desktop build and a phone app are symbolic references to their own authorities, carried beside this kind rather than inside it, so adding a product is a new module and edits nothing here (DESIGN §3). An embedded web view is its own arm rather than a browser document, because its permission surface and its policy delegation belong to the hosting application instead of to a browser.
+
+COMPANION IS NOT A CONTAINER (review finding, 2026-08-06). An earlier revision listed CompanionDevice beside the four process locations, which fused two orthogonal questions: a companion phone still runs its process SOMEWHERE — a browser document, a native mobile process, or an embedded web view — and companion describes its role in the topology, not where the code lives. The role moved to HostRole below, so a phone acting as a deliberate physical controller for a desktop instrument is expressible as exactly what it is."
 
 type ApplicationContainerKind
   = BrowserDocument
   | NativeDesktopProcess
   | NativeMobileProcess
   | EmbeddedWebView
-  | CompanionDevice
 
 fn container_kind_key(c: ApplicationContainerKind) -> String {
   match c {
@@ -23,18 +24,33 @@ fn container_kind_key(c: ApplicationContainerKind) -> String {
     NativeDesktopProcess => "native-desktop-process"
     NativeMobileProcess => "native-mobile-process"
     EmbeddedWebView => "embedded-web-view"
-    CompanionDevice => "companion-device"
   }
 }
 
-fn container_owns_its_process_lifetime(c: ApplicationContainerKind) -> Bool {
-  match c {
-    BrowserDocument => false
-    NativeDesktopProcess => true
-    NativeMobileProcess => true
-    EmbeddedWebView => false
-    CompanionDevice => true
+data host_role_note: String = "WHAT THIS HOST IS DOING IN THE TOPOLOGY, which is orthogonal to where its process lives. A phone can be the instrument itself or a deliberate physical controller for an instrument running elsewhere, and in both cases it is a native mobile process or a browser document. Keeping the role separate is what lets a companion input binding be modelled without inventing a container kind for it."
+
+type HostRole
+  = PrimaryInstrument
+  | CompanionInput
+
+fn host_role_key(r: HostRole) -> String {
+  match r {
+    PrimaryInstrument => "primary-instrument"
+    CompanionInput => "companion-input"
   }
+}
+
+data process_lifetime_boolean_removed_note: String = "A PROCESS-LIFETIME BOOLEAN DERIVED FROM CONTAINER TYPE WAS WRONG TWICE OVER (review finding, 2026-08-06), and it is deleted rather than corrected. It claimed a native mobile application owns its process lifetime, which no mobile application does — the operating system suspends and kills it on its own policy. And it answered the wrong question: what the product actually needs is CONTINUITY of the instrument and its state, which is a capability with several independent parts, not a property assigned to a container by type. A native shell makes some of those parts easier to realize; it does not make them different requirements."
+
+type InstrumentContinuity {
+  preserve_local_camera: Bool
+  preserve_last_projection: Bool
+  preserve_preferences: Bool
+  replay_cold_start: Bool
+}
+
+fn continuity_is_complete(c: InstrumentContinuity) -> Bool {
+  c.preserve_local_camera && c.preserve_last_projection && c.preserve_preferences && c.replay_cold_start
 }
 
 data renderer_kind_note: String = "HOW A DECIDED PROJECTION BECOMES PIXELS AND ACCESSIBILITY STRUCTURE, and the product model must not know which one was chosen. This is a structural axis rather than a product one — there is no vendor here to enumerate — and it is orthogonal to the container above it: a native desktop process may render DOM inside a web view, and a browser document may render a WebGPU scene. Keeping the two apart is what leaves the route open from today's generated DOM instrument to a native or engine realization of the SAME projection, without touching roadmap semantics."
@@ -53,6 +69,10 @@ fn renderer_kind_key(r: RendererKind) -> String {
     GameEngineRenderer => "game-engine"
   }
 }
+
+data product_is_not_engine_note: String = "A BROWSER PRODUCT IS NOT ITS ENGINE, AND THIS REPOSITORY ALREADY RULED SO (review finding, 2026-08-06). extdeps.browser.chromium's own chromium_identity_boundary_note states that a Chromium build is not a Google Chrome, Opera, Edge, or Playwright identity. An earlier revision of this lane's fixture nevertheless recorded a Google Chrome observation with container pointing at the Chromium project and container_build carrying Chrome's version string — reopening exactly the product/engine conflation that ruling was written to close, and attributing a Chrome result to Chromium.
+
+The two are separate fields. The product is what a person installed and what a receipt panel names; the runtime engine is what actually implements the contract and is frequently what a platform limitation belongs to. They resolve independently: a Chrome observation can name Chrome exactly while its Chromium revision stays unresolved, which is the common case under a reduced User-Agent."
 
 data host_realization_identity_note: String = "Every identity here is a symbolic reference to the authority that owns it, never a name string, so a host is a join over real modules rather than over spellings (DESIGN §3 cite-the-symbol). The unresolved arm is a NAMED variant carrying its own cause rather than a bare optional, because there are several distinct reasons an identity goes unresolved and collapsing them into one absent value is the state-space conflation DESIGN's failure-mode list names first: a reduced User-Agent that reports a frozen literal, a probe that never asked, and a platform that publishes no such identity are three different situations with three different remedies, and only the first is fixed by reading UA Client Hints."
 
@@ -84,16 +104,19 @@ type HostRealization {
   platform: ExternalSubjectRef
   platform_revision: ResolvedRef
   device_identity: ResolvedRef
+  role: HostRole
   container_kind: ApplicationContainerKind
-  container: DeclarationRef
-  container_build: ResolvedRef
+  container_product: DeclarationRef
+  container_product_build: ResolvedRef
+  runtime_engine: ResolvedRef
+  runtime_engine_build: ResolvedRef
   renderer: RendererKind
 }
 
 fn host_identity_is_exact(h: HostRealization) -> Bool {
   ref_is_resolved(r: h.platform_revision) &&
     ref_is_resolved(r: h.device_identity) &&
-    ref_is_resolved(r: h.container_build)
+    ref_is_resolved(r: h.container_product_build)
 }
 
 data host_identity_exactness_note: String = "A host whose revision, device and build are all resolved can carry a claim about THAT machine. A host missing any of them can still carry an observation — the observation is real — but a support statement derived from it is scoped to whatever was actually resolved, which in practice is usually the container kind and nothing more."
