@@ -1,0 +1,187 @@
+module v2.compiler.parse_diagnostic
+
+import std.algebra { FreeMonoid }
+import v2.std.algebra {
+  Cons,
+  Empty,
+  HeadAbsent,
+  HeadFound,
+  TailAbsent,
+  TailFound,
+  fold_list,
+  list_head,
+  list_snoc_item,
+  list_tail
+}
+import v2.std.collection { List }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Locus,
+  NonEmptyDiagnostics,
+  Unavailable,
+  port_locus
+}
+import v2.std.grammar_choice_ambiguity {
+  GrammarChoiceAmbiguityRow,
+  NonEmptyGrammarChoiceAmbiguityRows
+}
+import v2.std.optional { Optional, Present, optional_absent, optional_present }
+
+data parse_diagnostic_evidence_axis_note: String = "ParseDiagnosticEvidence is parse-stage evidence orthogonal to the universal Diagnostic carrier. Grammar-choice overlap rows live here — never on Correction, Locus, or Diagnostic itself."
+
+type ParseDiagnosticEvidence
+  = NoParseDiagnosticEvidence
+  | GrammarChoiceAmbiguityEvidence { row: GrammarChoiceAmbiguityRow }
+
+type ParseStageDiagnostic {
+  diagnostic: Diagnostic
+  evidence: ParseDiagnosticEvidence
+}
+
+type NonEmptyParseStageDiagnostics {
+  head: ParseStageDiagnostic
+  tail: FreeMonoid<ParseStageDiagnostic>
+}
+
+fn parse_overlap_residue_stage_diagnostic_at(
+  at: Locus,
+  row: GrammarChoiceAmbiguityRow
+) -> ParseStageDiagnostic {
+  ParseStageDiagnostic {
+    diagnostic: Diagnostic {
+      reason: ^parse_grammar_choice_overlap_residue,
+      at: at,
+      correction: Unavailable { reason: ExternalContractUnknown }
+    },
+    evidence: GrammarChoiceAmbiguityEvidence { row: row }
+  }
+}
+
+fn parse_overlap_residue_stage_diagnostic(row: GrammarChoiceAmbiguityRow) -> ParseStageDiagnostic {
+  parse_overlap_residue_stage_diagnostic_at(
+    at: port_locus(port: ^parse_stage_locus_port),
+    row: row
+  )
+}
+
+fn non_empty_parse_stage_diagnostics_from_overlap_roster(
+  at: Locus,
+  roster: List<GrammarChoiceAmbiguityRow>
+) -> Optional<NonEmptyParseStageDiagnostics> {
+  match roster {
+    Empty => optional_absent()
+    Cons { head: first, tail: rest } =>
+      optional_present(
+        value: NonEmptyParseStageDiagnostics {
+          head: parse_overlap_residue_stage_diagnostic_at(at: at, row: first),
+          tail: fold_list(
+            xs: rest,
+            empty: Empty,
+            cons: fn(acc, row) {
+              list_snoc_item(
+                xs: acc,
+                item: parse_overlap_residue_stage_diagnostic_at(at: at, row: row)
+              )
+            }
+          )
+        }
+      )
+  }
+}
+
+fn parse_stage_diagnostic_from_diagnostic_only(d: Diagnostic) -> ParseStageDiagnostic {
+  ParseStageDiagnostic {
+    diagnostic: d,
+    evidence: NoParseDiagnosticEvidence
+  }
+}
+
+fn parse_stage_diagnostic_core(d: ParseStageDiagnostic) -> Diagnostic {
+  d.diagnostic
+}
+
+fn parse_stage_evidence_row_optional(d: ParseStageDiagnostic) -> Optional<GrammarChoiceAmbiguityRow> {
+  match d.evidence {
+    GrammarChoiceAmbiguityEvidence { row: row } => optional_present(value: row)
+    NoParseDiagnosticEvidence => optional_absent()
+  }
+}
+
+fn non_empty_diagnostics_from_parse_stage(d: NonEmptyParseStageDiagnostics) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics {
+    head: parse_stage_diagnostic_core(d: d.head),
+    tail: fold_list(
+      xs: d.tail,
+      empty: Empty,
+      cons: fn(acc, item) {
+        list_snoc_item(xs: acc, item: parse_stage_diagnostic_core(d: item))
+      }
+    )
+  }
+}
+
+fn grammar_choice_ambiguity_rows_append_parse_stage(
+  acc: FreeMonoid<GrammarChoiceAmbiguityRow>,
+  d: ParseStageDiagnostic
+) -> FreeMonoid<GrammarChoiceAmbiguityRow> {
+  match parse_stage_evidence_row_optional(d: d) {
+    Present { value: row } => list_snoc_item(xs: acc, item: row)
+    Absent => acc
+  }
+}
+
+fn grammar_choice_ambiguity_rows_from_non_empty_parse_stage(
+  d: NonEmptyParseStageDiagnostics
+) -> FreeMonoid<GrammarChoiceAmbiguityRow> {
+  let head_rows = grammar_choice_ambiguity_rows_append_parse_stage(acc: Empty, d: d.head)
+  fold_list(
+    xs: d.tail,
+    empty: head_rows,
+    cons: fn(acc, item) {
+      grammar_choice_ambiguity_rows_append_parse_stage(acc: acc, d: item)
+    }
+  )
+}
+
+fn non_empty_grammar_choice_ambiguity_rows_from_parse_stage(
+  d: NonEmptyParseStageDiagnostics
+) -> Optional<NonEmptyGrammarChoiceAmbiguityRows> {
+  let rows = grammar_choice_ambiguity_rows_from_non_empty_parse_stage(d: d)
+  match list_head(xs: rows) {
+    HeadFound { value: head } =>
+      optional_present(
+        value: NonEmptyGrammarChoiceAmbiguityRows {
+          head: head,
+          tail: list_tail_or_empty_rows(xs: rows)
+        }
+      )
+    HeadAbsent => optional_absent()
+  }
+}
+
+fn list_tail_or_empty_rows(xs: FreeMonoid<GrammarChoiceAmbiguityRow>) -> FreeMonoid<GrammarChoiceAmbiguityRow> {
+  match list_tail(xs: xs) {
+    TailAbsent => Empty
+    TailFound { tail: rest } => rest
+  }
+}
+
+fn list_head_value_or_self_parse_stage(
+  head: ParseStageDiagnostic,
+  tail: FreeMonoid<ParseStageDiagnostic>
+) -> ParseStageDiagnostic {
+  match list_head(xs: tail) {
+    HeadFound { value: item } => item
+    HeadAbsent => head
+  }
+}
+
+fn list_tail_or_empty_parse_stage(
+  tail: FreeMonoid<ParseStageDiagnostic>
+) -> FreeMonoid<ParseStageDiagnostic> {
+  match list_tail(xs: tail) {
+    TailAbsent => Empty
+    TailFound { tail: rest } => rest
+  }
+}
