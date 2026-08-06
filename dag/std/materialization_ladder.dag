@@ -12,6 +12,9 @@ import std.cache_interface {
   ReleasedAtProviderScopeExit,
   ReleasedNever,
   retention_growth_is_bounded,
+  CapacityUnbounded,
+  CapacityBounded,
+  CapacityUnobserved,
 }
 
 data materialization_ladder_frame_path_predicate_contract: Disposition = Terminal {
@@ -174,6 +177,8 @@ type LadderVerdict
   | RefusedNoProvider { identity: String, lca: List<Frame> }
   | RefusedScopeTooNarrow { identity: String, lca: List<Frame>, provider_id: String }
   | RefusedExistenceKeyed { identity: String, lca: List<Frame>, provider_id: String }
+  | RefusedRetentionUnbounded { identity: String, lca: List<Frame>, provider_id: String }
+  | RefusedRetentionUnobserved { identity: String, lca: List<Frame>, provider_id: String }
   | RefusedUnmodeledWorldRead { identity: String, lca: List<Frame> }
   | ExemptFreshEffect { identity: String }
   | AcceptedBelowCostFloor { identity: String }
@@ -419,6 +424,25 @@ fn group_has_nature_conflict(group: List<FrameDemand>) -> Bool {
   group |> fold(init: false, f: (acc, d) => acc || !nature_eq(a: d.nature, b: head_nature))
 }
 
+// RULE 3 IS READ HERE, not merely carried. Until 2026-08-06 CacheProvider had a
+// retention field that discharge_verdict never consulted: a persistent,
+// content-keyed, scope-covering provider with CapacityUnobserved returned
+// Discharged, so the standing note's "cannot discharge unless bounded" was a
+// claim no consumer enforced. The refusal keeps the provider_id and separates
+// KNOWN-unbounded from NOT-ESTABLISHED, because the remedies differ (declare a
+// ceiling vs cite one). Filtering the provider out instead would have reported
+// RefusedNoProvider - a false cause, since a provider is present and covering.
+fn retention_refusal(identity: String, lca: List<Frame>, provider: CacheProvider) -> LadderVerdict {
+  match provider.retention.capacity {
+    CapacityUnbounded =>
+      RefusedRetentionUnbounded { identity: identity, lca: lca, provider_id: provider.id }
+    CapacityUnobserved =>
+      RefusedRetentionUnobserved { identity: identity, lca: lca, provider_id: provider.id }
+    CapacityBounded { limit: _, at_capacity: _ } =>
+      RefusedRetentionUnobserved { identity: identity, lca: lca, provider_id: provider.id }
+  }
+}
+
 fn discharge_verdict(identity: String, lca: List<Frame>, providers: List<CacheProvider>) -> LadderVerdict {
   let content_covering = providers |> filter(p =>
     provider_is_store_tier(p: p)
@@ -427,7 +451,12 @@ fn discharge_verdict(identity: String, lca: List<Frame>, providers: List<CachePr
       && provider_is_content_keyed(p: p)
   )
   match content_covering.first() {
-    Present { value: chosen } => Discharged { identity: identity, lca: lca, provider_id: chosen.id }
+    Present { value: chosen } =>
+      if retention_growth_is_bounded(r: chosen.retention) {
+        Discharged { identity: identity, lca: lca, provider_id: chosen.id }
+      } else {
+        retention_refusal(identity: identity, lca: lca, provider: chosen)
+      }
     Absent => {
       let scope_covering = providers |> filter(p =>
         provider_is_store_tier(p: p)
@@ -527,6 +556,8 @@ fn ladder_verdict_is_green(v: LadderVerdict) -> Bool {
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => true
     AcceptedBelowCostFloor { identity: _ } => true
@@ -544,6 +575,8 @@ fn ladder_verdict_prescribes(v: LadderVerdict) -> Materialization {
     RefusedNoProvider { identity: _, lca: _ } => Memoize
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => Memoize
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => Memoize
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => Memoize
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => Memoize
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => Recompute
     ExemptFreshEffect { identity: _ } => Recompute
     AcceptedBelowCostFloor { identity: _ } => Recompute
@@ -570,6 +603,8 @@ fn verdict_is_refused_nature_conflict(v: LadderVerdict, identity: String) -> Boo
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -585,6 +620,8 @@ fn verdict_is_authored_duplication(v: LadderVerdict, identity: String, site_coun
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -602,6 +639,8 @@ fn verdict_is_discharged_by(v: LadderVerdict, identity: String, provider_id: Str
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -619,6 +658,8 @@ fn verdict_is_refused_no_provider(v: LadderVerdict, identity: String) -> Bool {
     RefusedNoProvider { identity: i, lca: _ } => i == identity
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -636,6 +677,8 @@ fn verdict_is_refused_scope_too_narrow(v: LadderVerdict, provider_id: String) ->
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: p } => p == provider_id
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -653,6 +696,8 @@ fn verdict_is_refused_existence_keyed(v: LadderVerdict, provider_id: String) -> 
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: p } => p == provider_id
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -670,6 +715,8 @@ fn verdict_is_refused_unmodeled_world_read(v: LadderVerdict, identity: String) -
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: i, lca: _ } => i == identity
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -687,6 +734,8 @@ fn verdict_is_exempt_fresh(v: LadderVerdict, identity: String) -> Bool {
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: i } => i == identity
     AcceptedBelowCostFloor { identity: _ } => false
@@ -704,6 +753,8 @@ fn verdict_is_accepted_below_cost_floor(v: LadderVerdict, identity: String) -> B
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: i } => i == identity
@@ -721,6 +772,8 @@ fn verdict_is_accepted_single_recompute(v: LadderVerdict, identity: String) -> B
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -760,6 +813,8 @@ fn verdict_is_dead_computation(v: LadderVerdict, identity: String) -> Bool {
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -989,6 +1044,8 @@ fn verdict_is_accepted_effect_is_the_use(v: LadderVerdict, identity: String) -> 
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false

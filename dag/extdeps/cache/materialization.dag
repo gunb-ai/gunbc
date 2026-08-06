@@ -40,9 +40,11 @@ data catalog_keying_note: String = "Keying projection is refuse-leaning (section
 // ceiling. The old pair (NeverEvictionOutsideProcess / ManualEvictionOutside-
 // Process) named the old fused variants and could not say which fact was absent.
 type CatalogProjectionRefusalReason
-  = CapacityUnboundedForBoundedRole
-  | CapacityUnobservedForBoundedRole
-  | AtCapacityUnobservedForGracefulRole
+  = CapacityUnboundedForRole
+  | CapacityUnobservedForRole
+  | CapacityUnitMismatchForRole
+  | CapacityValueUnobservedForRole
+  | CapacityValueUnresolvedForRole
 
 type CatalogProviderProjection
   = ProjectedProvider { provider: CacheProvider }
@@ -106,27 +108,71 @@ fn provider_from_catalog(
 // "does THIS cache have enough facts for THIS role?"; completion asks "is every
 // provider the live plan requires eligible?". One predicate answering all three
 // is how a refusal count became a copied expected number instead of a finding.
-fn provider_for_bounded_role(
+fn provider_for_growth_bounded_role(
   facts: CacheInterfaceCatalogFacts,
   scope: List<Frame>,
   coverage: CacheCoverage
 ) -> CatalogProviderProjection {
-  let retention = catalog_retention(facts: facts)
-  if retention_growth_is_bounded(r: retention) {
+  role_door(facts: facts, scope: scope, coverage: coverage,
+            ok: retention_growth_is_bounded(r: catalog_retention(facts: facts)))
+}
+
+fn provider_for_capacity_bounded_role(
+  facts: CacheInterfaceCatalogFacts,
+  scope: List<Frame>,
+  coverage: CacheCoverage
+) -> CatalogProviderProjection {
+  role_door(facts: facts, scope: scope, coverage: coverage,
+            ok: retention_has_capacity_bound(r: catalog_retention(facts: facts)))
+}
+
+fn provider_for_exact_byte_budget_role(
+  facts: CacheInterfaceCatalogFacts,
+  scope: List<Frame>,
+  coverage: CacheCoverage
+) -> CatalogProviderProjection {
+  role_door(facts: facts, scope: scope, coverage: coverage,
+            ok: retention_has_exact_byte_bound(r: catalog_retention(facts: facts)))
+}
+
+fn role_door(
+  facts: CacheInterfaceCatalogFacts,
+  scope: List<Frame>,
+  coverage: CacheCoverage,
+  ok: Bool
+) -> CatalogProviderProjection {
+  if ok {
     provider_from_catalog(facts: facts, scope: scope, coverage: coverage)
   } else {
     ProjectionRefused {
       interface: facts.identity,
-      reason: bounded_role_refusal_reason(c: retention.capacity)
+      reason: capacity_refusal_reason(c: catalog_retention(facts: facts).capacity)
     }
   }
 }
 
-fn bounded_role_refusal_reason(c: CapacityPolicy) -> CatalogProjectionRefusalReason {
+// Folds over the capacity STATE, so the two refusal causes are the only ones
+// constructible. A first cut had the CapacityBounded arm return
+// CapacityUnobservedForBoundedRole - an unreachable arm returning a FALSE cause,
+// which would have mislabelled every future refusal that reached it. A bounded
+// capacity that still fails a role fails on the limit's unit or evidence, and
+// that is the role door's business, not this fold's.
+fn capacity_refusal_reason(c: CapacityPolicy) -> CatalogProjectionRefusalReason {
   match c {
-    CapacityUnbounded => CapacityUnboundedForBoundedRole
-    CapacityBounded { limit: _, at_capacity: _ } => CapacityUnobservedForBoundedRole
-    CapacityUnobserved => CapacityUnobservedForBoundedRole
+    CapacityUnbounded => CapacityUnboundedForRole
+    CapacityUnobserved => CapacityUnobservedForRole
+    CapacityBounded { limit: l, at_capacity: _ } => capacity_limit_refusal_reason(l: l)
+  }
+}
+
+fn capacity_limit_refusal_reason(l: CapacityLimit) -> CatalogProjectionRefusalReason {
+  match l {
+    EntryCountCapacity { limit: _ } => CapacityUnitMismatchForRole
+    ByteCapacity { limit: v } => match v {
+      ExactLimit { value: _ } => CapacityUnitMismatchForRole
+      RuntimeDerivedLimit { authority: _ } => CapacityValueUnresolvedForRole
+      EffectiveLimitUnobserved => CapacityValueUnobservedForRole
+    }
   }
 }
 
