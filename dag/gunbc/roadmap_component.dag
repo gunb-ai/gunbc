@@ -30,6 +30,7 @@ import extdeps.languages.typescript.program {
   TsProgram, TsExpr, TsStmt, serialize_typescript_program,
   ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_call, ts_binop, ts_arrow, ts_block,
   ts_const, ts_let, ts_return, ts_new, ts_expr_stmt, ts_if, ts_cond, ts_prefix, ts_object, ts_field,
+  ts_array, ts_index,
 }
 import gunbc.design.sound {
   SoundSpec, engage_detent_click,
@@ -37,6 +38,15 @@ import gunbc.design.sound {
   sound_spec_peak_gain_wire, sound_spec_timbre_wire,
   sound_mute_storage_key,
 }
+import gunbc.design.instrument_camera {
+  camera_storage_key, camera_wire_sep, camera_initial,
+  program_depth_key, DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence,
+  program_mode_key, ModeStatus, ModeRemaining, ModeWhy,
+  focus_subject_key, NoSubjectSelected,
+  wheel_detent_threshold_px, wheel_gesture_reset_interval,
+  instrument_depth_keys, instrument_user_depth_keys, instrument_mode_keys,
+}
+import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_line_key }
 import extdeps.web_audio {
   web_audio_context_interface,
   web_audio_create_oscillator_method, web_audio_create_gain_method,
@@ -2961,6 +2971,801 @@ fn sandbox_client_program() -> TsProgram {
 
 fn sandbox_client_js_source() -> String {
   serialize_typescript_program(p: sandbox_client_program())
+}
+
+data instrument_tuner_asset_path: String = "/assets/instrument-tuner.js"
+
+data instrument_tuner_client_note: String = "THE OPERABLE HALF OF THE V1-DELETION INSTRUMENT (declared follow-on to gunbc.roadmap_instrument_sandbox exemplar_note). Modeled as a TsProgram via serialize_typescript_program — persistent camera in localStorage, selection parity with row_selection_bind_statements, thresholded wheel integrator (one detent per admitted threshold) and seek-depth buttons that decompose distant targets into adjacent steps, detent click only when depth actually changes, MVP user depths (program/outcome/front) on controls. Never writes a program fact."
+
+data instrument_subject_class: String = "instrument-subject"
+data instrument_subject_selected_class: String = "instrument-subject-selected"
+data instrument_reading_class: String = "instrument-reading"
+data instrument_depth_btn_class: String = "instrument-depth-btn"
+data instrument_mode_btn_class: String = "instrument-mode-btn"
+data instrument_tuner_root_class: String = "instrument-tuner"
+
+data js_instrument_camera_var: String = "gunbcCamera"
+data js_instrument_load_fn: String = "gunbcLoadInstrumentCamera"
+data js_instrument_save_fn: String = "gunbcSaveInstrumentCamera"
+data js_instrument_apply_fn: String = "gunbcApplyInstrumentCamera"
+data js_instrument_step_depth_fn: String = "gunbcStepInstrumentDepth"
+data js_instrument_seek_depth_fn: String = "gunbcSeekInstrumentDepth"
+data js_instrument_set_mode_fn: String = "gunbcSetInstrumentMode"
+data js_instrument_select_subject_fn: String = "gunbcSelectInstrumentSubject"
+data js_instrument_clear_subject_fn: String = "gunbcClearInstrumentSubject"
+
+data js_instrument_wheel_travel_var: String = "instrumentWheelTravel"
+data js_instrument_wheel_timer_var: String = "instrumentWheelGestureTimer"
+data js_instrument_normalize_wheel_fn: String = "gunbcNormalizeWheelDelta"
+data js_instrument_consume_wheel_fn: String = "gunbcConsumeWheelTravel"
+data js_instrument_handle_wheel_fn: String = "gunbcHandleInstrumentWheel"
+data js_instrument_wheel_threshold_const: String = "INSTRUMENT_WHEEL_THRESHOLD"
+
+fn instrument_focus_keys() -> List<String> {
+  concat(
+    [focus_subject_key(f: NoSubjectSelected)],
+    v1_exit_finish_lines() |> map(s => v1_finish_line_key(l: s.line)),
+  )
+}
+
+fn js_instrument_wire_index_valid(keys_var: String, parts_var: String, index: String) -> TsExpr {
+  ts_binop(
+    left: ts_call(
+      callee: ts_member(object: ts_ident(name: keys_var), property: "indexOf"),
+      args: [ts_index(object: ts_ident(name: parts_var), index: ts_lit_num(text: index))],
+    ),
+    op: "<",
+    right: ts_lit_num(text: "0"),
+  )
+}
+
+fn js_instrument_camera_member(name: String) -> TsExpr {
+  ts_member(object: ts_ident(name: js_instrument_camera_var), property: name)
+}
+
+fn js_instrument_wire_expr() -> TsExpr {
+  ts_binop(
+    left: ts_binop(
+      left: js_instrument_camera_member(name: "depth"),
+      op: "+",
+      right: ts_lit_str(value: camera_wire_sep),
+    ),
+    op: "+",
+    right: ts_binop(
+      left: js_instrument_camera_member(name: "mode"),
+      op: "+",
+      right: ts_binop(
+        left: ts_lit_str(value: camera_wire_sep),
+        op: "+",
+        right: js_instrument_camera_member(name: "focus"),
+      ),
+    ),
+  )
+}
+
+fn js_instrument_query_all(class_name: String) -> TsExpr {
+  ts_call(
+    callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+    args: [ts_lit_str(value: join([".", class_name], ""))],
+  )
+}
+
+fn js_instrument_toggle_class_on(el: String, cls: String, on: TsExpr) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: ts_member(object: ts_ident(name: el), property: "classList"), property: "toggle"),
+    args: [ts_lit_str(value: cls), on],
+  ))
+}
+
+fn instrument_tuner_load_camera_fn_body() -> List<TsStmt> {
+  [
+    ts_const(name: "w", value: js_local_storage_get(key: camera_storage_key)),
+    ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "w")), then: ts_return(expr: none), else_stmt: none),
+    ts_const(name: "parts", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "w"), property: "split"),
+      args: [ts_lit_str(value: camera_wire_sep)],
+    )),
+    ts_if(
+      cond: ts_binop(left: ts_member(object: ts_ident(name: "parts"), property: "length"), op: "!==", right: ts_lit_num(text: "3")),
+      then: ts_return(expr: none),
+      else_stmt: none,
+    ),
+    ts_if(
+      cond: js_instrument_wire_index_valid(keys_var: "INSTRUMENT_WIRE_DEPTH_KEYS", parts_var: "parts", index: "0"),
+      then: ts_return(expr: none),
+      else_stmt: none,
+    ),
+    ts_if(
+      cond: js_instrument_wire_index_valid(keys_var: "INSTRUMENT_MODE_KEYS", parts_var: "parts", index: "1"),
+      then: ts_return(expr: none),
+      else_stmt: none,
+    ),
+    ts_if(
+      cond: js_instrument_wire_index_valid(keys_var: "INSTRUMENT_FOCUS_KEYS", parts_var: "parts", index: "2"),
+      then: ts_return(expr: none),
+      else_stmt: none,
+    ),
+    ts_expr_stmt(expr: ts_binop(left: js_instrument_camera_member(name: "depth"), op: "=", right: ts_index(object: ts_ident(name: "parts"), index: ts_lit_num(text: "0")))),
+    ts_expr_stmt(expr: ts_binop(left: js_instrument_camera_member(name: "mode"), op: "=", right: ts_index(object: ts_ident(name: "parts"), index: ts_lit_num(text: "1")))),
+    ts_expr_stmt(expr: ts_binop(left: js_instrument_camera_member(name: "focus"), op: "=", right: ts_index(object: ts_ident(name: "parts"), index: ts_lit_num(text: "2")))),
+  ]
+}
+
+fn instrument_tuner_reading_visibility_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: js_instrument_query_all(class_name: instrument_reading_class), property: "forEach"),
+    args: [ts_arrow(params: ["r"], body: ts_block(stmts: [
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_member(object: ts_ident(name: "r"), property: "hidden"),
+        op: "=",
+        right: ts_binop(
+          left: ts_call(
+            callee: ts_member(object: ts_ident(name: "r"), property: "getAttribute"),
+            args: [ts_lit_str(value: "data-reading-key")],
+          ),
+          op: "!==",
+          right: ts_ident(name: "key"),
+        ),
+      )),
+    ]))],
+  ))
+}
+
+fn instrument_tuner_depth_btn_apply_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: js_instrument_query_all(class_name: instrument_depth_btn_class), property: "forEach"),
+    args: [ts_arrow(params: ["b"], body: ts_block(stmts: [
+      js_instrument_toggle_class_on(
+        el: "b",
+        cls: "is-active",
+        on: ts_binop(
+          left: ts_call(
+            callee: ts_member(object: ts_ident(name: "b"), property: "getAttribute"),
+            args: [ts_lit_str(value: "data-depth")],
+          ),
+          op: "===",
+          right: js_instrument_camera_member(name: "depth"),
+        ),
+      ),
+    ]))],
+  ))
+}
+
+fn instrument_tuner_mode_btn_apply_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: js_instrument_query_all(class_name: instrument_mode_btn_class), property: "forEach"),
+    args: [ts_arrow(params: ["b"], body: ts_block(stmts: [
+      js_instrument_toggle_class_on(
+        el: "b",
+        cls: "is-active",
+        on: ts_binop(
+          left: ts_call(
+            callee: ts_member(object: ts_ident(name: "b"), property: "getAttribute"),
+            args: [ts_lit_str(value: "data-mode")],
+          ),
+          op: "===",
+          right: js_instrument_camera_member(name: "mode"),
+        ),
+      ),
+    ]))],
+  ))
+}
+
+fn instrument_tuner_subject_btn_apply_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: js_instrument_query_all(class_name: instrument_subject_class), property: "forEach"),
+    args: [ts_arrow(params: ["li"], body: ts_block(stmts: [
+      ts_const(name: "k", value: ts_call(
+        callee: ts_member(object: ts_ident(name: "li"), property: "getAttribute"),
+        args: [ts_lit_str(value: "data-subject-key")],
+      )),
+      js_instrument_toggle_class_on(
+        el: "li",
+        cls: instrument_subject_selected_class,
+        on: ts_binop(left: ts_ident(name: "k"), op: "===", right: js_instrument_camera_member(name: "focus")),
+      ),
+    ]))],
+  ))
+}
+
+fn instrument_tuner_apply_camera_fn_body() -> List<TsStmt> {
+  [
+    ts_const(name: "key", value: js_instrument_wire_expr()),
+    instrument_tuner_reading_visibility_stmt(),
+    instrument_tuner_depth_btn_apply_stmt(),
+    instrument_tuner_mode_btn_apply_stmt(),
+    instrument_tuner_subject_btn_apply_stmt(),
+  ]
+}
+
+fn instrument_tuner_persist_and_apply_stmts() -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_save_fn), args: [])),
+    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_apply_fn), args: [])),
+  ]
+}
+
+fn instrument_tuner_step_depth_fn_body() -> List<TsStmt> {
+  concat(
+    [
+      ts_const(name: "prevDepth", value: js_instrument_camera_member(name: "depth")),
+      ts_const(name: "i", value: ts_call(
+        callee: ts_member(object: ts_ident(name: "INSTRUMENT_DEPTH_KEYS"), property: "indexOf"),
+        args: [js_instrument_camera_member(name: "depth")],
+      )),
+      ts_if(cond: ts_binop(left: ts_ident(name: "i"), op: "<", right: ts_lit_num(text: "0")), then: ts_return(expr: none), else_stmt: none),
+      ts_if(
+        cond: ts_binop(
+          left: ts_binop(left: ts_ident(name: "dir"), op: "===", right: ts_lit_str(value: "in")),
+          op: "&&",
+          right: ts_binop(
+            left: ts_ident(name: "i"),
+            op: "<",
+            right: ts_binop(
+              left: ts_member(object: ts_ident(name: "INSTRUMENT_DEPTH_KEYS"), property: "length"),
+              op: "-",
+              right: ts_lit_num(text: "1"),
+            ),
+          ),
+        ),
+        then: ts_expr_stmt(expr: ts_binop(
+          left: js_instrument_camera_member(name: "depth"),
+          op: "=",
+          right: ts_index(
+            object: ts_ident(name: "INSTRUMENT_DEPTH_KEYS"),
+            index: ts_binop(left: ts_ident(name: "i"), op: "+", right: ts_lit_num(text: "1")),
+          ),
+        )),
+        else_stmt: none,
+      ),
+      ts_if(
+        cond: ts_binop(
+          left: ts_binop(left: ts_ident(name: "dir"), op: "===", right: ts_lit_str(value: "out")),
+          op: "&&",
+          right: ts_binop(left: ts_ident(name: "i"), op: ">", right: ts_lit_num(text: "0")),
+        ),
+        then: ts_expr_stmt(expr: ts_binop(
+          left: js_instrument_camera_member(name: "depth"),
+          op: "=",
+          right: ts_index(
+            object: ts_ident(name: "INSTRUMENT_DEPTH_KEYS"),
+            index: ts_binop(left: ts_ident(name: "i"), op: "-", right: ts_lit_num(text: "1")),
+          ),
+        )),
+        else_stmt: none,
+      ),
+      ts_if(
+        cond: ts_binop(left: js_instrument_camera_member(name: "depth"), op: "!==", right: ts_ident(name: "prevDepth")),
+        then: ts_block(stmts: concat(
+          instrument_tuner_persist_and_apply_stmts(),
+          [ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_tick_fn), args: []))],
+        )),
+        else_stmt: none,
+      ),
+    ],
+    [],
+  )
+}
+
+fn instrument_tuner_seek_depth_fn_body() -> List<TsStmt> {
+  [
+    ts_const(name: "targetIdx", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "INSTRUMENT_DEPTH_KEYS"), property: "indexOf"),
+      args: [ts_ident(name: "target")],
+    )),
+    ts_const(name: "currentIdx", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "INSTRUMENT_DEPTH_KEYS"), property: "indexOf"),
+      args: [js_instrument_camera_member(name: "depth")],
+    )),
+    ts_if(
+      cond: ts_binop(
+        left: ts_binop(
+          left: ts_binop(left: ts_ident(name: "targetIdx"), op: "<", right: ts_lit_num(text: "0")),
+          op: "||",
+          right: ts_binop(left: ts_ident(name: "currentIdx"), op: "<", right: ts_lit_num(text: "0")),
+        ),
+        op: "||",
+        right: ts_binop(left: ts_ident(name: "targetIdx"), op: "===", right: ts_ident(name: "currentIdx")),
+      ),
+      then: ts_return(expr: none),
+      else_stmt: none,
+    ),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_ident(name: js_instrument_step_depth_fn),
+      args: [
+        ts_cond(
+          test: ts_binop(left: ts_ident(name: "targetIdx"), op: ">", right: ts_ident(name: "currentIdx")),
+          consequent: ts_lit_str(value: "in"),
+          alternate: ts_lit_str(value: "out"),
+        ),
+      ],
+    )),
+    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_seek_depth_fn), args: [ts_ident(name: "target")])),
+  ]
+}
+
+fn instrument_tuner_select_subject_fn_body() -> List<TsStmt> {
+  concat(
+    [
+      ts_if(
+        cond: ts_binop(left: js_instrument_camera_member(name: "focus"), op: "===", right: ts_ident(name: "key")),
+        then: ts_return(expr: none),
+        else_stmt: none,
+      ),
+      ts_expr_stmt(expr: ts_binop(left: js_instrument_camera_member(name: "focus"), op: "=", right: ts_ident(name: "key"))),
+    ],
+    instrument_tuner_persist_and_apply_stmts(),
+  )
+}
+
+fn instrument_tuner_toggle_subject_key_stmts() -> List<TsStmt> {
+  [
+    ts_const(name: "was", value: ts_binop(
+      left: js_instrument_camera_member(name: "focus"),
+      op: "===",
+      right: ts_ident(name: "key"),
+    )),
+    ts_if(
+      cond: ts_ident(name: "was"),
+      then: ts_block(stmts: concat(
+        [ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_clear_subject_fn), args: []))],
+        [ts_return(expr: none)],
+      )),
+      else_stmt: none,
+    ),
+    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_select_subject_fn), args: [ts_ident(name: "key")])),
+  ]
+}
+
+fn instrument_tuner_depth_click_handler_body() -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_ident(name: js_instrument_seek_depth_fn),
+      args: [ts_call(
+        callee: ts_member(object: ts_ident(name: "b"), property: "getAttribute"),
+        args: [ts_lit_str(value: "data-depth")],
+      )],
+    )),
+  ]
+}
+
+fn instrument_tuner_subject_click_handler_body() -> List<TsStmt> {
+  concat(
+    [
+      ts_const(name: "t", value: ts_member(object: ts_ident(name: "e"), property: "target")),
+      ts_if(
+        cond: ts_binop(
+          left: ts_prefix(op: "!", expr: ts_ident(name: "t")),
+          op: "||",
+          right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "closest")),
+        ),
+        then: ts_return(expr: none),
+        else_stmt: none,
+      ),
+      ts_if(
+        cond: ts_call(
+          callee: ts_member(object: ts_ident(name: "t"), property: "closest"),
+          args: [ts_lit_str(value: "button, a, input, select, textarea")],
+        ),
+        then: ts_return(expr: none),
+        else_stmt: none,
+      ),
+      ts_const(name: "li", value: ts_call(
+        callee: ts_member(object: ts_ident(name: "t"), property: "closest"),
+        args: [ts_lit_str(value: join(["li.", instrument_subject_class], ""))],
+      )),
+      ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "li")), then: ts_return(expr: none), else_stmt: none),
+      ts_const(name: "key", value: ts_call(
+        callee: ts_member(object: ts_ident(name: "li"), property: "getAttribute"),
+        args: [ts_lit_str(value: "data-subject-key")],
+      )),
+    ],
+    instrument_tuner_toggle_subject_key_stmts(),
+  )
+}
+
+fn instrument_tuner_subject_focus_handler_body() -> List<TsStmt> {
+  [
+    ts_const(name: "t", value: ts_member(object: ts_ident(name: "e"), property: "target")),
+    ts_if(
+      cond: ts_binop(
+        left: ts_prefix(op: "!", expr: ts_ident(name: "t")),
+        op: "||",
+        right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "matches")),
+      ),
+      then: ts_return(expr: none),
+      else_stmt: none,
+    ),
+    ts_if(
+      cond: ts_prefix(op: "!", expr: ts_call(
+        callee: ts_member(object: ts_ident(name: "t"), property: "matches"),
+        args: [ts_lit_str(value: ":focus-visible")],
+      )),
+      then: ts_return(expr: none),
+      else_stmt: none,
+    ),
+    ts_const(name: "li", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "t"), property: "closest"),
+      args: [ts_lit_str(value: join(["li.", instrument_subject_class], ""))],
+    )),
+    ts_if(
+      cond: ts_prefix(op: "!", expr: ts_ident(name: "li")),
+      then: ts_return(expr: none),
+      else_stmt: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_ident(name: js_instrument_select_subject_fn),
+          args: [ts_call(
+            callee: ts_member(object: ts_ident(name: "li"), property: "getAttribute"),
+            args: [ts_lit_str(value: "data-subject-key")],
+          )],
+        )),
+      ]),
+    ),
+  ]
+}
+
+fn instrument_tuner_wheel_preamble() -> List<TsStmt> {
+  [
+    ts_const(name: js_instrument_wheel_threshold_const, value: ts_lit_num(text: to_string(wheel_detent_threshold_px))),
+    ts_let(name: js_instrument_wheel_travel_var, value: ts_lit_num(text: "0")),
+    ts_let(name: js_instrument_wheel_timer_var, value: ts_ident(name: "null")),
+    ts_const(name: js_instrument_normalize_wheel_fn, value: ts_arrow(params: ["e"], body: ts_block(stmts: [
+      ts_const(name: "mode", value: ts_binop(left: ts_member(object: ts_ident(name: "e"), property: "deltaMode"), op: "||", right: ts_lit_num(text: "0"))),
+      ts_const(name: "raw", value: ts_member(object: ts_ident(name: "e"), property: "deltaY")),
+      ts_if(
+        cond: ts_binop(left: ts_ident(name: "mode"), op: "===", right: ts_lit_num(text: "1")),
+        then: ts_return(expr: ts_binop(left: ts_ident(name: "raw"), op: "*", right: ts_lit_num(text: "16"))),
+        else_stmt: none,
+      ),
+      ts_if(
+        cond: ts_binop(left: ts_ident(name: "mode"), op: "===", right: ts_lit_num(text: "2")),
+        then: ts_return(expr: ts_binop(
+          left: ts_ident(name: "raw"),
+          op: "*",
+          right: ts_binop(left: ts_member(object: ts_ident(name: "window"), property: "innerHeight"), op: "||", right: ts_lit_num(text: "800")),
+        )),
+        else_stmt: none,
+      ),
+      ts_return(expr: ts_ident(name: "raw")),
+    ]))),
+    ts_const(name: js_instrument_consume_wheel_fn, value: ts_arrow(params: [], body: ts_block(stmts: [
+      ts_if(
+        cond: ts_binop(
+          left: ts_call(callee: ts_ident(name: "Math.abs"), args: [ts_ident(name: js_instrument_wheel_travel_var)]),
+          op: "<",
+          right: ts_ident(name: js_instrument_wheel_threshold_const),
+        ),
+        then: ts_return(expr: none),
+        else_stmt: none,
+      ),
+      ts_const(name: "before", value: js_instrument_camera_member(name: "depth")),
+      ts_expr_stmt(expr: ts_call(
+        callee: ts_ident(name: js_instrument_step_depth_fn),
+        args: [
+          ts_cond(
+            test: ts_binop(left: ts_ident(name: js_instrument_wheel_travel_var), op: ">", right: ts_lit_num(text: "0")),
+            consequent: ts_lit_str(value: "in"),
+            alternate: ts_lit_str(value: "out"),
+          ),
+        ],
+      )),
+      ts_if(
+        cond: ts_binop(left: js_instrument_camera_member(name: "depth"), op: "===", right: ts_ident(name: "before")),
+        then: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_binop(left: ts_ident(name: js_instrument_wheel_travel_var), op: "=", right: ts_lit_num(text: "0"))),
+          ts_return(expr: none),
+        ]),
+        else_stmt: none,
+      ),
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_ident(name: js_instrument_wheel_travel_var),
+        op: "-=",
+        right: ts_cond(
+          test: ts_binop(left: ts_ident(name: js_instrument_wheel_travel_var), op: ">", right: ts_lit_num(text: "0")),
+          consequent: ts_ident(name: js_instrument_wheel_threshold_const),
+          alternate: ts_prefix(op: "-", expr: ts_ident(name: js_instrument_wheel_threshold_const)),
+        ),
+      )),
+      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_consume_wheel_fn), args: [])),
+    ]))),
+    ts_const(name: js_instrument_handle_wheel_fn, value: ts_arrow(params: ["e"], body: ts_block(stmts: [
+      ts_const(name: "delta", value: ts_call(callee: ts_ident(name: js_instrument_normalize_wheel_fn), args: [ts_ident(name: "e")])),
+      ts_const(name: "i", value: ts_call(
+        callee: ts_member(object: ts_ident(name: "INSTRUMENT_DEPTH_KEYS"), property: "indexOf"),
+        args: [js_instrument_camera_member(name: "depth")],
+      )),
+      ts_if(cond: ts_binop(left: ts_ident(name: "i"), op: "<", right: ts_lit_num(text: "0")), then: ts_return(expr: none), else_stmt: none),
+      ts_const(name: "atMax", value: ts_binop(
+        left: ts_ident(name: "i"),
+        op: ">=",
+        right: ts_binop(
+          left: ts_member(object: ts_ident(name: "INSTRUMENT_DEPTH_KEYS"), property: "length"),
+          op: "-",
+          right: ts_lit_num(text: "1"),
+        ),
+      )),
+      ts_const(name: "atMin", value: ts_binop(left: ts_ident(name: "i"), op: "<=", right: ts_lit_num(text: "0"))),
+      ts_if(
+        cond: ts_binop(
+          left: ts_binop(left: ts_ident(name: "delta"), op: ">", right: ts_lit_num(text: "0")),
+          op: "&&",
+          right: ts_ident(name: "atMax"),
+        ),
+        then: ts_return(expr: none),
+        else_stmt: none,
+      ),
+      ts_if(
+        cond: ts_binop(
+          left: ts_binop(left: ts_ident(name: "delta"), op: "<", right: ts_lit_num(text: "0")),
+          op: "&&",
+          right: ts_ident(name: "atMin"),
+        ),
+        then: ts_return(expr: none),
+        else_stmt: none,
+      ),
+      ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "e"), property: "preventDefault"), args: [])),
+      ts_expr_stmt(expr: ts_binop(left: ts_ident(name: js_instrument_wheel_travel_var), op: "+=", right: ts_ident(name: "delta"))),
+      ts_if(
+        cond: ts_ident(name: js_instrument_wheel_timer_var),
+        then: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "clearTimeout"), args: [ts_ident(name: js_instrument_wheel_timer_var)])),
+        else_stmt: none,
+      ),
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_ident(name: js_instrument_wheel_timer_var),
+        op: "=",
+        right: ts_call(
+          callee: ts_ident(name: "setTimeout"),
+          args: [
+            ts_arrow(params: [], body: ts_block(stmts: [
+              ts_expr_stmt(expr: ts_binop(left: ts_ident(name: js_instrument_wheel_travel_var), op: "=", right: ts_lit_num(text: "0"))),
+              ts_expr_stmt(expr: ts_binop(left: ts_ident(name: js_instrument_wheel_timer_var), op: "=", right: ts_ident(name: "null"))),
+            ])),
+            ts_lit_num(text: to_string(millisecond_count(m: wheel_gesture_reset_interval))),
+          ],
+        ),
+      )),
+      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_consume_wheel_fn), args: [])),
+    ]))),
+  ]
+}
+
+fn instrument_tuner_camera_preamble() -> List<TsStmt> {
+  concat(
+    [
+      ts_const(name: js_instrument_camera_var, value: ts_object(fields: [
+        ts_field(key: "depth", value: ts_lit_str(value: program_depth_key(d: camera_initial.depth))),
+        ts_field(key: "mode", value: ts_lit_str(value: program_mode_key(m: camera_initial.mode))),
+        ts_field(key: "focus", value: ts_lit_str(value: focus_subject_key(f: camera_initial.focus))),
+      ])),
+      ts_const(name: "INSTRUMENT_WIRE_DEPTH_KEYS", value: ts_array(elements: map(instrument_depth_keys(), k => ts_lit_str(value: k)))),
+      ts_const(name: "INSTRUMENT_DEPTH_KEYS", value: ts_array(elements: map(instrument_user_depth_keys(), k => ts_lit_str(value: k)))),
+    ts_const(name: "INSTRUMENT_MODE_KEYS", value: ts_array(elements: map(instrument_mode_keys(), k => ts_lit_str(value: k)))),
+    ts_const(name: "INSTRUMENT_FOCUS_KEYS", value: ts_array(elements: map(instrument_focus_keys(), k => ts_lit_str(value: k)))),
+    ts_const(name: js_instrument_save_fn, value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "localStorage"), property: "setItem"),
+      args: [ts_lit_str(value: camera_storage_key), js_instrument_wire_expr()],
+    )))),
+    ts_const(name: js_instrument_load_fn, value: ts_arrow(params: [], body: ts_block(stmts: instrument_tuner_load_camera_fn_body()))),
+    ts_const(name: js_instrument_apply_fn, value: ts_arrow(params: [], body: ts_block(stmts: instrument_tuner_apply_camera_fn_body()))),
+    ts_const(name: js_instrument_step_depth_fn, value: ts_arrow(params: ["dir"], body: ts_block(stmts: instrument_tuner_step_depth_fn_body()))),
+    ts_const(name: js_instrument_seek_depth_fn, value: ts_arrow(params: ["target"], body: ts_block(stmts: instrument_tuner_seek_depth_fn_body()))),
+    ts_const(name: js_instrument_set_mode_fn, value: ts_arrow(params: ["m"], body: ts_block(stmts: concat(
+      [ts_expr_stmt(expr: ts_binop(left: js_instrument_camera_member(name: "mode"), op: "=", right: ts_ident(name: "m")))],
+      instrument_tuner_persist_and_apply_stmts(),
+    )))),
+    ts_const(name: js_instrument_clear_subject_fn, value: ts_arrow(params: [], body: ts_block(stmts: concat(
+      [ts_expr_stmt(expr: ts_binop(
+        left: js_instrument_camera_member(name: "focus"),
+        op: "=",
+        right: ts_lit_str(value: focus_subject_key(f: NoSubjectSelected)),
+      ))],
+      instrument_tuner_persist_and_apply_stmts(),
+    )))),
+    ts_const(name: js_instrument_select_subject_fn, value: ts_arrow(params: ["key"], body: ts_block(stmts: instrument_tuner_select_subject_fn_body()))),
+    ],
+    instrument_tuner_wheel_preamble(),
+  )
+}
+
+fn instrument_tuner_depth_btn_bind_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: js_instrument_query_all(class_name: instrument_depth_btn_class), property: "forEach"),
+    args: [ts_arrow(params: ["b"], body: ts_block(stmts: [
+      ts_expr_stmt(expr: ts_call(
+        callee: ts_member(object: ts_ident(name: "b"), property: "addEventListener"),
+        args: [
+          ts_lit_str(value: "click"),
+          ts_arrow(params: [], body: ts_block(stmts: instrument_tuner_depth_click_handler_body())),
+        ],
+      )),
+    ]))],
+  ))
+}
+
+fn instrument_tuner_mode_btn_bind_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: js_instrument_query_all(class_name: instrument_mode_btn_class), property: "forEach"),
+    args: [ts_arrow(params: ["b"], body: ts_block(stmts: [
+      ts_expr_stmt(expr: ts_call(
+        callee: ts_member(object: ts_ident(name: "b"), property: "addEventListener"),
+        args: [
+          ts_lit_str(value: "click"),
+          ts_arrow(params: [], body: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_ident(name: js_instrument_set_mode_fn),
+              args: [ts_call(
+                callee: ts_member(object: ts_ident(name: "b"), property: "getAttribute"),
+                args: [ts_lit_str(value: "data-mode")],
+              )],
+            )),
+          ])),
+        ],
+      )),
+    ]))],
+  ))
+}
+
+fn instrument_tuner_wheel_bind_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(
+      object: ts_call(
+        callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
+        args: [ts_lit_str(value: join([".", instrument_tuner_root_class], ""))],
+      ),
+      property: "addEventListener",
+    ),
+    args: [
+      ts_lit_str(value: "wheel"),
+      ts_arrow(params: ["e"], body: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_handle_wheel_fn), args: [ts_ident(name: "e")])),
+      ])),
+    ],
+  ))
+}
+
+fn instrument_tuner_keydown_bind_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
+    args: [
+      ts_lit_str(value: "keydown"),
+      ts_arrow(params: ["e"], body: ts_block(stmts: [
+        ts_if(
+          cond: ts_binop(left: ts_member(object: ts_ident(name: "e"), property: "key"), op: "===", right: ts_lit_str(value: "Escape")),
+          then: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_clear_subject_fn), args: [])),
+          else_stmt: none,
+        ),
+        ts_if(
+          cond: ts_binop(left: ts_member(object: ts_ident(name: "e"), property: "key"), op: "===", right: ts_lit_str(value: "ArrowDown")),
+          then: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "e"), property: "preventDefault"), args: [])),
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_step_depth_fn), args: [ts_lit_str(value: "in")])),
+          ]),
+          else_stmt: none,
+        ),
+        ts_if(
+          cond: ts_binop(left: ts_member(object: ts_ident(name: "e"), property: "key"), op: "===", right: ts_lit_str(value: "ArrowUp")),
+          then: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "e"), property: "preventDefault"), args: [])),
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_step_depth_fn), args: [ts_lit_str(value: "out")])),
+          ]),
+          else_stmt: none,
+        ),
+        ts_if(
+          cond: ts_binop(
+            left: ts_binop(
+              left: ts_member(object: ts_ident(name: "e"), property: "key"),
+              op: "!==",
+              right: ts_lit_str(value: "Enter"),
+            ),
+            op: "&&",
+            right: ts_binop(
+              left: ts_member(object: ts_ident(name: "e"), property: "key"),
+              op: "!==",
+              right: ts_lit_str(value: " "),
+            ),
+          ),
+          then: ts_return(expr: none),
+          else_stmt: none,
+        ),
+        ts_const(name: "t", value: ts_member(object: ts_ident(name: "e"), property: "target")),
+        ts_if(
+          cond: ts_binop(
+            left: ts_prefix(op: "!", expr: ts_ident(name: "t")),
+            op: "||",
+            right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "matches")),
+          ),
+          then: ts_return(expr: none),
+          else_stmt: none,
+        ),
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_call(
+            callee: ts_member(object: ts_ident(name: "t"), property: "matches"),
+            args: [ts_lit_str(value: join(["li.", instrument_subject_class], ""))],
+          )),
+          then: ts_return(expr: none),
+          else_stmt: none,
+        ),
+        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "e"), property: "preventDefault"), args: [])),
+        ts_const(name: "key", value: ts_call(
+          callee: ts_member(object: ts_ident(name: "t"), property: "getAttribute"),
+          args: [ts_lit_str(value: "data-subject-key")],
+        )),
+        ts_if(
+          cond: ts_binop(left: js_instrument_camera_member(name: "focus"), op: "===", right: ts_ident(name: "key")),
+          then: ts_block(stmts: concat(
+            [ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_clear_subject_fn), args: []))],
+            [ts_return(expr: none)],
+          )),
+          else_stmt: none,
+        ),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_select_subject_fn), args: [ts_ident(name: "key")])),
+      ])),
+    ],
+  ))
+}
+
+fn instrument_tuner_subject_click_bind_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
+    args: [
+      ts_lit_str(value: "click"),
+      ts_arrow(params: ["e"], body: ts_block(stmts: instrument_tuner_subject_click_handler_body())),
+    ],
+  ))
+}
+
+fn instrument_tuner_subject_focus_bind_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
+    args: [
+      ts_lit_str(value: "focusin"),
+      ts_arrow(params: ["e"], body: ts_block(stmts: instrument_tuner_subject_focus_handler_body())),
+    ],
+  ))
+}
+
+fn instrument_tuner_control_bind_statements() -> List<TsStmt> {
+  [
+    instrument_tuner_depth_btn_bind_stmt(),
+    instrument_tuner_mode_btn_bind_stmt(),
+    instrument_tuner_wheel_bind_stmt(),
+    instrument_tuner_keydown_bind_stmt(),
+    instrument_tuner_subject_click_bind_stmt(),
+    instrument_tuner_subject_focus_bind_stmt(),
+  ]
+}
+
+fn instrument_tuner_client_program() -> TsProgram {
+  TsProgram {
+    ts_nocheck: false,
+    header_lines: [
+      "gunbc v1-deletion instrument tuner — emitted from gunbc.roadmap_component.instrument_tuner_client_program",
+      "Persistent camera, selection parity, one detent per admitted threshold, working controls.",
+    ],
+    statements: concat(
+      sound_preamble_statements(),
+      concat(
+        instrument_tuner_camera_preamble(),
+        concat(
+          sound_toggle_bind_statements(),
+          concat(
+            theme_toggle_bind_statements(),
+            concat(
+              instrument_tuner_control_bind_statements(),
+              [
+                ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_load_fn), args: [])),
+                ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_apply_fn), args: [])),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  }
+}
+
+fn instrument_tuner_client_js_source() -> String {
+  serialize_typescript_program(p: instrument_tuner_client_program())
 }
 
 fn dispatch_state_display_text(state: ComponentState) -> String {
