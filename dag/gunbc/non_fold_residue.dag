@@ -822,16 +822,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     reason: nfr_reason_class_b_binding_projection,
     trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
   },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_refuses" },
-    reason: nfr_reason_class_b_binding_projection,
-    trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::row4_pool_coincidence_or_refuse" },
-    reason: nfr_reason_class_b_binding_projection,
-    trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
-  },
 ]
 
 fn non_fold_residue_frontier_units() -> List<String> {
