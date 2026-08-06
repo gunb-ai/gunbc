@@ -1,0 +1,29 @@
+module std.witness_purpose
+
+import std.decl_ref { DeclarationRef }
+import std.content_hash { ContentHash }
+import std.measure { Millisecond, ByteSize }
+import std.types { NonEmptyStr }
+
+type WitnessResourceBound
+  = EvalWallTimeBound { bound: Millisecond }
+  | EvalThreadCpuBound { bound: Millisecond }
+  | PeakMemoryBound { bound: ByteSize }
+
+data witness_purpose_resource_contract_note: String = "ResourceContract bound is axis-typed: wall/cpu limits are Millisecond; peak memory is ByteSize (std.measure). A single Millisecond field on all axes was state-space conflation — PeakMemory with a millisecond bound was writable. Aligns with discrete_cost_derivation section 10 bound: Measure; full Measure coproduct lands when C5 consumer derives bounds."
+
+data witness_purpose_authority_note: String = "DECLARED witness purpose taxonomy (operator ruling 2026-08-04; DESIGN witness-cost-derives-from-purpose; discrete-cost-derivation section 10). What semantic fact the witness exists to prove — authored, not inferred from implementation. Cost and placement are DERIVED consequences and live on ScheduledWitnessEnvelope (std.realization_schedule SpanEnrolled), not here. Minting a second envelope carrier is forbidden (ScheduledWitnessEnvelope already pairs cadence, wall_budget, max_staleness with WitnessCostBasis). Placement reads purpose arms directly via coproduct match in std.witness_placement — no Bool projection fns."
+
+data witness_purpose_terminating_one_shot_note: String = "TerminatingOneShot is strictly more demanding than naming a cadence (witness_deferral_freeze_purpose_frontier_note): pinned subject, mechanically checkable dissolution trigger, AND a deadline after which an undissolved survey REFUSES. Without the deadline every permanent witness can claim to be a one-shot. dissolve-on: std.measure gains a typed instant/deadline carrier (no Instant/WallDeadline exists yet — deadline is interim NonEmptyStr wire text); TerminatingOneShot.deadline migrates to that carrier and post-deadline refusal becomes construction-enforced, not prose-only."
+
+type WitnessPurpose
+  = BehavioralDiscriminator
+  | BoundaryCrossing { modeled_boundary: DeclarationRef, chosen_input: ContentHash }
+  | PopulationTotality { population: DeclarationRef }
+  | ExternalFidelity { effect: DeclarationRef }
+  | ResourceContract { bound: WitnessResourceBound }
+  | TerminatingOneShot {
+      pinned_subject: ContentHash,
+      dissolution_trigger: DeclarationRef,
+      deadline: NonEmptyStr,
+    }

@@ -9006,6 +9006,61 @@ mod schedule_retention_red_controls {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// RED control for Witness/Holds raw-unwrap hoist: a Record-shaped `Holds { value: inner }`
+    /// must not be captured whole when a typed `Witness` pattern unwraps — that double-wraps
+    /// `ComplexityVariables` under schedule-retention module reload (CI batch 3).
+    #[test]
+    fn complexity_projection_holds_after_schedule_retention_warm() {
+        let repo = super::workspace_root();
+        let roots = vec![
+            repo.join("dag").to_string_lossy().to_string(),
+            repo.join("src/v2").to_string_lossy().to_string(),
+        ];
+        let index = super::build_multi_entry_index(&roots);
+        let warm_entry = repo
+            .join("src/v2/lens/affected_set/sg_claims_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let map_entry = repo
+            .join("src/v2/lens/complexity/map_id_test.dag")
+            .to_string_lossy()
+            .into_owned();
+
+        super::resolve_entry_with_index(&index, &warm_entry).expect("prewarm warm entry");
+        super::resolve_entry_with_index(&index, &map_entry).expect("prewarm map entry");
+        super::clear_resolved_graph_memo_for_test(&index);
+
+        let warm_paths: Vec<String> = super::load_sources_for_entry_with_pool(&index, &warm_entry)
+            .unwrap()
+            .iter()
+            .map(|sf| super::workspace_relative_repo_path(&sf.path))
+            .collect();
+        let map_paths: Vec<String> = super::load_sources_for_entry_with_pool(&index, &map_entry)
+            .unwrap()
+            .iter()
+            .map(|sf| super::workspace_relative_repo_path(&sf.path))
+            .collect();
+        super::install_schedule_retention_for_test(
+            &index,
+            vec![
+                (warm_entry.clone(), warm_paths),
+                (map_entry.clone(), map_paths),
+            ],
+            true,
+        );
+
+        super::resolve_entry_with_index(&index, &warm_entry).expect("resolve warm after arm");
+        super::resolve_entry_with_index(&index, &map_entry).expect("resolve map after arm");
+
+        let (graph, si) = super::resolve_entry_with_index(&index, &map_entry).expect("resolve map");
+        let ctx = super::make_eval_context(&graph, si, super::v1_interpreter::ExecutionMode::Wet);
+        let outcome = super::run_claim(&ctx, "map_id_complexity_projection_holds");
+        assert!(
+            matches!(outcome, super::ClaimOutcome::Pass),
+            "map_id_complexity_projection_holds under retention warm: {outcome:?}"
+        );
+    }
 }
 
 /// Interim width=1 floor-drain retention (v1-run-stability throughline, parent

@@ -6,7 +6,7 @@ import std.nat { Nat }
 import std.measure {
   ClockBasis, CpuClock, WallClock, clock_basis_eq,
   Measure, Time, ByteSize, Watt,
-  Second, Millisecond,
+  Second, Millisecond, millisecond_count,
   byte_size, byte_size_count, watt, time_measure, measure_count
 }
 import std.pareto { AxisGoal }
@@ -90,12 +90,99 @@ type ScheduledWitnessEnvelope {
 
 type WitnessSpan
   = SpanUndeclared
+  | SpanUnavailable { cause: NonEmptyStr }
   | SpanSeams { seams: List<WitnessSeam> }
   | SpanEnrolled {
       seams: List<WitnessSeam>,
       cost_basis: WitnessCostBasis,
       envelope: ScheduledWitnessEnvelope
     }
+
+data witness_envelope_compare_note: String = "Declared-versus-observed comparator for SpanEnrolled (Lane B, swift-wren-710). Joins ScheduledWitnessEnvelope.wall_budget to a measured wall figure — the gap verified by corpus grep: wall_budget was only content-hashed and well-formed, never compared to observation. CensoredMeasurementLowerBound is a lower bound under a kill, never Within/Exceeds. MissingSpan and SpanUnavailable refuse silent SpanUndeclared. RouteMismatch compares envelope.cadence enrollment wire to derived wire (std.witness_admission witness_consumer_cadence_enrollment_wire projection). BasisClockMismatch reuses std.measure ClockBasis — no second clock carrier."
+
+type WitnessEnvelopeCompareVerdict
+  = WithinDeclaredWallBudget
+  | ExceedsDeclaredWallBudget { observed: Millisecond, ceiling: Millisecond }
+  | MissingMeasurement
+  | MissingBasis
+  | CensoredMeasurementLowerBound { floor: Millisecond, clock: ClockBasis }
+  | MissingSpan
+  | SpanUnavailableAtCompare { cause: NonEmptyStr }
+  | RouteMismatch { declared_cadence: String, derived_cadence: String }
+  | UnrecognizedDeclaredCadence { wire: String }
+  | BasisClockMismatch { observed_clock: ClockBasis, declared_clock: ClockBasis }
+  | WallClockRequired { clock: ClockBasis }
+
+type ObservedWallAtSubject
+  = ObservedWallPresent { duration: Millisecond, clock: ClockBasis }
+  | ObservedWallMissing
+  | ObservedWallCensored { floor: Millisecond, clock: ClockBasis }
+
+fn envelope_cadence_wire_is_recognized(cadence: String) -> Bool {
+  cadence == "per_pr"
+    || cadence == "4h"
+    || cadence == "falsifier_substrate_long_lane"
+    || cadence == "offline_local_recipe"
+    || cadence == "no_consumer"
+}
+
+fn compare_span_enrolled_wall_budget(
+  envelope: ScheduledWitnessEnvelope,
+  basis: WitnessCostBasis,
+  observed: ObservedWallAtSubject,
+  derived_cadence: String,
+) -> WitnessEnvelopeCompareVerdict {
+  if !envelope_cadence_wire_is_recognized(cadence: envelope.cadence) {
+    UnrecognizedDeclaredCadence { wire: envelope.cadence }
+  } else if envelope.cadence != derived_cadence {
+    RouteMismatch {
+      declared_cadence: envelope.cadence,
+      derived_cadence: derived_cadence,
+    }
+  } else {
+    match observed {
+      ObservedWallCensored { floor, clock } =>
+        CensoredMeasurementLowerBound { floor: floor, clock: clock }
+      ObservedWallMissing => MissingMeasurement
+      ObservedWallPresent { duration, clock } =>
+        match basis {
+          EstimatedFromSiblingClass { clock: _, source_witness: _, basis: _ } => MissingBasis
+          MeasuredAtExactSubject { clock: basis_clock, duration: _, receipt: _ } =>
+            if !clock_basis_eq(a: clock, b: basis_clock) {
+              BasisClockMismatch { observed_clock: clock, declared_clock: basis_clock }
+            } else if !clock_basis_eq(a: clock, b: WallClock) {
+              WallClockRequired { clock: clock }
+            } else if millisecond_count(m: duration) > millisecond_count(m: envelope.wall_budget) {
+              ExceedsDeclaredWallBudget {
+                observed: duration,
+                ceiling: envelope.wall_budget,
+              }
+            } else {
+              WithinDeclaredWallBudget
+            }
+        }
+    }
+  }
+}
+
+fn compare_witness_span_to_observed(
+  span: WitnessSpan,
+  observed: ObservedWallAtSubject,
+  derived_cadence: String,
+) -> WitnessEnvelopeCompareVerdict {
+  match span {
+    SpanUndeclared => MissingSpan
+    SpanUnavailable { cause } => SpanUnavailableAtCompare { cause: cause }
+    SpanSeams { seams: _ } => MissingSpan
+    SpanEnrolled { seams: _, cost_basis, envelope } =>
+      compare_span_enrolled_wall_budget(
+        envelope: envelope,
+        basis: cost_basis,
+        observed: observed,
+        derived_cadence: derived_cadence,
+      )
+  }
+}
 
 fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> Bool {
   match a {

@@ -1,0 +1,554 @@
+module test.claim.witness_purpose_placement_witness
+
+import std.decl_ref { decl_ref }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64,
+  Fnv1a64StructuralDigestHex,
+  structural_content_hash,
+}
+import std.measure {
+  millisecond,
+  WallClock,
+  CpuClock,
+}
+import std.realization_schedule {
+  SpanUndeclared,
+  SpanUnavailable,
+  MeasuredAtExactSubject,
+  ScheduledWitnessEnvelope,
+  WitnessCostBasis,
+  EstimatedFromSiblingClass,
+  ObservedWallPresent,
+  ObservedWallMissing,
+  ObservedWallCensored,
+  compare_witness_span_to_observed,
+  compare_span_enrolled_wall_budget,
+  WithinDeclaredWallBudget,
+  ExceedsDeclaredWallBudget,
+  MissingMeasurement,
+  MissingBasis,
+  CensoredMeasurementLowerBound,
+  MissingSpan,
+  SpanUnavailableAtCompare,
+  RouteMismatch,
+  BasisClockMismatch,
+  WallClockRequired,
+  UnrecognizedDeclaredCadence,
+}
+import std.witness_admission {
+  WitnessConsumerCadence,
+  DiscoverySelection,
+  FalsifierSelfHostWet,
+  FalsifierSubstrateLongLane,
+}
+import std.witness_purpose {
+  WitnessPurpose,
+  BehavioralDiscriminator,
+  BoundaryCrossing,
+  PopulationTotality,
+  ExternalFidelity,
+  TerminatingOneShot,
+}
+import std.witness_placement {
+  derive_witness_route,
+  derive_route_from_span,
+  OrdinaryPerPr,
+  PerPrWet,
+  Scheduled,
+  OneShotUnavailable,
+  RefusedNoConsumer,
+  CostExceedsFastLaneWithoutCadence,
+  OneShotUnavailableAtScheduledCadence,
+  EnvelopeUndeclared,
+  SpanUnavailableAtPlacement,
+  UnrecognizedEnvelopeCadence,
+  DeadlineNotTyped,
+}
+import std.nat { Nat }
+
+data witness_purpose_placement_witness_note: String = "First executing consumer for std.witness_purpose, std.witness_placement, and std.realization_schedule compare_witness_span_to_observed (Lane B, swift-wren-710). Uses ScheduledWitnessEnvelope — does NOT mint a parallel envelope carrier. RED controls: declared-vs-observed compare, censored lower bound, route derivation, SpanUnavailable."
+
+fn fixture_subject_hash() -> ContentHash {
+  Fnv1a64(
+    structural_content_hash(digest: "deadbeefdeadbeef" as Fnv1a64StructuralDigestHex)
+  )
+}
+
+fn fixture_envelope(wall_budget_ms: Nat) -> ScheduledWitnessEnvelope {
+  ScheduledWitnessEnvelope {
+    cadence: "per_pr",
+    wall_budget: millisecond(count: wall_budget_ms),
+    max_staleness: "0",
+  }
+}
+
+fn fixture_cost_basis() -> WitnessCostBasis {
+  MeasuredAtExactSubject {
+    clock: WallClock,
+    duration: millisecond(count: 3),
+    receipt: "fixture-measure-receipt",
+  }
+}
+
+test fn behavioral_discriminator_routes_ordinary_per_pr() -> Bool {
+  let route = derive_witness_route(
+    purpose: BehavioralDiscriminator,
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    fast_lane_budget: millisecond(count: 5000),
+  )
+  match route {
+    OrdinaryPerPr => true
+    PerPrWet => false
+    Scheduled { cadence: _ } => false
+    OneShotUnavailable { cause: _ } => false
+    RefusedNoConsumer { cause: _ } => false
+  }
+}
+
+test fn external_fidelity_routes_per_pr_wet_not_ordinary() -> Bool {
+  let envelope = fixture_envelope(wall_budget_ms: 100)
+  let fast_lane_budget = millisecond(count: 5000)
+  let wet_route = derive_witness_route(
+    purpose: ExternalFidelity {
+      effect: decl_ref(
+        module_path: "dag.test.claim.witness_purpose_placement_witness",
+        decl_name: "witness_purpose_placement_witness_note",
+      ),
+    },
+    envelope: envelope,
+    fast_lane_budget: fast_lane_budget,
+  )
+  let dry_route = derive_witness_route(
+    purpose: BehavioralDiscriminator,
+    envelope: envelope,
+    fast_lane_budget: fast_lane_budget,
+  )
+  match wet_route {
+    PerPrWet =>
+      match dry_route {
+        OrdinaryPerPr => true
+        PerPrWet => false
+        Scheduled { cadence: _ } => false
+        OneShotUnavailable { cause: _ } => false
+        RefusedNoConsumer { cause: _ } => false
+      }
+    OrdinaryPerPr => false
+    Scheduled { cadence: _ } => false
+    OneShotUnavailable { cause: _ } => false
+    RefusedNoConsumer { cause: _ } => false
+  }
+}
+
+test fn over_fast_lane_envelope_refuses_without_cadence() -> Bool {
+  let route = derive_witness_route(
+    purpose: BehavioralDiscriminator,
+    envelope: fixture_envelope(wall_budget_ms: 6000),
+    fast_lane_budget: millisecond(count: 5000),
+  )
+  match route {
+    RefusedNoConsumer { cause: CostExceedsFastLaneWithoutCadence } => true
+    OrdinaryPerPr => false
+    PerPrWet => false
+    Scheduled { cadence: _ } => false
+    OneShotUnavailable { cause: _ } => false
+    RefusedNoConsumer { cause: _ } => false
+  }
+}
+
+test fn population_totality_within_budget_routes_ordinary_per_pr() -> Bool {
+  let route = derive_witness_route(
+    purpose: PopulationTotality {
+      population: decl_ref(
+        module_path: "dag.test.claim.witness_purpose_placement_witness",
+        decl_name: "witness_purpose_placement_witness_note",
+      ),
+    },
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    fast_lane_budget: millisecond(count: 5000),
+  )
+  match route {
+    OrdinaryPerPr => true
+    PerPrWet => false
+    Scheduled { cadence: _ } => false
+    OneShotUnavailable { cause: _ } => false
+    RefusedNoConsumer { cause: _ } => false
+  }
+}
+
+test fn scheduled_envelope_routes_to_declared_cadence() -> Bool {
+  let envelope = ScheduledWitnessEnvelope {
+    cadence: "falsifier_substrate_long_lane",
+    wall_budget: millisecond(count: 9000),
+    max_staleness: "4h",
+  }
+  let route = derive_witness_route(
+    purpose: BehavioralDiscriminator,
+    envelope: envelope,
+    fast_lane_budget: millisecond(count: 5000),
+  )
+  match route {
+    Scheduled { cadence: c } =>
+      match c {
+        FalsifierSubstrateLongLane => true
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        _ => false
+      }
+    OrdinaryPerPr => false
+    PerPrWet => false
+    OneShotUnavailable { cause: _ } => false
+    RefusedNoConsumer { cause: _ } => false
+  }
+}
+
+test fn compare_within_declared_wall_budget() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    basis: fixture_cost_basis(),
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 99),
+      clock: WallClock,
+    },
+    derived_cadence: "per_pr",
+  ) {
+    WithinDeclaredWallBudget => true
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
+  }
+}
+
+test fn compare_exceeds_declared_wall_budget() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    basis: fixture_cost_basis(),
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 101),
+      clock: WallClock,
+    },
+    derived_cadence: "per_pr",
+  ) {
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => true
+    WithinDeclaredWallBudget => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
+  }
+}
+
+test fn compare_censored_is_lower_bound_not_verdict() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 5000),
+    basis: fixture_cost_basis(),
+    observed: ObservedWallCensored {
+      floor: millisecond(count: 5000),
+      clock: WallClock,
+    },
+    derived_cadence: "per_pr",
+  ) {
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => true
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
+    MissingBasis => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
+  }
+}
+
+test fn compare_missing_measurement() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    basis: fixture_cost_basis(),
+    observed: ObservedWallMissing,
+    derived_cadence: "per_pr",
+  ) {
+    MissingMeasurement => true
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
+  }
+}
+
+test fn compare_missing_basis_on_estimated() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    basis: EstimatedFromSiblingClass {
+      clock: WallClock,
+      source_witness: "sibling",
+      basis: "fixture-basis",
+    },
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 50),
+      clock: WallClock,
+    },
+    derived_cadence: "per_pr",
+  ) {
+    MissingBasis => true
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
+  }
+}
+
+test fn compare_missing_span_on_undeclared() -> Bool {
+  match compare_witness_span_to_observed(
+    span: SpanUndeclared,
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 1),
+      clock: WallClock,
+    },
+    derived_cadence: "per_pr",
+  ) {
+    MissingSpan => true
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
+  }
+}
+
+test fn compare_span_unavailable_at_compare() -> Bool {
+  match compare_witness_span_to_observed(
+    span: SpanUnavailable { cause: "derivation refused: no measured sibling" },
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 1),
+      clock: WallClock,
+    },
+    derived_cadence: "per_pr",
+  ) {
+    SpanUnavailableAtCompare { cause: _ } => true
+    MissingSpan => false
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
+  }
+}
+
+test fn compare_route_mismatch() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    basis: fixture_cost_basis(),
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 50),
+      clock: WallClock,
+    },
+    derived_cadence: "falsifier_substrate_long_lane",
+  ) {
+    RouteMismatch { declared_cadence: d, derived_cadence: r } => d == "per_pr" && r == "falsifier_substrate_long_lane"
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    WallClockRequired { clock: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
+  }
+}
+
+test fn compare_basis_clock_mismatch() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    basis: fixture_cost_basis(),
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 50),
+      clock: CpuClock,
+    },
+    derived_cadence: "per_pr",
+  ) {
+    BasisClockMismatch { observed_clock: CpuClock, declared_clock: WallClock } => true
+    WallClockRequired { clock: _ } => false
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
+  }
+}
+
+test fn compare_wall_clock_required_when_cpu_aligned() -> Bool {
+  match compare_span_enrolled_wall_budget(
+    envelope: fixture_envelope(wall_budget_ms: 100),
+    basis: MeasuredAtExactSubject {
+      clock: CpuClock,
+      duration: millisecond(count: 1),
+      receipt: "fixture-cpu-basis",
+    },
+    observed: ObservedWallPresent {
+      duration: millisecond(count: 50),
+      clock: CpuClock,
+    },
+    derived_cadence: "per_pr",
+  ) {
+    WallClockRequired { clock: CpuClock } => true
+    WithinDeclaredWallBudget => false
+    ExceedsDeclaredWallBudget { observed: _, ceiling: _ } => false
+    MissingMeasurement => false
+    RouteMismatch { declared_cadence: _, derived_cadence: _ } => false
+    BasisClockMismatch { observed_clock: _, declared_clock: _ } => false
+    MissingBasis => false
+    CensoredMeasurementLowerBound { floor: _, clock: _ } => false
+    MissingSpan => false
+    SpanUnavailableAtCompare { cause: _ } => false
+    UnrecognizedDeclaredCadence { wire: _ } => false
+  }
+}
+
+test fn terminating_one_shot_routes_one_shot_unavailable() -> Bool {
+  let route = derive_witness_route(
+    purpose: TerminatingOneShot {
+      pinned_subject: fixture_subject_hash(),
+      dissolution_trigger: decl_ref(
+        module_path: "std.witness_purpose",
+        decl_name: "witness_purpose_authority_note",
+      ),
+      deadline: "2026-12-31",
+    },
+    envelope: fixture_envelope(wall_budget_ms: 9000),
+    fast_lane_budget: millisecond(count: 5000),
+  )
+  match route {
+    OneShotUnavailable { cause: DeadlineNotTyped } => true
+    OrdinaryPerPr => false
+    PerPrWet => false
+    Scheduled { cadence: _ } => false
+    RefusedNoConsumer { cause: _ } => false
+  }
+}
+
+test fn terminating_one_shot_on_scheduled_cadence_refuses() -> Bool {
+  let one_shot_purpose = TerminatingOneShot {
+    pinned_subject: fixture_subject_hash(),
+    dissolution_trigger: decl_ref(
+      module_path: "std.witness_purpose",
+      decl_name: "witness_purpose_authority_note",
+    ),
+    deadline: "2026-12-31",
+  }
+  let falsifier_job_route = derive_witness_route(
+    purpose: one_shot_purpose,
+    envelope: ScheduledWitnessEnvelope {
+      cadence: "4h",
+      wall_budget: millisecond(count: 9000),
+      max_staleness: "4h",
+    },
+    fast_lane_budget: millisecond(count: 5000),
+  )
+  let long_lane_route = derive_witness_route(
+    purpose: one_shot_purpose,
+    envelope: ScheduledWitnessEnvelope {
+      cadence: "falsifier_substrate_long_lane",
+      wall_budget: millisecond(count: 9000),
+      max_staleness: "4h",
+    },
+    fast_lane_budget: millisecond(count: 5000),
+  )
+  match falsifier_job_route {
+    RefusedNoConsumer {
+      cause: OneShotUnavailableAtScheduledCadence {
+        cadence: FalsifierSelfHostWet,
+      },
+    } =>
+      match long_lane_route {
+        RefusedNoConsumer {
+          cause: OneShotUnavailableAtScheduledCadence {
+            cadence: FalsifierSubstrateLongLane,
+          },
+        } => true
+        Scheduled { cadence: _ } => false
+        OneShotUnavailable { cause: _ } => false
+        OrdinaryPerPr => false
+        PerPrWet => false
+        RefusedNoConsumer { cause: _ } => false
+      }
+    Scheduled { cadence: _ } => false
+    OneShotUnavailable { cause: _ } => false
+    OrdinaryPerPr => false
+    PerPrWet => false
+    RefusedNoConsumer { cause: _ } => false
+  }
+}
+
+test fn derive_route_from_span_refuses_without_enrollment() -> Bool {
+  let route = derive_route_from_span(
+    purpose: BehavioralDiscriminator,
+    span: SpanUndeclared,
+    fast_lane_budget: millisecond(count: 5000),
+  )
+  match route {
+    RefusedNoConsumer { cause: EnvelopeUndeclared } => true
+    OrdinaryPerPr => false
+    PerPrWet => false
+    Scheduled { cadence: _ } => false
+    OneShotUnavailable { cause: _ } => false
+    RefusedNoConsumer { cause: _ } => false
+  }
+}
+
+test fn derive_route_from_span_span_unavailable() -> Bool {
+  let route = derive_route_from_span(
+    purpose: BehavioralDiscriminator,
+    span: SpanUnavailable { cause: "derivation refused: no measured sibling" },
+    fast_lane_budget: millisecond(count: 5000),
+  )
+  match route {
+    RefusedNoConsumer { cause: SpanUnavailableAtPlacement { cause: _ } } => true
+    OrdinaryPerPr => false
+    PerPrWet => false
+    Scheduled { cadence: _ } => false
+    OneShotUnavailable { cause: _ } => false
+    RefusedNoConsumer { cause: EnvelopeUndeclared } => false
+    RefusedNoConsumer { cause: _ } => false
+  }
+}

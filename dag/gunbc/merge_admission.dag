@@ -33,7 +33,7 @@ import gunbc.commit_workflow {
 import std.measure { millisecond_count, ClockBasis, CpuClock, WallClock }
 import std.realization_schedule {
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, NativeBundleWitnessKind,
-  WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams, SpanEnrolled,
+  WitnessSeam, WitnessSpan, SpanUndeclared, SpanUnavailable, SpanSeams, SpanEnrolled,
   WitnessCostBasis,
   MeasuredAtExactSubject, EstimatedFromSiblingClass,
   ScheduledWitnessEnvelope,
@@ -204,6 +204,11 @@ fn scheduled_witness_envelope_content_hash_structural(envelope: ScheduledWitness
 fn witness_span_content_hash_structural(span: WitnessSpan) -> Fnv1a64Structural {
   match span {
     SpanUndeclared => content_hash_atom(value: "SpanUndeclared")
+    SpanUnavailable { cause } =>
+      content_hash_combine_structural(
+        left: content_hash_atom(value: "SpanUnavailable"),
+        right: content_hash_atom(value: cause)
+      )
     SpanSeams { seams } =>
       fold(seams, init: content_hash_atom(value: "SpanSeams"), f: fn(acc, seam) {
         content_hash_combine_structural(
