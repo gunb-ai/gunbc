@@ -3,18 +3,17 @@ module extdeps.runtime.abi.sysv_amd64
 import std.abi { ArchitecturalRegister, CallingConvention }
 import std.types { Bool, NonEmptyStr, EpochMs, List }
 import std.citation {
-  CitedResource,
-  RetrievedRepresentation,
+  CitedRepresentationIdentity,
   CitationSelector,
-  cited_resource,
+  CitationTarget,
   citation_exact_pin,
-  CitedRepresentation,
+  citation_target,
   RawResponseBody,
   CitationRetrievalObservation,
   RepresentationRetrieved,
   CitationRetrievalRequest,
   observed_cited_representation,
-  retrieved_representation,
+  cited_representation_identity,
   citation_recorded_fact,
   CitationRecordedFact,
   CitationAccessRefused,
@@ -27,7 +26,8 @@ import extdeps.pin { Pin }
 import extdeps.version { VersionIdentity }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import extdeps.http.server { MediaType, TopLevelApplication }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri {
   Uri,
   Https,
@@ -87,6 +87,22 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data x86_64_abi_pdf_authority: ExternalAuthority = extdeps_external_authority_anchor
 
+data x86_64_abi_specification: NonEmptyStr = "System V AMD64 ABI"
+
+data x86_64_abi_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
+  declaration: DeclarationRef {
+    module_path: "extdeps.runtime.abi.sysv_amd64",
+    decl_name: "x86_64_abi_specification",
+    field: WholeDeclaration,
+  }
+}
+
+data x86_64_abi_pdf_identity: CitedRepresentationIdentity = cited_representation_identity(
+  source: x86_64_abi_subject_ref,
+  access_route: x86_64_abi_pdf_authority.uri,
+  byte_domain: RawResponseBody,
+)
+
 data x86_64_abi_pdf_draft_edition_note: String = "Document cover: Draft Version 0.99.6, dated July 2 2012 — NOT the filename 0.99. VersionIdentity carries the edition string 0.99.6."
 
 data x86_64_abi_pdf_wet_receipt_note: String = "RepresentationRetrieved row consumes a wet byte-extraction receipt: observed_identity is minted only through sha256_hex_digest on the retrieval hex — never a parallel Sha256Digest { hex: ... } constructor bypass. The hex string is the extraction output recorded by the wet observation workflow; out-of-band shell hashing is not repo evidence."
@@ -105,19 +121,17 @@ type X86_64AbiPdfValidatedDigestConstruction = X86_64AbiPdfValidatedDigestConstr
 
 type X86_64AbiPdfExpectedDigestConstruction = X86_64AbiPdfExpectedDigestConstructed(Sha256Digest) | X86_64AbiPdfExpectedDigestRefused { observation: CitationRetrievalObservation }
 
-type X86_64AbiRetrievedRepresentationConstruction = X86_64AbiRetrievedRepresentationConstructed(RetrievedRepresentation) | X86_64AbiRetrievedRepresentationRefused { observation: CitationRetrievalObservation }
-
 type X86_64AbiPdfCitationSelectorRefusalCause = X86_64AbiPdfCitationSelectorFragmentRefused { cause: NavigableUriRefusalCause } | X86_64AbiPdfCitationSelectorSafeSequenceRefused { cause: PdfProfileRefusalCause }
 
 type X86_64AbiPdfCitationSelectorConstruction = X86_64AbiPdfCitationSelectorConstructed(CitationSelector) | X86_64AbiPdfCitationSelectorRefused { cause: X86_64AbiPdfCitationSelectorRefusalCause }
 
 type X86_64AbiPdfNavigableUriProjection = X86_64AbiPdfNavigableUriProjected { uri: Uri } | X86_64AbiPdfNavigableUriRefused { cause: NavigableUriSafeRefusalCause }
 
-type X86_64AbiPdfPinConstruction = X86_64AbiPdfPinConstructed(Pin<CitedRepresentation>) | X86_64AbiPdfPinRefused { observation: CitationRetrievalObservation }
+type X86_64AbiPdfPinConstruction = X86_64AbiPdfPinConstructed(Pin<CitedRepresentationIdentity>) | X86_64AbiPdfPinRefused { observation: CitationRetrievalObservation }
 
-type X86_64AbiCitationFactConstruction = X86_64AbiCitationFactConstructed(RecordedFact<CitationRecordedFact<RetrievedRepresentation, CitationSelector>>) | X86_64AbiCitationFactRefused { representation: X86_64AbiRetrievedRepresentationConstruction, selector: X86_64AbiPdfCitationSelectorConstruction }
+type X86_64AbiCitationFactConstruction = X86_64AbiCitationFactConstructed(RecordedFact<CitationRecordedFact<CitationSelector>>) | X86_64AbiCitationFactRefused { pin: X86_64AbiPdfPinConstruction, selector: X86_64AbiPdfCitationSelectorConstruction }
 
-type X86_64AbiEvidenceLinkConstruction = X86_64AbiEvidenceLinkConstructed(EvidenceLink<CitationRecordedFact<RetrievedRepresentation, CitationSelector>, ClaimId, ExternalAuthority, NonEmptyStr, ReadBackProbe>) | X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactConstruction }
+type X86_64AbiEvidenceLinkConstruction = X86_64AbiEvidenceLinkConstructed(EvidenceLink<CitationRecordedFact<CitationSelector>, ClaimId, ExternalAuthority, NonEmptyStr, ReadBackProbe>) | X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactConstruction }
 
 fn x86_64_abi_pdf_validated_digest_from_wet_receipt(hex: String) -> X86_64AbiPdfValidatedDigestConstruction {
   match sha256_hex_digest(hex: hex) {
@@ -136,8 +150,8 @@ fn x86_64_abi_pdf_byte_extraction_from_receipt() -> CitationRetrievalObservation
         observed_at: x86_64_abi_pdf_retrieval_observed_at,
         http_status: 200,
         observed: observed_cited_representation(
+          identity: x86_64_abi_pdf_identity,
           media_type: x86_64_abi_application_pdf,
-          byte_domain: RawResponseBody,
           observed_identity: digest,
         ),
       }
@@ -208,6 +222,8 @@ fn assemble_x86_64_abi_pdf_pin_construction() -> X86_64AbiPdfPinConstruction {
     X86_64AbiPdfExpectedDigestConstructed(digest) =>
       X86_64AbiPdfPinConstructed(
         citation_exact_pin(
+          source: x86_64_abi_subject_ref,
+          access_route: x86_64_abi_pdf_authority.uri,
           byte_domain: RawResponseBody,
           version: x86_64_abi_pdf_draft_version,
           expected_identity: digest,
@@ -267,39 +283,33 @@ data x86_64_abi_pdf_version_fragment_selector: X86_64AbiPdfCitationSelectorConst
 
 data x86_64_abi_pdf_syscall_fragment_selector: X86_64AbiPdfCitationSelectorConstruction = x86_64_abi_pdf_citation_selector_from_safe(construction: x86_64_abi_pdf_syscall_convention_sequence)
 
-data x86_64_abi_pdf_retrieved_representation_construction: X86_64AbiRetrievedRepresentationConstruction = x86_64_abi_retrieved_representation_from_extraction(extraction: x86_64_abi_pdf_byte_extraction)
-
 fn x86_64_abi_syscall_citation_fact_construction() -> X86_64AbiCitationFactConstruction {
-  match x86_64_abi_pdf_retrieved_representation_construction {
-    X86_64AbiRetrievedRepresentationConstructed(representation) =>
+  match x86_64_abi_pdf_pin_construction {
+    X86_64AbiPdfPinConstructed(pin) =>
       match x86_64_abi_pdf_syscall_fragment_selector {
         X86_64AbiPdfCitationSelectorConstructed(selector) =>
           X86_64AbiCitationFactConstructed(
             citation_recorded_fact(
               id: "x86-64-abi-linux-syscall-arg3-r10-citation" as RecordedFactId,
-              cited: cited_resource(
-                authority: x86_64_abi_pdf_authority,
-                representation: representation,
-                selector: selector,
-              ),
+              cited: citation_target(expected_pin: pin, selector: selector),
             ),
           )
         X86_64AbiPdfCitationSelectorRefused { cause: selector_cause } =>
           X86_64AbiCitationFactRefused {
-            representation: X86_64AbiRetrievedRepresentationConstructed(representation),
+            pin: X86_64AbiPdfPinConstructed(pin),
             selector: X86_64AbiPdfCitationSelectorRefused { cause: selector_cause },
           }
       }
-    X86_64AbiRetrievedRepresentationRefused { observation: representation_observation } =>
+    X86_64AbiPdfPinRefused { observation: pin_observation } =>
       match x86_64_abi_pdf_syscall_fragment_selector {
         X86_64AbiPdfCitationSelectorConstructed(selector) =>
           X86_64AbiCitationFactRefused {
-            representation: X86_64AbiRetrievedRepresentationRefused { observation: representation_observation },
+            pin: X86_64AbiPdfPinRefused { observation: pin_observation },
             selector: X86_64AbiPdfCitationSelectorConstructed(selector),
           }
         X86_64AbiPdfCitationSelectorRefused { cause: selector_cause } =>
           X86_64AbiCitationFactRefused {
-            representation: X86_64AbiRetrievedRepresentationRefused { observation: representation_observation },
+            pin: X86_64AbiPdfPinRefused { observation: pin_observation },
             selector: X86_64AbiPdfCitationSelectorRefused { cause: selector_cause },
           }
       }
@@ -339,52 +349,11 @@ fn x86_64_abi_syscall_evidence_link_construction() -> X86_64AbiEvidenceLinkConst
           },
         },
       )
-    X86_64AbiCitationFactRefused { representation: representation, selector: selector } =>
+    X86_64AbiCitationFactRefused { pin: pin_construction, selector: selector_construction } =>
       X86_64AbiEvidenceLinkRefused {
         fact: X86_64AbiCitationFactRefused {
-          representation: representation,
-          selector: selector,
-        },
-      }
-  }
-}
-
-fn x86_64_abi_retrieved_representation_from_extraction(
-  extraction: CitationRetrievalObservation,
-) -> X86_64AbiRetrievedRepresentationConstruction {
-  match extraction {
-    RepresentationRetrieved { observed: o, request: _, observed_at: _, http_status: _ } =>
-      X86_64AbiRetrievedRepresentationConstructed(retrieved_representation(observed: o))
-    ResponseObservedWithoutRepresentation { request: r, observed_at: t, http_status: s } =>
-      X86_64AbiRetrievedRepresentationRefused {
-        observation: ResponseObservedWithoutRepresentation {
-          request: r,
-          observed_at: t,
-          http_status: s,
-        },
-      }
-    CitationAccessRefused { request: r, observed_at: t, cause: c } =>
-      X86_64AbiRetrievedRepresentationRefused {
-        observation: CitationAccessRefused {
-          request: r,
-          observed_at: t,
-          cause: c,
-        },
-      }
-    CitationUnreachable { request: r, observed_at: t, cause: c } =>
-      X86_64AbiRetrievedRepresentationRefused {
-        observation: CitationUnreachable {
-          request: r,
-          observed_at: t,
-          cause: c,
-        },
-      }
-    CitationRateLimited { request: r, observed_at: t, retry_after: ra } =>
-      X86_64AbiRetrievedRepresentationRefused {
-        observation: CitationRateLimited {
-          request: r,
-          observed_at: t,
-          retry_after: ra,
+          pin: pin_construction,
+          selector: selector_construction,
         },
       }
   }
@@ -395,10 +364,10 @@ fn witness_syscall_evidence_link_binds_fact() -> Bool {
     X86_64AbiEvidenceLinkConstructed(link) =>
       match x86_64_abi_syscall_convention_citation_fact_construction {
         X86_64AbiCitationFactConstructed(fact) => link.fact.id == fact.id
-        X86_64AbiCitationFactRefused { representation: _, selector: _ } => false
+        X86_64AbiCitationFactRefused { pin: _, selector: _ } => false
       }
     X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactConstructed(_) } => false
-    X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactRefused { representation: _, selector: _ } } => false
+    X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactRefused { pin: _, selector: _ } } => false
   }
 }
 

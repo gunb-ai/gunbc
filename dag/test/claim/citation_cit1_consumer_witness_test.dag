@@ -26,11 +26,10 @@ import extdeps.runtime.abi.sysv_amd64 {
 import std.citation {
   RepresentationRetrieved,
   FragmentSelectorVariant,
-  CitationRecordedFact,
-  RetrievedRepresentation,
+  citation_pin_expected_sha256,
 }
-import std.claim_evidence { EvidenceSupports }
 import std.content_hash { sha256_hex_digest, content_hash_eq_cryptographic }
+import std.claim_evidence { EvidenceSupports }
 import extdeps.version { VersionIdentity }
 import extdeps.pin { pin_currency_gap, AuthoredPinHasNoReviewDate, ExactPin, Pin }
 import std.types { Bool, NonEmptyStr, List }
@@ -109,10 +108,10 @@ test fn x86_64_abi_syscall_citation_bound_to_evidence_link() -> Bool {
       match x86_64_abi_syscall_convention_citation_fact_construction {
         X86_64AbiCitationFactConstructed(fact) =>
           link.fact.id == fact.id && link.direction == EvidenceSupports
-        X86_64AbiCitationFactRefused { representation: _, selector: _ } => false
+        X86_64AbiCitationFactRefused { pin: _, selector: _ } => false
       }
     X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactConstructed(_) } => false
-    X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactRefused { representation: _, selector: _ } } => false
+    X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactRefused { pin: _, selector: _ } } => false
   }
 }
 
@@ -121,21 +120,19 @@ test fn x86_64_abi_syscall_citation_fact_binds_extraction_observation() -> Bool 
     RepresentationRetrieved { observed: o, request: _, observed_at: _, http_status: _ } =>
       match x86_64_abi_syscall_convention_citation_fact_construction {
         X86_64AbiCitationFactConstructed(fact) =>
-          match fact.value {
-            CitationRecordedFact { cited: c } =>
-              match c.representation {
-                RetrievedRepresentation { observed: obs } =>
-                  obs.observed_identity == o.observed_identity
-                    && match x86_64_abi_pdf_expected_digest_construction {
-                      X86_64AbiPdfExpectedDigestConstructed(expected) => o.observed_identity == expected
-                      _ => false
-                    }
-                    && match x86_64_abi_pdf_syscall_fragment_selector {
-                      X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) => s.value == ("page=28" as NonEmptyStr)
-                      _ => false
-                    }
-                none => false
-              }
+          match citation_pin_expected_sha256(pin: fact.value.cited.expected_pin) {
+            Present { value: expected } =>
+              content_hash_eq_cryptographic(left: expected, right: o.observed_identity)
+                && match x86_64_abi_pdf_expected_digest_construction {
+                  X86_64AbiPdfExpectedDigestConstructed(expected_digest) =>
+                    content_hash_eq_cryptographic(left: o.observed_identity, right: expected_digest)
+                  _ => false
+                }
+                && match x86_64_abi_pdf_syscall_fragment_selector {
+                  X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) => s.value == ("page=28" as NonEmptyStr)
+                  _ => false
+                }
+            Absent => false
           }
         _ => false
       }
