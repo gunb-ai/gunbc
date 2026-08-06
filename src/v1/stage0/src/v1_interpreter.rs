@@ -3183,7 +3183,6 @@ fn match_pattern(
                 && parent_enum.as_deref() == Some("Optional")
                 && !matches!(value, Value::Null)
                 && !matches!(value, Value::Variant { .. })
-                && !matches!(value, Value::Record { .. })
             {
                 let mut bindings = HashMap::new();
                 for fb in field_bindings.iter() {
@@ -3410,10 +3409,7 @@ fn match_pattern(
                 {
                     Some(HashMap::new())
                 }
-                _ if name_last == "Present"
-                    && parent_enum.as_deref() == Some("Optional")
-                    && !matches!(value, Value::Record { .. }) =>
-                {
+                _ if name_last == "Present" && parent_enum.as_deref() == Some("Optional") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
