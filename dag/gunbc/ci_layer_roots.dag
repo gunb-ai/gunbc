@@ -117,6 +117,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "mock_response coverage lands for the git.Inspect revision-addressed operations AND scaffold assertions are re-checked under a fixed mock; or the scaffold fns enroll on a scheduled wet lane. Either way this row deletes."
   },
   WitnessExclusionRow {
+    pattern: "stage0_rust_maintenance_census_report_live_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "SUBSTANTIATED per-row (found 2026-08-06, PR #7894 CI red, run 31069215347): maintenance_census_report_positive_control_derives_from_current_head calls current_rust_maintenance_census_report(), which reaches current_stage0_rust_source_observation() and therefore git.Inspect.HeadCommit without mock_response — the same class stage0_rust_host_observation_live_witness_test.dag documents above; a refusing hermetic discovery member fails its whole batch (batch 3 discovery-corpus, 7298-row corpus). This row alone would only remove the function from hermetic discovery, which is not an executing consumer by itself (DESIGN.md 'witness cost derives from purpose', operator ruling 2026-08-04) — so, mirroring stage0_rust_host_observation_live_witness_test.dag's closing contract, the function is ALSO enrolled in bin_witness_wet_entries below (GITHUB_SHA supplied by the runner, not hand-set), which is its real per-PR executing consumer under WitnessHasExecutingConsumer standing; this exclusion row only keeps it off the hermetic per-PR discovery batch it cannot pass. This origin file has only the one witness, so no scaffold-witness residue remains offline-only.",
+    dissolve_on: "mock_response coverage lands for the git.Inspect revision-addressed operations used by current_stage0_rust_source_observation AND this assertion is re-checked under a fixed mock; or the fn enrolls on a scheduled wet lane. Either way this row deletes."
+  },
+  WitnessExclusionRow {
     pattern: "claim/long/mandatory_tag_extdeps_corpus",
     classification: OfflineLocalRecipe,
     reason: "interpreted corpus walk prices out of every CI lane (measured ~33s/module parse, hours full run; see corpus_witness_note in the test file); the CI-cadence corpus consumer is the retained host projection v2.lens.mandatory_tag.corpus_scan",
@@ -1035,7 +1041,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag", f: "effect_plan_bash_fail_fast_prevents_later_operation_execution"),
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag", f: "effect_plan_bash_metachar_and_newline_cannot_open_a_statement"),
   bin_wet(entry: "dag/test/claim/push_event_witness_wet_test.dag", f: "witness_push_before_from_fixture_file"),
-  bin_wet(entry: "dag/test/claim/push_event_witness_wet_test.dag", f: "witness_push_before_payload_read_refused_on_missing_path")
+  bin_wet(entry: "dag/test/claim/push_event_witness_wet_test.dag", f: "witness_push_before_payload_read_refused_on_missing_path"),
+  bin_wet(entry: "dag/test/claim/stage0_rust_maintenance_census_report_live_witness_test.dag", f: "maintenance_census_report_positive_control_derives_from_current_head")
 ]
 
 data bin_witness_wet_per_row_wall_budget_seconds: Int = 60
