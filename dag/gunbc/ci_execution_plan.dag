@@ -3,6 +3,7 @@ module gunbc.ci_execution_plan
 import std.types { CommitSha, String, NonEmptyStr, Int, List, Bool }
 import extdeps.git.object_store { GitObjectId }
 import gunbc.repository { gunbc_repository }
+import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.owned_ci { owned_ci_check_name }
 import gunbc.ci_spec { floor_plan_entry, floor_plan_function }
 import gunbc.cli_invoke { CiFloorPlan, plan_function_name }
@@ -88,4 +89,8 @@ fn ci_subject_identity_key(subject: CiExecutionSubject) -> String {
 
 fn ci_pull_request_is_same_repo(head_repo_full_name: String) -> Bool {
   head_repo_full_name == gunbc_repository.full_name
+}
+
+fn ci_pull_request_targets_merge_branch(base_ref: String) -> Bool {
+  base_ref == gunbc_default_branch_name
 }

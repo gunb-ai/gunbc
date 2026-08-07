@@ -40,6 +40,7 @@ pub struct SeedAuthority {
     pub floor_plan_function: String,
     pub poll_missing_github_token_refusal: String,
     pub poll_empty_github_token_refusal: String,
+    pub merge_target_branch: String,
 }
 
 impl SeedAuthority {
@@ -65,6 +66,7 @@ impl SeedAuthority {
                 &ctx,
                 "owned_ci_seed_poll_empty_github_token_refusal",
             )?,
+            merge_target_branch: eval_string(&ctx, "owned_ci_seed_merge_target_branch")?,
         })
     }
 }
@@ -243,9 +245,17 @@ struct ForkRefusal {
 }
 
 #[derive(Debug, Clone)]
+struct NonMainBaseRefusal {
+    pr_number: u64,
+    base_ref: String,
+    head_sha: String,
+}
+
+#[derive(Debug, Clone)]
 struct DiscoverOutcome {
     admitted: Vec<DiscoveredSubject>,
     fork_refusals: Vec<ForkRefusal>,
+    non_main_base_refusals: Vec<NonMainBaseRefusal>,
     pr_poll_refusal: Option<String>,
 }
 
@@ -330,6 +340,7 @@ impl CiControlPlane {
             self.record_pr_poll_refusal(cause)?;
         }
         self.reconcile_fork_refusals(&outcome.fork_refusals)?;
+        self.reconcile_non_main_base_refusals(&outcome.non_main_base_refusals)?;
         if self.config.dry_run {
             if let Some(run_id) = self.peek_next_pending()? {
                 eprintln!("owned-ci: dry-run would execute {run_id} (queue left pending)");
@@ -428,17 +439,21 @@ impl CiControlPlane {
         });
 
         let token = std::env::var("GITHUB_TOKEN");
-        let (prs, fork_refusals, pr_poll_refusal) = match token {
+        let (prs, fork_refusals, non_main_base_refusals, pr_poll_refusal) = match token {
             Ok(token) if token.is_empty() => (
+                Vec::new(),
                 Vec::new(),
                 Vec::new(),
                 Some(self.authority.poll_empty_github_token_refusal.clone()),
             ),
             Ok(token) => match self.discover_open_prs(&token) {
-                Ok((prs, fork_refusals)) => (prs, fork_refusals, None),
-                Err(cause) => (Vec::new(), Vec::new(), Some(cause)),
+                Ok((prs, fork_refusals, non_main_base_refusals)) => {
+                    (prs, fork_refusals, non_main_base_refusals, None)
+                }
+                Err(cause) => (Vec::new(), Vec::new(), Vec::new(), Some(cause)),
             },
             Err(_) => (
+                Vec::new(),
                 Vec::new(),
                 Vec::new(),
                 Some(self.authority.poll_missing_github_token_refusal.clone()),
@@ -448,6 +463,7 @@ impl CiControlPlane {
         Ok(DiscoverOutcome {
             admitted,
             fork_refusals,
+            non_main_base_refusals,
             pr_poll_refusal,
         })
     }
@@ -464,9 +480,17 @@ impl CiControlPlane {
     fn discover_open_prs(
         &self,
         token: &str,
-    ) -> Result<(Vec<DiscoveredSubject>, Vec<ForkRefusal>), String> {
+    ) -> Result<
+        (
+            Vec<DiscoveredSubject>,
+            Vec<ForkRefusal>,
+            Vec<NonMainBaseRefusal>,
+        ),
+        String,
+    > {
         let mut admitted = Vec::new();
         let mut fork_refusals = Vec::new();
+        let mut non_main_base_refusals = Vec::new();
         let mut url = format!(
             "https://api.github.com/repos/{}/pulls?state=open&per_page=100",
             self.authority.repo_full_name
@@ -489,7 +513,12 @@ impl CiControlPlane {
             }
             let pulls: Vec<serde_json::Value> =
                 serde_json::from_str(&body).map_err(|e| format!("parse pulls json: {e}"))?;
-            self.extend_open_pull_subjects(&pulls, &mut admitted, &mut fork_refusals)?;
+            self.extend_open_pull_subjects(
+                &pulls,
+                &mut admitted,
+                &mut fork_refusals,
+                &mut non_main_base_refusals,
+            )?;
 
             match parse_github_link_rel_next(&link_header) {
                 Some(next_url) => url = next_url,
@@ -505,7 +534,7 @@ impl CiControlPlane {
             }
         }
 
-        Ok((admitted, fork_refusals))
+        Ok((admitted, fork_refusals, non_main_base_refusals))
     }
 
     fn extend_open_pull_subjects(
@@ -513,6 +542,7 @@ impl CiControlPlane {
         pulls: &[serde_json::Value],
         admitted: &mut Vec<DiscoveredSubject>,
         fork_refusals: &mut Vec<ForkRefusal>,
+        non_main_base_refusals: &mut Vec<NonMainBaseRefusal>,
     ) -> Result<(), String> {
         for pull in pulls {
             let number = pull["number"].as_u64();
@@ -528,10 +558,26 @@ impl CiControlPlane {
                     "list pulls malformed payload: open PR missing number or head.sha (fail-closed, not silent skip): {snippet}"
                 ));
             };
+            let base_ref = pull["base"]["ref"].as_str();
+            let Some(base_ref) = base_ref else {
+                let snippet =
+                    serde_json::to_string(pull).unwrap_or_else(|_| "<unserializable>".to_string());
+                return Err(format!(
+                    "list pulls malformed payload: open PR missing base.ref (fail-closed, not silent skip): {snippet}"
+                ));
+            };
             if head_repo != self.authority.repo_full_name {
                 fork_refusals.push(ForkRefusal {
                     pr_number: number,
                     head_repo_full_name: head_repo,
+                    head_sha,
+                });
+                continue;
+            }
+            if base_ref != self.authority.merge_target_branch {
+                non_main_base_refusals.push(NonMainBaseRefusal {
+                    pr_number: number,
+                    base_ref: base_ref.to_string(),
                     head_sha,
                 });
                 continue;
@@ -675,6 +721,78 @@ impl CiControlPlane {
                 last_enqueued_run_id: Some(run_id),
             });
             eprintln!("owned-ci: recorded fork PR refusal — {reason}");
+        }
+        self.write_index(&index)?;
+        self.write_ledger(&ledger)?;
+        Ok(())
+    }
+
+    fn reconcile_non_main_base_refusals(
+        &mut self,
+        refusals: &[NonMainBaseRefusal],
+    ) -> Result<(), String> {
+        if refusals.is_empty() {
+            return Ok(());
+        }
+        let mut ledger = self.read_ledger()?;
+        let mut index = self.read_index()?;
+        for refusal in refusals {
+            let subject_key = format!("non-main-refused:{}", refusal.base_ref);
+            let already = ledger.subjects.iter().any(|s| {
+                s.kind == "non_main_base_refused"
+                    && s.pr_number == Some(refusal.pr_number)
+                    && s.last_enqueued_run_id.is_some()
+            });
+            if already {
+                continue;
+            }
+            let run_id = new_run_id(&refusal.head_sha)?;
+            let now = now_unix()?;
+            let reason = format!(
+                "PR #{} targets {}; v0 admits same-repo PR → {} only",
+                refusal.pr_number, refusal.base_ref, self.authority.merge_target_branch
+            );
+            let details_url = format!(
+                "{}/ci/run/{}",
+                self.config.serve_base_url.trim_end_matches('/'),
+                run_id
+            );
+            let record = RunRecord {
+                run_id: run_id.clone(),
+                head_sha: refusal.head_sha.clone(),
+                subject_key: subject_key.clone(),
+                queue_state: "refused".to_string(),
+                publication_state: PublicationState {
+                    kind: "not_started".to_string(),
+                    check_run_id: None,
+                    local_conclusion: None,
+                    details_url: Some(details_url.clone()),
+                    cause: Some(reason.clone()),
+                },
+                stages: vec![],
+                details_url,
+                lease: None,
+                created_at_unix: now,
+                updated_at_unix: now,
+            };
+            self.write_run(&record)?;
+            index.runs.push(RunIndexRow {
+                run_id: run_id.clone(),
+                head_sha: refusal.head_sha.clone(),
+                subject_key: subject_key.clone(),
+                status: "refused".to_string(),
+                conclusion: Some("refused".to_string()),
+                created_at_unix: now,
+                updated_at_unix: now,
+            });
+            ledger.subjects.push(SubjectEntry {
+                subject_key,
+                head_sha: refusal.head_sha.clone(),
+                kind: "non_main_base_refused".to_string(),
+                pr_number: Some(refusal.pr_number),
+                last_enqueued_run_id: Some(run_id),
+            });
+            eprintln!("owned-ci: recorded non-main-base PR refusal — {reason}");
         }
         self.write_index(&index)?;
         self.write_ledger(&ledger)?;
@@ -1323,15 +1441,120 @@ mod tests {
                 floor_plan_function: "gunbc_ci_floor_plan".to_string(),
                 poll_missing_github_token_refusal: "missing".to_string(),
                 poll_empty_github_token_refusal: "empty".to_string(),
+                merge_target_branch: "main".to_string(),
             },
         };
         let mut admitted = Vec::new();
         let mut fork_refusals = Vec::new();
+        let mut non_main_base_refusals = Vec::new();
         let pulls = vec![serde_json::json!({ "head": { "sha": "abc" } })];
         let err = plane
-            .extend_open_pull_subjects(&pulls, &mut admitted, &mut fork_refusals)
+            .extend_open_pull_subjects(
+                &pulls,
+                &mut admitted,
+                &mut fork_refusals,
+                &mut non_main_base_refusals,
+            )
             .expect_err("malformed pull");
         assert!(err.contains("missing number or head.sha"));
         assert!(admitted.is_empty());
+    }
+
+    #[test]
+    fn extend_open_pull_subjects_refuses_missing_base_ref() {
+        let plane = CiControlPlane {
+            config: Config {
+                workspace_root: std::env::temp_dir(),
+                mirror_path: std::env::temp_dir(),
+                serve_base_url: "http://127.0.0.1:8787".to_string(),
+                poll_interval_secs: 60,
+                lease_secs: 3600,
+                lease_holder: "test".to_string(),
+                once: true,
+                dry_run: true,
+            },
+            authority: SeedAuthority {
+                repo_owner: "gunb-ai".to_string(),
+                repo_name: "gunbc".to_string(),
+                repo_full_name: "gunb-ai/gunbc".to_string(),
+                check_name: "gunbc-ci".to_string(),
+                state_root_rel: ".gunbc/owned-ci".to_string(),
+                default_lease_seconds: 3600,
+                stage_labels: vec!["build".to_string()],
+                floor_plan_entry: "src/v2/workflow/ci_floor_plan.dag".to_string(),
+                floor_plan_function: "gunbc_ci_floor_plan".to_string(),
+                poll_missing_github_token_refusal: "missing".to_string(),
+                poll_empty_github_token_refusal: "empty".to_string(),
+                merge_target_branch: "main".to_string(),
+            },
+        };
+        let mut admitted = Vec::new();
+        let mut fork_refusals = Vec::new();
+        let mut non_main_base_refusals = Vec::new();
+        let pulls = vec![serde_json::json!({
+            "number": 1,
+            "head": { "sha": "abc", "repo": { "full_name": "gunb-ai/gunbc" } }
+        })];
+        let err = plane
+            .extend_open_pull_subjects(
+                &pulls,
+                &mut admitted,
+                &mut fork_refusals,
+                &mut non_main_base_refusals,
+            )
+            .expect_err("missing base.ref");
+        assert!(err.contains("missing base.ref"));
+        assert!(admitted.is_empty());
+    }
+
+    #[test]
+    fn extend_open_pull_subjects_records_non_main_base_refusal() {
+        let plane = CiControlPlane {
+            config: Config {
+                workspace_root: std::env::temp_dir(),
+                mirror_path: std::env::temp_dir(),
+                serve_base_url: "http://127.0.0.1:8787".to_string(),
+                poll_interval_secs: 60,
+                lease_secs: 3600,
+                lease_holder: "test".to_string(),
+                once: true,
+                dry_run: true,
+            },
+            authority: SeedAuthority {
+                repo_owner: "gunb-ai".to_string(),
+                repo_name: "gunbc".to_string(),
+                repo_full_name: "gunb-ai/gunbc".to_string(),
+                check_name: "gunbc-ci".to_string(),
+                state_root_rel: ".gunbc/owned-ci".to_string(),
+                default_lease_seconds: 3600,
+                stage_labels: vec!["build".to_string()],
+                floor_plan_entry: "src/v2/workflow/ci_floor_plan.dag".to_string(),
+                floor_plan_function: "gunbc_ci_floor_plan".to_string(),
+                poll_missing_github_token_refusal: "missing".to_string(),
+                poll_empty_github_token_refusal: "empty".to_string(),
+                merge_target_branch: "main".to_string(),
+            },
+        };
+        let mut admitted = Vec::new();
+        let mut fork_refusals = Vec::new();
+        let mut non_main_base_refusals = Vec::new();
+        let pulls = vec![serde_json::json!({
+            "number": 42,
+            "head": { "sha": "deadbeef", "repo": { "full_name": "gunb-ai/gunbc" } },
+            "base": { "ref": "develop" }
+        })];
+        plane
+            .extend_open_pull_subjects(
+                &pulls,
+                &mut admitted,
+                &mut fork_refusals,
+                &mut non_main_base_refusals,
+            )
+            .expect("extend subjects");
+        assert!(admitted.is_empty());
+        assert!(fork_refusals.is_empty());
+        assert_eq!(non_main_base_refusals.len(), 1);
+        assert_eq!(non_main_base_refusals[0].pr_number, 42);
+        assert_eq!(non_main_base_refusals[0].base_ref, "develop");
     }
 }

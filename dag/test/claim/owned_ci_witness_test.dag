@@ -6,6 +6,7 @@ import gunbc.ci_execution_plan {
   ci_subject_identity_key,
   ci_subject_head_sha,
   ci_pull_request_is_same_repo,
+  ci_pull_request_targets_merge_branch,
   ci_execution_plan_for_subject,
   ci_execution_default_stages,
   owned_ci_executor_stage_labels,
@@ -50,6 +51,7 @@ import extdeps.git.object_store {
 import std.types { String, Bool, NonEmptyStr }
 import v2.std.collection { Absent, Present }
 import gunbc.repository { gunbc_repository }
+import gunbc.repo_identity { gunbc_default_branch_name }
 
 data owned_ci_witness_note: String = "Owned CI v0 decision-procedure witnesses: lease expiry, fork refusal, publication honesty, subject identity, execution plan shape."
 
@@ -112,6 +114,12 @@ test fn witness_fork_pr_refused() -> Bool {
 
 test fn witness_same_repo_pr_admits() -> Bool {
   ci_pull_request_is_same_repo(head_repo_full_name: gunbc_repository.full_name)
+}
+
+test fn witness_pr_to_main_base_ref_admits() -> Bool {
+  ci_pull_request_targets_merge_branch(base_ref: gunbc_default_branch_name)
+    && !ci_pull_request_targets_merge_branch(base_ref: "develop")
+    && !ci_pull_request_targets_merge_branch(base_ref: "release-1.0")
 }
 
 test fn witness_expired_lease_is_reclaimed() -> Bool {
