@@ -153,6 +153,8 @@ const MECHANISM_SINGLE_AUTHORITY_QN: &str =
     "test.fixture.decl_facts_reflection.specimens.mechanism_single_authority";
 const MISSING_VARIANT_SPECIMEN_QN: &str =
     "test.fixture.decl_facts_reflection.specimens.missing_variant_specimen";
+const SCAFFOLD_WITH_DATA_REF_QN: &str =
+    "test.fixture.decl_facts_reflection.specimens.scaffold_with_data_ref";
 
 fn specimens_ctx() -> InterpContext {
     let sources: Vec<Rc<SourceFile>> = resolve_imports_transitively_with_source_roots(
@@ -161,6 +163,24 @@ fn specimens_ctx() -> InterpContext {
         &v2_layer_roots(),
     );
     ctx_from_sources(sources)
+}
+
+fn specimens_ctx_with_source_order(reversed: bool) -> InterpContext {
+    let mut sources: Vec<Rc<SourceFile>> = resolve_imports_transitively_with_source_roots(
+        SPECIMENS_REL,
+        &read_fixture(SPECIMENS_REL),
+        &v2_layer_roots(),
+    );
+    if reversed {
+        sources.reverse();
+    }
+    ctx_from_sources(sources)
+}
+
+fn constructor_parent_qualified_name(ctx: &InterpContext, projection: &Value) -> Option<String> {
+    let ctor = edge_target_named(ctx, projection, "constructor_identity")?;
+    let parent = edge_target_named(ctx, &ctor, "parent_type")?;
+    declaration_identity_qualified_name(ctx, &parent)
 }
 
 #[test]
@@ -210,6 +230,44 @@ fn witness_layer_decl_facts_disposition_scaffold_fact_is_coproduct_record() {
         "disposition_scaffold must appear in witness-layer decl_facts"
     );
 }
+
+#[test]
+fn data_ref_with_coproduct_annotation_marshals_not_variant_value_projection() {
+    let ctx = specimens_ctx();
+    let projection = marshal_data_initializer_projection(&ctx, SCAFFOLD_WITH_DATA_REF_QN)
+        .expect("scaffold_with_data_ref must marshal without error");
+    let dissolves_to = edge_target_named(&ctx, &projection, "dissolves_to")
+        .expect("scaffold record projection must carry dissolves_to field");
+    assert_eq!(
+        projection_kind_lexeme(&ctx, &dissolves_to),
+        Some("NotVariantValueProjection".to_string()),
+        "data-item reference with coproduct annotation must not classify as variant value"
+    );
+}
+
+#[test]
+fn marshal_identity_is_invariant_under_reversed_source_order() {
+    let forward = specimens_ctx_with_source_order(false);
+    let reversed = specimens_ctx_with_source_order(true);
+    for qn in [DISPOSITION_SCAFFOLD_QN, LOCAL_A_SCAFFOLD_QN] {
+        let forward_projection = marshal_data_initializer_projection(&forward, qn)
+            .unwrap_or_else(|e| panic!("forward marshal {qn}: {e}"));
+        let reversed_projection = marshal_data_initializer_projection(&reversed, qn)
+            .unwrap_or_else(|e| panic!("reversed marshal {qn}: {e}"));
+        assert_eq!(
+            projection_kind_lexeme(&forward, &forward_projection),
+            projection_kind_lexeme(&reversed, &reversed_projection),
+            "projection kind must not depend on source file order for {qn}"
+        );
+        assert_eq!(
+            constructor_parent_qualified_name(&forward, &forward_projection),
+            constructor_parent_qualified_name(&reversed, &reversed_projection),
+            "constructor parent identity must not depend on source file order for {qn}"
+        );
+    }
+}
+
+const LOCAL_A_SCAFFOLD_QN: &str = "test.fixture.decl_facts_reflection.specimens.local_a_scaffold";
 
 #[test]
 fn disposition_scaffold_marshals_coproduct_record_projection() {

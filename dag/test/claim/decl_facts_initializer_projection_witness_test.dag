@@ -25,6 +25,7 @@ import v2.std.data_initializer_identity {
   record_field_projection_optional,
   value_projection_is_ambiguous,
   value_projection_is_missing,
+  value_projection_is_not_variant_value,
   value_projection_is_resolved_variant,
 }
 
@@ -42,7 +43,15 @@ data duplicate_shadowed_specimen_qn: String = "test.fixture.decl_facts_reflectio
 data unimported_globally_unique_specimen_qn: String = "test.fixture.decl_facts_reflection.unimported_globally_unique_user.unimported_globally_unique_specimen"
 data scaffold_named_field_bind_qn: String = "test.fixture.decl_facts_reflection.specimens.scaffold_named_field_bind"
 data whole_declaration_bind_qn: String = "test.fixture.decl_facts_reflection.specimens.disposition_scaffold"
+data scaffold_with_data_ref_qn: String = "test.fixture.decl_facts_reflection.specimens.scaffold_with_data_ref"
 data dimensionless_anchor_qn: String = "extdeps.units.dimensionless.extdeps_external_authority_anchor"
+
+test fn decl_facts_reflection_data_ref_with_coproduct_type_is_not_variant_value() -> Bool {
+  match decl_facts_reflection_field_projection(qn: scaffold_with_data_ref_qn, field: "dissolves_to") {
+    Present { value: projection } => value_projection_is_not_variant_value(node: projection)
+    Absent => false
+  }
+}
 
 test fn decl_facts_reflection_imported_external_authority_positive_control() -> Bool {
   match decl_facts_reflection_plain_record_parent(qn: dimensionless_anchor_qn) {

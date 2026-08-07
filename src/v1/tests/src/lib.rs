@@ -120,6 +120,7 @@ mod measure_periphery_emit_test;
 mod measure_value_arg_unit_collapse_test;
 #[cfg(test)]
 mod module_authority_resolution_test;
+#[cfg(test)]
 mod namespace_alias_decl_test;
 #[cfg(test)]
 mod namespace_unique_on_chain_policy_test;
