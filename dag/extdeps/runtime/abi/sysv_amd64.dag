@@ -21,10 +21,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-fn x86_64_abi_pdf_authority() -> ExternalAuthority {
-  extdeps_external_authority_anchor
-}
-
 data x86_64_abi_specification: NonEmptyStr = "System V AMD64 ABI"
 
 data x86_64_abi_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
