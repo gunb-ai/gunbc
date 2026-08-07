@@ -32,7 +32,7 @@ use std::rc::Rc;
 pub fn v1_annotation_binding_offline_recipe() -> String {
     thread_local! {
         static CACHED: String = {
-            "OFFLINE LOCAL RECIPE: target/debug/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_binding_test.dag --functions w_leading_prose_attaches_to_the_data_row_it_precedes,w_leading_prose_attaches_to_the_type_it_precedes,w_body_prose_refuses_rather_than_attaching_to_a_later_declaration,w_prose_above_module_attaches_to_the_module,w_trailing_prose_refuses,w_annotation_free_source_binds_nothing,w_delimiter_normalization_keeps_authored_indentation".to_string()
+            "OFFLINE LOCAL RECIPE: target/debug/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_binding_test.dag --functions w_leading_prose_attaches_to_the_data_row_it_precedes,w_leading_prose_attaches_to_the_type_it_precedes,w_body_prose_refuses_rather_than_attaching_to_a_later_declaration,w_prose_above_module_attaches_to_the_module,w_prose_below_module_before_first_item_attaches_to_the_module,w_module_header_attachment_is_independent_of_module_name_length,w_multi_line_module_header_stays_one_module_block,w_blank_separated_post_module_prose_follows_the_ordinary_rule,w_two_line_body_block_refuses_both_lines,w_trailing_prose_refuses,w_annotation_free_source_binds_nothing,w_delimiter_normalization_keeps_authored_indentation,w_a_single_refusal_withholds_the_entire_graph,w_the_same_prose_without_the_refusal_is_admitted,w_adjacent_comment_lines_form_one_block,w_blank_line_separated_comments_form_two_blocks".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -78,6 +78,51 @@ pub fn header_source() -> String {
     thread_local! {
         static CACHED: String = {
             "// file header prose\nmodule p.q\n\ndata alpha: String = \"a\"\n".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn post_module_header_source() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "module p.q\n// module header prose\n\nimport std.types { String }\n\ndata alpha: String = \"a\"\n".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn long_module_name_header_source() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "module extdeps.auth.jwt_shaped_long_name\n// module header prose\n\nimport std.types { String }\n\ndata alpha: String = \"a\"\n".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn blank_separated_post_module_source() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "module p.q\n\n// separated prose\n\ndata alpha: String = \"a\"\n".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn multi_line_module_header_source() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "module extdeps.auth.jwt_shaped_long_name\n// l1\n//\n// l2\n\nimport std.types { String }\n\ndata alpha: String = \"a\"\n".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn two_line_body_block_source() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "module p.q\n\nfn go(x: String) -> String {\n  // b1\n  // b2\n  let y = x\n  y\n}\n".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -244,6 +289,31 @@ pub fn w_body_prose_refuses_rather_than_attaching_to_a_later_declaration() -> bo
 
 pub fn w_prose_above_module_attaches_to_the_module() -> bool {
     (render(header_source()) == "|p.q=file header prose".to_string())
+}
+
+pub fn w_prose_below_module_before_first_item_attaches_to_the_module() -> bool {
+    (render(post_module_header_source()) == "|p.q=module header prose".to_string())
+}
+
+pub fn w_module_header_attachment_is_independent_of_module_name_length() -> bool {
+    (render(long_module_name_header_source())
+        == "|extdeps.auth.jwt_shaped_long_name=module header prose".to_string())
+}
+
+pub fn w_multi_line_module_header_stays_one_module_block() -> bool {
+    (render(multi_line_module_header_source())
+        == "|extdeps.auth.jwt_shaped_long_name=l1\n\nl2".to_string())
+}
+
+pub fn w_two_line_body_block_refuses_both_lines() -> bool {
+    ((count_body_grain(annotation_attachment_result_refusals(bound(
+        two_line_body_block_source(),
+    ))) == 2)
+        && (render(two_line_body_block_source()) == "".to_string()))
+}
+
+pub fn w_blank_separated_post_module_prose_follows_the_ordinary_rule() -> bool {
+    (render(blank_separated_post_module_source()) == "|alpha=separated prose".to_string())
 }
 
 pub fn w_trailing_prose_refuses() -> bool {
