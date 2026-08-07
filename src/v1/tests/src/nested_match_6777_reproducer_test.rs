@@ -2,7 +2,7 @@
 //! Authored `classify_length` distinguishes 0/1/2+ elements via nested Cons tail patterns.
 //! Emitted behavior comes from regen_stage0 output committed in stage0 — not hand-authored.
 
-use v1_compiler::cli_run::{make_eval_context, resolve_entry_graph, run_claim, ClaimOutcome};
+use v1_compiler::cli_run::{make_eval_context, resolve_entry_graph};
 use v1_compiler::v1_gunbc_nested_match_6777_length_classifier::{
     classify_length, mk_list, LengthClass,
 };
@@ -59,13 +59,14 @@ fn nested_match_6777_authored_fixture_interpreter_holds() {
     let (graph, si) =
         resolve_entry_graph(&classifier_roots(), &classifier_entry()).expect("resolve classifier");
     let ctx = make_eval_context(&graph, si, ExecutionMode::Hermetic);
-    assert!(
-        matches!(
-            run_claim(&ctx, "classify_length_witness_holds"),
-            ClaimOutcome::Pass
-        ),
-        "authored fixture must classify 0->Zero, 1->One, 2/3->Many under the interpreter"
-    );
+    let expected = ["Zero", "One", "Many", "Many"];
+    for (n, &tag) in (0..=3).zip(expected.iter()) {
+        assert_eq!(
+            interpret_classify_length_tag(&ctx, n),
+            tag,
+            "authored fixture must classify 0->Zero, 1->One, 2/3->Many under the interpreter"
+        );
+    }
 }
 
 #[test]
