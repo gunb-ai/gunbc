@@ -18,8 +18,21 @@ import extdeps.languages.json.parse {
 
 data falsifier_alert_state_purpose_note: String = "ALERT-2's state half. The alert's own state — when the incident started, what is currently failing, and when it last NOTIFIED — rides in the issue body as a typed marker, so the issue remains the single authority for its own state and no external store exists. This module owns the marker's shape and both directions across it.\n\nlast_notification_at IS THE POINT OF THIS CARRIER. It replaces recovering the throttle's input by listing the issue's comments and reading the newest one's timestamp, which failed three separate ways: it read comments[length-1] from a single per_page=100 page, and since the endpoint returns oldest-first and accepts no sort parameter, past 100 comments that index is the 100th and only gets older — so the throttle inverted from at-most-every-20h into every-run, turning a silent alert into a spamming one. It also broke if anyone else commented on the issue, and it made a fact the alert itself produced depend on an API call that could fail. The alert knows when it last notified because it did the notifying; that fact is now written where it is produced and read back with no API call at all."
 
+data first_red_standing_note: String = "first_red IS A STANDING, NOT ALWAYS AN INSTANT. Adopting an issue that predates state tracking — one opened by hand, or written before this marker existed — means the alert genuinely does not know when the falsifier first went red. Writing `now` there records a fabricated observation under the name of a measurement, and the issue then says `red since 09:14` about an incident that may have started days earlier.\\n\\nSo the marker can say it does not know. FirstRedObserved carries an instant this alert actually recorded; FirstRedUnknownBeforeTracking says the incident predates what is knowable. Both render honestly and they render differently, which is the whole point — one confident sentence that is sometimes false is worse than two true ones.\\n\\nOn the wire the unknown case is JSON null rather than a sentinel number: 0 would be a valid EpochMs meaning 1970, and every consumer would have to know which impossible instant means `unknown`. A null is the absence, and the decoder reads it as the standing rather than as a malformed number."
+
+type FirstRedStanding
+  = FirstRedObserved { at: EpochMs }
+  | FirstRedUnknownBeforeTracking
+
+fn first_red_json(f: FirstRedStanding) -> JsonValue {
+  match f {
+    FirstRedObserved { at: t } => json_int(n: t)
+    FirstRedUnknownBeforeTracking => json_null()
+  }
+}
+
 type FalsifierAlertState {
-  first_red: EpochMs
+  first_red: FirstRedStanding
   signature: NonEmptyStr
   last_notification_at: EpochMs
 }
@@ -38,13 +51,13 @@ data falsifier_alert_state_decode_note: String = "STATE DECODING IS FOUR NAMED S
 
 type FalsifierAlertStateDecoding
   = CurrentState { state: FalsifierAlertState }
-  | LegacyStateWithoutLastNotification { first_red: EpochMs, signature: NonEmptyStr }
+  | LegacyStateWithoutLastNotification { first_red: FirstRedStanding, signature: NonEmptyStr }
   | StateAbsent
   | StateMalformed { detail: String }
 
 fn falsifier_alert_state_json(state: FalsifierAlertState) -> JsonValue {
   json_object(members: [
-    json_kv(key: falsifier_alert_state_first_red_member, value: json_int(n: state.first_red)),
+    json_kv(key: falsifier_alert_state_first_red_member, value: first_red_json(f: state.first_red)),
     json_kv(key: falsifier_alert_state_signature_member, value: json_string(s: state.signature as String)),
     json_kv(key: falsifier_alert_state_last_notification_member, value: json_int(n: state.last_notification_at))
   ])
@@ -61,6 +74,7 @@ type FalsifierAlertStateNumber
   = StateNumberFound { value: EpochMs }
   | StateNumberMissing
   | StateNumberMalformed { detail: String }
+  | StateNumberNull
 
 data falsifier_alert_state_number_note: String = "A state number is read back through the JSON number's LEXEME, and a lexeme that is not a run of decimal digits is a malformation rather than a value. This module writes those numbers itself through json_int, so any other shape means the marker was edited by hand or produced by something that is not this writer — in both cases the honest answer is Malformed. The negative arm is explicit rather than left to the carrier: parse_int admits a leading minus, so without it a negative lexeme would reach an `Int where range(min: 0)` position having passed the only check that looked at it."
 
@@ -87,7 +101,7 @@ fn falsifier_alert_state_number_at(v: JsonValue, key: String) -> FalsifierAlertS
         JsonString { value: _ } =>
           StateNumberMalformed { detail: concat(key, " is a string, expected a number") }
         JsonNull =>
-          StateNumberMalformed { detail: concat(key, " is null, expected a number") }
+          StateNumberNull
         JsonBool { value: _ } =>
           StateNumberMalformed { detail: concat(key, " is a bool, expected a number") }
         JsonArray { elements: _ } =>
@@ -132,6 +146,28 @@ fn falsifier_alert_state_signature_at(v: JsonValue) -> FalsifierAlertStateSignat
   }
 }
 
+data first_red_null_is_the_unknown_standing_note: String = "A NULL first_red IS THE UNKNOWN STANDING, NOT A MALFORMED NUMBER — and null is a TYPED ARM of the number reader rather than a detail string to be matched. The first version of this compared the reader's diagnostic prose against a constant, which would have made the meaning of a marker depend on the wording of an error message: rewording it would silently turn `unknown since before tracking` back into `this marker is corrupt`. Reading state out of prose is the exact practice this module deleted when it dropped the `First red:` regex, and it had crept back in one layer down.\\n\\nSo StateNumberNull is its own arm, every numeric member sees it, and each decides. first_red reads it as the unknown standing; last_notification_at still refuses, because there is no meaningful `we notified at an unknown time` — either we did and we know when, or the marker is legacy and says nothing at all."
+
+fn falsifier_alert_state_with_first_red(
+  standing: FirstRedStanding,
+  signature: NonEmptyStr,
+  doc: JsonValue
+) -> FalsifierAlertStateDecoding {
+  match falsifier_alert_state_number_at(v: doc, key: falsifier_alert_state_last_notification_member) {
+    StateNumberMissing => LegacyStateWithoutLastNotification { first_red: standing, signature: signature }
+    StateNumberNull => StateMalformed { detail: "last_notification_at is null" }
+    StateNumberMalformed { detail: d } => StateMalformed { detail: d }
+    StateNumberFound { value: last_notification } =>
+      CurrentState {
+        state: FalsifierAlertState {
+          first_red: standing,
+          signature: signature,
+          last_notification_at: last_notification
+        }
+      }
+  }
+}
+
 fn falsifier_alert_state_from_payload(payload: String) -> FalsifierAlertStateDecoding {
   match parse_json(s: payload) {
     Absent => StateMalformed { detail: "state marker payload is not valid JSON" }
@@ -142,21 +178,11 @@ fn falsifier_alert_state_from_payload(payload: String) -> FalsifierAlertStateDec
         StateSignatureFound { value: signature } =>
           match falsifier_alert_state_number_at(v: doc, key: falsifier_alert_state_first_red_member) {
             StateNumberMissing => StateMalformed { detail: "state marker has no first_red" }
+            StateNumberNull =>
+              falsifier_alert_state_with_first_red(standing: FirstRedUnknownBeforeTracking, signature: signature, doc: doc)
             StateNumberMalformed { detail: d } => StateMalformed { detail: d }
             StateNumberFound { value: first_red } =>
-              match falsifier_alert_state_number_at(v: doc, key: falsifier_alert_state_last_notification_member) {
-                StateNumberMissing =>
-                  LegacyStateWithoutLastNotification { first_red: first_red, signature: signature }
-                StateNumberMalformed { detail: d } => StateMalformed { detail: d }
-                StateNumberFound { value: last_notification } =>
-                  CurrentState {
-                    state: FalsifierAlertState {
-                      first_red: first_red,
-                      signature: signature,
-                      last_notification_at: last_notification
-                    }
-                  }
-              }
+              falsifier_alert_state_with_first_red(standing: FirstRedObserved { at: first_red }, signature: signature, doc: doc)
           }
       }
   }

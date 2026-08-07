@@ -8,11 +8,13 @@ import gunbc.falsifier_alert_admission {
   falsifier_alert_admit
 }
 import gunbc.falsifier_alert_state {
+  FirstRedStanding, FirstRedObserved, FirstRedUnknownBeforeTracking,
   FalsifierAlertState,
   FalsifierAlertStateDecoding,
   CurrentState, LegacyStateWithoutLastNotification, StateAbsent, StateMalformed,
   falsifier_alert_heartbeat_window,
-  falsifier_alert_state_from_payload
+  falsifier_alert_state_from_payload,
+  falsifier_alert_state_json
 }
 import gunbc.floor_component_receipt_document {
   ReceiptDecoded, ReceiptNotJson,
@@ -24,13 +26,16 @@ import gunbc.falsifier_lane {
   LaneOwnerHandle, LaneSubstrateLongLane
 }
 import std.types { Timestamp }
+import extdeps.languages.json.emit { serialize_json }
 import extdeps.github.issues { Issue, IssueState, Open }
 import gunbc.falsifier_alert_decision {
   AlertDecision,
   AlertIssueObservation, NoOpenAlertIssue, OneOpenAlertIssue, MultipleOpenAlertIssues, AlertIssueLookupRefused,
   IncidentSignature, ComponentIncidentIdentity,
   RefuseEscalationRecipientUndeclared, RefuseMultipleOpenIssues, RefuseIssueLookup, RefuseRoutingJoin,
-  NotifyObserverUnavailable,
+  OpenObserverIncident, RefreshObserverIncident, NotifyAlertControllerUnavailable,
+  ControllerReceiptMalformed, ControllerReceiptMismatch, ControllerMarkerMalformed, ControllerRoutingJoinRefused, ControllerIssueObserved, ControllerIssueUntouched,
+  ConclusionDecidedBeforeReceipt,
   RunPreventedByConfiguration, CancellationUnexplained,
   RoutingsMissingForComponents, RoutingsForNonFailingComponents, RoutingsDuplicated,
   incident_signature_eq, incident_signature_render, alert_signature_of_marker,
@@ -85,9 +90,9 @@ fn cancelled_admission() -> FalsifierAlertAdmission {
   admission_of(json: trusted_event_json_with_conclusion(conclusion: "cancelled"))
 }
 
-data one_failing_component: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"failed\",\"error\":\"claim is false\",\"failure_mode\":\"WitnessRed\"}"
+data one_failing_component: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"failed\",\"error\":\"claim is false\",\"output\":\"\",\"failure_mode\":\"WitnessRed\"}"
 
-data other_failing_component: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"failed\",\"error\":\"runner died\",\"failure_mode\":\"Infra\"}"
+data other_failing_component: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"failed\",\"error\":\"runner died\",\"output\":\"\",\"failure_mode\":\"Infra\"}"
 
 fn receipt_text_with(component: String) -> String {
   concat(concat(concat(
@@ -156,7 +161,7 @@ fn owned_routings() -> List<FalsifierRouting> {
 fn current_state(signature: NonEmptyStr, last: Int) -> FalsifierAlertStateDecoding {
   CurrentState {
     state: FalsifierAlertState {
-      first_red: 1000,
+      first_red: FirstRedObserved { at: 1000 },
       signature: signature,
       last_notification_at: last
     }
@@ -296,28 +301,32 @@ test fn a_legacy_marker_sends_one_migration_notification() -> Bool {
   let d = decide(
     admission: red_admission(),
     receipt: red_receipt(),
-    state: LegacyStateWithoutLastNotification { first_red: 1000, signature: "old" as NonEmptyStr },
+    state: LegacyStateWithoutLastNotification { first_red: FirstRedObserved { at: 1000 }, signature: "old" as NonEmptyStr },
     now: 6000
   )
   match d {
     NotifyLegacyStateMigration { first_red: f, signature: _, notification: _ } =>
-      f == 1000 && alert_decision_notifies(d: d)
+      match f { FirstRedObserved { at: t } => t == 1000, FirstRedUnknownBeforeTracking => false } && alert_decision_notifies(d: d)
     _ => false
   }
 }
 
 data malformed_precedes_verdict_note: String = "The corrupt-marker refusal is asserted under BOTH a red and a green run, because the ordering choice is the substantive one: a green run with a corrupt marker refuses rather than closing. Closing would look friendlier and would destroy the corrupt marker in the process — the one artifact a human needs to find out what wrote it."
 
-test fn a_malformed_marker_refuses_under_a_red_run() -> Bool {
-  match decide(admission: red_admission(), receipt: red_receipt(), state: StateMalformed { detail: "bad" }, now: 6000) {
-    RefuseMalformedState { detail: d } => d == "bad"
+test fn a_malformed_marker_reports_a_controller_failure_under_a_red_run() -> Bool {
+  let d = decide(admission: red_admission(), receipt: red_receipt(), state: StateMalformed { detail: "bad" }, now: 6000)
+  match d {
+    NotifyAlertControllerUnavailable { cause: c, issue_disposition: disp, notification: _ } =>
+      alert_decision_notifies(d: d)
+        && match c { ControllerMarkerMalformed { detail: dd } => dd == "bad", _ => false }
+        && match disp { ControllerIssueObserved { issue: _ } => true, ControllerIssueUntouched => false }
     _ => false
   }
 }
 
-test fn a_malformed_marker_refuses_under_a_green_run_rather_than_closing() -> Bool {
+test fn a_malformed_marker_does_not_close_the_issue_under_a_green_run() -> Bool {
   match decide(admission: green_admission(), receipt: red_receipt(), state: StateMalformed { detail: "bad" }, now: 6000) {
-    RefuseMalformedState { detail: _ } => true
+    NotifyAlertControllerUnavailable { cause: _, issue_disposition: _, notification: _ } => true
     _ => false
   }
 }
@@ -363,9 +372,14 @@ test fn a_mismatched_receipt_refuses_distinctly_from_a_malformed_one() -> Bool {
     now: 6000
   )
   match mismatch {
-    RefuseReceiptMismatch { mismatch: _ } =>
-      match malformed {
-        RefuseReceiptMalformed { decoding: _ } => true
+    NotifyAlertControllerUnavailable { cause: cm, issue_disposition: _, notification: _ } =>
+      match cm {
+        ControllerReceiptMismatch { mismatch: _ } =>
+          match malformed {
+            NotifyAlertControllerUnavailable { cause: cd, issue_disposition: _, notification: _ } =>
+              match cd { ControllerReceiptMalformed { decoding: _ } => true, _ => false }
+            _ => false
+          }
         _ => false
       }
     _ => false
@@ -380,7 +394,7 @@ test fn every_notifying_arm_carries_the_escalation_mention() -> Bool {
   let heartbeat = decide(admission: red_admission(), receipt: red_receipt(), state: current_state(signature: sig, last: 5000), now: 5000 + millisecond_count(m: falsifier_alert_heartbeat_window))
   let changed = decide(admission: red_admission(), receipt: red_receipt(), state: current_state(signature: signature_of_fixture(component: other_failing_component), last: 5000), now: 5001)
   let green = decide(admission: green_admission(), receipt: red_receipt(), state: current_state(signature: sig, last: 5000), now: 6000)
-  let legacy = decide(admission: red_admission(), receipt: red_receipt(), state: LegacyStateWithoutLastNotification { first_red: 1000, signature: "old" as NonEmptyStr }, now: 6000)
+  let legacy = decide(admission: red_admission(), receipt: red_receipt(), state: LegacyStateWithoutLastNotification { first_red: FirstRedObserved { at: 1000 }, signature: "old" as NonEmptyStr }, now: 6000)
   fold([opened, heartbeat, changed, green, legacy], init: true, f: (acc, d) =>
     acc && match alert_decision_notification(d: d) {
       Present { value: n } => notification_escalates(n: n)
@@ -452,14 +466,16 @@ data absence_is_not_a_payload_note: String = "AN ABSENT MARKER IS NOT AN EMPTY P
 
 test fn an_empty_payload_refuses_rather_than_reading_as_an_absent_marker() -> Bool {
   match decide_from_marker(admission: red_admission(), payload: "", now: 9999999) {
-    RefuseMalformedState { detail: _ } => true
+    NotifyAlertControllerUnavailable { cause: c, issue_disposition: _, notification: _ } =>
+      match c { ControllerMarkerMalformed { detail: _ } => true, _ => false }
     _ => false
   }
 }
 
 test fn a_decoded_legacy_marker_notifies_exactly_once_as_a_migration() -> Bool {
   match decide_from_marker(admission: red_admission(), payload: state_marker_legacy(first_red: 1000, signature: "a:b:c"), now: 9999999) {
-    NotifyLegacyStateMigration { first_red: f, signature: _, notification: _ } => f == 1000
+    NotifyLegacyStateMigration { issue: _, first_red: f, signature: _, next_state: _, notification: _ } =>
+      match f { FirstRedObserved { at: t } => t == 1000, FirstRedUnknownBeforeTracking => false }
     _ => false
   }
 }
@@ -494,7 +510,8 @@ test fn a_decoded_unchanged_signature_heartbeats_once_the_window_elapses() -> Bo
 
 test fn a_decoded_malformed_marker_refuses_instead_of_starting_a_new_incident() -> Bool {
   match decide_from_marker(admission: red_admission(), payload: "{\"first_red\":\"not-a-number\",\"signature\":\"x\"}", now: 9999999) {
-    RefuseMalformedState { detail: _ } => true
+    NotifyAlertControllerUnavailable { cause: c, issue_disposition: _, notification: _ } =>
+      match c { ControllerMarkerMalformed { detail: _ } => true, _ => false }
     _ => false
   }
 }
@@ -503,7 +520,10 @@ data operator_verdict_claims_note: String = "The operator verdict's five #7935 c
 
 test fn an_existing_issue_without_a_marker_is_adopted_rather_than_duplicated() -> Bool {
   match decide_observed(admission: red_admission(), receipt: red_receipt(), observation: observed(state: StateAbsent), now: 6000) {
-    NotifyLegacyStateMigration { issue: iss, first_red: _, signature: _, next_state: _, notification: _ } => iss.number == 4242
+    NotifyLegacyStateMigration { issue: iss, first_red: f, signature: _, next_state: ns, notification: _ } =>
+      iss.number == 4242
+        && match f { FirstRedUnknownBeforeTracking => true, FirstRedObserved { at: _ } => false }
+        && match ns.first_red { FirstRedUnknownBeforeTracking => true, FirstRedObserved { at: _ } => false }
     _ => false
   }
 }
@@ -590,7 +610,9 @@ data next_state_claims_note: String = "The next-state policy, one claim per writ
 
 test fn a_first_red_starts_the_incident_clock_and_the_notification_clock_together() -> Bool {
   match decide_observed(admission: red_admission(), receipt: red_receipt(), observation: NoOpenAlertIssue, now: 5000) {
-    OpenIssue { signature: _, next_state: ns, notification: _ } => ns.first_red == 5000 && ns.last_notification_at == 5000
+    OpenIssue { signature: _, next_state: ns, notification: _ } =>
+      match ns.first_red { FirstRedObserved { at: t } => t == 5000, FirstRedUnknownBeforeTracking => false }
+        && ns.last_notification_at == 5000
     _ => false
   }
 }
@@ -600,7 +622,7 @@ test fn a_heartbeat_preserves_the_incident_clock_and_moves_the_notification_cloc
   let now = 5000 + millisecond_count(m: falsifier_alert_heartbeat_window)
   match decide(admission: red_admission(), receipt: red_receipt(), state: current_state(signature: sig, last: 5000), now: now) {
     RefreshAndNotifyHeartbeat { issue: _, signature: _, next_state: ns, silent_for: _, notification: _ } =>
-      ns.first_red == 1000 && ns.last_notification_at == now
+      match ns.first_red { FirstRedObserved { at: t } => t == 1000, FirstRedUnknownBeforeTracking => false } && ns.last_notification_at == now
     _ => false
   }
 }
@@ -609,7 +631,7 @@ test fn a_silent_refresh_moves_neither_clock() -> Bool {
   let sig = incident_signature_render(sig: signature_struct_of_fixture())
   match decide(admission: red_admission(), receipt: red_receipt(), state: current_state(signature: sig, last: 5000), now: 5001) {
     RefreshIssueWithoutNotification { issue: _, signature: _, next_state: ns, silent_for: _ } =>
-      ns.first_red == 1000 && ns.last_notification_at == 5000
+      match ns.first_red { FirstRedObserved { at: t } => t == 1000, FirstRedUnknownBeforeTracking => false } && ns.last_notification_at == 5000
     _ => false
   }
 }
@@ -618,7 +640,7 @@ test fn a_changed_class_preserves_the_incident_clock_rather_than_restarting_it()
   let previous = incident_signature_render(sig: IncidentSignature { members: [identity_member(index: 6, outcome: "failed", mode: "Infra")] })
   match decide(admission: red_admission(), receipt: red_receipt(), state: current_state(signature: previous, last: 5000), now: 5001) {
     RefreshAndNotifyChangedClass { issue: _, previous: _, current: _, next_state: ns, notification: _ } =>
-      ns.first_red == 1000 && ns.last_notification_at == 5001
+      match ns.first_red { FirstRedObserved { at: t } => t == 1000, FirstRedUnknownBeforeTracking => false } && ns.last_notification_at == 5001
     _ => false
   }
 }
@@ -628,14 +650,15 @@ data conclusion_policy_claims_note: String = "A run that never reached a corpus 
 test fn a_startup_failure_notifies_that_the_observer_is_unavailable() -> Bool {
   let d = decide_observed(admission: admission_of(json: trusted_event_json_with_conclusion(conclusion: "startup_failure")), receipt: red_receipt(), observation: NoOpenAlertIssue, now: 6000)
   match d {
-    NotifyObserverUnavailable { conclusion_tag: t, notification: _ } => (t as String) == "startup_failure" && alert_decision_notifies(d: d)
+    OpenObserverIncident { conclusion_tag: t, next_state: ns, notification: _ } =>
+      (t as String) == "startup_failure" && alert_decision_notifies(d: d) && ns.last_notification_at == 6000
     _ => false
   }
 }
 
 test fn a_timed_out_run_notifies_that_the_observer_is_unavailable() -> Bool {
   match decide_observed(admission: admission_of(json: trusted_event_json_with_conclusion(conclusion: "timed_out")), receipt: red_receipt(), observation: NoOpenAlertIssue, now: 6000) {
-    NotifyObserverUnavailable { conclusion_tag: t, notification: _ } => (t as String) == "timed_out"
+    OpenObserverIncident { conclusion_tag: t, next_state: _, notification: _ } => (t as String) == "timed_out"
     _ => false
   }
 }
@@ -670,9 +693,10 @@ fn decide_with_routings(routings: List<FalsifierRouting>) -> AlertDecision {
 
 test fn a_failing_component_with_no_routing_refuses() -> Bool {
   match decide_with_routings(routings: []) {
-    RefuseRoutingJoin { mismatch: m } =>
-      match m {
-        RoutingsMissingForComponents { indices: xs } => count(xs) == 1
+    NotifyAlertControllerUnavailable { cause: c, issue_disposition: _, notification: _ } =>
+      match c {
+        ControllerRoutingJoinRefused { mismatch: m } =>
+          match m { RoutingsMissingForComponents { indices: xs } => count(xs) == 1, _ => false }
         _ => false
       }
     _ => false
@@ -681,9 +705,10 @@ test fn a_failing_component_with_no_routing_refuses() -> Bool {
 
 test fn a_routing_for_a_non_failing_component_refuses() -> Bool {
   match decide_with_routings(routings: [routing_for(index: 6), routing_for(index: 99)]) {
-    RefuseRoutingJoin { mismatch: m } =>
-      match m {
-        RoutingsForNonFailingComponents { indices: xs } => count(xs) == 1
+    NotifyAlertControllerUnavailable { cause: c, issue_disposition: _, notification: _ } =>
+      match c {
+        ControllerRoutingJoinRefused { mismatch: m } =>
+          match m { RoutingsForNonFailingComponents { indices: xs } => count(xs) == 1, _ => false }
         _ => false
       }
     _ => false
@@ -692,9 +717,10 @@ test fn a_routing_for_a_non_failing_component_refuses() -> Bool {
 
 test fn a_duplicated_routing_refuses() -> Bool {
   match decide_with_routings(routings: [routing_for(index: 6), routing_for(index: 6)]) {
-    RefuseRoutingJoin { mismatch: m } =>
-      match m {
-        RoutingsDuplicated { indices: _ } => true
+    NotifyAlertControllerUnavailable { cause: c, issue_disposition: _, notification: _ } =>
+      match c {
+        ControllerRoutingJoinRefused { mismatch: m } =>
+          match m { RoutingsDuplicated { indices: _ } => true, _ => false }
         _ => false
       }
     _ => false
@@ -704,6 +730,89 @@ test fn a_duplicated_routing_refuses() -> Bool {
 test fn an_exact_routing_join_proceeds() -> Bool {
   match decide_with_routings(routings: [routing_for(index: 6)]) {
     OpenIssue { signature: _, next_state: _, notification: _ } => true
+    _ => false
+  }
+}
+
+data live_head_verdict_claims_note: String = "The operator live-head items 1-4 plus review 49873. Each of these was a case the previous revision handled plausibly and wrongly: a timed-out run reported the floor's writer broken, an adopted issue claimed to know when the incident started, a controller failure completed the workflow in silence, and a hand-edited marker index parsed into a valid-looking identity."
+
+test fn a_timed_out_run_with_no_receipt_reports_the_observer_not_the_writer() -> Bool {
+  match alert_decision(
+    admission: admission_of(json: trusted_event_json_with_conclusion(conclusion: "timed_out")),
+    receipt: ReceiptUndecodable { decoding: ReceiptNotJson { detail: "no receipt was written" } },
+    observation: NoOpenAlertIssue,
+    now: 6000,
+    escalation: declared_escalation(),
+    routings: []
+  ) {
+    OpenObserverIncident { conclusion_tag: t, next_state: _, notification: _ } => (t as String) == "timed_out"
+    _ => false
+  }
+}
+
+test fn a_repeated_observer_outage_refreshes_the_same_incident() -> Bool {
+  match alert_decision(
+    admission: admission_of(json: trusted_event_json_with_conclusion(conclusion: "timed_out")),
+    receipt: ReceiptUndecodable { decoding: ReceiptNotJson { detail: "no receipt" } },
+    observation: observed(state: current_state(signature: "observer-unavailable:timed_out" as NonEmptyStr, last: 5000)),
+    now: 6000,
+    escalation: declared_escalation(),
+    routings: []
+  ) {
+    RefreshObserverIncident { issue: iss, conclusion_tag: _, next_state: ns, silent_for: _, notification: _ } =>
+      iss.number == 4242
+        && match ns.first_red { FirstRedObserved { at: t } => t == 1000, FirstRedUnknownBeforeTracking => false }
+    _ => false
+  }
+}
+
+test fn an_adopted_issue_does_not_claim_to_know_when_the_incident_started() -> Bool {
+  match decide_observed(admission: red_admission(), receipt: red_receipt(), observation: observed(state: StateAbsent), now: 6000) {
+    NotifyLegacyStateMigration { issue: _, first_red: f, signature: _, next_state: ns, notification: _ } =>
+      match f { FirstRedUnknownBeforeTracking => true, FirstRedObserved { at: _ } => false }
+        && match ns.first_red { FirstRedUnknownBeforeTracking => true, FirstRedObserved { at: _ } => false }
+    _ => false
+  }
+}
+
+test fn an_unknown_first_red_round_trips_through_the_marker() -> Bool {
+  let marker = serialize_json(v: falsifier_alert_state_json(state: FalsifierAlertState {
+    first_red: FirstRedUnknownBeforeTracking,
+    signature: "6:failed:WitnessRed" as NonEmptyStr,
+    last_notification_at: 5000
+  }))
+  match falsifier_alert_state_from_payload(payload: marker) {
+    CurrentState { state: st } =>
+      match st.first_red { FirstRedUnknownBeforeTracking => true, FirstRedObserved { at: _ } => false }
+    _ => false
+  }
+}
+
+test fn a_controller_failure_notifies_rather_than_completing_in_silence() -> Bool {
+  let d = decide_observed(
+    admission: red_admission(),
+    receipt: ReceiptUndecodable { decoding: ReceiptNotJson { detail: "receipt is not valid JSON" } },
+    observation: NoOpenAlertIssue,
+    now: 6000
+  )
+  alert_decision_notifies(d: d)
+}
+
+test fn an_untrusted_event_still_does_not_notify() -> Bool {
+  let d = decide_observed(admission: admission_of(json: untrusted_event_json()), receipt: red_receipt(), observation: NoOpenAlertIssue, now: 6000)
+  !alert_decision_notifies(d: d)
+}
+
+test fn a_negative_index_in_a_stored_marker_refuses_rather_than_reading_as_changed() -> Bool {
+  match decide(admission: red_admission(), receipt: red_receipt(), state: current_state(signature: "-1:failed:WitnessRed" as NonEmptyStr, last: 5000), now: 5001) {
+    RefuseMalformedState { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn a_fractional_index_in_a_stored_marker_refuses() -> Bool {
+  match decide(admission: red_admission(), receipt: red_receipt(), state: current_state(signature: "6.5:failed:WitnessRed" as NonEmptyStr, last: 5000), now: 5001) {
+    RefuseMalformedState { detail: _ } => true
     _ => false
   }
 }
