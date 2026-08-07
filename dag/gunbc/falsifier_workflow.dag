@@ -36,6 +36,10 @@ import gunbc.falsifier_run_control {
   gunbc_falsifier_compile_clean_cold_control_timeout_minutes,
   gunbc_falsifier_native_cache_cold_control_timeout_minutes,
 }
+import gunbc.falsifier_cold_corpus_execution {
+  falsifier_cold_corpus_execution_receipt_path,
+  falsifier_cold_corpus_job_id,
+}
 import gunbc.cli_invoke {
   FalsifierPlan,
   plan_function_name,
@@ -146,27 +150,60 @@ fn floor_component_receipt_upload_step() -> Step {
 }
 
 fn gunbc_falsifier_build_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
-fn gunbc_falsifier_floor_job_backstop_timeout_minutes() -> Int {
+fn gunbc_falsifier_selection_control_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+}
+
+fn gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
-fn gunbc_falsifier_job_backstop_timeout_minutes() -> Int {
-  gunbc_falsifier_build_job_backstop_timeout_minutes() + gunbc_falsifier_floor_job_backstop_timeout_minutes()
+fn gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
-data gunbc_falsifier_job_split_note: String = "Two-job split (2026-08-04, falsifier-memory-root-cause diagnosis): the monolith job pinned cgroup peak at the 15 GiB memory.high line because ~9.5 GiB from release build + selection control stayed resident in the job cgroup before claim_executor started (floor_peak_pre reset=unsupported pre_peak=10219753472, run 30935833427). Mirrors the 2026-07-11 ci build→ci serial split (gunbc_ci_job_backstop_timeout_disposition): falsifier-build compiles, runs the selection control, packs, and uploads release-bins; falsifier downloads + verifies in a fresh job cgroup so peak pre/post bracket ONLY the floor path. Dissolve-on: persistent content-keyed node store removes the per-entry cold resolve class and makes the double whole-pool index payment optional — not a substitute for job-grain cgroup isolation."
+fn gunbc_falsifier_job_backstop_timeout_minutes() -> Int {
+  gunbc_falsifier_build_job_backstop_timeout_minutes()
+    + gunbc_falsifier_selection_control_job_backstop_timeout_minutes()
+    + gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes()
+    + gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes()
+}
 
-data gunbc_falsifier_selection_control_relocation_note: String = "The affected-set selection control (ci_selection_control_step, authority gunbc.ci_workflow) rides this cadence as of 2026-07-29, demoted from the per-PR ci job — full rationale, measurement, and return trigger in gunbc_ci_selection_control_step_note. Placement is load-bearing on three counts. (1) AFTER ci_release_build_step in falsifier-build: the control executes the release-built floor_skip_discovery_witness binary. (2) BEFORE ci_floor_peak_pre_step in falsifier (floor job): the peak pre/post pair brackets the floor's cgroup measurement — with the 2026-08-04 job split the control's ~9.5 GiB carry-in lives in falsifier-build's cgroup, not the floor job's. (3) BEFORE falsifier_step: the control is hermetic and ~10m, the falsifier step is up to 170m, so a broken selector reds in minutes instead of after the corpus walk. Its 15m term is in gunbc_falsifier_build_job_backstop_timeout_minutes; the floor job backstop carries only the floor path."
+data gunbc_falsifier_job_split_note: String = "Four-job topology (2026-08-07, operator ruling proud-bear-834 adhoc-8b992195-d13; pre-authorized follow-up named in gunbc.falsifier_run_control falsifier_control_prerequisite_note): falsifier-build compiles and uploads release-bins ONLY; selection-control independently validates prediction machinery; cold-corpus runs whenever build artifacts are available — needs: [falsifier-build] alone, NOT selection-control — so a selector RED is a reason to run the broad backstop, not suppress it (specimen run 31181460723: selection failure skipped the entire corpus job). aggregate-verdict fails if either arm is red and emits gunbc.falsifier_cold_corpus_execution ColdCorpusExecution so CorpusNotRun is never read as 'falsifier found a regression'. Prior two-job split (2026-08-04) isolated cgroup peak for the floor path; this change isolates SELECTION from CORPUS scheduling."
+
+data gunbc_falsifier_selection_control_relocation_note: String = "The affected-set selection control (ci_selection_control_step, authority gunbc.ci_workflow) rides this cadence as of 2026-07-29 — full rationale in gunbc_ci_selection_control_step_note. As of the 2026-08-07 four-job topology it lives in selection-control (needs: [falsifier-build]): AFTER artifact download/unpack, executes the release-built floor_skip_discovery_witness binary, in its own job cgroup separate from cold-corpus. cold-corpus brackets peak pre/post around falsifier_step only. Hermetic ~10m control still reds before the up-to-170m corpus walk."
+
+data falsifier_aggregate_verdict_if: String = "always() && !cancelled()"
+
+data falsifier_aggregate_verdict_shell: String = "set -euo pipefail\nmkdir -p target\nBUILD_RESULT=\"${{ needs.falsifier-build.result }}\"\nSELECTION_RESULT=\"${{ needs.selection-control.result }}\"\nCOLD_RESULT=\"${{ needs.cold-corpus.result }}\"\nif [ \"${BUILD_RESULT}\" != \"success\" ]; then\n  printf '%s\\n' '{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"build-job-failed\"}' > target/falsifier-cold-corpus-execution.json\n  printf '%s\\n' \"::error::Cold corpus did not run — build unavailable (${BUILD_RESULT}); infrastructure, not a falsifier regression finding\"\n  exit 1\nfi\nif [ \"${COLD_RESULT}\" = \"skipped\" ]; then\n  printf '%s\\n' '{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-job-skipped\",\"blocking_job\":\"cold-corpus\"}' > target/falsifier-cold-corpus-execution.json\n  printf '%s\\n' \"::error::Cold corpus skipped despite successful build — topology violation\"\n  exit 1\nfi\nif [ \"${COLD_RESULT}\" = \"cancelled\" ]; then\n  printf '%s\\n' '{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-job-cancelled\"}' > target/falsifier-cold-corpus-execution.json\n  printf '%s\\n' \"::error::Cold corpus cancelled — environment unavailability\"\n  exit 1\nfi\nprintf '%s\\n' '{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-executed\",\"receipt_path\":\"target/floor-component-receipt.json\"}' > target/falsifier-cold-corpus-execution.json\nif [ \"${SELECTION_RESULT}\" != \"success\" ] || [ \"${COLD_RESULT}\" != \"success\" ]; then\n  printf '%s\\n' \"::error::Falsifier cadence red — selection=${SELECTION_RESULT} cold=${COLD_RESULT} (corpus executed; see target/falsifier-cold-corpus-execution.json)\"\n  exit 1\nfi\nprintf '%s\\n' \"FalsifierCadenceVerdict: cadence-green\"\n"
+
+fn falsifier_aggregate_verdict_shell_body() -> String {
+  falsifier_aggregate_verdict_shell
+}
+
+fn falsifier_aggregate_verdict_step() -> Step {
+  RunStep {
+    name: Present { value: "Aggregate falsifier cadence verdict (typed cold-corpus execution)" },
+    id: Present { value: "aggregate_verdict" },
+    run: falsifier_aggregate_verdict_shell_body(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
 
 fn falsifier_build_job() -> Job {
   Job {
     id: "falsifier-build",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_selection_control_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
+    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
     needs: [],
     env: none,
     outputs: none,
@@ -178,9 +215,26 @@ fn falsifier_build_job() -> Job {
   }
 }
 
-fn falsifier_floor_job() -> Job {
+fn falsifier_selection_control_job() -> Job {
   Job {
-    id: "falsifier",
+    id: "selection-control",
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_selection_control_step()]),
+    needs: ["falsifier-build"],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: gunbc_falsifier_selection_control_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
+fn falsifier_cold_corpus_job() -> Job {
+  Job {
+    id: "cold-corpus",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), falsifier_step(), floor_component_receipt_upload_step(), compile_clean_cold_control_step(), native_cache_cold_control_step(), ci_floor_peak_post_step()]),
@@ -188,7 +242,24 @@ fn falsifier_floor_job() -> Job {
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: Present { value: gunbc_falsifier_floor_job_backstop_timeout_minutes() },
+    timeout_minutes: Present { value: gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
+fn falsifier_aggregate_verdict_job() -> Job {
+  Job {
+    id: "aggregate-verdict",
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: [falsifier_aggregate_verdict_step()],
+    needs: ["falsifier-build", "selection-control", "cold-corpus"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: falsifier_aggregate_verdict_if },
+    timeout_minutes: Present { value: gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none,
     permissions: none
@@ -230,7 +301,12 @@ data falsifier_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [falsifier_build_job(), falsifier_floor_job()]
+  jobs: [
+    falsifier_build_job(),
+    falsifier_selection_control_job(),
+    falsifier_cold_corpus_job(),
+    falsifier_aggregate_verdict_job()
+  ]
 }
 
 fn expected_falsifier_yml() -> String {

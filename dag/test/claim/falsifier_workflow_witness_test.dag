@@ -7,9 +7,12 @@ import gunbc.falsifier_workflow {
   falsifier_workflow,
   gunbc_falsifier_job_backstop_timeout_minutes,
   gunbc_falsifier_build_job_backstop_timeout_minutes,
-  gunbc_falsifier_floor_job_backstop_timeout_minutes,
+  gunbc_falsifier_selection_control_job_backstop_timeout_minutes,
+  gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes,
+  gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes,
   gunbc_falsifier_step_timeout_minutes,
   gunbc_falsifier_step_timeout_basis_is_measured_not_composed,
+  falsifier_aggregate_verdict_if,
   expected_falsifier_yml
 }
 import gunbc.falsifier_run_control {
@@ -17,6 +20,25 @@ import gunbc.falsifier_run_control {
   gunbc_falsifier_native_cache_cold_control_timeout_minutes,
   falsifier_control_prerequisite_if,
 }
+import gunbc.falsifier_cold_corpus_execution {
+  falsifier_cold_corpus_execution_receipt_path,
+  falsifier_cold_corpus_job_id,
+  classify_cold_corpus_execution,
+  cold_corpus_execution_is_executed,
+  cold_corpus_execution_receipt_json,
+  cold_corpus_execution_tag,
+  corpus_not_run_build_failed_tag,
+  corpus_executed_tag,
+  corpus_not_run_tag,
+  cadence_verdict_should_fail,
+  JobOutcomeSuccess,
+  JobOutcomeFailure,
+  JobOutcomeSkipped,
+  BuildJobFailed,
+  CorpusExecuted,
+  CorpusNotRun,
+}
+import gunbc.floor_component_receipt { floor_component_receipt_path }
 import gunbc.ci_workflow { gunbc_ci_selection_control_step_timeout_minutes }
 import extdeps.github.actions { ConcurrencyMappingQueueNotMax, CancelInProgressBool }
 import gunbc.ci_workflow {
@@ -65,8 +87,33 @@ test fn falsifier_step_timeout_basis_is_measured_not_composed() -> Bool {
 }
 
 test fn falsifier_backstop_is_step_sum_plus_prelude() -> Bool {
-  gunbc_falsifier_job_backstop_timeout_minutes() == (gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes)
-    && gunbc_falsifier_job_backstop_timeout_minutes() == (gunbc_falsifier_build_job_backstop_timeout_minutes() + gunbc_falsifier_floor_job_backstop_timeout_minutes())
+  gunbc_falsifier_job_backstop_timeout_minutes() == (
+    gunbc_ci_release_build_step_timeout_minutes
+      + gunbc_ci_aux_step_timeout_minutes
+      + gunbc_ci_artifact_transfer_step_timeout_minutes
+      + gunbc_ci_prelude_allowance_minutes
+      + gunbc_ci_artifact_transfer_step_timeout_minutes
+      + gunbc_ci_aux_step_timeout_minutes
+      + gunbc_ci_selection_control_step_timeout_minutes
+      + gunbc_ci_prelude_allowance_minutes
+      + gunbc_ci_artifact_transfer_step_timeout_minutes
+      + gunbc_ci_aux_step_timeout_minutes
+      + gunbc_ci_aux_step_timeout_minutes
+      + gunbc_falsifier_step_timeout_minutes
+      + gunbc_ci_artifact_transfer_step_timeout_minutes
+      + gunbc_falsifier_compile_clean_cold_control_timeout_minutes
+      + gunbc_falsifier_native_cache_cold_control_timeout_minutes
+      + gunbc_ci_aux_step_timeout_minutes
+      + gunbc_ci_prelude_allowance_minutes
+      + gunbc_ci_aux_step_timeout_minutes
+      + gunbc_ci_prelude_allowance_minutes
+  )
+    && gunbc_falsifier_job_backstop_timeout_minutes() == (
+      gunbc_falsifier_build_job_backstop_timeout_minutes()
+        + gunbc_falsifier_selection_control_job_backstop_timeout_minutes()
+        + gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes()
+        + gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes()
+    )
     && !(gunbc_falsifier_job_backstop_timeout_minutes() == gunbc_falsifier_step_timeout_minutes)
 }
 
@@ -77,7 +124,7 @@ test fn selection_control_rides_falsifier_not_per_pr_ci() -> Bool {
     && !string_contains(s: expected_ci_yml(), pattern: selection_control_step_name)
 }
 
-data selection_control_order_witness_note: String = "STRUCTURAL order pin over the Step LIST, not a yaml substring search (review correction 2026-07-30; job-split correction 2026-08-04): the presence test above proves the control moved cadence, but placement is load-bearing on counts that presence cannot express — it must sit AFTER the release build in falsifier-build, and the floor cgroup peak pre-read must bracket only the floor job steps. The 2026-08-04 falsifier-build/falsifier split enforces this by cgroup: build+control in falsifier-build, peak bracket+falsifier_step in falsifier with needs: [falsifier-build]. Reuses step_display_name. EXACTLY-ONE on falsifier-build, ZERO on falsifier floor job and per-PR ci."
+data selection_control_order_witness_note: String = "STRUCTURAL order pin (2026-08-07 four-job topology): selection-control job holds exactly one control step after release-bin unpack; cold-corpus job holds peak bracket + falsifier_step + cold controls. cold-corpus needs only falsifier-build so selector RED cannot skip the corpus."
 
 fn step_index_of(steps: List<Step>, name: String) -> Int {
   let seen = fold(steps, init: { idx: 0, hit: 0 - 1 }, f: fn(acc, s) {
@@ -106,8 +153,12 @@ fn falsifier_build_job_steps() -> List<Step> {
   falsifier_job_steps(job_id: "falsifier-build")
 }
 
-fn falsifier_floor_job_steps() -> List<Step> {
-  falsifier_job_steps(job_id: "falsifier")
+fn falsifier_selection_control_job_steps() -> List<Step> {
+  falsifier_job_steps(job_id: "selection-control")
+}
+
+fn falsifier_cold_corpus_job_steps() -> List<Step> {
+  falsifier_job_steps(job_id: "cold-corpus")
 }
 
 fn ci_job_steps() -> List<Step> {
@@ -116,44 +167,44 @@ fn ci_job_steps() -> List<Step> {
   })
 }
 
-test fn selection_control_sits_after_release_build_before_peak_bracket() -> Bool {
-  let build_steps = falsifier_build_job_steps()
-  let floor_steps = falsifier_floor_job_steps()
-  let build = step_index_of(steps: build_steps, name: "Build release bins (claim_executor + gunbc)")
-  let control = step_index_of(steps: build_steps, name: selection_control_step_name)
-  let peak_pre = step_index_of(steps: floor_steps, name: "Floor cgroup peak pre-read (calibration; reset if permitted)")
-  let falsifier = step_index_of(steps: floor_steps, name: "affected-set falsifier (predict-only cold run)")
-  (build >= 0) && (control >= 0) && (peak_pre >= 0) && (falsifier >= 0)
-    && (build < control)
-    && (peak_pre < falsifier)
+test fn selection_control_sits_after_unpack_in_selection_job() -> Bool {
+  let steps = falsifier_selection_control_job_steps()
+  let unpack = step_index_of(steps: steps, name: "Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)")
+  let control = step_index_of(steps: steps, name: selection_control_step_name)
+  (unpack >= 0) && (control >= 0) && (unpack < control)
 }
 
-test fn falsifier_floor_job_needs_build_job() -> Bool {
+test fn cold_corpus_job_needs_build_only_not_selection() -> Bool {
   fold(falsifier_workflow.jobs, init: false, f: fn(acc, j) {
-    if j.id == "falsifier" {
+    if j.id == falsifier_cold_corpus_job_id {
       any(j.needs, n => n == "falsifier-build")
+        && !any(j.needs, n => n == "selection-control")
     } else {
       acc
     }
   })
 }
 
+test fn falsifier_has_four_jobs_in_topology_order() -> Bool {
+  count(falsifier_workflow.jobs) == 4
+    && falsifier_workflow.jobs[0].id == "falsifier-build"
+    && falsifier_workflow.jobs[1].id == "selection-control"
+    && falsifier_workflow.jobs[2].id == falsifier_cold_corpus_job_id
+    && falsifier_workflow.jobs[3].id == "aggregate-verdict"
+}
+
 test fn selection_control_enrolled_exactly_once_on_falsifier_and_never_on_ci() -> Bool {
-  step_count_named(steps: falsifier_build_job_steps(), name: selection_control_step_name) == 1
-    && step_count_named(steps: falsifier_floor_job_steps(), name: selection_control_step_name) == 0
+  step_count_named(steps: falsifier_build_job_steps(), name: selection_control_step_name) == 0
+    && step_count_named(steps: falsifier_selection_control_job_steps(), name: selection_control_step_name) == 1
+    && step_count_named(steps: falsifier_cold_corpus_job_steps(), name: selection_control_step_name) == 0
     && step_count_named(steps: ci_job_steps(), name: selection_control_step_name) == 0
 }
 
-test fn selection_control_order_witness_discriminates() -> Bool {
-  let build_steps = falsifier_build_job_steps()
-  let floor_steps = falsifier_floor_job_steps()
-  let build = step_index_of(steps: build_steps, name: "Build release bins (claim_executor + gunbc)")
-  let control = step_index_of(steps: build_steps, name: selection_control_step_name)
-  let peak_pre = step_index_of(steps: floor_steps, name: "Floor cgroup peak pre-read (calibration; reset if permitted)")
-  let falsifier = step_index_of(steps: floor_steps, name: "affected-set falsifier (predict-only cold run)")
-  !(control < build)
-    && !(falsifier < peak_pre)
-    && !(step_index_of(steps: build_steps, name: "Affected-set selection control (this step does not exist)") >= 0)
+test fn peak_bracket_brackets_only_cold_corpus_floor_path() -> Bool {
+  let steps = falsifier_cold_corpus_job_steps()
+  let peak_pre = step_index_of(steps: steps, name: "Floor cgroup peak pre-read (calibration; reset if permitted)")
+  let falsifier = step_index_of(steps: steps, name: "affected-set falsifier (predict-only cold run)")
+  (peak_pre >= 0) && (falsifier >= 0) && (peak_pre < falsifier)
 }
 
 test fn falsifier_artifact_path_is_workflow_file() -> Bool {
@@ -165,7 +216,7 @@ test fn falsifier_yaml_projection_evaluates() -> Bool {
 }
 
 test fn falsifier_cold_control_steps_follow_floor_in_job_order() -> Bool {
-  let steps = falsifier_floor_job_steps()
+  let steps = falsifier_cold_corpus_job_steps()
   let floor = step_index_of(steps: steps, name: "affected-set falsifier (predict-only cold run)")
   let compile_clean = step_index_of(steps: steps, name: "compile-clean whole-tree cold control (scoped-PR admission counterpart)")
   let native_cache = step_index_of(steps: steps, name: "native-cache cold control (warm-tier admission counterpart)")
@@ -174,7 +225,7 @@ test fn falsifier_cold_control_steps_follow_floor_in_job_order() -> Bool {
     && (compile_clean < native_cache)
 }
 
-data red_floor_cold_control_fixture_note: String = "Discriminating workflow fixture (operator ruling 2026-08-05, P0 merge condition on #7812): verified defect run 30935833427 — affected-set floor step reddened and compile-clean + native-cache cold controls SKIPPED because they inherited default success(). The repair is always()+release_build, NOT floor success. This fixture asserts structural scheduling (cold controls after floor) AND that the prerequisite if does not gate on steps.floor outcome — so a red floor still leaves both cold controls eligible. RED control: falsifier_red_floor_fixture_reds_if_prerequisite_requires_floor_success."
+data red_floor_cold_control_fixture_note: String = "Discriminating workflow fixture (operator ruling 2026-08-05, P0 merge condition on #7812): verified defect run 30935833427 — affected-set floor step reddened and compile-clean + native-cache cold controls SKIPPED because they inherited default success(). The repair is always()+release_bins success, NOT floor success."
 
 test fn red_floor_workflow_fixture_cold_controls_still_execute() -> Bool {
   falsifier_cold_control_steps_follow_floor_in_job_order()
@@ -189,6 +240,74 @@ test fn falsifier_red_floor_fixture_reds_if_prerequisite_requires_floor_success(
     && !string_contains(s: falsifier_control_prerequisite_if, pattern: "steps.floor.outcome == 'success'")
 }
 
+test fn aggregate_verdict_job_waits_for_all_arms() -> Bool {
+  fold(falsifier_workflow.jobs, init: false, f: fn(acc, j) {
+    if j.id == "aggregate-verdict" {
+      j.if_condition == Present { value: falsifier_aggregate_verdict_if }
+        && any(j.needs, n => n == "falsifier-build")
+        && any(j.needs, n => n == "selection-control")
+        && any(j.needs, n => n == falsifier_cold_corpus_job_id)
+    } else {
+      acc
+    }
+  })
+}
+
+test fn aggregate_verdict_writes_cold_corpus_execution_receipt() -> Bool {
+  string_contains(s: expected_falsifier_yml(), pattern: falsifier_cold_corpus_execution_receipt_path)
+}
+
+test fn cold_corpus_job_id_is_not_legacy_falsifier_job() -> Bool {
+  !any(falsifier_workflow.jobs, j => j.id == "falsifier")
+}
+
+test fn cold_corpus_executed_when_cold_job_ran_even_if_red() -> Bool {
+  match classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure) {
+    CorpusExecuted { receipt_path: path } => path == floor_component_receipt_path
+    _ => false
+  }
+}
+
+test fn cold_corpus_not_run_when_build_failed() -> Bool {
+  match classify_cold_corpus_execution(build: JobOutcomeFailure, cold: JobOutcomeSkipped) {
+    CorpusNotRun { cause: BuildJobFailed } => true
+    _ => false
+  }
+}
+
+test fn cold_corpus_not_run_is_not_regression_evidence() -> Bool {
+  !cold_corpus_execution_is_executed(
+    c: classify_cold_corpus_execution(build: JobOutcomeFailure, cold: JobOutcomeSkipped)
+  )
+}
+
+test fn selection_red_with_corpus_executed_still_counts_as_executed() -> Bool {
+  cold_corpus_execution_is_executed(
+    c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure)
+  )
+    && cadence_verdict_should_fail(
+      build: JobOutcomeSuccess,
+      selection: JobOutcomeFailure,
+      cold: JobOutcomeFailure
+    )
+}
+
+test fn cold_corpus_execution_receipt_json_discriminates_build_failed() -> Bool {
+  string_contains(
+    s: cold_corpus_execution_receipt_json(
+      c: classify_cold_corpus_execution(build: JobOutcomeFailure, cold: JobOutcomeSkipped)
+    ),
+    pattern: corpus_not_run_build_failed_tag
+  )
+    && cold_corpus_execution_tag(
+      c: classify_cold_corpus_execution(build: JobOutcomeFailure, cold: JobOutcomeSkipped)
+    ) == corpus_not_run_tag
+}
+
 fn length_of(s: String) -> Int {
   s.length()
+}
+
+fn string_contains(s: String, pattern: String) -> Bool {
+  s.contains(pattern)
 }
