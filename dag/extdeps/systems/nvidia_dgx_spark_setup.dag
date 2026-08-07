@@ -1,0 +1,165 @@
+module extdeps.systems.nvidia_dgx_spark_setup
+
+import std.types { NonEmptyStr, Bool, List, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// SPARK-PROVISION-0 (2026-08-06). What NVIDIA DOCUMENTS about bringing a DGX Spark
+// from the factory to a usable OS. Separate module from extdeps.systems.nvidia because
+// that one models the HARDWARE the vendor ships and this one models the SETUP SURFACE
+// the vendor exposes; they version independently (a firmware/OOBE revision changes the
+// surface without changing a single hardware row). Nothing here is an operator decision,
+// a fleet fact, or an observation of srv5/srv6 — those live in gunbc.spark_provisioning.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/dgx/dgx-spark/first-boot.html"
+  }
+}
+
+data dgx_spark_pxe_boot_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/dgx/dgx-spark/pxe.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.systems.nvidia_dgx_spark_setup",
+      decl_name: "dgx_spark_oobe_surface",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.systems.nvidia_dgx_spark_setup.extdeps_external_authority_anchor,
+  further_citations: [extdeps.systems.nvidia_dgx_spark_setup.dgx_spark_pxe_boot_authority]
+}
+
+// The bootstrap network the device raises for itself at first boot. The credential is
+// NOT a documented default the way a BMC's is: first-boot.html states the SSID and
+// password are printed on a sticker with the Quick Start Guide, i.e. they are per-unit
+// and physically delivered. That is exactly why std.credentials.FactoryLogin is the
+// WRONG carrier here — FactoryLogin stores a published_password: NonEmptyStr, which is
+// only honest for a credential the vendor PUBLISHES for every unit (OpenBMC's 0penBmc).
+// A per-unit sticker password is a secret; modeling it as FactoryLogin would put it in
+// source in plaintext. The carrier below therefore names WHERE the credential comes from
+// and never holds one.
+// The axis is credential PROVENANCE, and the two arms are the two real cases this
+// repository already has in hand: a BMC's password is published identically for every
+// unit (std.credentials.FactoryLogin's honest shape), while a DGX Spark's arrives on a
+// per-unit printed sticker. Which arm a device sits on decides whether its credential may
+// live in source at all.
+type OobeBootstrapCredentialCarrier
+  = PrintedQuickStartGuideSticker
+  | VendorPublishedDefault
+
+type OobeCaptivePortalBehavior
+  = CaptivePortalOpensAutomatically
+  | CaptivePortalManualNavigation
+
+type OobeBootstrapAccessPoint {
+  credential_carrier: OobeBootstrapCredentialCarrier
+  portal_behavior: OobeCaptivePortalBehavior
+}
+
+// Every field first-boot.html lists the wizard prompting for, in the documented order.
+// The list is deliberately exhaustive of what the DOC says, not of what a provisioning
+// intent wants: see dgx_spark_oobe_offers_field below.
+type OobeSetupField
+  = OobeLanguage
+  | OobeTimeZone
+  | OobeKeyboardLayout
+  | OobeTermsAndConditions
+  | OobeUserAccount
+  | OobeAnalytics
+  | OobeWirelessNetwork
+  | OobeHostnameAssignment
+
+data dgx_spark_oobe_fields: List<OobeSetupField> = [
+  OobeLanguage,
+  OobeTimeZone,
+  OobeKeyboardLayout,
+  OobeTermsAndConditions,
+  OobeUserAccount,
+  OobeAnalytics,
+  OobeWirelessNetwork,
+]
+
+// OobeSetupField is the closed universe of subjects a provisioning intent might want the
+// wizard to settle; dgx_spark_oobe_fields above is the subset the cited page says it
+// actually prompts for, in the order the page gives. The predicate is DERIVED from that
+// list rather than restating it — a second hand-maintained arm-by-arm table would be a
+// parallel representation of one cited fact, and the two would drift the first time the
+// vendor page changed (review 49759). Adding or removing a row in the list is now the only
+// way to move the predicate.
+//
+// Hostname assignment is in the universe and not in the list, and that gap is what the
+// predicate exists to expose: an intent carrying a desired_hostname cannot discharge it
+// inside OOBE and must route it to a separate post-setup step. This is a measured absence
+// in the cited page, not an omission in this model.
+fn dgx_spark_oobe_offers_field(field: OobeSetupField) -> Bool {
+  fold(
+    dgx_spark_oobe_fields,
+    init: false,
+    f: (acc, offered) => acc || offered == field
+  )
+}
+
+// Whether first boot installs software updates is NOT settled by the cited corpus.
+// first-boot.html says the system "will automatically download and install the full
+// software image" after the network is joined; the release notes and system-config
+// pages describe update installation as a separate, later, operator-driven act. Two
+// vendor pages of one product disagreeing is precisely the case where preselecting an
+// arm fabricates a plausible output (DESIGN §5), so the third arm is the honest default
+// for any device this repository has not actually watched boot. It is ⊥-as-ignorance,
+// kept distinct from both ⊥-as-answer arms.
+type InitialUpdateDisposition
+  = InitialUpdateAppliedDuringSetup
+  | InitialUpdateDeferredToOperator
+  | InitialUpdateBehaviorUnobserved
+
+data dgx_spark_documented_initial_update: InitialUpdateDisposition = InitialUpdateBehaviorUnobserved
+
+// Access routes the doc names AFTER setup completes. All three presuppose the account
+// OOBE created, so none of them is a provisioning authority — a model that reached for
+// SSH to "finish" provisioning would be assuming the very thing provisioning produces.
+type PostSetupAccessRoute
+  = PostSetupNvidiaSync
+  | PostSetupSsh
+  | PostSetupRemoteDesktop
+  | PostSetupDgxDashboard
+
+fn post_setup_route_requires_existing_account(route: PostSetupAccessRoute) -> Bool {
+  match route {
+    PostSetupNvidiaSync => true
+    PostSetupSsh => true
+    PostSetupRemoteDesktop => true
+    PostSetupDgxDashboard => true
+  }
+}
+
+data dgx_spark_oobe_surface: OobeBootstrapAccessPoint = OobeBootstrapAccessPoint {
+  credential_carrier: PrintedQuickStartGuideSticker,
+  portal_behavior: CaptivePortalOpensAutomatically,
+}
+
+// pxe.html's documented kernel-parameter tokens for an unattended install. Modeled as
+// the three independent switches the page names rather than one "automated: Bool",
+// because the page grants them independently and a consumer that wants noui without
+// skipping firmware has to be able to say so. The PXE STANDINGS (what a given network
+// or a given unit's firmware actually supports) are deliberately absent — that is
+// SPARK-PXE-0's subject, and asserting them here from an unobserved device would be
+// the same fabrication the update disposition above refuses.
+type DgxSparkPxeInstallParameters {
+  unattended: Bool
+  user_interface_disabled: Bool
+  skip_firmware_update: Bool
+}
+
+fn dgx_spark_pxe_parameter_tokens(params: DgxSparkPxeInstallParameters) -> List<String> {
+  let with_unattended = if params.unattended { ["autoinstall"] } else { [] }
+  let with_noui = if params.user_interface_disabled { append(with_unattended, "noui") } else { with_unattended }
+  if params.skip_firmware_update { append(with_noui, "usb.skipfw") } else { with_noui }
+}
