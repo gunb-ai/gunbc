@@ -2,7 +2,7 @@ module gunbc.runner_incarnation
 
 import std.types { String, NonEmptyStr, Bool }
 import std.nat { Nat }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { Disposition, SingleAuthority, Terminal }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 
@@ -31,6 +31,10 @@ type RunnerSlotInstallationObservation
 data vivid_eagle_srv3_installation_probe_note: String = "vivid-eagle-131 read-only in-band observation 2026-08-07 via srv2->ubuntu@192.168.1.221 (no units started). srv3-01..08 dirs present; 01..05 active/running+enabled; 06/07/08 complete installs identical to 01; 06/07 .runner present (398B, Ephemeral, AgentIds 111911/111894, mtime 2026-07-21); units @06/@07 disabled+inactive; 08 same shape."
 
 data srv4_installation_reach_refused_note: String = "srv4 NO OBSERVATION (vivid-eagle-131 2026-08-07): srv2->192.168.1.196 as briansrls/ubuntu/ghrunner and srv3 hop all Permission denied or host-key verification failed. Carry ReachRefused — do not infer slot state from srv3."
+
+data runner_slot_installation_predicate_family_disposition: Disposition = Terminal {
+  reason: "runner_slot_add_requires_incarnation_replace and the runner_slot_installation_is_* / runner_slot_installation_observation_* Bool helpers are total matches over RunnerSlotInstallationState / RunnerSlotInstallationObservation — every variant has an explicit arm, no top-level wildcard false arm. Unlike fleet_runner_connectivity connectivity_verdict_is_* (wildcard false arms, enrolled in non_fold_residue_frontier), these dissolve at authoring; NFR rows would stale the roster."
+}
 
 fn runner_slot_add_requires_incarnation_replace(state: RunnerSlotInstallationState) -> Bool {
   match state {
