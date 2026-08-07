@@ -138,6 +138,8 @@ fn strip_line_comment_delimiter(lexeme: String) -> String {
 
 // So this module supplies the canonical spelling and the round-trip evidence, and the production consumer is EXPLICITLY OPEN rather than quietly implied. That distinction is the whole point of saying it here: a helper with no consumer that is described as an emitter would read as delivered.
 
+// WHAT THE OPEN RENDERER DOES AND DOES NOT BLOCK. The renderer is required before any AUTOMATED SOURCE RECONSTRUCTION OR FORMATTING may rewrite .dag source — a machine that regenerates a file from the semantic graph must be able to write prose back, or it silently drops it. It does NOT block migrating hand-authored .dag files. Their committed bytes are the authority, no process in this tree reconstructs and overwrites them from the semantic graph, and M1A already captures, attaches, admits, and retains their annotations. An author replacing a `data ..._note: String` row with authored `//` text is editing the authority directly; there is no rendering path in between to drop anything. A claim that a rendering path could still drop newly modeled prose reasoned about a path that does not exist, and an absent hypothetical cannot rewrite a committed file.
+
 // DISSOLVE-ON: an authored-source renderer exists and carries the annotation graph; then the round-trip property re-executes through it end to end and this note goes away with the scaffolding it describes.
 
 // THE CANONICAL .dag SPELLING, and the inverse of strip_line_comment_delimiter directly above. It sits beside its inverse deliberately: the delimiter is stated once, and a change to what .dag strips is in the same edit as what .dag writes. Two functions in two modules agreeing about `//` by coincidence is the fork this lane removes.
