@@ -9,6 +9,7 @@ import extdeps.tools.curl { curl_localhost_bounded_get_argv_prefix }
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
 import gunbc.roadmap_site_surface_witness { roadmap_site_surface_readiness_group_holds }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import gunbc.roadmap_static_site {
   roadmap_site_static_allocation,
   roadmap_site_text_artifacts,
@@ -66,7 +67,7 @@ test fn witness_artifact_digests_are_content_hashes() -> Bool {
 }
 
 test fn witness_healthz_route_json_ok() -> Bool {
-  roadmap_site_surface_readiness_group_holds()
+  roadmap_site_surface_readiness_group_holds(release_revision: deploy_witness_release_revision)
 }
 
 test fn witness_static_site_route_authority_paths_locked() -> Bool {
