@@ -1,0 +1,134 @@
+module gunbc.apply_workflow
+
+import extdeps.languages.yaml.types { yaml_string, kv }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import v2.std.collection { Present }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, RunnerSpec,
+  WorkflowTrigger, WorkflowDispatch,
+  DispatchInput, InputString,
+  WorkflowPermissions, PermRead,
+}
+import extdeps.github.hosted_runners { github_hosted_ubuntu_2404_private_catalog }
+import gunbc.ci_runner_target { ci_runner_target_spec, GithubHostedRunner }
+import gunbc.ci_workflow {
+  ci_prelude_steps,
+  ci_release_build_step,
+  gunbc_ci_release_build_step_timeout_minutes,
+}
+
+data apply_workflow_hosted_runner_note: String = "THE workflow_dispatch WRAPPER MUST NOT SCHEDULE ONTO THE SELF-HOSTED POOL IT EXISTS TO CREATE OR REPAIR. This workflow uses a GitHub-hosted ubuntu-24.04 runner (private-repo catalog row) so it remains invokable while the fleet has zero schedulable self-hosted runners. Direct operator execution via gunbc run remains the primary path during recovery."
+
+data apply_workflow_dispatch_inputs: List<DispatchInput> = [
+  DispatchInput {
+    name: "workflow",
+    description: Present { value: "Apply child workflow (runner-capacity or dashboard-srv1)" },
+    required: true,
+    default: Present { value: "runner-capacity" },
+    type: InputString,
+  },
+  DispatchInput {
+    name: "srv3_width",
+    description: Present { value: "Requested runner slot width on srv3" },
+    required: true,
+    default: Present { value: "7" },
+    type: InputString,
+  },
+  DispatchInput {
+    name: "srv4_width",
+    description: Present { value: "Requested runner slot width on srv4" },
+    required: true,
+    default: Present { value: "7" },
+    type: InputString,
+  },
+  DispatchInput {
+    name: "mode",
+    description: Present { value: "plan refuses destructive apply in PR A; apply is PR B" },
+    required: true,
+    default: Present { value: "plan" },
+    type: InputString,
+  },
+]
+
+fn apply_wet_invoke_script() -> String {
+  concat(
+    concat("ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\n"),
+    concat(
+      "\"$ROOT/target/release/gunbc\" run --source-root \"$ROOT/dag\" --source-root \"$ROOT/src/v2\"",
+      concat(
+        " --entry dag/gunbc/apply.dag --function apply_wet",
+        concat(
+          " --arg workflow=${{ inputs.workflow }}",
+          concat(
+            " --arg srv3_width=${{ inputs.srv3_width }}",
+            concat(
+              " --arg srv4_width=${{ inputs.srv4_width }}",
+              " --arg mode=${{ inputs.mode }}\n"
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn apply_runner_capacity_plan_step() -> Step {
+  RunStep {
+    name: Present { value: "gunbc.apply runner-capacity plan (mode=apply refuses until PR B)" },
+    id: none,
+    run: apply_wet_invoke_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: 30 },
+  }
+}
+
+fn apply_workflow_hosted_runner_spec() -> RunnerSpec {
+  ci_runner_target_spec(
+    target: GithubHostedRunner { row: github_hosted_ubuntu_2404_private_catalog }
+  )
+}
+
+fn apply_workflow_job() -> Job {
+  Job {
+    id: "apply",
+    name: none,
+    runner: apply_workflow_hosted_runner_spec(),
+    steps: concat(ci_prelude_steps(), [ci_release_build_step(), apply_runner_capacity_plan_step()]),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: gunbc_ci_release_build_step_timeout_minutes + 30 },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: none,
+        id_token: none,
+      }
+    },
+  }
+}
+
+data apply_workflow: Workflow = {
+  name: "gunbc-apply",
+  on: [WorkflowDispatch { inputs: apply_workflow_dispatch_inputs }],
+  concurrency: none,
+  env: Present {
+    value: [kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))],
+  },
+  permissions: none,
+  jobs: [apply_workflow_job()],
+}
+
+fn expected_apply_yml() -> String {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: apply_workflow))
+}

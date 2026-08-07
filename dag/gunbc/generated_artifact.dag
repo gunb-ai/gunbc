@@ -9,6 +9,7 @@ import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_s
 type GeneratedArtifact
   = CiYamlArtifact
   | FalsifierYamlArtifact
+  | ApplyYamlArtifact
   | GitignoreArtifact
   | GitattributesArtifact
   | RoadmapArtifact
@@ -31,7 +32,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact],
+      [CiYamlArtifact, FalsifierYamlArtifact, ApplyYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
@@ -53,6 +54,7 @@ fn artifact_path(a: GeneratedArtifact) -> String {
   match a {
     CiYamlArtifact => ".github/workflows/ci.yml"
     FalsifierYamlArtifact => ".github/workflows/falsifier.yml"
+    ApplyYamlArtifact => ".github/workflows/apply.yml"
     GitignoreArtifact => ".gitignore"
     GitattributesArtifact => ".gitattributes"
     RoadmapArtifact => "ROADMAP.md"
@@ -83,6 +85,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     GeneratedArtifactMergeDriverArtifact => CommitRequired { consumer: GitProtocol }
     CiYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FalsifierYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
+    ApplyYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
     PlanArtifact { plan: _ } => CommitRequired { consumer: ProjectDocumentation }
@@ -120,6 +123,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
   match a {
     CiYamlArtifact => match b { CiYamlArtifact => true  _ => false }
     FalsifierYamlArtifact => match b { FalsifierYamlArtifact => true  _ => false }
+    ApplyYamlArtifact => match b { ApplyYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
     GitattributesArtifact => match b { GitattributesArtifact => true  _ => false }
     RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }

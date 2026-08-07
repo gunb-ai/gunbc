@@ -1,0 +1,71 @@
+module test.claim.apply_workflow_witness
+
+import extdeps.github.actions {
+  WorkflowDispatch, DispatchInput, InputString,
+}
+import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
+import extdeps.languages.yaml.types {
+  YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping,
+}
+import gunbc.apply_workflow {
+  apply_workflow_dispatch_inputs,
+  apply_wet_invoke_script,
+  apply_workflow_hosted_runner_spec,
+}
+import extdeps.github.actions { HostedRunner, Ubuntu2404 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn dispatch_input_names(inputs: List<DispatchInput>) -> List<String> {
+  map(inputs, i => i.name)
+}
+
+fn value_has_input_field(v: YamlValue, name: String) -> Bool {
+  match v {
+    YamlMapping { entries } =>
+      fold(entries, init: false, f: (found, entry) =>
+        found || (entry.key == "inputs" && match entry.value {
+          YamlMapping { entries: input_rows } =>
+            fold(input_rows, init: false, f: (has, row) => has || row.key == name)
+          YamlNull => false
+          YamlBool { value: _ } => false
+          YamlInt { lexeme: _ } => false
+          YamlFloat { lexeme: _ } => false
+          YamlString { value: _ } => false
+          YamlSequence { elements: _ } => false
+        })
+      )
+    YamlNull => false
+    YamlBool { value: _ } => false
+    YamlInt { lexeme: _ } => false
+    YamlFloat { lexeme: _ } => false
+    YamlString { value: _ } => false
+    YamlSequence { elements: _ } => false
+  }
+}
+
+test fn apply_workflow_dispatch_carries_runner_capacity_inputs() -> Bool {
+  let entry = workflow_trigger_entry(trigger: WorkflowDispatch { inputs: apply_workflow_dispatch_inputs })
+  entry.key == "workflow_dispatch"
+    && value_has_input_field(v: entry.value, name: "workflow")
+    && value_has_input_field(v: entry.value, name: "srv3_width")
+    && value_has_input_field(v: entry.value, name: "srv4_width")
+    && value_has_input_field(v: entry.value, name: "mode")
+}
+
+test fn apply_workflow_dispatch_input_names_match_apply_wet() -> Bool {
+  let names = dispatch_input_names(inputs: apply_workflow_dispatch_inputs)
+  names.length() == 4
+    && apply_wet_invoke_script().contains(s: "inputs.workflow")
+    && apply_wet_invoke_script().contains(s: "inputs.srv3_width")
+    && apply_wet_invoke_script().contains(s: "inputs.srv4_width")
+    && apply_wet_invoke_script().contains(s: "inputs.mode")
+}
+
+test fn apply_workflow_uses_hosted_runner_not_self_hosted() -> Bool {
+  match apply_workflow_hosted_runner_spec() {
+    HostedRunner { label: Ubuntu2404 } => true
+    _ => false
+  }
+}
