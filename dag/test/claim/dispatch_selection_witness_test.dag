@@ -1,6 +1,6 @@
 module test.claim.dispatch_selection_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, FilePath }
 import gunbc.roadmap_model {
   IntricacyHigh,
   IntricacyLow,
@@ -9,7 +9,7 @@ import gunbc.roadmap_model {
   Sized,
   Unsized,
 }
-import extdeps.llm.cli { ReasoningMedium }
+import extdeps.llm.cli { ReasoningMedium, ReasoningHigh }
 import extdeps.llm.cli_lifecycle {
   CodexCliProvider,
   CursorCliProvider,
@@ -100,6 +100,8 @@ import gunbc.dispatch_selection {
   dispatch_selection_shape_mismatch_reason,
   dispatch_selection_standing_ineligible_reason,
   dispatch_selection_automatic_native_bucket_join_undetermined_refusal,
+  ClaudeStateRootRef,
+  dispatch_claude_default_workflow_mode,
   Unsized,
 }
 
@@ -513,6 +515,59 @@ test fn witness_explicit_override_bengalfox_admitted_from_same_inventory() -> Bo
   }
 }
 
+test fn witness_select_claude_automatic_honors_request_credential_and_model() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let request_credential = ClaudeStateRootRef {
+    root: "/managed/claude-enrollment" as FilePath,
+  }
+  let request_model = "claude-managed-model" as NonEmptyStr
+  let claude_provider = ProviderInstance {
+    kind: ClaudeCliProvider,
+    host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as NonEmptyStr },
+    executable: "claude" as NonEmptyStr,
+    observed_version: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+    state_directory: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+    credential_storage_method: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+    service_identity: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+  }
+  match resolve_dispatch_selection(
+    inventory: fixture_inventory_codex_then_claude(
+      instance: instance,
+      codex_standing: provider_standing_inventory_unobserved(),
+      claude_standing: provider_standing_from_fixture_bundle(
+        provider: claude_provider,
+        bundle: fixture_standing_bundle_authenticated_available(),
+      ),
+    ),
+    request: SelectClaude {
+      profile: ProfileAutomatic,
+      credential: request_credential,
+      model: request_model,
+      effort: ReasoningHigh,
+      workflow_mode: dispatch_claude_default_workflow_mode,
+    },
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      match receipt.resolved_selection {
+        ResolvedClaude { selection: s, instance: _ } =>
+          s.credential == request_credential
+            && s.model == request_model
+            && s.effort == ReasoningMedium
+        _ => false
+      }
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+  }
+}
+
 test fn dispatch_selection_keystone_holds() -> Bool {
   witness_automatic_codex_preserves_medium_effort()
     && witness_intricacy_does_not_change_automatic_effort()
@@ -522,6 +577,7 @@ test fn dispatch_selection_keystone_holds() -> Bool {
     && witness_srv2_inventory_includes_cursor()
     && witness_srv2_cursor_selection_resolves()
     && witness_srv1_claude_selection_resolves_with_fixture_standing()
+    && witness_select_claude_automatic_honors_request_credential_and_model()
     && witness_receipt_records_requested_and_resolved()
     && witness_carrier_notes_record_directive_addendum()
     && witness_wrong_selection_shape_refuses()

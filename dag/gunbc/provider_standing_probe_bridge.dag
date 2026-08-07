@@ -211,8 +211,7 @@ fn provider_standing_bundle_from_codex_dashboard_probes(
 fn provider_standing_bundle_from_claude_credential_control_probe(
   observation: ClaudeCredentialControlProbeObservation,
 ) -> ProviderStandingBundle {
-  let authentication =
-    if observation.token_source == ("none" as NonEmptyStr) {
+  let authentication = if observation.token_source == ("none" as NonEmptyStr) {
       if observation.subscription_tier == ("none" as NonEmptyStr) {
         AuthenticationCredentialsAbsent
       } else {

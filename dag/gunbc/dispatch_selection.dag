@@ -827,8 +827,8 @@ fn resolve_claude_offer(
         ProfileAutomatic => {
           let resolved = ResolvedClaude {
             selection: ResolvedClaudeSelection {
-              credential: offer.credential,
-              model: dispatch_claude_default_model,
+              credential: credential,
+              model: model,
               effort: offer.default_effort,
               workflow_mode: workflow_mode,
               process_fingerprint: offer.process_fingerprint,
@@ -850,7 +850,7 @@ fn resolve_claude_offer(
             DeepConfigured { effort: deep_effort } => {
               let resolved = ResolvedClaude {
                 selection: ResolvedClaudeSelection {
-                  credential: offer.credential,
+                  credential: credential,
                   model: model,
                   effort: deep_effort,
                   workflow_mode: workflow_mode,
