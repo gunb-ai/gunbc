@@ -33,7 +33,7 @@ data x86_64_abi_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
 
 data x86_64_abi_pdf_identity: CitedRepresentationIdentity = cited_representation_identity(
   source: x86_64_abi_subject_ref,
-  access_route: extdeps_external_authority_anchor.uri,
+  access_route: extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri,
   byte_domain: RawResponseBody,
 )
 

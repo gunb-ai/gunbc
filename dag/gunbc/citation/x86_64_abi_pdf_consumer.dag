@@ -66,7 +66,6 @@ import std.claim_evidence {
 }
 import gunbc.readback_independence { ReadBackProbe, ProbeMayEstablish }
 import extdeps.runtime.abi.sysv_amd64 {
-  extdeps_external_authority_anchor,
   x86_64_abi_pdf_identity,
   x86_64_abi_application_pdf,
   x86_64_abi_syscall_convention_authoritative_page,
@@ -119,7 +118,7 @@ fn x86_64_abi_pdf_retrieval_observation_from_hex(hex: String) -> X86_64AbiPdfRet
       X86_64AbiPdfRetrievalObserved(
         RepresentationRetrieved {
           request: CitationRetrievalRequest {
-            locator: extdeps_external_authority_anchor.uri,
+            locator: extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri,
           },
           observed_at: 0,
           http_status: 200,
@@ -241,7 +240,7 @@ fn x86_64_abi_syscall_evidence_link_construction() -> X86_64AbiEvidenceLinkConst
           fact: fact,
           direction: EvidenceSupports,
           inference_rule: "citation-extraction-supports-syscall-arg3-claim" as InferenceRuleId,
-          authority: extdeps_external_authority_anchor,
+          authority: extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor,
           provenance: EvidenceProvenance {
             entity: "x86-64-abi-pdf-byte-extraction" as ProvEntityId,
             activity: "wet-representation-retrieval" as ProvActivityId,
@@ -296,7 +295,7 @@ fn x86_64_abi_pdf_navigable_uri_from_safe(
   construction: PdfSafeParameterSequenceConstruction,
 ) -> X86_64AbiPdfNavigableUriProjection {
   match project_navigable_uri_safe(
-    base: extdeps_external_authority_anchor.uri,
+    base: extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri,
     construction: construction,
   ) {
     NavigableUriSafeProjected { uri: u } => X86_64AbiPdfNavigableUriProjected { uri: u }
@@ -315,7 +314,7 @@ fn x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points(
       }
     PdfProfileParameterWired { wire: wire } =>
       match navigable_uri_projection_from_sequence_wire(
-        base: extdeps_external_authority_anchor.uri,
+        base: extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri,
         sequence_wire: PdfOpenParameterSequenceWired { wire: wire },
       ) {
         NavigableUriProjected { uri: u } => X86_64AbiPdfNavigableUriProjected { uri: u }
@@ -340,5 +339,5 @@ fn x86_64_abi_pdf_syscall_navigable_uri_projection() -> X86_64AbiPdfNavigableUri
 }
 
 fn x86_64_abi_pdf_base_locator_probe() -> NonEmptyStr {
-  extdeps_external_authority_anchor.uri.locator
+  extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri.locator
 }

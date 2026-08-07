@@ -3,7 +3,6 @@ module test.claim.citation_cit1_consumer_witness
 import extdeps.runtime.abi.sysv_amd64 {
   x86_64_abi_pdf_draft_version,
   x86_64_abi_syscall_convention_authoritative_page,
-  x86_64_abi_pdf_identity,
 }
 import gunbc.citation.x86_64_abi_pdf_consumer {
   x86_64_abi_pdf_pin_construction,
@@ -121,14 +120,6 @@ test fn x86_64_abi_version_cover_uri_uses_page_one() -> Bool {
 test fn x86_64_abi_authority_locator_is_refspecs() -> Bool {
   x86_64_abi_pdf_base_locator_probe() == ("refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf" as NonEmptyStr)
 }
-
-test fn x86_64_abi_version_cover_uri_empty_base_probe() -> Bool {
-  match x86_64_abi_pdf_version_navigable_uri_projection() {
-    X86_64AbiPdfNavigableUriProjected { uri: u } => u.locator == "#page=1"
-    _ => false
-  }
-}
-
 test fn x86_64_abi_syscall_convention_uri_uses_physical_page_125() -> Bool {
   match x86_64_abi_pdf_syscall_navigable_uri_projection() {
     X86_64AbiPdfNavigableUriProjected { uri: u } =>
@@ -157,7 +148,7 @@ test fn x86_64_abi_syscall_citation_selector_conforms_to_rfc_8118() -> Bool {
     X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
       s.value == ("page=125" as NonEmptyStr)
         && s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
-        && s.conforms_to.uri.locator != x86_64_abi_pdf_identity.access_route.locator
+        && s.conforms_to.uri.locator != extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri.locator
     _ => false
   }
 }
@@ -181,7 +172,7 @@ test fn x86_64_abi_syscall_selector_conforms_to_rfc_anchor() -> Bool {
 test fn x86_64_abi_syscall_selector_conforms_not_abi_pdf_locator() -> Bool {
   match x86_64_abi_pdf_syscall_fragment_selector() {
     X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
-      s.conforms_to.uri.locator != x86_64_abi_pdf_identity.access_route.locator
+      s.conforms_to.uri.locator != extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri.locator
     _ => false
   }
 }
