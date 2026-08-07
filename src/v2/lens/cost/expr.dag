@@ -64,6 +64,28 @@ fn cost_const(value: Nat) -> CostExpr {
   CostConst { value: value }
 }
 
+fn cost_expr_seq(a: CostExpr, b: CostExpr) -> CostExpr {
+  match a {
+    CostConst { value: Zero } => b
+    _ =>
+      match b {
+        CostConst { value: Zero } => a
+        _ => CostAdd { left: a, right: b }
+      }
+  }
+}
+
+fn cost_expr_par(a: CostExpr, b: CostExpr) -> CostExpr {
+  match a {
+    CostConst { value: Zero } => b
+    _ =>
+      match b {
+        CostConst { value: Zero } => a
+        _ => CostMax { left: a, right: b }
+      }
+  }
+}
+
 fn cost_log_expr(base: Nat, argument: SizeExpr) -> CostExpr {
   CostLog { base: base, argument: argument }
 }
