@@ -1373,17 +1373,76 @@ mod compiler_tests {
     }
 
     #[test]
-    fn constructor_call_admission_decides_zero_arity_bare_reference() {
+    fn constructor_call_admission_decides_zero_arity_references() {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
                 let seal_mod = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "seal_mod.dag".to_string(),
-                    content: "module seal_mod\ntype Token sole_constructor { tag: String }\nfn token() -> Token admit_callers: [decl_ref(module_path: \"z_caller\", decl_name: \"ok_zero\")] = Token { tag: \"t\" }\n".to_string(),
+                    content: "module seal_mod\ntype Token sole_constructor { tag: String }\nfn token() -> Token admit_callers: [decl_ref(module_path: \"z_caller\", decl_name: \"ok_bare\"), decl_ref(module_path: \"z_caller\", decl_name: \"ok_call\")] = Token { tag: \"t\" }\nfn plain() -> String = \"p\"\n".to_string(),
                 });
                 let z_caller = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "z_caller.dag".to_string(),
-                    content: "module z_caller\nimport seal_mod { token, Token }\nfn ok_zero() -> Token { token }\nfn bad_zero() -> Token { token }\n".to_string(),
+                    content: "module z_caller\nimport seal_mod { token, Token, plain }\nfn ok_bare() -> Token { token }\nfn bad_bare() -> Token { token }\nfn ok_call() -> Token { token() }\nfn bad_call() -> Token { token() }\nfn bad_qual() -> Token { seal_mod.token() }\nfn ordinary() -> String { plain }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![seal_mod, z_caller]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let refused: Vec<_> = result.diagnostics.iter()
+                    .filter_map(|d| match &*d.diagnostic {
+                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused {
+                            caller_decl_name, constructor_decl_name, ..
+                        } => Some((caller_decl_name.clone(), constructor_decl_name.clone())),
+                        _ => None,
+                    })
+                    .collect();
+                let refused_callers: Vec<String> = refused.iter().map(|(c, _)| c.clone()).collect();
+                for unlisted in ["bad_bare", "bad_call", "bad_qual"] {
+                    assert!(
+                        refused_callers.iter().any(|n| n == unlisted),
+                        "unlisted caller {} of a ZERO-ARITY sealed constructor must be refused; got: {:?}",
+                        unlisted,
+                        result.diagnostics
+                    );
+                }
+                for permitted in ["ok_bare", "ok_call", "ordinary"] {
+                    assert!(
+                        !refused_callers.iter().any(|n| n == permitted),
+                        "{} must NOT be refused -- a wall that refuses listed callers or ordinary \
+                         zero-arity functions is a fabricated refusal, not a fix; got: {:?}",
+                        permitted,
+                        refused_callers
+                    );
+                }
+                let qualified: Vec<&String> = refused.iter()
+                    .filter(|(c, _)| c == "bad_qual")
+                    .map(|(_, k)| k)
+                    .collect();
+                assert!(
+                    qualified.iter().all(|k| *k == "token"),
+                    "a qualified zero-arity call must report the exact constructor identity \
+                     'token', not a doubled or call-site spelling; got: {:?}",
+                    qualified
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("constructor_call_admission_decides_zero_arity_references panicked");
+    }
+
+    #[test]
+    fn constructor_call_admission_lets_a_body_binding_shadow_the_constructor() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let seal_mod = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "seal_mod.dag".to_string(),
+                    content: "module seal_mod\ntype Token sole_constructor { tag: String }\nfn token() -> Token admit_callers: [decl_ref(module_path: \"z_caller\", decl_name: \"ok_use\")] = Token { tag: \"t\" }\n".to_string(),
+                });
+                let z_caller = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "z_caller.dag".to_string(),
+                    content: "module z_caller\nimport seal_mod { token, Token }\nfn ok_use() -> Token { token }\nfn shadowed_param(token: String) -> String { token }\nfn shadowed_let() -> String { let token = \"x\"  token }\n".to_string(),
                 });
                 let result = crate::v1_compiler_compile::compile_sources(
                     std::rc::Rc::new(im::vector![seal_mod, z_caller]),
@@ -1397,23 +1456,26 @@ mod compiler_tests {
                         _ => None,
                     })
                     .collect();
+                for shadowing in ["shadowed_param", "shadowed_let"] {
+                    assert!(
+                        !refused.iter().any(|n| n == shadowing),
+                        "{} binds its own token, so the sealed constructor of that spelling is not \
+                         referenced at all; refusing it is a fabricated refusal. got: {:?}",
+                        shadowing,
+                        result.diagnostics
+                    );
+                }
                 assert!(
-                    !refused.iter().any(|n| n == "ok_zero"),
-                    "control 1: the listed caller of a zero-arity sealed constructor must succeed; got: {:?}",
-                    refused
-                );
-                assert!(
-                    !refused.iter().any(|n| n == "bad_zero"),
-                    "control 2 HAS STARTED PASSING -- the zero-arity admission fail-open is closed. \
-                     Flip this quarantine now: assert that `refused` CONTAINS bad_zero, delete this \
-                     arm's comment block, and the probe becomes a permanent regression control. \
-                     got: {:?}",
+                    !refused.iter().any(|n| n == "ok_use"),
+                    "the listed caller must still succeed; got: {:?}",
                     refused
                 );
             })
             .expect("failed to spawn thread")
             .join();
-        result.expect("constructor_call_admission_decides_zero_arity_bare_reference panicked");
+        result.expect(
+            "constructor_call_admission_lets_a_body_binding_shadow_the_constructor panicked",
+        );
     }
 
     #[test]
