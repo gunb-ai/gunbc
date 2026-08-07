@@ -26,6 +26,7 @@ import std.cache_interface {
   ManualPurge,
   Repo,
 }
+import std.measure { second }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -48,7 +49,7 @@ data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
     prefix_fallback_allowed: false
     content_verified_on_read: true
     visibility_scope: Repo
-    invalidation_triggers: [TtlExpiry, ManualPurge]
+    invalidation_triggers: [TtlExpiry { window: second(count: 2592000) }, ManualPurge]
   }
   io: {
     lookup_semantics: ContentAddressLookup
@@ -75,7 +76,7 @@ data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
     {
       field: "write_semantics"
       evidence: OperatorObserved {
-        note: "WriteOnce: re-record with a different response for the same input_hash => FixtureError::ResponseDrift (cache-purity oracle); freshness window FIXTURE_FRESHNESS_SECS = 30d"
+        note: "WriteOnce: re-record with a different response for the same input_hash => FixtureError::ResponseDrift (cache-purity oracle). The freshness window is carried typed on this row's TtlExpiry trigger, cited to recorded_fixture.rs FIXTURE_FRESHNESS_SECS"
         observed_at: 0
       }
     },

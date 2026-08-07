@@ -3,7 +3,7 @@ module std.cache_interface
 import std.types { NonEmptyStr, Bool, Int, LogicalTime }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
-import std.measure { Nano, ByteSize }
+import std.measure { Nano, ByteSize, Second, second }
 
 import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 import std.pareto {
@@ -200,8 +200,16 @@ type KeyDerivationClass
 
 type VisibilityScope = Repo | Org | Network | World
 
+// TtlExpiry CARRIES ITS WINDOW. The retention split claimed freshness "stays on
+// InvalidationTrigger", but TtlExpiry was a bare tag with no duration, so
+// retiring the old eviction axis deleted the one typed TTL in the live catalog
+// (hermetic_fixture's Ttl { days: 30 }) and left the number surviving only in an
+// evidence prose string. A de-fork that drops the fact it was consolidating has
+// not consolidated it, and prose is not a carrier a machine can read (§4c). The
+// window is Second rather than days because the cited seed constant is
+// FIXTURE_FRESHNESS_SECS -- the row now states the unit its authority states.
 type InvalidationTrigger
-  = TtlExpiry
+  = TtlExpiry { window: Second }
   | ManualPurge
   | ToolchainChange
   | DependencyChange

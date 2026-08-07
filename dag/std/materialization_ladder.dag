@@ -500,6 +500,12 @@ fn retention_refusal_verdict(
   }
 }
 
+// ADMIT BEFORE SELECTING. The former shape took content_covering.first() and
+// then asked whether THAT provider's retention was bounded, so a covering but
+// ineligible provider standing earlier in the list refused the whole group and
+// masked a perfectly good provider behind it — list ORDER was deciding
+// eligibility. Filtering first makes the choice a function of the facts, and
+// the reversed-order controls in the retention-axes witness pin it.
 fn discharge_verdict(identity: String, lca: List<Frame>, providers: List<CacheProvider>) -> LadderVerdict {
   let content_covering = providers |> filter(p =>
     provider_is_store_tier(p: p)
@@ -507,12 +513,6 @@ fn discharge_verdict(identity: String, lca: List<Frame>, providers: List<CachePr
       && frame_path_is_prefix(prefix: p.scope, path: lca)
       && provider_is_content_keyed(p: p)
   )
-  // ADMIT BEFORE SELECTING. The former shape took content_covering.first() and
-  // then asked whether THAT provider's retention was bounded, so a covering but
-  // ineligible provider standing earlier in the list refused the whole group and
-  // masked a perfectly good provider behind it — list ORDER was deciding
-  // eligibility. Filtering first makes the choice a function of the facts, and
-  // the reversed-order controls in the retention-axes witness pin it.
   let admitted = content_covering |> filter(p => retention_is_admitted(r: p.retention))
   match admitted.first() {
     Present { value: chosen } =>
