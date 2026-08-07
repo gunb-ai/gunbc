@@ -6,21 +6,54 @@ import gunbc.session_auto_publish {
   SessionPublishState,
   LocalCheckpointAbsent,
   LocalCheckpointAt,
-  RemotePublicationAbsent,
-  RemotePublicationStamped,
+  RemoteBranchPublicationAbsent,
+  RemoteBranchPublicationAt,
+  WorkerNotificationAbsent,
+  WorkerNotificationStamped,
   empty_session_publish_state,
-  after_poll_push,
+  after_local_autosave,
+  after_explicit_publish_push,
+  after_worker_notification,
   after_user_intent_publish,
   after_drift_reminder_delivered,
-  local_checkpoint_head,
-  remote_publication_head,
-  remote_publication_baseline,
+  observe_without_publishing,
+  local_checkpoint_commit,
+  remote_branch_head,
+  worker_notification_head,
+  worker_notification_baseline,
   conflated_checkpoint_baseline,
   resolve_drift_diff_start,
   drift_poll_may_run,
+  PublicationSubject,
+  PublicationSubjectScratchProbe,
+  PublicationSubjectDashboardAutosave,
+  PublicationSubjectArtifactHealer,
+  PublicationSubjectExplicitUserIntent,
+  PublicationSubjectUnknown,
+  HealerRepairTarget,
+  HealerRepairTargetBotBranch,
+  HealerRepairTargetPatchArtifact,
+  HealerRepairTargetAuthorBranch,
+  HealerRepairTargetUnknown,
+  RemotePublicationKind,
+  RemotePushBranch,
+  RemoteCreatePullRequest,
+  HealerMutateAuthorBranch,
+  PublicationDisposition,
+  PublicationPermit,
+  PublicationRefuse,
+  PublicationRefusalCause,
+  ScratchProbeRemotePublicationForbidden,
+  AutosaveRemotePublicationForbidden,
+  HealerAuthorBranchMutationForbidden,
+  PublicationSubjectUnknownRefused,
+  HealerRepairTargetUnknownRefused,
+  adjudicate_local_checkpoint,
+  adjudicate_remote_publication,
+  publication_is_permitted,
 }
 
-data witness_scope_note: String = "AUTO-PUBLISH-0 harness: the publish state machine is pure and total over constructed values, so every arm is reachable with no git, no gh, and no sqlite. What is claimed is the SEPARATION of LocalCheckpoint from RemotePublication — poll push advances only the local axis; user intent stamps both; drift reminders read and advance only the remote axis. What is NOT claimed: slice 0 prevents no publication behaviour — scratch auto-push, autosave remote branches, and healer author-branch mutation are unchanged; nothing here executes publishSessionWorktree or enforces immediate policy. A regression that re-merges the axes in production shell would keep these green until the shell transport slice lands."
+data witness_scope_note: String = "AUTO-PUBLISH harness: slice 0 recut proves three independent axes — LocalCheckpoint (local autosave), RemoteBranchPublication (explicit publish push), WorkerNotification (user publish or drift reminder) — and that silent polling advances none of them; slice 1 proves immediate policy adjudication. What is NOT claimed: shell transport does not yet call these fns, so publishSessionWorktree can still auto-push, autosave can still create a remote branch, and the healer can still mutate an active author branch until the transport slice lands."
 
 data head_a: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 data head_b: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -29,74 +62,111 @@ data head_main: CommitSha = "dddddddddddddddddddddddddddddddddddddddd"
 data stamp_one: Timestamp = "2026-08-07T00:00:00.000Z"
 data stamp_two: Timestamp = "2026-08-07T00:00:01.000Z"
 
-test fn poll_push_advances_local_checkpoint_only() -> Bool {
-  let after_manual = after_user_intent_publish(
-    state: empty_session_publish_state(),
-    published_head: head_a,
-    at: stamp_one,
+test fn local_autosave_advances_local_checkpoint_only() -> Bool {
+  let state = after_local_autosave(
+    state: after_user_intent_publish(
+      state: empty_session_publish_state(),
+      published_head: head_a,
+      at: stamp_one,
+    ),
+    local_commit: head_b,
   )
-  let after_poll = after_poll_push(state: after_manual, pushed_head: head_b)
-  match local_checkpoint_head(state: after_poll) {
-    Present { value: head } => head == head_b
+  match local_checkpoint_commit(state: state) {
+    Present { value: commit } => commit == head_b
     Absent => false
   }
-    && match remote_publication_head(state: after_poll) {
+    && match remote_branch_head(state: state) {
       Present { value: head } => head == head_a
       Absent => false
     }
-    && match after_poll.remote {
-      RemotePublicationStamped { notified_head: _, notified_at: at } => at == stamp_one
-      RemotePublicationAbsent => false
+    && match worker_notification_head(state: state) {
+      Present { value: head } => head == head_a
+      Absent => false
     }
 }
 
-test fn user_intent_stamps_both_axes() -> Bool {
-  let state = after_user_intent_publish(
-    state: after_poll_push(
+test fn explicit_publish_push_advances_remote_branch_only() -> Bool {
+  let state = after_explicit_publish_push(
+    state: after_local_autosave(
       state: empty_session_publish_state(),
-      pushed_head: head_a,
+      local_commit: head_a,
+    ),
+    remote_head: head_b,
+  )
+  match local_checkpoint_commit(state: state) {
+    Present { value: commit } => commit == head_a
+    Absent => false
+  }
+    && match remote_branch_head(state: state) {
+      Present { value: head } => head == head_b
+      Absent => false
+    }
+    && match worker_notification_head(state: state) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+test fn user_intent_stamps_remote_branch_and_worker() -> Bool {
+  let state = after_user_intent_publish(
+    state: after_local_autosave(
+      state: empty_session_publish_state(),
+      local_commit: head_a,
     ),
     published_head: head_b,
     at: stamp_two,
   )
-  match local_checkpoint_head(state: state) {
+  match remote_branch_head(state: state) {
     Present { value: head } => head == head_b
     Absent => false
   }
-    && match remote_publication_head(state: state) {
+    && match worker_notification_head(state: state) {
       Present { value: head } => head == head_b
       Absent => false
     }
-    && match state.remote {
-      RemotePublicationStamped { notified_head: _, notified_at: at } => at == stamp_two
-      RemotePublicationAbsent => false
+    && match state.worker {
+      WorkerNotificationStamped { notified_head: _, notified_at: at } => at == stamp_two
+      WorkerNotificationAbsent => false
     }
 }
 
-test fn drift_reminder_advances_remote_publication_only() -> Bool {
+test fn drift_reminder_advances_worker_notification_only() -> Bool {
   let state = after_drift_reminder_delivered(
-    state: after_poll_push(
-      state: after_user_intent_publish(
-        state: empty_session_publish_state(),
-        published_head: head_a,
-        at: stamp_one,
-      ),
-      pushed_head: head_b,
+    state: after_user_intent_publish(
+      state: empty_session_publish_state(),
+      published_head: head_a,
+      at: stamp_one,
     ),
     current_head: head_c,
     at: stamp_two,
   )
-  match local_checkpoint_head(state: state) {
-    Present { value: head } => head == head_b
+  match remote_branch_head(state: state) {
+    Present { value: head } => head == head_a
     Absent => false
   }
-    && match remote_publication_head(state: state) {
+    && match worker_notification_head(state: state) {
       Present { value: head } => head == head_c
       Absent => false
     }
+    && match state.worker {
+      WorkerNotificationStamped { notified_head: _, notified_at: at } => at == stamp_two
+      WorkerNotificationAbsent => false
+    }
 }
 
-test fn drift_poll_requires_remote_publication() -> Bool {
+test fn silent_poll_advances_no_axis() -> Bool {
+  let before = after_user_intent_publish(
+    state: empty_session_publish_state(),
+    published_head: head_a,
+    at: stamp_one,
+  )
+  let after = observe_without_publishing(state: before)
+  local_checkpoint_commit(state: before) == local_checkpoint_commit(state: after)
+    && remote_branch_head(state: before) == remote_branch_head(state: after)
+    && worker_notification_head(state: before) == worker_notification_head(state: after)
+}
+
+test fn drift_poll_requires_worker_notification() -> Bool {
   !drift_poll_may_run(state: empty_session_publish_state())
     && drift_poll_may_run(
       state: after_user_intent_publish(
@@ -106,36 +176,36 @@ test fn drift_poll_requires_remote_publication() -> Bool {
       ),
     )
     && !drift_poll_may_run(
-      state: after_poll_push(
+      state: after_explicit_publish_push(
         state: empty_session_publish_state(),
-        pushed_head: head_a,
+        remote_head: head_a,
       ),
     )
 }
 
-data conflation_red_note: String = "When the poll advances LocalCheckpoint past the last RemotePublication stamp, the old pr_publish_head || pr_publish_notified_head fallback returns the local head. Drift must use remote_publication_baseline instead, or unrelated mainline commits enter the worker notice."
+data conflation_red_note: String = "When poll wrongly treats a push as RemoteBranchPublication while WorkerNotification stays behind, the old pr_publish_head || pr_publish_notified_head fallback returns the remote head. Drift must use worker_notification_baseline instead, or unrelated mainline commits enter the worker notice."
 
-test fn conflated_baseline_differs_from_remote_when_poll_ran() -> Bool {
-  let state = after_poll_push(
+test fn conflated_baseline_differs_from_worker_when_remote_advanced_without_notification() -> Bool {
+  let state = after_explicit_publish_push(
     state: after_user_intent_publish(
       state: empty_session_publish_state(),
       published_head: head_a,
       at: stamp_one,
     ),
-    pushed_head: head_b,
+    remote_head: head_b,
   )
-  match remote_publication_baseline(state: state) {
-    Present { value: remote } =>
+  match worker_notification_baseline(state: state) {
+    Present { value: worker } =>
       match conflated_checkpoint_baseline(state: state) {
         Present { value: conflated } =>
-          remote == head_a && conflated == head_b && remote != conflated
+          worker == head_a && conflated == head_b && worker != conflated
         Absent => false
       }
     Absent => false
   }
 }
 
-test fn drift_diff_start_uses_remote_not_conflated_baseline() -> Bool {
+test fn drift_diff_start_uses_worker_not_conflated_baseline() -> Bool {
   let notified = head_a
   resolve_drift_diff_start(
     notified_baseline: notified,
@@ -151,21 +221,21 @@ test fn drift_diff_start_uses_remote_not_conflated_baseline() -> Bool {
     ) == notified
 }
 
-test fn red_conflated_baseline_would_start_drift_at_local_head() -> Bool {
-  let state = after_poll_push(
+test fn red_conflated_baseline_would_start_drift_at_remote_head() -> Bool {
+  let state = after_explicit_publish_push(
     state: after_user_intent_publish(
       state: empty_session_publish_state(),
       published_head: head_a,
       at: stamp_one,
     ),
-    pushed_head: head_b,
+    remote_head: head_b,
   )
-  match remote_publication_baseline(state: state) {
-    Present { value: remote } =>
+  match worker_notification_baseline(state: state) {
+    Present { value: worker } =>
       match conflated_checkpoint_baseline(state: state) {
         Present { value: conflated } =>
           resolve_drift_diff_start(
-            notified_baseline: remote,
+            notified_baseline: worker,
             current_head: head_c,
             merge_base_with_origin: Absent,
             baseline_is_ancestor_of_merge_base: false,
@@ -173,5 +243,126 @@ test fn red_conflated_baseline_would_start_drift_at_local_head() -> Bool {
         Absent => false
       }
     Absent => false
+  }
+}
+
+test fn scratch_probe_permits_local_checkpoint_only() -> Bool {
+  publication_is_permitted(
+    disposition: adjudicate_local_checkpoint(subject: PublicationSubjectScratchProbe),
+  )
+    && !publication_is_permitted(
+      disposition: adjudicate_remote_publication(
+        subject: PublicationSubjectScratchProbe,
+        kind: RemotePushBranch,
+      ),
+    )
+    && !publication_is_permitted(
+      disposition: adjudicate_remote_publication(
+        subject: PublicationSubjectScratchProbe,
+        kind: RemoteCreatePullRequest,
+      ),
+    )
+}
+
+test fn autosave_permits_local_checkpoint_only() -> Bool {
+  publication_is_permitted(
+    disposition: adjudicate_local_checkpoint(subject: PublicationSubjectDashboardAutosave),
+  )
+    && !publication_is_permitted(
+      disposition: adjudicate_remote_publication(
+        subject: PublicationSubjectDashboardAutosave,
+        kind: RemotePushBranch,
+      ),
+    )
+}
+
+test fn healer_refuses_author_branch_mutation() -> Bool {
+  match adjudicate_remote_publication(
+    subject: PublicationSubjectArtifactHealer {
+      repair_target: HealerRepairTargetAuthorBranch,
+    },
+    kind: HealerMutateAuthorBranch,
+  ) {
+    PublicationRefuse { cause: HealerAuthorBranchMutationForbidden } => true
+    PublicationPermit => false
+  }
+    && publication_is_permitted(
+      disposition: adjudicate_remote_publication(
+        subject: PublicationSubjectArtifactHealer {
+          repair_target: HealerRepairTargetBotBranch,
+        },
+        kind: RemotePushBranch,
+      ),
+    )
+    && publication_is_permitted(
+      disposition: adjudicate_remote_publication(
+        subject: PublicationSubjectArtifactHealer {
+          repair_target: HealerRepairTargetPatchArtifact,
+        },
+        kind: RemotePushBranch,
+      ),
+    )
+}
+
+test fn explicit_user_intent_permits_remote_publication() -> Bool {
+  publication_is_permitted(
+    disposition: adjudicate_remote_publication(
+      subject: PublicationSubjectExplicitUserIntent,
+      kind: RemotePushBranch,
+    ),
+  )
+    && publication_is_permitted(
+      disposition: adjudicate_remote_publication(
+        subject: PublicationSubjectExplicitUserIntent,
+        kind: RemoteCreatePullRequest,
+      ),
+    )
+}
+
+data unknown_subject_red_note: String = "Unevaluable publication subjects must refuse remote publication rather than pass — the absorbing fallback in the worst place."
+
+test fn unknown_subject_refuses_remote_publication() -> Bool {
+  match adjudicate_remote_publication(
+    subject: PublicationSubjectUnknown,
+    kind: RemotePushBranch,
+  ) {
+    PublicationRefuse { cause: PublicationSubjectUnknownRefused } => true
+    PublicationPermit => false
+  }
+    && match adjudicate_local_checkpoint(subject: PublicationSubjectUnknown) {
+      PublicationRefuse { cause: PublicationSubjectUnknownRefused } => true
+      PublicationPermit => false
+    }
+}
+
+test fn unknown_healer_target_refuses_remote_publication() -> Bool {
+  match adjudicate_remote_publication(
+    subject: PublicationSubjectArtifactHealer {
+      repair_target: HealerRepairTargetUnknown,
+    },
+    kind: RemotePushBranch,
+  ) {
+    PublicationRefuse { cause: HealerRepairTargetUnknownRefused } => true
+    PublicationPermit => false
+  }
+}
+
+test fn red_scratch_probe_remote_would_have_published() -> Bool {
+  match adjudicate_remote_publication(
+    subject: PublicationSubjectScratchProbe,
+    kind: RemoteCreatePullRequest,
+  ) {
+    PublicationRefuse { cause: ScratchProbeRemotePublicationForbidden } => true
+    PublicationPermit => false
+  }
+}
+
+test fn red_autosave_remote_would_have_published() -> Bool {
+  match adjudicate_remote_publication(
+    subject: PublicationSubjectDashboardAutosave,
+    kind: RemotePushBranch,
+  ) {
+    PublicationRefuse { cause: AutosaveRemotePublicationForbidden } => true
+    PublicationPermit => false
   }
 }

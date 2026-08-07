@@ -1,34 +1,67 @@
 module gunbc.session_auto_publish
 
-import std.types { CommitSha, Timestamp, Bool }
+import std.types { CommitSha, Timestamp, Bool, String }
 import v2.std.optional { Absent, Present }
 
-data session_auto_publish_note: String = "AUTO-PUBLISH slice 0: two publish axes that the session-dashboard schema conflated under pr_publish_head and pr_publish_notified_head. LocalCheckpoint is the branch-sync signal — updated after every successful git push, including the silent auto-push poll. RemotePublication is the worker-notification baseline — stamped only on user-invoked publish or after a drift reminder is delivered. Drift reminders diff RemotePublication.notified_head..HEAD; falling back to LocalCheckpoint when the two diverge sweeps unrelated mainline churn into the worker notice (DASHBOARD_OPS_HYGIENE_BRIEF section 6.1). SLICE 0 CHANGES NO PUBLICATION BEHAVIOUR: this module is pure adjudication over values a caller already holds. A scratch worktree can still auto-push, dashboard autosave can still create a remote branch, and the generated-artifact healer can still mutate an active author branch — the incident that produced this work (WIP auto-commit swept a spike file, pushed, opened PR #7904 without author act) would recur identically on merged slice 0. Deferred halves, each with a dissolution trigger: (1) immediate policy — scratch/probe worktree local-checkpoint only with no remote branch or PR; dashboard autosave local commits only; artifact healer bot-owned branch or patch artifact never mutating an active author branch; dissolves when shell transport enforces all three rules; (2) shell transport wiring — dashboard calls after_poll_push, after_user_intent_publish, after_drift_reminder_delivered instead of conflated pr_publish_head || pr_publish_notified_head; dissolves when session-dashboard schema and publishSessionWorktree route through this module; (3) remote-publish refusal conjunction — explicit request, expected-head compare-and-swap, clean index, zero unmerged stages, zero conflict markers, declared write set, parse+format+compile of exact post-write tree, actor/head/file-set receipt, with unevaluable preconditions refusing not passing; dissolves when all five acceptance fixtures refuse before a remote write and a positive control publishes."
+data session_auto_publish_note: String = "AUTO-PUBLISH: three independent publication facts (slice 0 recut) with immediate policy adjudication (slice 1). LocalCheckpoint tracks the local commit after dashboard autosave only — not after a push. RemoteBranchPublication tracks the remote branch head after an explicit publish and successful push. WorkerNotification tracks the worker-notification baseline stamped on user publish or drift-reminder delivery. Drift reminders diff WorkerNotification.notified_head..HEAD; conflating any axis with another sweeps unrelated churn into the worker notice (DASHBOARD_OPS_HYGIENE_BRIEF section 6.1). Silent polling OBSERVES state and must not call any transition fn — a poll push is an unrequested publication, not a local checkpoint. SLICE 1 MODELS IMMEDIATE POLICY BUT STILL CHANGES NO RUNTIME BEHAVIOUR: adjudicate_local_checkpoint and adjudicate_remote_publication encode the three rules — scratch/probe worktree local-checkpoint only with no remote branch or PR; dashboard autosave local commits only; artifact healer bot-owned branch or patch artifact never mutating an active author branch — and unevaluable subjects refuse remote publication rather than pass. The incident that produced this work (WIP auto-commit swept a spike file, pushed, opened PR #7904 without author act) would recur identically until shell transport calls these fns before any git push, gh pr create, or healer branch mutation. Deferred halves, each with a dissolution trigger: (1) shell transport wiring — session-dashboard schema and publishSessionWorktree route every publish attempt through adjudicate_local_checkpoint / adjudicate_remote_publication and the slice-0 state fns instead of conflated pr_publish_head || pr_publish_notified_head; dissolves when a harness integration witness executes against the live transport; (2) remote-publish refusal conjunction — explicit request, expected-head compare-and-swap, clean index, zero unmerged stages, zero conflict markers, declared write set, parse+format+compile of exact post-write tree, actor/head/file-set receipt, with unevaluable preconditions refusing not passing; dissolves when all five acceptance fixtures refuse before a remote write and a positive control publishes."
 
 type LocalCheckpoint
   = LocalCheckpointAbsent
-  | LocalCheckpointAt { head: CommitSha }
+  | LocalCheckpointAt { local_commit: CommitSha }
 
-type RemotePublication
-  = RemotePublicationAbsent
-  | RemotePublicationStamped { notified_head: CommitSha, notified_at: Timestamp }
+type RemoteBranchPublication
+  = RemoteBranchPublicationAbsent
+  | RemoteBranchPublicationAt { remote_head: CommitSha }
+
+type WorkerNotification
+  = WorkerNotificationAbsent
+  | WorkerNotificationStamped { notified_head: CommitSha, notified_at: Timestamp }
 
 type SessionPublishState {
   local: LocalCheckpoint
-  remote: RemotePublication
+  remote_branch: RemoteBranchPublication
+  worker: WorkerNotification
 }
 
 fn empty_session_publish_state() -> SessionPublishState {
   SessionPublishState {
     local: LocalCheckpointAbsent,
-    remote: RemotePublicationAbsent,
+    remote_branch: RemoteBranchPublicationAbsent,
+    worker: WorkerNotificationAbsent,
   }
 }
 
-fn after_poll_push(state: SessionPublishState, pushed_head: CommitSha) -> SessionPublishState {
+fn after_local_autosave(state: SessionPublishState, local_commit: CommitSha) -> SessionPublishState {
   SessionPublishState {
-    local: LocalCheckpointAt { head: pushed_head },
-    remote: state.remote,
+    local: LocalCheckpointAt { local_commit: local_commit },
+    remote_branch: state.remote_branch,
+    worker: state.worker,
+  }
+}
+
+fn after_explicit_publish_push(
+  state: SessionPublishState,
+  remote_head: CommitSha,
+) -> SessionPublishState {
+  SessionPublishState {
+    local: state.local,
+    remote_branch: RemoteBranchPublicationAt { remote_head: remote_head },
+    worker: state.worker,
+  }
+}
+
+fn after_worker_notification(
+  state: SessionPublishState,
+  notified_head: CommitSha,
+  at: Timestamp,
+) -> SessionPublishState {
+  SessionPublishState {
+    local: state.local,
+    remote_branch: state.remote_branch,
+    worker: WorkerNotificationStamped {
+      notified_head: notified_head,
+      notified_at: at,
+    },
   }
 }
 
@@ -37,13 +70,11 @@ fn after_user_intent_publish(
   published_head: CommitSha,
   at: Timestamp,
 ) -> SessionPublishState {
-  SessionPublishState {
-    local: LocalCheckpointAt { head: published_head },
-    remote: RemotePublicationStamped {
-      notified_head: published_head,
-      notified_at: at,
-    },
-  }
+  after_worker_notification(
+    state: after_explicit_publish_push(state: state, remote_head: published_head),
+    notified_head: published_head,
+    at: at,
+  )
 }
 
 fn after_drift_reminder_delivered(
@@ -51,44 +82,59 @@ fn after_drift_reminder_delivered(
   current_head: CommitSha,
   at: Timestamp,
 ) -> SessionPublishState {
-  SessionPublishState {
-    local: state.local,
-    remote: RemotePublicationStamped {
-      notified_head: current_head,
-      notified_at: at,
-    },
-  }
+  after_worker_notification(
+    state: state,
+    notified_head: current_head,
+    at: at,
+  )
 }
 
-fn local_checkpoint_head(state: SessionPublishState) -> CommitSha? {
+data poll_observation_note: String = "Silent polling observes remote/local facts and advances no publication axis. Production must not route poll observations through after_explicit_publish_push or after_local_autosave."
+
+fn observe_without_publishing(state: SessionPublishState) -> SessionPublishState {
+  state
+}
+
+fn local_checkpoint_commit(state: SessionPublishState) -> CommitSha? {
   match state.local {
     LocalCheckpointAbsent => none
-    LocalCheckpointAt { head: head } => Present { value: head }
+    LocalCheckpointAt { local_commit: commit } => Present { value: commit }
   }
 }
 
-fn remote_publication_head(state: SessionPublishState) -> CommitSha? {
-  match state.remote {
-    RemotePublicationAbsent => none
-    RemotePublicationStamped { notified_head: head, notified_at: _ } => Present { value: head }
+fn remote_branch_head(state: SessionPublishState) -> CommitSha? {
+  match state.remote_branch {
+    RemoteBranchPublicationAbsent => none
+    RemoteBranchPublicationAt { remote_head: head } => Present { value: head }
   }
 }
 
-data conflated_checkpoint_note: String = "THE OLD FALLBACK pr_publish_head || pr_publish_notified_head, kept only as a discriminating RED in the harness. When the poll has advanced LocalCheckpoint past the last RemotePublication stamp, this returns the local head and drift would start from the wrong baseline. Production must call remote_publication_baseline or resolve_drift_diff_start, never this."
+fn worker_notification_head(state: SessionPublishState) -> CommitSha? {
+  match state.worker {
+    WorkerNotificationAbsent => none
+    WorkerNotificationStamped { notified_head: head, notified_at: _ } => Present { value: head }
+  }
+}
+
+data conflated_checkpoint_note: String = "THE OLD FALLBACK pr_publish_head || pr_publish_notified_head, kept only as a discriminating RED in the harness. Prefers remote branch head over worker notification head. When poll wrongly advanced RemoteBranchPublication past the last WorkerNotification stamp, drift would start from the wrong baseline. Production must call worker_notification_baseline or resolve_drift_diff_start, never this."
 
 fn conflated_checkpoint_baseline(state: SessionPublishState) -> CommitSha? {
-  match local_checkpoint_head(state: state) {
-    Present { value: local } => Present { value: local }
+  match remote_branch_head(state: state) {
+    Present { value: remote } => Present { value: remote }
     Absent =>
-      match remote_publication_head(state: state) {
-        Present { value: remote } => Present { value: remote }
-        Absent => Absent
+      match worker_notification_head(state: state) {
+        Present { value: notified } => Present { value: notified }
+        Absent =>
+          match local_checkpoint_commit(state: state) {
+            Present { value: local } => Present { value: local }
+            Absent => Absent
+          }
       }
   }
 }
 
-fn remote_publication_baseline(state: SessionPublishState) -> CommitSha? {
-  remote_publication_head(state: state)
+fn worker_notification_baseline(state: SessionPublishState) -> CommitSha? {
+  worker_notification_head(state: state)
 }
 
 fn resolve_drift_diff_start(
@@ -111,8 +157,103 @@ fn resolve_drift_diff_start(
 }
 
 fn drift_poll_may_run(state: SessionPublishState) -> Bool {
-  match state.remote {
-    RemotePublicationAbsent => false
-    RemotePublicationStamped { notified_head: _, notified_at: _ } => true
+  match state.worker {
+    WorkerNotificationAbsent => false
+    WorkerNotificationStamped { notified_head: _, notified_at: _ } => true
+  }
+}
+
+data immediate_policy_note: String = "Slice 1 immediate policy. Three rules, pure adjudication: scratch/probe worktree permits local checkpoint only and refuses every remote kind; dashboard autosave permits local checkpoint only; artifact healer permits bot-owned repair branch or patch artifact and refuses author-branch mutation. PublicationSubjectUnknown and HealerRepairTargetUnknown refuse remote publication — unevaluable preconditions never pass. Shell transport must call adjudicate_remote_publication before any remote write; until then the rules are modeled and witnessed only."
+
+type RemotePublicationKind
+  = RemotePushBranch
+  | RemoteCreatePullRequest
+  | HealerMutateAuthorBranch
+
+type HealerRepairTarget
+  = HealerRepairTargetBotBranch
+  | HealerRepairTargetPatchArtifact
+  | HealerRepairTargetAuthorBranch
+  | HealerRepairTargetUnknown
+
+type PublicationSubject
+  = PublicationSubjectScratchProbe
+  | PublicationSubjectDashboardAutosave
+  | PublicationSubjectArtifactHealer { repair_target: HealerRepairTarget }
+  | PublicationSubjectExplicitUserIntent
+  | PublicationSubjectUnknown
+
+type PublicationRefusalCause
+  = ScratchProbeRemotePublicationForbidden
+  | AutosaveRemotePublicationForbidden
+  | HealerAuthorBranchMutationForbidden
+  | PublicationSubjectUnknownRefused
+  | HealerRepairTargetUnknownRefused
+
+type PublicationDisposition
+  = PublicationPermit
+  | PublicationRefuse { cause: PublicationRefusalCause }
+
+fn publication_refusal_cause_token(cause: PublicationRefusalCause) -> String {
+  match cause {
+    ScratchProbeRemotePublicationForbidden => "ScratchProbeRemotePublicationForbidden"
+    AutosaveRemotePublicationForbidden => "AutosaveRemotePublicationForbidden"
+    HealerAuthorBranchMutationForbidden => "HealerAuthorBranchMutationForbidden"
+    PublicationSubjectUnknownRefused => "PublicationSubjectUnknownRefused"
+    HealerRepairTargetUnknownRefused => "HealerRepairTargetUnknownRefused"
+  }
+}
+
+fn publication_is_permitted(disposition: PublicationDisposition) -> Bool {
+  match disposition {
+    PublicationPermit => true
+    PublicationRefuse { cause: _ } => false
+  }
+}
+
+fn adjudicate_local_checkpoint(subject: PublicationSubject) -> PublicationDisposition {
+  match subject {
+    PublicationSubjectScratchProbe => PublicationPermit
+    PublicationSubjectDashboardAutosave => PublicationPermit
+    PublicationSubjectArtifactHealer { repair_target: _ } => PublicationPermit
+    PublicationSubjectExplicitUserIntent => PublicationPermit
+    PublicationSubjectUnknown => PublicationRefuse { cause: PublicationSubjectUnknownRefused }
+  }
+}
+
+fn adjudicate_remote_publication(
+  subject: PublicationSubject,
+  kind: RemotePublicationKind,
+) -> PublicationDisposition {
+  match subject {
+    PublicationSubjectScratchProbe =>
+      PublicationRefuse { cause: ScratchProbeRemotePublicationForbidden }
+    PublicationSubjectDashboardAutosave =>
+      PublicationRefuse { cause: AutosaveRemotePublicationForbidden }
+    PublicationSubjectArtifactHealer { repair_target: target } =>
+      adjudicate_healer_remote_publication(target: target, kind: kind)
+    PublicationSubjectExplicitUserIntent => PublicationPermit
+    PublicationSubjectUnknown =>
+      PublicationRefuse { cause: PublicationSubjectUnknownRefused }
+  }
+}
+
+fn adjudicate_healer_remote_publication(
+  target: HealerRepairTarget,
+  kind: RemotePublicationKind,
+) -> PublicationDisposition {
+  match target {
+    HealerRepairTargetAuthorBranch =>
+      PublicationRefuse { cause: HealerAuthorBranchMutationForbidden }
+    HealerRepairTargetUnknown =>
+      PublicationRefuse { cause: HealerRepairTargetUnknownRefused }
+    HealerRepairTargetBotBranch => PublicationPermit
+    HealerRepairTargetPatchArtifact =>
+      match kind {
+        HealerMutateAuthorBranch =>
+          PublicationRefuse { cause: HealerAuthorBranchMutationForbidden }
+        RemotePushBranch => PublicationPermit
+        RemoteCreatePullRequest => PublicationPermit
+      }
   }
 }
