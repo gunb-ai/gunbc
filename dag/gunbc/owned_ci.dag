@@ -7,7 +7,15 @@ import extdeps.auth.jwt {
   NumericDateWholeSeconds,
   NumericDateFractionalSeconds,
 }
-import extdeps.github.checks { CheckConclusion, CheckStatus, Queued, InProgress, Completed, Success, ActionRequired, Cancelled, Failure, Neutral, Skipped, Stale, TimedOut }
+import extdeps.github.checks {
+  CheckConclusion,
+  CheckStatus,
+  Queued,
+  InProgress,
+  Completed,
+  Failure,
+  check_conclusion_is_success,
+}
 import v2.std.collection { Absent, Present }
 
 data owned_ci_authority_note: String = "Owned CI control plane v0 state carriers (docs/plans/owned-ci-control-plane-design.md). Poll-first subject discovery, durable filesystem queue with expiring lease, one local executor, Checks projection honesty boundary."
@@ -38,17 +46,6 @@ type CheckPublicationState
   | CheckPublicationCompleted { check_run_id: Int, conclusion: CheckConclusion }
   | CheckPublicationPending { local_conclusion: CheckConclusion, details_url: NonEmptyStr }
   | CheckPublicationFailed { cause: NonEmptyStr, local_conclusion: CheckConclusion }
-
-type CiRunStageName
-  = RunStageBuild
-  | RunStageRegen
-  | RunStageFloor
-
-type CiRunStageStatus
-  = StagePending
-  | StageRunning
-  | StageSucceeded
-  | StageFailed { detail: String }
 
 fn owned_ci_state_root(workspace_root: String) -> String {
   concat(workspace_root, concat("/", owned_ci_state_root_rel))
@@ -156,16 +153,7 @@ fn queue_lease_validity(lease: QueueLease, holder: String, now: NumericDate) -> 
 fn check_publication_reports_github_success(state: CheckPublicationState) -> Bool {
   match state {
     CheckPublicationCompleted { check_run_id: _, conclusion: c } =>
-      match c {
-        Success => true
-        ActionRequired => false
-        Cancelled => false
-        Failure => false
-        Neutral => false
-        Skipped => false
-        Stale => false
-        TimedOut => false
-      }
+      check_conclusion_is_success(c: c)
     CheckPublicationPending { local_conclusion: _, details_url: _ } => false
     CheckPublicationNotStarted => false
     CheckPublicationQueued { check_run_id: _ } => false

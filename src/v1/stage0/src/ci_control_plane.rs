@@ -320,14 +320,31 @@ impl CiControlPlane {
         let outcome = self.discover_subjects()?;
         self.reconcile_subjects(&outcome.admitted)?;
         self.reconcile_fork_refusals(&outcome.fork_refusals)?;
-        if let Some(run_id) = self.claim_next_pending()? {
-            if self.config.dry_run {
-                eprintln!("owned-ci: dry-run would execute {run_id}");
-            } else {
-                self.execute_run(&run_id)?;
+        if self.config.dry_run {
+            if let Some(run_id) = self.peek_next_pending()? {
+                eprintln!("owned-ci: dry-run would execute {run_id} (queue left pending)");
             }
+        } else if let Some(run_id) = self.claim_next_pending()? {
+            self.execute_run(&run_id)?;
         }
         Ok(())
+    }
+
+    fn peek_next_pending(&self) -> Result<Option<String>, String> {
+        let pending_dir = self.state_root().join("queue/pending");
+        let mut entries: Vec<_> = fs::read_dir(&pending_dir)
+            .map_err(|e| format!("read pending queue: {e}"))?
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
+            .collect();
+        entries.sort_by_key(|e| e.file_name());
+        Ok(entries.first().and_then(|entry| {
+            entry
+                .path()
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(str::to_string)
+        }))
     }
 
     fn reclaim_expired_claims(&mut self) -> Result<(), String> {
