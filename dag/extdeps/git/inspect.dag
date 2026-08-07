@@ -13,6 +13,30 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data git_inspect_service_note: String = "Read-only repository-root, revision, and tree inspection operations are de-fused from the broad git.Core service so consumers pay only the upstream facts they inspect. Toplevel, HeadCommit, and ShowTree move here with their existing shapes; MergeBase and ListTreePathsAtRevision extend this same inspection authority for revision-addressed Rust-source observation. No second Git inspection surface remains in extdeps.git."
 
+// WorkingTreeStatus pins every flag Git's own manual says a script must pin. `--porcelain=v1` because the
+// manual states plain `--porcelain` may change and that a version should be given for scripting, so the
+// version is named rather than implied. `-z` because paths may contain spaces, quotes, or newlines and the
+// non-NUL form C-quotes them, which would make every consumer reimplement Git's quoting rules to recover a
+// filename. `--untracked-files=all` because the default `normal` collapses an untracked directory to the
+// directory name alone, and a consumer asking "does this tree contain files HEAD does not name" needs the
+// files, not a folded ancestor.
+//
+// The mock answers a CLEAN tree because the runner contract hands each job a fresh checkout; a mocked
+// observation must report the state the contract guarantees rather than fabricate a dirty one.
+//
+// IgnoredFiles is a SECOND operation rather than an `--ignored=matching` flag on the first, and the reason is
+// measured, not stylistic. `git status --porcelain=v1 -z --untracked-files=all --ignored=matching` reports a
+// directory that itself matches an ignore pattern as one folded entry — `!! ign/` — and never names the file
+// inside it. That is the same folded-ancestor loss `--untracked-files=all` exists to avoid, and it is fatal
+// here specifically, because a consumer asking "which ignored files would the source sync copy" must filter
+// each path against the deployed-scope authority and must name the offending path in its refusal; a folded
+// directory can do neither. `git ls-files --others --ignored --exclude-standard -z` answers with real file
+// paths (`ign/f.dag`), which is the granularity the question needs. Verified by execution against git 2.43.0
+// on a constructed repository, both spellings side by side.
+//
+// `--exclude-standard` is pinned because without it the command applies no ignore rules at all and would
+// return every untracked path — the opposite of the question. The output is a bare NUL-separated path list,
+// so unlike porcelain v1 it carries no status codes and no rename-source continuation to track.
 service git.Inspect {
   operation Toplevel {
     input {}
@@ -39,6 +63,42 @@ service git.Inspect {
     exit {
       0 => Unit
       128 => String "Not a git repository"
+    }
+  }
+
+  operation WorkingTreeStatus {
+    input {}
+    output {
+      entries_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+    mock_response {
+      0 => { entries_nul: "", success: true, stderr: "" } "hermetic checkout is clean: the runner contract hands the job a fresh checkout, so the empty entry list is the state a mocked observation must report rather than a fabricated dirty one"
+    }
+  }
+
+  operation IgnoredFiles {
+    input {}
+    output {
+      paths_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+    mock_response {
+      0 => { paths_nul: "", success: true, stderr: "" } "hermetic checkout carries no ignored files: the runner contract hands the job a fresh checkout, so the empty path list is the state a mocked observation must report rather than a fabricated one"
     }
   }
 

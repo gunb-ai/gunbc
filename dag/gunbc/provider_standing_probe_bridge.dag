@@ -1,0 +1,243 @@
+module gunbc.provider_standing_probe_bridge
+
+import std.types { String, NonEmptyStr, Bool, List }
+import gunbc.provider_standing {
+  ProviderStandingBundle,
+  ProviderInstallationStanding,
+  ProviderAuthenticationStanding,
+  ProviderEntitlementObservation,
+  ProviderLimitObservation,
+  ProviderTurnOutcome,
+  ProviderToolEnvironmentStanding,
+  ProviderAccountLimit,
+  LimitCredentialUnspecified,
+  InstallationStandingUnobserved,
+  InstallationExecutableMissing,
+  InstallationReady,
+  AuthenticationStandingUnobserved,
+  AuthenticationCredentialsAbsent,
+  AuthenticationProfilePresentTokenAbsent,
+  AuthenticationAuthenticated,
+  EntitlementObservationUnobserved,
+  LimitObservationUnobserved,
+  TurnNotStarted,
+  ToolEnvironmentStandingUnobserved,
+  ToolEnvironmentUnavailable,
+  ToolEnvironmentReady,
+}
+
+data provider_standing_probe_bridge_authority_note: String = "OBSERVATION BRIDGE (deep-raven-684 msg_a203fe4d): factors dashboard Codex probes into a six-axis ProviderStandingBundle without inferring limit capacity or entitlement availability from authentication. Login-status and version probes ground installation and authentication only. Entitlement and account-limit axes stay honestly unobserved at this boundary unless a dedicated observation path supplies them. DISSOLVES ON: the first RecordedFact<ProviderStandingObservationFact> standing-observation path supersedes probe-derived inventory standing (nimble-owl-833)."
+
+data provider_standing_probe_bridge_entitlement_note: String = "EntitlementObservationUnobserved at the login-status bridge is not a positive availability claim and does not derive from authentication success. Selection eligibility for entitlement unobserved is unchanged: the axis must be observed available or selection refuses."
+
+data provider_standing_probe_bridge_limit_note: String = "LimitObservationUnobserved at the login-status bridge is silence on account capacity, not a healthy balance. It blocks automatic dispatch so an exhausted account cannot read as available merely because login-status succeeded."
+
+data provider_standing_probe_bridge_claude_control_note: String = "Claude credential control probes ground authentication from token state, never from subscription profile metadata alone. tokenSource=none with profile metadata present maps to AuthenticationProfilePresentTokenAbsent, not AuthenticationAuthenticated. Installation and tool environment are not observed at this bridge — only authentication is derived from the credential-control input."
+
+data provider_standing_probe_bridge_claude_installation_unobserved_reason: NonEmptyStr = "installation not observed at credential-control bridge" as NonEmptyStr
+
+data provider_standing_probe_bridge_claude_tool_environment_unobserved_reason: NonEmptyStr = "tool environment not observed at credential-control bridge" as NonEmptyStr
+
+type ProviderDashboardExecProbe
+  = ProviderDashboardExecProbeRefused { detail: NonEmptyStr }
+  | ProviderDashboardExecProbeReported {
+      succeeded: Bool,
+      stdout: String,
+      stderr: String,
+    }
+
+type CodexProviderStateRootProbe
+  = CodexStateRootProbeRefused { reason: NonEmptyStr }
+  | CodexStateRootAbsent
+  | CodexStateRootPresent
+
+type CodexProviderDashboardProbeObservation {
+  state_root: CodexProviderStateRootProbe,
+  runtime: ProviderDashboardExecProbe,
+  auth: ProviderDashboardExecProbe,
+}
+
+type ClaudeCredentialControlProbeObservation {
+  token_source: NonEmptyStr,
+  subscription_tier: NonEmptyStr,
+}
+
+data provider_dashboard_exec_probe_transport_refused_reason: NonEmptyStr = "dashboard provider exec probe transport refused" as NonEmptyStr
+
+data provider_standing_probe_bridge_entitlement_unobserved_reason: NonEmptyStr = "entitlement surface not read at login-status bridge" as NonEmptyStr
+
+data provider_standing_probe_bridge_limit_unobserved_reason: NonEmptyStr = "account limit surface not read at login-status bridge" as NonEmptyStr
+
+data provider_standing_probe_bridge_installation_unobserved_reason: NonEmptyStr = "installation could not be observed before auth probe" as NonEmptyStr
+
+data provider_standing_probe_bridge_state_root_absent_installation_reason: NonEmptyStr = "provider state root absent; executable not probed at this bridge" as NonEmptyStr
+
+data provider_standing_probe_bridge_tool_environment_unobserved_reason: NonEmptyStr = "tool environment could not be observed before auth probe" as NonEmptyStr
+
+fn provider_dashboard_exec_probe_refused(
+  detail: NonEmptyStr,
+) -> ProviderDashboardExecProbe {
+  ProviderDashboardExecProbeRefused { detail: detail }
+}
+
+fn provider_dashboard_exec_probe_reported(
+  succeeded: Bool,
+  stdout: String,
+  stderr: String,
+) -> ProviderDashboardExecProbe {
+  ProviderDashboardExecProbeReported {
+    succeeded: succeeded,
+    stdout: stdout,
+    stderr: stderr,
+  }
+}
+
+fn provider_dashboard_exec_probe_transport_refused() -> ProviderDashboardExecProbe {
+  provider_dashboard_exec_probe_refused(
+    detail: provider_dashboard_exec_probe_transport_refused_reason,
+  )
+}
+
+fn provider_dashboard_exec_probe_is_transport_refused(
+  probe: ProviderDashboardExecProbe,
+) -> Bool {
+  match probe {
+    ProviderDashboardExecProbeRefused { detail: _ } => true
+    ProviderDashboardExecProbeReported { succeeded: _, stdout: _, stderr: _ } => false
+  }
+}
+
+fn provider_standing_bundle_unobserved_installation(
+  reason: NonEmptyStr,
+) -> ProviderInstallationStanding {
+  InstallationStandingUnobserved { reason: reason }
+}
+
+fn provider_standing_bundle_unobserved_authentication(
+  reason: NonEmptyStr,
+) -> ProviderAuthenticationStanding {
+  AuthenticationStandingUnobserved { reason: reason }
+}
+
+fn provider_standing_bundle_unobserved_tool_environment(
+  reason: NonEmptyStr,
+) -> ProviderToolEnvironmentStanding {
+  ToolEnvironmentStandingUnobserved { reason: reason }
+}
+
+fn provider_standing_bundle_honest_limit_unobserved() -> List<ProviderLimitObservation> {
+  [
+    LimitObservationUnobserved {
+      reason: provider_standing_probe_bridge_limit_unobserved_reason,
+    },
+  ]
+}
+
+fn provider_standing_bundle_honest_entitlement_unobserved() -> ProviderEntitlementObservation {
+  EntitlementObservationUnobserved {
+    reason: provider_standing_probe_bridge_entitlement_unobserved_reason,
+  }
+}
+
+fn provider_standing_bundle_from_codex_dashboard_probes(
+  observation: CodexProviderDashboardProbeObservation,
+) -> ProviderStandingBundle {
+  match observation.state_root {
+    CodexStateRootProbeRefused { reason } =>
+      ProviderStandingBundle {
+        installation: provider_standing_bundle_unobserved_installation(reason: reason),
+        authentication: provider_standing_bundle_unobserved_authentication(reason: reason),
+        entitlement: provider_standing_bundle_honest_entitlement_unobserved(),
+        limits: provider_standing_bundle_honest_limit_unobserved(),
+        turn: TurnNotStarted,
+        tool_environment: provider_standing_bundle_unobserved_tool_environment(
+          reason: provider_standing_probe_bridge_tool_environment_unobserved_reason,
+        ),
+      }
+    CodexStateRootAbsent =>
+      ProviderStandingBundle {
+        installation: provider_standing_bundle_unobserved_installation(
+          reason: provider_standing_probe_bridge_state_root_absent_installation_reason,
+        ),
+        authentication: AuthenticationCredentialsAbsent,
+        entitlement: provider_standing_bundle_honest_entitlement_unobserved(),
+        limits: provider_standing_bundle_honest_limit_unobserved(),
+        turn: TurnNotStarted,
+        tool_environment: ToolEnvironmentUnavailable {
+          reason: "provider state root absent" as NonEmptyStr,
+        },
+      }
+    CodexStateRootPresent => {
+      let installation = match observation.runtime {
+        ProviderDashboardExecProbeRefused { detail } =>
+          provider_standing_bundle_unobserved_installation(reason: detail)
+        ProviderDashboardExecProbeReported { succeeded, stdout: _, stderr: _ } =>
+          if succeeded {
+            InstallationReady
+          } else {
+            InstallationExecutableMissing
+          }
+      }
+      let tool_environment = match observation.runtime {
+        ProviderDashboardExecProbeRefused { detail } =>
+          provider_standing_bundle_unobserved_tool_environment(reason: detail)
+        ProviderDashboardExecProbeReported { succeeded, stdout: _, stderr: _ } =>
+          if succeeded {
+            ToolEnvironmentReady
+          } else {
+            ToolEnvironmentUnavailable {
+              reason: "provider runtime probe failed" as NonEmptyStr,
+            }
+          }
+      }
+      let authentication = match observation.auth {
+        ProviderDashboardExecProbeRefused { detail } =>
+          provider_standing_bundle_unobserved_authentication(reason: detail)
+        ProviderDashboardExecProbeReported { succeeded, stdout: _, stderr: _ } =>
+          if succeeded {
+            AuthenticationAuthenticated
+          } else {
+            AuthenticationCredentialsAbsent
+          }
+      }
+      ProviderStandingBundle {
+        installation: installation,
+        authentication: authentication,
+        entitlement: provider_standing_bundle_honest_entitlement_unobserved(),
+        limits: provider_standing_bundle_honest_limit_unobserved(),
+        turn: TurnNotStarted,
+        tool_environment: tool_environment,
+      }
+    }
+  }
+}
+
+fn provider_standing_bundle_from_claude_credential_control_probe(
+  observation: ClaudeCredentialControlProbeObservation,
+) -> ProviderStandingBundle {
+  let authentication =
+    if observation.token_source == ("none" as NonEmptyStr) {
+      if observation.subscription_tier == ("none" as NonEmptyStr) {
+        AuthenticationCredentialsAbsent
+      } else {
+        AuthenticationProfilePresentTokenAbsent {
+          subscription_tier: observation.subscription_tier,
+          token_source: observation.token_source,
+        }
+      }
+    } else {
+      AuthenticationAuthenticated
+    }
+  ProviderStandingBundle {
+    installation: provider_standing_bundle_unobserved_installation(
+      reason: provider_standing_probe_bridge_claude_installation_unobserved_reason,
+    ),
+    authentication: authentication,
+    entitlement: provider_standing_bundle_honest_entitlement_unobserved(),
+    limits: provider_standing_bundle_honest_limit_unobserved(),
+    turn: TurnNotStarted,
+    tool_environment: provider_standing_bundle_unobserved_tool_environment(
+      reason: provider_standing_probe_bridge_claude_tool_environment_unobserved_reason,
+    ),
+  }
+}
