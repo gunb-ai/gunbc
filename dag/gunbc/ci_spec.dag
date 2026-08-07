@@ -52,9 +52,6 @@ import gunbc.merge_admission_produce {
 import v2.workflow.ci_regen_rustfmt_path_emit {
   ci_regen_ensure_rustfmt_path_script,
 }
-import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
-  ci_v1_compiler_tests_compile_gate_script,
-}
 import v2.workflow.ci_heal_skew_guard_emit {
   ci_heal_binary_source_skew_guard_script,
 }
@@ -84,6 +81,21 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 type DiffMode = DiffMergeBase | DiffTwoDot
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
+
+type RuntimeUnitCount = RuntimeUnitCountObserved { units: Nat } | RuntimeUnitCountUnavailable { cause: String }
+
+data gunbc_ci_floor_batch_runtime_unit_count_note: String = "RUNTIME UNIT COUNT for the derived batch clamp (gunbc_ci_floor_batch_clamp_note): claim_executor alone knows the affected-set-selected unit count at enforcement time. RuntimeUnitCountObserved carries the count used in clamp_ms = overhead_seconds*1000 + units * per_unit_ms. RuntimeUnitCountUnavailable means the count was lost — typically a hard discovery error discarded DiscoverySummary at the Result boundary so corpus_witnesses reads 0 while the batch is a discovery aggregate, not a single-claim gate row. When unavailable the clamp comparison is REFUSED (verdict ClampRefused): a third state, not WithinBudget and not OverBudget — never map zero to one and render a corpus failure as FLOOR-BATCH-OVER-BUDGET. Authority type here; observation and enforcement live in claim_executor.rs (see gunbc_ci_floor_batch_runtime_unit_count_claim_executor_seed_note)."
+
+data gunbc_ci_floor_batch_runtime_unit_count_claim_executor_seed_note: String = "§7 seed-retained HAND-RUST bridge (src/v1/stage0/src/bin/claim_executor.rs): FloorRuntimeUnitCount enum mirrors RuntimeUnitCount; each ClaimResult carries the observation; batch aggregation refuses the clamp when any row is Unavailable. Reason: unit-count availability is executor realization over batch results, not yet expressible as substrate behavior inside claim_executor. Dissolve-on: v2 self-emitted claim_executor when the executor bin crosses the self-host frontier."
+
+data gunbc_ci_floor_batch_runtime_unit_count_claim_executor_seed_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "RuntimeUnitCount",
+    field: WholeDeclaration
+  }
+}
 
 data gunbc_ci_ordinary_floor_budget_minutes: Minute = minute(count: 55)
 
@@ -436,16 +448,6 @@ fn ci_regen_floor_skip_shortcut_script() -> String {
           concat("      exit 0\n", concat("  fi\n", "fi\n"))
         )
       )
-    )
-  )
-}
-
-fn ci_v1_compiler_tests_compile_gate_run_script() -> String {
-  concat(
-    "set -e\n",
-    concat(
-      concat("ROOT=", ci_repo_root_shell(), "\n"),
-      ci_v1_compiler_tests_compile_gate_script()
     )
   )
 }

@@ -2,8 +2,7 @@ module gunbc.build_cache_latency_probe
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
 import std.measure { Millisecond, millisecond, measure_count }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Terminal, SingleAuthority }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
@@ -167,13 +166,102 @@ data srv1_verdict_2026_08_05: BuildLatencyVerdict = build_latency_verdict(
 
 data acceptance_criterion_note: String = "THE FALSIFIER FOR THE FIX, declared BEFORE the fix so it cannot be fitted afterwards. Whatever is done about srv1 — killing the stranded server, relocating it, or the durable managed-unit-plus-compile-pool-slice repair — succeeds exactly when srv1's build median re-derives to Converged against the peer reference on a fresh window, and fails otherwise. Nothing else counts: not a healthy-looking stats table (extdeps.cache.sccache sccache_stats_query_does_not_spawn_note records that --show-stats answers plausibly with no server in existence), not an individual fast build (23% of srv1's builds were already fast, which is what made the defect look like luck), and not a green CI run.\n\nIt is also the EARLY WARNING for the rest of the fleet, at no extra cost. The birth defect is fleet-wide: srv2's and srv3's cache servers live in ACTIVE runner slots and self-limit only because ephemeral runners recycle them, so each is one slot-retirement from srv1's state. A build-median divergence on either is that transition happening, and this same derivation sees it within a window."
 
-data live_producer_frontier_note: String = "THERE IS NO LIVE PRODUCER AND THIS ROW SAYS SO RATHER THAN IMPLYING ONE. The population above was collected by hand — a session querying the GitHub Actions jobs API and folding durations — and hand-collected observations go stale silently, which is exactly the parallel-ledger failure gunbc.host_phase_status host_phase_observation_frontier_note refuses for host phases. The derivation, the policy and the verdict shapes are durable; the DATA is a snapshot of 2026-08-05 and must not be read as current.\n\nWhat a producer needs is small and entirely outside the fleet: the Actions jobs API already returns started_at, completed_at, conclusion and runner_name for every job, so the probe is a query plus this fold. It needs no host access, no ssh, no agent, and no reach through the A1 secret-materialization gap that blocks so much else here — which is the strongest argument for building it early rather than after the placement lane lands.\n\nDISSOLVE-ON: a scheduled producer writes BuildLatencyPopulation rows from the Actions API, at which point srv1_build_latency retires from a hand-entered literal to an observation, and this note retires with it."
+data live_producer_frontier_note: String = "THE LIVE PRODUCER IS MODELED BUT NOT YET SCHEDULED. build_latency_population_from_actions_api folds a list of ActionsBuildJobObservation rows — the fields the GitHub Actions jobs API returns for each job — into per-host BuildLatencyPopulation values filtered to the CI build job with conclusion=success. A thin collector (gh api / gh run list + jobs) is the only missing seam; it needs no host access and no fleet SSH key. The 2026-08-05 hand-entered populations remain the pre-actuation baseline until a fresh window is collected through this fold and written back. WET ACTUATION of the srv1 repair is a separate gate: this instrument only measures whether the repair worked once builds run again."
 
-data build_cache_latency_producer_disposition: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.build_cache_latency_probe",
-    decl_name: "build_latency_population_from_actions_api",
-    field: WholeDeclaration
+data build_cache_latency_producer_disposition: Disposition = SingleAuthority
+
+type ActionsBuildJobObservation {
+  run_id: NonEmptyStr
+  job_id: NonEmptyStr
+  runner_name: NonEmptyStr
+  job_name: NonEmptyStr
+  conclusion: NonEmptyStr
+  duration: Millisecond
+}
+
+data actions_job_observation_note: String = "Each row is ONE successful or attempted CI build job as returned by the Actions jobs API: runner_name carries the self-hosted label (srv1-01, srv2-05, …), duration is completed_at minus started_at in milliseconds already computed by the collector. This module does not parse ISO-8601 timestamps — that parsing belongs in the collector, not in the verdict fold."
+
+fn actions_build_job_matches(
+  job: ActionsBuildJobObservation,
+  job_name: NonEmptyStr,
+  conclusion: NonEmptyStr,
+) -> Bool {
+  (job.job_name as String) == (job_name as String)
+    && (job.conclusion as String) == (conclusion as String)
+}
+
+fn host_from_runner_name(runner: NonEmptyStr) -> HostIdentity? {
+  if starts_with(s: runner as String, prefix: "srv1-") {
+    Present { value: operator_host_srv1 }
+  } else if starts_with(s: runner as String, prefix: "srv2-") {
+    Present { value: operator_host_srv2 }
+  } else if starts_with(s: runner as String, prefix: "srv3-") {
+    Present { value: operator_host_srv3 }
+  } else if starts_with(s: runner as String, prefix: "srv4-") {
+    Present { value: operator_host_srv4 }
+  } else {
+    none
   }
+}
+
+fn build_latency_population_for_host(
+  jobs: List<ActionsBuildJobObservation>,
+  host: HostIdentity,
+  job_name: NonEmptyStr,
+  conclusion: NonEmptyStr,
+  window: NonEmptyStr,
+) -> BuildLatencyPopulation {
+  BuildLatencyPopulation {
+    host: host,
+    observation_window: window,
+    durations: jobs
+      |> filter(j =>
+        actions_build_job_matches(job: j, job_name: job_name, conclusion: conclusion)
+          && match host_from_runner_name(runner: j.runner_name) {
+            Present { value: h } => (h as String) == (host as String),
+            Absent => false,
+          }
+      )
+      |> map(j => j.duration),
+  }
+}
+
+data gunbc_ci_build_job_name: NonEmptyStr = "build" as NonEmptyStr
+
+data gunbc_ci_build_success_conclusion: NonEmptyStr = "success" as NonEmptyStr
+
+fn build_latency_population_from_actions_api(
+  jobs: List<ActionsBuildJobObservation>,
+  window: NonEmptyStr,
+) -> List<BuildLatencyPopulation> {
+  [
+    build_latency_population_for_host(
+      jobs: jobs,
+      host: operator_host_srv1,
+      job_name: gunbc_ci_build_job_name,
+      conclusion: gunbc_ci_build_success_conclusion,
+      window: window,
+    ),
+    build_latency_population_for_host(
+      jobs: jobs,
+      host: operator_host_srv2,
+      job_name: gunbc_ci_build_job_name,
+      conclusion: gunbc_ci_build_success_conclusion,
+      window: window,
+    ),
+    build_latency_population_for_host(
+      jobs: jobs,
+      host: operator_host_srv3,
+      job_name: gunbc_ci_build_job_name,
+      conclusion: gunbc_ci_build_success_conclusion,
+      window: window,
+    ),
+    build_latency_population_for_host(
+      jobs: jobs,
+      host: operator_host_srv4,
+      job_name: gunbc_ci_build_job_name,
+      conclusion: gunbc_ci_build_success_conclusion,
+      window: window,
+    ),
+  ]
 }

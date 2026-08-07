@@ -15,7 +15,7 @@ import extdeps.llm.cli_lifecycle {
 
 data provider_standing_authority_note: String = "SHARED CONTRACT for Claude and Cursor dispatch lanes (valiant-stag-845). ProviderReadiness decomposes per provider-control-interface-audit section 10 into six independent axes: installation, authentication, entitlement, limit, turn outcome, and tool environment. One arm must not erase another — the audit worked example (authenticated + weekly Opus warning + Fable rejected + Opus runnable) requires it. Limit observations carry an explicit ProviderLimitSubject; native limit tokens stay open (NonEmptyStr) with recognised projections layered over them, never a closed enum that drops upstream tokens (section 4.1). Standing facts reuse std.claim_evidence RecordedFact and EvidenceLink machinery (section 11); this module owns the proposition shapes only. ProviderAuthenticationStanding derives from token state, never from subscription profile metadata alone — profile-present-token-absent is a distinct refusal arm, not a gap that reads as authenticated (eager-raven-845 live observation, 2026-08-06)."
 
-data provider_standing_selection_note: String = "Selection eligibility consumes an admitted ProviderStanding bundle AND a ProviderLimitDispatchDraw. LimitDispatchDrawAutomatic fail-closes on any observed ProviderNativeLimitBucket exhaustion (extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note). ProfileExactOverride may supply operator_asserted_native_limit_bucket on SelectCodex — attributed assertion, not a cited join. LimitDispatchDrawUnspecified is fail-closed like Automatic and must not be used for dispatch eligibility; standing-only callers should not call provider_standing_is_selection_eligible with Unspecified."
+data provider_standing_selection_note: String = "Selection eligibility consumes an admitted ProviderStanding bundle AND a ProviderLimitDispatchDraw. LimitDispatchDrawAutomatic fail-closes on any observed ProviderNativeLimitBucket exhaustion (extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note). ProfileExactOverride may supply operator_asserted_native_limit_bucket on SelectCodex — attributed assertion, not a cited join. LimitDispatchDrawUnspecified is constructible for limit-subject coverage tests only — provider_standing_is_selection_eligible and provider_standing_bundle_is_selection_eligible refuse it at the entry point (construction wall); dispatch eligibility must use Automatic, Account, Model, or NativeBucket draws."
 
 data provider_standing_limit_dispatch_draw_note: String = "Limit blocking is dispatch-scoped. LimitDispatchDrawAutomatic and LimitDispatchDrawModel treat every ProviderNativeLimitBucket exhaustion/rate-limit/until-reset/rejection as blocking — relevance is undeterminable without a cited native-token-to-model join (extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note; extdeps.llm.claude_sdk claude_native_limit_token_to_model_gap_note). LimitDispatchDrawModel blocks ProviderModelLimit only when subject_model == draw_model. LimitDispatchDrawNativeBucket blocks only on matching native_key. DISSOLVES ON: cited joins land per provider gap notes."
 
@@ -359,12 +359,16 @@ fn provider_standing_bundle_is_selection_eligible(
   bundle: ProviderStandingBundle,
   draw: ProviderLimitDispatchDraw,
 ) -> Bool {
-  installation_standing_is_selection_eligible(standing: bundle.installation)
-    && authentication_standing_is_selection_eligible(standing: bundle.authentication)
-    && entitlement_standing_is_selection_eligible(standing: bundle.entitlement)
-    && limit_observations_are_selection_eligible(observations: bundle.limits, draw: draw)
-    && turn_standing_is_selection_eligible(standing: bundle.turn)
-    && tool_environment_standing_is_selection_eligible(standing: bundle.tool_environment)
+  match draw {
+    LimitDispatchDrawUnspecified => false
+    _ =>
+      installation_standing_is_selection_eligible(standing: bundle.installation)
+        && authentication_standing_is_selection_eligible(standing: bundle.authentication)
+        && entitlement_standing_is_selection_eligible(standing: bundle.entitlement)
+        && limit_observations_are_selection_eligible(observations: bundle.limits, draw: draw)
+        && turn_standing_is_selection_eligible(standing: bundle.turn)
+        && tool_environment_standing_is_selection_eligible(standing: bundle.tool_environment)
+  }
 }
 
 fn provider_standing_is_selection_eligible(

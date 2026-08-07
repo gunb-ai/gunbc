@@ -1,0 +1,10 @@
+field	value
+after_commit	dfc1cb46c0233e468c5a947494b154824476a013
+base_ref	origin/main
+binary	target/release/p1_cohort_probe (after) vs worktree-built p1_cohort_probe (base/Rc)
+harness	src/v1/stage0/src/bin/p1_cohort_probe.rs copied to base worktree so only compiler differs
+cohort	docs/plans/receipts/fill-composition-overlay-direction/cohort.tsv (50 entries)
+width_policy	Serial (width-1 inline drain); GUNBC_P1_COHORT_RECEIPT=1
+run_order	base-r1, after-r1, base-r2, after-r2 (interleaved)
+invocation	scripts/arc1_cohort_receipt.sh with CTRL_BUILD_WRAP_CARGO=0 (local binaries)
+outcomes_note	both arms: 1 wet witness failure (ci_deploy_target_host hostname); typecheck_compute_count identical

@@ -175,6 +175,35 @@ fn preceded_by_blank_line(source: SourceRef, pos: Int) -> Bool {
   }
 }
 
+data v1_annotation_line_lookback_note: String = "Whether the previous line is a STANDALONE annotation line — indentation then the `//` delimiter — observed here beside preceded_by_blank_line for the same reason it is: the physical lines are consumed before attachment runs, so block continuation cannot be re-derived later. A trailing comment on a code line deliberately does not count. The rule this bit feeds treats an annotation-preceded capture as a continuation of the block the previous line belongs to; a capture under a code line continues nothing, whatever that code line happens to carry after its code. The walk is bounded by one line."
+
+fn tokenize_line_first_content_pos(source: SourceRef, pos: Int, end: Int) -> Int {
+  if pos >= end {
+    end
+  } else {
+    let ch = source_code_point(source: source, pos: pos)
+    if ch == 32 || ch == 9 {
+      tokenize_line_first_content_pos(source: source, pos: pos + 1, end: end)
+    } else {
+      pos
+    }
+  }
+}
+
+fn preceded_by_annotation_line(source: SourceRef, pos: Int) -> Bool {
+  let line_start = source_line_start(source: source, pos: pos)
+  if line_start <= 0 {
+    false
+  } else {
+    let prev_start = source_line_start(source: source, pos: line_start - 1)
+    let prev_end = line_start - 1
+    let content = tokenize_line_first_content_pos(source: source, pos: prev_start, end: prev_end)
+    content + 1 < prev_end
+      && source_code_point(source: source, pos: content) == 47
+      && source_code_point(source: source, pos: content + 1) == 47
+  }
+}
+
 fn line_prefix_is_indent_only(source: SourceRef, pos: Int) -> Bool {
   advance_line_prefix_indent_only_text(
     previous: true,
@@ -204,7 +233,8 @@ fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanStep {
         lexeme: source_substring(source: source, start: pos.pos, end: eol),
         origin: make_file_span(file: source.file, start: pos.pos, end: eol),
         placement: placement_from_line_prefix(indent_only: line_prefix_is_indent_only(source: source, pos: pos.pos)),
-        preceded_by_blank_line: preceded_by_blank_line(source: source, pos: pos.pos)
+        preceded_by_blank_line: preceded_by_blank_line(source: source, pos: pos.pos),
+        preceded_by_annotation_line: preceded_by_annotation_line(source: source, pos: pos.pos)
       },
       interp_depth: pos.interp_depth
     }

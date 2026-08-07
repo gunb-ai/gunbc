@@ -1,0 +1,150 @@
+module test.claim.witness_purpose_taxonomy_witness
+
+import std.decl_ref { decl_ref, DeclarationRef }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64,
+  Fnv1a64StructuralDigestHex,
+  structural_content_hash,
+}
+import std.measure { millisecond, byte_size, millisecond_count, byte_size_count }
+import std.witness_purpose {
+  WitnessPurpose,
+  WitnessResourceBound,
+  BehavioralDiscriminator,
+  BoundaryCrossing,
+  PopulationTotality,
+  ExternalFidelity,
+  ResourceContract,
+  EvalWallTimeBound,
+  EvalThreadCpuBound,
+  PeakMemoryBound,
+  TerminatingOneShotFrontier,
+  TerminatingOneShotUnavailableDeadlineSubstrateAbsent,
+  TerminatingOneShotUnavailableCompletionSubstrateAbsent,
+}
+
+data witness_purpose_taxonomy_witness_note: String = "Slice C-a: stable WitnessPurpose vocabulary only — BehavioralDiscriminator, BoundaryCrossing, PopulationTotality, ExternalFidelity, ResourceContract. TerminatingOneShot is NOT a WitnessPurpose arm; TerminatingOneShotFrontier records honest deferral (deadline and completion substrates absent) until typed carriers land. No placement, envelope, or cadence logic — those are C-b/C-c slices."
+
+fn fixture_subject_hash() -> ContentHash {
+  Fnv1a64(
+    structural_content_hash(digest: "deadbeefdeadbeef" as Fnv1a64StructuralDigestHex)
+  )
+}
+
+fn fixture_population_ref() -> DeclarationRef {
+  decl_ref(
+    module_path: "dag.test.claim.witness_purpose_taxonomy_witness",
+    decl_name: "witness_purpose_taxonomy_witness_note",
+  )
+}
+
+test fn behavioral_discriminator_is_stable_purpose_arm() -> Bool {
+  let purpose = BehavioralDiscriminator
+  match purpose {
+    BehavioralDiscriminator => true
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    PopulationTotality { population: _ } => false
+    ExternalFidelity { effect: _ } => false
+    ResourceContract { bound: _ } => false
+  }
+}
+
+test fn boundary_crossing_carries_modeled_boundary_and_chosen_input() -> Bool {
+  let purpose = BoundaryCrossing {
+    modeled_boundary: fixture_population_ref(),
+    chosen_input: fixture_subject_hash(),
+  }
+  match purpose {
+    BoundaryCrossing { modeled_boundary: boundary, chosen_input: hash } =>
+      boundary == fixture_population_ref()
+        && hash == fixture_subject_hash()
+    BehavioralDiscriminator => false
+    PopulationTotality { population: _ } => false
+    ExternalFidelity { effect: _ } => false
+    ResourceContract { bound: _ } => false
+  }
+}
+
+test fn population_totality_carries_population_ref() -> Bool {
+  let purpose = PopulationTotality { population: fixture_population_ref() }
+  match purpose {
+    PopulationTotality { population: population } =>
+      population == fixture_population_ref()
+    BehavioralDiscriminator => false
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    ExternalFidelity { effect: _ } => false
+    ResourceContract { bound: _ } => false
+  }
+}
+
+test fn external_fidelity_carries_effect_ref() -> Bool {
+  let purpose = ExternalFidelity { effect: fixture_population_ref() }
+  match purpose {
+    ExternalFidelity { effect: effect } => effect == fixture_population_ref()
+    BehavioralDiscriminator => false
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    PopulationTotality { population: _ } => false
+    ResourceContract { bound: _ } => false
+  }
+}
+
+test fn resource_contract_wall_bound_is_millisecond() -> Bool {
+  let purpose = ResourceContract {
+    bound: EvalWallTimeBound { bound: millisecond(count: 500) },
+  }
+  match purpose {
+    ResourceContract { bound: bound } =>
+      match bound {
+        EvalWallTimeBound { bound: ms } => millisecond_count(m: ms) == 500
+        EvalThreadCpuBound { bound: _ } => false
+        PeakMemoryBound { bound: _ } => false
+      }
+    BehavioralDiscriminator => false
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    PopulationTotality { population: _ } => false
+    ExternalFidelity { effect: _ } => false
+  }
+}
+
+test fn resource_contract_peak_memory_bound_is_byte_size() -> Bool {
+  let purpose = ResourceContract {
+    bound: PeakMemoryBound { bound: byte_size(count: 1073741824) },
+  }
+  match purpose {
+    ResourceContract { bound: bound } =>
+      match bound {
+        PeakMemoryBound { bound: bytes } => byte_size_count(b: bytes) == 1073741824
+        EvalWallTimeBound { bound: _ } => false
+        EvalThreadCpuBound { bound: _ } => false
+      }
+    BehavioralDiscriminator => false
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    PopulationTotality { population: _ } => false
+    ExternalFidelity { effect: _ } => false
+  }
+}
+
+test fn terminating_one_shot_unavailable_records_deadline_substrate_absent() -> Bool {
+  let frontier = TerminatingOneShotUnavailableDeadlineSubstrateAbsent
+  match frontier {
+    TerminatingOneShotUnavailableDeadlineSubstrateAbsent => true
+    TerminatingOneShotUnavailableCompletionSubstrateAbsent => false
+  }
+}
+
+test fn witness_purpose_has_five_stable_arms_only() -> Bool {
+  let purposes = [
+    BehavioralDiscriminator,
+    BoundaryCrossing {
+      modeled_boundary: fixture_population_ref(),
+      chosen_input: fixture_subject_hash(),
+    },
+    PopulationTotality { population: fixture_population_ref() },
+    ExternalFidelity { effect: fixture_population_ref() },
+    ResourceContract {
+      bound: EvalThreadCpuBound { bound: millisecond(count: 1) },
+    },
+  ]
+  length(xs: purposes) == 5
+}

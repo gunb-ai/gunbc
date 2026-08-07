@@ -306,6 +306,60 @@ pub fn preceded_by_blank_line(source: Rc<SourceRef>, pos: i64) -> bool {
     }
 }
 
+pub fn v1_annotation_line_lookback_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Whether the previous line is a STANDALONE annotation line — indentation then the `//` delimiter — observed here beside preceded_by_blank_line for the same reason it is: the physical lines are consumed before attachment runs, so block continuation cannot be re-derived later. A trailing comment on a code line deliberately does not count. The rule this bit feeds treats an annotation-preceded capture as a continuation of the block the previous line belongs to; a capture under a code line continues nothing, whatever that code line happens to carry after its code. The walk is bounded by one line.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn tokenize_line_first_content_pos(
+    mut source: Rc<SourceRef>,
+    mut pos: i64,
+    mut end: i64,
+) -> i64 {
+    loop {
+        if (pos.clone() >= end.clone()) {
+            break end.clone();
+        } else {
+            let ch = source_code_point(source.clone(), pos.clone());
+            if ((ch.clone() == 32) || (ch.clone() == 9)) {
+                {
+                    let __tco_0 = (pos + 1);
+                    pos = __tco_0;
+                    continue;
+                }
+            } else {
+                break pos.clone();
+            }
+        }
+    }
+}
+
+pub fn preceded_by_annotation_line(source: Rc<SourceRef>, pos: i64) -> bool {
+    {
+        let line_start = source_line_start(source.clone(), pos.clone());
+        if (line_start.clone() <= 0) {
+            false
+        } else {
+            {
+                let prev_start = source_line_start(source.clone(), (line_start.clone() - 1));
+                let prev_end = (line_start.clone() - 1);
+                let content = tokenize_line_first_content_pos(
+                    source.clone(),
+                    prev_start.clone(),
+                    prev_end.clone(),
+                );
+                ((((content.clone() + 1) < prev_end.clone())
+                    && (source_code_point(source.clone(), content.clone()) == 47))
+                    && (source_code_point(source.clone(), (content.clone() + 1)) == 47))
+            }
+        }
+    }
+}
+
 pub fn line_prefix_is_indent_only(source: Rc<SourceRef>, pos: i64) -> bool {
     advance_line_prefix_indent_only_text(
         true,
@@ -351,6 +405,10 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
                             pos.pos.clone(),
                         )),
                         preceded_by_blank_line: preceded_by_blank_line(
+                            source.clone(),
+                            pos.pos.clone(),
+                        ),
+                        preceded_by_annotation_line: preceded_by_annotation_line(
                             source.clone(),
                             pos.pos.clone(),
                         ),

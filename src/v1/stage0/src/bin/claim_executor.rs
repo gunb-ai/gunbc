@@ -390,19 +390,44 @@ fn write_compile_clean_cost_drift_receipt_at(
     true
 }
 
-/// Runtime per-batch unit count for the derived clamp: a discovery aggregate result contributes
-/// its post-selection witness count (`corpus_witnesses`); every single-claim gate row contributes 1.
-fn batch_runtime_unit_count(results: &[ClaimResult]) -> u128 {
-    results
-        .iter()
-        .map(|r| {
-            if r.corpus_witnesses > 0 {
-                r.corpus_witnesses as u128
-            } else {
-                1u128
+/// Hand-Rust mirror of `gunbc.ci_spec` `RuntimeUnitCount` (variant names must match exactly).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FloorRuntimeUnitCount {
+    Observed { units: u128 },
+    Unavailable { cause: String },
+}
+
+fn single_claim_runtime_unit_count() -> FloorRuntimeUnitCount {
+    FloorRuntimeUnitCount::Observed { units: 1 }
+}
+
+fn discovery_runtime_unit_count_from_summary(total: usize) -> FloorRuntimeUnitCount {
+    FloorRuntimeUnitCount::Observed {
+        units: total as u128,
+    }
+}
+
+fn runtime_unit_count_unavailable(cause: impl Into<String>) -> FloorRuntimeUnitCount {
+    FloorRuntimeUnitCount::Unavailable {
+        cause: cause.into(),
+    }
+}
+
+/// Runtime per-batch unit count for the derived clamp: sum Observed rows; any Unavailable
+/// refuses the whole batch clamp (authority `gunbc_ci_floor_batch_runtime_unit_count_note`).
+fn aggregate_batch_runtime_units(results: &[ClaimResult]) -> FloorRuntimeUnitCount {
+    let mut sum = 0u128;
+    for result in results {
+        match &result.runtime_unit_count {
+            FloorRuntimeUnitCount::Observed { units } => sum += *units,
+            FloorRuntimeUnitCount::Unavailable { cause } => {
+                return FloorRuntimeUnitCount::Unavailable {
+                    cause: cause.clone(),
+                };
             }
-        })
-        .sum()
+        }
+    }
+    FloorRuntimeUnitCount::Observed { units: sum }
 }
 
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority:
@@ -1673,6 +1698,9 @@ struct ClaimResult {
     corpus_eval_nanos: u128,
     /// Number of discovery witnesses (non-zero only for discovery batch nodes).
     corpus_witnesses: usize,
+    /// Unit count for the derived batch clamp — explicit availability, never inferred from
+    /// `corpus_witnesses == 0` (that conflates discovery aggregate loss with gate rows).
+    runtime_unit_count: FloorRuntimeUnitCount,
     /// Per-witness eval+resolve identity preserved from discovery (empty for gate/single-claim rows).
     witness_row_costs: Vec<WitnessRowCost>,
     /// Set only when this row was killed at a budget, carrying the pair that explains it.
@@ -1931,6 +1959,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -1954,6 +1983,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -1969,6 +1999,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -1984,6 +2015,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -2013,6 +2045,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: Some(BudgetRefusal {
                 elapsed_ms,
@@ -2303,6 +2336,7 @@ fn run_native_bundle_unit(
         corpus_resolve_nanos: 0,
         corpus_eval_nanos: 0,
         corpus_witnesses: 3,
+        runtime_unit_count: FloorRuntimeUnitCount::Observed { units: 3 },
         witness_row_costs: Vec::new(),
         budget_refusal: None,
         selection_degradation: None,
@@ -2333,6 +2367,7 @@ fn run_native_bundle_unit(
         corpus_resolve_nanos: 0,
         corpus_eval_nanos: 0,
         corpus_witnesses: 3,
+        runtime_unit_count: FloorRuntimeUnitCount::Observed { units: 3 },
         witness_row_costs: Vec::new(),
         budget_refusal: None,
         selection_degradation: None,
@@ -2483,6 +2518,9 @@ fn run_native_bundle_unit(
         corpus_resolve_nanos: 0,
         corpus_eval_nanos: interpreter_oracle_wall_nanos,
         corpus_witnesses: selected as usize,
+        runtime_unit_count: FloorRuntimeUnitCount::Observed {
+            units: selected as u128,
+        },
         witness_row_costs: Vec::new(),
         budget_refusal: None,
         selection_degradation: None,
@@ -2523,6 +2561,7 @@ fn run_batch_unit(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -2669,6 +2708,7 @@ fn run_shared_entry_claims(
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -2754,6 +2794,7 @@ fn run_memo_shared_claims(
                         corpus_resolve_nanos: 0,
                         corpus_eval_nanos: 0,
                         corpus_witnesses: 0,
+                        runtime_unit_count: single_claim_runtime_unit_count(),
                         witness_row_costs: Vec::new(),
                         budget_refusal: None,
                         selection_degradation: None,
@@ -3361,6 +3402,7 @@ fn discovery_claim_result(
                 corpus_resolve_nanos: summary.total_resolve_nanos,
                 corpus_eval_nanos: summary.total_measured_nanos,
                 corpus_witnesses: summary.total,
+                runtime_unit_count: discovery_runtime_unit_count_from_summary(summary.total),
                 witness_row_costs,
                 budget_refusal: discovery_budget_refusal(summary),
                 selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
@@ -3390,6 +3432,7 @@ fn discovery_claim_result(
                 corpus_resolve_nanos: summary.total_resolve_nanos,
                 corpus_eval_nanos: summary.total_measured_nanos,
                 corpus_witnesses: summary.total,
+                runtime_unit_count: discovery_runtime_unit_count_from_summary(summary.total),
                 witness_row_costs: Vec::new(),
                 // Same rule as the detail above: a receipt refusal ADDS a cause, it does not
                 // erase the one already established. A batch that blew its budget and then
@@ -3493,6 +3536,9 @@ fn run_discovery_batch_node(
                         corpus_resolve_nanos: summary.total_resolve_nanos,
                         corpus_eval_nanos: summary.total_measured_nanos,
                         corpus_witnesses: summary.total,
+                        runtime_unit_count: discovery_runtime_unit_count_from_summary(
+                            summary.total,
+                        ),
                         witness_row_costs: Vec::new(),
                         budget_refusal: discovery_budget_refusal(&summary),
                         selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
@@ -3658,6 +3704,9 @@ fn run_discovery_batch_node(
                         corpus_resolve_nanos: summary.total_resolve_nanos,
                         corpus_eval_nanos: summary.total_measured_nanos,
                         corpus_witnesses: summary.total,
+                        runtime_unit_count: discovery_runtime_unit_count_from_summary(
+                            summary.total,
+                        ),
                         witness_row_costs: Vec::new(),
                         budget_refusal: discovery_budget_refusal(&summary),
                         selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
@@ -3727,25 +3776,31 @@ fn run_discovery_batch_node(
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: runtime_unit_count_unavailable(msg),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
                     resolve_realization: None,
                 }
             } else {
+                let detail = match scoped_write_error {
+                    Some(receipt) => format!(
+                        "discovery corpus failed: {msg}; scoped witness receipt refused: {receipt}"
+                    ),
+                    None => format!("discovery corpus failed: {msg}"),
+                };
+                let runtime_unit_count = runtime_unit_count_unavailable(&detail);
                 ClaimResult {
                     function: label,
                     entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
                     ok: false,
-                    detail: match scoped_write_error {
-                        Some(receipt) => format!("discovery corpus failed: {msg}; scoped witness receipt refused: {receipt}"),
-                        None => format!("discovery corpus failed: {msg}"),
-                    },
+                    detail,
                     wall_nanos: 0,
                     resolve_nanos: 0,
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count,
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -4333,8 +4388,10 @@ struct BatchRecord {
     /// The derived clamp computed for this batch (overhead + unit_count*rate, tightened), or None
     /// for budget-less plans (falsifier/regen). Recorded so the receipt never recomputes it.
     clamp_ms: Option<u128>,
-    /// The runtime unit count the clamp used (discovery witnesses + gate rows).
+    /// The runtime unit count the clamp used when observed.
     unit_count: u128,
+    /// Full availability for the batch clamp receipt (`ClampRefused` when unavailable).
+    runtime_units: FloorRuntimeUnitCount,
     /// Flattened results from all units in this batch (order: unit by unit).
     results: Vec<ClaimResult>,
     /// Heartbeat label for this batch — carried so the component receipt names the
@@ -4770,8 +4827,12 @@ fn write_batch_wall_receipt_at(base: &std::path::Path, batch_records: &[BatchRec
         let n = rec.batch_index + 1;
         let wall_ms = rec.wall_nanos / 1_000_000;
         body.push_str(&format!("batch_{n}_wall_ms={wall_ms}\n"));
-        match rec.clamp_ms {
-            Some(clamp_ms) => {
+        match (&rec.runtime_units, rec.clamp_ms) {
+            (FloorRuntimeUnitCount::Unavailable { .. }, _) => {
+                body.push_str(&format!("batch_{n}_units=unavailable\n"));
+                body.push_str(&format!("batch_{n}_verdict=ClampRefused\n"));
+            }
+            (FloorRuntimeUnitCount::Observed { .. }, Some(clamp_ms)) => {
                 let verdict = if wall_ms > clamp_ms {
                     over_budget += 1;
                     "OverBudget"
@@ -4782,7 +4843,7 @@ fn write_batch_wall_receipt_at(base: &std::path::Path, batch_records: &[BatchRec
                 body.push_str(&format!("batch_{n}_clamp_ms={clamp_ms}\n"));
                 body.push_str(&format!("batch_{n}_verdict={verdict}\n"));
             }
-            None => {
+            (FloorRuntimeUnitCount::Observed { .. }, None) => {
                 body.push_str(&format!("batch_{n}_verdict=Unbudgeted\n"));
             }
         }
@@ -6737,7 +6798,10 @@ struct StageRun {
     /// recomputed by the caller: one derivation, one call.
     label: String,
     wall_nanos: u128,
-    /// Runtime unit count the clamp used (discovery witnesses + gate rows).
+    /// Aggregated runtime unit observation for the clamp (authority
+    /// `gunbc_ci_floor_batch_runtime_unit_count_note`).
+    runtime_units: FloorRuntimeUnitCount,
+    /// Observed unit sum when available; zero when unavailable (receipt uses `runtime_units`).
     unit_count: u128,
     /// The derived clamp actually computed, or None when the plan declares no clamp
     /// params for this population.
@@ -6964,40 +7028,57 @@ fn run_stage(
     // evaluated — the clamp is an admission/scheduling fact, not a verdict term. A
     // population whose plan declares no clamp params gets None and is not clamped;
     // nothing is fabricated for it.
-    let unit_count = batch_runtime_unit_count(&results);
-    let clamp_ms: Option<u128> = clamp_params.map(|(overhead_ms, rate_ms)| {
-        let mut clamp = overhead_ms + unit_count * rate_ms;
-        if let Some(t) = budget_tighten_ms {
-            clamp = clamp.min(t);
-        }
-        clamp
-    });
+    let runtime_units = aggregate_batch_runtime_units(&results);
     let mut over_budget = false;
-    if let Some(clamp) = clamp_ms {
-        let wall_ms = wall_nanos / 1_000_000;
-        if wall_ms > clamp {
-            over_budget = true;
+    let (unit_count, clamp_ms) = match (&runtime_units, clamp_params) {
+        (FloorRuntimeUnitCount::Unavailable { cause }, Some(_)) => {
             println!(
                 "{}",
                 paint(
                     &format!(
-                        "✗ FLOOR-BATCH-OVER-BUDGET {}={} wall_ms={} clamp_ms={} units={}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_clamp_params[{}]; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
+                        "✗ FLOOR-BATCH-CLAMP-REFUSED {}={} units unavailable ({cause})                                  (clamp comparison refused; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_runtime_unit_count_note — not FLOOR-BATCH-OVER-BUDGET)",
                         population.phase_slug(),
                         index + 1,
-                        wall_ms,
-                        clamp,
-                        unit_count,
-                        index
                     ),
                     sgr::ERROR
                 )
             );
+            (0u128, None)
         }
-    }
+        (FloorRuntimeUnitCount::Observed { units }, Some((overhead_ms, rate_ms))) => {
+            let mut clamp = overhead_ms + (*units * rate_ms);
+            if let Some(t) = budget_tighten_ms {
+                clamp = clamp.min(t);
+            }
+            let wall_ms = wall_nanos / 1_000_000;
+            if wall_ms > clamp {
+                over_budget = true;
+                println!(
+                    "{}",
+                    paint(
+                        &format!(
+                            "✗ FLOOR-BATCH-OVER-BUDGET {}={} wall_ms={} clamp_ms={} units={}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_clamp_params[{}]; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
+                            population.phase_slug(),
+                            index + 1,
+                            wall_ms,
+                            clamp,
+                            units,
+                            index
+                        ),
+                        sgr::ERROR
+                    )
+                );
+            }
+            (*units, Some(clamp))
+        }
+        (FloorRuntimeUnitCount::Observed { units }, None) => (*units, None),
+        (FloorRuntimeUnitCount::Unavailable { .. }, None) => (0u128, None),
+    };
     StageRun {
         results,
         label,
         wall_nanos,
+        runtime_units,
         unit_count,
         clamp_ms,
         thread_panicked,
@@ -7141,12 +7222,172 @@ fn budget_unit_label(stage: &[Runnable]) -> String {
         .join(",")
 }
 
+// Why `floor_finalization` is absent this attempt — a typed enum rather than a bare
+// bool or string so the scoped-by-construction arm and the incidental-absence arm
+// cannot later drift into one bucket (a caller must name which it means). There is
+// deliberately NO way to name "no reason" without naming it: `Undeclared` is a real
+// variant a caller must pass explicitly, not a default a caller can fall through to —
+// a caller that hasn't decided which cause applies still produces a counted line
+// naming that fact, rather than silently producing nothing (review 2026-08-07,
+// smart-badger-549: an earlier revision let an absent `Option` collapse to no
+// disposition at all, reintroducing case B under a name that read as handled).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FloorFinalizationAbsenceReason {
+    /// The scoped floor-worker branch sets `floor_finalization = None` deliberately:
+    /// one batch cannot evaluate a whole-floor resolve-obligation identity join. This
+    /// is correct behavior, not a defect — the line exists only to make the skip
+    /// countable, never to make it refuse.
+    ScopedWorkerByConstruction,
+    /// The resolved plan itself declared `NoFinalizationDeclared {}` — the regen,
+    /// plan-artifact, falsifier, and native-cache-cold plans never carry a
+    /// `FloorFinalization` contract at all (`ci_floor_plan.dag`), so `walk_plan.finalization`
+    /// parses to `None` before any worker-role branch runs. This is expected and
+    /// by-construction, exactly like the scoped case, but for a different reason — a
+    /// plan fact rather than a role fact — so it must not share `IncidentalAbsence`'s
+    /// bucket (review 49917, cursor/composer-2.5: collapsing both into one label dilutes
+    /// the incidental bucket with the four plans that will always land there, masking a
+    /// genuine incidental absence's frequency).
+    PlanDeclaresNoFinalization,
+    /// The walk carried no finalization contract and no known construction reason
+    /// explains why — the walk simply never reached the call, and the plan itself
+    /// declared a real `FloorFinalization` contract. Distinct from both the scoped and
+    /// plan-declared cases precisely because it is NOT expected, and its frequency is
+    /// the signal this whole mechanism exists to make visible.
+    IncidentalAbsence,
+    /// The caller has no opinion on why finalization is absent here (e.g. a
+    /// diagnostic-only re-walk that never applies the whole-floor contract at all).
+    /// Distinct from both named causes so it can never be mistaken for either.
+    Undeclared,
+}
+
+impl FloorFinalizationAbsenceReason {
+    fn label(self) -> &'static str {
+        match self {
+            FloorFinalizationAbsenceReason::ScopedWorkerByConstruction => {
+                "scoped-worker-by-construction"
+            }
+            FloorFinalizationAbsenceReason::PlanDeclaresNoFinalization => {
+                "plan-declares-no-finalization"
+            }
+            FloorFinalizationAbsenceReason::IncidentalAbsence => "incidental-absence",
+            FloorFinalizationAbsenceReason::Undeclared => "undeclared",
+        }
+    }
+}
+
+/// The floor-finalization verdict for one walk attempt, computed as a pure function of
+/// its inputs so the disposition — and therefore the exact lines a reader sees — is
+/// directly unit-testable without capturing process stderr. `run_walk` does nothing but
+/// print `floor_finalization_disposition_lines(&disposition)` and act on
+/// `Refused`; every other decision lives here.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FloorFinalizationDisposition {
+    /// Laws evaluated and held. Carries no ordinary-floor-outcome dependency — this
+    /// verdict is unconditional: a held contract on an otherwise-failing floor is
+    /// still information a reader needs (case C, still-bee-788/smart-badger-549).
+    Held,
+    /// Laws evaluated and at least one refused; the floor MUST fail.
+    Refused(Vec<String>),
+    /// Laws did not evaluate this attempt, for the named reason. Never fails the
+    /// floor — visibility is the whole fix, per DESIGN §5's "don't make the scoped
+    /// path refuse."
+    Absent(FloorFinalizationAbsenceReason),
+}
+
+fn floor_finalization_disposition(
+    floor_finalization: Option<&FloorFinalization>,
+    absence_reason: FloorFinalizationAbsenceReason,
+    plan_site: &str,
+    batch_records: &[BatchRecord],
+    walk_truncated: bool,
+) -> FloorFinalizationDisposition {
+    match floor_finalization {
+        Some(fin) => {
+            let refusals =
+                validate_floor_finalization(fin, plan_site, batch_records, walk_truncated);
+            floor_finalization_disposition_from_refusals(refusals)
+        }
+        None => FloorFinalizationDisposition::Absent(absence_reason),
+    }
+}
+
+/// Split out so the Held/Refused mapping is testable without depending on
+/// `validate_floor_finalization`'s on-disk materialization receipt read — and so the
+/// mapping is visibly a pure function of `refusals` alone, with no `ordinary_failed`
+/// (or any other floor-outcome) input anywhere in its signature. That absence is the
+/// fix for case C: a held verdict cannot be suppressed by floor outcome because nothing
+/// in this call chain ever receives it.
+fn floor_finalization_disposition_from_refusals(
+    refusals: Vec<String>,
+) -> FloorFinalizationDisposition {
+    if refusals.is_empty() {
+        FloorFinalizationDisposition::Held
+    } else {
+        FloorFinalizationDisposition::Refused(refusals)
+    }
+}
+
+// Scaffold: the sink `emit_floor_finalization_disposition` writes to is worker stderr in
+// production, a stream the Actions harness drops — the same silent stream that let cases
+// A/B/C go unnoticed in the first place. Making the verdict unconditional and typed (this
+// PR) closes the emission side; it does not yet close the observation side. The durable
+// fix is routing the disposition into the same persisted floor-materialization-receipt
+// (or an equivalent counted receipt) the other floor observations already use, so a
+// reader can count the verdict without depending on stderr reaching the log at all —
+// and because emission is already behind a `Write` seam (below), that fix becomes a
+// change of sink rather than a rewrite (review 2026-08-07, smart-badger-549).
+// Dissolve-on: `FloorFinalizationDisposition` (or its rendered lines) is written to a
+// persisted receipt alongside `target/floor-materialization-receipt.txt`, and this stderr
+// emission becomes a redundant mirror of it rather than the sole carrier.
+fn floor_finalization_disposition_lines(disposition: &FloorFinalizationDisposition) -> Vec<String> {
+    match disposition {
+        FloorFinalizationDisposition::Held => vec![
+            "floor contract finalized — resolve obligation identity join holds and \
+             materialization disclosure holds"
+                .to_string(),
+        ],
+        FloorFinalizationDisposition::Refused(refusals) => refusals
+            .iter()
+            .map(|msg| format!("FLOOR-FINALIZATION-REFUSED: {msg}"))
+            .collect(),
+        FloorFinalizationDisposition::Absent(reason) => vec![format!(
+            "FLOOR-FINALIZATION-ABSENT[{}]: floor finalization laws did not evaluate this attempt",
+            reason.label()
+        )],
+    }
+}
+
+/// The one place the verdict actually leaves the process. Takes the sink as a
+/// parameter rather than hardcoding stderr so emission is an observable seam: a test
+/// can pass a `Vec<u8>` and assert the exact bytes a reader would see, so deleting or
+/// bypassing this call in `run_walk` fails that test instead of leaving all-pure-function
+/// tests green while the floor goes silent (review 2026-08-07, smart-badger-549 —
+/// testing `floor_finalization_disposition_lines` alone proves the verdict is computed,
+/// never that it is seen).
+fn emit_floor_finalization_disposition(
+    sink: &mut dyn std::io::Write,
+    disposition: &FloorFinalizationDisposition,
+) {
+    for line in floor_finalization_disposition_lines(disposition) {
+        // A write failure on the diagnostic sink is not itself a floor-finalization
+        // verdict and must not be promoted into one; best-effort emission matches the
+        // `eprintln!` this replaces, which likewise cannot make a broken stderr refuse
+        // the floor.
+        let _ = writeln!(sink, "claim_executor: {line}");
+    }
+}
+
 fn run_walk(
     source_roots: &[String],
     plan_site: &str,
     batches: &[Vec<Runnable>],
     on_success_stages: &[Vec<Runnable>],
     floor_finalization: Option<&FloorFinalization>,
+    finalization_absence_reason: FloorFinalizationAbsenceReason,
+    // The finalization verdict's sink. Production callers pass `&mut std::io::stderr()`;
+    // a test passes a `Vec<u8>` so emission itself — not just the disposition it prints —
+    // is under test (see `emit_floor_finalization_disposition`).
+    finalization_sink: &mut dyn std::io::Write,
     ordinary_budget_ms: Option<u64>,
     on_success_budget_ms: Option<u64>,
     governor: &Arc<MemoryGovernor>,
@@ -7214,6 +7455,7 @@ fn run_walk(
             results: batch_results,
             label,
             wall_nanos: batch_wall_nanos,
+            runtime_units: batch_runtime_units,
             unit_count: batch_unit_count,
             clamp_ms: batch_clamp_ms,
             thread_panicked,
@@ -7293,6 +7535,7 @@ fn run_walk(
             wall_nanos: batch_wall_nanos,
             clamp_ms: batch_clamp_ms,
             unit_count: batch_unit_count,
+            runtime_units: batch_runtime_units,
             results: batch_results,
             label: label.clone(),
             selection_tag: batch_selection_tag(batch),
@@ -7441,22 +7684,25 @@ fn run_walk(
     // Floor finalization laws (the in-executor form of the deleted resolve/
     // materialization gate steps): validated AFTER the receipts wrote and BEFORE the
     // on-success stages, so a violation blocks admission instead of post-dating it.
-    if let Some(fin) = floor_finalization {
-        let walk_truncated = batch_records.len() < batches.len();
-        let refusals = validate_floor_finalization(fin, plan_site, &batch_records, walk_truncated);
-        if refusals.is_empty() {
-            if !ordinary_failed {
-                eprintln!(
-                    "claim_executor: floor contract finalized — resolve obligation identity join \
-                     holds and materialization disclosure holds"
-                );
-            }
-        } else {
-            ordinary_failed = true;
-            for msg in refusals {
-                eprintln!("claim_executor: FLOOR-FINALIZATION-REFUSED: {msg}");
-                failure_details.push(format!("floor finalization refused: {msg}"));
-            }
+    // The verdict below is UNCONDITIONAL — printed whether or not the ordinary floor
+    // already failed for some other reason. A held contract on a failing floor is
+    // still information a reader needs; suppressing it made "laws ran and held" and
+    // "laws never ran" indistinguishable on exactly the reads that matter most
+    // (case C, still-bee-788/smart-badger-549 — DESIGN §5's specification-without-
+    // execution: a mechanism whose own verdict can vanish is not a verdict).
+    let walk_truncated = batch_records.len() < batches.len();
+    let disposition = floor_finalization_disposition(
+        floor_finalization,
+        finalization_absence_reason,
+        plan_site,
+        &batch_records,
+        walk_truncated,
+    );
+    emit_floor_finalization_disposition(finalization_sink, &disposition);
+    if let FloorFinalizationDisposition::Refused(refusals) = disposition {
+        ordinary_failed = true;
+        for msg in refusals {
+            failure_details.push(format!("floor finalization refused: {msg}"));
         }
     }
     ordinary_budget_armed.store(false, std::sync::atomic::Ordering::Release);
@@ -7956,6 +8202,11 @@ fn run_perturb_check(
         &remapped,
         &[],
         None,
+        // Diagnostic-only re-walk of a perturbed single witness — the floor's whole-
+        // contract finalization laws never apply here, so absence is Undeclared rather
+        // than one of the two named causes, but is still visible.
+        FloorFinalizationAbsenceReason::Undeclared,
+        &mut std::io::stderr(),
         None,
         None,
         &Arc::new(MemoryGovernor::from_environment(1)),
@@ -8835,6 +9086,11 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut batches = walk_plan.batches;
     let mut on_success_stages = walk_plan.on_success_stages;
     let mut floor_finalization: Option<FloorFinalization> = walk_plan.finalization;
+    // Captured BEFORE the scoped-worker override below can overwrite `floor_finalization`
+    // to `None` for its own, different reason — this is the plan's own fact, not the
+    // role's, and the two must not be read back through one collapsed `Option` later
+    // (review 49917, cursor/composer-2.5).
+    let plan_declared_no_finalization = floor_finalization.is_none();
     match floor_worker_role.as_ref() {
         Some(FloorWorkerRole::Ordinary) => {
             let child_batch_ids: Vec<String> = batches
@@ -9269,6 +9525,14 @@ fn run() -> Result<ExitCode, ExitCode> {
         &batches,
         &on_success_stages,
         floor_finalization.as_ref(),
+        if matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. })) {
+            FloorFinalizationAbsenceReason::ScopedWorkerByConstruction
+        } else if plan_declared_no_finalization {
+            FloorFinalizationAbsenceReason::PlanDeclaresNoFinalization
+        } else {
+            FloorFinalizationAbsenceReason::IncidentalAbsence
+        },
+        &mut std::io::stderr(),
         ordinary_budget_ms,
         on_success_budget_ms,
         &governor,
@@ -9596,6 +9860,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 0,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "finalization-fixture".to_string(),
             selection_tag: "fixture",
             is_wet: false,
@@ -9611,6 +9876,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -9804,6 +10070,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 0,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "obligation-fixture".to_string(),
             selection_tag: "fixture",
             is_wet: false,
@@ -9818,6 +10085,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -9835,6 +10103,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -9862,6 +10131,7 @@ mod tests {
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -9885,6 +10155,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 0,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "emit-only".to_string(),
             selection_tag: "fixture",
             is_wet: false,
@@ -9898,6 +10169,7 @@ mod tests {
                 corpus_resolve_nanos: 0,
                 corpus_eval_nanos: 0,
                 corpus_witnesses: 0,
+                runtime_unit_count: single_claim_runtime_unit_count(),
                 witness_row_costs: Vec::new(),
                 budget_refusal: None,
                 selection_degradation: None,
@@ -9933,6 +10205,7 @@ mod tests {
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -9964,6 +10237,7 @@ mod tests {
                 wall_nanos: 0,
                 clamp_ms: None,
                 unit_count: 0,
+                runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 label: "cheap-gates".to_string(),
                 selection_tag: "fixture",
                 is_wet: false,
@@ -9977,6 +10251,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -9990,6 +10265,7 @@ mod tests {
                 wall_nanos: 0,
                 clamp_ms: None,
                 unit_count: 0,
+                runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 label: "compile-anchor".to_string(),
                 selection_tag: "fixture",
                 is_wet: false,
@@ -10003,6 +10279,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -10019,6 +10296,7 @@ mod tests {
                 wall_nanos: 0,
                 clamp_ms: None,
                 unit_count: 0,
+                runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 label: "native-bundle".to_string(),
                 selection_tag: "fixture",
                 is_wet: false,
@@ -10034,6 +10312,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -10065,6 +10344,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 0,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "memo-regression".to_string(),
             selection_tag: "fixture",
             is_wet: false,
@@ -10079,6 +10359,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -10096,6 +10377,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -10238,6 +10520,246 @@ mod tests {
         );
     }
 
+    // --- floor-finalization DISPOSITION visibility (the fix this PR ships) -----------
+    //
+    // Three previously-silent cases, each with its own discriminating control so the
+    // three cannot collapse back into one indistinguishable "nothing printed" bucket:
+    //   A — finalization absent by construction (scoped floor worker)
+    //   B — finalization absent incidentally (walk never reached the call)
+    //   C — finalization HELD on an otherwise-failed floor (verdict must not vanish)
+
+    #[test]
+    fn floor_finalization_disposition_case_c_held_is_unconditional_on_refusals_alone() {
+        // RED CONTROL for case C: `floor_finalization_disposition_from_refusals` takes
+        // no `ordinary_failed` (or any other floor-outcome) parameter — so a held
+        // verdict cannot be suppressed by floor outcome, because nothing in this call
+        // chain can ever see it. If a future edit reintroduces suppression by inlining
+        // an outcome check ahead of this call, this function's signature is what would
+        // have to change to make it possible, which is the load-bearing fact this test
+        // pins.
+        let disposition = floor_finalization_disposition_from_refusals(Vec::new());
+        assert_eq!(disposition, FloorFinalizationDisposition::Held);
+        let lines = floor_finalization_disposition_lines(&disposition);
+        assert_eq!(
+            lines.len(),
+            1,
+            "held verdict must emit exactly one line: {lines:?}"
+        );
+        assert!(
+            lines[0].contains("floor contract finalized"),
+            "held line missing its verdict text: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_disposition_case_a_scoped_worker_is_absent_never_refused() {
+        let disposition = floor_finalization_disposition(
+            None,
+            FloorFinalizationAbsenceReason::ScopedWorkerByConstruction,
+            TEST_PLAN_SITE,
+            &[],
+            false,
+        );
+        assert_eq!(
+            disposition,
+            FloorFinalizationDisposition::Absent(
+                FloorFinalizationAbsenceReason::ScopedWorkerByConstruction
+            )
+        );
+        let lines = floor_finalization_disposition_lines(&disposition);
+        assert_eq!(
+            lines.len(),
+            1,
+            "absence must emit exactly one counted line: {lines:?}"
+        );
+        assert!(
+            lines[0].contains("FLOOR-FINALIZATION-ABSENT[scoped-worker-by-construction]"),
+            "scoped absence must name its reason, not just say nothing: {lines:?}"
+        );
+        assert!(
+            !lines[0].contains("REFUSED"),
+            "scoped-by-construction absence must never read as a refusal: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_disposition_case_b_incidental_absence_is_distinct_from_scoped() {
+        let disposition = floor_finalization_disposition(
+            None,
+            FloorFinalizationAbsenceReason::IncidentalAbsence,
+            TEST_PLAN_SITE,
+            &[],
+            false,
+        );
+        assert_eq!(
+            disposition,
+            FloorFinalizationDisposition::Absent(FloorFinalizationAbsenceReason::IncidentalAbsence)
+        );
+        let lines = floor_finalization_disposition_lines(&disposition);
+        assert!(
+            lines[0].contains("FLOOR-FINALIZATION-ABSENT[incidental-absence]"),
+            "incidental absence must carry its own distinct marker: {lines:?}"
+        );
+        // The discriminating half of the control: A and B must never render identically,
+        // or a reader is back to being unable to tell which one happened.
+        let scoped_lines =
+            floor_finalization_disposition_lines(&FloorFinalizationDisposition::Absent(
+                FloorFinalizationAbsenceReason::ScopedWorkerByConstruction,
+            ));
+        assert_ne!(
+            lines, scoped_lines,
+            "scoped-by-construction and incidental absence must render as distinguishable lines"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_disposition_plan_declared_absence_is_distinct_from_incidental() {
+        // Review 49917 (cursor/composer-2.5): the regen/plan-artifact/falsifier/
+        // native-cache-cold plans always declare `NoFinalizationDeclared {}` — that is a
+        // PLAN fact, expected on every one of their runs, and must not render as
+        // `incidental-absence`, which exists to flag runs that were NOT supposed to skip.
+        let disposition = floor_finalization_disposition(
+            None,
+            FloorFinalizationAbsenceReason::PlanDeclaresNoFinalization,
+            TEST_PLAN_SITE,
+            &[],
+            false,
+        );
+        assert_eq!(
+            disposition,
+            FloorFinalizationDisposition::Absent(
+                FloorFinalizationAbsenceReason::PlanDeclaresNoFinalization
+            )
+        );
+        let lines = floor_finalization_disposition_lines(&disposition);
+        assert!(
+            lines[0].contains("FLOOR-FINALIZATION-ABSENT[plan-declares-no-finalization]"),
+            "plan-declared absence must carry its own distinct marker: {lines:?}"
+        );
+        let incidental_lines =
+            floor_finalization_disposition_lines(&FloorFinalizationDisposition::Absent(
+                FloorFinalizationAbsenceReason::IncidentalAbsence,
+            ));
+        let scoped_lines =
+            floor_finalization_disposition_lines(&FloorFinalizationDisposition::Absent(
+                FloorFinalizationAbsenceReason::ScopedWorkerByConstruction,
+            ));
+        assert_ne!(
+            lines, incidental_lines,
+            "a plan that always declares no finalization must not dilute the incidental bucket"
+        );
+        assert_ne!(lines, scoped_lines);
+    }
+
+    #[test]
+    fn floor_finalization_disposition_undeclared_absence_still_emits_a_counted_line() {
+        // Inverse of the defect an earlier revision of this PR reintroduced (review
+        // 2026-08-07, smart-badger-549): a caller with no opinion on WHY finalization is
+        // absent still cannot construct a silent outcome, because `absence_reason` is a
+        // required `FloorFinalizationAbsenceReason`, not an `Option` a caller could pass
+        // `None` for. `Undeclared` is that caller's only honest choice, and it renders
+        // its own distinct, non-empty line — never nothing, and never mistaken for A or B.
+        let disposition = floor_finalization_disposition(
+            None,
+            FloorFinalizationAbsenceReason::Undeclared,
+            TEST_PLAN_SITE,
+            &[],
+            false,
+        );
+        assert_eq!(
+            disposition,
+            FloorFinalizationDisposition::Absent(FloorFinalizationAbsenceReason::Undeclared)
+        );
+        let lines = floor_finalization_disposition_lines(&disposition);
+        assert_eq!(
+            lines.len(),
+            1,
+            "undeclared absence must still emit exactly one counted line: {lines:?}"
+        );
+        assert!(
+            lines[0].contains("FLOOR-FINALIZATION-ABSENT[undeclared]"),
+            "undeclared absence must name itself, not read as A or B: {lines:?}"
+        );
+        let scoped_lines =
+            floor_finalization_disposition_lines(&FloorFinalizationDisposition::Absent(
+                FloorFinalizationAbsenceReason::ScopedWorkerByConstruction,
+            ));
+        let incidental_lines =
+            floor_finalization_disposition_lines(&FloorFinalizationDisposition::Absent(
+                FloorFinalizationAbsenceReason::IncidentalAbsence,
+            ));
+        assert_ne!(lines, scoped_lines);
+        assert_ne!(lines, incidental_lines);
+    }
+
+    #[test]
+    fn run_walk_emits_the_finalization_disposition_through_the_injected_sink() {
+        // Discriminating control for "nothing proves the verdict is emitted" (review
+        // 2026-08-07, smart-badger-549): this calls the REAL run_walk, not a pure
+        // disposition function, and inspects the REAL bytes written through the sink
+        // production passes as stderr. Deleting or bypassing the
+        // `emit_floor_finalization_disposition` call inside `run_walk` reds this test;
+        // testing `floor_finalization_disposition_lines` alone cannot.
+        let mut sink: Vec<u8> = Vec::new();
+        let _outcome = run_walk(
+            &[],
+            TEST_PLAN_SITE,
+            &[],
+            &[],
+            None,
+            FloorFinalizationAbsenceReason::IncidentalAbsence,
+            &mut sink,
+            None,
+            None,
+            &Arc::new(MemoryGovernor::from_environment(1)),
+            None,
+            FalsifierSelfHostWetBudgets::default(),
+            FloorBatchStopPolicy::StopBeforeDependents,
+            None,
+            None,
+            false,
+            Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+            false,
+            None,
+        );
+        let emitted = String::from_utf8(sink).expect("emitted bytes must be valid utf-8");
+        assert!(
+            emitted.contains("FLOOR-FINALIZATION-ABSENT[incidental-absence]"),
+            "run_walk must actually write the disposition line through its sink, not just compute it: {emitted:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_disposition_refused_still_carries_the_law_message() {
+        // Sanity: wiring the disposition wrapper through validate_floor_finalization
+        // preserves the existing REFUSED law text — this PR changes visibility, never
+        // the laws' semantics (constraint from the brief).
+        let fin = test_floor_finalization();
+        let disposition = floor_finalization_disposition(
+            Some(&fin),
+            FloorFinalizationAbsenceReason::Undeclared,
+            TEST_PLAN_SITE,
+            &[],
+            false,
+        );
+        match &disposition {
+            FloorFinalizationDisposition::Refused(refusals) => {
+                assert!(
+                    !refusals.is_empty(),
+                    "empty batch records must refuse unexecuted obligations"
+                );
+            }
+            other => panic!("expected Refused with no batch records, got {other:?}"),
+        }
+        let lines = floor_finalization_disposition_lines(&disposition);
+        assert!(
+            lines
+                .iter()
+                .all(|l| l.starts_with("FLOOR-FINALIZATION-REFUSED: ")),
+            "every refusal line must carry the located, typed marker: {lines:?}"
+        );
+    }
+
     // D2 wiring pin: the fast-exit consumes exactly this mapping, so the terminal
     // process code stays behavior-identical to the ExitCode return it replaced.
     #[test]
@@ -10339,11 +10861,13 @@ mod tests {
     }
 
     fn batch_record_for_test(results: Vec<ClaimResult>) -> BatchRecord {
+        let unit_count = results.len() as u128;
         BatchRecord {
             batch_index: 0,
             wall_nanos: 0,
             clamp_ms: None,
-            unit_count: results.len() as u128,
+            unit_count,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: unit_count },
             results,
             label: "batch-under-test".to_string(),
             selection_tag: "off",
@@ -10370,6 +10894,7 @@ mod tests {
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: Some(BudgetRefusal {
                 elapsed_ms: 900_001,
@@ -10401,6 +10926,7 @@ mod tests {
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -10669,6 +11195,7 @@ mod tests {
             wall_nanos: 1_000_000_000,
             clamp_ms: None,
             unit_count: 1,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 1 },
             results: Vec::new(),
             label: batch_heartbeat_label(&batches[0]),
             selection_tag: batch_selection_tag(&batches[0]),
@@ -10711,6 +11238,93 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
     }
 
+    // Hard discovery failure must refuse the batch clamp — never mis-render as
+    // FLOOR-BATCH-OVER-BUDGET via the legacy zero→one unit mapping.
+    #[test]
+    fn hard_discovery_error_refuses_batch_clamp_not_over_budget() {
+        let discovery_fail = ClaimResult {
+            function: "discovery-corpus".to_string(),
+            entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
+            ok: false,
+            detail: "discovery corpus failed: resolve refused".to_string(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: runtime_unit_count_unavailable("resolve refused"),
+            witness_row_costs: Vec::new(),
+            budget_refusal: None,
+            selection_degradation: None,
+            resolve_realization: None,
+        };
+        let units = aggregate_batch_runtime_units(&[discovery_fail]);
+        assert!(
+            matches!(units, FloorRuntimeUnitCount::Unavailable { .. }),
+            "hard corpus error must mark units unavailable, got {units:?}"
+        );
+        // Positive control: a single gate row still contributes one observed unit.
+        let gate = ClaimResult {
+            function: "some_gate_holds".to_string(),
+            entry: "dag/tools/floor_effect_gate_witness.dag".to_string(),
+            ok: true,
+            detail: String::new(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
+            witness_row_costs: Vec::new(),
+            budget_refusal: None,
+            selection_degradation: None,
+            resolve_realization: None,
+        };
+        assert_eq!(
+            aggregate_batch_runtime_units(&[gate]),
+            FloorRuntimeUnitCount::Observed { units: 1 }
+        );
+        // RED control: the old zero→one mapping would fabricate OverBudget on a slow wall
+        // against overhead-only clamp when the corpus actually failed.
+        let overhead_ms = 60_000u128;
+        let rate_ms = 1_000u128;
+        let wall_ms = 120_000u128;
+        if let FloorRuntimeUnitCount::Observed { units: 1 } = units {
+            let clamp = overhead_ms + 1 * rate_ms;
+            assert!(
+                wall_ms > clamp,
+                "control: units=1 would have breached overhead-only clamp"
+            );
+        }
+    }
+
+    #[test]
+    fn hard_discovery_batch_wall_receipt_is_clamp_refused_not_over_budget() {
+        let base = std::env::temp_dir().join(format!(
+            "claim-executor-clamp-refused-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&base);
+        let records = vec![BatchRecord {
+            batch_index: 2,
+            wall_nanos: 600_000_000_000,
+            clamp_ms: None,
+            unit_count: 0,
+            runtime_units: runtime_unit_count_unavailable("discovery corpus failed: test"),
+            results: Vec::new(),
+            label: "discovery-corpus".to_string(),
+            selection_tag: "applied",
+            is_wet: false,
+        }];
+        assert!(write_batch_wall_receipt_at(&base, &records));
+        let body = fs::read_to_string(base.join("floor-batch-wall-receipt.txt")).unwrap();
+        assert!(body.contains("batch_3_units=unavailable"));
+        assert!(body.contains("batch_3_verdict=ClampRefused"));
+        assert!(!body.contains("OverBudget"));
+        assert!(body.contains("over_budget_batches=0"));
+        let _ = fs::remove_dir_all(&base);
+    }
+
     // D5 receipt rows, both directions: an over-budget batch records OverBudget and is
     // counted; a within-budget batch records WithinBudget; a budget-less walk records
     // Unbudgeted (falsifier/regen plans).
@@ -10726,6 +11340,7 @@ mod tests {
                 wall_nanos: 5_000_000_000, // 5s
                 clamp_ms: Some(2_000),     // 2s
                 unit_count: 3,
+                runtime_units: FloorRuntimeUnitCount::Observed { units: 3 },
                 results: Vec::new(),
                 label: "batch-0".to_string(),
                 selection_tag: "off",
@@ -10736,6 +11351,7 @@ mod tests {
                 wall_nanos: 1_000_000_000, // 1s
                 clamp_ms: Some(2_000),     // 2s
                 unit_count: 0,
+                runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 results: Vec::new(),
                 label: "batch-1".to_string(),
                 selection_tag: "off",
@@ -10756,6 +11372,7 @@ mod tests {
             wall_nanos: 5_000_000_000,
             clamp_ms: None,
             unit_count: 0,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             results: Vec::new(),
             label: "batch-0".to_string(),
             selection_tag: "off",
@@ -11655,6 +12272,8 @@ mod tests {
             &ordinary_batch,
             on_success_stages,
             None,
+            FloorFinalizationAbsenceReason::Undeclared,
+            &mut std::io::stderr(),
             None,
             None,
             &Arc::new(MemoryGovernor::from_environment(1)),
@@ -12582,6 +13201,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 3,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 3 },
             label: "bin-witness-corpus".to_string(),
             selection_tag: "applied",
             is_wet: true,
@@ -12595,6 +13215,7 @@ mod tests {
                 corpus_resolve_nanos: 0,
                 corpus_eval_nanos: 0,
                 corpus_witnesses: 3,
+                runtime_unit_count: discovery_runtime_unit_count_from_summary(3),
                 witness_row_costs: vec![
                     WitnessRowCost {
                         entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag"
@@ -12676,6 +13297,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 2,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 2 },
             label: "collision".to_string(),
             selection_tag: "applied",
             is_wet: false,
@@ -12689,6 +13311,7 @@ mod tests {
                 corpus_resolve_nanos: 0,
                 corpus_eval_nanos: 0,
                 corpus_witnesses: 2,
+                runtime_unit_count: discovery_runtime_unit_count_from_summary(2),
                 witness_row_costs: vec![
                     // Executed, sub-millisecond: 500_000ns / 1_000_000 == 0. Both clocks
                     // sampled, as production rows are.
@@ -13154,6 +13777,7 @@ mod tests {
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
