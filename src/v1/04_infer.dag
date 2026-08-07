@@ -731,13 +731,19 @@ fn constructor_reference_admission_refusal(
 }
 
 // Admission decides a RESOLVED DECLARATION IDENTITY, never an identifier spelling. A body
-// binding -- fn parameter, let, match binder, lambda parameter -- shadows any declaration of
-// the same spelling, so a local named `token` must win normally even when a sealed `token`
-// constructor exists elsewhere; refusing it would be a fabricated refusal, which DESIGN
-// section 5 forbids exactly as it forbids the fail-open this wall closes. body_locals is the
-// corpus's existing shadowing authority for precisely this question (call_locals_shadow_note:
-// a let-bound or parameter callee skips sig lookup), so it is reused rather than a second
-// notion of shadowing being minted beside it.
+// binding shadows any declaration of the same spelling, so a local named `token` must win
+// normally even when a sealed `token` constructor exists elsewhere; refusing it would be a
+// fabricated refusal, which DESIGN section 5 forbids exactly as it forbids the fail-open this
+// wall closes. body_locals is the corpus's existing shadowing authority for precisely this
+// question (call_locals_shadow_note: a let-bound or parameter callee skips sig lookup), so it
+// is reused rather than a second notion of shadowing being minted beside it.
+// EXECUTED EVIDENCE COVERS TWO BINDER FORMS, not four. The controls prove fn-parameter and
+// let shadowing (ct_constructor_call_admission_shadowing_test). Whatever binder forms
+// body_locals populates -- match binders and lambda parameters among them -- inherit this arm
+// by construction, because the arm reads body_locals rather than enumerating forms; but
+// inheritance by construction is not execution, and this comment previously asserted all four
+// as though they were controlled. Adding the two missing forms is a control addition, not a
+// design change: the discriminator is already the right one.
 fn constructor_reference_admission_unshadowed(
   callee_name: String,
   span: SourceSpan,

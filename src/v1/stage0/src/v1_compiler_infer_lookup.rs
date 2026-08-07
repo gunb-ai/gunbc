@@ -51,7 +51,8 @@ use crate::v1_std_core::MethodSemantics::{
 };
 pub use crate::v1_std_core::{
     authored_name_at, error_type, find_child_named, has_child_named, param_node_type_expr,
-    preserve_outer_optional_cardinality, with_optional_cardinality, with_required_cardinality,
+    preserve_outer_optional_cardinality, qualified_last_segment, with_optional_cardinality,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, ErrorNode, FieldAccessStyle, FieldSummary, FieldValueShape,
@@ -239,7 +240,7 @@ pub fn constructor_declaration_for_admission(
     name: String,
 ) -> Rc<ConstructorDeclarationLookup> {
     {
-        let decl_name = qualified_last_segment_local(name.clone());
+        let decl_name = qualified_last_segment(name.clone());
         let qualified = if v1_rt::contains(name.clone(), ".".to_string()) {
             name.clone()
         } else {
@@ -268,21 +269,6 @@ pub fn constructor_declaration_for_admission(
                 },
             ),
         }
-    }
-}
-
-pub fn qualified_last_segment_local(name: String) -> String {
-    match Rc::new(
-        name.clone()
-            .split(&".".to_string())
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>(),
-    )
-    .last()
-    .cloned()
-    {
-        Some(seg) => seg.clone(),
-        None => name.clone(),
     }
 }
 

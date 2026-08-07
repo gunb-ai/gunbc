@@ -5,6 +5,7 @@ import std.induction { SubValueRelation }
 import v1.std.core {
   Node, param_node_type_expr,
   authored_name_at, NewlineIndex, find_child_named, has_child_named,
+  qualified_last_segment,
   InferredNode, Resolved, TypeVariable,
   Cardinality, Required,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
@@ -186,7 +187,7 @@ fn constructor_declaration_for_admission(
   owner_module_path: String,
   name: String
 ) -> ConstructorDeclarationLookup {
-  let decl_name = qualified_last_segment_local(name: name)
+  let decl_name = qualified_last_segment(name: name)
   let qualified = if contains(name, ".") { name } else { concat(owner_module_path, ".", name) }
   let identity = ExactDeclarationIdentity { owner_module_path: owner_module_path, decl_name: decl_name }
   match symbol_index_lookup(index: type_env.symbol_index, qualified_name: qualified) {
@@ -197,13 +198,6 @@ fn constructor_declaration_for_admission(
         identity: identity,
         cause: DeclarationNotIndexedAtQualifiedName { qualified_name: qualified }
       }
-  }
-}
-
-fn qualified_last_segment_local(name: String) -> String {
-  match split(name, ".") |> last {
-    Present { value: seg } => seg
-    Absent => name
   }
 }
 
