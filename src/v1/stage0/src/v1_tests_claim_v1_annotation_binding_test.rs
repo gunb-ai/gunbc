@@ -32,7 +32,7 @@ use std::rc::Rc;
 pub fn v1_annotation_binding_offline_recipe() -> String {
     thread_local! {
         static CACHED: String = {
-            "OFFLINE LOCAL RECIPE: target/debug/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_binding_test.dag --functions w_leading_prose_attaches_to_the_data_row_it_precedes,w_leading_prose_attaches_to_the_type_it_precedes,w_body_prose_refuses_rather_than_attaching_to_a_later_declaration,w_prose_above_module_attaches_to_the_module,w_trailing_prose_refuses,w_annotation_free_source_binds_nothing,w_delimiter_normalization_keeps_authored_indentation".to_string()
+            "OFFLINE LOCAL RECIPE: target/debug/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_binding_test.dag --functions w_leading_prose_attaches_to_the_data_row_it_precedes,w_leading_prose_attaches_to_the_type_it_precedes,w_body_prose_refuses_rather_than_attaching_to_a_later_declaration,w_prose_above_module_attaches_to_the_module,w_trailing_prose_refuses,w_annotation_free_source_binds_nothing,w_delimiter_normalization_keeps_authored_indentation,w_a_single_refusal_withholds_the_entire_graph,w_the_same_prose_without_the_refusal_is_admitted,w_adjacent_comment_lines_form_one_block,w_blank_line_separated_comments_form_two_blocks".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
