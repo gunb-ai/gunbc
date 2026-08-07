@@ -277,3 +277,14 @@ path = "src/bin/compile_clean_unlisted_import_census.rs"
 [[bin]]
 name = "silent_pick_crosscheck"
 path = "src/bin/silent_pick_crosscheck.rs"
+
+# B0 control witness (#7943, review 49798 / operator ruling): proves the
+# GENERATED stage0 realization of declaration_exposure_from_containment under
+# NamespaceStructuralRootExposure dispatches to three distinct outcomes
+# (empty/one/two ancestors), not a collapsed if/else — the class the generic
+# emitter was silently dropping (EMIT-NESTED-PATTERN-0,
+# node://adhoc-b4da0e4d-cf3). Calls the compiled generated function directly,
+# so it exercises the compiled realization rather than the interpreter.
+[[bin]]
+name = "namespace_structural_root_exposure_generated_witness"
+path = "src/bin/namespace_structural_root_exposure_generated_witness.rs"
