@@ -1,7 +1,6 @@
 module v2.std.orchestration
 
 import v2.std.text { String }
-import std.nat { Nat }
 import std.algebra { FreeMonoid }
 import v2.std.collection {
   List
@@ -87,11 +86,6 @@ type PipelineStep
   | If { cond: Predicate, then_: Pipeline, else_: Optional<Pipeline> }
   | For { binder: Symbol, over: ValueSource, body: Pipeline }
   | While { cond: Predicate, body: Pipeline }
-  | BoundedPoll {
-      max_attempts: v2.std.nat.Nat,
-      body: Pipeline,
-      success: Predicate
-    }
   | Retry {
       body: Pipeline,
       escalations: FreeMonoid<EscalationLevel>,

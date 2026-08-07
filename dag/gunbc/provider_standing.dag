@@ -1,0 +1,530 @@
+module gunbc.provider_standing
+
+import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import std.claim_evidence { RecordedFactId, RecordedFact }
+import std.measure { BasisPoint }
+import v2.std.optional { optional_absent, optional_present }
+import extdeps.llm.cli_lifecycle {
+  ProviderInstance,
+  ProviderInstanceFieldUnobserved,
+  ProviderKind,
+  CodexCliProvider,
+  ClaudeCliProvider,
+  CursorCliProvider,
+}
+
+data provider_standing_authority_note: String = "SHARED CONTRACT for Claude and Cursor dispatch lanes (valiant-stag-845). ProviderReadiness decomposes per provider-control-interface-audit section 10 into six independent axes: installation, authentication, entitlement, limit, turn outcome, and tool environment. One arm must not erase another — the audit worked example (authenticated + weekly Opus warning + Fable rejected + Opus runnable) requires it. Limit observations carry an explicit ProviderLimitSubject; native limit tokens stay open (NonEmptyStr) with recognised projections layered over them, never a closed enum that drops upstream tokens (section 4.1). Standing facts reuse std.claim_evidence RecordedFact and EvidenceLink machinery (section 11); this module owns the proposition shapes only. ProviderAuthenticationStanding derives from token state, never from subscription profile metadata alone — profile-present-token-absent is a distinct refusal arm, not a gap that reads as authenticated (eager-raven-845 live observation, 2026-08-06)."
+
+data provider_standing_selection_note: String = "Selection eligibility consumes an admitted ProviderStanding bundle AND a ProviderLimitDispatchDraw. LimitDispatchDrawAutomatic fail-closes on any observed ProviderNativeLimitBucket exhaustion (extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note). ProfileExactOverride may supply operator_asserted_native_limit_bucket on SelectCodex — attributed assertion, not a cited join. LimitDispatchDrawUnspecified is constructible for limit-subject coverage tests only — provider_standing_is_selection_eligible and provider_standing_bundle_is_selection_eligible refuse it at the entry point (construction wall); dispatch eligibility must use Automatic, Account, Model, or NativeBucket draws."
+
+data provider_standing_limit_dispatch_draw_note: String = "Limit blocking is dispatch-scoped. LimitDispatchDrawAutomatic and LimitDispatchDrawModel treat every ProviderNativeLimitBucket exhaustion/rate-limit/until-reset/rejection as blocking — relevance is undeterminable without a cited native-token-to-model join (extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note; extdeps.llm.claude_sdk claude_native_limit_token_to_model_gap_note). LimitDispatchDrawModel blocks ProviderModelLimit only when subject_model == draw_model. LimitDispatchDrawNativeBucket blocks only on matching native_key. DISSOLVES ON: cited joins land per provider gap notes."
+
+data provider_standing_limit_rejection_unspecified_draw_note: String = "LimitRejected under LimitDispatchDrawUnspecified does not block when the subject is ProviderModelLimit — a single rejected model must not erase account eligibility (section 10 worked example: Fable rejected, Opus still runnable). ProviderNativeLimitBucket and ProviderAccountLimit rejections still route through limit_subject_covers_dispatch_draw so a future rate_limit_reached decode cannot slip past Unspecified/Automatic fail-closed the way LimitExhausted does."
+
+type ProviderLimitDispatchDraw
+  = LimitDispatchDrawUnspecified
+  | LimitDispatchDrawAutomatic
+  | LimitDispatchDrawAccount { credential: ProviderLimitCredentialIdentity }
+  | LimitDispatchDrawModel {
+      credential: ProviderLimitCredentialIdentity,
+      model: NonEmptyStr,
+    }
+  | LimitDispatchDrawNativeBucket {
+      credential: ProviderLimitCredentialIdentity,
+      native_key: NonEmptyStr,
+    }
+
+type ProviderLimitCredentialIdentity
+  = LimitCredentialUnspecified
+  | LimitCredentialLabel { label: NonEmptyStr }
+
+type ProviderLimitSubject
+  = ProviderAccountLimit { credential: ProviderLimitCredentialIdentity }
+  | ProviderWorkspaceLimit { workspace_account: NonEmptyStr }
+  | ProviderModelLimit {
+      credential: ProviderLimitCredentialIdentity,
+      model: NonEmptyStr,
+    }
+  | ProviderNativeLimitBucket {
+      credential: ProviderLimitCredentialIdentity,
+      native_key: NonEmptyStr,
+    }
+
+type ProviderInstallationStanding
+  = InstallationStandingUnobserved { reason: NonEmptyStr }
+  | InstallationExecutableMissing
+  | InstallationVersionDrift { observed: NonEmptyStr, expected: NonEmptyStr }
+  | InstallationReady
+
+type ProviderAuthenticationStanding
+  = AuthenticationStandingUnobserved { reason: NonEmptyStr }
+  | AuthenticationCredentialsAbsent
+  | AuthenticationRecordedUnverified
+  | AuthenticationProfilePresentTokenAbsent {
+      subscription_tier: NonEmptyStr,
+      token_source: NonEmptyStr,
+    }
+  | AuthenticationRefreshFailed { reason: NonEmptyStr }
+  | AuthenticationExpired
+  | AuthenticationAuthenticated
+
+type ProviderEntitlementObservation
+  = EntitlementObservationUnobserved { reason: NonEmptyStr }
+  | EntitlementObservedAvailable
+  | EntitlementRejected { reason: NonEmptyStr }
+
+type ProviderLimitObservation
+  = LimitObservationUnobserved { reason: NonEmptyStr }
+  | LimitCapabilityGapUnobservable { reason: NonEmptyStr }
+  | LimitObservedAvailable { subject: ProviderLimitSubject }
+  | LimitWarning {
+      subject: ProviderLimitSubject,
+      native_token: NonEmptyStr,
+      utilization_basis_points: BasisPoint,
+    }
+  | LimitRejected {
+      subject: ProviderLimitSubject,
+      native_token: NonEmptyStr,
+      reason: NonEmptyStr,
+    }
+  | LimitUnavailableUntilReset {
+      subject: ProviderLimitSubject,
+      native_token: NonEmptyStr,
+      reason: NonEmptyStr,
+    }
+  | LimitExhausted { subject: ProviderLimitSubject, native_token: NonEmptyStr }
+  | LimitRateLimited { subject: ProviderLimitSubject, native_token: NonEmptyStr }
+
+type ProviderTurnOutcome
+  = TurnOutcomeUnobserved { reason: NonEmptyStr }
+  | TurnNotStarted
+  | TurnSucceeded
+  | TurnFailed { reason: NonEmptyStr }
+  | TurnRefused { reason: NonEmptyStr }
+
+type ProviderToolEnvironmentStanding
+  = ToolEnvironmentStandingUnobserved { reason: NonEmptyStr }
+  | ToolEnvironmentUnavailable { reason: NonEmptyStr }
+  | ToolEnvironmentReady
+
+type ProviderStandingBundle {
+  installation: ProviderInstallationStanding
+  authentication: ProviderAuthenticationStanding
+  entitlement: ProviderEntitlementObservation
+  limits: List<ProviderLimitObservation>
+  turn: ProviderTurnOutcome
+  tool_environment: ProviderToolEnvironmentStanding
+}
+
+type ProviderStandingObservationFact {
+  provider: ProviderInstance
+  bundle: ProviderStandingBundle
+}
+
+type ProviderStanding
+  = ProviderStandingUnobserved { reason: NonEmptyStr }
+  | ProviderStandingFromFact {
+      fact: RecordedFact<ProviderStandingObservationFact>,
+    }
+
+data inventory_declared_standing_unobserved_reason: NonEmptyStr = "inventory row is declared, not observed at selection time" as NonEmptyStr
+
+data selection_fixture_standing_fact_id: RecordedFactId = "dispatch-selection-standing-fixture" as RecordedFactId
+
+data provider_standing_live_probe_fact_id: RecordedFactId = "provider-standing-live-dashboard-probe" as RecordedFactId
+
+fn provider_standing_inventory_unobserved() -> ProviderStanding {
+  ProviderStandingUnobserved { reason: inventory_declared_standing_unobserved_reason }
+}
+
+fn provider_standing_from_fixture_bundle(
+  provider: ProviderInstance,
+  bundle: ProviderStandingBundle,
+) -> ProviderStanding {
+  provider_standing_from_observed_bundle(
+    fact_id: selection_fixture_standing_fact_id,
+    provider: provider,
+    bundle: bundle,
+  )
+}
+
+fn provider_standing_from_observed_bundle(
+  fact_id: RecordedFactId,
+  provider: ProviderInstance,
+  bundle: ProviderStandingBundle,
+) -> ProviderStanding {
+  ProviderStandingFromFact {
+    fact: RecordedFact {
+      id: fact_id,
+      value: ProviderStandingObservationFact {
+        provider: provider,
+        bundle: bundle,
+      },
+    },
+  }
+}
+
+fn provider_standing_bundle(standing: ProviderStanding) -> ProviderStandingBundle? {
+  match standing {
+    ProviderStandingUnobserved { reason: _ } => Absent
+    ProviderStandingFromFact { fact } => Present { value: fact.value.bundle }
+  }
+}
+
+fn installation_standing_is_selection_eligible(standing: ProviderInstallationStanding) -> Bool {
+  match standing {
+    InstallationReady => true
+    InstallationStandingUnobserved { reason: _ } => false
+    InstallationExecutableMissing => false
+    InstallationVersionDrift { observed: _, expected: _ } => false
+  }
+}
+
+fn authentication_standing_is_selection_eligible(standing: ProviderAuthenticationStanding) -> Bool {
+  match standing {
+    AuthenticationAuthenticated => true
+    AuthenticationStandingUnobserved { reason: _ } => false
+    AuthenticationCredentialsAbsent => false
+    AuthenticationRecordedUnverified => false
+    AuthenticationProfilePresentTokenAbsent { subscription_tier: _, token_source: _ } => false
+    AuthenticationRefreshFailed { reason: _ } => false
+    AuthenticationExpired => false
+  }
+}
+
+fn entitlement_standing_is_selection_eligible(standing: ProviderEntitlementObservation) -> Bool {
+  match standing {
+    EntitlementObservedAvailable => true
+    EntitlementObservationUnobserved { reason: _ } => false
+    EntitlementRejected { reason: _ } => false
+  }
+}
+
+fn tool_environment_standing_is_selection_eligible(
+  standing: ProviderToolEnvironmentStanding,
+) -> Bool {
+  match standing {
+    ToolEnvironmentReady => true
+    ToolEnvironmentStandingUnobserved { reason: _ } => false
+    ToolEnvironmentUnavailable { reason: _ } => false
+  }
+}
+
+fn turn_standing_is_selection_eligible(standing: ProviderTurnOutcome) -> Bool {
+  match standing {
+    TurnNotStarted => true
+    TurnSucceeded => true
+    TurnOutcomeUnobserved { reason: _ } => false
+    TurnFailed { reason: _ } => false
+    TurnRefused { reason: _ } => false
+  }
+}
+
+fn limit_subject_is_account_scope(subject: ProviderLimitSubject) -> Bool {
+  match subject {
+    ProviderAccountLimit { credential: _ } => true
+    ProviderWorkspaceLimit { workspace_account: _ } => false
+    ProviderModelLimit { credential: _, model: _ } => false
+    ProviderNativeLimitBucket { credential: _, native_key: _ } => false
+  }
+}
+
+fn limit_credential_draw_matches(
+  subject_cred: ProviderLimitCredentialIdentity,
+  draw_cred: ProviderLimitCredentialIdentity,
+) -> Bool {
+  match subject_cred {
+    LimitCredentialUnspecified => true
+    LimitCredentialLabel { label: subject_label } =>
+      match draw_cred {
+        LimitCredentialUnspecified => true
+        LimitCredentialLabel { label: draw_label } => subject_label == draw_label
+      }
+  }
+}
+
+fn limit_subject_covers_dispatch_draw(
+  subject: ProviderLimitSubject,
+  draw: ProviderLimitDispatchDraw,
+) -> Bool {
+  match draw {
+    LimitDispatchDrawUnspecified =>
+      match subject {
+        ProviderNativeLimitBucket { credential: _, native_key: _ } => true
+        _ => limit_subject_is_account_scope(subject: subject)
+      }
+    LimitDispatchDrawAutomatic =>
+      match subject {
+        ProviderNativeLimitBucket { credential: _, native_key: _ } => true
+        _ => limit_subject_is_account_scope(subject: subject)
+      }
+    LimitDispatchDrawAccount { credential: draw_cred } =>
+      match subject {
+        ProviderAccountLimit { credential: subject_cred } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          )
+        ProviderWorkspaceLimit { workspace_account: _ } => false
+        ProviderModelLimit { credential: subject_cred, model: _ } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          )
+        ProviderNativeLimitBucket { credential: subject_cred, native_key: _ } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          )
+      }
+    LimitDispatchDrawModel { credential: draw_cred, model: draw_model } =>
+      match subject {
+        ProviderAccountLimit { credential: subject_cred } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          )
+        ProviderWorkspaceLimit { workspace_account: _ } => false
+        ProviderModelLimit { credential: subject_cred, model: subject_model } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          ) && subject_model == draw_model
+        ProviderNativeLimitBucket { credential: subject_cred, native_key: _ } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          )
+      }
+    LimitDispatchDrawNativeBucket { credential: draw_cred, native_key: draw_key } =>
+      match subject {
+        ProviderAccountLimit { credential: subject_cred } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          )
+        ProviderWorkspaceLimit { workspace_account: _ } => false
+        ProviderModelLimit { credential: _, model: _ } => false
+        ProviderNativeLimitBucket { credential: subject_cred, native_key: subject_key } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          ) && subject_key == draw_key
+      }
+  }
+}
+
+fn limit_observation_blocks_dispatch(
+  observation: ProviderLimitObservation,
+  draw: ProviderLimitDispatchDraw,
+) -> Bool {
+  match observation {
+    LimitObservationUnobserved { reason: _ } => true
+    LimitUnavailableUntilReset { subject: s, native_token: _, reason: _ } =>
+      limit_subject_covers_dispatch_draw(subject: s, draw: draw)
+    LimitExhausted { subject: s, native_token: _ } =>
+      limit_subject_covers_dispatch_draw(subject: s, draw: draw)
+    LimitRateLimited { subject: s, native_token: _ } =>
+      limit_subject_covers_dispatch_draw(subject: s, draw: draw)
+    LimitRejected { subject: s, native_token: _, reason: _ } =>
+      match draw {
+        LimitDispatchDrawUnspecified =>
+          match s {
+            ProviderModelLimit { credential: _, model: _ } => false
+            _ => limit_subject_covers_dispatch_draw(subject: s, draw: draw)
+          }
+        _ => limit_subject_covers_dispatch_draw(subject: s, draw: draw)
+      }
+    LimitCapabilityGapUnobservable { reason: _ } => false
+    LimitObservedAvailable { subject: _ } => false
+    LimitWarning { subject: _, native_token: _, utilization_basis_points: _ } => false
+  }
+}
+
+fn limit_observations_are_selection_eligible(
+  observations: List<ProviderLimitObservation>,
+  draw: ProviderLimitDispatchDraw,
+) -> Bool {
+  if list_length(items: observations) == 0 {
+    false
+  } else {
+    !any(
+      observations,
+      observation => limit_observation_blocks_dispatch(observation: observation, draw: draw),
+    )
+  }
+}
+
+fn provider_standing_bundle_is_selection_eligible(
+  bundle: ProviderStandingBundle,
+  draw: ProviderLimitDispatchDraw,
+) -> Bool {
+  match draw {
+    LimitDispatchDrawUnspecified => false
+    _ =>
+      installation_standing_is_selection_eligible(standing: bundle.installation)
+        && authentication_standing_is_selection_eligible(standing: bundle.authentication)
+        && entitlement_standing_is_selection_eligible(standing: bundle.entitlement)
+        && limit_observations_are_selection_eligible(observations: bundle.limits, draw: draw)
+        && turn_standing_is_selection_eligible(standing: bundle.turn)
+        && tool_environment_standing_is_selection_eligible(standing: bundle.tool_environment)
+  }
+}
+
+fn provider_standing_is_selection_eligible(
+  standing: ProviderStanding,
+  draw: ProviderLimitDispatchDraw,
+) -> Bool {
+  match provider_standing_bundle(standing: standing) {
+    Present { value: bundle } =>
+      provider_standing_bundle_is_selection_eligible(bundle: bundle, draw: draw)
+    Absent => false
+  }
+}
+
+fn first_blocking_native_limit_bucket_for_automatic_draw(
+  observations: List<ProviderLimitObservation>,
+) -> NonEmptyStr? {
+  fold(
+    observations,
+    init: none,
+    f: (acc, observation) => {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if limit_observation_blocks_dispatch(
+            observation: observation,
+            draw: LimitDispatchDrawAutomatic,
+          ) {
+            match observation {
+              LimitExhausted { subject: s, native_token: _ } =>
+                match s {
+                  ProviderNativeLimitBucket { credential: _, native_key: key } =>
+                    optional_present(value: key)
+                  _ => optional_absent()
+                }
+              LimitRateLimited { subject: s, native_token: _ } =>
+                match s {
+                  ProviderNativeLimitBucket { credential: _, native_key: key } =>
+                    optional_present(value: key)
+                  _ => optional_absent()
+                }
+              LimitUnavailableUntilReset { subject: s, native_token: _, reason: _ } =>
+                match s {
+                  ProviderNativeLimitBucket { credential: _, native_key: key } =>
+                    optional_present(value: key)
+                  _ => optional_absent()
+                }
+              _ => optional_absent()
+            }
+          } else {
+            optional_absent()
+          }
+      }
+    },
+  )
+}
+
+data dispatch_automatic_provider_preference_note: String = "AUTHORED preference order for automatic provider selection. Incidental inventory list order must never decide; this row is the sole authority. Filter ineligible offers by standing first, then walk this preference list and select the first eligible match, or refuse typed when none qualify."
+
+data dispatch_automatic_provider_preference: List<ProviderKind> = [
+  ClaudeCliProvider,
+  CursorCliProvider,
+  CodexCliProvider,
+]
+
+fn optional_kind_when_eligible(
+  kind: ProviderKind,
+  eligible_kinds: List<ProviderKind>,
+) -> ProviderKind? {
+  if any(eligible_kinds, eligible => eligible == kind) {
+    optional_present(value: kind)
+  } else {
+    optional_absent()
+  }
+}
+
+fn select_first_preferred_kind(
+  preference: List<ProviderKind>,
+  eligible_kinds: List<ProviderKind>,
+) -> ProviderKind? {
+  fold(
+    preference,
+    init: none,
+    f: (acc, kind) => {
+      match acc {
+        Present { value: _ } => acc
+        Absent => optional_kind_when_eligible(kind: kind, eligible_kinds: eligible_kinds)
+      }
+    },
+  )
+}
+
+fn fixture_standing_bundle_authenticated_available() -> ProviderStandingBundle {
+  ProviderStandingBundle {
+    installation: InstallationReady,
+    authentication: AuthenticationAuthenticated,
+    entitlement: EntitlementObservedAvailable,
+    limits: [
+      LimitObservedAvailable {
+        subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
+      },
+    ],
+    turn: TurnNotStarted,
+    tool_environment: ToolEnvironmentReady,
+  }
+}
+
+fn fixture_standing_bundle_authenticated_unavailable_until_reset() -> ProviderStandingBundle {
+  ProviderStandingBundle {
+    installation: InstallationReady,
+    authentication: AuthenticationAuthenticated,
+    entitlement: EntitlementObservedAvailable,
+    limits: [
+      LimitUnavailableUntilReset {
+        subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
+        native_token: "seven_day" as NonEmptyStr,
+        reason: "weekly cap exhausted until reset" as NonEmptyStr,
+      },
+    ],
+    turn: TurnNotStarted,
+    tool_environment: ToolEnvironmentReady,
+  }
+}
+
+fn fixture_standing_bundle_cursor_capability_gap() -> ProviderStandingBundle {
+  ProviderStandingBundle {
+    installation: InstallationReady,
+    authentication: AuthenticationAuthenticated,
+    entitlement: EntitlementObservedAvailable,
+    limits: [
+      LimitCapabilityGapUnobservable {
+        reason: "cursor local has no account-level headroom surface" as NonEmptyStr,
+      },
+    ],
+    turn: TurnNotStarted,
+    tool_environment: ToolEnvironmentReady,
+  }
+}
+
+data claude_profile_present_token_absent_live_fixture_note: String = "LIVE RECEIPT (eager-raven-845, 2026-08-06): Claude credential home whose oauthAccount carries full subscription profile metadata — claude_max, stripe_subscription — while control_response reports account.tokenSource=none. Ambient home and isolated file-tree copy give bit-identical .claude.json sha256 with apiKeySource=none; profile is file-resident, token is not. Every attempt terminates authentication_failed. Naive derivation from oauthAccount alone would conclude authenticated; that is fabricated-plausible-output in the dangerous direction. ClaudeStateRootRef { root: FilePath } denotes the profile tree, not the authority to act — slice C must not treat file-residence as credential binding."
+
+fn fixture_standing_bundle_claude_profile_present_token_absent() -> ProviderStandingBundle {
+  ProviderStandingBundle {
+    installation: InstallationReady,
+    authentication: AuthenticationProfilePresentTokenAbsent {
+      subscription_tier: "claude_max" as NonEmptyStr,
+      token_source: "none" as NonEmptyStr,
+    },
+    entitlement: EntitlementObservedAvailable,
+    limits: [
+      LimitObservedAvailable {
+        subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
+      },
+    ],
+    turn: TurnFailed {
+      reason: "authentication_failed" as NonEmptyStr,
+    },
+    tool_environment: ToolEnvironmentReady,
+  }
+}

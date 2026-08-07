@@ -1,7 +1,7 @@
 module test.claim.ci_materialization_witness
 
 import std.types { Bool, String }
-import gunbc.ci_materialization { ci_catalog_projection_refusals }
+import gunbc.ci_materialization { ci_catalog_eligibility_refusals }
 import gunbc.ci_materialization_gate {
   ci_materialization_ladder_holds_live,
   ci_materialization_holds_without_sccache,
@@ -21,8 +21,8 @@ test fn ci_ladder_holds_without_sccache_single_build() -> Bool {
   ci_materialization_holds_without_sccache()
 }
 
-test fn ci_catalog_projection_has_no_refusals() -> Bool {
-  ci_catalog_projection_refusals() == 0
+test fn ci_sccache_is_eligible_for_the_capacity_bounded_role() -> Bool {
+  ci_catalog_eligibility_refusals() == 0
 }
 
 test fn ci_heal_revalidation_preflight_is_a_fresh_checkout_observation() -> Bool {

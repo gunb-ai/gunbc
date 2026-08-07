@@ -1,6 +1,8 @@
 module gunbc.live_deploy.readiness
 
-import std.types { String, Bool, Int, NonEmptyStr, List }
+import std.types { String, Bool, Int, NonEmptyStr, List, CommitSha }
+import std.content_hash { Fnv1a64Structural }
+import gunbc.live_deploy.candidate { CandidateRelease }
 import std.realization_reconcile {
   ShowEffectiveRead,
   ReadObserved,
@@ -34,6 +36,24 @@ import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surfac
 import gunbc.roadmap_site_surface_expect {
   roadmap_site_healthz_json_string_parses,
   roadmap_site_healthz_surface_is_current,
+}
+import gunbc.roadmap_site_surface_render { healthz_body_with_release_identity }
+import gunbc.running_release_identity {
+  RunningReleaseIdentity,
+  RunningReleaseIdentified,
+  RunningReleaseUnidentified,
+  RunningReleaseUnidentifiedCause,
+  ReleaseIdentityBodyUnparseable,
+  ReleaseRevisionAbsent,
+  ReleaseRevisionDuplicated,
+  HealthzBodyNotAnObject,
+  ReleaseRevisionNotAString,
+  ReleaseRevisionMalformed,
+  SurfaceBundleIdentityAbsent,
+  SurfaceBundleIdentityDuplicated,
+  SurfaceBundleIdentityNotAString,
+  SurfaceBundleIdentityMalformed,
+  observe_running_release_identity,
 }
 import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, HealthzEffectiveRead }
 import gunbc.live_deploy.spec {
@@ -142,17 +162,74 @@ fn healthz_body_groundable(body: String) -> Bool {
 
 data service_ready_means_serving_this_tree_note: String = "READY was under-specified and the gap was live: it meant 'something answered /healthz', which the PRE-RESTART process satisfies. `gunbc serve` binds its compiled graph ONCE at process start, so between `systemctl restart` and the new process finishing its ~35 s load the OLD process is still answering — a poll that grounds on any answer can therefore green against the very process the deploy is replacing, and the deploy reports success while the dashboard still serves the previous tree. That is not a hypothetical: on 2026-07-24 the live srv1 page was serving the escaped `.node-superseded &gt; .title` selector, the pre-fix `width` chip, no disclosure and no centering, and every check in the system was green. So readiness now means the STRONGER and actually intended thing — the unit is answering AND the surface it answers with is this tree's — which the healthz digest map makes a plain equality (roadmap_site_healthz_surface_is_current). The three refusal causes stay type-distinct because their remedies differ: the probe never landed (network/unit down), the body is not JSON (wrong process on the port), the body is a well-formed fingerprint of ANOTHER tree (graph not rebound / sync incomplete). Each is a typed, located, countable refusal that the poll retries within its bound and that REFUSES at the bound — never a widen, and never a mode that proceeds as if it had not fired. Known and accepted race, named rather than hidden: two main pushes deploying concurrently can have deploy N observe deploy N+1's surface, which refuses honestly ('the surface is not the one I deployed' is true) and self-heals on the next deploy."
 
+data readiness_revision_half_note: String = "READINESS NOW ASKS BOTH QUESTIONS THE PROCESS ANSWERS, AND KEEPS THEM APART. The surface half ('is this tree's surface what the unit serves') was already here and is unchanged in meaning. The revision half is new and is the one the receipt could not supply: the running process reports which release it was LAUNCHED as, so 'the unit answering on this port is the candidate I just installed' becomes a comparison against an immutable fact of that process rather than an inference from a file, a directory, or the fact that something answered.\\n\\nWHY THE SURFACE CHECK DOES NOT ALREADY COVER IT. Two deploys of the SAME tree at different commits render byte-identical surfaces — a commit touching only Rust, only tests, or only documents changes the revision and not one served artifact — so a surface-only readiness greens against the previous process on every such deploy. That is not an exotic case; it is most of them. Conversely a process can serve a fresh surface at an unexpected revision when another candidate won the route. Neither half implies the other, which is exactly why the wire carries two members.\\n\\nTHE EXPECTED REVISION IS NOT RE-OBSERVED HERE. It is candidate.revision — the same single value the launcher observed once and the emitter wrote into ExecStart — so 'the checkout's sha, the emitted launch sha, and the process-reported sha are equal' is a claim about ONE subject read back, not three readings that happen to agree. A readiness that observed its own expectation could only ever prove the host agrees with whatever the host currently says.\\n\\nProcessIdentityAbsent and ProcessIdentityMalformed stay distinct from ProcessRevisionMismatch because a process that cannot state its release has not disagreed with anything — it is the pre-identity process, or a wrong process on the port, and the remedy is to look at what is listening rather than at which commit won."
+
+data readiness_verdict_is_flat_note: String = "THESE ARMS ARE PEERS, NOT KINDS OF ONE ANOTHER, WHICH IS WHY THE GROUPING WAS REMOVED HERE AND KEPT ONE LAYER DOWN. Identity refusals used to collapse into a single ReleaseIdentityUnreadable carrying a rendered sentence, so 'the process states no release' and 'the process states a malformed one' arrived as the same verdict distinguished only by prose — and a mismatch, which is not an identity failure at all, sat beside them as if it were a sibling of the same kind.\\n\\nThe distinctions are operational. ProcessIdentityAbsent is the MIGRATION arm: a process launched before this channel existed. It is a refusal, never a synthetic predecessor, but its remedy is 'restart it under a unit that passes --release-revision'. ProcessIdentityMalformed means the channel exists and the process is answering wrongly, which is a defect rather than an old process. ProcessRevisionMismatch means identity was read cleanly and disagrees. ProcessSurfaceMismatch means the reported surface digest is not the one the candidate expected. ServedSurfaceStale means the projected artifact map differs. Four different remedies, four arms.\\n\\nTHE OBSERVATION CARRIER STAYS GROUPED, DELIBERATELY. gunbc.running_release_identity keeps RunningReleaseIdentified | RunningReleaseUnidentified\{cause\} because a real consumer branches on identified-versus-not WITHOUT enumerating causes — this fold's own match. A grouping that some consumer reads is a level; a grouping nobody reads is a nickname. These two carriers are two layers of one model, not two names for one thing, and collapsing either into the other would lose a distinction something depends on."
+
 type HealthzRefusalCause
   = HealthzProbeFailed { detail: String }
   | HealthzBodyUnparseable { body: String }
-  | HealthzSurfaceStale { observed: String, expected: String }
+  | ProcessIdentityAbsent { body: String }
+  | ProcessIdentityMalformed { detail: String, body: String }
+  | ProcessRevisionMismatch { expected: String, observed: String }
+  | ProcessSurfaceMismatch { expected: String, observed: String }
+  | ServedSurfaceStale { observed: String, expected: String }
+
+fn running_release_unidentified_detail(cause: RunningReleaseUnidentifiedCause) -> String {
+  match cause {
+    ReleaseIdentityBodyUnparseable => "the healthz body did not parse as JSON"
+    ReleaseRevisionAbsent =>
+      "the unit answered without a release identity: it is a process launched before the identity channel existed, so which release it serves is not readable and no advance from it is ordered"
+    ReleaseRevisionDuplicated { count: n } =>
+      join(["the healthz body carried ", to_string(n), " revision members, so no single release identity is stated"], "")
+    HealthzBodyNotAnObject => "the healthz body is not a JSON object"
+    ReleaseRevisionNotAString => "the healthz revision member is not a string"
+    ReleaseRevisionMalformed { text: t } =>
+      join(["the healthz revision member is '", t, "', which is not a 40-digit lowercase object name"], "")
+    SurfaceBundleIdentityAbsent => "the healthz body states a revision but no surface bundle identity"
+    SurfaceBundleIdentityDuplicated { count: m } =>
+      join(["the healthz body carried ", to_string(m), " surface bundle identity members"], "")
+    SurfaceBundleIdentityNotAString => "the healthz surface bundle identity member is not a string"
+    SurfaceBundleIdentityMalformed { text: t } =>
+      join(["the healthz surface bundle identity member is '", t, "', which is not a 16-digit lowercase fnv1a64 structural digest"], "")
+  }
+}
+
+fn healthz_release_identity_refusal(body: String, cause: RunningReleaseUnidentifiedCause) -> HealthzRefusalCause {
+  let detail = running_release_unidentified_detail(cause: cause)
+  match cause {
+    ReleaseRevisionAbsent => ProcessIdentityAbsent { body: body }
+    _ => ProcessIdentityMalformed { detail: detail, body: body }
+  }
+}
 
 fn healthz_refusal_reason(cause: HealthzRefusalCause) -> String {
   match cause {
     HealthzProbeFailed { detail: d } => d
+    ProcessIdentityAbsent { body: b } =>
+      join([
+        "ProcessIdentityAbsent: the unit answered /healthz but stated no release identity, so it is a",
+        " process launched before the identity channel existed. Which release it serves is not readable,",
+        " and no advance from it is ordered. body=", b,
+      ], "")
+    ProcessIdentityMalformed { detail: d, body: b } =>
+      join(["ProcessIdentityMalformed: ", d, "; body=", b], "")
+    ProcessSurfaceMismatch { expected: e, observed: o } =>
+      join([
+        "ProcessSurfaceMismatch: the unit reported a surface bundle identity other than the one this",
+        " deploy's candidate expects — the process is rendering a different source tree than the",
+        " checkout that was admitted. expected=", e, " observed=", o,
+      ], "")
+    ProcessRevisionMismatch { expected: e, observed: o } =>
+      join([
+        "ProcessRevisionMismatch: the unit answered /healthz as a different release than the one this",
+        " deploy installed — gunbc serve binds its release identity once at process start, so this is the",
+        " pre-restart process still answering, or another candidate won this port. expected=", e,
+        " observed=", o,
+      ], "")
     HealthzBodyUnparseable { body: b } =>
       join(["healthz body failed JSON.parse; body=", b], "")
-    HealthzSurfaceStale { observed: o, expected: e } =>
+    ServedSurfaceStale { observed: o, expected: e } =>
       join([
         "ServedSurfaceStale: the unit answered /healthz but its served surface is not this tree's",
         " — gunbc serve binds its graph once at process start, so the pre-restart process is still",
@@ -161,30 +238,67 @@ fn healthz_refusal_reason(cause: HealthzRefusalCause) -> String {
   }
 }
 
+data readiness_compares_the_candidate_note: String = "THE EXPECTATION IS THE ADMITTED CANDIDATE, NOT A FRESH OBSERVATION, AND THAT IS THE ENTIRE VALUE OF PASSING IT DOWN. Both halves compare against values the launcher captured ONCE before any mutation: candidate.revision and candidate.expected_surface_identity. Readiness therefore reads back the subject the deploy admitted, rather than re-deriving an expectation at comparison time.\\n\\nRe-materializing the bundle here would reopen exactly the time-of-check/time-of-use hole the candidate exists to close: if the deploying checkout changed after admission, a recomputed expectation would describe the CHANGED tree, and readiness could then agree with a process other than the one admitted — a self-consistent false green that no downstream check can see, because the expectation and the verdict would have drifted together.\\n\\nTHE TWO SURFACE CHECKS ARE NOT REDUNDANT. ProcessSurfaceMismatch compares the process's REPORTED bundle identity against the candidate's captured one — a claim about which tree the process bound. ServedSurfaceStale compares the projected artifact map — a claim about what it is actually serving. A process could report the expected identity while serving stale artifacts (a rendering defect), or serve correct artifacts under an unexpected identity (a different tree that happens to render the same). Each has its own discriminating control, because a single check covering both would green whenever either happened to agree."
+
 fn ground_service_ready_from_healthz_with_bundle(
   read: HealthzEffectiveRead,
   bundle: RoadmapSiteSurfaceBundle,
+  expected_revision: CommitSha,
+  expected_surface_identity: Fnv1a64Structural,
 ) -> Grounding<ServiceReadyEvidence> {
   if read.probe_error != "" {
     DoesNotGround { reason: healthz_refusal_reason(cause: HealthzProbeFailed { detail: read.probe_error }) }
   } else if !healthz_body_groundable(body: read.body) {
     DoesNotGround { reason: healthz_refusal_reason(cause: HealthzBodyUnparseable { body: read.body }) }
-  } else if !roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: read.body) {
-    DoesNotGround {
-      reason: healthz_refusal_reason(cause: HealthzSurfaceStale {
-        observed: read.body,
-        expected: bundle.healthz_body,
-      })
-    }
   } else {
-    Grounds { evidence: ServiceReadyEvidence { body: read.body } }
+    match observe_running_release_identity(healthz_body: read.body) {
+      RunningReleaseUnidentified { cause: why } =>
+        DoesNotGround {
+          reason: healthz_refusal_reason(
+            cause: healthz_release_identity_refusal(body: read.body, cause: why)
+          )
+        }
+      RunningReleaseIdentified { observation: obs } =>
+        if (obs.revision as String) != (expected_revision as String) {
+          DoesNotGround {
+            reason: healthz_refusal_reason(cause: ProcessRevisionMismatch {
+              expected: expected_revision as String,
+              observed: obs.revision as String,
+            })
+          }
+        } else if (obs.surface_bundle_identity.digest as String) != (expected_surface_identity.digest as String) {
+          DoesNotGround {
+            reason: healthz_refusal_reason(cause: ProcessSurfaceMismatch {
+              expected: expected_surface_identity.digest as String,
+              observed: obs.surface_bundle_identity.digest as String,
+            })
+          }
+        } else if !roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: read.body) {
+          DoesNotGround {
+            reason: healthz_refusal_reason(cause: ServedSurfaceStale {
+              observed: read.body,
+              expected: bundle.healthz_body,
+            })
+          }
+        } else {
+          Grounds { evidence: ServiceReadyEvidence { body: read.body } }
+        }
+    }
   }
 }
 
-fn ground_service_ready_from_healthz(read: HealthzEffectiveRead) -> Grounding<ServiceReadyEvidence> {
+data readiness_check_order_note: String = "THE ORDER IS PROBE, PARSE, IDENTITY, REVISION, SURFACE, AND IT IS CHOSEN SO THE FIRST REFUSAL IS THE MOST LOCATING ONE. A process at the wrong revision usually also serves the wrong surface, so checking the surface first would report 'stale surface' for what is really 'the pre-restart process is still answering' — true but one inference away from the remedy. Checking the revision first names the process; checking the surface after names the rebind. Identity precedes both because a body with no readable identity cannot be compared on either axis, and reporting a surface verdict about a process we cannot identify would attribute the surface to the wrong party."
+
+fn ground_service_ready_from_healthz(
+  read: HealthzEffectiveRead,
+  expected_revision: CommitSha,
+  expected_surface_identity: Fnv1a64Structural,
+) -> Grounding<ServiceReadyEvidence> {
   ground_service_ready_from_healthz_with_bundle(
     read: read,
     bundle: materialize_live_roadmap_site_surface_bundle(),
+    expected_revision: expected_revision,
+    expected_surface_identity: expected_surface_identity,
   )
 }
 
@@ -214,23 +328,43 @@ fn show_healthz_read_for_deploy(
 
 data healthz_healthy_fixture_note: String = "The healthy fixture is the REAL healthz body, not a hand-spelled {\"status\":\"ok\"}. Once readiness means 'answering AND serving this tree', a fixture that merely parses is no longer a healthy read — it is precisely the stale-surface case — so a stand-in body would have made the converges-on-healthy witnesses assert the opposite of the contract. Its counterpart witness_stale_surface_read_does_not_ground keeps the hand-spelled body as the discriminating RED."
 
-fn show_healthz_read_fixture_healthy(bundle: RoadmapSiteSurfaceBundle) -> ShowEffectiveRead<HealthzEffectiveRead> {
+fn show_healthz_read_fixture_healthy(
+  bundle: RoadmapSiteSurfaceBundle,
+  release_revision: CommitSha,
+) -> ShowEffectiveRead<HealthzEffectiveRead> {
   ReadObserved {
     value: HealthzEffectiveRead {
-      body: bundle.healthz_body,
+      body: healthz_body_with_release_identity(
+        roadmap: bundle.roadmap_md,
+        dispatch: bundle.dispatch_json,
+        daily: bundle.daily_html,
+        full: bundle.full_html,
+        dispatch_js: bundle.dispatch_js,
+        release_revision: release_revision,
+        surface_bundle_identity: bundle.bundle_identity,
+      ),
       probe_error: "",
     }
   }
 }
 
-fn show_healthz_read_fixture_healthy_live() -> ShowEffectiveRead<HealthzEffectiveRead> {
-  show_healthz_read_fixture_healthy(bundle: materialize_live_roadmap_site_surface_bundle())
+data healthz_healthy_fixture_carries_identity_note: String = "THE HEALTHY FIXTURE MOVED FROM bundle.healthz_body TO THE FULL SERVED DOCUMENT, AND IT HAD TO. bundle.healthz_body is the SURFACE projection — what the deploying tree expects the surface to be — and a running process never serves it, because a running process also states its release identity. Once readiness checks that identity, a fixture spelling the surface alone is no longer a healthy read: it is the pre-identity process, and the converges-on-healthy witnesses would have been asserting the refusal they exist to exclude.\\n\\nThe fixture is rendered by healthz_body_with_release_identity — the SAME producer the live route uses — so the healthy case is a document the process could actually emit rather than a hand-assembled approximation of one. That is the same discipline the original fixture note recorded when it refused a hand-spelled {\\\"status\\\":\\\"ok\\\"}, applied one layer up."
+
+fn show_healthz_read_fixture_healthy_live(
+  release_revision: CommitSha,
+) -> ShowEffectiveRead<HealthzEffectiveRead> {
+  show_healthz_read_fixture_healthy(
+    bundle: materialize_live_roadmap_site_surface_bundle(),
+    release_revision: release_revision,
+  )
 }
 
 fn reconcile_service_ready_read_for_bundle(
   read: ShowEffectiveRead<HealthzEffectiveRead>,
   bundle: RoadmapSiteSurfaceBundle,
   effect: ServiceReadyApplyEffect,
+  expected_revision: CommitSha,
+  expected_surface_identity: Fnv1a64Structural,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match read {
     ReadAbsent { reason: why } =>
@@ -243,24 +377,35 @@ fn reconcile_service_ready_read_for_bundle(
       reconcile_grounded(
         apply_effect: effect,
         show_read: read,
-        grounding: ground_service_ready_from_healthz_with_bundle(read: observed, bundle: bundle)
+        grounding: ground_service_ready_from_healthz_with_bundle(
+          read: observed,
+          bundle: bundle,
+          expected_revision: expected_revision,
+          expected_surface_identity: expected_surface_identity,
+        )
       )
   }
 }
 
 fn reconcile_service_ready_read(
-  read: ShowEffectiveRead<HealthzEffectiveRead>
+  read: ShowEffectiveRead<HealthzEffectiveRead>,
+  expected_revision: CommitSha,
+  expected_surface_identity: Fnv1a64Structural,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   reconcile_service_ready_read_for_bundle(
     read: read,
     bundle: materialize_live_roadmap_site_surface_bundle(),
     effect: service_ready_apply_effect(),
+    expected_revision: expected_revision,
+    expected_surface_identity: expected_surface_identity,
   )
 }
 
 fn reconcile_service_ready_read_for_effect(
   read: ShowEffectiveRead<HealthzEffectiveRead>,
   effect: ServiceReadyApplyEffect,
+  expected_revision: CommitSha,
+  expected_surface_identity: Fnv1a64Structural,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match read {
     ReadAbsent { reason: why } =>
@@ -276,6 +421,8 @@ fn reconcile_service_ready_read_for_effect(
         grounding: ground_service_ready_from_healthz_with_bundle(
           read: observed,
           bundle: materialize_live_roadmap_site_surface_bundle(),
+          expected_revision: expected_revision,
+          expected_surface_identity: expected_surface_identity,
         )
       )
   }
@@ -283,6 +430,7 @@ fn reconcile_service_ready_read_for_effect(
 
 fn live_deploy_service_ready_once_for_deploy(
   spec: DeploymentSpec,
+  candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
@@ -293,21 +441,31 @@ fn live_deploy_service_ready_once_for_deploy(
       access: access,
     ),
     effect: service_ready_apply_effect_for_deploy(spec: spec),
+    expected_revision: candidate.revision,
+    expected_surface_identity: candidate.expected_surface_identity,
   )
 }
 
 fn live_deploy_service_ready_once_for_bundle(
   bundle: RoadmapSiteSurfaceBundle,
+  release_revision: CommitSha,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   reconcile_service_ready_read_for_bundle(
-    read: show_healthz_read_fixture_healthy(bundle: bundle),
+    read: show_healthz_read_fixture_healthy(bundle: bundle, release_revision: release_revision),
     bundle: bundle,
     effect: service_ready_apply_effect(),
+    expected_revision: release_revision,
+    expected_surface_identity: bundle.bundle_identity,
   )
 }
 
-fn live_deploy_service_ready_once() -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  live_deploy_service_ready_once_for_bundle(bundle: materialize_live_roadmap_site_surface_bundle())
+fn live_deploy_service_ready_once(
+  release_revision: CommitSha,
+) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+  live_deploy_service_ready_once_for_bundle(
+    bundle: materialize_live_roadmap_site_surface_bundle(),
+    release_revision: release_revision,
+  )
 }
 
 fn capture_unit_diagnosis(
@@ -352,6 +510,7 @@ fn refusal_to_reconciliation(refusal: ServiceNotReady) -> Reconciliation<Service
 
 fn live_deploy_poll_service_ready_outcome_after_attempts(
   spec: DeploymentSpec,
+  candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess,
   attempt: Int,
@@ -363,6 +522,7 @@ fn live_deploy_poll_service_ready_outcome_after_attempts(
   } else {
     let probe = live_deploy_service_ready_once_for_deploy(
       spec: spec,
+      candidate: candidate,
       transport: transport,
       access: access,
     )
@@ -373,6 +533,7 @@ fn live_deploy_poll_service_ready_outcome_after_attempts(
       if delay {
         live_deploy_poll_service_ready_outcome_after_attempts(
           spec: spec,
+          candidate: candidate,
           transport: transport,
           access: access,
           attempt: attempt + 1,
@@ -389,6 +550,7 @@ fn live_deploy_poll_service_ready_outcome_after_attempts(
 
 fn live_deploy_poll_service_ready_after_attempts(
   spec: DeploymentSpec,
+  candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess,
   attempt: Int,
@@ -396,6 +558,7 @@ fn live_deploy_poll_service_ready_after_attempts(
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match live_deploy_poll_service_ready_outcome_after_attempts(
     spec: spec,
+    candidate: candidate,
     transport: transport,
     access: access,
     attempt: attempt,
@@ -417,11 +580,13 @@ fn last_probe_from_attempt(
 
 fn live_deploy_poll_until_service_ready_for_deploy(
   spec: DeploymentSpec,
+  candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match live_deploy_poll_service_ready_outcome_after_attempts(
     spec: spec,
+    candidate: candidate,
     transport: transport,
     access: access,
     attempt: 0,
@@ -442,9 +607,12 @@ fn live_deploy_poll_until_service_ready_for_deploy(
   }
 }
 
-fn live_deploy_poll_until_service_ready() -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+fn live_deploy_poll_until_service_ready(
+  candidate: CandidateRelease,
+) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   live_deploy_poll_until_service_ready_for_deploy(
     spec: deployment_spec_srv1(),
+    candidate: candidate,
     transport: ci_deploy_srv1_access.transport,
     access: ci_deploy_srv1_access,
   )
