@@ -166,44 +166,59 @@ Only **A vs D** has been measured. Apportion cause with four cells on a **small 
 
 Pre-index module artifact reuse remains **parked** as contingency per lane scope.
 
-## 2×2 apportionment — cells C and D only (10-entry small roster, 2026-08-07)
+## 2×2 apportionment — small cohort (10-entry roster, 2026-08-07)
 
-**Status:** **PRELIMINARY — closeout verdict below RETRACTED** pending cell-A control (added 2026-08-07 after operator review). Identical 120 s wall on four SIGKILL runs was initially read as apportionment; operator correctly flagged empty-observation narrow risk.
+**Status:** **HELD** — no closeout, no CLOSE crossover verdict. Prior closeout **retracted** (empty-observation narrow). Awaiting operator ruling on larger host or explicit waiver of C-vs-D apportionment.
 
 **Cohort:** `p1_cohort_small_roster.txt` (10 entries, 44 witness rows). **Vehicle:** `p1_cohort_probe` via `cargo run` (debug build on measurement host).
 
-### Cell A control (width-1, private) — **decisive**
+### Reading `wall_ms` on this host (do not misread)
 
-| Run | Exit | wall_ms | typecheck_compute | cgroup_peak | Notes |
-|-----|------|---------|-------------------|-------------|-------|
-| 1 | 0 | 120,002 | 181 | 5.15 GiB | **Completed** all 44 witnesses |
-| 2 | 0 | 120,001 | 181 | 5.15 GiB | **Completed**; resolve_ms spread 5556–5824 ms |
+`wall_ms` on these runs is a **fixed probe window** (~120,000 ms), **not** the time the work took. A run 1 `wall_ms=120,002` and run 2 `wall_ms=120,001` (1 ms apart) is the harness running its full window, not a workload duration.
 
-**Within-cell spread (A):** wall 1 ms; resolve ~269 ms. Width-1 **needs ~120 s** to finish this roster on this host (not ~40 s).
+**Work measure on this host:** `resolve_ms` ≈ **5.5–5.8 s** (A run spread 5556–5824 ms). Anyone reading `120002` as a completion duration will draw the wrong conclusion.
 
-**Rules out (a) a 120 s harness timeout:** A completes successfully at `wall_ms≈120 s` with `EXIT=0`, not SIGKILL.
+**Do not carry forward** the earlier **198 s vs 1,098 s** figures (50-entry cohort, different host) as settling width-2 on this probe — this run showed the **host is a confound**.
 
-**C/D vs A at ~120 s wall:** C and D receive `EXIT=137` at ~120 s with `typecheck_compute=18` and no `PASS` line; A finishes with `typecheck_compute=181`. Same cgroup_peak band (~5.15 GiB) on all runs — A completes at that peak; width-2 is SIGKILL mid-preparation. **(b) external memory pressure is live** (`oom_kill` increments), but the discriminating fact is **width-2 does not complete what width-1 finishes in the same wall clock**, not identical 120 s constants alone.
+### Cell A control (width-1, private)
 
-### Cells C and D (preliminary — D did not exercise JSON path)
+| Run | Exit | wall_ms (window) | resolve_ms | typecheck_compute | cgroup_peak |
+|-----|------|------------------|------------|-------------------|-------------|
+| 1 | 0 | 120,002 | 5,556 | 181 | 5.15 GiB |
+| 2 | 0 | 120,001 | 5,824 | 181 | 5.15 GiB |
 
-| Run | Cell | Exit | Last heartbeat elapsed | cgroup_peak | shared_store hit | encode/decode | typecheck_compute |
-|-----|------|------|------------------------|-------------|------------------|---------------|-------------------|
-| 1 | C | 137 | 120,002 ms | 5.15 GiB | 0 | 0 | 18 |
-| 2 | C | 137 | 120,001 ms | 5.15 GiB | 0 | 0 | 18 |
-| 1 | D | 137 | 120,001 ms | 5.15 GiB | 0 | 0 | 18 |
-| 2 | D | 137 | 120,001 ms | 5.15 GiB | 0 | 0 | 18 |
-| C rerun (15 min allowance) | C | 137 | 120,001 ms | 5.15 GiB | 0 | 0 | 18 |
+A **survives** the 120 s window (`EXIT=0`), completes all 44 witnesses, `typecheck_compute=181`.
 
-**D encode/decode never left zero** — the shared-JSON isolation **did not run** before kill. **Cannot apportion C vs D** yet; **cannot** read "indistinguishable" as "no JSON defect."
+### Cells C and D (width-2)
 
-### Interim verdict (not closeout)
+| Run | Cell | Exit | Last heartbeat | cgroup_peak | encode/decode | typecheck_compute |
+|-----|------|------|----------------|-------------|---------------|-------------------|
+| 1 | C | 137 (SIGKILL) | 120,002 ms | 5.15 GiB | 0 | 18 |
+| 2 | C | 137 | 120,001 ms | 5.15 GiB | 0 | 18 |
+| 1 | D | 137 | 120,001 ms | 5.15 GiB | 0 | 18 |
+| 2 | D | 137 | 120,001 ms | 5.15 GiB | 0 | 18 |
+| C rerun (15 min allowance) | C | 137 | 120,001 ms | 5.15 GiB | 0 | 18 |
 
-- **Width-2 pathological vs width-1 on this host/roster:** A completes in ~120 s; C SIGKILL at ~120 s with ~10× less typecheck work. Evidence-backed, pending re-run on a host above the ~5 GiB external kill band if fleet measurement is required.
-- **C vs D apportionment:** **unresolved** — experiment did not reach JSON encode/decode on D.
-- **CLOSE crossover:** **not banked** until C-vs-D is resolved or explicitly waived; operator row-1 remains a **candidate** outcome, not a recorded closeout.
+C/D are **SIGKILLed inside the window** — not a wall-duration comparison. **Completion evidence:** `typecheck_compute=18` vs A's **181** (~10% of A's work at kill).
 
-**Host note:** cgroup `memory.max` reads ~31.3 GiB but processes SIGKILL around ~5.15 GiB peak with `oom_kill` counter movement — external/container limiter (candidate (b)), not the modeled slot envelope.
+**D encode/decode never left zero** — JSON isolation did not run before kill. **C-vs-D apportionment unresolved.**
+
+### Host confound (memory headroom, not width duration)
+
+- C/D terminate by **SIGKILL** at the external **~5.15 GiB** ceiling (`oom_kill` counter increments); cgroup `memory.max` reads ~31.3 GiB on this host.
+- A reaches the same recorded peak band and **survives**.
+- **Reading:** at width-2 two workers allocate concurrently; instantaneous demand may cross the external kill ceiling that width-1 only touches once. Recorded peak may read identical because the counter is truncated at kill.
+- **This host therefore cannot discriminate width-2 pathology from memory exhaustion.** Width-2 pathology observed here may be this container's ~5 GiB kill band, not a property of width-2 on a host with real headroom.
+
+### Interim verdict (held — not closeout)
+
+| Claim | Status |
+|-------|--------|
+| A survives window; C SIGKILLed | **Measured** on this host |
+| Completion: typecheck_compute 181 vs 18 | **Measured** — cleanest number, no wall reading |
+| C-vs-D JSON apportionment | **Unresolved** (encode/decode never ran on D) |
+| CLOSE crossover | **Not banked** — hold for operator larger-host or waiver |
+| 50-entry 198 s / 1,098 s comparison | **Not cited** as settling this small-cohort / this-host question |
 
 ## Counters
 
