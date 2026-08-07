@@ -572,10 +572,7 @@ impl CiControlPlane {
         for pull in pulls {
             let number = pull["number"].as_u64();
             let head_sha = pull["head"]["sha"].as_str().map(str::to_string);
-            let head_repo = pull["head"]["repo"]["full_name"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string();
+            let head_repo = pull["head"]["repo"]["full_name"].as_str();
             let (Some(number), Some(head_sha)) = (number, head_sha) else {
                 let snippet =
                     serde_json::to_string(pull).unwrap_or_else(|_| "<unserializable>".to_string());
@@ -591,10 +588,17 @@ impl CiControlPlane {
                     "list pulls malformed payload: open PR missing base.ref (fail-closed, not silent skip): {snippet}"
                 ));
             };
+            let Some(head_repo) = head_repo.filter(|repo| !repo.is_empty()) else {
+                let snippet =
+                    serde_json::to_string(pull).unwrap_or_else(|_| "<unserializable>".to_string());
+                return Err(format!(
+                    "list pulls malformed payload: open PR missing or empty head.repo.full_name (fail-closed, not silent skip): {snippet}"
+                ));
+            };
             if head_repo != self.authority.repo_full_name {
                 fork_refusals.push(ForkRefusal {
                     pr_number: number,
-                    head_repo_full_name: head_repo,
+                    head_repo_full_name: head_repo.to_string(),
                     head_sha,
                 });
                 continue;
@@ -1552,6 +1556,56 @@ mod tests {
             .expect_err("missing base.ref");
         assert!(err.contains("missing base.ref"));
         assert!(admitted.is_empty());
+    }
+
+    #[test]
+    fn extend_open_pull_subjects_refuses_missing_head_repo_full_name() {
+        let plane = CiControlPlane {
+            config: Config {
+                workspace_root: std::env::temp_dir(),
+                mirror_path: std::env::temp_dir(),
+                serve_base_url: "http://127.0.0.1:8787".to_string(),
+                poll_interval_secs: 60,
+                lease_secs: 3600,
+                lease_holder: "test".to_string(),
+                once: true,
+                dry_run: true,
+                enqueue_rerun_sha: None,
+            },
+            authority: SeedAuthority {
+                repo_owner: "gunb-ai".to_string(),
+                repo_name: "gunbc".to_string(),
+                repo_full_name: "gunb-ai/gunbc".to_string(),
+                check_name: "gunbc-ci".to_string(),
+                state_root_rel: ".gunbc/owned-ci".to_string(),
+                default_lease_seconds: 3600,
+                stage_labels: vec!["build".to_string()],
+                floor_plan_entry: "src/v2/workflow/ci_floor_plan.dag".to_string(),
+                floor_plan_function: "gunbc_ci_floor_plan".to_string(),
+                poll_missing_github_token_refusal: "missing".to_string(),
+                poll_empty_github_token_refusal: "empty".to_string(),
+                merge_target_branch: "main".to_string(),
+            },
+        };
+        let mut admitted = Vec::new();
+        let mut fork_refusals = Vec::new();
+        let mut non_main_base_refusals = Vec::new();
+        let pulls = vec![serde_json::json!({
+            "number": 1,
+            "head": { "sha": "abc" },
+            "base": { "ref": "main" }
+        })];
+        let err = plane
+            .extend_open_pull_subjects(
+                &pulls,
+                &mut admitted,
+                &mut fork_refusals,
+                &mut non_main_base_refusals,
+            )
+            .expect_err("missing head.repo.full_name");
+        assert!(err.contains("head.repo.full_name"));
+        assert!(admitted.is_empty());
+        assert!(fork_refusals.is_empty());
     }
 
     #[test]
