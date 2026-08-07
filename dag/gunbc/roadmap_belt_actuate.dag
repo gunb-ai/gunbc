@@ -97,6 +97,7 @@ import gunbc.roadmap_dispatch_actuator {
   tmux_kill_session_argv_for_instance,
   dispatch_live_sessions_from_entries,
   dispatch_live_sessions_with_process,
+  dispatch_tmux_session_scope_for_live_session,
   DispatchStopRunningProcess,
   DispatchClearRetainedSession,
   DispatchCleanupRefused,
@@ -4299,54 +4300,43 @@ fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
         json_kv(key: "schema", value: json_string(s: "roadmap-sessions/v1")),
         json_kv(key: "observe_refused", value: json_bool(b: false)),
         json_kv(key: "sessions", value: json_array(elements: live |> map(sess => {
-          match dispatch_tmux_session_scope(node_id: sess.node_id) {
-            Present { value: scope } => {
-              let cleanup = dispatch_session_cleanup(
-                scope: scope,
-                session: sess,
-              )
-              json_object(members: [
-                json_kv(key: "node_id", value: json_string(s: sess.node_id)),
-                json_kv(key: "session_name", value: json_string(s: sess.session_name)),
-                json_kv(key: "session_presence", value: json_string(s: "present")),
-                json_kv(key: "process_state", value: json_string(
-                  s: worker_process_evidence_label(evidence: sess.worker.process))),
-                json_kv(key: "process_detail", value: json_string(
-                  s: worker_process_evidence_detail(evidence: sess.worker.process))),
-                json_kv(key: "configured_provider", value: json_string(s: provider_kind_label(kind: sess.worker.configured_provider.kind))),
-                json_kv(key: "provider", value: json_string(s: provider_evidence_label(evidence: sess.worker.provider_instance))),
-                json_kv(key: "provider_readiness", value: json_string(s: provider_readiness_label(readiness: sess.worker.provider_readiness))),
-                json_kv(key: "tool_execution_readiness", value: json_string(s: tool_execution_readiness_label(readiness: sess.worker.tool_readiness))),
-                json_kv(key: "worker_phase", value: json_string(s: worker_phase_label(phase: sess.worker.phase))),
-                json_kv(key: "cleanup_action", value: json_string(
-                  s: dispatch_session_cleanup_action(cleanup: cleanup))),
-                json_kv(key: "cleanup_allowed", value: json_bool(
-                  b: dispatch_session_cleanup_allowed(cleanup: cleanup))),
-                json_kv(key: "cleanup_detail", value: json_string(
-                  s: dispatch_session_cleanup_detail(cleanup: cleanup))),
-                json_kv(key: "facts", value: session_facts_json_value(
-                  v: session_facts_view(
-                    process: sess.worker.process,
-                    process_detail: worker_process_evidence_detail(evidence: sess.worker.process),
-                    provider: provider_evidence_label(evidence: sess.worker.provider_instance),
-                    configured_provider: provider_kind_label(kind: sess.worker.configured_provider.kind),
-                    provider_readiness: provider_readiness_label(readiness: sess.worker.provider_readiness),
-                    session_name: sess.session_name,
-                    cleanup_action: dispatch_session_cleanup_action(cleanup: cleanup),
-                    cleanup_allowed: dispatch_session_cleanup_allowed(cleanup: cleanup),
-                    cleanup_detail: dispatch_session_cleanup_detail(cleanup: cleanup),
-                  ))),
-              ])
-            }
-            Absent =>
-              json_object(members: [
-                json_kv(key: "node_id", value: json_string(s: sess.node_id)),
-                json_kv(key: "session_name", value: json_string(s: sess.session_name)),
-                json_kv(key: "cleanup_action", value: json_string(s: "selection_refused")),
-                json_kv(key: "cleanup_allowed", value: json_bool(b: false)),
-                json_kv(key: "cleanup_detail", value: json_string(s: "dispatch selection refused before cleanup scope")),
-              ])
-          }
+          let scope = dispatch_tmux_session_scope_for_live_session(sess: sess)
+          let cleanup = dispatch_session_cleanup(
+            scope: scope,
+            session: sess,
+          )
+          json_object(members: [
+            json_kv(key: "node_id", value: json_string(s: sess.node_id)),
+            json_kv(key: "session_name", value: json_string(s: sess.session_name)),
+            json_kv(key: "session_presence", value: json_string(s: "present")),
+            json_kv(key: "process_state", value: json_string(
+              s: worker_process_evidence_label(evidence: sess.worker.process))),
+            json_kv(key: "process_detail", value: json_string(
+              s: worker_process_evidence_detail(evidence: sess.worker.process))),
+            json_kv(key: "configured_provider", value: json_string(s: provider_kind_label(kind: sess.worker.configured_provider.kind))),
+            json_kv(key: "provider", value: json_string(s: provider_evidence_label(evidence: sess.worker.provider_instance))),
+            json_kv(key: "provider_readiness", value: json_string(s: provider_readiness_label(readiness: sess.worker.provider_readiness))),
+            json_kv(key: "tool_execution_readiness", value: json_string(s: tool_execution_readiness_label(readiness: sess.worker.tool_readiness))),
+            json_kv(key: "worker_phase", value: json_string(s: worker_phase_label(phase: sess.worker.phase))),
+            json_kv(key: "cleanup_action", value: json_string(
+              s: dispatch_session_cleanup_action(cleanup: cleanup))),
+            json_kv(key: "cleanup_allowed", value: json_bool(
+              b: dispatch_session_cleanup_allowed(cleanup: cleanup))),
+            json_kv(key: "cleanup_detail", value: json_string(
+              s: dispatch_session_cleanup_detail(cleanup: cleanup))),
+            json_kv(key: "facts", value: session_facts_json_value(
+              v: session_facts_view(
+                process: sess.worker.process,
+                process_detail: worker_process_evidence_detail(evidence: sess.worker.process),
+                provider: provider_evidence_label(evidence: sess.worker.provider_instance),
+                configured_provider: provider_kind_label(kind: sess.worker.configured_provider.kind),
+                provider_readiness: provider_readiness_label(readiness: sess.worker.provider_readiness),
+                session_name: sess.session_name,
+                cleanup_action: dispatch_session_cleanup_action(cleanup: cleanup),
+                cleanup_allowed: dispatch_session_cleanup_allowed(cleanup: cleanup),
+                cleanup_detail: dispatch_session_cleanup_detail(cleanup: cleanup),
+              ))),
+          ])
         }))),
       ])
   }

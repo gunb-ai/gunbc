@@ -73,11 +73,12 @@ import gunbc.roadmap_dispatch_actuator {
   tmux_kill_session_argv,
   tmux_ls_argv,
   filter_dispatch_tmux_sessions,
-  classify_dispatch_request,
+  classify_dispatch_request_for_process_fingerprint,
   classify_dispatch_lease_upsert,
   classify_tmux_session,
-  dispatch_tmux_session_scope,
-  dispatch_live_sessions_from_entries,
+  dispatch_tmux_session_scope_for_process_fingerprint,
+  dispatch_live_session_row_for_scope,
+  dispatch_provider_instance_for,
   session_lease_reuses_process_port_classifier_shape,
   hostile_node_id_stays_single_argv_token,
   DispatchPermitted,
@@ -96,6 +97,7 @@ import gunbc.dispatch_selection {
   codex_offer_for_instance,
   codex_offer_for_instance_with_standing,
   fixture_inventory_codex_only_available,
+  dispatch_codex_process_fingerprint,
   DispatchSelectionRefused,
   DispatchSelectionResolved,
   ProviderInventory,
@@ -536,7 +538,14 @@ test fn witness_not_ready_node_refused() -> Bool {
   let edges = [RoadmapEdge { child: nid(s: "child"), parent: nid(s: "parent") }]
   let doc = fixture_doc(nodes: [parent, child], edges: edges)
   let ready = next_spawnable(doc: doc, merged: [])
-  match classify_dispatch_request(node: child, ready: ready, tmux_entries: [], attempt_key: "feedfacefeedface") {
+  match classify_dispatch_request_for_process_fingerprint(
+    node: child,
+    ready: ready,
+    tmux_entries: [],
+    attempt_key: "feedfacefeedface",
+    process_fingerprint: dispatch_codex_process_fingerprint,
+    effort: ReasoningMedium,
+  ) {
     DispatchRefused { reason: r } => string_contains(s: r as String, pattern: "not in ready frontier")
     _ => false
   }
@@ -546,7 +555,14 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
   let node = sized_derivable(id: "ready-node", prs: [10], title: "Ready")
   let doc = fixture_doc(nodes: [node], edges: [])
   let ready = next_spawnable(doc: doc, merged: [])
-  match classify_dispatch_request(node: node, ready: ready, tmux_entries: [], attempt_key: "feedfacefeedface") {
+  match classify_dispatch_request_for_process_fingerprint(
+    node: node,
+    ready: ready,
+    tmux_entries: [],
+    attempt_key: "feedfacefeedface",
+    process_fingerprint: dispatch_codex_process_fingerprint,
+    effort: ReasoningMedium,
+  ) {
     DispatchPermitted { session_name: s, worktree_path: w, branch_name: b, brief: br, reasoning_effort: e } =>
       s == "gunbc-dispatch-ready-node"
         && string_contains(s: w, pattern: "ready-node-afeedfacefeedface")
@@ -562,7 +578,14 @@ test fn witness_live_lease_refused() -> Bool {
   let doc = fixture_doc(nodes: [node], edges: [])
   let ready = next_spawnable(doc: doc, merged: [])
   let entries = [TmuxLsEntry { session_name: "gunbc-dispatch-leased-node", windows: 1 }]
-  match classify_dispatch_request(node: node, ready: ready, tmux_entries: entries, attempt_key: "feedfacefeedface") {
+  match classify_dispatch_request_for_process_fingerprint(
+    node: node,
+    ready: ready,
+    tmux_entries: entries,
+    attempt_key: "feedfacefeedface",
+    process_fingerprint: dispatch_codex_process_fingerprint,
+    effort: ReasoningMedium,
+  ) {
     DispatchRefused { reason: r } =>
       string_contains(s: r as String, pattern: "name occupied")
         && string_contains(s: r as String, pattern: "fingerprint unobserved")
@@ -571,13 +594,13 @@ test fn witness_live_lease_refused() -> Bool {
 }
 
 test fn witness_absent_lease_classifies_spawn() -> Bool {
-  match dispatch_tmux_session_scope(node_id: nid(s: "lease-absent")) {
-    Present { value: scope } =>
-      match classify_dispatch_lease_upsert(scope: scope, obs: SessionAbsent) {
-        UpsertClassification { verdict: Absent, decision: Apply { plan: SpawnSession } } => true
-        _ => false
-      }
-    none => false
+  let scope = dispatch_tmux_session_scope_for_process_fingerprint(
+    node_id: nid(s: "lease-absent"),
+    process_fingerprint: dispatch_codex_process_fingerprint,
+  )
+  match classify_dispatch_lease_upsert(scope: scope, obs: SessionAbsent) {
+    UpsertClassification { verdict: Absent, decision: Apply { plan: SpawnSession } } => true
+    _ => false
   }
 }
 
@@ -589,50 +612,63 @@ test fn witness_live_sessions_panel_rows() -> Bool {
   let output = "gunbc-dispatch-panel-a: 1 windows (created Fri Jul  3 04:14:00 2026)\n"
   match parse_tmux_ls_output(output: output) {
     TmuxLsParsed { entries } => {
-      let rows = dispatch_live_sessions_from_entries(entries: entries)
-      count(rows) == 1
-        && rows.first().node_id == "panel-a"
-        && rows.first().session_name == "gunbc-dispatch-panel-a"
-        && rows.first().lease_verdict == UnknownRefused
+      let filtered = filter_dispatch_tmux_sessions(entries: entries)
+      if count(filtered) == 1 {
+        let entry = filtered.first()
+        let scope = dispatch_tmux_session_scope_for_process_fingerprint(
+          node_id: nid(s: "panel-a"),
+          process_fingerprint: dispatch_codex_process_fingerprint,
+        )
+        let row = dispatch_live_session_row_for_scope(
+          entry: entry,
+          scope: scope,
+          instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+        )
+        row.node_id == "panel-a"
+          && row.session_name == "gunbc-dispatch-panel-a"
+          && row.lease_verdict == UnknownRefused
+      } else {
+        false
+      }
     }
     TmuxLsParseRefused { line_number: _, raw: _, reason: _ } => false
   }
 }
 
 test fn witness_name_only_observation_not_converged() -> Bool {
-  match dispatch_tmux_session_scope(node_id: nid(s: "name-only")) {
-    Present { value: scope } =>
-      match classify_tmux_session(
-        scope: scope,
-        obs: SessionNameObserved {
-          session_name: "gunbc-dispatch-name-only" as NonEmptyStr,
-          windows: 1,
-        },
-      ) {
-        UnknownRefused => true
-        Converged => false
-        _ => false
-      }
-    none => false
+  let scope = dispatch_tmux_session_scope_for_process_fingerprint(
+    node_id: nid(s: "name-only"),
+    process_fingerprint: dispatch_codex_process_fingerprint,
+  )
+  match classify_tmux_session(
+    scope: scope,
+    obs: SessionNameObserved {
+      session_name: "gunbc-dispatch-name-only" as NonEmptyStr,
+      windows: 1,
+    },
+  ) {
+    UnknownRefused => true
+    Converged => false
+    _ => false
   }
 }
 
 test fn witness_foreign_process_fingerprint_is_conflict() -> Bool {
-  match dispatch_tmux_session_scope(node_id: nid(s: "foreign-proc")) {
-    Present { value: scope } =>
-      match classify_dispatch_lease_upsert(
-        scope: scope,
-        obs: SessionObserved {
-          session_name: "gunbc-dispatch-foreign-proc" as NonEmptyStr,
-          windows: 1,
-          process_fingerprint: "foreign-shell" as NonEmptyStr,
-        },
-      ) {
-        UpsertClassification { verdict: Conflict, decision: Refuse { reason: _ } } => true
-        UpsertClassification { verdict: Converged, decision: _ } => false
-        _ => false
-      }
-    none => false
+  let scope = dispatch_tmux_session_scope_for_process_fingerprint(
+    node_id: nid(s: "foreign-proc"),
+    process_fingerprint: dispatch_codex_process_fingerprint,
+  )
+  match classify_dispatch_lease_upsert(
+    scope: scope,
+    obs: SessionObserved {
+      session_name: "gunbc-dispatch-foreign-proc" as NonEmptyStr,
+      windows: 1,
+      process_fingerprint: "foreign-shell" as NonEmptyStr,
+    },
+  ) {
+    UpsertClassification { verdict: Conflict, decision: Refuse { reason: _ } } => true
+    UpsertClassification { verdict: Converged, decision: _ } => false
+    _ => false
   }
 }
 

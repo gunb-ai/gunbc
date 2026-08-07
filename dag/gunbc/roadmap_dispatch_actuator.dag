@@ -84,6 +84,8 @@ import extdeps.llm.cli_lifecycle {
   ProviderInstanceFieldUnobserved,
   ProviderKind,
   ClaudeCliProvider,
+  CodexCliProvider,
+  CursorCliProvider,
 }
 import gunbc.dispatch_selection {
   ExecutionProfile,
@@ -99,6 +101,9 @@ import gunbc.dispatch_selection {
   resolve_dispatch_selection,
   provider_inventory_for_instance,
   resolved_process_fingerprint,
+  dispatch_codex_process_fingerprint,
+  dispatch_claude_process_fingerprint,
+  dispatch_cursor_process_fingerprint,
   srv1_live_dashboard_instance,
 }
 import extdeps.llm.cursor_cli {
@@ -906,15 +911,45 @@ fn dispatch_branch_name(node_id: RoadmapNodeId, attempt_key: String) -> String {
   join(["dispatch/", node_id as String, "-a", attempt_key], "")
 }
 
+data dispatch_actuator_lease_witness_fixture_note: String = "Lease and tmux classification witnesses pin an explicit process fingerprint via dispatch_tmux_session_scope_for_process_fingerprint and classify_dispatch_request_for_process_fingerprint — they prove ownership classification and ready-frontier gating, not production selection standing. Production paths use dispatch_actuator_selection and refuse while standing axes block eligibility."
+
+data dispatch_live_session_scope_note: String = "Observed tmux rows classify cleanup scope from the session worker's configured provider fingerprint constants — not from production dispatch_actuator_selection. Selection refusal correctly blocks NEW dispatch; it must not erase projection of sessions that already exist on the host."
+
+fn dispatch_process_fingerprint_for_provider_kind(kind: ProviderKind) -> NonEmptyStr {
+  match kind {
+    CodexCliProvider => dispatch_codex_process_fingerprint
+    ClaudeCliProvider => dispatch_claude_process_fingerprint
+    CursorCliProvider => dispatch_cursor_process_fingerprint
+  }
+}
+
+fn dispatch_process_fingerprint_for_cli_provider(provider: DispatchCliProvider) -> NonEmptyStr {
+  match provider {
+    CodexDispatchProvider => dispatch_codex_process_fingerprint
+    ClaudeCodeProvider => dispatch_claude_process_fingerprint
+    CursorDispatchProvider => dispatch_cursor_process_fingerprint
+  }
+}
+
+fn dispatch_tmux_session_scope_for_process_fingerprint(
+  node_id: RoadmapNodeId,
+  process_fingerprint: NonEmptyStr,
+) -> TmuxSessionScope {
+  TmuxSessionScope {
+    session_name: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
+    expected_owner_label: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
+    expected_process_fingerprint: process_fingerprint,
+  }
+}
+
 fn dispatch_tmux_session_scope(node_id: RoadmapNodeId) -> TmuxSessionScope? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } =>
       Present {
-        value: TmuxSessionScope {
-          session_name: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
-          expected_owner_label: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
-          expected_process_fingerprint: process_fingerprint,
-        },
+        value: dispatch_tmux_session_scope_for_process_fingerprint(
+          node_id: node_id,
+          process_fingerprint: process_fingerprint,
+        ),
       }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
@@ -1769,16 +1804,38 @@ fn dispatch_permitted_from_selection(
   }
 }
 
-fn dispatch_permitted_for_node(node: RoadmapNode, attempt_key: String) -> DispatchRequestGate {
-  match dispatch_actuator_selection(node_sizing: node.sizing) {
-    DispatchActuatorSelectionRefused { reason } =>
-      DispatchRefused { reason: reason }
-    DispatchActuatorSelectionOk { provider: _, effort, process_fingerprint: _ } =>
-      dispatch_permitted_from_selection(
-        node: node,
-        attempt_key: attempt_key,
-        effort: effort,
+fn classify_dispatch_request_for_process_fingerprint(
+  node: RoadmapNode,
+  ready: List<RoadmapNode>,
+  tmux_entries: List<TmuxLsEntry>,
+  attempt_key: String,
+  process_fingerprint: NonEmptyStr,
+  effort: ReasoningEffort,
+) -> DispatchRequestGate {
+  if !node_in_ready(node_id: node.node, ready: ready) {
+    DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
+  } else {
+    if !node_repo_supported(node: node) {
+      DispatchRefused { reason: "repo not supported on srv1 mvp" as NonEmptyStr }
+    } else {
+      let scope = dispatch_tmux_session_scope_for_process_fingerprint(
+        node_id: node.node,
+        process_fingerprint: process_fingerprint,
       )
+      let obs = tmux_session_observation_for_scope(scope: scope, entries: tmux_entries)
+      match classify_dispatch_lease_upsert(scope: scope, obs: obs) {
+        UpsertClassification { verdict: _, decision: Refuse { reason } } =>
+          DispatchRefused { reason: reason }
+        UpsertClassification { verdict: _, decision: Noop } =>
+          DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
+        UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
+          dispatch_permitted_from_selection(
+            node: node,
+            attempt_key: attempt_key,
+            effort: effort,
+          )
+      }
+    }
   }
 }
 
@@ -1797,22 +1854,15 @@ fn classify_dispatch_request(
       match dispatch_actuator_selection(node_sizing: node.sizing) {
         DispatchActuatorSelectionRefused { reason } =>
           DispatchRefused { reason: reason }
-        DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } => {
-          let scope = TmuxSessionScope {
-            session_name: dispatch_tmux_session_name(node_id: node.node) as NonEmptyStr,
-            expected_owner_label: dispatch_tmux_session_name(node_id: node.node) as NonEmptyStr,
-            expected_process_fingerprint: process_fingerprint,
-          }
-          let obs = tmux_session_observation_for_scope(scope: scope, entries: tmux_entries)
-          match classify_dispatch_lease_upsert(scope: scope, obs: obs) {
-            UpsertClassification { verdict: _, decision: Refuse { reason } } =>
-              DispatchRefused { reason: reason }
-            UpsertClassification { verdict: _, decision: Noop } =>
-              DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
-            UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
-              dispatch_permitted_for_node(node: node, attempt_key: attempt_key)
-          }
-        }
+        DispatchActuatorSelectionOk { provider: _, effort, process_fingerprint } =>
+          classify_dispatch_request_for_process_fingerprint(
+            node: node,
+            ready: ready,
+            tmux_entries: tmux_entries,
+            attempt_key: attempt_key,
+            process_fingerprint: process_fingerprint,
+            effort: effort,
+          )
       }
     }
   }
@@ -1827,6 +1877,24 @@ fn dispatch_node_id_from_session_name(session_name: String) -> String {
     )
   } else {
     ""
+  }
+}
+
+fn dispatch_live_session_row_for_scope(
+  entry: TmuxLsEntry,
+  scope: TmuxSessionScope,
+  instance: ProviderInstance,
+) -> DispatchLiveSession {
+  let obs = SessionNameObserved {
+    session_name: entry.session_name as NonEmptyStr,
+    windows: entry.windows,
+  }
+  DispatchLiveSession {
+    session_name: entry.session_name,
+    node_id: dispatch_node_id_from_session_name(session_name: entry.session_name),
+    windows: entry.windows,
+    lease_verdict: classify_tmux_session(scope: scope, obs: obs),
+    worker: worker_observation_without_provider_probe(instance: instance),
   }
 }
 
@@ -1851,11 +1919,54 @@ fn live_session_row(entry: TmuxLsEntry, scope: TmuxSessionScope) -> DispatchLive
   }
 }
 
+fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> TmuxSessionScope {
+  dispatch_tmux_session_scope_for_process_fingerprint(
+    node_id: sess.node_id as RoadmapNodeId,
+    process_fingerprint: dispatch_process_fingerprint_for_provider_kind(
+      kind: sess.worker.configured_provider.kind,
+    ),
+  )
+}
+
+fn dispatch_live_session_scope_for_entry(node_id: RoadmapNodeId) -> TmuxSessionScope {
+  match dispatch_tmux_session_scope(node_id: node_id) {
+    Present { value: scope } => scope
+    Absent =>
+      match dispatch_cli_provider() {
+        Present { value: provider } =>
+          dispatch_tmux_session_scope_for_process_fingerprint(
+            node_id: node_id,
+            process_fingerprint: dispatch_process_fingerprint_for_cli_provider(provider: provider),
+          )
+        Absent =>
+          dispatch_tmux_session_scope_for_process_fingerprint(
+            node_id: node_id,
+            process_fingerprint: dispatch_codex_process_fingerprint,
+          )
+      }
+  }
+}
+
 fn dispatch_live_session_for_entry(entry: TmuxLsEntry) -> DispatchLiveSession? {
   let node_id = dispatch_node_id_from_session_name(session_name: entry.session_name)
-  match dispatch_tmux_session_scope(node_id: node_id) {
-    Present { value: scope } => live_session_row(entry: entry, scope: scope)
-    none => none
+  let scope = dispatch_live_session_scope_for_entry(node_id: node_id as RoadmapNodeId)
+  match dispatch_provider_instance() {
+    Present { value: instance } =>
+      Present {
+        value: dispatch_live_session_row_for_scope(
+          entry: entry,
+          scope: scope,
+          instance: instance,
+        ),
+      }
+    Absent =>
+      Present {
+        value: dispatch_live_session_row_for_scope(
+          entry: entry,
+          scope: scope,
+          instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+        ),
+      }
   }
 }
 
@@ -2113,34 +2224,31 @@ fn live_session_row_with_process(
   entry: TmuxLsEntry,
   scope: TmuxSessionScope,
   process: WorkerProcessEvidence,
-) -> DispatchLiveSession? {
-  match dispatch_worker_observation_for_process(process: process) {
-    Present { value: worker } => {
-      let obs = match process {
-        WorkerProcessRunning { command } =>
-          SessionObserved {
-            session_name: entry.session_name as NonEmptyStr,
-            windows: entry.windows,
-            process_fingerprint: command,
-          }
-        _ =>
-          SessionNameObserved {
-            session_name: entry.session_name as NonEmptyStr,
-            windows: entry.windows,
-          }
+  instance: ProviderInstance,
+) -> DispatchLiveSession {
+  let worker = worker_observation_without_provider_probe_for_process(
+    instance: instance,
+    process: process,
+  )
+  let obs = match process {
+    WorkerProcessRunning { command } =>
+      SessionObserved {
+        session_name: entry.session_name as NonEmptyStr,
+        windows: entry.windows,
+        process_fingerprint: command,
       }
-      Present {
-        value: DispatchLiveSession {
-          session_name: entry.session_name,
-          node_id: dispatch_node_id_from_session_name(
-            session_name: entry.session_name),
-          windows: entry.windows,
-          lease_verdict: classify_tmux_session(scope: scope, obs: obs),
-          worker: worker,
-        }
+    _ =>
+      SessionNameObserved {
+        session_name: entry.session_name as NonEmptyStr,
+        windows: entry.windows,
       }
-    }
-    none => none
+  }
+  DispatchLiveSession {
+    session_name: entry.session_name,
+    node_id: dispatch_node_id_from_session_name(session_name: entry.session_name),
+    windows: entry.windows,
+    lease_verdict: classify_tmux_session(scope: scope, obs: obs),
+    worker: worker,
   }
 }
 
@@ -2151,22 +2259,23 @@ fn append_present_live_session_with_process(
   pane_observation_refusal: String,
 ) -> List<DispatchLiveSession> {
   let node_id = dispatch_node_id_from_session_name(session_name: entry.session_name)
-  match dispatch_tmux_session_scope(node_id: node_id) {
-    Present { value: scope } =>
-      match live_session_row_with_process(
-        entry: entry,
-        scope: scope,
-        process: worker_process_for_session(
-          panes: panes,
-          session_name: entry.session_name,
-          pane_observation_refusal: pane_observation_refusal,
-        ),
-      ) {
-        Present { value: row } => concat(acc, [row])
-        Absent => acc
-      }
-    Absent => acc
+  let scope = dispatch_live_session_scope_for_entry(node_id: node_id as RoadmapNodeId)
+  let instance = match dispatch_provider_instance() {
+    Present { value: instance } => instance
+    Absent => dispatch_provider_instance_for(provider: CodexDispatchProvider)
   }
+  concat(acc, [
+    live_session_row_with_process(
+      entry: entry,
+      scope: scope,
+      process: worker_process_for_session(
+        panes: panes,
+        session_name: entry.session_name,
+        pane_observation_refusal: pane_observation_refusal,
+      ),
+      instance: instance,
+    ),
+  ])
 }
 
 fn dispatch_live_sessions_with_process(
