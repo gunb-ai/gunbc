@@ -13,13 +13,16 @@ import gunbc.generated_artifact {
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, FilePath }
 import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.git
 import extdeps.git.object_store {
   GitPath,
   git_path_octets,
   GitObjectId,
   git_object_id_eq,
+  git_object_id_wire_hex,
+  GitObjectFormatSha1,
   GitIndexEntry,
   GitIndexStage,
   GitIndexStageNormal,
@@ -29,7 +32,11 @@ import extdeps.git.object_store {
   GitEffectiveConflictMarkerGrammar,
   git_conflict_marker_begin,
   git_conflict_marker_separator,
-  git_conflict_marker_end
+  git_conflict_marker_end,
+  git_decode_ls_files_stage_z,
+  GitLsFilesStageZDecodeOutcome,
+  GitLsFilesStageZDecoded,
+  GitLsFilesStageZRefused
 }
 import v2.std.artifact { Artifact, TestClaimArtifact }
 import v2.compiler.source_authority {
@@ -37,6 +44,8 @@ import v2.compiler.source_authority {
   ParsedFromSource,
   ProducedByBehavior,
 }
+import std.algebra { Empty }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.measure { millisecond, millisecond_count, WallClock, clock_basis_eq }
 import std.realization_schedule {
   string_list_eq, ScheduleWitnessEntry,
@@ -84,6 +93,11 @@ type CommitWriterObservedBlobClassification
   | CommitWriterBlobNonTextClassified {
       artifact: CommitWriterArtifactClassificationReceipt,
     }
+  | CommitWriterBlobTextUnclaimed {
+      text: String,
+      marker_grammar: GitEffectiveConflictMarkerGrammar,
+    }
+  | CommitWriterBlobNonTextUnclaimed
   | CommitWriterBlobArtifactClassificationRefused {
       cause: CommitWriterArtifactClassificationFailure,
     }
@@ -177,7 +191,7 @@ type CommitWriterAdmission
       refusals: List<CommitWriterRefusal>
     }
 
-data commit_writer_admission_note: String = "ONE ADMISSION AUTHORITY FOR EVERY COMMIT WRITER. admit_commit_writer consumes one staged-index snapshot plus its blob-observation population, not a caller-selected path list. It refuses every non-normal GitIndexStage and independently refuses missing, extra, or duplicate blob observations; duplicate normal entries; index/blob identity disagreement; observed-content disagreement; and unavailable decode or classification. Text/non-text is carried only by the sole-constructor observer receipt. The marker grammar stores Git gitattributes conflict-marker-size once as PositiveInt and derives begin, separator, and end tokens, then parses complete begin -> separator -> end line blocks in the exact staged text; isolated and out-of-order tokens admit. Fixture exemption is not a naked Artifact argument: commit_writer_classify_artifact projects a sole-constructor receipt from v2.compiler.source_authority ModuleStorageBinding rows and binds it to the same GitPath and indexed GitObjectId. A source-path TestClaimArtifact, mismatched path, fabricated matching artifact, or receipt moved to another blob refuses. This reaches mechanical prevention today; DESIGN section 4b names sole_constructor completeness as the structural-unforgeability ceiling. The generated pre-commit hook remains optional feedback, never enforcement. COMMIT 218dea61248d RECEIPT: its WIP-prefixed merge subject identifies DashboardAutocommit as the proven missing writer despite the reused gunbc-ci-auto-heal committer identity. HealAutocommit already refuses authored conflicts in ci_heal_skew_authored_conflict_refusal, but ci_heal_skew_conflict_arm writes through shape_git_commit_no_verify_no_edit_argv, so it bypasses even hook feedback and currently commits ours bytes before later regeneration. COUNTABLE MODEL/REALIZATION SPLIT: commit_writer_binding_work owns two typed rows, the in-repo ci_heal_skew_conflict_arm under CommitWriterHealOrchestrationLaneOwner and the out-of-repository dashboard daemon under CommitWriterDashboardInfrastructureOperatorOwner. Each row triggers when its complete staged-index/blob observer transport lands; that transport must observe the effective marker size and ModuleStorageBinding authority, then call admit_commit_writer immediately before its write. The heal realization must additionally move regeneration and byte-proof before commit. Until those owned bindings land, this PR closes the shared decision and executable incident witness, not the writer transports."
+data commit_writer_admission_note: String = "ONE ADMISSION AUTHORITY FOR EVERY COMMIT WRITER. admit_commit_writer consumes one staged-index snapshot plus its blob-observation population, not a caller-selected path list. It refuses every non-normal GitIndexStage and independently refuses missing, extra, or duplicate blob observations; duplicate normal entries; index/blob identity disagreement; observed-content disagreement; and unavailable decode or classification. Text/non-text is carried only by the sole-constructor observer receipt. The marker grammar stores Git gitattributes conflict-marker-size once as PositiveInt and derives begin, separator, and end tokens, then parses complete begin -> separator -> end line blocks in the exact staged text; isolated and out-of-order tokens admit. Fixture exemption is not a naked Artifact argument: commit_writer_classify_artifact projects a sole-constructor receipt from v2.compiler.source_authority ModuleStorageBinding rows and binds it to the same GitPath and indexed GitObjectId. A source-path TestClaimArtifact, mismatched path, fabricated matching artifact, or receipt moved to another blob refuses. ABSENCE IS NOT INABILITY: CommitWriterArtifactClassificationReceipt stays sole_constructor with its one construction site in commit_writer_classify_artifact — no second way to earn a receipt exists. A blob that claims no exemption does not need one; the observer classifies it CommitWriterBlobTextUnclaimed or CommitWriterBlobNonTextUnclaimed instead of routing an absent claim through classification failure, and an unclaimed text blob still receives the full conflict-marker scan via commit_writer_text_marker_refusals. Only a claimed TestClaimArtifact receipt skips the scan, so omitting the receipt costs a forger the exemption and buys nothing. The observer is trusted on text-versus-non-text with no independent check today, for both claimed and unclaimed blobs alike; that residue is unchanged by the absence arm and is not fixed here. DESIGN section 4b names sole_constructor completeness as the structural-unforgeability ceiling; before the absence arm, admit_commit_writer refused every real heal-shaped commit because every non-.dag staged path had no ParsedFromSource binding to classify against, so it had never executed against a live population despite this note's earlier claim to have reached mechanical prevention. The generated pre-commit hook remains optional feedback, never enforcement. COMMIT 218dea61248d RECEIPT: its WIP-prefixed merge subject identifies DashboardAutocommit as the proven missing writer despite the reused gunbc-ci-auto-heal committer identity. HealAutocommit already refuses authored conflicts in ci_heal_skew_authored_conflict_refusal, but ci_heal_skew_conflict_arm writes through shape_git_commit_no_verify_no_edit_argv, so it bypasses even hook feedback and currently commits ours bytes before later regeneration. COUNTABLE MODEL/REALIZATION SPLIT: commit_writer_binding_work owns two typed rows, the in-repo ci_heal_skew_conflict_arm under CommitWriterHealOrchestrationLaneOwner and the out-of-repository dashboard daemon under CommitWriterDashboardInfrastructureOperatorOwner. Each row triggers when its complete staged-index/blob observer transport lands; that transport must observe the effective marker size and ModuleStorageBinding authority, then call admit_commit_writer immediately before its write. The heal realization must additionally move regeneration and byte-proof before commit. Until those owned bindings land, this PR closes the shared decision and executable incident witness, not the writer transports."
 
 type CommitWriterArtifactClassificationResolution
   = CommitWriterArtifactClassified {
@@ -257,6 +271,21 @@ fn commit_writer_refused_artifact_classification_receipt(
 ) -> CommitWriterBlobClassificationReceipt {
   CommitWriterBlobClassificationReceipt {
     observed: CommitWriterBlobArtifactClassificationRefused { cause: cause }
+  }
+}
+
+fn commit_writer_text_unclaimed_classification_receipt(
+  text: String,
+  marker_grammar: GitEffectiveConflictMarkerGrammar,
+) -> CommitWriterBlobClassificationReceipt {
+  CommitWriterBlobClassificationReceipt {
+    observed: CommitWriterBlobTextUnclaimed { text: text, marker_grammar: marker_grammar }
+  }
+}
+
+fn commit_writer_non_text_unclaimed_classification_receipt() -> CommitWriterBlobClassificationReceipt {
+  CommitWriterBlobClassificationReceipt {
+    observed: CommitWriterBlobNonTextUnclaimed
   }
 }
 
@@ -736,6 +765,13 @@ fn commit_writer_blob_classification_refusals(
           )
         },
       )
+    CommitWriterBlobNonTextUnclaimed => []
+    CommitWriterBlobTextUnclaimed { text, marker_grammar } =>
+      commit_writer_text_marker_refusals(
+        path: blob.path,
+        text: text,
+        grammar: marker_grammar,
+      )
   }
 }
 
@@ -847,6 +883,146 @@ fn admit_commit_writer(
     CommitWriterRefused { writer: writer, refusals: refusals }
   }
 }
+
+data commit_writer_complete_staged_index_blob_observation_transport_note: String = "REALIZATION for commit_writer_complete_staged_index_blob_observation_transport (commit_writer_binding_work). Decodes the real staged index via git.Core.LsFilesStageZInRepo + git_decode_ls_files_stage_z, reads each GitIndexStageNormal blob's content via git.Core.CatFileBlobInRepo keyed on the index oid — both repo-scoped (git -C dispatched to the repo argument), matching the existing *InRepo operation family in extdeps.git.git rather than assuming the process cwd, so the same fold is exercisable against a throwaway test repository and not only the actuator's invocation directory (never a caller-supplied oid, so content_oid == indexed_oid is an honest fetch-by-that-exact-oid check, not a tautology), classifies each blob against heal_writer_claims_no_fixture_exemptions, the declared-empty ModuleStorageIndex policy this writer holds (see heal_writer_claims_no_fixture_exemptions_note for why and its named limitation), matched by GitPath octets, and falls to the CommitWriterBlobTextUnclaimed absence arm (still fully marker-scanned) for every blob because no binding is ever held. Two named residues, unchanged from commit_writer_admission_note: text-vs-non-text is not independently observed (every fetched blob is treated as text, matching the existing observer-trusted residue), and the marker grammar is Git's documented default width of seven rather than an observed gitattributes conflict-marker-size (no attribute-reading operation exists yet; a narrower grammar only widens what refuses, never what silently admits, so this is a strict subset of the true refusal set, not a fail-open). GitObjectFormatSha1 is hardcoded because this repository's object database is SHA-1; a SHA-256 repository would need this as a parameter, not assumed."
+
+fn commit_writer_candidate_artifacts_for_path(
+  module_storage: List<ModuleStorageBinding>,
+  path: GitPath,
+) -> List<Artifact> {
+  flat_map(
+    module_storage,
+    binding => match binding.provenance {
+      ParsedFromSource { artifact, span_index: _ } =>
+        if bytes_octets(b: utf8_encode_bytes(s: artifact.file_path)) == git_path_octets(path: path) {
+          [artifact]
+        } else {
+          []
+        }
+      ProducedByBehavior { producer: _ } => []
+    },
+  )
+}
+
+fn commit_writer_classify_staged_blob(
+  module_storage: List<ModuleStorageBinding>,
+  path: GitPath,
+  indexed_oid: GitObjectId,
+  text: String,
+  grammar: GitEffectiveConflictMarkerGrammar,
+) -> CommitWriterBlobClassificationReceipt {
+  match first(commit_writer_candidate_artifacts_for_path(module_storage: module_storage, path: path)) {
+    Absent => commit_writer_text_unclaimed_classification_receipt(text: text, marker_grammar: grammar)
+    Present { value: artifact } =>
+      match commit_writer_classify_artifact(
+        module_storage: module_storage,
+        path: path,
+        indexed_oid: indexed_oid,
+        artifact: artifact,
+      ) {
+        CommitWriterArtifactClassified { receipt } =>
+          commit_writer_text_classification_receipt(text: text, marker_grammar: grammar, artifact: receipt)
+        CommitWriterArtifactClassificationRefused { cause } =>
+          commit_writer_refused_artifact_classification_receipt(cause: cause)
+      }
+  }
+}
+
+fn commit_writer_observe_staged_blob(
+  repo: FilePath,
+  module_storage: List<ModuleStorageBinding>,
+  entry: GitIndexEntry,
+) -> CommitWriterStagedBlobObservation {
+  let hex = git_object_id_wire_hex(oid: entry.oid) as String
+  let read = git.Core.CatFileBlobInRepo(repo: repo, oid: hex)
+  CommitWriterStagedBlobObservation {
+    path: entry.path,
+    indexed_oid: entry.oid,
+    content_oid: entry.oid,
+    classification: if read.success {
+      commit_writer_classify_staged_blob(
+        module_storage: module_storage,
+        path: entry.path,
+        indexed_oid: entry.oid,
+        text: read.content,
+        grammar: GitEffectiveConflictMarkerGrammar { size: 7 },
+      )
+    } else {
+      commit_writer_unavailable_classification_receipt(
+        cause: concat("git cat-file -p failed for oid ", hex),
+      )
+    },
+  }
+}
+
+fn commit_writer_observe_staged_blobs(
+  repo: FilePath,
+  module_storage: List<ModuleStorageBinding>,
+  index: List<GitIndexEntry>,
+) -> List<CommitWriterStagedBlobObservation> {
+  flat_map(
+    index,
+    entry => match entry.stage {
+      GitIndexStageNormal =>
+        [commit_writer_observe_staged_blob(repo: repo, module_storage: module_storage, entry: entry)]
+      GitIndexStageBase => []
+      GitIndexStageOurs => []
+      GitIndexStageTheirs => []
+    },
+  )
+}
+
+type CommitWriterTransportObservation
+  = CommitWriterTransportObserved { observation: CompleteStagedCommitObservation }
+  | CommitWriterTransportRefused { reason: String }
+
+data heal_writer_claims_no_fixture_exemptions_note: String = "POLICY, NOT A FALLBACK. observe_complete_staged_commit's caller (heal_admit / HealAutocommit) never stages genuine test fixtures — it stages only generated artifacts — so it declares up front that it holds no ModuleStorageBinding rows and therefore claims no TestClaimArtifact fixture exemption for anything it stages. This is v2.compiler.source_authority module_storage_bindings_for_source_roots's Empty ModuleStorageIndex written directly as a typed declaration at this call site, never produced by a Rejected/failure arm — no path through observe_complete_staged_commit can reach an empty or absent module_storage by way of a failure; the only way to get one is this declaration. Per commit_writer_admission_note's absence-arm design, an empty module_storage costs nothing on this path: every staged blob is CommitWriterBlobTextUnclaimed or CommitWriterBlobNonTextUnclaimed and still receives the full commit_writer_text_marker_refusals conflict-marker scan; only a claimed TestClaimArtifact receipt would have skipped it, and this writer never holds one. NAMED LIMITATION: a staged blob that is genuinely TestClaimArtifact-shaped and contains conflict-marker-looking bytes (a real fixture with embedded begin/separator/end tokens) refuses under this policy, because the declaration cannot distinguish it from ordinary content — a false refusal, not a missed defect, and diagnosable in one read from this note rather than hidden behind a relaxed gate. Not chosen for this callsite: real module-storage supply. module_storage_bindings_for_source_roots(source_roots: [\"dag\", \"src/v2\"]) is currently an always-Rejecting scaffold with no live in-graph host dispatch (source_authority.dag module_storage_bindings_for_source_roots_host_disposition / module_storage_supply_unbound_body_note), and the manifest-overlay-supply mechanism used elsewhere (module_binding_supply_transport.dag) does not fit here: discover_source_root_ingest mints ^-edge identifiers from source-file basenames with no keyword-escaping, so scanning dag/ mints ^capability, ^module, ^import — all reserved .dag keywords (extdeps_languages_dag_syntax.rs dag_keyword_set) — for dag/extdeps/bmc/capability.dag, dag/extdeps/languages/go/module.dag, and dag/std/import.dag respectively, producing syntactically invalid overlay output for any scope touching dag/. DISSOLUTION TRIGGER: this declaration dissolves in favor of a real module_storage_bindings_for_source_roots binding once (a) that scaffold gains a live host dispatch, or (b) the manifest-overlay identifier-minting defect is fixed and re-verified end-to-end; either bounds a real fixture-exemption receipt for this writer instead of the empty declaration."
+
+data heal_writer_claims_no_fixture_exemptions: List<ModuleStorageBinding> = Empty
+
+fn observe_complete_staged_commit(repo: FilePath, writer: CommitWriter) -> CommitWriterTransportObservation {
+  let ls_files = git.Core.LsFilesStageZInRepo(repo: repo)
+  if !ls_files.success {
+    CommitWriterTransportRefused {
+      reason: "commit writer heal admission transport: git ls-files -z --stage failed — refusing, never skipping (DESIGN section 5)"
+    }
+  } else {
+    match git_decode_ls_files_stage_z(payload: utf8_encode_bytes(s: ls_files.raw), format: GitObjectFormatSha1) {
+      GitLsFilesStageZRefused { cause: _ } =>
+        CommitWriterTransportRefused {
+          reason: "commit writer heal admission transport: staged index decode refused"
+        }
+      GitLsFilesStageZDecoded { entries } =>
+        CommitWriterTransportObserved {
+          observation: CompleteStagedCommitObservation {
+            index: entries,
+            blobs: commit_writer_observe_staged_blobs(repo: repo, module_storage: heal_writer_claims_no_fixture_exemptions, index: entries),
+            module_storage: heal_writer_claims_no_fixture_exemptions,
+          }
+        }
+    }
+  }
+}
+
+fn commit_writer_heal_admission_gate(repo: FilePath, writer: CommitWriter) -> ProcessExit {
+  match observe_complete_staged_commit(repo: repo, writer: writer) {
+    CommitWriterTransportRefused { reason } => exit_failure(reason: reason)
+    CommitWriterTransportObserved { observation } =>
+      match admit_commit_writer(writer: writer, observation: observation) {
+        CommitWriterAdmitted { writer: _, coverage: _ } => ExitSuccess
+        CommitWriterRefused { writer: _, refusals: _ } =>
+          exit_failure(
+            reason: "commit writer heal admission refused: the staged index carries at least one unmerged, unclaimed-and-marked, or mismatched blob — refusing to commit (DESIGN section 5)",
+          )
+      }
+  }
+}
+
+fn heal_admit() -> ProcessExit {
+  commit_writer_heal_admission_gate(repo: "." as FilePath, writer: HealAutocommit)
+}
+
+data commit_writer_heal_skew_conflict_arm_provisional_bytes_residue_note: String = "commit_writer_heal_admission_gate DOES NOT discharge CommitWriterHealSkewConflictArm's full obligation in commit_writer_binding_work — a second, distinct defect in ci_heal_skew_guard_emit.dag's conflict arm survives this gate by construction, not by oversight. That arm resolves (git checkout --ours), stages (git add), and THEN commits provisional ours-side bytes BEFORE ci_heal_regen_step runs and produces the actually-correct bytes, which ci_heal_commit_push_step commits a second time — two pushed commits, the first authored by no one and immediately contradicted by the second (the #7870 shape, reproduced by the guard's own design, per operator analysis msg_8723bc93). This gate runs against exactly that provisional-ours commit: the index is clean (every entry GitIndexStageNormal, admit_commit_writer's unmerged-index check does not fire) and the resolved text carries no conflict markers (the conflict-marker check does not fire), so admit_commit_writer correctly ADMITS it — nothing this gate models is violated by provisional-but-unregenerated bytes, because staleness-versus-regenerated-authority is not a fact this observation carries. What this gate closes: a FAILED resolution reaching the arm's commit with unmerged stages or live conflict markers still present (the CommitWriterUnmergedIndexRefusal / CommitWriterConflictMarkerTextRefusal arms). What stays open, as its own row with its own trigger: the conflict arm should not commit provisional bytes at all — leave the resolution staged, let regen run, commit once with regenerated bytes — which is a merge-state semantics change to a load-bearing CI flow (a merge must be concluded; ci_heal_commit_push_step filters to auto-push-eligible paths, so whether it would carry the staged merge resolution as-is is unverified) requiring its own design pass, not inferred under this brief. Next trigger: that reorder lands as its own PR against ci_heal_skew_guard_emit.dag's ci_heal_skew_conflict_arm."
 
 type LocalTidyCheck
   = LocalTidyWitnessCheck { entry: String, check_fns: List<String> }
