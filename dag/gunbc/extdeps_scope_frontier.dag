@@ -169,6 +169,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/standards/ieee_754_2019.dag",
   "dag/extdeps/standards/web_annotation.dag",
   "dag/extdeps/systems/nvidia.dag",
+  "dag/extdeps/systems/nvidia_dgx_spark_pxe.dag",
   "dag/extdeps/systems/nvidia_fleet_lifecycle.dag",
   "dag/extdeps/systems/types.dag",
   "dag/extdeps/tools/wc.dag",
