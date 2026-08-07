@@ -23,6 +23,20 @@ data git_inspect_service_note: String = "Read-only repository-root, revision, an
 //
 // The mock answers a CLEAN tree because the runner contract hands each job a fresh checkout; a mocked
 // observation must report the state the contract guarantees rather than fabricate a dirty one.
+//
+// IgnoredFiles is a SECOND operation rather than an `--ignored=matching` flag on the first, and the reason is
+// measured, not stylistic. `git status --porcelain=v1 -z --untracked-files=all --ignored=matching` reports a
+// directory that itself matches an ignore pattern as one folded entry — `!! ign/` — and never names the file
+// inside it. That is the same folded-ancestor loss `--untracked-files=all` exists to avoid, and it is fatal
+// here specifically, because a consumer asking "which ignored files would the source sync copy" must filter
+// each path against the deployed-scope authority and must name the offending path in its refusal; a folded
+// directory can do neither. `git ls-files --others --ignored --exclude-standard -z` answers with real file
+// paths (`ign/f.dag`), which is the granularity the question needs. Verified by execution against git 2.43.0
+// on a constructed repository, both spellings side by side.
+//
+// `--exclude-standard` is pinned because without it the command applies no ignore rules at all and would
+// return every untracked path — the opposite of the question. The output is a bare NUL-separated path list,
+// so unlike porcelain v1 it carries no status codes and no rename-source continuation to track.
 service git.Inspect {
   operation Toplevel {
     input {}
@@ -67,6 +81,24 @@ service git.Inspect {
     }
     mock_response {
       0 => { entries_nul: "", success: true, stderr: "" } "hermetic checkout is clean: the runner contract hands the job a fresh checkout, so the empty entry list is the state a mocked observation must report rather than a fabricated dirty one"
+    }
+  }
+
+  operation IgnoredFiles {
+    input {}
+    output {
+      paths_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+    mock_response {
+      0 => { paths_nul: "", success: true, stderr: "" } "hermetic checkout carries no ignored files: the runner contract hands the job a fresh checkout, so the empty path list is the state a mocked observation must report rather than a fabricated one"
     }
   }
 

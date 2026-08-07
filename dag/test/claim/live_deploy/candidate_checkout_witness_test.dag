@@ -10,6 +10,7 @@ import gunbc.live_deploy.deployed_tree_scope {
 import gunbc.live_deploy.candidate {
   CandidateCheckoutObservation,
   CheckoutStatusScan,
+  scan_ignored_deployed_paths,
   CandidateCheckoutClean,
   CandidateCheckoutDirty,
   CandidateCheckoutUnobservable,
@@ -171,6 +172,54 @@ test fn a_field_that_is_neither_record_nor_source_is_malformed() -> Bool {
   s.malformed
 }
 
+// ---------------------------------------------------------------- ignored files the sync would install
+
+// The P1 control. src/v2/test/claim/manual/sg2_scratch_probe.dag is ignored by an explicit .gitignore line
+// AND sits inside a source root the compiled graph reads, so before this axis existed it was copied by rsync
+// while `git status --untracked-files=all` reported nothing at all — the admission called the tree clean and
+// every later comparison agreed with itself about bytes HEAD does not name.
+test fn an_ignored_file_inside_a_source_root_is_a_deployed_path() -> Bool {
+  let scanned = scan_ignored_deployed_paths(
+    paths_nul: scan_of(fields: ["src/v2/test/claim/manual/sg2_scratch_probe.dag"])
+  )
+  join(scanned, ",") == "src/v2/test/claim/manual/sg2_scratch_probe.dag"
+}
+
+// The negative half, and it is the one that keeps the axis from being a blanket refusal: target/ is excluded
+// from the sync, so an ignored build artifact there is NOT installed and must not by itself refuse a deploy.
+// Every developer checkout has thousands of these; refusing on them would make the admission unusable and
+// would teach an operator to route around it.
+test fn an_ignored_file_under_an_excluded_prefix_is_not_a_deployed_path() -> Bool {
+  let scanned = scan_ignored_deployed_paths(
+    paths_nul: scan_of(fields: ["target/release/gunbc", "target/debug/build/x/out"])
+  )
+  length(scanned) == 0
+}
+
+// Both directions in one observation, so a filter that inverted its sense cannot pass by accident.
+test fn the_ignored_scan_keeps_deployed_paths_and_drops_excluded_ones() -> Bool {
+  let scanned = scan_ignored_deployed_paths(paths_nul: scan_of(fields: [
+    ".env",
+    "target/release/gunbc",
+    ".gunbc/ledger.json",
+    ".git/config",
+    "src/v2/test/claim/manual/sg2_scratch_probe.dag",
+  ]))
+  join(scanned, ",") == ".env,.gunbc/ledger.json,src/v2/test/claim/manual/sg2_scratch_probe.dag"
+}
+
+// The prefix filter matches whole path SEGMENTS, not character runs — a directory merely beginning with the
+// letters "target" is deployed and must still refuse.
+test fn an_ignored_path_under_a_targetish_directory_is_still_deployed() -> Bool {
+  let scanned = scan_ignored_deployed_paths(paths_nul: scan_of(fields: ["targetish/x.dag"]))
+  join(scanned, ",") == "targetish/x.dag"
+}
+
+// An empty answer is the clean state, and it must not be reachable from a non-empty one by dropping fields.
+test fn no_ignored_files_yields_no_deployed_paths() -> Bool {
+  length(scan_ignored_deployed_paths(paths_nul: "")) == 0
+}
+
 // ---------------------------------------------------------------- the refusal carries the location
 
 test fn the_not_clean_refusal_names_every_axis_and_its_paths() -> Bool {
@@ -178,14 +227,17 @@ test fn the_not_clean_refusal_names_every_axis_and_its_paths() -> Bool {
     tracked_changes: ["dag/a.dag"],
     staged_changes: ["dag/b.dag"],
     untracked_deployed_paths: ["dag/c.dag"],
+    ignored_deployed_paths: ["dag/d.dag"],
   })
   string_contains(s: d, pattern: "CandidateCheckoutNotClean")
     && string_contains(s: d, pattern: "dag/a.dag")
     && string_contains(s: d, pattern: "dag/b.dag")
     && string_contains(s: d, pattern: "dag/c.dag")
+    && string_contains(s: d, pattern: "dag/d.dag")
     && string_contains(s: d, pattern: "staged=")
     && string_contains(s: d, pattern: "tracked=")
     && string_contains(s: d, pattern: "untracked-deployed=")
+    && string_contains(s: d, pattern: "ignored-deployed=")
 }
 
 // An empty axis renders as (none) rather than as nothing at all, so a reader can tell "no staged changes"
@@ -195,10 +247,12 @@ test fn an_empty_axis_is_named_rather_than_dropped() -> Bool {
     tracked_changes: [],
     staged_changes: ["dag/b.dag"],
     untracked_deployed_paths: [],
+    ignored_deployed_paths: [],
   })
   string_contains(s: d, pattern: "staged=dag/b.dag")
     && string_contains(s: d, pattern: "tracked=(none)")
     && string_contains(s: d, pattern: "untracked-deployed=(none)")
+    && string_contains(s: d, pattern: "ignored-deployed=(none)")
 }
 
 test fn the_status_refusal_is_distinct_from_the_not_clean_refusal() -> Bool {
