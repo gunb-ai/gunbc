@@ -666,6 +666,10 @@ fn stage0_partition_crate_rows() -> List<Stage0PartitionCrateRow> {
     |> concat([stage0_r3_emit_shell_crate_row()])
 }
 
+fn stage0_partition_package_names() -> List<String> {
+  stage0_partition_crate_rows() |> map(row => row.package_name)
+}
+
 fn stage0_physical_crate_count() -> Int {
   stage0_partition_crate_rows() |> count
 }
