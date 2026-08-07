@@ -1,0 +1,20 @@
+module v2.test.claim.variant_match_minimal_probe_test
+
+type ProbeTwoArm
+  = ProbeFirst { a: String }
+  | ProbeSecond { b: String }
+
+fn probe_is_second(p: ProbeTwoArm) -> Bool {
+  match p {
+    ProbeFirst { a: _ } => false
+    ProbeSecond { b: _ } => true
+  }
+}
+
+test fn probe_minimal_second_arm_matches() -> Bool {
+  probe_is_second(p: ProbeSecond { b: "x" })
+}
+
+test fn probe_minimal_first_arm_matches() -> Bool {
+  probe_is_second(p: ProbeFirst { a: "x" }) == false
+}
