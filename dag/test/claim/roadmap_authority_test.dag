@@ -728,10 +728,12 @@ test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Boo
   }
 }
 
+data projection_active_only_focus_independence_note: String = "THIS CLAIM READS THE FOCUS-INDEPENDENT VIEW, and that is the whole point of it (2026-08-07). Its subject is the ACTIVE-SET DERIVATION — declared minus validly accepted — so its three controls have to be about acceptance. Against roadmap_authority(), which applies roadmap_focus_selection, they are not: both negative controls name ACCEPTED nodes (namespace-occurrence-transport and pderive-typesafe-nullary-reflection), so any focus that stops selecting the namespace and P-derive lanes makes them absent because they are HIDDEN, and the claim goes green while proving nothing about acceptance. That is not hypothetical — it happened the moment the focus moved to the infrastructure lanes, and the positive control caught it by failing loudly rather than the negatives passing quietly, which is only luck about which way the focus happened to move.\n\nSo the two facts are separated. Whether an accepted row leaves the active set is asserted here, against NoFocus, where absence can only mean accepted. Whether the focused page hides what the policy says it hides belongs to the focus mechanism's own claims. Binding both to one rendering made the stronger fact hostage to a projection policy row that is expected to move, and DESIGN 5 already names the shape: a check satisfiable by editing a declaration is validation standing where the real subject was available. The precedent is witness_rendered_nodes_are_declared_or_derived, which reads BOTH documents deliberately and says why in rendered_containment_witness_note."
+
 test fn witness_projection_is_active_only() -> Bool {
   let out = serialize_markdown_source(
     doc: project_roadmap_to_markdown(
-      doc: roadmap_authority(),
+      doc: roadmap_authority_for(focus: NoFocus),
       merged: authored_merged_prs()
     )
   )

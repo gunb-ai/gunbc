@@ -1086,6 +1086,36 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Repeated-assembly attribution receipt; implementation proposal only if the receipt justifies one."
       )
     ),
+    active(
+      identity: "rn_9WQ3ZB6HTKX2LNVR40PDGY7CJM",
+      id: "ci-cost-arc-reconciliation",
+      owner: "ci-cost",
+      path: "docs/plans/ci-performance-tanking-evidence.md",
+      t: fields(
+        headline: "One ledger for what the CI-speed work actually bought",
+        boundary: "One row per attempt made across this arc: what it predicted, what it changed, the exact subject it was measured on, the movement inside its own segment, the movement in the whole required path, whether memory stayed inside the fixed envelope, and a typed result — delivered, partial, falsified, confounded by infrastructure, or evidence invalid — with what each one implies next. Rows are read out of receipts that already exist; nothing is re-measured to fill this in.",
+        displaced_cost: "Weeks of work bought real causal knowledge and several correctly killed hypotheses, but the required path is not meaningfully shorter. Without this ledger the next programme re-runs the attempts already falsified, and re-argues the ones that were only confounded by a machine failure.",
+        first_slice: "Fill the ledger from the receipts already landed, and state the whole-path movement the arc actually achieved.",
+        red_control: "An attempt whose claimed movement cannot be tied to an executed receipt is recorded as evidence invalid, never as delivered. A win inside one segment with no movement in the whole path is partial, never delivered. A result from a run the machine killed is confounded, not falsified — collapsing those two loses the distinction the ledger exists to make.",
+        out_of_scope: "No new measurement programme and no new optimisation. This row explains the arc; it does not extend it.",
+        handback: "The ledger with every attempt classified, and the next mechanisms it justifies, each named with the cost it is expected to remove."
+      )
+    ),
+    active_large(
+      identity: "rn_5TDM8PXW1QKZ0HRB37NVLYG6CA",
+      id: "ci-build-once-per-subject",
+      owner: "ci-cost",
+      path: "docs/plans/ci-performance-tanking-evidence.md",
+      t: fields(
+        headline: "Compile the compiler once per change, not once per job",
+        boundary: "One expensive compiler build per change under test. Small checks stop dragging the whole compiler into a second build profile in order to run a few milliseconds of assertions: work that only observes the tree gets a small target that does not rebuild the monolith.",
+        displaced_cost: "Building and testing is now the largest single cost of getting a change in, and a measured run spent minutes of compiler builds to execute a fraction of a second of checks.",
+        first_slice: "Count the expensive compilations one pull request actually performs, then remove the second profile.",
+        red_control: "A change that adds a second expensive compilation to the required path refuses. A small check that pulls the compiler into its own build is rejected even where it is fast today, because the cost is in the build and not in the check.",
+        out_of_scope: "Not the shared-substrate work — that is a different duplicate, owned above. Not local developer builds.",
+        handback: "The per-change compilation count before and after, and the whole-path movement it produced."
+      )
+    ),
 
     active_small(
       identity: "rn_2K8HXQ4MZV7NC3B6WD9YFT5J1E",
@@ -1175,6 +1205,128 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A half-old, half-new decision surface is rejected.",
         out_of_scope: "No job-by-job or machine-by-machine switch.",
         handback: "A real run afterwards showing only one decision-maker left."
+      )
+    ),
+    active_large(
+      identity: "rn_6BXPK1RV9ZTNQ3WD8HGYM40CFJ",
+      id: "placement-compile-pool-envelope",
+      owner: "ci-placement",
+      path: "docs/plans/srvn-buildcache-provisioning-design.md",
+      t: fields(
+        headline: "Derive the process, compiler and memory limits from one envelope per machine",
+        boundary: "Shared compilation runs in its own managed place rather than inside whichever job slot happened to start it. How many processes a slot may hold, how wide the compiler may fan out, and how much memory the shared pool may take are all derived from one declared envelope for that machine instead of being three numbers anyone can set independently. Every limit is read back as the machine actually holds it.",
+        displaced_cost: "The immediate outage — jobs unable to start processes against a cap far below the packaged one — and the fault behind it, where every machine's cache-miss compiles are charged to one job slot's budget and on one machine a retired slot's, are both consequences of these limits being separately writable.",
+        first_slice: "Restore the affected machine's process limit and read back the value the kernel actually holds, then move shared compilation into its own place with a stated admission bound.",
+        red_control: "A pool whose effective limits differ from the envelope refuses. A cache server whose place cannot be established refuses rather than being assumed to be ours. Widening the compiler's fan-out past the envelope refuses. A command that exits successfully while the effective limit is unchanged is a failed read-back, not a success.",
+        out_of_scope: "A larger machine or a raised memory cap is not the remedy — the envelope is fixed and the mechanism fits inside it. Not routing jobs between machines, which the rows above own.",
+        handback: "The derived envelope, the read-back limits from every machine, and the previously failing build run again."
+      )
+    ),
+
+    active_large(
+      identity: "rn_0LNVJ4CQ8ZRHT2XBWD6PGK9YFS",
+      id: "ci-owned-execution",
+      owner: "ci-control",
+      path: "docs/plans/ci-process-end-to-end.md",
+      t: fields(
+        headline: "Run the required checks on our own machines, from a subject we hold ourselves",
+        boundary: "Seeing a new commit creates a durable piece of work of our own, identified by exactly which base, which head, and which combined commit is being tested. One machine holds it under a lease for the whole run, the existing floor command runs unchanged, and the run ends in one typed result we keep. Starting the work, queueing it and handing it out involve no third-party workflow and no registered runner.",
+        displaced_cost: "Starting, queueing, handing out, cancelling and reporting all belong to someone else today. When their side has a bad day our machines wedge, their re-runs test a stale combination, and every one of those failures arrives looking like a fault in our own code.",
+        first_slice: "Take one required subject end to end on our own machines and keep its result, while the existing path is still the one that counts.",
+        red_control: "Restarting the controller recovers unfinished work. The same subject does not run twice at once. Asking for a re-run builds a fresh combination against current main rather than replaying an old one. Losing the machine mid-run returns the work instead of stranding it.",
+        out_of_scope: "Nothing changes about what the checks compute — the floor, its scheduling and its selection are untouched. GitHub stays the repository and the place people review.",
+        handback: "The durable queue, one run held under a lease from start to finish, and its result carrying the exact subject it tested."
+      )
+    ),
+    active(
+      identity: "rn_8XBLW9DKZH5NCQ0RTVPMGJ4F2",
+      id: "ci-executed-coverage-receipt",
+      owner: "ci-control",
+      path: "docs/plans/ci-process-end-to-end.md",
+      t: fields(
+        headline: "A check reports what it actually executed, not merely that it ran",
+        boundary: "Every required check carries the population it executed — which witnesses, which corpus, how many — and a run that executed nothing cannot report a verdict of any kind. A build failure that stops the corpus from running is its own outcome, distinct from the corpus running and disagreeing.",
+        displaced_cost: "A scheduled check spent days reporting failures while executing no corpus at all, because a step ahead of it failed and the result looked exactly like a real disagreement. Nobody could tell the difference from outside, so a genuine signal was ignored for days.",
+        first_slice: "Carry the executed population on one required check, and refuse a verdict when that population is empty.",
+        red_control: "A run whose executed population is zero refuses rather than reporting either pass or fail. A failure ahead of the corpus is a different outcome from a corpus disagreement. A check that cannot say what it executed does not count as having executed.",
+        out_of_scope: "Not what the corpus contains or how it is selected, and not per-witness enrolment — only that a verdict names the work that produced it.",
+        handback: "One required check carrying its executed population, with the empty-population refusal and the distinct upstream-failure outcome both demonstrated."
+      )
+    ),
+    active(
+      identity: "rn_3HKRW7TBZP1MQ5NDXV0GCJ8YLA",
+      id: "ci-check-projection",
+      owner: "ci-control",
+      path: "docs/plans/ci-process-end-to-end.md",
+      t: fields(
+        headline: "The result shown on GitHub is a copy of ours, never the original",
+        boundary: "Our stored result is published as the required check. No check present means not yet observed and never counts as satisfied. Cancelled, timed out, refused by the infrastructure, and genuinely failed stay four different things the whole way through. A queued merge is checked against the exact commit that queue built. If GitHub cannot be reached the publishing waits; the result itself is never lost.",
+        displaced_cost: "An absent check currently reads the same as one that passed elsewhere, and a job the machine killed arrives as an ordinary failure — so the board cannot tell our defects from theirs, and people learn to re-run rather than read.",
+        first_slice: "Publish one required check from a stored result, with the four endings kept apart.",
+        red_control: "An absent check does not admit a merge. A generic failure that erases a cancellation refuses. Publishing against a commit other than the one that ran refuses.",
+        out_of_scope: "No change to what the branch requires until both paths have been seen to agree.",
+        handback: "One required check published from a stored result, and the four endings demonstrated separately."
+      )
+    ),
+    active(
+      identity: "rn_8YMCT2GQVZ0KRB6WNP4XHDJ71L",
+      id: "ci-actions-runner-retirement",
+      owner: "ci-control",
+      path: "docs/plans/ci-process-end-to-end.md",
+      t: fields(
+        headline: "Remove the hosted-runner path once we carry the required checks",
+        boundary: "With our own path publishing the required checks, the workflow, the runner registrations and the recovery timer are removed together in one change, so there is never a period in which two things can hand out the same work.",
+        displaced_cost: "Retires the vendor's dispatcher as something our fleet's health depends on — the reason the recovery timer has to exist at all, and the reason a bad day on their side becomes a wedged fleet on ours.",
+        first_slice: "Run both paths over the same subjects and compare the verdicts before removing anything.",
+        red_control: "A disagreement on any subject blocks removal. A half-removed state in which both paths can still hand out work is rejected.",
+        out_of_scope: "GitHub keeps the repository, the review surface and the check display. This is about who starts and runs the work, not where it is discussed.",
+        handback: "Agreement across a real run of subjects, then one change that removes the old path."
+      )
+    ),
+    active_small(
+      identity: "rn_4QGZD9NWX3TVB7LMKR0PHY62CS",
+      id: "ci-remote-build-containment",
+      owner: "ci-control",
+      path: "docs/plans/ci-process-end-to-end.md",
+      t: fields(
+        headline: "Make the remote build wrapper's one legal use unmistakable",
+        boundary: "The wrapper admits exactly one remote mode — checking something without producing anything the local tree then needs — and refuses any invocation that would write. Every result names the source it checked and the executable it checked with, so a stale local artefact can never stand in for a remote answer. Builds that produce files run locally, said out loud.",
+        displaced_cost: "There is no stated rule for when this wrapper is the right thing, so it gets guessed at; a remote run meant to produce files can finish successfully having produced nothing locally, and that has already been consumed as a passing check.",
+        first_slice: "Classify the wrapper's operations and refuse the remote writing class.",
+        red_control: "A remote invocation declared read-only that writes refuses. A check whose local artefact is older than the source it claims to have checked refuses.",
+        out_of_scope: "Not a rewrite of the wrapper and not a permanent home for it; owning execution is what removes the need for it.",
+        handback: "The classification, the refusing controls, and the named condition under which this wrapper is deleted."
+      )
+    ),
+
+    active(
+      identity: "rn_7VNBH0KXR5ZQWD2PLGT3MJ86CY",
+      id: "generated-projection-registry-containment",
+      owner: "generated-artifact",
+      path: "docs/plans/generated-file-conflict-policy.md",
+      t: fields(
+        headline: "Stop writing the whole file registry into a generated file",
+        boundary: "A generated artefact must not carry the full list of generated paths. The workflow asks Git which of the paths that actually conflicted are generated, reading that classification from both sides' committed state rather than from a list baked into the workflow text. Adding a generated file then changes the classification projection and leaves the workflow's own bytes alone.",
+        displaced_cost: "One enormous line holding every generated path means any change to that population rewrites the same spot in a shared file, so two branches conflict over a list neither of them disagrees about. That has happened repeatedly, and each occurrence costs a manual resolution carrying no information.",
+        first_slice: "Take the path population out of the workflow and classify only the paths that actually conflicted.",
+        red_control: "Adding or removing a generated file leaves the workflow byte-identical. A path classified as generated on only one side refuses rather than being taken as generated. A conflict that also touches hand-written files refuses before resolving anything. Paths containing spaces or newlines survive. A conflicted classification file sitting in the working tree does not get to decide the classification.",
+        out_of_scope: "The rule that generated files are regenerated rather than merged by hand does not change; this changes how a generated path is recognised, not what happens to one.",
+        handback: "The population gone from the workflow, the previously conflicting case no longer conflicting, and each refusal demonstrated separately."
+      )
+    ),
+    active(
+      identity: "rn_1CJXM6RTPZ8VKQ0NDWB4HG5YFL",
+      id: "generated-commit-policy-census",
+      owner: "generated-artifact",
+      path: "docs/plans/generated-file-conflict-policy.md",
+      t: fields(
+        headline: "Decide which generated files need to be in the repository at all",
+        boundary: "For every generated file we commit, name the consumer that requires the bytes to be present: something outside reads it before our own tools can run, the build needs it to start at all, or a reviewer has to see the exact difference. Anything else is published or produced on demand instead of committed. Generated outputs that stay get their own directories, so what is generated is structural rather than a list someone maintains.",
+        displaced_cost: "A large share of the merge pain comes from files nobody reads as bytes in the repository. Each one that leaves stops producing conflicts, review noise and drift checks permanently, rather than having its conflicts handled better.",
+        first_slice: "Census every committed generated file against those three reasons, and move the first family that has none of them.",
+        red_control: "A file whose consumer cannot be named does not get to stay committed by default. Removing a file something outside genuinely reads is caught before it lands. A generated file appearing inside a hand-written directory refuses.",
+        out_of_scope: "The bootstrap seed stays committed until its own lane removes the need for it; this row does not decide that question.",
+        handback: "The census with a named consumer or a removal for every entry, and the first family moved."
       )
     ),
 
@@ -1750,6 +1902,97 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The full set of receipts and a machine state someone can go and verify."
       )
     ),
+    active_large(
+      identity: "rn_5ZKQW8BXTN2VRD0MHJ7GPL34CY",
+      id: "fleet-main-revision-authority",
+      owner: "fleet",
+      path: "docs/plans/fleet-self-converge-enforcement-design.md",
+      t: fields(
+        headline: "A merge to main is the instruction, and nothing else applies it",
+        boundary: "The state the machines should be in is the exact revision merged to main, held durably by whatever is applying it. A newer revision replaces an older one, an older or unrelated one refuses, and the same one again does nothing. The instruction survives a restart of the thing applying it and an outage at the hosting provider — an event from them may make it happen sooner but is never the only place the instruction lives. A machine that was unreachable or refused is tried again against the revision still held, with no new commit needed.",
+        displaced_cost: "Every fleet-touching merge currently ends with the same question — is that actually on the machines — and the only way to answer it is to go and look. Somebody has to remember to apply things, and forgetting is invisible until it causes an incident.",
+        first_slice: "Watch main directly, hold one durable revision, and show it survives a restart of the applier.",
+        red_control: "An older revision does not overwrite a newer one, and two arriving close together do not finish out of order and leave a machine behind. An unrelated history refuses. A missed notification still converges on the next pass. The same revision again performs no changes at all.",
+        out_of_scope: "Not how any individual setting is applied — the closed loop above owns that. Not the fleet-wide answer, which is its sibling row.",
+        handback: "The held revision surviving a restart, the ordering refusals, and a machine that was down converging on its return without anyone committing anything."
+      )
+    ),
+    active(
+      identity: "rn_2WPGT6NCZQ9XKBR1DVLM40HJY8",
+      id: "fleet-atomic-convergence-verdict",
+      owner: "fleet",
+      path: "docs/plans/fleet-acceptance-criteria.md",
+      t: fields(
+        headline: "One answer for the whole fleet, or exactly which machines are not there yet",
+        boundary: "Each machine produces a receipt — what was wanted, what was there, what was planned, what was applied, and what was read back afterwards. Those fold into a single answer for the fleet. Anything short of all of them is not converged, with the machines that refused, could not be reached, or have drifted each named separately.",
+        displaced_cost: "One machine can hold the new value while the others hold the old one and nothing anywhere says so, which is exactly why the honest answer to whether something is applied is currently to go and check by hand.",
+        first_slice: "Fold the existing per-machine receipts into one fleet answer for a single narrow setting.",
+        red_control: "One machine short of the roster reports not converged, never converged with a note attached. Unreachable, refused and drifted stay three different answers, and a machine we could not reach is never simply missing from the count. A command that succeeded while the real value did not change reads as a failed read-back.",
+        out_of_scope: "No new ways of changing machines are added here — this row is the answer, not the action.",
+        handback: "The fleet answer with all four machine outcomes demonstrated."
+      )
+    ),
+    active_large(
+      identity: "rn_9DVRB3XQKM0ZWT7NPGHC65LJY2",
+      id: "fleet-runner-host-convergence",
+      owner: "fleet",
+      path: "docs/plans/fleet-self-converge-enforcement-design.md",
+      t: fields(
+        headline: "The build machines' own limits and services converge from main like everything else",
+        boundary: "The job slots' limits, where shared compilation runs, the recovery timer, and the values those actually take on each machine are all stated as desired state derived from main and converged everywhere. Editing the desired row and merging it is the whole operator action.",
+        displaced_cost: "This is the configuration whose hand-drift produced the process-limit outage and left the shared build cache running inside a retired job slot. It is also the first subject worth proving the whole path on, because it is real, it is already wrong, and fixing it by hand is what created the drift.",
+        first_slice: "Converge one already-repaired value across every machine and read back what each one actually holds.",
+        red_control: "A machine whose effective value differs from the desired one reports drifted. A service command that exits successfully while the machine's real limit is unchanged is a failed read-back, not a success. A machine missing from the roster is never silently skipped.",
+        out_of_scope: "The emergency repair itself belongs to the envelope row in the placement lane; this row is what keeps it true afterwards.",
+        handback: "The desired rows, the read-back values from every machine, and one drift repaired without a person."
+      )
+    ),
+    active_small(
+      identity: "rn_6MKXC1TZGB8QWN4RDVPJ0HY735",
+      id: "fleet-runner-broker-recovery",
+      owner: "fleet",
+      path: "docs/plans/fleet-self-converge-enforcement-design.md",
+      t: fields(
+        headline: "Count every automatic job-runner recovery, and say what retires it",
+        boundary: "The timer that restarts wedged job runners records each firing — which machine, which slot, what it observed, what it did, and whether it worked — and those counts reach the fleet's health. Deciding locally that a runner has stopped making progress is kept separate from asking the provider whether it is still registered, so recovery keeps working during the outage it exists for.",
+        displaced_cost: "It fires roughly ten times a day across the fleet and nothing counts it, so the fleet looks healthy because something invisible is holding it up. The firing rate is the only thing separating a legitimate stopgap from a fault we have stopped noticing.",
+        first_slice: "Emit one attributable receipt per firing, and show the rate per machine.",
+        red_control: "A restart with no attributable cause is not recorded as a recovery. Failing to reach the provider refuses rather than being read as offline. Nothing restarts a slot that is currently running work.",
+        out_of_scope: "Not replacing the current two-part test with a bare silence rule before the local part has been proven on its own.",
+        handback: "The counted receipts, the split by cause, and the named condition under which this timer is deleted."
+      )
+    ),
+    active_large(
+      identity: "rn_3JQZN7WVPD1KXCB0RTMG84LHY6",
+      id: "fleet-spark-inference-serving",
+      owner: "fleet",
+      path: "dag/gunbc/dgx_spark_procurement.dag",
+      t: fields(
+        headline: "Bring the two new machines up as model-serving members, through the same path as everything else",
+        boundary: "Both new machines join through the same standing-up sequence every other machine uses, reach a stated model and runtime, and serve requests on an endpoint. Which model is actually being served, and whether the endpoint is healthy, are read back independently, and each machine stays separately observable. They serve models — they are not job runners and not build caches.",
+        displaced_cost: "Standing these up by hand would create two more machines nobody can answer questions about, which is the state this whole lane exists to end. Going through the convergence path also proves that path on a machine class it has never seen.",
+        first_slice: "Converge one of them to a serving endpoint through the fleet path and read back which model it is actually serving.",
+        red_control: "An endpoint that answers while serving a different model than the one asked for is drift, not health. A machine we cannot reach leaves the fleet not converged rather than dropping out of the count. Giving one of them a job-runner or build-cache role refuses.",
+        out_of_scope: "No training or tuning, no routing of real work onto them, and no build role.",
+        handback: "Both machines converged from a desired row, the served model read back on each, and one drift repaired."
+      )
+    ),
+
+    active_large(
+      identity: "rn_0PGYW4KDNQ2BXR9TVCM6HJ3LZ5",
+      id: "judgment-mechanical-review-service",
+      owner: "judgment",
+      path: "docs/plans/enforcement-intent-design.md",
+      t: fields(
+        headline: "Make the repetitive review judgements something a machine can propose",
+        boundary: "The judgements made over and over by hand — this concept already exists under another name, this boundary is really two separable things, this evidence does not actually run, this claim is stronger than what was shown — become a service returning one of a fixed set of answers over an evidence packet assembled mechanically from the change. Every declaration it cites has to resolve. Anything it cannot ground comes back as unknown rather than as a plausible sentence.",
+        displaced_cost: "These judgements are the throughput limit on the whole board, they are all made by one person, and they are mechanical enough to describe — which is precisely why they are being repeated by hand rather than encoded.",
+        first_slice: "The already-exists-under-another-name classification only, over the changed declarations and their candidate existing authorities, scored against past rulings.",
+        red_control: "A cited declaration that does not exist is refused, never returned. A judgement with nothing resolvable behind it is unknown. A planted duplicate of an existing concept must be found, and a genuinely new concept must not be reported as a duplicate.",
+        out_of_scope: "Not a coding agent, and never authority — the answer is input to a person or to a check, not the decision. A rule that can be decided outright belongs in a check, not here.",
+        handback: "The service returning grounded answers over a real set of changes, both planted controls demonstrated, and the measured share of judgements it can actually take."
+      )
+    ),
 
     active(
       identity: "rn_3B3802MNXFPG4VS2VFT7BNBN1Y",
@@ -1879,6 +2122,15 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "placement-two-host-warm-qualification", parent: "placement-live-roster-preflight"),
     edge(child: "placement-shadow-equality", parent: "placement-two-host-warm-qualification"),
     edge(child: "placement-atomic-authority-flip", parent: "placement-shadow-equality"),
+    edge(child: "placement-compile-pool-envelope", parent: "placement-live-roster-preflight"),
+
+    edge(child: "ci-cost-arc-reconciliation", parent: "five-minute-ci-gate"),
+    edge(child: "ci-build-once-per-subject", parent: "ci-cost-arc-reconciliation"),
+
+    edge(child: "ci-check-projection", parent: "ci-owned-execution"),
+    edge(child: "ci-actions-runner-retirement", parent: "ci-check-projection"),
+
+    edge(child: "generated-commit-policy-census", parent: "generated-projection-registry-containment"),
 
     edge(child: "v1-emitter-fixed-point", parent: "pderive-error-movement-receipt"),
     edge(child: "v2-emitter-direct-rust-door", parent: "v2-emitter-producer-provenance"),
@@ -1924,6 +2176,15 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "fleet-dashboard-instance-membership", parent: "fleet-state-frontier"),
     edge(child: "fleet-anti-entropy-hygiene", parent: "fleet-closed-loop-converge"),
     edge(child: "fleet-receipt-qualified-control", parent: "fleet-anti-entropy-hygiene"),
+    edge(child: "fleet-main-revision-authority", parent: "fleet-closed-loop-converge"),
+    edge(child: "fleet-atomic-convergence-verdict", parent: "fleet-closed-loop-converge"),
+    edge(child: "fleet-runner-host-convergence", parent: "fleet-main-revision-authority"),
+    edge(child: "fleet-runner-host-convergence", parent: "fleet-atomic-convergence-verdict"),
+    edge(child: "fleet-runner-host-convergence", parent: "placement-compile-pool-envelope"),
+    edge(child: "fleet-spark-inference-serving", parent: "fleet-main-revision-authority"),
+    edge(child: "fleet-spark-inference-serving", parent: "fleet-atomic-convergence-verdict"),
+
+    edge(child: "judgment-mechanical-review-service", parent: "fleet-spark-inference-serving"),
 
     edge(child: "toolchain-single-resolver", parent: "toolchain-pin-model"),
     edge(child: "toolchain-rust-hermetic", parent: "toolchain-single-resolver"),
@@ -2229,11 +2490,11 @@ fn preamble() -> List<MarkdownBlock> {
   ]
 }
 
-data roadmap_focus_selection_note: String = "THE ONE ROW THAT SETS THE VIEW. Focusing is a projection policy, not an edit — every node and edge stays declared in this file, the dispatch surface still sees the whole graph, and setting this back to NoFocus restores the full page with no recovery step. It selects the v1 exit lane (the sustained effort under way — the v1 → v2 emitter exit plan) and the compiler-guarantee lane (the DESIGN 4b climb backlog: unstaffed by design, on the page so its nodes stay visible for dispatch — keeping it visible is a focus-selection fact, a typed policy in this row, never an out-of-mechanism section); the other lanes remain real work, they are simply not on the page while these are being ground out. The projection states how many it is hiding, derived rather than transcribed, so a focused page can never read as a shorter roadmap."
+data roadmap_focus_selection_note: String = "THE ONE ROW THAT SETS THE VIEW. Focusing is a projection policy, not an edit — every node and edge stays declared in this file, the dispatch surface still sees the whole graph, and setting this back to NoFocus restores the full page with no recovery step. The projection states how many it is hiding, derived rather than transcribed, so a focused page can never read as a shorter roadmap.\n\nMOVED TO THE INFRASTRUCTURE LANES (operator direction, 2026-08-07). It previously selected the v1 exit lane and the compiler-guarantee climbs. Those remain real work and are unchanged in this file; they are off the page because forward movement on them was stopped. The stated reason is that infrastructure buckled underneath them — a fleet whose applied state cannot be answered without logging into machines, a required path whose cost is dominated by building and testing, machine faults arriving as reds that look like code faults, and generated artefacts conflicting over lists nobody disagrees about. Work carried out on top of that produces results nobody can trust, so the page shows the lanes that repair it and the lane that makes a merge to main become applied fleet state.\n\nTHE JUDGMENT LANE IS DELIBERATELY OFF THE PAGE while its prerequisite is on it: the machines that would serve it are converging in the fleet lane, and putting the consumer beside the prerequisite would invite starting it early. It is declared, not parked."
 
 data roadmap_focus_selection: RoadmapFocus = FocusOnOwners {
-  label: "the v1 deletion lane + the guarantee-ladder climbs",
-  owners: ["self-host", "compiler-guarantee"],
+  label: "the infrastructure stabilisation lanes + fleet convergence from main",
+  owners: ["fleet", "ci-placement", "ci-control", "generated-artifact", "ci-cost"],
 }
 
 fn projected_roadmap_nodes_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
@@ -2258,7 +2519,7 @@ fn active_section_for_acceptance(focus: RoadmapFocus, accepted: List<RoadmapNode
     title: "Active deliverables — dependency order",
     elements: concat(
       [
-        section_prose(content: "The graph has eleven lanes: SCM compatibility · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · hermetic toolchain · compiler-guarantee (the DESIGN §4b ladder climbs; rung STATE lives in the guarantee claims carrier and is emitted, never restated in tickets — [gap analysis](docs/plans/compiler-guarantee-recovery-gap-analysis.md)). The three independent SCM R0 models, the separate P−1 evidence carrier, R1 compatibility-shape extraction, and P0 user-contract/landing spine are accepted; the operator-authored P1 proof-kernel node is active and fail-closed pending its first discriminating closing validation, while P2 and later product lanes remain parked. The toolchain pin model is an independent root. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
+        section_prose(content: "The graph has fifteen lanes: SCM compatibility · namespace · P-derive · observation · placement · CI cost · CI control · generated artefacts · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · judgment · hermetic toolchain · compiler-guarantee (the DESIGN §4b ladder climbs; rung STATE lives in the guarantee claims carrier and is emitted, never restated in tickets — [gap analysis](docs/plans/compiler-guarantee-recovery-gap-analysis.md)). The three independent SCM R0 models, the separate P−1 evidence carrier, R1 compatibility-shape extraction, and P0 user-contract/landing spine are accepted; the operator-authored P1 proof-kernel node is active and fail-closed pending its first discriminating closing validation, while P2 and later product lanes remain parked. The toolchain pin model is an independent root. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. CI control owns who starts, queues and hands out required work and how its result reaches GitHub; CI cost owns how much computation that work performs. Fleet owns whether a merge to main becomes applied machine state and whether that question has one answer. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
       ],
       concat(
         if focus_is_active(focus: focus) {
