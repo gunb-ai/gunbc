@@ -52,7 +52,7 @@ fn typed_module_cache_entry_cap(r: HostBudgetResolution) -> TypedModuleCacheCap 
 }
 
 fn raw_entry_cap(budget: ByteSize) -> Int {
-  (byte_size_count(b: budget) as Int) / (byte_size_count(b: typed_module_bytes_per_entry_estimate) as Int)
+  byte_size_count(b: budget) / byte_size_count(b: typed_module_bytes_per_entry_estimate)
 }
 
 fn clamp_to_declared_band(raw: Int) -> Int {
