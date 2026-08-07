@@ -135,14 +135,14 @@ test fn witness_405_response_carries_allowed() -> Bool {
 data status_map_red_note: String = "The 404/409/503/502 rows are the REDs a lazy 200-or-500 collapse would fail (parent review 2026-07-20): each refusal variant must map to ITS status, so a collapse of any arm reds exactly one witness row below."
 
 test fn witness_dispatch_status_total() -> Bool {
-  belt_dispatch_status(r: DispatchSpawned { node_id: "n", session_name: "s" }) == 200
+  belt_dispatch_status(r: DispatchSpawned { node_id: "n", session_name: "s", provider: "codex" }) == 200
     && belt_dispatch_status(r: DispatchAlreadyLive { node_id: "n", session_name: "s" }) == 200
     && belt_dispatch_status(r: DispatchDisabled { node_id: "n", instance_id: "i", reason: "r" }) == 403
     && belt_dispatch_status(r: DispatchNodeNotFound { node_id: "n" }) == 404
     && belt_dispatch_status(r: DispatchNodeAlreadyDone { node_id: "n" }) == 409
     && belt_dispatch_status(r: DispatchObserveRefused { node_id: "n", reason: "r" }) == 503
     && belt_dispatch_status(r: DispatchAuthorityRefused { node_id: "n", detail: "d" }) == 503
-    && belt_dispatch_status(r: DispatchSpawnFailed { node_id: "n", step: "git", detail: "d" }) == 502
+    && belt_dispatch_status(r: DispatchSpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex" }) == 502
 }
 
 test fn witness_preview_dispatch_refuses_before_effects() -> Bool {

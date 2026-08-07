@@ -244,14 +244,14 @@ data belt_dispatch_status_note: String = "TOTAL per-variant status mapping — e
 
 fn belt_dispatch_status(r: BeltDispatchResult) -> HttpStatus {
   match r {
-    DispatchSpawned { node_id: _, session_name: _ } => 200
+    DispatchSpawned { node_id: _, session_name: _, provider: _ } => 200
     DispatchAlreadyLive { node_id: _, session_name: _ } => 200
     DispatchDisabled { node_id: _, instance_id: _, reason: _ } => 403
     DispatchNodeNotFound { node_id: _ } => 404
     DispatchNodeAlreadyDone { node_id: _ } => 409
     DispatchObserveRefused { node_id: _, reason: _ } => 503
     DispatchAuthorityRefused { node_id: _, detail: _ } => 503
-    DispatchSpawnFailed { node_id: _, step: _, detail: _ } => 502
+    DispatchSpawnFailed { node_id: _, step: _, detail: _, provider: _ } => 502
   }
 }
 
