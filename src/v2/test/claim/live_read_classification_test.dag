@@ -24,7 +24,6 @@ import v2.std.live_read {
   FilesystemReadCarrier,
   ModuleDeclarationFactsCarrier,
   DeclFactsReflectionCarrier,
-  LiveReadSelectionProjection,
   live_read_carrier_homes_v0
 }
 import v2.std.collection { List }
