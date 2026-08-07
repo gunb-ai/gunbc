@@ -11,8 +11,6 @@
 .githooks/generated-artifact-merge merge=generated-artifact
 .githooks/pre-commit merge=generated-artifact
 .githooks/pre-push merge=generated-artifact
-.github/live-deploy-srv1-apply.sh merge=generated-artifact
-.github/live-deploy-srv1-retract.sh merge=generated-artifact
 .github/workflows/apply.yml merge=generated-artifact
 .github/workflows/ci.yml merge=generated-artifact
 .github/workflows/falsifier.yml merge=generated-artifact

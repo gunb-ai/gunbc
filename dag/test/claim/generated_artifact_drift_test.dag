@@ -2,7 +2,7 @@
 module test.claim.generated_artifact_drift
 
 import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, ApplyYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, ApplyYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   CommitPolicy, CommitRequired, NotCommitted,
   generated_artifact_registry,
@@ -187,7 +187,7 @@ test fn witness_ignored_paths_excluded() -> Bool {
 }
 
 test fn witness_registry_complete() -> Bool {
-  count(generated_artifact_registry) == (18 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
+  count(generated_artifact_registry) == (16 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
     && registry_contains(a: CiYamlArtifact)
     && registry_contains(a: FalsifierYamlArtifact)
     && registry_contains(a: ApplyYamlArtifact)
@@ -204,8 +204,6 @@ test fn witness_registry_complete() -> Bool {
     && registry_contains(a: Stage0CratePartitionGeneratedDagArtifact)
     && registry_contains(a: Stage0EmitPlanGeneratedDagArtifact)
     && registry_contains(a: V1InterpreterDispatchGeneratedRsArtifact)
-    && registry_contains(a: LiveDeployApplyScriptArtifact)
-    && registry_contains(a: LiveDeployRetractScriptArtifact)
     && registry_contains(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
     && registry_contains(a: PlanArtifact { plan: idea_machine_plan })
     && fleet_install_server_specs.length() == 0
@@ -225,8 +223,6 @@ test fn witness_registry_complete() -> Bool {
     && artifact_is_committed(a: Stage0CratePartitionGeneratedDagArtifact)
     && artifact_is_committed(a: Stage0EmitPlanGeneratedDagArtifact)
     && artifact_is_committed(a: V1InterpreterDispatchGeneratedRsArtifact)
-    && artifact_is_committed(a: LiveDeployApplyScriptArtifact)
-    && artifact_is_committed(a: LiveDeployRetractScriptArtifact)
     && !artifact_is_committed(a: RunnerDeployArtifact)
     && !artifact_is_committed(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
     && !artifact_is_committed(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
@@ -261,8 +257,6 @@ test fn witness_commit_policy_reasons() -> Bool {
     && consumer_is(a: Stage0CratePartitionGeneratedDagArtifact, expected: GitProtocol)
     && consumer_is(a: Stage0EmitPlanGeneratedDagArtifact, expected: GitProtocol)
     && consumer_is(a: V1InterpreterDispatchGeneratedRsArtifact, expected: GitProtocol)
-    && consumer_is(a: LiveDeployApplyScriptArtifact, expected: HostReconciler)
-    && consumer_is(a: LiveDeployRetractScriptArtifact, expected: HostReconciler)
     && match artifact_commit_policy(a: RunnerDeployArtifact) { NotCommitted => true  _ => false }
     && match artifact_commit_policy(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec }) { NotCommitted => true  _ => false }
     && match artifact_commit_policy(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec }) { NotCommitted => true  _ => false }

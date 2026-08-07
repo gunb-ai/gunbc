@@ -20,6 +20,10 @@ data falsifier_alert_admission_purpose_note: String = "ALERT-1(c). THE PRE-EXECU
 
 data falsifier_alert_observed_workflow_name: NonEmptyStr = "affected-set-falsifier"
 
+data falsifier_alert_workflow_identity_note: String = "THE TRIGGER MATCHES BY NAME BECAUSE THAT IS THE ONLY SHAPE GITHUB EXPOSES THERE; THE TRUST WALL DOES NOT. A workflow's display `name:` is a mutable string — it is whatever the `name:` key in the yaml says today, it is editable in any PR that touches the file, and two workflows may carry the same one. That is adequate as a coarse activation filter, where the cost of a wrong match is a job that starts and then refuses. It is NOT an identity for an authorization decision made by a program holding issues: write, because it means the answer to `is this the run I exist to observe` is decided by a renameable label.\n\nThe wall therefore also binds the workflow's FILE PATH, which is the stable identifier for `which workflow` — a workflow is the file, and renaming the display name does not move it. The path is checked in addition to, not instead of, the name: the name is what the trigger filtered on, so a mismatch between the two is itself a fact worth refusing on rather than silently preferring one. workflow_id (GitHub's numeric identifier for the workflow, stable across renames AND path moves) is decoded and carried so a future revision can pin it, but it is deliberately not compared yet: pinning it means writing a repository-specific integer into this module, which is a real fact that should be observed and recorded rather than typed from memory. Its dissolve-on is that observation."
+
+data falsifier_alert_expected_workflow_path: NonEmptyStr = ".github/workflows/falsifier.yml"
+
 data falsifier_alert_expected_repository: NonEmptyStr = "gunb-ai/gunbc"
 
 data falsifier_alert_expected_head_branch: NonEmptyStr = "main"
@@ -33,6 +37,7 @@ type RepositoryField
 type FalsifierAlertAdmission
   = AlertAdmitted { event: WorkflowRunEvent }
   | AlertRefusedWorkflowNotObserved { observed: String, expected: NonEmptyStr }
+  | AlertRefusedWorkflowPathNotObserved { observed: String, expected: NonEmptyStr }
   | AlertRefusedRepositoryNotOwned { field: RepositoryField, observed: String, expected: NonEmptyStr }
   | AlertRefusedHeadBranchNotMain { observed: String, expected: NonEmptyStr }
   | AlertRefusedOriginatingEventNotAdmitted { observed: String }
@@ -48,6 +53,11 @@ fn falsifier_alert_admit_event(event: WorkflowRunEvent) -> FalsifierAlertAdmissi
     AlertRefusedWorkflowNotObserved {
       observed: event.workflow_name,
       expected: falsifier_alert_observed_workflow_name
+    }
+  } else if event.workflow_path != (falsifier_alert_expected_workflow_path as String) {
+    AlertRefusedWorkflowPathNotObserved {
+      observed: event.workflow_path,
+      expected: falsifier_alert_expected_workflow_path
     }
   } else if event.repository_full_name != (falsifier_alert_expected_repository as String) {
     AlertRefusedRepositoryNotOwned {

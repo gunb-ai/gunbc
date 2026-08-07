@@ -1,0 +1,27 @@
+module std.witness_purpose
+
+import std.decl_ref { DeclarationRef }
+import std.content_hash { ContentHash }
+import std.measure { Millisecond, ByteSize }
+
+type WitnessResourceBound
+  = EvalWallTimeBound { bound: Millisecond }
+  | EvalThreadCpuBound { bound: Millisecond }
+  | PeakMemoryBound { bound: ByteSize }
+
+data witness_purpose_resource_contract_note: String = "ResourceContract bound is axis-typed: wall/cpu limits are Millisecond; peak memory is ByteSize (std.measure). A single Millisecond field on all axes was state-space conflation — PeakMemory with a millisecond bound was writable. Aligns with discrete_cost derivation section 10 bound: Measure; full Measure coproduct lands when the cost consumer derives bounds."
+
+data witness_purpose_authority_note: String = "DECLARED witness purpose taxonomy (operator ruling 2026-08-04; DESIGN witness-cost-derives-from-purpose; discrete-cost-derivation section 10). What semantic fact the witness exists to prove — authored, not inferred from implementation. Cost and placement are DERIVED consequences on ScheduledWitnessEnvelope (std.realization_schedule SpanEnrolled), not here. Slice C-a lands only this stable vocabulary; placement and envelope derivation are separate slices."
+
+data witness_purpose_terminating_one_shot_frontier_note: String = "TerminatingOneShot is NOT a writable WitnessPurpose arm in slice C-a. It demands a pinned subject, a mechanically checkable dissolution trigger, AND a typed deadline after which an undissolved survey REFUSES — without the deadline substrate every permanent witness can claim to be a one-shot. A NonEmptyStr deadline field that always routes to OneShotUnavailable is rung inflation: a named future capability wearing the clothes of a finished arm. TerminatingOneShotFrontier records honest unavailability until std.measure lands typed instant/deadline and completion-receipt carriers; then TerminatingOneShot joins WitnessPurpose and this frontier type deletes."
+
+type WitnessPurpose
+  = BehavioralDiscriminator
+  | BoundaryCrossing { modeled_boundary: DeclarationRef, chosen_input: ContentHash }
+  | PopulationTotality { population: DeclarationRef }
+  | ExternalFidelity { effect: DeclarationRef }
+  | ResourceContract { bound: WitnessResourceBound }
+
+type TerminatingOneShotFrontier
+  = TerminatingOneShotUnavailableDeadlineSubstrateAbsent
+  | TerminatingOneShotUnavailableCompletionSubstrateAbsent
