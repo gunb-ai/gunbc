@@ -30,6 +30,7 @@ pub struct UnboundAnnotationCapture {
     pub origin: Rc<SourceSpan>,
     pub placement: AnnotationPlacement,
     pub preceded_by_blank_line: bool,
+    pub preceded_by_annotation_line: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -215,6 +216,7 @@ pub fn placement_from_line_prefix(indent_only: bool) -> AnnotationPlacement {
 pub struct AnnotationSubject {
     pub occurrence: OccurrenceId,
     pub span: Rc<SourceSpan>,
+    pub module_root: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -223,6 +225,7 @@ pub struct NormalizedAnnotationCapture {
     pub origin: Rc<SourceSpan>,
     pub placement: AnnotationPlacement,
     pub preceded_by_blank_line: bool,
+    pub preceded_by_annotation_line: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -258,49 +261,142 @@ pub fn annotation_subject_pick_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn module_root_pick_step(
+    acc: Option<Rc<AnnotationSubject>>,
+    row: Rc<AnnotationSubject>,
+) -> Option<Rc<AnnotationSubject>> {
+    if row.module_root.clone() {
+        match acc.clone() {
+            None => Some(row.clone()),
+            Some(best) => {
+                if (row.span.clone().start.clone() < best.span.clone().start.clone()) {
+                    Some(row.clone())
+                } else {
+                    acc.clone()
+                }
+            }
+        }
+    } else {
+        acc.clone()
+    }
+}
+
+pub fn module_root_subject(
+    subjects: Rc<Vec<Rc<AnnotationSubject>>>,
+) -> Option<Rc<AnnotationSubject>> {
+    subjects
+        .clone()
+        .iter()
+        .cloned()
+        .fold(None, |acc: _, row: Rc<AnnotationSubject>| {
+            module_root_pick_step(acc.clone(), row.clone())
+        })
+}
+
+pub fn earliest_member_start_after(
+    subjects: Rc<Vec<Rc<AnnotationSubject>>>,
+    after: i64,
+    fallback: i64,
+) -> i64 {
+    subjects.clone().iter().cloned().fold(
+        fallback.clone(),
+        |best: i64, row: Rc<AnnotationSubject>| {
+            if ((row.span.clone().start.clone() > after.clone())
+                && (row.span.clone().start.clone() < best.clone()))
+            {
+                row.span.clone().start.clone()
+            } else {
+                best.clone()
+            }
+        },
+    )
+}
+
+pub fn module_header_gap_subject(
+    subjects: Rc<Vec<Rc<AnnotationSubject>>>,
+    origin: Rc<SourceSpan>,
+    preceded_by_blank_line: bool,
+    preceded_by_annotation_line: bool,
+) -> Option<Rc<AnnotationSubject>> {
+    if (preceded_by_blank_line.clone() || preceded_by_annotation_line.clone()) {
+        None
+    } else {
+        match module_root_subject(subjects.clone()) {
+            None => None,
+            Some(mod_subject) => {
+                let first_member_start = earliest_member_start_after(
+                    subjects.clone(),
+                    mod_subject.span.clone().end.clone(),
+                    (origin.end.clone() + 1),
+                );
+                if ((origin.start.clone() >= mod_subject.span.clone().end.clone())
+                    && (origin.end.clone() <= first_member_start.clone()))
+                {
+                    Some(mod_subject.clone())
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
 pub fn annotation_subject_pick(
     subjects: Rc<Vec<Rc<AnnotationSubject>>>,
     origin: Rc<SourceSpan>,
+    preceded_by_blank_line: bool,
+    preceded_by_annotation_line: bool,
 ) -> Rc<AnnotationSubjectPick> {
-    subjects.clone().iter().cloned().fold(
-        Rc::new(AnnotationSubjectPick {
+    match module_header_gap_subject(
+        subjects.clone(),
+        origin.clone(),
+        preceded_by_blank_line.clone(),
+        preceded_by_annotation_line.clone(),
+    ) {
+        Some(mod_subject) => Rc::new(AnnotationSubjectPick {
             contained: false,
-            following: None,
+            following: Some(mod_subject.clone()),
         }),
-        |acc: Rc<AnnotationSubjectPick>, subject: Rc<AnnotationSubject>| {
-            if ((origin.start.clone() >= subject.span.clone().start.clone())
-                && (origin.end.clone() <= subject.span.clone().end.clone()))
-            {
-                Rc::new(AnnotationSubjectPick {
-                    contained: true,
-                    following: acc.following.clone(),
-                })
-            } else {
-                if (subject.span.clone().start.clone() < origin.end.clone()) {
-                    acc.clone()
+        None => subjects.clone().iter().cloned().fold(
+            Rc::new(AnnotationSubjectPick {
+                contained: false,
+                following: None,
+            }),
+            |acc: Rc<AnnotationSubjectPick>, subject: Rc<AnnotationSubject>| {
+                if ((origin.start.clone() >= subject.span.clone().start.clone())
+                    && (origin.end.clone() <= subject.span.clone().end.clone()))
+                {
+                    Rc::new(AnnotationSubjectPick {
+                        contained: true,
+                        following: acc.following.clone(),
+                    })
                 } else {
-                    match acc.following.clone() {
-                        None => Rc::new(AnnotationSubjectPick {
-                            contained: acc.contained.clone(),
-                            following: Some(subject.clone()),
-                        }),
-                        Some(best) => {
-                            if (subject.span.clone().start.clone()
-                                < best.span.clone().start.clone())
-                            {
-                                Rc::new(AnnotationSubjectPick {
-                                    contained: acc.contained.clone(),
-                                    following: Some(subject.clone()),
-                                })
-                            } else {
-                                acc.clone()
+                    if (subject.span.clone().start.clone() < origin.end.clone()) {
+                        acc.clone()
+                    } else {
+                        match acc.following.clone() {
+                            None => Rc::new(AnnotationSubjectPick {
+                                contained: acc.contained.clone(),
+                                following: Some(subject.clone()),
+                            }),
+                            Some(best) => {
+                                if (subject.span.clone().start.clone()
+                                    < best.span.clone().start.clone())
+                                {
+                                    Rc::new(AnnotationSubjectPick {
+                                        contained: acc.contained.clone(),
+                                        following: Some(subject.clone()),
+                                    })
+                                } else {
+                                    acc.clone()
+                                }
                             }
                         }
                     }
                 }
-            }
-        },
-    )
+            },
+        ),
+    }
 }
 
 pub fn annotation_subject_key_note() -> String {
@@ -368,6 +464,7 @@ pub struct AnnotationAttachAcc {
     pub rows: Rc<Vec<Rc<SourceAnnotationDebt>>>,
     pub refusals: Rc<Vec<Rc<AnnotationAttachmentRefusal>>>,
     pub pending: Option<Rc<SourceAnnotationDebt>>,
+    pub pending_adjacent: bool,
 }
 
 pub fn annotation_attach_flush(acc: Rc<AnnotationAttachAcc>) -> Rc<Vec<Rc<SourceAnnotationDebt>>> {
@@ -392,10 +489,16 @@ pub fn annotation_attach_step(
                 }),
             ),
             pending: acc.pending.clone(),
+            pending_adjacent: false,
         })
     } else {
         {
-            let pick = annotation_subject_pick(subjects.clone(), capture.origin.clone());
+            let pick = annotation_subject_pick(
+                subjects.clone(),
+                capture.origin.clone(),
+                capture.preceded_by_blank_line.clone(),
+                capture.preceded_by_annotation_line.clone(),
+            );
             if pick.contained.clone() {
                 Rc::new(AnnotationAttachAcc {
                     rows: acc.rows.clone(),
@@ -406,66 +509,107 @@ pub fn annotation_attach_step(
                         }),
                     ),
                     pending: acc.pending.clone(),
+                    pending_adjacent: false,
                 })
             } else {
-                match pick.following.clone() {
-                    None => Rc::new(AnnotationAttachAcc {
-                        rows: acc.rows.clone(),
-                        refusals: v1_rt::rc_list_push(
-                            acc.refusals.clone(),
-                            Rc::new(AnnotationAttachmentRefusal::UnattachedAtScopeEnd {
-                                origin: capture.origin.clone(),
-                            }),
-                        ),
-                        pending: acc.pending.clone(),
-                    }),
-                    Some(subject) => match acc.pending.clone() {
-                        Some(open) => {
-                            if ((open.subject.clone().value.clone()
-                                == subject.occurrence.clone().value.clone())
-                                && !capture.preceded_by_blank_line.clone())
-                            {
-                                Rc::new(AnnotationAttachAcc {
-                                    rows: acc.rows.clone(),
-                                    refusals: acc.refusals.clone(),
-                                    pending: Some(Rc::new(SourceAnnotationDebt {
-                                        subject: open.subject.clone(),
-                                        text: v1_rt::concat(
-                                            open.text.clone(),
-                                            v1_rt::concat("\n".to_string(), capture.text.clone()),
-                                        ),
-                                        origin: Rc::new(SourceSpan {
-                                            file: open.origin.clone().file.clone(),
-                                            start: open.origin.clone().start.clone(),
-                                            end: capture.origin.clone().end.clone(),
-                                        }),
-                                    })),
-                                })
-                            } else {
-                                Rc::new(AnnotationAttachAcc {
-                                    rows: v1_rt::rc_list_push(acc.rows.clone(), open.clone()),
-                                    refusals: acc.refusals.clone(),
-                                    pending: Some(Rc::new(SourceAnnotationDebt {
-                                        subject: subject.occurrence.clone(),
-                                        text: capture.text.clone(),
-                                        origin: capture.origin.clone(),
-                                    })),
-                                })
-                            }
-                        }
-                        None => Rc::new(AnnotationAttachAcc {
+                if ((capture.preceded_by_annotation_line.clone()
+                    && !capture.preceded_by_blank_line.clone())
+                    && acc.pending_adjacent.clone())
+                {
+                    match acc.pending.clone() {
+                        Some(open) => Rc::new(AnnotationAttachAcc {
                             rows: acc.rows.clone(),
                             refusals: acc.refusals.clone(),
                             pending: Some(Rc::new(SourceAnnotationDebt {
-                                subject: subject.occurrence.clone(),
-                                text: capture.text.clone(),
-                                origin: capture.origin.clone(),
+                                subject: open.subject.clone(),
+                                text: v1_rt::concat(
+                                    open.text.clone(),
+                                    v1_rt::concat("\n".to_string(), capture.text.clone()),
+                                ),
+                                origin: Rc::new(SourceSpan {
+                                    file: open.origin.clone().file.clone(),
+                                    start: open.origin.clone().start.clone(),
+                                    end: capture.origin.clone().end.clone(),
+                                }),
                             })),
+                            pending_adjacent: true,
                         }),
-                    },
+                        None => {
+                            annotation_attach_resolve(acc.clone(), capture.clone(), pick.clone())
+                        }
+                    }
+                } else {
+                    annotation_attach_resolve(acc.clone(), capture.clone(), pick.clone())
                 }
             }
         }
+    }
+}
+
+pub fn annotation_attach_resolve(
+    acc: Rc<AnnotationAttachAcc>,
+    capture: Rc<NormalizedAnnotationCapture>,
+    pick: Rc<AnnotationSubjectPick>,
+) -> Rc<AnnotationAttachAcc> {
+    match pick.following.clone() {
+        None => Rc::new(AnnotationAttachAcc {
+            rows: acc.rows.clone(),
+            refusals: v1_rt::rc_list_push(
+                acc.refusals.clone(),
+                Rc::new(AnnotationAttachmentRefusal::UnattachedAtScopeEnd {
+                    origin: capture.origin.clone(),
+                }),
+            ),
+            pending: acc.pending.clone(),
+            pending_adjacent: false,
+        }),
+        Some(subject) => match acc.pending.clone() {
+            Some(open) => {
+                if ((open.subject.clone().value.clone()
+                    == subject.occurrence.clone().value.clone())
+                    && !capture.preceded_by_blank_line.clone())
+                {
+                    Rc::new(AnnotationAttachAcc {
+                        rows: acc.rows.clone(),
+                        refusals: acc.refusals.clone(),
+                        pending: Some(Rc::new(SourceAnnotationDebt {
+                            subject: open.subject.clone(),
+                            text: v1_rt::concat(
+                                open.text.clone(),
+                                v1_rt::concat("\n".to_string(), capture.text.clone()),
+                            ),
+                            origin: Rc::new(SourceSpan {
+                                file: open.origin.clone().file.clone(),
+                                start: open.origin.clone().start.clone(),
+                                end: capture.origin.clone().end.clone(),
+                            }),
+                        })),
+                        pending_adjacent: true,
+                    })
+                } else {
+                    Rc::new(AnnotationAttachAcc {
+                        rows: v1_rt::rc_list_push(acc.rows.clone(), open.clone()),
+                        refusals: acc.refusals.clone(),
+                        pending: Some(Rc::new(SourceAnnotationDebt {
+                            subject: subject.occurrence.clone(),
+                            text: capture.text.clone(),
+                            origin: capture.origin.clone(),
+                        })),
+                        pending_adjacent: true,
+                    })
+                }
+            }
+            None => Rc::new(AnnotationAttachAcc {
+                rows: acc.rows.clone(),
+                refusals: acc.refusals.clone(),
+                pending: Some(Rc::new(SourceAnnotationDebt {
+                    subject: subject.occurrence.clone(),
+                    text: capture.text.clone(),
+                    origin: capture.origin.clone(),
+                })),
+                pending_adjacent: true,
+            }),
+        },
     }
 }
 
@@ -479,6 +623,7 @@ pub fn attach_annotations(
                 rows: Rc::new(vec![]),
                 refusals: Rc::new(vec![]),
                 pending: None,
+                pending_adjacent: false,
             }),
             |acc: Rc<AnnotationAttachAcc>, capture: Rc<NormalizedAnnotationCapture>| {
                 annotation_attach_step(acc, capture.clone(), subjects.clone())

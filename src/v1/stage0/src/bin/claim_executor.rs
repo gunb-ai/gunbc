@@ -7222,12 +7222,172 @@ fn budget_unit_label(stage: &[Runnable]) -> String {
         .join(",")
 }
 
+// Why `floor_finalization` is absent this attempt — a typed enum rather than a bare
+// bool or string so the scoped-by-construction arm and the incidental-absence arm
+// cannot later drift into one bucket (a caller must name which it means). There is
+// deliberately NO way to name "no reason" without naming it: `Undeclared` is a real
+// variant a caller must pass explicitly, not a default a caller can fall through to —
+// a caller that hasn't decided which cause applies still produces a counted line
+// naming that fact, rather than silently producing nothing (review 2026-08-07,
+// smart-badger-549: an earlier revision let an absent `Option` collapse to no
+// disposition at all, reintroducing case B under a name that read as handled).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FloorFinalizationAbsenceReason {
+    /// The scoped floor-worker branch sets `floor_finalization = None` deliberately:
+    /// one batch cannot evaluate a whole-floor resolve-obligation identity join. This
+    /// is correct behavior, not a defect — the line exists only to make the skip
+    /// countable, never to make it refuse.
+    ScopedWorkerByConstruction,
+    /// The resolved plan itself declared `NoFinalizationDeclared {}` — the regen,
+    /// plan-artifact, falsifier, and native-cache-cold plans never carry a
+    /// `FloorFinalization` contract at all (`ci_floor_plan.dag`), so `walk_plan.finalization`
+    /// parses to `None` before any worker-role branch runs. This is expected and
+    /// by-construction, exactly like the scoped case, but for a different reason — a
+    /// plan fact rather than a role fact — so it must not share `IncidentalAbsence`'s
+    /// bucket (review 49917, cursor/composer-2.5: collapsing both into one label dilutes
+    /// the incidental bucket with the four plans that will always land there, masking a
+    /// genuine incidental absence's frequency).
+    PlanDeclaresNoFinalization,
+    /// The walk carried no finalization contract and no known construction reason
+    /// explains why — the walk simply never reached the call, and the plan itself
+    /// declared a real `FloorFinalization` contract. Distinct from both the scoped and
+    /// plan-declared cases precisely because it is NOT expected, and its frequency is
+    /// the signal this whole mechanism exists to make visible.
+    IncidentalAbsence,
+    /// The caller has no opinion on why finalization is absent here (e.g. a
+    /// diagnostic-only re-walk that never applies the whole-floor contract at all).
+    /// Distinct from both named causes so it can never be mistaken for either.
+    Undeclared,
+}
+
+impl FloorFinalizationAbsenceReason {
+    fn label(self) -> &'static str {
+        match self {
+            FloorFinalizationAbsenceReason::ScopedWorkerByConstruction => {
+                "scoped-worker-by-construction"
+            }
+            FloorFinalizationAbsenceReason::PlanDeclaresNoFinalization => {
+                "plan-declares-no-finalization"
+            }
+            FloorFinalizationAbsenceReason::IncidentalAbsence => "incidental-absence",
+            FloorFinalizationAbsenceReason::Undeclared => "undeclared",
+        }
+    }
+}
+
+/// The floor-finalization verdict for one walk attempt, computed as a pure function of
+/// its inputs so the disposition — and therefore the exact lines a reader sees — is
+/// directly unit-testable without capturing process stderr. `run_walk` does nothing but
+/// print `floor_finalization_disposition_lines(&disposition)` and act on
+/// `Refused`; every other decision lives here.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FloorFinalizationDisposition {
+    /// Laws evaluated and held. Carries no ordinary-floor-outcome dependency — this
+    /// verdict is unconditional: a held contract on an otherwise-failing floor is
+    /// still information a reader needs (case C, still-bee-788/smart-badger-549).
+    Held,
+    /// Laws evaluated and at least one refused; the floor MUST fail.
+    Refused(Vec<String>),
+    /// Laws did not evaluate this attempt, for the named reason. Never fails the
+    /// floor — visibility is the whole fix, per DESIGN §5's "don't make the scoped
+    /// path refuse."
+    Absent(FloorFinalizationAbsenceReason),
+}
+
+fn floor_finalization_disposition(
+    floor_finalization: Option<&FloorFinalization>,
+    absence_reason: FloorFinalizationAbsenceReason,
+    plan_site: &str,
+    batch_records: &[BatchRecord],
+    walk_truncated: bool,
+) -> FloorFinalizationDisposition {
+    match floor_finalization {
+        Some(fin) => {
+            let refusals =
+                validate_floor_finalization(fin, plan_site, batch_records, walk_truncated);
+            floor_finalization_disposition_from_refusals(refusals)
+        }
+        None => FloorFinalizationDisposition::Absent(absence_reason),
+    }
+}
+
+/// Split out so the Held/Refused mapping is testable without depending on
+/// `validate_floor_finalization`'s on-disk materialization receipt read — and so the
+/// mapping is visibly a pure function of `refusals` alone, with no `ordinary_failed`
+/// (or any other floor-outcome) input anywhere in its signature. That absence is the
+/// fix for case C: a held verdict cannot be suppressed by floor outcome because nothing
+/// in this call chain ever receives it.
+fn floor_finalization_disposition_from_refusals(
+    refusals: Vec<String>,
+) -> FloorFinalizationDisposition {
+    if refusals.is_empty() {
+        FloorFinalizationDisposition::Held
+    } else {
+        FloorFinalizationDisposition::Refused(refusals)
+    }
+}
+
+// Scaffold: the sink `emit_floor_finalization_disposition` writes to is worker stderr in
+// production, a stream the Actions harness drops — the same silent stream that let cases
+// A/B/C go unnoticed in the first place. Making the verdict unconditional and typed (this
+// PR) closes the emission side; it does not yet close the observation side. The durable
+// fix is routing the disposition into the same persisted floor-materialization-receipt
+// (or an equivalent counted receipt) the other floor observations already use, so a
+// reader can count the verdict without depending on stderr reaching the log at all —
+// and because emission is already behind a `Write` seam (below), that fix becomes a
+// change of sink rather than a rewrite (review 2026-08-07, smart-badger-549).
+// Dissolve-on: `FloorFinalizationDisposition` (or its rendered lines) is written to a
+// persisted receipt alongside `target/floor-materialization-receipt.txt`, and this stderr
+// emission becomes a redundant mirror of it rather than the sole carrier.
+fn floor_finalization_disposition_lines(disposition: &FloorFinalizationDisposition) -> Vec<String> {
+    match disposition {
+        FloorFinalizationDisposition::Held => vec![
+            "floor contract finalized — resolve obligation identity join holds and \
+             materialization disclosure holds"
+                .to_string(),
+        ],
+        FloorFinalizationDisposition::Refused(refusals) => refusals
+            .iter()
+            .map(|msg| format!("FLOOR-FINALIZATION-REFUSED: {msg}"))
+            .collect(),
+        FloorFinalizationDisposition::Absent(reason) => vec![format!(
+            "FLOOR-FINALIZATION-ABSENT[{}]: floor finalization laws did not evaluate this attempt",
+            reason.label()
+        )],
+    }
+}
+
+/// The one place the verdict actually leaves the process. Takes the sink as a
+/// parameter rather than hardcoding stderr so emission is an observable seam: a test
+/// can pass a `Vec<u8>` and assert the exact bytes a reader would see, so deleting or
+/// bypassing this call in `run_walk` fails that test instead of leaving all-pure-function
+/// tests green while the floor goes silent (review 2026-08-07, smart-badger-549 —
+/// testing `floor_finalization_disposition_lines` alone proves the verdict is computed,
+/// never that it is seen).
+fn emit_floor_finalization_disposition(
+    sink: &mut dyn std::io::Write,
+    disposition: &FloorFinalizationDisposition,
+) {
+    for line in floor_finalization_disposition_lines(disposition) {
+        // A write failure on the diagnostic sink is not itself a floor-finalization
+        // verdict and must not be promoted into one; best-effort emission matches the
+        // `eprintln!` this replaces, which likewise cannot make a broken stderr refuse
+        // the floor.
+        let _ = writeln!(sink, "claim_executor: {line}");
+    }
+}
+
 fn run_walk(
     source_roots: &[String],
     plan_site: &str,
     batches: &[Vec<Runnable>],
     on_success_stages: &[Vec<Runnable>],
     floor_finalization: Option<&FloorFinalization>,
+    finalization_absence_reason: FloorFinalizationAbsenceReason,
+    // The finalization verdict's sink. Production callers pass `&mut std::io::stderr()`;
+    // a test passes a `Vec<u8>` so emission itself — not just the disposition it prints —
+    // is under test (see `emit_floor_finalization_disposition`).
+    finalization_sink: &mut dyn std::io::Write,
     ordinary_budget_ms: Option<u64>,
     on_success_budget_ms: Option<u64>,
     governor: &Arc<MemoryGovernor>,
@@ -7524,22 +7684,25 @@ fn run_walk(
     // Floor finalization laws (the in-executor form of the deleted resolve/
     // materialization gate steps): validated AFTER the receipts wrote and BEFORE the
     // on-success stages, so a violation blocks admission instead of post-dating it.
-    if let Some(fin) = floor_finalization {
-        let walk_truncated = batch_records.len() < batches.len();
-        let refusals = validate_floor_finalization(fin, plan_site, &batch_records, walk_truncated);
-        if refusals.is_empty() {
-            if !ordinary_failed {
-                eprintln!(
-                    "claim_executor: floor contract finalized — resolve obligation identity join \
-                     holds and materialization disclosure holds"
-                );
-            }
-        } else {
-            ordinary_failed = true;
-            for msg in refusals {
-                eprintln!("claim_executor: FLOOR-FINALIZATION-REFUSED: {msg}");
-                failure_details.push(format!("floor finalization refused: {msg}"));
-            }
+    // The verdict below is UNCONDITIONAL — printed whether or not the ordinary floor
+    // already failed for some other reason. A held contract on a failing floor is
+    // still information a reader needs; suppressing it made "laws ran and held" and
+    // "laws never ran" indistinguishable on exactly the reads that matter most
+    // (case C, still-bee-788/smart-badger-549 — DESIGN §5's specification-without-
+    // execution: a mechanism whose own verdict can vanish is not a verdict).
+    let walk_truncated = batch_records.len() < batches.len();
+    let disposition = floor_finalization_disposition(
+        floor_finalization,
+        finalization_absence_reason,
+        plan_site,
+        &batch_records,
+        walk_truncated,
+    );
+    emit_floor_finalization_disposition(finalization_sink, &disposition);
+    if let FloorFinalizationDisposition::Refused(refusals) = disposition {
+        ordinary_failed = true;
+        for msg in refusals {
+            failure_details.push(format!("floor finalization refused: {msg}"));
         }
     }
     ordinary_budget_armed.store(false, std::sync::atomic::Ordering::Release);
@@ -8039,6 +8202,11 @@ fn run_perturb_check(
         &remapped,
         &[],
         None,
+        // Diagnostic-only re-walk of a perturbed single witness — the floor's whole-
+        // contract finalization laws never apply here, so absence is Undeclared rather
+        // than one of the two named causes, but is still visible.
+        FloorFinalizationAbsenceReason::Undeclared,
+        &mut std::io::stderr(),
         None,
         None,
         &Arc::new(MemoryGovernor::from_environment(1)),
@@ -8918,6 +9086,11 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut batches = walk_plan.batches;
     let mut on_success_stages = walk_plan.on_success_stages;
     let mut floor_finalization: Option<FloorFinalization> = walk_plan.finalization;
+    // Captured BEFORE the scoped-worker override below can overwrite `floor_finalization`
+    // to `None` for its own, different reason — this is the plan's own fact, not the
+    // role's, and the two must not be read back through one collapsed `Option` later
+    // (review 49917, cursor/composer-2.5).
+    let plan_declared_no_finalization = floor_finalization.is_none();
     match floor_worker_role.as_ref() {
         Some(FloorWorkerRole::Ordinary) => {
             let child_batch_ids: Vec<String> = batches
@@ -9352,6 +9525,14 @@ fn run() -> Result<ExitCode, ExitCode> {
         &batches,
         &on_success_stages,
         floor_finalization.as_ref(),
+        if matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. })) {
+            FloorFinalizationAbsenceReason::ScopedWorkerByConstruction
+        } else if plan_declared_no_finalization {
+            FloorFinalizationAbsenceReason::PlanDeclaresNoFinalization
+        } else {
+            FloorFinalizationAbsenceReason::IncidentalAbsence
+        },
+        &mut std::io::stderr(),
         ordinary_budget_ms,
         on_success_budget_ms,
         &governor,
@@ -10336,6 +10517,246 @@ mod tests {
                 .iter()
                 .any(|m| m.contains("floor materialization receipt missing")),
             "absent receipt must refuse, never pass: {refusals:?}"
+        );
+    }
+
+    // --- floor-finalization DISPOSITION visibility (the fix this PR ships) -----------
+    //
+    // Three previously-silent cases, each with its own discriminating control so the
+    // three cannot collapse back into one indistinguishable "nothing printed" bucket:
+    //   A — finalization absent by construction (scoped floor worker)
+    //   B — finalization absent incidentally (walk never reached the call)
+    //   C — finalization HELD on an otherwise-failed floor (verdict must not vanish)
+
+    #[test]
+    fn floor_finalization_disposition_case_c_held_is_unconditional_on_refusals_alone() {
+        // RED CONTROL for case C: `floor_finalization_disposition_from_refusals` takes
+        // no `ordinary_failed` (or any other floor-outcome) parameter — so a held
+        // verdict cannot be suppressed by floor outcome, because nothing in this call
+        // chain can ever see it. If a future edit reintroduces suppression by inlining
+        // an outcome check ahead of this call, this function's signature is what would
+        // have to change to make it possible, which is the load-bearing fact this test
+        // pins.
+        let disposition = floor_finalization_disposition_from_refusals(Vec::new());
+        assert_eq!(disposition, FloorFinalizationDisposition::Held);
+        let lines = floor_finalization_disposition_lines(&disposition);
+        assert_eq!(
+            lines.len(),
+            1,
+            "held verdict must emit exactly one line: {lines:?}"
+        );
+        assert!(
+            lines[0].contains("floor contract finalized"),
+            "held line missing its verdict text: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_disposition_case_a_scoped_worker_is_absent_never_refused() {
+        let disposition = floor_finalization_disposition(
+            None,
+            FloorFinalizationAbsenceReason::ScopedWorkerByConstruction,
+            TEST_PLAN_SITE,
+            &[],
+            false,
+        );
+        assert_eq!(
+            disposition,
+            FloorFinalizationDisposition::Absent(
+                FloorFinalizationAbsenceReason::ScopedWorkerByConstruction
+            )
+        );
+        let lines = floor_finalization_disposition_lines(&disposition);
+        assert_eq!(
+            lines.len(),
+            1,
+            "absence must emit exactly one counted line: {lines:?}"
+        );
+        assert!(
+            lines[0].contains("FLOOR-FINALIZATION-ABSENT[scoped-worker-by-construction]"),
+            "scoped absence must name its reason, not just say nothing: {lines:?}"
+        );
+        assert!(
+            !lines[0].contains("REFUSED"),
+            "scoped-by-construction absence must never read as a refusal: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_disposition_case_b_incidental_absence_is_distinct_from_scoped() {
+        let disposition = floor_finalization_disposition(
+            None,
+            FloorFinalizationAbsenceReason::IncidentalAbsence,
+            TEST_PLAN_SITE,
+            &[],
+            false,
+        );
+        assert_eq!(
+            disposition,
+            FloorFinalizationDisposition::Absent(FloorFinalizationAbsenceReason::IncidentalAbsence)
+        );
+        let lines = floor_finalization_disposition_lines(&disposition);
+        assert!(
+            lines[0].contains("FLOOR-FINALIZATION-ABSENT[incidental-absence]"),
+            "incidental absence must carry its own distinct marker: {lines:?}"
+        );
+        // The discriminating half of the control: A and B must never render identically,
+        // or a reader is back to being unable to tell which one happened.
+        let scoped_lines =
+            floor_finalization_disposition_lines(&FloorFinalizationDisposition::Absent(
+                FloorFinalizationAbsenceReason::ScopedWorkerByConstruction,
+            ));
+        assert_ne!(
+            lines, scoped_lines,
+            "scoped-by-construction and incidental absence must render as distinguishable lines"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_disposition_plan_declared_absence_is_distinct_from_incidental() {
+        // Review 49917 (cursor/composer-2.5): the regen/plan-artifact/falsifier/
+        // native-cache-cold plans always declare `NoFinalizationDeclared {}` — that is a
+        // PLAN fact, expected on every one of their runs, and must not render as
+        // `incidental-absence`, which exists to flag runs that were NOT supposed to skip.
+        let disposition = floor_finalization_disposition(
+            None,
+            FloorFinalizationAbsenceReason::PlanDeclaresNoFinalization,
+            TEST_PLAN_SITE,
+            &[],
+            false,
+        );
+        assert_eq!(
+            disposition,
+            FloorFinalizationDisposition::Absent(
+                FloorFinalizationAbsenceReason::PlanDeclaresNoFinalization
+            )
+        );
+        let lines = floor_finalization_disposition_lines(&disposition);
+        assert!(
+            lines[0].contains("FLOOR-FINALIZATION-ABSENT[plan-declares-no-finalization]"),
+            "plan-declared absence must carry its own distinct marker: {lines:?}"
+        );
+        let incidental_lines =
+            floor_finalization_disposition_lines(&FloorFinalizationDisposition::Absent(
+                FloorFinalizationAbsenceReason::IncidentalAbsence,
+            ));
+        let scoped_lines =
+            floor_finalization_disposition_lines(&FloorFinalizationDisposition::Absent(
+                FloorFinalizationAbsenceReason::ScopedWorkerByConstruction,
+            ));
+        assert_ne!(
+            lines, incidental_lines,
+            "a plan that always declares no finalization must not dilute the incidental bucket"
+        );
+        assert_ne!(lines, scoped_lines);
+    }
+
+    #[test]
+    fn floor_finalization_disposition_undeclared_absence_still_emits_a_counted_line() {
+        // Inverse of the defect an earlier revision of this PR reintroduced (review
+        // 2026-08-07, smart-badger-549): a caller with no opinion on WHY finalization is
+        // absent still cannot construct a silent outcome, because `absence_reason` is a
+        // required `FloorFinalizationAbsenceReason`, not an `Option` a caller could pass
+        // `None` for. `Undeclared` is that caller's only honest choice, and it renders
+        // its own distinct, non-empty line — never nothing, and never mistaken for A or B.
+        let disposition = floor_finalization_disposition(
+            None,
+            FloorFinalizationAbsenceReason::Undeclared,
+            TEST_PLAN_SITE,
+            &[],
+            false,
+        );
+        assert_eq!(
+            disposition,
+            FloorFinalizationDisposition::Absent(FloorFinalizationAbsenceReason::Undeclared)
+        );
+        let lines = floor_finalization_disposition_lines(&disposition);
+        assert_eq!(
+            lines.len(),
+            1,
+            "undeclared absence must still emit exactly one counted line: {lines:?}"
+        );
+        assert!(
+            lines[0].contains("FLOOR-FINALIZATION-ABSENT[undeclared]"),
+            "undeclared absence must name itself, not read as A or B: {lines:?}"
+        );
+        let scoped_lines =
+            floor_finalization_disposition_lines(&FloorFinalizationDisposition::Absent(
+                FloorFinalizationAbsenceReason::ScopedWorkerByConstruction,
+            ));
+        let incidental_lines =
+            floor_finalization_disposition_lines(&FloorFinalizationDisposition::Absent(
+                FloorFinalizationAbsenceReason::IncidentalAbsence,
+            ));
+        assert_ne!(lines, scoped_lines);
+        assert_ne!(lines, incidental_lines);
+    }
+
+    #[test]
+    fn run_walk_emits_the_finalization_disposition_through_the_injected_sink() {
+        // Discriminating control for "nothing proves the verdict is emitted" (review
+        // 2026-08-07, smart-badger-549): this calls the REAL run_walk, not a pure
+        // disposition function, and inspects the REAL bytes written through the sink
+        // production passes as stderr. Deleting or bypassing the
+        // `emit_floor_finalization_disposition` call inside `run_walk` reds this test;
+        // testing `floor_finalization_disposition_lines` alone cannot.
+        let mut sink: Vec<u8> = Vec::new();
+        let _outcome = run_walk(
+            &[],
+            TEST_PLAN_SITE,
+            &[],
+            &[],
+            None,
+            FloorFinalizationAbsenceReason::IncidentalAbsence,
+            &mut sink,
+            None,
+            None,
+            &Arc::new(MemoryGovernor::from_environment(1)),
+            None,
+            FalsifierSelfHostWetBudgets::default(),
+            FloorBatchStopPolicy::StopBeforeDependents,
+            None,
+            None,
+            false,
+            Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+            false,
+            None,
+        );
+        let emitted = String::from_utf8(sink).expect("emitted bytes must be valid utf-8");
+        assert!(
+            emitted.contains("FLOOR-FINALIZATION-ABSENT[incidental-absence]"),
+            "run_walk must actually write the disposition line through its sink, not just compute it: {emitted:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_disposition_refused_still_carries_the_law_message() {
+        // Sanity: wiring the disposition wrapper through validate_floor_finalization
+        // preserves the existing REFUSED law text — this PR changes visibility, never
+        // the laws' semantics (constraint from the brief).
+        let fin = test_floor_finalization();
+        let disposition = floor_finalization_disposition(
+            Some(&fin),
+            FloorFinalizationAbsenceReason::Undeclared,
+            TEST_PLAN_SITE,
+            &[],
+            false,
+        );
+        match &disposition {
+            FloorFinalizationDisposition::Refused(refusals) => {
+                assert!(
+                    !refusals.is_empty(),
+                    "empty batch records must refuse unexecuted obligations"
+                );
+            }
+            other => panic!("expected Refused with no batch records, got {other:?}"),
+        }
+        let lines = floor_finalization_disposition_lines(&disposition);
+        assert!(
+            lines
+                .iter()
+                .all(|l| l.starts_with("FLOOR-FINALIZATION-REFUSED: ")),
+            "every refusal line must carry the located, typed marker: {lines:?}"
         );
     }
 
@@ -11851,6 +12272,8 @@ mod tests {
             &ordinary_batch,
             on_success_stages,
             None,
+            FloorFinalizationAbsenceReason::Undeclared,
+            &mut std::io::stderr(),
             None,
             None,
             &Arc::new(MemoryGovernor::from_environment(1)),

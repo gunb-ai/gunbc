@@ -13,13 +13,13 @@ import extdeps.cache.types {
   CatalogOpaqueStringEncoding,
 }
 import std.cache_identity { CacheInterfaceId }
+import std.decl_ref { WholeDeclaration }
 import std.cache_interface {
   ExactKeyOnly,
   OverwriteAllowed,
   MissThenCreate,
   StructuredArtifact,
   InProcess,
-  Never,
   PerFile,
   None,
   InProcessNs,
@@ -29,6 +29,13 @@ import std.cache_interface {
   DependencyChange,
   ToolchainChange,
   Repo,
+  CapacityBounded,
+  CapacityUnbounded,
+  EntryCountCapacity,
+  ProviderNativeReplacement,
+  ReleasedAtProviderScopeExit,
+  ReplaceExisting,
+  RuntimeDerivedLimit,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -62,7 +69,7 @@ data parse_cache_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: StructuredArtifact
     locality: InProcess
-    eviction: Never
+    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityUnbounded }
     atomicity: PerFile
     auth: None
     read_latency: InProcessNs
@@ -107,7 +114,7 @@ data typed_module_cache_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: StructuredArtifact
     locality: InProcess
-    eviction: Never
+    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityBounded { limit: EntryCountCapacity { limit: RuntimeDerivedLimit { authority: { module_path: "gunbc.typed_module_cache_capacity", decl_name: "typed_module_cache_entry_cap", field: WholeDeclaration } } }, at_capacity: ReplaceExisting { strategy: ProviderNativeReplacement } } }
     atomicity: PerFile
     auth: None
     read_latency: InProcessNs

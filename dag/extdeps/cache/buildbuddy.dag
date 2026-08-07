@@ -8,7 +8,6 @@ import std.cache_interface {
   MissThenCreate,
   RawBytes,
   CrossHostNetwork,
-  Never,
   WriteThenCommit,
   ApiKey,
   LanMs,
@@ -16,6 +15,8 @@ import std.cache_interface {
   VendorCitation,
   ManualPurge,
   Network,
+  CapacityUnobserved,
+  ReleasedNever,
 }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -51,7 +52,7 @@ data buildbuddy_cas_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: RawBytes
     locality: CrossHostNetwork
-    eviction: Never
+    retention: { release_policy: ReleasedNever, capacity: CapacityUnobserved }
     atomicity: WriteThenCommit
     auth: ApiKey
     read_latency: LanMs

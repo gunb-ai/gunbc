@@ -15,6 +15,7 @@ import gunbc.design.theme { role_var, CanvasRole, night_canvas }
 import gunbc.design.material { paint }
 import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
 import gunbc.roadmap_serve { roadmap_serve_respond }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -77,13 +78,13 @@ test fn witness_gallery_drop_is_located_red() -> Bool {
 
 test fn witness_echo_answers_every_wire_arm() -> Bool {
   all(belt_dispatch_all_status_labels(), l => {
-    let r = roadmap_serve_respond(method_label: "POST", path: join(["/sandbox/echo?status=", l], ""), body: "")
+    let r = roadmap_serve_respond(method_label: "POST", path: join(["/sandbox/echo?status=", l], ""), body: "", release_revision: deploy_witness_release_revision)
     r.status == 200 && string_contains(s: r.body, pattern: l) && string_contains(s: r.body, pattern: "status")
   })
 }
 
 test fn witness_echo_unknown_label_refuses() -> Bool {
-  let r = roadmap_serve_respond(method_label: "POST", path: "/sandbox/echo?status=bogus", body: "")
+  let r = roadmap_serve_respond(method_label: "POST", path: "/sandbox/echo?status=bogus", body: "", release_revision: deploy_witness_release_revision)
   r.status == 400 && string_contains(s: r.body, pattern: "unknown status")
 }
 

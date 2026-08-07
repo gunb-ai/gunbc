@@ -8002,6 +8002,206 @@ pub fn reset_pool_qualified_fill_for_test(index: &MultiEntryIndex) {
     *index.pool_qualified_fill.borrow_mut() = None;
 }
 
+// ---------------------------------------------------------------------------
+// Private-footprint decomposition instrumentation (work item
+// node://adhoc-2a689db3-964). Read/force/drop handles on the per-worker index
+// terms so `measure_worker_private_memory` can stage construction and then
+// attribute retained heap by EXCLUSIVE DROP (clear one term, measure the live-heap
+// release) instead of by shallow shell sizing, which the Rc→Arc spike receipt
+// (`docs/plans/rc-to-arc-share-spike.md` §2.2) records as an under-count that must
+// not be summed. Feature-gated and additive: no production path calls these, and
+// none of them changes any semantic behaviour of the index.
+//
+// Every field below is PER WORKER. `typed_module_cache` is the sole term the
+// cross-worker store can serve (`shared_typecheck_store.rs`); it is included so the
+// decomposition can state what sharing already covers versus what it leaves behind.
+
+/// Force the lazily-built pool terms, one at a time, in dependency order. Each
+/// returns after populating exactly one field so a caller can snapshot between them.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn force_pool_parse_for_test(index: &MultiEntryIndex) -> Result<(), String> {
+    pool_parse(index).map(|_| ())
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn force_pool_qualified_fill_for_test(index: &MultiEntryIndex) -> Result<(), String> {
+    pool_qualified_fill(index).map(|_| ())
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn force_tree_bare_census_for_test(
+    index: &MultiEntryIndex,
+    source_root: &str,
+) -> Result<(), String> {
+    tree_bare_census_for_root(index, source_root).map(|_| ())
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn force_pool_bare_census_for_test(index: &MultiEntryIndex) -> Result<(), String> {
+    pool_bare_census(index).map(|_| ())
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn force_both_closure_edges_for_test(index: &MultiEntryIndex) -> Result<(), String> {
+    both_closure_edge_index(index).map(|_| ())
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn index_source_roots_for_test(index: &MultiEntryIndex) -> Vec<String> {
+    index.source_roots.clone()
+}
+
+/// Population counts per term — reported beside the byte deltas so a term's size
+/// can be read per entry, never to derive bytes from counts.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn private_term_entry_counts_for_test(index: &MultiEntryIndex) -> Vec<(&'static str, usize)> {
+    vec![
+        ("source_files", index.source_files.len()),
+        (
+            "typed_module_cache",
+            index.typed_module_cache.borrow().len(),
+        ),
+        (
+            "source_hash_by_file",
+            index.source_hash_by_file.borrow().len(),
+        ),
+        (
+            "module_source_identity",
+            index.module_source_identity.borrow().len(),
+        ),
+        ("parse_cache", index.parse_cache.borrow().len()),
+        (
+            "normalize_diag_cache",
+            index.normalize_diag_cache.borrow().len(),
+        ),
+        (
+            "ownership_diag_cache",
+            index.ownership_diag_cache.borrow().len(),
+        ),
+        (
+            "intern_table_strings",
+            index.intern_table.borrow().strings.len(),
+        ),
+        (
+            "pool_parse_nodes",
+            index
+                .pool_parse
+                .borrow()
+                .as_ref()
+                .map(|p| p.nodes_by_file.len())
+                .unwrap_or(0),
+        ),
+        ("tree_bare_census", index.tree_bare_census.borrow().len()),
+        (
+            "entry_closure_sources",
+            index.entry_closure_sources.borrow().len(),
+        ),
+        (
+            "both_closure_edge_rows",
+            index
+                .both_closure_edges
+                .borrow()
+                .as_ref()
+                .map(|e| e.bare_out.len() + e.ref_out.len())
+                .unwrap_or(0),
+        ),
+        (
+            "resolved_graph_memo",
+            index.resolved_graph_memo.borrow().len(),
+        ),
+    ]
+}
+
+/// Drop exactly one term. The live-heap release measured across a call is that
+/// term's EXCLUSIVE retention: bytes still reachable from another field (Rc-shared
+/// structure) are NOT released here and therefore are not attributed — which is the
+/// intended honest behaviour. `source_files` has no clear arm: it is the root every
+/// other term borrows from, so dropping it is not expressible as a term release.
+/// Returns false for an unknown name so a caller cannot silently mis-drop.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
+    match term {
+        "typed_module_cache" => index.typed_module_cache.borrow_mut().clear(),
+        "source_hash_by_file" => index.source_hash_by_file.borrow_mut().clear(),
+        "module_source_identity" => index.module_source_identity.borrow_mut().clear(),
+        "parse_cache" => index.parse_cache.borrow_mut().clear(),
+        "normalize_diag_cache" => index.normalize_diag_cache.borrow_mut().clear(),
+        "ownership_diag_cache" => index.ownership_diag_cache.borrow_mut().clear(),
+        "pool_parse" => *index.pool_parse.borrow_mut() = None,
+        "pool_qualified_fill" => *index.pool_qualified_fill.borrow_mut() = None,
+        "tree_bare_census" => index.tree_bare_census.borrow_mut().clear(),
+        "pool_bare_census" => *index.pool_bare_census.borrow_mut() = None,
+        "entry_closure_sources" => index.entry_closure_sources.borrow_mut().clear(),
+        "both_closure_edges" => *index.both_closure_edges.borrow_mut() = None,
+        "resolved_graph_memo" => index.resolved_graph_memo.borrow_mut().clear(),
+        "intern_table" => {
+            *index.intern_table.borrow_mut() = crate::v1_std_core::empty_intern_table();
+        }
+        _ => return false,
+    }
+    true
+}
+
+/// The loader's EXACT closure for one entry, in the `workspace_relative_repo_path` form
+/// `index_arm_schedule_retention` arms from — so the decomposition harness can arm
+/// schedule retention over its cohort through the same closure authority production uses,
+/// rather than reconstructing a second adjacency (the D0.3 / #6985 Class-B root).
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn entry_closure_paths_for_test(
+    index: &MultiEntryIndex,
+    entry: &str,
+) -> Result<Vec<String>, String> {
+    load_sources_for_entry_with_pool(index, entry).map(|sources| {
+        sources
+            .iter()
+            .map(|sf| workspace_relative_repo_path(&sf.path))
+            .collect()
+    })
+}
+
+/// Keys currently in `resolved_graph_memo`. The harness diffs this across one resolve to
+/// recover that entry's subject key, which is what `index_schedule_entry_completed` needs
+/// to drop the entry's assembled graph — recovered by observation rather than by
+/// re-deriving the subject digest in a second place.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn resolved_graph_memo_keys_for_test(index: &MultiEntryIndex) -> Vec<String> {
+    index.resolved_graph_memo.borrow().keys().cloned().collect()
+}
+
+/// Drive one entry-completion of the armed schedule — the production drain step
+/// (`index_schedule_entry_completed`), so an armed measurement releases exactly what a
+/// real worker releases.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn schedule_entry_completed_for_test(
+    index: &MultiEntryIndex,
+    entry: &str,
+    subject: Option<&str>,
+) -> Result<(), String> {
+    index_schedule_entry_completed(index, entry, subject)
+}
+
+/// The drop-attributable term names, in the order the decomposition reports them.
+/// `source_files` is deliberately absent (see `drop_private_term_for_test`).
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
+    &[
+        "resolved_graph_memo",
+        "typed_module_cache",
+        "parse_cache",
+        "pool_parse",
+        "both_closure_edges",
+        "pool_bare_census",
+        "tree_bare_census",
+        "pool_qualified_fill",
+        "entry_closure_sources",
+        "intern_table",
+        "normalize_diag_cache",
+        "ownership_diag_cache",
+        "source_hash_by_file",
+        "module_source_identity",
+    ]
+}
+
 fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
@@ -15072,15 +15272,48 @@ pub fn handle_run_with_options(
 /// seam). Sequential by design: one request at a time serializes the
 /// belt's observe-before-spawn window by construction, so two concurrent
 /// dispatch clicks cannot both observe the session absent.
+/// Exactly 40 lowercase hex digits — git's Sha1 object-name width.
+///
+/// The seed realization of `gunbc.running_release_identity`
+/// `release_revision_text_valid`. Both exist deliberately and neither is the
+/// other's nickname: this one refuses to START a process whose launch identity
+/// is not a revision, before the listener binds, so a misconfigured unit fails
+/// loudly at boot instead of publishing a malformed identity that every later
+/// deploy then has to refuse; the `.dag` one refuses to TRUST wire bytes read
+/// back from some other process. Same rule, two boundaries, and the boundary
+/// each guards is the reason it cannot be deleted in favour of the other.
+fn release_revision_text_valid(text: &str) -> bool {
+    text.len() == 40
+        && text
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+}
+
 pub fn handle_serve(
     source_roots: Vec<String>,
     entry_file: String,
     function: String,
     host: String,
     port: u16,
+    release_revision: String,
 ) {
     if source_roots.is_empty() {
         eprintln!("error: provide at least one --source-root");
+        std::process::exit(1);
+    }
+    // Bound BEFORE the graph is compiled and before the listener binds: a
+    // process that cannot say which release it is must never reach a state
+    // where something can route traffic to it and read its identity back.
+    if !release_revision_text_valid(&release_revision) {
+        eprintln!(
+            "error: --release-revision must be exactly 40 lowercase hex digits \
+             (git object name); got {:?} ({} chars). This is the identity this \
+             process publishes through /healthz and that deployment ordering \
+             reads back — a branch name, an abbreviated sha, or an empty value \
+             is not a revision.",
+            release_revision,
+            release_revision.chars().count()
+        );
         std::process::exit(1);
     }
     let index = process_shared_index(&source_roots);
@@ -15130,8 +15363,8 @@ pub fn handle_serve(
         }
     };
     eprintln!(
-        "gunbc serve listening on {}:{} -> {}()",
-        host, port, function
+        "gunbc serve listening on {}:{} -> {}() release_revision={}",
+        host, port, function, release_revision
     );
     v1_interpreter::with_active_context(&ctx, || {
         for stream in listener.incoming() {
@@ -15157,6 +15390,13 @@ pub fn handle_serve(
                         ),
                         (Some("path".to_string()), v1_interpreter::Value::Str(path)),
                         (Some("body".to_string()), v1_interpreter::Value::Str(body)),
+                        // Captured once above and cloned per request: the value
+                        // is fixed for the process lifetime, so no request can
+                        // observe a different release than any other request.
+                        (
+                            Some("release_revision".to_string()),
+                            v1_interpreter::Value::Str(release_revision.clone()),
+                        ),
                     ];
                     match v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true) {
                         Err(e) => serve_write_response(
@@ -17954,6 +18194,34 @@ pub fn collect_frozen_path_deferral_additions_for(
         }
     };
 
+    // THE CURRENT SIDE IS THE SELECTED HEAD, not an ambient one, and this runs BEFORE any arm that
+    // can permit. Reading the live filesystem keeps an uncommitted local roster edit in scope (the
+    // check must catch a row added but not yet committed), so the coherence is established rather
+    // than assumed: the workspace must BE at the resolved head. An exact replay whose head is some
+    // other commit therefore refuses instead of silently answering about whatever is checked out.
+    //
+    // ORDER IS LOAD-BEARING, and it was wrong when this wall first landed. The confirmed-absence
+    // arm below returns `Ok` — a PERMIT — and it sat above this check, so a comparison whose
+    // baseline predates the freeze file was blessed without ever establishing which tree was being
+    // adjudicated. Discriminating history: base B has no roster, selected head H introduces {X},
+    // the actual checkout C is some later commit carrying {X, Y}; the gate saw B lacking the roster
+    // and permitted, never noticing it had answered about C rather than H. Bounded in practice
+    // (today's push and PR baselines all carry the roster) but reachable through an exact replay or
+    // an operator-selected historical baseline — and it contradicted the very law this check
+    // states. A validation that any permitting arm can jump over is not a wall, so it is hoisted
+    // above every one of them.
+    let checkout = run(&["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])?;
+    let checkout_commit = String::from_utf8_lossy(&checkout.stdout).trim().to_string();
+    if !checkout.status.success() || checkout_commit != head_commit {
+        return Err(located(format!(
+            "WITNESS ADMISSION REFUSAL cause=FreezeHeadEndpointMismatch resolved_head={head_commit} \
+             checkout={checkout_commit} — the current side of this comparison is read from the \
+             working tree, and the working tree is not at the head the authority selected, so the \
+             roster it reports is not the roster of the subject under check. Answering about the \
+             checkout anyway would substitute one endpoint for another."
+        )));
+    }
+
     let base_keys = match read_frozen_roster_at_commit(&run, &baseline_commit).map_err(located)? {
         Some(source) => frozen_path_deferral_keys_from_source(&source),
         None => {
@@ -17969,23 +18237,6 @@ pub fn collect_frozen_path_deferral_additions_for(
             return Ok(Vec::new());
         }
     };
-
-    // THE CURRENT SIDE IS THE SELECTED HEAD, not an ambient one. Reading the live filesystem keeps
-    // an uncommitted local roster edit in scope (the check must catch a row added but not yet
-    // committed), so the coherence is established rather than assumed: the workspace must BE at the
-    // resolved head. An exact replay whose head is some other commit therefore refuses instead of
-    // silently answering about whatever happens to be checked out.
-    let checkout = run(&["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])?;
-    let checkout_commit = String::from_utf8_lossy(&checkout.stdout).trim().to_string();
-    if !checkout.status.success() || checkout_commit != head_commit {
-        return Err(located(format!(
-            "WITNESS ADMISSION REFUSAL cause=FreezeHeadEndpointMismatch resolved_head={head_commit} \
-             checkout={checkout_commit} — the current side of this comparison is read from the \
-             working tree, and the working tree is not at the head the authority selected, so the \
-             roster it reports is not the roster of the subject under check. Answering about the \
-             checkout anyway would substitute one endpoint for another."
-        )));
-    }
     let current_source = std::fs::read_to_string(root.join(WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL))
         .map_err(|e| {
             located(format!(
@@ -19468,7 +19719,7 @@ fn floor_git_diff_range() -> Result<String, String> {
 /// answers "which ref" for a diagnostic, and a DECIDING consumer that takes it has to invent the
 /// missing head and relation. Inventing them is what shipped the merge-base-on-every-arm fail-open,
 /// so the deciding consumers read this one and a `ComparisonReadoutRefused` propagates.
-fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison, String> {
+pub(crate) fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison, String> {
     use v1_interpreter::Value;
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
@@ -25586,6 +25837,66 @@ mod node_frontier_plumbing_controls {
             .collect(&repo.direct("0000000000000000000000000000000000000000", "HEAD"))
             .expect_err("an unresolvable baseline must refuse, never read as absence");
         assert!(err.contains("FreezeBaselineUnobservable"), "{err}");
+    }
+
+    // CONTROL 7c — THE CROSS-PRODUCT, and the fail-open it closes. Each of these two facts is
+    // individually handled: an absent baseline roster PERMITS (the freeze-introduction arm) and a
+    // checkout that is not the selected head REFUSES. Their conjunction was the hole, because the
+    // permitting arm returned first and the endpoint check never ran — so a comparison naming head
+    // H was silently answered from checkout C.
+    //
+    // This is the shape review found after #7953 merged. It is bounded in practice, since today's
+    // push and PR baselines all carry the roster, and reachable through an exact replay or an
+    // operator-selected historical baseline. Reordering the endpoint check back below the absence
+    // arm must make this control red; that mutation is the proof it is load-bearing.
+    #[test]
+    fn frozen_roster_absent_baseline_still_refuses_a_mismatched_checkout() {
+        let repo = FreezeRepo::new("absent-baseline-mismatched-head");
+        std::fs::write(repo.dir.join("unrelated.txt"), "no roster yet\n").expect("write");
+        let base_without_roster = repo.commit("B: baseline predating the freeze");
+
+        repo.write_roster(&["introduced_here"]);
+        let selected_head = repo.commit("H: the selected head introduces the roster");
+
+        repo.write_roster(&["introduced_here", "added_later"]);
+        repo.commit("C: the actual checkout, a different subject");
+
+        // The permitting arm is genuinely reachable: this baseline really has no roster.
+        assert!(
+            !std::process::Command::new("git")
+                .args([
+                    "ls-tree",
+                    "-z",
+                    &base_without_roster,
+                    "--",
+                    super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL,
+                ])
+                .current_dir(&repo.dir)
+                .output()
+                .expect("git ls-tree")
+                .stdout
+                .iter()
+                .any(|b| *b != 0),
+            "the fixture's baseline must genuinely lack the roster, else the permitting arm is \
+             never reached and this control proves nothing"
+        );
+
+        let err = repo
+            .collect(&repo.direct(&base_without_roster, &selected_head))
+            .expect_err(
+                "an absent baseline must not permit while the checkout is a different subject",
+            );
+        assert!(err.contains("FreezeHeadEndpointMismatch"), "{err}");
+
+        // The same absent baseline, with the checkout AT the selected head, still permits — the
+        // repair tightened the order, it did not delete the freeze-introduction arm.
+        repo.git(&["checkout", "--quiet", &selected_head]);
+        assert!(
+            repo.collect(&repo.direct(&base_without_roster, &selected_head))
+                .expect("confirmed absence at a coherent endpoint is readable")
+                .is_empty(),
+            "the introducing change must still pass when the checkout IS the selected head"
+        );
     }
 
     // CONTROL 7b — THE ABSENCE/IGNORANCE SPLIT, at the only grain that actually discriminates it.
@@ -35609,6 +35920,85 @@ mod witness_layer_roots_compile_clean_tests {
                     "the live roster cannot have grown against itself through the public entry: \
                      {additions:?}"
                 );
+            });
+        });
+    }
+
+    // THE PAYLOAD ROUTE, end to end, which the OperatorOverride control beside it deliberately does
+    // not cover. The repository already proves `GITHUB_EVENT_PATH` parses into a before SHA, and the
+    // recut proves a resolved comparison decides correctly once it reaches Rust; nothing joined the
+    // two. This composes the whole chain on the production route:
+    //
+    //   GITHUB_EVENT_NAME=push + real payload file + GITHUB_SHA
+    //     -> resolve_diff_baseline -> PushBeforeBaseline -> DirectComparison -> the Rust bridge
+    //
+    // Direct mode is the load-bearing assertion. A push resolving to merge-base is exactly the
+    // fail-open that shipped in gunbc#7953's first cut, and this is the only control that reaches
+    // that conclusion through the real payload rather than through a hand-built comparison.
+    #[test]
+    fn push_payload_resolves_through_the_public_route_to_a_direct_comparison() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let ws = workspace_root();
+                let before = String::from_utf8_lossy(
+                    &std::process::Command::new("git")
+                        .args(["rev-parse", "HEAD^{commit}"])
+                        .current_dir(&ws)
+                        .output()
+                        .expect("git rev-parse")
+                        .stdout,
+                )
+                .trim()
+                .to_string();
+                let head_sha = String::from_utf8_lossy(
+                    &std::process::Command::new("git")
+                        .args(["rev-parse", "HEAD^{commit}"])
+                        .current_dir(&ws)
+                        .output()
+                        .expect("git rev-parse")
+                        .stdout,
+                )
+                .trim()
+                .to_string();
+
+                let payload = std::env::temp_dir().join(format!(
+                    "gunbc-push-payload-{}-{}.json",
+                    std::process::id(),
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .expect("clock")
+                        .as_nanos()
+                ));
+                std::fs::write(&payload, format!("{{\"before\": \"{before}\"}}\n"))
+                    .expect("write push payload");
+
+                // The two competing baseline sources must be absent, or this control would silently
+                // measure the OperatorOverride / ExactReplay arm instead of the payload route.
+                let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
+                let _window = EnvGuard::remove("GUNBC_DIFF_WINDOW_PATH");
+                let _head_override = EnvGuard::remove("GUNBC_CI_DIFF_HEAD");
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "push");
+                let _path = EnvGuard::set("GITHUB_EVENT_PATH", &payload.to_string_lossy());
+                let _sha = EnvGuard::set("GITHUB_SHA", &head_sha);
+
+                let comparison = crate::cli_run::floor_diff_comparison_readout()
+                    .expect("a real push payload must resolve to a comparison");
+                std::fs::remove_file(&payload).ok();
+
+                match comparison {
+                    crate::cli_run::FreezeBaselineComparison::Direct { base, head, kind } => {
+                        assert_eq!(base, before, "the exact payload before SHA is the base");
+                        assert_eq!(head, "HEAD", "the selected head comes from the diff policy");
+                        assert_eq!(
+                            kind, "PushBeforeBaseline",
+                            "the payload route must select the PushBefore arm"
+                        );
+                    }
+                    other => panic!(
+                        "a push payload must resolve to a DIRECT (two-dot) comparison; \
+                         merge-base on a push is the reintroduction fail-open: {other:?}"
+                    ),
+                }
             });
         });
     }

@@ -73,7 +73,7 @@ type CatalogKeyDerivationFacts {
 fn invalidation_triggers_on_toolchain_change(triggers: List<InvalidationTrigger>) -> Bool {
   triggers |> any(trigger => match trigger {
     ToolchainChange => true
-    TtlExpiry => false
+    TtlExpiry { window: _ } => false
     ManualPurge => false
     DependencyChange => false
   })

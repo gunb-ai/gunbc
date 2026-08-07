@@ -13,11 +13,6 @@ import gunbc.cli_invoke {
   SourceRootBare,
   SourceRootRooted
 }
-import v2.compiler.self_host.wet_receipt_enrollment {
-  falsifier_self_host_wet_cadence_is_active,
-  falsifier_self_host_wet_template_entries,
-  dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet
-}
 import gunbc.explicit_witness_admission {
   ExplicitWitnessAdmission,
   explicit_witness_admissions,
@@ -921,24 +916,20 @@ data bin_witness_wet_per_row_actions_log_observation_gap_note: String = "CLOSED 
 
 data falsifier_self_host_wet_note: String = "The nightly falsifier Wet follow-on batch (gunbc_falsifier_batches batch 2 in v2.workflow.ci_floor_plan): explicit ExecutionWitnessKind rows whose fns realize the emit->compile->run->equals-seed self-host behavioral receipt chain (cargo build, process execution, real gunbc emit) — too heavy and fidelity-sensitive for per-PR hermetic discovery. Gate-4 std/logic (self_host_logic_behavioral_witness_test.dag) is the inaugural template migrated out of bin_witness_wet_entries; compiler modules enroll via v2.compiler.self_host.wet_receipt_enrollment when their frontier row flips SelfEmitted (green-only — never known-red). Runs SelectionApplied (always run, not predict-only) after the hermetic affected-set falsifier sweep. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry <entry> --functions <csv>. Dissolve-on: per-module self-host receipts graduate to continuous CI only when the emit-on-demand / self-host cutover lane proves each module's receipt is cheap enough for per-PR admission — until then this scheduled lane is the sole live consumer."
 
-fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note() -> String {
-  concat(
-    "R1 real-crate bijection enrollment (Lane D, gunbc#7825): falsifier_self_host_wet_cadence_active=",
-    concat(
-      falsifier_self_host_wet_cadence_is_active() as String,
-      concat(
-        " template_enrolled=",
-        concat(
-          dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet() as String,
-          concat(
-            " witness_identity=dag/test/claim/interpreter_dispatch_bijection_real_roster_witness_test.dag::interpreter_dispatch_bijection_real_roster_red_holds dark_lane_waiting_patterns=",
-            join(falsifier_self_host_wet_dark_lane_waiting_patterns(), ", ")
-          )
-        )
-      )
-    )
-  )
-}
+// The R1 dark-lane status note JOINS two authorities — this module's waiting-pattern
+// projection and v2.compiler.self_host.wet_receipt_enrollment's cadence/enrollment facts —
+// so it belongs with the consumer that already reaches both, not here. Homing it here cost
+// this module an import of v2.compiler.self_host.wet_receipt_enrollment, and because
+// gunbc.ci_spec imports this module and nearly every witness entry imports ci_spec, that
+// single edge pulled the self_host subtree (and v2.lens.module_graph through it) into the
+// import closure of ~63 additional witness entries. Two live-read carrier homes sit in that
+// subtree, and affected-set selection's axis (iv)
+// (runtime_data_dependency_touched_via_carrier_closure) treats "closure reaches a carrier
+// home, and any path is touched" as a hit — so those entries stopped being skippable on
+// EVERY diff. Measured: *_test.dag entries reaching a carrier home went 144/1200 to
+// 210/1219, and the selection control's cross-entry specimen
+// (affected_set_floor_runner_test.dag) became permanently unskippable, which is what took
+// the scheduled falsifier dark at its build gate.
 
 fn bin_wet(entry: String, f: String) -> ScheduleWitnessEntry {
   ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
