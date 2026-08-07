@@ -132,7 +132,18 @@ Mirrors `live_tree_disposition_stamp_provenance`'s dissolve-at chain:
 | **G0 — entry declaration** | `data live_tree_disposition` row | `ReadsLiveTree` / `SubstrateInputsOnly` | Floor never-skip policy (live today) |
 | **G1 — module closure** | Import-closure BFS + carrier roster | `CouplesToAmbient` / `Local` (cost locality) | Receipt + scheduled-lane routing (live today, validation-tier) |
 | **G2 — call reachability** | fn-arrow `DependencyView` over lowered bodies | per-fn carrier invocations with path patterns | **This design's implementation target** |
-| **G3 — path envelope** | evaluated path arguments / roster literals | `BoundedPathSet` / `CorpusScan` / `Unknown` | InputEnvelope + skip-before-resolve cost bound |
+| **G3 — path envelope** | evaluated path arguments / roster literals | `PathDemand` in `v2.std.live_read` (refinement of design-doc `BoundedPathSet` / `CorpusScan` / `Unknown` — see mapping below) | InputEnvelope + skip-before-resolve cost bound |
+
+**G3 `PathDemand` refinement (authoritative carrier: `v2.std.live_read.path_demand_g3_design_doc_refinement_note`):** the four-name `PathDemand` coproduct is a strict refinement of the three-name ladder used elsewhere (`witness_cost_locality`, `InputEnvelope`, this doc's pre-P3 table). Mapping — not synonyms:
+
+| Design-doc / locality name | `PathDemand` arm | Semantics |
+|----------------------------|------------------|-----------|
+| `CorpusScan` | `UnconstrainedPathSet` | Unbounded corpus scan (`ModuleDeclarationFactsScan`, decl-facts reflection without singleton path) |
+| `Unknown` | `PathDemandUnresolved` | Param/unknown path pattern → fail-closed broad |
+| `BoundedPathSet` (singleton) | `ExactSingletonPath { path }` | One statable literal or roster singleton |
+| `BoundedPathSet` (enumerated) | `FiniteBoundedPathSet { paths }` | Finite enumerated literal set |
+
+**Migration boundary:** existing `CorpusScan` / `BoundedPathSet` / `Unknown` consumers are **not** renamed in the G2/G3 shadow lane — that is a separate blast-radius migration (`per_pr_admission_law`, `bounded-input-cost-envelope-scheduling.md`).
 
 **G2 is the masking-class fix:** an entry that imports `v2.lens.complexity_accumulator_copy.roster_gate` gets `FilesystemReadPath` edges for each roster literal even though the witness entry file contains no `filesystem_read` text.
 

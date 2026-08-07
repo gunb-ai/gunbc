@@ -482,41 +482,18 @@ fn carriers_from_reachable_decls(reachable: List<FnArrowDecl>) -> List<LiveReadC
   })
 }
 
-fn g1_carriers_from_classification(g1: LiveReadClassification) -> List<LiveReadCarrier> {
-  match g1 {
-    LocalRead => empty_carrier_list
-    RuntimeRead { carriers: cs } => cs
-  }
-}
-
-fn merge_g1_and_g2_carriers(
-  g1: LiveReadClassification,
-  g2_carriers: List<LiveReadCarrier>
-) -> List<LiveReadCarrier> {
-  merge_carriers(
-    left: g1_carriers_from_classification(g1: g1),
-    right: g2_carriers
-  )
-}
-
 fn live_read_classification_g2_from_facts(
   entry_module: String,
   facts: List<ModuleImportFact>,
-  decls: List<FnArrowDecl>,
-  carrier_homes: List<LiveReadCarrierHome>
+  decls: List<FnArrowDecl>
 ) -> LiveReadClassification {
   let closure_modules = witness_import_closure(root: entry_module, facts: facts)
-  let g1 = live_read_classification_g1(
-    closure_modules: closure_modules,
-    carrier_homes: carrier_homes
-  )
   let reachable = call_reachable_decls(
     entry_module: entry_module,
     closure_modules: closure_modules,
     decls: decls
   )
-  let g2_carriers = carriers_from_reachable_decls(reachable: reachable)
-  let carriers = merge_g1_and_g2_carriers(g1: g1, g2_carriers: g2_carriers)
+  let carriers = carriers_from_reachable_decls(reachable: reachable)
   if length(xs: carriers) == 0 {
     LocalRead
   } else {
@@ -531,9 +508,151 @@ fn live_read_classification_g2_from_facts_v0(
   live_read_classification_g2_from_facts(
     entry_module: entry_module,
     facts: facts,
-    decls: fn_arrow_decl_facts_live(),
-    carrier_homes: live_read_carrier_homes_v0
+    decls: fn_arrow_decl_facts_live()
   )
+}
+
+fn live_read_selection_projection_g2_from_facts(
+  entry_module: String,
+  facts: List<ModuleImportFact>,
+  decls: List<FnArrowDecl>
+) -> LiveReadSelectionProjection {
+  if string_is_empty(s: entry_module) {
+    Refused { cause: "empty entry_module" }
+  } else if length(xs: decls) == 0 {
+    Refused { cause: "empty fn_arrow_decl_facts" }
+  } else {
+    Classified {
+      classification: live_read_classification_g2_from_facts(
+        entry_module: entry_module,
+        facts: facts,
+        decls: decls
+      )
+    }
+  }
+}
+
+fn live_read_selection_projection_g2_from_facts_v0(
+  entry_module: String,
+  facts: List<ModuleImportFact>
+) -> LiveReadSelectionProjection {
+  live_read_selection_projection_g2_from_facts(
+    entry_module: entry_module,
+    facts: facts,
+    decls: fn_arrow_decl_facts_live()
+  )
+}
+
+fn runtime_read_touched_by_paths_g2(
+  classification: LiveReadClassification,
+  touched_paths: List<String>
+) -> Bool {
+  any(
+    xs: touched_paths,
+    predicate: fn(p) {
+      runtime_read_touched_by_path_g2(classification: classification, touched_path: p)
+    }
+  )
+}
+
+fn runtime_data_dependency_touched_g2(
+  entry_module: String,
+  facts: List<ModuleImportFact>,
+  decls: List<FnArrowDecl>,
+  touched_paths: List<String>
+) -> Bool {
+  if length(xs: touched_paths) == 0 {
+    false
+  } else {
+    match live_read_selection_projection_g2_from_facts(
+      entry_module: entry_module,
+      facts: facts,
+      decls: decls
+    ) {
+      Classified { classification: c } =>
+        runtime_read_touched_by_paths_g2(classification: c, touched_paths: touched_paths)
+      Refused { cause: _ } => true
+    }
+  }
+}
+
+fn runtime_read_touched_by_path_g3(
+  classification: LiveReadClassification,
+  touched_path: String
+) -> Bool {
+  runtime_read_touched_by_path_g2(
+    classification: classification,
+    touched_path: touched_path
+  )
+}
+
+fn runtime_read_touched_by_paths_g3(
+  classification: LiveReadClassification,
+  touched_paths: List<String>
+) -> Bool {
+  any(
+    xs: touched_paths,
+    predicate: fn(p) {
+      runtime_read_touched_by_path_g3(classification: classification, touched_path: p)
+    }
+  )
+}
+
+fn runtime_data_dependency_touched_g2_g3(
+  entry_module: String,
+  facts: List<ModuleImportFact>,
+  decls: List<FnArrowDecl>,
+  touched_paths: List<String>
+) -> Bool {
+  runtime_data_dependency_touched_g2(
+    entry_module: entry_module,
+    facts: facts,
+    decls: decls,
+    touched_paths: touched_paths
+  )
+}
+
+fn runtime_data_dependency_touched_g2_g3_v0(
+  entry_module: String,
+  facts: List<ModuleImportFact>,
+  touched_paths: List<String>
+) -> Bool {
+  runtime_data_dependency_touched_g2_g3(
+    entry_module: entry_module,
+    facts: facts,
+    decls: fn_arrow_decl_facts_live(),
+    touched_paths: touched_paths
+  )
+}
+
+fn runtime_dependency_shadow_verdict(
+  g1_touched: Bool,
+  g2_g3_touched: Bool
+) -> RuntimeDependencyShadowVerdict {
+  if g1_touched {
+    if g2_g3_touched {
+      AgreeRun
+    } else {
+      G2G3NewlySkips
+    }
+  } else {
+    if g2_g3_touched {
+      G2G3NewlySelects
+    } else {
+      AgreeSkip
+    }
+  }
+}
+
+fn runtime_dependency_shadow_verdict_is_under_selection_risk(
+  verdict: RuntimeDependencyShadowVerdict
+) -> Bool {
+  match verdict {
+    G2G3NewlySkips => true
+    AgreeRun => false
+    AgreeSkip => false
+    G2G3NewlySelects => false
+  }
 }
 
 fn live_read_classification(
@@ -639,14 +758,50 @@ fn runtime_read_touched_by_path_g1(
   }
 }
 
-fn filesystem_path_carrier_touched(
-  path_pattern: PathPattern,
-  touched_path: String
-) -> Bool {
-  match path_pattern {
-    LiteralPath { path: p } => path_matches_touched(closure_path: p, touched_path: touched_path)
-    UnknownPath => true
-    ParamRef { name: _ } => true
+fn path_demand_from_path_pattern(pattern: PathPattern) -> PathDemand {
+  match pattern {
+    LiteralPath { path: p } => ExactSingletonPath { path: p }
+    ParamRef { name: _ } => PathDemandUnresolved
+    UnknownPath => PathDemandUnresolved
+  }
+}
+
+fn path_demand_from_carrier(carrier: LiveReadCarrier) -> PathDemand {
+  match carrier {
+    FilesystemReadPath { path_pattern: pa } => path_demand_from_path_pattern(pattern: pa)
+    ModuleDeclarationFactsScan => UnconstrainedPathSet
+    DeclFactsReflection { home: _ } => UnconstrainedPathSet
+  }
+}
+
+fn path_demand_is_unresolved(demand: PathDemand) -> Bool {
+  match demand {
+    PathDemandUnresolved => true
+    ExactSingletonPath { path: _ } => false
+    FiniteBoundedPathSet { paths: _ } => false
+    UnconstrainedPathSet => false
+  }
+}
+
+fn path_demand_is_fail_closed_broad(demand: PathDemand) -> Bool {
+  match demand {
+    UnconstrainedPathSet => true
+    PathDemandUnresolved => true
+    ExactSingletonPath { path: _ } => false
+    FiniteBoundedPathSet { paths: _ } => false
+  }
+}
+
+fn path_demand_touched_by_path(demand: PathDemand, touched_path: String) -> Bool {
+  match demand {
+    ExactSingletonPath { path: p } =>
+      path_matches_touched(closure_path: p, touched_path: touched_path)
+    FiniteBoundedPathSet { paths: paths } =>
+      any(xs: paths, predicate: fn(p) {
+        path_matches_touched(closure_path: p, touched_path: touched_path)
+      })
+    UnconstrainedPathSet => true
+    PathDemandUnresolved => true
   }
 }
 
@@ -654,11 +809,35 @@ fn live_read_carrier_touched_by_path(
   carrier: LiveReadCarrier,
   touched_path: String
 ) -> Bool {
-  match carrier {
-    FilesystemReadPath { path_pattern: pa } =>
-      filesystem_path_carrier_touched(path_pattern: pa, touched_path: touched_path)
-    ModuleDeclarationFactsScan => true
-    DeclFactsReflection { home: _ } => true
+  path_demand_touched_by_path(
+    demand: path_demand_from_carrier(carrier: carrier),
+    touched_path: touched_path
+  )
+}
+
+fn classification_has_unresolved_path_demand(
+  classification: LiveReadClassification
+) -> Bool {
+  match classification {
+    LocalRead => false
+    RuntimeRead { carriers: carriers } =>
+      any(xs: carriers, predicate: fn(carrier) {
+        path_demand_is_unresolved(demand: path_demand_from_carrier(carrier: carrier))
+      })
+  }
+}
+
+fn classification_has_fail_closed_broad_path_demand(
+  classification: LiveReadClassification
+) -> Bool {
+  match classification {
+    LocalRead => false
+    RuntimeRead { carriers: carriers } =>
+      any(xs: carriers, predicate: fn(carrier) {
+        path_demand_is_fail_closed_broad(
+          demand: path_demand_from_carrier(carrier: carrier)
+        )
+      })
   }
 }
 

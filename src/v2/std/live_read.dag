@@ -30,6 +30,24 @@ type LiveReadClassification
       carriers: List<LiveReadCarrier>
     }
 
+type LiveReadSelectionProjection
+  = Classified { classification: LiveReadClassification }
+  | Refused { cause: String }
+
+type PathDemand
+  = ExactSingletonPath { path: String }
+  | FiniteBoundedPathSet { paths: List<String> }
+  | UnconstrainedPathSet
+  | PathDemandUnresolved
+
+data path_demand_g3_design_doc_refinement_note: String = "G3 path-demand carrier (`PathDemand` in this module) is a strict refinement of the three-name ladder in `docs/plans/live-read-witness-classification-design.md` §6 and `witness_cost_locality` — not a synonym fork. Mapping (decidable, authoritative here for the G2/G3 selector): `CorpusScan` → `UnconstrainedPathSet` (unbounded corpus scan — `ModuleDeclarationFactsScan`, `DeclFactsReflection` without a singleton path); design-doc `Unknown` → `PathDemandUnresolved` (fail-closed broad — param/unknown path pattern); design-doc `BoundedPathSet` splits into `ExactSingletonPath { path }` (one statable literal or roster singleton) and `FiniteBoundedPathSet { paths }` (enumerated literal set). Existing `CorpusScan` / `BoundedPathSet` / `Unknown` consumers elsewhere are NOT renamed in the G2/G3 shadow lane — that migration carries separate blast radius (`InputEnvelope`, `per_pr_admission_law`, `bounded-input-cost-envelope-scheduling.md`)."
+
+type RuntimeDependencyShadowVerdict
+  = AgreeRun
+  | AgreeSkip
+  | G2G3NewlySkips
+  | G2G3NewlySelects
+
 data live_read_carrier_homes_v0: List<LiveReadCarrierHome> = [
   LiveReadCarrierHome { module: "v2.lens.enforcement.cost_coverage", kind: FilesystemReadCarrier },
   LiveReadCarrierHome { module: "v2.lens.enforcement.grammar_coverage", kind: FilesystemReadCarrier },

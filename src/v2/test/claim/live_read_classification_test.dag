@@ -11,9 +11,15 @@ import v2.lens.live_read_classification {
   classification_has_corpus_scan_carrier,
   classification_has_filesystem_read_carrier,
   classification_has_literal_path,
+  classification_has_unresolved_path_demand,
+  classification_has_fail_closed_broad_path_demand,
   runtime_read_carrier_module_names,
   runtime_read_touched_by_path_g1,
   runtime_read_touched_by_path_g2,
+  runtime_read_touched_by_path_g3,
+  runtime_data_dependency_touched_g2_g3_v0,
+  runtime_dependency_shadow_verdict,
+  runtime_dependency_shadow_verdict_is_under_selection_risk,
   g2_implies_reads_live_tree
 }
 import v2.lens.witness_cost_locality { ModuleImportFact }
@@ -23,6 +29,9 @@ import v2.std.live_read {
   FilesystemReadCarrier,
   ModuleDeclarationFactsCarrier,
   DeclFactsReflectionCarrier,
+  RuntimeDependencyShadowVerdict,
+  AgreeSkip,
+  G2G3NewlySkips,
   live_read_carrier_homes_v0
 }
 import v2.std.collection { List }
@@ -218,8 +227,7 @@ test fn g2_roster_gate_entry_classifies_literal_paths() -> Bool {
   let c = live_read_classification_g2_from_facts(
     entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
     facts: roster_gate_corpus_facts,
-    decls: fn_arrow_decl_facts_live(),
-    carrier_homes: live_read_carrier_homes_v0
+    decls: fn_arrow_decl_facts_live()
   )
   classification_has_filesystem_read_carrier(classification: c)
     && classification_has_literal_path(
@@ -232,8 +240,7 @@ test fn g2_roster_gate_literal_path_touched_selects() -> Bool {
   let c = live_read_classification_g2_from_facts(
     entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
     facts: roster_gate_corpus_facts,
-    decls: fn_arrow_decl_facts_live(),
-    carrier_homes: live_read_carrier_homes_v0
+    decls: fn_arrow_decl_facts_live()
   )
   runtime_read_touched_by_path_g2(
     classification: c,
@@ -245,12 +252,11 @@ test fn g2_roster_gate_literal_path_touched_selects() -> Bool {
     )
 }
 
-test fn g2_unknown_filesystem_path_widens_alongside_literal_paths() -> Bool {
+test fn g2_unknown_filesystem_path_fail_closed_touched() -> Bool {
   let c = live_read_classification_g2_from_facts(
     entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
     facts: roster_gate_corpus_facts,
-    decls: fn_arrow_decl_facts_live(),
-    carrier_homes: live_read_carrier_homes_v0
+    decls: fn_arrow_decl_facts_live()
   )
   runtime_read_touched_by_path_g2(
     classification: c,
@@ -263,8 +269,7 @@ test fn g2_implies_reads_live_tree_for_roster_gate() -> Bool {
     classification: live_read_classification_g2_from_facts(
       entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
       facts: roster_gate_corpus_facts,
-      decls: fn_arrow_decl_facts_live(),
-      carrier_homes: live_read_carrier_homes_v0
+      decls: fn_arrow_decl_facts_live()
     )
   )
     && live_tree_disposition == ReadsLiveTree
@@ -286,18 +291,79 @@ test fn g2_unknown_path_pattern_fail_closed_touched() -> Bool {
   }
 }
 
-test fn g2_union_retains_g1_import_carriers_with_g2_literal_paths() -> Bool {
-  let c = live_read_classification_g2_from_facts(
-    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
-    facts: g2_union_corpus_facts,
-    decls: fn_arrow_decl_facts_live(),
-    carrier_homes: live_read_carrier_homes_v0
-  )
-  classification_has_corpus_scan_carrier(classification: c)
-    && classification_has_literal_path(
-      classification: c,
-      path: "src/v2/std/algebra.dag"
+test fn g2_import_only_without_call_is_local_read() -> Bool {
+  classification_is_local(
+    classification: live_read_classification_g2_from_facts(
+      entry_module: "fix.witness",
+      facts: fixture_roster_gate_facts,
+      decls: fn_arrow_decl_facts_live()
     )
+  )
+}
+
+test fn g2_g3_unrelated_path_does_not_select_roster_gate() -> Bool {
+  !runtime_data_dependency_touched_g2_g3_v0(
+    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    facts: roster_gate_corpus_facts,
+    touched_paths: ["src/v2/std/logic.dag"]
+  )
+}
+
+test fn g2_g3_roster_target_path_selects_roster_gate() -> Bool {
+  runtime_data_dependency_touched_g2_g3_v0(
+    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    facts: roster_gate_corpus_facts,
+    touched_paths: ["src/v2/std/algebra.dag"]
+  )
+}
+
+data ci_layer_roots_prose_import_fixture_facts: List<ModuleImportFact> = [
+  ModuleImportFact {
+    module: "fix.witness_entry",
+    imports: ["gunbc.ci_spec"]
+  },
+  ModuleImportFact {
+    module: "gunbc.ci_spec",
+    imports: ["gunbc.ci_layer_roots"]
+  },
+  ModuleImportFact {
+    module: "gunbc.ci_layer_roots",
+    imports: []
+  }
+]
+
+data ci_layer_roots_prose_import_fixture_note: String = "Discriminating negative control (gunbc#7988 receipt): ci_spec imports ci_layer_roots for prose/status projection only — no carrier construct/read/call-accessor on the import-closure path. Touching dag/gunbc/ci_layer_roots.dag must NOT g2/g3-select unrelated witness entries. G1 import-closure over-approximation selected ~63 entries before the self_host import edge was removed. Paired positive control: g2_g3_roster_gate_positive_control_selects_on_read_path (same entry shape but call-reachable filesystem_read on a roster literal must select)."
+
+test fn g2_g3_ci_layer_roots_prose_import_does_not_select() -> Bool {
+  !runtime_data_dependency_touched_g2_g3_v0(
+    entry_module: "fix.witness_entry",
+    facts: ci_layer_roots_prose_import_fixture_facts,
+    touched_paths: ["dag/gunbc/ci_layer_roots.dag"]
+  )
+}
+
+test fn g2_g3_roster_gate_positive_control_selects_on_read_path() -> Bool {
+  runtime_data_dependency_touched_g2_g3_v0(
+    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    facts: roster_gate_corpus_facts,
+    touched_paths: ["src/v2/std/algebra.dag"]
+  )
+}
+
+test fn shadow_verdict_newly_skips_when_g1_runs_g2_skips() -> Bool {
+  match runtime_dependency_shadow_verdict(g1_touched: true, g2_g3_touched: false) {
+    G2G3NewlySkips => runtime_dependency_shadow_verdict_is_under_selection_risk(
+      verdict: G2G3NewlySkips
+    )
+    _ => false
+  }
+}
+
+test fn shadow_verdict_agree_skip_when_both_skip() -> Bool {
+  match runtime_dependency_shadow_verdict(g1_touched: false, g2_g3_touched: false) {
+    AgreeSkip => true
+    _ => false
+  }
 }
 
 test fn g2_fn_arrow_marshal_host_scaffold_receipt_is_checkable() -> Bool {

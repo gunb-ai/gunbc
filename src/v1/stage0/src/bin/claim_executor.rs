@@ -13202,6 +13202,7 @@ mod tests {
             total_entry_groups: 0,
             selected_entry_groups: 0,
             selection_categorization_reason: None,
+            runtime_dependency_shadow: None,
         };
         let killed = ClaimOutcome::TimedOut {
             elapsed_ms: 900_001,
@@ -13277,6 +13278,7 @@ mod tests {
             total_entry_groups: 0,
             selected_entry_groups: 0,
             selection_categorization_reason: None,
+            runtime_dependency_shadow: None,
         };
         let prior = "1 of 1 discovery witness(es) failed: e.dag::f failed";
         let result = discovery_claim_result(
@@ -13328,6 +13330,7 @@ mod tests {
             total_entry_groups: 0,
             selected_entry_groups: 0,
             selection_categorization_reason: None,
+            runtime_dependency_shadow: None,
         };
         let (label, provenance) = scoped_witness_summary_outcome(
             &summary,

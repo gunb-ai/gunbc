@@ -10,8 +10,12 @@ import gunbc.falsifier_workflow {
   gunbc_falsifier_floor_job_backstop_timeout_minutes,
   gunbc_falsifier_step_timeout_minutes,
   gunbc_falsifier_step_timeout_basis_is_measured_not_composed,
+  gunbc_falsifier_runtime_dependency_shadow_env_name,
+  gunbc_falsifier_runtime_dependency_shadow_env_value,
+  falsifier_step,
   expected_falsifier_yml
 }
+import extdeps.languages.yaml.types { YamlKeyValue, YamlValue, YamlString }
 import gunbc.falsifier_run_control {
   gunbc_falsifier_compile_clean_cold_control_timeout_minutes,
   gunbc_falsifier_native_cache_cold_control_timeout_minutes,
@@ -26,7 +30,8 @@ import gunbc.ci_workflow {
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.ci_workflow { ci_workflow }
 import gunbc.ci_materialization { step_display_name }
-import extdeps.github.actions { Step }
+import extdeps.github.actions { Step, RunStep }
+import v2.std.collection { Present }
 import gunbc.generated_artifact { FalsifierYamlArtifact, artifact_path }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -187,6 +192,54 @@ test fn falsifier_red_floor_fixture_reds_if_prerequisite_requires_floor_success(
   let broken_gate = "success() && steps.floor.outcome == 'success'"
   falsifier_control_prerequisite_if != broken_gate
     && !string_contains(s: falsifier_control_prerequisite_if, pattern: "steps.floor.outcome == 'success'")
+}
+
+fn falsifier_step_env_entries() -> List<YamlKeyValue> {
+  match falsifier_step() {
+    RunStep {
+      name: _,
+      id: _,
+      run: _,
+      shell: _,
+      env: Present { value: entries },
+      working_directory: _,
+      if_condition: _,
+      continue_on_error: _,
+      timeout_minutes: _
+    } => entries
+    _ => []
+  }
+}
+
+fn yaml_string_value(v: YamlValue) -> String {
+  match v {
+    YamlString { value: s } => s
+    _ => ""
+  }
+}
+
+fn env_kv_equals(kvs: List<YamlKeyValue>, key: String, want: String) -> Bool {
+  fold(kvs, init: false, f: fn(found, row) {
+    found || (row.key == key && yaml_string_value(v: row.value) == want)
+  })
+}
+
+data falsifier_runtime_dependency_shadow_env_witness_note: String = "EXECUTING ENROLLMENT for G2/G3 shadow cold evidence (operator ruling 2026-08-07): falsifier_step MUST export GUNBC_RUNTIME_DEPENDENCY_SHADOW=1 unconditionally — off-by-default on the cadence is coverage-by-illusion. Structural check over falsifier_step env, not a yaml substring search. RED control: absent binding or wrong value."
+
+test fn falsifier_step_exports_runtime_dependency_shadow_env() -> Bool {
+  env_kv_equals(
+    kvs: falsifier_step_env_entries(),
+    key: gunbc_falsifier_runtime_dependency_shadow_env_name,
+    want: gunbc_falsifier_runtime_dependency_shadow_env_value
+  )
+}
+
+test fn falsifier_runtime_dependency_shadow_env_witness_discriminates() -> Bool {
+  !env_kv_equals(
+    kvs: falsifier_step_env_entries(),
+    key: gunbc_falsifier_runtime_dependency_shadow_env_name,
+    want: "0"
+  )
 }
 
 fn length_of(s: String) -> Int {

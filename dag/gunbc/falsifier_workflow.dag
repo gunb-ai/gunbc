@@ -87,6 +87,12 @@ data gunbc_falsifier_step_timeout_note: String = "120 -> 170 (2026-07-11, run 29
 
 data falsifier_plan_function: String = plan_function_name(p: FalsifierPlan)
 
+data gunbc_falsifier_runtime_dependency_shadow_env_name: String = "GUNBC_RUNTIME_DEPENDENCY_SHADOW"
+
+data gunbc_falsifier_runtime_dependency_shadow_env_value: String = "1"
+
+data gunbc_falsifier_runtime_dependency_shadow_env_note: String = "UNCONDITIONAL on the falsifier predict-only cold floor step (operator ruling 2026-08-07, G2/G3 shadow lane): the shadow receipt is the deliverable — accumulated cold-run evidence across falsifier cadence runs — so this env MUST be set on falsifier_step, not left off-by-default hoping a later wiring lands. Per-PR discovery uses SelectionApplied and never arms shadow; the env keeps the G2/G3 whole-tree evaluation OFF the fast path. cli_run arms shadow when PredictOnly AND this env is set. Local reproduction: export GUNBC_RUNTIME_DEPENDENCY_SHADOW=1 when invoking gunbc_falsifier_plan."
+
 fn falsifier_invoke() -> String {
   concat(
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
@@ -110,7 +116,11 @@ fn falsifier_step() -> Step {
       value: [
         kv(key: "GUNBC_CI_DIFF_BASE", value: yaml_string(s: "HEAD~20")),
         kv(key: "GUNBC_CI_DIFF_HEAD", value: yaml_string(s: "HEAD")),
-        kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path))
+        kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path)),
+        kv(
+          key: gunbc_falsifier_runtime_dependency_shadow_env_name,
+          value: yaml_string(s: gunbc_falsifier_runtime_dependency_shadow_env_value)
+        )
       ]
     },
     working_directory: none,

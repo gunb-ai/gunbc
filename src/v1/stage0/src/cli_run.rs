@@ -6132,6 +6132,262 @@ fn runtime_data_dependency_touched_via_carrier_closure(
         })
 }
 
+// SCAFFOLD (§7 HAND-RUST — `cli_run_live_read_g2_g3_shadow_bridge`):
+// Lane: live-read witness classification G2/G3 shadow (docs/plans/live-read-witness-classification-design.md
+// P3 prerequisite) — records G1 vs G2/G3 candidate verdicts on falsifier PredictOnly runs without
+// flipping axis (iv) authority. Dissolves when `runtime_data_dependency_touched` in
+// `v2.workflow.affected_set_floor_runner` consumes the modeled G2/G3 projection end-to-end.
+// DELETE WHEN dissolved: `runtime_dependency_shadow_enabled`, `RuntimeDependencyShadowReceipt`,
+// `runtime_data_dependency_touched_g2_g3_candidate`, `module_import_facts_value_for_shadow`,
+// `record_runtime_dependency_shadow_row`, `emit_runtime_dependency_shadow_receipt`, and
+// `CLI_RUN_LIVE_READ_G2_G3_SHADOW_BRIDGE_MARKER` (~180 LOC).
+pub(crate) const CLI_RUN_LIVE_READ_G2_G3_SHADOW_BRIDGE_MARKER: &str =
+    "cli_run_live_read_g2_g3_shadow_bridge";
+
+const LIVE_READ_G2_G3_FN: &str = "runtime_data_dependency_touched_g2_g3_v0";
+
+pub fn runtime_dependency_shadow_enabled() -> bool {
+    std::env::var("GUNBC_RUNTIME_DEPENDENCY_SHADOW")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false)
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct RuntimeDependencyShadowReceipt {
+    pub rows_compared: usize,
+    pub agree_run: usize,
+    pub agree_skip: usize,
+    pub g2_g3_newly_skips: usize,
+    pub g2_g3_newly_selects: usize,
+    pub unresolved_population: usize,
+    pub g2_g3_evaluation_refusals: usize,
+    pub under_selection_risk_rows: Vec<(String, String)>,
+}
+
+impl RuntimeDependencyShadowReceipt {
+    fn record_verdict(
+        &mut self,
+        entry: &str,
+        function: &str,
+        g1_touched: bool,
+        g2_g3_touched: bool,
+        unresolved: bool,
+    ) {
+        self.rows_compared += 1;
+        if unresolved {
+            self.unresolved_population += 1;
+        }
+        match (g1_touched, g2_g3_touched) {
+            (true, true) => self.agree_run += 1,
+            (false, false) => self.agree_skip += 1,
+            (true, false) => {
+                self.g2_g3_newly_skips += 1;
+                self.under_selection_risk_rows
+                    .push((entry.to_string(), function.to_string()));
+            }
+            (false, true) => self.g2_g3_newly_selects += 1,
+        }
+    }
+
+    pub fn emit_stderr(&self) {
+        eprintln!(
+            "[runtime-dependency-shadow] rows={} agree_run={} agree_skip={} \
+             g2_g3_newly_skips={} g2_g3_newly_selects={} unresolved={} g2_g3_refusals={}",
+            self.rows_compared,
+            self.agree_run,
+            self.agree_skip,
+            self.g2_g3_newly_skips,
+            self.g2_g3_newly_selects,
+            self.unresolved_population,
+            self.g2_g3_evaluation_refusals,
+        );
+        if !self.under_selection_risk_rows.is_empty() {
+            let sample: Vec<String> = self
+                .under_selection_risk_rows
+                .iter()
+                .take(20)
+                .map(|(e, f)| format!("{f} ({e})"))
+                .collect();
+            eprintln!(
+                "[runtime-dependency-shadow] under_selection_risk_sample (max 20): {}",
+                sample.join(", ")
+            );
+        }
+    }
+}
+
+fn module_import_facts_value_for_shadow(
+    ctx: &v1_interpreter::InterpContext,
+    facts: &ModuleGraphFactsLive,
+) -> v1_interpreter::Value {
+    use crate::v1_interpreter::{sorted_fields, Value};
+    use std::rc::Rc;
+    let mut rows: Vec<Value> = Vec::new();
+    for node in &facts.nodes {
+        let path = workspace_relative_repo_path(&node.path);
+        let mut imports: Vec<String> = facts
+            .selection_adjacency
+            .get(&path)
+            .into_iter()
+            .flatten()
+            .filter_map(|target_path| facts.path_to_module.get(target_path).cloned())
+            .collect();
+        imports.sort();
+        imports.dedup();
+        let import_values: Vec<Value> = imports.into_iter().map(Value::Str).collect();
+        rows.push(Value::Record {
+            type_name: ctx.sym("ModuleImportFact"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("module"), Value::Str(node.module.clone())),
+                (ctx.sym("imports"), list_value_from_vec(import_values)),
+            ])),
+        });
+    }
+    list_value_from_vec(rows)
+}
+
+fn live_read_g2_g3_shadow_ctx() -> Result<Rc<v1_interpreter::InterpContext>, String> {
+    thread_local! {
+        static CACHED: RefCell<Option<Result<Rc<v1_interpreter::InterpContext>, String>>> =
+            const { RefCell::new(None) };
+    }
+    CACHED.with(|cache| {
+        if let Some(v) = cache.borrow().clone() {
+            return v;
+        }
+        let roots = default_source_roots();
+        let built = whole_tree_resolved_ctx(&roots, &[], v1_interpreter::ExecutionMode::Hermetic)
+            .map(|wt| Rc::new(wt.ctx));
+        *cache.borrow_mut() = Some(built.clone());
+        built
+    })
+}
+
+fn runtime_data_dependency_touched_g2_g3_candidate(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    touched_paths: &[String],
+) -> Result<(bool, bool), String> {
+    if touched_paths.is_empty() {
+        return Ok((false, false));
+    }
+    let entry_rel = workspace_relative_repo_path(entry_path);
+    let entry_module = facts
+        .path_to_module
+        .get(&entry_rel)
+        .cloned()
+        .ok_or_else(|| {
+            format!("runtime-dependency-shadow: entry {entry_rel} absent from module-graph facts")
+        })?;
+    let ctx = live_read_g2_g3_shadow_ctx()?;
+    let import_facts = module_import_facts_value_for_shadow(ctx.as_ref(), facts);
+    let touched_values: Vec<v1_interpreter::Value> = touched_paths
+        .iter()
+        .map(|p| v1_interpreter::Value::Str(p.clone()))
+        .collect();
+    let args = [
+        (
+            Some("entry_module".to_string()),
+            v1_interpreter::Value::Str(entry_module),
+        ),
+        (Some("facts".to_string()), import_facts),
+        (
+            Some("touched_paths".to_string()),
+            list_value_from_vec(touched_values),
+        ),
+    ];
+    let g2_g3_touched = match v1_interpreter::run_in_context_with_args(
+        ctx.as_ref(),
+        LIVE_READ_G2_G3_FN,
+        &args,
+        true,
+    ) {
+        Ok(v1_interpreter::Value::Bool(b)) => b,
+        Ok(other) => {
+            return Err(format!(
+                "{LIVE_READ_G2_G3_FN} returned `{}`, expected Bool",
+                ctx.format_value(&other)
+            ));
+        }
+        Err(e) => return Err(format!("{LIVE_READ_G2_G3_FN}: {e}")),
+    };
+    // Unresolved population is reported separately when classification refuses or carries
+    // fail-closed path demand; for shadow v0 we treat evaluation refusal as fail-closed run.
+    Ok((g2_g3_touched, false))
+}
+
+fn record_runtime_dependency_shadow_row(
+    receipt: &mut RuntimeDependencyShadowReceipt,
+    entry_cache: &mut HashMap<String, Result<(bool, bool), String>>,
+    entry_path: &str,
+    function: &str,
+    facts: &ModuleGraphFactsLive,
+    touched_paths: &[String],
+    g1_touched: bool,
+) {
+    let g2_g3 = entry_cache
+        .entry(entry_path.to_string())
+        .or_insert_with(|| {
+            runtime_data_dependency_touched_g2_g3_candidate(entry_path, facts, touched_paths)
+        });
+    match g2_g3 {
+        Ok((g2_g3_touched, unresolved)) => {
+            receipt.record_verdict(
+                entry_path,
+                function,
+                g1_touched,
+                *g2_g3_touched,
+                *unresolved,
+            );
+        }
+        Err(msg) => {
+            receipt.g2_g3_evaluation_refusals += 1;
+            receipt.record_verdict(entry_path, function, g1_touched, true, true);
+            if floor_verbose() {
+                eprintln!("[runtime-dependency-shadow] refusal for {entry_path}: {msg}");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod live_read_g2_g3_shadow_bridge_tests {
+    use super::{
+        runtime_data_dependency_touched_via_carrier_closure, runtime_dependency_shadow_enabled,
+        RuntimeDependencyShadowReceipt, LIVE_READ_G2_G3_FN,
+    };
+
+    #[test]
+    fn shadow_bridge_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_LIVE_READ_G2_G3_SHADOW_BRIDGE_MARKER,
+            "cli_run_live_read_g2_g3_shadow_bridge"
+        );
+    }
+
+    #[test]
+    fn shadow_fn_name_matches_dag_authority() {
+        assert_eq!(
+            LIVE_READ_G2_G3_FN,
+            "runtime_data_dependency_touched_g2_g3_v0"
+        );
+    }
+
+    #[test]
+    fn shadow_receipt_counts_under_selection_risk() {
+        let mut receipt = RuntimeDependencyShadowReceipt::default();
+        receipt.record_verdict("entry.dag", "witness_holds", true, false, false);
+        assert_eq!(receipt.g2_g3_newly_skips, 1);
+        assert_eq!(receipt.under_selection_risk_rows.len(), 1);
+    }
+
+    #[test]
+    fn shadow_disabled_by_default() {
+        std::env::remove_var("GUNBC_RUNTIME_DEPENDENCY_SHADOW");
+        assert!(!runtime_dependency_shadow_enabled());
+    }
+}
+
 #[cfg(test)]
 mod live_read_carrier_home_roster_drift_gate_tests {
     use super::{
@@ -16363,6 +16619,9 @@ pub struct DiscoverySummary {
     /// When Applied mode could not run upfront import-closure categorization; per-shard
     /// selection remains authoritative and the completion receipt still publishes counts.
     pub selection_categorization_reason: Option<String>,
+    /// G1 vs G2/G3 shadow receipt (falsifier PredictOnly when `GUNBC_RUNTIME_DEPENDENCY_SHADOW=1`;
+    /// set unconditionally on `gunbc.falsifier_workflow` `falsifier_step` — not per-PR).
+    pub runtime_dependency_shadow: Option<RuntimeDependencyShadowReceipt>,
 }
 
 #[derive(Debug, Clone)]
@@ -22402,6 +22661,7 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         total_entry_groups: 0,
         selected_entry_groups: 0,
         selection_categorization_reason: None,
+        runtime_dependency_shadow: None,
     };
     for summary in summaries {
         merged.total += summary.total;
@@ -22432,6 +22692,24 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         merged.roster_closure_nodes = merged
             .roster_closure_nodes
             .max(summary.roster_closure_nodes);
+        if let Some(shard_shadow) = summary.runtime_dependency_shadow {
+            let merged_shadow = merged
+                .runtime_dependency_shadow
+                .get_or_insert_with(RuntimeDependencyShadowReceipt::default);
+            merged_shadow.rows_compared += shard_shadow.rows_compared;
+            merged_shadow.agree_run += shard_shadow.agree_run;
+            merged_shadow.agree_skip += shard_shadow.agree_skip;
+            merged_shadow.g2_g3_newly_skips += shard_shadow.g2_g3_newly_skips;
+            merged_shadow.g2_g3_newly_selects += shard_shadow.g2_g3_newly_selects;
+            merged_shadow.unresolved_population += shard_shadow.unresolved_population;
+            merged_shadow.g2_g3_evaluation_refusals += shard_shadow.g2_g3_evaluation_refusals;
+            merged_shadow
+                .under_selection_risk_rows
+                .extend(shard_shadow.under_selection_risk_rows);
+        }
+    }
+    if let Some(ref receipt) = merged.runtime_dependency_shadow {
+        receipt.emit_stderr();
     }
     merged
 }
@@ -22735,7 +23013,14 @@ fn run_discovery_rows(
         total_entry_groups: 0,
         selected_entry_groups: 0,
         selection_categorization_reason: None,
+        runtime_dependency_shadow: None,
     };
+    let shadow_enabled =
+        selection == NodeFrontierSelectionMode::PredictOnly && runtime_dependency_shadow_enabled();
+    let mut shadow_entry_cache: HashMap<String, Result<(bool, bool), String>> = HashMap::new();
+    if shadow_enabled {
+        summary.runtime_dependency_shadow = Some(RuntimeDependencyShadowReceipt::default());
+    }
     let skip_enabled = selection != NodeFrontierSelectionMode::Off;
     // This shard's SUBJECT union closure, accumulated from the graphs it resolves. An ordinary
     // batch's floor-runner prefix shares that subject universe and is included; a scoped batch's
@@ -22914,6 +23199,24 @@ fn run_discovery_rows(
         let entry_file_touched = skip_enabled && current_entry_file_touched;
         let runtime_data_dependency_touched =
             skip_enabled && current_entry_runtime_dependency_touched;
+        if shadow_enabled {
+            let g1_axis_iv = runtime_data_dependency_touched_via_carrier_closure(
+                &row.entry,
+                &index.module_graph_facts,
+                changed_paths,
+            );
+            if let Some(ref mut receipt) = summary.runtime_dependency_shadow {
+                record_runtime_dependency_shadow_row(
+                    receipt,
+                    &mut shadow_entry_cache,
+                    &row.entry,
+                    &row.function,
+                    &index.module_graph_facts,
+                    changed_paths,
+                    g1_axis_iv,
+                );
+            }
+        }
         let would_skip = if skip_enabled {
             match floor_runner_ctx {
                 Some(runner_ctx) => {
@@ -23105,6 +23408,9 @@ fn run_discovery_rows(
         index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
     }
     summary.roster_closure_nodes = closure_modules.len();
+    if let Some(ref receipt) = summary.runtime_dependency_shadow {
+        receipt.emit_stderr();
+    }
     Ok(summary)
 }
 
@@ -28186,6 +28492,7 @@ mod discovery_summary_merge_tests {
             total_entry_groups: 2,
             selected_entry_groups: 2,
             selection_categorization_reason: None,
+            runtime_dependency_shadow: None,
         }
     }
 
@@ -28266,6 +28573,7 @@ mod discovery_summary_merge_tests {
             total_entry_groups: 0,
             selected_entry_groups: 0,
             selection_categorization_reason: None,
+            runtime_dependency_shadow: None,
         };
         let finalized = finalize_discovery_summary(
             summary,
