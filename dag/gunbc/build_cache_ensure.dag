@@ -167,23 +167,33 @@ fn ensure_yields_unit(admission: EnsureBuildCacheAdmission) -> Bool {
 
 // Named for its admission type, not generically, and the generic spelling is what broke main. This was
 // `ensure_is_converged`; gunbc.compile_pool_ensure declared the same name over EnsureCompilePoolAdmission
-// (#7937), and both witness modules reference it BARE, so the containment tree had two candidates for one
+// (#7937), and both witness modules referenced it BARE, so the containment tree had two candidates for one
 // reference and refused all seven call sites — including the four here, in a module that PR did not touch.
 // Neither helper is generic across the two admission types, so the shared spelling was never carrying a
 // shared concept; it was a homonym (DESIGN §3), and the rename is the repair.
 //
-// WHAT MADE IT INVISIBLE, which is the larger defect and is NOT fixed here. The introducing PR was green
-// because per-PR affected-set selection loads a reduced declaration pool in which only one definition was
-// reachable; the whole-tree pool loads both and the same source stops resolving. So reference binding
-// changed as a function of which UNRELATED files CI chose to load. Selection is supposed to alter cost and
-// execution scope, never name-resolution semantics — the property owed is that
+// WHY THE RENAME STILL LANDED AFTER main WAS ALREADY UNBLOCKED. #7984 restored main by adding explicit
+// import lists to the two witness modules, which supplies the missing authority at each reference and is a
+// correct unblock. It leaves the homonym standing. Under an import the ambiguity is resolved; under the
+// next BARE reference from anywhere in the tree it returns unchanged, and per-PR selection will hide that
+// one exactly as it hid this one — a reduced pool reaches one definition, the author sees green, and the
+// whole-tree pool reds after merge. Disambiguating a reference treats the occurrence; renaming the
+// declarations removes the class. The two compose rather than compete: the imports remain and now name
+// symbols that cannot collide.
+//
+// WHAT MADE IT INVISIBLE, which is the larger defect and is NOT fixed here. #7937 was green because per-PR
+// affected-set selection loads a reduced declaration pool in which only one definition was reachable; the
+// whole-tree pool loads both and the same source stops resolving. So reference binding changed as a
+// function of which UNRELATED files CI chose to load. Selection is supposed to alter cost and execution
+// scope, never name-resolution semantics — the property owed is that
 // resolve(reference, closure) == resolve(reference, closure + unrelated modules), with a bare reference
 // lacking structural authority refusing under BOTH pools rather than passing under the smaller one.
 // Its discriminating control compiles one test module twice, against the intended pool and against that
 // pool plus a module carrying a same-spelled declaration, and requires either identical binding identity
 // or the same missing-authority refusal from both. That control belongs to the namespace / reference-derived
-// closure lane and is deliberately not in this outage repair (operator direction, 2026-08-07): restore main
-// first, do not delay it for a resolver redesign.
+// closure lane and is deliberately not here (operator direction, 2026-08-07): restore main first, do not
+// delay it for a resolver redesign. Note that neither this rename nor #7984's imports discharge it — both
+// remove instances, and the property is about the resolver.
 fn build_cache_ensure_is_converged(admission: EnsureBuildCacheAdmission) -> Bool {
   ensure_build_cache_admission_fold(
     admission: admission,

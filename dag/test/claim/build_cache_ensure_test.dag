@@ -1,7 +1,7 @@
 module test.claim.build_cache_ensure
 
 import gunbc.build_cache_ensure {
-  ensure_is_converged
+  build_cache_ensure_is_converged
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
