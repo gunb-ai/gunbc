@@ -21,7 +21,7 @@ import std.occurrence_binding_candidates {
   ReferencePopulationRefused,
 }
 
-data namespace_pool_independence_note: String = "N3-C pool-independence comparison harness (namespace_pool_independence_lane_brief_note): compare two complete ReferenceDerivedDependencyProjection carriers for the same source subject — baseline versus perturbed with one unrelated loaded file added. Equality is over the full carrier (binding_provenance, file_dependencies, bound_population, refusal variant), never the deduplicated file list alone. B2 row-closure over OrdinaryLoadedCompilationClosure is excluded; witnesses use hand-built or fixture projections until B2 wires live pool perturbation."
+data namespace_pool_independence_note: String = "N3-C pool-independence comparison harness (namespace_pool_independence_lane_brief_note): compare two complete ReferenceDerivedDependencyProjection carriers for the same source subject — baseline versus perturbed with one unrelated loaded file added. Equality is over the full carrier (binding_provenance, file_dependencies, bound_population, refusal variant), never the deduplicated file list alone. Positive witnesses assemble baseline and perturbed closures independently via B0 assemble_cross_file_binding_closure and B1 reference_derived_dependency_projection_for_assembled_closure; per-clause RED controls remain hand-built."
 
 type PoolIndependenceFailure
   = SourceSubjectConsumerFileMismatch { expected: FilePath, found: FilePath }

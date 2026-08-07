@@ -25,27 +25,24 @@ import std.occurrence_binding_candidates {
   AllReferencesBound,
   ReferencePopulationRefused,
   ReferenceBindingProjectionUnbound,
-  ReferenceBindingProjectionUnbound,
-  reference_derived_dependency_projection,
-  AssembledCrossFileBindingClosureReady,
-  structural_binding_walk,
-  module_path_file_index_from_rows,
-  ModulePathFileIndexReady,
-  StructuralBindingWalkReady,
+  AssembledCrossFileBindingClosure,
+  AssembledClosureDependencyProjectionReady,
+  CrossFileBindingClosureRow,
+  reference_derived_dependency_projection_for_assembled_closure,
 }
 import test.fixture.cross_file_clause_e_fixture {
-  cross_file_clause_e_fixture_assembled_closure,
+  cross_file_clause_e_fixture_baseline_assembled_closure,
+  cross_file_clause_e_fixture_perturbed_assembled_closure,
+  cross_file_clause_e_fixture_unrelated_loaded_provider_row,
   cross_file_clause_e_fixture_provider_file,
 }
 
-data namespace_pool_independence_witness_note: String = "N3-C witnesses for gunbc.namespace_pool_independence assess_pool_independent_projection_equality. Positive control models pool perturbation as an identical carrier (B2 wires live unrelated-loaded-file assembly later). Load-bearing RED: same provider file, different declaration, unchanged file-dependency set — file-deps-only comparison passes while full-carrier comparison refuses. Per-clause RED controls exercise each PoolIndependenceFailure arm. §4c comment-path probe lives in cli_run referenced_module_paths_comment_probe_tests (seed)."
+data namespace_pool_independence_witness_note: String = "N3-C witnesses for gunbc.namespace_pool_independence assess_pool_independent_projection_equality. Positive controls assemble baseline (consumer + intended provider) and perturbed (same + one unrelated loaded source) independently via B0 assemble_cross_file_binding_closure, project each via B1 reference_derived_dependency_projection_for_assembled_closure, then compare the full carriers. unrelated_loaded_unrelated_spellings_preserves_full_carrier_holds: PASS. unrelated_loaded_same_spelled_decoy_preserves_full_carrier_holds: FAIL (substrate finding, 2026-08-07) — unrelated loaded app.decoy exporting helper via CrossFileProviderExportedExposure => RootExposure enters the same-spelled candidate population and perturbed projection diverges; NOT papered over per loyal-ram-550 routing instruction. Load-bearing RED: same provider file, different declaration, unchanged file-dependency set. Per-clause RED controls exercise each PoolIndependenceFailure arm."
+
+data npi_decoy_same_spelled_substrate_finding_note: String = "CLASS B DISCRIMINATOR FINDING (loyal-ram-550 2026-08-07): baseline consumer+app.provider vs perturbed consumer+app.provider+app.decoy(helper) — B1 projection is NOT pool-independent. RootExposure on the unrelated loaded export makes the decoy a same-spelled candidate for consumer references; the substrate lacks the structural fact distinguishing an applicable provider from a merely loaded one. Route before closing N3-C lane; witness stays red, not hand-built."
 
 fn npi_witness_consumer_file() -> FilePath {
   "app/consumer.dag"
-}
-
-fn npi_witness_provider_file() -> FilePath {
-  cross_file_clause_e_fixture_provider_file()
 }
 
 fn npi_witness_ref_one() -> OccurrenceId {
@@ -72,7 +69,7 @@ fn npi_witness_provenance(
     reference_occurrence: reference_occurrence,
     declaration_occurrence: declaration_occurrence,
     consumer_file: npi_witness_consumer_file(),
-    provider_file: npi_witness_provider_file(),
+    provider_file: cross_file_clause_e_fixture_provider_file(),
   }
 }
 
@@ -91,7 +88,7 @@ fn npi_witness_provider(
 fn npi_witness_file_dependency() -> DirectFileDependency {
   DirectFileDependency {
     consumer_file: npi_witness_consumer_file(),
-    provider_file: npi_witness_provider_file(),
+    provider_file: cross_file_clause_e_fixture_provider_file(),
   }
 }
 
@@ -133,58 +130,59 @@ fn npi_witness_baseline_projection() -> ReferenceDerivedDependencyProjection {
   )
 }
 
-fn npi_witness_projection_from_fixture() -> ReferenceDerivedDependencyProjection? {
-  match cross_file_clause_e_fixture_assembled_closure() {
-    AssembledCrossFileBindingClosureReady {
-      transport: transport,
-      inputs: inputs,
-      module_files: module_file_rows,
-      consumer_file: _,
-    } =>
-      match structural_binding_walk(transport: transport, inputs: inputs) {
-        StructuralBindingWalkReady { population: population } =>
-          match module_path_file_index_from_rows(rows: module_file_rows) {
-            ModulePathFileIndexReady { entries: module_files } =>
-              Present {
-                value: reference_derived_dependency_projection(
-                  population: population,
-                  module_files: module_files,
-                ),
-              }
-            _ => Absent
-          }
-        _ => Absent
-      }
+fn npi_projection_for_assembled_closure(
+  closure: AssembledCrossFileBindingClosure,
+) -> ReferenceDerivedDependencyProjection? {
+  match reference_derived_dependency_projection_for_assembled_closure(closure: closure) {
+    AssembledClosureDependencyProjectionReady { projection: projection } =>
+      Present { value: projection }
     _ => Absent
   }
 }
 
-test fn unrelated_loaded_pool_perturbation_preserves_full_carrier_holds() -> Bool {
-  let baseline = npi_witness_baseline_projection()
-  let perturbed = npi_witness_baseline_projection()
-  match assess_pool_independent_projection_equality(
-    source_subject: npi_witness_consumer_file(),
-    baseline: baseline,
-    perturbed: perturbed,
-  ) {
-    PoolIndependenceEstablished => true
-    _ => false
-  }
-}
-
-test fn fixture_projection_is_self_pool_independent_holds() -> Bool {
-  match npi_witness_projection_from_fixture() {
-    Present { value: projection } =>
-      match assess_pool_independent_projection_equality(
-        source_subject: npi_witness_consumer_file(),
-        baseline: projection,
-        perturbed: projection,
-      ) {
-        PoolIndependenceEstablished => true
-        _ => false
+fn npi_pool_perturbation_preserves_full_carrier(
+  unrelated_loaded_provider: CrossFileBindingClosureRow,
+) -> Bool {
+  let baseline_closure = cross_file_clause_e_fixture_baseline_assembled_closure()
+  let perturbed_closure = cross_file_clause_e_fixture_perturbed_assembled_closure(
+    unrelated_loaded_provider: unrelated_loaded_provider,
+  )
+  match npi_projection_for_assembled_closure(closure: baseline_closure) {
+    Present { value: baseline } =>
+      match npi_projection_for_assembled_closure(closure: perturbed_closure) {
+        Present { value: perturbed } =>
+          match assess_pool_independent_projection_equality(
+            source_subject: npi_witness_consumer_file(),
+            baseline: baseline,
+            perturbed: perturbed,
+          ) {
+            PoolIndependenceEstablished => true
+            _ => false
+          }
+        Absent => false
       }
     Absent => false
   }
+}
+
+test fn unrelated_loaded_unrelated_spellings_preserves_full_carrier_holds() -> Bool {
+  npi_pool_perturbation_preserves_full_carrier(
+    unrelated_loaded_provider: cross_file_clause_e_fixture_unrelated_loaded_provider_row(
+      declaration_authored_name: "unrelated_noise",
+      module_dotted: "app.unrelated",
+      file_path: "app/unrelated.dag",
+    ),
+  )
+}
+
+test fn unrelated_loaded_same_spelled_decoy_preserves_full_carrier_holds() -> Bool {
+  npi_pool_perturbation_preserves_full_carrier(
+    unrelated_loaded_provider: cross_file_clause_e_fixture_unrelated_loaded_provider_row(
+      declaration_authored_name: "helper",
+      module_dotted: "app.decoy",
+      file_path: "app/decoy.dag",
+    ),
+  )
 }
 
 test fn same_file_reselection_red_refuses_full_carrier_holds() -> Bool {

@@ -161,11 +161,87 @@ fn cross_file_clause_e_fixture_provider_row() -> CrossFileBindingClosureRow {
   }
 }
 
-fn cross_file_clause_e_fixture_assembled_closure() -> AssembledCrossFileBindingClosure {
+fn cross_file_clause_e_fixture_unrelated_loaded_provider_transport(
+  declaration_authored_name: String,
+) -> OccurrenceTransport {
+  let decl = OccurrenceId { value: 400 }
+  let decl_path = cross_file_clause_e_fixture_path(terminal: decl)
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        cross_file_clause_e_fixture_index_entry(
+          occurrence: decl,
+          authored_name: declaration_authored_name,
+        ),
+      ],
+    },
+    declarations: [
+      DeclarationOccurrence {
+        occurrence: decl,
+        containment: decl_path,
+        category: LexicalValueOccurrence,
+        diagnostic_span: cross_file_clause_e_fixture_span(),
+      },
+    ],
+    references: [],
+  }
+}
+
+fn cross_file_clause_e_fixture_unrelated_loaded_provider_row(
+  declaration_authored_name: String,
+  module_dotted: String,
+  file_path: FilePath,
+) -> CrossFileBindingClosureRow {
+  let transport = cross_file_clause_e_fixture_unrelated_loaded_provider_transport(
+    declaration_authored_name: declaration_authored_name,
+  )
+  let provider_module = cross_file_clause_e_fixture_module_path(dotted: module_dotted)
+  let decl = OccurrenceId { value: 400 }
+  let decl_path = cross_file_clause_e_fixture_path(terminal: decl)
+  CrossFileBindingClosureRow {
+    transport: transport,
+    inputs: OccurrenceBindingCandidateInputs {
+      module_paths: [
+        OccurrenceModulePathRow { occurrence: decl, module_path: provider_module },
+      ],
+      exposure_rows: [
+        DeclarationExposureRow {
+          occurrence: decl,
+          exposure: declaration_exposure_from_containment(
+            module_path: provider_module,
+            containment: decl_path,
+            grounding: CrossFileProviderExportedExposure,
+          ),
+        },
+      ],
+      authored_order_rows: [cross_file_clause_e_fixture_authored_order(occurrence: decl)],
+    },
+    module_path: provider_module,
+    file_path: file_path,
+  }
+}
+
+fn cross_file_clause_e_fixture_baseline_assembled_closure() -> AssembledCrossFileBindingClosure {
   assemble_cross_file_binding_closure(
     consumer: cross_file_clause_e_fixture_consumer_row(),
     providers: [cross_file_clause_e_fixture_provider_row()],
   )
+}
+
+fn cross_file_clause_e_fixture_perturbed_assembled_closure(
+  unrelated_loaded_provider: CrossFileBindingClosureRow,
+) -> AssembledCrossFileBindingClosure {
+  assemble_cross_file_binding_closure(
+    consumer: cross_file_clause_e_fixture_consumer_row(),
+    providers: [
+      cross_file_clause_e_fixture_provider_row(),
+      unrelated_loaded_provider,
+    ],
+  )
+}
+
+fn cross_file_clause_e_fixture_assembled_closure() -> AssembledCrossFileBindingClosure {
+  cross_file_clause_e_fixture_baseline_assembled_closure()
 }
 
 fn cross_file_clause_e_fixture_provider_file() -> FilePath {
