@@ -60,6 +60,27 @@ import std.occurrence_binding_candidates {
   resolve_reference_binding_via_structural_candidates,
   direct_module_dependencies_from_providers,
   direct_module_dependencies_from_bound_population,
+  ModulePathFileRow,
+  CrossFileBindingProvenance,
+  module_path_file_index_from_rows,
+  ModulePathFileIndexReady,
+  ModulePathFileIndexRefused,
+  reference_derived_provider_files_for_consumer,
+  ReferenceDerivedProviderFileProjectionReady,
+  reference_derived_provider_files_for_assembled_closure,
+  ReferenceDerivedProviderFilesForAssembledClosureReady,
+  ReferenceDerivedProviderFilesForAssembledClosureRefused,
+  reference_derived_dependency_projection,
+  reference_derived_dependency_projection_for_assembled_closure,
+  ReferenceDerivedDependencyProjectionReady,
+  structural_binding_walk,
+  StructuralBindingWalkReady,
+  AssembledCrossFileBindingClosureReady,
+  AssembledCrossFileBindingClosureRefused,
+}
+import test.fixture.cross_file_clause_e_fixture {
+  cross_file_clause_e_fixture_assembled_closure,
+  cross_file_clause_e_fixture_provider_file,
 }
 
 fn obc_module_path(dotted: String) -> NonEmptyStr {
@@ -630,6 +651,96 @@ test fn refused_population_never_projects_empty_edge_list_holds() -> Bool {
   ) {
     DirectModuleDependencyPopulationRefused { population: _ } => true
     DirectModuleDependencyListReady { edges: _ } => false
+  }
+}
+
+data occurrence_binding_candidates_witness_file_dependency_note: String = "Clause (e) projection law: repeated cross-file BoundReferenceProvider rows for one provider module collapse to one provider-file dependency for the consumer file. Same-file self-edges are omitted from the projection."
+
+test fn repeated_cross_file_mentions_collapse_provider_file_holds() -> Bool {
+  let provider_one = BoundReferenceProvider {
+    reference_occurrence: OccurrenceId { value: 200 },
+    declaration_occurrence: OccurrenceId { value: 300 },
+    consumer_module: obc_module_path(dotted: "app.consumer"),
+    provider_module: obc_module_path(dotted: "app.provider"),
+  }
+  let provider_two = BoundReferenceProvider {
+    reference_occurrence: OccurrenceId { value: 201 },
+    declaration_occurrence: OccurrenceId { value: 300 },
+    consumer_module: obc_module_path(dotted: "app.consumer"),
+    provider_module: obc_module_path(dotted: "app.provider"),
+  }
+  let module_file_index = module_path_file_index_from_rows(rows: [
+    ModulePathFileRow {
+      module_path: obc_module_path(dotted: "app.consumer"),
+      file_path: "dag/app/consumer.dag",
+    },
+    ModulePathFileRow {
+      module_path: obc_module_path(dotted: "app.provider"),
+      file_path: "dag/app/provider.dag",
+    },
+  ])
+  match module_file_index {
+    ModulePathFileIndexReady { entries: module_files } =>
+      match reference_derived_provider_files_for_consumer(
+        population: AllReferencesBound { providers: [provider_one, provider_two] },
+        module_files: module_files,
+        consumer_file: "dag/app/consumer.dag",
+      ) {
+        ReferenceDerivedProviderFileProjectionReady { provider_files: provider_files } =>
+          (provider_files |> count) == 1
+            && match provider_files |> first {
+              Present { value: provider_file } => provider_file == "dag/app/provider.dag"
+              Absent => false
+            }
+        _ => false
+      }
+    ModulePathFileIndexRefused { refusal: _ } => false
+  }
+}
+
+test fn cross_file_clause_e_fixture_collapses_provider_file_holds() -> Bool {
+  match reference_derived_provider_files_for_assembled_closure(
+    closure: cross_file_clause_e_fixture_assembled_closure(),
+  ) {
+    ReferenceDerivedProviderFilesForAssembledClosureReady { provider_files: provider_files } =>
+      (provider_files |> count) == 1
+        && match provider_files |> first {
+          Present { value: provider_file } => provider_file == cross_file_clause_e_fixture_provider_file()
+          Absent => false
+        }
+    ReferenceDerivedProviderFilesForAssembledClosureRefused { refusal: _ } => false
+  }
+}
+
+test fn reference_derived_dependency_projection_preserves_provenance_and_collapses_files_holds() -> Bool {
+  match cross_file_clause_e_fixture_assembled_closure() {
+    AssembledCrossFileBindingClosureReady {
+      transport: transport,
+      inputs: inputs,
+      module_files: module_file_rows,
+      consumer_file: _,
+    } =>
+      match structural_binding_walk(transport: transport, inputs: inputs) {
+        StructuralBindingWalkReady { population: population } =>
+      match module_path_file_index_from_rows(rows: module_file_rows) {
+        ModulePathFileIndexReady { entries: module_files } =>
+          match reference_derived_dependency_projection(
+            population: population,
+            module_files: module_files,
+          ) {
+            ReferenceDerivedDependencyProjectionReady {
+              binding_provenance: provenances,
+              file_dependencies: file_dependencies,
+              bound_population: _,
+            } =>
+              (provenances |> count) == 2 && (file_dependencies |> count) == 1
+            _ => false
+          }
+        ModulePathFileIndexRefused { refusal: _ } => false
+      }
+        _ => false
+      }
+    AssembledCrossFileBindingClosureRefused => false
   }
 }
 
