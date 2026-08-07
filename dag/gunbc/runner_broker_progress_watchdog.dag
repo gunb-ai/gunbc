@@ -297,3 +297,14 @@ fn process_identity_matches_receipt(
     && receipt.local_process.pid == found.pid
     && (receipt.local_process.start_time as String) == (found.start_time as String)
 }
+
+type RunnerDiagnosticReadPath
+  = DiagnosticFileEnumeration { path: NonEmptyStr }
+  | DiagnosticShellPipelineRefused { attempted: NonEmptyStr, reason: NonEmptyStr }
+
+fn refuses_shell_pipeline_diagnostic_read(attempted: NonEmptyStr) -> RunnerDiagnosticReadPath {
+  DiagnosticShellPipelineRefused {
+    attempted: attempted,
+    reason: "enumerate and select diagnostic files directly; shell pipelines risk SIGPIPE and conceal partial reads" as NonEmptyStr,
+  }
+}

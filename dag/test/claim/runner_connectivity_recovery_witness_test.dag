@@ -42,6 +42,10 @@ import gunbc.runner_connectivity_recovery {
   action_is_replace,
   action_is_noop,
   host_reach_admission_for_fleet_host,
+  plan_fleet_connectivity_repair,
+  count_replace_actions_for_host,
+  runner_connectivity_max_replacements_per_host_per_tick,
+  HostReplacementCapExceeded,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -378,4 +382,42 @@ test fn control_plane_burst_classifies_degraded() -> Bool {
     RunnerControlPlaneDegraded { offline_slots: _, total_slots: _, reason: _ } => true
     RunnerControlPlaneHealthy => false
   }
+}
+
+test fn fleet_plan_enforces_per_host_replace_cap() -> Bool {
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let s1 = wedged_snapshot(act_at: act)
+  let s2 = RunnerSlotConnectivitySnapshot {
+    slot: fixture_slot(host: operator_host_srv1, index: 2),
+    local: s1.local,
+    remote: s1.remote,
+    confirmed_at: act,
+    last_restart_at: Absent,
+  }
+  let s3 = RunnerSlotConnectivitySnapshot {
+    slot: fixture_slot(host: operator_host_srv1, index: 3),
+    local: s1.local,
+    remote: s1.remote,
+    confirmed_at: act,
+    last_restart_at: Absent,
+  }
+  let plan = plan_fleet_connectivity_repair(
+    snapshots: [s1, s2, s3],
+    act_at: act,
+    canary_verified: true,
+  )
+  count_replace_actions_for_host(
+    actions: plan.actions,
+    host: operator_host_srv1,
+  ) <= runner_connectivity_max_replacements_per_host_per_tick
+    && match plan.actions.skip(n: 2).first() {
+         Present { value: action } =>
+           match action {
+             RunnerRepairRefused { slot: _, cause: HostReplacementCapExceeded { host: _, cap: _ } } =>
+               true
+             RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+             RunnerConnectedNoop { local: _, remote: _ } => false
+           }
+         Absent => false
+       }
 }

@@ -73,7 +73,7 @@ fn wedged_snapshot(act: Timestamp) -> RunnerSlotConnectivitySnapshot {
   }
 }
 
-test fn replace_action_projects_four_step_repair_sequence() -> Bool {
+test fn replace_action_projects_five_step_repair_sequence() -> Bool {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let snap = wedged_snapshot(act: act)
   let action = decide_runner_connectivity_action_legacy(
@@ -85,23 +85,27 @@ test fn replace_action_projects_four_step_repair_sequence() -> Bool {
   )
   let plan = project_connectivity_action_to_repair_plan(action: action)
   repair_plan_is_execute(plan: plan)
-    && repair_execute_step_count(plan: plan) == 4
+    && repair_execute_step_count(plan: plan) == 5
     && match plan {
          RepairExecute { slot: _, steps: steps } =>
-           list_length(items: steps) == 4
+           list_length(items: steps) == 5
              && match steps.first() {
-                  ObserveGitHubRunnerRegistration { slot: _ } => true
-                  _ => false
-                }
-             && match steps.skip(n: 1).first() {
-                  ReplaceRunnerIncarnation { slot: _, from: _, unit: _ } => true
-                  _ => false
-                }
-             && match steps.skip(n: 2).first() {
                   ObserveRunnerLocalState { slot: _ } => true
                   _ => false
                 }
+             && match steps.skip(n: 1).first() {
+                  ObserveGitHubRunnerRegistration { slot: _ } => true
+                  _ => false
+                }
+             && match steps.skip(n: 2).first() {
+                  ReplaceRunnerIncarnation { slot: _, from: _, unit: _ } => true
+                  _ => false
+                }
              && match steps.skip(n: 3).first() {
+                  ObserveRunnerLocalState { slot: _ } => true
+                  _ => false
+                }
+             && match steps.skip(n: 4).first() {
                   ObserveGitHubRunnerRegistration { slot: _ } => true
                   _ => false
                 }

@@ -42,6 +42,17 @@ data replace_runner_incarnation_host_effect_scaffold: Disposition = Scaffold {
   }
 }
 
+data runner_jit_installation_token_cache_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.runner_lifecycle",
+    decl_name: "EnsureRunnerJitWrapper",
+    field: WholeDeclaration,
+  }
+}
+
+data runner_jit_installation_token_cache_note: String = "LIMIT FANOUT (operator ruling 2026-08-06): cache GitHub JIT installation tokens until near expiry rather than minting a fresh token on every two-minute watchdog tick across every host. Realization lives with EnsureRunnerJitWrapper in gunbc.runner_lifecycle — this repair plan names the choreography only."
+
 type RunnerRepairEffectStep
   = ObserveRunnerLocalState { slot: RunnerSlotIdentity }
   | ObserveGitHubRunnerRegistration { slot: RunnerSlotIdentity }
@@ -66,6 +77,7 @@ fn replace_repair_steps(
 ) -> List<RunnerRepairEffectStep> {
   let unit = runner_slot_unit_name(slot: slot)
   [
+    ObserveRunnerLocalState { slot: slot },
     ObserveGitHubRunnerRegistration { slot: slot },
     ReplaceRunnerIncarnation { slot: slot, from: from, unit: unit },
     ObserveRunnerLocalState { slot: slot },

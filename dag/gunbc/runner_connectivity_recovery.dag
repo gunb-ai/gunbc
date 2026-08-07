@@ -107,6 +107,7 @@ type RunnerRepairRefusalCause
   | ConditionNotPersistentAcrossReobservation
   | ControlPlaneDegraded { reason: NonEmptyStr }
   | CanaryAwaitingVerification
+  | HostReplacementCapExceeded { host: HostIdentity, cap: Int }
 
 type RunnerConnectivityAction
   = RunnerConnectedNoop {
@@ -153,6 +154,10 @@ data runner_connectivity_observation_freshness_seconds: Duration = 120
 data runner_connectivity_restart_cooldown_seconds: Duration = 300
 
 data runner_connectivity_control_plane_degraded_fraction_threshold: Int = 75
+
+data runner_connectivity_max_replacements_per_host_per_tick: Int = 2
+
+data runner_connectivity_replacement_jitter_basis_note: String = "LIMIT FANOUT (operator ruling 2026-08-06): every host independently restarting several slots on the same two-minute timer boundary would amplify the next incident. Per-host replacement cap is enforced in plan_fleet_connectivity_repair; schedule jitter is a realization concern on the watchdog timer — offsets derive from slot_key hash modulo the tick interval, not a modeled random draw."
 
 data runner_connectivity_rebind_healthy_note: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -610,4 +615,209 @@ fn host_reach_admission_for_fleet_host(host: HostIdentity) -> HostReachAdmission
   } else {
     HostReachAdmitted
   }
+}
+
+type PerHostReplaceBudgetState {
+  srv1: Int
+  srv2: Int
+  srv3: Int
+  srv4: Int
+}
+
+type ReplaceCapFoldState {
+  budgets: PerHostReplaceBudgetState
+  out: List<RunnerConnectivityAction>
+}
+
+fn initial_per_host_replace_budget(cap: Int) -> PerHostReplaceBudgetState {
+  PerHostReplaceBudgetState {
+    srv1: cap,
+    srv2: cap,
+    srv3: cap,
+    srv4: cap,
+  }
+}
+
+fn host_budget_remaining(state: PerHostReplaceBudgetState, host: HostIdentity) -> Int {
+  if (host as String) == (operator_host_srv1 as String) {
+    state.srv1
+  } else if (host as String) == (operator_host_srv2 as String) {
+    state.srv2
+  } else if (host as String) == (operator_host_srv3 as String) {
+    state.srv3
+  } else if (host as String) == (operator_host_srv4 as String) {
+    state.srv4
+  } else {
+    0
+  }
+}
+
+fn decrement_host_budget(
+  state: PerHostReplaceBudgetState,
+  host: HostIdentity,
+) -> PerHostReplaceBudgetState {
+  if (host as String) == (operator_host_srv1 as String) {
+    PerHostReplaceBudgetState {
+      srv1: state.srv1 - 1,
+      srv2: state.srv2,
+      srv3: state.srv3,
+      srv4: state.srv4,
+    }
+  } else if (host as String) == (operator_host_srv2 as String) {
+    PerHostReplaceBudgetState {
+      srv1: state.srv1,
+      srv2: state.srv2 - 1,
+      srv3: state.srv3,
+      srv4: state.srv4,
+    }
+  } else if (host as String) == (operator_host_srv3 as String) {
+    PerHostReplaceBudgetState {
+      srv1: state.srv1,
+      srv2: state.srv2,
+      srv3: state.srv3 - 1,
+      srv4: state.srv4,
+    }
+  } else if (host as String) == (operator_host_srv4 as String) {
+    PerHostReplaceBudgetState {
+      srv1: state.srv1,
+      srv2: state.srv2,
+      srv3: state.srv3,
+      srv4: state.srv4 - 1,
+    }
+  } else {
+    state
+  }
+}
+
+fn replace_action_slot(action: RunnerConnectivityAction) -> RunnerSlotIdentity? {
+  match action {
+    RunnerIncarnationReplace { slot: slot, from: _, cause: _ } =>
+      Present { value: slot }
+    RunnerConnectedNoop { local: _, remote: _ } => Absent
+    RunnerRepairRefused { slot: _, cause: _ } => Absent
+  }
+}
+
+fn cap_exceeded_refusal(slot: RunnerSlotIdentity) -> RunnerConnectivityAction {
+  RunnerRepairRefused {
+    slot: slot,
+    cause: HostReplacementCapExceeded {
+      host: slot.host,
+      cap: runner_connectivity_max_replacements_per_host_per_tick,
+    },
+  }
+}
+
+fn enforce_per_host_replace_cap(
+  actions: List<RunnerConnectivityAction>,
+  cap: Int,
+) -> List<RunnerConnectivityAction> {
+  let folded = fold(
+    actions,
+    init: ReplaceCapFoldState {
+      budgets: initial_per_host_replace_budget(cap: cap),
+      out: [],
+    },
+    f: fn(acc, action) {
+      if action_is_replace(action: action) {
+        match replace_action_slot(action: action) {
+          Present { value: slot } =>
+            if host_budget_remaining(state: acc.budgets, host: slot.host) > 0 {
+              ReplaceCapFoldState {
+                budgets: decrement_host_budget(state: acc.budgets, host: slot.host),
+                out: concat(acc.out, [action]),
+              }
+            } else {
+              ReplaceCapFoldState {
+                budgets: acc.budgets,
+                out: concat(acc.out, [cap_exceeded_refusal(slot: slot)]),
+              }
+            }
+          Absent =>
+            ReplaceCapFoldState {
+              budgets: acc.budgets,
+              out: concat(acc.out, [action]),
+            }
+        }
+      } else {
+        ReplaceCapFoldState {
+          budgets: acc.budgets,
+          out: concat(acc.out, [action]),
+        }
+      }
+    },
+  )
+  folded.out
+}
+
+fn first_snapshot_canary_slot(
+  snapshots: List<RunnerSlotConnectivitySnapshot>,
+) -> RunnerSlotIdentity? {
+  match snapshots.first() {
+    Present { value: snap } => Present { value: snap.slot }
+    Absent => Absent
+  }
+}
+
+fn plan_fleet_connectivity_repair(
+  snapshots: List<RunnerSlotConnectivitySnapshot>,
+  act_at: Timestamp,
+  canary_verified: Bool,
+) -> FleetConnectivityRepairPlan {
+  let standing = classify_control_plane_standing(
+    snapshots: snapshots,
+    degraded_threshold_percent: runner_connectivity_control_plane_degraded_fraction_threshold,
+  )
+  let canary = match first_snapshot_canary_slot(snapshots: snapshots) {
+    Present { value: slot } => slot
+    Absent =>
+      RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
+  }
+  let raw_actions = fold(
+    snapshots,
+    init: [],
+    f: (acc, snap) =>
+      concat(acc, [
+        plan_slot_connectivity_action(
+          snap: snap,
+          prior: snap,
+          act_at: act_at,
+          reach: host_reach_admission_for_fleet_host(host: snap.slot.host),
+          standing: standing,
+          canary_slot: canary,
+          canary_verified: canary_verified,
+        ),
+      ]),
+  )
+  FleetConnectivityRepairPlan {
+    standing: standing,
+    actions: enforce_per_host_replace_cap(
+      actions: raw_actions,
+      cap: runner_connectivity_max_replacements_per_host_per_tick,
+    ),
+  }
+}
+
+fn count_replace_actions_for_host(
+  actions: List<RunnerConnectivityAction>,
+  host: HostIdentity,
+) -> Int {
+  fold(
+    actions,
+    init: 0,
+    f: (acc, action) =>
+      if action_is_replace(action: action) {
+        match replace_action_slot(action: action) {
+          Present { value: slot } =>
+            if (slot.host as String) == (host as String) {
+              acc + 1
+            } else {
+              acc
+            }
+          Absent => acc
+        }
+      } else {
+        acc
+      },
+  )
 }
