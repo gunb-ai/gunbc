@@ -14,6 +14,7 @@ import std.keyed_roster {
 import std.content_hash { Fnv1a64StructuralDigestHex }
 import extdeps.dns.domain_name { DnsLabel }
 import extdeps.dhcp.v4 { MacAddress }
+import product.placement_supply { HostIdentity }
 import gunbc.mnemonic_name {
   MnemonicSchemeVersion,
   MnemonicNameV1,
@@ -38,49 +39,95 @@ data host_name_allocation_adoption_standing: String = "AWAITING FIRST PRODUCTION
 
 data host_name_allocation_authority_note: String = "Single authority for allocating and retiring mnemonic host names (adjective-animal-suffix, gunbc.mnemonic_name). Three facts are kept separate here because collapsing any pair is a state-space conflation: WHICH NAME a subject derives is a pure projection of (version, durable subject key, attempt) and lives in gunbc.mnemonic_name; WHETHER that name is free is an exact identity join against the registry, reusing std.keyed_roster rather than forking a second duplicate-detection rule; and WHETHER the subject already has a name is a separate join on the subject key, whose answer is idempotent re-derivation and NOT an allocation. Retirement writes standing, never deletes a row: an exactly-unique registry is a claim across time (DESIGN section 1 A3), so a retired name stays a collision forever and is never reissued to a second machine. Every collision is a typed row carried in the allocation receipt, so probe pressure is countable rather than absorbed into a silent re-roll (DESIGN section 5)."
 
-// WHAT A SUBJECT KEY IS, AND WHY IT IS NOT THE HOST LABEL.
-// The projection is stable exactly insofar as its input is. Keying on the
-// operator label (srv1) would make the mnemonic name a function of a name
-// someone already chose, so re-labelling a machine would re-derive it, and two
-// machines that swapped labels would swap mnemonic names.
+// WHAT THE NAME PROJECTS FROM, AND WHY IT IS NOT THE HARDWARE.
+// The canonical host name must survive hardware replacement in the same logical
+// fleet slot (operator naming ruling). So the projection subject is the
+// IMMUTABLE LOGICAL IDENTITY of the slot — product.placement_supply HostIdentity,
+// the same carrier the fleet already uses for srv1..srv4 — and never an observed
+// physical fact. A revision of this module projected from the machine serial and
+// the primary NIC MAC, which reads as better grounding and is in fact the defect
+// the ruling names: replacing a mainboard or a NIC would have re-derived the
+// name, and the suffix would have been a function of hardware the ruling says no
+// consumer may recover host identity from. Physical identity is a SEPARATE,
+// MUTABLE concept (see HostNamePhysicalBinding below); replacing hardware writes
+// a new binding row and changes no name.
 //
-// The identity therefore CARRIES the grounded fact rather than a loose string
-// beside a label saying where it came from. An earlier revision paired a bare
-// durable_key with a provenance enum, which is a state-space conflation: the
-// two fields could disagree, so a subject could claim PrimaryNicMac provenance
-// while its key held something that was never a MAC, and nothing could tell.
-// Here the MAC arm holds extdeps.dhcp.v4 MacAddress (the fleet's existing MAC
-// authority, cited to RFC 2132) and the serial arm holds the serial this
-// repository actually observes — extdeps.bmc.types RedfishSystemInventory
-// serial_number, the Redfish read the BMC onboarding path already performs —
-// so an ungrounded key can only enter through the arm that says so in its name.
-type HostNameSubjectIdentity
-  = MachineSerial { inventory_serial: NonEmptyStr }
-  | PrimaryNicMac { mac: MacAddress }
-  | OperatorAssigned { key: NonEmptyStr, reason: NonEmptyStr }
+// The subject is a coproduct rather than a bare HostIdentity because the
+// operator's stable SDN/fabric identifier decision is OPEN. Which fact the name
+// projects from is therefore a ROW — flip
+// current_host_name_projection_subject_authority — rather than a rewrite of the
+// projection, and an unselected arm REFUSES instead of quietly projecting from a
+// subject nobody has ruled on.
+type HostNameProjectionSubject
+  = LogicalHostIdentitySubject { host: HostIdentity }
+  | FabricIdentitySubject { fabric_id: NonEmptyStr }
+
+type HostNameProjectionSubjectAuthority
+  = LogicalHostIdentityAuthority
+  | FabricIdentityAuthority
+
+data current_host_name_projection_subject_authority: HostNameProjectionSubjectAuthority = LogicalHostIdentityAuthority
+
+data host_name_projection_subject_authority_note: String = "SELECTED: LogicalHostIdentityAuthority. The name projects from the logical fleet slot identity, which survives hardware replacement — the operator naming ruling's requirement. FabricIdentityAuthority exists as the parameterization for the operator's OPEN stable-SDN/fabric-identifier decision and is NOT selected; building a FabricIdentitySubject today refuses at admission rather than allocating under an undecided authority. Selecting it later is this one row plus the fabric identifier's own grounding, not a change to the projection or the registry. Nothing here decides that question."
 
 type HostNameSubject {
-  identity: HostNameSubjectIdentity
+  projection_subject: HostNameProjectionSubject
 }
 
-// The key is DERIVED from the identity, never stored beside it. The arm tag
-// enters the key so that a serial and a MAC that happen to share text are still
-// different subjects rather than colliding into one name.
-fn host_name_subject_key(subject: HostNameSubject) -> NonEmptyStr {
-  match subject.identity {
-    MachineSerial { inventory_serial: serial } =>
-      join(["machine-serial:", serial as String], "")
-    PrimaryNicMac { mac: mac } =>
-      join(["primary-nic-mac:", mac as String], "")
-    OperatorAssigned { key: key, reason: _ } =>
-      join(["operator-assigned:", key as String], "")
+// PHYSICAL BINDING SITS BESIDE THE NAME, NEVER INSIDE IT.
+// This is what the machine currently IS; the name is what the slot is CALLED.
+// Serial and MAC are grounded on the authorities that own them —
+// extdeps.bmc.types RedfishSystemInventory serial_number (the Redfish read the
+// BMC onboarding path performs) and extdeps.dhcp.v4 MacAddress (cited to RFC
+// 2132) — and both are optional because a BMC may report neither. Replacing
+// hardware produces a NEW binding row for the same host and touches no registry
+// entry, which is exactly the ruling's "serial/UUID replacement becomes a new
+// physical-binding receipt, not a hostname change".
+type HostNamePhysicalBinding {
+  host: HostIdentity
+  observed_serial: NonEmptyStr?
+  observed_primary_nic_mac: MacAddress?
+}
+
+type HostNameSubjectAdmission
+  = HostNameSubjectAdmitted { key: NonEmptyStr }
+  | HostNameSubjectAuthorityNotSelected { selected: String, presented: String }
+
+fn host_name_subject_admit(subject: HostNameSubject) -> HostNameSubjectAdmission {
+  match subject.projection_subject {
+    LogicalHostIdentitySubject { host: host } =>
+      match current_host_name_projection_subject_authority {
+        LogicalHostIdentityAuthority =>
+          HostNameSubjectAdmitted { key: join(["logical-host-identity:", host as String], "") }
+        FabricIdentityAuthority =>
+          HostNameSubjectAuthorityNotSelected {
+            selected: "FabricIdentityAuthority",
+            presented: "LogicalHostIdentitySubject",
+          }
+      }
+    FabricIdentitySubject { fabric_id: fabric_id } =>
+      match current_host_name_projection_subject_authority {
+        FabricIdentityAuthority =>
+          HostNameSubjectAdmitted { key: join(["fabric-identity:", fabric_id as String], "") }
+        LogicalHostIdentityAuthority =>
+          HostNameSubjectAuthorityNotSelected {
+            selected: "LogicalHostIdentityAuthority",
+            presented: "FabricIdentitySubject",
+          }
+      }
   }
 }
 
 fn host_name_subject_eq(left: HostNameSubject, right: HostNameSubject) -> Bool {
-  let left_key = host_name_subject_key(subject: left) as String
-  let right_key = host_name_subject_key(subject: right) as String
-  left_key == right_key
+  match host_name_subject_admit(subject: left) {
+    HostNameSubjectAuthorityNotSelected { selected: _, presented: _ } => false
+    HostNameSubjectAdmitted { key: left_key } =>
+      match host_name_subject_admit(subject: right) {
+        HostNameSubjectAuthorityNotSelected { selected: _, presented: _ } => false
+        HostNameSubjectAdmitted { key: right_key } =>
+          (left_key as String) == (right_key as String)
+      }
+  }
 }
 
 type HostNameStanding
@@ -185,6 +232,7 @@ type HostNameAllocationRefusal
       first: HostNameRegistryEntry
       duplicate: HostNameRegistryEntry
     }
+  | HostNameProjectionSubjectNotSelected { selected: String, presented: String }
 
 type HostNameAllocation
   = HostNameAllocated { receipt: HostNameAllocationReceipt, registry: HostNameRegistry }
@@ -216,6 +264,7 @@ fn host_name_probe_step(
   state: HostNameProbe,
   registry: HostNameRegistry,
   subject: HostNameSubject,
+  subject_key: NonEmptyStr,
   version: MnemonicSchemeVersion,
   attempt: Int,
 ) -> HostNameProbe {
@@ -223,7 +272,7 @@ fn host_name_probe_step(
     HostNameProbeSettled { receipt: _, registry: _ } => state
     HostNameProbeRefused { cause: _ } => state
     HostNameProbing { collisions: collisions } =>
-      match mnemonic_project(version: version, subject_key: host_name_subject_key(subject: subject), attempt: attempt) {
+      match mnemonic_project(version: version, subject_key: subject_key, attempt: attempt) {
         MnemonicProjectionRefused { cause: cause } =>
           HostNameProbeRefused {
             cause: HostNameProjectionRefused { cause: cause, attempt: attempt }
@@ -295,6 +344,27 @@ fn allocate_host_name(
   subject: HostNameSubject,
   version: MnemonicSchemeVersion,
 ) -> HostNameAllocation {
+  match host_name_subject_admit(subject: subject) {
+    HostNameSubjectAuthorityNotSelected { selected: selected, presented: presented } =>
+      HostNameAllocationRefused {
+        cause: HostNameProjectionSubjectNotSelected { selected: selected, presented: presented }
+      }
+    HostNameSubjectAdmitted { key: subject_key } =>
+      allocate_host_name_admitted(
+        registry: registry,
+        subject: subject,
+        subject_key: subject_key,
+        version: version,
+      )
+  }
+}
+
+fn allocate_host_name_admitted(
+  registry: HostNameRegistry,
+  subject: HostNameSubject,
+  subject_key: NonEmptyStr,
+  version: MnemonicSchemeVersion,
+) -> HostNameAllocation {
   match keyed_roster_locate_duplicate(rows: registry, key_eq: host_name_label_key_eq) {
     Present { value: evidence } =>
       HostNameAllocationRefused {
@@ -315,6 +385,7 @@ fn allocate_host_name(
                 state: acc,
                 registry: registry,
                 subject: subject,
+                subject_key: subject_key,
                 version: version,
                 attempt: attempt,
               )
@@ -423,21 +494,22 @@ fn host_name_allocation_collision_count(receipt: HostNameAllocationReceipt) -> I
   fold(receipt.collisions, init: 0, f: fn(n, _c) { n + 1 })
 }
 
-// Built from the Redfish system inventory this repository already reads during
-// BMC onboarding (extdeps.bmc.types RedfishSystemInventory). serial_number is
-// optional there and stays optional here: a machine whose BMC reported no
-// serial has no serial-grounded subject, and answering Absent refuses rather
-// than substituting some other identifier under the serial arm's name.
-fn host_name_subject_from_inventory_serial(serial: NonEmptyStr?) -> HostNameSubject? {
-  match serial {
-    Absent => none
-    Present { value: s } =>
-      Present { value: HostNameSubject { identity: MachineSerial { inventory_serial: s } } }
-  }
+fn host_name_subject_for_host(host: HostIdentity) -> HostNameSubject {
+  HostNameSubject { projection_subject: LogicalHostIdentitySubject { host: host } }
 }
 
-fn host_name_subject_from_primary_nic_mac(mac: MacAddress) -> HostNameSubject {
-  HostNameSubject { identity: PrimaryNicMac { mac: mac } }
+// The binding a BMC read produces. Both fields optional because a BMC may report
+// neither; an absent serial is an absent observation, never a substituted one.
+fn host_name_physical_binding(
+  host: HostIdentity,
+  observed_serial: NonEmptyStr?,
+  observed_primary_nic_mac: MacAddress?,
+) -> HostNamePhysicalBinding {
+  HostNamePhysicalBinding {
+    host: host,
+    observed_serial: observed_serial,
+    observed_primary_nic_mac: observed_primary_nic_mac,
+  }
 }
 
 data current_host_name_scheme_version: MnemonicSchemeVersion = MnemonicNameV1
