@@ -1,6 +1,6 @@
 module extdeps.github.actions_runner
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.crypto.hash { Digest, sha256_digest, digest_shell_verify_line }
 import extdeps.toolchain.types {
@@ -172,4 +172,16 @@ fn actions_runner_base_dir_ensure_script(runner_user: NonEmptyStr) -> String {
     join(["sudo install -d -m 755 -o ", runner_user as String, " -g ", runner_user as String, " ", actions_runner_cache_dir], ""),
     "",
   ], "\n")
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.actions_runner",
+      decl_name: "actions_runner_release_2_334_0",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.actions_runner.extdeps_external_authority_anchor,
+  further_citations: []
 }
