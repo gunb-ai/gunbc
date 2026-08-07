@@ -535,6 +535,57 @@ fn live_read_classification_g2_from_facts(
   }
 }
 
+data g2_live_production_boundary_law: String = "THE LIVE BOUNDARY IS ModuleDependencyEdge, NOT ModuleImportFact (operator ruling, 2026-08-07). v2.lens.module_graph declares dependency_resolution_facts_live the single swappable edge producer and forbids a second one, because the namespace terminal step replaces its BODY when the import grammar is deleted. Two consequences bind this module. Calling import_resolution_facts_live instead would omit the strict-tier reference-derived edges that producer already unions in, so a G2 closure would be narrower than the selection closure that decides the same question one axis over — an under-selection source. And it would bind live classification to the import grammar that is scheduled to disappear, so the namespace swap would silently narrow G2 instead of leaving it untouched, which is exactly what the edge-source-agnostic-by-construction note exists to prevent.
+
+ModuleImportFact stays FIXTURE-FACING. It is a hand-authorable {module, imports} view with no live producer in the corpus, which is what makes it good for planted tests and wrong for production: a shape nothing derives cannot be kept honest against the tree. The seed does not mint it either — asking the host to fabricate the fact shape would put fact production back in the layer this lane is repairing."
+
+fn modules_of_closure_paths(
+  closure_paths: List<String>,
+  nodes: List<ModuleDeclarationFact>
+) -> List<String> {
+  fold_list(xs: nodes, empty: empty_string_list, cons: fn(acc, node) {
+    if contains(xs: closure_paths, item: node.path, eq: string_eq) {
+      if contains(xs: acc, item: node.module, eq: string_eq) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: node.module)
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+fn live_read_classification_g2_from_edges(
+  entry_path: String,
+  entry_module: String,
+  fn_name: String,
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>,
+  decls: List<FnArrowDecl>
+) -> LiveReadClassification {
+  let closure_modules = modules_of_closure_paths(
+    closure_paths: dependency_closure(
+      entry_path: entry_path,
+      edges: edges,
+      nodes: nodes
+    ),
+    nodes: nodes
+  )
+  let reachable = call_reachable_decls_from_root(
+    entry_module: entry_module,
+    fn_name: fn_name,
+    closure_modules: closure_modules,
+    decls: decls
+  )
+  let carriers = carriers_from_reachable_decls(reachable: reachable)
+  if length(xs: carriers) == 0 {
+    LocalRead
+  } else {
+    RuntimeRead { carriers: carriers }
+  }
+}
+
 data live_read_selection_projection_law: String = "THE SELECTION SEAM, and the state the classification type cannot express. LiveReadClassification answers what an entry reads; it has no arm for we could not establish what this entry reads. That third state is not cosmetic: an unavailable G2 producer that silently answered LocalRead would be observationally identical to the G1-only defect this lane repairs, except failing in the opposite and more dangerous direction — under-selection, which looks like a faster green floor rather than a failure. So the seam carries a projection around the existing authority rather than a second classification type (DESIGN section 3: no parallel representation of one fact).
 
 WHAT COMPLETE MEANS, concretely, and why carrier homes decide it. G2 concludes LocalRead by finding no reachable carrier invocation. That conclusion is only sound when the facts actually contain the bodies where such an invocation would appear. If the import closure reaches a carrier home whose declarations are absent from the supplied fn-arrow facts, then no-call-found is indistinguishable from nothing-to-look-at, and answering LocalRead would assert the stronger of the two. Carrier-home reachability is therefore G1 used as EVIDENCE about coverage — never as an answer, which is precisely the conflation the completed-G2 recut removed."
