@@ -37,7 +37,7 @@ fn dirname_ascent(path: PathIntent, target: NonEmptyStr) -> DirnameAscent {
   DirnameAscent { path: path, target: target }
 }
 
-data nearest_ancestor_containing_note: String = "NearestAncestorContaining is a pure search policy over path predicates: walk upward from start, stopping before stop_before, until relative_entry exists at expected_kind. start is PathRefStart — the PathIntent.PathRef carrier shape only; PathLiteral and PathJoin are unwritable at construction so nearest_ancestor_walk_target never fabricates a bash variable name. The procfs membership assign that seeds start lives in extdeps.linux.proc_self_cgroup."
+data nearest_ancestor_containing_note: String = "NearestAncestorContaining is a pure search policy over path predicates: walk upward from start, stopping before stop_before, until relative_entry exists at expected_kind. start is PathRefStart — the PathIntent.PathRef carrier shape only; PathLiteral and PathJoin are unwritable at construction so nearest_ancestor_walk_target never fabricates a bash variable name. The procfs membership assign that seeds start is lowered by v2.extdeps.languages.bash_proc_self_cgroup from extdeps.linux.proc_self_cgroup semantics."
 
 type PathRefStart {
   name: NonEmptyStr
