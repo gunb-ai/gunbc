@@ -12,16 +12,7 @@ import gunbc.host_phase_status { fleet_subsumption_hosts }
 
 data fleet_shell_transport_authority_disposition: Disposition = SingleAuthority
 
-// SHELL TRANSPORT IS NOT NETWORK REACH. gunbc.fleet_reach answers whether packets can route to a host;
-// this module answers whether an SSH session from the executing environment can authenticate and run a
-// command. Both must be modeled separately (operator rule 2026-07-24). A ReachRefused or Permission-denied
-// transport observation is a RECEIPT — not EndpointAbsent, swap Absent, or SessionsObservedAbsent.
-//
-// THE PRODUCER returns ShellTransportUnobserved until host_effect_apply can run the probe; it does not
-// hand-enter host facts. still_ram_738_session_* rows below are dated execution receipts for one
-// environment (2026-08-06 ssh BatchMode probes), not fabrication of swap, disk, or session counts.
-// Review 49656: interim only — downstream modules must not treat these as permanent authority;
-// fleet_shell_transport_observed_producer_dissolve_on names HostEffectTransport as the successor.
+data fleet_shell_transport_scope_note: String = "SHELL TRANSPORT IS NOT NETWORK REACH. gunbc.fleet_reach answers whether packets can route to a host; this module answers whether an SSH session from the executing environment can authenticate and run a command. Both must be modeled separately (operator rule 2026-07-24). A ReachRefused or Permission-denied transport observation is a RECEIPT — not EndpointAbsent, swap Absent, or SessionsObservedAbsent. THE PRODUCER returns ShellTransportUnobserved until host_effect_apply can run the probe; it does not hand-enter host facts. still_ram_738_session_* rows below are dated execution receipts for one environment (2026-08-06 ssh BatchMode probes), not fabrication of swap, disk, or session counts. Review 49656: interim only — downstream modules must not treat these as permanent authority; fleet_shell_transport_observed_producer_dissolve_on names HostEffectTransport as the successor."
 
 type HostShellTransportObservation
   = ShellTransportSucceeded {
@@ -81,9 +72,7 @@ fn still_ram_738_session_shell_transport(host: HostIdentity) -> HostShellTranspo
   }
 }
 
-// SUCCESSOR IS A HOST-EFFECT PROBE, not a session receipt table. fleet_shell_transport_observed_producer
-// will run ssh (or nested ssh for srv3_reach) through host_effect_apply. Until it lands, enrolled hosts
-// fall through to the session receipt when the producer returns ShellTransportUnobserved.
+data fleet_shell_transport_observed_producer_note: String = "SUCCESSOR IS A HOST-EFFECT PROBE, not a session receipt table. fleet_shell_transport_observed_producer will run ssh (or nested ssh for srv3_reach) through host_effect_apply. Until it lands, enrolled hosts fall through to the session receipt when the producer returns ShellTransportUnobserved."
 
 fn fleet_shell_transport_observed_producer(host: HostIdentity) -> HostShellTransportObservation {
   ShellTransportUnobserved {
@@ -91,10 +80,7 @@ fn fleet_shell_transport_observed_producer(host: HostIdentity) -> HostShellTrans
   }
 }
 
-// DATED SESSION RECEIPTS are pinned census rows for one principal/environment (2026-08-06).
-// They are NOT the live observation authority: fleet_shell_transport_observation keeps
-// producer-Unobserved as Unobserved and cites these rows only as non-authoritative provenance
-// (review 49707 — inverted fallback would graduate stale ReachRefused for principals with keys).
+data still_ram_738_session_shell_transport_receipt_authority_note: String = "DATED SESSION RECEIPTS are pinned census rows for one principal/environment (2026-08-06). They are NOT the live observation authority: fleet_shell_transport_observation keeps producer-Unobserved as Unobserved and cites these rows only as non-authoritative provenance (review 49707 — inverted fallback would graduate stale ReachRefused for principals with keys)."
 
 fn still_ram_738_session_shell_transport_receipt_note(host: HostIdentity) -> String {
   match still_ram_738_session_shell_transport(host: host) {

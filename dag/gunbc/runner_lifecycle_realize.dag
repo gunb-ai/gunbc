@@ -14,10 +14,11 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // All nine runner_lifecycle HostEffect realize arms delegate here until wet transport lands.
 // Honest scaffold: typed, located NotConverged — not an absorbing fallback and not a converged receipt.
-// Dissolves when fleet-automation SSH reach is authorized on srv3/srv4 (B2 in
-// gunbc.plans.fleet_subsumption_manual_gaps) AND host_effect_apply routes each arm through
-// HostEffectTransport with independent read-back (org-roster for registration observe; local
-// unit/process facts for ObserveRunnerLocalState; release digest before extract for ADD arms).
+// Dissolves when the add path is bound through LocalShell on an in-band job targeted at the host
+// label AND the executing principal holds the enumerated sudo grants (ReadEffectivePosixPrincipal +
+// SudoNopasswdGrantListProbe), AND host_effect_apply routes each arm through HostEffectTransport
+// with independent read-back (org-roster for registration observe; local unit/process facts for
+// ObserveRunnerLocalState; release digest before extract for ADD arms).
 
 data runner_lifecycle_realize_wet_transport_dissolve_on: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -28,7 +29,7 @@ data runner_lifecycle_realize_wet_transport_dissolve_on: Disposition = Scaffold 
   }
 }
 
-data runner_lifecycle_realize_scaffold_dissolution_note: String = "DISSOLUTION TRIGGER (§6): each runner_lifecycle_realize_* arm retires when (1) srv3/srv4 fleet-automation SSH reach is authorized for the executing principal (B2 fleet_subsumption_manual_gaps — today ShellTransportReachRefused), (2) host_effect_apply binds the arm through HostEffectTransport instead of this scaffold, and (3) the bound handler performs independent read-back before claiming Converged (org-roster for ObserveGitHubRunnerRegistration; local unit/process for ObserveRunnerLocalState; digest-verified release before extract for EnsureActionsRunnerRelease). Until then every arm returns NotConverged citing runner_lifecycle_realize_wet_transport_dissolve_on — provisions nothing."
+data runner_lifecycle_realize_scaffold_dissolution_note: String = "DISSOLUTION TRIGGER (section 6): each runner_lifecycle_realize_* arm retires when (1) the add path is bound through LocalShell on an in-band GHA job labelled for the target host AND the executing principal holds passwordless sudo for runner-root mkdir, systemd unit install, daemon-reload, and unit start (verified via ReadEffectivePosixPrincipal + SudoNopasswdGrantListProbe — srv1 observed 2026-08-07; srv3/srv4 pending in-band probe), (2) host_effect_apply binds the arm through HostEffectTransport instead of this scaffold, and (3) the bound handler performs independent read-back before claiming Converged (org-roster for ObserveGitHubRunnerRegistration; local unit/process for ObserveRunnerLocalState; digest-verified release before extract for EnsureActionsRunnerRelease). Until then every arm returns NotConverged citing runner_lifecycle_realize_wet_transport_dissolve_on — provisions nothing."
 
 fn runner_lifecycle_realize_scaffold(
   effect_label: String,
@@ -39,7 +40,7 @@ fn runner_lifecycle_realize_scaffold(
       [
         "host_effect_apply: ",
         effect_label,
-        " realization scaffold (NotConverged) — dissolve-on runner_lifecycle_realize_wet_transport_dissolve_on: srv3/srv4 SSH reach + HostEffectTransport binding; ctrl is dead, no script delegation",
+        " realization scaffold (NotConverged) — dissolve-on runner_lifecycle_realize_wet_transport_dissolve_on: LocalShell in-band transport + enumerated sudo grants + HostEffectTransport binding; gunbc-owned realization (read live ctrl installer for shape, never invoke from gunbc run)",
       ],
       "",
     ),

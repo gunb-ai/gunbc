@@ -15,8 +15,11 @@ import gunbc.fleet_runner_connectivity {
 import gunbc.runner_capacity_realize {
   runner_capacity_apply_plan,
   runner_capacity_reapply_plans_zero_additions,
+  runner_capacity_host_apply_receipt,
   RunnerCapacityApplyRefused,
-  RunnerCapacityApplySucceeded,
+  RunnerCapacityApplyCompleted,
+  HostApplyRefused,
+  HostApplySucceeded,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -36,18 +39,61 @@ test fn apply_seam_plans_two_additions_not_count_refusal() -> Bool {
   }
 }
 
-test fn apply_seam_refuses_unobservable_disk_not_width_five() -> Bool {
+test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool {
   let plan = runner_capacity_plan(
     srv3_width: 7,
     srv4_width: 7,
     roster: organization_runner_roster_evidence(),
   )
   match runner_capacity_apply_plan(plan: plan) {
-    RunnerCapacityApplyRefused { reason: r } =>
-      string_contains(s: r, pattern: "disk unobservable")
-        && string_contains(s: r, pattern: "7")
-        && (string_contains(s: r, pattern: "width 5") == false)
-    RunnerCapacityApplySucceeded { add_actions_executed: _ } => false
+    RunnerCapacityApplyCompleted { hosts: _ } =>
+      match runner_capacity_host_apply_receipt(
+        outcome: runner_capacity_apply_plan(plan: plan),
+        host: operator_host_srv3,
+      ) {
+        Present { value: r } =>
+          match r.outcome {
+            HostApplyRefused { reason: reason } =>
+              string_contains(s: reason, pattern: "disk unobservable")
+                && string_contains(s: reason, pattern: "7")
+                && string_contains(s: reason, pattern: "srv3")
+                && (string_contains(s: reason, pattern: "width 5") == false)
+            HostApplySucceeded { add_actions_executed: _ } => false
+          }
+        Absent => false
+      }
+    RunnerCapacityApplyRefused { reason: _ } => false
+  }
+}
+
+test fn apply_seam_preserves_sibling_host_receipt_when_one_refuses() -> Bool {
+  let outcome = runner_capacity_apply_plan(
+    plan: runner_capacity_plan(
+      srv3_width: 7,
+      srv4_width: 7,
+      roster: organization_runner_roster_evidence(),
+    ),
+  )
+  match outcome {
+    RunnerCapacityApplyCompleted { hosts: hs } =>
+      hs.length() == 2
+        && match runner_capacity_host_apply_receipt(outcome: outcome, host: operator_host_srv3) {
+          Present { value: srv3 } =>
+            match runner_capacity_host_apply_receipt(outcome: outcome, host: operator_host_srv4) {
+              Present { value: srv4 } =>
+                match srv3.outcome {
+                  HostApplyRefused { reason: _ } => true
+                  HostApplySucceeded { add_actions_executed: _ } => false
+                }
+                  && match srv4.outcome {
+                    HostApplyRefused { reason: _ } => true
+                    HostApplySucceeded { add_actions_executed: _ } => false
+                  }
+              Absent => false
+            }
+          Absent => false
+        }
+    RunnerCapacityApplyRefused { reason: _ } => false
   }
 }
 
@@ -77,7 +123,18 @@ test fn converged_roster_plans_zero_additions_and_apply_succeeds() -> Bool {
       runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 0
         && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 0
         && match runner_capacity_apply_plan(plan: plan) {
-          RunnerCapacityApplySucceeded { add_actions_executed: n } => n == 0
+          RunnerCapacityApplyCompleted { hosts: hs } =>
+            hs.length() == 2
+              && fold(
+                hs,
+                init: true,
+                f: (ok, r) =>
+                  ok
+                    && match r.outcome {
+                      HostApplySucceeded { add_actions_executed: n } => n == 0
+                      HostApplyRefused { reason: _ } => false
+                    },
+              )
           RunnerCapacityApplyRefused { reason: _ } => false
         }
     PlanRefused { reason: _ } => false

@@ -120,7 +120,7 @@ import gunbc.runner_lifecycle_realize {
   runner_lifecycle_realize_observe_github_runner_registration,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_runner_connectivity { LocalRunnerSlotIncarnation }
+import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
 import gunbc.runner_lifecycle { RunnerReplacementCause }
 import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
 import gunbc.roadmap_static_site { roadmap_site_digest_readback_script }
