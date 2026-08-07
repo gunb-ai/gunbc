@@ -2,34 +2,15 @@
 // Source module: v1.gunbc.occurrence_binding_parser_walk
 
 use self::ParsedOccurrenceBindingSource::*;
-use self::StructuralBindingIndexRefusal::*;
-use self::StructuralBindingWalk::*;
-pub use crate::std_algebra::FreeMonoid;
-use crate::std_occurrence_binding_candidates::AuthoredOrderIndexRefusal::*;
-use crate::std_occurrence_binding_candidates::BoundReferencePopulation::*;
-use crate::std_occurrence_binding_candidates::DeclarationExposure::{
-    LexicalExposure, ModuleExposure,
-};
-use crate::std_occurrence_binding_candidates::DeclarationExposureIndexRefusal::*;
-use crate::std_occurrence_binding_candidates::OccurrenceCandidateIndexBuild::{
-    OccurrenceCandidateIndexAuthoredOrderRefused, OccurrenceCandidateIndexDeclarationBucketRefused,
-    OccurrenceCandidateIndexExposureRefused, OccurrenceCandidateIndexModulePathRefused,
-    OccurrenceCandidateIndexReady, OccurrenceCandidateIndexTransportRefused,
-};
-use crate::std_occurrence_binding_candidates::OccurrenceModulePathIndexRefusal::*;
+pub use crate::std_occurrence_binding_candidates::declaration_exposure_from_containment;
+use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
 pub use crate::std_occurrence_binding_candidates::{
-    bound_reference_population_from_projections, occurrence_candidate_index_build,
-    resolve_all_references_via_structural_candidates,
+    AuthoredOrderRow, DeclarationExposureGrounding, DeclarationExposureRow,
+    OccurrenceBindingCandidateInputs, OccurrenceModulePathRow,
 };
-pub use crate::std_occurrence_binding_candidates::{
-    AuthoredOrderIndexRefusal, AuthoredOrderRow, BoundReferencePopulation, DeclarationExposure,
-    DeclarationExposureIndexRefusal, DeclarationExposureRow, OccurrenceBindingCandidateInputs,
-    OccurrenceCandidateIndexBuild, OccurrenceModulePathIndexRefusal, OccurrenceModulePathRow,
-};
-use crate::std_occurrence_identity::OccurrenceTransportRefusal::*;
 pub use crate::std_occurrence_identity::{
-    AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceContainmentPath, OccurrenceId,
-    OccurrenceIndexEntry, OccurrenceTransport, OccurrenceTransportRefusal, ReferenceOccurrence,
+    AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceId, OccurrenceIndexEntry,
+    OccurrenceTransport, ReferenceOccurrence,
 };
 pub use crate::std_types::{List, NonEmptyStr};
 pub use crate::v1_compiler_parse::{parse_with_table, parse_with_table_ready_module_path};
@@ -116,47 +97,10 @@ pub fn parse_authored_occurrence_binding_source(
 pub fn declaration_exposure_from_containment_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Exposure derivation site: inputs are containment prefix shape and module path only — OccurrenceCategory is not consulted. Ancestors are root-first (module … parent), per occurrence_ancestors_push. Empty or single-ancestor chain (direct module child) => ModuleExposure; nested declaration => LexicalExposure whose exposing_scope is the nearest ancestor (last in the root-first list) as terminal with that ancestor's prefix. Binder-as-own-path LexicalExposure (the hand-built §13 fixture shape) is correct only when uses nest under the binder in the parse tree (lets do; match-arm bodies currently do not — see parser_sibling_match_arm_pattern_binder_holds_note).".to_string()
+            "Exposure derivation site: inputs are containment prefix shape and module path only — OccurrenceCategory is not consulted. Delegates to the single exposure authority std.occurrence_binding_candidates declaration_exposure_from_containment under ModuleLocalMemberExposure grounding (N3-B0): module-root and direct-module-child shapes => ModuleExposure; nested declaration => LexicalExposure whose exposing_scope is the nearest ancestor. Binder-as-own-path LexicalExposure (the hand-built §13 fixture shape) is correct only when uses nest under the binder in the parse tree (lets do; match-arm bodies currently do not — see parser_sibling_match_arm_pattern_binder_holds_note).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
-}
-
-pub fn occurrence_containment_parent_scope(
-    ancestors: Rc<Vec<OccurrenceId>>,
-) -> Option<Rc<OccurrenceContainmentPath>> {
-    {
-        let __fm = v1_rt::reverse(ancestors.clone());
-        if __fm.is_empty() {
-            None
-        } else {
-            let parent_terminal = (*__fm)[0].clone();
-            let parent_ancestors_reversed: Rc<Vec<_>> =
-                Rc::new((*__fm).iter().skip(1).cloned().collect());
-            Some(Rc::new(OccurrenceContainmentPath {
-                ancestors: v1_rt::reverse(parent_ancestors_reversed.clone()),
-                terminal: parent_terminal.clone(),
-            }))
-        }
-    }
-}
-
-pub fn declaration_exposure_from_containment(
-    module_path: String,
-    containment: Rc<OccurrenceContainmentPath>,
-) -> Rc<DeclarationExposure> {
-    {
-        let __fm = containment.ancestors.clone();
-        if __fm.is_empty() {
-            Rc::new(DeclarationExposure::ModuleExposure {
-                module: module_path.clone(),
-            })
-        } else {
-            Rc::new(DeclarationExposure::ModuleExposure {
-                module: module_path.clone(),
-            })
-        }
-    }
 }
 
 pub fn authored_order_row_from_entry(entry: Rc<OccurrenceIndexEntry>) -> Rc<AuthoredOrderRow> {
@@ -218,6 +162,7 @@ pub fn occurrence_binding_inputs_from_transport(
                         exposure: declaration_exposure_from_containment(
                             module_path.clone(),
                             declaration.containment.clone(),
+                            DeclarationExposureGrounding::ModuleLocalMemberExposure,
                         ),
                     })]),
                     acc,
@@ -248,110 +193,10 @@ pub fn occurrence_binding_inputs_from_transport(
 pub fn structural_binding_walk_refusal_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "StructuralBindingWalkRefused wraps the exact index-build refusal payload (transport / module-path / exposure / authored-order / declaration-bucket). Coarse unit variants that discard nested refusal evidence are forbidden (operator blocker 6 / review on PR 7515).".to_string()
+            "structural_binding_walk / StructuralBindingWalk / StructuralBindingIndexRefusal are the single authority in std.occurrence_binding_candidates (N3-B0) — StructuralBindingWalkRefused wraps the exact index-build refusal payload (transport / module-path / exposure / authored-order / declaration-bucket). Coarse unit variants that discard nested refusal evidence are forbidden (operator blocker 6 / review on PR 7515).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum StructuralBindingIndexRefusal {
-    StructuralBindingTransportRefusal {
-        refusal: Rc<OccurrenceTransportRefusal>,
-    },
-    StructuralBindingModulePathRefusal {
-        refusal: Rc<OccurrenceModulePathIndexRefusal>,
-    },
-    StructuralBindingExposureRefusal {
-        refusal: Rc<DeclarationExposureIndexRefusal>,
-    },
-    StructuralBindingAuthoredOrderRefusal {
-        refusal: Rc<AuthoredOrderIndexRefusal>,
-    },
-    StructuralBindingDeclarationBucketRefusal {
-        occurrence: OccurrenceId,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum StructuralBindingWalk {
-    StructuralBindingWalkReady {
-        population: Rc<BoundReferencePopulation>,
-    },
-    StructuralBindingWalkRefused {
-        refusal: Rc<StructuralBindingIndexRefusal>,
-    },
-}
-
-pub fn structural_binding_walk(
-    transport: Rc<OccurrenceTransport>,
-    inputs: Rc<OccurrenceBindingCandidateInputs>,
-) -> Rc<StructuralBindingWalk> {
-    match (*occurrence_candidate_index_build(transport.clone(), inputs.clone())).clone() {
-        OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexTransportRefused {
-            refusal: refusal,
-            ..
-        } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
-            refusal: Rc::new(
-                StructuralBindingIndexRefusal::StructuralBindingTransportRefusal {
-                    refusal: refusal.clone(),
-                },
-            ),
-        }),
-        OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexModulePathRefused {
-            refusal: refusal,
-            ..
-        } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
-            refusal: Rc::new(
-                StructuralBindingIndexRefusal::StructuralBindingModulePathRefusal {
-                    refusal: refusal.clone(),
-                },
-            ),
-        }),
-        OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexExposureRefused {
-            refusal: refusal,
-            ..
-        } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
-            refusal: Rc::new(
-                StructuralBindingIndexRefusal::StructuralBindingExposureRefusal {
-                    refusal: refusal.clone(),
-                },
-            ),
-        }),
-        OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexAuthoredOrderRefused {
-            refusal: refusal,
-            ..
-        } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
-            refusal: Rc::new(
-                StructuralBindingIndexRefusal::StructuralBindingAuthoredOrderRefusal {
-                    refusal: refusal.clone(),
-                },
-            ),
-        }),
-        OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexDeclarationBucketRefused {
-            occurrence: occurrence,
-            ..
-        } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
-            refusal: Rc::new(
-                StructuralBindingIndexRefusal::StructuralBindingDeclarationBucketRefusal {
-                    occurrence: occurrence.clone(),
-                },
-            ),
-        }),
-        OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady { index: index, .. } => {
-            Rc::new(StructuralBindingWalk::StructuralBindingWalkReady {
-                population: bound_reference_population_from_projections(
-                    resolve_all_references_via_structural_candidates(
-                        transport.clone(),
-                        index.clone(),
-                        transport.references.clone(),
-                    ),
-                ),
-            })
-        }
-    }
 }
 
 pub fn reference_named(

@@ -314,6 +314,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_bin_wet_dissolve
   },
   WitnessExclusionRow {
+    pattern: "namespace_structural_root_exposure_generated_witness_test.dag",
+    classification: BinWitnessWet,
+    reason: excl_bin_wet_reason,
+    dissolve_on: excl_bin_wet_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "emit_host_typed_smoke_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
@@ -1033,6 +1039,7 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_witness_bin_run_loud_failure_red_control_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_positive_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_zero_byte_red_control_holds"),
+  bin_wet(entry: "dag/test/claim/namespace_structural_root_exposure_generated_witness_test.dag", f: "namespace_structural_root_exposure_generated_witness_holds"),
   bin_wet(entry: "dag/test/claim/roadmap_belt_actuate_witness_test.dag", f: ""),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_gunbc_cli_run_claim_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_claim_batch_pooled_argv_shape_holds"),
