@@ -121,3 +121,21 @@ data receipt_projection_is_lossy_note: String = "THE RECEIPT IS A LOSSY PROJECTI
 fn receipt_admits_pool(receipt: HostCompilePoolReady) -> Bool {
   receipt.pool_declared && receipt.pool_observed
 }
+
+fn derive_host_compile_pool_ready(
+  placement: CompilePoolPlacement,
+  sizing: CompilePoolResolution,
+  observed: CompilePoolObservation,
+  intended_slice: NonEmptyStr,
+  host: HostIdentity,
+) -> HostCompilePoolReady {
+  compile_pool_ready_receipt(
+    readiness: derive_compile_pool_readiness(
+      placement: placement,
+      sizing: sizing,
+      observed: observed,
+    ),
+    intended_slice: intended_slice,
+    host: host,
+  )
+}
