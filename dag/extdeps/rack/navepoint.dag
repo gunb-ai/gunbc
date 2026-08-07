@@ -14,6 +14,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// Operator-supplied rack identity. The exact serial and U layout are OBSERVATIONS on the
+// owned instance rather than facts this catalog may author, so they are absent by intent.
 data navepoint_18u_open_frame_catalog: RackCatalogRow = RackCatalogRow {
   model: "18U 4-post open-frame rack",
   manufacturer: navepoint,
@@ -21,8 +23,6 @@ data navepoint_18u_open_frame_catalog: RackCatalogRow = RackCatalogRow {
   post_count: 4,
   open_frame: true,
 }
-
-data navepoint_rack_catalog_note: String = "Operator-supplied NavePoint 18U 4-post open-frame rack identity. Exact serial and U layout are OBSERVATIONS on the owned instance, not facts to author here."
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {

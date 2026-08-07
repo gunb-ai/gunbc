@@ -20,6 +20,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // foot scale: Measure<Dimension, Scale, Carrier> expresses only decimal and binary scales, so
 // a Foot alias at scale One was structurally identical to Millimeter and silently
 // interchangeable with it (review 50310).
+// RS-1215 and RS-1215-RA differ in outlet geometry. Which one pdu-01 is must come from
+// the physical label on the unit; it is an observation of the owned instance, not a fact
+// this catalog may author.
 data eaton_tripp_lite_rs_1215_family_catalog: PduCatalogRow = PduCatalogRow {
   model_family: "RS-1215",
   manufacturer: eaton,
@@ -31,8 +34,6 @@ data eaton_tripp_lite_rs_1215_family_catalog: PduCatalogRow = PduCatalogRow {
   rear_outlet_count: 6,
   cord_length: millimeter(4572),
 }
-
-data pdu_variant_selection_note: String = "RS-1215 vs RS-1215-RA differ in outlet geometry and must come from the physical label on pdu-01 — do not pick one until observed."
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
