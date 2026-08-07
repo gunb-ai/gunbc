@@ -18,6 +18,8 @@ import v2.workflow.rust_crate_partition {
   stage0_string_set_equality_duplicate_substitution_refuses_holds,
   stage0_string_set_equality_order_independent_holds,
   stage0_string_set_equality_identical_holds,
+  stage0_partition_missing_assignment_population_refuses_holds,
+  stage0_partition_missing_raw_reach_population_refuses_holds,
   stage0_partition_red_control_synthetic_module_not_in_derived_holds,
   stage0_partition_witness_assignment_conflict_refuses_holds,
   stage0_partition_witness_assignment_conflict_cause_carries_reachers_holds,
@@ -27,7 +29,7 @@ import v2.workflow.rust_crate_partition {
   stage0_physical_crate_count_holds
 }
 
-data stage0_partition_membership_receipt_note: String = "C2 equivalence receipt: derived per-unit membership matches the terminating one-shot baseline in v2.test.claim.stage0_partition_membership_baseline (frozen at stage0_partition_enrolled_membership_baseline_frozen_commit). Baseline dissolves when C1 all-seven passes on C2 AND C3 structural reference totality lands. RED controls: synthetic unreachable module absent from derived membership; zero-step raw reach refuses; two-unit owner ambiguity refuses; three-unit unrouted cross-unit reach refuses; forward vs reversed unit-order iteration yields identical membership."
+data stage0_partition_membership_receipt_note: String = "C2 equivalence receipt: derived per-unit membership matches the terminating one-shot baseline in v2.test.claim.stage0_partition_membership_baseline (frozen at stage0_partition_enrolled_membership_baseline_frozen_commit). Baseline dissolves when C1 passes against C2-derived membership AND real C3 structural reference totality lands. RED controls: synthetic unreachable module absent from derived membership; zero-step raw reach refuses; two-unit owner ambiguity refuses; three-unit unrouted cross-unit reach refuses; missing assignment/raw-reach map populations refuse; forward vs reversed unit-order iteration yields identical membership."
 
 test fn stage0_partition_membership_closure_covers_seeds_holds() -> Bool {
   stage0_partition_membership_closure_covers_seeds()
@@ -107,6 +109,14 @@ test fn stage0_string_set_equality_order_independent_witness_holds() -> Bool {
 
 test fn stage0_string_set_equality_identical_witness_holds() -> Bool {
   stage0_string_set_equality_identical_holds()
+}
+
+test fn stage0_partition_missing_assignment_population_refuses_witness_holds() -> Bool {
+  stage0_partition_missing_assignment_population_refuses_holds()
+}
+
+test fn stage0_partition_missing_raw_reach_population_refuses_witness_holds() -> Bool {
+  stage0_partition_missing_raw_reach_population_refuses_holds()
 }
 
 test fn stage0_partition_red_control_wrong_module_not_derived_holds() -> Bool {
