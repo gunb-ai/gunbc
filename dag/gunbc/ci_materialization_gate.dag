@@ -63,6 +63,8 @@ fn ci_verdict_is_discharged_arm(v: LadderVerdict) -> Bool {
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -80,6 +82,8 @@ fn ci_verdict_is_below_cost_floor_arm(v: LadderVerdict) -> Bool {
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => true
@@ -97,6 +101,8 @@ fn ci_verdict_is_exempt_fresh_arm(v: LadderVerdict) -> Bool {
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => true
     AcceptedBelowCostFloor { identity: _ } => false

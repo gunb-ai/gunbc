@@ -1,4 +1,7 @@
 module v1.compiler.annotation_bind
+// The .dag realization of annotation attachment: it turns what the tokenizer captured into subject-bound rows by calling std.source_annotation.attach_annotations. Everything here is either .dag-specific — what the comment delimiter looks like, how a module item is recognized in this parser's transport — or a projection of facts the parser already produced. The RULE itself is not here; a second copy of the rule beside the shared one is the fork this lane exists to prevent.
+//
+// It is a PURE DOWNSTREAM READER of the occurrence transport. No allocator is in scope, so the identities it reads were all minted by the semantic parser before it ran, and no edit to a comment can shift one.
 
 import std.types { Bool, Int, String, SourceSpan, List }
 import std.occurrence_identity {
@@ -25,16 +28,14 @@ import std.source_annotation {
 }
 import v1.std.core { CompilerDiagnostic, SourceAnnotationRefused }
 
-data annotation_bind_authority_note: String = "The .dag realization of annotation attachment: it turns what the tokenizer captured into subject-bound rows by calling std.source_annotation.attach_annotations. Everything here is either .dag-specific — what the comment delimiter looks like, how a module item is recognized in this parser's transport — or a projection of facts the parser already produced. The RULE itself is not here; a second copy of the rule beside the shared one is the fork this lane exists to prevent.
 
-It is a PURE DOWNSTREAM READER of the occurrence transport. No allocator is in scope, so the identities it reads were all minted by the semantic parser before it ran, and no edit to a comment can shift one."
 
-data module_item_roster_source_note: String = "The roster comes from the occurrence INDEX, not from OccurrenceTransport.declarations, and the difference is measured rather than assumed. Parsing `module p.q` with one data row, one type, and one fn yields four declaration-role rows — the module, the fn, and two lexical binders inside the fn body — while the index carries fifteen entries including `alpha` at ancestor depth 1 and `Thing` at ancestor depth 1.
+data annotation_render_consumer_scope_note: String = "WHAT CONSUMES THIS TODAY, stated because the honest answer is `no production renderer yet` and the reason is measured rather than assumed. There is no authored-.dag-source renderer in this tree to wire the canonical form into: `gunbc compile --target dag` emits dag-artifact.json, a JSON graph dump, and extdeps.languages.dag.emit is a keyword-and-template vocabulary consumed by the shared emitter fold rather than a module that writes .dag text. Threading the annotation graph to such a renderer additionally requires crossing the erasure boundary property 4 pinned, where ResolvedPipelineResult and emit_resolved_for_target carry no authored graph at all.\n\nSo this module supplies the canonical spelling and the round-trip evidence, and the production consumer is EXPLICITLY OPEN rather than quietly implied. That distinction is the whole point of saying it here: a helper with no consumer that is described as an emitter would read as delivered.\n\nWHAT THE OPEN RENDERER DOES AND DOES NOT BLOCK, corrected 2026-08-05 by operator ruling because an earlier cut of this note asserted the wrong dependency. The renderer is required before any AUTOMATED SOURCE RECONSTRUCTION OR FORMATTING may rewrite .dag source — a machine that regenerates a file from the semantic graph must be able to write prose back, or it silently drops it. It does NOT block migrating hand-authored .dag files. Their committed bytes are the authority, no process in this tree reconstructs and overwrites them from the semantic graph, and M1A already captures, attaches, admits, and retains their annotations. An author replacing a `data ..._note: String` row with authored `//` text is editing the authority directly; there is no rendering path in between to drop anything. The earlier claim — that a rendering path could still drop newly modeled prose — reasoned about a path that does not exist, and an absent hypothetical cannot rewrite a committed file.\n\nDISSOLVE-ON: an authored-source renderer exists and carries the annotation graph; then the round-trip property re-executes through it end to end and this note goes away with the scaffolding it describes."
+// The roster comes from the occurrence INDEX, not from OccurrenceTransport.declarations, and the difference is measured rather than assumed. Parsing `module p.q` with one data row, one type, and one fn yields four declaration-role rows — the module, the fn, and two lexical binders inside the fn body — while the index carries fifteen entries including `alpha` at ancestor depth 1 and `Thing` at ancestor depth 1.
 
-So `data` and `type` module items DO receive occurrence identities; they are absent only from the declaration-role projection, because parsed_occurrence_role_for_node classifies a node carrying both a body and a type annotation as unclassified. Rostering from `declarations` would therefore have made exactly the population this feature exists to serve — the `_note` rows that hold this repository's prose — permanently unattachable, and it would have looked like a narrow first cut rather than a defect. That role-projection gap is real and pre-existing; it is NOT repaired here, because widening a declaration role changes what binding and resolution see, which is a semantic change this lane has no business making.
+// So `data` and `type` module items DO receive occurrence identities; they are absent only from the declaration-role projection, because parsed_occurrence_role_for_node classifies a node carrying both a body and a type annotation as unclassified. Rostering from `declarations` would therefore have made exactly the population this feature exists to serve — the `_note` rows that hold this repository's prose — permanently unattachable, and it would have looked like a narrow first cut rather than a defect. That role-projection gap is real and pre-existing; it is NOT repaired here, because widening a declaration role changes what binding and resolution see, which is a semantic change this lane has no business making.
 
-Ancestor depth is the module-item test: depth 0 is the module itself, depth 1 its direct members, depth 2 and beyond nested structure."
-
+// Ancestor depth is the module-item test: depth 0 is the module itself, depth 1 its direct members, depth 2 and beyond nested structure.
 fn entry_ancestor_depth(entry: OccurrenceIndexEntry) -> Int {
   count(entry.containment.ancestors)
 }
@@ -48,13 +49,6 @@ fn module_item_entries(transport: OccurrenceTransport) -> List<OccurrenceIndexEn
   )
 }
 
-data subject_extent_derivation_note: String = "A module item's occurrence span is a START MARKER, not an extent: `data alpha` spans the `data` keyword and `fn go` spans the `fn` keyword. Attachment needs an extent, because the rule that keeps body prose from being filed against the next unrelated declaration is containment.
-
-The extent is derived rather than invented. An item runs from its own start to the furthest end of any occurrence lying between it and the next module item — those occurrences are precisely its own nested structure, since a sibling item's structure cannot begin before that sibling does. Taking the next item's start as the end instead would be wrong in the ordinary case: the whitespace and the leading comment BELONGING TO the next item sit in that gap, so a comment written to describe `type Thing` would fall inside `data alpha` and be refused as body grain.
-
-The module itself is rostered with its raw span and no derived extent. Its true extent is the whole file, which would swallow every capture; a degenerate span makes the two cases that matter come out right, since a comment above `module` still finds the module as its nearest following subject and a comment below it finds the first member.
-
-Both derivations scan the entry list per item. DISSOLVE-ON: index entries expose source order, or a declaration carries its own extent; then the successor is a neighbor lookup and the extent is read rather than derived."
 
 fn next_module_item_start(
   items: List<OccurrenceIndexEntry>,
@@ -86,6 +80,13 @@ fn module_item_extent_end(
   )
 }
 
+// A module item's occurrence span is a START MARKER, not an extent: `data alpha` spans the `data` keyword and `fn go` spans the `fn` keyword. Attachment needs an extent, because the rule that keeps body prose from being filed against the next unrelated declaration is containment.
+
+// The extent is derived rather than invented. An item runs from its own start to the furthest end of any occurrence lying between it and the next module item — those occurrences are precisely its own nested structure, since a sibling item's structure cannot begin before that sibling does. Taking the next item's start as the end instead would be wrong in the ordinary case: the whitespace and the leading comment BELONGING TO the next item sit in that gap, so a comment written to describe `type Thing` would fall inside `data alpha` and be refused as body grain.
+
+// The module itself is rostered with its raw span and no derived extent. Its true extent is the whole file, which would swallow every capture; a degenerate span makes the two cases that matter come out right, since a comment above `module` still finds the module as its nearest following subject and a comment on the line immediately after `module` also attaches to the module when no blank line separates them (std.source_annotation `module_header_gap_subject`).
+
+data subject_extent_derivation_note: String = "DISSOLVE-ON: index entries expose source order, or a declaration carries its own extent; then the successor is a neighbor lookup and the extent is read rather than derived."
 fn annotation_subjects(
   transport: OccurrenceTransport,
   source_length: Int
@@ -99,7 +100,7 @@ fn annotation_subjects(
       let depth = entry_ancestor_depth(entry: entry)
       let span = entry.projection.diagnostic_span
       if depth == 0 {
-        list_push(acc, AnnotationSubject { occurrence: entry.projection.occurrence, span: span })
+        list_push(acc, AnnotationSubject { occurrence: entry.projection.occurrence, span: span, module_root: true })
       } else if depth == 1 {
         let limit = next_module_item_start(items: items, after: span.start, fallback: source_length)
         list_push(
@@ -111,6 +112,7 @@ fn annotation_subjects(
               start: span.start,
               end: module_item_extent_end(entries: entries, start: span.start, limit: limit, own_end: span.end),
             },
+            module_root: false,
           }
         )
       } else {
@@ -119,10 +121,10 @@ fn annotation_subjects(
   )
 }
 
-data delimiter_normalization_note: String = "The single place `//` is removed, and it is here rather than in the tokenizer on purpose. A capture carries RAW syntax so the lexer reports what it saw; normalization into durable text is a language fact, and .dag's fact is that the delimiter is two slashes optionally followed by one space.
 
-Exactly one space is consumed, never a run, because `//   indented` is authored indentation the writer chose and swallowing it would silently rewrite the prose. A lexeme not starting with the delimiter passes through unchanged rather than being truncated by a fixed offset — that arm is unreachable through the .dag annotation rule today, and the alternative is a normalizer that corrupts content when it is wrong about its input."
+// The single place `//` is removed, and it is here rather than in the tokenizer on purpose. A capture carries RAW syntax so the lexer reports what it saw; normalization into durable text is a language fact, and .dag's fact is that the delimiter is two slashes optionally followed by one space.
 
+// Exactly one space is consumed, never a run, because `//   indented` is authored indentation the writer chose and swallowing it would silently rewrite the prose. A lexeme not starting with the delimiter passes through unchanged rather than being truncated by a fixed offset — that arm is unreachable through the .dag annotation rule today, and the alternative is a normalizer that corrupts content when it is wrong about its input.
 fn strip_line_comment_delimiter(lexeme: String) -> String {
   let len = string_length(s: lexeme)
   if starts_with(s: lexeme, prefix: "// ") {
@@ -134,40 +136,33 @@ fn strip_line_comment_delimiter(lexeme: String) -> String {
   }
 }
 
-data annotation_render_consumer_scope_note: String = "WHAT CONSUMES THIS TODAY, stated because the honest answer is `no production renderer yet` and the reason is measured rather than assumed. There is no authored-.dag-source renderer in this tree to wire the canonical form into: `gunbc compile --target dag` emits dag-artifact.json, a JSON graph dump, and extdeps.languages.dag.emit is a keyword-and-template vocabulary consumed by the shared emitter fold rather than a module that writes .dag text. Threading the annotation graph to such a renderer additionally requires crossing the erasure boundary property 4 pinned, where ResolvedPipelineResult and emit_resolved_for_target carry no authored graph at all.
 
-So this module supplies the canonical spelling and the round-trip evidence, and the production consumer is EXPLICITLY OPEN rather than quietly implied. That distinction is the whole point of saying it here: a helper with no consumer that is described as an emitter would read as delivered.
 
-WHAT THE OPEN RENDERER DOES AND DOES NOT BLOCK, corrected 2026-08-05 by operator ruling because an earlier cut of this note asserted the wrong dependency. The renderer is required before any AUTOMATED SOURCE RECONSTRUCTION OR FORMATTING may rewrite .dag source — a machine that regenerates a file from the semantic graph must be able to write prose back, or it silently drops it. It does NOT block migrating hand-authored .dag files. Their committed bytes are the authority, no process in this tree reconstructs and overwrites them from the semantic graph, and M1A already captures, attaches, admits, and retains their annotations. An author replacing a `data ..._note: String` row with authored `//` text is editing the authority directly; there is no rendering path in between to drop anything. The earlier claim — that a rendering path could still drop newly modeled prose — reasoned about a path that does not exist, and an absent hypothetical cannot rewrite a committed file.
+// THE CANONICAL .dag SPELLING, and the inverse of strip_line_comment_delimiter directly above. It sits beside its inverse deliberately: the delimiter is stated once, and a change to what .dag strips is in the same edit as what .dag writes. Two functions in two modules agreeing about `//` by coincidence is the fork this lane removes.
 
-DISSOLVE-ON: an authored-source renderer exists and carries the annotation graph; then the round-trip property re-executes through it end to end and this note goes away with the scaffolding it describes."
+// The form is a single `//` followed by one space, then the line's normalized text. The empty line renders as a bare `//` with NO trailing space, and that is a correctness case rather than tidiness: `// ` and `//` both normalize to the empty string, so either round-trips, but a trailing space is the character formatters and editors strip on save — so choosing the spelling that survives contact with a text editor is choosing the one that keeps the fixed point stable. An empty line inside a block is reachable: an author writing a bare `//` between two commented lines produces one block whose middle line is empty.
 
-data dag_annotation_canonical_form_note: String = "THE CANONICAL .dag SPELLING, and the inverse of strip_line_comment_delimiter directly above. It sits beside its inverse deliberately: the delimiter is stated once, and a change to what .dag strips is in the same edit as what .dag writes. Two functions in two modules agreeing about `//` by coincidence is the fork this lane removes.
-
-The form is a single `//` followed by one space, then the line's normalized text. The empty line renders as a bare `//` with NO trailing space, and that is a correctness case rather than tidiness: `// ` and `//` both normalize to the empty string, so either round-trips, but a trailing space is the character formatters and editors strip on save — so choosing the spelling that survives contact with a text editor is choosing the one that keeps the fixed point stable. An empty line inside a block is reachable: an author writing a bare `//` between two commented lines produces one block whose middle line is empty.
-
-Text is NOT re-indented, re-wrapped, or trimmed. `//   indented` normalizes to two spaces plus `indented` and renders back to `//   indented`, because the authored indentation is content — the strip step consumes exactly one space for exactly this reason, and a renderer that trimmed would delete authored structure on the first round trip."
-
+// Text is NOT re-indented, re-wrapped, or trimmed. `//   indented` normalizes to two spaces plus `indented` and renders back to `//   indented`, because the authored indentation is content — the strip step consumes exactly one space for exactly this reason, and a renderer that trimmed would delete authored structure on the first round trip.
 fn render_line_comment_delimiter(line: String) -> String {
   if string_length(s: line) == 0 { "//" } else { concat("// ", line) }
 }
 
-data render_annotation_block_note: String = "One row becomes one BLOCK: its embedded line breaks become adjacent annotation lines with nothing between them. Adjacency is what the grouping fold reads back as `one block`, so the joiner here and the blank-line rule below are the two halves of one law stated in std.source_annotation."
 
+// One row becomes one BLOCK: its embedded line breaks become adjacent annotation lines with nothing between them. Adjacency is what the grouping fold reads back as `one block`, so the joiner here and the blank-line rule below are the two halves of one law stated in std.source_annotation.
 fn render_annotation_block(text: String) -> String {
   split(s: text, delimiter: "\n")
     |> map(line => render_line_comment_delimiter(line: line))
     |> join(separator: "\n")
 }
 
-data render_subject_blocks_note: String = "SELECTION AND RENDERING ARE ONE OPERATION, and the fusion is the fix for a rung inflation this seam produced twice. The first cut took a bare List<SourceAnnotationDebt> named `rows for one subject` and ignored every row's subject field. The second cut minted a SubjectAnnotationBlocks { subject, texts } carrier and claimed mixed-subject content was structurally impossible — but the record's fields were public and the renderer read only texts, so a caller could still pair a subject with texts selected from anywhere. The invalid ASSOCIATION stayed writable; erasing the texts' own subjects had only made the contradiction unobservable, which is strictly worse than validated. A guarantee that names a subject while accepting caller-supplied content is validation wearing construction's name.
 
-So no carrier exists. This function takes the admitted graph and a subject, selects exactly the rows whose subject matches, refuses an empty selection, and renders the result. The only path to `subject S's rendering` runs through the graph's own subject edges, so text that is not provenance-bound to S has no route into a value that claims S. render_annotation_block below it still renders arbitrary text — a text-level spelling that names no subject and therefore claims none.
+// SELECTION AND RENDERING ARE ONE OPERATION, and the fusion is the fix for a rung inflation this seam produced twice. The first cut took a bare List<SourceAnnotationDebt> named `rows for one subject` and ignored every row's subject field. The second cut minted a SubjectAnnotationBlocks { subject, texts } carrier and claimed mixed-subject content was structurally impossible — but the record's fields were public and the renderer read only texts, so a caller could still pair a subject with texts selected from anywhere. The invalid ASSOCIATION stayed writable; erasing the texts' own subjects had only made the contradiction unobservable, which is strictly worse than validated. A guarantee that names a subject while accepting caller-supplied content is validation wearing construction's name.
 
-Consecutive blocks on the one subject are separated by a blank line — the renderer half of the std grouping law. Joining with a single newline would emit two authored blocks as one, and the round trip would then certify a merge the author never wrote.
+// So no carrier exists. This function takes the admitted graph and a subject, selects exactly the rows whose subject matches, refuses an empty selection, and renders the result. The only path to `subject S's rendering` runs through the graph's own subject edges, so text that is not provenance-bound to S has no route into a value that claims S. render_annotation_block below it still renders arbitrary text — a text-level spelling that names no subject and therefore claims none.
 
-EMPTY SELECTION REFUSES: a subject carrying no prose yields Absent rather than an empty string, because rendering `no blocks` is the caller's decision to omit the region entirely, and an empty string would put a bare newline where nothing was authored."
+// Consecutive blocks on the one subject are separated by a blank line — the renderer half of the std grouping law. Joining with a single newline would emit two authored blocks as one, and the round trip would then certify a merge the author never wrote.
 
+// EMPTY SELECTION REFUSES: a subject carrying no prose yields Absent rather than an empty string, because rendering `no blocks` is the caller's decision to omit the region entirely, and an empty string would put a bare newline where nothing was authored.
 fn render_subject_annotation_blocks(
   graph: SourceAnnotationGraph,
   subject: OccurrenceId
@@ -188,11 +183,6 @@ fn render_subject_annotation_blocks(
   }
 }
 
-data keyed_annotation_rows_note: String = "Projects a graph's rows onto the cross-parse-stable key std.source_annotation's agreement is defined over: the AUTHORED NAME, resolved against the SAME eligible-subject population attachment rosters — the module and its depth-1 items — never the whole occurrence index. An earlier cut scanned every occurrence, which admitted two failure directions the roster cannot produce: a nested binder sharing a top-level name could collide with the real subject, and nothing checked that the name identified ONE eligible subject at all.
-
-It is FAIL-CLOSED twice, and both arms close the same false-AGREEMENT direction. A row whose subject is not in the eligible population yields Absent for the whole projection rather than a placeholder key — a placeholder would make two unresolvable subjects compare equal, turning a lookup failure into a false agreement. And a DUPLICATE authored name among the eligible subjects refuses the whole projection: with two module items named alpha, rows attached to DIFFERENT declarations would project onto ONE key, and agreement would certify prose as `the same subject's` across genuinely different subjects. The name key is sound exactly where eligible names are unique, so where they are not, there is no projection — the property is explicitly scoped to one module with unique eligible authored names, and everything outside that scope refuses rather than guessing.
-
-Both lookups scan the eligible list per row — a join without a sorted index, bounded by one module's items, the same shape and dissolve-on as the roster scan in std.source_annotation: a name-indexed subject table on the parse artifact."
 
 fn eligible_key_entries(transport: OccurrenceTransport) -> List<OccurrenceIndexEntry> {
   fold(
@@ -233,12 +223,17 @@ fn eligible_names_unique(entries: List<OccurrenceIndexEntry>) -> Bool {
   )
 }
 
-data empty_keyed_rows_note: String = "Pins the element type of the accumulator's empty list. A bare `[]` in the fold's init leaves the element type unconstrained until the first push, and the emitter writes that unconstrained type into the closure signature it generates — so the seed compiles the accumulator as a list of unit and the fold no longer typechecks. Naming the empty list through a typed return is the one place the element type is stated."
 
+// Pins the element type of the accumulator's empty list. A bare `[]` in the fold's init leaves the element type unconstrained until the first push, and the emitter writes that unconstrained type into the closure signature it generates — so the seed compiles the accumulator as a list of unit and the fold no longer typechecks. Naming the empty list through a typed return is the one place the element type is stated.
 fn empty_keyed_rows() -> List<KeyedAnnotationRow> {
   []
 }
 
+// Projects a graph's rows onto the cross-parse-stable key std.source_annotation's agreement is defined over: the AUTHORED NAME, resolved against the SAME eligible-subject population attachment rosters — the module and its depth-1 items — never the whole occurrence index. An earlier cut scanned every occurrence, which admitted two failure directions the roster cannot produce: a nested binder sharing a top-level name could collide with the real subject, and nothing checked that the name identified ONE eligible subject at all.
+
+// It is FAIL-CLOSED twice, and both arms close the same false-AGREEMENT direction. A row whose subject is not in the eligible population yields Absent for the whole projection rather than a placeholder key — a placeholder would make two unresolvable subjects compare equal, turning a lookup failure into a false agreement. And a DUPLICATE authored name among the eligible subjects refuses the whole projection: with two module items named alpha, rows attached to DIFFERENT declarations would project onto ONE key, and agreement would certify prose as `the same subject's` across genuinely different subjects. The name key is sound exactly where eligible names are unique, so where they are not, there is no projection — the property is explicitly scoped to one module with unique eligible authored names, and everything outside that scope refuses rather than guessing.
+
+// Both lookups scan the eligible list per row — a join without a sorted index, bounded by one module's items, the same shape and dissolve-on as the roster scan in std.source_annotation: a name-indexed subject table on the parse artifact.
 fn keyed_annotation_rows(
   transport: OccurrenceTransport,
   graph: SourceAnnotationGraph
@@ -272,11 +267,12 @@ fn normalize_dag_annotation(capture: UnboundAnnotationCapture) -> NormalizedAnno
     origin: capture.origin,
     placement: capture.placement,
     preceded_by_blank_line: capture.preceded_by_blank_line,
+    preceded_by_annotation_line: capture.preceded_by_annotation_line,
   }
 }
 
-data bind_annotations_note: String = "The .dag entry point: normalize, roster, attach. The attach step is the shared fold, so a change to the attachment rule reaches this realization and the v2 one together and cannot reach only one."
 
+// The .dag entry point: normalize, roster, attach. The attach step is the shared fold, so a change to the attachment rule reaches this realization and the v2 one together and cannot reach only one.
 fn bind_annotations(
   transport: OccurrenceTransport,
   captures: List<UnboundAnnotationCapture>,
@@ -292,15 +288,15 @@ fn bind_annotations(
   )
 }
 
-data admit_source_annotations_note: String = "THE single seam both production frontend paths use. front_end_sources and parse_census_fill_sources call this one function rather than each repeating normalize-roster-attach-admit, so the two cannot drift into disagreeing about whether a given file's prose is admissible — a drift that would be invisible, because the census path and the compile path would simply produce different graphs for the same source.
-
-Refusal is a BLOCKING diagnostic, not a note carried alongside a successful result. Unclassified prose stops the line: the graph is withheld entirely and every refusal is reported at its own span. Admitting the attachable rows while dropping the rest is the shape DESIGN forbids — the dropped prose would be uncounted, and a source that lost half its commentary would compile exactly like one that never had it."
 
 type AdmittedSourceAnnotations {
   graph: SourceAnnotationGraph
   diagnostics: List<CompilerDiagnostic>
 }
 
+// THE single seam both production frontend paths use. front_end_sources and parse_census_fill_sources call this one function rather than each repeating normalize-roster-attach-admit, so the two cannot drift into disagreeing about whether a given file's prose is admissible — a drift that would be invisible, because the census path and the compile path would simply produce different graphs for the same source.
+
+// Refusal is a BLOCKING diagnostic, not a note carried alongside a successful result. Unclassified prose stops the line: the graph is withheld entirely and every refusal is reported at its own span. Admitting the attachable rows while dropping the rest is the shape DESIGN forbids — the dropped prose would be uncounted, and a source that lost half its commentary would compile exactly like one that never had it.
 fn admit_source_annotations(
   transport: OccurrenceTransport,
   captures: List<UnboundAnnotationCapture>,

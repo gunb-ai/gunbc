@@ -13,11 +13,6 @@ import gunbc.cli_invoke {
   SourceRootBare,
   SourceRootRooted
 }
-import v2.compiler.self_host.wet_receipt_enrollment {
-  falsifier_self_host_wet_cadence_is_active,
-  falsifier_self_host_wet_template_entries,
-  dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet
-}
 import gunbc.explicit_witness_admission {
   ExplicitWitnessAdmission,
   explicit_witness_admissions,
@@ -309,6 +304,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   },
   WitnessExclusionRow {
     pattern: "typed_witness_invocation_test.dag",
+    classification: BinWitnessWet,
+    reason: excl_bin_wet_reason,
+    dissolve_on: excl_bin_wet_dissolve
+  },
+  WitnessExclusionRow {
+    pattern: "namespace_structural_root_exposure_generated_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
     dissolve_on: excl_bin_wet_dissolve
@@ -638,6 +639,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_install_media_dissolve
   },
   WitnessExclusionRow {
+    pattern: "commit_writer_heal_admission_real_execution_witness_test.dag",
+    classification: BinWitnessWet,
+    reason: excl_install_media_reason,
+    dissolve_on: excl_install_media_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "effect_plan_bash_materialize_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
@@ -909,24 +916,20 @@ data bin_witness_wet_per_row_actions_log_observation_gap_note: String = "CLOSED 
 
 data falsifier_self_host_wet_note: String = "The nightly falsifier Wet follow-on batch (gunbc_falsifier_batches batch 2 in v2.workflow.ci_floor_plan): explicit ExecutionWitnessKind rows whose fns realize the emit->compile->run->equals-seed self-host behavioral receipt chain (cargo build, process execution, real gunbc emit) — too heavy and fidelity-sensitive for per-PR hermetic discovery. Gate-4 std/logic (self_host_logic_behavioral_witness_test.dag) is the inaugural template migrated out of bin_witness_wet_entries; compiler modules enroll via v2.compiler.self_host.wet_receipt_enrollment when their frontier row flips SelfEmitted (green-only — never known-red). Runs SelectionApplied (always run, not predict-only) after the hermetic affected-set falsifier sweep. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry <entry> --functions <csv>. Dissolve-on: per-module self-host receipts graduate to continuous CI only when the emit-on-demand / self-host cutover lane proves each module's receipt is cheap enough for per-PR admission — until then this scheduled lane is the sole live consumer."
 
-fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note() -> String {
-  concat(
-    "R1 real-crate bijection enrollment (Lane D, gunbc#7825): falsifier_self_host_wet_cadence_active=",
-    concat(
-      falsifier_self_host_wet_cadence_is_active() as String,
-      concat(
-        " template_enrolled=",
-        concat(
-          dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet() as String,
-          concat(
-            " witness_identity=dag/test/claim/interpreter_dispatch_bijection_real_roster_witness_test.dag::interpreter_dispatch_bijection_real_roster_red_holds dark_lane_waiting_patterns=",
-            join(falsifier_self_host_wet_dark_lane_waiting_patterns(), ", ")
-          )
-        )
-      )
-    )
-  )
-}
+// The R1 dark-lane status note JOINS two authorities — this module's waiting-pattern
+// projection and v2.compiler.self_host.wet_receipt_enrollment's cadence/enrollment facts —
+// so it belongs with the consumer that already reaches both, not here. Homing it here cost
+// this module an import of v2.compiler.self_host.wet_receipt_enrollment, and because
+// gunbc.ci_spec imports this module and nearly every witness entry imports ci_spec, that
+// single edge pulled the self_host subtree (and v2.lens.module_graph through it) into the
+// import closure of ~63 additional witness entries. Two live-read carrier homes sit in that
+// subtree, and affected-set selection's axis (iv)
+// (runtime_data_dependency_touched_via_carrier_closure) treats "closure reaches a carrier
+// home, and any path is touched" as a hit — so those entries stopped being skippable on
+// EVERY diff. Measured: *_test.dag entries reaching a carrier home went 144/1200 to
+// 210/1219, and the selection control's cross-entry specimen
+// (affected_set_floor_runner_test.dag) became permanently unskippable, which is what took
+// the scheduled falsifier dark at its build gate.
 
 fn bin_wet(entry: String, f: String) -> ScheduleWitnessEntry {
   ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
@@ -1027,6 +1030,7 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_witness_bin_run_loud_failure_red_control_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_positive_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_zero_byte_red_control_holds"),
+  bin_wet(entry: "dag/test/claim/namespace_structural_root_exposure_generated_witness_test.dag", f: "namespace_structural_root_exposure_generated_witness_holds"),
   bin_wet(entry: "dag/test/claim/roadmap_belt_actuate_witness_test.dag", f: ""),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_gunbc_cli_run_claim_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_claim_batch_pooled_argv_shape_holds"),
@@ -1054,6 +1058,10 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "divergent_generated_artifact_merge_refuses_by_real_execution"),
   bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "one_sided_generated_artifact_change_merges_clean_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", f: "clean_staged_index_admits_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", f: "unmerged_index_with_no_markers_refuses_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", f: "unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", f: "space_and_tab_named_paths_admit_by_real_execution"),
   bin_wet(entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag", f: "live_rust_observation_matches_actions_subject"),
   bin_wet(entry: "dag/test/claim/roadmap_receipt_continuity_live_witness_test.dag", f: "live_roadmap_acceptance_history_integrity_holds"),
   bin_wet(entry: "dag/test/claim/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution"),
