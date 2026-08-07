@@ -44,6 +44,9 @@ use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome::{
     OccurrenceReferenceBindingDecided, OccurrenceReferenceBindingTransportRefused,
 };
 use crate::std_occurrence_identity::OccurrenceCategory::TypeOccurrence;
+use crate::std_occurrence_identity::OccurrenceCategoryClauseEDependencyInducingVerdict::{
+    OccurrenceCategoryClauseEDependencyInducing, OccurrenceCategoryClauseEDependencyNotInducing,
+};
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::UnknownOccurrenceIdentity;
 use crate::std_occurrence_identity::OccurrenceTransportValidation::{
     OccurrenceTransportRefused, OccurrenceTransportValidated,
