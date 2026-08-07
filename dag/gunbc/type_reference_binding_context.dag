@@ -1,23 +1,19 @@
 module gunbc.type_reference_binding_context
 
 import std.types { String, List, NonEmptyStr }
-import std.algebra { FreeMonoid, Empty, Cons }
 import std.occurrence_identity {
-  OccurrenceId,
   OccurrenceIndexEntry,
   OccurrenceTransport,
-  OccurrenceContainmentPath,
   AuthoredTokenOrdinal,
 }
 import std.occurrence_binding_candidates {
   OccurrenceModulePathRow,
   DeclarationExposureRow,
-  DeclarationExposure,
-  LexicalExposure,
-  ModuleExposure,
-  RootExposure,
   AuthoredOrderRow,
   OccurrenceBindingCandidateInputs,
+  DeclarationExposureGrounding,
+  NamespaceStructuralRootExposure,
+  declaration_exposure_from_containment,
 }
 
 data type_reference_binding_context_path_scope_note: String = "PATH SCOPE (quiet-hawk-219 / calm-badger-682, DESIGN 4b): the coincidence-binding defect class exists on TWO structurally distinct paths. THIS slice closes the RESOLVE path only — v1 typecheck pool-membership coincidence where flat symbol_index_lookup / lookup_type_for hits masquerade as binding (Class B, section 14.1). EMIT-SIDE LIVE INSTANCE (explicitly OUT OF SLICE; fix owned by warm-wolf-814 — cite, do not fix): emit_var_ref / emit_value_ref_ident key the flat item_registry on LEAF NAME ONLY, so module_a.homonym_value can bind module_b's ItemInfo when both declare the same leaf. #7685 did not repair the cross-module same-leaf case; the collision is LIVE on main. #7705's detector cross_module_same_leaf_emits_qualifier_module_not_registry_winner is RED on main (run 30769280389 at 2383069da) — bottom rung: invalid state occurs, detector exists, detection is not prevention. Emit maintains its own registry key and never consults this containment authority. Second grounded specimen of binding-by-insufficient-key on an independent stage; unlike resolve, not instrument-relative (one reproducible witness, positive and negative arms). Any claim that 'binding is now decided by containment' without 'on the resolve path' is rung inflation. Whether emit later consumes containment authority is a follow-on question, not N2."
@@ -35,40 +31,7 @@ type TypeReferenceBindingContext {
 
 data type_reference_binding_context_absent_note: String = "Absent TypeReferenceBindingContext on resolve_node_bounded preserves the legacy lookup path unchanged (quiet-hawk-219 ruling 2). PR-B wires the masked leaf arm only when context is Present."
 
-fn occurrence_containment_parent_scope(
-  ancestors: FreeMonoid<OccurrenceId>
-) -> OccurrenceContainmentPath? {
-  match reverse(ancestors) {
-    Empty => none
-    Cons { head: parent_terminal, tail: parent_ancestors_reversed } =>
-      Present {
-        value: OccurrenceContainmentPath {
-          ancestors: reverse(parent_ancestors_reversed),
-          terminal: parent_terminal,
-        },
-      }
-  }
-}
-
-data declaration_exposure_from_containment_tree_note: String = "Exposure derivation site (PR-A): reads containment prefix shape and module path only — never OccurrenceCategory, never symbol_index flat lookup, never hand-authored module rosters. Empty ancestor chain => RootExposure (structural namespace root in the containment tree). Single-ancestor chain => ModuleExposure for the declaring module. Deeper nesting => LexicalExposure whose exposing_scope is the nearest ancestor containment prefix."
-
-fn declaration_exposure_from_containment_tree(
-  module_path: NonEmptyStr,
-  containment: OccurrenceContainmentPath
-) -> DeclarationExposure {
-  match containment.ancestors {
-    Empty => RootExposure
-    Cons { head: _, tail: Empty } =>
-      ModuleExposure { module: module_path }
-    Cons { head: _, tail: Cons { head: _, tail: _ } } =>
-      match occurrence_containment_parent_scope(ancestors: containment.ancestors) {
-        Present { value: exposing_scope } =>
-          LexicalExposure { exposing_scope: exposing_scope }
-        Absent =>
-          ModuleExposure { module: module_path }
-      }
-  }
-}
+data declaration_exposure_from_containment_tree_note: String = "Exposure derivation site (PR-A): reads containment prefix shape and module path only — never OccurrenceCategory, never symbol_index flat lookup, never hand-authored module rosters. Delegates to the single exposure authority std.occurrence_binding_candidates declaration_exposure_from_containment under NamespaceStructuralRootExposure grounding (N3-B0): empty ancestor chain => RootExposure (structural namespace root in the containment tree); single-ancestor chain => ModuleExposure for the declaring module; deeper nesting => LexicalExposure whose exposing_scope is the nearest ancestor containment prefix."
 
 fn authored_order_row_from_entry(entry: OccurrenceIndexEntry) -> AuthoredOrderRow {
   AuthoredOrderRow {
@@ -102,9 +65,10 @@ fn occurrence_binding_inputs_from_module_transport(
         concat([
           DeclarationExposureRow {
             occurrence: declaration.occurrence,
-            exposure: declaration_exposure_from_containment_tree(
+            exposure: declaration_exposure_from_containment(
               module_path: module_path,
               containment: declaration.containment,
+              grounding: NamespaceStructuralRootExposure,
             ),
           },
         ], acc),
