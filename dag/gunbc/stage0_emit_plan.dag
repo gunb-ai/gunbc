@@ -122,6 +122,11 @@ data stage0_compiler_support_file_identities: List<Stage0ProducedFileIdentity> =
     producer_identity: "compiler-test-harness",
     basename: "compiler_tests.rs",
     kind: CompilerSupportProjection
+  },
+  Stage0ProducedFileIdentity {
+    producer_identity: "rust-dry-run-support",
+    basename: "dry_run.rs",
+    kind: CompilerSupportProjection
   }
 ]
 

@@ -15,10 +15,12 @@
 
 use im::{OrdSet as BTreeSet, Vector as Vec};
 
+pub mod dry_run;
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
 pub mod extdeps_container_oci_digest;
 pub mod extdeps_external_authority;
+pub mod extdeps_filesystem_filesystem_io;
 pub mod extdeps_languages_dag_emit;
 pub mod extdeps_languages_dag_syntax;
 pub mod extdeps_languages_dag_types;

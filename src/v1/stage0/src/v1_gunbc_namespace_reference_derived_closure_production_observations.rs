@@ -2,6 +2,11 @@
 // Source module: v1.gunbc.namespace_reference_derived_closure_production_observations
 
 use self::NrdfcParsed::*;
+pub use crate::extdeps_external_authority::ExternalAuthority;
+use crate::extdeps_filesystem_filesystem_io::*;
+pub use crate::extdeps_uri::Uri;
+pub use crate::extdeps_uri::UriScheme;
+use crate::extdeps_uri::UriScheme::Https;
 pub use crate::std_occurrence_binding_candidates::OccurrenceBindingCandidateInputs;
 pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceTransport};
 pub use crate::std_reference_binding_observation::structural_binding_resolution_from_candidates;
@@ -46,7 +51,7 @@ pub fn namespace_reference_derived_closure_production_observations_note() -> Str
 pub fn namespace_reference_derived_closure_production_specimen_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "ONE ordinary compiled specimen (nrdfc_specimen_source) is parsed once through the real tokenizer/parser and all four clause observations are derived from that single OccurrenceTransport — namespace_structural_binding_observations_for_source is the shared parse-once seam every export (base and mutation) routes through. Four discriminating mutations (nrdfc_specimen_source_mutation_a..d) each delete exactly the one declaration a single clause depends on, leaving the other three clauses' declarations byte-identical; src/v1/gunbc/namespace_reference_derived_closure_live_admissions.dag folds base-establishes-all-four and each-mutation-breaks-exactly-its-own-clause into the N3-A closing receipt. Sibling decision-branch uses if/else let arms (parse_block nesting) because match-arm bodies remain siblings of pattern binders in v1.parse containment.".to_string()
+            "ONE ordinary compiled specimen is loaded through the ordinary compilation path — a real file on disk under src/v1/gunbc/closure_fixture, read via the filesystem_read builtin (the same host-effect primitive dag/tools/extdeps_scope_placement_gate.dag and dag/test/claim/filesystem_read_hermetic_witness.dag use; hermetic execution serves it as a real checkout-input read, never a fabricated fixture) — and parsed once through the real tokenizer/parser, with all four clause observations derived from that single OccurrenceTransport. namespace_structural_binding_observations_for_source is the shared load-once/parse-once seam every export (base and mutation) routes through. The fixture files carry a .dag.txt extension, not .dag, so they are real authored files on disk yet never swept into src/v1's own .dag module discovery (stage0 regen / dag_compile_clean_gate both glob strictly on the .dag extension) — the specimen intentionally declares helper() twice at module scope to exercise DistinctSameSpelledDeclarationsPreserved, which the ordinary binder (unlike this occurrence-binding walker) would refuse as a duplicate declaration. Four discriminating mutation files (namespace_reference_derived_closure_specimen_mutation_a..d.dag.txt) each delete exactly the one declaration a single clause depends on, leaving the other three clauses' declarations byte-identical; src/v1/gunbc/namespace_reference_derived_closure_live_admissions.dag folds base-establishes-all-four and each-mutation-breaks-exactly-its-own-clause into the N3-A closing receipt. Sibling decision-branch uses if/else let arms (parse_block nesting) because match-arm bodies remain siblings of pattern binders in v1.parse containment.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -97,24 +102,53 @@ pub fn nrdfc_parse(file: String, source: String) -> Rc<NrdfcParsed> {
     }
 }
 
-pub fn nrdfc_specimen_source() -> String {
-    "module gunbc.closure_fixture.namespace_reference_derived_closure_specimen\n\nfn fn_a() -> Int {\n  10\n}\n\nfn fn_b() -> Int {\n  fn_a()\n}\n\nfn sibling_branch_demo(b: Bool) -> Int {\n  if b {\n    let x = 1\n    x\n  } else {\n    let x = 2\n    x\n  }\n}\n\nfn later_declaration_demo() -> Int {\n  fn_later()\n}\n\nfn fn_later() -> Int {\n  0\n}\n\nfn helper() -> Int {\n  0\n}\n\nfn helper() -> Int {\n  1\n}\n\nfn distinct_homonym_demo() -> Int {\n  helper()\n}\n".to_string()
+pub fn nrdfc_specimen_path() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "src/v1/gunbc/closure_fixture/namespace_reference_derived_closure_specimen.dag.txt".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn nrdfc_specimen_source_mutation_a() -> String {
-    "module gunbc.closure_fixture.namespace_reference_derived_closure_specimen\n\nfn fn_b() -> Int {\n  fn_a()\n}\n\nfn sibling_branch_demo(b: Bool) -> Int {\n  if b {\n    let x = 1\n    x\n  } else {\n    let x = 2\n    x\n  }\n}\n\nfn later_declaration_demo() -> Int {\n  fn_later()\n}\n\nfn fn_later() -> Int {\n  0\n}\n\nfn helper() -> Int {\n  0\n}\n\nfn helper() -> Int {\n  1\n}\n\nfn distinct_homonym_demo() -> Int {\n  helper()\n}\n".to_string()
+pub fn nrdfc_specimen_mutation_a_path() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "src/v1/gunbc/closure_fixture/namespace_reference_derived_closure_specimen_mutation_a.dag.txt".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn nrdfc_specimen_source_mutation_b() -> String {
-    "module gunbc.closure_fixture.namespace_reference_derived_closure_specimen\n\nfn fn_a() -> Int {\n  10\n}\n\nfn fn_b() -> Int {\n  fn_a()\n}\n\nfn sibling_branch_demo(b: Bool) -> Int {\n  if b {\n    let x = 1\n    x\n  } else {\n    5\n  }\n}\n\nfn later_declaration_demo() -> Int {\n  fn_later()\n}\n\nfn fn_later() -> Int {\n  0\n}\n\nfn helper() -> Int {\n  0\n}\n\nfn helper() -> Int {\n  1\n}\n\nfn distinct_homonym_demo() -> Int {\n  helper()\n}\n".to_string()
+pub fn nrdfc_specimen_mutation_b_path() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "src/v1/gunbc/closure_fixture/namespace_reference_derived_closure_specimen_mutation_b.dag.txt".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn nrdfc_specimen_source_mutation_c() -> String {
-    "module gunbc.closure_fixture.namespace_reference_derived_closure_specimen\n\nfn fn_a() -> Int {\n  10\n}\n\nfn fn_b() -> Int {\n  fn_a()\n}\n\nfn sibling_branch_demo(b: Bool) -> Int {\n  if b {\n    let x = 1\n    x\n  } else {\n    let x = 2\n    x\n  }\n}\n\nfn later_declaration_demo() -> Int {\n  fn_later()\n}\n\nfn helper() -> Int {\n  0\n}\n\nfn helper() -> Int {\n  1\n}\n\nfn distinct_homonym_demo() -> Int {\n  helper()\n}\n".to_string()
+pub fn nrdfc_specimen_mutation_c_path() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "src/v1/gunbc/closure_fixture/namespace_reference_derived_closure_specimen_mutation_c.dag.txt".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn nrdfc_specimen_source_mutation_d() -> String {
-    "module gunbc.closure_fixture.namespace_reference_derived_closure_specimen\n\nfn fn_a() -> Int {\n  10\n}\n\nfn fn_b() -> Int {\n  fn_a()\n}\n\nfn sibling_branch_demo(b: Bool) -> Int {\n  if b {\n    let x = 1\n    x\n  } else {\n    let x = 2\n    x\n  }\n}\n\nfn later_declaration_demo() -> Int {\n  fn_later()\n}\n\nfn fn_later() -> Int {\n  0\n}\n\nfn helper() -> Int {\n  0\n}\n\nfn distinct_homonym_demo() -> Int {\n  helper()\n}\n".to_string()
+pub fn nrdfc_specimen_mutation_d_path() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "src/v1/gunbc/closure_fixture/namespace_reference_derived_closure_specimen_mutation_d.dag.txt".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn nrdfc_load_specimen(path: String) -> String {
+    v1_rt::filesystem_read(path.clone()).content.clone()
 }
 
 pub fn same_file_neighbour_observation(
@@ -287,43 +321,39 @@ pub fn namespace_structural_binding_observations_for_source(
 pub fn namespace_structural_binding_observations_a_through_d(
 ) -> Rc<Vec<Rc<ReferenceBindingObservation>>> {
     namespace_structural_binding_observations_for_source(
-        "gunbc/closure_fixture/namespace_reference_derived_closure_specimen.dag".to_string(),
-        nrdfc_specimen_source(),
+        nrdfc_specimen_path(),
+        nrdfc_load_specimen(nrdfc_specimen_path()),
     )
 }
 
 pub fn namespace_structural_binding_observations_mutation_a(
 ) -> Rc<Vec<Rc<ReferenceBindingObservation>>> {
     namespace_structural_binding_observations_for_source(
-        "gunbc/closure_fixture/namespace_reference_derived_closure_specimen_mutation_a.dag"
-            .to_string(),
-        nrdfc_specimen_source_mutation_a(),
+        nrdfc_specimen_mutation_a_path(),
+        nrdfc_load_specimen(nrdfc_specimen_mutation_a_path()),
     )
 }
 
 pub fn namespace_structural_binding_observations_mutation_b(
 ) -> Rc<Vec<Rc<ReferenceBindingObservation>>> {
     namespace_structural_binding_observations_for_source(
-        "gunbc/closure_fixture/namespace_reference_derived_closure_specimen_mutation_b.dag"
-            .to_string(),
-        nrdfc_specimen_source_mutation_b(),
+        nrdfc_specimen_mutation_b_path(),
+        nrdfc_load_specimen(nrdfc_specimen_mutation_b_path()),
     )
 }
 
 pub fn namespace_structural_binding_observations_mutation_c(
 ) -> Rc<Vec<Rc<ReferenceBindingObservation>>> {
     namespace_structural_binding_observations_for_source(
-        "gunbc/closure_fixture/namespace_reference_derived_closure_specimen_mutation_c.dag"
-            .to_string(),
-        nrdfc_specimen_source_mutation_c(),
+        nrdfc_specimen_mutation_c_path(),
+        nrdfc_load_specimen(nrdfc_specimen_mutation_c_path()),
     )
 }
 
 pub fn namespace_structural_binding_observations_mutation_d(
 ) -> Rc<Vec<Rc<ReferenceBindingObservation>>> {
     namespace_structural_binding_observations_for_source(
-        "gunbc/closure_fixture/namespace_reference_derived_closure_specimen_mutation_d.dag"
-            .to_string(),
-        nrdfc_specimen_source_mutation_d(),
+        nrdfc_specimen_mutation_d_path(),
+        nrdfc_load_specimen(nrdfc_specimen_mutation_d_path()),
     )
 }

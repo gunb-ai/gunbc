@@ -1,0 +1,38 @@
+module gunbc.closure_fixture.namespace_reference_derived_closure_specimen
+
+fn fn_a() -> Int {
+  10
+}
+
+fn fn_b() -> Int {
+  fn_a()
+}
+
+fn sibling_branch_demo(b: Bool) -> Int {
+  if b {
+    let x = 1
+    x
+  } else {
+    5
+  }
+}
+
+fn later_declaration_demo() -> Int {
+  fn_later()
+}
+
+fn fn_later() -> Int {
+  0
+}
+
+fn helper() -> Int {
+  0
+}
+
+fn helper() -> Int {
+  1
+}
+
+fn distinct_homonym_demo() -> Int {
+  helper()
+}
