@@ -1913,17 +1913,6 @@ fn merge_occurrence_transports(
   }
 }
 
-fn occurrence_binding_inputs_append(
-  left: OccurrenceBindingCandidateInputs,
-  right: OccurrenceBindingCandidateInputs
-) -> OccurrenceBindingCandidateInputs {
-  OccurrenceBindingCandidateInputs {
-    module_paths: concat(left.module_paths, right.module_paths),
-    exposure_rows: concat(left.exposure_rows, right.exposure_rows),
-    authored_order_rows: concat(left.authored_order_rows, right.authored_order_rows),
-  }
-}
-
 fn cross_file_binding_closure_row(
   transport: OccurrenceTransport,
   module_path: NonEmptyStr,
@@ -1945,63 +1934,100 @@ fn cross_file_binding_closure_row(
 }
 
 type AssembledCrossFileFold {
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs,
-  module_files: List<ModulePathFileRow>,
-  remap_state: OccurrenceIdRemapState,
+  entries_reversed: List<OccurrenceIndexEntry>
+  declarations_reversed: List<DeclarationOccurrence>
+  references_reversed: List<ReferenceOccurrence>
+  module_paths_reversed: List<OccurrenceModulePathRow>
+  exposure_rows_reversed: List<DeclarationExposureRow>
+  order_rows_reversed: List<AuthoredOrderRow>
+  module_files_reversed: List<ModulePathFileRow>
+  remap_state: OccurrenceIdRemapState
 }
+
+data assemble_cross_file_binding_closure_cost_note: String = "The provider fold accumulates each provider's rekeyed rows by PREPENDING onto seven `_reversed` populations (index entries, declarations, references, module paths, exposure rows, authored-order rows, module=>file rows) rather than by re-concatenating the whole left-hand assembled graph onto each small provider chunk -- that pairwise-append shape cost O(total assembled rows) per provider (O(n^2) over all providers) because concat's cost is proportional to its first argument's length. Prepending a provider's own (small, per-file-bounded) chunk onto the accumulator costs O(that provider's row count) regardless of how much has already been assembled, so the fold is linear in the total row count across all providers. Each `_reversed` population is reversed exactly once, at the end, never per provider."
 
 fn assemble_cross_file_binding_closure(
   consumer: CrossFileBindingClosureRow,
   providers: List<CrossFileBindingClosureRow>
 ) -> AssembledCrossFileBindingClosure {
-  let consumer_module_file = ModulePathFileRow {
-    module_path: consumer.module_path,
-    file_path: consumer.file_path,
-  }
-  let consumer_rekeyed = rekey_occurrence_transport(
+  let consumer_state = occurrence_id_remap_state_with_fresh_map(
+    allocator: occurrence_id_allocator_initial(),
+  )
+  let consumer_transport_rekey = rekey_occurrence_transport(
     transport: consumer.transport,
-    state: occurrence_id_remap_state_with_fresh_map(
-      allocator: occurrence_id_allocator_initial(),
-    ),
+    state: consumer_state,
   )
-  let consumer_inputs_rekeyed = rekey_occurrence_binding_inputs(
+  let consumer_inputs_rekey = rekey_occurrence_binding_inputs(
     inputs: consumer.inputs,
-    state: consumer_rekeyed.state,
+    state: consumer_transport_rekey.state,
   )
-  let folded = fold(
+  let seed = AssembledCrossFileFold {
+    entries_reversed: reverse(consumer_transport_rekey.transport.index.entries),
+    declarations_reversed: reverse(consumer_transport_rekey.transport.declarations),
+    references_reversed: reverse(consumer_transport_rekey.transport.references),
+    module_paths_reversed: reverse(consumer_inputs_rekey.inputs.module_paths),
+    exposure_rows_reversed: reverse(consumer_inputs_rekey.inputs.exposure_rows),
+    order_rows_reversed: reverse(consumer_inputs_rekey.inputs.authored_order_rows),
+    module_files_reversed: [
+      ModulePathFileRow {
+        module_path: consumer.module_path,
+        file_path: consumer.file_path,
+      },
+    ],
+    remap_state: consumer_inputs_rekey.state,
+  }
+  let assembled = fold(
     providers,
-    init: AssembledCrossFileFold {
-      transport: consumer_rekeyed.transport,
-      inputs: consumer_inputs_rekeyed.inputs,
-      module_files: [consumer_module_file],
-      remap_state: consumer_inputs_rekeyed.state,
-    },
-    f: (acc, provider_row) => {
-      let provider_rekeyed = rekey_occurrence_transport(
-        transport: provider_row.transport,
-        state: occurrence_id_remap_state_with_fresh_map(
-          allocator: acc.remap_state.allocator,
-        ),
+    init: seed,
+    f: (acc, provider) => {
+      let provider_state = occurrence_id_remap_state_with_fresh_map(
+        allocator: acc.remap_state.allocator,
       )
-      let provider_inputs_rekeyed = rekey_occurrence_binding_inputs(
-        inputs: provider_row.inputs,
-        state: provider_rekeyed.state,
+      let provider_transport_rekey = rekey_occurrence_transport(
+        transport: provider.transport,
+        state: provider_state,
+      )
+      let provider_inputs_rekey = rekey_occurrence_binding_inputs(
+        inputs: provider.inputs,
+        state: provider_transport_rekey.state,
       )
       AssembledCrossFileFold {
-        transport: merge_occurrence_transports(left: acc.transport, right: provider_rekeyed.transport),
-        inputs: occurrence_binding_inputs_append(left: acc.inputs, right: provider_inputs_rekeyed.inputs),
-        module_files: concat(acc.module_files, [
+        entries_reversed: concat(
+          reverse(provider_transport_rekey.transport.index.entries),
+          acc.entries_reversed,
+        ),
+        declarations_reversed: concat(
+          reverse(provider_transport_rekey.transport.declarations),
+          acc.declarations_reversed,
+        ),
+        references_reversed: concat(
+          reverse(provider_transport_rekey.transport.references),
+          acc.references_reversed,
+        ),
+        module_paths_reversed: concat(
+          reverse(provider_inputs_rekey.inputs.module_paths),
+          acc.module_paths_reversed,
+        ),
+        exposure_rows_reversed: concat(
+          reverse(provider_inputs_rekey.inputs.exposure_rows),
+          acc.exposure_rows_reversed,
+        ),
+        order_rows_reversed: concat(
+          reverse(provider_inputs_rekey.inputs.authored_order_rows),
+          acc.order_rows_reversed,
+        ),
+        module_files_reversed: concat([
           ModulePathFileRow {
-            module_path: provider_row.module_path,
-            file_path: provider_row.file_path,
+            module_path: provider.module_path,
+            file_path: provider.file_path,
           },
-        ]),
-        remap_state: provider_inputs_rekeyed.state,
+        ], acc.module_files_reversed),
+        remap_state: provider_inputs_rekey.state,
       }
     },
   )
-  match module_path_file_index_from_rows(rows: folded.module_files) {
+  let assembled_module_files = reverse(assembled.module_files_reversed)
+  match module_path_file_index_from_rows(rows: assembled_module_files) {
     ModulePathFileIndexRefused { refusal: refusal } =>
       AssembledCrossFileBindingClosureRefused {
         refusal: AssembledCrossFileBindingClosureModulePathFileRefused {
@@ -2010,9 +2036,17 @@ fn assemble_cross_file_binding_closure(
       }
     ModulePathFileIndexReady { entries: _ } =>
       AssembledCrossFileBindingClosureReady {
-        transport: folded.transport,
-        inputs: folded.inputs,
-        module_files: folded.module_files,
+        transport: OccurrenceTransport {
+          index: OccurrenceIndex { entries: reverse(assembled.entries_reversed) },
+          declarations: reverse(assembled.declarations_reversed),
+          references: reverse(assembled.references_reversed),
+        },
+        inputs: OccurrenceBindingCandidateInputs {
+          module_paths: reverse(assembled.module_paths_reversed),
+          exposure_rows: reverse(assembled.exposure_rows_reversed),
+          authored_order_rows: reverse(assembled.order_rows_reversed),
+        },
+        module_files: assembled_module_files,
         consumer_file: consumer.file_path,
       }
   }

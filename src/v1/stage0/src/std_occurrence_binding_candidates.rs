@@ -2590,20 +2590,6 @@ pub fn merge_occurrence_transports(
     })
 }
 
-pub fn occurrence_binding_inputs_append(
-    left: Rc<OccurrenceBindingCandidateInputs>,
-    right: Rc<OccurrenceBindingCandidateInputs>,
-) -> Rc<OccurrenceBindingCandidateInputs> {
-    Rc::new(OccurrenceBindingCandidateInputs {
-        module_paths: v1_rt::concat(left.module_paths.clone(), right.module_paths.clone()),
-        exposure_rows: v1_rt::concat(left.exposure_rows.clone(), right.exposure_rows.clone()),
-        authored_order_rows: v1_rt::concat(
-            left.authored_order_rows.clone(),
-            right.authored_order_rows.clone(),
-        ),
-    })
-}
-
 pub fn cross_file_binding_closure_row(
     transport: Rc<OccurrenceTransport>,
     module_path: String,
@@ -2626,10 +2612,23 @@ pub fn cross_file_binding_closure_row(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AssembledCrossFileFold {
-    pub transport: Rc<OccurrenceTransport>,
-    pub inputs: Rc<OccurrenceBindingCandidateInputs>,
-    pub module_files: Rc<Vec<Rc<ModulePathFileRow>>>,
+    pub entries_reversed: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
+    pub declarations_reversed: Rc<Vec<Rc<DeclarationOccurrence>>>,
+    pub references_reversed: Rc<Vec<Rc<ReferenceOccurrence>>>,
+    pub module_paths_reversed: Rc<Vec<Rc<OccurrenceModulePathRow>>>,
+    pub exposure_rows_reversed: Rc<Vec<Rc<DeclarationExposureRow>>>,
+    pub order_rows_reversed: Rc<Vec<Rc<AuthoredOrderRow>>>,
+    pub module_files_reversed: Rc<Vec<Rc<ModulePathFileRow>>>,
     pub remap_state: Rc<OccurrenceIdRemapState>,
+}
+
+pub fn assemble_cross_file_binding_closure_cost_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The provider fold accumulates each provider's rekeyed rows by PREPENDING onto seven `_reversed` populations (index entries, declarations, references, module paths, exposure rows, authored-order rows, module=>file rows) rather than by re-concatenating the whole left-hand assembled graph onto each small provider chunk -- that pairwise-append shape cost O(total assembled rows) per provider (O(n^2) over all providers) because concat's cost is proportional to its first argument's length. Prepending a provider's own (small, per-file-bounded) chunk onto the accumulator costs O(that provider's row count) regardless of how much has already been assembled, so the fold is linear in the total row count across all providers. Each `_reversed` population is reversed exactly once, at the end, never per provider.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn assemble_cross_file_binding_closure(
@@ -2637,67 +2636,160 @@ pub fn assemble_cross_file_binding_closure(
     providers: Rc<Vec<Rc<CrossFileBindingClosureRow>>>,
 ) -> Rc<AssembledCrossFileBindingClosure> {
     {
-        let consumer_module_file = Rc::new(ModulePathFileRow {
-            module_path: consumer.module_path.clone(),
-            file_path: consumer.file_path.clone(),
-        });
-        let consumer_rekeyed = rekey_occurrence_transport(
-            consumer.transport.clone(),
-            occurrence_id_remap_state_with_fresh_map(occurrence_id_allocator_initial()),
-        );
-        let consumer_inputs_rekeyed = rekey_occurrence_binding_inputs(
+        let consumer_state =
+            occurrence_id_remap_state_with_fresh_map(occurrence_id_allocator_initial());
+        let consumer_transport_rekey =
+            rekey_occurrence_transport(consumer.transport.clone(), consumer_state.clone());
+        let consumer_inputs_rekey = rekey_occurrence_binding_inputs(
             consumer.inputs.clone(),
-            consumer_rekeyed.state.clone(),
+            consumer_transport_rekey.state.clone(),
         );
-        let folded = providers.clone().iter().cloned().fold(
-            Rc::new(AssembledCrossFileFold {
-                transport: consumer_rekeyed.transport.clone(),
-                inputs: consumer_inputs_rekeyed.inputs.clone(),
-                module_files: Rc::new(vec![consumer_module_file.clone()]),
-                remap_state: consumer_inputs_rekeyed.state.clone(),
-            }),
-            |acc: Rc<AssembledCrossFileFold>, provider_row: Rc<CrossFileBindingClosureRow>| {
+        let seed = Rc::new(AssembledCrossFileFold {
+            entries_reversed: v1_rt::reverse(
+                consumer_transport_rekey
+                    .transport
+                    .clone()
+                    .index
+                    .clone()
+                    .entries
+                    .clone(),
+            ),
+            declarations_reversed: v1_rt::reverse(
+                consumer_transport_rekey
+                    .transport
+                    .clone()
+                    .declarations
+                    .clone(),
+            ),
+            references_reversed: v1_rt::reverse(
+                consumer_transport_rekey
+                    .transport
+                    .clone()
+                    .references
+                    .clone(),
+            ),
+            module_paths_reversed: v1_rt::reverse(
+                consumer_inputs_rekey.inputs.clone().module_paths.clone(),
+            ),
+            exposure_rows_reversed: v1_rt::reverse(
+                consumer_inputs_rekey.inputs.clone().exposure_rows.clone(),
+            ),
+            order_rows_reversed: v1_rt::reverse(
+                consumer_inputs_rekey
+                    .inputs
+                    .clone()
+                    .authored_order_rows
+                    .clone(),
+            ),
+            module_files_reversed: Rc::new(vec![Rc::new(ModulePathFileRow {
+                module_path: consumer.module_path.clone(),
+                file_path: consumer.file_path.clone(),
+            })]),
+            remap_state: consumer_inputs_rekey.state.clone(),
+        });
+        let assembled = providers.clone().iter().cloned().fold(
+            seed.clone(),
+            |acc: Rc<AssembledCrossFileFold>, provider: Rc<CrossFileBindingClosureRow>| {
                 let acc = v1_rt::take_owned(acc);
                 {
-                    let provider_rekeyed = rekey_occurrence_transport(
-                        provider_row.transport.clone(),
-                        occurrence_id_remap_state_with_fresh_map(acc.remap_state.allocator.clone()),
+                    let provider_state =
+                        occurrence_id_remap_state_with_fresh_map(acc.remap_state.allocator.clone());
+                    let provider_transport_rekey = rekey_occurrence_transport(
+                        provider.transport.clone(),
+                        provider_state.clone(),
                     );
-                    let provider_inputs_rekeyed = rekey_occurrence_binding_inputs(
-                        provider_row.inputs.clone(),
-                        provider_rekeyed.state.clone(),
+                    let provider_inputs_rekey = rekey_occurrence_binding_inputs(
+                        provider.inputs.clone(),
+                        provider_transport_rekey.state.clone(),
                     );
                     Rc::new(AssembledCrossFileFold {
-                        transport: merge_occurrence_transports(
-                            acc.transport,
-                            provider_rekeyed.transport.clone(),
+                        entries_reversed: v1_rt::concat(
+                            v1_rt::reverse(
+                                provider_transport_rekey
+                                    .transport
+                                    .clone()
+                                    .index
+                                    .clone()
+                                    .entries
+                                    .clone(),
+                            ),
+                            acc.entries_reversed,
                         ),
-                        inputs: occurrence_binding_inputs_append(
-                            acc.inputs,
-                            provider_inputs_rekeyed.inputs.clone(),
+                        declarations_reversed: v1_rt::concat(
+                            v1_rt::reverse(
+                                provider_transport_rekey
+                                    .transport
+                                    .clone()
+                                    .declarations
+                                    .clone(),
+                            ),
+                            acc.declarations_reversed,
                         ),
-                        module_files: v1_rt::concat(
-                            acc.module_files,
+                        references_reversed: v1_rt::concat(
+                            v1_rt::reverse(
+                                provider_transport_rekey
+                                    .transport
+                                    .clone()
+                                    .references
+                                    .clone(),
+                            ),
+                            acc.references_reversed,
+                        ),
+                        module_paths_reversed: v1_rt::concat(
+                            v1_rt::reverse(
+                                provider_inputs_rekey.inputs.clone().module_paths.clone(),
+                            ),
+                            acc.module_paths_reversed,
+                        ),
+                        exposure_rows_reversed: v1_rt::concat(
+                            v1_rt::reverse(
+                                provider_inputs_rekey.inputs.clone().exposure_rows.clone(),
+                            ),
+                            acc.exposure_rows_reversed,
+                        ),
+                        order_rows_reversed: v1_rt::concat(
+                            v1_rt::reverse(
+                                provider_inputs_rekey
+                                    .inputs
+                                    .clone()
+                                    .authored_order_rows
+                                    .clone(),
+                            ),
+                            acc.order_rows_reversed,
+                        ),
+                        module_files_reversed: v1_rt::concat(
                             Rc::new(vec![Rc::new(ModulePathFileRow {
-                                module_path: provider_row.module_path.clone(),
-                                file_path: provider_row.file_path.clone(),
+                                module_path: provider.module_path.clone(),
+                                file_path: provider.file_path.clone(),
                             })]),
+                            acc.module_files_reversed,
                         ),
-                        remap_state: provider_inputs_rekeyed.state.clone(),
+                        remap_state: provider_inputs_rekey.state.clone(),
                     })
                 }
             },
         );
-        match (*module_path_file_index_from_rows(folded.module_files.clone())).clone() {
+        let assembled_module_files = v1_rt::reverse(assembled.module_files_reversed.clone());
+        match (*module_path_file_index_from_rows(assembled_module_files.clone())).clone() {
     ModulePathFileIndex::ModulePathFileIndexRefused { refusal: refusal, .. } => Rc::new(AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureRefused {
     refusal: Rc::new(AssembledCrossFileBindingClosureRefusal::AssembledCrossFileBindingClosureModulePathFileRefused {
     refusal: refusal.clone(),
 }),
 }),
     ModulePathFileIndex::ModulePathFileIndexReady { entries: _, .. } => Rc::new(AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady {
-    transport: folded.transport.clone(),
-    inputs: folded.inputs.clone(),
-    module_files: folded.module_files.clone(),
+    transport: Rc::new(OccurrenceTransport {
+    index: Rc::new(OccurrenceIndex {
+    entries: v1_rt::reverse(assembled.entries_reversed.clone()),
+}),
+    declarations: v1_rt::reverse(assembled.declarations_reversed.clone()),
+    references: v1_rt::reverse(assembled.references_reversed.clone()),
+}),
+    inputs: Rc::new(OccurrenceBindingCandidateInputs {
+    module_paths: v1_rt::reverse(assembled.module_paths_reversed.clone()),
+    exposure_rows: v1_rt::reverse(assembled.exposure_rows_reversed.clone()),
+    authored_order_rows: v1_rt::reverse(assembled.order_rows_reversed.clone()),
+}),
+    module_files: assembled_module_files.clone(),
     consumer_file: consumer.file_path.clone(),
 }),
 }
