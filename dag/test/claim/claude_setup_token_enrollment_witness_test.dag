@@ -317,7 +317,6 @@ test fn witness_writer_lease_refuses_concurrent_holder() -> Bool {
     incumbent_holder: Present { value: "host-a" as NonEmptyStr },
     incumbent_version: Present { value: "7" as NonEmptyStr },
     incumbent_epoch: Present { value: 2 },
-    attempted_version: "8" as NonEmptyStr,
   ) {
     EnrollmentLeaseRefusedConcurrent {
       incumbent_holder,
@@ -358,7 +357,6 @@ test fn witness_writer_lease_grants_absent_incumbent() -> Bool {
     incumbent_holder: Absent,
     incumbent_version: Absent,
     incumbent_epoch: Absent,
-    attempted_version: "1" as NonEmptyStr,
   ) {
     EnrollmentLeaseGranted { holder, epoch } =>
       holder == ("host-a" as NonEmptyStr) && epoch == 1

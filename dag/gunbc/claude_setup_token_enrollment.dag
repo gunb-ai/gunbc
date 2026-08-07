@@ -287,7 +287,6 @@ fn admit_enrollment_writer_lease(
   incumbent_holder: NonEmptyStr?,
   incumbent_version: NonEmptyStr?,
   incumbent_epoch: Int?,
-  attempted_version: NonEmptyStr,
 ) -> ClaudeEnrollmentWriterLeaseAdmission {
   match incumbent_holder {
     Present { value: incumbent } =>
@@ -345,7 +344,6 @@ fn admit_enrollment_writer_lease_against_binding(
       incumbent_holder: incumbent_holder,
       incumbent_version: Present { value: incumbent_version },
       incumbent_epoch: incumbent_epoch,
-      attempted_version: attempted_version,
     )
   }
 }
