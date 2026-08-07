@@ -45,10 +45,17 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
+pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod test_module_hygiene_bridge;
+pub use floor_discovery_snapshot::{
+    append_discovery_trace_row, build_floor_discovery_request, coordinated_discovery_compute_count,
+    discover_floor_witness_roster_with_snapshot, floor_discovery_consumer_role_from_env,
+    request_identity_digest, verify_floor_discovery_terminal_for_coordinator,
+    FloorDiscoveryConsumerRole, FLOOR_DISCOVERY_CONSUMER_ENV,
+};
 #[doc(hidden)]
 pub use materialization_provider_consumer::{
     materialization_provider_ctx_build_count_for_test, provider_ctx_reentrancy_refusal_for_test,
@@ -5229,7 +5236,7 @@ fn workspace_relative_entry_path(path: &str) -> String {
 
 /// Normalize `source_roots` to the workspace-relative form `import_resolution_facts` /
 /// `module_declaration_facts` expect when invoked from `.dag` (`witness_layer_roots` style).
-fn pool_roots_for_module_graph_closure(source_roots: &[String]) -> Vec<String> {
+pub(crate) fn pool_roots_for_module_graph_closure(source_roots: &[String]) -> Vec<String> {
     source_roots
         .iter()
         .map(|r| {
@@ -5325,14 +5332,14 @@ pub fn import_closure_from_facts(
 /// corpus on every `resolve_transitively` call (Phase 1 perf receipt, DESIGN §2).
 #[derive(Clone)]
 pub struct ModuleGraphFactsLive {
-    edges: Vec<ImportResolutionFactRaw>,
-    nodes: Vec<ModuleDeclarationFactRaw>,
-    adjacency: HashMap<String, Vec<String>>,
+    pub(crate) edges: Vec<ImportResolutionFactRaw>,
+    pub(crate) nodes: Vec<ModuleDeclarationFactRaw>,
+    pub(crate) adjacency: HashMap<String, Vec<String>>,
     // Workspace-relative paths of `nodes`, precomputed once per facts build: the
     // membership question is asked per ENTRY on the resolve path (see
     // `resolve_transitively`), so deriving it per call would rebuild an O(corpus)
     // set per entry (bare-minimum-cost, DESIGN §6).
-    declared_paths: HashSet<String>,
+    pub(crate) declared_paths: HashSet<String>,
     // SELECTION-ONLY adjacency: `adjacency` above PLUS strict-tier (Qualified + UniqueBare)
     // reference-derived edges for import-less files.
     //
@@ -5345,23 +5352,23 @@ pub struct ModuleGraphFactsLive {
     // resolve — measured, not predicted (the precompute went from 82 keys to a hard failure).
     // Selection wants maximum precision; the loader wants a safe superset over a pool it can
     // actually resolve. Same facts build, two answers, no shared tier.
-    selection_adjacency: HashMap<String, Vec<String>>,
+    pub(crate) selection_adjacency: HashMap<String, Vec<String>>,
     // Import-less files the reference-edge producer could not answer for (unreadable / no module
     // line / parse failure). An entry in this set has an UNKNOWN dependency set, which is the one
     // state `entry_file_touched_via_import_closure` may refuse on. Every other edgeless entry has
     // a known-empty dependency set and a precise `{self}` closure.
-    reference_unaccounted: HashSet<String>,
+    pub(crate) reference_unaccounted: HashSet<String>,
     // Reverse of `build_import_adjacency`'s internal `module_to_path`: declared module name by
     // repo path. Built once here so `reference_only_direct_import_modules` (the typed-module
     // content-key's reference-derived import term) does not re-derive it per module.
-    path_to_module: HashMap<String, String>,
+    pub(crate) path_to_module: HashMap<String, String>,
     // Every in-scope `.dag` path the importer walk SAW on disk (whether or not it produced
     // facts), and every observed path whose content read refused. The producers skip an
     // unreadable file at scan time, so without these rows a vanished module is
     // indistinguishable from an absent one — the fail-open undercount consumers like the
     // inert-lens census must refuse on, never absorb (operator review 2026-07-28, PR #7384).
-    observed_paths: HashSet<String>,
-    read_refusals: Vec<(String, String)>,
+    pub(crate) observed_paths: HashSet<String>,
+    pub(crate) read_refusals: Vec<(String, String)>,
 }
 
 #[cfg(test)]
@@ -5808,7 +5815,9 @@ pub(crate) fn reset_module_graph_facts_cache_for_test() {
     reset_module_path_index_cache_for_test();
 }
 
-fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphFactsLive {
+pub(crate) fn build_module_graph_facts_live_uncached(
+    pool_roots: &[String],
+) -> ModuleGraphFactsLive {
     #[cfg(test)]
     MODULE_GRAPH_FACTS_BUILD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     const EXCLUDE: &[String] = &[];
@@ -5895,6 +5904,16 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
         cache.borrow_mut().insert(key, facts.clone());
         facts
     })
+}
+
+pub(crate) fn install_module_graph_facts_cache_entry(
+    pool_roots: &[String],
+    facts: ModuleGraphFactsLive,
+) {
+    let key = pool_roots_for_module_graph_closure(pool_roots).join("\u{1f}");
+    MODULE_GRAPH_FACTS_CACHE.with(|cache| {
+        cache.borrow_mut().insert(key, facts);
+    });
 }
 
 /// Host realization of `v2.lens.module_graph.import_closure_live`.
@@ -18585,7 +18604,9 @@ fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
     out
 }
 
-fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Result<(), String> {
+pub(crate) fn floor_filename_hygiene_refusal_via_producer(
+    source_roots: &[String],
+) -> Result<(), String> {
     let mut dag_paths: Vec<String> = Vec::new();
     for root in source_roots {
         let mut dag_files: Vec<PathBuf> = Vec::new();
@@ -18854,7 +18875,7 @@ fn parse_floor_discovery_producer_result(
     }
 }
 
-fn invoke_floor_discovery_producer(
+pub(crate) fn invoke_floor_discovery_producer(
     source_roots: &[String],
     scan_dirs: &[String],
     exclude_substrings: &[String],
@@ -18926,7 +18947,7 @@ fn invoke_floor_discovery_producer_over_corpus(
     parse_floor_discovery_producer_result(&ctx, &result)
 }
 
-fn apply_discovery_scope_dirs_filter(
+pub(crate) fn apply_discovery_scope_dirs_filter(
     mut rows: Vec<DiscoveryRow>,
     discovery_scope_dirs: &[String],
 ) -> Vec<DiscoveryRow> {
@@ -19520,7 +19541,7 @@ pub fn construction_authority_graph_unresolved(
     ))
 }
 
-fn unjustified_lens_modules(
+pub(crate) fn unjustified_lens_modules(
     module_to_path: &std::collections::HashMap<String, String>,
     justified: &std::collections::BTreeSet<String>,
 ) -> Vec<String> {
@@ -19559,7 +19580,9 @@ fn is_top_level_lens_module(module: &str) -> bool {
 /// an absorbing fail-open undercount, not an over-flag. Any read refusal recorded by
 /// the single facts authority stops the census, typed and located (paths named),
 /// never narrowed.
-fn refuse_on_module_graph_read_refusals(facts: &ModuleGraphFactsLive) -> Result<(), String> {
+pub(crate) fn refuse_on_module_graph_read_refusals(
+    facts: &ModuleGraphFactsLive,
+) -> Result<(), String> {
     if facts.read_refusals.is_empty() {
         return Ok(());
     }
@@ -19588,7 +19611,10 @@ fn refuse_on_module_graph_read_refusals(facts: &ModuleGraphFactsLive) -> Result<
 /// targets, and an undeclared name can never be a declared lens module, so the inert
 /// set is unchanged (proven by the legacy-oracle equivalence test:
 /// `facts_walk_matches_legacy_floor_lens_graph_on_live_corpus`).
-fn inert_lens_modules(rows: &[DiscoveryRow], facts: &ModuleGraphFactsLive) -> Vec<String> {
+pub(crate) fn inert_lens_modules(
+    rows: &[DiscoveryRow],
+    facts: &ModuleGraphFactsLive,
+) -> Vec<String> {
     // Seed reachability from ALL *_test.dag files the facts scan saw (declared modules
     // plus edge-bearing importers — a file with neither contributes no module and no
     // edges, so omitting it cannot change reachability), not just enrolled rows, so
@@ -19642,7 +19668,7 @@ fn inert_lens_modules(rows: &[DiscoveryRow], facts: &ModuleGraphFactsLive) -> Ve
 /// that cannot be read refuses, never counts as justified (the arm the deleted
 /// `build_floor_lens_import_graph` carried for the whole corpus, kept here scoped to
 /// the lens declarations — the only file reads left on this census path).
-fn lens_justification_census(
+pub(crate) fn lens_justification_census(
     facts: &ModuleGraphFactsLive,
 ) -> Result<
     (
@@ -21161,7 +21187,7 @@ fn discovery_rows_live_tree_count(rows: &[DiscoveryRow]) -> usize {
     rows.iter().filter(|r| r.reads_live_tree).count()
 }
 
-fn apply_effect_reach_derived_reads_live_tree(
+pub(crate) fn apply_effect_reach_derived_reads_live_tree(
     rows: &mut [DiscoveryRow],
     facts: &ModuleGraphFactsLive,
 ) {
@@ -29294,14 +29320,14 @@ pub fn fact_cardinality_decl_facts() -> Vec<FactCardinalityDeclFactRaw> {
     records
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ImportResolutionFactRaw {
     pub path: String,
     pub import_module: String,
     pub target_declared: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ModuleDeclarationFactRaw {
     pub module: String,
     pub path: String,

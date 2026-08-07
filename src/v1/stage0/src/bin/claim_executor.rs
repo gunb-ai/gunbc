@@ -11,17 +11,21 @@ use std::time::Instant;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
-    compute_histogram_data, enable_floor_compile_clean_lazy_install, heartbeat_feed_enter_batch,
+    build_floor_discovery_request, compute_histogram_data,
+    discover_floor_witness_roster_with_snapshot, enable_floor_compile_clean_lazy_install,
+    floor_discovery_consumer_role_from_env, heartbeat_feed_enter_batch,
     heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
     make_eval_context, project_witness_cost_receipt, record_resolution_divergence_phase,
-    render_selection_degradation_receipt_body, reset_resolution_divergence_phase_receipt,
-    resolution_divergence_parent_plan_capture_begin,
+    render_selection_degradation_receipt_body, request_identity_digest,
+    reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
     resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
-    top_n_slowest_witnesses, BudgetKind, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
-    DiscoveryWidthPolicy, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
+    top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, BudgetKind,
+    ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy,
+    FloorDiscoveryConsumerRole, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
     ResolutionDivergencePhase, ResolutionDivergencePhaseState, SelectionDegradationSnapshot,
     TimingPercentiles, WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    FLOOR_DISCOVERY_CONSUMER_ENV,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
@@ -5659,6 +5663,23 @@ fn observe_walk_attempt_id() -> Result<String, String> {
     )
 }
 
+/// Coordinator-spawned floor workers inherit `GUNBC_FLOOR_WALK_ATTEMPT_ID` so the scoped
+/// consumer reads the ordinary producer's attempt-scoped snapshot directory.
+fn floor_walk_attempt_id() -> Result<String, String> {
+    if let Ok(id) = std::env::var("GUNBC_FLOOR_WALK_ATTEMPT_ID") {
+        if !id.trim().is_empty() {
+            return if walk_attempt_id_segment_is_safe(&id) {
+                Ok(id)
+            } else {
+                Err(format!(
+                    "GUNBC_FLOOR_WALK_ATTEMPT_ID={id:?} is not a safe path segment (std.types path_segment_is_safe: non-empty, not `.`/`..`, no `/` `\\` CR LF NUL)"
+                ))
+            };
+        }
+    }
+    observe_walk_attempt_id()
+}
+
 /// The PURE half, split from the observation above for the same reason
 /// `gunbc.merge_admission_produce` splits them ("Pure composition of the walk-attempt
 /// identity from its parts; the ENV OBSERVATION lives with the wet entry"). It is also what
@@ -8679,11 +8700,32 @@ fn journal_floor_worker_observation(row: &ObservedFloorWorker) {
     );
 }
 
+fn source_roots_from_executor_args(args: &[String]) -> Result<Vec<String>, String> {
+    let mut roots = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--source-root" {
+            i += 1;
+            let Some(root) = args.get(i) else {
+                return Err("claim_executor: --source-root requires a value".to_string());
+            };
+            roots.push(root.clone());
+        }
+        i += 1;
+    }
+    if roots.is_empty() {
+        return Err("claim_executor: --source-root is required".to_string());
+    }
+    Ok(roots)
+}
+
 fn spawn_floor_worker(
     base_args: &[String],
     role: &str,
     batch_id: Option<&str>,
     ordinal: usize,
+    walk_attempt_id: &str,
+    discovery_consumer: &str,
 ) -> Result<ObservedFloorWorker, String> {
     let worker = match batch_id {
         Some(id) => format!("scoped:{id}"),
@@ -8701,6 +8743,8 @@ fn spawn_floor_worker(
         command.arg("--scoped-batch-id").arg(id);
     }
     command.env(FLOOR_WORKER_TERMINAL_ENV, &terminal_path);
+    command.env("GUNBC_FLOOR_WALK_ATTEMPT_ID", walk_attempt_id);
+    command.env(FLOOR_DISCOVERY_CONSUMER_ENV, discovery_consumer);
     // The worker's post-walk ledger harvest can spend minutes dropping its memo
     // contexts after the final discovery line.  A blocking `Command::status`
     // made that whole interval silent: the worker's own heartbeat shares its
@@ -8796,7 +8840,15 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         eprintln!("claim_executor: floor coordinator receipt arm refusal: {msg}");
         return Some(ExitCode::from(1));
     }
-    let ordinary = match spawn_floor_worker(args, "ordinary", None, 0) {
+    let walk_attempt_id = match observe_walk_attempt_id() {
+        Ok(id) => id,
+        Err(msg) => {
+            eprintln!("claim_executor: floor coordinator walk-attempt refusal: {msg}");
+            return Some(ExitCode::from(1));
+        }
+    };
+    let ordinary = match spawn_floor_worker(args, "ordinary", None, 0, &walk_attempt_id, "producer")
+    {
         Ok(observed) => observed,
         Err(msg) => {
             replay_ordinary_floor_wet_witness_row_outcomes();
@@ -8810,6 +8862,33 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         );
         return Some(ExitCode::from(1));
     }
+    let source_roots = match source_roots_from_executor_args(args) {
+        Ok(roots) => roots,
+        Err(msg) => {
+            eprintln!("claim_executor: floor coordinator source-roots refusal: {msg}");
+            return Some(ExitCode::from(1));
+        }
+    };
+    let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
+    let pre_plan_request = match build_floor_discovery_request(
+        &source_roots,
+        &[],
+        &excludes,
+        &[],
+        "Hermetic",
+        &source_roots,
+    ) {
+        Ok(request) => request,
+        Err(msg) => {
+            eprintln!("claim_executor: floor coordinator pre-plan request refusal: {msg}");
+            return Some(ExitCode::from(1));
+        }
+    };
+    let digest = request_identity_digest(&pre_plan_request);
+    if let Err(msg) = verify_floor_discovery_terminal_for_coordinator(&walk_attempt_id, &digest) {
+        eprintln!("claim_executor: floor coordinator snapshot terminal refusal: {msg}");
+        return Some(ExitCode::from(1));
+    }
     let batch_ids = match read_scoped_witness_batch_manifest() {
         Ok(ids) => ids,
         Err(msg) => {
@@ -8818,14 +8897,20 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         }
     };
     for (index, batch_id) in batch_ids.iter().enumerate() {
-        let scoped =
-            match spawn_floor_worker(args, "scoped", Some(batch_id), index.saturating_add(1)) {
-                Ok(observed) => observed,
-                Err(msg) => {
-                    eprintln!("claim_executor: floor coordinator scoped-worker refusal: {msg}");
-                    return Some(ExitCode::from(1));
-                }
-            };
+        let scoped = match spawn_floor_worker(
+            args,
+            "scoped",
+            Some(batch_id),
+            index.saturating_add(1),
+            &walk_attempt_id,
+            "coordinated_consumer",
+        ) {
+            Ok(observed) => observed,
+            Err(msg) => {
+                eprintln!("claim_executor: floor coordinator scoped-worker refusal: {msg}");
+                return Some(ExitCode::from(1));
+            }
+        };
         if !floor_worker_succeeded(&scoped) {
             eprintln!(
                 "claim_executor: floor coordinator stopping after scoped worker `{batch_id}` did not complete"
@@ -9015,10 +9100,33 @@ fn run() -> Result<ExitCode, ExitCode> {
     // plan evaluation, so a naming violation is the cheapest possible failure.
     {
         let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
-        if let Err(msg) =
-            v1_compiler::cli_run::discover_floor_witness_roster(&source_roots, &[], &excludes, &[])
-                .map(|_| ())
+        let walk_attempt_id = match floor_walk_attempt_id() {
+            Ok(id) => id,
+            Err(msg) => {
+                eprintln!("claim_executor: witness naming hygiene walk-attempt refusal: {msg}");
+                return Err(ExitCode::from(1));
+            }
+        };
+        if std::env::var("GUNBC_FLOOR_WALK_ATTEMPT_ID")
+            .map(|v| v.trim().is_empty())
+            .unwrap_or(true)
         {
+            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", &walk_attempt_id);
+        }
+        let discovery_consumer = match floor_worker_role.as_ref() {
+            Some(FloorWorkerRole::Scoped { .. }) => floor_discovery_consumer_role_from_env(),
+            Some(FloorWorkerRole::Ordinary) | None => FloorDiscoveryConsumerRole::Producer,
+        };
+        if let Err(msg) = discover_floor_witness_roster_with_snapshot(
+            &source_roots,
+            &[],
+            &excludes,
+            &[],
+            &walk_attempt_id,
+            discovery_consumer,
+            "Hermetic",
+            &source_roots,
+        ) {
             eprintln!("claim_executor: witness naming hygiene (pre-plan walk): {msg}");
             return Err(ExitCode::from(1));
         }
