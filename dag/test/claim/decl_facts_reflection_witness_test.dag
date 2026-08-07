@@ -10,8 +10,15 @@ import test.claim.decl_facts_reflection_witness_support {
   decl_fact_projection_node_for_qualified_name,
   decl_facts_reflection_bind_is_declaration_ref_projection,
   decl_facts_reflection_constructor_variant,
+  decl_facts_reflection_field_projection,
   decl_facts_reflection_fixture_facts,
   decl_facts_reflection_named_field_projection_surfaces,
+  decl_facts_reflection_nullary_value_projection,
+  decl_facts_reflection_resolved_nullary_variant_name,
+}
+import v2.std.data_initializer_identity {
+  resolved_variant_name_optional,
+  value_projection_is_resolved_variant,
 }
 import v2.std.algebra { length }
 
@@ -66,23 +73,30 @@ test fn w_plain_int_specimen_has_no_coproduct_constructor_lexemes() -> Bool {
 }
 
 test fn w_nullary_variant_value_absent_without_infer_stamping_top_level() -> Bool {
-  match decl_fact_projection_node_for_qualified_name(
-    facts: decl_facts_reflection_fixture_facts(),
-    qn: qn_planted_nullary_disposition_specimen
-  ) {
-    Present { value: skeleton } =>
-      !skeleton_contains_marshal_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
+  match decl_facts_reflection_nullary_value_projection(qn: qn_planted_nullary_disposition_specimen) {
+    Present { value: projection } =>
+      value_projection_is_resolved_variant(node: projection)
+        && match decl_facts_reflection_resolved_nullary_variant_name(
+          qn: qn_planted_nullary_disposition_specimen
+        ) {
+          Present { value: v } => v == "SingleAuthority"
+          Absent => false
+        }
     Absent => false
   }
 }
 
 test fn w_nullary_variant_value_absent_without_infer_stamping_nested() -> Bool {
-  match decl_fact_projection_node_for_qualified_name(
-    facts: decl_facts_reflection_fixture_facts(),
-    qn: qn_planted_scaffold_specimen
+  match decl_facts_reflection_field_projection(
+    qn: qn_planted_scaffold_specimen,
+    field: "dissolves_to"
   ) {
-    Present { value: skeleton } =>
-      !skeleton_contains_marshal_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
+    Present { value: projection } =>
+      value_projection_is_resolved_variant(node: projection)
+        && match resolved_variant_name_optional(node: projection) {
+          Present { value: v } => v == "SingleAuthority"
+          Absent => false
+        }
     Absent => false
   }
 }
