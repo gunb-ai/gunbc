@@ -170,6 +170,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/standards/web_annotation.dag",
   "dag/extdeps/systems/nvidia.dag",
   "dag/extdeps/systems/nvidia_fleet_lifecycle.dag",
+  "dag/extdeps/systems/nvidia_dgx_spark_setup.dag",
   "dag/extdeps/systems/types.dag",
   "dag/extdeps/tools/wc.dag",
   "dag/extdeps/vendor/atlassian.dag",
