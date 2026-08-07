@@ -25,6 +25,14 @@ fn classify_length(xs: List<Int>) -> LengthClass {
   }
 }
 
+fn classify_length_tag(n: Int) -> String {
+  match classify_length(xs: mk_list(n: n)) {
+    Zero => "Zero"
+    One => "One"
+    Many => "Many"
+  }
+}
+
 test fn classify_length_witness_holds() -> Bool {
   classify_length(xs: mk_list(n: 0)) == Zero
     && classify_length(xs: mk_list(n: 1)) == One
