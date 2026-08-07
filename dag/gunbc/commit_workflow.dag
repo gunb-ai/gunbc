@@ -51,7 +51,8 @@ import std.witness_admission {
   WitnessConsumerCadence,
   DiscoverySelection, FalsifierSelfHostWet, FalsifierRehomedBinWet,
   FalsifierSubstrateLongLane, BinWitnessWet, QuarantineProbeExpectRed,
-  OfflineLocalRecipe, FixtureExplicitRoster, NoConsumer
+  OfflineLocalRecipe, FixtureExplicitRoster, NoConsumer,
+  witness_consumer_cadence_eq
 }
 import std.realization_schedule {
   string_list_eq, ScheduleWitnessEntry,
@@ -2066,119 +2067,6 @@ fn witness_cost_basis_eq(a: WitnessCostBasis, b: WitnessCostBasis) -> Bool {
 }
 
 data scheduled_witness_envelope_path_classification_scope_note: String = "path_classification is WitnessConsumerCadence, the path-policy classification authority (std.witness_admission) — it does NOT answer whether anything executes a row; that question is answered by the separate fold in src/v2/workflow/witness_admission.dag, per commit_roster_enrollment_is_a_consumer_note there. This function and scheduled_witness_envelope_wellformed below compare/validate only what the field carries."
-
-fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumerCadence) -> Bool {
-  match a {
-    DiscoverySelection =>
-      match b {
-        DiscoverySelection => true
-        FalsifierSelfHostWet => false
-        FalsifierRehomedBinWet => false
-        FalsifierSubstrateLongLane => false
-        BinWitnessWet => false
-        QuarantineProbeExpectRed => false
-        OfflineLocalRecipe => false
-        FixtureExplicitRoster => false
-        NoConsumer => false
-      }
-    FalsifierSelfHostWet =>
-      match b {
-        DiscoverySelection => false
-        FalsifierSelfHostWet => true
-        FalsifierRehomedBinWet => false
-        FalsifierSubstrateLongLane => false
-        BinWitnessWet => false
-        QuarantineProbeExpectRed => false
-        OfflineLocalRecipe => false
-        FixtureExplicitRoster => false
-        NoConsumer => false
-      }
-    FalsifierRehomedBinWet =>
-      match b {
-        DiscoverySelection => false
-        FalsifierSelfHostWet => false
-        FalsifierRehomedBinWet => true
-        FalsifierSubstrateLongLane => false
-        BinWitnessWet => false
-        QuarantineProbeExpectRed => false
-        OfflineLocalRecipe => false
-        FixtureExplicitRoster => false
-        NoConsumer => false
-      }
-    FalsifierSubstrateLongLane =>
-      match b {
-        DiscoverySelection => false
-        FalsifierSelfHostWet => false
-        FalsifierRehomedBinWet => false
-        FalsifierSubstrateLongLane => true
-        BinWitnessWet => false
-        QuarantineProbeExpectRed => false
-        OfflineLocalRecipe => false
-        FixtureExplicitRoster => false
-        NoConsumer => false
-      }
-    BinWitnessWet =>
-      match b {
-        DiscoverySelection => false
-        FalsifierSelfHostWet => false
-        FalsifierRehomedBinWet => false
-        FalsifierSubstrateLongLane => false
-        BinWitnessWet => true
-        QuarantineProbeExpectRed => false
-        OfflineLocalRecipe => false
-        FixtureExplicitRoster => false
-        NoConsumer => false
-      }
-    QuarantineProbeExpectRed =>
-      match b {
-        DiscoverySelection => false
-        FalsifierSelfHostWet => false
-        FalsifierRehomedBinWet => false
-        FalsifierSubstrateLongLane => false
-        BinWitnessWet => false
-        QuarantineProbeExpectRed => true
-        OfflineLocalRecipe => false
-        FixtureExplicitRoster => false
-        NoConsumer => false
-      }
-    OfflineLocalRecipe =>
-      match b {
-        DiscoverySelection => false
-        FalsifierSelfHostWet => false
-        FalsifierRehomedBinWet => false
-        FalsifierSubstrateLongLane => false
-        BinWitnessWet => false
-        QuarantineProbeExpectRed => false
-        OfflineLocalRecipe => true
-        FixtureExplicitRoster => false
-        NoConsumer => false
-      }
-    FixtureExplicitRoster =>
-      match b {
-        DiscoverySelection => false
-        FalsifierSelfHostWet => false
-        FalsifierRehomedBinWet => false
-        FalsifierSubstrateLongLane => false
-        BinWitnessWet => false
-        QuarantineProbeExpectRed => false
-        OfflineLocalRecipe => false
-        FixtureExplicitRoster => true
-        NoConsumer => false
-      }
-    NoConsumer =>
-      match b {
-        DiscoverySelection => false
-        FalsifierSelfHostWet => false
-        FalsifierRehomedBinWet => false
-        FalsifierSubstrateLongLane => false
-        BinWitnessWet => false
-        QuarantineProbeExpectRed => false
-        OfflineLocalRecipe => false
-        FixtureExplicitRoster => false
-        NoConsumer => true
-      }
-  }
-}
 
 fn scheduled_witness_envelope_eq(a: ScheduledWitnessEnvelope, b: ScheduledWitnessEnvelope) -> Bool {
   witness_consumer_cadence_eq(a: a.path_classification, b: b.path_classification)

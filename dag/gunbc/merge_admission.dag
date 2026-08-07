@@ -43,6 +43,7 @@ import std.witness_admission {
   DiscoverySelection, FalsifierSelfHostWet, FalsifierRehomedBinWet,
   FalsifierSubstrateLongLane, BinWitnessWet, QuarantineProbeExpectRed,
   OfflineLocalRecipe, FixtureExplicitRoster, NoConsumer,
+  witness_consumer_cadence_content_hash_structural,
 }
 import gunbc.ci_gate {
   Gate,
@@ -194,20 +195,6 @@ fn witness_cost_basis_content_hash_structural(basis: WitnessCostBasis) -> Fnv1a6
         ),
         right: content_hash_atom(value: basis)
       )
-  }
-}
-
-fn witness_consumer_cadence_content_hash_structural(cadence: WitnessConsumerCadence) -> Fnv1a64Structural {
-  match cadence {
-    DiscoverySelection => content_hash_atom(value: "DiscoverySelection")
-    FalsifierSelfHostWet => content_hash_atom(value: "FalsifierSelfHostWet")
-    FalsifierRehomedBinWet => content_hash_atom(value: "FalsifierRehomedBinWet")
-    FalsifierSubstrateLongLane => content_hash_atom(value: "FalsifierSubstrateLongLane")
-    BinWitnessWet => content_hash_atom(value: "BinWitnessWet")
-    QuarantineProbeExpectRed => content_hash_atom(value: "QuarantineProbeExpectRed")
-    OfflineLocalRecipe => content_hash_atom(value: "OfflineLocalRecipe")
-    FixtureExplicitRoster => content_hash_atom(value: "FixtureExplicitRoster")
-    NoConsumer => content_hash_atom(value: "NoConsumer")
   }
 }
 
