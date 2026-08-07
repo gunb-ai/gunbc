@@ -17,6 +17,7 @@ import gunbc.citation.x86_64_abi_pdf_consumer {
   x86_64_abi_syscall_citation_page_is_authoritative,
   x86_64_abi_pdf_fragment_selector_from_page,
   x86_64_abi_pdf_retrieval_observation_from_hex,
+  x86_64_abi_pdf_base_locator_probe,
   witness_syscall_citation_below_digest_matched_rung,
   X86_64AbiPdfCitationSelectorConstructed,
   X86_64AbiPdfNavigableUriProjected,
@@ -117,6 +118,17 @@ test fn x86_64_abi_version_cover_uri_uses_page_one() -> Bool {
   }
 }
 
+test fn x86_64_abi_authority_locator_is_refspecs() -> Bool {
+  x86_64_abi_pdf_base_locator_probe() == ("refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf" as NonEmptyStr)
+}
+
+test fn x86_64_abi_version_cover_uri_empty_base_probe() -> Bool {
+  match x86_64_abi_pdf_version_navigable_uri_projection() {
+    X86_64AbiPdfNavigableUriProjected { uri: u } => u.locator == "#page=1"
+    _ => false
+  }
+}
+
 test fn x86_64_abi_syscall_convention_uri_uses_physical_page_125() -> Bool {
   match x86_64_abi_pdf_syscall_navigable_uri_projection() {
     X86_64AbiPdfNavigableUriProjected { uri: u } =>
@@ -146,6 +158,30 @@ test fn x86_64_abi_syscall_citation_selector_conforms_to_rfc_8118() -> Bool {
       s.value == ("page=125" as NonEmptyStr)
         && s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
         && s.conforms_to.uri.locator != x86_64_abi_pdf_identity.access_route.locator
+    _ => false
+  }
+}
+
+test fn x86_64_abi_syscall_selector_value_is_page_125() -> Bool {
+  match x86_64_abi_pdf_syscall_fragment_selector() {
+    X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
+      s.value == ("page=125" as NonEmptyStr)
+    _ => false
+  }
+}
+
+test fn x86_64_abi_syscall_selector_conforms_to_rfc_anchor() -> Bool {
+  match x86_64_abi_pdf_syscall_fragment_selector() {
+    X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
+      s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
+    _ => false
+  }
+}
+
+test fn x86_64_abi_syscall_selector_conforms_not_abi_pdf_locator() -> Bool {
+  match x86_64_abi_pdf_syscall_fragment_selector() {
+    X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
+      s.conforms_to.uri.locator != x86_64_abi_pdf_identity.access_route.locator
     _ => false
   }
 }
