@@ -123,6 +123,7 @@ pub struct Config {
     pub lease_holder: String,
     pub once: bool,
     pub dry_run: bool,
+    pub enqueue_rerun_sha: Option<String>,
 }
 
 impl Config {
@@ -137,6 +138,7 @@ impl Config {
             .unwrap_or_else(|_| "http://127.0.0.1:8787".to_string());
         let once = std::env::var("OWNED_CI_ONCE").is_ok();
         let dry_run = std::env::var("OWNED_CI_DRY_RUN").is_ok();
+        let enqueue_rerun_sha = std::env::var("OWNED_CI_ENQUEUE_RERUN_SHA").ok();
         let lease_holder = format!("{}-{}", hostname(), std::process::id());
         Ok(Self {
             workspace_root,
@@ -147,6 +149,7 @@ impl Config {
             lease_holder,
             once,
             dry_run,
+            enqueue_rerun_sha,
         })
     }
 }
@@ -445,26 +448,41 @@ impl CiControlPlane {
             pr_number: None,
         });
 
-        let token = std::env::var("GITHUB_TOKEN");
-        let (prs, fork_refusals, non_main_base_refusals, pr_poll_refusal) = match token {
-            Ok(token) if token.is_empty() => (
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Some(self.authority.poll_empty_github_token_refusal.clone()),
-            ),
-            Ok(token) => match self.discover_open_prs(&token) {
-                Ok((prs, fork_refusals, non_main_base_refusals)) => {
-                    (prs, fork_refusals, non_main_base_refusals, None)
-                }
-                Err(cause) => (Vec::new(), Vec::new(), Vec::new(), Some(cause)),
-            },
-            Err(_) => (
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Some(self.authority.poll_missing_github_token_refusal.clone()),
-            ),
+        if let Some(rerun_sha) = &self.config.enqueue_rerun_sha {
+            validate_commit_sha(rerun_sha)?;
+            admitted.push(DiscoveredSubject {
+                subject_key: format!("rerun:{rerun_sha}"),
+                head_sha: rerun_sha.clone(),
+                kind: "operator_rerun".to_string(),
+                pr_number: None,
+            });
+        }
+
+        let (prs, fork_refusals, non_main_base_refusals, pr_poll_refusal) = if self.config.dry_run {
+            eprintln!("owned-ci: dry-run skips GitHub PR poll (mirror-only subject discovery)");
+            (Vec::new(), Vec::new(), Vec::new(), None)
+        } else {
+            let token = std::env::var("GITHUB_TOKEN");
+            match token {
+                Ok(token) if token.is_empty() => (
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Some(self.authority.poll_empty_github_token_refusal.clone()),
+                ),
+                Ok(token) => match self.discover_open_prs(&token) {
+                    Ok((prs, fork_refusals, non_main_base_refusals)) => {
+                        (prs, fork_refusals, non_main_base_refusals, None)
+                    }
+                    Err(cause) => (Vec::new(), Vec::new(), Vec::new(), Some(cause)),
+                },
+                Err(_) => (
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Some(self.authority.poll_missing_github_token_refusal.clone()),
+                ),
+            }
         };
         admitted.extend(prs);
         Ok(DiscoverOutcome {
@@ -1320,6 +1338,16 @@ fn status_ok(status: ExitStatus, label: &str) -> Result<(), String> {
     }
 }
 
+fn validate_commit_sha(sha: &str) -> Result<(), String> {
+    if sha.len() != 40 || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(format!(
+            "commit sha refused (expected 40 hex digits): {:?}",
+            sha
+        ));
+    }
+    Ok(())
+}
+
 fn validate_run_id(run_id: &str) -> Result<(), String> {
     if run_id.is_empty()
         || run_id == "."
@@ -1413,6 +1441,16 @@ mod tests {
     }
 
     #[test]
+    fn validate_commit_sha_accepts_git_oid() {
+        assert!(validate_commit_sha("4b825dc642cb6eb9a060e54bf8d69288fbee4904").is_ok());
+    }
+
+    #[test]
+    fn validate_commit_sha_refuses_short_hex() {
+        assert!(validate_commit_sha("deadbeef").is_err());
+    }
+
+    #[test]
     fn validate_run_id_refuses_traversal() {
         assert!(validate_run_id("../etc/passwd").is_err());
         assert!(validate_run_id("a/b").is_err());
@@ -1435,6 +1473,7 @@ mod tests {
                 lease_holder: "test".to_string(),
                 once: true,
                 dry_run: true,
+                enqueue_rerun_sha: None,
             },
             authority: SeedAuthority {
                 repo_owner: "gunb-ai".to_string(),
@@ -1479,6 +1518,7 @@ mod tests {
                 lease_holder: "test".to_string(),
                 once: true,
                 dry_run: true,
+                enqueue_rerun_sha: None,
             },
             authority: SeedAuthority {
                 repo_owner: "gunb-ai".to_string(),
@@ -1526,6 +1566,7 @@ mod tests {
                 lease_holder: "test".to_string(),
                 once: true,
                 dry_run: true,
+                enqueue_rerun_sha: None,
             },
             authority: SeedAuthority {
                 repo_owner: "gunb-ai".to_string(),

@@ -20,6 +20,10 @@ import v2.std.collection { Absent, Present }
 
 data owned_ci_authority_note: String = "Owned CI control plane v0 state carriers (docs/plans/owned-ci-control-plane-design.md). Poll-first subject discovery, durable filesystem queue with expiring lease, one local executor, Checks projection honesty boundary."
 
+data owned_ci_dry_run_github_boundary_note: String = "dry_run discovers from the local mirror only: GitHub REST PR poll and Checks create/update are skipped; executor stages are not run. Mirror git-fetch remains (local mirror refresh, not REST)."
+
+data owned_ci_operator_rerun_surface_note: String = "v0 operator rerun: ci_control_plane --enqueue-rerun-sha <40-hex> (or OWNED_CI_ENQUEUE_RERUN_SHA) enqueues OperatorRerun with subject_key rerun:<sha> matching ci_execution_plan.ci_subject_identity_key."
+
 data owned_ci_state_root_rel: String = ".gunbc/owned-ci"
 data owned_ci_check_name: NonEmptyStr = "gunbc-ci"
 data owned_ci_default_lease: Second = second(count: 3600)

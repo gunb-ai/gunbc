@@ -265,6 +265,15 @@ test fn witness_subject_identity_keys_differ_by_sha() -> Bool {
     && (ci_subject_identity_key(subject: a) != ci_subject_identity_key(subject: b))
 }
 
+test fn witness_operator_rerun_identity_key() -> Bool {
+  let subject = OperatorRerun {
+    head_sha: "deadbeef",
+    base_ref: gunbc_default_branch_name,
+    base_tree_hash: sample_tree_hash(),
+  }
+  ci_subject_identity_key(subject: subject) == "rerun:deadbeef"
+}
+
 test fn witness_executor_stage_labels_match_plan() -> Bool {
   let labels = owned_ci_executor_stage_labels()
   (length(labels) == 3)

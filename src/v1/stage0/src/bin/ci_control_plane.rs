@@ -18,9 +18,13 @@ struct Args {
     #[arg(long)]
     once: bool,
 
-    /// Discover/enqueue only; do not execute or call GitHub.
+    /// Discover/enqueue from mirror; skip GitHub REST (PR poll, Checks write) and executor stages.
     #[arg(long)]
     dry_run: bool,
+
+    /// Enqueue an operator rerun for this commit SHA (v0 explicit rerun surface).
+    #[arg(long)]
+    enqueue_rerun_sha: Option<String>,
 
     /// Workspace root (defaults to gunbc workspace_root()).
     #[arg(long)]
@@ -61,6 +65,9 @@ fn main() -> ExitCode {
     }
     config.once = config.once || args.once;
     config.dry_run = config.dry_run || args.dry_run;
+    if let Some(rerun_sha) = args.enqueue_rerun_sha {
+        config.enqueue_rerun_sha = Some(rerun_sha);
+    }
     config.poll_interval_secs = args.poll_interval_secs;
 
     if let Err(err) = std::env::set_current_dir(&config.workspace_root) {
