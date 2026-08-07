@@ -202,22 +202,17 @@ fn emit_pipeline_or_poison(p: Pipeline, refused: String) -> String {
 
 data emit_systemd_unit_serve_note: String = "The belt-B unit: ExecStart is `gunbc serve` (the seed binary answering every request through the ONE .dag entry gunbc.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch). User=briansrls, NOT root: claude auth exists only under briansrls on srv1 (parent lane verification 2026-07-20), so a root-run belt would spawn unauthed dead sessions; port 8080 is non-privileged so briansrls binds it. WorkingDirectory = the repo root — the source roots and entry are relative to it, and the belt's spawn workdir projects the same gunbc.host_layout fact."
 
-data release_revision_binding_note: String = "WHERE THE LAUNCH REVISION COMES FROM IS ITSELF A MODELED FACT, BECAUSE TWO HONEST ANSWERS EXIST AND A THIRD IS A REFUSAL. The unit's ExecStart must name the release the process will report, and this repository renders that unit on two different occasions that genuinely differ in what they can know.\\n\\nRevisionBoundAtEmission is the production apply: the launcher observed one candidate, and the unit installed at the host bakes exactly that value, so the process reports the revision the deploy admitted and readiness compares against the same single subject.\\n\\nRevisionBoundAtInvocation is the COMMITTED script. A file frozen in Git cannot name a future deploy's revision — every constant it could contain is either fabricated (a placeholder identity nobody chose) or non-deterministic (the tree's HEAD at generation time, which redrafts the artifact on every commit and makes its drift gate permanently red). So the frozen artifact defers the value to invocation and refers to a shell parameter instead, which is the only spelling that is both static and true.\\n\\nRevisionNotInstalled is the retract fold, and it exists so that a retract cannot name a revision even accidentally. It is not a null revision or an empty string — the arm that would render ExecStart under it REFUSES with a poison marker, because a retract that reached the unit writer means the fold dispatched an install while tearing down. That is the same unreachable-arm discipline emit_deploy_teardown_dependency_refusal uses: loud, not silently benign (DESIGN section 5).\\n\\nRESIDUE, NAMED: the invocation form guards only unset-or-empty, via bash's own parameter expansion. Its 40-lowercase-hex SHAPE is validated by the serve binary before the graph compiles or the listener binds, so a malformed value still refuses — one boundary later than ideal. DISSOLVES WHEN the apply script carries a typed preflight step that validates the parameter's shape before any host mutation."
+data release_revision_binding_note: String = "WHERE THE LAUNCH REVISION COMES FROM IS ITSELF A MODELED FACT, AND THERE ARE EXACTLY TWO ARMS BECAUSE ONLY TWO ARE HONEST. RevisionBoundAtEmission is the production apply: the launcher observed one candidate, the unit installed at the host bakes exactly that value, and readiness compares against the same single subject. RevisionNotInstalled is the retract fold, and it exists so a retract cannot name a revision even accidentally — the arm that would render ExecStart under it REFUSES with a poison marker, the same unreachable-arm discipline emit_deploy_teardown_dependency_refusal uses.\\n\\nA THIRD ARM WAS TRIED AND DELETED, AND THE REASON IS WORTH KEEPING. RevisionBoundAtInvocation rendered a bash parameter expansion into the unit so a committed script could defer its revision to invocation. It could never have worked: the unit is written through a heredoc whose delimiter is QUOTED (<<'GUNBC_UNIT_EOF'), so bash performs no expansion inside it and the literal dollar-brace text lands in the unit file; systemd does not run ExecStart through bash, implements no :? operator, and this unit sets no such Environment. The chain script-invocation to unit to launch argument did not exist at any link. Proven by execution, not by reading — which is the point: it typechecked, it read plausibly, and it was inert.\\n\\nWhat it was protecting turned out not to need protecting. It existed to keep a committed script as the byte oracle over this ExecStart line, on the belief that deleting the artifact would lose that coverage. A fixture sha is forbidden in a committed PRODUCTION artifact, not in a witness — so the oracle lives in the test corpus against RevisionBoundAtEmission with a fixture, and the artifact was simply dead (no execution consumer, and a HostReconciler consumer row that named a reader which does not exist)."
 
 type ReleaseRevisionBinding
   = RevisionBoundAtEmission { revision: CommitSha }
-  | RevisionBoundAtInvocation { shell_variable: String }
   | RevisionNotInstalled
-
-data release_revision_shell_variable: String = "GUNBC_RELEASE_REVISION"
 
 data release_revision_not_installed_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the systemd unit writer was reached with RevisionNotInstalled — a retract fold dispatched a unit install. This marker is not a valid release revision, so the golden drift gate reds rather than emitting a unit whose ExecStart names no release (DESIGN section 5: an unreachable arm refuses loudly, never fabricates)."
 
 fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
   match binding {
     RevisionBoundAtEmission { revision: r } => r as String
-    RevisionBoundAtInvocation { shell_variable: v } =>
-      join(["\"$", "\{", v, ":?live-deploy apply requires ", v, " (the 40-hex release revision to launch)", "\}", "\""], "")
     RevisionNotInstalled => release_revision_not_installed_poison
   }
 }
@@ -721,19 +716,6 @@ fn live_deploy_retract_script_with_scoped_removal(spec: DeploymentSpec) -> Strin
           live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "RETRACT")
       }
   }
-}
-
-data expected_script_takes_no_revision_note: String = "THESE ARE NULLARY AGAIN, AND THAT IS THE POINT RATHER THAN A CONVENIENCE. They state what the COMMITTED srv1 scripts should be, and a file frozen in Git is generated once and read forever — so any revision it could name is wrong by construction. A constant would be a fabricated identity nobody chose; the generating tree's HEAD would redraft the artifact on every commit and leave its drift gate permanently red; a witness fixture would put a synthetic sha into a production artifact. All three were rejected.\\n\\nSo the apply artifact binds its revision at INVOCATION (RevisionBoundAtInvocation) and the retract artifact installs no release at all (RevisionNotInstalled). Neither needs an argument because neither knows a candidate, which is exactly true of a static file. The PRODUCTION apply path does know one — the launcher observed it — and supplies RevisionBoundAtEmission directly to live_deploy_apply_script_for, never through these."
-
-fn expected_live_deploy_apply_script() -> String {
-  live_deploy_apply_script_for(
-    spec: deployment_spec_srv1(),
-    revision: RevisionBoundAtInvocation { shell_variable: release_revision_shell_variable },
-  )
-}
-
-fn expected_live_deploy_retract_script() -> String {
-  live_deploy_retract_script_for(spec: deployment_spec_srv1())
 }
 
 fn live_deploy_systemd_unit_for(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> String {

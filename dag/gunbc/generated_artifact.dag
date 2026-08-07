@@ -20,8 +20,6 @@ type GeneratedArtifact
   | Stage0CratePartitionGeneratedDagArtifact
   | Stage0EmitPlanGeneratedDagArtifact
   | V1InterpreterDispatchGeneratedRsArtifact
-  | LiveDeployApplyScriptArtifact
-  | LiveDeployRetractScriptArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
   | ProxyDhcpDnsmasqArtifact { spec: InstallServerSpec }
   | PlanArtifact { plan: Plan }
@@ -29,7 +27,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact],
+      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
@@ -69,8 +67,6 @@ fn artifact_path(a: GeneratedArtifact) -> String {
     Stage0CratePartitionGeneratedDagArtifact => "dag/gunbc/stage0_crate_partition_generated.dag"
     Stage0EmitPlanGeneratedDagArtifact => "dag/gunbc/stage0_emit_plan_generated.dag"
     V1InterpreterDispatchGeneratedRsArtifact => "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs"
-    LiveDeployApplyScriptArtifact => ".github/live-deploy-srv1-apply.sh"
-    LiveDeployRetractScriptArtifact => ".github/live-deploy-srv1-retract.sh"
     AutoinstallUserDataArtifact { spec } => concat(concat("provisioning/", spec.host), "/user-data")
     ProxyDhcpDnsmasqArtifact { spec } => concat(concat("provisioning/", spec.host), "/dnsmasq.conf")
     PlanArtifact { plan } => plan_path(p: plan)
@@ -94,8 +90,6 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0EmitPlanGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     V1InterpreterDispatchGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
-    LiveDeployApplyScriptArtifact => CommitRequired { consumer: HostReconciler }
-    LiveDeployRetractScriptArtifact => CommitRequired { consumer: HostReconciler }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
     ProxyDhcpDnsmasqArtifact { spec: _ } => NotCommitted
   }
@@ -208,8 +202,6 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
     Stage0EmitPlanGeneratedDagArtifact => match b { Stage0EmitPlanGeneratedDagArtifact => true  _ => false }
     V1InterpreterDispatchGeneratedRsArtifact => match b { V1InterpreterDispatchGeneratedRsArtifact => true  _ => false }
-    LiveDeployApplyScriptArtifact => match b { LiveDeployApplyScriptArtifact => true  _ => false }
-    LiveDeployRetractScriptArtifact => match b { LiveDeployRetractScriptArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     ProxyDhcpDnsmasqArtifact { spec } => match b { ProxyDhcpDnsmasqArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }
