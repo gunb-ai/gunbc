@@ -112,10 +112,6 @@ fn red_receipt() -> AlertReceiptInput {
   receipt_input_with(component: one_failing_component)
 }
 
-fn red_receipt_other_class() -> AlertReceiptInput {
-  receipt_input_with(component: other_failing_component)
-}
-
 fn signature_struct_of(component: String) -> IncidentSignature {
   match floor_component_receipt_decode_with(text: receipt_text_with(component: component), expected_schema: alert_expected_schema) {
     ReceiptDecoded { document: d } => alert_signature_of(doc: d)
