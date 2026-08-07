@@ -36213,6 +36213,7 @@ pub struct ExtdepsShapeTransportPolicyModuleFacts {
 }
 
 type ExtdepsParsedModule = (
+    Rc<crate::v1_std_core::Node>,
     Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 );
@@ -36259,6 +36260,7 @@ fn extdeps_source_content_hash(content: &str) -> u64 {
 pub fn parse_extdeps_module_items(
     path: &str,
 ) -> (
+    Rc<crate::v1_std_core::Node>,
     Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) {
@@ -36299,7 +36301,7 @@ pub fn parse_extdeps_module_items(
         .module
         .as_ref()
         .expect("parse_extdeps_module_items: missing module");
-    let parsed: ExtdepsParsedModule = (module.children.clone(), source_indices);
+    let parsed: ExtdepsParsedModule = (module.clone(), module.children.clone(), source_indices);
     EXTDEPS_PARSE_MEMO.with(|memo| {
         memo.borrow_mut()
             .insert(memo_key, (content_hash, parsed.clone()));
@@ -36342,7 +36344,7 @@ pub fn shell_transport_operation_declaration(
     service: &str,
     operation: &str,
 ) -> Option<OperationArgvDeclaration> {
-    let (items, source_indices) = parse_extdeps_module_items(path);
+    let (_module, items, source_indices) = parse_extdeps_module_items(path);
     for item in items.iter() {
         if item.name != service {
             continue;
@@ -36468,7 +36470,7 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
             continue;
         };
         let rel = rel.to_string_lossy().to_string();
-        let (items, source_indices) = parse_extdeps_module_items(&rel);
+        let (_module, items, source_indices) = parse_extdeps_module_items(&rel);
         for item in items.iter() {
             for op in item.children.iter() {
                 let Some(transport) = op
@@ -36686,7 +36688,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
     };
 
     let path = source_path_for_module_path(module_path.to_string());
-    let (items, source_indices) = parse_extdeps_module_items(&path);
+    let (_module, items, source_indices) = parse_extdeps_module_items(&path);
 
     let mut argv_facts: Vec<ExtdepsArgvFactRaw> = Vec::new();
     let mut input_facts: Vec<ExtdepsInputFactRaw> = Vec::new();
@@ -36854,29 +36856,31 @@ fn external_authority_scheme_identity_from_value_node(
     authored_name_at(source_indices.clone(), node.clone())
 }
 
-fn extdeps_import_home_for_symbol(module_content: &str, symbol: &str) -> Option<String> {
-    for line in module_content.lines() {
-        let trimmed = line.trim();
-        if !trimmed.starts_with("import ") {
+fn extdeps_import_home_for_symbol(
+    module: &Rc<crate::v1_std_core::Node>,
+    symbol: &str,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Option<String> {
+    use crate::v1_std_core::{authored_name_at, expr_var_name_at, module_imports, ExprData};
+    for imp in module_imports(module.clone()).iter() {
+        if imp.body.is_some() {
             continue;
         }
-        let rest = trimmed["import ".len()..].trim();
-        let (module_part, names_part) = match rest.find('{') {
-            Some(open) => (
-                rest[..open].trim(),
-                Some(rest[open + 1..].trim_end_matches('}').trim()),
-            ),
-            None => (rest, None),
-        };
-        if module_part.is_empty() {
-            continue;
-        }
-        let Some(names) = names_part else {
-            continue;
-        };
-        for imported in names.split(',') {
-            if imported.trim() == symbol {
-                return Some(module_part.to_string());
+        let home = imp.name.clone();
+        for name_node in imp.children.iter() {
+            let imported = match name_node.expr_data.as_ref() {
+                ExprData::ExprVar { .. } => {
+                    let name = expr_var_name_at(name_node.clone(), source_indices.clone());
+                    if name.is_empty() {
+                        name_node.name.clone()
+                    } else {
+                        name
+                    }
+                }
+                _ => authored_name_at(source_indices.clone(), name_node.clone()),
+            };
+            if imported == symbol {
+                return Some(home);
             }
         }
     }
@@ -36912,9 +36916,8 @@ fn external_authority_alias_symbol_name(
 
 fn external_authority_anchor_from_data_body(
     body: &Rc<crate::v1_std_core::Node>,
+    module: &Rc<crate::v1_std_core::Node>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-    module_content: &str,
-    module_path: &str,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
     use crate::v1_std_core::authored_name_at;
@@ -36937,16 +36940,14 @@ fn external_authority_anchor_from_data_body(
         };
     }
     let Some(symbol) = external_authority_alias_symbol_name(body, source_indices) else {
-        let _ = module_path;
         return ExternalAuthorityAnchorProjection::Absent;
     };
-    if let Some(home) = extdeps_import_home_for_symbol(module_content, symbol.as_str()) {
+    if let Some(home) = extdeps_import_home_for_symbol(module, symbol.as_str(), source_indices) {
         if !visited.insert(home.clone()) {
             return ExternalAuthorityAnchorProjection::Absent;
         }
         return project_external_authority_named_data(&home, symbol.as_str(), visited);
     }
-    let _ = module_path;
     ExternalAuthorityAnchorProjection::Absent
 }
 
@@ -36957,8 +36958,7 @@ fn project_external_authority_named_data(
 ) -> ExternalAuthorityAnchorProjection {
     use crate::v1_compiler_emit_core_support::is_data_def_item;
     let path = source_path_for_module_path(module_path.to_string());
-    let content = read_extdeps_module_source_text(&path);
-    let (items, source_indices) = parse_extdeps_module_items(&path);
+    let (module, items, source_indices) = parse_extdeps_module_items(&path);
     for item in items.iter() {
         if !is_data_def_item(item.clone()) || item.name != data_name {
             continue;
@@ -36966,22 +36966,15 @@ fn project_external_authority_named_data(
         let Some(body) = item.body.as_ref() else {
             return ExternalAuthorityAnchorProjection::Absent;
         };
-        return external_authority_anchor_from_data_body(
-            body,
-            &source_indices,
-            content.as_str(),
-            module_path,
-            visited,
-        );
+        return external_authority_anchor_from_data_body(body, &module, &source_indices, visited);
     }
     ExternalAuthorityAnchorProjection::Absent
 }
 
 fn read_external_authority_anchor_from_items(
     items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
+    module: &Rc<crate::v1_std_core::Node>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-    module_content: &str,
-    module_path: &str,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
     use crate::v1_compiler_emit_core_support::is_data_def_item;
@@ -36992,30 +36985,17 @@ fn read_external_authority_anchor_from_items(
         let Some(body) = item.body.as_ref() else {
             return ExternalAuthorityAnchorProjection::Absent;
         };
-        return external_authority_anchor_from_data_body(
-            body,
-            source_indices,
-            module_content,
-            module_path,
-            visited,
-        );
+        return external_authority_anchor_from_data_body(body, module, source_indices, visited);
     }
     ExternalAuthorityAnchorProjection::Absent
 }
 
 fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnchorProjection {
     let path = source_path_for_module_path(module_path.to_string());
-    let content = read_extdeps_module_source_text(&path);
-    let (items, source_indices) = parse_extdeps_module_items(&path);
+    let (module, items, source_indices) = parse_extdeps_module_items(&path);
     let mut visited = std::collections::HashSet::new();
     visited.insert(module_path.to_string());
-    read_external_authority_anchor_from_items(
-        &items,
-        &source_indices,
-        content.as_str(),
-        module_path,
-        &mut visited,
-    )
+    read_external_authority_anchor_from_items(&items, &module, &source_indices, &mut visited)
 }
 
 fn external_authority_machinery_exempt_module_paths() -> &'static [&'static str] {
@@ -37100,10 +37080,25 @@ mod extdeps_external_authority_anchor_projection_tests {
 
     #[test]
     fn extdeps_import_home_for_symbol_finds_setup_token_cli_anchor_import() {
-        let content = include_str!("../../../../dag/extdeps/llm/claude_setup_token_cli.dag");
+        let path = source_path_for_module_path("extdeps.llm.claude_setup_token_cli".to_string());
+        let (module, _items, source_indices) = parse_extdeps_module_items(&path);
         assert_eq!(
-            extdeps_import_home_for_symbol(content, "claude_cli_external_authority_anchor"),
+            extdeps_import_home_for_symbol(
+                &module,
+                "claude_cli_external_authority_anchor",
+                &source_indices,
+            ),
             Some("extdeps.llm.cli".to_string())
+        );
+    }
+
+    #[test]
+    fn extdeps_import_home_for_symbol_handles_multiline_import_block() {
+        let path = source_path_for_module_path("extdeps.llm.claude_setup_token_cli".to_string());
+        let (module, _items, source_indices) = parse_extdeps_module_items(&path);
+        assert_eq!(
+            extdeps_import_home_for_symbol(&module, "String", &source_indices),
+            Some("std.types".to_string())
         );
     }
 

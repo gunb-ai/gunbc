@@ -149,10 +149,6 @@ type ClaudeEnrollmentWriterLeaseAdmission
       incumbent_version: NonEmptyStr,
       attempted_version: NonEmptyStr,
     }
-  | EnrollmentLeaseRefusedStaleEpoch {
-      holder_epoch: Int,
-      current_epoch: Int,
-    }
 
 type ClaudeEnrollmentWriterLeasePublishAdmission
   = EnrollmentLeasePublishGranted
