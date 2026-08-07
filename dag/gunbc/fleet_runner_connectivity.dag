@@ -288,6 +288,8 @@ fn materialized_width_for_host(host: HostIdentity) -> Int {
 
 data incident_materialized_slot_indices: List<Nat> = [1, 2, 3, 4, 5]
 
+data local_incarnations_width_refusal_note: String = "local_incarnations_for_host refuses (returns Absent) for any unit-active width other than the incident corpus width of five — never answers an empty list for an unmodeled width. An empty list would conflate no incarnations observed with observation refused (DESIGN empty-observation narrow); Absent propagates to connectivity_verdicts_for_active_incarnations, runner_slot_connectivity_verdict, and runner_capacity_plan observed_slot_identities so repair planning cannot silently proceed with zero replacements."
+
 fn slot_suffix(slot_index: Nat) -> String {
   if slot_index == 1 {
     "01"
@@ -324,28 +326,36 @@ fn runner_slot_incarnation(
   }
 }
 
-fn local_incarnations_for_host(host: HostIdentity, width: Int) -> List<LocalRunnerSlotIncarnation> {
+fn local_incarnations_for_host(host: HostIdentity, width: Int) -> List<LocalRunnerSlotIncarnation>? {
   if width == 5 {
-    map(
-      incident_materialized_slot_indices,
-      i => runner_slot_incarnation(host: host, slot_index: i, unit_active: true)
-    )
+    Present {
+      value: map(
+        incident_materialized_slot_indices,
+        i => runner_slot_incarnation(host: host, slot_index: i, unit_active: true)
+      )
+    }
   } else {
-    []
+    none
   }
 }
 
-fn local_runner_slot_incarnations() -> List<LocalRunnerSlotIncarnation> {
-  concat(
-    local_incarnations_for_host(host: operator_host_srv1, width: materialized_width_for_host(host: operator_host_srv1)),
-    concat(
-      local_incarnations_for_host(host: operator_host_srv2, width: materialized_width_for_host(host: operator_host_srv2)),
-      concat(
-        local_incarnations_for_host(host: operator_host_srv3, width: materialized_width_for_host(host: operator_host_srv3)),
-        local_incarnations_for_host(host: operator_host_srv4, width: materialized_width_for_host(host: operator_host_srv4))
-      )
-    )
-  )
+fn local_runner_slot_incarnations() -> List<LocalRunnerSlotIncarnation>? {
+  match local_incarnations_for_host(host: operator_host_srv1, width: materialized_width_for_host(host: operator_host_srv1)) {
+    Absent => none
+    Present { value: h1 } =>
+      match local_incarnations_for_host(host: operator_host_srv2, width: materialized_width_for_host(host: operator_host_srv2)) {
+        Absent => none
+        Present { value: h2 } =>
+          match local_incarnations_for_host(host: operator_host_srv3, width: materialized_width_for_host(host: operator_host_srv3)) {
+            Absent => none
+            Present { value: h3 } =>
+              match local_incarnations_for_host(host: operator_host_srv4, width: materialized_width_for_host(host: operator_host_srv4)) {
+                Absent => none
+                Present { value: h4 } => Present { value: concat(h1, concat(h2, concat(h3, h4))) }
+              }
+          }
+      }
+  }
 }
 
 fn runner_slot_connectivity_verdict_for_incarnation(
@@ -380,25 +390,32 @@ fn runner_slot_connectivity_verdict(
   slot: RunnerSlotIdentity,
   roster: OrganizationRunnerRosterEvidence,
 ) -> RunnerSlotConnectivityVerdict {
-  let incarnations = local_runner_slot_incarnations()
-  match fold(
-    incarnations,
-    init: none,
-    f: (acc, inc) =>
-      if (inc.slot.host as String) == (slot.host as String) && inc.slot.slot_index == slot.slot_index {
-        Present {
-          value: runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster)
-        }
-      } else {
-        acc
-      }
-  ) {
+  match local_runner_slot_incarnations() {
     Absent =>
       SlotConnectivityUnknown {
         slot: slot,
-        reason: "no local incarnation is modeled for this slot identity"
+        reason: "local incarnation observation refused — unit-active width is not the modeled incident corpus width"
       }
-    Present { value: v } => v
+    Present { value: incarnations } =>
+      match fold(
+        incarnations,
+        init: none,
+        f: (acc, inc) =>
+          if (inc.slot.host as String) == (slot.host as String) && inc.slot.slot_index == slot.slot_index {
+            Present {
+              value: runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster)
+            }
+          } else {
+            acc
+          }
+      ) {
+        Absent =>
+          SlotConnectivityUnknown {
+            slot: slot,
+            reason: "no local incarnation is modeled for this slot identity"
+          }
+        Present { value: v } => v
+      }
   }
 }
 
@@ -486,11 +503,17 @@ fn fleet_runner_capacity_width_snapshot() -> FleetRunnerCapacityWidthSnapshot {
 
 fn connectivity_verdicts_for_active_incarnations(
   roster: OrganizationRunnerRosterEvidence,
-) -> List<RunnerSlotConnectivityVerdict> {
-  map(
-    local_runner_slot_incarnations(),
-    inc => runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster)
-  )
+) -> List<RunnerSlotConnectivityVerdict>? {
+  match local_runner_slot_incarnations() {
+    Absent => none
+    Present { value: incs } =>
+      Present {
+        value: map(
+          incs,
+          inc => runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster)
+        )
+      }
+  }
 }
 
 fn connectivity_verdict_is_healthy(v: RunnerSlotConnectivityVerdict) -> Bool {
@@ -526,10 +549,14 @@ fn roster_unavailable_yields_unknown_not_detached(
 ) -> Bool {
   match roster {
     RosterReadUnavailable { reason: _ } =>
-      all(
-        connectivity_verdicts_for_active_incarnations(roster: roster),
-        v => connectivity_verdict_is_unknown(v: v) && !connectivity_verdict_is_detached(v: v)
-      )
+      match connectivity_verdicts_for_active_incarnations(roster: roster) {
+        Absent => false
+        Present { value: verdicts } =>
+          all(
+            verdicts,
+            v => connectivity_verdict_is_unknown(v: v) && !connectivity_verdict_is_detached(v: v)
+          )
+      }
     RosterObserved { observed_on: _, registrations: _ } => true
   }
 }

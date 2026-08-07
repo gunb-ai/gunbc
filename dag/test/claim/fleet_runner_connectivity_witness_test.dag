@@ -9,6 +9,8 @@ import gunbc.fleet_intent_network {
 }
 import gunbc.fleet_runner_connectivity {
   organization_runner_roster_evidence,
+  local_incarnations_for_host,
+  local_runner_slot_incarnations,
   runner_slot_connectivity_verdict,
   runner_slot_connectivity_verdict_for_incarnation,
   connectivity_verdicts_for_active_incarnations,
@@ -88,10 +90,10 @@ data roster_unavailable_is_unknown_not_detached_note: String = "THE FAIL-CLOSED 
 test fn roster_unavailable_yields_unknown_on_every_active_slot() -> Bool {
   let roster = RosterReadUnavailable { reason: "GitHub org runners API returned 503" }
   roster_unavailable_yields_unknown_not_detached(roster: roster)
-    && all(
-      connectivity_verdicts_for_active_incarnations(roster: roster),
-      v => connectivity_verdict_is_unknown(v: v)
-    )
+    && match connectivity_verdicts_for_active_incarnations(roster: roster) {
+      Present { value: verdicts } => all(verdicts, v => connectivity_verdict_is_unknown(v: v))
+      Absent => false
+    }
 }
 
 test fn roster_unavailable_does_not_fabricate_zero_achieved_widths() -> Bool {
@@ -136,23 +138,35 @@ test fn materialized_and_unit_active_widths_are_twenty_not_desired() -> Bool {
 
 test fn detached_count_matches_offline_registrations_on_active_slots() -> Bool {
   let roster = organization_runner_roster_evidence()
-  let verdicts = connectivity_verdicts_for_active_incarnations(roster: roster)
-  count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_detached(v: v)) == 15
+  match connectivity_verdicts_for_active_incarnations(roster: roster) {
+    Present { value: verdicts } =>
+      count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_detached(v: v)) == 15
+    Absent => false
+  }
 }
 
 test fn healthy_count_is_one_and_orphaned_count_is_four() -> Bool {
   let roster = organization_runner_roster_evidence()
-  let verdicts = connectivity_verdicts_for_active_incarnations(roster: roster)
-  count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_healthy(v: v)) == 1
-    && count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_orphaned(v: v)) == 4
+  match connectivity_verdicts_for_active_incarnations(roster: roster) {
+    Present { value: verdicts } =>
+      count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_healthy(v: v)) == 1
+        && count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_orphaned(v: v)) == 4
+    Absent => false
+  }
 }
 
 test fn local_incarnation_observation_covers_twenty_active_units() -> Bool {
-  local_runner_slot_incarnations().length() == 20
-    && all(
-      local_runner_slot_incarnations(),
-      inc => inc.unit_active
-    )
+  match local_runner_slot_incarnations() {
+    Present { value: incs } => incs.length() == 20 && all(incs, inc => inc.unit_active)
+    Absent => false
+  }
+}
+
+test fn unmodeled_unit_active_width_refuses_local_incarnation_observation() -> Bool {
+  match local_incarnations_for_host(host: operator_host_srv3, width: 6) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
 
 test fn fleet_runner_connectivity_RED_orphaned_slot_must_not_read_detached() -> Bool {

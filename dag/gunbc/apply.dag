@@ -11,7 +11,6 @@ import gunbc.runner_capacity_plan {
   WidthParsed,
   WidthInvalidSyntax,
   WidthNegative,
-  WidthExceedsModeledCeiling,
   runner_capacity_plan,
 }
 import gunbc.fleet_runner_connectivity {
@@ -81,14 +80,10 @@ fn apply_runner_capacity_plan(
       match parse_width_input(value: srv3_width) {
         WidthInvalidSyntax => exit_failure(reason: "srv3_width must be a non-negative integer")
         WidthNegative { value: _ } => exit_failure(reason: "srv3_width must be non-negative")
-        WidthExceedsModeledCeiling { value: _ } =>
-          exit_failure(reason: "srv3_width exceeds modeled admission ceiling (7)")
         WidthParsed { value: w3 } =>
           match parse_width_input(value: srv4_width) {
             WidthInvalidSyntax => exit_failure(reason: "srv4_width must be a non-negative integer")
             WidthNegative { value: _ } => exit_failure(reason: "srv4_width must be non-negative")
-            WidthExceedsModeledCeiling { value: _ } =>
-              exit_failure(reason: "srv4_width exceeds modeled admission ceiling (7)")
             WidthParsed { value: w4 } =>
               match organization_runner_roster_for_apply_plan() {
                 Absent =>

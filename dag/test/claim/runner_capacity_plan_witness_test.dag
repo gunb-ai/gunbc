@@ -70,7 +70,6 @@ test fn parse_width_input_accepts_mid_migration_six() -> Bool {
     WidthParsed { value: 6 } => true
     WidthInvalidSyntax => false
     WidthNegative { value: _ } => false
-    WidthExceedsModeledCeiling { value: _ } => false
   }
 }
 
@@ -79,7 +78,6 @@ test fn parse_width_input_rejects_non_integer() -> Bool {
     WidthInvalidSyntax => true
     WidthParsed { value: _ } => false
     WidthNegative { value: _ } => false
-    WidthExceedsModeledCeiling { value: _ } => false
   }
 }
 
@@ -89,6 +87,19 @@ test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
     srv4_width: 7,
     roster: RosterReadUnavailable { reason: "503" },
     observed_srv3_unit_active_width: incident_unit_active_width_for_host(host: operator_host_srv3),
+    observed_srv4_unit_active_width: incident_unit_active_width_for_host(host: operator_host_srv4)
+  ) {
+    PlanRefused { reason: _ } => true
+    PlanReady { hosts: _ } => false
+  }
+}
+
+test fn unmodeled_observed_width_refuses_runner_capacity_plan() -> Bool {
+  match runner_capacity_plan(
+    srv3_width: 7,
+    srv4_width: 5,
+    roster: organization_runner_roster_evidence(),
+    observed_srv3_unit_active_width: 6,
     observed_srv4_unit_active_width: incident_unit_active_width_for_host(host: operator_host_srv4)
   ) {
     PlanRefused { reason: _ } => true
