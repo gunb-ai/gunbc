@@ -44,10 +44,6 @@ import v2.std.compilers.compilation_unit {
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Node, Symbol }
-import gunbc.stage0_crate_partition_generated {
-  GeneratedPartitionCrateRow,
-  generated_partition_crate_rows
-}
 
 type PartitionPolicy {
   target_crate_count: Int
@@ -174,9 +170,9 @@ data stage0_partition_membership_closure_note: String = "C2: per-crate module me
 
 data stage0_partition_closure_collision_policy_note: String = "C2 collision policy is explicit: SharedDependencyThroughPackage | AssignmentConflict. Import-order and layer-order first-wins are forbidden — ownership is a global function of raw reaches plus declared package deps."
 
-data stage0_partition_emit_core_exemption_note: String = "Emit-core is structurally outside the membership fold: stage0_unit_emit_core is excluded from stage0_module_bearing_unit_ids and partition_fold CompilationUnits. Stage0EmitCoreCrate is a reexport shell (stage0_r3_emit_shell_crate_row); its modules list is the declared public reexport surface (stage0_r3_emit_reexport_surface_modules), with totality enforced by stage0_partition_row_lookups_resolved — every listed basename must resolve to an owner in module-bearing rows. C2 does not run the owner fold on emit-core; C3 emitted-reference oracle (stage0_partition_emitted_membership_oracle_holds) compares committed generated_partition_crate_rows against stage0_partition_crate_rows_outcome independently of row construction."
+data stage0_partition_emit_core_exemption_note: String = "Emit-core is structurally outside the membership fold: stage0_unit_emit_core is excluded from stage0_module_bearing_unit_ids and partition_fold CompilationUnits. Stage0EmitCoreCrate is a reexport shell (stage0_r3_emit_shell_crate_row); its modules list is the declared public reexport surface (stage0_r3_emit_reexport_surface_modules), with totality enforced by stage0_partition_row_lookups_resolved — every listed basename must resolve to an owner in module-bearing rows. C2 does not run the owner fold on emit-core; C3 emitted-reference oracle (v2.workflow.stage0_partition_emitted_reference_oracle) observes committed lib.rs pub mod declarations against derived membership; C2.5 generated-artifact parity (v2.workflow.stage0_partition_generated_parity) compares committed generated_partition_crate_rows against this authority."
 
-data stage0_partition_emitted_reference_oracle_note: String = "C3 emitted-reference oracle: the committed generated artifact gunbc.stage0_crate_partition_generated.generated_partition_crate_rows is the emitted reference; stage0_partition_crate_rows_outcome is the live authority. Membership equivalence is a package_name-keyed bijection (duplicate package_name on either side refuses; each emitted row matches exactly one authority row at the same key; modules + reexport_packages compared as order-independent sets). A stale or hand-edited generated row that diverges from the authority derivation must refuse — this is independent of C2's frozen baseline receipt, which compares derivation to pre-derivation hand lists."
+data stage0_partition_generated_parity_note: String = "C2.5 committed partition artifact parity lives in v2.workflow.stage0_partition_generated_parity — authority produces projection, checker compares; this carrier never imports generated_partition_crate_rows. Does not discharge C3 emitted-reference oracle."
 
 data rust_crate_partition_declared_core_target: Int = 7
 
@@ -615,10 +611,20 @@ fn stage0_string_lists_equal_as_sets(
   left: List<String>,
   right: List<String>
 ) -> Bool {
-  (left |> count) == (right |> count)
-    && left
+  let left_set = left
+    |> fold(init: [], f: fn(acc, item) {
+      stage0_snoc_unique_string(xs: acc, item: item)
+    })
+  let right_set = right
+    |> fold(init: [], f: fn(acc, item) {
+      stage0_snoc_unique_string(xs: acc, item: item)
+    })
+  (left |> count) == (left_set |> count)
+    && (right |> count) == (right_set |> count)
+    && (left_set |> count) == (right_set |> count)
+    && left_set
       |> fold(init: true, f: fn(ok, item) {
-        ok && any(xs: right, predicate: fn(s) { s == item })
+        ok && any(xs: right_set, predicate: fn(s) { s == item })
       })
 }
 
@@ -2170,101 +2176,5 @@ fn stage0_partition_fold_ok() -> Bool {
       }
     Stage0PartitionReceiptResolveRefused { cause: _ } => false
     Stage0PartitionReceiptFoldRefused { cause: _ } => false
-  }
-}
-
-fn stage0_partition_emitted_row_matches_authority_row(
-  emitted: GeneratedPartitionCrateRow,
-  authority: Stage0PartitionCrateRow
-) -> Bool {
-  (emitted.package_name == authority.package_name)
-    && (emitted.crate_dir == authority.crate_dir)
-    && stage0_string_lists_equal_as_sets(
-      left: emitted.modules,
-      right: authority.modules
-    )
-    && stage0_string_lists_equal_as_sets(
-      left: emitted.reexport_packages,
-      right: authority.reexport_packages
-    )
-}
-
-fn stage0_string_list_has_no_duplicates(xs: List<String>) -> Bool {
-  let unique = xs
-    |> fold(init: [], f: fn(acc, item) {
-      stage0_snoc_unique_string(xs: acc, item: item)
-    })
-  (xs |> count) == (unique |> count)
-}
-
-fn stage0_partition_authority_row_for_package_name(
-  package_name: String,
-  authority_rows: List<Stage0PartitionCrateRow>
-) -> Optional<Stage0PartitionCrateRow> {
-  authority_rows
-    |> fold(init: Absent, f: fn(found, authority_row) {
-      match found {
-        Present { value: _ } => found
-        Absent =>
-          if authority_row.package_name == package_name {
-            optional_present(value: authority_row)
-          } else {
-            Absent
-          }
-      }
-    })
-}
-
-fn stage0_partition_emitted_membership_lists_oracle_holds(
-  emitted_modules: List<String>,
-  authority_modules: List<String>
-) -> Bool {
-  stage0_string_lists_equal_as_sets(
-    left: emitted_modules,
-    right: authority_modules
-  )
-}
-
-fn stage0_partition_emitted_membership_oracle_holds() -> Bool {
-  match stage0_partition_crate_rows_outcome() {
-    Stage0PartitionCrateRowsRefused { cause: _ } => false
-    Stage0PartitionCrateRowsOk { rows: authority_rows } => {
-      let emitted_rows = generated_partition_crate_rows
-      let emitted_package_names = emitted_rows
-        |> fold(init: [], f: fn(acc, emitted_row) {
-          acc |> concat([emitted_row.package_name])
-        })
-      let authority_package_names = authority_rows
-        |> fold(init: [], f: fn(acc, authority_row) {
-          acc |> concat([authority_row.package_name])
-        })
-      stage0_string_list_has_no_duplicates(xs: emitted_package_names)
-        && stage0_string_list_has_no_duplicates(xs: authority_package_names)
-        && (emitted_rows |> count) == (authority_rows |> count)
-        && emitted_rows
-          |> fold(init: true, f: fn(ok, emitted_row) {
-            match stage0_partition_authority_row_for_package_name(
-              package_name: emitted_row.package_name,
-              authority_rows: authority_rows
-            ) {
-              Absent => false
-              Present { value: authority_row } =>
-                ok
-                  && stage0_partition_emitted_row_matches_authority_row(
-                    emitted: emitted_row,
-                    authority: authority_row
-                  )
-            }
-          })
-    }
-  }
-}
-
-fn stage0_partition_emitted_membership_oracle_refusal_propagates_holds() -> Bool {
-  match stage0_derived_partition_outcome() {
-    Stage0DerivedPartitionRefused { cause: _ } =>
-      !stage0_partition_emitted_membership_oracle_holds()
-    Stage0DerivedPartitionOk { assignment: _, members_by_unit: _, reach_dispositions_by_unit: _ } =>
-      true
   }
 }

@@ -1,0 +1,38 @@
+module v2.test.claim.stage0_partition_generated_parity
+
+import v2.workflow.stage0_partition_generated_parity {
+  stage0_parity_membership_lists_holds,
+  stage0_partition_generated_artifact_parity_holds,
+  stage0_partition_generated_artifact_parity_refusal_propagates_holds
+}
+
+data stage0_partition_generated_parity_witness_note: String = "C2.5 committed partition artifact parity: generated_partition_crate_rows must match stage0_partition_crate_rows_outcome at every shared field (package_name, crate_dir, kind, modules, reexport_packages, carries_non_empty_wrappers). Does not discharge C3. RED controls: duplicate-blind set compare; order independence; exact match."
+
+test fn stage0_partition_generated_artifact_parity_holds_witness() -> Bool {
+  stage0_partition_generated_artifact_parity_holds()
+}
+
+test fn stage0_partition_generated_artifact_parity_refusal_propagates_witness_holds() -> Bool {
+  stage0_partition_generated_artifact_parity_refusal_propagates_holds()
+}
+
+test fn stage0_partition_generated_parity_red_duplicate_blind_set_refuses_holds() -> Bool {
+  !stage0_parity_membership_lists_holds(
+    generated_modules: ["a", "a"],
+    authority_modules: ["a", "b"]
+  )
+}
+
+test fn stage0_partition_generated_parity_set_order_independence_holds() -> Bool {
+  stage0_parity_membership_lists_holds(
+    generated_modules: ["a", "b"],
+    authority_modules: ["b", "a"]
+  )
+}
+
+test fn stage0_partition_generated_parity_set_exact_match_holds() -> Bool {
+  stage0_parity_membership_lists_holds(
+    generated_modules: ["a", "b"],
+    authority_modules: ["a", "b"]
+  )
+}

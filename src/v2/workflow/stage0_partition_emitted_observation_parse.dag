@@ -1,0 +1,153 @@
+module v2.workflow.stage0_partition_emitted_observation_parse
+
+import std.types { List, String }
+import v2.std.algebra { fold_list }
+
+data stage0_emitted_observation_parse_note: String = "C3 observation parse helpers: extract pub mod basenames from committed partition crate lib.rs text. Uses only primitive string ops (no trim/list_head/skip) so resolution stays in the same builtin surface as floor_naming_hygiene."
+
+data stage0_emitted_observation_empty_strings: List<String> = []
+
+fn stage0_emitted_observation_first_split_segment(text: String, delimiter: String) -> String {
+  fold(
+    split(s: text, delimiter: delimiter),
+    init: "",
+    f: fn(acc, segment) {
+      if acc == "" {
+        segment
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn stage0_emitted_observation_pub_mod_rest_after_prefix(line: String) -> String {
+  if !starts_with(s: line, prefix: "pub mod ") {
+    ""
+  } else {
+    stage0_emitted_observation_first_split_segment(
+      text: substring(
+        s: line,
+        start: 8,
+        end: string_length(s: line)
+      ),
+      delimiter: "pub mod "
+    )
+  }
+}
+
+fn stage0_emitted_observation_pub_mod_basename_from_rest(rest: String) -> String {
+  if rest == "" {
+    ""
+  } else if string_contains(s: rest, pattern: "{") {
+    stage0_emitted_observation_first_split_segment(
+      text: stage0_emitted_observation_first_split_segment(text: rest, delimiter: "{"),
+      delimiter: " "
+    )
+  } else {
+    stage0_emitted_observation_first_split_segment(
+      text: stage0_emitted_observation_first_split_segment(text: rest, delimiter: ";"),
+      delimiter: " "
+    )
+  }
+}
+
+fn stage0_emitted_observation_lib_rs_line_pub_mod_basename(line: String) -> String {
+  stage0_emitted_observation_pub_mod_basename_from_rest(
+    rest: stage0_emitted_observation_pub_mod_rest_after_prefix(line: line)
+  )
+}
+
+fn stage0_emitted_observation_lib_rs_pub_mod_basenames(text: String) -> List<String> {
+  fold_list(
+    xs: split(s: text, delimiter: "\n"),
+    empty: stage0_emitted_observation_empty_strings,
+    cons: fn(acc, line) {
+      let basename = stage0_emitted_observation_lib_rs_line_pub_mod_basename(line: line)
+      if basename == "" {
+        acc
+      } else {
+        acc |> concat([basename])
+      }
+    }
+  )
+}
+
+fn stage0_emitted_observation_use_crate_marker(line: String) -> String {
+  if string_contains(s: line, pattern: "pub use crate::") {
+    "pub use crate::"
+  } else if string_contains(s: line, pattern: "use crate::") {
+    "use crate::"
+  } else {
+    ""
+  }
+}
+
+fn stage0_emitted_observation_tail_after_delimiter(text: String, delimiter: String) -> String {
+  let tail = fold(
+    split(s: text, delimiter: delimiter),
+    init: "__pending__",
+    f: fn(acc, segment) {
+      if acc == "__pending__" {
+        "__ready__"
+      } else if acc == "__ready__" {
+        segment
+      } else {
+        acc
+      }
+    }
+  )
+  if tail == "__pending__" || tail == "__ready__" {
+    ""
+  } else {
+    tail
+  }
+}
+
+fn stage0_emitted_observation_use_after_marker(line: String, marker: String) -> String {
+  if !string_contains(s: line, pattern: marker) {
+    ""
+  } else {
+    stage0_emitted_observation_tail_after_delimiter(text: line, delimiter: marker)
+  }
+}
+
+fn stage0_emitted_observation_use_crate_top_module(line: String) -> String {
+  let marker = stage0_emitted_observation_use_crate_marker(line: line)
+  if marker == "" {
+    ""
+  } else {
+    let rest = stage0_emitted_observation_use_after_marker(line: line, marker: marker)
+    if rest == "" {
+      ""
+    } else {
+      stage0_emitted_observation_first_split_segment(
+        text: stage0_emitted_observation_first_split_segment(text: rest, delimiter: ";"),
+        delimiter: "::"
+      )
+    }
+  }
+}
+
+fn stage0_emitted_observation_source_line_use_crate_modules(line: String) -> List<String> {
+  let module_name = stage0_emitted_observation_use_crate_top_module(line: line)
+  if module_name == "" {
+    []
+  } else {
+    [module_name]
+  }
+}
+
+fn stage0_emitted_observation_source_text_use_crate_modules(text: String) -> List<String> {
+  fold_list(
+    xs: split(s: text, delimiter: "\n"),
+    empty: stage0_emitted_observation_empty_strings,
+    cons: fn(acc, line) {
+      fold_list(
+        xs: stage0_emitted_observation_source_line_use_crate_modules(line: line),
+        empty: acc,
+        cons: fn(inner, item) { inner |> concat([item]) }
+      )
+    }
+  )
+}

@@ -1,83 +1,77 @@
 module v2.test.claim.stage0_partition_emitted_reference_oracle
 
-import v2.std.compilers.compilation_unit { CompilationUnitId }
-import gunbc.stage0_crate_partition_generated {
-  GeneratedPartitionCrateRow,
-  GeneratedFoundationCrate,
-  generated_partition_crate_rows
-}
-import v2.workflow.rust_crate_partition {
-  Stage0FoundationCrate,
-  Stage0LayeredCoreCrate,
-  Stage0PartitionCrateRow,
-  stage0_partition_emitted_membership_lists_oracle_holds,
-  stage0_partition_emitted_membership_oracle_holds,
-  stage0_partition_emitted_membership_oracle_refusal_propagates_holds,
-  stage0_partition_emitted_row_matches_authority_row,
-  rust_crate_partition_declared_core_target
+import v2.workflow.stage0_partition_emitted_reference_oracle {
+  stage0_partition_emitted_reference_membership_join_holds,
+  stage0_partition_emitted_reference_membership_lists_oracle_holds,
+  stage0_partition_emitted_reference_oracle_holds,
+  stage0_partition_emitted_reference_oracle_refusal_propagates_holds,
+  stage0_partition_emitted_reference_oracle_red_duplicate_observation_refuses_holds,
+  stage0_partition_emitted_reference_oracle_red_empty_observation_refuses_holds,
+  stage0_partition_emitted_reference_oracle_red_use_crate_outside_closure_holds,
+  stage0_partition_emitted_reference_use_crate_holds
 }
 
-data stage0_partition_emitted_reference_oracle_witness_note: String = "C3 emitted-reference oracle witness: committed generated_partition_crate_rows must match stage0_partition_crate_rows_outcome per package_name (modules + reexport_packages as order-independent sets). Independent of C2's frozen baseline — this catches stale or hand-edited generated artifacts. RED controls: planted module-list mismatch; emitted row that diverges from a matching authority row."
+data stage0_partition_emitted_reference_oracle_witness_note: String = "C3 emitted-reference oracle witness: independent lib.rs pub mod observations joined by exact identity against stage0_partition_crate_rows_outcome derived membership; use crate:: references resolve inside derived membership or declared reexport closure. RED controls: empty observation refuses; duplicate observation refuses; use crate:: outside closure refuses; set join order independence."
 
-test fn stage0_partition_emitted_membership_oracle_holds_witness() -> Bool {
-  stage0_partition_emitted_membership_oracle_holds()
+test fn stage0_partition_emitted_reference_membership_join_holds_witness() -> Bool {
+  stage0_partition_emitted_reference_membership_join_holds()
 }
 
-test fn stage0_partition_emitted_membership_oracle_refusal_propagates_witness_holds() -> Bool {
-  stage0_partition_emitted_membership_oracle_refusal_propagates_holds()
+test fn stage0_partition_emitted_reference_use_crate_holds_witness() -> Bool {
+  stage0_partition_emitted_reference_use_crate_holds()
 }
 
-test fn stage0_partition_emitted_membership_oracle_row_count_holds() -> Bool {
-  (generated_partition_crate_rows |> count) == rust_crate_partition_declared_core_target
+test fn stage0_partition_emitted_reference_oracle_holds_witness() -> Bool {
+  stage0_partition_emitted_reference_oracle_holds()
 }
 
-test fn stage0_partition_emitted_membership_oracle_red_wrong_module_holds() -> Bool {
-  !stage0_partition_emitted_membership_lists_oracle_holds(
-    emitted_modules: ["v1_rt", "stage0_oracle_phantom_module"],
-    authority_modules: ["v1_rt"]
+test fn stage0_partition_emitted_reference_oracle_refusal_propagates_witness_holds() -> Bool {
+  stage0_partition_emitted_reference_oracle_refusal_propagates_holds()
+}
+
+test fn stage0_partition_emitted_reference_oracle_red_empty_observation_refuses_witness_holds() -> Bool {
+  stage0_partition_emitted_reference_oracle_red_empty_observation_refuses_holds()
+}
+
+test fn stage0_partition_emitted_reference_oracle_red_duplicate_observation_refuses_witness_holds() -> Bool {
+  stage0_partition_emitted_reference_oracle_red_duplicate_observation_refuses_holds()
+}
+
+test fn stage0_partition_emitted_reference_oracle_red_use_crate_outside_closure_witness_holds() -> Bool {
+  stage0_partition_emitted_reference_oracle_red_use_crate_outside_closure_holds()
+}
+
+test fn stage0_partition_emitted_reference_oracle_red_extra_observation_refuses_holds() -> Bool {
+  !stage0_partition_emitted_reference_membership_lists_oracle_holds(
+    derived_modules: ["v1_rt"],
+    observed_modules: ["v1_rt", "stage0_oracle_phantom_module"]
   )
 }
 
-test fn stage0_partition_emitted_membership_oracle_red_missing_module_holds() -> Bool {
-  !stage0_partition_emitted_membership_lists_oracle_holds(
-    emitted_modules: ["v1_rt"],
-    authority_modules: ["v1_rt", "std_algebra"]
+test fn stage0_partition_emitted_reference_oracle_red_missing_observation_refuses_holds() -> Bool {
+  !stage0_partition_emitted_reference_membership_lists_oracle_holds(
+    derived_modules: ["v1_rt", "std_algebra"],
+    observed_modules: ["v1_rt"]
   )
 }
 
-test fn stage0_partition_emitted_row_matches_authority_row_red_holds() -> Bool {
-  let emitted = GeneratedPartitionCrateRow {
-    package_name: "v1-stage0-runtime",
-    crate_dir: "src/v1/stage0_runtime",
-    kind: GeneratedFoundationCrate,
-    modules: ["v1_rt"],
-    reexport_packages: [],
-    carries_non_empty_wrappers: true
-  }
-  let authority_ok = Stage0PartitionCrateRow {
-    unit_id: "stage0-unit-runtime" as CompilationUnitId,
-    package_name: "v1-stage0-runtime",
-    crate_dir: "src/v1/stage0_runtime",
-    kind: Stage0FoundationCrate,
-    modules: ["v1_rt"],
-    reexport_packages: [],
-    carries_non_empty_wrappers: true
-  }
-  let authority_bad = Stage0PartitionCrateRow {
-    unit_id: "stage0-unit-runtime" as CompilationUnitId,
-    package_name: "v1-stage0-runtime",
-    crate_dir: "src/v1/stage0_runtime",
-    kind: Stage0LayeredCoreCrate,
-    modules: ["v1_rt", "stage0_oracle_phantom_module"],
-    reexport_packages: [],
-    carries_non_empty_wrappers: true
-  }
-  stage0_partition_emitted_row_matches_authority_row(
-    emitted: emitted,
-    authority: authority_ok
+test fn stage0_partition_emitted_reference_oracle_set_order_independence_holds() -> Bool {
+  stage0_partition_emitted_reference_membership_lists_oracle_holds(
+    derived_modules: ["a", "b"],
+    observed_modules: ["b", "a"]
   )
-    && !stage0_partition_emitted_row_matches_authority_row(
-      emitted: emitted,
-      authority: authority_bad
-    )
+}
+
+test fn stage0_partition_emitted_reference_oracle_set_exact_match_holds() -> Bool {
+  stage0_partition_emitted_reference_membership_lists_oracle_holds(
+    derived_modules: ["a", "b"],
+    observed_modules: ["a", "b"]
+  )
+}
+
+test fn stage0_partition_emitted_reference_oracle_red_duplicate_blind_set_refuses_holds() -> Bool {
+  !stage0_partition_emitted_reference_membership_lists_oracle_holds(
+    derived_modules: ["a", "a"],
+    observed_modules: ["a", "b"]
+  )
 }

@@ -1,0 +1,541 @@
+module v2.workflow.stage0_partition_emitted_reference_oracle
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.types { Int, List, String }
+import v2.std.algebra {
+  any,
+  fold_list,
+  list_append
+}
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
+import v2.workflow.stage0_partition_emitted_observation_parse {
+  stage0_emitted_observation_lib_rs_pub_mod_basenames,
+  stage0_emitted_observation_source_text_use_crate_modules
+}
+import v2.workflow.rust_crate_partition {
+  Stage0EmitCoreCrate,
+  Stage0FoundationCrate,
+  Stage0LayeredCoreCrate,
+  Stage0PartitionCrateRow,
+  Stage0PartitionCrateRowsOk,
+  Stage0PartitionCrateRowsRefused,
+  stage0_partition_crate_rows_outcome,
+  stage0_string_lists_equal_as_sets
+}
+
+data stage0_partition_emitted_reference_oracle_note: String = "C3 emitted-reference oracle: independent observation population from committed partition crate lib.rs pub mod declarations (filesystem_read on crate_dir/src/lib.rs) joined by exact identity against stage0_partition_crate_rows_outcome derived module membership. Properties: (1) every derived module has exactly one observation, (2) no extra observations, (3) no duplicate observations — empty observation refuses before extras/duplicates can pass; (4) every use crate:: top-level reference in module-bearing crate sources resolves inside derived membership or declared reexport-package closure. Emit-core rows compare the declared reexport surface against lib.rs pub mod names explicitly. NOT the C2.5 generated-artifact parity gate."
+
+data stage0_emitted_oracle_empty_strings: List<String> = []
+
+type Stage0EmittedReferenceOracleRefusalCause
+  = Stage0EmittedReferenceAuthorityRefused
+  | Stage0EmittedReferenceObservationEmpty {
+      package_name: String,
+      derived_module_count: Int
+    }
+  | Stage0EmittedReferenceObservationDuplicate {
+      package_name: String,
+      module_basename: String
+    }
+  | Stage0EmittedReferenceDerivedModuleMissingObservation {
+      package_name: String,
+      module_basename: String
+    }
+  | Stage0EmittedReferenceExtraObservation {
+      package_name: String,
+      module_basename: String
+    }
+  | Stage0EmittedReferenceUseCrateOutsideClosure {
+      package_name: String,
+      module_basename: String,
+      referenced_module: String
+    }
+
+type Stage0EmittedReferenceOracleOutcome
+  = Stage0EmittedReferenceOracleOk
+  | Stage0EmittedReferenceOracleRefused {
+      cause: Stage0EmittedReferenceOracleRefusalCause
+    }
+
+fn stage0_emitted_oracle_partition_lib_rs_path(crate_dir: String) -> String {
+  concat(crate_dir, "/src/lib.rs")
+}
+
+fn stage0_emitted_oracle_module_source_repo_path(module_basename: String) -> String {
+  concat("src/v1/stage0/src/", concat(module_basename, ".rs"))
+}
+
+fn stage0_emitted_oracle_modules_for_package_name(
+  package_name: String,
+  rows: List<Stage0PartitionCrateRow>
+) -> List<String> {
+  fold_list(
+    xs: rows,
+    empty: stage0_emitted_oracle_empty_strings,
+    cons: fn(acc, row) {
+      if row.package_name == package_name {
+        row.modules
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn stage0_emitted_oracle_emit_core_shell_local_modules() -> List<String> {
+  ["v1_compiler_emit_core_support"]
+}
+
+fn stage0_emitted_oracle_derived_modules_for_row(
+  row: Stage0PartitionCrateRow
+) -> List<String> {
+  match row.kind {
+    Stage0EmitCoreCrate =>
+      list_append(
+        left: row.modules,
+        right: stage0_emitted_oracle_emit_core_shell_local_modules()
+      )
+    Stage0FoundationCrate => row.modules
+    Stage0LayeredCoreCrate => row.modules
+  }
+}
+
+fn stage0_emitted_oracle_non_empty_wrapper_root_names() -> List<String> {
+  ["NonEmptyVec", "NonEmptyBTreeSet"]
+}
+
+fn stage0_emitted_oracle_row_resolvable_module_basenames(
+  row: Stage0PartitionCrateRow,
+  rows: List<Stage0PartitionCrateRow>
+) -> List<String> {
+  let from_modules_and_reexports = fold_list(
+    xs: row.reexport_packages,
+    empty: row.modules,
+    cons: fn(acc, package_name) {
+      list_append(
+        left: acc,
+        right: stage0_emitted_oracle_modules_for_package_name(
+          package_name: package_name,
+          rows: rows
+        )
+      )
+    }
+  )
+  match row.kind {
+    Stage0EmitCoreCrate => from_modules_and_reexports
+    Stage0FoundationCrate =>
+      list_append(
+        left: from_modules_and_reexports,
+        right: stage0_emitted_oracle_non_empty_wrapper_root_names()
+      )
+    Stage0LayeredCoreCrate =>
+      list_append(
+        left: from_modules_and_reexports,
+        right: stage0_emitted_oracle_non_empty_wrapper_root_names()
+      )
+  }
+}
+
+fn stage0_emitted_oracle_first_duplicate_module(xs: List<String>) -> String {
+  fold_list(
+    xs: xs,
+    empty: "",
+    cons: fn(found, module_basename) {
+      if found != "" {
+        found
+      } else {
+        let count = xs
+          |> fold(init: 0, f: fn(n, item) {
+            if item == module_basename { n + 1 } else { n }
+          })
+        if count > 1 {
+          module_basename
+        } else {
+          ""
+        }
+      }
+    }
+  )
+}
+
+fn stage0_emitted_oracle_first_missing_derived_module(
+  package_name: String,
+  derived_modules: List<String>,
+  observed_modules: List<String>
+) -> Stage0EmittedReferenceOracleOutcome {
+  fold_list(
+    xs: derived_modules,
+    empty: Stage0EmittedReferenceOracleOk,
+    cons: fn(acc, module_basename) {
+      match acc {
+        Stage0EmittedReferenceOracleRefused { cause: _ } => acc
+        Stage0EmittedReferenceOracleOk =>
+          if any(xs: observed_modules, predicate: fn(s) { s == module_basename }) {
+            Stage0EmittedReferenceOracleOk
+          } else {
+            Stage0EmittedReferenceOracleRefused {
+              cause: Stage0EmittedReferenceDerivedModuleMissingObservation {
+                package_name: package_name,
+                module_basename: module_basename
+              }
+            }
+          }
+      }
+    }
+  )
+}
+
+fn stage0_emitted_oracle_first_extra_observed_module(
+  package_name: String,
+  derived_modules: List<String>,
+  observed_modules: List<String>
+) -> Stage0EmittedReferenceOracleOutcome {
+  fold_list(
+    xs: observed_modules,
+    empty: Stage0EmittedReferenceOracleOk,
+    cons: fn(acc, module_basename) {
+      match acc {
+        Stage0EmittedReferenceOracleRefused { cause: _ } => acc
+        Stage0EmittedReferenceOracleOk =>
+          if any(xs: derived_modules, predicate: fn(s) { s == module_basename }) {
+            Stage0EmittedReferenceOracleOk
+          } else {
+            Stage0EmittedReferenceOracleRefused {
+              cause: Stage0EmittedReferenceExtraObservation {
+                package_name: package_name,
+                module_basename: module_basename
+              }
+            }
+          }
+      }
+    }
+  )
+}
+
+fn stage0_emitted_oracle_membership_identity_join_outcome(
+  package_name: String,
+  derived_modules: List<String>,
+  observed_modules: List<String>
+) -> Stage0EmittedReferenceOracleOutcome {
+  if (derived_modules |> count) > 0 && (observed_modules |> count) == 0 {
+    Stage0EmittedReferenceOracleRefused {
+      cause: Stage0EmittedReferenceObservationEmpty {
+        package_name: package_name,
+        derived_module_count: derived_modules |> count
+      }
+    }
+  } else {
+    let duplicate = stage0_emitted_oracle_first_duplicate_module(xs: observed_modules)
+    if duplicate != "" {
+      Stage0EmittedReferenceOracleRefused {
+        cause: Stage0EmittedReferenceObservationDuplicate {
+          package_name: package_name,
+          module_basename: duplicate
+        }
+      }
+    } else if stage0_string_lists_equal_as_sets(
+      left: derived_modules,
+      right: observed_modules
+    ) {
+      Stage0EmittedReferenceOracleOk
+    } else {
+      match stage0_emitted_oracle_first_missing_derived_module(
+        package_name: package_name,
+        derived_modules: derived_modules,
+        observed_modules: observed_modules
+      ) {
+        Stage0EmittedReferenceOracleRefused { cause: cause } =>
+          Stage0EmittedReferenceOracleRefused { cause: cause }
+        Stage0EmittedReferenceOracleOk =>
+          stage0_emitted_oracle_first_extra_observed_module(
+            package_name: package_name,
+            derived_modules: derived_modules,
+            observed_modules: observed_modules
+          )
+      }
+    }
+  }
+}
+
+fn stage0_emitted_oracle_module_use_crate_outcome(
+  package_name: String,
+  module_basename: String,
+  source_text: String,
+  resolvable_modules: List<String>
+) -> Stage0EmittedReferenceOracleOutcome {
+  fold_list(
+    xs: stage0_emitted_observation_source_text_use_crate_modules(text: source_text),
+    empty: Stage0EmittedReferenceOracleOk,
+    cons: fn(acc, referenced_module) {
+      match acc {
+        Stage0EmittedReferenceOracleRefused { cause: _ } => acc
+        Stage0EmittedReferenceOracleOk =>
+          if any(xs: resolvable_modules, predicate: fn(s) { s == referenced_module }) {
+            Stage0EmittedReferenceOracleOk
+          } else {
+            Stage0EmittedReferenceOracleRefused {
+              cause: Stage0EmittedReferenceUseCrateOutsideClosure {
+                package_name: package_name,
+                module_basename: module_basename,
+                referenced_module: referenced_module
+              }
+            }
+          }
+      }
+    }
+  )
+}
+
+fn stage0_emitted_oracle_check_module_bearing_use_crate_references(
+  row: Stage0PartitionCrateRow,
+  rows: List<Stage0PartitionCrateRow>
+) -> Stage0EmittedReferenceOracleOutcome {
+  let resolvable = stage0_emitted_oracle_row_resolvable_module_basenames(
+    row: row,
+    rows: rows
+  )
+  fold_list(
+    xs: row.modules,
+    empty: Stage0EmittedReferenceOracleOk,
+    cons: fn(acc, module_basename) {
+      match acc {
+        Stage0EmittedReferenceOracleRefused { cause: _ } => acc
+        Stage0EmittedReferenceOracleOk =>
+          stage0_emitted_oracle_module_use_crate_outcome(
+            package_name: row.package_name,
+            module_basename: module_basename,
+            source_text: filesystem_read(
+              path: stage0_emitted_oracle_module_source_repo_path(
+                module_basename: module_basename
+              )
+            ).content,
+            resolvable_modules: resolvable
+          )
+      }
+    }
+  )
+}
+
+fn stage0_emitted_oracle_row_membership_outcome(
+  row: Stage0PartitionCrateRow
+) -> Stage0EmittedReferenceOracleOutcome {
+  let lib_rs_path = stage0_emitted_oracle_partition_lib_rs_path(crate_dir: row.crate_dir)
+  let lib_rs_text = filesystem_read(path: lib_rs_path).content
+  let observed_modules = stage0_emitted_observation_lib_rs_pub_mod_basenames(text: lib_rs_text)
+  let derived_modules = stage0_emitted_oracle_derived_modules_for_row(row: row)
+  stage0_emitted_oracle_membership_identity_join_outcome(
+    package_name: row.package_name,
+    derived_modules: derived_modules,
+    observed_modules: observed_modules
+  )
+}
+
+fn stage0_emitted_oracle_row_outcome(
+  row: Stage0PartitionCrateRow,
+  rows: List<Stage0PartitionCrateRow>
+) -> Stage0EmittedReferenceOracleOutcome {
+  match stage0_emitted_oracle_row_membership_outcome(row: row) {
+    Stage0EmittedReferenceOracleRefused { cause: cause } =>
+      Stage0EmittedReferenceOracleRefused { cause: cause }
+    Stage0EmittedReferenceOracleOk =>
+      match row.kind {
+        Stage0EmitCoreCrate => Stage0EmittedReferenceOracleOk
+        Stage0FoundationCrate =>
+          stage0_emitted_oracle_check_module_bearing_use_crate_references(
+            row: row,
+            rows: rows
+          )
+        Stage0LayeredCoreCrate =>
+          stage0_emitted_oracle_check_module_bearing_use_crate_references(
+            row: row,
+            rows: rows
+          )
+      }
+  }
+}
+
+fn stage0_partition_emitted_reference_oracle_outcome() -> Stage0EmittedReferenceOracleOutcome {
+  match stage0_partition_crate_rows_outcome() {
+    Stage0PartitionCrateRowsRefused { cause: _ } =>
+      Stage0EmittedReferenceOracleRefused {
+        cause: Stage0EmittedReferenceAuthorityRefused
+      }
+    Stage0PartitionCrateRowsOk { rows: rows } =>
+      fold_list(
+        xs: rows,
+        empty: Stage0EmittedReferenceOracleOk,
+        cons: fn(acc, row) {
+          match acc {
+            Stage0EmittedReferenceOracleRefused { cause: _ } => acc
+            Stage0EmittedReferenceOracleOk =>
+              stage0_emitted_oracle_row_outcome(row: row, rows: rows)
+          }
+        }
+      )
+  }
+}
+
+fn stage0_partition_emitted_reference_membership_join_holds() -> Bool {
+  match stage0_partition_crate_rows_outcome() {
+    Stage0PartitionCrateRowsRefused { cause: _ } => false
+    Stage0PartitionCrateRowsOk { rows: rows } =>
+      fold_list(
+        xs: rows,
+        empty: true,
+        cons: fn(ok, row) {
+          ok
+            && match stage0_emitted_oracle_row_membership_outcome(row: row) {
+              Stage0EmittedReferenceOracleOk => true
+              Stage0EmittedReferenceOracleRefused { cause: _ } => false
+            }
+        }
+      )
+  }
+}
+
+fn stage0_partition_emitted_reference_use_crate_for_package_holds(
+  package_name: String
+) -> Bool {
+  match stage0_partition_crate_rows_outcome() {
+    Stage0PartitionCrateRowsRefused { cause: _ } => false
+    Stage0PartitionCrateRowsOk { rows: rows } =>
+      fold_list(
+        xs: rows,
+        empty: false,
+        cons: fn(found, row) {
+          if found {
+            true
+          } else if row.package_name != package_name {
+            false
+          } else {
+            match row.kind {
+              Stage0EmitCoreCrate => true
+              Stage0FoundationCrate =>
+                match stage0_emitted_oracle_check_module_bearing_use_crate_references(
+                  row: row,
+                  rows: rows
+                ) {
+                  Stage0EmittedReferenceOracleOk => true
+                  Stage0EmittedReferenceOracleRefused { cause: _ } => false
+                }
+              Stage0LayeredCoreCrate =>
+                match stage0_emitted_oracle_check_module_bearing_use_crate_references(
+                  row: row,
+                  rows: rows
+                ) {
+                  Stage0EmittedReferenceOracleOk => true
+                  Stage0EmittedReferenceOracleRefused { cause: _ } => false
+                }
+            }
+          }
+        }
+      )
+  }
+}
+
+fn stage0_partition_emitted_reference_use_crate_holds() -> Bool {
+  match stage0_partition_crate_rows_outcome() {
+    Stage0PartitionCrateRowsRefused { cause: _ } => false
+    Stage0PartitionCrateRowsOk { rows: rows } =>
+      fold_list(
+        xs: rows,
+        empty: true,
+        cons: fn(ok, row) {
+          if !ok {
+            false
+          } else {
+            match row.kind {
+              Stage0EmitCoreCrate => true
+              Stage0FoundationCrate =>
+                match stage0_emitted_oracle_check_module_bearing_use_crate_references(
+                  row: row,
+                  rows: rows
+                ) {
+                  Stage0EmittedReferenceOracleOk => true
+                  Stage0EmittedReferenceOracleRefused { cause: _ } => false
+                }
+              Stage0LayeredCoreCrate =>
+                match stage0_emitted_oracle_check_module_bearing_use_crate_references(
+                  row: row,
+                  rows: rows
+                ) {
+                  Stage0EmittedReferenceOracleOk => true
+                  Stage0EmittedReferenceOracleRefused { cause: _ } => false
+                }
+            }
+          }
+        }
+      )
+  }
+}
+
+fn stage0_partition_emitted_reference_oracle_holds() -> Bool {
+  match stage0_partition_emitted_reference_oracle_outcome() {
+    Stage0EmittedReferenceOracleOk => true
+    Stage0EmittedReferenceOracleRefused { cause: _ } => false
+  }
+}
+
+fn stage0_partition_emitted_reference_oracle_refusal_propagates_holds() -> Bool {
+  match stage0_partition_crate_rows_outcome() {
+    Stage0PartitionCrateRowsRefused { cause: _ } =>
+      !stage0_partition_emitted_reference_oracle_holds()
+    Stage0PartitionCrateRowsOk { rows: _ } => true
+  }
+}
+
+fn stage0_partition_emitted_reference_membership_lists_oracle_holds(
+  derived_modules: List<String>,
+  observed_modules: List<String>
+) -> Bool {
+  match stage0_emitted_oracle_membership_identity_join_outcome(
+    package_name: "stage0-oracle-test",
+    derived_modules: derived_modules,
+    observed_modules: observed_modules
+  ) {
+    Stage0EmittedReferenceOracleOk => true
+    Stage0EmittedReferenceOracleRefused { cause: _ } => false
+  }
+}
+
+fn stage0_partition_emitted_reference_oracle_red_empty_observation_refuses_holds() -> Bool {
+  match stage0_emitted_oracle_membership_identity_join_outcome(
+    package_name: "stage0-oracle-test",
+    derived_modules: ["v1_rt"],
+    observed_modules: []
+  ) {
+    Stage0EmittedReferenceOracleRefused {
+      cause: Stage0EmittedReferenceObservationEmpty {
+        package_name: _,
+        derived_module_count: _
+      }
+    } => true
+    Stage0EmittedReferenceOracleOk => false
+  }
+}
+
+fn stage0_partition_emitted_reference_oracle_red_duplicate_observation_refuses_holds() -> Bool {
+  !stage0_partition_emitted_reference_membership_lists_oracle_holds(
+    derived_modules: ["a", "b"],
+    observed_modules: ["a", "a"]
+  )
+}
+
+fn stage0_partition_emitted_reference_oracle_red_use_crate_outside_closure_holds() -> Bool {
+  match stage0_emitted_oracle_module_use_crate_outcome(
+    package_name: "v1-stage0-std-effects",
+    module_basename: "std_effects",
+    source_text: "use crate::phantom_partition_oracle_module::Foo;\n",
+    resolvable_modules: ["std_effects", "std_types"]
+  ) {
+    Stage0EmittedReferenceOracleRefused {
+      cause: Stage0EmittedReferenceUseCrateOutsideClosure {
+        referenced_module: referenced_module,
+        module_basename: _,
+        package_name: _
+      }
+    } => referenced_module == "phantom_partition_oracle_module"
+    Stage0EmittedReferenceOracleOk => false
+  }
+}
