@@ -36,8 +36,6 @@ mod data_def_brand_alias_type_test;
 #[cfg(test)]
 mod decl_facts_dimensionless_projection_test;
 #[cfg(test)]
-mod decl_facts_skeleton_reflection_test;
-#[cfg(test)]
 mod dependency_pool_index_compile_test;
 #[cfg(test)]
 mod derive_bound_fail_closed_test;

@@ -1,8 +1,12 @@
-//! Projection authority controls for #7855 (loyal-ant-382):
-//! - dimensionless: imported RECORD type resolves via type env → plain record arm (not coproduct)
-//! - unimported globally-unique type: constructor resolution refused (not error, not absent)
+//! Source-order invariance for decl_facts initializer projection marshalling.
+//!
+//! Merge-blocking projection behavior lives in `dag/test/claim/decl_facts_initializer_projection_witness_test.dag`.
+//! This module retains only the seam those witnesses cannot reach: `compile_to_resolved` source-file
+//! order must not change projection kind or constructor parent identity for the same specimen QN.
 
 use std::rc::Rc;
+
+use im::HashMap;
 
 use v1_compiler::data_initializer_identity::marshal_data_initializer_projection;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
@@ -12,15 +16,13 @@ use crate::helpers::{
     resolve_imports_transitively_with_source_roots, v2_layer_roots, workspace_root,
 };
 
-const DIMENSIONLESS_REL: &str = "dag/extdeps/units/dimensionless.dag";
-const ANCHOR_QN: &str = "extdeps.units.dimensionless.extdeps_external_authority_anchor";
-
-const GLOBALLY_UNIQUE_CARRIER_REL: &str =
-    "dag/test/fixture/decl_facts_reflection/globally_unique_carrier.dag";
-const UNIMPORTED_USER_REL: &str =
-    "dag/test/fixture/decl_facts_reflection/unimported_globally_unique_user.dag";
-const UNIMPORTED_SPECIMEN_QN: &str =
-    "test.fixture.decl_facts_reflection.unimported_globally_unique_user.unimported_globally_unique_specimen";
+const SPECIMENS_REL: &str = "dag/test/fixture/decl_facts_reflection/specimens.dag";
+const DISPOSITION_SCAFFOLD_QN: &str =
+    "test.fixture.decl_facts_reflection.specimens.disposition_scaffold";
+const LOCAL_A_SCAFFOLD_QN: &str = "test.fixture.decl_facts_reflection.specimens.local_a_scaffold";
+const AMBIGUOUS_QN: &str =
+    "test.fixture.decl_facts_reflection.ambiguous_specimen.ambiguous_arm_specimen";
+const WITNESS_SUPPORT_REL: &str = "dag/test/claim/decl_facts_reflection_witness_support.dag";
 
 fn read_fixture(rel: &str) -> String {
     std::fs::read_to_string(workspace_root().join(rel))
@@ -33,29 +35,19 @@ fn ctx_from_sources(sources: Vec<Rc<SourceFile>>) -> InterpContext {
         .graph
         .as_ref()
         .expect("fixture closure resolves to a graph");
-    InterpContext::new(graph, Rc::new(im::HashMap::new()), ExecutionMode::Hermetic)
+    InterpContext::new(graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
 }
 
-fn dimensionless_ctx() -> InterpContext {
-    let sources: Vec<Rc<SourceFile>> = resolve_imports_transitively_with_source_roots(
-        DIMENSIONLESS_REL,
-        &read_fixture(DIMENSIONLESS_REL),
+fn specimens_ctx_with_source_order(reversed: bool) -> InterpContext {
+    let mut sources: Vec<Rc<SourceFile>> = resolve_imports_transitively_with_source_roots(
+        SPECIMENS_REL,
+        &read_fixture(SPECIMENS_REL),
         &v2_layer_roots(),
     );
+    if reversed {
+        sources.reverse();
+    }
     ctx_from_sources(sources)
-}
-
-fn unimported_globally_unique_ctx() -> InterpContext {
-    ctx_from_sources(vec![
-        Rc::new(SourceFile {
-            path: GLOBALLY_UNIQUE_CARRIER_REL.to_string(),
-            content: read_fixture(GLOBALLY_UNIQUE_CARRIER_REL),
-        }),
-        Rc::new(SourceFile {
-            path: UNIMPORTED_USER_REL.to_string(),
-            content: read_fixture(UNIMPORTED_USER_REL),
-        }),
-    ])
 }
 
 fn projection_kind_lexeme(ctx: &InterpContext, projection: &Value) -> Option<String> {
@@ -146,37 +138,6 @@ fn declaration_identity_qualified_name(ctx: &InterpContext, projection: &Value) 
     projection_kind_lexeme(ctx, &qn_projection)
 }
 
-const SPECIMENS_REL: &str = "dag/test/fixture/decl_facts_reflection/specimens.dag";
-const DISPOSITION_SCAFFOLD_QN: &str =
-    "test.fixture.decl_facts_reflection.specimens.disposition_scaffold";
-const MECHANISM_SINGLE_AUTHORITY_QN: &str =
-    "test.fixture.decl_facts_reflection.specimens.mechanism_single_authority";
-const MISSING_VARIANT_SPECIMEN_QN: &str =
-    "test.fixture.decl_facts_reflection.specimens.missing_variant_specimen";
-const SCAFFOLD_WITH_DATA_REF_QN: &str =
-    "test.fixture.decl_facts_reflection.specimens.scaffold_with_data_ref";
-
-fn specimens_ctx() -> InterpContext {
-    let sources: Vec<Rc<SourceFile>> = resolve_imports_transitively_with_source_roots(
-        SPECIMENS_REL,
-        &read_fixture(SPECIMENS_REL),
-        &v2_layer_roots(),
-    );
-    ctx_from_sources(sources)
-}
-
-fn specimens_ctx_with_source_order(reversed: bool) -> InterpContext {
-    let mut sources: Vec<Rc<SourceFile>> = resolve_imports_transitively_with_source_roots(
-        SPECIMENS_REL,
-        &read_fixture(SPECIMENS_REL),
-        &v2_layer_roots(),
-    );
-    if reversed {
-        sources.reverse();
-    }
-    ctx_from_sources(sources)
-}
-
 fn constructor_parent_qualified_name(ctx: &InterpContext, projection: &Value) -> Option<String> {
     let ctor = edge_target_named(ctx, projection, "constructor_identity")?;
     let parent = edge_target_named(ctx, &ctor, "parent_type")?;
@@ -184,64 +145,86 @@ fn constructor_parent_qualified_name(ctx: &InterpContext, projection: &Value) ->
 }
 
 #[test]
-#[ignore = "whole-tree resolve (~minutes); run with: cargo test witness_layer_decl_facts_disposition_scaffold -- --ignored --nocapture"]
-fn witness_layer_decl_facts_disposition_scaffold_fact_is_coproduct_record() {
-    use v1_compiler::cli_run::whole_tree_resolved_ctx;
+fn eval_decl_facts_ambiguous_specimen_value_identity_is_ambiguous() {
     use v1_compiler::coproduct_reflection::eval_decl_facts;
 
-    let roots = vec!["dag".to_string(), "src/v2".to_string()];
-    let whole = whole_tree_resolved_ctx(&roots, &[], ExecutionMode::Hermetic)
-        .expect("witness layer whole-tree resolve");
-    let facts = eval_decl_facts(&whole.ctx, &roots).expect("decl_facts must complete");
-    let qn_key = whole.ctx.sym("qualified_name");
-    let node_key = whole.ctx.sym("node");
-    let mut found = false;
-    match &facts {
+    let sources = resolve_imports_transitively_with_source_roots(
+        WITNESS_SUPPORT_REL,
+        &read_fixture(WITNESS_SUPPORT_REL),
+        &v2_layer_roots(),
+    );
+    let ctx = ctx_from_sources(sources);
+    let roots = vec![workspace_root()
+        .join("dag/test/fixture/decl_facts_reflection")
+        .to_string_lossy()
+        .into_owned()];
+    let facts = eval_decl_facts(&ctx, &roots).expect("decl_facts must marshal");
+    match facts {
         Value::List(rows) => {
-            for row in rows.iter() {
-                let fields = match row {
-                    Value::Record { fields, .. } => fields,
-                    _ => continue,
-                };
-                let qn = match fields.iter().find(|(k, _)| *k == qn_key) {
-                    Some((_, Value::Str(s))) => s.as_str(),
-                    _ => continue,
-                };
-                if qn != DISPOSITION_SCAFFOLD_QN {
-                    continue;
-                }
-                found = true;
-                let node = fields
-                    .iter()
-                    .find(|(k, _)| *k == node_key)
-                    .map(|(_, v)| v)
-                    .expect("DeclFact.node");
-                assert_eq!(
-                    projection_kind_lexeme(&whole.ctx, node),
-                    Some("DataInitializerRecordProjection".to_string()),
-                    "witness-layer decl_facts must marshal disposition_scaffold as coproduct record"
-                );
-            }
+            let node = rows
+                .iter()
+                .find_map(|row| {
+                    let fields = match row {
+                        Value::Record { fields, .. } => fields,
+                        _ => return None,
+                    };
+                    let qn = ctx.field(fields, "qualified_name").and_then(|v| match v {
+                        Value::Str(s) => Some(s.clone()),
+                        _ => None,
+                    })?;
+                    if qn != AMBIGUOUS_QN {
+                        return None;
+                    }
+                    ctx.field(fields, "node")
+                })
+                .expect("ambiguous specimen row");
+            let projection =
+                marshal_data_initializer_projection(&ctx, AMBIGUOUS_QN).expect("direct marshal");
+            let value_identity = edge_target_named(&ctx, &projection, "value_identity")
+                .expect("value_identity edge");
+            assert_eq!(
+                projection_kind_lexeme(&ctx, &value_identity),
+                Some("VariantValueResolutionAmbiguousProjection".to_string()),
+                "direct marshal value_identity kind"
+            );
+            let fact_value_identity =
+                edge_target_named(&ctx, node, "value_identity").expect("decl_facts value_identity");
+            assert_eq!(
+                projection_kind_lexeme(&ctx, &fact_value_identity),
+                Some("VariantValueResolutionAmbiguousProjection".to_string()),
+                "decl_facts value_identity must be ambiguous projection"
+            );
+            assert_eq!(
+                projection_kind_lexeme(&ctx, node),
+                projection_kind_lexeme(&ctx, &projection),
+                "decl_facts node must match direct marshal top-level kind"
+            );
         }
         _ => panic!("expected list"),
     }
-    assert!(
-        found,
-        "disposition_scaffold must appear in witness-layer decl_facts"
-    );
 }
 
 #[test]
-fn data_ref_with_coproduct_annotation_marshals_not_variant_value_projection() {
-    let ctx = specimens_ctx();
-    let projection = marshal_data_initializer_projection(&ctx, SCAFFOLD_WITH_DATA_REF_QN)
-        .expect("scaffold_with_data_ref must marshal without error");
-    let dissolves_to = edge_target_named(&ctx, &projection, "dissolves_to")
-        .expect("scaffold record projection must carry dissolves_to field");
+fn ambiguous_shared_arm_fixture_marshals_ambiguous_value_projection() {
+    let sources = resolve_imports_transitively_with_source_roots(
+        WITNESS_SUPPORT_REL,
+        &read_fixture(WITNESS_SUPPORT_REL),
+        &v2_layer_roots(),
+    );
+    let ctx = ctx_from_sources(sources);
+    let projection = marshal_data_initializer_projection(&ctx, AMBIGUOUS_QN)
+        .expect("ambiguous specimen must marshal without error");
     assert_eq!(
-        projection_kind_lexeme(&ctx, &dissolves_to),
-        Some("NotVariantValueProjection".to_string()),
-        "data-item reference with coproduct annotation must not classify as variant value"
+        projection_kind_lexeme(&ctx, &projection),
+        Some("DataInitializerNullaryProjection".to_string()),
+        "top-level projection kind"
+    );
+    let value_identity = edge_target_named(&ctx, &projection, "value_identity")
+        .expect("nullary projection must carry value_identity");
+    assert_eq!(
+        projection_kind_lexeme(&ctx, &value_identity),
+        Some("VariantValueResolutionAmbiguousProjection".to_string()),
+        "value_identity must be ambiguous when duplicate SharedBareArm exists across modules"
     );
 }
 
@@ -265,170 +248,4 @@ fn marshal_identity_is_invariant_under_reversed_source_order() {
             "constructor parent identity must not depend on source file order for {qn}"
         );
     }
-}
-
-const LOCAL_A_SCAFFOLD_QN: &str = "test.fixture.decl_facts_reflection.specimens.local_a_scaffold";
-
-#[test]
-fn disposition_scaffold_marshals_coproduct_record_projection() {
-    let ctx = specimens_ctx();
-    let projection = marshal_data_initializer_projection(&ctx, DISPOSITION_SCAFFOLD_QN)
-        .expect("disposition scaffold must marshal without error");
-    assert_eq!(
-        projection_kind_lexeme(&ctx, &projection),
-        Some("DataInitializerRecordProjection".to_string()),
-        "imported coproduct initializer must use coproduct record projection"
-    );
-}
-
-#[test]
-fn mechanism_single_authority_marshals_nullary_resolved_variant_projection() {
-    let ctx = specimens_ctx();
-    let projection = marshal_data_initializer_projection(&ctx, MECHANISM_SINGLE_AUTHORITY_QN)
-        .expect("nullary coproduct initializer must marshal without error");
-    assert_eq!(
-        projection_kind_lexeme(&ctx, &projection),
-        Some("DataInitializerNullaryProjection".to_string()),
-        "nullary variant initializer must use nullary projection"
-    );
-    let value_identity = edge_target_named(&ctx, &projection, "value_identity")
-        .expect("nullary projection must carry value_identity edge");
-    assert_eq!(
-        projection_kind_lexeme(&ctx, &value_identity),
-        Some("ResolvedVariantValueProjection".to_string()),
-        "nullary initializer must resolve variant value via declared type env"
-    );
-    assert_eq!(
-        projection_kind_lexeme(
-            &ctx,
-            &edge_target_named(&ctx, &value_identity, "parent_qualified_name")
-                .expect("resolved variant projection must carry parent_qualified_name")
-        ),
-        Some("std.disposition.ConstructionMechanism".to_string())
-    );
-    assert_eq!(
-        projection_kind_lexeme(
-            &ctx,
-            &edge_target_named(&ctx, &value_identity, "variant_name")
-                .expect("resolved variant projection must carry variant_name")
-        ),
-        Some("SingleAuthority".to_string())
-    );
-}
-
-#[test]
-fn missing_variant_specimen_field_marshals_missing_value_projection() {
-    let ctx = specimens_ctx();
-    let projection = marshal_data_initializer_projection(&ctx, MISSING_VARIANT_SPECIMEN_QN)
-        .expect("missing variant specimen must marshal without error");
-    assert_eq!(
-        projection_kind_lexeme(&ctx, &projection),
-        Some("DataInitializerRecordProjection".to_string())
-    );
-    let dissolves_to = edge_target_named(&ctx, &projection, "dissolves_to")
-        .expect("scaffold record projection must carry dissolves_to field");
-    assert_eq!(
-        projection_kind_lexeme(&ctx, &dissolves_to),
-        Some("VariantValueResolutionMissingProjection".to_string()),
-        "type-incorrect variant initializer must project missing, not refused"
-    );
-}
-
-#[test]
-fn dimensionless_imported_external_authority_marshals_defining_module_parent() {
-    let ctx = dimensionless_ctx();
-    let projection = marshal_data_initializer_projection(&ctx, ANCHOR_QN)
-        .expect("marshal must not throw on resolvable imported-type initializer");
-    assert_eq!(
-        projection_kind_lexeme(&ctx, &projection),
-        Some("DataInitializerPlainRecordProjection".to_string()),
-        "expected plain record projection for imported ExternalAuthority initializer"
-    );
-    assert_ne!(
-        projection_kind_lexeme(&ctx, &projection),
-        Some("DataInitializerRecordProjection".to_string()),
-        "imported record type must not be classified into the coproduct record arm"
-    );
-    assert_eq!(
-        declaration_identity_qualified_name(
-            &ctx,
-            &edge_target_named(&ctx, &projection, "parent_type")
-                .expect("plain record projection must carry parent_type edge")
-        ),
-        Some("extdeps.external_authority.ExternalAuthority".to_string()),
-        "parent type identity must name the defining module, not the importing module"
-    );
-}
-
-#[test]
-fn unimported_globally_unique_type_marshals_constructor_refused_not_error() {
-    let ctx = unimported_globally_unique_ctx();
-    let projection = marshal_data_initializer_projection(&ctx, UNIMPORTED_SPECIMEN_QN)
-        .expect("unimported type in initializer must refuse with projection, never throw");
-    assert_eq!(
-        projection_kind_lexeme(&ctx, &projection),
-        Some("DataInitializerConstructorResolutionRefusedProjection".to_string()),
-        "type not visible in importing module type env must refuse constructor resolution"
-    );
-}
-
-/// Whole-tree census for loyal-ant-382 blast-radius reporting. CI exercises the same
-/// `decl_facts(witness_layer_roots)` path via `decl_facts_reflection_witness_test.dag`.
-#[test]
-#[ignore = "whole-tree resolve (~minutes); run with: cargo test witness_layer_decl_facts_projection_census -- --ignored --nocapture"]
-fn witness_layer_decl_facts_projection_census() {
-    use v1_compiler::cli_run::whole_tree_resolved_ctx;
-    use v1_compiler::coproduct_reflection::eval_decl_facts;
-
-    let roots = vec!["dag".to_string(), "src/v2".to_string()];
-    let whole = whole_tree_resolved_ctx(&roots, &[], ExecutionMode::Hermetic)
-        .expect("witness layer whole-tree resolve");
-    let facts = eval_decl_facts(&whole.ctx, &roots).expect("decl_facts must marshal without error");
-
-    let mut plain_record = 0usize;
-    let mut coproduct_record = 0usize;
-    let mut constructor_refused = 0usize;
-    let mut typechecked_absent = 0usize;
-    let mut other = 0usize;
-
-    match &facts {
-        Value::List(rows) => {
-            for row in rows.iter() {
-                let node = whole
-                    .ctx
-                    .field(
-                        match row {
-                            Value::Record { fields, .. } => fields,
-                            _ => panic!("expected DeclFact record"),
-                        },
-                        "node",
-                    )
-                    .expect("DeclFact.node");
-                match projection_kind_lexeme(&whole.ctx, node) {
-                    Some(k) if k == "DataInitializerPlainRecordProjection" => plain_record += 1,
-                    Some(k) if k == "DataInitializerRecordProjection" => coproduct_record += 1,
-                    Some(k) if k == "DataInitializerConstructorResolutionRefusedProjection" => {
-                        constructor_refused += 1
-                    }
-                    Some(k) if k == "DataInitializerTypecheckedSubjectAbsentProjection" => {
-                        typechecked_absent += 1
-                    }
-                    _ => other += 1,
-                }
-            }
-        }
-        other => panic!("expected decl_facts list, got {other:?}"),
-    }
-
-    eprintln!(
-        "witness_layer decl_facts projection census: plain_record={plain_record} coproduct_record={coproduct_record} constructor_refused={constructor_refused} typechecked_absent={typechecked_absent} other={other}"
-    );
-    assert!(
-        plain_record > 0,
-        "imported record initializers must marshal as plain record projections"
-    );
-    assert!(
-        constructor_refused > 0,
-        "unimported types must route to constructor resolution refused"
-    );
 }

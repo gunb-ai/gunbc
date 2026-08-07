@@ -1,16 +1,18 @@
 module test.claim.decl_facts_initializer_projection_witness_test
 
+import test.fixture.decl_facts_reflection.ambiguous_shared_a
+import test.fixture.decl_facts_reflection.ambiguous_shared_b { OtherTwo }
+import test.fixture.decl_facts_reflection.ambiguous_specimen
 import test.claim.decl_facts_reflection_witness_support {
   decl_facts_reflection_constructor_parent,
   decl_facts_reflection_constructor_variant,
   decl_facts_reflection_field_projection,
   decl_facts_reflection_fact_node,
-  decl_facts_reflection_fixture_facts,
   decl_facts_reflection_lookup,
   duplicate_qualified_identity_lookup_names_primary_and_shadow,
   duplicate_qn_exact_declaration_lookup_per_candidate_is_unique,
   decl_fact_lookup_duplicate_exact_declaration_identity_is_ambiguous_for_qn,
-  decl_facts_reflection_nullary_value_projection,
+  decl_facts_reflection_value_identity_projection,
   decl_facts_reflection_projection_variant_label_optional,
   decl_facts_reflection_resolved_nullary_parent,
   decl_facts_reflection_resolved_nullary_variant_name,
@@ -26,6 +28,9 @@ import v2.std.data_initializer_identity {
   value_projection_is_not_variant_value,
   value_projection_is_resolved_variant,
   decl_fact_lookup_is_missing,
+}
+import test.claim.decl_facts_reflection_witness_support {
+  decl_facts_reflection_fact_node,
 }
 
 data disposition_scaffold_qn: String = "test.fixture.decl_facts_reflection.specimens.disposition_scaffold"
@@ -44,6 +49,8 @@ data scaffold_named_field_bind_qn: String = "test.fixture.decl_facts_reflection.
 data whole_declaration_bind_qn: String = "test.fixture.decl_facts_reflection.specimens.disposition_scaffold"
 data scaffold_with_data_ref_qn: String = "test.fixture.decl_facts_reflection.specimens.scaffold_with_data_ref"
 data dimensionless_anchor_qn: String = "extdeps.units.dimensionless.extdeps_external_authority_anchor"
+
+data initializer_projection_ambiguous_shared_b_side_effect: OtherTwo = OtherTwo
 
 test fn decl_facts_reflection_data_ref_with_coproduct_type_is_not_variant_value() -> Bool {
   match decl_facts_reflection_field_projection(qn: scaffold_with_data_ref_qn, field: "dissolves_to") {
@@ -179,9 +186,10 @@ test fn decl_facts_reflection_missing_variant_refuses_missing_projection() -> Bo
 }
 
 test fn decl_facts_reflection_ambiguous_variant_refuses_ambiguous_projection() -> Bool {
-  match decl_facts_reflection_nullary_value_projection(qn: ambiguous_arm_specimen_qn) {
+  match decl_facts_reflection_value_identity_projection(qn: ambiguous_arm_specimen_qn) {
     Present { value: projection } =>
-      value_projection_is_ambiguous(node: projection) && ambiguous_candidate_projection_count(node: projection) == 2
+      value_projection_is_ambiguous(node: projection)
+        && ambiguous_candidate_projection_count(node: projection) == 2
     Absent => false
   }
 }

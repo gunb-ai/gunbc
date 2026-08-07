@@ -1228,6 +1228,25 @@ pub fn eval_export_signature_facts(
 
 pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
     let facts = decl_facts_for_roots(pool_roots);
+    let pool_entries: Vec<crate::decl_facts_marshal_bridge::PoolCoproductDupEntry> = facts
+        .iter()
+        .filter_map(|fact| {
+            crate::decl_facts_marshal_bridge::pool_coproduct_dup_entry_from_decl_fact_raw(
+                &fact.qualified_name,
+                &fact.name,
+                fact.kind,
+                fact.node.clone(),
+                fact.source_indices.clone(),
+            )
+        })
+        .collect();
+    crate::decl_facts_marshal_bridge::set_pool_coproduct_dup_index(pool_entries);
+    let result = eval_decl_facts_rows(ctx, &facts);
+    crate::decl_facts_marshal_bridge::clear_pool_coproduct_dup_index();
+    result
+}
+
+fn eval_decl_facts_rows(ctx: &InterpContext, facts: &[DeclFactRaw]) -> InterpResult<Value> {
     let mut rows = Vec::with_capacity(facts.len());
     for fact in facts {
         let node = marshal_decl_fact_node(
@@ -1246,11 +1265,14 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
         rows.push(Value::Record {
             type_name: ctx.sym("DeclFact"),
             fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("qualified_name"), Value::Str(fact.qualified_name)),
-                (ctx.sym("name"), Value::Str(fact.name)),
+                (
+                    ctx.sym("qualified_name"),
+                    Value::Str(fact.qualified_name.clone()),
+                ),
+                (ctx.sym("name"), Value::Str(fact.name.clone())),
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
                 (ctx.sym("node"), node),
-                (ctx.sym("rel_path"), Value::Str(fact.rel_path)),
+                (ctx.sym("rel_path"), Value::Str(fact.rel_path.clone())),
             ])),
         });
     }

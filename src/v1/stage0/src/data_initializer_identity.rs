@@ -538,6 +538,63 @@ fn duplicate_bare_type_name_variant_candidates(
             }
         }
     }
+    if cands.len() < 2 {
+        cands = pool_duplicate_bare_type_name_variant_candidates(ctx, variant_name, si);
+    }
+    cands
+}
+
+fn pool_duplicate_bare_type_name_variant_candidates(
+    ctx: &InterpContext,
+    variant_name: &str,
+    _witness_si: &SourceIndices,
+) -> Vec<ResolvedVariantIdentity> {
+    let mut cands = Vec::new();
+    for entries in crate::decl_facts_marshal_bridge::pool_duplicate_bare_coproduct_groups() {
+        if entries.len() < 2 {
+            continue;
+        }
+        for entry in entries {
+            let pool_si = entry.source_indices.clone();
+            if !crate::v1_std_core::has_child_named(
+                entry.item.clone(),
+                variant_name.to_string(),
+                pool_si.clone(),
+            ) {
+                continue;
+            }
+            let type_name = authored_name_at(pool_si.clone(), entry.item.clone());
+            if let Some(variant_id) = declaration_identity_for_variant_arm(
+                ctx,
+                &entry.item,
+                variant_name,
+                &pool_si,
+                &entry.module_path,
+            ) {
+                cands.push(variant_id);
+            } else {
+                let parent = declaration_identity_for_type_item(
+                    ctx,
+                    &entry.item,
+                    &pool_si,
+                    &entry.module_path,
+                );
+                cands.push(ResolvedVariantIdentity {
+                    parent,
+                    arm: ResolvedDeclarationIdentity {
+                        qualified_name: format!(
+                            "{}.{}",
+                            decl_logical_qualified_name(&entry.module_path, &type_name),
+                            variant_name
+                        ),
+                        name: variant_name.to_string(),
+                        module_path: entry.module_path.clone(),
+                        rel_path: rel_path_from_node(&entry.item),
+                    },
+                });
+            }
+        }
+    }
     cands
 }
 
@@ -616,7 +673,13 @@ fn variant_value_from_typechecked_expr(
         }
     };
 
-    let ambiguous_cands = ambiguous_variant_candidates(ctx, &variant_name, si);
+    let ambiguous_cands = ambiguous_variant_candidates(ctx, &expr_variant_name, si);
+    if ambiguous_cands.len() < 2 && variant_name != expr_variant_name {
+        let inferred_cands = ambiguous_variant_candidates(ctx, &variant_name, si);
+        if inferred_cands.len() >= 2 {
+            return DataInitializerValueResolution::Ambiguous(inferred_cands);
+        }
+    }
     if ambiguous_cands.len() >= 2 {
         return DataInitializerValueResolution::Ambiguous(ambiguous_cands);
     }
