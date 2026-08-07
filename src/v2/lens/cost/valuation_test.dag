@@ -2,16 +2,18 @@ module v2.test.lens_cost.valuation
 
 import std.algebra { Empty }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.lens.cost { SizeVariable }
+import v2.lens.cost { ConstantCost, SizeVariable, SymbolicCost, UnknownCost, symbolic_product, unit_cost, zero_cost }
 import v2.lens.cost.expr {
   CostAdd,
   CostConst,
   CostEffect,
   CostExpr,
   CostLog,
+  CostMul,
   CostSum,
   InvalidLogBase,
   SizeConst,
+  normalize_cost_expr_to_symbolic,
   size_of
 }
 import v2.lens.cost.valuation {
@@ -349,6 +351,85 @@ test fn refusing_body_under_a_bound_yields_exactly_one_cause() -> Bool {
   }
 }
 
+data zero_multiplicity_note: String = "Three discriminators, and the third is what keeps the first two from being a blanket zero. A zero factor means the other factor is executed ZERO times, so its work is zero whatever it is - refusing there would conflate did-no-work with could-not-model, which is the earned-zero distinction one level out. Both operand orders are asserted because multiplication is commutative and an order-sensitive answer is a defect; that exact defect existed in v2.lens.cost symbolic_product, which matched UnknownCost on the left operand before ever inspecting the right, and is fixed with this change. ONE times an unmodelled effect still REFUSES, because that factor is executed."
+
+test fn zero_times_an_unmodelled_effect_is_exactly_zero() -> Bool {
+  is_exact(
+    evaluation: evaluate_cost_expr(
+      expr: CostMul {
+        left: CostConst { value: Zero },
+        right: CostEffect { operation: effect_operation }
+      },
+      bindings: []
+    ),
+    expected: Zero
+  )
+}
+
+test fn an_unmodelled_effect_times_zero_is_exactly_zero() -> Bool {
+  is_exact(
+    evaluation: evaluate_cost_expr(
+      expr: CostMul {
+        left: CostEffect { operation: effect_operation },
+        right: CostConst { value: Zero }
+      },
+      bindings: []
+    ),
+    expected: Zero
+  )
+}
+
+test fn one_times_an_unmodelled_effect_still_refuses() -> Bool {
+  match evaluate_cost_expr(
+    expr: CostMul {
+      left: CostConst { value: nat_1 },
+      right: CostEffect { operation: effect_operation }
+    },
+    bindings: []
+  ) {
+    CostEvaluationRefused { causes: c } =>
+      match c.head {
+        UnmodeledEffectCost { operation: _, at: _ } => true
+        _ => false
+      }
+    ExactCost { value: _ } => false
+  }
+}
+
+data symbolic_product_commutativity_note: String = "Every arm is asserted in BOTH operand orders - the zero absorption AND the one-times-unknown non-absorption - because the defect being fixed was precisely that operand order changed the answer, so a one-sided assertion is the shape that missed it in the first place. The projection authority is asserted in both orders, because it previously answered zero in one and unknown in the other. The unknown-times-zero direction is the one that was wrong and is the regression control for the reorder; the zero-times-unknown direction must keep working and is the control that the reorder did not simply swap the bug to the other side."
+
+fn unknown_symbolic_cost() -> SymbolicCost {
+  normalize_cost_expr_to_symbolic(expr: CostEffect { operation: effect_operation })
+}
+
+test fn symbolic_product_absorbs_zero_from_the_left() -> Bool {
+  match symbolic_product(a: zero_cost(), b: unknown_symbolic_cost()) {
+    ConstantCost { value: Zero } => true
+    _ => false
+  }
+}
+
+test fn symbolic_product_absorbs_zero_from_the_right() -> Bool {
+  match symbolic_product(a: unknown_symbolic_cost(), b: zero_cost()) {
+    ConstantCost { value: Zero } => true
+    _ => false
+  }
+}
+
+test fn symbolic_product_still_returns_unknown_without_a_zero_factor() -> Bool {
+  match symbolic_product(a: unknown_symbolic_cost(), b: unit_cost()) {
+    UnknownCost { diagnostic: _ } => true
+    _ => false
+  }
+}
+
+test fn symbolic_product_one_times_unknown_stays_unknown() -> Bool {
+  match symbolic_product(a: unit_cost(), b: unknown_symbolic_cost()) {
+    UnknownCost { diagnostic: _ } => true
+    _ => false
+  }
+}
+
 data claim_conjunction_totality_note: String = "The conjunction enumerates EVERY other test fn in this file, and that totality is the point rather than a convenience. It is itself a `test fn` rather than a plain helper, which the corpus naming-hygiene walk requires and which is not a formality here: reached only from the claim `data` it would have been unreachable from every `test fn`, i.e. silently de-enrolled - the conjunction added to close a specification-without-execution finding, not executing. An earlier revision listed three of them while the claim label asserted refusal and scoping behaviour the others established, so the claim could have gone green with its own label false - specification-without-execution at the claim seam, caught by review 49620. The rule this file now follows: a claim label may assert only what its conjunction executes, so adding a test fn without adding it here is the defect to watch for."
 
 test fn every_valuation_witness_holds() -> Bool {
@@ -368,10 +449,17 @@ test fn every_valuation_witness_holds() -> Bool {
     && log_of_a_grounded_argument_names_the_missing_authority_not_the_argument()
     && log_of_an_unbound_argument_refuses_as_a_missing_binding()
     && refusing_body_under_a_bound_yields_exactly_one_cause()
+    && zero_times_an_unmodelled_effect_is_exactly_zero()
+    && an_unmodelled_effect_times_zero_is_exactly_zero()
+    && one_times_an_unmodelled_effect_still_refuses()
+    && symbolic_product_absorbs_zero_from_the_left()
+    && symbolic_product_absorbs_zero_from_the_right()
+    && symbolic_product_still_returns_unknown_without_a_zero_factor()
+    && symbolic_product_one_times_unknown_stays_unknown()
 }
 
 data claim_cost_valuation: TestClaim = EqualsClaim {
-  label: "lens_cost/valuation: CostExpr evaluated at a complete SizeVariable valuation yields exact semantic work, refuses a missing or duplicated binding rather than answering zero, scopes a CostSum binder to its body, and separates the three ways a logarithm fails - every test fn in this file enrolled in the conjunction",
+  label: "lens_cost/valuation: CostExpr evaluated at a complete SizeVariable valuation yields exact semantic work, refuses a missing or duplicated binding rather than answering zero, scopes a CostSum binder to its body, and separates the three ways a logarithm fails - every leaf witness in this file enrolled in the conjunction",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: outer_leaf,
   rhs: if every_valuation_witness_holds() {

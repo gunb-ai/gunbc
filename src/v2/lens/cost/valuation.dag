@@ -142,6 +142,19 @@ fn combine_evaluation(
   }
 }
 
+data multiply_evaluations_zero_note: String = "A zero factor gives exact zero on EITHER side, and it overrides the refusal dominance that governs every other combination. That is not the absorbing fallback DESIGN section 5 forbids, and the distinction is worth stating precisely because the shapes look alike. An absorbing fallback answers when it CANNOT compute - substituting a superset or a plausible number for an unknown. This answers because it CAN: a zero multiplicity means the other factor is executed zero times, so the work it denotes is zero regardless of what that factor is and regardless of how little is modelled about it. Refusing here would be the did-no-work versus could-not-model conflation that the earned-zero controls exist to prevent, one level out - zero times an unmodelled effect is not an unknown quantity, it is no work. The third discriminator is what keeps this from being a blanket zero: ONE times an unmodelled effect still refuses, because that factor IS executed. Symmetric by construction rather than by convention, since multiplication is commutative and an operand order that changed the answer would be a defect - the same one that was found and fixed in v2.lens.cost symbolic_product while landing this. THE ORDER OF THE ARMS IS LOAD-BEARING AND THIS PARAGRAPH IS WHAT PROTECTS IT: the annihilator is checked BEFORE any refusal handling, so a REFUSAL times zero answers ExactCost zero rather than refusing. The annihilator deliberately BEATS refusal-dominance, which governs every other combination in this module. Reordering these arms to check refusals first - which reads like tightening a fail-closed path and is therefore the tempting edit - silently restores the defect this function exists to fix, and it would do so while every other witness in the file stays green. Only zero_times_an_unmodelled_effect_is_exactly_zero and an_unmodelled_effect_times_zero_is_exactly_zero would red, and they are enrolled for exactly that reason. The delegation is also deliberate: the residual after annihilator handling is EXACTLY refusal-dominance - exact times exact multiplies, anything carrying a refusal refuses, causes accumulate - so it calls combine_evaluation rather than restating it. What must never move into that generic combiner is the annihilator itself, because addition and max do not have one."
+
+fn multiply_evaluations(a: CostEvaluation, b: CostEvaluation) -> CostEvaluation {
+  match a {
+    ExactCost { value: Zero } => ExactCost { value: Zero }
+    _ =>
+      match b {
+        ExactCost { value: Zero } => ExactCost { value: Zero }
+        _ => combine_evaluation(a: a, b: b, op: nat_mul)
+      }
+  }
+}
+
 fn evaluate_size_expr(size: SizeExpr, env: CostValuationEnv) -> CostEvaluation {
   match size {
     SizeConst { value: v } => ExactCost { value: v }
@@ -251,10 +264,9 @@ fn evaluate_cost_expr_in_env(expr: CostExpr, env: CostValuationEnv) -> CostEvalu
         op: nat_add
       )
     CostMul { left: l, right: r } =>
-      combine_evaluation(
+      multiply_evaluations(
         a: evaluate_cost_expr_in_env(expr: l, env: env),
-        b: evaluate_cost_expr_in_env(expr: r, env: env),
-        op: nat_mul
+        b: evaluate_cost_expr_in_env(expr: r, env: env)
       )
     CostMax { left: l, right: r } =>
       combine_evaluation(
