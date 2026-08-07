@@ -10,7 +10,9 @@ import std.measure {
   Millisecond,
   millisecond,
   millisecond_count,
+  nanosecond_to_millisecond_floor,
 }
+import v2.std.algebra { filter, length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.observation {
   ObservationEvent,
@@ -57,6 +59,7 @@ import std.observation {
 }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
+import v2.workflow.ci_floor_plan { gunbc_ci_fast_lane_eval_budget_ms }
 
 data witness_row_cost_spine_note: String = "Per-witness cost receipts (placement workstream #5 spine). THE RECORD is std.observation.ObservationEvent (progress-observation-design §2/§3c) — not a TSV schema and not WitnessTimingRow. Production shape is N+1 per entry: exactly ONE entry resolve-phase Concluded event (entry-level/shared resolve wall) plus one declaration-grain Concluded event per witness (eval wall + actual outcome; Refused distinct from Failed). RSS is MeasuredUnavailable with an explicit cause. The canonical event and joined receipt retain exact Nanosecond eval, resolve, and warm values; histogram, ordering, and attribution consume those exact values. The TSV/drift/placement wires are named Millisecond presentation and policy boundaries and may floor only there. The resolve column repeats the observed full entry resolve for each child — never divided across witnesses and never summed N times into a corpus total. W2 filters the SAME events via AttentionLevel/ObservationDensity (Ambient may suppress a render line while the complete receipt still retains the row). Basis values MUST cite an arm64 srv-fleet run id (never local x86). A row with no dated basis is BasisAbsent. Drift is falsifier-cadence counted, not merge-refusing. Executing consumers: dag/test/claim/witness_row_cost_drift_witness_test.dag and dag/test/claim/witness_row_cost_projection_witness_test.dag."
 
@@ -89,7 +92,7 @@ type WitnessRowCostVerdict
   | BasisAbsent
   | BasisClockMismatch { observed: ClockBasis, basis: ClockBasis }
 
-data witness_row_cost_clock_mismatch_note: String = "THE WALL THIS WHOLE LANE EXISTS TO BUILD. A drift verdict compares an observed duration against a dated one, and before the clock became data nothing in the types said the two were read from the same clock — so comparing a thread-CPU figure against a wall baseline typechecked, produced a confident WithinBasis or DriftExceeded, and was wrong in a way no test could distinguish from right. That is not hypothetical: the fast-lane cap is enforced on thread CPU while every cost receipt recorded wall, and four sessions spent an evening comparing 1005 against 5004 and 2507 against 5003 without either number being incorrect. BasisClockMismatch is a FOURTH ARM and not a Bool collapse, for the same reason std.content_hash compare_content_hash answers ContentHashCrossFamilyIncomparable rather than false: an incomparable pair is neither within nor exceeding, and rendering it as either invents a verdict. It is also not BasisAbsent — a basis IS present, it is simply measured on a different clock, and the remedy differs (seed the missing basis versus fix the producer that handed over the wrong clock). WHY THE THRESHOLD SIDE STAYS WALL: operator ruling 2026-08-05 closed the witness-grain denominator as WALL, with thread CPU retained as the REMEDY DISCRIMINATOR rather than a second threshold arm — high wall with high CPU is algorithm or repeated evaluation, high wall with low CPU is waiting, I/O, subprocess or scheduling. So a CPU-clocked basis row is not forbidden by this type, it is simply not what the witness threshold is stated on, and handing one to this comparator against a wall observation now REFUSES instead of answering. WHERE THIS WALL DOES AND DOES NOT RUN, stated so the rung is not inflated (DESIGN section 4b): witness_row_cost_verdict is reached by dag/test/claim/witness_row_cost_drift_witness_test.dag, green by execution with a discriminating RED on BOTH sides of the ratio, so the refusal is proven to be decided by the clock rather than by the magnitude. It is NOT yet reached by the production falsifier-cadence receipt: the seed's write_witness_row_cost_drift_receipt_at calls only witness_row_cost_exceeds_basis, the bare ratio predicate, and rebuilds DriftExceeded / WithinBasis / BasisAbsent / ObservationAbsent in Rust, so the clock never crosses that seam and a cross-clock pair there would still answer. That comparison is nonetheless CORRECT today, and correct for a reason worth naming rather than trusting: both sides are wall, because the observed figure is PerformanceReceipt wall_nanos and every row in dag/gunbc/witness_row_cost_basis.tsv was seeded from that same pre-ruling receipt, which recorded no other clock. That is a fact about the current producers, not a property of the mechanism -- precisely the state this ruling exists to end. NEXT TRIGGER: the basis file carries its clock per row, the seed calls this verdict through the interpreter with the observed clock (constructing no carrier of its own, the discipline witness_cost_timed_out_seed_deferral_note already states for this seam), and the Rust arm reconstruction is DELETED rather than kept beside it -- a climb dissolves the lower-rung production machinery it obsoletes, and two spellings of one verdict is the fork this module refuses everywhere else."
+data witness_row_cost_clock_mismatch_note: String = "THE WALL THIS WHOLE LANE EXISTS TO BUILD. A drift verdict compares an observed duration against a dated one, and before the clock became data nothing in the types said the two were read from the same clock — so comparing a thread-CPU figure against a wall baseline typechecked, produced a confident WithinBasis or DriftExceeded, and was wrong in a way no test could distinguish from right. That is not hypothetical: the fast-lane cap is enforced on thread CPU while every cost receipt recorded wall, and four sessions spent an evening comparing 1005 against 5004 and 2507 against 5003 without either number being incorrect. BasisClockMismatch is a FOURTH ARM and not a Bool collapse, for the same reason std.content_hash compare_content_hash answers ContentHashCrossFamilyIncomparable rather than false: an incomparable pair is neither within nor exceeding, and rendering it as either invents a verdict. It is also not BasisAbsent — a basis IS present, it is simply measured on a different clock, and the remedy differs (seed the missing basis versus fix the producer that handed over the wrong clock). WHY THE THRESHOLD SIDE STAYS WALL: operator ruling 2026-08-05 closed the witness-grain denominator as WALL, with thread CPU retained as the REMEDY DISCRIMINATOR rather than a second threshold arm — high wall with high CPU is algorithm or repeated evaluation, high wall with low CPU is waiting, I/O, subprocess or scheduling. So a CPU-clocked basis row is not forbidden by this type, it is simply not what the witness threshold is stated on, and handing one to this comparator against a wall observation now REFUSES instead of answering. WHERE THIS WALL RUNS, stated so the rung is neither inflated nor understated (DESIGN section 4b). It is reached in the witness corpus by dag/test/claim/witness_row_cost_drift_witness_test.dag AND on the production falsifier cadence, which is the half that took a second pass: the seed's write_witness_row_cost_drift_receipt_at used to call only witness_row_cost_exceeds_basis, the bare ratio predicate, and rebuild DriftExceeded / WithinBasis / BasisAbsent as Rust string literals -- a second representation of this sum, and one the clock never crossed, so a cross-clock pair on the cadence would still have answered. That comparison was correct at the time only because both sides happened to be wall, which is a fact about the producers rather than a property of the mechanism, and nothing about its greenness depended on the mechanism being right. It now calls witness_row_cost_seed_verdict_dated / _undated and RENDERS THE ARM THE AUTHORITY NAMED, the basis files carry a required per-row clock cell (an unstated or unmodelled clock refuses at parse, never defaults to wall), and the Rust arm reconstruction is DELETED rather than kept beside this module -- a climb dissolves the lower-rung production machinery it obsoletes. Proven end to end by claim_executor's drift_verdicts_come_from_the_authority_and_a_cross_clock_basis_refuses, which asserts the refusal on BOTH sides of the 2x ratio so it is decided by the clock and not by the magnitude, and which is the only consumer that crosses this Rust seam at all: the .dag witnesses cannot reach it and the parser tests only show the cell is read. THE ONE ARM STILL DECIDED SEED-SIDE is ObservationAbsent, for a row that never executed, and deliberately: an absent OBSERVATION has no counterpart in this sum, so giving it one would let a row with no measurement reach a comparator at all."
 
 fn witness_row_cost_drift_ratio_numerator() -> Nat {
   2
@@ -115,6 +118,91 @@ fn witness_row_cost_verdict(
         WithinBasis
       }
   }
+}
+
+data witness_row_cost_migration_threshold_note: String = "MANDATORY-MIGRATION DISCLOSURE (operator ruling 2026-08-04, dispatched via keen-ibex-349): 5000ms (gunbc_ci_fast_lane_eval_budget_ms, v2.workflow.ci_floor_plan) is a FAIL-STOP protecting the executor — never a budget, tolerance, or target; ordinary witnesses test narrow business logic and belong sub-millisecond where practical, comfortably under one second end-to-end. A witness measured within one order of magnitude of that hard cap is in MANDATORY migration territory. DERIVED, NOT MINTED (DESIGN §3 — no second hand-maintained number): the 500ms figure is gunbc_ci_fast_lane_eval_budget_ms() divided by witness_row_cost_migration_threshold_order_of_magnitude() (10, the 'one order of magnitude' the operator's own framing names); the two numbers cannot drift apart because there is only one authored constant. THE COMPARISON AXIS IS WALL (operator ruling 2026-08-05, witness_row_cost_clock_mismatch_note): the threshold is stated on the same wall eval column the receipt already carries, never thread CPU. THIS IS A DISCLOSURE GATE, not yet a wall — same shape as gunbc.ci_materialization's ci_floor_materialization_receipt_note: an unknown population sits over threshold today, and turning that into a merge-refusing gate on day one reds the fleet for work nobody has scheduled. What the disclosure gate DOES require, so it is not the coverage-by-illusion tier (DESIGN §6): every row is COUNTED and LOCATED (entry + declaration, never a bare aggregate), and it MUST be a live consumer of the existing per-witness cost receipt (gunbc.witness_row_cost's own N+1 ObservationEvent join) rather than new instrumentation. DECLARED PROMOTION TRIGGER (the carrier, not PR prose — DESIGN §5's escape-hatch rule applied to a disclosure: a trigger that lives only in a PR body is exactly the rediscovery generator this work exists to close): this disclosure promotes to a merge-refusing wall — new rows above threshold refuse admission — once witness_row_cost_mandatory_migration_count() reaches zero on a full-corpus falsifier run; the same burn-down-then-flip-to-hard-error shape gunbc.ci_materialization's duplicated_keys field already uses. Until that population is zero, EVERY existing over-threshold row must have a filed migration disposition (a located row on this or a successor roster) or the gate stays disclosure-only; a shrinking-but-nonzero population with untriaged rows is not evidence the trigger fired. SECOND, INDEPENDENT PROMOTION CONDITION (added per keen-ibex-349, 2026-08-05, from a measured ~2x observed-wall-clock spread across sessions on shared build-host jobserver contention — same witness, same tree, 2507-5291ms depending on ambient fleet load): promotion additionally requires that the observed axis this gate compares be a property of the witness, not of ambient fleet state at measurement time. A gate whose verdict flips with unrelated sessions' concurrent load is not fail-closed, it is nondeterministic, and 'nondeterministic' plus 'merge-blocking' produces exactly the rerun-as-remedy this project forbids (DESIGN §5). Today, disclosure-only, this costs a wobbling count and nothing else; it becomes load-bearing the moment the population-zero condition above is met. So BOTH conditions gate the flip to a wall: population zero AND a load-independent measurement axis (isolated/dedicated execution, a CPU-time rather than wall-clock measure, or an equivalent contention-insensitive observation) — satisfying only one is not evidence the trigger fired. First discriminating case (per the dispatching session): dag/test/claim/roadmap_program_view_witness_test.dag's four witnesses, root-caused to a cost-shape defect in gunbc.roadmap_program_view (per-node content_hash digests, unindexed parent lookups, O(n) depth folds) — this disclosure's mechanism is proven correct exactly when it surfaces that file as a located row, independent of whether any one witness happens to trip the 5s fail-stop."
+
+fn witness_row_cost_migration_threshold_order_of_magnitude() -> Nat {
+  10
+}
+
+fn witness_row_cost_migration_threshold_ms() -> Nat {
+  gunbc_ci_fast_lane_eval_budget_ms() / witness_row_cost_migration_threshold_order_of_magnitude()
+}
+
+type MigrationDisclosureVerdict
+  = BelowMigrationThreshold
+  | MandatoryMigration { observed: Millisecond, threshold: Millisecond }
+
+fn witness_row_cost_migration_verdict(observed: Millisecond) -> MigrationDisclosureVerdict {
+  let threshold = millisecond(count: witness_row_cost_migration_threshold_ms())
+  if millisecond_count(m: observed) >= millisecond_count(m: threshold) {
+    MandatoryMigration { observed: observed, threshold: threshold }
+  } else {
+    BelowMigrationThreshold
+  }
+}
+
+fn witness_row_cost_receipt_row_wall_eval_ms(row: WitnessCostReceiptRow) -> Optional<Millisecond> {
+  match observation_duration_of(durations: row.eval, basis: WallClock) {
+    MeasuredValue { value: v } => Present { value: nanosecond_to_millisecond_floor(n: v) }
+    MeasuredUnavailable { cause: _ } => Absent
+  }
+}
+
+fn witness_row_cost_receipt_row_migration_verdict(row: WitnessCostReceiptRow) -> Optional<MigrationDisclosureVerdict> {
+  match witness_row_cost_receipt_row_wall_eval_ms(row: row) {
+    Absent => Absent
+    Present { value: observed } =>
+      Present { value: witness_row_cost_migration_verdict(observed: observed) }
+  }
+}
+
+fn witness_row_cost_mandatory_migration_rows(rows: List<WitnessCostReceiptRow>) -> List<WitnessCostReceiptRow> {
+  filter(rows, row =>
+    match witness_row_cost_receipt_row_migration_verdict(row: row) {
+      Present { value: MandatoryMigration { observed: _, threshold: _ } } => true
+      Present { value: BelowMigrationThreshold } => false
+      Absent => false
+    }
+  )
+}
+
+fn witness_row_cost_mandatory_migration_count(rows: List<WitnessCostReceiptRow>) -> Int {
+  length(xs: witness_row_cost_mandatory_migration_rows(rows: rows))
+}
+
+data witness_row_cost_seed_verdict_note: String = "The seed's drift wire calls THESE, not the ratio predicate, so the verdict arms are named in exactly one place. Before this the seed called witness_row_cost_exceeds_basis and rebuilt DriftExceeded / WithinBasis / BasisAbsent as Rust string literals — a second representation of this module's sum, which is how a wall can exist here and not stand on the production path (the state witness_row_cost_clock_mismatch_note declared and this pair dissolves). The seed now reads the returned variant NAME and renders it, so adding an arm here reaches the receipt without a Rust edit, and a cross-clock pair refuses on the cadence exactly as it does in the witness. TWO ENTRY POINTS rather than an Optional crossing the boundary: the seed constructs no carrier, which is the same discipline witness_cost_timed_out_seed_deferral_note states for this seam, and whether a dated basis EXISTS is a map-lookup fact the seed already holds — it is presence of data, not a judgement about cost. The seed keeps deciding comparability first (its ObservationAbsent arm, for a row that never ran) because an absent OBSERVATION has no counterpart in this sum: there is nothing to judge, and inventing an arm for it here would let a row with no measurement reach a comparator at all. Dissolve-on: the same trigger as the rest of this seam, the witness-realization lane, where a realized runner holds the row and calls the verdict directly."
+
+fn witness_row_cost_seed_verdict_dated(
+  observed: Millisecond,
+  observed_clock: ClockBasis,
+  basis_clock: ClockBasis,
+  basis_eval: Millisecond,
+  run_ref: String,
+) -> WitnessRowCostVerdict {
+  witness_row_cost_verdict(
+    observed: observed,
+    observed_clock: observed_clock,
+    basis: Present {
+      value: WitnessRowCostDatedBasis {
+        clock: basis_clock,
+        eval: basis_eval,
+        run_ref: run_ref
+      }
+    }
+  )
+}
+
+fn witness_row_cost_seed_verdict_undated(
+  observed: Millisecond,
+  observed_clock: ClockBasis,
+) -> WitnessRowCostVerdict {
+  witness_row_cost_verdict(
+    observed: observed,
+    observed_clock: observed_clock,
+    basis: Absent
+  )
 }
 
 fn witness_cost_warm(eval: Nanosecond, resolve: Nanosecond) -> Nanosecond {

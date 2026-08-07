@@ -4,12 +4,12 @@ import std.types { String, NonEmptyStr, Bool, List, list_length }
 import std.nat { Nat }
 import gunbc.floor_component_receipt {
   FloorComponentRow,
+  ModeUnrecorded,
   floor_component_row_index,
   floor_component_row_is_done,
   floor_component_row_of,
   floor_component_row_of_failure_mode,
-  floor_component_transition_outcome,
-  ModeUnrecorded
+  floor_component_transition_outcome
 }
 import std.realization_schedule { SelectionApplied }
 import std.observation { Done, Refused, Failed, TimedOut, Skipped, Final }
@@ -118,8 +118,8 @@ fn falsifier_run_standing_from(
       cause: "no planned falsifier components — the lane projection did not run, and a vacuous completeness would report that as success" as NonEmptyStr
     }
   } else {
-    let missing = filter(xs: planned_ix, f: fn(i) { !list_contains_index(xs: reported_ix, target: i) })
-    let surplus = filter(xs: reported_ix, f: fn(i) { !list_contains_index(xs: planned_ix, target: i) })
+    let missing = filter(xs: planned_ix, predicate: fn(i) { !list_contains_index(xs: reported_ix, target: i) })
+    let surplus = filter(xs: reported_ix, predicate: fn(i) { !list_contains_index(xs: planned_ix, target: i) })
     let duplicated = duplicated_indices(xs: reported_ix)
     if list_length(items: missing) > 0 {
       StandingMissingComponents { missing_indices: missing }
@@ -169,7 +169,7 @@ data falsifier_routing_note: String = "Routing REFUSES rather than defaulting. T
 
 data falsifier_routing_two_unknowns_note: String = "TWO UNKNOWNS, TWO ARMS — they may not share one refusal (coordinating review, wise-ram-22 2026-08-04). RoutingLaneUndetermined means the component index is not in the planned roster at all: the run reported a component the plan does not know about, which is a MECHANISM gap, and its remedy is in the projection — the enrollment roster and the schedule have diverged, or the receipt is from a different plan. RoutingOwnerUndeclared means the lane IS determined and simply has no owner row: that is a ROUTING gap, and its remedy is authoring one row. Collapsing them would recreate the state-space conflation at the triage layer, which is the worst place for it — the person reading a triage refusal is by definition trying to find out who to talk to, and the two arms send them to entirely different places. Note the asymmetry that makes this more than bookkeeping: an owner-undeclared refusal still names the lane, so it is actionable without any further investigation, while a lane-undetermined refusal names nothing and is itself the bug."
 
-data falsifier_lane_owner_roster_note: String = "The owner roster is DECLARED AND CURRENTLY EMPTY, and that is the honest state rather than an omission. The only owner fact in the tree today is a hardcoded @briansrls mention inside the JS body of .github/workflows/falsifier-alert.yml — one handle for every failure, which is precisely the anonymous routing this module exists to replace. Copying it onto nine lane rows would fabricate eight ownership facts nobody has asserted (DESIGN section 5, no fabricated plausible output), and would look like attribution while carrying none. So the roster starts empty, every lane routes to RoutingOwnerUndeclared naming itself, and the gap is counted and located instead of papered over — a lane acquires an owner when someone actually owns it, by adding one row. This is deliberately a data roster and not a per-lane function so that authoring an owner never touches the routing algebra. Dissolve-on: the roster covers every lane in FalsifierLane, at which point RoutingOwnerUndeclared becomes unreachable in production and survives only as the witness's red control."
+data falsifier_lane_owner_roster_note: String = "The owner roster is DECLARED AND CURRENTLY EMPTY, and that is the honest state rather than an omission. The only owner fact in the tree today is the ALERT_MENTION constant in .github/workflows/falsifier-alert.yml — one handle for every failure, which is precisely the anonymous routing this module exists to replace. It became a named constant when the alert was found to be reaching that handle only once per incident: a mention notifies when it is CREATED, and only the issue body's first write is a creation, so the sustained-red heartbeat and the failing-set-changed comments — the artifacts that actually carry current state — notified nobody (issue #7737, four uncited comments across two days). The constant is now read by every notifying artifact, which is why it is one name rather than four literals. Copying it onto nine lane rows would fabricate eight ownership facts nobody has asserted (DESIGN section 5, no fabricated plausible output), and would look like attribution while carrying none. So the roster starts empty, every lane routes to RoutingOwnerUndeclared naming itself, and the gap is counted and located instead of papered over — a lane acquires an owner when someone actually owns it, by adding one row. This is deliberately a data roster and not a per-lane function so that authoring an owner never touches the routing algebra. Dissolve-on: the roster covers every lane in FalsifierLane, at which point RoutingOwnerUndeclared becomes unreachable in production and survives only as the witness's red control."
 
 type FalsifierLaneOwner = LaneOwnerHandle { handle: NonEmptyStr }
 

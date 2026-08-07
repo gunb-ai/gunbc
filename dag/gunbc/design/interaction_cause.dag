@@ -1,0 +1,37 @@
+module gunbc.design.interaction_cause
+
+import std.types { String, Bool }
+
+data interaction_cause_note: String = "WHAT CAUSED THE RESPONSE, SAID WITHOUT NAMING A RENDERER (F2, review call 2026-08-04). The register's motion vocabulary was MotionTrigger — OnHover, OnFocusVisible, OnActive, OnStateClass — whose variants are named for CSS pseudo-class spellings and whose only projection maps them to selector text. That fuses the interaction MEANING ('the pointer approached this subject') with one realization's SPELLING (':hover'), which is the DESIGN section 3 interface/transport fusion in the exact shape extdeps.browser.browser was condemned for on gunbc#7556. A desktop, native, or canvas renderer has pointer-approach, focus and press; it has no ':hover' to import.
+
+THIS MODULE IS THE INTERFACE HALF and it imports nothing but std by construction: a semantic module reaching for a cause cannot accidentally acquire selector or property vocabulary through it. The CSS half stays in gunbc.design.material, which lowers a cause to its MotionTrigger realization — one of N, not the definition. The lowering is a total match over this closed coproduct, so a renderer that omits a mapping fails to COMPILE rather than silently dropping the response, which is the acceptance criterion this split was asked to meet.
+
+WHY THE OBSERVED-STATE ARM CARRIES A NAME AND THE OTHERS DO NOT: the first three are events a renderer already knows how to detect, so the cause is fully determined by the variant. An observed state is a fact the client program decided and named — 'requested', 'accepted', 'open' — so the name is part of the cause, not part of its rendering. That the CSS realization happens to render it as a class suffix while the other three render as pseudo-classes is a REALIZATION asymmetry (material.dag's transition_carrier_selector already derives placement from it) and this module deliberately does not encode it: cause_is_machine_observed answers the semantic question — did the machine cause this, or did the person — and a renderer with no classes at all still gets a true answer."
+
+type InteractionCause
+  = PointerApproach
+  | FocusAcquired
+  | PressEngaged
+  | ObservedStateEntered { state_name: String }
+
+fn interaction_cause_key(c: InteractionCause) -> String {
+  match c {
+    PointerApproach => "pointer-approach"
+    FocusAcquired => "focus-acquired"
+    PressEngaged => "press-engaged"
+    ObservedStateEntered { state_name } => join(["observed-state:", state_name], "")
+  }
+}
+
+data machine_observed_note: String = "The semantic reading of the split the register already relied on: PointerApproach, FocusAcquired and PressEngaged are things a PERSON does to a control; ObservedStateEntered is something the MACHINE did to it. The still-until-touched amendment (material.dag) turned on exactly this distinction — motion on user touch OR observed state change, never ambient — and it stated the distinction in terms of pseudo-class versus class, which is the realization's way of seeing it. This is the same fact said in the interface's terms, so a non-CSS renderer can honour the law without inheriting the vocabulary that happened to express it first."
+
+fn cause_is_machine_observed(c: InteractionCause) -> Bool {
+  match c {
+    PointerApproach => false
+    FocusAcquired => false
+    PressEngaged => false
+    ObservedStateEntered { state_name } => true
+  }
+}
+
+data ambient_remains_unwritable_note: String = "There is still no ambient constructor, and that is load-bearing rather than incidental. Every variant here names a CAUSE, so motion with no cause cannot be expressed in this vocabulary at all — the same construction wall MotionTrigger carried, preserved verbatim across the de-fusion. The instrument-motion lane (InstrumentDrift) is the declared exception and it does NOT widen this coproduct: bounded instrument character is a property of the enclosing instrument, not a response of a semantic control, so it gets its own carrier rather than an ambient arm here."

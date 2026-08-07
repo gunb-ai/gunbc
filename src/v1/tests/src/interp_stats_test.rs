@@ -11,7 +11,11 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
+        .filter(|m| {
+            !m.starts_with("complexity: ")
+                && !m.starts_with("unlisted import use ")
+                && !m.starts_with("where-refinement unenforced:")
+        })
         .collect();
     assert!(
         msgs.is_empty() && result.graph.is_some(),
@@ -97,6 +101,122 @@ fn build() -> Int {
     assert_eq!(
         counters.list_concat_calls, 0,
         "push must not leak into concat"
+    );
+}
+
+fn uri_percent_encode_watchlist_count(name: &str) -> u64 {
+    v1_interpreter::call_frequency_snapshot()
+        .into_iter()
+        .find(|(watch, _)| *watch == name)
+        .map(|(_, count)| count)
+        .unwrap_or(0)
+}
+
+fn uri_percent_encode_run(scalar_count: usize) {
+    let code_points: Vec<i64> = (0..scalar_count).map(|i| 233 + i as i64).collect();
+    let code_points_src = code_points
+        .iter()
+        .map(|cp| cp.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let src = format!(
+        r#"module test.stats_uri_encode_{scalar_count}
+import extdeps.uri {{
+  uri_percent_encode_code_points,
+  UriPercentComponentEncoded,
+  UriPercentComponentRefused,
+}}
+
+fn build() -> Bool {{
+  match uri_percent_encode_code_points(code_points: [{code_points_src}]) {{
+    UriPercentComponentEncoded(_) => true
+    UriPercentComponentRefused {{ cause: _ }} => false
+  }}
+}}
+"#
+    );
+    let resolved = resolve(&src);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
+
+    match v1_interpreter::run_in_context(&ctx, "build", false) {
+        Ok(Value::Bool(true)) => {}
+        other => panic!("expected Bool(true), got {other:?}"),
+    }
+}
+
+fn uri_percent_encode_mutation_counters_for_scalar_count(
+    scalar_count: usize,
+) -> v1_interpreter::MutationCounters {
+    let code_points: Vec<i64> = (0..scalar_count).map(|i| 233 + i as i64).collect();
+    let code_points_src = code_points
+        .iter()
+        .map(|cp| cp.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let src = format!(
+        r#"module test.stats_uri_encode_mut_{scalar_count}
+import extdeps.uri {{
+  uri_percent_encode_code_points,
+  UriPercentComponentEncoded,
+  UriPercentComponentRefused,
+}}
+
+fn build() -> Bool {{
+  match uri_percent_encode_code_points(code_points: [{code_points_src}]) {{
+    UriPercentComponentEncoded(_) => true
+    UriPercentComponentRefused {{ cause: _ }} => false
+  }}
+}}
+"#
+    );
+    let resolved = resolve(&src);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
+
+    match v1_interpreter::run_in_context(&ctx, "build", false) {
+        Ok(Value::Bool(true)) => {}
+        other => panic!("expected Bool(true), got {other:?}"),
+    }
+    ctx.mutation_counters_snapshot()
+}
+
+#[test]
+fn uri_percent_encode_code_points_cost_shape_receipt() {
+    v1_interpreter::set_call_frequency_forensics_for_test(true);
+
+    let fragment_before = uri_percent_encode_watchlist_count("uri_percent_encode_scalar_fragment");
+    uri_percent_encode_run(5);
+    let fragment_after_five =
+        uri_percent_encode_watchlist_count("uri_percent_encode_scalar_fragment");
+    assert_eq!(
+        fragment_after_five - fragment_before,
+        5,
+        "five reserved scalars must encode exactly once each via call-frequency watchlist"
+    );
+
+    uri_percent_encode_run(50);
+    let fragment_after_fifty =
+        uri_percent_encode_watchlist_count("uri_percent_encode_scalar_fragment");
+    assert_eq!(
+        fragment_after_fifty - fragment_after_five,
+        50,
+        "fifty reserved scalars must encode exactly once each via call-frequency watchlist"
+    );
+
+    let five = uri_percent_encode_mutation_counters_for_scalar_count(5);
+    let fifty = uri_percent_encode_mutation_counters_for_scalar_count(50);
+    assert_eq!(
+        fifty.list_push_items_copied, five.list_push_items_copied,
+        "list_push_items_copied must not scale with encoded scalar count (5-scalar run={}, 50-scalar run={})",
+        five.list_push_items_copied, fifty.list_push_items_copied
+    );
+    assert_eq!(
+        fifty.list_concat_items_copied, five.list_concat_items_copied,
+        "list_concat_items_copied must not scale on this path (5-scalar run={}, 50-scalar run={}; note: RrbVector concat reports copied_items=0, so this axis does not observe prepend-copy accumulation on the old fold-concat shape — the map-then-sequence .dag construction closes that cost by shape)",
+        five.list_concat_items_copied, fifty.list_concat_items_copied
     );
 }
 

@@ -1,0 +1,251 @@
+module gunbc.prose_row_frontier
+
+import std.types { Bool, Int, String, List }
+import v2.std.optional { Optional }
+
+// THE MIGRATION SCOPE, AND IT IS THE DISSOLUTION LEDGER RATHER THAN A CONFIGURATION KNOB.
+//
+// DESIGN 4c rules that unclassified prose is forbidden and that `//` is the quarantine boundary, so a
+// prose-only `data NAME_note: String` row is debt in a representation no lens can classify. The wall
+// that makes new debt unwritable is therefore correct corpus-wide. It is NOT enrolled corpus-wide, and
+// the reason is measured rather than cautious: 25 of the 30 most recent first-parent commits on
+// origin/main add at least one such row, with a tail of 81, 68, 63, 42 and 19. A corpus-wide flip on
+// day one refuses roughly every concurrently open lane before the migration that would let them comply
+// exists — cost displaced onto parties who did not cause it, which is the opposite of what DESIGN 6
+// prices a wall by.
+//
+// So the wall grows WITH the migration: each batch adds the paths it migrated to this roster in the
+// SAME change that migrates them. That makes the roster a ledger of work actually done rather than a
+// promise about what will be.
+//
+// A PATH IN SCOPE IS NOT A PATH WITH NO PROSE LEFT, and the distinction is load-bearing rather than
+// pedantic. `jwt.dag` carries no legacy prose rows; four grandfathered rows remain in `oidc.dag`. They stay editable in place, because introduction is keyed on the declaration NAME and an edit removes and re-adds the same name. What enrollment buys is exactly one property: no NEW prose row lands here. Waiting for a path to be prose-free before defending it would let fresh debt accumulate in the very files being cleaned, at the pace the cleanup runs.
+//
+// (An earlier revision of this paragraph said a path enters scope `only once its prose actually left`.
+// That was false of the first entry the same change enrolled — a claim in the authority contradicted by
+// the roster three lines below it, which is the §3 defect this lane exists to remove, in prose rather
+// than in a carrier.)
+//
+// MONOTONE, AND THAT IS A DECLARED RULE RATHER THAN AN ENFORCED ONE TODAY. A path may only ever be
+// ADDED here. Removing one lowers an error class's rung, so under DESIGN 4b meta-obligation 3 it
+// requires a declared previous rung, reason, bounded population and restoration trigger — never a quiet
+// deletion to make a red go away.
+//
+// Nothing mechanically refuses such a deletion yet, and saying so is the point: an unenforced rule
+// described as a wall is the coverage-by-illusion tier DESIGN 6 names. The mechanism is known and small
+// — the same line-grain remove-only observation tools.extdeps_scope_placement_gate already runs over
+// its frozen manifest, pointed at this declaration instead. NEXT-RUNG TRIGGER: that observation lands
+// here with a control proving a scope-line deletion refuses, at which point this paragraph says
+// `cannot` rather than `must not`.
+//
+// DISSOLVE-ON: when this roster spans the corpus, path scoping has no residue left to admit. At that
+// point prose_row_path_in_scope is deleted, the refusal becomes unconditional over every introduced
+// row, and this declaration goes with it.
+data prose_row_migration_scope: List<String> = [
+  "dag/extdeps/auth/",
+  "dag/std/source_annotation.dag",
+  "src/v1/annotation_bind.dag",
+  "src/v1/tests/claim/v1_annotation_round_trip_test.dag",
+]
+
+// The shape the wall recognises, stated once so the gate, the receipt and the controls cannot drift
+// into three readings of it. A prose row is a MODULE-SCOPE `data` declaration whose name ends in
+// `_note` and whose right-hand side opens a string literal — the exact idiom #6262 introduced when `//`
+// became a parse error, and the population DESIGN 4c calls modeling debt.
+//
+// It is deliberately narrow. A row whose name does not end in `_note`, a nested declaration, or a
+// `data` row carrying an actual program value is not recognised and is not refused: this wall is about
+// the one idiom whose sole purpose is commentary, and widening it to a general prose classifier is the
+// prerequisite the operator ruled must NOT block the first rows leaving.
+data prose_row_decl_prefix: String = "data "
+
+data prose_row_decl_infix: String = ": String = \""
+
+data prose_row_decl_suffix: String = "_note"
+
+data prose_row_colon_code_point: Int = 58
+
+type ProseRowRef {
+  path: String
+  decl_name: String
+}
+
+// Reading a declaration name out of a raw diff line without a regex: scan from the end of `data ` to
+// the first colon, which is where the type annotation starts. The scan is the same shape
+// extdeps.auth.jwt uses for its own colon search, because a second spelling of `find the first colon`
+// is a fork of one rule.
+fn prose_row_ident_end(line: String, i: Int, len: Int) -> Int {
+  if i >= len {
+    i
+  } else if code_point(ch: char_at(line, i)) == prose_row_colon_code_point {
+    i
+  } else {
+    prose_row_ident_end(line: line, i: i + 1, len: len)
+  }
+}
+
+// Absent means `this line is not a prose row`, which is the overwhelming majority of a diff — it is a
+// classification miss, never a failure, and the caller must not treat the two alike. A line the fold
+// cannot read AT ALL is a different fact and is carried by ProseRowDiffUnreadable below.
+fn prose_row_decl_name(line: String) -> Optional<String> {
+  let len = string_length(s: line)
+  if !starts_with(s: line, prefix: prose_row_decl_prefix) {
+    none
+  } else {
+    let start = string_length(s: prose_row_decl_prefix)
+    let end = prose_row_ident_end(line: line, i: start, len: len)
+    if end >= len {
+      none
+    } else {
+      let name = substring(s: line, start: start, end: end)
+      if name == "" || string_contains(s: name, pattern: " ") {
+        none
+      } else if !ends_with(s: name, suffix: prose_row_decl_suffix) {
+        none
+      } else if !starts_with(s: substring(s: line, start: end, end: len), prefix: prose_row_decl_infix) {
+        none
+      } else {
+        Present { value: name }
+      }
+    }
+  }
+}
+
+// THE OBSERVATION, AND WHY BOTH SIDES ARE CARRIED.
+//
+// Keying introduction on the DECLARATION NAME rather than on the added line is what makes this wall
+// about new debt instead of about churn. A row edited in place appears as a removal and an addition of
+// the same name; a file moved or a module split appears as every row removed under the old path and
+// added under the new one. Both are the same prose, and refusing them would tax the very cleanup this
+// lane is doing while catching nothing that was not already there.
+//
+// A RENAME IS DELIBERATELY REFUSED, and it is the one case where name-keying differs from intent: the
+// old name leaves and a new one arrives, so the row reads as introduced. That is the wanted answer —
+// a prose row being renamed is a prose row being touched by someone who could migrate it instead.
+type ProseRowDiffObservation
+  = ProseRowsObserved { added: List<ProseRowRef>, removed: List<String> }
+  | ProseRowDiffUnreadable { reason: String }
+
+type ProseRowFoldState {
+  path: String
+  added: List<ProseRowRef>
+  removed: List<String>
+  saw_file_header: Bool
+  saw_hunk: Bool
+}
+
+fn prose_row_diff_line_fold(acc: ProseRowFoldState, line: String) -> ProseRowFoldState {
+  if starts_with(s: line, prefix: "diff --git ") {
+    ProseRowFoldState {
+      path: "",
+      added: acc.added,
+      removed: acc.removed,
+      saw_file_header: acc.saw_file_header,
+      saw_hunk: acc.saw_hunk,
+    }
+  } else if starts_with(s: line, prefix: "+++ b/") {
+    ProseRowFoldState {
+      path: substring(s: line, start: 6, end: string_length(s: line)),
+      added: acc.added,
+      removed: acc.removed,
+      saw_file_header: true,
+      saw_hunk: acc.saw_hunk,
+    }
+  } else if starts_with(s: line, prefix: "+++ ") || starts_with(s: line, prefix: "--- ") {
+    acc
+  } else if starts_with(s: line, prefix: "@@") {
+    ProseRowFoldState {
+      path: acc.path,
+      added: acc.added,
+      removed: acc.removed,
+      saw_file_header: acc.saw_file_header,
+      saw_hunk: true,
+    }
+  } else if starts_with(s: line, prefix: "+") {
+    match prose_row_decl_name(line: substring(s: line, start: 1, end: string_length(s: line))) {
+      Absent => acc
+      Present { value: name } =>
+        ProseRowFoldState {
+          path: acc.path,
+          added: concat(acc.added, [ProseRowRef { path: acc.path, decl_name: name }]),
+          removed: acc.removed,
+          saw_file_header: acc.saw_file_header,
+          saw_hunk: acc.saw_hunk,
+        }
+    }
+  } else if starts_with(s: line, prefix: "-") {
+    match prose_row_decl_name(line: substring(s: line, start: 1, end: string_length(s: line))) {
+      Absent => acc
+      Present { value: name } =>
+        ProseRowFoldState {
+          path: acc.path,
+          added: acc.added,
+          removed: concat(acc.removed, [name]),
+          saw_file_header: acc.saw_file_header,
+          saw_hunk: acc.saw_hunk,
+        }
+    }
+  } else {
+    acc
+  }
+}
+
+// A DIFF THAT PRESENTED HUNKS WITHOUT EVER PRESENTING A FILE HEADER IS UNREADABLE, NOT EMPTY.
+//
+// The distinction is the empty-observation narrow DESIGN names: `I saw no prose rows` and `I could not
+// tell what this diff touched` are different states, and reporting the second as the first is a
+// silently uncovered run rather than an expensive one. An empty diff text is genuinely empty and is
+// observed as such — that is the no-op PR, not a failure.
+fn prose_row_diff_observation(diff_text: String) -> ProseRowDiffObservation {
+  let final_state = fold(
+    split(diff_text, separator: "\n"),
+    init: ProseRowFoldState { path: "", added: [], removed: [], saw_file_header: false, saw_hunk: false },
+    f: fn(acc, line) { prose_row_diff_line_fold(acc: acc, line: line) }
+  )
+  if final_state.saw_hunk && !final_state.saw_file_header {
+    ProseRowDiffUnreadable {
+      reason: "unified diff presented hunk headers but no recognised new-side file header, so no added line can be attributed to a path"
+    }
+  } else {
+    ProseRowsObserved { added: final_state.added, removed: final_state.removed }
+  }
+}
+
+fn prose_row_name_removed(removed: List<String>, name: String) -> Bool {
+  fold(removed, init: false, f: fn(found, r) { found || r == name })
+}
+
+// Introduction is added-minus-removed at NAME grain, per the observation note above.
+fn prose_rows_introduced(added: List<ProseRowRef>, removed: List<String>) -> List<ProseRowRef> {
+  added |> filter(row => !prose_row_name_removed(removed: removed, name: row.decl_name))
+}
+
+fn prose_row_path_in_scope(path: String) -> Bool {
+  fold(prose_row_migration_scope, init: false, f: fn(found, prefix) {
+    found || starts_with(s: path, prefix: prefix)
+  })
+}
+
+// THE REFUSED POPULATION: introduced rows under a migrated path. This is the wall.
+fn prose_rows_refused(introduced: List<ProseRowRef>) -> List<ProseRowRef> {
+  introduced |> filter(row => prose_row_path_in_scope(path: row.path))
+}
+
+// THE COUNTED RESIDUE: introduced rows OUTSIDE the migrated paths.
+//
+// This is not a softer wall and must never be read as one. Path scoping leaves a real gap — new prose
+// keeps landing everywhere the migration has not reached — and DESIGN 5 requires a bounded scope's
+// residue to be observable and prioritizable rather than silent, because a deficit whose frequency is
+// zero by construction never ranks for fixing. So the residue is counted and located at row grain and
+// carried into the gate's receipt, where it drives which paths join the roster next. It gates nothing.
+fn prose_rows_out_of_scope(introduced: List<ProseRowRef>) -> List<ProseRowRef> {
+  introduced |> filter(row => !prose_row_path_in_scope(path: row.path))
+}
+
+fn prose_row_render(row: ProseRowRef) -> String {
+  concat(row.path, concat(" ", row.decl_name))
+}
+
+fn prose_rows_render(rows: List<ProseRowRef>) -> String {
+  join(rows |> map(row => prose_row_render(row: row)), ", ")
+}

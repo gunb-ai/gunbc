@@ -123,13 +123,6 @@ data gunbc_pr_7542_timing: PullTimingObservation = pull_timing_observation(
   source_url: "https://github.com/gunb-ai/gunbc/pull/7542",
 )
 
-type IssueComment {
-  id: Int
-  html_url: NonEmptyStr
-  body: String
-  created_at: Timestamp
-}
-
 data github_cli_exact_head_merge_note: String = "GitHub CLI documents --match-head-commit as the commit SHA the pull-request head must match to allow merge and --squash as the repository's squash strategy. The operation exposes termination as data because a nonzero result is a domain refusal the landing workflow must render and receipt, not an interpreter crash. It deliberately carries no --admin and no --auto: landing workflow v1 performs the one operator-clicked merge already admitted by the dashboard summary; merge-queue enqueue remains a later realization."
 
 service github.CliPulls {
@@ -257,32 +250,6 @@ service github.Pulls {
       200 => String
       401 => GitHubErrorShape
       404 => GitHubErrorShape
-      5xx => GitHubErrorShape
-    }
-  }
-
-  operation CreateComment {
-    input {
-      auth_token: Secret
-      owner: String
-      repo: String
-      issue_number: Int
-      body: String
-    }
-    output {
-      id: Int from "id"
-      html_url: NonEmptyStr from "html_url"
-    }
-    transport rest {
-      method: POST,
-      path: "/repos/\{owner\}/\{repo\}/issues/\{issue_number\}/comments",
-      body: { body: body }
-    }
-    response {
-      201 => IssueComment
-      401 => GitHubErrorShape
-      404 => GitHubErrorShape
-      422 => GitHubErrorShape
       5xx => GitHubErrorShape
     }
   }

@@ -176,10 +176,19 @@ type CompilerDiagnostic
   | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
   | SourceAnnotationRefused { refusal: AnnotationAttachmentRefusal }
+  | ConstructorCallAdmissionRefused {
+      constructor_module_path: String,
+      constructor_decl_name: String,
+      caller_module_path: String,
+      caller_decl_name: String,
+      permitted_callers: List<String>,
+      span: SourceSpan
+    }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
   | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: SourceSpan }
+  | CallArgumentDuplicate { callee: String, argument: String, span: SourceSpan }
   | CallPositionalDeficit { callee: String, parameter: String, supplied: Int, required: Int, span: SourceSpan }
   | CallNamedArgOnFunctionValue { callee: String, argument: String, span: SourceSpan }
   | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
@@ -293,10 +302,19 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
     SoleConstructorViolation { type_name: _, span: s } => s
     SourceAnnotationRefused { refusal: r } => annotation_attachment_refusal_origin(refusal: r)
+    ConstructorCallAdmissionRefused {
+      constructor_module_path: _,
+      constructor_decl_name: _,
+      caller_module_path: _,
+      caller_decl_name: _,
+      permitted_callers: _,
+      span: s
+    } => s
     UnlistedImportUse { name: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
     CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: s } => s
+    CallArgumentDuplicate { callee: _, argument: _, span: s } => s
     CallPositionalDeficit { callee: _, parameter: _, supplied: _, required: _, span: s } => s
     CallNamedArgOnFunctionValue { callee: _, argument: _, span: s } => s
     OccurrenceTransportViolation { refusal: refusal } =>
@@ -336,12 +354,35 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
     SourceAnnotationRefused { refusal: r } => annotation_attachment_refusal_message(refusal: r)
+    ConstructorCallAdmissionRefused {
+      constructor_module_path: cm,
+      constructor_decl_name: cn,
+      caller_module_path: caller_m,
+      caller_decl_name: caller_n,
+      permitted_callers: permitted,
+      span: _
+    } =>
+      concat(
+        "constructor call admission refused: '",
+        cm,
+        ".",
+        cn,
+        "' refuses call from '",
+        caller_m,
+        ".",
+        caller_n,
+        "' — permitted callers: [",
+        join(permitted, separator: ", "),
+        "]"
+      )
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
       concat("call shape mismatch calling '", c, "': no parameter named '", a, "' (declared: [", join(ds, separator: ", "), "])")
     CallPositionalSurplus { callee: c, supplied: s, capacity: cap, span: _ } =>
       concat("call shape mismatch calling '", c, "': too many positional arguments: ", to_string(value: s), " supplied, ", to_string(value: cap), " positional parameter(s) declared")
+    CallArgumentDuplicate { callee: c, argument: a, span: _ } =>
+      concat("call shape mismatch calling '", c, "': argument '", a, "' supplied more than once")
     CallPositionalDeficit { callee: c, parameter: p, supplied: s, required: r, span: _ } =>
       concat("call shape mismatch calling '", c, "': missing required argument '", p, "' (", to_string(value: s), " of ", to_string(value: r), " required argument(s) supplied)")
     CallNamedArgOnFunctionValue { callee: c, argument: a, span: _ } =>
@@ -940,6 +981,86 @@ fn field_init_node_value(n: Node) -> Node {
   match n.children |> first {
     Present { value: v } => v
     Absent => make_expr_error_node(kind: InternalExprError, message: "malformed field-init: missing value", span: n.span)
+  }
+}
+
+type DeclRefCoords {
+  module_path: String
+  decl_name: String
+}
+
+fn decl_ref_coords_label(coords: DeclRefCoords) -> String {
+  concat(coords.module_path, ".", coords.decl_name)
+}
+
+fn call_named_arg_string_optional(
+  call: Node,
+  arg_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> String? {
+  match call.children
+    |> filter(a =>
+      match arg_name_at(n: a, source_indices: source_indices) {
+        Present { value: n } => n == arg_name
+        Absent => false
+      })
+    |> first {
+    Present { value: arg } => expr_literal_string_optional(expr: arg_value(n: arg))
+    Absent => none
+  }
+}
+
+fn decl_ref_coords_from_call_expr(
+  expr: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> DeclRefCoords? {
+  if expr_call_func_at(texpr: expr, source_indices: source_indices) != "decl_ref" {
+    none
+  } else {
+    match call_named_arg_string_optional(
+      call: expr,
+      arg_name: "module_path",
+      source_indices: source_indices
+    ) {
+      Present { value: mp } =>
+        match call_named_arg_string_optional(
+          call: expr,
+          arg_name: "decl_name",
+          source_indices: source_indices
+        ) {
+          Present { value: dn } =>
+            Present { value: DeclRefCoords { module_path: mp, decl_name: dn } }
+          Absent => none
+        }
+      Absent => none
+    }
+  }
+}
+
+fn collect_decl_ref_coords_from_list(
+  exprs: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<DeclRefCoords> {
+  flat_map(
+    exprs,
+    e =>
+      match decl_ref_coords_from_call_expr(expr: e, source_indices: source_indices) {
+        Present { value: coords } => [coords]
+        Absent => []
+      }
+  )
+}
+
+fn fn_admit_callers(n: Node, source_indices: Map<String, NewlineIndex>) -> List<DeclRefCoords>? {
+  match n.properties |> filter(p => p.name == "admit_callers") |> first {
+    Present { value: p } =>
+      Present {
+        value: collect_decl_ref_coords_from_list(
+          exprs: field_init_node_value(n: p).children,
+          source_indices: source_indices
+        )
+      }
+    Absent => Absent
   }
 }
 

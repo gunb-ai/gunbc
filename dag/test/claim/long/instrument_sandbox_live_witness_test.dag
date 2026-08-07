@@ -1,0 +1,116 @@
+module test.claim.long.instrument_sandbox_live_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, Int, List }
+import gunbc.roadmap_serve {
+  InstrumentSandboxPageHandler, roadmap_serve_invoke_for_instance,
+}
+import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import gunbc.roadmap_instrument_sandbox {
+  instrument_sandbox_page, instrument_css, live_program_view_result,
+  LiveProgramView, LiveViewDerived, LiveViewRefused,
+}
+import gunbc.v1_deletion_plan { v1_exit_finish_lines }
+import gunbc.design.instrument_physical { preference_default, instrument_displacement_px }
+import gunbc.roadmap_program_view {
+  V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused, V1DeletionProgramView,
+}
+import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, GET, media_type_wire_label }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data instrument_sandbox_live_long_note: String = "THE LIVE HALF OF THE INSTRUMENT SANDBOX WITNESS, re-homed off per-PR discovery (fast-lane BudgetExceeded, run 30986055960, 5074ms thread-CPU against the 5000ms budget). WHERE THE COST IS: post_7822_attribution_note below, which is the ONLY attribution in this file. This note used to carry one of its own — the render and live_program_view_result named as the dominant term, a 263ms-inputs / 5132ms-derivation split, and n=25 declared nodes — and every part of that is retracted: the cost location was wrong, and the node count was never right. It is deleted rather than disclaimed, because a superseded attribution sitting in the first note a reader reaches steers the next worker at the wrong file however many corrections sit below it, and two live cost stories in one carrier is the dual representation DESIGN section 3 forbids. WHAT SPLIT AND WHY, which is structural and does not move with the measurements: every claim here renders the served page or reads the live program view, and the mechanism claims — the derived salience role, the emission/admission join, the refused-role controls, the theme-block position check — measured 0-2ms each and are NOT here. They stay per-PR in the parent file, because the 2026-08-04 admission ruling says a live-population subject decomposes into small discriminating mechanism fixtures per PR plus the irreducible live half on a cadence, and the mechanism half is never the part that moves. HONEST COST CLASSIFICATION, because the precedent rows on this lane each declare theirs: this row is enrolled with its cost declared and measured, not relabelled as irreducible — see deferral_floor_note for what would have to get cheaper and whose lane owns it. WHAT WAS NOT DONE, named because the diagnostic that produced this split names it: the file was not moved to remove it from discovery and left unexecuted, and the keystone was not split into two per-PR test fns to draw two budgets — total cost would be unchanged and that is the relocation evasion wearing a different hat. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/long/instrument_sandbox_live_witness_test.dag --function instrument_sandbox_live_keystone_holds. Dissolve-on: carried once, on this witness's row in gunbc.ci_layer_roots falsifier_substrate_long_lane_rows — the original condition here (restructure the derivation onto keyed lookup) was MET by #7822 and did not dissolve the row, so a second copy of it would now be doubly wrong."
+
+fn fixture_request(path: String) -> ServeHttpRequest {
+  ServeHttpRequest { method: GET, path: path, body: "" }
+}
+
+fn served() -> ServeHttpResponse {
+  roadmap_serve_invoke_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    handler: InstrumentSandboxPageHandler,
+    params: [],
+    request: fixture_request(path: "/sandbox/instrument"),
+  )
+}
+
+fn last_segment(s: String, marker: String) -> String {
+  fold(split(s: s, delimiter: marker), init: "", f: (acc, part) => part)
+}
+
+data study_not_instrument_note: String = "The page must not describe itself as the operable instrument, and the header must not carry controls it cannot operate. The dead-control claim is checked against the MARKUP, not the whole document: the register stylesheet is inlined in a style element and legitimately contains .theme-toggle and .sound-toggle rules, so searching the raw body for those words finds the CSS and reds on a page that has no such buttons. The first version of this claim did exactly that and was wrong for a reason worth keeping — a negative substring assertion over a document that embeds its own stylesheet is testing the stylesheet."
+
+fn body_markup(r: ServeHttpResponse) -> String {
+  last_segment(s: r.body, marker: "</style>")
+}
+
+fn witness_the_instrument_path_serves_html(r: ServeHttpResponse) -> Bool {
+  r.status == 200
+    && media_type_wire_label(m: r.content_type) == "text/html; charset=utf-8"
+    && string_contains(s: r.body, pattern: "gunbc — instrument study")
+    && string_contains(s: r.body, pattern: "lang=\"en\"")
+    && string_contains(s: r.body, pattern: "width=device-width")
+}
+
+fn witness_the_page_calls_itself_a_study_and_carries_no_dead_controls(body: String, markup: String) -> Bool {
+  string_contains(s: body, pattern: "instrument — static study")
+    && !string_contains(s: markup, pattern: "theme-toggle")
+    && !string_contains(s: markup, pattern: "sound-toggle")
+}
+
+data post_7822_attribution_note: String = "THE FILE'S ONE ATTRIBUTION, AND WHAT IT REPLACED (2026-08-05). #7822 landed clever-deer-217's keyed-lookup restructure of gunbc.roadmap_program_view — program_depth_lookup onto map_get, membership maps, adjacency threaded once, program_dedupe_ids onto a seen-map — and this keystone fell from 17899ms to 1843ms on the same host and binary, roughly a tenfold cut. That clears the 5000ms fast-lane budget the enrollment row originally named as its dissolve-on, and does NOT dissolve the row: the operator moved the bar to a 500ms per-witness warning threshold the same day, and this witness is still several times over it. TWO RETRACTIONS CAME WITH THE RE-MEASUREMENT, both from claims this file used to carry and no longer does. First, 'the residue is now mostly the served-page render rather than the projection' — RETRACTED as false; it was never measured, it was inferred from the projection having got faster, which is the reasoning-instead-of-executing this file exists to guard against, and it pointed the next reader at the wrong file. Second, the 'n=25' declared-node count — wrong, not merely stale: declared_roadmap_nodes carries 126 rows (84 inline plus 42 from guarantee_ladder_nodes) and carried the same 126 forty commits back, so it was never 25 and every per-node figure derived from it is void. ATTRIBUTION BY EXECUTION (claim_batch, one host, one window, one binary, 2026-08-05), in THREAD CPU — the quantity the fast-lane budget is enforced against, and now printed beside wall on claim_batch's witness line; cpu and wall agreed within 0.5% on every probe below, so this eval is CPU-bound rather than contention-inflated, and the two clocks may be read interchangeably HERE without that holding anywhere else. Reading the declared roadmap authority costs 1144ms on its own, and it splits sharply: declared_roadmap_nodes is 1105ms of it while declared_roadmap_edges is 3ms, so the term is the construction of the node rows and nothing else. Those rows are literal data — 126 RoadmapNode records, each carrying a TicketFields record of eleven string fields built through fields and active_sized — which comes to roughly 8.8ms per declared row, paid before anything is derived or drawn. roadmap_acceptance_receipts costs 12ms. v1_program_view's derivation over them costs ~485ms, by difference. Everything this page itself does — instrument_sandbox_page building the fragment tree, instrument_css inside it at 130ms, and try_serialize_html_source at ~29ms — comes to ~203ms. Keystone total 1801ms; one bare served() 1844ms, which is the same page once, so the keystone's other six claims cost nothing measurable beyond it (nullary results are memoized). SO THE PROJECTION SIDE IS ROUGHLY EIGHT TIMES THE RENDER SIDE, and the largest single term is not the derivation #7822 restructured but the construction of the authority rows that derivation reads."
+
+data deferral_floor_note: String = "WHAT THIS MEANS FOR THE DEFERRAL, stated because the enrollment row's remaining condition was written against the retracted attribution and pointed at work in this file. There is no change confined to this file that lands this witness under a 500ms per-witness line: constructing declared_roadmap_nodes alone is 1105ms, 2.2x that line, before this page renders a single element, and the whole projection side is 1641ms, 3.3x it. Driving this file's own ~203ms to zero would not close the gap and would delete the claims the split exists to keep. The cost is also not this witness's private problem — it is paid by every witness that reads the live roadmap authority, so it belongs to that authority's lane and not to this one. Recorded here rather than left to inference because a stale measurement in a carrier whose only job is to justify a deferral is the citation-rot class DESIGN section 3 names, and this carrier had already grown one."
+
+data live_world_note: String = "The page reads the world V0 derives, live. If the projection refuses, the page renders the located causes rather than a smaller program. This is the claim the whole split exists to preserve: it is the one that cannot be proven on a planted fixture, because its subject is the real declared roadmap."
+
+fn witness_the_page_reads_the_live_derived_program_view() -> Bool {
+  match live_program_view_result() {
+    LiveViewDerived { view } =>
+      count(view.finish_lines) == count(v1_exit_finish_lines())
+        && count(view.fronts) > 0
+    LiveViewRefused { causes } => false
+  }
+}
+
+fn witness_the_page_renders_real_remaining_and_constraint_readings(body: String) -> Bool {
+  string_contains(s: body, pattern: "program / remaining")
+    && string_contains(s: body, pattern: "outcome / status")
+    && string_contains(s: body, pattern: "node / why")
+    && string_contains(s: body, pattern: "open fronts")
+}
+
+data front_grain_witness_note: String = "The claim review 48579 found missing: the front grain renders the FIRST contributing front. The oracle is independent of the code under test — V0 derives the exemplar's contributing set as namespace-pderive then v2-generation, so the page must name the first front's own title and must NOT name the second's. A last-wins fold renders the second, which is exactly what the page did before the fix, so this claim reds on the real defect rather than on a restatement of the fix."
+
+fn witness_the_front_grain_shows_the_first_contributing_front(body: String, markup: String) -> Bool {
+  string_contains(s: body, pattern: "front / status")
+    && string_contains(s: body, pattern: "Namespace / P-derive")
+    && !string_contains(s: markup, pattern: "V2 generation and admission")
+}
+
+data evidence_refusal_note: String = "Evidence depth refuses, and unlike the previous Why refusal this one is real: gunbc.roadmap_program_view records that the verification-receipt join is test-only, so no carrier can answer it yet. The witness pins the cause text so a future reader can tell this refusal from the fabricated one it replaced."
+
+fn witness_red_evidence_depth_refuses_with_its_real_cause(body: String) -> Bool {
+  string_contains(s: body, pattern: "evidence / status · compiler-fixed-point — unavailable:")
+    && string_contains(s: body, pattern: "verification-receipt join is test-only")
+}
+
+data press_markup_note: String = "The markup half of the press specimen. Its CSS half — the :active rule, the bounded translation, the displacement budget — is cheap and stays per-PR in the parent file; only the assertion that the rendered page carries a real button lives here, because that one needs the page."
+
+fn witness_the_press_specimen_is_reachable_without_a_pointer(body: String) -> Bool {
+  string_contains(s: body, pattern: "<button")
+    && string_contains(s: body, pattern: "impulse transient")
+}
+
+test fn instrument_sandbox_live_keystone_holds() -> Bool {
+  let r = served()
+  let body = r.body
+  let markup = body_markup(r: r)
+  witness_the_instrument_path_serves_html(r: r)
+    && witness_the_page_calls_itself_a_study_and_carries_no_dead_controls(body: body, markup: markup)
+    && witness_the_page_reads_the_live_derived_program_view()
+    && witness_the_page_renders_real_remaining_and_constraint_readings(body: body)
+    && witness_the_front_grain_shows_the_first_contributing_front(body: body, markup: markup)
+    && witness_red_evidence_depth_refuses_with_its_real_cause(body: body)
+    && witness_the_press_specimen_is_reachable_without_a_pointer(body: body)
+}

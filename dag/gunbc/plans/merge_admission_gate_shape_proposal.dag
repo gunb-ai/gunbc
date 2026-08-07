@@ -1,5 +1,9 @@
 module gunbc.plans.merge_admission_gate_shape_proposal
 
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plan { Plan, HasTrigger }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, cell, row }
+import gunbc.merge_admission { gate_roster_content_hash, receipt_is_admissible }
 
 fn status_block() -> MarkdownBlock {
   quote(blocks: [

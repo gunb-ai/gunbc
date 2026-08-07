@@ -5,7 +5,8 @@ import gunbc.roadmap_serve {
   RoadmapDailyPageHandler, RoadmapFullPageHandler, RoadmapMdHandler,
   DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
   BeltDispatchHandler, DispatchAssetHandler,
-  SandboxPageHandler, SandboxAssetHandler, SandboxEchoHandler,
+  SandboxPageHandler, InstrumentSandboxPageHandler, InstrumentTunerPageHandler,
+  InstrumentTunerAssetHandler, SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler,
   RoadmapServeRouteSpec,
@@ -25,6 +26,7 @@ import gunbc.roadmap_belt_actuate {
   DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
 }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import gunbc.roadmap_component { instrument_tuner_asset_path }
 import gunbc.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source, sandbox_asset_path }
 import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse,
@@ -68,6 +70,9 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: GET, path: "/workflow.json", want: WorkflowJsonHandler)
     && selects(method: GET, path: roadmap_dispatch_asset_path, want: DispatchAssetHandler)
     && selects(method: GET, path: "/sandbox", want: SandboxPageHandler)
+    && selects(method: GET, path: "/sandbox/instrument", want: InstrumentSandboxPageHandler)
+    && selects(method: GET, path: "/sandbox/instrument/tuner", want: InstrumentTunerPageHandler)
+    && selects(method: GET, path: instrument_tuner_asset_path, want: InstrumentTunerAssetHandler)
     && selects(method: GET, path: sandbox_asset_path, want: SandboxAssetHandler)
     && selects(method: POST, path: "/sandbox/echo", want: SandboxEchoHandler)
     && selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)

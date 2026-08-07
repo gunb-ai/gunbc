@@ -125,6 +125,15 @@ pub fn compile_dag_diagnostic_census_row_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn observe_declared_import_closure_symbol_binding_row_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "CLASS B binding-source observation for declared-import-closure-only compiles (#6985). Production classify_unlisted_import_binding_source already exists in cli_run.rs; this row exposes it through the same builtin-registry pattern as compile_dag_diagnostic_census: coproduct result (observed binding vs not-runnable), registered as type_variable_node(id: declared_import_closure_binding_result) rather than a kernel record. MEASUREMENT ONLY — callers judge ListedImport vs PoolCoincidence vs refusal. DISSOLUTION: inherits compile_dag_diagnostic_census_row_note's PrimitiveDefinition identity-join trigger exactly — one additive row is linear cost against that dissolution; do not mint a fresh trigger.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
     {
         let m = seed_node_map("count".to_string(), int_type());
@@ -333,6 +342,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "extdeps_external_authority_live_roster_module_count".to_string(),
             int_type(),
         );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "seed_runner_bool_false_failure_detail".to_string(),
+            string_type(),
+        );
         let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_orphan_count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -357,6 +371,16 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "observe_declared_import_closure_symbol_binding".to_string(),
+            type_variable_node("declared_import_closure_binding_result".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "class_b_import_closure_gate_not_affected_skip".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "witness_layer_roots_compile_clean_check".to_string(),
             bool_type(),
         );
@@ -369,6 +393,31 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "consume_floor_compile_clean_gate_verdict".to_string(),
             bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "consume_floor_compile_clean_gate_failure_detail".to_string(),
+            string_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "record_regen_verify_gate_failure_detail".to_string(),
+            unit_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "consume_regen_verify_gate_failure_detail".to_string(),
+            string_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "record_generated_artifact_drift_gate_failure_detail".to_string(),
+            unit_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "consume_generated_artifact_drift_gate_failure_detail".to_string(),
+            string_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

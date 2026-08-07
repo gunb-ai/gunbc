@@ -487,6 +487,14 @@ pub enum CompilerDiagnostic {
     SourceAnnotationRefused {
         refusal: Rc<AnnotationAttachmentRefusal>,
     },
+    ConstructorCallAdmissionRefused {
+        constructor_module_path: String,
+        constructor_decl_name: String,
+        caller_module_path: String,
+        caller_decl_name: String,
+        permitted_callers: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
     UnlistedImportUse {
         name: String,
         span: Rc<SourceSpan>,
@@ -506,6 +514,11 @@ pub enum CompilerDiagnostic {
         callee: String,
         supplied: i64,
         capacity: i64,
+        span: Rc<SourceSpan>,
+    },
+    CallArgumentDuplicate {
+        callee: String,
+        argument: String,
         span: Rc<SourceSpan>,
     },
     CallPositionalDeficit {
@@ -615,10 +628,12 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => {
             annotation_attachment_refusal_origin(r.clone())
         }
+        CompilerDiagnostic::ConstructorCallAdmissionRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallPositionalSurplus { span: s, .. } => s.clone(),
+        CompilerDiagnostic::CallArgumentDuplicate { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallPositionalDeficit { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallNamedArgOnFunctionValue { span: s, .. } => s.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation {
@@ -657,10 +672,12 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::VariantCollision { variant: v, enum1: e1, enum2: e2, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' appears in both '".to_string()), e1.clone()), "' and '".to_string()), e2.clone()), "'".to_string()),
     CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(v1_rt::concat("sole_constructor type '".to_string(), t.clone()), "' cannot be constructed outside its defining module".to_string()),
     CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => annotation_attachment_refusal_message(r.clone()),
+    CompilerDiagnostic::ConstructorCallAdmissionRefused { constructor_module_path: cm, constructor_decl_name: cn, caller_module_path: caller_m, caller_decl_name: caller_n, permitted_callers: permitted, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("constructor call admission refused: '".to_string(), cm.clone()), ".".to_string()), cn.clone()), "' refuses call from '".to_string()), caller_m.clone()), ".".to_string()), caller_n.clone()), "' — permitted callers: [".to_string()), permitted.clone().join(&", ".to_string())), "]".to_string()),
     CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
     CompilerDiagnostic::AmbiguousReference { name: n, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous reference '".to_string(), n.clone()), "': ".to_string()), ((cs.clone().len() as i64)).to_string()), " candidates: ".to_string()), cs.clone().join(&", ".to_string())), " — qualify by containment path, alias, or rename".to_string()),
     CompilerDiagnostic::CallArgumentNameUnknown { callee: c, argument: a, declared: ds, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': no parameter named '".to_string()), a.clone()), "' (declared: [".to_string()), ds.clone().join(&", ".to_string())), "])".to_string()),
     CompilerDiagnostic::CallPositionalSurplus { callee: c, supplied: s, capacity: cap, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': too many positional arguments: ".to_string()), (s.clone()).to_string()), " supplied, ".to_string()), (cap.clone()).to_string()), " positional parameter(s) declared".to_string()),
+    CompilerDiagnostic::CallArgumentDuplicate { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': argument '".to_string()), a.clone()), "' supplied more than once".to_string()),
     CompilerDiagnostic::CallPositionalDeficit { callee: c, parameter: p, supplied: s, required: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': missing required argument '".to_string()), p.clone()), "' (".to_string()), (s.clone()).to_string()), " of ".to_string()), (r.clone()).to_string()), " required argument(s) supplied)".to_string()),
     CompilerDiagnostic::CallNamedArgOnFunctionValue { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling function value '".to_string(), c.clone()), "': named argument '".to_string()), a.clone()), "' is not supported — use positional arguments".to_string()),
     CompilerDiagnostic::OccurrenceTransportViolation { refusal: refusal, .. } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
@@ -1788,6 +1805,116 @@ pub fn field_init_node_value(n: Rc<Node>) -> Rc<Node> {
             "malformed field-init: missing value".to_string(),
             n.span.clone(),
         ),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DeclRefCoords {
+    pub module_path: String,
+    pub decl_name: String,
+}
+
+pub fn decl_ref_coords_label(coords: Rc<DeclRefCoords>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(coords.module_path.clone(), ".".to_string()),
+        coords.decl_name.clone(),
+    )
+}
+
+pub fn call_named_arg_string_optional(
+    call: Rc<Node>,
+    arg_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for a in call.children.clone().iter().cloned() {
+            if match arg_name_at(a.clone(), source_indices.clone()) {
+                Some(n) => (n.clone() == arg_name.clone()),
+                None => false,
+            } {
+                __result.push(a);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(arg) => expr_literal_string_optional(arg_value(arg.clone())),
+        None => None,
+    }
+}
+
+pub fn decl_ref_coords_from_call_expr(
+    expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<DeclRefCoords>> {
+    if (expr_call_func_at(expr.clone(), source_indices.clone()) != "decl_ref".to_string()) {
+        None
+    } else {
+        match call_named_arg_string_optional(
+            expr.clone(),
+            "module_path".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(mp) => match call_named_arg_string_optional(
+                expr.clone(),
+                "decl_name".to_string(),
+                source_indices.clone(),
+            ) {
+                Some(dn) => Some(Rc::new(DeclRefCoords {
+                    module_path: mp.clone(),
+                    decl_name: dn.clone(),
+                })),
+                None => None,
+            },
+            None => None,
+        }
+    }
+}
+
+pub fn collect_decl_ref_coords_from_list(
+    exprs: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<DeclRefCoords>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for e in exprs.clone().iter().cloned() {
+            __result.extend(
+                (*match decl_ref_coords_from_call_expr(e.clone(), source_indices.clone()) {
+                    Some(coords) => Rc::new(vec![coords.clone()]),
+                    None => Rc::new(vec![]),
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn fn_admit_callers(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Vec<Rc<DeclRefCoords>>>> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for p in n.properties.clone().iter().cloned() {
+            if (p.name.clone() == "admit_callers".to_string()) {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(p) => Some(collect_decl_ref_coords_from_list(
+            field_init_node_value(p.clone()).children.clone(),
+            source_indices.clone(),
+        )),
+        None => None,
     }
 }
 

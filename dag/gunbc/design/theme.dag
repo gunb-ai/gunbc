@@ -219,17 +219,23 @@ fn theme_var_decls(t: Theme) -> List<CssDecl> {
     [decl(prop: ColorScheme, value: t.scheme)])
 }
 
-fn theme_root_css(base: Theme, alternate: Theme) -> String {
+data theme_scoped_blocks_note: String = "ONE THEME-SELECTOR GRAMMAR, N VAR FAMILIES. The three-block shape below — :root for the base theme, :root[data-theme=NAME] for the alternate, and the same alternate again under prefers-color-scheme for readers who never touched the toggle — is what makes a theme switchable at all, and it was written out longhand once here for role vars and again in gunbc.roadmap_style band_root_css for band vars. A second copy of a selector grammar is a second place for the toggle to break in only one of them, which is precisely the failure a reader would never think to look for: the day/night switch would keep working for colors and silently stop working for bands. The family of declarations is now a parameter, so theme_root_css is the role-var instantiation, band_root_css is the band-var instantiation, and the instrument's emission vars are a third — one grammar, three families, and emission is unchanged in all of them."
+
+fn theme_scoped_blocks(base: Theme, alternate: Theme, decls_for: fn(Theme) -> List<CssDecl>) -> String {
   join([
-    css_block(selector: ":root", decls: theme_var_decls(t: base)),
+    css_block(selector: ":root", decls: decls_for(base)),
     css_block(
       selector: join([":root[data-theme=\"", alternate.name, "\"]"], ""),
-      decls: theme_var_decls(t: alternate)),
+      decls: decls_for(alternate)),
     join([
       "@media (prefers-color-scheme: ", alternate.scheme, ") { ",
-      css_block(selector: ":root:not([data-theme])", decls: theme_var_decls(t: alternate)),
+      css_block(selector: ":root:not([data-theme])", decls: decls_for(alternate)),
       " }",
     ], ""),
   ], "\n")
+}
+
+fn theme_root_css(base: Theme, alternate: Theme) -> String {
+  theme_scoped_blocks(base: base, alternate: alternate, decls_for: t => theme_var_decls(t: t))
 }
 

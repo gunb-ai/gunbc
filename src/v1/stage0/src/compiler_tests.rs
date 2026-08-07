@@ -567,6 +567,133 @@ mod compiler_tests {
     }
 
     #[test]
+    fn call_shape_duplicate_wall_witness() {
+        // DISCRIMINATING RED for the duplicate-label half of
+        // call-missing-and-duplicate-wall (roadmap rn_EXUHLON5V24YU7Z4XLJFWEZO33,
+        // first_slice). Before the wall, `two(a: 1, a: 2)` against
+        // `fn two(a: Int, b: Int)` compiled with ZERO diagnostics while the runtime
+        // authority (call_function_inner's bindings.insert) silently overwrote the
+        // first binding — the second `a` value winning with no trace of the first —
+        // and the interpreter now refuses the same call (CallContractMismatch). The
+        // wall makes the compile seam agree with that runtime refusal, mirroring
+        // the CallArgumentNameUnknown/CallPositionalSurplus wall above on the third
+        // of the four bijection failure modes.
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let compile_one = |path: &str, content: &str| {
+                    crate::v1_compiler_compile::compile_sources(
+                        std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                            crate::v1_compiler_compile::SourceFile {
+                                path: path.to_string(),
+                                content: content.to_string(),
+                            }
+                        )]),
+                        crate::v1_compiler_artifact::RenderTarget::Rust,
+                    )
+                };
+                let duplicate = compile_one(
+                    "duplicate.dag",
+                    "module duplicate\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(a: 1, a: 2) }\n",
+                );
+                let dup: Vec<_> = duplicate.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallArgumentDuplicate { .. }))
+                    .collect();
+                assert!(
+                    !dup.is_empty(),
+                    "a caller label supplied more than once must refuse at the compile seam — the interpreter already refuses this call at runtime, got: {:?}",
+                    duplicate.diagnostics
+                );
+                assert!(
+                    dup.iter().all(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
+                        && crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())),
+                    "CallArgumentDuplicate must BLOCK — a counted advisory would still emit the silently-overwritten realization"
+                );
+                // Runtime authority: the same duplicate-label call must refuse via
+                // call_function_inner (InterpError::CallContractMismatch), never
+                // silently pick the last-bound value. Single-parameter fixture,
+                // deliberately: a second declared-but-unlabeled parameter (e.g. `b`)
+                // would stay unbound whether or not the duplicate check fires, so a
+                // two-param fixture's `run.is_err()` is satisfied by an unrelated
+                // `NoSuchVariable` from reading that unbound param — a false-discriminator
+                // caught by mutation testing (removing the duplicate-check block left
+                // this test green for the wrong reason). With one parameter, disabling
+                // the check leaves `bindings` fully populated (last-write-wins) and `run`
+                // succeeds, so the test only reds when the duplicate check itself fires.
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(
+                    std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                        crate::v1_compiler_compile::SourceFile {
+                            path: "duplicate_rt.dag".to_string(),
+                            content: "module duplicate_rt\nfn two(a: Int) -> Int { a }\nfn f() -> Int { two(a: 1, a: 2) }\n".to_string(),
+                        }
+                    )]),
+                );
+                let graph = resolved.graph.clone().expect("duplicate-label fixture must resolve — it is a runtime-authority probe, not a compile-seam one");
+                let run = crate::v1_interpreter::run(&graph, resolved.source_indices.clone(), "f");
+                // Assert the typed outcome, never the polarity: match the specific
+                // CallContractMismatch variant AND its duplicate-specific detail text,
+                // since the same variant also covers unknown-label and
+                // positional-surplus refusals at other sites in call_function_inner —
+                // bare `run.is_err()` would pass under any of those unrelated causes too.
+                match &run {
+                    Err(crate::v1_interpreter::InterpError::CallContractMismatch { detail, .. })
+                        if detail.contains("supplied more than once") => {}
+                    other => panic!(
+                        "the runtime authority must refuse a duplicate-label call with CallContractMismatch{{detail: \"argument 'a' supplied more than once\"}}, never silently overwrite the earlier binding, got: {:?}",
+                        other
+                    ),
+                }
+                // Runtime authority, NAMED-THEN-POSITIONAL shape (review 48817): a named
+                // actual and a later positional actual can resolve to the SAME declared
+                // parameter (`two(a: 1, 2)` — the named `a` binds param `a`, and the lone
+                // positional value fills positional slot 0, whose declared name is also
+                // `a`). The positional insert branch used to skip the collision check the
+                // named branch already had, so this call silently overwrote `a` and
+                // succeeded. Single-parameter fixture again, deliberately: a second
+                // declared param would go unbound regardless of whether the duplicate
+                // check fires, producing an unrelated "missing required argument" error
+                // that would mask the true defect (the same false-discriminator this
+                // file's named+named check above already guards against).
+                let resolved_np = crate::v1_compiler_compile::compile_to_resolved(
+                    std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                        crate::v1_compiler_compile::SourceFile {
+                            path: "duplicate_named_then_positional_rt.dag".to_string(),
+                            content: "module duplicate_named_then_positional_rt\nfn two(a: Int) -> Int { a }\nfn f() -> Int { two(a: 1, 2) }\n".to_string(),
+                        }
+                    )]),
+                );
+                let graph_np = resolved_np.graph.clone().expect("named-then-positional duplicate fixture must resolve — it is a runtime-authority probe, not a compile-seam one");
+                let run_np = crate::v1_interpreter::run(&graph_np, resolved_np.source_indices.clone(), "f");
+                match &run_np {
+                    Err(crate::v1_interpreter::InterpError::CallContractMismatch { detail, .. })
+                        if detail.contains("supplied more than once") => {}
+                    other => panic!(
+                        "a named actual and a later positional actual resolving to the same declared parameter must refuse with CallContractMismatch{{detail: \"argument 'a' supplied more than once\"}}, never silently overwrite, got: {:?}",
+                        other
+                    ),
+                }
+                // POSITIVE CONTROLS at ZERO diagnostics: distinct labels, positional
+                // args, the reordered-named-args idiom, and the deliberately-unused
+                // underscore idiom (two DIFFERENT surface labels for the SAME
+                // parameter, `x` and `_x`/`_`, are not a duplicate — only exact
+                // caller-label equality is, matching the runtime HashMap::insert
+                // condition exactly) all stay silent.
+                let green = compile_one(
+                    "green_dup.dag",
+                    "module green_dup\nfn two(a: Int, b: Int) -> Int { a + b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn distinct() -> Int { two(a: 1, b: 2) }\nfn reordered() -> Int { two(b: 2, a: 1) }\nfn positional() -> Int { two(1, 2) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\n",
+                );
+                assert!(
+                    green.diagnostics.is_empty(),
+                    "distinct labels, positional args, reordered named args, and the underscore idiom must compile with NO diagnostic of any severity, got: {:?}",
+                    green.diagnostics
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("call_shape_duplicate_wall_witness panicked");
+    }
+
+    #[test]
     fn function_value_named_application_controls_witness() {
         // Operator-required controls for higher-order named application (P0).
         // Direct declaration calls keep named args; function-value calls are positional-only.
@@ -1099,6 +1226,61 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("sole_constructor_violation_outside_module test panicked");
+    }
+
+    #[test]
+    fn constructor_call_admission_refuses_unlisted_cross_module_caller() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let mint_mod = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "mint_mod.dag".to_string(),
+                    content: "module mint_mod\ntype Sealed sole_constructor { tag: String }\nfn mint(tag: String) -> Sealed admit_callers: [decl_ref(module_path: \"caller_ok\", decl_name: \"ok_call\")] = Sealed { tag: tag }\n".to_string(),
+                });
+                let caller_ok = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "caller_ok.dag".to_string(),
+                    content: "module caller_ok\nimport mint_mod { mint, Sealed }\nfn ok_call() -> Sealed { mint(\"ok\") }\n".to_string(),
+                });
+                let caller_bad = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "caller_bad.dag".to_string(),
+                    content: "module caller_bad\nimport mint_mod { mint, Sealed }\nfn bad_call() -> Sealed { mint(\"forged\") }\n".to_string(),
+                });
+                let ok_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![mint_mod.clone(), caller_ok.clone()]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                assert!(
+                    ok_result.diagnostics.iter().all(|d| !matches!(
+                        *d.diagnostic,
+                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused { .. }
+                    )),
+                    "listed caller should compile clean, got: {:?}",
+                    ok_result.diagnostics
+                );
+                let bad_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![mint_mod, caller_bad]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let admission_errors: Vec<_> = bad_result.diagnostics.iter()
+                    .filter(|d| matches!(
+                        *d.diagnostic,
+                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused { .. }
+                    ))
+                    .collect();
+                assert!(
+                    !admission_errors.is_empty(),
+                    "expected ConstructorCallAdmissionRefused for unlisted caller, got: {:?}",
+                    bad_result.diagnostics
+                );
+                assert!(
+                    admission_errors.iter().any(|e| e.module_name == "caller_bad"),
+                    "refusal should be reported in caller_bad, got: {:?}",
+                    admission_errors
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("constructor_call_admission_refuses_unlisted_cross_module_caller panicked");
     }
 
     #[test]

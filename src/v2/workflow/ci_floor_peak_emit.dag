@@ -17,12 +17,86 @@ import v2.std.orchestration {
 }
 import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
+import v2.extdeps.languages.bash_orch_if {
+  bash_path_predicate_target_model,
+  bash_dirname_ascent_target_model
+}
+import std.path_intent {
+  DirnameAscent,
+  PathEntryKind,
+  PathIntent,
+  PathJoin,
+  PathLiteral,
+  PathNonempty,
+  PathNotEq,
+  PathRef
+}
+import std.filesystem.types { RegularFile }
+import std.types { FilePathParts, NonEmptyStr }
+
+data ci_floor_peak_path_predicate_qualification_note: String = "PathPredicate IS DELIBERATELY ABSENT FROM THE std.path_intent IMPORT LIST ABOVE, and And / Not are written std.path_intent.And / std.path_intent.Not at their construction sites. v2.std.orchestration's Predicate and std.path_intent's PathPredicate both carry variants named And, Not and Or, and bringing both TYPES into one module is a hard typecheck refusal — 'variant And appears in both Predicate and PathPredicate' — never a shadowing warning. WHAT THE COLLISION IS ACTUALLY KEYED ON was established by execution rather than read off the message, because the message points somewhere else: the refusal is reported at std.path_intent's own declaration line, a file this module merely imports, so the obvious first repair — dropping And, Not and Or from the import list and qualifying every construction — CHANGES NOTHING and the identical three errors reappear. What clears it is dropping the TYPE NAME PathPredicate from the import list and annotating the declaration std.path_intent.PathPredicate, which is exactly the shape the v2.workflow.orchestration_while_emit witness already used and the reason that file compiles while a naive port of it does not. Two consequences worth separating. The refusal itself is CORRECT and wanted (the namespace lane's no-ambiguity-at-any-layer rule), and qualifying is the containment tree answering the question it exists to answer, so renaming either coproduct's boolean connectives to dodge it would be the nickname this repo forbids — a conjunction over path predicates and a conjunction over exit-status predicates are both correctly called And. But its LOCUS is wrong: the conflict is created by the importer that brings both types into scope, and blaming the imported declaration sends the reader to a shared std file that is not at fault and cannot be fixed there. Reported as a diagnostic-locus finding on the namespace lane rather than repaired here; std.path_intent and the resolver are load-bearing and this is a leaf-adoption PR."
 
 data ci_floor_peak_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ floor-peak cgroup observation emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
 
 data ci_floor_peak_assign_cgroup_dir_command: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\{print $3\}' /proc/self/cgroup)\""
 
-data ci_floor_peak_while_cond_command: String = "[ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && [ ! -f \"$d/memory.peak\" ]"
+data ci_floor_peak_path_leaf_adoption_note: String = "THE CGROUP-ASCENT LOOP'S TWO COMMAND LEAVES ARE DERIVED FROM std.path_intent, NOT AUTHORED (shell -> intent, this PR). Before this change ci_floor_peak_while_cond_command and ci_floor_peak_while_body_command were hand-spelled bash held in String rows: the loop's INTENT — walk up from the process's own cgroup directory until a readable memory.peak turns up, stopping at the mount root — lived only in that spelling, so nothing in the substrate could see that $d is a path, that /sys/fs/cgroup is a path literal, that $d/memory.peak is a join, or that -f asks a filesystem entry-kind question. A typo inside those quotes was writable and would have emitted silently. Now the predicate and the ascent are constructed as PathPredicate and DirnameAscent values and the bash text is produced by bash_orch_if's target models, which is the SAME lowering the v2.workflow.orchestration_while_emit witness already proved byte-for-byte against hand-authored goldens; that witness's model rows and this module's are now two consumers of one authority rather than a model beside an unmodeled production copy (DESIGN section 2 / section 5 construction-over-validation). WHAT IS NOT CLIMBED, stated so the partial is not read as the whole: Run.command remains String-typed, so these two leaves are derived text flowing into an untyped seam and a THIRD leaf on the same pipeline — ci_floor_peak_assign_cgroup_dir_command, the awk parse of /proc/self/cgroup — stays raw because no model covers reading a field out of a procfs line. The successor that closes both is the orchestration-type extension named in ci_floor_peak_path_leaf_residue_note."
+
+data ci_floor_peak_path_model_refused_poison: String = "__GUNBC_PATH_INTENT_LOWERING_REFUSED__ floor-peak cgroup path-intent leaf lowering was rejected by v2.extdeps.languages.bash_orch_if; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red (DESIGN 5: refuse, never widen). WHY A POISON RATHER THAN EMPTY TEXT, on the measured facts rather than the intuitive ones: the Run.command seam is String-typed and cannot carry an Outcome, so the refusal arm has to be SOME string, and the sibling witness file's model-text helpers return \"\" there. An earlier draft of this row justified the poison by claiming an empty while-condition is an always-true loop that would spin forever. THAT IS FALSE, tested 2026-08-05 against /bin/sh, /bin/dash and /bin/bash: 'while ; do' is a SYNTAX ERROR in all three, so an empty leaf would fail loudly rather than hang. The real argument is smaller and survives the correction. An empty String is a well-typed, ordinary-looking value flowing through an untyped seam; it says nothing about which lowering refused or why, and its first observable symptom is a shell parse failure inside a generated workflow — attributed to ci.yml at CI runtime, several layers from the path model that actually refused. The poison carries the cause to the place the reader lands. In practice the drift gate catches either one, because both differ from the committed bytes; what the poison buys is a LOCATED refusal instead of an anonymous one, which is the half of DESIGN section 5 that a mere red does not supply."
+
+data ci_floor_peak_cgroup_dir_ref: PathIntent = PathRef { name: "d" as NonEmptyStr }
+
+data ci_floor_peak_cgroup_mount_root: PathIntent = PathLiteral {
+  parts: FilePathParts { segments: ["sys", "fs", "cgroup"] }
+}
+
+data ci_floor_peak_memory_peak_path: PathIntent = PathJoin {
+  base: ci_floor_peak_cgroup_dir_ref,
+  suffix: FilePathParts { segments: ["memory.peak"] }
+}
+
+data ci_floor_peak_while_predicate: std.path_intent.PathPredicate = std.path_intent.And {
+  lhs: PathNonempty { path: ci_floor_peak_cgroup_dir_ref },
+  rhs: std.path_intent.And {
+    lhs: PathNotEq {
+      lhs: ci_floor_peak_cgroup_dir_ref,
+      rhs: ci_floor_peak_cgroup_mount_root
+    },
+    rhs: std.path_intent.Not {
+      inner: PathEntryKind {
+        path: ci_floor_peak_memory_peak_path,
+        kind: RegularFile
+      }
+    }
+  }
+}
+
+data ci_floor_peak_while_ascent: DirnameAscent = DirnameAscent {
+  path: ci_floor_peak_cgroup_dir_ref,
+  target: "d" as NonEmptyStr
+}
+
+fn ci_floor_peak_while_cond_command() -> String {
+  match bash_path_predicate_target_model(predicate: ci_floor_peak_while_predicate) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source.authority_source_text
+        Some { diagnostics: _ } => ci_floor_peak_path_model_refused_poison
+      }
+    Rejected { diagnostics: _ } => ci_floor_peak_path_model_refused_poison
+  }
+}
+
+fn ci_floor_peak_while_body_command() -> String {
+  match bash_dirname_ascent_target_model(ascent: ci_floor_peak_while_ascent) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source.authority_source_text
+        Some { diagnostics: _ } => ci_floor_peak_path_model_refused_poison
+      }
+    Rejected { diagnostics: _ } => ci_floor_peak_path_model_refused_poison
+  }
+}
 
 data ci_floor_peak_test_f_memory_peak_command: String = "[ -f \"$d/memory.peak\" ]"
 
@@ -49,6 +123,29 @@ data ci_floor_phase_journal_header_command: String = "echo \"[floor-phase-journa
 data ci_floor_phase_journal_read_command: String = "sed 's/^/[floor-phase-journal] /' \"$GUNBC_FLOOR_PHASE_JOURNAL\""
 
 data ci_floor_phase_journal_absent_command: String = "echo \"[floor-phase-journal] absent\""
+
+data ci_floor_wet_witness_row_outcome_receipt_path: String = "target/floor-wet-witness-row-outcome-receipt.tsv"
+
+data ci_floor_wet_witness_row_outcome_receipt_present_command: String = "[ -f \"target/floor-wet-witness-row-outcome-receipt.tsv\" ]"
+
+data ci_floor_wet_witness_row_outcome_receipt_header_command: String = "echo \"[wet-witness-row-outcome-receipt] batch entry function outcome detail\""
+
+data ci_floor_wet_witness_row_outcome_receipt_read_command: String = "sed 's/^/[wet-witness-row-outcome-receipt] /' \"target/floor-wet-witness-row-outcome-receipt.tsv\""
+
+data ci_floor_wet_witness_row_outcome_receipt_absent_command: String = "echo \"[wet-witness-row-outcome-receipt] absent\""
+
+data ci_floor_wet_witness_row_outcome_receipt_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_floor_peak_emit",
+    decl_name: "ci_floor_wet_witness_row_outcome_receipt_if",
+    field: WholeDeclaration
+  }
+}
+
+data ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_floor_wet_witness_row_outcome_receipt_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four receipt leaves: FileExists, header log, prefixed file read, and absent log. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_wet_witness_row_outcome_receipt_if contains no opaque shell command text."
+
+data ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment: String = concat("# ", ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger)
 
 data ci_floor_phase_journal_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -93,15 +190,15 @@ fn ci_floor_peak_emit_pipeline(p: Pipeline) -> String {
   }
 }
 
-data ci_floor_peak_while_body_command: String = "d=$(dirname \"$d\")"
+data ci_floor_peak_path_leaf_residue_note: String = "🟡 dissolve-on: v2.std.orchestration gains a path arm — Predicate carries PathPredicate and PipelineStep carries DirnameAscent — so the cgroup ascent is a typed node in the pipeline instead of derived text at a String seam. TODAY'S EXACT STATE, which is what makes the trigger checkable rather than aspirational: Predicate is ExitZero | LogMatches | StrEq | StrEmpty | StrNonempty | IntNe | Not | And | Or and PipelineStep is Do | Comment | Exit | If | For | While | BoundedPoll — neither coproduct has a path member, which is precisely why this module must lower to text HERE and hand a String to Run.command. When those arms exist, ci_floor_peak_while_cond_command and ci_floor_peak_while_body_command delete outright and orch_emit_step lowers the model at emission time, one layer down, where the medium already lives; the two model rows above survive unchanged as the arms' payloads. The third leaf, ci_floor_peak_assign_cgroup_dir_command, does NOT dissolve on that trigger and is deliberately not counted against it: parsing the cgroup path out of a /proc/self/cgroup line is a procfs field read that std.path_intent does not model at all, so it is separately owed to the shell -> intent Phase 2 typed-observation work (host_effect_apply), the same trigger ci_floor_phase_journal_shell_emit_dissolution_trigger names."
 
 fn ci_floor_peak_cgroup_locate_while() -> PipelineStep {
   While {
     cond: ExitZero {
-      run: ci_floor_peak_run(command: ci_floor_peak_while_cond_command)
+      run: ci_floor_peak_run(command: ci_floor_peak_while_cond_command())
     },
     body: Pipeline {
-      steps: [ci_floor_peak_do(command: ci_floor_peak_while_body_command)],
+      steps: [ci_floor_peak_do(command: ci_floor_peak_while_body_command())],
       on_failure: FailFast
     }
   }
@@ -195,12 +292,33 @@ fn ci_floor_phase_journal_if() -> PipelineStep {
   }
 }
 
+fn ci_floor_wet_witness_row_outcome_receipt_if() -> PipelineStep {
+  If {
+    cond: ci_floor_peak_exit_zero(command: ci_floor_wet_witness_row_outcome_receipt_present_command),
+    then_: Pipeline {
+      steps: [
+        ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_header_command),
+        ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_read_command)
+      ],
+      on_failure: FailFast
+    },
+    else_: Present {
+      value: Pipeline {
+        steps: [ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_absent_command)],
+        on_failure: FailFast
+      }
+    }
+  }
+}
+
 fn ci_floor_peak_post_pipeline() -> Pipeline {
   Pipeline {
     steps: concat(
       [
         ci_floor_peak_do(command: ci_floor_phase_journal_runner_scaffold_comment),
-        ci_floor_phase_journal_if()
+        ci_floor_phase_journal_if(),
+        ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment),
+        ci_floor_wet_witness_row_outcome_receipt_if()
       ],
       concat(ci_floor_peak_cgroup_locate_steps(), [ci_floor_peak_post_peak_if()])
     ),

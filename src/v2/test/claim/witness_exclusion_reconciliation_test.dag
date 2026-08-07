@@ -16,6 +16,9 @@ import gunbc.ci_layer_roots {
   witness_exclusion_row_mentions_wet_lane_dark_state,
   witness_exclusion_row_waits_on_wet_lane_undarken
 }
+import v2.compiler.self_host.wet_receipt_enrollment {
+  dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet
+}
 import v2.workflow.witness_admission {
   witness_exclusion_rows_well_formed,
   witness_exclusion_rows_well_formed_holds,
@@ -139,16 +142,20 @@ test fn falsifier_self_host_wet_dark_lane_unclassified_rows_empty_holds() -> Boo
   falsifier_self_host_wet_dark_lane_unclassified_rows().length() == 0
 }
 
-data falsifier_self_host_wet_dark_lane_population_matches_waiting_rows_note: String = "review 48422 (cursor/composer-2.5, 2026-08-05): falsifier_self_host_wet_dark_lane_population(), falsifier_self_host_wet_dark_lane_waiting_patterns(), and dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note() had no call sites anywhere in the tree -- the derivation looked finished but nothing on the floor executed it (DESIGN §5 specification-without-execution). These two tests are the executing consumers: the first asserts the population is exactly the count of the same waiting-rows list by construction (a consistency property, not a tree-copied literal), the second asserts the composed note string actually contains the live derived count and the live pattern list rather than being unreachable prose."
+data falsifier_self_host_wet_dark_lane_population_matches_waiting_rows_note: String = "review 48422 (cursor/composer-2.5, 2026-08-05): falsifier_self_host_wet_dark_lane_population(), falsifier_self_host_wet_dark_lane_waiting_patterns(), and dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note() had no call sites anywhere in the tree -- the derivation looked finished but nothing on the floor executed it (DESIGN §5 specification-without-execution). These tests are the executing consumers: population_matches_waiting_rows asserts the population is exactly the count of the same waiting-rows list by construction; dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_holds asserts R1 bijection is on the falsifier template roster when the cadence is active (Lane D enrollment, separate from per-PR bin-witness execution receipts)."
 
 test fn falsifier_self_host_wet_dark_lane_population_matches_waiting_rows_holds() -> Bool {
   falsifier_self_host_wet_dark_lane_population() == falsifier_self_host_wet_dark_lane_waiting_rows().length()
 }
 
-test fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note_mentions_derived_count_holds() -> Bool {
+test fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_holds() -> Bool {
+  dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet()
+}
+
+test fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_note_names_witness_identity_holds() -> Bool {
   string_contains(
     s: dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note(),
-    pattern: falsifier_self_host_wet_dark_lane_population() as String
+    pattern: "interpreter_dispatch_bijection_real_roster_red_holds"
   )
 }
 

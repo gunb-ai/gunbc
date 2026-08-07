@@ -1,0 +1,105 @@
+module v2.test.lens_cost.bounded_summation
+
+import v2.lens.cost { ConstantCost, LinearCost, SizeVariable, cost_lens, zero_cost }
+import v2.lens.cost.expr {
+  CostConst,
+  CostExpr,
+  CostSum,
+  cost_loop_expr,
+  normalize_cost_expr_to_symbolic,
+  size_of
+}
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.nat { Succ, Zero }
+import v2.std.node {
+  Atom,
+  Node,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data bounded_summation_bound_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^bounded_summation_bound_atom } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data bounded_summation_binder: SizeVariable = SizeVariable {
+  source: bounded_summation_bound_leaf
+}
+
+fn bounded_unit_summation_expr() -> CostExpr {
+  cost_loop_expr(
+    binder: bounded_summation_binder,
+    iterations: size_of(variable: bounded_summation_binder),
+    body: CostConst { value: Succ { prev: Zero } }
+  )
+}
+
+fn bounded_summation_is_representable() -> Bool {
+  match bounded_unit_summation_expr() {
+    CostSum { binder: _, upper: _, body: _ } => true
+    _ => false
+  }
+}
+
+fn bounded_summation_projects_to_linear() -> Bool {
+  match normalize_cost_expr_to_symbolic(expr: bounded_unit_summation_expr()) {
+    LinearCost { variable: v } => v.source == bounded_summation_bound_leaf
+    _ => false
+  }
+}
+
+test fn bounded_summation_expr_authority_holds() -> Bool {
+  bounded_summation_is_representable() && bounded_summation_projects_to_linear()
+}
+
+test fn zero_body_loop_projects_to_zero_red_control() -> Bool {
+  match normalize_cost_expr_to_symbolic(
+    expr: cost_loop_expr(
+      binder: bounded_summation_binder,
+      iterations: size_of(variable: bounded_summation_binder),
+      body: CostConst { value: Zero }
+    )
+  ) {
+    ConstantCost { value: Zero } => true
+    LinearCost { variable: _ } => false
+    _ => false
+  }
+}
+
+test fn existing_cost_lens_kernel_unchanged() -> Bool {
+  match cost_lens(n: bounded_summation_bound_leaf) {
+    Holds { value: actual } => actual == zero_cost()
+    _ => false
+  }
+}
+
+data claim_bounded_summation: TestClaim = EqualsClaim {
+  label: "lens_cost/bounded_summation: CostSum with grounded binder is representable and projects to linear SymbolicCost",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: bounded_summation_bound_leaf,
+  rhs: if bounded_summation_expr_authority_holds() {
+    bounded_summation_bound_leaf
+  } else {
+    Node {
+      kind: TypeNode { connective: Atom { identity: ^bounded_summation_claim_failed } },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }
+  },
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

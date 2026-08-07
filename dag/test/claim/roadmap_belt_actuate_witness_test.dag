@@ -26,6 +26,7 @@ import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
 import extdeps.github.github { GitHubUser, User, Repository }
 import std.types { CommitSha }
 import std.content_hash { content_hash_atom }
+import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified,
   gunbc_claim_execution_contract,
@@ -85,6 +86,7 @@ import gunbc.roadmap_belt_actuate {
   VerifyRecorded,
   VerifyWriteFailed,
   VerifyEvidenceUnreadable,
+  VerifyRefused,
   belt_dispatch_node_for_instance,
   belt_stop_node_for_instance,
   BeltStopResult, StopDisabled,
@@ -139,7 +141,10 @@ import gunbc.roadmap_verification_receipt {
   VerificationSubjectObserved,
   VerificationSubjectUnobserved,
   VerificationReceiptAbsent,
+  SelectionAbsent,
+  SelectionObserved,
 }
+import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -816,6 +821,7 @@ fn fixture_verification_subject(node_id: String) -> VerificationSubject {
     attempt_key: "feedfacefeedface",
     branch: join(["dispatch/", node_id, "-afeedfacefeedface"], "") as NonEmptyStr,
     head_sha: fixture_verification_head,
+    change_window_identity: git_diff_window_absent_identity(),
   }
 }
 
@@ -836,6 +842,10 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     validation_summary: "gunbc run --claim-run",
     verification_subject: VerificationSubjectObserved {
       subject: fixture_verification_subject(node_id: node_id),
+    },
+    verification_selection: SelectionObserved {
+      head: fixture_verification_head,
+      window_identity: git_diff_window_absent_identity(),
     },
     verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
@@ -887,6 +897,7 @@ test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool 
         && (string_contains(s: reason, pattern: "exact head")
             || string_contains(s: reason, pattern: "no node"))
     VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+    VerifyRefused { node_id: _, cause: _ } => false
     VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
     VerifyWriteFailed { node_id: _, detail: _ } => false
   }
@@ -912,6 +923,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       verification_subject: VerificationSubjectUnobserved {
         reason: "fixture verification subject not established",
       },
+      verification_selection: SelectionAbsent,
       verification_source: VerificationReceiptAbsent,
       publication_subject: PublicationSubjectObserved {
         subject: PublicationSubject {
@@ -935,6 +947,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
     VerifyDeferred { node_id: _, reason } =>
       string_contains(s: reason, pattern: "agent obligation is not satisfied")
     VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+    VerifyRefused { node_id: _, cause: _ } => false
     VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
     VerifyWriteFailed { node_id: _, detail: _ } => false
   }

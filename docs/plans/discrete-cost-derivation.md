@@ -48,7 +48,7 @@ There is also a live admission law: `v2.lens.witness_cost_locality` already clas
 
 Each was checked by reading the carrier, not by recalling it. These change the work, so they are stated before the model.
 
-1. **The missing piece is the valuation environment, not the type shape.** `v2.lens.cost` `SizeVariable` is `{ source: Node }` — a size variable *is a node*, and **no binding environment exists anywhere in the tree** that maps one to a `Nat`. So 'evaluate the cost at length(xs) = 65' has no seam today, at all. Adding richer cost *atoms* without adding valuation buys nothing; C1 is principally the environment, and the atom vector is secondary.
+1. **The missing piece is the valuation environment, not the type shape.** `v2.lens.cost` `SizeVariable` is `{ source: Node }` — a size variable *is a node*, and **no binding environment exists in v2** that maps one to a `Nat`. So 'evaluate the cost at length(xs) = 65' has no v2 seam today. Adding richer cost *atoms* without adding valuation buys nothing; C1 is principally the environment, and the atom vector is secondary. **Corrected 2026-08-05 by the capability census** (`gunbc.v1_complexity_capability_census` `concrete_input_evaluation`): an earlier revision said no such environment existed *anywhere in the tree*. The seed has one — `v1.compiler.complexity` `eval_size_expr_concrete` and `eval_cost_expr_concrete` both take `env: Map<String, Int>` and return `Int?`, refusing with `Absent` on `CostUnknown` / `CostExtern` / `CostLog` rather than fabricating a number. The narrower claim is the useful one: the seam is absent from **v2**, and v1's is **`String`-keyed**, which is exactly the anemic identity the parity note's §6 forbids carrying across. So C1 inherits a working refusal posture to preserve and a key to re-ground, not a blank page. The correction is carried by the census row `gunbc.v1_complexity_capability_census` `concrete_input_evaluation`, whose citation resolves exactly through `v2.std.decl_ref_resolution` in `test.claim.long.v1_complexity_capability_census_resolution_test` `census_every_declaration_ref_resolves_exactly`.
 2. **`v2.lens.cost` already fixes branches as an upper bound, and cannot select an arm.** `compose_child_cost` composes `AlternativeCost` with `symbolic_max`, so a `Branch` / `Disj` / `Match` charges the dominating arm regardless of input. 'Charge only the selected arm' is therefore **a second evaluation mode over one expression**, not a fix to the existing fold. Keep one symbolic authority; add two evaluators (exact-at-input, bound-at-envelope). Changing the existing fold's meaning in place would silently move every current consumer, including the `WallNow` quadratic detector.
 3. **v2's `SymbolicCost` cannot express an element-dependent fold body.** It has `SumCost` and `ProductCost` but **no binder-carrying sum**; v1's `CostExpr` has `CostSum { binder, upper, body }`. So `Σ over elements of cost(body(element))` — the shape the fold case needs — is representable in the seed and *not* in v2. This is a concrete instance of the DESIGN §7 direction (useful machinery migrates out of the seed), and it is a prerequisite for C2, not an optional cleanup.
 4. **A hardcoded, uncited realization cost table already sits inside the agnostic symbolic lens.** `v2.lens.cost` `llvm_instruction_cost` returns a bare `Int` per `LlvmInstruction` (`Load` 4, `Call` 5, `AtomicRmw` 8, `Fence` 4, bitcast 0). That is a *machine model* — with no machine identity, no unit, no citation, no calibration, and no basis date — living in the module that is supposed to be realization-free. It is the §3 interface/realization fusion this note's C4 exists to undo, and it is **already in tree**, so C4 has a deletion target rather than only an addition.
@@ -75,15 +75,18 @@ Semantic work is a **multiset of cost atoms**, not a scalar. A closed atom vocab
 
 ```
 type WorkAtom
+  = StructuralWork { kind: StructuralWorkKind }
+  | PrimitiveWork { primitive: PrimitiveIdentity }
+  | EffectWork { operation: DeclarationRef }
+
+type StructuralWorkKind
   = EvaluateNode
   | TraverseEdge
   | InvokeFunction
   | DecideBranch
-  | AllocateBytes
-  | ReadBytes
-  | WriteBytes
-  | ExecuteEffect { operation: DeclarationRef }
 ```
+
+**Shape ruled 2026-08-05 (see section 15).** The outer sum is CLOSED so the fold stays total; the primitive and effect populations are OPEN through exact identities so a new measurable operation is a row, not a substrate edit. An unknown identity **refuses** — it never becomes zero-cost, which is the arm that would otherwise re-open the fabricated-plausible-output class one level down. The byte axes that an earlier revision carried as bare atoms (`AllocateBytes` / `ReadBytes` / `WriteBytes`) do not belong in this sum at all: they are quantities in a unit, not kinds of work, and the ruling is explicit that operation counts and byte quantities must not both be anonymous `Nat`s.
 
 `DiscreteWork` is then a `Map<WorkAtom, Nat>` — one carrier, extensible by row rather than by field (DESIGN §2 horizontal: the record-of-named-counters shape re-forks every time an axis is added). The summary retains the axes v1's `ComplexitySummary` already proved useful:
 
@@ -198,6 +201,8 @@ Specification-without-execution is the trap this lane is most exposed to, becaus
 
 - **Symbolic / discrete work** — `v2.lens.cost` (extend; do not create a sibling `dag_cost_lens`)
 - **Loop bound / termination** — `v2.std.cardinality`, `std.termination` `DescentEvidence`
+- **Cost bound from sub-value structure** — `std.induction` `CostBound`, `catamorphism_bound`, `derive_bound` (added 2026-08-05 by the capability census, C0(b) finding 2: this vocabulary was absent from this list while already carried by shared substrate that the seed imports, so a richer cost algebra could have re-coined it)
+- **Call graph / SCC** — `std.graph` `graph_multi_node_scc_members`, `is_valid_proof`; **recursion shape** — `std.computation` `LoweringTarget`, `lower_call_pattern` (same finding: shared substrate awaiting a v2 consumer, not seed machinery awaiting migration)
 - **Input envelope** — `gunbc.ci_input_envelope` `InputEnvelope`
 - **Realized time/space/power** — `std.realization_schedule` `CostAccount` with `CostBasis`
 - **Measured observation** — `std.observation` `ObservationEvent` via `gunbc.witness_row_cost` (falsifier only)
@@ -213,12 +218,15 @@ Specification-without-execution is the trap this lane is most exposed to, becaus
 - No removal of the 5s deadline before C5's consumer is green; the tourniquet outlives the proxy
 - No parallel cost taxonomy, and no scheduler-private cost record
 
-## 15. Open questions for operator review
+## 15. Operator rulings (2026-08-05)
 
-1. **Does `WorkAtom` stay closed?** A closed coproduct keeps the fold total (the property that makes the current cost lens a wall), but every new measurable axis is then a substrate edit. The alternative — atoms keyed by `DeclarationRef` — is open and loses totality. This note assumes **closed**, with `ExecuteEffect` carrying the open part in its payload; confirm.
-2. **Does the v1 `CostExpr` migration (correction 3) belong to this lane or to the seed-shrink lane?** It is a prerequisite for C2 either way, but it touches the seed, and DESIGN names seed-retained modules as declared rows with migration triggers.
-3. **Is `span` in scope now or deferred?** It doubles C2's surface. Deferring is defensible if no consumer needs it yet — but `std.realization_measurement` already models the parallel composition laws, so deriving only `work` leaves that asymmetry unmatched on the derived side.
-4. **C5's flip is a coverage change.** Retiring the dir grain moves witnesses back onto the per-PR floor. That is the point, but it should land behind a receipt showing the resulting floor cost, not as a same-PR side effect.
+The four questions this note raised are ruled. Where a ruling changes a carrier shape, the shape is stated here and the carrier is the authority once it lands.
+
+1. **`WorkAtom` — closed OUTER algebra with typed OPEN identities.** Neither a fully closed enum (every new measurable axis becomes a substrate edit) nor an open `DeclarationRef` key (loses totality). The shape is a three-arm outer sum — `StructuralWork` carrying a closed `StructuralWorkKind`, `PrimitiveWork` carrying a `PrimitiveIdentity`, and `EffectWork` carrying a `DeclarationRef` for the operation — where `StructuralWorkKind` is closed and the primitive and effect populations expand through exact identities. **An unknown identity REFUSES; it never becomes zero-cost** — the fold stays total at the outer layer while the inner populations grow without substrate edits. **Units are retained:** operation counts and byte quantities must not both be anonymous `Nat`s.
+2. **v1 `CostExpr` migration belongs to the parity note's C1**, not to the generic seed-shrink lane. Seed deletion consumes the migrated authority; it does not decide its semantics.
+3. **Span stays in C2.** Deferring it would create an incomplete summary immediately and prevent derived and measured parallel composition from agreeing.
+4. **C5's floor flip is TWO changes, never one.** (i) Shadow or audit the derived per-witness admission and MEASURE the resulting floor; (ii) separately retire the directory-grain exclusion, and only after every moved witness has an executing consumer. A same-PR 'new cost model plus delete the `long/` policy' flip is refused.
+5. **Three-valued `CostBasis` — approved PER RESOURCE AXIS.** `Derived | PredictedFromCalibration | Measured` applied to time, space and power independently, not once to the whole account: one account may legitimately carry time `PredictedFromCalibration`, space `Derived` and power `Measured`. The receipt that this is a real gap rather than a speculative widening is the census row `gunbc.v1_complexity_capability_census` `cost_account_space_bridge` — the seed already writes down an intent for a derived basis that the two-valued authority cannot represent.
 
 ## Dissolution trigger (DESIGN §6)
 

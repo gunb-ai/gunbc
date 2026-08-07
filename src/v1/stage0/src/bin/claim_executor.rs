@@ -21,7 +21,7 @@ use v1_compiler::cli_run::{
     top_n_slowest_witnesses, BudgetKind, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
     DiscoveryWidthPolicy, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
     ResolutionDivergencePhase, ResolutionDivergencePhaseState, SelectionDegradationSnapshot,
-    TimingPercentiles, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    TimingPercentiles, WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
@@ -339,6 +339,7 @@ fn write_compile_clean_cost_drift_receipt_at(
         String::from("kind\tsubject\tobserved_wall_ms\tbasis_wall_ms\tverdict\trun_ref\n");
     let mut drift_count = 0usize;
     let mut basis_absent_count = 0usize;
+    let mut clock_mismatch_count = 0usize;
     for (kind, subj, observed) in &rows {
         match basis.get(&(kind.clone(), subj.clone())) {
             None => {
@@ -346,25 +347,21 @@ fn write_compile_clean_cost_drift_receipt_at(
                 body.push_str(&format!("{kind}\t{subj}\t{observed}\t\tBasisAbsent\t\n"));
             }
             Some(b) => {
-                let exceeds = match witness_row_cost_exceeds_basis_via_authority(
-                    &ctx,
-                    *observed,
-                    b.eval_ms_basis,
-                ) {
+                let verdict = match witness_row_cost_verdict_via_authority(&ctx, *observed, Some(b))
+                {
                     Ok(v) => v,
                     Err(e) => {
                         eprintln!(
-                            "claim_executor: compile-clean drift comparator refused for {kind}::{subj}: {e} — walk fails closed here"
-                        );
+                                "claim_executor: compile-clean drift comparator refused for {kind}::{subj}: {e} — walk fails closed here"
+                            );
                         return false;
                     }
                 };
-                let verdict = if exceeds {
-                    drift_count += 1;
-                    "DriftExceeded"
-                } else {
-                    "WithinBasis"
-                };
+                match verdict.as_str() {
+                    "DriftExceeded" => drift_count += 1,
+                    "BasisClockMismatch" => clock_mismatch_count += 1,
+                    _ => {}
+                }
                 body.push_str(&format!(
                     "{kind}\t{subj}\t{observed}\t{}\t{verdict}\t{}\n",
                     b.eval_ms_basis, b.run_ref
@@ -373,7 +370,7 @@ fn write_compile_clean_cost_drift_receipt_at(
         }
     }
     eprintln!(
-        "[compile-clean-cost-drift] basis_absent={basis_absent_count} drift_exceeded={drift_count}"
+        "[compile-clean-cost-drift] basis_absent={basis_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count}"
     );
     for line in body.lines() {
         eprintln!("[compile-clean-cost-drift] {line}");
@@ -387,25 +384,50 @@ fn write_compile_clean_cost_drift_receipt_at(
         return false;
     }
     eprintln!(
-        "[receipt] floor compile-clean cost drift: basis_absent={basis_absent_count} drift_exceeded={drift_count} (TSV: {})",
+        "[receipt] floor compile-clean cost drift: basis_absent={basis_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count} (TSV: {})",
         path.display()
     );
     true
 }
 
-/// Runtime per-batch unit count for the derived clamp: a discovery aggregate result contributes
-/// its post-selection witness count (`corpus_witnesses`); every single-claim gate row contributes 1.
-fn batch_runtime_unit_count(results: &[ClaimResult]) -> u128 {
-    results
-        .iter()
-        .map(|r| {
-            if r.corpus_witnesses > 0 {
-                r.corpus_witnesses as u128
-            } else {
-                1u128
+/// Hand-Rust mirror of `gunbc.ci_spec` `RuntimeUnitCount` (variant names must match exactly).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FloorRuntimeUnitCount {
+    Observed { units: u128 },
+    Unavailable { cause: String },
+}
+
+fn single_claim_runtime_unit_count() -> FloorRuntimeUnitCount {
+    FloorRuntimeUnitCount::Observed { units: 1 }
+}
+
+fn discovery_runtime_unit_count_from_summary(total: usize) -> FloorRuntimeUnitCount {
+    FloorRuntimeUnitCount::Observed {
+        units: total as u128,
+    }
+}
+
+fn runtime_unit_count_unavailable(cause: impl Into<String>) -> FloorRuntimeUnitCount {
+    FloorRuntimeUnitCount::Unavailable {
+        cause: cause.into(),
+    }
+}
+
+/// Runtime per-batch unit count for the derived clamp: sum Observed rows; any Unavailable
+/// refuses the whole batch clamp (authority `gunbc_ci_floor_batch_runtime_unit_count_note`).
+fn aggregate_batch_runtime_units(results: &[ClaimResult]) -> FloorRuntimeUnitCount {
+    let mut sum = 0u128;
+    for result in results {
+        match &result.runtime_unit_count {
+            FloorRuntimeUnitCount::Observed { units } => sum += *units,
+            FloorRuntimeUnitCount::Unavailable { cause } => {
+                return FloorRuntimeUnitCount::Unavailable {
+                    cause: cause.clone(),
+                };
             }
-        })
-        .sum()
+        }
+    }
+    FloorRuntimeUnitCount::Observed { units: sum }
 }
 
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority:
@@ -577,6 +599,7 @@ enum Runnable {
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
         execution_mode: ExecutionMode,
+        spawns_host_compiler: bool,
     },
     ScopedWitnessBatch {
         batch_id: String,
@@ -1008,7 +1031,7 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 Some(v) => str_list_from_value(v, ctx)?,
                 None => Vec::new(),
             };
-            let execution_mode = execution_mode_from_profile_field(
+            let profile = parsed_runnable_profile_from_field(
                 ctx.field(fields, "profile"),
                 "RunnableDiscoveryBatch",
                 ctx,
@@ -1021,7 +1044,8 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 node_frontier_selection,
                 exclude_substrings,
                 discovery_scope_dirs,
-                execution_mode,
+                execution_mode: profile.execution_mode,
+                spawns_host_compiler: profile.spawns_host_compiler,
             })
         }
         Value::Variant {
@@ -1674,8 +1698,11 @@ struct ClaimResult {
     corpus_eval_nanos: u128,
     /// Number of discovery witnesses (non-zero only for discovery batch nodes).
     corpus_witnesses: usize,
+    /// Unit count for the derived batch clamp — explicit availability, never inferred from
+    /// `corpus_witnesses == 0` (that conflates discovery aggregate loss with gate rows).
+    runtime_unit_count: FloorRuntimeUnitCount,
     /// Per-witness eval+resolve identity preserved from discovery (empty for gate/single-claim rows).
-    witness_row_costs: Vec<(String, String, u128, u128, u128, String, String)>,
+    witness_row_costs: Vec<WitnessRowCost>,
     /// Set only when this row was killed at a budget, carrying the pair that explains it.
     ///
     /// `ok`/`detail` are a lossy flattening of `ClaimOutcome`, so without this the batch's
@@ -1756,6 +1783,7 @@ enum BatchUnit {
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
         execution_mode: ExecutionMode,
+        spawns_host_compiler: bool,
     },
     ScopedDiscovery {
         batch_id: String,
@@ -1766,6 +1794,7 @@ enum BatchUnit {
         node_frontier_selection: NodeFrontierSelectionMode,
         execution_authority: ScopedWitnessExecutionAuthority,
         execution_mode: ExecutionMode,
+        spawns_host_compiler: bool,
     },
 }
 
@@ -1828,6 +1857,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 exclude_substrings,
                 discovery_scope_dirs,
                 execution_mode,
+                spawns_host_compiler,
             } => {
                 if !scan_dirs.is_empty() || !explicit_entries.is_empty() {
                     units.push(BatchUnit::Discovery {
@@ -1838,6 +1868,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                         exclude_substrings: exclude_substrings.clone(),
                         discovery_scope_dirs: discovery_scope_dirs.clone(),
                         execution_mode: *execution_mode,
+                        spawns_host_compiler: *spawns_host_compiler,
                     });
                 }
                 for (entry, selector_function) in native_bundle_entries {
@@ -1867,6 +1898,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 node_frontier_selection: *node_frontier_selection,
                 execution_authority: *execution_authority,
                 execution_mode: profile.execution_mode,
+                spawns_host_compiler: profile.spawns_host_compiler,
             }),
         }
     }
@@ -1927,6 +1959,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -1950,6 +1983,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -1965,6 +1999,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -1980,6 +2015,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -2009,6 +2045,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: Some(BudgetRefusal {
                 elapsed_ms,
@@ -2299,6 +2336,7 @@ fn run_native_bundle_unit(
         corpus_resolve_nanos: 0,
         corpus_eval_nanos: 0,
         corpus_witnesses: 3,
+        runtime_unit_count: FloorRuntimeUnitCount::Observed { units: 3 },
         witness_row_costs: Vec::new(),
         budget_refusal: None,
         selection_degradation: None,
@@ -2329,6 +2367,7 @@ fn run_native_bundle_unit(
         corpus_resolve_nanos: 0,
         corpus_eval_nanos: 0,
         corpus_witnesses: 3,
+        runtime_unit_count: FloorRuntimeUnitCount::Observed { units: 3 },
         witness_row_costs: Vec::new(),
         budget_refusal: None,
         selection_degradation: None,
@@ -2479,6 +2518,9 @@ fn run_native_bundle_unit(
         corpus_resolve_nanos: 0,
         corpus_eval_nanos: interpreter_oracle_wall_nanos,
         corpus_witnesses: selected as usize,
+        runtime_unit_count: FloorRuntimeUnitCount::Observed {
+            units: selected as u128,
+        },
         witness_row_costs: Vec::new(),
         budget_refusal: None,
         selection_degradation: None,
@@ -2519,6 +2561,7 @@ fn run_batch_unit(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -2544,6 +2587,7 @@ fn run_batch_unit(
             exclude_substrings,
             discovery_scope_dirs,
             execution_mode,
+            spawns_host_compiler,
         } => {
             let DiscoveryBatchBudgets {
                 eval_budget_ms: effective_fast_lane,
@@ -2571,6 +2615,7 @@ fn run_batch_unit(
                 discovery_scope_dirs,
                 governor,
                 execution_mode,
+                spawns_host_compiler,
                 effective_fast_lane,
                 wet_wall_budget_ms,
                 wet_interp_budget_ms,
@@ -2587,6 +2632,7 @@ fn run_batch_unit(
             node_frontier_selection,
             execution_authority,
             execution_mode,
+            spawns_host_compiler,
         } => {
             let explicit_entries: Vec<(String, String)> = entries_with_kind
                 .iter()
@@ -2604,6 +2650,7 @@ fn run_batch_unit(
                 Vec::new(),
                 governor,
                 execution_mode,
+                spawns_host_compiler,
                 fast_lane_eval_budget_ms,
                 None,
                 None,
@@ -2661,6 +2708,7 @@ fn run_shared_entry_claims(
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -2746,6 +2794,7 @@ fn run_memo_shared_claims(
                         corpus_resolve_nanos: 0,
                         corpus_eval_nanos: 0,
                         corpus_witnesses: 0,
+                        runtime_unit_count: single_claim_runtime_unit_count(),
                         witness_row_costs: Vec::new(),
                         budget_refusal: None,
                         selection_degradation: None,
@@ -2926,7 +2975,7 @@ fn str_list_value(lines: &[String]) -> Value {
 /// Render the top-N slowest witnesses through `dag/gunbc/ci_render.dag`.
 fn render_slowest_witnesses(
     source_roots: &[String],
-    rows: &[(String, String, u128, u128, u128, String, String)],
+    rows: &[WitnessRowCost],
 ) -> Result<String, String> {
     if rows.is_empty() {
         return Ok(String::new());
@@ -2947,19 +2996,22 @@ fn render_slowest_witnesses(
             "slowest_witness_row",
             &[
                 (Some("rank".to_string()), Value::Int((i + 1) as i64)),
-                (Some("function".to_string()), Value::Str(row.1.clone())),
-                (Some("entry".to_string()), Value::Str(row.0.clone())),
+                (
+                    Some("function".to_string()),
+                    Value::Str(row.function.clone()),
+                ),
+                (Some("entry".to_string()), Value::Str(row.entry.clone())),
                 (
                     Some("eval_ns".to_string()),
-                    Value::Int(clamp_nanos_to_i64(row.2)),
+                    Value::Int(clamp_nanos_to_i64(row.eval_wall_nanos)),
                 ),
                 (
                     Some("resolve_ns".to_string()),
-                    Value::Int(clamp_nanos_to_i64(row.3)),
+                    Value::Int(clamp_nanos_to_i64(row.resolve_nanos)),
                 ),
                 (
                     Some("total_ns".to_string()),
-                    Value::Int(clamp_nanos_to_i64(row.4)),
+                    Value::Int(clamp_nanos_to_i64(row.warm_nanos)),
                 ),
             ],
             false,
@@ -2993,10 +3045,7 @@ fn render_slowest_witnesses(
     }
 }
 
-fn emit_slowest_witness_attribution(
-    source_roots: &[String],
-    rows: &[(String, String, u128, u128, u128, String, String)],
-) {
+fn emit_slowest_witness_attribution(source_roots: &[String], rows: &[WitnessRowCost]) {
     let n = slowest_witness_attribution_n().min(rows.len());
     if n == 0 {
         return;
@@ -3005,8 +3054,9 @@ fn emit_slowest_witness_attribution(
     match render_slowest_witnesses(source_roots, &top) {
         Ok(boxed) => {
             eprintln!("{boxed}");
-            let tail_eval_ms: u128 = top.iter().map(|r| r.2).sum::<u128>() / 1_000_000;
-            let total_eval_ms = rows.iter().map(|r| r.2).sum::<u128>() / 1_000_000;
+            let tail_eval_ms: u128 =
+                top.iter().map(|r| r.eval_wall_nanos).sum::<u128>() / 1_000_000;
+            let total_eval_ms = rows.iter().map(|r| r.eval_wall_nanos).sum::<u128>() / 1_000_000;
             let pct = if total_eval_ms == 0 {
                 0.0
             } else {
@@ -3318,7 +3368,7 @@ fn discovery_claim_result(
     detail: String,
     selection: NodeFrontierSelectionMode,
     summary: &DiscoverySummary,
-    projected: Result<Vec<(String, String, u128, u128, u128, String, String)>, String>,
+    projected: Result<Vec<WitnessRowCost>, String>,
 ) -> ClaimResult {
     // Per-row identity is load-bearing for the receipt spine: a compute failure OR an
     // incomplete row set must refuse the discovery claim (typed/located), never silently
@@ -3326,15 +3376,21 @@ fn discovery_claim_result(
     match projected {
         Ok(mut witness_row_costs) => {
             for row in &summary.selection_skipped_rows {
-                witness_row_costs.push((
-                    row.entry.clone(),
-                    row.function.clone(),
-                    0,
-                    0,
-                    0,
-                    "selection-skipped".to_string(),
-                    row.provenance.clone(),
-                ));
+                // Zeros here are placeholders the writer never renders: the row's own
+                // `selection-skipped` outcome routes every timing cell to UNMEASURED. The
+                // CPU slot is `None` for the stronger reason that it is not a placeholder
+                // at all — an unexecuted row has no clock reading of any kind, and the type
+                // now says so rather than leaving a zero to be believed.
+                witness_row_costs.push(WitnessRowCost {
+                    entry: row.entry.clone(),
+                    function: row.function.clone(),
+                    eval_wall_nanos: 0,
+                    eval_cpu_nanos: None,
+                    resolve_nanos: 0,
+                    warm_nanos: 0,
+                    outcome: "selection-skipped".to_string(),
+                    detail: row.provenance.clone(),
+                });
             }
             ClaimResult {
                 function,
@@ -3346,6 +3402,7 @@ fn discovery_claim_result(
                 corpus_resolve_nanos: summary.total_resolve_nanos,
                 corpus_eval_nanos: summary.total_measured_nanos,
                 corpus_witnesses: summary.total,
+                runtime_unit_count: discovery_runtime_unit_count_from_summary(summary.total),
                 witness_row_costs,
                 budget_refusal: discovery_budget_refusal(summary),
                 selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
@@ -3375,6 +3432,7 @@ fn discovery_claim_result(
                 corpus_resolve_nanos: summary.total_resolve_nanos,
                 corpus_eval_nanos: summary.total_measured_nanos,
                 corpus_witnesses: summary.total,
+                runtime_unit_count: discovery_runtime_unit_count_from_summary(summary.total),
                 witness_row_costs: Vec::new(),
                 // Same rule as the detail above: a receipt refusal ADDS a cause, it does not
                 // erase the one already established. A batch that blew its budget and then
@@ -3391,6 +3449,25 @@ fn discovery_claim_result(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Log label for a discovery batch, derived from the plan's modeled profile axes
+/// (`execution_mode`, `spawns_host_compiler`) — the same axes `ci_floor_plan` uses
+/// to split execution vs bin-witness corpora — not from explicit-entry count.
+fn discovery_corpus_kind_label(
+    scan_dirs: &[String],
+    execution_mode: ExecutionMode,
+    spawns_host_compiler: bool,
+) -> &'static str {
+    if !scan_dirs.is_empty() {
+        "discovery-corpus"
+    } else if execution_mode == ExecutionMode::Wet && spawns_host_compiler {
+        "bin-witness-corpus"
+    } else if execution_mode == ExecutionMode::Wet {
+        "execution-corpus"
+    } else {
+        "explicit-corpus"
+    }
+}
+
 fn run_discovery_batch_node(
     source_roots: Vec<String>,
     execution_authority_source_roots: Vec<String>,
@@ -3401,13 +3478,15 @@ fn run_discovery_batch_node(
     discovery_scope_dirs: Vec<String>,
     governor: Arc<MemoryGovernor>,
     execution_mode: ExecutionMode,
+    spawns_host_compiler: bool,
     fast_lane_eval_budget_ms: Option<u64>,
     wet_receipt_wall_budget_ms: Option<u64>,
     wet_receipt_interp_eval_budget_ms: Option<u64>,
     expect_red: bool,
     scoped_receipt: Option<ScopedReceiptBatch>,
 ) -> ClaimResult {
-    set_phase(FloorPhase::Discovery, "discovery-corpus");
+    let corpus_kind = discovery_corpus_kind_label(&scan_dirs, execution_mode, spawns_host_compiler);
+    set_phase(FloorPhase::Discovery, corpus_kind);
     // Post-discovery projections are executor machinery too.  Scoped batches keep
     // their witness subjects under the narrow `source_roots`, while the authored
     // timing projector and its renderers live in the enclosing walk universe.  Keep
@@ -3416,7 +3495,7 @@ fn run_discovery_batch_node(
     // `gunbc.witness_row_cost` and tempts callers to widen the subject envelope.
     let execution_projection_source_roots = execution_authority_source_roots.clone();
     let label = format!(
-        "discovery-corpus[{} root(s)+{} explicit, adaptive width{}]",
+        "{corpus_kind}[{} root(s)+{} explicit, adaptive width{}]",
         source_roots.len(),
         explicit_entries.len(),
         if expect_red { ", expect_red" } else { "" },
@@ -3457,6 +3536,9 @@ fn run_discovery_batch_node(
                         corpus_resolve_nanos: summary.total_resolve_nanos,
                         corpus_eval_nanos: summary.total_measured_nanos,
                         corpus_witnesses: summary.total,
+                        runtime_unit_count: discovery_runtime_unit_count_from_summary(
+                            summary.total,
+                        ),
                         witness_row_costs: Vec::new(),
                         budget_refusal: discovery_budget_refusal(&summary),
                         selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
@@ -3622,6 +3704,9 @@ fn run_discovery_batch_node(
                         corpus_resolve_nanos: summary.total_resolve_nanos,
                         corpus_eval_nanos: summary.total_measured_nanos,
                         corpus_witnesses: summary.total,
+                        runtime_unit_count: discovery_runtime_unit_count_from_summary(
+                            summary.total,
+                        ),
                         witness_row_costs: Vec::new(),
                         budget_refusal: discovery_budget_refusal(&summary),
                         selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
@@ -3691,25 +3776,31 @@ fn run_discovery_batch_node(
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: runtime_unit_count_unavailable(msg),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
                     resolve_realization: None,
                 }
             } else {
+                let detail = match scoped_write_error {
+                    Some(receipt) => format!(
+                        "discovery corpus failed: {msg}; scoped witness receipt refused: {receipt}"
+                    ),
+                    None => format!("discovery corpus failed: {msg}"),
+                };
+                let runtime_unit_count = runtime_unit_count_unavailable(&detail);
                 ClaimResult {
                     function: label,
                     entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
                     ok: false,
-                    detail: match scoped_write_error {
-                        Some(receipt) => format!("discovery corpus failed: {msg}; scoped witness receipt refused: {receipt}"),
-                        None => format!("discovery corpus failed: {msg}"),
-                    },
+                    detail,
                     wall_nanos: 0,
                     resolve_nanos: 0,
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count,
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -4297,8 +4388,10 @@ struct BatchRecord {
     /// The derived clamp computed for this batch (overhead + unit_count*rate, tightened), or None
     /// for budget-less plans (falsifier/regen). Recorded so the receipt never recomputes it.
     clamp_ms: Option<u128>,
-    /// The runtime unit count the clamp used (discovery witnesses + gate rows).
+    /// The runtime unit count the clamp used when observed.
     unit_count: u128,
+    /// Full availability for the batch clamp receipt (`ClampRefused` when unavailable).
+    runtime_units: FloorRuntimeUnitCount,
     /// Flattened results from all units in this batch (order: unit by unit).
     results: Vec<ClaimResult>,
     /// Heartbeat label for this batch — carried so the component receipt names the
@@ -4441,6 +4534,14 @@ fn write_floor_component_receipt_at(
     };
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let run_id = std::env::var("GITHUB_RUN_ID").unwrap_or_else(|_| "local".to_string());
+    // The receipt's SUBJECT. It binds the document to the run and tree that produced
+    // it so a consumer can refuse a receipt that is not about the run it is reacting
+    // to (`gunbc.floor_component_receipt_document` floor_component_receipt_subject_note).
+    // The fallbacks mirror run_id's: off a GitHub runner these are not "unknown", they
+    // are a LOCAL run, and a local receipt is not addressed to any workflow run — the
+    // decoder's subject match then refuses it against any event, which is correct.
+    let workflow_name = std::env::var("GITHUB_WORKFLOW").unwrap_or_else(|_| "local".to_string());
+    let head_sha = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
 
     let mut rows: Vec<Value> = Vec::new();
     for rec in batch_records {
@@ -4502,7 +4603,12 @@ fn write_floor_component_receipt_at(
             &ctx,
             "floor_component_receipt_document_with_selection",
             &[
+                (
+                    Some("workflow_name".to_string()),
+                    Value::Str(workflow_name.clone()),
+                ),
                 (Some("run_id".to_string()), Value::Str(run_id.clone())),
+                (Some("head_sha".to_string()), Value::Str(head_sha.clone())),
                 (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
                 (
                     Some("selection_mode_tag".to_string()),
@@ -4548,7 +4654,12 @@ fn write_floor_component_receipt_at(
             &ctx,
             "floor_component_receipt_document",
             &[
+                (
+                    Some("workflow_name".to_string()),
+                    Value::Str(workflow_name.clone()),
+                ),
                 (Some("run_id".to_string()), Value::Str(run_id.clone())),
+                (Some("head_sha".to_string()), Value::Str(head_sha.clone())),
                 (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
             ],
             false,
@@ -4716,8 +4827,12 @@ fn write_batch_wall_receipt_at(base: &std::path::Path, batch_records: &[BatchRec
         let n = rec.batch_index + 1;
         let wall_ms = rec.wall_nanos / 1_000_000;
         body.push_str(&format!("batch_{n}_wall_ms={wall_ms}\n"));
-        match rec.clamp_ms {
-            Some(clamp_ms) => {
+        match (&rec.runtime_units, rec.clamp_ms) {
+            (FloorRuntimeUnitCount::Unavailable { .. }, _) => {
+                body.push_str(&format!("batch_{n}_units=unavailable\n"));
+                body.push_str(&format!("batch_{n}_verdict=ClampRefused\n"));
+            }
+            (FloorRuntimeUnitCount::Observed { .. }, Some(clamp_ms)) => {
                 let verdict = if wall_ms > clamp_ms {
                     over_budget += 1;
                     "OverBudget"
@@ -4728,7 +4843,7 @@ fn write_batch_wall_receipt_at(base: &std::path::Path, batch_records: &[BatchRec
                 body.push_str(&format!("batch_{n}_clamp_ms={clamp_ms}\n"));
                 body.push_str(&format!("batch_{n}_verdict={verdict}\n"));
             }
-            None => {
+            (FloorRuntimeUnitCount::Observed { .. }, None) => {
                 body.push_str(&format!("batch_{n}_verdict=Unbudgeted\n"));
             }
         }
@@ -4923,7 +5038,7 @@ fn write_witness_row_cost_receipt_at(
     emit_full_tsv_log: bool,
 ) -> bool {
     let mut body = String::from(
-        "batch\tentry\tfunction\teval_wall_ms\tresolve_ms\twarm_ms\toutcome\tdetail\n",
+        "batch\tentry\tfunction\teval_wall_ms\teval_cpu_ms\tresolve_ms\twarm_ms\toutcome\tdetail\n",
     );
     let mut row_count = 0usize;
     for rec in batch_records {
@@ -4939,19 +5054,33 @@ fn write_witness_row_cost_receipt_at(
                 //
                 // Note the two are genuinely different facts here: an executed witness may
                 // legitimately measure 0 ms (sub-millisecond), and those rows keep their `0`.
-                let cells = if row_measurement_is_absent(&row.5) {
-                    format!("{UNMEASURED_CELL}\t{UNMEASURED_CELL}\t{UNMEASURED_CELL}")
-                } else {
+                //
+                // `eval_cpu_ms` sits BESIDE `eval_wall_ms` rather than replacing it, and its
+                // job is to make the remedy readable from this file alone: a slow row with
+                // high CPU is algorithm or repeated evaluation, a slow row with low CPU is
+                // waiting, I/O, subprocess or scheduling (operator ruling 2026-08-05). It is
+                // not a second threshold — the witness threshold is stated on wall — and a
+                // clock the producer did not sample renders UNMEASURED for the same reason
+                // an unexecuted row does: an unread clock must not read as a fast one.
+                let cells = if row_measurement_is_absent(&row.outcome) {
                     format!(
-                        "{}\t{}\t{}",
-                        row.2 / 1_000_000,
-                        row.3 / 1_000_000,
-                        row.4 / 1_000_000
+                        "{UNMEASURED_CELL}\t{UNMEASURED_CELL}\t{UNMEASURED_CELL}\t{UNMEASURED_CELL}"
+                    )
+                } else {
+                    let cpu = match row.eval_cpu_nanos {
+                        Some(ns) => (ns / 1_000_000).to_string(),
+                        None => UNMEASURED_CELL.to_string(),
+                    };
+                    format!(
+                        "{}\t{cpu}\t{}\t{}",
+                        row.eval_wall_nanos / 1_000_000,
+                        row.resolve_nanos / 1_000_000,
+                        row.warm_nanos / 1_000_000
                     )
                 };
                 body.push_str(&format!(
                     "{n}\t{}\t{}\t{cells}\t{}\t{}\n",
-                    row.0, row.1, row.5, row.6
+                    row.entry, row.function, row.outcome, row.detail
                 ));
                 row_count += 1;
             }
@@ -5015,14 +5144,14 @@ fn write_floor_wet_witness_row_outcome_receipt_at(
         let batch = rec.batch_index + 1;
         for result in &rec.results {
             for row in &result.witness_row_costs {
-                let outcome = wet_witness_row_outcome_label(&row.5);
-                let detail = scoped_wire_text(&row.6);
+                let outcome = wet_witness_row_outcome_label(&row.outcome);
+                let detail = scoped_wire_text(&row.detail);
                 body.push_str(&format!(
                     "{}\n",
                     [
                         batch.to_string(),
-                        row.0.clone(),
-                        row.1.clone(),
+                        row.entry.clone(),
+                        row.function.clone(),
                         outcome.to_string(),
                         detail,
                     ]
@@ -5044,21 +5173,45 @@ fn write_floor_wet_witness_row_outcome_receipt_at(
         "[receipt] floor wet witness row-outcome: {row_count} row(s) (TSV receipt: {})",
         path.display()
     );
+    trace_floor_phase(
+        "wet-witness-row-outcome-receipt",
+        "completed",
+        &format!("row_count={row_count} path={}", path.display()),
+    );
     true
 }
 
 /// Required `host_class` on every signed basis row (`witness_row_cost_basis_host_class_note`).
 const WITNESS_ROW_COST_BASIS_HOST_CLASS: &str = "srv_fleet_arm64";
 
+/// The `.dag` constructor for each `std.observation.ClockBasis` arm, keyed by the spelling the
+/// basis file uses. The seed names no clock of its own: it maps the cell to a constructor and
+/// calls it, so a clock that this repository does not model has no path into a comparison.
+fn clock_basis_constructor_for(cell: &str) -> Option<&'static str> {
+    match cell {
+        "wall" => Some("clock_basis_wall"),
+        "cpu" => Some("clock_basis_cpu"),
+        _ => None,
+    }
+}
+
 #[derive(Debug)]
 struct WitnessRowCostBasisRow {
     eval_ms_basis: u128,
     run_ref: String,
+    /// Which clock `eval_ms_basis` was read from, as the `.dag` constructor name for it.
+    ///
+    /// Carried per row rather than assumed for the file, because the file's rows are seeded
+    /// over time from whatever the producer of the day recorded — and a basis whose clock is
+    /// assumed is exactly the state the 2026-08-05 ruling ends. A comparison against an
+    /// observation on a different clock refuses (`BasisClockMismatch`) rather than answering.
+    clock_constructor: &'static str,
 }
 
 /// Parse one TSV body line from `witness_row_cost_basis.tsv`.
-/// Returns `Ok(None)` for blank/comment lines; `Err` for malformed or wrong-host-class rows
-/// (caller must not insert them — a wrong host class would poison the 2× comparator).
+/// Returns `Ok(None)` for blank/comment lines; `Err` for malformed, wrong-host-class, or
+/// unknown-clock rows (caller must not insert them — a wrong host class would poison the 2×
+/// comparator, and an unmodelled clock cannot be compared at all).
 fn parse_witness_row_cost_basis_line(
     line: &str,
 ) -> Result<Option<((String, String), WitnessRowCostBasisRow)>, String> {
@@ -5067,9 +5220,9 @@ fn parse_witness_row_cost_basis_line(
         return Ok(None);
     }
     let parts: Vec<&str> = line.split('\t').collect();
-    if parts.len() < 5 {
+    if parts.len() < 6 {
         return Err(format!(
-            "malformed witness-row-cost basis line (need 5 cols: entry function eval_ms_basis run_ref host_class): {line}"
+            "malformed witness-row-cost basis line (need 6 cols: entry function eval_ms_basis run_ref host_class clock): {line}"
         ));
     }
     let host_class = parts[4];
@@ -5078,6 +5231,16 @@ fn parse_witness_row_cost_basis_line(
             "witness-row-cost basis row host_class={host_class:?} refused (required {WITNESS_ROW_COST_BASIS_HOST_CLASS}; wrong host class poisons the 2× comparator): {line}"
         ));
     }
+    // A row that does not say which clock its figure came from is REFUSED, not defaulted.
+    // Defaulting to wall would be right for every row in the file today and wrong the first
+    // time someone seeds one from a CPU receipt — and it would be wrong silently, which is
+    // the whole failure this column exists to prevent.
+    let Some(clock_constructor) = clock_basis_constructor_for(parts[5]) else {
+        return Err(format!(
+            "witness-row-cost basis row clock={:?} refused (known clocks: wall, cpu; a basis whose clock is unknown cannot be compared): {line}",
+            parts[5]
+        ));
+    };
     let eval_ms_basis = parts[2].parse::<u128>().unwrap_or(0);
     if eval_ms_basis == 0 {
         return Err(format!(
@@ -5089,6 +5252,7 @@ fn parse_witness_row_cost_basis_line(
         WitnessRowCostBasisRow {
             eval_ms_basis,
             run_ref: parts[3].to_string(),
+            clock_constructor,
         },
     )))
 }
@@ -5110,27 +5274,65 @@ fn millisecond_value(ctx: &InterpContext, count_ms: u128) -> Result<Value, Strin
 
 /// Single-authority projection: evaluate `gunbc.witness_row_cost.witness_row_cost_exceeds_basis`
 /// rather than re-implementing `observed > basis * 2` in the seed (review 43261).
-fn witness_row_cost_exceeds_basis_via_authority(
+/// The clock the drift wire's observed figure is read from.
+///
+/// `witness_row_costs.2` is the row's `eval_wall_ms` — wall, and named so since #7820 — which
+/// is also the clock the witness threshold is stated on (operator ruling 2026-08-05). It is
+/// passed to the comparator rather than left implicit, which is the entire point: the
+/// comparison now asserts that both sides are the same clock instead of both happening to be.
+const WITNESS_ROW_COST_OBSERVED_CLOCK: &str = "clock_basis_wall";
+
+/// Ask the authored comparator for a verdict and return the ARM IT NAMED.
+///
+/// The seed used to call `witness_row_cost_exceeds_basis` — the bare ratio predicate — and
+/// then rebuild `DriftExceeded` / `WithinBasis` / `BasisAbsent` as Rust string literals. That
+/// was a second representation of `WitnessRowCostVerdict`, and it meant the cross-clock wall
+/// the carrier grew could not reach the cadence receipt at all: the clock never crossed the
+/// seam, so a CPU figure against a wall basis would still have answered confidently.
+///
+/// Now the arm's own name is what gets rendered, so a new arm reaches the receipt without a
+/// Rust edit and `BasisClockMismatch` fires here exactly as it does in the witness.
+fn witness_row_cost_verdict_via_authority(
     ctx: &InterpContext,
     observed_ms: u128,
-    basis_ms: u128,
-) -> Result<bool, String> {
+    basis: Option<&WitnessRowCostBasisRow>,
+) -> Result<String, String> {
     let observed = millisecond_value(ctx, observed_ms)?;
-    let basis = millisecond_value(ctx, basis_ms)?;
-    match run_in_context_with_args(
-        ctx,
-        "witness_row_cost_exceeds_basis",
-        &[
-            (Some("observed".to_string()), observed),
-            (Some("basis".to_string()), basis),
-        ],
-        false,
-    ) {
-        Ok(Value::Bool(b)) => Ok(b),
+    let observed_clock = run_in_context_with_args(ctx, WITNESS_ROW_COST_OBSERVED_CLOCK, &[], false)
+        .map_err(|e| format!("{WITNESS_ROW_COST_OBSERVED_CLOCK}: {e}"))?;
+    let (function, args) = match basis {
+        None => (
+            "witness_row_cost_seed_verdict_undated",
+            vec![
+                (Some("observed".to_string()), observed),
+                (Some("observed_clock".to_string()), observed_clock),
+            ],
+        ),
+        Some(b) => {
+            let basis_clock = run_in_context_with_args(ctx, b.clock_constructor, &[], false)
+                .map_err(|e| format!("{}: {e}", b.clock_constructor))?;
+            let basis_eval = millisecond_value(ctx, b.eval_ms_basis)?;
+            (
+                "witness_row_cost_seed_verdict_dated",
+                vec![
+                    (Some("observed".to_string()), observed),
+                    (Some("observed_clock".to_string()), observed_clock),
+                    (Some("basis_clock".to_string()), basis_clock),
+                    (Some("basis_eval".to_string()), basis_eval),
+                    (
+                        Some("run_ref".to_string()),
+                        Value::Str(b.run_ref.clone().into()),
+                    ),
+                ],
+            )
+        }
+    };
+    match run_in_context_with_args(ctx, function, &args, false) {
+        Ok(Value::Variant { variant_name, .. }) => Ok(ctx.resolve(variant_name).to_string()),
         Ok(other) => Err(format!(
-            "witness_row_cost_exceeds_basis returned {other}, expected Bool (fail-closed)"
+            "{function} returned {other}, expected a WitnessRowCostVerdict (fail-closed)"
         )),
-        Err(e) => Err(format!("witness_row_cost_exceeds_basis: {e}")),
+        Err(e) => Err(format!("{function}: {e}")),
     }
 }
 
@@ -5184,6 +5386,11 @@ fn write_witness_row_cost_drift_receipt_at(
     let mut drift_count = 0usize;
     let mut basis_absent_count = 0usize;
     let mut observation_absent_count = 0usize;
+    // A cross-clock pair is neither within basis nor exceeding it, and it is not a missing
+    // basis either — a basis IS present, on the wrong clock. Counted on its own line because
+    // its remedy differs: seed the missing row versus fix the producer handing over the wrong
+    // clock. Absorbing it into either neighbour would zero its frequency by construction.
+    let mut clock_mismatch_count = 0usize;
     for rec in batch_records {
         let n = rec.batch_index + 1;
         for result in &rec.results {
@@ -5199,8 +5406,8 @@ fn write_witness_row_cost_drift_receipt_at(
                 // there a measurement exists with no basis to judge it, here a basis exists
                 // with no measurement to judge. Neither is a comparison, and neither is
                 // reported as one. Counted, so the population is visible rather than absorbed.
-                let key = (row.0.clone(), row.1.clone());
-                if drift_row_disposition(&row.5, basis.contains_key(&key))
+                let key = (row.entry.clone(), row.function.clone());
+                if drift_row_disposition(&row.outcome, basis.contains_key(&key))
                     == DriftRowDisposition::ObservationAbsent
                 {
                     observation_absent_count += 1;
@@ -5210,51 +5417,42 @@ fn write_witness_row_cost_drift_receipt_at(
                         .unwrap_or_default();
                     body.push_str(&format!(
                         "{n}\t{}\t{}\t{UNMEASURED_CELL}\t{basis_cell}\tObservationAbsent\t\n",
-                        row.0, row.1
+                        row.entry, row.function
                     ));
                     continue;
                 }
-                let observed = row.2 / 1_000_000;
-                match basis.get(&key) {
-                    None => {
-                        basis_absent_count += 1;
-                        body.push_str(&format!(
-                            "{n}\t{}\t{}\t{observed}\t\tBasisAbsent\t\n",
-                            row.0, row.1
-                        ));
+                let observed = row.eval_wall_nanos / 1_000_000;
+                let dated = basis.get(&key);
+                let verdict = match witness_row_cost_verdict_via_authority(&ctx, observed, dated) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "claim_executor: drift comparator refused for {}::{}: {e} — walk fails closed here",
+                            row.entry, row.function
+                        );
+                        return false;
                     }
-                    Some(b) => {
-                        let exceeds = match witness_row_cost_exceeds_basis_via_authority(
-                            &ctx,
-                            observed,
-                            b.eval_ms_basis,
-                        ) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                eprintln!(
-                                    "claim_executor: drift comparator refused for {}::{}: {e} — walk fails closed here",
-                                    row.0, row.1
-                                );
-                                return false;
-                            }
-                        };
-                        let verdict = if exceeds {
-                            drift_count += 1;
-                            "DriftExceeded"
-                        } else {
-                            "WithinBasis"
-                        };
-                        body.push_str(&format!(
-                            "{n}\t{}\t{}\t{observed}\t{}\t{verdict}\t{}\n",
-                            row.0, row.1, b.eval_ms_basis, b.run_ref
-                        ));
-                    }
+                };
+                // Counting reads the arm the authority named; it does not re-decide it.
+                match verdict.as_str() {
+                    "BasisAbsent" => basis_absent_count += 1,
+                    "DriftExceeded" => drift_count += 1,
+                    "BasisClockMismatch" => clock_mismatch_count += 1,
+                    _ => {}
                 }
+                let (basis_cell, run_ref_cell) = match dated {
+                    None => (String::new(), String::new()),
+                    Some(b) => (b.eval_ms_basis.to_string(), b.run_ref.clone()),
+                };
+                body.push_str(&format!(
+                    "{n}\t{}\t{}\t{observed}\t{basis_cell}\t{verdict}\t{run_ref_cell}\n",
+                    row.entry, row.function
+                ));
             }
         }
     }
     eprintln!(
-        "[witness-row-cost-drift] basis_absent={basis_absent_count} observation_absent={observation_absent_count} drift_exceeded={drift_count}"
+        "[witness-row-cost-drift] basis_absent={basis_absent_count} observation_absent={observation_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count}"
     );
     for line in body.lines() {
         eprintln!("[witness-row-cost-drift] {line}");
@@ -5268,7 +5466,147 @@ fn write_witness_row_cost_drift_receipt_at(
         return false;
     }
     eprintln!(
-        "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} observation_absent={observation_absent_count} drift_exceeded={drift_count} (TSV: {})",
+        "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} observation_absent={observation_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count} (TSV: {})",
+        path.display()
+    );
+    true
+}
+
+/// Single-authority projection: fetch `gunbc.witness_row_cost.witness_row_cost_migration_threshold_ms`
+/// once (never a hand-typed 500 in the seed — DESIGN §3) so the threshold cannot drift from the
+/// fast-lane budget authority it is derived from.
+fn witness_row_cost_migration_threshold_ms_via_authority(
+    ctx: &InterpContext,
+) -> Result<u128, String> {
+    match run_in_context_with_args(ctx, "witness_row_cost_migration_threshold_ms", &[], false) {
+        Ok(Value::Int(n)) if n >= 0 => Ok(n as u128),
+        Ok(other) => Err(format!(
+            "witness_row_cost_migration_threshold_ms returned {other}, expected non-negative Int (fail-closed)"
+        )),
+        Err(e) => Err(format!("witness_row_cost_migration_threshold_ms: {e}")),
+    }
+}
+
+/// Single-authority projection, mirroring `witness_row_cost_verdict_via_authority`:
+/// the threshold comparison lives entirely in `.dag`'s `witness_row_cost_migration_verdict`.
+/// Rust reads back the returned `MigrationDisclosureVerdict` coproduct's tag only.
+fn witness_row_cost_migration_verdict_via_authority(
+    ctx: &InterpContext,
+    observed_ms: u128,
+) -> Result<bool, String> {
+    let observed = millisecond_value(ctx, observed_ms)?;
+    match run_in_context_with_args(
+        ctx,
+        "witness_row_cost_migration_verdict",
+        &[(Some("observed".to_string()), observed)],
+        false,
+    ) {
+        Ok(Value::Variant { variant_name, .. }) => {
+            Ok(ctx.sym_eq(variant_name, "MandatoryMigration"))
+        }
+        Ok(other) => Err(format!(
+            "witness_row_cost_migration_verdict returned {other}, expected MigrationDisclosureVerdict variant (fail-closed)"
+        )),
+        Err(e) => Err(format!("witness_row_cost_migration_verdict: {e}")),
+    }
+}
+
+/// MANDATORY-MIGRATION DISCLOSURE (`witness_row_cost_migration_threshold_note`, gunbc.witness_row_cost):
+/// runs every floor pass (not gated to falsifier cadence — this is what surfaces an over-threshold
+/// witness before it ever trips the 5s fail-stop on an unrelated PR). Disclosure only: never fails
+/// the walk on a nonzero population. Both the threshold fetch and the per-row verdict are authority
+/// calls into `gunbc.witness_row_cost`; this function only serializes the resulting rows to a TSV
+/// and a log — it is strictly the receipt-writing seam, not a second decision surface.
+fn write_witness_row_cost_migration_disclosure_receipt_at(
+    base: &std::path::Path,
+    batch_records: &[BatchRecord],
+    source_roots: &[String],
+) -> bool {
+    let entry = "dag/gunbc/witness_row_cost.dag";
+    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
+        Ok(v) => v,
+        Err(m) => {
+            eprintln!(
+                "claim_executor: failed to resolve {entry} for migration disclosure (fail-closed):\n{m}"
+            );
+            return false;
+        }
+    };
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let threshold_ms = match witness_row_cost_migration_threshold_ms_via_authority(&ctx) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!(
+                "claim_executor: migration disclosure threshold fetch failed: {e} — walk fails closed here"
+            );
+            return false;
+        }
+    };
+
+    let mut body =
+        String::from("batch\tentry\tfunction\tobserved_eval_ms\tthreshold_ms\tverdict\n");
+    let mut mandatory_count = 0usize;
+    let mut worst: Vec<(u128, String, String)> = Vec::new();
+    let mut observation_absent_count = 0usize;
+    for rec in batch_records {
+        let n = rec.batch_index + 1;
+        for result in &rec.results {
+            for row in &result.witness_row_costs {
+                if row_measurement_is_absent(&row.outcome) {
+                    observation_absent_count += 1;
+                    body.push_str(&format!(
+                        "{n}\t{}\t{}\t\t{threshold_ms}\tObservationAbsent\n",
+                        row.entry, row.function
+                    ));
+                    continue;
+                }
+                let observed = row.eval_wall_nanos / 1_000_000;
+                let is_mandatory = match witness_row_cost_migration_verdict_via_authority(
+                    &ctx, observed,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "claim_executor: migration verdict refused for {}::{}: {e} — walk fails closed here",
+                            row.entry, row.function
+                        );
+                        return false;
+                    }
+                };
+                let verdict = if is_mandatory {
+                    mandatory_count += 1;
+                    worst.push((observed, row.entry.clone(), row.function.clone()));
+                    "MandatoryMigration"
+                } else {
+                    "BelowMigrationThreshold"
+                };
+                body.push_str(&format!(
+                    "{n}\t{}\t{}\t{observed}\t{threshold_ms}\t{verdict}\n",
+                    row.entry, row.function
+                ));
+            }
+        }
+    }
+    worst.sort_by(|a, b| b.0.cmp(&a.0));
+    worst.truncate(5);
+    for line in body.lines() {
+        eprintln!("[witness-row-cost-migration-disclosure] {line}");
+    }
+    for (ms, entry, function) in &worst {
+        eprintln!(
+            "[witness-row-cost-migration-disclosure] worst: {entry}::{function} observed={ms}ms threshold={threshold_ms}ms"
+        );
+    }
+    let path = base.join("floor-witness-row-cost-migration-disclosure-receipt.tsv");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write witness row-cost migration disclosure receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] floor witness row-cost migration disclosure: mandatory_migration={mandatory_count} observation_absent={observation_absent_count} threshold_ms={threshold_ms} (TSV: {})",
         path.display()
     );
     true
@@ -6460,7 +6798,10 @@ struct StageRun {
     /// recomputed by the caller: one derivation, one call.
     label: String,
     wall_nanos: u128,
-    /// Runtime unit count the clamp used (discovery witnesses + gate rows).
+    /// Aggregated runtime unit observation for the clamp (authority
+    /// `gunbc_ci_floor_batch_runtime_unit_count_note`).
+    runtime_units: FloorRuntimeUnitCount,
+    /// Observed unit sum when available; zero when unavailable (receipt uses `runtime_units`).
     unit_count: u128,
     /// The derived clamp actually computed, or None when the plan declares no clamp
     /// params for this population.
@@ -6687,40 +7028,57 @@ fn run_stage(
     // evaluated — the clamp is an admission/scheduling fact, not a verdict term. A
     // population whose plan declares no clamp params gets None and is not clamped;
     // nothing is fabricated for it.
-    let unit_count = batch_runtime_unit_count(&results);
-    let clamp_ms: Option<u128> = clamp_params.map(|(overhead_ms, rate_ms)| {
-        let mut clamp = overhead_ms + unit_count * rate_ms;
-        if let Some(t) = budget_tighten_ms {
-            clamp = clamp.min(t);
-        }
-        clamp
-    });
+    let runtime_units = aggregate_batch_runtime_units(&results);
     let mut over_budget = false;
-    if let Some(clamp) = clamp_ms {
-        let wall_ms = wall_nanos / 1_000_000;
-        if wall_ms > clamp {
-            over_budget = true;
+    let (unit_count, clamp_ms) = match (&runtime_units, clamp_params) {
+        (FloorRuntimeUnitCount::Unavailable { cause }, Some(_)) => {
             println!(
                 "{}",
                 paint(
                     &format!(
-                        "✗ FLOOR-BATCH-OVER-BUDGET {}={} wall_ms={} clamp_ms={} units={}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_clamp_params[{}]; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
+                        "✗ FLOOR-BATCH-CLAMP-REFUSED {}={} units unavailable ({cause})                                  (clamp comparison refused; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_runtime_unit_count_note — not FLOOR-BATCH-OVER-BUDGET)",
                         population.phase_slug(),
                         index + 1,
-                        wall_ms,
-                        clamp,
-                        unit_count,
-                        index
                     ),
                     sgr::ERROR
                 )
             );
+            (0u128, None)
         }
-    }
+        (FloorRuntimeUnitCount::Observed { units }, Some((overhead_ms, rate_ms))) => {
+            let mut clamp = overhead_ms + (*units * rate_ms);
+            if let Some(t) = budget_tighten_ms {
+                clamp = clamp.min(t);
+            }
+            let wall_ms = wall_nanos / 1_000_000;
+            if wall_ms > clamp {
+                over_budget = true;
+                println!(
+                    "{}",
+                    paint(
+                        &format!(
+                            "✗ FLOOR-BATCH-OVER-BUDGET {}={} wall_ms={} clamp_ms={} units={}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_clamp_params[{}]; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
+                            population.phase_slug(),
+                            index + 1,
+                            wall_ms,
+                            clamp,
+                            units,
+                            index
+                        ),
+                        sgr::ERROR
+                    )
+                );
+            }
+            (*units, Some(clamp))
+        }
+        (FloorRuntimeUnitCount::Observed { units }, None) => (*units, None),
+        (FloorRuntimeUnitCount::Unavailable { .. }, None) => (0u128, None),
+    };
     StageRun {
         results,
         label,
         wall_nanos,
+        runtime_units,
         unit_count,
         clamp_ms,
         thread_panicked,
@@ -6937,6 +7295,7 @@ fn run_walk(
             results: batch_results,
             label,
             wall_nanos: batch_wall_nanos,
+            runtime_units: batch_runtime_units,
             unit_count: batch_unit_count,
             clamp_ms: batch_clamp_ms,
             thread_panicked,
@@ -7016,6 +7375,7 @@ fn run_walk(
             wall_nanos: batch_wall_nanos,
             clamp_ms: batch_clamp_ms,
             unit_count: batch_unit_count,
+            runtime_units: batch_runtime_units,
             results: batch_results,
             label: label.clone(),
             selection_tag: batch_selection_tag(batch),
@@ -7105,6 +7465,22 @@ fn run_walk(
         true
     };
     trace_floor_phase("witness-row-cost-drift-receipt", "completed", "");
+    trace_floor_phase(
+        "witness-row-cost-migration-disclosure-receipt",
+        "started",
+        "",
+    );
+    let witness_row_cost_migration_disclosure_receipt_ok = !emit_ordinary_floor_receipts
+        || write_witness_row_cost_migration_disclosure_receipt_at(
+            std::path::Path::new("target"),
+            &batch_records,
+            source_roots,
+        );
+    trace_floor_phase(
+        "witness-row-cost-migration-disclosure-receipt",
+        "completed",
+        "",
+    );
     // Written on EVERY exit path, red included — a red run is precisely when the
     // alert needs to know which component failed (gunbc.floor_component_receipt).
     trace_floor_phase("floor-component-receipt", "started", "");
@@ -7141,6 +7517,7 @@ fn run_walk(
         || !witness_row_cost_receipt_ok
         || !wet_witness_row_outcome_receipt_ok
         || !witness_row_cost_drift_receipt_ok
+        || !witness_row_cost_migration_disclosure_receipt_ok
         || !selection_degradation_receipt_ok
         || !floor_component_receipt_ok
         || !materialization_receipt_ok;
@@ -7601,6 +7978,7 @@ fn run_perturb_check(
                         exclude_substrings,
                         discovery_scope_dirs,
                         execution_mode,
+                        spawns_host_compiler,
                     } => Runnable::DiscoveryBatch {
                         source_roots: roots.iter().map(|r| remap_root(r)).collect(),
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
@@ -7610,6 +7988,7 @@ fn run_perturb_check(
                         exclude_substrings: exclude_substrings.clone(),
                         discovery_scope_dirs: discovery_scope_dirs.clone(),
                         execution_mode: *execution_mode,
+                        spawns_host_compiler: *spawns_host_compiler,
                     },
                     Runnable::ScopedWitnessBatch {
                         batch_id,
@@ -7761,14 +8140,30 @@ fn replay_ordinary_floor_wet_witness_row_outcomes() {
                 "[wet-witness-row-outcome] coordinator replayed {count} row(s) from {}",
                 path.display()
             );
+            append_floor_phase_journal(
+                "wet-witness-row-outcome-replay",
+                "completed",
+                &format!("row_count={count} path={}", path.display()),
+            );
+            if let Ok(lines) = collect_wet_witness_row_outcome_replay_lines(path) {
+                for line in lines {
+                    append_floor_phase_journal("wet-witness-row-outcome-replay", "row", &line);
+                }
+            }
         }
         Err(msg) if path.exists() => {
             eprintln!("claim_executor: wet witness row-outcome coordinator replay refused: {msg}");
+            append_floor_phase_journal("wet-witness-row-outcome-replay", "refused", &msg);
         }
         Err(_) => {
             eprintln!(
                 "claim_executor: wet witness row-outcome receipt absent at {} — per-row wet batch outcomes unobservable",
                 path.display()
+            );
+            append_floor_phase_journal(
+                "wet-witness-row-outcome-replay",
+                "absent",
+                &format!("path={}", path.display()),
             );
         }
     }
@@ -9284,6 +9679,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 0,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "finalization-fixture".to_string(),
             selection_tag: "fixture",
             is_wet: false,
@@ -9299,6 +9695,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -9492,6 +9889,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 0,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "obligation-fixture".to_string(),
             selection_tag: "fixture",
             is_wet: false,
@@ -9506,6 +9904,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -9523,6 +9922,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -9550,6 +9950,7 @@ mod tests {
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -9573,6 +9974,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 0,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "emit-only".to_string(),
             selection_tag: "fixture",
             is_wet: false,
@@ -9586,6 +9988,7 @@ mod tests {
                 corpus_resolve_nanos: 0,
                 corpus_eval_nanos: 0,
                 corpus_witnesses: 0,
+                runtime_unit_count: single_claim_runtime_unit_count(),
                 witness_row_costs: Vec::new(),
                 budget_refusal: None,
                 selection_degradation: None,
@@ -9621,6 +10024,7 @@ mod tests {
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -9652,6 +10056,7 @@ mod tests {
                 wall_nanos: 0,
                 clamp_ms: None,
                 unit_count: 0,
+                runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 label: "cheap-gates".to_string(),
                 selection_tag: "fixture",
                 is_wet: false,
@@ -9665,6 +10070,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -9678,6 +10084,7 @@ mod tests {
                 wall_nanos: 0,
                 clamp_ms: None,
                 unit_count: 0,
+                runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 label: "compile-anchor".to_string(),
                 selection_tag: "fixture",
                 is_wet: false,
@@ -9691,6 +10098,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -9707,6 +10115,7 @@ mod tests {
                 wall_nanos: 0,
                 clamp_ms: None,
                 unit_count: 0,
+                runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 label: "native-bundle".to_string(),
                 selection_tag: "fixture",
                 is_wet: false,
@@ -9722,6 +10131,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -9753,6 +10163,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 0,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "memo-regression".to_string(),
             selection_tag: "fixture",
             is_wet: false,
@@ -9767,6 +10178,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -9784,6 +10196,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -10027,11 +10440,13 @@ mod tests {
     }
 
     fn batch_record_for_test(results: Vec<ClaimResult>) -> BatchRecord {
+        let unit_count = results.len() as u128;
         BatchRecord {
             batch_index: 0,
             wall_nanos: 0,
             clamp_ms: None,
-            unit_count: results.len() as u128,
+            unit_count,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: unit_count },
             results,
             label: "batch-under-test".to_string(),
             selection_tag: "off",
@@ -10058,6 +10473,7 @@ mod tests {
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: Some(BudgetRefusal {
                 elapsed_ms: 900_001,
@@ -10089,6 +10505,7 @@ mod tests {
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -10347,6 +10764,7 @@ mod tests {
                 exclude_substrings: Vec::new(),
                 discovery_scope_dirs: Vec::new(),
                 execution_mode: ExecutionMode::Hermetic,
+                spawns_host_compiler: false,
             }],
         ];
 
@@ -10356,6 +10774,7 @@ mod tests {
             wall_nanos: 1_000_000_000,
             clamp_ms: None,
             unit_count: 1,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 1 },
             results: Vec::new(),
             label: batch_heartbeat_label(&batches[0]),
             selection_tag: batch_selection_tag(&batches[0]),
@@ -10398,6 +10817,93 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
     }
 
+    // Hard discovery failure must refuse the batch clamp — never mis-render as
+    // FLOOR-BATCH-OVER-BUDGET via the legacy zero→one unit mapping.
+    #[test]
+    fn hard_discovery_error_refuses_batch_clamp_not_over_budget() {
+        let discovery_fail = ClaimResult {
+            function: "discovery-corpus".to_string(),
+            entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
+            ok: false,
+            detail: "discovery corpus failed: resolve refused".to_string(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: runtime_unit_count_unavailable("resolve refused"),
+            witness_row_costs: Vec::new(),
+            budget_refusal: None,
+            selection_degradation: None,
+            resolve_realization: None,
+        };
+        let units = aggregate_batch_runtime_units(&[discovery_fail]);
+        assert!(
+            matches!(units, FloorRuntimeUnitCount::Unavailable { .. }),
+            "hard corpus error must mark units unavailable, got {units:?}"
+        );
+        // Positive control: a single gate row still contributes one observed unit.
+        let gate = ClaimResult {
+            function: "some_gate_holds".to_string(),
+            entry: "dag/tools/floor_effect_gate_witness.dag".to_string(),
+            ok: true,
+            detail: String::new(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
+            witness_row_costs: Vec::new(),
+            budget_refusal: None,
+            selection_degradation: None,
+            resolve_realization: None,
+        };
+        assert_eq!(
+            aggregate_batch_runtime_units(&[gate]),
+            FloorRuntimeUnitCount::Observed { units: 1 }
+        );
+        // RED control: the old zero→one mapping would fabricate OverBudget on a slow wall
+        // against overhead-only clamp when the corpus actually failed.
+        let overhead_ms = 60_000u128;
+        let rate_ms = 1_000u128;
+        let wall_ms = 120_000u128;
+        if let FloorRuntimeUnitCount::Observed { units: 1 } = units {
+            let clamp = overhead_ms + 1 * rate_ms;
+            assert!(
+                wall_ms > clamp,
+                "control: units=1 would have breached overhead-only clamp"
+            );
+        }
+    }
+
+    #[test]
+    fn hard_discovery_batch_wall_receipt_is_clamp_refused_not_over_budget() {
+        let base = std::env::temp_dir().join(format!(
+            "claim-executor-clamp-refused-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&base);
+        let records = vec![BatchRecord {
+            batch_index: 2,
+            wall_nanos: 600_000_000_000,
+            clamp_ms: None,
+            unit_count: 0,
+            runtime_units: runtime_unit_count_unavailable("discovery corpus failed: test"),
+            results: Vec::new(),
+            label: "discovery-corpus".to_string(),
+            selection_tag: "applied",
+            is_wet: false,
+        }];
+        assert!(write_batch_wall_receipt_at(&base, &records));
+        let body = fs::read_to_string(base.join("floor-batch-wall-receipt.txt")).unwrap();
+        assert!(body.contains("batch_3_units=unavailable"));
+        assert!(body.contains("batch_3_verdict=ClampRefused"));
+        assert!(!body.contains("OverBudget"));
+        assert!(body.contains("over_budget_batches=0"));
+        let _ = fs::remove_dir_all(&base);
+    }
+
     // D5 receipt rows, both directions: an over-budget batch records OverBudget and is
     // counted; a within-budget batch records WithinBudget; a budget-less walk records
     // Unbudgeted (falsifier/regen plans).
@@ -10413,6 +10919,7 @@ mod tests {
                 wall_nanos: 5_000_000_000, // 5s
                 clamp_ms: Some(2_000),     // 2s
                 unit_count: 3,
+                runtime_units: FloorRuntimeUnitCount::Observed { units: 3 },
                 results: Vec::new(),
                 label: "batch-0".to_string(),
                 selection_tag: "off",
@@ -10423,6 +10930,7 @@ mod tests {
                 wall_nanos: 1_000_000_000, // 1s
                 clamp_ms: Some(2_000),     // 2s
                 unit_count: 0,
+                runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 results: Vec::new(),
                 label: "batch-1".to_string(),
                 selection_tag: "off",
@@ -10443,6 +10951,7 @@ mod tests {
             wall_nanos: 5_000_000_000,
             clamp_ms: None,
             unit_count: 0,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             results: Vec::new(),
             label: "batch-0".to_string(),
             selection_tag: "off",
@@ -11542,6 +12051,7 @@ mod tests {
             exclude_substrings: vec![],
             discovery_scope_dirs: vec![],
             execution_mode: ExecutionMode::Hermetic,
+            spawns_host_compiler: false,
         }
     }
 
@@ -11608,6 +12118,7 @@ mod tests {
             exclude_substrings: vec![],
             discovery_scope_dirs: vec![],
             execution_mode: ExecutionMode::Wet,
+            spawns_host_compiler: true,
         }];
         let units = group_batch_units(&batch);
         assert_eq!(
@@ -11738,6 +12249,30 @@ mod tests {
         );
         assert_eq!(results.len(), 1);
         assert!(!results[0].ok, "unmapped sentinel must fail closed");
+    }
+
+    #[test]
+    fn discovery_corpus_kind_label_follows_profile_not_roster_size() {
+        assert_eq!(
+            discovery_corpus_kind_label(&[], ExecutionMode::Wet, true),
+            "bin-witness-corpus"
+        );
+        assert_eq!(
+            discovery_corpus_kind_label(&[], ExecutionMode::Wet, false),
+            "execution-corpus"
+        );
+        assert_eq!(
+            discovery_corpus_kind_label(
+                &["dag/test/claim".to_string()],
+                ExecutionMode::Hermetic,
+                false,
+            ),
+            "discovery-corpus"
+        );
+        assert_eq!(
+            discovery_corpus_kind_label(&[], ExecutionMode::Hermetic, false),
+            "explicit-corpus"
+        );
     }
 
     #[test]
@@ -12114,33 +12649,118 @@ mod tests {
         }
     }
 
+    fn drift_authority_source_roots() -> Vec<String> {
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root");
+        vec![
+            workspace.join("dag").to_string_lossy().into_owned(),
+            workspace.join("src/v2").to_string_lossy().into_owned(),
+        ]
+    }
+
+    fn drift_basis_fixture(clock_constructor: &'static str) -> WitnessRowCostBasisRow {
+        WitnessRowCostBasisRow {
+            eval_ms_basis: 10,
+            run_ref: "synthetic-run".to_string(),
+            clock_constructor,
+        }
+    }
+
+    /// The END-TO-END proof that the drift seam carries the clock, which neither the `.dag`
+    /// witnesses nor the parser tests can give: the witnesses never cross this Rust boundary,
+    /// and the parser only shows the cell is read.
+    ///
+    /// Two claims. First, every verdict string in the receipt is a name the AUTHORITY
+    /// produced — the seed no longer decides that exceeding a basis means `DriftExceeded`, so
+    /// an arm added to `WitnessRowCostVerdict` reaches the cadence receipt with no Rust edit.
+    /// Second, a cross-clock pair REFUSES, asserted on BOTH sides of the 2× ratio: 21ms and
+    /// 20ms against a 10ms basis land on opposite sides of the threshold, so a single case
+    /// would be satisfiable by a comparator refusing for the wrong reason. The pair proves
+    /// the refusal is decided by the CLOCK, not the magnitude.
+    #[test]
+    fn drift_verdicts_come_from_the_authority_and_a_cross_clock_basis_refuses() {
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root");
+        let roots = drift_authority_source_roots();
+        let entry = workspace.join("dag/gunbc/witness_row_cost.dag");
+        let (graph, indices) =
+            resolve_entry_graph(&roots, &entry.to_string_lossy()).expect("resolve");
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+
+        let wall = drift_basis_fixture("clock_basis_wall");
+        let cpu = drift_basis_fixture("clock_basis_cpu");
+        let verdict = |observed, basis| {
+            witness_row_cost_verdict_via_authority(&ctx, observed, basis).expect("verdict")
+        };
+
+        // Same clock on both sides: the ratio decides, in both directions.
+        assert_eq!(verdict(21, Some(&wall)), "DriftExceeded");
+        assert_eq!(verdict(20, Some(&wall)), "WithinBasis");
+
+        // No dated basis: the honest third state, and it too comes from the authority.
+        assert_eq!(verdict(999, None), "BasisAbsent");
+
+        // Different clocks: refused on BOTH sides of the ratio. Before the clock crossed
+        // this seam these two answered `DriftExceeded` and `WithinBasis` — confident
+        // verdicts about two different quantities.
+        assert_eq!(verdict(21, Some(&cpu)), "BasisClockMismatch");
+        assert_eq!(verdict(20, Some(&cpu)), "BasisClockMismatch");
+    }
+
     #[test]
     fn parse_witness_row_cost_basis_line_requires_srv_fleet_arm64() {
         // RED control for review 43284: wrong/missing host_class must refuse, never load.
-        let ok = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64")
+        let ok = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64\twall")
             .expect("parse")
             .expect("row");
         assert_eq!(ok.0, ("e.dag".to_string(), "f".to_string()));
         assert_eq!(ok.1.eval_ms_basis, 10);
         assert_eq!(ok.1.run_ref, "run-1");
+        assert_eq!(ok.1.clock_constructor, "clock_basis_wall");
+
+        // The clock is READ, not assumed: a cpu-clocked basis row loads as cpu, which is
+        // what lets the comparator refuse it against a wall observation instead of
+        // answering. If this cell were ignored the whole column would be decoration.
+        let cpu = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64\tcpu")
+            .expect("parse")
+            .expect("row");
+        assert_eq!(cpu.1.clock_constructor, "clock_basis_cpu");
 
         assert!(parse_witness_row_cost_basis_line("# comment")
             .unwrap()
             .is_none());
         assert!(parse_witness_row_cost_basis_line("").unwrap().is_none());
 
-        let wrong = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tlocal_x86")
+        let wrong = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tlocal_x86\twall")
             .expect_err("wrong host_class must refuse");
         assert!(
             wrong.contains("host_class") && wrong.contains("srv_fleet_arm64"),
             "expected host_class refusal, got: {wrong}"
         );
 
-        let short =
-            parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1").expect_err("need 5 cols");
-        assert!(short.contains("need 5 cols"), "got: {short}");
+        // A row with no clock cell REFUSES rather than defaulting to wall. Defaulting
+        // would be right for every row in the file today and silently wrong the first
+        // time one is seeded from a CPU receipt — the exact failure the column exists to
+        // prevent, so the pre-clock 5-column shape must not still parse.
+        let short = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64")
+            .expect_err("a row without a clock column must refuse");
+        assert!(short.contains("need 6 cols"), "got: {short}");
 
-        let zero = parse_witness_row_cost_basis_line("e.dag\tf\t0\trun-1\tsrv_fleet_arm64")
+        // An unmodelled clock is not a clock. It cannot map to a ClockBasis constructor,
+        // so it cannot enter a comparison at all.
+        let unknown =
+            parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64\tmonotonic")
+                .expect_err("unknown clock must refuse");
+        assert!(
+            unknown.contains("clock") && unknown.contains("monotonic"),
+            "got: {unknown}"
+        );
+
+        let zero = parse_witness_row_cost_basis_line("e.dag\tf\t0\trun-1\tsrv_fleet_arm64\twall")
             .expect_err("zero eval must refuse");
         assert!(zero.contains("zero eval_ms_basis"), "got: {zero}");
     }
@@ -12158,6 +12778,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 3,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 3 },
             label: "bin-witness-corpus".to_string(),
             selection_tag: "applied",
             is_wet: true,
@@ -12171,35 +12792,39 @@ mod tests {
                 corpus_resolve_nanos: 0,
                 corpus_eval_nanos: 0,
                 corpus_witnesses: 3,
+                runtime_unit_count: discovery_runtime_unit_count_from_summary(3),
                 witness_row_costs: vec![
-                    (
-                        "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag"
+                    WitnessRowCost {
+                        entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag"
                             .to_string(),
-                        "planted_pass_wet_row".to_string(),
-                        1_000_000,
-                        0,
-                        0,
-                        "Done".to_string(),
-                        String::new(),
-                    ),
-                    (
-                        "dag/test/claim/planted_fail_wet_row_test.dag".to_string(),
-                        "planted_fail_wet_row".to_string(),
-                        500_000,
-                        0,
-                        0,
-                        "Failed".to_string(),
-                        "returned Bool(false)".to_string(),
-                    ),
-                    (
-                        "dag/other.dag".to_string(),
-                        "planted_selection_skip_wet_row".to_string(),
-                        0,
-                        0,
-                        0,
-                        "selection-skipped".to_string(),
-                        "affected-set".to_string(),
-                    ),
+                        function: "planted_pass_wet_row".to_string(),
+                        eval_wall_nanos: 1_000_000,
+                        eval_cpu_nanos: Some(800_000),
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "Done".to_string(),
+                        detail: String::new(),
+                    },
+                    WitnessRowCost {
+                        entry: "dag/test/claim/planted_fail_wet_row_test.dag".to_string(),
+                        function: "planted_fail_wet_row".to_string(),
+                        eval_wall_nanos: 500_000,
+                        eval_cpu_nanos: Some(400_000),
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "Failed".to_string(),
+                        detail: "returned Bool(false)".to_string(),
+                    },
+                    WitnessRowCost {
+                        entry: "dag/other.dag".to_string(),
+                        function: "planted_selection_skip_wet_row".to_string(),
+                        eval_wall_nanos: 0,
+                        eval_cpu_nanos: None,
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "selection-skipped".to_string(),
+                        detail: "affected-set".to_string(),
+                    },
                 ],
                 budget_refusal: None,
                 selection_degradation: None,
@@ -12249,6 +12874,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 2,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 2 },
             label: "collision".to_string(),
             selection_tag: "applied",
             is_wet: false,
@@ -12262,27 +12888,43 @@ mod tests {
                 corpus_resolve_nanos: 0,
                 corpus_eval_nanos: 0,
                 corpus_witnesses: 2,
+                runtime_unit_count: discovery_runtime_unit_count_from_summary(2),
                 witness_row_costs: vec![
-                    // Executed, sub-millisecond: 500_000ns / 1_000_000 == 0.
-                    (
-                        "dag/test/claim/fast_test.dag".to_string(),
-                        "ran_in_under_a_millisecond".to_string(),
-                        500_000,
-                        0,
-                        0,
-                        "Done".to_string(),
-                        String::new(),
-                    ),
+                    // Executed, sub-millisecond: 500_000ns / 1_000_000 == 0. Both clocks
+                    // sampled, as production rows are.
+                    WitnessRowCost {
+                        entry: "dag/test/claim/fast_test.dag".to_string(),
+                        function: "ran_in_under_a_millisecond".to_string(),
+                        eval_wall_nanos: 500_000,
+                        eval_cpu_nanos: Some(300_000),
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "Done".to_string(),
+                        detail: String::new(),
+                    },
+                    // Executed, but only the wall clock was sampled — a real state for any
+                    // producer that is not `run_claim_measured`.
+                    WitnessRowCost {
+                        entry: "dag/test/claim/wall_only_test.dag".to_string(),
+                        function: "cpu_clock_not_sampled".to_string(),
+                        eval_wall_nanos: 4_000_000,
+                        eval_cpu_nanos: None,
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "Done".to_string(),
+                        detail: String::new(),
+                    },
                     // Never executed: pushed by `discovery_claim_result` with zero timings.
-                    (
-                        "dag/test/claim/skipped_test.dag".to_string(),
-                        "never_executed_at_all".to_string(),
-                        0,
-                        0,
-                        0,
-                        "selection-skipped".to_string(),
-                        "affected-set".to_string(),
-                    ),
+                    WitnessRowCost {
+                        entry: "dag/test/claim/skipped_test.dag".to_string(),
+                        function: "never_executed_at_all".to_string(),
+                        eval_wall_nanos: 0,
+                        eval_cpu_nanos: None,
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "selection-skipped".to_string(),
+                        detail: "affected-set".to_string(),
+                    },
                 ],
                 budget_refusal: None,
                 selection_degradation: None,
@@ -12317,16 +12959,28 @@ mod tests {
             .find(|l| l.contains("never_executed_at_all"))
             .expect("skipped row");
 
+        // Columns 3..7 are eval_wall_ms, eval_cpu_ms, resolve_ms, warm_ms.
         let cost_cols = |line: &str| {
             let f: Vec<&str> = line.split('\t').collect();
-            (f[3].to_string(), f[4].to_string(), f[5].to_string())
+            (
+                f[3].to_string(),
+                f[4].to_string(),
+                f[5].to_string(),
+                f[6].to_string(),
+            )
         };
 
-        // The executed row measured genuinely-zero milliseconds (500_000ns floors to 0). That
-        // is a real measurement and must survive as the number it is.
+        // The executed row measured genuinely-zero milliseconds (500_000ns wall, 300_000ns
+        // cpu, both floor to 0). Those are real measurements and must survive as the numbers
+        // they are.
         assert_eq!(
             cost_cols(executed),
-            ("0".to_string(), "0".to_string(), "0".to_string()),
+            (
+                "0".to_string(),
+                "0".to_string(),
+                "0".to_string(),
+                "0".to_string()
+            ),
             "a sub-millisecond row measured 0 and must report 0: {executed}"
         );
 
@@ -12339,11 +12993,12 @@ mod tests {
             (
                 UNMEASURED_CELL.to_string(),
                 UNMEASURED_CELL.to_string(),
+                UNMEASURED_CELL.to_string(),
                 UNMEASURED_CELL.to_string()
             ),
             "an unexecuted row must report absence, not a zero: {skipped}"
         );
-        for cell in [&absent.0, &absent.1, &absent.2] {
+        for cell in [&absent.0, &absent.1, &absent.2, &absent.3] {
             assert!(
                 cell.parse::<u128>().is_err(),
                 "an absent measurement must not parse as a number, or a census counts an \
@@ -12357,6 +13012,61 @@ mod tests {
             cost_cols(executed),
             absent,
             "executed and unexecuted must differ in the cost columns themselves"
+        );
+
+        // THE SAME COLLISION ONE COLUMN OVER. A row that RAN but whose CPU clock was never
+        // sampled has no cpu figure, and rendering `0` there would say the witness used no
+        // CPU at all — which reads as the strongest possible remedy signal (pure waiting)
+        // for a row about which nothing is known. It must render absence while its wall
+        // figure, which WAS measured, stays a number.
+        let wall_only = body
+            .lines()
+            .find(|l| l.contains("cpu_clock_not_sampled"))
+            .expect("wall-only row");
+        let (wall, cpu, _, _) = cost_cols(wall_only);
+        assert_eq!(
+            wall, "4",
+            "a measured wall figure must survive: {wall_only}"
+        );
+        assert_eq!(
+            cpu, UNMEASURED_CELL,
+            "an unsampled cpu clock must report absence, not 0: {wall_only}"
+        );
+        assert!(
+            cpu.parse::<u128>().is_err(),
+            "an absent cpu measurement must not parse as a number, or a remedy read counts \
+             an unsampled clock as an idle one: {cpu}"
+        );
+
+        // And the two clocks must not be aliases of one another: the executed fixture
+        // measured 500_000ns wall against 300_000ns cpu, so a producer that filled both
+        // columns from one figure would be invisible at millisecond grain here. Assert on
+        // the raw rows instead, where the distinction is representable.
+        let records = zero_eval_collision_records();
+        let fast = &records[0].results[0].witness_row_costs[0];
+        assert_eq!(fast.eval_wall_nanos, 500_000);
+        assert_eq!(fast.eval_cpu_nanos, Some(300_000));
+        assert_ne!(
+            Some(fast.eval_wall_nanos),
+            fast.eval_cpu_nanos,
+            "the two clocks are independent carriers, not one figure written twice"
+        );
+
+        // The header names the column, so a consumer joins on a name rather than on an
+        // index that silently shifted when it was inserted.
+        let header: Vec<&str> = body.lines().next().expect("header").split('\t').collect();
+        assert!(
+            header.contains(&"eval_cpu_ms"),
+            "the cpu column must be named in the header: {header:?}"
+        );
+        assert_eq!(
+            header
+                .iter()
+                .position(|c| *c == "eval_wall_ms")
+                .map(|i| i + 1),
+            header.iter().position(|c| *c == "eval_cpu_ms"),
+            "the two clocks belong side by side, so the remedy is readable from this file \
+             alone without joining another: {header:?}"
         );
 
         // The typed disposition still rides beside the number, so the cause stays recoverable
@@ -12644,6 +13354,7 @@ mod tests {
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,

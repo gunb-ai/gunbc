@@ -185,12 +185,13 @@ test fn witness_principles_carry_the_amendment() -> Bool {
   register_thesis == "Calm field; luminous focus; physical response; every response true."
     && principles_all_carried(principles: register_principles)
     && principle_keys_distinct(principles: register_principles)
-    && count(register_principles) == 11
+    && count(register_principles) == 12
     && contains_key(keys: keys, key: "selective-spectacle")
     && contains_key(keys: keys, key: "emission-over-material")
     && contains_key(keys: keys, key: "bounded-attraction")
     && contains_key(keys: keys, key: "quiet-surface")
     && contains_key(keys: keys, key: "still-until-touched")
+    && contains_key(keys: keys, key: "physical-enclosure")
 }
 
 test fn salience_keystone_holds() -> Bool {

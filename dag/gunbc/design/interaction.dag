@@ -2,17 +2,19 @@ module gunbc.design.interaction
 
 import gunbc.design.material {
   TimingToken, respond_fast, reveal_deliberate,
-  MotionTrigger, OnHover, OnActive, OnStateClass,
   scale_transform_wire, travel_scale_transform_wire,
   rest_scale_per_mille, press_scale_per_mille,
 }
 import gunbc.design.scale { ScaleToken, scale_var, travel_lift, travel_press }
+import gunbc.design.interaction_cause {
+  InteractionCause, PointerApproach, FocusAcquired, PressEngaged, ObservedStateEntered,
+}
 
 data interaction_note: String = "Layer 2 interaction machinery (lifted from gunbc.site.interaction). Verbs x Responses x TimingToken, held as rows. ElementId is a closed enum — coverage_gaps is total by construction (design-register-library.md sect 10 Class 3, A.0)."
 
 data machine_side_verb_note: String = "Approach, Enter, StepBack, Copy, Traverse and Dispatch are all things a PERSON does to a control. Await and Accept are things the MACHINE does to it, and they are on the same axis rather than a parallel one because the axis was never 'user gesture' — it is the event class a control answers, and a control does not care whose event it was. The analog reading is the whole justification: a physical control left in an actuated position while a request is in flight, and then released into a new detent when the answer arrives, is one continuous mechanical story, and splitting it across two vocabularies would mean the register could describe the press but not the release.
 
-The consequence that matters is coverage: because these are ordinary verbs, an element declaring them is subject to the same total-assignment law as one declaring hover, so a machine-caused state with no declared response is a counted gap exactly like a dead hover. What they cannot use is a MotionTrigger — there is no pseudo-class for 'the server said yes' — which is why they realize through StateRule."
+The consequence that matters is coverage: because these are ordinary verbs, an element declaring them is subject to the same total-assignment law as one declaring hover, so a machine-caused state with no declared response is a counted gap exactly like a dead hover. What they cannot use is a person-caused InteractionCause — nothing a hand does corresponds to 'the server said yes' — which is why they arrive as ObservedStateEntered and realize through StateRule."
 
 type InteractionVerb
   = Approach
@@ -136,7 +138,7 @@ That is why a detent carries a position and how it is REACHED rather than a dura
 
 type DetentReach
   = AtRest
-  | ByTrigger { trigger: MotionTrigger }
+  | ByTrigger { cause: InteractionCause }
 
 type DetentTravel
   = NoTravel
@@ -161,14 +163,14 @@ fn house_pointer_detents(rest_state: String, hover_state: String, pressed_state:
     Detent { state: rest_state, reach: AtRest, travel: NoTravel, scale_per_mille: rest_scale_per_mille, turn_deg: 0 },
     Detent {
       state: hover_state,
-      reach: ByTrigger { trigger: OnHover },
+      reach: ByTrigger { cause: PointerApproach },
       travel: Travel { token: travel_lift },
       scale_per_mille: rest_scale_per_mille,
       turn_deg: 0,
     },
     Detent {
       state: pressed_state,
-      reach: ByTrigger { trigger: OnActive },
+      reach: ByTrigger { cause: PressEngaged },
       travel: Travel { token: travel_press },
       scale_per_mille: press_scale_per_mille,
       turn_deg: 0,

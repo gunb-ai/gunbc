@@ -6,6 +6,7 @@ import extdeps.exec.command { shell_command_render }
 import gunbc.runner_host_deploy {
   srv4_runner_host_deploy,
   gunbc_ci_github_app,
+  github_app_runner_org,
   runner_host_installer_command,
   runner_instance_names,
   runner_host_docker_provision_script,
@@ -69,8 +70,10 @@ test fn srv4_runner_installer_command_cites_installer_with_env() -> Bool {
 }
 
 test fn srv4_runner_app_from_secret_manager() -> Bool {
-  gunbc_ci_github_app.org as String == "gunb-ai"
+  github_app_runner_org(config: gunbc_ci_github_app) as String == "gunb-ai"
     && gunbc_ci_github_app.app_pem_secret.secret as String == "ci-github-app-private-key"
+    && gunbc_ci_github_app.app.app_id.value == 2653532
+    && gunbc_ci_github_app.installation_id.value == 104134109
 }
 
 test fn srv4_enables_five_named_runner_instances() -> Bool {

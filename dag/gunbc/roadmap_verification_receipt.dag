@@ -62,6 +62,7 @@ import gunbc.roadmap_validation_oracle {
   validation_verdict_detail,
   validation_refusal_cause_key,
   validation_refusal_cause_detail,
+  validation_refusal_cause_decode,
   validation_receipt_schema,
   validation_receipt_decode,
   validation_receipt_decode_document,
@@ -69,8 +70,10 @@ import gunbc.roadmap_validation_oracle {
   ValidationReceiptUndecodable,
   validation_oracle_parse_pinned_identity_wire,
 }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 
-data verification_subject_note: String = "ONE VERIFICATION QUESTION HAS ONE SUBJECT. A verdict is about one durable roadmap node identity under one criteria revision, in one attempt and branch, at one committed head. None of those five fields is Optional: a receipt that cannot name any one of them cannot state which question it answered and therefore cannot be constructed as VerificationReceipt. The node's durable identity is RoadmapNodeIdentity rather than its editable slug; criteria_digest is the Fnv1a64Structural value derived by gunbc.roadmap_model node_criteria_digest; head_sha is std.types CommitSha rather than an anonymous revision string.\n\nTHE HEAD IS OBSERVED, NOT INFERRED FROM THE BRANCH. A branch is a moving publication handle and remains in the subject because it locates the attempt's line of work. The committed head is the verification identity: head A and head B in the same attempt are different subjects, so findings against A can coexist with a later green receipt for B without either overwriting or impersonating the other."
+data verification_subject_note: String = "ONE VERIFICATION QUESTION HAS ONE SUBJECT. A verdict is about one durable roadmap node identity under one criteria revision, in one attempt and branch, at one committed head, against one exact change-window identity. None of those six fields is Optional: a receipt that cannot name any one of them cannot state which question it answered and therefore cannot be constructed as VerificationReceipt. The node's durable identity is RoadmapNodeIdentity rather than its editable slug; criteria_digest is the Fnv1a64Structural value derived by gunbc.roadmap_model node_criteria_digest; head_sha is std.types CommitSha rather than an anonymous revision string; change_window_identity is the Fnv1a64Structural content hash over target, target_generation, base, head, and relation from gunbc.git_diff_change_window (git_diff_window_absent_identity when the contract does not consume an affected-set window).\n\nTHE HEAD IS OBSERVED, NOT INFERRED FROM THE BRANCH. A branch is a moving publication handle and remains in the subject because it locates the attempt's line of work. The committed head is the verification identity: head A and head B in the same attempt are different subjects, so findings against A can coexist with a later green receipt for B without either overwriting or impersonating the other. When the target branch advances but head stays fixed, change_window_identity moves with target_generation and base, so an old receipt for (B1, H) cannot answer (B2, H)."
 
 type VerificationSubject {
   node_identity: RoadmapNodeIdentity
@@ -78,6 +81,530 @@ type VerificationSubject {
   attempt_key: String
   branch: NonEmptyStr
   head_sha: CommitSha
+  change_window_identity: Fnv1a64Structural
+}
+
+data current_verification_selection_note: String = "Recut A mutable pointer: after the belt derives the exact six-field verification question it publishes which head and change_window_identity are current. The dashboard reads this before addressing any immutable receipt. It is not verification evidence and may be replaced whenever the belt selects a new window for the same head."
+
+data current_verification_selection_schema: NonEmptyStr = "roadmap-verification-current-selection/v1"
+
+type CurrentVerificationSelection {
+  head_sha: CommitSha
+  change_window_identity: Fnv1a64Structural
+}
+
+type CurrentVerificationSelectionObservation
+  = SelectionUnaddressable { cause: String }
+  | SelectionAbsent
+  | SelectionUnreadable { cause: String }
+  | SelectionMalformed { cause: String }
+  | SelectionObserved {
+      head: CommitSha,
+      window_identity: Fnv1a64Structural,
+    }
+
+type VerificationSelectionPublishOutcome
+  = VerificationSelectionPublished { path: String }
+  | VerificationSelectionPublishRefused { path: String, cause: String }
+
+data verification_directory_segment: String = "verification"
+
+data exact_verification_receipt_absence_note: String = "Positive absence only: ExactVerificationReceiptAbsent means a successful listing of verification/ proved the exact basename is not present. A failed list or read never collapses to absent."
+
+type ExactVerificationReceiptSource
+  = ExactVerificationReceiptAbsent
+  | ExactVerificationReceiptPresent { text: String }
+  | ExactVerificationReceiptUnreadable { detail: String }
+
+type LegacyExactHeadVerificationReceipt {
+  subject: VerificationSubject
+  oracle_identity: ContentHash
+  executions: List<ValidationExecution>
+  verdict: ValidationVerdict
+}
+
+type VerificationReceiptText
+  = VerificationReceiptTextV2 { receipt: VerificationReceipt }
+  | VerificationReceiptTextV1ExactHead {
+      legacy: LegacyExactHeadVerificationReceipt,
+    }
+  | VerificationReceiptTextLegacyAttempt { verdict_key: String }
+  | VerificationReceiptTextUndecodable { reason: String }
+
+type BeltVerificationDecision
+  = BeltVerificationRun
+  | BeltVerificationDefer { reason: String }
+  | BeltVerificationRefuse { reason: String }
+  | BeltVerificationEvidenceUnreadable { reason: String }
+
+fn verification_listing_names_entry(listing: String, name: String) -> Bool {
+  string_contains(
+    s: join(["\n", listing, "\n"], ""),
+    pattern: join(["\n", name, "\n"], ""),
+  )
+}
+
+fn exact_verification_receipt_basename(
+  head_sha: String,
+  window_identity_hex: String,
+) -> String {
+  join([head_sha, ".", window_identity_hex, ".json"], "")
+}
+
+fn current_verification_selection_basename(head_sha: String) -> String {
+  join([head_sha, ".current-selection.json"], "")
+}
+
+type ExactVerificationAddress {
+  attempt_dir: String
+  verification_dir: String
+  selection_basename: String
+  selection_path: String
+  receipt_basename: String
+  receipt_path: String
+}
+
+fn exact_verification_address_for(
+  attempt_dir: String,
+  verification_dir: String,
+  head_sha: String,
+  window_identity_hex: String,
+) -> ExactVerificationAddress {
+  let selection_basename = current_verification_selection_basename(
+    head_sha: head_sha,
+  )
+  let receipt_basename = exact_verification_receipt_basename(
+    head_sha: head_sha,
+    window_identity_hex: window_identity_hex,
+  )
+  ExactVerificationAddress {
+    attempt_dir: attempt_dir,
+    verification_dir: verification_dir,
+    selection_basename: selection_basename,
+    selection_path: join([verification_dir, "/", selection_basename], ""),
+    receipt_basename: receipt_basename,
+    receipt_path: join([verification_dir, "/", receipt_basename], ""),
+  }
+}
+
+fn current_verification_selection_json(
+  selection: CurrentVerificationSelection,
+) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(
+      key: "schema",
+      value: json_string(s: current_verification_selection_schema as String),
+    ),
+    json_kv(key: "head_sha", value: json_string(s: selection.head_sha as String)),
+    json_kv(
+      key: "change_window_identity",
+      value: json_string(s: selection.change_window_identity.digest as String),
+    ),
+  ]))
+}
+
+fn verification_subject_decode_v1(doc: JsonValue) -> VerificationSubject? {
+  match verification_receipt_string_member(doc: doc, key: "node_identity") {
+    VerificationReceiptMemberUnreadable { reason: _ } => none
+    VerificationReceiptMemberRead { value: node_identity } =>
+      match verification_receipt_string_member(doc: doc, key: "criteria_digest") {
+        VerificationReceiptMemberUnreadable { reason: _ } => none
+        VerificationReceiptMemberRead { value: criteria_wire } =>
+          match fnv1a64_structural_hex_digest(hex: criteria_wire) {
+            Absent => none
+            Present { value: criteria_digest } =>
+              match verification_receipt_string_member(doc: doc, key: "attempt_key") {
+                VerificationReceiptMemberUnreadable { reason: _ } => none
+                VerificationReceiptMemberRead { value: attempt_key } =>
+                  match verification_receipt_string_member(doc: doc, key: "branch") {
+                    VerificationReceiptMemberUnreadable { reason: _ } => none
+                    VerificationReceiptMemberRead { value: branch } =>
+                      match verification_receipt_string_member(doc: doc, key: "head_sha") {
+                        VerificationReceiptMemberUnreadable { reason: _ } => none
+                        VerificationReceiptMemberRead { value: head_sha } =>
+                          Present {
+                            value: VerificationSubject {
+                              node_identity: node_identity as NonEmptyStr as RoadmapNodeIdentity,
+                              criteria_digest: criteria_digest,
+                              attempt_key: attempt_key,
+                              branch: branch as NonEmptyStr,
+                              head_sha: head_sha as CommitSha,
+                              change_window_identity: git_diff_window_absent_identity(),
+                            },
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn verification_receipt_v1_decode(receipt: String) -> LegacyExactHeadVerificationReceipt? {
+  match parse_json(s: receipt) {
+    Absent => none
+    Present { value: doc } =>
+      match verification_receipt_object_member(doc: doc, key: "subject") {
+        Absent => none
+        Present { value: subject_doc } =>
+          match verification_subject_decode_v1(doc: subject_doc) {
+            Absent => none
+            Present { value: subject } =>
+              match verification_receipt_string_member(doc: doc, key: "oracle_identity") {
+                VerificationReceiptMemberUnreadable { reason: _ } => none
+                VerificationReceiptMemberRead { value: oracle_wire } =>
+                  match validation_oracle_parse_pinned_identity_wire(text: oracle_wire) {
+                    Absent => none
+                    Present { value: oracle_identity } =>
+                      match verification_receipt_object_member(doc: doc, key: "verdict") {
+                        Absent => none
+                        Present { value: verdict_doc } =>
+                          match verification_verdict_decode(doc: verdict_doc) {
+                            Absent => none
+                            Present { value: verdict } =>
+                              match verification_executions_decode(doc: doc) {
+                                Absent => none
+                                Present { value: executions } =>
+                                  Present {
+                                    value: LegacyExactHeadVerificationReceipt {
+                                      subject: subject,
+                                      oracle_identity: oracle_identity,
+                                      executions: executions,
+                                      verdict: verdict,
+                                    },
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn current_verification_selection_decode_document(
+  selection_path: String,
+  expected_head_sha: String,
+  content: String,
+) -> CurrentVerificationSelectionObservation {
+  match parse_json(s: content) {
+    Absent =>
+      SelectionMalformed {
+        cause: join([
+          "the current verification selection at ",
+          selection_path,
+          " is not one complete JSON value",
+        ], ""),
+      }
+    Present { value: doc } =>
+      match verification_receipt_string_member(doc: doc, key: "schema") {
+        VerificationReceiptMemberUnreadable { reason: r } =>
+          SelectionMalformed { cause: r }
+        VerificationReceiptMemberRead { value: schema } =>
+          if schema != (current_verification_selection_schema as String) {
+            SelectionMalformed {
+              cause: join([
+                "current verification selection schema is ",
+                schema,
+                ", not ",
+                current_verification_selection_schema as String,
+              ], ""),
+            }
+          } else {
+            match verification_receipt_string_member(doc: doc, key: "head_sha") {
+              VerificationReceiptMemberUnreadable { reason: r } =>
+                SelectionMalformed { cause: r }
+              VerificationReceiptMemberRead { value: head_wire } =>
+                match verification_receipt_string_member(
+                  doc: doc,
+                  key: "change_window_identity",
+                ) {
+                  VerificationReceiptMemberUnreadable { reason: r } =>
+                    SelectionMalformed { cause: r }
+                  VerificationReceiptMemberRead { value: window_wire } =>
+                    match fnv1a64_structural_hex_digest(hex: window_wire) {
+                      Absent =>
+                        SelectionMalformed {
+                          cause: "current verification selection change_window_identity is not readable",
+                        }
+                      Present { value: window_identity } =>
+                        if head_wire != expected_head_sha {
+                          SelectionMalformed {
+                            cause: join([
+                              "current verification selection names a different head ",
+                              head_wire,
+                              " than the observed worktree head ",
+                              expected_head_sha,
+                            ], ""),
+                          }
+                        } else {
+                          SelectionObserved {
+                            head: expected_head_sha as CommitSha,
+                            window_identity: window_identity,
+                          }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn current_verification_selection_observe(
+  attempt_dir: String,
+  verification_dir: String,
+  head_sha: String,
+) -> CurrentVerificationSelectionObservation {
+  let attempt_listing = Filesystem.List(path: attempt_dir)
+  if !attempt_listing.success {
+    SelectionUnreadable {
+      cause: join([
+        "the attempt state directory could not be listed, so whether a current verification selection exists was not established: ",
+        attempt_dir,
+        " (",
+        attempt_listing.error,
+        ")",
+      ], ""),
+    }
+  } else if !verification_listing_names_entry(
+    listing: attempt_listing.entries,
+    name: verification_directory_segment,
+  ) {
+    SelectionAbsent
+  } else {
+    let verification_listing = Filesystem.List(path: verification_dir)
+    if !verification_listing.success {
+      SelectionUnreadable {
+        cause: join([
+          "the verification directory was named by the attempt listing but could not itself be listed: ",
+          verification_dir,
+          " (",
+          verification_listing.error,
+          ")",
+        ], ""),
+      }
+    } else {
+      let selection_basename = current_verification_selection_basename(
+        head_sha: head_sha,
+      )
+      if !verification_listing_names_entry(
+        listing: verification_listing.entries,
+        name: selection_basename,
+      ) {
+        SelectionAbsent
+      } else {
+        let selection_path = join(
+          [verification_dir, "/", selection_basename],
+          "",
+        )
+        let read = Filesystem.Read(path: selection_path)
+        if !read.success {
+          SelectionUnreadable {
+            cause: join([
+              "the current verification selection was listed and then could not be read: ",
+              selection_path,
+              " (",
+              read.error,
+              ")",
+            ], ""),
+          }
+        } else {
+          current_verification_selection_decode_document(
+            selection_path: selection_path,
+            expected_head_sha: head_sha,
+            content: read.content,
+          )
+        }
+      }
+    }
+  }
+}
+
+fn exact_verification_receipt_source_read(
+  attempt_dir: String,
+  verification_dir: String,
+  receipt_basename: String,
+) -> ExactVerificationReceiptSource {
+  let receipt_path = join([verification_dir, "/", receipt_basename], "")
+  let attempt_listing = Filesystem.List(path: attempt_dir)
+  if !attempt_listing.success {
+    ExactVerificationReceiptUnreadable {
+      detail: join([
+        "the attempt state directory could not be listed, so whether a verification receipt exists was not established: ",
+        attempt_dir,
+        " (",
+        attempt_listing.error,
+        ")",
+      ], ""),
+    }
+  } else if !verification_listing_names_entry(
+    listing: attempt_listing.entries,
+    name: verification_directory_segment,
+  ) {
+    ExactVerificationReceiptAbsent
+  } else {
+    let verification_listing = Filesystem.List(path: verification_dir)
+    if !verification_listing.success {
+      ExactVerificationReceiptUnreadable {
+        detail: join([
+          "the verification directory was named by the attempt listing but could not itself be listed: ",
+          verification_dir,
+          " (",
+          verification_listing.error,
+          ")",
+        ], ""),
+      }
+    } else if !verification_listing_names_entry(
+      listing: verification_listing.entries,
+      name: receipt_basename,
+    ) {
+      ExactVerificationReceiptAbsent
+    } else {
+      let read = Filesystem.Read(path: receipt_path)
+      if read.success {
+        ExactVerificationReceiptPresent { text: read.content }
+      } else {
+        ExactVerificationReceiptUnreadable {
+          detail: join([
+            "the exact verification receipt was listed and then could not be read: ",
+            receipt_path,
+            " (",
+            read.error,
+            ")",
+          ], ""),
+        }
+      }
+    }
+  }
+}
+
+fn verification_receipt_file_source_from_exact(
+  source: ExactVerificationReceiptSource,
+) -> VerificationReceiptFileSource {
+  match source {
+    ExactVerificationReceiptAbsent => VerificationReceiptAbsent
+    ExactVerificationReceiptPresent { text } =>
+      VerificationReceiptPresent { text: text }
+    ExactVerificationReceiptUnreadable { detail } =>
+      VerificationReceiptUnreadable { detail: detail }
+  }
+}
+
+fn verification_receipt_text_classify(receipt: String) -> VerificationReceiptText {
+  if trim(receipt) == "" {
+    VerificationReceiptTextUndecodable {
+      reason: "the receipt file exists and is empty, so its content was lost or its write was interrupted; an empty file is not an absent one",
+    }
+  } else {
+    match parse_json(s: receipt) {
+      Absent =>
+        VerificationReceiptTextUndecodable {
+          reason: "verification receipt is not one complete JSON value",
+        }
+      Present { value: doc } =>
+        match verification_receipt_string_member(doc: doc, key: "schema") {
+          VerificationReceiptMemberUnreadable { reason: r } =>
+            VerificationReceiptTextUndecodable { reason: r }
+          VerificationReceiptMemberRead { value: schema } =>
+            if schema == (verification_receipt_schema as String) {
+              match verification_receipt_decode(receipt: receipt) {
+                VerificationReceiptUndecodable { reason } =>
+                  VerificationReceiptTextUndecodable { reason: reason }
+                VerificationReceiptDecoded { receipt: r } =>
+                  VerificationReceiptTextV2 { receipt: r }
+              }
+            } else if schema == (verification_receipt_schema_v1 as String) {
+              match verification_receipt_v1_decode(receipt: receipt) {
+                Absent =>
+                  VerificationReceiptTextUndecodable {
+                    reason: join([
+                      "verification receipt schema is ",
+                      schema,
+                      " but the v1 exact-head body is not readable",
+                    ], ""),
+                  }
+                Present { value: legacy } =>
+                  VerificationReceiptTextV1ExactHead { legacy: legacy }
+              }
+            } else if schema == (validation_receipt_schema as String) {
+              match validation_receipt_decode_document(doc: doc) {
+                ValidationReceiptUndecodable { reason } =>
+                  VerificationReceiptTextUndecodable { reason: reason }
+                ValidationReceiptDecoded { verdict_key } =>
+                  VerificationReceiptTextLegacyAttempt { verdict_key: verdict_key }
+              }
+            } else {
+              VerificationReceiptTextUndecodable {
+                reason: join([
+                  "verification receipt schema is ", schema,
+                  " and is neither ", verification_receipt_schema as String,
+                  ", nor ", verification_receipt_schema_v1 as String,
+                  ", nor ", validation_receipt_schema as String,
+                ], ""),
+              }
+            }
+        }
+    }
+  }
+}
+
+fn belt_verification_decision(
+  expected: VerificationSubject,
+  source: ExactVerificationReceiptSource,
+) -> BeltVerificationDecision {
+  match source {
+    ExactVerificationReceiptAbsent => BeltVerificationRun
+    ExactVerificationReceiptUnreadable { detail } =>
+      BeltVerificationEvidenceUnreadable { reason: detail }
+    ExactVerificationReceiptPresent { text } =>
+      match verification_receipt_text_classify(receipt: text) {
+        VerificationReceiptTextUndecodable { reason } =>
+          BeltVerificationRefuse { reason: reason }
+        VerificationReceiptTextLegacyAttempt { verdict_key: _ } =>
+          BeltVerificationRefuse {
+            reason: "a legacy attempt-level receipt at the exact path cannot establish exact-head verification evidence",
+          }
+        VerificationReceiptTextV1ExactHead { legacy: _ } =>
+          BeltVerificationRefuse {
+            reason: join([
+              "a v1 exact-head receipt at this path lacks change_window_identity and cannot satisfy the selected v2 subject at ",
+              expected.head_sha as String,
+              " / ",
+              expected.change_window_identity.digest as String,
+            ], ""),
+          }
+        VerificationReceiptTextV2 { receipt } =>
+          match verification_subject_match(
+            expected: expected,
+            found: receipt.subject,
+          ) {
+            VerificationSubjectDiffers { field, expected: e, found: f } =>
+              BeltVerificationRefuse {
+                reason: join([
+                  "the exact verification receipt answers a different question and will not be overwritten: ",
+                  field as String,
+                  " expected ",
+                  e,
+                  " found ",
+                  f,
+                ], ""),
+              }
+            VerificationSubjectMatches =>
+              if validation_verdict_key(verdict: receipt.verdict) == "not_run" {
+                BeltVerificationRun
+              } else {
+                BeltVerificationDefer {
+                  reason: join([
+                    "an exact-head verification verdict is already recorded: ",
+                    validation_verdict_key(verdict: receipt.verdict),
+                  ], ""),
+                }
+              }
+          }
+      }
+  }
 }
 
 data validation_execution_note: String = "AN EXECUTION RECORDS THE DECLARED OPERATION, THE REALIZED COMMAND, AND THE PROCESS EVIDENCE AS STRUCTURE. ValidationOperation is the existing semantic validation authority; ModeledValidationCommand keeps program and argv separate instead of persisting a shell sentence; exit_code, stdout and stderr preserve the three observations without rendering them into explanatory prose. A command that never ran contributes no ValidationExecution — its reason belongs to the existing ValidationRefused verdict. This is why executions is a list: a contract may declare several validations, and one summary command string cannot honestly describe all of them."
@@ -99,7 +626,7 @@ type VerificationReceipt {
   verdict: ValidationVerdict
 }
 
-data verification_subject_match_note: String = "A READABLE RECEIPT ABOUT ANOTHER SUBJECT IS NOT EVIDENCE. The comparison is total over all five required fields and returns the first differing field with both values, mirroring gunbc.roadmap_publish publication_receipt_subject_match. In particular, an old head's passed receipt cannot move the lamp for a new head merely because node, criteria, attempt and branch still agree."
+data verification_subject_match_note: String = "A READABLE RECEIPT ABOUT ANOTHER SUBJECT IS NOT EVIDENCE. The comparison is total over all six required fields and returns the first differing field with both values, mirroring gunbc.roadmap_publish publication_receipt_subject_match. In particular, an old head's passed receipt cannot move the lamp for a new head merely because node, criteria, attempt and branch still agree; nor can an old window identity answer after the target branch advances."
 
 type VerificationSubjectMatch
   = VerificationSubjectMatches
@@ -146,6 +673,15 @@ fn verification_subject_match(
       expected: expected.head_sha as String,
       found: found.head_sha as String,
     }
+  } else if !content_hash_eq_structural(
+    left: found.change_window_identity,
+    right: expected.change_window_identity,
+  ) {
+    VerificationSubjectDiffers {
+      field: "change_window_identity",
+      expected: expected.change_window_identity.digest as String,
+      found: found.change_window_identity.digest as String,
+    }
   } else {
     VerificationSubjectMatches
   }
@@ -155,11 +691,13 @@ data legacy_attempt_validation_receipt_note: String = "DECLARED LEGACY STATE —
 
 data legacy_validation_receipt_detail: String = "legacy attempt-level validation receipt cannot establish exact-head verification evidence; RetryVerification is the machine-owned clear path"
 
-data belt_exact_head_wiring_seam_note: String = "P2 HANDOFF TO THE BELT WIRING LANE. gunbc.roadmap_belt_actuate belt_verify_attempt_for_instance is the producer that must observe the committed head, construct VerificationSubject from the found RoadmapNode's identity plus node_criteria_digest and the attempt facts, run the declared validations in a fresh or detached checkout of that head, and persist VerificationReceipt at dispatch_attempt_verification_receipt_path_for_instance. belt_run_validation_commands is the current execution fold whose command/result observations become List<ValidationExecution>; validation_receipt_json and validation_receipt_decode remain the legacy attempt-level codec until that migration. belt_workflow_progress_for_attempt_ref is the reader that must address the receipt with the same observed head and pass ExactHeadVerificationReceipt or LegacyAttemptValidationReceipt into verification_evidence_for. gunbc.roadmap_workflow_progress verification_evidence_segment must move the lamp only through verification_evidence_moves_lamp, never from a decoded verdict key alone, and must render legacy attempt-level receipts through legacy_validation_receipt_detail rather than parallel prose. P3 (#7715) lands WorkflowCommand.RetryVerification as the eventual commanded seam for exact-head re-run; this verify-pass slice writes receipts and does not handle commands yet, but leaves that seam structurally open. Attempt dispatch and clear remain for the command-driver slice and must route through gunbc.roadmap_workflow_command admission helpers rather than raw state edits. No BeltVerifyOutcome arm needs renaming: VerifyDeferred, VerifyRecorded, VerifyWriteFailed and VerifyEvidenceUnreadable describe actuation outcomes independently of the receipt's subject grain."
+data belt_exact_head_wiring_seam_note: String = "P2 HANDOFF TO THE BELT WIRING LANE. gunbc.roadmap_belt_actuate belt_verify_attempt_for_instance derives the exact VerificationSubject, publishes verification/<head>.current-selection.json, addresses the immutable receipt at verification/<head>.<window_identity>.json through exact_verification_address_for, and persists roadmap-verification-receipt/v2 documents. belt_workflow_progress_for_attempt_ref observes the current selection exactly once per poll and passes that same observation to belt_verification_subject_from_selection and belt_verification_receipt_source — never a second read and never substituting SelectionAbsent when the selection was unreadable. belt_verification_decision separates BeltVerificationEvidenceUnreadable from BeltVerificationRefuse; belt_verify maps the former to VerifyEvidenceUnreadable and the latter to VerifyRefused, which belt_verify_pass_outcome_from projects as BeltPassRefused rather than BeltPassFailed. gunbc.roadmap_workflow_progress verification_segment treats SelectionAbsent as pending and SelectionUnreadable or SelectionMalformed as refused before subject or receipt adjudication. validation_receipt_json and validation_receipt_decode remain the legacy attempt-level codec until that migration dissolves. P3 (#7715) lands WorkflowCommand.RetryVerification as the eventual commanded seam for exact-head re-run; attempt dispatch and clear remain for the command-driver slice."
 
 type VerificationReceiptSource
   = ExactHeadVerificationReceipt { receipt: VerificationReceipt }
   | LegacyAttemptValidationReceipt { verdict_key: String }
+  | VerificationReceiptSourceUnreadable { detail: String }
+  | VerificationReceiptSourceUndecodable { reason: String }
 
 type VerificationEvidence
   = VerificationEvidenceForSubject { receipt: VerificationReceipt }
@@ -169,6 +707,10 @@ type VerificationEvidence
       found: String,
     }
   | VerificationEvidenceLegacyAttemptLevel { verdict_key: String }
+  | VerificationEvidenceUnreadable { reason: String }
+  | VerificationEvidenceV1LegacyExactHead {
+      legacy: LegacyExactHeadVerificationReceipt,
+    }
 
 fn verification_evidence_for(
   expected: VerificationSubject,
@@ -177,6 +719,10 @@ fn verification_evidence_for(
   match source {
     LegacyAttemptValidationReceipt { verdict_key } =>
       VerificationEvidenceLegacyAttemptLevel { verdict_key: verdict_key }
+    VerificationReceiptSourceUnreadable { detail } =>
+      VerificationEvidenceUnreadable { reason: detail }
+    VerificationReceiptSourceUndecodable { reason } =>
+      VerificationEvidenceUnreadable { reason: reason }
     ExactHeadVerificationReceipt { receipt } =>
       match verification_subject_match(
         expected: expected,
@@ -202,6 +748,8 @@ fn verification_evidence_moves_lamp(evidence: VerificationEvidence) -> Bool {
       field: _, expected: _, found: _,
     } => false
     VerificationEvidenceLegacyAttemptLevel { verdict_key: _ } => false
+    VerificationEvidenceUnreadable { reason: _ } => false
+    VerificationEvidenceV1LegacyExactHead { legacy: _ } => false
   }
 }
 
@@ -214,7 +762,8 @@ type VerificationReceiptFileSource
   | VerificationReceiptPresent { text: String }
   | VerificationReceiptUnreadable { detail: String }
 
-data verification_receipt_schema: NonEmptyStr = "roadmap-verification-receipt/v1"
+data verification_receipt_schema: NonEmptyStr = "roadmap-verification-receipt/v2"
+data verification_receipt_schema_v1: NonEmptyStr = "roadmap-verification-receipt/v1"
 
 type VerificationReceiptMember
   = VerificationReceiptMemberRead { value: String }
@@ -315,6 +864,10 @@ fn verification_subject_json(subject: VerificationSubject) -> JsonValue {
     json_kv(key: "attempt_key", value: json_string(s: subject.attempt_key)),
     json_kv(key: "branch", value: json_string(s: subject.branch as String)),
     json_kv(key: "head_sha", value: json_string(s: subject.head_sha as String)),
+    json_kv(
+      key: "change_window_identity",
+      value: json_string(s: subject.change_window_identity.digest as String),
+    ),
   ])
 }
 
@@ -456,14 +1009,26 @@ fn verification_subject_decode(doc: JsonValue) -> VerificationSubject? {
                       match verification_receipt_string_member(doc: doc, key: "head_sha") {
                         VerificationReceiptMemberUnreadable { reason: _ } => none
                         VerificationReceiptMemberRead { value: head_sha } =>
-                          Present {
-                            value: VerificationSubject {
-                              node_identity: node_identity as NonEmptyStr as RoadmapNodeIdentity,
-                              criteria_digest: criteria_digest,
-                              attempt_key: attempt_key,
-                              branch: branch as NonEmptyStr,
-                              head_sha: head_sha as CommitSha,
-                            },
+                          match verification_receipt_string_member(
+                            doc: doc,
+                            key: "change_window_identity",
+                          ) {
+                            VerificationReceiptMemberUnreadable { reason: _ } => none
+                            VerificationReceiptMemberRead { value: window_identity_wire } =>
+                              match fnv1a64_structural_hex_digest(hex: window_identity_wire) {
+                                Absent => none
+                                Present { value: change_window_identity } =>
+                                  Present {
+                                    value: VerificationSubject {
+                                      node_identity: node_identity as NonEmptyStr as RoadmapNodeIdentity,
+                                      criteria_digest: criteria_digest,
+                                      attempt_key: attempt_key,
+                                      branch: branch as NonEmptyStr,
+                                      head_sha: head_sha as CommitSha,
+                                      change_window_identity: change_window_identity,
+                                    },
+                                  }
+                              }
                           }
                       }
                   }
@@ -576,6 +1141,50 @@ fn verification_validation_execution_decode(
   }
 }
 
+fn verification_executions_decode(doc: JsonValue) -> List<ValidationExecution>? {
+  match json_object_unique_member(v: doc, key: "executions") {
+    JsonMemberFound { value: executions_value } =>
+      match executions_value {
+        JsonArray { elements } => {
+          let parsed = map(
+            elements,
+            e => verification_validation_execution_decode(doc: e),
+          )
+          let readable = filter(parsed, x => match x {
+            Present { value: _ } => true
+            Absent => false
+          })
+          if count(readable) == count(elements) {
+            Present {
+              value: map(
+                readable,
+                x => match x {
+                  Present { value: v } => v
+                  Absent =>
+                    ValidationExecution {
+                      validation: CargoFmtValidation,
+                      command: ModeledValidationCommand {
+                        label: "decode-placeholder" as NonEmptyStr,
+                        program: "/dev/null" as FilePath,
+                        args: [],
+                      },
+                      exit_code: 0,
+                      stdout: "",
+                      stderr: "",
+                    }
+                },
+              ),
+            }
+          } else {
+            none
+          }
+        }
+        _ => none
+      }
+    _ => none
+  }
+}
+
 fn verification_verdict_decode(doc: JsonValue) -> ValidationVerdict? {
   match verification_receipt_string_member(doc: doc, key: "key") {
     VerificationReceiptMemberUnreadable { reason: _ } => none
@@ -628,16 +1237,15 @@ fn verification_verdict_decode(doc: JsonValue) -> ValidationVerdict? {
             match verification_receipt_string_member(doc: doc, key: "cause_detail") {
               VerificationReceiptMemberUnreadable { reason: _ } => none
               VerificationReceiptMemberRead { value: cause_detail } =>
-                Present {
-                  value: ValidationRefused {
-                    cause: if cause_kind == "contract-unspecified" {
-                      ValidationContractUnspecified
-                    } else if cause_kind == "command-unrealized" {
-                      ValidationCommandUnrealized
-                    } else {
-                      ValidationPinReceiptUnreadable { detail: cause_detail }
-                    },
-                  },
+                match validation_refusal_cause_decode(
+                  cause_kind: cause_kind,
+                  cause_detail: cause_detail,
+                ) {
+                  Absent => none
+                  Present { value: cause } =>
+                    Present {
+                      value: ValidationRefused { cause: cause },
+                    }
                 }
             }
         }
@@ -652,7 +1260,16 @@ fn verification_receipt_decode_document(doc: JsonValue) -> VerificationReceiptDe
     VerificationReceiptMemberUnreadable { reason: r } =>
       VerificationReceiptUndecodable { reason: r }
     VerificationReceiptMemberRead { value: schema } =>
-      if schema != (verification_receipt_schema as String) {
+      if schema == (verification_receipt_schema_v1 as String) {
+        VerificationReceiptUndecodable {
+          reason: join([
+            "verification receipt schema is ",
+            schema,
+            "; v1 receipts lack change_window_identity and must be regenerated as ",
+            verification_receipt_schema as String,
+          ], ""),
+        }
+      } else if schema != (verification_receipt_schema as String) {
         VerificationReceiptUndecodable {
           reason: join([
             "verification receipt schema is ", schema,
@@ -772,72 +1389,22 @@ fn verification_receipt_decode(receipt: String) -> VerificationReceiptDecode {
 }
 
 type VerificationReceiptTextDecode
-  = VerificationReceiptTextExactHead { receipt: VerificationReceipt }
-  | VerificationReceiptTextLegacy { verdict_key: String }
-  | VerificationReceiptTextUndecodable { reason: String }
+  = VerificationReceiptDecodeExactHead { receipt: VerificationReceipt }
+  | VerificationReceiptDecodeLegacy { verdict_key: String }
+  | VerificationReceiptDecodeUndecodable { reason: String }
 
 fn verification_receipt_text_decode(receipt: String) -> VerificationReceiptTextDecode {
-  if trim(receipt) == "" {
-    VerificationReceiptTextUndecodable {
-      reason: "the receipt file exists and is empty, so its content was lost or its write was interrupted; an empty file is not an absent one",
-    }
-  } else {
-    match parse_json(s: receipt) {
-      Absent =>
-        VerificationReceiptTextUndecodable {
-          reason: "verification receipt is not one complete JSON value",
-        }
-      Present { value: doc } =>
-        match verification_receipt_string_member(doc: doc, key: "schema") {
-          VerificationReceiptMemberUnreadable { reason: r } =>
-            VerificationReceiptTextUndecodable { reason: r }
-          VerificationReceiptMemberRead { value: schema } =>
-            if schema == (verification_receipt_schema as String) {
-              match verification_receipt_decode(receipt: receipt) {
-                VerificationReceiptUndecodable { reason } =>
-                  VerificationReceiptTextUndecodable { reason: reason }
-                VerificationReceiptDecoded { receipt: r } =>
-                  VerificationReceiptTextExactHead { receipt: r }
-              }
-            } else if schema == (validation_receipt_schema as String) {
-              match validation_receipt_decode_document(doc: doc) {
-                ValidationReceiptUndecodable { reason } =>
-                  VerificationReceiptTextUndecodable { reason: reason }
-                ValidationReceiptDecoded { verdict_key } =>
-                  VerificationReceiptTextLegacy { verdict_key: verdict_key }
-              }
-            } else {
-              VerificationReceiptTextUndecodable {
-                reason: join([
-                  "verification receipt schema is ", schema,
-                  " and is neither ", verification_receipt_schema as String,
-                  " nor ", validation_receipt_schema as String,
-                ], ""),
-              }
-            }
-        }
-    }
-  }
-}
-
-fn verification_receipt_source_from_file(
-  source: VerificationReceiptFileSource,
-) -> VerificationReceiptSource? {
-  match source {
-    VerificationReceiptAbsent => none
-    VerificationReceiptUnreadable { detail: _ } => none
-    VerificationReceiptPresent { text } =>
-      match verification_receipt_text_decode(receipt: text) {
-        VerificationReceiptTextExactHead { receipt } =>
-          Present {
-            value: ExactHeadVerificationReceipt { receipt: receipt },
-          }
-        VerificationReceiptTextLegacy { verdict_key } =>
-          Present {
-            value: LegacyAttemptValidationReceipt { verdict_key: verdict_key },
-          }
-        VerificationReceiptTextUndecodable { reason: _ } => none
+  match verification_receipt_text_classify(receipt: receipt) {
+    VerificationReceiptTextV2 { receipt } =>
+      VerificationReceiptDecodeExactHead { receipt: receipt }
+    VerificationReceiptTextV1ExactHead { legacy: _ } =>
+      VerificationReceiptDecodeUndecodable {
+        reason: "v1 exact-head receipt cannot be decoded through the legacy text-decode alias; use verification_receipt_text_classify",
       }
+    VerificationReceiptTextLegacyAttempt { verdict_key } =>
+      VerificationReceiptDecodeLegacy { verdict_key: verdict_key }
+    VerificationReceiptTextUndecodable { reason } =>
+      VerificationReceiptDecodeUndecodable { reason: reason }
   }
 }
 
@@ -850,17 +1417,21 @@ fn verification_file_evidence_for(
     VerificationReceiptUnreadable { detail } =>
       VerificationFileUnreadable { reason: detail }
     VerificationReceiptPresent { text } =>
-      match verification_receipt_text_decode(receipt: text) {
+      match verification_receipt_text_classify(receipt: text) {
         VerificationReceiptTextUndecodable { reason } =>
           VerificationFileUnreadable { reason: reason }
-        VerificationReceiptTextLegacy { verdict_key } =>
+        VerificationReceiptTextLegacyAttempt { verdict_key } =>
           VerificationFileDecoded {
             evidence: verification_evidence_for(
               expected: expected,
               source: LegacyAttemptValidationReceipt { verdict_key: verdict_key },
             ),
           }
-        VerificationReceiptTextExactHead { receipt } =>
+        VerificationReceiptTextV1ExactHead { legacy } =>
+          VerificationFileDecoded {
+            evidence: VerificationEvidenceV1LegacyExactHead { legacy: legacy },
+          }
+        VerificationReceiptTextV2 { receipt } =>
           VerificationFileDecoded {
             evidence: verification_evidence_for(
               expected: expected,
@@ -875,3 +1446,36 @@ type VerificationFileEvidence
   = VerificationFileAbsent
   | VerificationFileUnreadable { reason: String }
   | VerificationFileDecoded { evidence: VerificationEvidence }
+
+fn verification_receipt_source_from_file(
+  source: VerificationReceiptFileSource,
+) -> VerificationReceiptSource? {
+  match source {
+    VerificationReceiptAbsent => none
+    VerificationReceiptUnreadable { detail } =>
+      Present {
+        value: VerificationReceiptSourceUnreadable { detail: detail },
+      }
+    VerificationReceiptPresent { text } =>
+      match verification_receipt_text_classify(receipt: text) {
+        VerificationReceiptTextV2 { receipt } =>
+          Present {
+            value: ExactHeadVerificationReceipt { receipt: receipt },
+          }
+        VerificationReceiptTextV1ExactHead { legacy: _ } =>
+          Present {
+            value: VerificationReceiptSourceUndecodable {
+              reason: "v1 exact-head receipt cannot satisfy the selected v2 subject",
+            },
+          }
+        VerificationReceiptTextLegacyAttempt { verdict_key } =>
+          Present {
+            value: LegacyAttemptValidationReceipt { verdict_key: verdict_key },
+          }
+        VerificationReceiptTextUndecodable { reason } =>
+          Present {
+            value: VerificationReceiptSourceUndecodable { reason: reason },
+          }
+      }
+  }
+}

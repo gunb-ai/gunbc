@@ -67,6 +67,8 @@ data nfr_reason_observation_hold_cause: String = "the CI-log renderer names the 
 
 data nfr_reason_resolve_realization_predicate: String = "discriminating subset predicate over ResolveRealization (param scrutinee, off-variant wildcard arm returning false) — each arms an independent RED control in floor_resolve_realization_witness_test.dag; landed with #7810 resolve-realization 0B obligation model and surfaced by the whole-corpus nfr receipt; declared so the ratchet re-arms"
 
+data nfr_reason_cost_loop_zero_body_fold: String = "C1 zero-body summation fold over CostExpr (zero-valued CostConst collapses before binder-carrying CostSum construction; the wildcard arm is the non-degenerate summation path, not anonymous recursion) — landed with v2.lens.cost.expr carrier; surfaced by whole-corpus nfr receipt on first CI run"
+
 data nfr_reason_provider_terminal_absorb: String = "terminal-state absorption over the provider/worker observation coproducts: the arm names each TERMINAL variant (ProviderCompleted / ProviderFailed / ProviderEventsRefused, or WorkerProcessRunning) and gives every non-terminal variant one shared arm, because those variants reduce to the identical behaviour — enumerating them would clone the arm per variant, which is the redundancy DESIGN §2 forbids rather than the totality DESIGN §4 asks for. Landed with the Codex dispatch and recursive workflow evidence slice; declared at landing (not surfaced by a later cold sweep) so the ratchet arms with the code."
 
 data nfr_dissolve_provider_terminal_absorb: String = "ProviderExecutionState and WorkerProcessEvidence carry a DERIVED terminality projection from inhabitance (dag/std/algebra, DESIGN §3/§4 — the same move as derived equality), so these folds match on the partition rather than on the variant list, the shared arm becomes a named case instead of a wildcard, and the rows delete."
@@ -86,6 +88,10 @@ data nfr_dissolve_binding_outcome_resolution_wildcard: String = "assess_referenc
 data nfr_reason_content_hash_structural_refusal: String = "ContentHash family structural filter at SourceRef list digest boundary (PR #7762): only Fnv1a64Structural participates in population digest; other family arms refuse as SourceRefContentHashStructuralNonFnv1a64 rather than silently coercing cross-family hashes. Declared at landing so the ratchet re-arms."
 
 data nfr_dissolve_content_hash_structural_refusal: String = "SourceRef digest construction grounds each ContentHash family at inhabitance and the wildcard arm becomes a total match — row deletes with that fold (std.content_hash family grounding)"
+
+data nfr_reason_class_b_binding_projection: String = "Class B declared-import-closure observation projection (match on DeclaredImportClosureBindingObservation with off-variant wildcard refusal arms) landed with #7835 observe_declared_import_closure_symbol_binding builtin; callers judge ListedImport vs PoolCoincidence vs refusal — the match is the typed verdict fold over the host observation carrier, not business policy; declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_class_b_binding_projection: String = "the observation carrier's verdict partition becomes derived from inhabitance (total match over BindingObserved vs BindingNotRunnable and over UnlistedImportBindingSource) and the wildcard arms delete with their rows"
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
@@ -649,6 +655,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
   },
   FrontierRow {
+    subject: PathSubject { path: "src/v2/lens/cost/expr.dag::cost_loop_expr" },
+    reason: nfr_reason_cost_loop_zero_body_fold,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
     subject: PathSubject { path: "src/v2/lens/fact_density.dag::connective_is_kernel_ambient_atom" },
     reason: nfr_reason_mint_era,
     trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
@@ -802,6 +813,26 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/ci_materialization.dag::cold_without_resolve_receipt" },
     reason: nfr_reason_resolve_realization_predicate,
     trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/host_standup.dag::assimilation_complete_input_eq" },
+    reason: nfr_reason_structural_eq_backfill,
+    trigger: TriggerProse { text: nfr_dissolve_derived_equality },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_listed_import" },
+    reason: nfr_reason_class_b_binding_projection,
+    trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_pool_coincidence" },
+    reason: nfr_reason_class_b_binding_projection,
+    trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_refused_at_intended_seam" },
+    reason: nfr_reason_class_b_binding_projection,
+    trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
   },
 ]
 

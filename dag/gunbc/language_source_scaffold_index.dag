@@ -342,6 +342,11 @@ data ct_row_ct_sole_constructor_test: LanguageSourceScaffoldRow = LanguageSource
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
+data ct_row_ct_constructor_call_admission_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_constructor_call_admission_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
 data ct_row_ct_sole_constructor_fieldless_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_sole_constructor_fieldless_witness_test",
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
@@ -359,6 +364,11 @@ data ct_row_ct_caret_parse_smoke_native_witness_tests: LanguageSourceScaffoldRow
 
 data ct_row_ct_call_shape_wall_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_call_shape_wall_witness_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_call_shape_duplicate_wall_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_call_shape_duplicate_wall_witness_test",
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
@@ -430,10 +440,12 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   ct_row_ct_method_existence_wall_witness_test,
   ct_row_ct_declared_type_conformance_witness_test,
   ct_row_ct_sole_constructor_test,
+  ct_row_ct_constructor_call_admission_test,
   ct_row_ct_sole_constructor_fieldless_witness_test,
   ct_row_ct_contracts_sidecar_witness_test,
   ct_row_ct_caret_parse_smoke_native_witness_tests,
   ct_row_ct_call_shape_wall_witness_test,
+  ct_row_ct_call_shape_duplicate_wall_witness_test,
   ct_row_ct_call_deficit_red_witness_test,
   ct_row_ct_function_value_named_application_controls_witness_test,
   ct_row_ct_function_value_field_method_known_hole_probe_test,

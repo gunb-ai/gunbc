@@ -28,7 +28,7 @@ pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
 pub use crate::v1_compiler_infer_sigs::lookup_resolved_sig;
 use crate::v1_compiler_infer_sigs::FuncSigLookup::{
-    FuncSigAmbiguous, FuncSigResolved, FuncSigUnresolved,
+    FuncSigAmbiguous, FuncSigCallerNotAdmitted, FuncSigResolved, FuncSigUnresolved,
 };
 pub use crate::v1_compiler_infer_sigs::{FuncSigLookup, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
@@ -48,12 +48,13 @@ use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
 pub use crate::v1_std_core::{
-    authored_name_at, error_type, find_child_named, has_child_named, param_node_type_expr,
-    preserve_outer_optional_cardinality, with_optional_cardinality, with_required_cardinality,
+    authored_name_at, decl_ref_coords_label, error_type, find_child_named, fn_admit_callers,
+    has_child_named, param_node_type_expr, preserve_outer_optional_cardinality,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, Connective, ErrorNode, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, MethodSemantics, NewlineIndex, Node,
+    Cardinality, Connective, DeclRefCoords, ErrorNode, FieldAccessStyle, FieldSummary,
+    FieldValueShape, InferredNode, MethodSemantics, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -98,11 +99,18 @@ pub fn lookup_func_sig(
         } => Rc::new(FuncSigLookup::FuncSigAmbiguous {
             candidates: cands.clone(),
         }),
+        FuncSigLookup::FuncSigCallerNotAdmitted {
+            function_name: fname,
+            owner_module_path: om,
+            admitted: adm,
+            ..
+        } => Rc::new(FuncSigLookup::FuncSigCallerNotAdmitted {
+            function_name: fname.clone(),
+            owner_module_path: om.clone(),
+            admitted: adm.clone(),
+        }),
         FuncSigLookup::FuncSigUnresolved => {
-            match func_sig_from_global_bare(type_env.clone(), name.clone()) {
-                Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
-                None => Rc::new(FuncSigLookup::FuncSigUnresolved),
-            }
+            func_sig_from_global_bare(type_env.clone(), name.clone())
         }
     }
 }
@@ -112,6 +120,7 @@ pub fn func_sig_if_resolved(lookup: Rc<FuncSigLookup>) -> Option<Rc<ResolvedFunc
         FuncSigLookup::FuncSigResolved { sig: sig, .. } => Some(sig.clone()),
         FuncSigLookup::FuncSigUnresolved => None,
         FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => None,
+        FuncSigLookup::FuncSigCallerNotAdmitted { .. } => None,
     }
 }
 
@@ -160,6 +169,70 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Bo
     }
 }
 
+pub fn func_decl_owner_module(func_env: Rc<ResolvedFuncEnv>, name: String) -> Option<String> {
+    match v1_rt::map_get(&func_env.local.clone(), name.clone()) {
+        Some(_) => Some(func_env.name.clone()),
+        None => match func_env.parents.clone().iter().cloned().fold(
+            None,
+            |found: _, p: Rc<ResolvedFuncEnv>| {
+                if (found.clone() != None) {
+                    found.clone()
+                } else {
+                    match v1_rt::map_get(&p.local.clone(), name.clone()) {
+                        Some(_) => Some(p.name.clone()),
+                        None => None,
+                    }
+                }
+            },
+        ) {
+            Some(owner) => Some(owner.clone()),
+            None => None,
+        },
+    }
+}
+
+pub fn func_decl_binding_for_call(
+    func_env: Rc<ResolvedFuncEnv>,
+    type_env: Rc<TypeEnv>,
+    name: String,
+) -> Option<Rc<BorrowedCensusDecl>> {
+    match lookup_binding_by_name_local(type_env.clone(), name.clone()) {
+        Some(binding) => {
+            let owner_module_path =
+                match v1_rt::map_get(&type_env.str_bindings.clone(), name.clone()) {
+                    Some(_) => type_env.module_path.clone(),
+                    None => match func_decl_owner_module(func_env.clone(), name.clone()) {
+                        Some(owner) => owner.clone(),
+                        None => match borrowed_census_decl(type_env.clone(), name.clone()) {
+                            Some(bd) => bd.owner_module_path.clone(),
+                            None => type_env.module_path.clone(),
+                        },
+                    },
+                };
+            Some(Rc::new(BorrowedCensusDecl {
+                owner_module_path: owner_module_path.clone(),
+                node: binding.resolved.clone(),
+            }))
+        }
+        None => match borrowed_census_decl(type_env.clone(), name.clone()) {
+            Some(bd) => Some(bd.clone()),
+            None => match func_decl_owner_module(func_env.clone(), name.clone()) {
+                Some(owner) => match symbol_index_lookup(
+                    type_env.symbol_index.clone(),
+                    v1_rt::concat(v1_rt::concat(owner.clone(), ".".to_string()), name.clone()),
+                ) {
+                    Some(node) => Some(Rc::new(BorrowedCensusDecl {
+                        owner_module_path: owner.clone(),
+                        node: node.clone(),
+                    })),
+                    None => None,
+                },
+                None => None,
+            },
+        },
+    }
+}
+
 pub fn census_reserved_method_name_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -169,16 +242,12 @@ pub fn census_reserved_method_name_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn func_sig_from_global_bare(
-    type_env: Rc<TypeEnv>,
-    name: String,
-) -> Option<Rc<ResolvedFuncSig>> {
-    {
-        if algebra_method_template_name(name.clone()) {
-            return None;
-        }
+pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<FuncSigLookup> {
+    if algebra_method_template_name(name.clone()) {
+        Rc::new(FuncSigLookup::FuncSigUnresolved)
+    } else {
         match infer_builtin_call_type(name.clone()) {
-            Some(_) => None,
+            Some(_) => Rc::new(FuncSigLookup::FuncSigUnresolved),
             None => {
                 let borrowed = match lookup_binding_by_name_local(type_env.clone(), name.clone()) {
                     Some(binding) => Some(Rc::new(BorrowedCensusDecl {
@@ -194,7 +263,7 @@ pub fn func_sig_from_global_bare(
                             || (node.inferred.clone() != None))
                             || (node.type_annotation.clone() != None))
                         {
-                            false => None,
+                            false => Rc::new(FuncSigLookup::FuncSigUnresolved),
                             true => {
                                 let excluded = borrowed_generic_param_names(
                                     node.params.clone(),
@@ -210,35 +279,11 @@ pub fn func_sig_from_global_bare(
                                     },
                                 };
                                 if (bd.owner_module_path.clone() == type_env.module_path.clone()) {
-                                    Some(Rc::new(ResolvedFuncSig {
-                                        name: name.clone(),
-                                        params: node.params.clone(),
-                                        inferred: raw_return.clone(),
-                                        is_async: false,
-                                        output_provenance: Rc::new(vec![]),
-                                        variant_provenance: v1_rt::rc_empty_map::<
-                                            String,
-                                            Rc<
-                                                HashMap<
-                                                    String,
-                                                    Rc<HashMap<String, Rc<SubValueRelation>>>,
-                                                >,
-                                            >,
-                                        >(
-                                        ),
-                                    }))
-                                } else {
-                                    {
-                                        let qualified_return = qualify_borrowed_type_names(
-                                            raw_return.clone(),
-                                            bd.owner_module_path.clone(),
-                                            type_env.clone(),
-                                            excluded.clone(),
-                                        );
-                                        Some(Rc::new(ResolvedFuncSig {
+                                    Rc::new(FuncSigLookup::FuncSigResolved {
+                                        sig: Rc::new(ResolvedFuncSig {
                                             name: name.clone(),
                                             params: node.params.clone(),
-                                            inferred: qualified_return.clone(),
+                                            inferred: raw_return.clone(),
                                             is_async: false,
                                             output_provenance: Rc::new(vec![]),
                                             variant_provenance: v1_rt::rc_empty_map::<
@@ -251,13 +296,99 @@ pub fn func_sig_from_global_bare(
                                                 >,
                                             >(
                                             ),
-                                        }))
+                                        }),
+                                    })
+                                } else {
+                                    match fn_admit_callers(
+                                        node.clone(),
+                                        type_env.source_indices.clone(),
+                                    ) {
+                                        Some(permitted) => {
+                                            if {
+                                                let mut __found = false;
+                                                for p in permitted.clone().iter().cloned() {
+                                                    if (p.module_path.clone()
+                                                        == type_env.module_path.clone())
+                                                    {
+                                                        __found = true;
+                                                        break;
+                                                    }
+                                                }
+                                                __found
+                                            } {
+                                                {
+                                                    let qualified_return =
+                                                        qualify_borrowed_type_names(
+                                                            raw_return.clone(),
+                                                            bd.owner_module_path.clone(),
+                                                            type_env.clone(),
+                                                            excluded.clone(),
+                                                        );
+                                                    Rc::new(FuncSigLookup::FuncSigResolved {
+    sig: Rc::new(ResolvedFuncSig {
+    name: name.clone(),
+    params: node.params.clone(),
+    inferred: qualified_return.clone(),
+    is_async: false,
+    output_provenance: Rc::new(vec![]),
+    variant_provenance: v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>(),
+}),
+})
+                                                }
+                                            } else {
+                                                Rc::new(FuncSigLookup::FuncSigCallerNotAdmitted {
+                                                    function_name: name.clone(),
+                                                    owner_module_path: bd.owner_module_path.clone(),
+                                                    admitted: Rc::new({
+                                                        let mut __result = Vec::new();
+                                                        for p in permitted.clone().iter().cloned() {
+                                                            __result.push(decl_ref_coords_label(
+                                                                p.clone(),
+                                                            ));
+                                                        }
+                                                        __result
+                                                    }),
+                                                })
+                                            }
+                                        }
+                                        None => {
+                                            let qualified_return = qualify_borrowed_type_names(
+                                                raw_return.clone(),
+                                                bd.owner_module_path.clone(),
+                                                type_env.clone(),
+                                                excluded.clone(),
+                                            );
+                                            Rc::new(FuncSigLookup::FuncSigResolved {
+                                                sig: Rc::new(ResolvedFuncSig {
+                                                    name: name.clone(),
+                                                    params: node.params.clone(),
+                                                    inferred: qualified_return.clone(),
+                                                    is_async: false,
+                                                    output_provenance: Rc::new(vec![]),
+                                                    variant_provenance: v1_rt::rc_empty_map::<
+                                                        String,
+                                                        Rc<
+                                                            HashMap<
+                                                                String,
+                                                                Rc<
+                                                                    HashMap<
+                                                                        String,
+                                                                        Rc<SubValueRelation>,
+                                                                    >,
+                                                                >,
+                                                            >,
+                                                        >,
+                                                    >(
+                                                    ),
+                                                }),
+                                            })
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                    None => None,
+                    None => Rc::new(FuncSigLookup::FuncSigUnresolved),
                 }
             }
         }

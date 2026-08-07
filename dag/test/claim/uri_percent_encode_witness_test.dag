@@ -1,0 +1,101 @@
+module test.claim.uri_percent_encode_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_negative_scalar: Int = 0 - 1
+
+test fn uri_percent_encode_scalar_e_acute_holds() -> Bool {
+  match uri_percent_encode_code_point(cp: 233) {
+    UriPercentComponentEncoded(wire) => wire == "%C3%A9"
+    UriPercentComponentRefused { cause: _ } => false
+  }
+}
+
+test fn uri_percent_encode_scalar_euro_holds() -> Bool {
+  match uri_percent_encode_code_point(cp: 8364) {
+    UriPercentComponentEncoded(wire) => wire == "%E2%82%AC"
+    UriPercentComponentRefused { cause: _ } => false
+  }
+}
+
+test fn uri_percent_encode_scalar_musical_symbol_holds() -> Bool {
+  match uri_percent_encode_code_point(cp: 119070) {
+    UriPercentComponentEncoded(wire) => wire == "%F0%9D%84%9E"
+    UriPercentComponentRefused { cause: _ } => false
+  }
+}
+
+test fn uri_percent_encode_refuses_surrogate_scalar_holds() -> Bool {
+  match uri_percent_encode_code_point(cp: 55296) {
+    UriPercentComponentRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: 55296 } } => true
+    UriPercentComponentEncoded(_) => false
+  }
+}
+
+test fn uri_percent_encode_refuses_code_point_beyond_unicode_max_holds() -> Bool {
+  match uri_percent_encode_code_point(cp: 1114112) {
+    UriPercentComponentRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: 1114112 } } => true
+    UriPercentComponentEncoded(_) => false
+  }
+}
+
+test fn uri_percent_encode_refuses_negative_scalar_at_construction_holds() -> Bool {
+  match uri_percent_encode_code_point(cp: witness_negative_scalar) {
+    UriPercentComponentRefused {
+      cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: c },
+    } =>
+      c == witness_negative_scalar
+    UriPercentComponentEncoded(_) => false
+  }
+}
+
+test fn uri_percent_encode_refuses_directly_constructed_surrogate_scalar_holds() -> Bool {
+  match uri_percent_encode_unicode_scalar(scalar: UriUnicodeScalar { cp: 55296 }) {
+    UriPercentEncodeRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: 55296 } } => true
+    UriPercentEncodeBuilding { wire: _ } => false
+  }
+}
+
+test fn uri_percent_encode_refuses_directly_constructed_above_max_scalar_holds() -> Bool {
+  match uri_percent_encode_unicode_scalar(scalar: UriUnicodeScalar { cp: 1114112 }) {
+    UriPercentEncodeRefused {
+      cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: 1114112 },
+    } => true
+    UriPercentEncodeBuilding { wire: _ } => false
+  }
+}
+
+test fn uri_percent_encode_code_points_joins_fragments_once_holds() -> Bool {
+  match uri_percent_encode_code_points(code_points: [233, 8364]) {
+    UriPercentComponentEncoded(wire) => wire == "%C3%A9%E2%82%AC"
+    UriPercentComponentRefused { cause: _ } => false
+  }
+}
+
+test fn uri_percent_encode_refuses_empty_code_point_list_holds() -> Bool {
+  match uri_percent_encode_code_points(code_points: []) {
+    UriPercentComponentRefused { cause: UriPercentEncodeEmptyInputRefused } => true
+    UriPercentComponentEncoded(_) => false
+  }
+}
+
+test fn uri_percent_encode_component_round_trip_unreserved_holds() -> Bool {
+  match uri_percent_encode_component(value: "page-1_ok" as NonEmptyStr) {
+    UriPercentComponentEncoded(wire) => wire == "page-1_ok"
+    UriPercentComponentRefused { cause: _ } => false
+  }
+}
+
+test fn uri_percent_encode_component_encodes_ascii_reserved_holds() -> Bool {
+  match uri_percent_encode_component(value: "a=b&c" as NonEmptyStr) {
+    UriPercentComponentEncoded(wire) => wire == "a%3Db%26c"
+    UriPercentComponentRefused { cause: _ } => false
+  }
+}
+
+test fn uri_percent_encode_code_points_e_acute_sequence_holds() -> Bool {
+  match uri_percent_encode_code_points(code_points: [233]) {
+    UriPercentComponentEncoded(wire) => wire == "%C3%A9"
+    UriPercentComponentRefused { cause: _ } => false
+  }
+}

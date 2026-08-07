@@ -40,7 +40,7 @@ import gunbc.compile_diagnostic_census {
   census_total_count,
 }
 
-data guarantee_probe_corpus_charter_note: String = "STAGE 1a SLICE 1 OF THE GUARANTEE SPINE (roadmap node ladder-probe-corpus): the landed wall controls from the THREE MERGED PRs gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), and gunbc#7485 (InferToEval self-grounding frontier) migrated onto gunbc.guarantee_measurement identities — MIGRATE, never duplicate beside the dark-suite originals. gunbc#7555 (InferToTranslate underived-refusal) is OPEN on main and introduces NO path/class/probe identities here — that lane lands its own registry rows with executing evidence when it merges. Each migrated row carries a GuaranteeClassId, GuaranteePathId, and GuaranteeProbeId; receipts name subject_revision, harness_revision, and probe_set_digest per the Stage-0 schema. guarantee_probe_dark_suite_dispositions names each Rust dark-suite witness retained until gap-analysis sec 11 item 9 finite classification — enrolled .dag probes are the floor authority; Rust copies are explicitly dispositioned, not silently parallel. This slice owns the identity registry, canonical probe ordering, and the census-to-observation bridge for the v1 compile path. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall_test.dag (frontier value-red and derived-green receipt joins). No disposition, no rung, no claims carrier — those arrive with ladder-claims-carrier."
+data guarantee_probe_corpus_charter_note: String = "STAGE 1a SLICE 1 OF THE GUARANTEE SPINE (roadmap node ladder-probe-corpus): the landed wall controls from the THREE MERGED PRs gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), and gunbc#7485 (InferToEval self-grounding frontier) migrated onto gunbc.guarantee_measurement identities — MIGRATE, never duplicate beside the dark-suite originals. gunbc#7555 (InferToTranslate underived-refusal) is OPEN on main and introduces NO path/class/probe identities here — that lane lands its own registry rows with executing evidence when it merges. Each migrated row carries a GuaranteeClassId, GuaranteePathId, and GuaranteeProbeId; receipts name subject_revision, harness_revision, and probe_set_digest per the Stage-0 schema. guarantee_probe_dark_suite_dispositions names each Rust dark-suite witness retained until gap-analysis sec 11 item 9 finite classification — enrolled .dag probes are the floor authority; Rust copies are explicitly dispositioned, not silently parallel. This slice owns the identity registry, canonical probe ordering, and the census-to-observation bridge for the v1 compile path. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall_test.dag (frontier value-red and derived-green receipt joins). No disposition, no rung, no claims carrier — those arrive with ladder-claims-carrier. gunbc#7847 (call-missing-and-duplicate-wall, roadmap node rn_EXUHLON5V24YU7Z4XLJFWEZO33, duplicate-label slice) added call_duplicate_red_probe/call_duplicate_green_probe to the SAME call_label_surplus_class as #7519's mislabel/surplus rows — one seam (direct_call_shape_diags), a third refusal mode on it, not a new class. Its Rust dark-suite original is call_shape_duplicate_wall_witness, dispositioned below alongside call_shape_wall_witness."
 
 data guarantee_probe_corpus_path_scope_note: String = "TWO LANDED PATHS IN THE CANONICAL REGISTRY: v1-compile-rust is subject_grain SyntheticProgram, acceptance_boundary CompileAccept, realization_target EmittedTarget { language: rust } — the path compile_diagnostic_census measures. v2-infer-eval is the same subject grain with acceptance_boundary InferToEval and realization_target InterpreterRealization — the path gunbc#7485's GroundingNotDerived frontier diagnostic lives on. A receipt keyed to one path must not claim coverage the other measures (DESIGN 4b minimum-across-paths discipline)."
 
@@ -101,6 +101,7 @@ fn guarantee_probe_paths() -> List<GuaranteePath> {
 data call_label_surplus_class: GuaranteeClassId = "call-label-and-surplus" as GuaranteeClassId
 data method_established_surface_class: GuaranteeClassId = "method-established-surface" as GuaranteeClassId
 data declared_conformance_ground_class: GuaranteeClassId = "declared-conformance-ground-fragment" as GuaranteeClassId
+data sole_constructor_cross_module_class: GuaranteeClassId = "sole-constructor-cross-module" as GuaranteeClassId
 data v2_self_grounding_frontier_class: GuaranteeClassId = "v2-self-grounding-frontier" as GuaranteeClassId
 
 fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
@@ -108,6 +109,7 @@ fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
     call_label_surplus_class,
     declared_conformance_ground_class,
     method_established_surface_class,
+    sole_constructor_cross_module_class,
     v2_self_grounding_frontier_class,
   ]
 }
@@ -116,12 +118,18 @@ data call_mislabel_red_probe: GuaranteeProbeId = "call-label-surplus-mislabel-re
 data call_surplus_red_probe: GuaranteeProbeId = "call-label-surplus-surplus-red" as GuaranteeProbeId
 data call_deficit_red_probe: GuaranteeProbeId = "call-label-surplus-deficit-red" as GuaranteeProbeId
 data call_shape_green_probe: GuaranteeProbeId = "call-label-surplus-green-control" as GuaranteeProbeId
+data call_duplicate_red_probe: GuaranteeProbeId = "call-label-surplus-duplicate-red" as GuaranteeProbeId
+data call_duplicate_green_probe: GuaranteeProbeId = "call-label-surplus-duplicate-green-control" as GuaranteeProbeId
 
 data method_missing_red_probe: GuaranteeProbeId = "method-established-surface-missing-red" as GuaranteeProbeId
 data method_green_probe: GuaranteeProbeId = "method-established-surface-green-control" as GuaranteeProbeId
 
 data conformance_scalar_red_probe: GuaranteeProbeId = "declared-conformance-ground-scalar-red" as GuaranteeProbeId
 data conformance_green_probe: GuaranteeProbeId = "declared-conformance-ground-green-control" as GuaranteeProbeId
+
+data sole_ctor_forged_red_probe: GuaranteeProbeId = "sole-constructor-cross-module-forged-red" as GuaranteeProbeId
+data sole_ctor_green_probe: GuaranteeProbeId = "sole-constructor-cross-module-green-control" as GuaranteeProbeId
+data sole_ctor_mint_fn_hole_probe: GuaranteeProbeId = "sole-constructor-mint-fn-cross-module-hole" as GuaranteeProbeId
 
 data v2_frontier_red_probe: GuaranteeProbeId = "v2-self-grounding-frontier-value-red" as GuaranteeProbeId
 data v2_frontier_green_probe: GuaranteeProbeId = "v2-self-grounding-frontier-derived-green" as GuaranteeProbeId
@@ -168,6 +176,7 @@ fn v1_compile_harness_source_paths() -> List<String> {
     "src/v1/04_infer.dag",
     "src/v1/04_method.dag",
     "src/v1/04_types.dag",
+    "dag/extdeps/uri.dag",
   ]
 }
 
@@ -271,6 +280,11 @@ fn guarantee_probe_dark_suite_dispositions() -> List<DarkSuiteWitnessDisposition
       rust_retained_until: "gap-analysis-sec-11-item-9-finite-classification" as NonEmptyStr,
     },
     MigratedToEnrolledDagProbe {
+      rust_witness: "call_shape_duplicate_wall_witness" as NonEmptyStr,
+      dag_probes: [call_duplicate_red_probe, call_duplicate_green_probe],
+      rust_retained_until: "gap-analysis-sec-11-item-9-finite-classification" as NonEmptyStr,
+    },
+    MigratedToEnrolledDagProbe {
       rust_witness: "method_existence_wall_witness" as NonEmptyStr,
       dag_probes: [method_missing_red_probe, method_green_probe],
       rust_retained_until: "gap-analysis-sec-11-item-9-finite-classification" as NonEmptyStr,
@@ -278,6 +292,11 @@ fn guarantee_probe_dark_suite_dispositions() -> List<DarkSuiteWitnessDisposition
     MigratedToEnrolledDagProbe {
       rust_witness: "declared_type_conformance_witness" as NonEmptyStr,
       dag_probes: [conformance_scalar_red_probe, conformance_green_probe],
+      rust_retained_until: "gap-analysis-sec-11-item-9-finite-classification" as NonEmptyStr,
+    },
+    MigratedToEnrolledDagProbe {
+      rust_witness: "sole_constructor_violation_outside_module" as NonEmptyStr,
+      dag_probes: [sole_ctor_forged_red_probe, sole_ctor_green_probe],
       rust_retained_until: "gap-analysis-sec-11-item-9-finite-classification" as NonEmptyStr,
     },
   ]
@@ -314,6 +333,18 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       class: call_label_surplus_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "CallPositionalDeficit" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: call_duplicate_green_probe,
+      class: call_label_surplus_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: call_duplicate_red_probe,
+      class: call_label_surplus_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentDuplicate" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: call_shape_green_probe,
@@ -356,6 +387,24 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       class: method_established_surface_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: sole_ctor_forged_red_probe,
+      class: sole_constructor_cross_module_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "SoleConstructorViolation" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: sole_ctor_green_probe,
+      class: sole_constructor_cross_module_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: sole_ctor_mint_fn_hole_probe,
+      class: sole_constructor_cross_module_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "SoleConstructorViolation" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: v2_frontier_green_probe,

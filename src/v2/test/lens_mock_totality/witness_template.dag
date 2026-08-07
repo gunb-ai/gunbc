@@ -21,7 +21,7 @@ fn omit_consumer_handles(
   if operation_key_in_omit_set(case: case, omit_keys: omit_keys) {
     false
   } else {
-    total_consumer_handles(case: case)
+    total_consumer_handles(case)
   }
 }
 
