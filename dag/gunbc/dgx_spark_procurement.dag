@@ -180,51 +180,51 @@ fn admit_selected_dgx_spark_observation(
             }
           }
         } else {
-        if !envelope_reports_success(envelope: observation.envelope) {
-          DgxSparkDeploymentRefused {
-            reason: DeploymentAdmissionObservationNotOk {
-              observed_status: observation.envelope.status,
-              observed_rc: observation.envelope.rc,
-            }
-          }
-        } else {
-          if !host_identity_is_reserved(identity: identity) {
+          if !envelope_reports_success(envelope: observation.envelope) {
             DgxSparkDeploymentRefused {
-              reason: DeploymentAdmissionIdentityNotReserved { requested_identity: identity }
+              reason: DeploymentAdmissionObservationNotOk {
+                observed_status: observation.envelope.status,
+                observed_rc: observation.envelope.rc,
+              }
             }
           } else {
-            if router_binding.identity != identity {
+            if !host_identity_is_reserved(identity: identity) {
               DgxSparkDeploymentRefused {
-                reason: DeploymentAdmissionRouterBindingMismatch {
-                  binding_identity: router_binding.identity,
-                  requested_identity: identity,
-                }
+                reason: DeploymentAdmissionIdentityNotReserved { requested_identity: identity }
               }
             } else {
-              match router_binding.reservation {
-                Absent =>
-                  DgxSparkDeploymentRefused {
-                    reason: DeploymentAdmissionRouterBindingPending { requested_identity: identity }
+              if router_binding.identity != identity {
+                DgxSparkDeploymentRefused {
+                  reason: DeploymentAdmissionRouterBindingMismatch {
+                    binding_identity: router_binding.identity,
+                    requested_identity: identity,
                   }
-                Present { value: reservation } =>
-                  if observation.endpoint_binding.address != reservation.ipv4_address {
+                }
+              } else {
+                match router_binding.reservation {
+                  Absent =>
                     DgxSparkDeploymentRefused {
-                      reason: DeploymentAdmissionEndpointBindingMismatch { requested_identity: identity }
+                      reason: DeploymentAdmissionRouterBindingPending { requested_identity: identity }
                     }
-                  } else {
-                    DgxSparkDeploymentAdmitted {
-                      deployment: DgxSparkDeployment {
-                        identity: identity,
-                        catalog: catalog,
-                        observation: observation,
-                        router_reservation: reservation,
+                  Present { value: reservation } =>
+                    if observation.endpoint_binding.address != reservation.ipv4_address {
+                      DgxSparkDeploymentRefused {
+                        reason: DeploymentAdmissionEndpointBindingMismatch { requested_identity: identity }
+                      }
+                    } else {
+                      DgxSparkDeploymentAdmitted {
+                        deployment: DgxSparkDeployment {
+                          identity: identity,
+                          catalog: catalog,
+                          observation: observation,
+                          router_reservation: reservation,
+                        }
                       }
                     }
-                  }
+                }
               }
             }
           }
-        }
         }
       }
     }
