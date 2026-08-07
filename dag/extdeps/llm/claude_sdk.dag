@@ -25,6 +25,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 type ClaudeSdkRateLimitSurface
-  = ClaudeSdkRateLimitObserved
+  = | ClaudeSdkRateLimitToken
 
 data claude_native_limit_token_to_model_gap_note: String = "TYPED GAP — native limit token → dispatch model is NOT cited. SDKRateLimitInfo.rateLimitType exposes closed enum members (five_hour, seven_day, seven_day_opus, seven_day_sonnet, seven_day_overage_included, overage); provider-control-interface-audit section 4.1 requires open NonEmptyStr native tokens with recognised projections layered over them, not inference from enum spelling. A token named seven_day_opus resembles Opus the way Codex limitName GPT-5.3-Codex-Spark resembled a model — resemblance is not a join. Until a cited map binds rateLimitType token to turn model, LimitDispatchDrawModel fail-closes on ProviderNativeLimitBucket exhaustion/rejection/rate-limit/until-reset (undeterminable relevance, not established irrelevance). ProviderModelLimit blocking requires subject_model == draw_model (like-to-like only). dissolve-on: upstream field or documented map binding rate limit token to metered model."
