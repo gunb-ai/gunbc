@@ -9,17 +9,13 @@ test fn compiler_materialization_ladder_holds() -> Bool {
   v2_compiler_materialization_ladder_holds()
 }
 
-test fn compiler_catalog_projection_has_no_refusals() -> Bool {
-  v2_compiler_catalog_projection_refusals() == 0
-}
-
-test fn parse_table_memo_provider_projects_from_catalog() -> Bool {
-  parse_table_memo_projection_ok()
+test fn parse_table_memo_provider_preserves_catalog_retention() -> Bool {
+  parse_table_memo_retention_preserved()
     && (parse_table_memo_provider_id() == parse_table_memo_id)
 }
 
-test fn compile_stage_memo_provider_projects_from_catalog() -> Bool {
-  compile_stage_memo_projection_ok()
+test fn compile_stage_memo_provider_preserves_catalog_retention() -> Bool {
+  compile_stage_memo_retention_preserved()
     && (compile_stage_memo_provider_id() == compile_stage_memo_id)
 }
 

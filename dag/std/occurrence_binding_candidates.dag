@@ -1,6 +1,7 @@
 module std.occurrence_binding_candidates
 
-import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha }
+import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, FilePath }
+import std.algebra { FreeMonoid, Empty, Cons }
 import std.occurrence_binding {
   OccurrenceBound,
   OccurrenceUnbound,
@@ -9,6 +10,8 @@ import std.occurrence_binding {
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceIndexEntry,
+  OccurrenceIndex,
+  OccurrenceProjection,
   OccurrenceTransport,
   OccurrenceTransportRefusal,
   OccurrenceTransportValidated,
@@ -26,6 +29,10 @@ import std.occurrence_identity {
   AuthoredTokenOrdinal,
   authored_token_ordinal_before,
   authored_token_ordinal_eq,
+  OccurrenceIdAllocator,
+  OccurrenceIdAllocResult,
+  alloc_occurrence_id,
+  occurrence_id_allocator_initial,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.roster_frontier { declaration_ref_eq }
@@ -173,6 +180,95 @@ fn declaration_exposure_eq(
       match right {
         RootExposure => true
         _ => false
+      }
+  }
+}
+
+data declaration_exposure_from_containment_note: String = "Single authority for declaration exposure from containment prefix shape and module path. OccurrenceCategory is never consulted. DeclarationExposureGrounding selects how module-root and direct-module-child shapes map to DeclarationExposure: NamespaceStructuralRootExposure (N2 resolve path — empty ancestors => RootExposure); ModuleLocalMemberExposure (in-module binding walk — module-root and direct-module-child => ModuleExposure); CrossFileProviderExportedExposure (cross-file provider declarations exported to consumers — module-root and direct-module-child => RootExposure at derivation, never via a post-hoc upgrade). Nested declarations always derive LexicalExposure via occurrence_containment_parent_scope."
+
+type DeclarationExposureGrounding
+  = NamespaceStructuralRootExposure
+  | ModuleLocalMemberExposure
+  | CrossFileProviderExportedExposure
+
+fn occurrence_containment_parent_scope(
+  ancestors: FreeMonoid<OccurrenceId>
+) -> OccurrenceContainmentPath? {
+  match reverse(ancestors) {
+    Empty => none
+    Cons { head: parent_terminal, tail: parent_ancestors_reversed } =>
+      Present {
+        value: OccurrenceContainmentPath {
+          ancestors: reverse(parent_ancestors_reversed),
+          terminal: parent_terminal,
+        },
+      }
+  }
+}
+
+fn declaration_exposure_module_local_member(
+  module_path: NonEmptyStr,
+  containment: OccurrenceContainmentPath
+) -> DeclarationExposure {
+  match occurrence_containment_parent_scope(ancestors: containment.ancestors) {
+    Absent =>
+      ModuleExposure { module: module_path }
+    Present { value: exposing_scope } =>
+      match exposing_scope.ancestors {
+        Empty =>
+          ModuleExposure { module: module_path }
+        Cons { head: _, tail: _ } =>
+          LexicalExposure { exposing_scope: exposing_scope }
+      }
+  }
+}
+
+fn declaration_exposure_namespace_structural_root(
+  module_path: NonEmptyStr,
+  containment: OccurrenceContainmentPath,
+) -> DeclarationExposure {
+  match occurrence_containment_parent_scope(
+    ancestors: containment.ancestors,
+  ) {
+    Absent =>
+      RootExposure
+
+    Present { value: exposing_scope } =>
+      match exposing_scope.ancestors {
+        Empty =>
+          ModuleExposure { module: module_path }
+
+        Cons { head: _, tail: _ } =>
+          LexicalExposure { exposing_scope: exposing_scope }
+      }
+  }
+}
+
+fn declaration_exposure_from_containment(
+  module_path: NonEmptyStr,
+  containment: OccurrenceContainmentPath,
+  grounding: DeclarationExposureGrounding
+) -> DeclarationExposure {
+  match grounding {
+    NamespaceStructuralRootExposure =>
+      declaration_exposure_namespace_structural_root(
+        module_path: module_path,
+        containment: containment,
+      )
+    ModuleLocalMemberExposure =>
+      declaration_exposure_module_local_member(
+        module_path: module_path,
+        containment: containment,
+      )
+    CrossFileProviderExportedExposure =>
+      match declaration_exposure_module_local_member(
+        module_path: module_path,
+        containment: containment,
+      ) {
+        ModuleExposure { module: _ } => RootExposure
+        LexicalExposure { exposing_scope: exposing_scope } =>
+          LexicalExposure { exposing_scope: exposing_scope }
+        RootExposure => RootExposure
       }
   }
 }
@@ -1011,6 +1107,647 @@ fn direct_module_dependencies_from_bound_population(
     ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
       DirectModuleDependencyPopulationRefused {
         population: population,
+      }
+  }
+}
+
+data module_path_file_row_note: String = "ModulePathFileRow is the parser-embedded storage-realization join for cross-file binding provenance at the N3-B substrate seam: one symbolic module path maps to exactly one authored file path. Single authority for path⇄module binding is v2.compiler.source_authority.ModuleStorageBinding / ModuleStorageIndex (module_storage_binding_authority_note); this row is a scaffold projection of that fact from parser-walk inputs until B2 wires OrdinaryLoadedCompilationClosure through source_authority directly. Deliberately separate from OccurrenceModulePathRow (module membership only) and from import lists (transitional loading data). File projection refuses when either side of a bound reference lacks a row — never fabricates a path from module_to_filename heuristics at this seam. Duplicate identical rows are ModulePathFileDuplicateSame; conflicting paths for one module are ModulePathFileConflict — last-write-wins map_insert is forbidden."
+
+data module_path_file_row_dissolution_note: String = "Dissolve-on: cross-file binding production consumes ModuleStorageBinding rows from v2.compiler.source_authority (module_storage_binding_module_dotted × module_storage_binding_file_path) on OrdinaryLoadedCompilationClosure; ModulePathFileRow, ModulePathFileIndex, and this note delete in the completing change. Until then parser-walk supplies rows with ParsedFromSource provenance only."
+
+type ModulePathFileRow {
+  module_path: NonEmptyStr
+  file_path: FilePath
+}
+
+type ModulePathFileIndexRefusal
+  = ModulePathFileDuplicateSame { module_path: NonEmptyStr, file_path: FilePath }
+  | ModulePathFileConflict {
+      module_path: NonEmptyStr,
+      first_file: FilePath,
+      second_file: FilePath,
+    }
+
+type ModulePathFileIndexBuild {
+  entries: Map<String, FilePath>
+  refusal: ModulePathFileIndexRefusal?
+}
+
+type ModulePathFileIndex
+  = ModulePathFileIndexReady { entries: Map<String, FilePath> }
+  | ModulePathFileIndexRefused { refusal: ModulePathFileIndexRefusal }
+
+fn module_path_file_index_fold_step(
+  build: ModulePathFileIndexBuild,
+  row: ModulePathFileRow
+) -> ModulePathFileIndexBuild {
+  match build.refusal {
+    Present { value: _ } => build
+    Absent =>
+      let key = row.module_path as String
+      match map_get(build.entries, key) {
+        Absent =>
+          ModulePathFileIndexBuild {
+            entries: map_insert(build.entries, key, row.file_path),
+            refusal: none,
+          }
+        Present { value: existing } =>
+          if (existing as String) == (row.file_path as String) {
+            ModulePathFileIndexBuild {
+              entries: build.entries,
+              refusal: Present {
+                value: ModulePathFileDuplicateSame {
+                  module_path: row.module_path,
+                  file_path: row.file_path,
+                },
+              },
+            }
+          } else {
+            ModulePathFileIndexBuild {
+              entries: build.entries,
+              refusal: Present {
+                value: ModulePathFileConflict {
+                  module_path: row.module_path,
+                  first_file: existing,
+                  second_file: row.file_path,
+                },
+              },
+            }
+          }
+      }
+  }
+}
+
+fn module_path_file_index_from_rows(rows: List<ModulePathFileRow>) -> ModulePathFileIndex {
+  let build = fold(
+    rows,
+    init: ModulePathFileIndexBuild {
+      entries: empty_map(),
+      refusal: none,
+    },
+    f: (acc, row) => module_path_file_index_fold_step(build: acc, row: row),
+  )
+  match build.refusal {
+    Present { value: refusal } =>
+      ModulePathFileIndexRefused { refusal: refusal }
+    Absent =>
+      ModulePathFileIndexReady { entries: build.entries }
+  }
+}
+
+data structural_binding_walk_refusal_note: String = "StructuralBindingWalkRefused wraps the exact index-build refusal payload (transport / module-path / exposure / authored-order / declaration-bucket). Coarse unit variants that discard nested refusal evidence are forbidden (operator blocker 6 / review on PR 7515). Single authority (std.occurrence_binding_candidates): the parser-walk local copy of this type/refusal/fn is deleted, and every consumer imports this one."
+
+type StructuralBindingIndexRefusal
+  = StructuralBindingTransportRefusal {
+      refusal: OccurrenceTransportRefusal,
+    }
+  | StructuralBindingModulePathRefusal {
+      refusal: OccurrenceModulePathIndexRefusal,
+    }
+  | StructuralBindingExposureRefusal {
+      refusal: DeclarationExposureIndexRefusal,
+    }
+  | StructuralBindingAuthoredOrderRefusal {
+      refusal: AuthoredOrderIndexRefusal,
+    }
+  | StructuralBindingDeclarationBucketRefusal {
+      occurrence: OccurrenceId,
+    }
+
+type StructuralBindingWalk
+  = StructuralBindingWalkReady { population: BoundReferencePopulation }
+  | StructuralBindingWalkRefused { refusal: StructuralBindingIndexRefusal }
+
+fn structural_binding_walk(
+  transport: OccurrenceTransport,
+  inputs: OccurrenceBindingCandidateInputs
+) -> StructuralBindingWalk {
+  match occurrence_candidate_index_build(transport: transport, inputs: inputs) {
+    OccurrenceCandidateIndexTransportRefused { refusal: refusal } =>
+      StructuralBindingWalkRefused {
+        refusal: StructuralBindingTransportRefusal { refusal: refusal },
+      }
+    OccurrenceCandidateIndexModulePathRefused { refusal: refusal } =>
+      StructuralBindingWalkRefused {
+        refusal: StructuralBindingModulePathRefusal { refusal: refusal },
+      }
+    OccurrenceCandidateIndexExposureRefused { refusal: refusal } =>
+      StructuralBindingWalkRefused {
+        refusal: StructuralBindingExposureRefusal { refusal: refusal },
+      }
+    OccurrenceCandidateIndexAuthoredOrderRefused { refusal: refusal } =>
+      StructuralBindingWalkRefused {
+        refusal: StructuralBindingAuthoredOrderRefusal { refusal: refusal },
+      }
+    OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: occurrence } =>
+      StructuralBindingWalkRefused {
+        refusal: StructuralBindingDeclarationBucketRefusal {
+          occurrence: occurrence,
+        },
+      }
+    OccurrenceCandidateIndexReady { index: index } =>
+      StructuralBindingWalkReady {
+        population: bound_reference_population_from_projections(
+          projections: resolve_all_references_via_structural_candidates(
+            transport: transport,
+            index: index,
+            references: transport.references,
+          ),
+        ),
+      }
+  }
+}
+
+data cross_file_binding_closure_assembly_note: String = "Collision-free cross-file assembly substrate (N3-B0): two independently parsed transports each mint raw OccurrenceId values from their own zero-based allocator, so a naive merge collides. occurrence_id_remap_state_with_fresh_map gives each transport its own old-ID => closure-ID remap keyed by the RAW id.value (never reused across transports); remap_occurrence_id/remap_containment_path/rekey_occurrence_transport/rekey_occurrence_binding_inputs rekey index, declarations, references, module paths, exposure rows, and authored-order rows TOGETHER against that one remap map, so every row for one transport lands on the SAME closure identity for the same raw id. assemble_cross_file_binding_closure rekeys the consumer with a fresh allocator and a fresh remap map, then folds providers each with a FRESH remap map but the ALLOCATOR CARRIED FORWARD from the prior step -- this is the mechanism that makes two transports that both minted raw id 0 land on distinct closure ids. module_path_file_index_from_rows validates the accumulated module=>file rows fail-closed (ModulePathFileDuplicateSame vs ModulePathFileConflict), never last-write-wins."
+
+type OccurrenceIdRemapState {
+  allocator: OccurrenceIdAllocator
+  remap: Map<Int, OccurrenceId>
+}
+
+fn occurrence_id_remap_state_with_fresh_map(
+  allocator: OccurrenceIdAllocator
+) -> OccurrenceIdRemapState {
+  OccurrenceIdRemapState {
+    allocator: allocator,
+    remap: empty_map(),
+  }
+}
+
+type OccurrenceIdRemapResult {
+  id: OccurrenceId
+  state: OccurrenceIdRemapState
+}
+
+fn remap_occurrence_id(
+  id: OccurrenceId,
+  state: OccurrenceIdRemapState
+) -> OccurrenceIdRemapResult {
+  match map_get(state.remap, id.value) {
+    Present { value: remapped } =>
+      OccurrenceIdRemapResult { id: remapped, state: state }
+    Absent =>
+      let allocated = alloc_occurrence_id(alloc: state.allocator)
+      OccurrenceIdRemapResult {
+        id: allocated.id,
+        state: OccurrenceIdRemapState {
+          allocator: allocated.alloc,
+          remap: map_insert(state.remap, id.value, allocated.id),
+        },
+      }
+  }
+}
+
+type OccurrenceContainmentRemapResult {
+  path: OccurrenceContainmentPath
+  state: OccurrenceIdRemapState
+}
+
+type OccurrenceAncestorRemapBuild {
+  ancestors: FreeMonoid<OccurrenceId>
+  state: OccurrenceIdRemapState
+}
+
+fn remap_containment_path(
+  path: OccurrenceContainmentPath,
+  state: OccurrenceIdRemapState
+) -> OccurrenceContainmentRemapResult {
+  let ancestors_build = fold(
+    path.ancestors,
+    init: OccurrenceAncestorRemapBuild {
+      ancestors: Empty,
+      state: state,
+    },
+    f: (acc, ancestor) => {
+      let remapped = remap_occurrence_id(id: ancestor, state: acc.state)
+      OccurrenceAncestorRemapBuild {
+        ancestors: Cons { head: remapped.id, tail: acc.ancestors },
+        state: remapped.state,
+      }
+    },
+  )
+  let terminal_remapped = remap_occurrence_id(
+    id: path.terminal,
+    state: ancestors_build.state,
+  )
+  OccurrenceContainmentRemapResult {
+    path: OccurrenceContainmentPath {
+      ancestors: reverse(ancestors_build.ancestors),
+      terminal: terminal_remapped.id,
+    },
+    state: terminal_remapped.state,
+  }
+}
+
+type OccurrenceTransportRekeyResult {
+  transport: OccurrenceTransport
+  state: OccurrenceIdRemapState
+}
+
+type OccurrenceIndexRekeyBuild {
+  entries_reversed: List<OccurrenceIndexEntry>
+  state: OccurrenceIdRemapState
+}
+
+type OccurrenceDeclarationRekeyBuild {
+  declarations_reversed: List<DeclarationOccurrence>
+  state: OccurrenceIdRemapState
+}
+
+type OccurrenceReferenceRekeyBuild {
+  references_reversed: List<ReferenceOccurrence>
+  state: OccurrenceIdRemapState
+}
+
+fn rekey_occurrence_transport(
+  transport: OccurrenceTransport,
+  state: OccurrenceIdRemapState
+) -> OccurrenceTransportRekeyResult {
+  let index_build = fold(
+    transport.index.entries,
+    init: OccurrenceIndexRekeyBuild { entries_reversed: [], state: state },
+    f: (acc, entry) => {
+      let remapped_occ = remap_occurrence_id(
+        id: entry.projection.occurrence,
+        state: acc.state,
+      )
+      let remapped_containment = remap_containment_path(
+        path: entry.containment,
+        state: remapped_occ.state,
+      )
+      OccurrenceIndexRekeyBuild {
+        entries_reversed: concat([
+          OccurrenceIndexEntry {
+            projection: OccurrenceProjection {
+              occurrence: remapped_occ.id,
+              authored_name: entry.projection.authored_name,
+              diagnostic_span: entry.projection.diagnostic_span,
+            },
+            containment: remapped_containment.path,
+          },
+        ], acc.entries_reversed),
+        state: remapped_containment.state,
+      }
+    },
+  )
+  let declarations_build = fold(
+    transport.declarations,
+    init: OccurrenceDeclarationRekeyBuild {
+      declarations_reversed: [],
+      state: index_build.state,
+    },
+    f: (acc, declaration) => {
+      let remapped_occ = remap_occurrence_id(
+        id: declaration.occurrence,
+        state: acc.state,
+      )
+      let remapped_containment = remap_containment_path(
+        path: declaration.containment,
+        state: remapped_occ.state,
+      )
+      OccurrenceDeclarationRekeyBuild {
+        declarations_reversed: concat([
+          DeclarationOccurrence {
+            occurrence: remapped_occ.id,
+            containment: remapped_containment.path,
+            category: declaration.category,
+            diagnostic_span: declaration.diagnostic_span,
+          },
+        ], acc.declarations_reversed),
+        state: remapped_containment.state,
+      }
+    },
+  )
+  let references_build = fold(
+    transport.references,
+    init: OccurrenceReferenceRekeyBuild {
+      references_reversed: [],
+      state: declarations_build.state,
+    },
+    f: (acc, reference) => {
+      let remapped_occ = remap_occurrence_id(
+        id: reference.occurrence,
+        state: acc.state,
+      )
+      let remapped_containment = remap_containment_path(
+        path: reference.containment,
+        state: remapped_occ.state,
+      )
+      OccurrenceReferenceRekeyBuild {
+        references_reversed: concat([
+          ReferenceOccurrence {
+            occurrence: remapped_occ.id,
+            containment: remapped_containment.path,
+            category: reference.category,
+            diagnostic_span: reference.diagnostic_span,
+          },
+        ], acc.references_reversed),
+        state: remapped_containment.state,
+      }
+    },
+  )
+  OccurrenceTransportRekeyResult {
+    transport: OccurrenceTransport {
+      index: OccurrenceIndex { entries: reverse(index_build.entries_reversed) },
+      declarations: reverse(declarations_build.declarations_reversed),
+      references: reverse(references_build.references_reversed),
+    },
+    state: references_build.state,
+  }
+}
+
+type OccurrenceBindingInputsRekeyResult {
+  inputs: OccurrenceBindingCandidateInputs
+  state: OccurrenceIdRemapState
+}
+
+type OccurrenceModulePathRekeyBuild {
+  rows_reversed: List<OccurrenceModulePathRow>
+  state: OccurrenceIdRemapState
+}
+
+type OccurrenceExposureRekeyBuild {
+  rows_reversed: List<DeclarationExposureRow>
+  state: OccurrenceIdRemapState
+}
+
+type OccurrenceOrderRekeyBuild {
+  rows_reversed: List<AuthoredOrderRow>
+  state: OccurrenceIdRemapState
+}
+
+fn rekey_occurrence_binding_inputs(
+  inputs: OccurrenceBindingCandidateInputs,
+  state: OccurrenceIdRemapState
+) -> OccurrenceBindingInputsRekeyResult {
+  let module_paths_build = fold(
+    inputs.module_paths,
+    init: OccurrenceModulePathRekeyBuild { rows_reversed: [], state: state },
+    f: (acc, row) => {
+      let remapped_occ = remap_occurrence_id(id: row.occurrence, state: acc.state)
+      OccurrenceModulePathRekeyBuild {
+        rows_reversed: concat([
+          OccurrenceModulePathRow {
+            occurrence: remapped_occ.id,
+            module_path: row.module_path,
+          },
+        ], acc.rows_reversed),
+        state: remapped_occ.state,
+      }
+    },
+  )
+  let exposure_rows_build = fold(
+    inputs.exposure_rows,
+    init: OccurrenceExposureRekeyBuild {
+      rows_reversed: [],
+      state: module_paths_build.state,
+    },
+    f: (acc, row) => {
+      let remapped_occ = remap_occurrence_id(id: row.occurrence, state: acc.state)
+      match row.exposure {
+        LexicalExposure { exposing_scope: exposing_scope } => {
+          let remapped_scope = remap_containment_path(
+            path: exposing_scope,
+            state: remapped_occ.state,
+          )
+          OccurrenceExposureRekeyBuild {
+            rows_reversed: concat([
+              DeclarationExposureRow {
+                occurrence: remapped_occ.id,
+                exposure: LexicalExposure { exposing_scope: remapped_scope.path },
+              },
+            ], acc.rows_reversed),
+            state: remapped_scope.state,
+          }
+        }
+        ModuleExposure { module: module } =>
+          OccurrenceExposureRekeyBuild {
+            rows_reversed: concat([
+              DeclarationExposureRow {
+                occurrence: remapped_occ.id,
+                exposure: ModuleExposure { module: module },
+              },
+            ], acc.rows_reversed),
+            state: remapped_occ.state,
+          }
+        RootExposure =>
+          OccurrenceExposureRekeyBuild {
+            rows_reversed: concat([
+              DeclarationExposureRow {
+                occurrence: remapped_occ.id,
+                exposure: RootExposure,
+              },
+            ], acc.rows_reversed),
+            state: remapped_occ.state,
+          }
+      }
+    },
+  )
+  let order_rows_build = fold(
+    inputs.authored_order_rows,
+    init: OccurrenceOrderRekeyBuild {
+      rows_reversed: [],
+      state: exposure_rows_build.state,
+    },
+    f: (acc, row) => {
+      let remapped_occ = remap_occurrence_id(id: row.occurrence, state: acc.state)
+      OccurrenceOrderRekeyBuild {
+        rows_reversed: concat([
+          AuthoredOrderRow {
+            occurrence: remapped_occ.id,
+            ordinal: row.ordinal,
+          },
+        ], acc.rows_reversed),
+        state: remapped_occ.state,
+      }
+    },
+  )
+  OccurrenceBindingInputsRekeyResult {
+    inputs: OccurrenceBindingCandidateInputs {
+      module_paths: reverse(module_paths_build.rows_reversed),
+      exposure_rows: reverse(exposure_rows_build.rows_reversed),
+      authored_order_rows: reverse(order_rows_build.rows_reversed),
+    },
+    state: order_rows_build.state,
+  }
+}
+
+fn merge_occurrence_transports(
+  left: OccurrenceTransport,
+  right: OccurrenceTransport
+) -> OccurrenceTransport {
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: concat(left.index.entries, right.index.entries),
+    },
+    declarations: concat(left.declarations, right.declarations),
+    references: concat(left.references, right.references),
+  }
+}
+
+fn occurrence_binding_inputs_append(
+  left: OccurrenceBindingCandidateInputs,
+  right: OccurrenceBindingCandidateInputs
+) -> OccurrenceBindingCandidateInputs {
+  OccurrenceBindingCandidateInputs {
+    module_paths: concat(left.module_paths, right.module_paths),
+    exposure_rows: concat(left.exposure_rows, right.exposure_rows),
+    authored_order_rows: concat(left.authored_order_rows, right.authored_order_rows),
+  }
+}
+
+fn cross_file_binding_closure_row(
+  transport: OccurrenceTransport,
+  inputs: OccurrenceBindingCandidateInputs,
+  module_path: NonEmptyStr,
+  file_path: FilePath
+) -> CrossFileBindingClosureRow {
+  CrossFileBindingClosureRow {
+    transport: transport,
+    inputs: inputs,
+    module_path: module_path,
+    file_path: file_path,
+  }
+}
+
+type CrossFileBindingClosureRow {
+  transport: OccurrenceTransport
+  inputs: OccurrenceBindingCandidateInputs
+  module_path: NonEmptyStr
+  file_path: FilePath
+}
+
+type AssembledCrossFileBindingClosureRefusal
+  = AssembledCrossFileBindingClosureModulePathFileRefused {
+      refusal: ModulePathFileIndexRefusal,
+    }
+
+type AssembledCrossFileBindingClosure
+  = AssembledCrossFileBindingClosureReady {
+      transport: OccurrenceTransport,
+      inputs: OccurrenceBindingCandidateInputs,
+      module_files: List<ModulePathFileRow>,
+      consumer_file: FilePath,
+    }
+  | AssembledCrossFileBindingClosureRefused {
+      refusal: AssembledCrossFileBindingClosureRefusal,
+    }
+
+type AssembledCrossFileFold {
+  entries_reversed: List<OccurrenceIndexEntry>
+  declarations_reversed: List<DeclarationOccurrence>
+  references_reversed: List<ReferenceOccurrence>
+  module_paths_reversed: List<OccurrenceModulePathRow>
+  exposure_rows_reversed: List<DeclarationExposureRow>
+  order_rows_reversed: List<AuthoredOrderRow>
+  module_files_reversed: List<ModulePathFileRow>
+  remap_state: OccurrenceIdRemapState
+}
+
+data assemble_cross_file_binding_closure_cost_note: String = "The provider fold accumulates each provider's rekeyed rows by PREPENDING onto seven `_reversed` populations (index entries, declarations, references, module paths, exposure rows, authored-order rows, module=>file rows) rather than by re-concatenating the whole left-hand assembled graph onto each small provider chunk -- that pairwise-append shape cost O(total assembled rows) per provider (O(n^2) over all providers) because concat's cost is proportional to its first argument's length. Prepending a provider's own (small, per-file-bounded) chunk onto the accumulator costs O(that provider's row count) regardless of how much has already been assembled, so the fold is linear in the total row count across all providers. Each `_reversed` population is reversed exactly once, at the end, never per provider."
+
+fn assemble_cross_file_binding_closure(
+  consumer: CrossFileBindingClosureRow,
+  providers: List<CrossFileBindingClosureRow>
+) -> AssembledCrossFileBindingClosure {
+  let consumer_state = occurrence_id_remap_state_with_fresh_map(
+    allocator: occurrence_id_allocator_initial(),
+  )
+  let consumer_transport_rekey = rekey_occurrence_transport(
+    transport: consumer.transport,
+    state: consumer_state,
+  )
+  let consumer_inputs_rekey = rekey_occurrence_binding_inputs(
+    inputs: consumer.inputs,
+    state: consumer_transport_rekey.state,
+  )
+  let seed = AssembledCrossFileFold {
+    entries_reversed: reverse(consumer_transport_rekey.transport.index.entries),
+    declarations_reversed: reverse(consumer_transport_rekey.transport.declarations),
+    references_reversed: reverse(consumer_transport_rekey.transport.references),
+    module_paths_reversed: reverse(consumer_inputs_rekey.inputs.module_paths),
+    exposure_rows_reversed: reverse(consumer_inputs_rekey.inputs.exposure_rows),
+    order_rows_reversed: reverse(consumer_inputs_rekey.inputs.authored_order_rows),
+    module_files_reversed: [
+      ModulePathFileRow {
+        module_path: consumer.module_path,
+        file_path: consumer.file_path,
+      },
+    ],
+    remap_state: consumer_inputs_rekey.state,
+  }
+  let assembled = fold(
+    providers,
+    init: seed,
+    f: (acc, provider) => {
+      let provider_state = occurrence_id_remap_state_with_fresh_map(
+        allocator: acc.remap_state.allocator,
+      )
+      let provider_transport_rekey = rekey_occurrence_transport(
+        transport: provider.transport,
+        state: provider_state,
+      )
+      let provider_inputs_rekey = rekey_occurrence_binding_inputs(
+        inputs: provider.inputs,
+        state: provider_transport_rekey.state,
+      )
+      AssembledCrossFileFold {
+        entries_reversed: concat(
+          reverse(provider_transport_rekey.transport.index.entries),
+          acc.entries_reversed,
+        ),
+        declarations_reversed: concat(
+          reverse(provider_transport_rekey.transport.declarations),
+          acc.declarations_reversed,
+        ),
+        references_reversed: concat(
+          reverse(provider_transport_rekey.transport.references),
+          acc.references_reversed,
+        ),
+        module_paths_reversed: concat(
+          reverse(provider_inputs_rekey.inputs.module_paths),
+          acc.module_paths_reversed,
+        ),
+        exposure_rows_reversed: concat(
+          reverse(provider_inputs_rekey.inputs.exposure_rows),
+          acc.exposure_rows_reversed,
+        ),
+        order_rows_reversed: concat(
+          reverse(provider_inputs_rekey.inputs.authored_order_rows),
+          acc.order_rows_reversed,
+        ),
+        module_files_reversed: concat([
+          ModulePathFileRow {
+            module_path: provider.module_path,
+            file_path: provider.file_path,
+          },
+        ], acc.module_files_reversed),
+        remap_state: provider_inputs_rekey.state,
+      }
+    },
+  )
+  let assembled_module_files = reverse(assembled.module_files_reversed)
+  match module_path_file_index_from_rows(rows: assembled_module_files) {
+    ModulePathFileIndexRefused { refusal: refusal } =>
+      AssembledCrossFileBindingClosureRefused {
+        refusal: AssembledCrossFileBindingClosureModulePathFileRefused {
+          refusal: refusal,
+        },
+      }
+    ModulePathFileIndexReady { entries: _ } =>
+      AssembledCrossFileBindingClosureReady {
+        transport: OccurrenceTransport {
+          index: OccurrenceIndex { entries: reverse(assembled.entries_reversed) },
+          declarations: reverse(assembled.declarations_reversed),
+          references: reverse(assembled.references_reversed),
+        },
+        inputs: OccurrenceBindingCandidateInputs {
+          module_paths: reverse(assembled.module_paths_reversed),
+          exposure_rows: reverse(assembled.exposure_rows_reversed),
+          authored_order_rows: reverse(assembled.order_rows_reversed),
+        },
+        module_files: assembled_module_files,
+        consumer_file: consumer.file_path,
       }
   }
 }

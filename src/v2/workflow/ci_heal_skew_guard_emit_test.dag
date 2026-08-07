@@ -120,6 +120,20 @@ test fn ci_heal_skew_guard_refusal_aborts_the_merge_holds() -> Bool {
   string_contains(s: ci_heal_skew_guard_script_text(), pattern: "git merge --abort")
 }
 
+test fn ci_heal_skew_guard_commit_rechecks_unmerged_before_committing_holds() -> Bool {
+  let s = ci_heal_skew_guard_script_text()
+  string_contains(s: s, pattern: "STILL_UNMERGED=\"$(git diff --name-only --diff-filter=U)\"")
+    && string_contains(s: s, pattern: "if [ -n \"$STILL_UNMERGED\" ]; then")
+    && string_contains(s: s, pattern: "heal refused: the index still carries unmerged stages after resolution; refusing to commit")
+    && string_contains(s: s, pattern: "git commit --no-verify --no-edit")
+}
+
+test fn ci_heal_skew_guard_red_when_unmerged_recheck_is_absent_holds() -> Bool {
+  let control = "CONFLICTS=\"$(git diff --name-only --diff-filter=U)\"; git checkout --ours -- \"$p\"; git add -- \"$p\"; git commit --no-verify --no-edit"
+  !string_contains(s: control, pattern: "STILL_UNMERGED=\"$(git diff --name-only --diff-filter=U)\"")
+    && !string_contains(s: control, pattern: "if [ -n \"$STILL_UNMERGED\" ]; then")
+}
+
 test fn ci_heal_skew_guard_scaffold_row_is_deleted_holds() -> Bool {
   !string_contains(
     s: ci_heal_skew_guard_script_text(),

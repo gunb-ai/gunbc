@@ -19,7 +19,7 @@ data floor_index_build_share_provider: CacheProvider = provider_row(
   scope: [floor_executor_process_frame()],
   coverage: CoversIdentities { identities: [floor_index_build_identity] },
   tier: ReferenceTier,
-  eviction: scope_exit_eviction()
+  retention: scope_released_retention(capacity: CapacityUnbounded)
 )
 
 data floor_index_build_share_providers: List<CacheProvider> = [floor_index_build_share_provider]
@@ -104,7 +104,7 @@ data floor_typecheck_store_share_provider: CacheProvider = provider_row(
   scope: [floor_executor_process_frame()],
   coverage: CoversIdentities { identities: [floor_typecheck_store_identity] },
   tier: ReferenceTier,
-  eviction: scope_exit_eviction()
+  retention: scope_released_retention(capacity: CapacityUnbounded)
 )
 
 data floor_typecheck_store_share_providers: List<CacheProvider> = [floor_typecheck_store_share_provider]

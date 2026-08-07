@@ -1,0 +1,203 @@
+module gunbc.fleet_lifecycle_observation
+
+import std.types { NonEmptyStr, String, List, Int, Bool }
+import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_eq_structural }
+import product.placement_supply { HostIdentity }
+import extdeps.network.ipv4 { Ipv4Address }
+import extdeps.uuid { Uuid }
+import extdeps.systems.nvidia_fleet_lifecycle { FleetLifecycleEnvelope }
+
+// SPARK-LANE-A (operator refinement, 2026-08-07). THE SUBJECT IS BOUND AT DISPATCH TIME.
+// A fleet-lifecycle collector runs because something decided to run it against a particular fleet
+// subject; that decision exists before any bytes come back and is the authority for what the
+// resulting evidence is evidence ABOUT. The upstream envelope's `host` field is the vendor's
+// self-report -- upstream EVIDENCE, independently checkable and worth checking, but it must never
+// mint or select the internal subject. Recovering the subject by casting that string into
+// HostIdentity (the shape this replaces) inverted the direction of authority: a unit that renamed
+// itself, or a vendor that changed its hostname convention, would silently re-point a fleet
+// subject, and no check downstream could tell.
+//
+// This module is fleet-lifecycle grain, not DGX-Spark grain: any collector dispatched against any
+// fleet subject produces this shape, and gunbc.dgx_spark_procurement is its first consumer rather
+// than its owner.
+
+// Which endpoint the collector actually reached. Grounded on the address rather than a name: the address is the fact a router reservation also carries, so a consumer can require that evidence arrived from the endpoint reserved for the subject instead of from whatever answered to a hostname.
+type EndpointBindingIdentity { address: Ipv4Address }
+
+// OUR OWN record of the execution, as distinct from what the tool printed about itself. The
+// envelope carries the tool's self-reported `rc`; this carries the exit status the dispatcher
+// observed. They are two independent facts about one execution and they can disagree -- a tool
+// that reports success in its payload while the process exits nonzero is exactly the case a single
+// self-reported field cannot express. `attempt` is the identity OF this execution, which is what
+// makes two runs against one subject distinguishable without appealing to list position.
+type ProcessReceipt {
+  attempt: Fnv1a64Structural
+  exit_status: Int
+}
+
+fn process_receipt(label: NonEmptyStr, exit_status: Int) -> ProcessReceipt {
+  ProcessReceipt {
+    attempt: content_hash_atom(value: label),
+    exit_status: exit_status,
+  }
+}
+
+fn process_receipt_attempt_eq(left: ProcessReceipt, right: ProcessReceipt) -> Bool {
+  content_hash_eq_structural(left: left.attempt, right: right.attempt)
+}
+
+// A STABLE identity of the physical device, for the cases where two observations must be proven to
+// come from two different machines. Deliberately NOT a digest of the evidence: a per-run hash
+// differs between two runs of the SAME box, so distinctness measured that way would pass exactly
+// when it must fail. The two kinds are the ones hardware actually carries; `product_uuid` reuses
+// the cited extdeps.uuid carrier rather than re-minting a UUID shape.
+// EXTRACTION IS NOT MODELED YET, and this is why the field is Optional on the observation below:
+// extdeps.systems.nvidia_fleet_lifecycle models the common envelope only, not the per-tool payload
+// device_identity.py returns, and no read transport is bound anywhere in the tree. Asserting which
+// field name NVIDIA emits without the citation in hand would be inventing an upstream schema, so
+// the carrier states the concept and the extraction stays a declared frontier. Absent is fail-
+// closed at every consumer: it refuses, it never passes as "probably distinct".
+// dissolve-on: a second consumer of a hardware serial (extdeps.bmc.types already carries a bare
+// `serial_number: NonEmptyStr?` on its own record) justifies lifting DeviceSerialNumber to a shared
+// hardware-identity carrier; one consumer does not, so it stays here rather than being generalized
+// on speculation.
+type DeviceSerialNumber = NonEmptyStr where brand("DeviceSerialNumber")
+
+type DeviceHardwareIdentity
+  = DeviceSerial { serial: DeviceSerialNumber }
+  | DeviceProductUuid { product_uuid: Uuid }
+
+// Three-valued by necessity, the same shape and the same reason as std.content_hash's
+// compare_content_hash: a serial and a product UUID are different naming schemes for one machine,
+// so their inequality proves nothing about whether the machines differ. Collapsing Incomparable
+// into Distinct would let "I cannot tell" answer a question whose wrong answer is two fleet
+// subjects pointing at one physical box.
+type HardwareIdentityDistinctness
+  = HardwareIdentitiesDistinct
+  | HardwareIdentitiesSame
+  | HardwareIdentitiesIncomparable
+
+fn compare_hardware_identity(
+  left: DeviceHardwareIdentity,
+  right: DeviceHardwareIdentity,
+) -> HardwareIdentityDistinctness {
+  match left {
+    DeviceSerial { serial: a } =>
+      match right {
+        DeviceSerial { serial: b } =>
+          if a == b { HardwareIdentitiesSame } else { HardwareIdentitiesDistinct }
+        DeviceProductUuid { product_uuid: _ } => HardwareIdentitiesIncomparable
+      }
+    DeviceProductUuid { product_uuid: a } =>
+      match right {
+        DeviceProductUuid { product_uuid: b } =>
+          if a == b { HardwareIdentitiesSame } else { HardwareIdentitiesDistinct }
+        DeviceSerial { serial: _ } => HardwareIdentitiesIncomparable
+      }
+  }
+}
+
+// `subject` is the dispatch-side authority. `envelope` is upstream evidence about that dispatch.
+// `raw_evidence_identity` is the digest of the bytes the tool actually returned, so a parsed
+// envelope can be tied back to the unparsed evidence it was derived from.
+type FleetLifecycleObservation {
+  subject: HostIdentity
+  endpoint_binding: EndpointBindingIdentity
+  execution_receipt: ProcessReceipt
+  envelope: FleetLifecycleEnvelope
+  raw_evidence_identity: ContentHash
+  device_hardware_identity: DeviceHardwareIdentity?
+}
+
+// Subject -> presentation, the only direction that is safe. HostIdentity is a branded NonEmptyStr, so projecting it outward is total and loses nothing; the inverse does not exist, which is the entire point above.
+fn host_identity_presentation(identity: HostIdentity) -> NonEmptyStr {
+  identity as NonEmptyStr
+}
+
+// The vendor envelope's `host` field is presentation evidence about a dispatch-side subject. It must
+// never establish identity, but a disagreement is worth recording beside admission rather than
+// silently resolving or blocking on it.
+type EnvelopeHostPresentationEvidence
+  = EnvelopeHostAgreesWithSubject
+  | EnvelopeHostDisagreesWithSubject {
+      subject: HostIdentity,
+      observed_host: NonEmptyStr,
+      expected_presentation: NonEmptyStr,
+    }
+
+fn envelope_host_presentation_evidence(
+  observation: FleetLifecycleObservation,
+) -> EnvelopeHostPresentationEvidence {
+  let expected = host_identity_presentation(identity: observation.subject)
+  if observation.envelope.host == expected {
+    EnvelopeHostAgreesWithSubject
+  } else {
+    EnvelopeHostDisagreesWithSubject {
+      subject: observation.subject,
+      observed_host: observation.envelope.host,
+      expected_presentation: expected,
+    }
+  }
+}
+
+// The tool's self-report agrees with our own record of the process. Two independent facts, checked against each other rather than one of them trusted alone.
+fn execution_evidence_agrees(observation: FleetLifecycleObservation) -> Bool {
+  observation.execution_receipt.exit_status == observation.envelope.rc
+}
+
+// SELECTION IS EXPLICITLY ZERO / ONE / MANY (operator review of #7952).
+// Folding to the first match and dropping the rest is the repeat first-wins failure class in this
+// repo, and a state-space conflation besides: "exactly one observation" and "several disagreeing
+// observations, of which I took whichever the list happened to order first" are different states
+// whose remedies differ. Two attempts against one subject genuinely can disagree -- a retry after a
+// transient failure, a stale run, a mis-dispatch -- so ambiguity is its own arm, it reaches the
+// consumer, and the consumer refuses on it.
+type ObservationSelection
+  = ObservationMissing { subject: HostIdentity }
+  | ObservationUnique { observation: FleetLifecycleObservation }
+  | ObservationAmbiguous { subject: HostIdentity, candidate_count: Int }
+
+// One selector body, two entry points. Subject-grain selection is what a convergence read uses; when it reports Ambiguous, naming an exact attempt is the disambiguation, and both route through this same decision so neither can acquire a quieter rule than the other.
+fn select_unique_observation(
+  subject: HostIdentity,
+  candidates: List<FleetLifecycleObservation>,
+) -> ObservationSelection {
+  if count(candidates) == 0 {
+    ObservationMissing { subject: subject }
+  } else {
+    if count(candidates) == 1 {
+      fold(
+        candidates,
+        init: ObservationMissing { subject: subject },
+        f: (_, o) => ObservationUnique { observation: o },
+      )
+    } else {
+      ObservationAmbiguous { subject: subject, candidate_count: count(candidates) }
+    }
+  }
+}
+
+// Keys on `observation.subject` -- the dispatch-side authority -- never on envelope.host.
+fn select_observation_for_subject(
+  subject: HostIdentity,
+  observations: List<FleetLifecycleObservation>,
+) -> ObservationSelection {
+  select_unique_observation(
+    subject: subject,
+    candidates: filter(observations, o => o.subject == subject),
+  )
+}
+
+fn select_observation_by_attempt(
+  subject: HostIdentity,
+  attempt: ProcessReceipt,
+  observations: List<FleetLifecycleObservation>,
+) -> ObservationSelection {
+  select_unique_observation(
+    subject: subject,
+    candidates: filter(
+      observations,
+      o => o.subject == subject && process_receipt_attempt_eq(left: o.execution_receipt, right: attempt),
+    ),
+  )
+}
