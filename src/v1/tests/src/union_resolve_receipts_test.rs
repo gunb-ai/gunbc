@@ -20,14 +20,18 @@
 //! import-closure fact index requires workspace-relative module paths.
 
 use std::fs;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Barrier, RwLock};
 
 use v1_compiler::cli_run::{
     build_multi_entry_index, build_multi_entry_index_with_shared_caches, make_eval_context,
-    new_shared_typecheck_caches, reset_typecheck_compute_count, resolve_entry_graph,
-    resolve_entry_with_index, run_claim, typecheck_compute_count,
-    typed_module_cache_content_keys_for_test, with_typecheck_compute_count_receipt, workspace_root,
-    ClaimOutcome, MultiEntryIndex,
+    new_shared_typecheck_caches, reset_shared_typecheck_store_counters_for_test,
+    reset_typecheck_compute_count, resolve_entry_graph, resolve_entry_with_index, run_claim,
+    shared_typecheck_store_counters_snapshot, typecheck_compute_count,
+    typed_module_cache_content_keys_for_test, typed_module_cache_len_for_test,
+    with_typecheck_compute_count_receipt, workspace_root, ClaimOutcome, MultiEntryIndex,
 };
+use v1_compiler::shared_typecheck_store::SharedTypecheckCaches;
 use v1_compiler::v1_interpreter::ExecutionMode;
 
 /// A 5-module corpus with a deliberately-shared prefix: entries `u.a` and `u.b` both import
@@ -128,6 +132,78 @@ fn union_outcome(index: &MultiEntryIndex, entry: &str, function: &str) -> String
     let (graph, si) = resolve_entry_with_index(index, entry).expect("union-view resolve");
     let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
     outcome_tag(&run_claim(&ctx, function))
+}
+
+struct ConcurrentSharedResolveReceipt {
+    maximum_concurrent_workers: usize,
+    typecheck_computes: usize,
+}
+
+/// Two workers share one `SharedTypecheckCaches`, barrier-synchronize, then resolve
+/// different entries concurrently. Returns overlap and post-join typecheck compute count.
+fn concurrent_shared_resolves(
+    roots: &[String],
+    shared: Arc<RwLock<SharedTypecheckCaches>>,
+    entry_a: String,
+    entry_b: String,
+) -> ConcurrentSharedResolveReceipt {
+    reset_shared_typecheck_store_counters_for_test();
+    reset_typecheck_compute_count();
+
+    let active = Arc::new(AtomicUsize::new(0));
+    let max_concurrent = Arc::new(AtomicUsize::new(0));
+    let barrier = Arc::new(Barrier::new(2));
+
+    let bump_active = |active: &AtomicUsize, max_concurrent: &AtomicUsize| {
+        let n = active.fetch_add(1, Ordering::SeqCst) + 1;
+        let mut cur = max_concurrent.load(Ordering::SeqCst);
+        while n > cur {
+            match max_concurrent.compare_exchange(cur, n, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(_) => break,
+                Err(v) => cur = v,
+            }
+        }
+    };
+
+    let worker = |entry: String| {
+        let roots = roots.to_vec();
+        let shared = shared.clone();
+        let barrier = barrier.clone();
+        let active = active.clone();
+        let max_concurrent = max_concurrent.clone();
+        std::thread::spawn(move || {
+            barrier.wait();
+            bump_active(&active, &max_concurrent);
+            let index = build_multi_entry_index_with_shared_caches(&roots, shared);
+            assert_eq!(
+                typed_module_cache_len_for_test(&index),
+                0,
+                "shared-store index must not retain a private typed_module_cache"
+            );
+            resolve_entry_with_index(&index, &entry).expect("concurrent shared resolve");
+            active.fetch_sub(1, Ordering::SeqCst);
+        })
+    };
+
+    let handle_a = worker(entry_a);
+    let handle_b = worker(entry_b);
+    handle_a.join().expect("worker a join");
+    handle_b.join().expect("worker b join");
+
+    let counters = shared_typecheck_store_counters_snapshot();
+    assert_eq!(
+        counters.private_store_fallback, 0,
+        "shared-store workers must not fall back to private typed caches (counters={counters:?})"
+    );
+    assert!(
+        counters.shared_store_encode > 0,
+        "concurrent shared resolve must encode into the byte store (counters={counters:?})"
+    );
+
+    ConcurrentSharedResolveReceipt {
+        maximum_concurrent_workers: max_concurrent.load(Ordering::SeqCst),
+        typecheck_computes: typecheck_compute_count(),
+    }
 }
 
 /// §6.2 — once-per-node counter: the union resolve typechecks each distinct module exactly
@@ -357,7 +433,6 @@ fn cross_worker_shared_typecheck_cache_process_once_per_node() {
     with_typecheck_compute_count_receipt(|| {
         let fx = Fixture::new("cross-worker-once");
         let shared = new_shared_typecheck_caches();
-        reset_typecheck_compute_count();
 
         let idx_a = build_multi_entry_index(&fx.roots);
         reset_typecheck_compute_count();
@@ -369,43 +444,29 @@ fn cross_worker_shared_typecheck_cache_process_once_per_node() {
         resolve_entry_with_index(&idx_b, &fx.entry_b).expect("private cold b");
         let cold_b = typecheck_compute_count();
 
-        reset_typecheck_compute_count();
-        let shared_a = shared.clone();
-        let roots_a = fx.roots.clone();
-        let entry_a = fx.entry_a.clone();
-        std::thread::spawn(move || {
-            let index = build_multi_entry_index_with_shared_caches(&roots_a, shared_a);
-            resolve_entry_with_index(&index, &entry_a).expect("shared thread a");
-        })
-        .join()
-        .expect("thread a join");
-        let after_a = typecheck_compute_count();
+        let receipt =
+            concurrent_shared_resolves(&fx.roots, shared, fx.entry_a.clone(), fx.entry_b.clone());
 
-        let shared_b = shared.clone();
-        let roots_b = fx.roots.clone();
-        let entry_b = fx.entry_b.clone();
-        std::thread::spawn(move || {
-            let index = build_multi_entry_index_with_shared_caches(&roots_b, shared_b);
-            resolve_entry_with_index(&index, &entry_b).expect("shared thread b");
-        })
-        .join()
-        .expect("thread b join");
-        let union_total = typecheck_compute_count();
-
-        assert_eq!(
-            after_a, cold_a,
-            "first entry against the shared store pays exactly its private closure"
-        );
-        let b_added = union_total - after_a;
         assert!(
-            b_added < cold_b,
-            "second worker's incremental cost ({b_added}) must be below its private closure \
-             ({cold_b}) — shared prefix is not re-paid across workers"
+            receipt.maximum_concurrent_workers >= 2,
+            "workers must overlap in time (max_concurrent={}) — serial A-then-B would pass every other check while measuring nothing",
+            receipt.maximum_concurrent_workers
         );
         assert!(
-            union_total < cold_a + cold_b,
-            "cross-worker union ({union_total}) must be < sum of private closures ({})",
+            receipt.typecheck_computes <= 5,
+            "cross-worker union ({}) must be <= process-union distinct modules (5)",
+            receipt.typecheck_computes
+        );
+        assert!(
+            receipt.typecheck_computes < cold_a + cold_b,
+            "shared prefix must not be double-paid across workers (got {} vs private sum {})",
+            receipt.typecheck_computes,
             cold_a + cold_b
+        );
+        let counters = shared_typecheck_store_counters_snapshot();
+        assert!(
+            counters.shared_store_hit > 0,
+            "overlapping prefix must hit the shared byte store (counters={counters:?})"
         );
     });
 }
@@ -428,25 +489,17 @@ fn cross_worker_shared_typecheck_cache_purity() {
     }
 
     let shared = new_shared_typecheck_caches();
-    let shared_a = shared.clone();
-    let roots_a = fx.roots.clone();
-    let entry_a = fx.entry_a.clone();
-    std::thread::spawn(move || {
-        let index = build_multi_entry_index_with_shared_caches(&roots_a, shared_a);
-        resolve_entry_with_index(&index, &entry_a).expect("warm a on worker 1");
-    })
-    .join()
-    .expect("worker 1 join");
-
-    let shared_b = shared.clone();
-    let roots_b = fx.roots.clone();
-    let entry_b = fx.entry_b.clone();
-    std::thread::spawn(move || {
-        let index = build_multi_entry_index_with_shared_caches(&roots_b, shared_b);
-        resolve_entry_with_index(&index, &entry_b).expect("warm b on worker 2");
-    })
-    .join()
-    .expect("worker 2 join");
+    let receipt = concurrent_shared_resolves(
+        &fx.roots,
+        shared.clone(),
+        fx.entry_a.clone(),
+        fx.entry_b.clone(),
+    );
+    assert!(
+        receipt.maximum_concurrent_workers >= 2,
+        "purity witness requires genuine worker overlap (max_concurrent={})",
+        receipt.maximum_concurrent_workers
+    );
 
     let index = build_multi_entry_index_with_shared_caches(&fx.roots, shared);
     for (entry, func, expected) in witnesses {

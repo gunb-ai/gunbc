@@ -8,6 +8,7 @@ import v2.std.operation_argv {
 import v2.std.orchestration { Continue, FailFast }
 import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
   ci_v1_compiler_tests_compile_gate_check_step,
+  ci_v1_compiler_tests_compile_gate_command,
   ci_v1_compiler_tests_compile_gate_extra_args,
   ci_v1_compiler_tests_compile_gate_intent,
   ci_v1_compiler_tests_compile_gate_refusal_prefix,
@@ -57,7 +58,7 @@ test fn ci_v1_compiler_tests_compile_gate_script_is_typed_plan_plus_marker() -> 
       concat(ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger, "\n")
     ),
     concat(
-      gate_materialized_render(plan: ci_v1_compiler_tests_compile_gate_intent()),
+      ci_v1_compiler_tests_compile_gate_command(),
       "\n"
     )
   )
