@@ -30,6 +30,20 @@ type ProbeRecord {
 
 data probe_record_literal: ProbeRecord = ProbeRecord { alpha: true, beta: false }
 
+// DECLARED GAP AND ITS NEXT-RUNG TRIGGER (§4b: no untracked stall). The
+// interpreter's map-literal key guard refuses any key type it cannot
+// positively establish as string-like, and that REFUSAL ARM has no witness
+// here. The class is can-climb-now-but-unbuilt, not cannot-climb: a refusing
+// data initializer stops module evaluation instead of returning a Bool, so it
+// cannot be an ordinary green arm — but the repo already has the mechanism for
+// exactly that shape, the expecting-red quarantine probe, whose rows live at
+// function grain on gunbc.explicit_witness_admission and run on the falsifier
+// cadence where greening is a counted un-quarantine event. The trigger is a
+// probe module declaring a non-string-keyed map literal, enrolled expecting
+// red; if the guard ever stops refusing, that row greens and is counted rather
+// than passing unnoticed. Not built in this lane, and named so it cannot stall
+// silently.
+
 // RED before this lane: `map_keys` refused a brace literal in a Map-typed
 // position with `map_keys expects a map, got Record`, because the interpreter
 // built a record where the emitter builds a HashMap.

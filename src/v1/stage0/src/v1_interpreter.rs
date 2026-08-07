@@ -4879,7 +4879,13 @@ fn extract_field(
 /// establish is a typed, located refusal rather than a guessed key — a
 /// deny-list of known-bad key types would let every unlisted one through, which
 /// is the partial refusal that later fails open (DESIGN §5, and codex review
-/// 50168 which caught exactly that shape here).
+/// 50168 which caught exactly that shape here). The refusal arm itself has no
+/// witness: a refusing data initializer stops module evaluation rather than
+/// returning a Bool, so it cannot be an ordinary green arm. That is
+/// can-climb-now-but-unbuilt, not cannot-climb — the trigger is an
+/// expecting-red quarantine probe declaring a non-string-keyed map literal,
+/// the mechanism named beside the witnesses in
+/// `src/v1/tests/claim/ordinary_frontend_observation_test.dag`.
 fn eval_map_lit(
     node: &Rc<Node>,
     map_type: &Rc<Node>,
