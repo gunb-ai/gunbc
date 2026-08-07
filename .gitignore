@@ -118,6 +118,9 @@ out.txt
 __pycache__/
 *.pyc
 
+# --- Local probe captures (credential state; never commit) ---
+docs/probes/claude_paired_entitlement_probe/
+
 # --- claim-corpus execution-map output ---
 .claim-map/
 src/v2/test/claim/manual/sg2_scratch_probe.dag
