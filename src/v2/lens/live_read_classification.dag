@@ -606,6 +606,56 @@ fn g2_facts_cover_reachable_carrier_homes(
   )
 }
 
+fn classification_is_local_read(c: LiveReadClassification) -> Bool {
+  match c {
+    LocalRead => true
+    RuntimeRead { carriers: _ } => false
+  }
+}
+
+fn live_read_selection_projection_for_subject(
+  subject: G2FactSubject,
+  classification: LiveReadClassification
+) -> LiveReadSelectionProjection {
+  match subject {
+    WholeTreeFactSubject { subject_id: _ } =>
+      LiveReadSelectionClassified { classification: classification }
+    PartialFactSubject { cause: cause } =>
+      if classification_is_local_read(c: classification) {
+        LiveReadSelectionRefused {
+          cause: concat(
+            "G2 reported LocalRead on a partial fact subject, which cannot establish absence: ",
+            cause
+          )
+        }
+      } else {
+        LiveReadSelectionClassified { classification: classification }
+      }
+  }
+}
+
+fn live_read_selection_projection_live(
+  entry_path: String,
+  entry_module: String,
+  fn_name: String,
+  subject: G2FactSubject,
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>,
+  decls: List<FnArrowDecl>
+) -> LiveReadSelectionProjection {
+  live_read_selection_projection_for_subject(
+    subject: subject,
+    classification: live_read_classification_g2_from_edges(
+      entry_path: entry_path,
+      entry_module: entry_module,
+      fn_name: fn_name,
+      edges: edges,
+      nodes: nodes,
+      decls: decls
+    )
+  )
+}
+
 fn live_read_selection_projection_from_facts(
   entry_module: String,
   facts: List<ModuleImportFact>,
