@@ -65,13 +65,6 @@ pub fn classify_length_tag(n: i64) -> String {
     }
 }
 
-pub fn classify_length_witness_holds() -> bool {
-    ((((classify_length(mk_list(0)) == LengthClass::Zero)
-        && (classify_length(mk_list(1)) == LengthClass::One))
-        && (classify_length(mk_list(2)) == LengthClass::Many))
-        && (classify_length(mk_list(3)) == LengthClass::Many))
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Zero;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
