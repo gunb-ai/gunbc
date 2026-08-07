@@ -1,0 +1,51 @@
+{
+  "subject": {
+    "after_commit": "dfc1cb46c0233e468c5a947494b154824476a013",
+    "base_ref": "origin/main",
+    "cohort": "docs/plans/receipts/fill-composition-overlay-direction/cohort.tsv (first 50)",
+    "width_policy": "Serial (width-1 inline drain)",
+    "variable": "emitter wrapper Arc-as-Rc vs main Rc"
+  },
+  "binary_sha256": {
+    "base": "4fad28b01365639e9ec7a6d6a3f3c51a7d84c58ad93bdc441ac1d8f34470df64",
+    "after": "b33add9efe2c4c68b26a051267b4e9d53a7ec71e928d0ca57adf26da6b9fde22"
+  },
+  "wall_ms": {
+    "base": [
+      218923.0,
+      215577.0
+    ],
+    "after": [
+      230639.0,
+      229232.0
+    ],
+    "base_median": 217250.0,
+    "after_median": 229935.5,
+    "delta_pct": 5.839125431530494
+  },
+  "peak_rss_kb": {
+    "base": [
+      "1792",
+      "1780"
+    ],
+    "after": [
+      "1796",
+      "1796"
+    ]
+  },
+  "typecheck_compute_count": {
+    "base": [
+      "772",
+      "772"
+    ],
+    "after": [
+      "772",
+      "772"
+    ],
+    "identical": true
+  },
+  "bar": {
+    "wall_regression_lte_5pct": false,
+    "typecheck_identical": true
+  }
+}

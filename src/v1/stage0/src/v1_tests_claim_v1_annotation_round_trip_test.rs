@@ -35,24 +35,6 @@ pub fn v1_annotation_round_trip_offline_recipe() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn v1_annotation_round_trip_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "D-C property 7: parse, render, parse — the graph survives. What agreement means is single-authored in std.source_annotation as keyed_annotation_rows_agree, so this file exercises the property rather than restating it.\n\nAGREEMENT IS KEYED ON THE AUTHORED NAME, NOT ON THE OCCURRENCE ID, and that is a correctness fix rather than a convenience. The two graphs come from two parses with two allocators, so equal id values would mean equal allocation ORDINALS — identical prose above `data alpha` in one source and above `data beta` in another of the same shape would compare equal. There is a discriminating arm below for exactly that, because a false-positive oracle is the failure this file would otherwise be unable to see in itself.\n\nEVERY GRAPH COMES THROUGH THE PRODUCTION ADMISSION SEAM. An earlier cut read the graph straight off the attachment result, which is the bypass the authority itself warns about: that accessor returns the attached rows even when others were refused, so a renderer that introduced an unattachable annotation could drop it and the surviving subset could still satisfy the comparison. admit_source_annotations is what both v1 frontend paths use, and requiring it on BOTH the original and the rendered source is what makes a dropped annotation fail the property instead of shrinking both sides of it.\n\nTHE PROPERTY IS OVER THE ANNOTATION CHANNEL, with the declaration text held fixed to isolate it. Property 4 already proved that annotations do not perturb the semantic projection or the emitted bytes; what this proves is that the prose itself makes the trip. See the scope note in the module authority for why no production authored-source renderer is wired: there is none in the tree to wire.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn single_parse_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ONE ARTIFACT AND ONE PARSE PER SOURCE VALUE, carried in a record so every consumer reads the same one, and THREADED rather than re-derived. Tokenizing the same source twice — once for the parser and once for the captures — is two runs of a fold that is supposed to produce one artifact, and it would mask a defect in which the two halves disagree.\n\nTwo cuts of this file got that wrong in two different ways, both caught by review, and the second is the reason the helpers below take a AnnotationParsedSource instead of a String. The FIRST cut had separate admitted_of and transport_of helpers, so the keyed projection paired a graph from one parse with an occurrence index from another — the keying resolves a subject id through the index, so ids were being resolved against a foreign table. The SECOND cut fixed the static call sites and still parsed the same source three times DYNAMICALLY: once for the `before` rows, once inside the renderer, once for the rendered result. One static call site is not one parse per execution, and a witness that states a one-pass invariant while re-deriving its own inputs is asserting something it does not do.\n\nThe rule the shape now enforces: a AnnotationParsedSource is produced once per distinct SOURCE TEXT and passed down. The round trip parses exactly twice by construction — the authored source, and the rendered source — because those are two different texts, which is the property.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AnnotationParsedSource {
     pub artifact: Rc<V1LexArtifact>,
@@ -84,15 +66,6 @@ pub fn annotation_parsed_of(source: String) -> Rc<AnnotationParsedSource> {
     }
 }
 
-pub fn parse_health_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THE SEMANTIC PARSE MUST SUCCEED FOR THE ANNOTATION RESULT TO MEAN ANYTHING, and an earlier cut of this file discarded the fact that would have said so — it kept only the occurrence transport and asked the annotation diagnostics whether the source was good. Annotations are captured on a lexical channel, so the parser can report an error and STILL have produced the occurrences the annotation attachment binds to.\n\nThe false green that permits, in principle: a source whose valid prefix carries prose and a declaration and whose trailing syntax is malformed. Admission succeeds on the prefix, the renderer reproduces only the annotated subject and drops the malformed tail, the rendered source parses clean, and the rows agree — so `parse, render, parse` reports that the graph survived a trip whose second leg silently repaired the input. There is a control arm for exactly this below.\n\nEvidence therefore requires the parse to be CLEAN — no error node AND a module produced — as well as admitted and nonempty. `error: Absent` alone is not the check: a result with neither error nor module is not a parse that succeeded.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn annotation_parse_is_clean(parsed: Rc<AnnotationParsedSource>) -> bool {
     match parsed.parse.clone().result.clone().error.clone() {
         Some(_) => false,
@@ -101,15 +74,6 @@ pub fn annotation_parse_is_clean(parsed: Rc<AnnotationParsedSource>) -> bool {
             None => false,
         },
     }
-}
-
-pub fn admitted_rows_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The keyed projection of a CLEANLY PARSED, ADMITTED graph, or Absent. Several distinct failures collapse to Absent here — the parse errored, the parse produced no module, the annotations were refused, or a subject would not resolve to a name — and every one of them must make a property arm fail rather than compare an empty list against an empty list, which is why the evidence predicate below requires nonemptiness explicitly.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn keyed_rows_of(
@@ -149,15 +113,6 @@ pub fn declaration_text() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rendered_source_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Rebuilds a source from the CANONICAL rendering of an admitted graph, through the production render_subject_annotation_blocks rather than assembling annotation lines locally, so a defect in it reaches these claims. The renderer selects the subject's rows from the graph itself — there is no carrier for a caller to fill with foreign text — so what this helper adds is only the module header and the declaration line beneath. A source whose graph is refused, empty, or unresolvable renders as a marker that parses to no annotations, so the failure surfaces as a disagreement rather than as an accidentally-matching empty pair.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn rendered_source_for_parsed(
     parsed: Rc<AnnotationParsedSource>,
     subject_name: String,
@@ -187,15 +142,6 @@ pub fn rendered_source_for(source: String, subject_name: String, decl: String) -
         subject_name.clone(),
         decl.clone(),
     )
-}
-
-pub fn authored_name_uniqueness_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THE AUTHORED-NAME KEY IS SOUND ONLY WHERE THE NAME IS UNIQUE, so a second match REFUSES rather than resolving. An earlier cut folded to the last match and returned it, which is the quiet half of the same false-agreement direction the keying exists to close: with two module items sharing a name, `the subject called alpha` is not a question with an answer, and answering it anyway picks one by traversal order and calls the other one's prose the same subject's.\n\nThe scan is scoped to ancestor depth below two — the module and its direct items, the same eligible population attachment rosters — because a nested parameter or field sharing a top-level name is not an annotation subject, and counting it would refuse a name that is in fact unique among the subjects that matter.\n\nZero matches and two matches are both Absent here because both mean `this name does not identify a subject`. They are distinguishable at the call site if a future arm needs to tell them apart; what must never happen is a confident wrong id.\n\nThis helper protects the TEST'S OWN rendering selection. The production projection does not depend on it: keyed_annotation_rows carries its own eligible-roster resolution and duplicate refusal, and the arm below proves that at the projection itself rather than here.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn subjects_named_in(
@@ -244,15 +190,6 @@ pub fn subject_named_in(parsed: Rc<AnnotationParsedSource>, name: String) -> Opt
 
 pub fn subject_named(source: String, name: String) -> Option<OccurrenceId> {
     subject_named_in(annotation_parsed_of(source.clone()), name.clone())
-}
-
-pub fn evidence_predicate_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ONE predicate for `this arm is evidence`, so no arm can pass on an empty comparison. It requires the authored source to parse CLEAN and be admitted with a NONEMPTY keyed projection, the rendered source to parse clean and be admitted too, and the two to agree. Agreement alone is satisfied by empty-against-empty, which is precisely how a round-trip witness greens while exercising nothing.\n\nIt takes an already-parsed `before` and the declaration to render beneath, rather than a source string and a fixed declaration. The parsed argument is what carries the one-parse rule (see single_parse_note); the declaration argument is what keeps the two-declaration arm honest, because rendering beta's prose above `data alpha` proves only that beta's TEXT was selected, never that it stayed attached to beta.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn round_trip_is_evidence_for(
@@ -338,15 +275,6 @@ pub fn bare_source() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn discriminating_case_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THE CASE THAT DECIDES THE RENDERER. Two blocks separated by a blank line must come back as two rows. The arm asserts the count on BOTH sides as well as agreement, because agreement between two identically-merged graphs would also pass and the count is what pins which shape survived.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn w_two_blocks_survive_the_round_trip() -> bool {
     (((admitted_row_count(two_blocks_source()) == 2)
         && (admitted_row_count(rendered_source_for(
@@ -355,15 +283,6 @@ pub fn w_two_blocks_survive_the_round_trip() -> bool {
             declaration_text(),
         )) == 2))
         && round_trip_is_evidence(two_blocks_source(), "alpha".to_string()))
-}
-
-pub fn blank_line_is_load_bearing_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The RED control: a renderer joining blocks with a single newline instead of a blank line. It is reconstructed here because the production renderer does not offer the wrong behaviour, and it asserts the round trip would have MERGED two authored blocks into one. Without it, the arm above passes for a renderer that is right and for one that is wrong in a way nothing else here observes.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn merged_rendering(source: String) -> String {
@@ -429,27 +348,9 @@ pub fn w_an_empty_annotation_line_survives() -> bool {
         && round_trip_is_evidence(empty_line_source(), "alpha".to_string()))
 }
 
-pub fn vacuity_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Vacuity is asserted to FAIL, not merely demonstrated. An earlier cut showed that empty agrees with empty and returned true, which proves the round trip is reflexive and says nothing about whether prose survives. The evidence predicate requires a nonempty admitted projection, so the bare fixture must NOT satisfy it — and it must still be admitted, so the failure is `no prose to carry` rather than `refused`.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn w_a_source_with_no_prose_is_not_evidence() -> bool {
     ((admitted_row_count(bare_source()) == 0)
         && !round_trip_is_evidence(bare_source(), "alpha".to_string()))
-}
-
-pub fn refusal_blocks_evidence_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THE ARM THAT PROVES THE ADMISSION ROUTING, by contrasting the seam against the bypass on one source. This fixture carries admissible leading prose AND an unattachable trailing annotation, so the two paths disagree about it: the raw attachment accessor returns the one attached row while the trailing prose is silently dropped, and the admission seam withholds the graph entirely.\n\nThat is the whole hazard in one fixture. Reading the raw graph, a round trip over this source compares one row against one row and PASSES while an annotation was lost. Reading the seam, there is nothing to compare and the property correctly refuses to call it evidence. The arm asserts both halves, because asserting only the second would leave `the bypass would have passed` an unverified claim in a note.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn mixed_refusal_source() -> String {
@@ -479,15 +380,6 @@ pub fn w_a_refused_source_is_not_evidence() -> bool {
         && !round_trip_is_evidence(mixed_refusal_source(), "alpha".to_string()))
 }
 
-pub fn cross_graph_identity_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THE FALSE-POSITIVE CONTROL for the keying decision. Both sources carry the same annotation text in the same position above a single declaration; only the declaration's NAME differs. Their subjects therefore receive the same allocation ordinal in their own parses, so an id-valued comparison would report agreement. Keyed on the authored name they must disagree — and the arm also asserts each side is nonempty, so disagreement cannot come from one side being absent.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn alpha_named_source() -> String {
     thread_local! {
         static CACHED: String = {
@@ -501,15 +393,6 @@ pub fn beta_named_source() -> String {
     thread_local! {
         static CACHED: String = {
             "module rt\n\n// shared text\ndata beta: String = \"a\"\n".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn ordinal_collision_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The MEASURED fact that makes the control below discriminating rather than merely true. If the two declarations happened to receive different occurrence ordinals, `they disagree` would hold for the wrong reason and would keep holding even under the unsound id-valued comparison the keying replaced. They do not: alpha in one source and beta in the other are allocated the SAME id value, so an id-valued oracle agreed on two annotations naming different declarations. This arm pins that, so the pair reads as `same ordinal, different key, must disagree`.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -539,15 +422,6 @@ pub fn w_same_text_same_position_different_declaration_disagrees() -> bool {
             }
         },
     }
-}
-
-pub fn two_declaration_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The control the single-declaration fixtures could not provide: two declarations each carrying their own prose. It asserts the blocks are selected PER SUBJECT — alpha's rendering contains alpha's text and not beta's — which is what the typed one-subject carrier exists to guarantee and what a bare row list silently got wrong.\n\nBETA IS RENDERED ABOVE `data beta`, NOT ABOVE THE SHARED `data alpha`, and the difference is the whole claim. An earlier cut reused declaration_text for both subjects, so beta's expected rendering was literally `// about beta` above `data alpha` — a string that shows beta's TEXT was selected while quietly REATTACHING it to a declaration named alpha. Text selection is the weaker claim; the arm's name promises the stronger one.\n\nSo each rendering is reparsed and the prose is read back THROUGH ITS SUBJECT: beta's rendering must bind `// about beta` to the subject named beta. The old form is kept as the RED control, executed rather than described — rendering beta's blocks above `data alpha` and asserting that the reparse binds beta's prose to ALPHA. That is the misattachment the arm exists to exclude, so it is asserted to happen in the wrong form rather than merely avoided in the right one.\n\nWHY THIS ARM DOES NOT USE round_trip_is_evidence: the fixture carries two subjects and any single rendering reproduces one, so `before` has two rows and `after` has one and the round trip correctly disagrees. Per-subject reattachment is the claim here; whole-source survival is what the single-declaration arms above prove.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn two_decl_source() -> String {
@@ -607,15 +481,6 @@ pub fn w_each_declaration_keeps_its_own_prose() -> bool {
     }
 }
 
-pub fn parse_error_control_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THE ARM THAT PROVES THE PARSE GATE, and it is tested AT ITS OWN SEAM rather than end to end, because the end-to-end interleaving is not reachable with any fixture tried.\n\nMEASURED FIRST, then built accordingly. Five malformed shapes were probed — trailing garbage token, a declaration truncated after `=`, an unclosed `fn` parameter list, an unclosed `type` body, a stray `)` — and in every one the parse errors AND the annotation admission refuses, with an EMPTY graph. So the hypothesised false green (parse errors, annotations admit cleanly, renderer drops the malformed tail, rows agree) has no fixture in this tree today: admission refuses first, because a failed parse yields no module items for the capture to attach to. Reporting the end-to-end arm as proof of the parse gate would therefore have been the inert-check tier — an arm that greens whether or not the gate exists.\n\nSo the gate is discriminated where it actually lives, by a forged value that differs from a working one in EXACTLY the parse health and nothing else. Getting that minimal is the whole difficulty, and the first attempt failed its own mutation test: swapping in the malformed source's entire ParseWithTableResult also swapped its OCCURRENCE TRANSPORT, so the good graph's subject ids no longer resolved and the projection refused for the wrong reason — the arm greened with the gate deleted. What is forged now is only `result`, the error-and-module pair; the transport, intern table, allocator and admitted graph all stay the clean source's. Delete the gate and the arm reds, because the only remaining reason to refuse is the one under test.\n\nThat is a lesson about controls, not about this gate: a synthetic input that perturbs more than the property under test proves the wrong thing while looking like proof.\n\nWHY THE GATE STAYS despite having no reachable end-to-end case: `annotations admit only when the parse succeeded` is a coupling in today's attachment implementation, not a property this witness is entitled to assume. The gate is the property stating its own precondition instead of inheriting it from a neighbour.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn malformed_tail_source() -> String {
     thread_local! {
         static CACHED: String = {
@@ -662,15 +527,6 @@ pub fn w_a_parse_error_is_not_evidence() -> bool {
     }
 }
 
-pub fn duplicate_name_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The control for the authored-name uniqueness refusal. Two module items share the name `alpha`, so `the subject called alpha` has no answer — and the resolver must say so rather than folding to whichever match traversal reaches last. The arm pins that the SAME source resolves a uniquely named sibling normally, so the Absent is the duplicate refusing and not the lookup being broken.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn duplicate_name_source() -> String {
     thread_local! {
         static CACHED: String = {
@@ -689,15 +545,6 @@ pub fn w_a_duplicated_authored_name_refuses_as_subject() -> bool {
         && (subject_id_value(duplicate_name_source(), "alpha".to_string()) == (0 - 1)))
         && (subject_match_count(duplicate_name_source(), "gamma".to_string()) == 1))
         && (subject_id_value(duplicate_name_source(), "gamma".to_string()) > (0 - 1)))
-}
-
-pub fn duplicate_key_projection_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THE DISCRIMINATOR AT THE PROJECTION ITSELF, because testing the lookup helper above and calling the projection covered would be proving a neighbour. The fixture is the exact false positive the keyed projection could produce before it refused duplicates: one module, two declarations sharing the authored name `alpha`, the SAME annotation text attached to each — so both rows would project onto the identical (`alpha`, text) key, and two graphs whose prose is attached to DIFFERENT declarations would compare as agreeing. The arm demands the projection REFUSE the ambiguous graph outright; anything it returned would make that false agreement constructible one call later.\n\nThe positive control is the same shape with unique names, proving the Absent is the duplicate refusing and not the projection being broken. round_trip_is_evidence must also be false on the ambiguous source, since a projection that refuses cannot be evidence of anything.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn duplicate_same_text_source() -> String {
@@ -725,15 +572,6 @@ pub fn w_duplicate_names_refuse_the_keyed_projection() -> bool {
                 Some(rows) => ((rows.clone().len() as i64) == 2),
             })
     }
-}
-
-pub fn mixed_subject_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "WHAT THIS ARM CAN AND CANNOT SHOW, restated after the carrier it used to exercise was deleted for rung inflation. The earlier SubjectAnnotationBlocks record claimed mixed-subject content was unwritable while its public fields let a caller pair a subject with texts from anywhere — the association stayed writable and had merely lost the provenance that would expose it. Now there is no carrier at all: render_subject_annotation_blocks selects the subject's rows from the admitted graph itself, so no value exists through which foreign text can claim a subject, and unrepresentability of that VALUE is exactly what no executed arm can witness. What executes here is the selection semantics the fusion must get right: over a two-declaration graph, alpha's rendering is exactly alpha's prose and contains none of beta's; and a subject carrying no prose yields Absent rather than an empty rendering.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn w_mixed_subject_rows_cannot_reach_the_renderer() -> bool {
