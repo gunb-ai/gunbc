@@ -7,10 +7,14 @@ import gunbc.runner_capacity_plan {
   RunnerCapacityPlan,
   PlanReady,
   PlanRefused,
-  parse_positive_width,
+  parse_width_input,
+  WidthParsed,
+  WidthInvalidSyntax,
+  WidthNegative,
+  WidthExceedsModeledCeiling,
   runner_capacity_plan,
 }
-import gunbc.fleet_runner_connectivity { organization_runner_roster_evidence }
+import gunbc.fleet_runner_connectivity { organization_runner_roster_for_apply_plan }
 
 data apply_dispatcher_note: String = "TOP-LEVEL gunbc.apply dispatcher. gunbc.live_deploy.apply remains the srv1 dashboard child workflow only — it is not converted into a multipurpose module. RunnerCapacity is a separate child whose plan half lives here and whose realizer is PR B (vivid-otter-718). mode=apply refuses as RunnerCapacityRealizerUnavailable until the realizer lands."
 
@@ -70,19 +74,32 @@ fn apply_runner_capacity_plan(
     ModeParseRefused { reason: r } => exit_failure(reason: r)
     ModeParsed { mode: Apply } => runner_capacity_realizer_unavailable_exit()
     ModeParsed { mode: Plan } =>
-      match parse_positive_width(value: srv3_width) {
-        Absent => exit_failure(reason: "srv3_width must be a positive integer")
-        Present { value: w3 } =>
-          match parse_positive_width(value: srv4_width) {
-            Absent => exit_failure(reason: "srv4_width must be a positive integer")
-            Present { value: w4 } =>
-              runner_capacity_plan_exit(
-                plan: runner_capacity_plan(
-                  srv3_width: w3,
-                  srv4_width: w4,
-                  roster: organization_runner_roster_evidence()
-                )
-              )
+      match parse_width_input(value: srv3_width) {
+        WidthInvalidSyntax => exit_failure(reason: "srv3_width must be a non-negative integer")
+        WidthNegative { value: _ } => exit_failure(reason: "srv3_width must be non-negative")
+        WidthExceedsModeledCeiling { value: _ } =>
+          exit_failure(reason: "srv3_width exceeds modeled admission ceiling (7)")
+        WidthParsed { value: w3 } =>
+          match parse_width_input(value: srv4_width) {
+            WidthInvalidSyntax => exit_failure(reason: "srv4_width must be a non-negative integer")
+            WidthNegative { value: _ } => exit_failure(reason: "srv4_width must be non-negative")
+            WidthExceedsModeledCeiling { value: _ } =>
+              exit_failure(reason: "srv4_width exceeds modeled admission ceiling (7)")
+            WidthParsed { value: w4 } =>
+              match organization_runner_roster_for_apply_plan() {
+                Absent =>
+                  exit_failure(
+                    reason: "roster read absent — refusing runner capacity plan until live org roster binds"
+                  )
+                Present { value: roster } =>
+                  runner_capacity_plan_exit(
+                    plan: runner_capacity_plan(
+                      srv3_width: w3,
+                      srv4_width: w4,
+                      roster: roster
+                    )
+                  )
+              }
           }
       }
   }

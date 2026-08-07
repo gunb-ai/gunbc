@@ -15,7 +15,7 @@ on:
       srv4_width:
         description: Requested runner slot width on srv4
         required: true
-        default: 7
+        default: 5
         type: string
       mode:
         description: plan on hosted runner; apply actuates on per-host self-hosted jobs (refused in PR A)

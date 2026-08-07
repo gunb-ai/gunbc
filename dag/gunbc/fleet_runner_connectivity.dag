@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.realization_reconcile { ShowEffectiveRead, ReadAbsent }
+import std.realization_reconcile { ShowEffectiveRead, ReadAbsent, ReadObserved }
 import product.placement_supply { HostIdentity }
 import extdeps.github.ci_runner {
   GitHubSelfHostedRunnerRegistration,
@@ -133,6 +133,13 @@ data organization_runner_roster_producer_scaffold: Disposition = Scaffold {
 
 data organization_runner_roster_show_effective_read: ShowEffectiveRead<OrganizationRunnerRosterEvidence> = ReadAbsent {
   reason: "no live org-level GET /orgs/gunb-ai/actions/runners has executed through the gunbai-ci GitHub App yet; the incident fixture in organization_runner_roster_evidence is the pinned acceptance corpus until this read binds ReadObserved"
+}
+
+fn organization_runner_roster_for_apply_plan() -> OrganizationRunnerRosterEvidence? {
+  match organization_runner_roster_show_effective_read {
+    ReadAbsent { reason: _ } => none
+    ReadObserved { value: v } => Present { value: v }
+  }
 }
 
 fn registration_matches_name(

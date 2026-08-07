@@ -18,6 +18,7 @@ import gunbc.fleet_runner_connectivity {
   SlotConnectivityOrphaned,
   SlotConnectivityUnknown,
 }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
 
 data runner_capacity_plan_authority_note: String = "SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width, admission, and observed_width are SEPARATE facts — count equality is a POSTCONDITION, never a refusal. Five observed against seven requested yields EXACTLY two RunnerSlotAdd actions (06 and 07), not a circular controller that waits for a receipt before planning actuation. RunnerSlotAdd covers every materialized-not-active slot whether or not a stale .runner file remains on disk (see gunbc.fleet_runner_connectivity runner_slot_materialized_not_active_note). Connectivity repair is SEPARATE: RunnerIncarnationReplace applies only to ACTIVE units that are detached or orphaned on the org roster — never to disabled+inactive slots being added. Roster unavailable refuses destructive actions."
 
@@ -45,15 +46,23 @@ type RunnerCapacityPlan
   = PlanReady { hosts: List<RunnerCapacityHostPlan> }
   | PlanRefused { reason: String }
 
-fn parse_positive_width(value: String) -> Int? {
-  if value == "7" {
-    Present { value: 7 }
-  } else if value == "5" {
-    Present { value: 5 }
-  } else if value == "0" {
-    Present { value: 0 }
-  } else {
-    none
+type WidthInputParse
+  = WidthParsed { value: Int }
+  | WidthInvalidSyntax
+  | WidthNegative { value: Int }
+  | WidthExceedsModeledCeiling { value: Int }
+
+fn parse_width_input(value: String) -> WidthInputParse {
+  match parse_int(s: value) {
+    Absent => WidthInvalidSyntax
+    Present { value: n } =>
+      if n < 0 {
+        WidthNegative { value: n }
+      } else if n > 7 {
+        WidthExceedsModeledCeiling { value: n }
+      } else {
+        WidthParsed { value: n }
+      }
   }
 }
 
@@ -63,7 +72,6 @@ fn runner_slot_identity(host: HostIdentity, slot_index: Nat) -> RunnerSlotIdenti
 
 data five_slot_indices: List<Nat> = [1, 2, 3, 4, 5]
 data seven_slot_indices: List<Nat> = [1, 2, 3, 4, 5, 6, 7]
-data two_addition_slot_indices: List<Nat> = [6, 7]
 data empty_nat_list: List<Nat> = []
 
 data one_slot_index: List<Nat> = [1]
@@ -150,10 +158,12 @@ fn connectivity_actions_for_observed(
 fn addition_slot_indices(observed_width: Int, requested_width: Int) -> List<Nat> {
   if requested_width <= observed_width {
     empty_nat_list
-  } else if observed_width == 5 && requested_width == 7 {
-    two_addition_slot_indices
   } else {
-    empty_nat_list
+    fold(
+      desired_slot_indices(width: requested_width),
+      init: empty_nat_list,
+      f: (acc, i) => if i > observed_width { concat(acc, [i]) } else { acc }
+    )
   }
 }
 
@@ -171,10 +181,18 @@ fn addition_actions(
 fn admit_runner_capacity_width(host: HostIdentity, requested: Int) -> WidthAdmission {
   if requested <= 0 {
     WidthRefused { requested: requested, cause: "requested width must be positive" }
-  } else if requested > 7 && ((host as String) == (operator_host_srv3 as String) || (host as String) == (operator_host_srv4 as String)) {
-    WidthRefused { requested: requested, cause: "requested width exceeds modeled admission ceiling for managed hosts" }
   } else {
-    WidthAdmitted { width: requested }
+    let committed = gunbc_runner_slots_per_host(host: host)
+    if committed <= 0 {
+      WidthRefused { requested: requested, cause: "host has no committed runner width" }
+    } else if requested > committed {
+      WidthRefused {
+        requested: requested,
+        cause: "requested width exceeds gunbc_runner_slots_per_host committed width"
+      }
+    } else {
+      WidthAdmitted { width: requested }
+    }
   }
 }
 

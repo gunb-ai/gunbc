@@ -5,8 +5,13 @@ import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_capacity_plan {
   runner_capacity_plan,
   runner_capacity_add_count,
+  parse_width_input,
+  WidthParsed,
+  WidthInvalidSyntax,
   PlanReady,
   PlanRefused,
+  WidthRefused,
+  WidthAdmitted,
 }
 import gunbc.fleet_runner_connectivity {
   organization_runner_roster_evidence,
@@ -16,7 +21,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn seven_requested_with_five_observed_plans_exactly_two_additions_per_host() -> Bool {
+test fn seven_requested_with_five_observed_plans_exactly_two_additions_on_srv3_only() -> Bool {
   let plan = runner_capacity_plan(
     srv3_width: 7,
     srv4_width: 7,
@@ -25,8 +30,51 @@ test fn seven_requested_with_five_observed_plans_exactly_two_additions_per_host(
   match plan {
     PlanReady { hosts: _ } =>
       runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 2
-        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 2
+        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 0
     PlanRefused { reason: _ } => false
+  }
+}
+
+test fn srv4_requested_above_committed_width_refuses_admission() -> Bool {
+  let plan = runner_capacity_plan(
+    srv3_width: 7,
+    srv4_width: 7,
+    roster: organization_runner_roster_evidence()
+  )
+  match plan {
+    PlanReady { hosts: hs } =>
+      fold(
+        hs,
+        init: false,
+        f: (found, h) =>
+          found
+            || (
+              (h.host as String) == (operator_host_srv4 as String)
+                && match h.admission {
+                  WidthRefused { requested: _, cause: _ } => true
+                  WidthAdmitted { width: _ } => false
+                }
+            )
+      )
+    PlanRefused { reason: _ } => false
+  }
+}
+
+test fn parse_width_input_accepts_mid_migration_six() -> Bool {
+  match parse_width_input(value: "6") {
+    WidthParsed { value: 6 } => true
+    WidthInvalidSyntax => false
+    WidthNegative { value: _ } => false
+    WidthExceedsModeledCeiling { value: _ } => false
+  }
+}
+
+test fn parse_width_input_rejects_non_integer() -> Bool {
+  match parse_width_input(value: "6slots") {
+    WidthInvalidSyntax => true
+    WidthParsed { value: _ } => false
+    WidthNegative { value: _ } => false
+    WidthExceedsModeledCeiling { value: _ } => false
   }
 }
 

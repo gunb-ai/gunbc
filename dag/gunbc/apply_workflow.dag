@@ -49,7 +49,7 @@ data apply_workflow_dispatch_inputs: List<DispatchInput> = [
     name: "srv4_width",
     description: Present { value: "Requested runner slot width on srv4" },
     required: true,
-    default: Present { value: "7" },
+    default: Present { value: "5" },
     type: InputString,
   },
   DispatchInput {
