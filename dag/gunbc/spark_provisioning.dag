@@ -36,6 +36,10 @@ import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 import gunbc.spark_bootstrap_credential {
   SparkFactoryBootstrap,
   SparkProvisioningCredentials,
+  BootstrapCredentialStanding,
+  BootstrapCredentialsMaterialized,
+  BootstrapCredentialsNotMaterialized,
+  spark_credentials_standing,
 }
 
 // SPARK-PROVISION-0. ONE provisioning INTERFACE for the DGX Spark units, with TWO
@@ -126,12 +130,6 @@ type BootstrapControllerStanding
   | BootstrapControllerAbsent
   | BootstrapControllerUnknown
 
-// Whether the unit's supplied bootstrap credentials have been materialized for use.
-type BootstrapCredentialStanding
-  = BootstrapCredentialsMaterialized
-  | BootstrapCredentialsNotMaterialized
-  | BootstrapCredentialStandingUnknown
-
 // The PXE side of the same question, owned by SPARK-PXE-0. Declared so strategy selection
 // can consume it; Unknown is the only value this lane may assert today.
 type PxePrerequisiteStanding
@@ -139,9 +137,12 @@ type PxePrerequisiteStanding
   | PxePrerequisitesAbsent
   | PxePrerequisitesUnknown
 
+// Credential materialization is deliberately NOT a field here: it is derived from the
+// intent's own credential standings (spark_credentials_standing), so there is one authority
+// for "are the secrets usable" rather than an environment row that can disagree with the
+// carrier it describes.
 type SparkProvisioningEnvironment {
   controller: BootstrapControllerStanding
-  credentials: BootstrapCredentialStanding
   pxe: PxePrerequisiteStanding
 }
 
@@ -152,7 +153,6 @@ type SparkProvisioningEnvironment {
 // honest one — a concrete human-step count for the factory lane today would be theater.
 data spark_current_environment: SparkProvisioningEnvironment = SparkProvisioningEnvironment {
   controller: BootstrapControllerUnknown,
-  credentials: BootstrapCredentialStandingUnknown,
   pxe: PxePrerequisitesUnknown,
 }
 
@@ -361,17 +361,16 @@ type HumanBurdenDerivation
   = BurdenDerived { burden: ProvisioningHumanBurden }
   | BurdenUndecidable { cause: NonEmptyStr }
 
-fn factory_oobe_human_burden(env: SparkProvisioningEnvironment) -> HumanBurdenDerivation {
+fn factory_oobe_human_burden(
+  env: SparkProvisioningEnvironment,
+  credentials: SparkProvisioningCredentials
+) -> HumanBurdenDerivation {
   match env.controller {
     BootstrapControllerUnknown =>
       BurdenUndecidable {
         cause: "bootstrap controller standing unknown: whether a machine can drive the OOBE association has not been established, and guessing either way prices a burden that may not exist."
       }
-    BootstrapControllerReady => match env.credentials {
-      BootstrapCredentialStandingUnknown =>
-        BurdenUndecidable {
-          cause: "bootstrap credential standing unknown: the supplied credentials may or may not be materialized for the controller."
-        }
+    BootstrapControllerReady => match spark_credentials_standing(c: credentials) {
       BootstrapCredentialsMaterialized =>
         BurdenDerived { burden: ProvisioningHumanBurden { interventions: [] } }
       BootstrapCredentialsNotMaterialized =>
@@ -462,10 +461,12 @@ fn spark_pxe_recovery_intervention() -> HumanIntervention {
 
 fn spark_strategy_human_burden(
   strategy: SparkProvisioningStrategy,
-  env: SparkProvisioningEnvironment
+  env: SparkProvisioningEnvironment,
+  credentials: SparkProvisioningCredentials
 ) -> HumanBurdenDerivation {
   match strategy {
-    FactoryOobe { bootstrap: _ } => factory_oobe_human_burden(env: env)
+    FactoryOobe { bootstrap: _ } =>
+      factory_oobe_human_burden(env: env, credentials: credentials)
     PxeAutoinstall { environment: _, image: _, install_spec: _ } =>
       pxe_autoinstall_human_burden(env: env)
   }
@@ -488,12 +489,13 @@ type SparkStrategySelection
 fn select_spark_strategy(
   a: SparkProvisioningStrategy,
   b: SparkProvisioningStrategy,
-  env: SparkProvisioningEnvironment
+  env: SparkProvisioningEnvironment,
+  credentials: SparkProvisioningCredentials
 ) -> SparkStrategySelection {
-  match spark_strategy_human_burden(strategy: a, env: env) {
+  match spark_strategy_human_burden(strategy: a, env: env, credentials: credentials) {
     BurdenUndecidable { cause: cause_a } => StrategySelectionUndecidable { cause: cause_a }
     BurdenDerived { burden: burden_a } =>
-      match spark_strategy_human_burden(strategy: b, env: env) {
+      match spark_strategy_human_burden(strategy: b, env: env, credentials: credentials) {
         BurdenUndecidable { cause: cause_b } => StrategySelectionUndecidable { cause: cause_b }
         BurdenDerived { burden: burden_b } =>
           match compare_routine_human_burden(a: burden_a, b: burden_b) {
