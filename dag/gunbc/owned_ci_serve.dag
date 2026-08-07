@@ -75,7 +75,7 @@ fn serve_ci_run_detail_response(params: List<PathParamBinding>) -> ServeHttpResp
     owned_ci_serve_text_response(
       status: 400,
       content_type: text_plain_utf8,
-      body: "owned-ci run_id refused: must be a safe path segment matching produced grammar {unix}-{8hex} (fail-closed)\n",
+      body: "owned-ci run_id refused: must be a safe path segment matching produced grammar <unix>-<8hex> (fail-closed)\n",
     )
   } else {
     match owned_ci_classify_filesystem_text(path: owned_ci_run_record_rel_path(run_id: run_id)) {

@@ -80,7 +80,7 @@ fn owned_ci_classify_filesystem_text(path: String) -> OwnedCiFilesystemText {
   }
 }
 
-data owned_ci_run_id_note: String = "Run ids are path segments under .gunbc/owned-ci/runs/<run_id>/run.json on both the writer (ci_control_plane new_run_id) and the served /ci/run/{run_id} reader. path_segment_is_safe alone is insufficient: the brand must also match the produced grammar {unix_seconds}-{8_hex_from_head_sha} so a traversal-shaped segment cannot reach filesystem_read by convention alone."
+data owned_ci_run_id_note: String = "Run ids are path segments under .gunbc/owned-ci/runs/<run_id>/run.json on both the writer (ci_control_plane new_run_id) and the served /ci/run/<run_id> reader. path_segment_is_safe alone is insufficient: the brand must also match the produced grammar <unix_seconds>-<8_hex_from_head_sha> so a traversal-shaped segment cannot reach filesystem_read by convention alone."
 
 fn owned_ci_run_id_char_is_digit(c: String) -> Bool {
   (c != "") && string_contains(s: "0123456789", pattern: c)
