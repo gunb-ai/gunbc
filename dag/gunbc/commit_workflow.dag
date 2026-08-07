@@ -1894,15 +1894,114 @@ data scheduled_witness_envelope_path_classification_scope_note: String = "path_c
 
 fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumerCadence) -> Bool {
   match a {
-    DiscoverySelection => match b { DiscoverySelection => true _ => false }
-    FalsifierSelfHostWet => match b { FalsifierSelfHostWet => true _ => false }
-    FalsifierRehomedBinWet => match b { FalsifierRehomedBinWet => true _ => false }
-    FalsifierSubstrateLongLane => match b { FalsifierSubstrateLongLane => true _ => false }
-    BinWitnessWet => match b { BinWitnessWet => true _ => false }
-    QuarantineProbeExpectRed => match b { QuarantineProbeExpectRed => true _ => false }
-    OfflineLocalRecipe => match b { OfflineLocalRecipe => true _ => false }
-    FixtureExplicitRoster => match b { FixtureExplicitRoster => true _ => false }
-    NoConsumer => match b { NoConsumer => true _ => false }
+    DiscoverySelection =>
+      match b {
+        DiscoverySelection => true
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => false
+        NoConsumer => false
+      }
+    FalsifierSelfHostWet =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => true
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => false
+        NoConsumer => false
+      }
+    FalsifierRehomedBinWet =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => true
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => false
+        NoConsumer => false
+      }
+    FalsifierSubstrateLongLane =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => true
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => false
+        NoConsumer => false
+      }
+    BinWitnessWet =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => true
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => false
+        NoConsumer => false
+      }
+    QuarantineProbeExpectRed =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => true
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => false
+        NoConsumer => false
+      }
+    OfflineLocalRecipe =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => true
+        FixtureExplicitRoster => false
+        NoConsumer => false
+      }
+    FixtureExplicitRoster =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => true
+        NoConsumer => false
+      }
+    NoConsumer =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => false
+        NoConsumer => true
+      }
   }
 }
 
