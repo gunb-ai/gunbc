@@ -22400,6 +22400,15 @@ pub fn freemonoid_arm_field_pattern(
     }
 }
 
+pub fn freemonoid_cons_branch_grouping_order_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "#6777 nested-Cons grouping emits by tail discriminator (Empty, then NestedCons, then wildcard), not authored arm order. Pre-fix emit collapsed to the first Cons arm, so later specific tail arms were dead; grouping revives them only when tail discriminators are distinct. A bind-tail wildcard authored before a more-specific tail arm would change behavior vs that collapse; no such site is known in-tree (specimens have specific arms first).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn freemonoid_cons_tail_discriminator(
     cons_arm: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -22953,16 +22962,41 @@ pub fn emit_native_freemonoid_match(
             "".to_string()
         } else {
             if ((cons_arms.clone().len() as i64) == 0) {
-                v1_rt::concat(
-                    v1_rt::concat(
+                {
+                    let nonempty_body = freemonoid_nonempty_branch_body(
+                        None,
+                        catchall.clone(),
+                        si.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                    );
+                    if (nonempty_body.clone() == "".to_string()) {
+                        "".to_string()
+                    } else {
                         v1_rt::concat(
-                            v1_rt::concat("{ let __fm = ".to_string(), scrut_str.clone()),
-                            "; if __fm.is_empty() { ".to_string(),
-                        ),
-                        empty_body.clone(),
-                    ),
-                    " } }".to_string(),
-                )
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                "{ let __fm = ".to_string(),
+                                                scrut_str.clone(),
+                                            ),
+                                            "; if __fm.is_empty() { ".to_string(),
+                                        ),
+                                        empty_body.clone(),
+                                    ),
+                                    " } else { ".to_string(),
+                                ),
+                                nonempty_body.clone(),
+                            ),
+                            " } }".to_string(),
+                        )
+                    }
+                }
             } else {
                 if ((cons_arms.clone().len() as i64) == 1) {
                     {
@@ -25996,16 +26030,43 @@ pub fn emit_native_freemonoid_tco_match(
             "".to_string()
         } else {
             if ((cons_arms.clone().len() as i64) == 0) {
-                v1_rt::concat(
-                    v1_rt::concat(
+                {
+                    let nonempty_body = freemonoid_tco_nonempty_branch_body(
+                        None,
+                        catchall.clone(),
+                        si.clone(),
+                        fn_name.clone(),
+                        params.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                    );
+                    if (nonempty_body.clone() == "".to_string()) {
+                        "".to_string()
+                    } else {
                         v1_rt::concat(
-                            v1_rt::concat("{ let __fm = ".to_string(), scrut_str.clone()),
-                            "; if __fm.is_empty() { ".to_string(),
-                        ),
-                        empty_body.clone(),
-                    ),
-                    " } }".to_string(),
-                )
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                "{ let __fm = ".to_string(),
+                                                scrut_str.clone(),
+                                            ),
+                                            "; if __fm.is_empty() { ".to_string(),
+                                        ),
+                                        empty_body.clone(),
+                                    ),
+                                    " } else { ".to_string(),
+                                ),
+                                nonempty_body.clone(),
+                            ),
+                            " } }".to_string(),
+                        )
+                    }
+                }
             } else {
                 if ((cons_arms.clone().len() as i64) == 1) {
                     {
