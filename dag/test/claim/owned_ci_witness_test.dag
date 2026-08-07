@@ -17,15 +17,21 @@ import gunbc.owned_ci {
   CheckPublicationCompleted, CheckPublicationPending,
   CheckPublicationNotStarted, CheckPublicationQueued, CheckPublicationInProgress,
   CiRunQueueState, QueueCompleted,
-  queue_lease_expired,
-  queue_lease_valid,
-  queue_lease_should_reclaim,
+  queue_lease_reclaim_decision,
+  queue_lease_validity,
+  ReclaimExpiredLease,
+  RetainActiveLease,
+  LeaseReclaimRefused,
+  LeaseValidForHolder,
+  LeaseInvalidHolder,
+  LeaseExpiredForHolder,
+  LeaseValidityRefused,
   owned_ci_check_conclusion_for_queue,
   check_publication_reports_github_success,
   check_publication_is_pending_honest,
   owned_ci_check_name,
 }
-import extdeps.auth.jwt { NumericDateWholeSeconds }
+import extdeps.auth.jwt { NumericDateWholeSeconds, NumericDateFractionalSeconds }
 import extdeps.github.checks { Success, Failure }
 import extdeps.git.object_store {
   GitObjectId,
@@ -77,9 +83,21 @@ test fn witness_expired_lease_is_reclaimed() -> Bool {
     expires_at: NumericDateWholeSeconds { seconds: 50 },
   }
   let now = NumericDateWholeSeconds { seconds: 50 }
-  queue_lease_should_reclaim(lease: lease, now: now)
-    && queue_lease_should_reclaim(lease: lease, now: NumericDateWholeSeconds { seconds: 51 })
-    && !(queue_lease_should_reclaim(lease: lease, now: NumericDateWholeSeconds { seconds: 49 }))
+  match queue_lease_reclaim_decision(lease: lease, now: now) {
+    ReclaimExpiredLease => true
+    RetainActiveLease => false
+    LeaseReclaimRefused { cause: _ } => false
+  }
+    && match queue_lease_reclaim_decision(lease: lease, now: NumericDateWholeSeconds { seconds: 51 }) {
+      ReclaimExpiredLease => true
+      RetainActiveLease => false
+      LeaseReclaimRefused { cause: _ } => false
+    }
+    && match queue_lease_reclaim_decision(lease: lease, now: NumericDateWholeSeconds { seconds: 49 }) {
+      ReclaimExpiredLease => false
+      RetainActiveLease => true
+      LeaseReclaimRefused { cause: _ } => false
+    }
 }
 
 test fn witness_queue_lease_expiry() -> Bool {
@@ -91,11 +109,59 @@ test fn witness_queue_lease_expiry() -> Bool {
   let after = NumericDateWholeSeconds { seconds: 101 }
   let before = NumericDateWholeSeconds { seconds: 99 }
   let mid = NumericDateWholeSeconds { seconds: 50 }
-  queue_lease_expired(lease: lease, now: at)
-    && queue_lease_expired(lease: lease, now: after)
-    && !(queue_lease_expired(lease: lease, now: before))
-    && queue_lease_valid(lease: lease, holder: "host-1", now: mid)
-    && !(queue_lease_valid(lease: lease, holder: "host-2", now: mid))
+  match queue_lease_reclaim_decision(lease: lease, now: at) {
+    ReclaimExpiredLease => true
+    RetainActiveLease => false
+    LeaseReclaimRefused { cause: _ } => false
+  }
+    && match queue_lease_reclaim_decision(lease: lease, now: after) {
+      ReclaimExpiredLease => true
+      RetainActiveLease => false
+      LeaseReclaimRefused { cause: _ } => false
+    }
+    && match queue_lease_reclaim_decision(lease: lease, now: before) {
+      ReclaimExpiredLease => false
+      RetainActiveLease => true
+      LeaseReclaimRefused { cause: _ } => false
+    }
+    && match queue_lease_validity(lease: lease, holder: "host-1", now: mid) {
+      LeaseValidForHolder => true
+      LeaseInvalidHolder => false
+      LeaseExpiredForHolder => false
+      LeaseValidityRefused { cause: _ } => false
+    }
+    && match queue_lease_validity(lease: lease, holder: "host-2", now: mid) {
+      LeaseValidForHolder => false
+      LeaseInvalidHolder => true
+      LeaseExpiredForHolder => false
+      LeaseValidityRefused { cause: _ } => false
+    }
+}
+
+test fn witness_fractional_lease_clock_refuses() -> Bool {
+  let whole_lease = QueueLease {
+    holder: "host",
+    expires_at: NumericDateWholeSeconds { seconds: 100 },
+  }
+  let fractional_now = NumericDateFractionalSeconds {
+    whole_seconds: 200,
+    fractional_digits: "5" as NonEmptyStr,
+  }
+  match queue_lease_reclaim_decision(lease: whole_lease, now: fractional_now) {
+    LeaseReclaimRefused { cause: _ } => true
+    ReclaimExpiredLease => false
+    RetainActiveLease => false
+  }
+    && match queue_lease_validity(
+      lease: whole_lease,
+      holder: "host",
+      now: fractional_now,
+    ) {
+      LeaseValidityRefused { cause: _ } => true
+      LeaseValidForHolder => false
+      LeaseInvalidHolder => false
+      LeaseExpiredForHolder => false
+    }
 }
 
 test fn witness_unpublished_completed_run_has_no_check_conclusion() -> Bool {
@@ -167,6 +233,7 @@ test fn witness_owned_ci_witness_bundle() -> Bool {
     && witness_same_repo_pr_admits()
     && witness_expired_lease_is_reclaimed()
     && witness_queue_lease_expiry()
+    && witness_fractional_lease_clock_refuses()
     && witness_publication_pending_is_not_github_success()
     && witness_publication_completed_is_github_success()
     && witness_execution_plan_stages_build_regen_floor()

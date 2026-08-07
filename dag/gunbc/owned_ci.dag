@@ -2,7 +2,11 @@ module gunbc.owned_ci
 
 import std.types { String, Int, CommitSha, NonEmptyStr, Bool }
 import std.measure { Second, second, second_count }
-import extdeps.auth.jwt { NumericDate, NumericDateWholeSeconds }
+import extdeps.auth.jwt {
+  NumericDate,
+  NumericDateWholeSeconds,
+  NumericDateFractionalSeconds,
+}
 import extdeps.github.checks { CheckConclusion, CheckStatus, Queued, InProgress, Completed, Success, ActionRequired, Cancelled, Failure, Neutral, Skipped, Stale, TimedOut }
 import v2.std.collection { Absent, Present }
 
@@ -66,23 +70,62 @@ fn owned_ci_queue_claimed_rel_dir() -> String {
   concat(owned_ci_state_root_rel, "/queue/claimed")
 }
 
-fn queue_lease_expired(lease: QueueLease, now: NumericDate) -> Bool {
+type QueueLeaseExpiryDecision
+  = LeaseClockExpired
+  | LeaseClockNotExpired
+  | LeaseClockRefused { cause: NonEmptyStr }
+
+type QueueLeaseReclaimDecision
+  = ReclaimExpiredLease
+  | RetainActiveLease
+  | LeaseReclaimRefused { cause: NonEmptyStr }
+
+type QueueLeaseValidityDecision
+  = LeaseValidForHolder
+  | LeaseInvalidHolder
+  | LeaseExpiredForHolder
+  | LeaseValidityRefused { cause: NonEmptyStr }
+
+fn queue_lease_expiry_decision(lease: QueueLease, now: NumericDate) -> QueueLeaseExpiryDecision {
   match lease.expires_at {
     NumericDateWholeSeconds { seconds: exp } =>
       match now {
-        NumericDateWholeSeconds { seconds: n } => n >= exp
-        NumericDateFractionalSeconds { whole_seconds: _, fractional_digits: _ } => false
+        NumericDateWholeSeconds { seconds: n } =>
+          if n >= exp {
+            LeaseClockExpired
+          } else {
+            LeaseClockNotExpired
+          }
+        NumericDateFractionalSeconds { whole_seconds: _, fractional_digits: _ } =>
+          LeaseClockRefused {
+            cause: "queue lease clock now carries fractional seconds; POSIX lease reclaim requires whole-second NumericDate" as NonEmptyStr,
+          }
       }
-    NumericDateFractionalSeconds { whole_seconds: _, fractional_digits: _ } => false
+    NumericDateFractionalSeconds { whole_seconds: _, fractional_digits: _ } =>
+      LeaseClockRefused {
+        cause: "queue lease expires_at carries fractional seconds; POSIX lease reclaim requires whole-second NumericDate" as NonEmptyStr,
+      }
   }
 }
 
-fn queue_lease_valid(lease: QueueLease, holder: String, now: NumericDate) -> Bool {
-  (lease.holder == holder) && !(queue_lease_expired(lease: lease, now: now))
+fn queue_lease_reclaim_decision(lease: QueueLease, now: NumericDate) -> QueueLeaseReclaimDecision {
+  match queue_lease_expiry_decision(lease: lease, now: now) {
+    LeaseClockExpired => ReclaimExpiredLease
+    LeaseClockNotExpired => RetainActiveLease
+    LeaseClockRefused { cause: c } => LeaseReclaimRefused { cause: c }
+  }
 }
 
-fn queue_lease_should_reclaim(lease: QueueLease, now: NumericDate) -> Bool {
-  queue_lease_expired(lease: lease, now: now)
+fn queue_lease_validity(lease: QueueLease, holder: String, now: NumericDate) -> QueueLeaseValidityDecision {
+  if lease.holder == holder {
+    match queue_lease_expiry_decision(lease: lease, now: now) {
+      LeaseClockExpired => LeaseExpiredForHolder
+      LeaseClockNotExpired => LeaseValidForHolder
+      LeaseClockRefused { cause: c } => LeaseValidityRefused { cause: c }
+    }
+  } else {
+    LeaseInvalidHolder
+  }
 }
 
 fn check_publication_reports_github_success(state: CheckPublicationState) -> Bool {
