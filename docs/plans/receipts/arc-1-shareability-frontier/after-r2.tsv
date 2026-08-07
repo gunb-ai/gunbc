@@ -1,0 +1,8 @@
+label	after-r2
+binary_sha256	b33add9efe2c4c68b26a051267b4e9d53a7ec71e928d0ca57adf26da6b9fde22
+exit	1
+wall_ms	229232
+peak_rss_kb	1796
+typecheck_compute_count	772
+pass_probe_line	1
+fail_lines	1

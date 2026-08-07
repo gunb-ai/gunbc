@@ -64,6 +64,25 @@ type DiffBaselineResolution
   | BaselineRefused { reason: String }
   | BaselineSourceConflict { window_detail: String, override_ref: String }
 
+data diff_baseline_kind_law: String = "WHICH ARM SELECTED THIS BASELINE, as a closed projection rather than a rendered name. A consumer that must LOCATE a refusal needs the arm identity, and the alternative — a String kind — would be a second naming scheme for variants the coproduct already names (DESIGN section 3). It is deliberately NOT the comparison mode: mode is floor_diff_mode_for_baseline's answer and depends on policy for three of the five arms, so a consumer that switched on kind to recover mode would fork that decision. Kind locates; mode decides."
+
+type DiffBaselineKind
+  = MergeTargetBaseline
+  | ExactReplayBaseline
+  | PushBeforeBaseline
+  | PushParentBaseline
+  | OperatorOverrideBaseline
+
+fn diff_baseline_kind(b: DiffBaseline) -> DiffBaselineKind {
+  match b {
+    MergeTarget { ref: _ } => MergeTargetBaseline
+    ExactReplayBoundary { base: _, head: _, observed_relation: _ } => ExactReplayBaseline
+    PushBefore { ref: _ } => PushBeforeBaseline
+    PushParent { ref: _ } => PushParentBaseline
+    OperatorOverride { ref: _ } => OperatorOverrideBaseline
+  }
+}
+
 fn diff_baseline_ref(b: DiffBaseline) -> GitRef {
   match b {
     MergeTarget { ref: r } => r
