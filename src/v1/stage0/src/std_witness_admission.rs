@@ -4,6 +4,8 @@
 use self::FrozenBaselineStanding::*;
 use self::WitnessConsumerCadence::*;
 use self::WitnessExecutionStanding::*;
+pub use crate::std_content_hash::content_hash_atom;
+pub use crate::std_content_hash::Fnv1a64Structural;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -34,6 +36,140 @@ pub enum WitnessConsumerCadence {
     OfflineLocalRecipe,
     FixtureExplicitRoster,
     NoConsumer,
+}
+
+pub fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumerCadence) -> bool {
+    match a.clone() {
+        WitnessConsumerCadence::DiscoverySelection => match b.clone() {
+            WitnessConsumerCadence::DiscoverySelection => true,
+            WitnessConsumerCadence::FalsifierSelfHostWet => false,
+            WitnessConsumerCadence::FalsifierRehomedBinWet => false,
+            WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
+            WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::QuarantineProbeExpectRed => false,
+            WitnessConsumerCadence::OfflineLocalRecipe => false,
+            WitnessConsumerCadence::FixtureExplicitRoster => false,
+            WitnessConsumerCadence::NoConsumer => false,
+        },
+        WitnessConsumerCadence::FalsifierSelfHostWet => match b.clone() {
+            WitnessConsumerCadence::DiscoverySelection => false,
+            WitnessConsumerCadence::FalsifierSelfHostWet => true,
+            WitnessConsumerCadence::FalsifierRehomedBinWet => false,
+            WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
+            WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::QuarantineProbeExpectRed => false,
+            WitnessConsumerCadence::OfflineLocalRecipe => false,
+            WitnessConsumerCadence::FixtureExplicitRoster => false,
+            WitnessConsumerCadence::NoConsumer => false,
+        },
+        WitnessConsumerCadence::FalsifierRehomedBinWet => match b.clone() {
+            WitnessConsumerCadence::DiscoverySelection => false,
+            WitnessConsumerCadence::FalsifierSelfHostWet => false,
+            WitnessConsumerCadence::FalsifierRehomedBinWet => true,
+            WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
+            WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::QuarantineProbeExpectRed => false,
+            WitnessConsumerCadence::OfflineLocalRecipe => false,
+            WitnessConsumerCadence::FixtureExplicitRoster => false,
+            WitnessConsumerCadence::NoConsumer => false,
+        },
+        WitnessConsumerCadence::FalsifierSubstrateLongLane => match b.clone() {
+            WitnessConsumerCadence::DiscoverySelection => false,
+            WitnessConsumerCadence::FalsifierSelfHostWet => false,
+            WitnessConsumerCadence::FalsifierRehomedBinWet => false,
+            WitnessConsumerCadence::FalsifierSubstrateLongLane => true,
+            WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::QuarantineProbeExpectRed => false,
+            WitnessConsumerCadence::OfflineLocalRecipe => false,
+            WitnessConsumerCadence::FixtureExplicitRoster => false,
+            WitnessConsumerCadence::NoConsumer => false,
+        },
+        WitnessConsumerCadence::BinWitnessWet => match b.clone() {
+            WitnessConsumerCadence::DiscoverySelection => false,
+            WitnessConsumerCadence::FalsifierSelfHostWet => false,
+            WitnessConsumerCadence::FalsifierRehomedBinWet => false,
+            WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
+            WitnessConsumerCadence::BinWitnessWet => true,
+            WitnessConsumerCadence::QuarantineProbeExpectRed => false,
+            WitnessConsumerCadence::OfflineLocalRecipe => false,
+            WitnessConsumerCadence::FixtureExplicitRoster => false,
+            WitnessConsumerCadence::NoConsumer => false,
+        },
+        WitnessConsumerCadence::QuarantineProbeExpectRed => match b.clone() {
+            WitnessConsumerCadence::DiscoverySelection => false,
+            WitnessConsumerCadence::FalsifierSelfHostWet => false,
+            WitnessConsumerCadence::FalsifierRehomedBinWet => false,
+            WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
+            WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::QuarantineProbeExpectRed => true,
+            WitnessConsumerCadence::OfflineLocalRecipe => false,
+            WitnessConsumerCadence::FixtureExplicitRoster => false,
+            WitnessConsumerCadence::NoConsumer => false,
+        },
+        WitnessConsumerCadence::OfflineLocalRecipe => match b.clone() {
+            WitnessConsumerCadence::DiscoverySelection => false,
+            WitnessConsumerCadence::FalsifierSelfHostWet => false,
+            WitnessConsumerCadence::FalsifierRehomedBinWet => false,
+            WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
+            WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::QuarantineProbeExpectRed => false,
+            WitnessConsumerCadence::OfflineLocalRecipe => true,
+            WitnessConsumerCadence::FixtureExplicitRoster => false,
+            WitnessConsumerCadence::NoConsumer => false,
+        },
+        WitnessConsumerCadence::FixtureExplicitRoster => match b.clone() {
+            WitnessConsumerCadence::DiscoverySelection => false,
+            WitnessConsumerCadence::FalsifierSelfHostWet => false,
+            WitnessConsumerCadence::FalsifierRehomedBinWet => false,
+            WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
+            WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::QuarantineProbeExpectRed => false,
+            WitnessConsumerCadence::OfflineLocalRecipe => false,
+            WitnessConsumerCadence::FixtureExplicitRoster => true,
+            WitnessConsumerCadence::NoConsumer => false,
+        },
+        WitnessConsumerCadence::NoConsumer => match b.clone() {
+            WitnessConsumerCadence::DiscoverySelection => false,
+            WitnessConsumerCadence::FalsifierSelfHostWet => false,
+            WitnessConsumerCadence::FalsifierRehomedBinWet => false,
+            WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
+            WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::QuarantineProbeExpectRed => false,
+            WitnessConsumerCadence::OfflineLocalRecipe => false,
+            WitnessConsumerCadence::FixtureExplicitRoster => false,
+            WitnessConsumerCadence::NoConsumer => true,
+        },
+    }
+}
+
+pub fn witness_consumer_cadence_content_hash_structural(
+    cadence: WitnessConsumerCadence,
+) -> Rc<Fnv1a64Structural> {
+    match cadence.clone() {
+        WitnessConsumerCadence::DiscoverySelection => {
+            content_hash_atom("DiscoverySelection".to_string())
+        }
+        WitnessConsumerCadence::FalsifierSelfHostWet => {
+            content_hash_atom("FalsifierSelfHostWet".to_string())
+        }
+        WitnessConsumerCadence::FalsifierRehomedBinWet => {
+            content_hash_atom("FalsifierRehomedBinWet".to_string())
+        }
+        WitnessConsumerCadence::FalsifierSubstrateLongLane => {
+            content_hash_atom("FalsifierSubstrateLongLane".to_string())
+        }
+        WitnessConsumerCadence::BinWitnessWet => content_hash_atom("BinWitnessWet".to_string()),
+        WitnessConsumerCadence::QuarantineProbeExpectRed => {
+            content_hash_atom("QuarantineProbeExpectRed".to_string())
+        }
+        WitnessConsumerCadence::OfflineLocalRecipe => {
+            content_hash_atom("OfflineLocalRecipe".to_string())
+        }
+        WitnessConsumerCadence::FixtureExplicitRoster => {
+            content_hash_atom("FixtureExplicitRoster".to_string())
+        }
+        WitnessConsumerCadence::NoConsumer => content_hash_atom("NoConsumer".to_string()),
+    }
 }
 
 pub fn witness_execution_standing_axis_note() -> String {
