@@ -207,6 +207,7 @@ src/v1/stage0/src/v1_tests_claim_required_expr_newline_continuation_test.rs merg
 src/v1/stage0/src/v1_tests_claim_v1_annotation_binding_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_v1_annotation_capture_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_v1_annotation_erasure_test.rs merge=generated-artifact
+src/v1/stage0/src/v1_tests_claim_v1_annotation_round_trip_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_v1_annotation_target_emission_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_v1_complexity_eviction_hazard_test.rs merge=generated-artifact
 src/v1/stage0/src/wt_a.rs merge=generated-artifact
