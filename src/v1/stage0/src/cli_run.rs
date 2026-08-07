@@ -24807,7 +24807,7 @@ mod module_grain_affected_equivalence_tests {
                 .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
 
-        // `orchestration_bounded_poll_emit_test.dag` reaches `bash.dag` transitively along
+        // `orchestration_tier2_emit_test.dag` reaches `bash.dag` transitively along
         // two routes: via `bash_orchestration_emit.dag` and via `05_emit_orchestration.dag`
         // (both directly imported). Dropping the outgoing edges of BOTH intermediates
         // severs every route to the leaf without touching the entry's own imports — still
@@ -24816,7 +24816,7 @@ mod module_grain_affected_equivalence_tests {
         // import-less entry answers affected=true by the shared never-skip rule
         // (`entry_without_declared_edges_never_skips_note`) on both the perturbed and
         // unperturbed sides, so no wiring perturbation could flip it.
-        let entry = "src/v2/workflow/orchestration_bounded_poll_emit_test.dag";
+        let entry = "src/v2/workflow/orchestration_tier2_emit_test.dag";
         let leaf = "src/v2/extdeps/languages/bash.dag".to_string();
         let intermediate_excludes = [
             "extdeps/languages/bash_orchestration_emit.dag".to_string(),

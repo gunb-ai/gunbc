@@ -19,7 +19,6 @@ data orch_construct_if_else: Symbol = ^orch_construct_if_else
 data orch_construct_if_block: Symbol = ^orch_construct_if_block
 data orch_construct_if_else_block: Symbol = ^orch_construct_if_else_block
 data orch_construct_while: Symbol = ^orch_construct_while
-data orch_construct_bounded_poll: Symbol = ^orch_construct_bounded_poll
 data orch_construct_procedure: Symbol = ^orch_construct_procedure
 data orch_construct_call: Symbol = ^orch_construct_call
 data orch_construct_cmdsubst_assign: Symbol = ^orch_construct_cmdsubst_assign
@@ -53,7 +52,6 @@ type OrchestrationEmitMedium {
   realize_if_block: fn(String, String) -> Outcome<TargetModel>
   realize_if_else_block: fn(String, String, String) -> Outcome<TargetModel>
   realize_while: fn(String, String) -> Outcome<TargetModel>
-  realize_bounded_poll: fn(String, String, String) -> Outcome<TargetModel>
   realize_procedure: fn(String, String) -> TargetModel
   realize_call: fn(String, String) -> TargetModel
   realize_cmdsubst_assign: fn(String, String) -> TargetModel

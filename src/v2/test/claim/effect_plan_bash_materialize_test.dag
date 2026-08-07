@@ -1,7 +1,6 @@
 module v2.test.claim.effect_plan_bash_materialize_test
 
 import v2.std.effect_plan {
-  BoundedPoll,
   Call,
   Do,
   EffectPlan,
@@ -42,7 +41,6 @@ import v2.workflow.effect_plan_bash_materialize {
   EffectPlanBashMaterializationRefused,
   EffectPlanBashMaterialized,
   OperationArgvRefused,
-  UnsupportedBoundedPoll,
   UnsupportedCall,
   UnsupportedEffectPlanStep,
   UnsupportedFailurePolicy,
@@ -485,10 +483,6 @@ test fn effect_plan_bash_RED_every_unsupported_step_arm_is_typed() -> Bool {
     && unsupported_step_refuses(
       step: While { cond: predicate, body: empty_plan() },
       expected: UnsupportedWhile
-    )
-    && unsupported_step_refuses(
-      step: BoundedPoll { max_attempts: 1, body: empty_plan(), success: predicate },
-      expected: UnsupportedBoundedPoll
     )
     && unsupported_step_refuses(
       step: Retry { body: empty_plan(), escalations: [], on_exhausted: empty_plan() },
