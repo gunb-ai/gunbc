@@ -160,6 +160,12 @@ fn find_registration_by_name(
 
 data do_not_count_directories_for_width_note: String = "DO NOT COUNT DIRECTORIES FOR WIDTH. srv1 carries fifty slot directories with only five active systemd units; srv1-06/07 directories exist since 2026-07-11 with no unit. srv3-06/07 and srv4-06/07 directories may already exist from prior attempts without a matching unit. Live width authority is unit/process state joined with the org roster — never filesystem enumeration. A directory-counting producer reads fifty, computes nothing missing, and reports success having provisioned nothing."
 
+data runner_slot_materialized_not_active_note: String = "MATERIALIZED, NOT CURRENTLY ACTIVE is the actionable local state for ADD — one arm, not two. It subsumes both shapes observed live: (a) srv1-06/07 — complete install tree, no .runner, unit absent or disabled+inactive; (b) srv3-06/07/08 — complete install tree, stale .runner from a prior incarnation, unit disabled+inactive. The .runner file records history, not required action: measured on srv1-01, .runner mtime trails unit ActiveEnterTimestamp by one second because run.sh --jitconfig rewrites it at every incarnation start (.credentials and .credentials_rsaparams follow the same pattern); jit-runner.sh does not pre-clean them and does not need to. Ephemeral AgentIds in a stale file are long garbage-collected by GitHub. ADD therefore does NOT fork on .runner presence and does NOT need RunnerIncarnationReplace for inactive slots — only set-property (per-slot caps), daemon-reload, and systemctl start; JIT registration happens at start. What matters is unit state: disabled+inactive is startable; active is already converged. Re-extracting over an existing complete tree is wrong (clobbers _work); refusing because a directory exists is the empty-observation narrow."
+
+data srv3_live_materialized_slot_observation_note: String = "LIVE READ 2026-08-07 (read-only, no units started; vivid-eagle-131 via srv2 tailscale → ubuntu@192.168.1.221): srv3 carries eight complete slot directories (srv3-01..08) under /opt/actions-runner/, five active actions-runner@ units (01..05), and three materialized-not-active slots (06..08: disabled+inactive units, stale .runner present from 2026-07-21 incarnations). gunbc_runner_slots_per_host's seven is a memory-derived INTENT CEILING, not a materialization limit — srv3-08 may remain materialized and unactivated without widening intent. The incident corpus below still pins 2026-08-06 org-roster connectivity at five active units per host until a live producer grounds materialized_width separately."
+
+data stale_runner_file_rewritten_at_start_note: String = "Stale .runner on disk is NOT live registration state and is NOT a blocker for ADD. Proof: srv1-01 live slot — unit ActiveEnterTimestamp 09:19:20, .runner mtime 09:19:21; run.sh --jitconfig overwrites .runner each start. Fetch/extract/digest-verify remains the FALLBACK arm for genuinely-absent slots only; it must not gate a slot whose install tree is already complete."
+
 data incident_local_unit_active_width_note: String = "UNIT_ACTIVE WIDTH IS ACTIVE SYSTEMD INCARNATION STATE, pinned from the incident corpus: five active actions-runner@<slot>.service units per host on all four hosts (20 total), even though gunbc_runner_slots_per_host admits 22 desired slots today. MATERIALIZED WIDTH names on-disk install artifacts separately and must not be equated with directory count. This row is the seam where local incarnation observation should eventually ground gunbc.runner_slot_allocation observed_live_width when that carrier lands — without taking a dependency on an unmerged PR."
 
 fn materialized_width_for_host(host: HostIdentity) -> Int {
@@ -207,6 +213,8 @@ fn slot_suffix(slot_index: Nat) -> String {
     "06"
   } else if slot_index == 7 {
     "07"
+  } else if slot_index == 8 {
+    "08"
   } else {
     "00"
   }
