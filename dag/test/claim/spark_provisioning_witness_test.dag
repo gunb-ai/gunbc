@@ -59,12 +59,11 @@ fn pxe_strategy() -> SparkProvisioningStrategy {
   }
 }
 
-// RFC 5737 TEST-NET-1. Deliberately NOT 192.168.1.222: the router table pairs that address
-// with the spark-a3ee display alias, but which physical box takes which fleet slot has never
-// been stated and may still be a free choice. A fixture pairing a slot with a real LAN
-// address would put an unconfirmed binding into the tree where a later reader could take it
-// as settled (proud-lark-894, coordinating #7952). A documentation-range address cannot be
-// mistaken for one.
+// RFC 5737 TEST-NET-1, and it stays synthetic even though the real allocation is now decided
+// (srv5 = .222, srv6 = .223, on #7952's authority row). A fixture that happened to match the
+// live allocation would be indistinguishable from one asserting it, so the next reader could
+// not tell whether this file DEPENDS on the mapping — and nothing here does. A
+// documentation-range address cannot be mistaken for a claim about the fleet.
 fn fixture_address() -> Ipv4Address {
   ipv4_address(octet1: 192, octet2: 0, octet3: 2, octet4: 10)
 }
