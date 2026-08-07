@@ -26,6 +26,11 @@ import gunbc.owned_ci {
   LeaseInvalidHolder,
   LeaseExpiredForHolder,
   LeaseValidityRefused,
+  owned_ci_pr_poll_github_read_admission,
+  owned_ci_pr_poll_missing_github_token_cause,
+  owned_ci_pr_poll_empty_github_token_cause,
+  PrPollGithubReadAdmitted,
+  PrPollGithubReadRefused,
   owned_ci_check_conclusion_for_queue,
   check_publication_reports_github_success,
   check_publication_is_pending_honest,
@@ -56,6 +61,23 @@ fn sample_tree_hash() -> GitObjectId {
         },
       }
   }
+}
+
+test fn witness_poll_without_github_read_refuses() -> Bool {
+  match owned_ci_pr_poll_github_read_admission(token_observation: none) {
+    PrPollGithubReadRefused { cause: c } =>
+      c == owned_ci_pr_poll_missing_github_token_cause()
+    PrPollGithubReadAdmitted => false
+  }
+    && match owned_ci_pr_poll_github_read_admission(token_observation: Present { value: "" }) {
+      PrPollGithubReadRefused { cause: c } =>
+        c == owned_ci_pr_poll_empty_github_token_cause()
+      PrPollGithubReadAdmitted => false
+    }
+    && match owned_ci_pr_poll_github_read_admission(token_observation: Present { value: "ghp_test" }) {
+      PrPollGithubReadAdmitted => true
+      PrPollGithubReadRefused { cause: _ } => false
+    }
 }
 
 test fn witness_fork_pr_refused() -> Bool {
@@ -229,7 +251,8 @@ test fn witness_executor_stage_labels_match_plan() -> Bool {
 }
 
 test fn witness_owned_ci_witness_bundle() -> Bool {
-  witness_fork_pr_refused()
+  witness_poll_without_github_read_refuses()
+    && witness_fork_pr_refused()
     && witness_same_repo_pr_admits()
     && witness_expired_lease_is_reclaimed()
     && witness_queue_lease_expiry()

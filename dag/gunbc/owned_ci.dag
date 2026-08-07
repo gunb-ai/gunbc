@@ -70,6 +70,31 @@ fn owned_ci_queue_claimed_rel_dir() -> String {
   concat(owned_ci_state_root_rel, "/queue/claimed")
 }
 
+type PrPollGithubReadAdmission
+  = PrPollGithubReadAdmitted
+  | PrPollGithubReadRefused { cause: NonEmptyStr }
+
+fn owned_ci_pr_poll_missing_github_token_cause() -> NonEmptyStr {
+  "GITHUB_TOKEN required for owned-ci poll (fail-closed: cannot discover PR subjects without GitHub read)" as NonEmptyStr
+}
+
+fn owned_ci_pr_poll_empty_github_token_cause() -> NonEmptyStr {
+  "GITHUB_TOKEN empty (fail-closed: cannot discover PR subjects)" as NonEmptyStr
+}
+
+fn owned_ci_pr_poll_github_read_admission(token_observation: String?) -> PrPollGithubReadAdmission {
+  match token_observation {
+    Absent =>
+      PrPollGithubReadRefused { cause: owned_ci_pr_poll_missing_github_token_cause() }
+    Present { value: token } =>
+      if token == "" {
+        PrPollGithubReadRefused { cause: owned_ci_pr_poll_empty_github_token_cause() }
+      } else {
+        PrPollGithubReadAdmitted
+      }
+  }
+}
+
 type QueueLeaseExpiryDecision
   = LeaseClockExpired
   | LeaseClockNotExpired

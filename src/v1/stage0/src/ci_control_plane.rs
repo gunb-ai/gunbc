@@ -38,6 +38,8 @@ pub struct SeedAuthority {
     pub stage_labels: Vec<String>,
     pub floor_plan_entry: String,
     pub floor_plan_function: String,
+    pub poll_missing_github_token_refusal: String,
+    pub poll_empty_github_token_refusal: String,
 }
 
 impl SeedAuthority {
@@ -55,6 +57,14 @@ impl SeedAuthority {
             stage_labels: eval_string_list(&ctx, "owned_ci_seed_stage_labels")?,
             floor_plan_entry: eval_string(&ctx, "owned_ci_seed_floor_plan_entry")?,
             floor_plan_function: eval_string(&ctx, "owned_ci_seed_floor_plan_function")?,
+            poll_missing_github_token_refusal: eval_string(
+                &ctx,
+                "owned_ci_seed_poll_missing_github_token_refusal",
+            )?,
+            poll_empty_github_token_refusal: eval_string(
+                &ctx,
+                "owned_ci_seed_poll_empty_github_token_refusal",
+            )?,
         })
     }
 }
@@ -390,20 +400,10 @@ impl CiControlPlane {
             pr_number: None,
         });
 
-        if std::env::var("OWNED_CI_POLL_MAIN_ONLY").is_ok() {
-            return Ok(DiscoverOutcome {
-                admitted,
-                fork_refusals: vec![],
-            });
-        }
-
-        let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
-            "GITHUB_TOKEN required for owned-ci poll (fail-closed: cannot discover PR subjects without GitHub read)".to_string()
-        })?;
+        let token = std::env::var("GITHUB_TOKEN")
+            .map_err(|_| self.authority.poll_missing_github_token_refusal.clone())?;
         if token.is_empty() {
-            return Err(
-                "GITHUB_TOKEN empty (fail-closed: cannot discover PR subjects)".to_string(),
-            );
+            return Err(self.authority.poll_empty_github_token_refusal.clone());
         }
         let (prs, fork_refusals) = self.discover_open_prs(&token)?;
         admitted.extend(prs);
