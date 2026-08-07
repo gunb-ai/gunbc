@@ -1,0 +1,8 @@
+label	base-r1
+binary_sha256	4fad28b01365639e9ec7a6d6a3f3c51a7d84c58ad93bdc441ac1d8f34470df64
+exit	1
+wall_ms	218923
+peak_rss_kb	1792
+typecheck_compute_count	772
+pass_probe_line	1
+fail_lines	1
