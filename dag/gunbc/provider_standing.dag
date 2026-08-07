@@ -17,7 +17,7 @@ data provider_standing_authority_note: String = "SHARED CONTRACT for Claude and 
 
 data provider_standing_selection_note: String = "Selection eligibility consumes an admitted ProviderStanding bundle AND a ProviderLimitDispatchDraw. LimitDispatchDrawAutomatic fail-closes on any observed ProviderNativeLimitBucket exhaustion (extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note). ProfileExactOverride may supply operator_asserted_native_limit_bucket on SelectCodex — attributed assertion, not a cited join. LimitDispatchDrawUnspecified is fail-closed like Automatic and must not be used for dispatch eligibility; standing-only callers should not call provider_standing_is_selection_eligible with Unspecified."
 
-data provider_standing_limit_dispatch_draw_note: String = "Limit blocking is dispatch-scoped. LimitDispatchDrawAutomatic treats every ProviderNativeLimitBucket exhaustion/rate-limit/until-reset/rejection as blocking — relevance is undeterminable without a cited model-to-limitId join. LimitDispatchDrawNativeBucket blocks only on matching native_key. DISSOLVES ON: extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note — automatic becomes decidable when cited join lands."
+data provider_standing_limit_dispatch_draw_note: String = "Limit blocking is dispatch-scoped. LimitDispatchDrawAutomatic and LimitDispatchDrawModel treat every ProviderNativeLimitBucket exhaustion/rate-limit/until-reset/rejection as blocking — relevance is undeterminable without a cited native-token-to-model join (extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note; extdeps.llm.claude_sdk claude_native_limit_token_to_model_gap_note). LimitDispatchDrawModel blocks ProviderModelLimit only when subject_model == draw_model. LimitDispatchDrawNativeBucket blocks only on matching native_key. DISSOLVES ON: cited joins land per provider gap notes."
 
 data provider_standing_limit_rejection_unspecified_draw_note: String = "LimitRejected under LimitDispatchDrawUnspecified does not block when the subject is ProviderModelLimit — a single rejected model must not erase account eligibility (section 10 worked example: Fable rejected, Opus still runnable). ProviderNativeLimitBucket and ProviderAccountLimit rejections still route through limit_subject_covers_dispatch_draw so a future rate_limit_reached decode cannot slip past Unspecified/Automatic fail-closed the way LimitExhausted does."
 
@@ -290,7 +290,11 @@ fn limit_subject_covers_dispatch_draw(
             subject_cred: subject_cred,
             draw_cred: draw_cred,
           ) && subject_model == draw_model
-        ProviderNativeLimitBucket { credential: _, native_key: _ } => false
+        ProviderNativeLimitBucket { credential: subject_cred, native_key: _ } =>
+          limit_credential_draw_matches(
+            subject_cred: subject_cred,
+            draw_cred: draw_cred,
+          )
       }
     LimitDispatchDrawNativeBucket { credential: draw_cred, native_key: draw_key } =>
       match subject {

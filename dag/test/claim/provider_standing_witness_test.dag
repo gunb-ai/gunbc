@@ -16,6 +16,7 @@ import gunbc.provider_standing {
   ProviderNativeLimitBucket,
   LimitCredentialUnspecified,
   LimitDispatchDrawAutomatic,
+  LimitDispatchDrawModel,
   LimitDispatchDrawUnspecified,
   LimitDispatchDrawNativeBucket,
   LimitObservedAvailable,
@@ -116,6 +117,46 @@ test fn witness_model_limit_rejection_does_not_block_account_selection() -> Bool
     tool_environment: ToolEnvironmentReady,
   }
   provider_standing_is_selection_eligible(
+    standing: provider_standing_from_fixture_bundle(
+      provider: ProviderInstance {
+        kind: ClaudeCliProvider,
+        host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        executable: "claude" as NonEmptyStr,
+        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+      },
+      bundle: bundle,
+    ),
+    draw: LimitDispatchDrawModel {
+      credential: LimitCredentialUnspecified,
+      model: "opus" as NonEmptyStr,
+    },
+  )
+}
+
+test fn witness_claude_native_bucket_exhaustion_blocks_model_draw() -> Bool {
+  let bundle = ProviderStandingBundle {
+    installation: InstallationReady,
+    authentication: AuthenticationAuthenticated,
+    entitlement: EntitlementObservedAvailable,
+    limits: [
+      LimitExhausted {
+        subject: ProviderNativeLimitBucket {
+          credential: LimitCredentialUnspecified,
+          native_key: "seven_day_opus" as NonEmptyStr,
+        },
+        native_token: "seven_day_opus" as NonEmptyStr,
+      },
+      LimitObservedAvailable {
+        subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
+      },
+    ],
+    turn: TurnNotStarted,
+    tool_environment: ToolEnvironmentReady,
+  }
+  !provider_standing_is_selection_eligible(
     standing: provider_standing_from_fixture_bundle(
       provider: ProviderInstance {
         kind: ClaudeCliProvider,
@@ -526,6 +567,7 @@ test fn witness_turn_outcome_unobserved_is_ineligible() -> Bool {
 test fn provider_standing_keystone_holds() -> Bool {
   witness_limit_warning_does_not_block_selection()
     && witness_model_limit_rejection_does_not_block_account_selection()
+    && witness_claude_native_bucket_exhaustion_blocks_model_draw()
     && witness_model_limit_rejection_does_not_block_unspecified_draw()
     && witness_native_bucket_rejection_blocks_automatic_draw()
     && witness_native_bucket_exhaustion_automatic_fail_closed_explicit_bengalfox_admitted()
