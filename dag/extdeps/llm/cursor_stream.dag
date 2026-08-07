@@ -156,7 +156,7 @@ fn cursor_sdk_error_from_object(v: JsonValue) -> CursorSdkTerminalErrorWire? {
         JsonMemberNotAnObject => none
       }
     }
-    JsonMemberAbsent => Present { value: CursorSdkTerminalErrorAbsent }
+    JsonMemberAbsent => none
     JsonMemberDuplicated { count: _ } => none
     JsonMemberNotAnObject => none
   }

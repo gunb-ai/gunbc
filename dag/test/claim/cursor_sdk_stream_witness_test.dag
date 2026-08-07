@@ -116,11 +116,25 @@ test fn agent_report_text_does_not_classify_as_terminal_error() -> Bool {
 }
 
 data malformed_error_subobject: String = "{\"status\":\"error\",\"error\":[{\"message\":\"bad\"}]}"
+data malformed_error_missing_message: String = "{\"status\":\"error\",\"error\":{\"code\":\"authentication_error\"}}"
 
 test fn malformed_error_subobject_refuses_not_absent() -> Bool {
   match cursor_sdk_stream_reconcile_run_result(raw: malformed_error_subobject) {
     CursorSdkStreamTerminalsUnclassified { reason, raw: _ } =>
       string_contains(s: reason as String, pattern: "malformed error object")
+    CursorSdkStreamTerminalsReconciled { status: _, error: _, raw: _ } => false
+  }
+}
+
+test fn malformed_error_missing_message_refuses_not_absent() -> Bool {
+  match cursor_sdk_stream_reconcile_run_result(raw: malformed_error_missing_message) {
+    CursorSdkStreamTerminalsUnclassified { reason, raw: _ } =>
+      string_contains(s: reason as String, pattern: "malformed error object")
+    CursorSdkStreamTerminalsReconciled {
+      status: _,
+      error: CursorSdkTerminalErrorAbsent,
+      raw: _,
+    } => false
     CursorSdkStreamTerminalsReconciled { status: _, error: _, raw: _ } => false
   }
 }
@@ -131,6 +145,7 @@ test fn cursor_sdk_stream_witness_keystone_holds() -> Bool {
     && rate_limit_error_classifies()
     && malformed_result_refuses()
     && malformed_error_subobject_refuses_not_absent()
+    && malformed_error_missing_message_refuses_not_absent()
     && assistant_message_classifies()
     && usage_message_classifies()
     && local_result_event_classifies()
