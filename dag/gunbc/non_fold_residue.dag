@@ -814,7 +814,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/repo_local_git_config.dag::apply_repo_local_git_config_action_at_repo" },
     reason: nfr_reason_legacy_slice1_bridge,
-    trigger: TriggerProse { text: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberTeardown/MemberTeardownRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row" },
+    trigger: TriggerProse { text: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberRemoved/MemberRemovalRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row" },
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/ci_materialization.dag::warm_without_provider_receipt" },

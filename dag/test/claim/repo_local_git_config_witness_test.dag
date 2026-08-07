@@ -17,8 +17,8 @@ import gunbc.repo_local_git_config {
   repo_local_git_config_converge_function,
 }
 import gunbc.membership_reconcile {
-  membership_upsert_count,
-  membership_teardown_count,
+  membership_write_count,
+  membership_removal_count,
   membership_refusal_count,
 }
 import extdeps.git {
@@ -46,8 +46,8 @@ test fn witness_converge_entry_is_declared() -> Bool {
 
 test fn witness_empty_observed_reconcile_upserts_holds() -> Bool {
   let plan = repo_local_git_config_reconcile(desired: desired_repo_local_git_config_bindings(), observed: [])
-  membership_upsert_count(plan: plan) == 2
-    && membership_teardown_count(plan: plan) == 0
+  membership_write_count(plan: plan) == 2
+    && membership_removal_count(plan: plan) == 0
     && membership_refusal_count(plan: plan) == 0
 }
 

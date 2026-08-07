@@ -1,0 +1,81 @@
+module gunbc.change_realization
+
+import std.types { String, List, Bool, Int, NonEmptyStr }
+
+data change_realization_authority_note: String = "THE classification a MemberChanged\{from,to} carries into apply: given that an occurrence survived and only its value moved, HOW is that move realized? This is the table that makes MemberChanged useful rather than merely more faithful — without it, every change is an undifferentiated overwrite and the only available realization is the most dangerous one. The four rows are not four conveniences: they are four DIFFERENT atomicity guarantees, and picking the wrong row is how a safe transformation acquires an unsafe realization."
+
+data scm_versus_host_conflation_note: String = "THE conflation this table exists to kill: a .dag module re-home is an SCM TREE TRANSFORMATION, not a host migration. Moving a declaration between modules changes no runtime address, unlinks no socket, and restarts no unit — it is atomic in the SCM and needs no intermediates at all. Treating it as a host migration is what made an ordinary source cleanup look like it required an operational migration plan. The converse error is the dangerous one: renaming a systemd unit or moving a FIFO IS a host replacement, its intermediate states are real and observable, and calling it a mere update is how a live endpoint gets stranded."
+
+type ChangeSubject
+  = ScmRefSubject
+  | SourceDeclarationSubject
+  | HostResourceSubject
+
+data address_continuity_note: String = "For a host resource the deciding fact is whether the RUNTIME ADDRESS survived the change — the unit name, socket path, FIFO, endpoint. Same address means the running thing can absorb a new value in place; a changed address means two addresses exist during the transition and the old one must be retired, which is a staged operation with observable intermediate states. Continuity is DERIVED by comparing the address projection of from and to (address_continuity), never asserted by a caller-supplied Bool: an address that is claimed preserved while actually moving is exactly the silent wrong answer DESIGN §5 forbids."
+
+type AddressContinuity = AddressPreserved | AddressChanged
+
+fn address_continuity<A>(from: A, to: A, address_eq: fn(A, A) -> Bool) -> AddressContinuity {
+  if address_eq(from, to) { AddressPreserved } else { AddressChanged }
+}
+
+data staged_intermediate_srv4_specimen_note: String = "The LIVE specimen that makes declared intermediates a requirement rather than a nicety: srv4's build-cache server died with its cgroup, never unlinked its socket, and ran uncached for weeks because nobody modeled the intermediate state. gunbc.build_cache_instance already says IN PROSE that a managed unit must clear a stale endpoint on start — and a sentence in prose is the one place no machine can read it (DESIGN §4c: any machine-consumed fact belongs in a typed carrier). StagedIntermediates is that sentence given a carrier. Emptiness is unrepresentable by construction (head + tail, not a List that could be []), because a staged replacement whose intermediate list is empty is precisely the srv4 state: a transition that believed it had nothing to retire."
+
+type StagedIntermediate
+  = RetirePriorEndpoint { endpoint: NonEmptyStr }
+  | UnlinkStalePath { path: NonEmptyStr }
+  | StopPriorUnit { unit: NonEmptyStr }
+  | DrainPriorConsumers { description: NonEmptyStr }
+
+type StagedIntermediates {
+  first: StagedIntermediate
+  rest: List<StagedIntermediate>
+}
+
+fn staged_intermediates_all(steps: StagedIntermediates) -> List<StagedIntermediate> {
+  concat([steps.first], steps.rest)
+}
+
+fn staged_intermediates_count(steps: StagedIntermediates) -> Int {
+  1 + count(steps.rest)
+}
+
+type ChangeRealization
+  = AtomicCompareAndSwap
+  | AtomicTreeTransformation
+  | InPlaceUpdate
+  | StagedReplacement { intermediates: StagedIntermediates }
+
+data change_classification_refusal_note: String = "A staged replacement whose intermediates were never declared REFUSES; it does not fall back to an in-place update and it does not proceed with an empty plan. Both fallbacks are the absorbing fallback DESIGN §5 forbids, and the second is the srv4 outcome exactly. The refusal is typed and LOCATED — it carries subject_label, the identity of the resource whose intermediates are missing, so a refusal points at a thing rather than merely reporting that something somewhere is undeclared so the deficit is countable and ranks for fixing, rather than having its frequency zeroed by a silent widen."
+
+type ChangeRefusalCause
+  = StagedReplacementIntermediatesUndeclared { subject_label: NonEmptyStr }
+
+type ChangeClassification
+  = ChangeRealized { realization: ChangeRealization }
+  | ChangeRefused { cause: ChangeRefusalCause }
+
+fn classify_change(
+  subject: ChangeSubject,
+  subject_label: NonEmptyStr,
+  continuity: AddressContinuity,
+  declared_intermediates: StagedIntermediates?,
+) -> ChangeClassification {
+  match subject {
+    ScmRefSubject => ChangeRealized { realization: AtomicCompareAndSwap }
+    SourceDeclarationSubject => ChangeRealized { realization: AtomicTreeTransformation }
+    HostResourceSubject =>
+      match continuity {
+        AddressPreserved => ChangeRealized { realization: InPlaceUpdate }
+        AddressChanged =>
+          match declared_intermediates {
+            Present { value: steps } =>
+              ChangeRealized { realization: StagedReplacement { intermediates: steps } }
+            Absent =>
+              ChangeRefused { cause: StagedReplacementIntermediatesUndeclared { subject_label: subject_label } }
+          }
+      }
+  }
+}
+
+data scm_ref_compare_and_swap_note: String = "An SCM ref update is a COMPARE-AND-SWAP, not a write: git update-ref <ref> <new> <old> names the expected prior value, so a concurrent update loses rather than silently overwriting. That expected-prior is the from side of MemberChanged — which is another reason the pre-MemberChanged collapse was lossy in a load-bearing way, not merely untidy: with only the to side in hand, the sole available realization is the unconditional write, and the atomicity the underlying capability already offers cannot be reached. AtomicCompareAndSwap is therefore a realization the from side UNLOCKS, not merely one it documents."
