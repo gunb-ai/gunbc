@@ -14,13 +14,20 @@ import std.content_hash {
   sha256_hex_digest,
 }
 import std.measure { ByteSize, byte_size, measure_count }
+import std.cache_interface {
+  CapacityUnbounded, CapacityBounded,
+  ByteCapacity, EntryCountCapacity, ExactLimit, EffectiveLimitUnobserved,
+  ReplaceExisting, RefuseNewStore, LeastRecentlyUsed,
+}
 import std.materialization_ladder {
   CacheProvider, CoversAllComputations, ReferenceTier, ArtifactTier, ContentKeyed,
-  ScopeExit, SpacePacked, provider_row,
+  provider_row, scope_released_retention, persistent_retention,
 }
 import std.artifact_store {
   ArtifactKey, ArtifactRealizationInput, artifact_key_hash, artifact_realization_digest,
-  ArtifactStore, StoreReady, StoreRefusedEviction, store_over_provider,
+  ArtifactStore, StoreReady, StoreRefusedRetention, store_over_provider,
+  ProviderScopeReleased, CapacityUnitMismatch, CapacityValueUnobserved,
+  RefuseNewStoreUnsupported,
   StoreHit, StoreMiss, store_get,
   StorePutReceipt, StorePutOutcome, StorePutAdmitted, StorePutDidNotFit,
   store_put, store_put_fold, store_put_is_admitted, store_put_evicted_keys, store_bytes_used,
@@ -44,14 +51,14 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data artifact_store_witness_note: String = "P2 pure-spec ACCEPT witnesses: put/get/evict receipts with discriminating REDs - a mutated key input never serves the old artifact (stale-never-served), identical files and argv under a changed resolved build toolchain OR changed admitted environment select different effective native workspaces, budget breach evicts least-recent WITH the eviction counted in the receipt, and a store cannot be constructed over a provider whose declared eviction is not SpacePacked (the eviction field's first behavioral reader, audit F5)."
+data artifact_store_witness_note: String = "P2 pure-spec ACCEPT witnesses: put/get/evict receipts with discriminating REDs - a mutated key input never serves the old artifact (stale-never-served), identical files and argv under a changed resolved build toolchain OR changed admitted environment select different effective native workspaces, budget breach evicts least-recent WITH the eviction counted in the receipt, and a store cannot be constructed over a provider that did not declare the byte ceiling it is being sized by (the retention field's first behavioral reader, audit F5). The budget is DERIVED from the provider, so the fixtures can no longer declare an unobserved ceiling and be handed an exact number anyway; each refusal names its own cause because the remedies differ."
 
-data spacepacked_provider: CacheProvider = provider_row(
+data byte_bounded_provider: CacheProvider = provider_row(
   id: "artifact-store-test",
   scope: [],
   coverage: CoversAllComputations,
   tier: ArtifactTier { keying: ContentKeyed },
-  eviction: SpacePacked { budget: "test budget label" }
+  retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 100) } }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
 )
 
 data scopeexit_provider: CacheProvider = provider_row(
@@ -59,13 +66,13 @@ data scopeexit_provider: CacheProvider = provider_row(
   scope: [],
   coverage: CoversAllComputations,
   tier: ReferenceTier,
-  eviction: ScopeExit
+  retention: scope_released_retention(capacity: CapacityUnbounded)
 )
 
 fn test_store() -> ArtifactStore {
-  match store_over_provider(provider: spacepacked_provider, budget: byte_size(count: 100)) {
+  match store_over_provider(provider: byte_bounded_provider) {
     StoreReady { store: s } => s
-    StoreRefusedEviction { provider_id: _, declared: _ } => ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
+    StoreRefusedRetention { provider_id: _, declared: _, cause: _ } => ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
   }
 }
 
@@ -122,16 +129,79 @@ fn legacy_toolchain_identity(
   )
 }
 
-test fn store_construction_reads_eviction_holds() -> Bool {
-  let ok = match store_over_provider(provider: spacepacked_provider, budget: byte_size(count: 100)) {
-    StoreReady { store: _ } => true
-    StoreRefusedEviction { provider_id: _, declared: _ } => false
+// The budget is now DERIVED, so this asserts the number the store sized itself
+// by rather than that construction merely succeeded. Under the old shape both
+// halves passed while the provider declared EffectiveLimitUnobserved and the
+// caller supplied 100 — the contradiction the split exists to make unwritable.
+test fn store_budget_is_derived_from_the_provider_not_the_caller() -> Bool {
+  match store_over_provider(provider: byte_bounded_provider) {
+    StoreReady { store: s } => s.budget == byte_size(count: 100)
+    StoreRefusedRetention { provider_id: _, declared: _, cause: _ } => false
   }
-  let refused = match store_over_provider(provider: scopeexit_provider, budget: byte_size(count: 100)) {
+}
+
+test fn scope_released_provider_is_refused_with_the_scope_cause() -> Bool {
+  match store_over_provider(provider: scopeexit_provider) {
     StoreReady { store: _ } => false
-    StoreRefusedEviction { provider_id: pid, declared: _ } => pid == "scoped-provider-test"
+    StoreRefusedRetention { provider_id: pid, declared: _, cause: c } =>
+      (pid == "scoped-provider-test") && (c == ProviderScopeReleased)
   }
-  ok && refused
+}
+
+// Each remaining refusal cause gets its own control, because the whole point of
+// splitting StoreRefusedRetention into causes is that the remedies differ.
+test fn entry_capped_provider_is_refused_for_the_unit_not_the_ceiling() -> Bool {
+  let entry_capped = provider_row(
+    id: "entry-capped-test",
+    scope: [],
+    coverage: CoversAllComputations,
+    tier: ArtifactTier { keying: ContentKeyed },
+    retention: persistent_retention(capacity: CapacityBounded {
+      limit: EntryCountCapacity { limit: ExactLimit { value: 512 } },
+      at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }
+    })
+  )
+  match store_over_provider(provider: entry_capped) {
+    StoreReady { store: _ } => false
+    StoreRefusedRetention { provider_id: _, declared: _, cause: c } => c == CapacityUnitMismatch
+  }
+}
+
+test fn unobserved_byte_value_is_refused_rather_than_defaulted() -> Bool {
+  let value_unknown = provider_row(
+    id: "value-unobserved-test",
+    scope: [],
+    coverage: CoversAllComputations,
+    tier: ArtifactTier { keying: ContentKeyed },
+    retention: persistent_retention(capacity: CapacityBounded {
+      limit: ByteCapacity { limit: EffectiveLimitUnobserved },
+      at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }
+    })
+  )
+  match store_over_provider(provider: value_unknown) {
+    StoreReady { store: _ } => false
+    StoreRefusedRetention { provider_id: _, declared: _, cause: c } => c == CapacityValueUnobserved
+  }
+}
+
+// The LRU realization may not be built over a provider that refuses new stores
+// instead of replacing — it would silently evict where the row says it should
+// have declined. This is the at_capacity field's first behavioral reader.
+test fn refuse_new_store_provider_is_not_realized_as_lru() -> Bool {
+  let refuses_new = provider_row(
+    id: "refuse-new-test",
+    scope: [],
+    coverage: CoversAllComputations,
+    tier: ArtifactTier { keying: ContentKeyed },
+    retention: persistent_retention(capacity: CapacityBounded {
+      limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 100) } },
+      at_capacity: RefuseNewStore
+    })
+  )
+  match store_over_provider(provider: refuses_new) {
+    StoreReady { store: _ } => false
+    StoreRefusedRetention { provider_id: _, declared: _, cause: c } => c == RefuseNewStoreUnsupported
+  }
 }
 
 test fn store_hit_and_stale_never_served_holds() -> Bool {
