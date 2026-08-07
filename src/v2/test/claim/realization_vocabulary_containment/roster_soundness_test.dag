@@ -3,7 +3,10 @@ module v2.test.realization_vocabulary_containment.roster_soundness
 import v2.std.layer { LayerImportFact, LayerPrefixStd, LayerPrefixWorkflow }
 import v2.lens.realization_vocabulary_containment {
   realization_vocab_live_leak_edges_from_facts,
-  realization_vocab_roster_sound
+  realization_vocab_roster_sound,
+  realization_vocab_grandfathered_edge_keys,
+  realization_vocab_grandfathered_edge_keys_are_distinct,
+  realization_vocab_grandfathered_edge_roster_well_formed
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -81,4 +84,25 @@ test fn realization_vocab_roster_soundness_planted_stale_red_holds() -> Bool {
       facts: ts0_frozen_census_facts_missing_build_step
     )
   ) == false
+}
+
+test fn realization_vocab_grandfathered_edge_roster_keys_are_distinct_holds() -> Bool {
+  realization_vocab_grandfathered_edge_roster_well_formed()
+}
+
+test fn realization_vocab_grandfathered_edge_keys_distinct_red_on_planted_duplicate_holds() -> Bool {
+  let planted = [
+    "dag/gunbc/roadmap_component.dag -> extdeps.languages.typescript.program",
+    "dag/tools/build_step.dag -> v2.extdeps.languages.bash_build",
+    "dag/gunbc/roadmap_component.dag -> extdeps.languages.typescript.program"
+  ]
+  let distinct = [
+    "dag/gunbc/roadmap_component.dag -> extdeps.languages.typescript.program",
+    "dag/tools/build_step.dag -> v2.extdeps.languages.bash_build"
+  ]
+  !realization_vocab_grandfathered_edge_keys_are_distinct(keys: planted)
+    && realization_vocab_grandfathered_edge_keys_are_distinct(keys: distinct)
+    && realization_vocab_grandfathered_edge_keys_are_distinct(
+      keys: realization_vocab_grandfathered_edge_keys()
+    )
 }

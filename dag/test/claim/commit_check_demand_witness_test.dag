@@ -245,15 +245,26 @@ fn qualified_rows_match_complete_discoveries(
     })
 }
 
-test fn commit_check_demand_live_roster_is_exactly_58_typed_rows() -> Bool {
-  let gates = filter(commit_gate_roster, row => check_is_gate(check: row.check))
-  let witnesses = filter(commit_gate_roster, row => check_is_witness(check: row.check))
-  let fmt = filter(commit_gate_roster, row => check_is_fmt(check: row.check))
-  commit_gate_roster.count() == 58
-    && gates.count() == 11
-    && witnesses.count() == 46
-    && fmt.count() == 1
-    && commit_gate_roster.count() == gates.count() + witnesses.count() + fmt.count()
+test fn commit_check_demand_live_roster_identities_are_unique_and_kind_partitioned() -> Bool {
+  match first_duplicate_commit_check(roster: commit_gate_roster) {
+    NoDuplicateCommitCheck => {
+      let gates = filter(commit_gate_roster, row => check_is_gate(check: row.check))
+      let witnesses = filter(commit_gate_roster, row => check_is_witness(check: row.check))
+      let fmt = filter(commit_gate_roster, row => check_is_fmt(check: row.check))
+      (gates.count() + witnesses.count() + fmt.count() == commit_gate_roster.count())
+        && fold(commit_gate_roster, init: true, f: fn(acc, row) {
+          let is_gate = check_is_gate(check: row.check)
+          let is_witness = check_is_witness(check: row.check)
+          let is_fmt = check_is_fmt(check: row.check)
+          acc
+            && (is_gate || is_witness || is_fmt)
+            && !(is_gate && is_witness)
+            && !(is_gate && is_fmt)
+            && !(is_witness && is_fmt)
+        })
+    }
+    DuplicateCommitCheckFound { check: _ } => false
+  }
 }
 
 test fn commit_check_demand_canonical_roster_refuses_empty_or_truncated_discovery() -> Bool {
