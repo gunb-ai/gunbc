@@ -28,14 +28,11 @@ import gunbc.floor_component_receipt_document {
   FloorComponentReceiptDocument,
   FloorComponentReceiptDecoding,
   ReceiptSubjectMatch,
-  ComponentAlertSummary
-}
-import extdeps.github.issues { Issue }
-import gunbc.falsifier_alert_state { FalsifierAlertState }
-import gunbc.floor_component_receipt_document {
+  ComponentAlertSummary,
   FloorComponentFailureMode, floor_component_failure_mode_tag,
   ComponentOutcomeRead, floor_component_outcome_wire_tag
 }
+import extdeps.github.issues { Issue }
 import gunbc.falsifier_lane {
   FalsifierRouting, RoutedToOwner, RoutingLaneUndetermined, RoutingOwnerUndeclared
 }
