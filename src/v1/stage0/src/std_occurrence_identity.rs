@@ -190,6 +190,64 @@ pub fn occurrence_category_module_scope_exposure_verdict(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum OccurrenceCategoryClauseEDependencyInducingVerdict {
+    OccurrenceCategoryClauseEDependencyInducing,
+    OccurrenceCategoryClauseEDependencyNotInducing { category: OccurrenceCategory },
+}
+impl OccurrenceCategoryClauseEDependencyInducingVerdict {
+    pub fn category(&self) -> OccurrenceCategory {
+        match self {
+            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing => panic!("no category on unit variant"),
+            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyNotInducing { category: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn occurrence_category_clause_e_dependency_inducing_verdict_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Canonical clause-(e) reference-category filter surface (review 50193 predicate-dissolution): consumers match OccurrenceCategoryClauseEDependencyInducingVerdict directly — not a parallel inline match over the OccurrenceCategory coproduct. LexicalValueOccurrence, CallableOccurrence, ConstructorOccurrence, and NamespaceSegmentOccurrence references may induce cross-file file dependencies; TypeOccurrence is N2's resolve_type_reference_containment_binding lane; FieldOccurrence and MethodOccurrence do not participate in clause-(e) structural walks.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn occurrence_category_clause_e_dependency_inducing_verdict(
+    category: OccurrenceCategory,
+) -> Rc<OccurrenceCategoryClauseEDependencyInducingVerdict> {
+    match category.clone() {
+        OccurrenceCategory::LexicalValueOccurrence => Rc::new(
+            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing,
+        ),
+        OccurrenceCategory::CallableOccurrence => Rc::new(
+            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing,
+        ),
+        OccurrenceCategory::ConstructorOccurrence => Rc::new(
+            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing,
+        ),
+        OccurrenceCategory::NamespaceSegmentOccurrence => Rc::new(
+            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing,
+        ),
+        OccurrenceCategory::TypeOccurrence => Rc::new(
+            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyNotInducing {
+                category: category.clone(),
+            },
+        ),
+        OccurrenceCategory::FieldOccurrence => Rc::new(
+            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyNotInducing {
+                category: category.clone(),
+            },
+        ),
+        OccurrenceCategory::MethodOccurrence => Rc::new(
+            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyNotInducing {
+                category: category.clone(),
+            },
+        ),
+    }
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]

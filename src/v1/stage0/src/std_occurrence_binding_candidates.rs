@@ -43,9 +43,9 @@ pub use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome
 use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome::{
     OccurrenceReferenceBindingDecided, OccurrenceReferenceBindingTransportRefused,
 };
-use crate::std_occurrence_identity::OccurrenceCategory::{
-    CallableOccurrence, ConstructorOccurrence, FieldOccurrence, LexicalValueOccurrence,
-    MethodOccurrence, NamespaceSegmentOccurrence, TypeOccurrence,
+use crate::std_occurrence_identity::OccurrenceCategory::TypeOccurrence;
+use crate::std_occurrence_identity::OccurrenceCategoryClauseEDependencyInducingVerdict::{
+    OccurrenceCategoryClauseEDependencyInducing, OccurrenceCategoryClauseEDependencyNotInducing,
 };
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::UnknownOccurrenceIdentity;
 use crate::std_occurrence_identity::OccurrenceTransportValidation::{
@@ -53,6 +53,7 @@ use crate::std_occurrence_identity::OccurrenceTransportValidation::{
 };
 pub use crate::std_occurrence_identity::{
     alloc_occurrence_id, authored_token_ordinal_before, authored_token_ordinal_eq,
+    occurrence_category_clause_e_dependency_inducing_verdict,
     occurrence_containment_path_is_prefix_of, occurrence_containment_paths_equal,
     occurrence_id_allocator_initial, occurrence_transport_validate,
 };
@@ -2065,7 +2066,7 @@ pub fn reference_derived_dependency_projection(
 pub fn reference_derived_dependency_binding_reference_filter_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Clause-(e) structural walks bind only value/callable references that can induce cross-file file dependencies. TypeOccurrence references are N2's resolve_type_reference_containment_binding lane — parser-produced return-type annotations must not refuse the whole population when Int is not module-declared. Parser witnesses that need per-name resolution already avoid whole-transport walks for this reason; production assembled-closure projection applies the same boundary here.".to_string()
+            "Clause-(e) structural walks bind only reference categories that occurrence_category_clause_e_dependency_inducing_verdict classifies as OccurrenceCategoryClauseEDependencyInducing. TypeOccurrence references are N2's resolve_type_reference_containment_binding lane — parser-produced return-type annotations must not refuse the whole population when Int is not module-declared. Parser witnesses that need per-name resolution already avoid whole-transport walks for this reason; production assembled-closure projection applies the same boundary here.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -2080,42 +2081,20 @@ pub fn reference_derived_dependency_binding_references(
                 references_reversed: Rc::new(vec![]),
             }),
             |acc: Rc<ReferenceDerivedDependencyBindingReferenceBuild>,
-             reference: Rc<ReferenceOccurrence>| match reference.category.clone() {
-                OccurrenceCategory::LexicalValueOccurrence => {
-                    Rc::new(ReferenceDerivedDependencyBindingReferenceBuild {
-                        references_reversed: v1_rt::concat(
-                            Rc::new(vec![reference.clone()]),
-                            acc.references_reversed.clone(),
-                        ),
-                    })
+             reference: Rc<ReferenceOccurrence>| {
+                match *occurrence_category_clause_e_dependency_inducing_verdict(
+                    reference.category.clone(),
+                ) {
+                    OccurrenceCategoryClauseEDependencyInducing => {
+                        Rc::new(ReferenceDerivedDependencyBindingReferenceBuild {
+                            references_reversed: v1_rt::concat(
+                                Rc::new(vec![reference.clone()]),
+                                acc.references_reversed.clone(),
+                            ),
+                        })
+                    }
+                    OccurrenceCategoryClauseEDependencyNotInducing { category: _ } => acc.clone(),
                 }
-                OccurrenceCategory::TypeOccurrence => acc.clone(),
-                OccurrenceCategory::CallableOccurrence => {
-                    Rc::new(ReferenceDerivedDependencyBindingReferenceBuild {
-                        references_reversed: v1_rt::concat(
-                            Rc::new(vec![reference.clone()]),
-                            acc.references_reversed.clone(),
-                        ),
-                    })
-                }
-                OccurrenceCategory::ConstructorOccurrence => {
-                    Rc::new(ReferenceDerivedDependencyBindingReferenceBuild {
-                        references_reversed: v1_rt::concat(
-                            Rc::new(vec![reference.clone()]),
-                            acc.references_reversed.clone(),
-                        ),
-                    })
-                }
-                OccurrenceCategory::NamespaceSegmentOccurrence => {
-                    Rc::new(ReferenceDerivedDependencyBindingReferenceBuild {
-                        references_reversed: v1_rt::concat(
-                            Rc::new(vec![reference.clone()]),
-                            acc.references_reversed.clone(),
-                        ),
-                    })
-                }
-                OccurrenceCategory::FieldOccurrence => acc.clone(),
-                OccurrenceCategory::MethodOccurrence => acc.clone(),
             },
         );
         v1_rt::reverse(build.references_reversed.clone())
