@@ -46,7 +46,7 @@ import gunbc.running_release_identity {
   ReleaseIdentityBodyUnparseable,
   ReleaseRevisionAbsent,
   ReleaseRevisionDuplicated,
-  ReleaseRevisionNotAnObject,
+  HealthzBodyNotAnObject,
   ReleaseRevisionNotAString,
   ReleaseRevisionMalformed,
   SurfaceBundleIdentityAbsent,
@@ -182,7 +182,7 @@ fn running_release_unidentified_detail(cause: RunningReleaseUnidentifiedCause) -
       "the unit answered without a release identity: it is a process launched before the identity channel existed, so which release it serves is not readable and no advance from it is ordered"
     ReleaseRevisionDuplicated { count: n } =>
       join(["the healthz body carried ", to_string(n), " revision members, so no single release identity is stated"], "")
-    ReleaseRevisionNotAnObject => "the healthz body is not a JSON object"
+    HealthzBodyNotAnObject => "the healthz body is not a JSON object"
     ReleaseRevisionNotAString => "the healthz revision member is not a string"
     ReleaseRevisionMalformed { text: t } =>
       join(["the healthz revision member is '", t, "', which is not a 40-digit lowercase object name"], "")

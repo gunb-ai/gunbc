@@ -47,7 +47,15 @@ type RunningReleaseUnidentifiedCause
   = ReleaseIdentityBodyUnparseable
   | ReleaseRevisionAbsent
   | ReleaseRevisionDuplicated { count: Int }
-  | ReleaseRevisionNotAnObject
+  // Named for the DOCUMENT, not for whichever member happened to be looked up when it was noticed. This
+  // was ReleaseRevisionNotAnObject while the surface lookup's same arm answered SurfaceBundleIdentityAbsent
+  // — one fact under two names, and the second of them WRONG: "the body is not an object" and "the body is
+  // an object that omits the surface identity" are different states with different remedies, and reporting
+  // the first as the second would send a reader looking for a missing member in a document that has no
+  // members. The surface arm is unreachable today, because reaching it means the revision lookup already
+  // proved `doc` is an object; a mislabel that is currently unreachable is still the one a later refactor
+  // inherits, and it costs nothing to be right now (review 50078).
+  | HealthzBodyNotAnObject
   | ReleaseRevisionNotAString
   | ReleaseRevisionMalformed { text: String }
   | SurfaceBundleIdentityAbsent
@@ -97,7 +105,7 @@ fn observe_running_release_identity(healthz_body: String) -> RunningReleaseIdent
     Present { value: doc } =>
       match json_object_unique_member(v: doc, key: running_release_revision_key) {
         JsonMemberAbsent => RunningReleaseUnidentified { cause: ReleaseRevisionAbsent }
-        JsonMemberNotAnObject => RunningReleaseUnidentified { cause: ReleaseRevisionNotAnObject }
+        JsonMemberNotAnObject => RunningReleaseUnidentified { cause: HealthzBodyNotAnObject }
         JsonMemberDuplicated { count: n } =>
           RunningReleaseUnidentified { cause: ReleaseRevisionDuplicated { count: n } }
         JsonMemberFound { value: rv } =>
@@ -109,7 +117,7 @@ fn observe_running_release_identity(healthz_body: String) -> RunningReleaseIdent
                   JsonMemberAbsent =>
                     RunningReleaseUnidentified { cause: SurfaceBundleIdentityAbsent }
                   JsonMemberNotAnObject =>
-                    RunningReleaseUnidentified { cause: SurfaceBundleIdentityAbsent }
+                    RunningReleaseUnidentified { cause: HealthzBodyNotAnObject }
                   JsonMemberDuplicated { count: m } =>
                     RunningReleaseUnidentified { cause: SurfaceBundleIdentityDuplicated { count: m } }
                   JsonMemberFound { value: sv } =>
