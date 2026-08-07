@@ -152,7 +152,7 @@ fn find_registration_by_name(
   )
 }
 
-data incident_local_materialized_width_note: String = "MATERIALIZED WIDTH IS LIVE UNIT/PROCESS STATE, NOT DIRECTORY COUNT (operator correction 2026-08-07): srv1 has 50 slot directories but only 5 loaded units; directories are residue. Pinned incident corpus: five active runner units per host on all four hosts (20 total), even though gunbc_runner_slots_per_host admits 22 desired slots today (srv3 candidate seven, only five materialized). This row is the seam where ObserveRunnerLocalState should eventually ground gunbc.runner_slot_allocation observed_live_width — without taking a dependency on an unmerged PR."
+data incident_local_materialized_width_note: String = "ACTIVATED WIDTH vs INSTALL-TREE COUNT (operator correction 2026-08-07): srv1 has 50 complete runner install trees but only 5 activated units — materialized_width counts ACTIVATED slots (unit/process), not directory count. Dormant complete trees are SlotMaterializedNotActivated (runner_slot_installation_state_note), not residue. Pinned incident corpus still reports five activated per host until ObserveRunnerLocalState grounds live facts. This row is the seam for observed_live_width — without taking a dependency on an unmerged PR."
 
 fn materialized_width_for_host(host: HostIdentity) -> Int {
   if (host as String) == (operator_host_srv1 as String) {

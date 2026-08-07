@@ -24,7 +24,7 @@ data runner_capacity_workflow_only_application_note: String = "OPERATOR RULING (
 
 data runner_capacity_apply_yml_heal_note: String = "PR A apply.yml heal is structurally blocked: .github/workflows/** cannot be pushed by the Actions token. CI cannot emit apply.yml; an author commit is required. Do not depend on heal landing that file."
 
-data runner_capacity_width_authority_note: String = "LIVE WIDTH AUTHORITY = unit/process state joined to org roster, NOT directory count. On srv1: 50 slot directories exist but only 5 loaded units (srv1-01..05); srv3-06/07 directories may already exist from prior attempts without a unit. Existing directories are unknown-provenance residue to reconcile or refuse — never evidence of materialization and never safe overwrite targets."
+data runner_capacity_width_authority_note: String = "WIDTH AUTHORITY = activated unit count joined to org roster, NOT raw directory count. srv1 has 50 COMPLETE install trees but only 5 activated units — 45 are MaterializedNotActivated (ready to start, no .runner until JIT at start). srv3-06/07 state is UNOBSERVED from this session; in-band read-only probe required before planning. Never refuse or re-extract a complete dormant tree (operator correction 2026-08-07)."
 
 type RunnerCapacityActionClass
   = RunnerCapacityAddSlots { host: HostIdentity }

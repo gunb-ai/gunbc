@@ -1,0 +1,34 @@
+module test.claim.runner_slot_installation_state_witness
+
+import std.logic { Bool }
+import gunbc.runner_incarnation {
+  RunnerSlotInstallationState,
+  SlotAbsent,
+  SlotMaterializedNotActivated,
+  SlotActivated,
+  runner_slot_installation_is_ready_to_activate,
+  runner_slot_installation_must_not_reextract,
+}
+
+test fn witness_materialized_not_activated_is_ready_without_runner_dot() -> Bool {
+  runner_slot_installation_is_ready_to_activate(
+    state: SlotMaterializedNotActivated { slot_dir_complete: true, has_runner_dot_file: false },
+  )
+}
+
+test fn witness_materialized_not_activated_must_not_reextract_when_complete() -> Bool {
+  runner_slot_installation_must_not_reextract(
+    state: SlotMaterializedNotActivated { slot_dir_complete: true, has_runner_dot_file: false },
+  )
+}
+
+test fn witness_absent_is_not_ready_and_may_fetch() -> Bool {
+  !runner_slot_installation_is_ready_to_activate(state: SlotAbsent {})
+    && !runner_slot_installation_must_not_reextract(state: SlotAbsent {})
+}
+
+test fn witness_activated_with_runner_dot_must_not_reextract() -> Bool {
+  runner_slot_installation_must_not_reextract(
+    state: SlotActivated { unit_active: true, has_runner_dot_file: true },
+  )
+}
