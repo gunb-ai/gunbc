@@ -43,18 +43,18 @@ type RunningReleaseObservation {
   surface_bundle_identity: Fnv1a64Structural
 }
 
+// HealthzBodyNotAnObject is named for the DOCUMENT, not for whichever member happened to be looked up when
+// it was noticed. It was ReleaseRevisionNotAnObject while the surface lookup's same arm answered
+// SurfaceBundleIdentityAbsent — one fact under two names, and the second of them WRONG: "the body is not an
+// object" and "the body is an object that omits the surface identity" are different states with different
+// remedies, and reporting the first as the second sends a reader looking for a missing member in a document
+// that has no members. The surface arm is unreachable today, because reaching it means the revision lookup
+// already proved `doc` is an object; a mislabel that is currently unreachable is still the one a later
+// refactor inherits, and it costs nothing to be right now (review 50078).
 type RunningReleaseUnidentifiedCause
   = ReleaseIdentityBodyUnparseable
   | ReleaseRevisionAbsent
   | ReleaseRevisionDuplicated { count: Int }
-  // Named for the DOCUMENT, not for whichever member happened to be looked up when it was noticed. This
-  // was ReleaseRevisionNotAnObject while the surface lookup's same arm answered SurfaceBundleIdentityAbsent
-  // — one fact under two names, and the second of them WRONG: "the body is not an object" and "the body is
-  // an object that omits the surface identity" are different states with different remedies, and reporting
-  // the first as the second would send a reader looking for a missing member in a document that has no
-  // members. The surface arm is unreachable today, because reaching it means the revision lookup already
-  // proved `doc` is an object; a mislabel that is currently unreachable is still the one a later refactor
-  // inherits, and it costs nothing to be right now (review 50078).
   | HealthzBodyNotAnObject
   | ReleaseRevisionNotAString
   | ReleaseRevisionMalformed { text: String }
