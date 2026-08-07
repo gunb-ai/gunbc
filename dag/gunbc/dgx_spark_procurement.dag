@@ -1,6 +1,7 @@
 module gunbc.dgx_spark_procurement
 
 import std.types { NonEmptyStr, String, List, Int, Bool }
+import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_of_value, content_hash_atom, content_hash_eq_structural }
 import product.placement_supply { HostIdentity }
 import extdeps.systems.types { IntegratedComputeSystemCatalogRow }
 import extdeps.systems.nvidia_fleet_lifecycle {
@@ -13,11 +14,14 @@ import extdeps.systems.nvidia_fleet_lifecycle {
   fleet_lifecycle_operation_tool_name,
 }
 import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
+import extdeps.dhcp.v4 { MacAddress, StaticDhcpReservation, Active }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 
-// SPARK-0 (2026-08-05). Three deliberately separate fact classes, per the brief: (1) the vendor catalog (extdeps.systems.nvidia) -- what NVIDIA documents the product to be; (2) operator procurement intent (this module) -- that two units were ordered and that srv5/srv6 are RESERVED identities for them; (3) deployment observation -- physical binding evidence (serials, MACs, IPs, installed OS build) that does not exist yet and must never be fabricated. A reserved identity is explicitly NOT enrollment: srv5/srv6 do not appear in gunbc.fleet_intent_network's endpoint list, gunbc.fleet_intent's ComputeHost list, or any phase matrix/compute offer.
-// SPARK-LANE-A (2026-08-06) revises the identity home only: the `srv5_reserved`/`srv6_reserved` rows minted here are deleted and the identities are imported from gunbc.fleet_intent_network, which is the single authority for a host's fleet identity (§3 -- one concept, one home; SPARK-0 forked it privately only because that file was mid-refactor and out of scope at the time). Reserved-not-enrolled is unchanged and is now carried structurally by the router-binding wall below rather than by prose alone.
+// SPARK-0 (2026-08-05). Three deliberately separate fact classes: (1) the vendor catalog (extdeps.systems.nvidia) -- what NVIDIA documents the product to be; (2) operator procurement intent (this module) -- that two units were ordered and that srv5/srv6 are RESERVED identities for them; (3) deployment observation -- physical binding evidence that must never be fabricated. A reserved identity is explicitly NOT enrollment: srv5/srv6 do not appear in gunbc.fleet_intent_network's endpoint list, gunbc.fleet_intent's ComputeHost list, or any phase matrix/compute offer.
+// SPARK-LANE-A (2026-08-06) moved the identities to gunbc.fleet_intent_network, the single authority for a host's fleet identity (§3 -- SPARK-0 forked them privately here only because that file was mid-refactor at the time).
+// SPARK-LANE-A revision (2026-08-07), operator review of #7952. Two identity defects and one staleness, all repaired below. The staleness: BOTH UNITS HAVE ARRIVED and are on the LAN, and the router now carries two static reservations for them -- so the earlier "not yet arrived / no MAC exists / no address chosen" rows were false. Those observed reservations are modeled below as what they are. What is still NOT established is which physical box takes the srv5 slot and which takes srv6: the operator supplied the router table and the hotspot credentials but never assigned the slots, and per the parent lane this may be a FREE CHOICE (an allocation decision to be made and recorded) rather than a discovered fact to be recovered. Either way it requires an operator statement, so the two DgxSparkRouterBinding rows deliberately stay unreserved and admission keeps refusing on them. Binding a fleet subject to the wrong physical box is precisely what this wall exists to prevent, so shipping the wall without the assignment is the correct order, not an omission.
 type HardwareProcurementIntent {
   vendor_catalog: IntegratedComputeSystemCatalogRow
   unit_count: Int
@@ -25,7 +29,31 @@ type HardwareProcurementIntent {
   ordered_note: NonEmptyStr
 }
 
-// SPARK-LANE-A. The router-side half of a reserved identity: a DHCP static reservation on the operator's LAN router is the act that turns "an identity we intend to use" into "an address the fleet can reach", and gunbc.fleet_intent_network's network_endpoint note records that this act had no carrier anywhere in the tree. It has one now. The reservation is NOT re-modeled here: it is the cited extdeps.router.verizon_cr1000a Cr1000aDhcpLeaseRow (mac x ipv4 x lease), the same row gunbc.network_identity_subsumption already consumes for srv3 -- minting a second mac/address pair beside it would be the §3 nickname failure. `reservation` is Optional because for srv5/srv6 the hardware has not physically arrived: no MAC exists to reserve against and no address has been chosen, so BOTH halves of the row are unobservable and the honest state is Absent. Absent here means "no observation yet" as a downstream coverage obligation (§3 external-decomposition: the obligation is recorded by the observer, never as an `Unobserved` property authored into the upstream router module), and it is fail-closed: `admit_dgx_spark_deployment` refuses on it, so the absence blocks admission rather than being skipped past.
+// The two static reservations the operator authored on the CR1000A, transcribed verbatim from the router table they supplied (spark-a3ee 192.168.1.222 4C:BB:47:E8:A3:EE / spark-3bd5 192.168.1.223 4C:BB:47:E8:3B:D5; both MACs independently ARP-confirmed on the LAN). These are OBSERVED ROUTER FACTS and nothing more. The reservation labels are vendor-derived from the MAC tail -- they are the units' factory hotspot SSIDs -- which makes them display aliases of the box, NOT fleet identity: a label that the vendor generated cannot decide which fleet subject a machine serves, and reading one as if it could is the same presentation-as-identity error the collector-observation carrier below exists to prevent. So these rows are held apart from the srv5/srv6 bindings on purpose, and the join between them is the operator statement that has not been made.
+data spark_a3ee_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
+  mac_address: "4C:BB:47:E8:A3:EE" as MacAddress,
+  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
+  lease: StaticDhcpReservation {
+    reservation_label: "spark-a3ee" as NonEmptyStr,
+    status: Active,
+  },
+}
+
+data spark_3bd5_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
+  mac_address: "4C:BB:47:E8:3B:D5" as MacAddress,
+  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 223),
+  lease: StaticDhcpReservation {
+    reservation_label: "spark-3bd5" as NonEmptyStr,
+    status: Active,
+  },
+}
+
+data observed_dgx_spark_router_reservations: List<Cr1000aDhcpLeaseRow> = [
+  spark_a3ee_reservation,
+  spark_3bd5_reservation,
+]
+
+// SPARK-LANE-A. The router-side half of a reserved identity: a DHCP static reservation is the act that turns "a slot we intend to use" into "an address the fleet can reach", and gunbc.fleet_intent_network's endpoint note recorded that this act had no carrier anywhere in the tree. It has one here. The reservation is NOT re-modeled: it is the cited extdeps.router.verizon_cr1000a Cr1000aDhcpLeaseRow, the same row gunbc.network_identity_subsumption consumes for srv3 -- minting a second mac/address pair beside it would be the §3 nickname failure. `reservation` is Optional because the two rows above exist but are not yet ASSIGNED to a slot; Absent therefore means "which box serves this subject is undecided", a downstream obligation recorded by the observer (§3), and it is fail-closed: admit_dgx_spark_deployment refuses on it, so an unassigned slot blocks admission rather than being skipped past. When the operator states the assignment, the reservation moves onto the binding and cites that statement -- never an inference from the vendor label.
 type DgxSparkRouterBinding {
   identity: HostIdentity
   reservation: Cr1000aDhcpLeaseRow?
@@ -43,7 +71,7 @@ data srv6_router_binding: DgxSparkRouterBinding = DgxSparkRouterBinding {
 
 data dgx_spark_router_bindings: List<DgxSparkRouterBinding> = [srv5_router_binding, srv6_router_binding]
 
-// Derived, not spelled: the set of reserved identities IS the set of identities carrying a router binding row, so the two cannot disagree (§2 -- a second hand-written identity list would be a duplicate of this one, and the duplicate is what drifts).
+// Derived, not spelled: the set of reserved identities IS the set of identities carrying a router binding row, so the two cannot disagree (§2 -- a second hand-written identity list would be the copy that drifts).
 fn dgx_spark_reserved_identities() -> List<HostIdentity> {
   map(dgx_spark_router_bindings, b => b.identity)
 }
@@ -52,24 +80,120 @@ data dgx_spark_procurement_intent: HardwareProcurementIntent = HardwareProcureme
   vendor_catalog: nvidia_dgx_spark_4tb_catalog,
   unit_count: 2,
   reserved_identities: dgx_spark_reserved_identities(),
-  ordered_note: "2x NVIDIA DGX Spark ordered; not yet arrived as of 2026-08-06 (operator, relayed via bold-eagle-107 / HOST-0 SPARK-0 brief).",
+  ordered_note: "2x NVIDIA DGX Spark ordered; both units arrived and are live on the operator LAN as of 2026-08-07, holding the static reservations spark-a3ee (192.168.1.222) and spark-3bd5 (192.168.1.223). Which unit serves the srv5 slot and which the srv6 slot is NOT yet stated by the operator and is not inferable from the router table, so neither is bound.",
+}
+
+// DEFECT 1 REPAIR (operator review of #7952): the fleet SUBJECT is not minted from presentation.
+// The previous shape passed a bare FleetLifecycleEnvelope and recovered the subject by casting
+// `envelope.host` -- a vendor-emitted display string -- into HostIdentity. That inverts the
+// direction of authority: which fleet subject a collector ran against is a fact of the DISPATCH,
+// known before any bytes come back, and the string the tool prints is evidence ABOUT that dispatch.
+// Casting it into the subject type let presentation select and mint fleet identity, so a unit that
+// renamed itself, or a vendor that changed its hostname convention, would have silently re-pointed
+// a fleet subject. Here the dispatch-side facts are carried explicitly and `envelope.host` stays
+// what it is: independently checkable evidence, compared against the subject in the PRESENTATION
+// domain (subject projected outward), never cast inward to produce one.
+// The attempt digest is the STRUCTURAL family member (std.content_hash Fnv1a64Structural), not the ContentHash union: two attempt identities are compared for equality, and union-level `==` on ContentHash is exactly the cross-family comparison Phase A of the content-hash grounding made unwritable. `raw_evidence` below keeps the union because it is carried and never compared.
+type CollectorAttemptIdentity { attempt: Fnv1a64Structural }
+
+// Which endpoint the collector actually reached. Grounded on the address, not on a name: the address is the fact the router reservation also carries, so admission can require that evidence arrived from the reserved endpoint rather than from whatever answered to a hostname.
+type EndpointBindingIdentity { address: Ipv4Address }
+
+type DgxSparkCollectorObservation {
+  subject: HostIdentity
+  endpoint_binding: EndpointBindingIdentity
+  attempt: CollectorAttemptIdentity
+  raw_evidence: ContentHash
+  envelope: FleetLifecycleEnvelope
+}
+
+fn collector_attempt_identity(label: NonEmptyStr) -> CollectorAttemptIdentity {
+  CollectorAttemptIdentity { attempt: content_hash_atom(value: label) }
+}
+
+// Subject -> presentation, the only direction that is safe. HostIdentity is a branded NonEmptyStr, so projecting it outward is total and loses nothing; the inverse does not exist, which is the whole point of DEFECT 1.
+fn host_identity_presentation(identity: HostIdentity) -> NonEmptyStr {
+  identity as NonEmptyStr
+}
+
+// DEFECT 2 REPAIR (operator review of #7952): selection is explicitly zero / one / many.
+// The previous `observation_for_identity` folded to the FIRST envelope whose host matched and
+// silently dropped the rest -- the repeat first-wins failure class in this repo, and a §5
+// state-space conflation: "one observation" and "several disagreeing observations, of which I
+// took whichever the list happened to order first" were rendered as the same answer. Two
+// collector attempts against one subject can disagree (a retry after a transient failure, a
+// stale run, a mis-dispatch), and picking one by list position is a fabricated verdict.
+// Ambiguity is now its own arm, it reaches the wall, and the wall refuses on it.
+type DgxSparkObservationSelection
+  = ObservationMissing { subject: HostIdentity }
+  | ObservationUnique { observation: DgxSparkCollectorObservation }
+  | ObservationAmbiguous { subject: HostIdentity, candidate_count: Int }
+
+// One selector body, two entry points. Subject-grain selection is what convergence uses; when it
+// reports Ambiguous, naming an exact attempt is the disambiguation, and both route through this
+// same zero/one/many decision so neither can acquire a quieter rule than the other.
+fn select_unique_observation(
+  subject: HostIdentity,
+  candidates: List<DgxSparkCollectorObservation>,
+) -> DgxSparkObservationSelection {
+  if count(candidates) == 0 {
+    ObservationMissing { subject: subject }
+  } else {
+    if count(candidates) == 1 {
+      fold(
+        candidates,
+        init: ObservationMissing { subject: subject },
+        f: (_, o) => ObservationUnique { observation: o },
+      )
+    } else {
+      ObservationAmbiguous { subject: subject, candidate_count: count(candidates) }
+    }
+  }
+}
+
+// Selection keys on `observation.subject` -- the dispatch-side authority -- never on envelope.host.
+fn select_observation_for_subject(
+  subject: HostIdentity,
+  observations: List<DgxSparkCollectorObservation>,
+) -> DgxSparkObservationSelection {
+  select_unique_observation(
+    subject: subject,
+    candidates: filter(observations, o => o.subject == subject),
+  )
+}
+
+fn select_observation_by_attempt(
+  subject: HostIdentity,
+  attempt: CollectorAttemptIdentity,
+  observations: List<DgxSparkCollectorObservation>,
+) -> DgxSparkObservationSelection {
+  select_unique_observation(
+    subject: subject,
+    candidates: filter(
+      observations,
+      o => o.subject == subject && content_hash_eq_structural(left: o.attempt.attempt, right: attempt.attempt),
+    ),
+  )
 }
 
 type DgxSparkDeployment {
   identity: HostIdentity
   catalog: IntegratedComputeSystemCatalogRow
-  identity_observation: FleetLifecycleEnvelope
+  observation: DgxSparkCollectorObservation
   router_reservation: Cr1000aDhcpLeaseRow
 }
 
 type DgxSparkAdmissionRefusalReason
-  = DeploymentAdmissionNoEvidence
+  = DeploymentAdmissionNoEvidence { requested_identity: HostIdentity }
+  | DeploymentAdmissionAmbiguousEvidence { requested_identity: HostIdentity, candidate_count: Int }
   | DeploymentAdmissionWrongTool { observed_tool: NonEmptyStr }
+  | DeploymentAdmissionSubjectMismatch { dispatched_subject: HostIdentity, requested_identity: HostIdentity }
   | DeploymentAdmissionHostMismatch { observed_host: NonEmptyStr, requested_identity: HostIdentity }
   | DeploymentAdmissionObservationNotOk { observed_status: FleetLifecycleStatus, observed_rc: Int }
   | DeploymentAdmissionIdentityNotReserved { requested_identity: HostIdentity }
   | DeploymentAdmissionRouterBindingMismatch { binding_identity: HostIdentity, requested_identity: HostIdentity }
   | DeploymentAdmissionRouterBindingPending { requested_identity: HostIdentity }
+  | DeploymentAdmissionEndpointBindingMismatch { requested_identity: HostIdentity }
 
 type DgxSparkAdmissionOutcome
   = DgxSparkDeploymentAdmitted { deployment: DgxSparkDeployment }
@@ -83,69 +207,6 @@ fn host_identity_is_reserved(identity: HostIdentity) -> Bool {
   )
 }
 
-// The whole admission decision as a first-refusal chain, ending at the single construction site for DgxSparkDeploymentAdmitted. The chain is nested rather than flat precisely so that the success arm is reachable only past every check: there is no sibling arm that constructs an admitted deployment, so adding a check cannot be bypassed by forgetting to re-order one. The reservation is destructured at the point it is needed, so "the binding is reserved" is not checked once and then trusted -- the admitted deployment is built FROM the reservation value, and an Absent reservation has no value to build from.
-fn admit_observed_dgx_spark_deployment(
-  identity: HostIdentity,
-  catalog: IntegratedComputeSystemCatalogRow,
-  envelope: FleetLifecycleEnvelope,
-  router_binding: DgxSparkRouterBinding,
-) -> DgxSparkAdmissionOutcome {
-  if envelope.tool != fleet_lifecycle_operation_tool_name(op: DeviceIdentity) {
-    DgxSparkDeploymentRefused {
-      reason: DeploymentAdmissionWrongTool { observed_tool: envelope.tool }
-    }
-  } else {
-    if identity != (envelope.host as HostIdentity) {
-      DgxSparkDeploymentRefused {
-        reason: DeploymentAdmissionHostMismatch {
-          observed_host: envelope.host,
-          requested_identity: identity,
-        }
-      }
-    } else {
-      if !envelope_reports_success(envelope: envelope) {
-        DgxSparkDeploymentRefused {
-          reason: DeploymentAdmissionObservationNotOk {
-            observed_status: envelope.status,
-            observed_rc: envelope.rc,
-          }
-        }
-      } else {
-        if !host_identity_is_reserved(identity: identity) {
-          DgxSparkDeploymentRefused {
-            reason: DeploymentAdmissionIdentityNotReserved { requested_identity: identity }
-          }
-        } else {
-          if router_binding.identity != identity {
-            DgxSparkDeploymentRefused {
-              reason: DeploymentAdmissionRouterBindingMismatch {
-                binding_identity: router_binding.identity,
-                requested_identity: identity,
-              }
-            }
-          } else {
-            match router_binding.reservation {
-              Present { value: reservation } =>
-                DgxSparkDeploymentAdmitted {
-                  deployment: DgxSparkDeployment {
-                    identity: identity,
-                    catalog: catalog,
-                    identity_observation: envelope,
-                    router_reservation: reservation,
-                  }
-                }
-              Absent =>
-                DgxSparkDeploymentRefused {
-                  reason: DeploymentAdmissionRouterBindingPending { requested_identity: identity }
-                }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
 // A tool ran is not a tool succeeded. The cited envelope carries BOTH a status and an exit code and they are independent facts (a StatusWarning `Endpoint degraded` observation is documented as "tool ran successfully but returned warning or failure status due to device health signals"), so success is the conjunction, never either one alone.
 fn envelope_reports_success(envelope: FleetLifecycleEnvelope) -> Bool {
   match envelope.status {
@@ -155,21 +216,121 @@ fn envelope_reports_success(envelope: FleetLifecycleEnvelope) -> Bool {
   }
 }
 
-// The construction wall: a DgxSparkDeployment cannot be admitted from catalog + procurement intent alone -- that refusal is the deliverable this file exists to prove, not an incidental side effect. Per review 49071: presence of a device_identity.py envelope alone is not sufficient either -- the envelope's host (the orchestrator's target identity for the observation it actually ran) must equal the identity being admitted, or a valid observation of one host could bind a deployment for a different one. Per review 49094: the refusal causes are a closed DgxSparkAdmissionRefusalReason coproduct, not free-text prose (DESIGN §3/§5 undeclared-sum), matching the sibling FleetLifecycleFailureClass pattern one file over.
-// SPARK-LANE-A adds the three checks the SPARK-0 wall was missing, each of which admitted a state that is plainly wrong rather than merely unproven: (1) a device_identity.py envelope reporting StatusError with rc=1 -- a FAILED observation -- was admitted, because only the tool name and host were read (a §5 fail-open: the failure arm of the observation was treated as evidence of success); (2) an arbitrary HostIdentity was admitted, so an observation of a host nobody ordered could mint a DGX Spark deployment; (3) admission was decoupled from the router binding, so a unit could be "deployed" with no reachable address reserved for it. The identity check derives from the binding roster rather than a second list, so "reserved" has one meaning here.
+// The whole admission decision as a first-refusal chain ending at the single construction site for
+// DgxSparkDeploymentAdmitted, reachable only past every check -- there is no sibling arm that
+// builds an admitted deployment, so adding a check cannot be bypassed by forgetting to re-order
+// one. The reservation is destructured where it is needed, so "the binding is reserved" is not
+// checked once and then trusted: the deployment is built FROM the reservation value, and an Absent
+// reservation has no value to build from.
+fn admit_selected_dgx_spark_observation(
+  identity: HostIdentity,
+  catalog: IntegratedComputeSystemCatalogRow,
+  observation: DgxSparkCollectorObservation,
+  router_binding: DgxSparkRouterBinding,
+) -> DgxSparkAdmissionOutcome {
+  if observation.envelope.tool != fleet_lifecycle_operation_tool_name(op: DeviceIdentity) {
+    DgxSparkDeploymentRefused {
+      reason: DeploymentAdmissionWrongTool { observed_tool: observation.envelope.tool }
+    }
+  } else {
+    if observation.subject != identity {
+      DgxSparkDeploymentRefused {
+        reason: DeploymentAdmissionSubjectMismatch {
+          dispatched_subject: observation.subject,
+          requested_identity: identity,
+        }
+      }
+    } else {
+      if observation.envelope.host != host_identity_presentation(identity: identity) {
+        DgxSparkDeploymentRefused {
+          reason: DeploymentAdmissionHostMismatch {
+            observed_host: observation.envelope.host,
+            requested_identity: identity,
+          }
+        }
+      } else {
+        if !envelope_reports_success(envelope: observation.envelope) {
+          DgxSparkDeploymentRefused {
+            reason: DeploymentAdmissionObservationNotOk {
+              observed_status: observation.envelope.status,
+              observed_rc: observation.envelope.rc,
+            }
+          }
+        } else {
+          if !host_identity_is_reserved(identity: identity) {
+            DgxSparkDeploymentRefused {
+              reason: DeploymentAdmissionIdentityNotReserved { requested_identity: identity }
+            }
+          } else {
+            if router_binding.identity != identity {
+              DgxSparkDeploymentRefused {
+                reason: DeploymentAdmissionRouterBindingMismatch {
+                  binding_identity: router_binding.identity,
+                  requested_identity: identity,
+                }
+              }
+            } else {
+              match router_binding.reservation {
+                Absent =>
+                  DgxSparkDeploymentRefused {
+                    reason: DeploymentAdmissionRouterBindingPending { requested_identity: identity }
+                  }
+                Present { value: reservation } =>
+                  if observation.endpoint_binding.address != reservation.ipv4_address {
+                    DgxSparkDeploymentRefused {
+                      reason: DeploymentAdmissionEndpointBindingMismatch { requested_identity: identity }
+                    }
+                  } else {
+                    DgxSparkDeploymentAdmitted {
+                      deployment: DgxSparkDeployment {
+                        identity: identity,
+                        catalog: catalog,
+                        observation: observation,
+                        router_reservation: reservation,
+                      }
+                    }
+                  }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The construction wall: a DgxSparkDeployment cannot be admitted from catalog + procurement intent
+// alone -- that refusal is the deliverable this file exists to prove. It takes the three-valued
+// SELECTION rather than an Optional observation, so "several disagreeing observations" cannot be
+// narrowed to a pick before the wall ever sees it (DEFECT 2); and it takes a
+// DgxSparkCollectorObservation rather than a bare envelope, so the subject arrives from the
+// dispatch and the vendor's host string is only ever checked against it (DEFECT 1).
+// Per review 49071 the envelope host must still agree with the subject -- an observation of one
+// host must not bind a deployment for another -- but it is now a CHECK on evidence, not the source
+// of the subject. Per review 49094 the causes are a closed coproduct, not free-text prose.
 fn admit_dgx_spark_deployment(
   identity: HostIdentity,
   catalog: IntegratedComputeSystemCatalogRow,
-  identity_observation: FleetLifecycleEnvelope?,
+  selection: DgxSparkObservationSelection,
   router_binding: DgxSparkRouterBinding,
 ) -> DgxSparkAdmissionOutcome {
-  match identity_observation {
-    Absent => DgxSparkDeploymentRefused { reason: DeploymentAdmissionNoEvidence }
-    Present { value: envelope } =>
-      admit_observed_dgx_spark_deployment(
+  match selection {
+    ObservationMissing { subject: _ } =>
+      DgxSparkDeploymentRefused {
+        reason: DeploymentAdmissionNoEvidence { requested_identity: identity }
+      }
+    ObservationAmbiguous { subject: _, candidate_count: n } =>
+      DgxSparkDeploymentRefused {
+        reason: DeploymentAdmissionAmbiguousEvidence {
+          requested_identity: identity,
+          candidate_count: n,
+        }
+      }
+    ObservationUnique { observation: o } =>
+      admit_selected_dgx_spark_observation(
         identity: identity,
         catalog: catalog,
-        envelope: envelope,
+        observation: o,
         router_binding: router_binding,
       )
   }
@@ -185,34 +346,14 @@ type DgxSparkProcurementConvergence
   | DgxSparkProcurementPending { pending: List<DgxSparkUnitDisposition> }
 
 // Two arms, not three: a unit is deployed or it is pending with a typed, located cause. There is deliberately no `Unknown` arm -- every reason a unit is not deployed is one of the closed DgxSparkAdmissionRefusalReason causes, so "we could not tell" cannot masquerade as a verdict (§5 state-space conflation). This is a diff-shaped read but NOT an instance of the gunbc.membership_reconcile spine: that spine reconciles a desired member set against an OBSERVED member set of the same type with teardown as the Removed arm, and here the two sides are different types (a reserved identity vs an admitted deployment) and there is no teardown -- you cannot retract a machine that was never present. Instantiating the spine would mean inventing an M that fits neither side, so the genericity would buy nothing and cost a fake member type.
-fn observation_for_identity(
-  identity: HostIdentity,
-  observations: List<FleetLifecycleEnvelope>,
-) -> FleetLifecycleEnvelope? {
-  fold(
-    observations,
-    init: none,
-    f: (acc, envelope) =>
-      match acc {
-        Present { value: found } => Present { value: found }
-        Absent =>
-          if (envelope.host as HostIdentity) == identity {
-            Present { value: envelope }
-          } else {
-            none
-          }
-      }
-  )
-}
-
 fn dgx_spark_unit_disposition(
   binding: DgxSparkRouterBinding,
-  observations: List<FleetLifecycleEnvelope>,
+  observations: List<DgxSparkCollectorObservation>,
 ) -> DgxSparkUnitDisposition {
   match admit_dgx_spark_deployment(
     identity: binding.identity,
     catalog: dgx_spark_procurement_intent.vendor_catalog,
-    identity_observation: observation_for_identity(identity: binding.identity, observations: observations),
+    selection: select_observation_for_subject(subject: binding.identity, observations: observations),
     router_binding: binding,
   ) {
     DgxSparkDeploymentAdmitted { deployment: d } => DgxSparkUnitDeployed { deployment: d }
@@ -223,7 +364,7 @@ fn dgx_spark_unit_disposition(
 
 fn converge_dgx_spark_procurement(
   bindings: List<DgxSparkRouterBinding>,
-  observations: List<FleetLifecycleEnvelope>,
+  observations: List<DgxSparkCollectorObservation>,
 ) -> DgxSparkProcurementConvergence {
   let dispositions = map(bindings, b => dgx_spark_unit_disposition(binding: b, observations: observations))
   let pending = flat_map(dispositions, d =>
@@ -245,7 +386,7 @@ fn converge_dgx_spark_procurement(
   }
 }
 
-// The LIVE read, as of 2026-08-06: the real binding roster against an EMPTY observation list. The empty list is not a placeholder standing in for observations that exist -- no read transport for the fleet-lifecycle tools is bound anywhere in the tree (extdeps.systems.nvidia_fleet_lifecycle models the operation shape only), and the units have not arrived, so zero observations is the true observed population. This converges the day both units are reserved on the router AND a real device_identity.py envelope for each is supplied; today it is Pending with two DeploymentAdmissionNoEvidence rows, and that is the whole point.
+// The LIVE read, as of 2026-08-07: the real binding roster against the real (empty) collector-observation population. The empty list is not a placeholder standing in for observations that exist -- no read transport for the fleet-lifecycle tools is bound anywhere in the tree (extdeps.systems.nvidia_fleet_lifecycle models the operation shape only), so zero observations is the true observed population even though both machines are now reachable on the LAN. This converges when each slot is assigned to one of the two reserved boxes AND a unique successful device_identity.py observation arrives from that box's reserved address.
 fn dgx_spark_procurement_convergence() -> DgxSparkProcurementConvergence {
   converge_dgx_spark_procurement(bindings: dgx_spark_router_bindings, observations: [])
 }
