@@ -15,7 +15,6 @@ import std.cache_interface {
   MissThenCreate,
   FileTree,
   PerRunnerFilesystem,
-  Manual,
   PerFile,
   FilesystemPerms,
   LocalDiskUs,
@@ -25,6 +24,8 @@ import std.cache_interface {
   ToolchainChange,
   DependencyChange,
   Repo,
+  CapacityUnobserved,
+  ReleasedManually,
 }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -60,7 +61,7 @@ data cargo_target_dir_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: FileTree
     locality: PerRunnerFilesystem
-    eviction: Manual
+    retention: { release_policy: ReleasedManually, capacity: CapacityUnobserved }
     atomicity: PerFile
     auth: FilesystemPerms
     read_latency: LocalDiskUs

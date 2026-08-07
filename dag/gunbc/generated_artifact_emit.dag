@@ -10,7 +10,6 @@ import gunbc.generated_artifact {
   Stage0CratePartitionGeneratedDagArtifact,
   Stage0EmitPlanGeneratedDagArtifact,
   V1InterpreterDispatchGeneratedRsArtifact,
-  LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact,
   artifact_path
 }
 import gunbc.ci_yaml_emit { expected_ci_yml }
@@ -44,10 +43,6 @@ import gunbc.v1_interpreter_dispatch_emit {
   expected_v1_interpreter_dispatch_generated_rs,
   V1InterpreterDispatchGenerated,
   V1InterpreterDispatchGenerationRefused,
-}
-import gunbc.live_deploy.emit {
-  expected_live_deploy_apply_script,
-  expected_live_deploy_retract_script
 }
 
 type ArtifactGenerationOutcome
@@ -85,8 +80,6 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
       V1InterpreterDispatchGenerationRefused { reason } =>
         ArtifactGenerationRefused { reason: reason }
     }
-    LiveDeployApplyScriptArtifact => artifact_generated(content: expected_live_deploy_apply_script())
-    LiveDeployRetractScriptArtifact => artifact_generated(content: expected_live_deploy_retract_script())
     AutoinstallUserDataArtifact { spec } => artifact_generated(content: autoinstall_user_data(payload: spec.payload))
     ProxyDhcpDnsmasqArtifact { spec } => artifact_generated(content: install_server_dnsmasq_conf(spec: spec))
     PlanArtifact { plan } => artifact_generated(content: expected_plan_md(p: plan))
@@ -118,8 +111,6 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
       ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false
     }
-    LiveDeployApplyScriptArtifact => true
-    LiveDeployRetractScriptArtifact => true
     AutoinstallUserDataArtifact { spec: _ } => true
     ProxyDhcpDnsmasqArtifact { spec: _ } => true
     PlanArtifact { plan: _ } => true

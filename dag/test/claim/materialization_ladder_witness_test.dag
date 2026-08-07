@@ -21,7 +21,7 @@ fn root_content_provider(id: String) -> CacheProvider {
     scope: empty_frame_path,
     coverage: CoversAllComputations,
     tier: CasTier { keying: ContentKeyed },
-    eviction: SpacePacked { budget: "10G local cache dir" }
+    retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
   }
 }
 
@@ -31,7 +31,7 @@ fn rust_reference_provider() -> CacheProvider {
     scope: empty_frame_path,
     coverage: CoversAllComputations,
     tier: ReferenceTier,
-    eviction: ScopeExit
+    retention: scope_released_retention(capacity: CapacityUnbounded)
   }
 }
 
@@ -41,7 +41,7 @@ fn rust_clone_provider() -> CacheProvider {
     scope: empty_frame_path,
     coverage: CoversAllComputations,
     tier: CopyTier,
-    eviction: ScopeExit
+    retention: scope_released_retention(capacity: CapacityUnbounded)
   }
 }
 
@@ -120,7 +120,7 @@ test fn provider_scope_too_narrow_is_refused() -> Bool {
     scope: [wf(), job(name: "ci")],
     coverage: CoversAllComputations,
     tier: MemoTier { keying: ContentKeyed },
-    eviction: ScopeExit
+    retention: scope_released_retention(capacity: CapacityUnbounded)
   }
   let vs = materialization_ladder(
     demands: three_jobs_same_build(),
@@ -136,7 +136,7 @@ test fn existence_keyed_provider_is_refused() -> Bool {
     scope: empty_frame_path,
     coverage: CoversAllComputations,
     tier: MemoTier { keying: ExistenceKeyed },
-    eviction: ScopeExit
+    retention: scope_released_retention(capacity: CapacityUnbounded)
   }
   let vs = materialization_ladder(
     demands: three_jobs_same_build(),
@@ -381,4 +381,74 @@ test fn conflicting_natures_on_one_identity_are_refused() -> Bool {
     cost_floor_exempt: no_cost_floor_exemptions
   )
   refused && red
+}
+
+// ORDER-REVERSAL PAIR — the control that proves list position stopped deciding
+// eligibility. Before admission moved ahead of first(), the [ineligible,
+// eligible] ordering refused the group on the ineligible provider and never
+// reached the good one, so these two tests disagreed. They must now agree.
+fn unobserved_root_provider(id: String) -> CacheProvider {
+  CacheProvider {
+    id: id,
+    scope: empty_frame_path,
+    coverage: CoversAllComputations,
+    tier: CasTier { keying: ContentKeyed },
+    retention: persistent_retention(capacity: CapacityUnobserved)
+  }
+}
+
+fn unbounded_root_provider(id: String) -> CacheProvider {
+  CacheProvider {
+    id: id,
+    scope: empty_frame_path,
+    coverage: CoversAllComputations,
+    tier: CasTier { keying: ContentKeyed },
+    retention: persistent_retention(capacity: CapacityUnbounded)
+  }
+}
+
+test fn ineligible_provider_first_does_not_mask_eligible_one() -> Bool {
+  let vs = materialization_ladder(
+    demands: three_jobs_same_build(),
+    providers: [unobserved_root_provider(id: "unobserved"), root_content_provider(id: "sccache")],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  count_matching(vs: vs, matched: v => verdict_is_discharged_by(v: v, identity: "cargo-release-build", provider_id: "sccache")) == 1
+}
+
+test fn eligible_provider_first_gives_the_same_verdict() -> Bool {
+  let vs = materialization_ladder(
+    demands: three_jobs_same_build(),
+    providers: [root_content_provider(id: "sccache"), unobserved_root_provider(id: "unobserved")],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  count_matching(vs: vs, matched: v => verdict_is_discharged_by(v: v, identity: "cargo-release-build", provider_id: "sccache")) == 1
+}
+
+test fn persistent_unbounded_only_refuses_with_the_unbounded_cause() -> Bool {
+  let vs = materialization_ladder(
+    demands: three_jobs_same_build(),
+    providers: [unbounded_root_provider(id: "grows-forever")],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  let refused = count_matching(vs: vs, matched: v => verdict_is_refused_retention_unbounded(v: v, provider_id: "grows-forever")) == 1
+  refused && !materialization_ladder_holds(
+    demands: three_jobs_same_build(),
+    providers: [unbounded_root_provider(id: "grows-forever")],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+}
+
+test fn persistent_unobserved_only_refuses_with_the_unobserved_cause() -> Bool {
+  let vs = materialization_ladder(
+    demands: three_jobs_same_build(),
+    providers: [unobserved_root_provider(id: "no-ceiling-cited")],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  let refused = count_matching(vs: vs, matched: v => verdict_is_refused_retention_unobserved(v: v, provider_id: "no-ceiling-cited")) == 1
+  refused && !materialization_ladder_holds(
+    demands: three_jobs_same_build(),
+    providers: [unobserved_root_provider(id: "no-ceiling-cited")],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
 }

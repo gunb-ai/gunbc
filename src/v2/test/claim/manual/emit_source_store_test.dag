@@ -8,10 +8,14 @@ import v2.std.diagnostic { Accepted, Rejected, None, Outcome }
 import std.types { String }
 import std.content_hash { ContentHash }
 import std.measure { byte_size }
-import std.materialization_ladder {
-  CacheProvider, CoversAllComputations, ArtifactTier, ContentKeyed, SpacePacked, provider_row,
+import std.cache_interface {
+  CapacityBounded, ByteCapacity, ExactLimit,
+  ReplaceExisting, LeastRecentlyUsed,
 }
-import std.artifact_store { ArtifactKey, artifact_key_hash, store_over_provider, StoreReady, StoreRefusedEviction, ArtifactStore }
+import std.materialization_ladder {
+  CacheProvider, CoversAllComputations, ArtifactTier, ContentKeyed, provider_row, persistent_retention,
+}
+import std.artifact_store { ArtifactKey, artifact_key_hash, store_over_provider, StoreReady, StoreRefusedRetention, ArtifactStore }
 import extdeps.realization.artifact_store_fs {
   artifact_fs_put, artifact_fs_get, ArtifactFsLookup, ArtifactFsHit, ArtifactFsMiss, ArtifactFsRefused,
   ArtifactFsPutOk, ArtifactFsPutRefused, ArtifactFsPutFailed,
@@ -29,7 +33,7 @@ data p3_provider: CacheProvider = provider_row(
   scope: [],
   coverage: CoversAllComputations,
   tier: ArtifactTier { keying: ContentKeyed },
-  eviction: SpacePacked { budget: "p3 emit-source cache" }
+  retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 1000000) } }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
 )
 
 fn p3_key(emitter: String) -> ContentHash {
@@ -82,8 +86,8 @@ test fn emit_source_store_mutated_emitter_misses_holds() -> Bool {
 }
 
 test fn emit_source_store_provider_gate_holds() -> Bool {
-  match store_over_provider(provider: p3_provider, budget: byte_size(count: 1000000)) {
+  match store_over_provider(provider: p3_provider) {
     StoreReady { store: _ } => true
-    StoreRefusedEviction { provider_id: _, declared: _ } => false
+    StoreRefusedRetention { provider_id: _, declared: _ } => false
   }
 }
