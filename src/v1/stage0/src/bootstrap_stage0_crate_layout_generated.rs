@@ -4,6 +4,7 @@
 #[rustfmt::skip]
 pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "v1_interpreter.rs",
+    "ci_control_plane.rs",
     "cli_run.rs",
     "coproduct_reflection.rs",
     "resolved_graph_cache.rs",
