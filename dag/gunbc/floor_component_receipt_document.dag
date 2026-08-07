@@ -368,7 +368,11 @@ fn component_outcome_read_of_tag(tag: String, component: JsonValue) -> Component
             match raw {
               JsonString { value: out } =>
                 ComponentOutcomeRecovered { read: ComponentConcluded { outcome: Failed { error: e as NonEmptyStr, output: out } } }
-              _ => ComponentOutcomeUnmodelled { detail: "failed outcome output is not a string" }
+              JsonNumber { lexeme: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome output is a number, expected a string" }
+              JsonNull => ComponentOutcomeUnmodelled { detail: "failed outcome output is null, expected a string" }
+              JsonBool { value: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome output is a bool, expected a string" }
+              JsonArray { elements: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome output is an array, expected a string" }
+              JsonObject { members: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome output is an object, expected a string" }
             }
         }
     }
@@ -404,17 +408,24 @@ fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: NonEmpt
 
 data outcome_mode_pair_note: String = "THE TWO FACTS ARE RECOVERED INDEPENDENTLY, SO THE PAIR MUST BE CHECKED. Typing each field separately closed the `outcome: banana` hole and opened a subtler one: outcome=done with failure_mode=WitnessRed, or outcome=failed with failure_mode=none, are two individually valid values forming a combination the writer cannot construct. The alert routes on the mode and decides incident identity on both, so an impossible pair is a receipt claiming a component both passed and broke — and neither field alone is wrong enough to refuse.\\n\\nThe agreement is DERIVED FROM THE WRITER, not restated. floor_component_outcome_of_mode is the single place the collapse happens, so the check asks that same function what outcome the mode implies and compares tags. Writing the valid pairs out as a table here would be a second copy of that mapping, and the two would drift the moment a mode is added — which is precisely the failure this receipt keeps finding elsewhere.\\n\\nTWO ARMS ARE DELIBERATELY BROADER, and both are properties of the writer rather than concessions. ModeUnrecorded pairs with ANY outcome because it is what the direct-outcome constructor emits: that path is handed an outcome and genuinely observed no mode, so there is no mode for the outcome to agree with. A NOT-CONCLUDED row likewise pairs with any mode, because a row whose transition never reached Concluded has no outcome at all — the mode records what the walk knew, and the absent conclusion is the fact being reported."
 
+fn outcome_matches_implied_mode(o: ObservationOutcome, mode: FloorComponentFailureMode) -> Bool {
+  match floor_component_outcome_of_mode(m: mode, detail: "pair-check" as NonEmptyStr) {
+    Absent => false
+    Present { value: implied } => floor_component_outcome_tag(o: o) == floor_component_outcome_tag(o: implied)
+  }
+}
+
 fn component_outcome_agrees_with_failure_mode(read: ComponentOutcomeRead, mode: FloorComponentFailureMode) -> Bool {
   match read {
     ComponentNotConcluded => true
     ComponentConcluded { outcome: o } =>
       match mode {
         ModeUnrecorded => true
-        _ =>
-          match floor_component_outcome_of_mode(m: mode, detail: "pair-check" as NonEmptyStr) {
-            Absent => false
-            Present { value: implied } => floor_component_outcome_tag(o: o) == floor_component_outcome_tag(o: implied)
-          }
+        ModeNoFailure => outcome_matches_implied_mode(o: o, mode: mode)
+        ModeBudgetExceeded => outcome_matches_implied_mode(o: o, mode: mode)
+        ModeInfra => outcome_matches_implied_mode(o: o, mode: mode)
+        ModeWitnessRed => outcome_matches_implied_mode(o: o, mode: mode)
+        ModeNotReached => outcome_matches_implied_mode(o: o, mode: mode)
       }
   }
 }
