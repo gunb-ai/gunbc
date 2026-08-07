@@ -173,6 +173,24 @@ test fn w_red_reachability_without_isolation_not_ready() -> Bool {
   }
 }
 
+test fn w_firmware_intervention_instruction_derives_bootloader_authority() -> Bool {
+  match evaluate_spark_pxe_firmware_standing(
+    config: SparkUefiPxeConfiguration {
+      secure_boot: BootloaderEnrolledForPxe { bootloader: "grubnetaa64.efi" },
+      network_stack_enabled: true,
+      ipv4_pxe_support_enabled: true,
+      nic_pxe_boot_enabled: true,
+    },
+  ) {
+    SparkPxeFirmwareHumanInterventionRequired { intervention: i } =>
+      string_contains(
+        s: i.instruction,
+        pattern: spark_pxe_bootloader_filename as String,
+      )
+    SparkPxeFirmwareReady => false
+  }
+}
+
 test fn w_firmware_standing_refuses_secure_boot_default_without_enrollment() -> Bool {
   match evaluate_spark_pxe_firmware_standing(
     config: SparkUefiPxeConfiguration {

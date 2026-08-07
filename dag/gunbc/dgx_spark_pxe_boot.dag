@@ -251,7 +251,13 @@ fn spark_pxe_firmware_enablement_intervention() -> HumanIntervention {
     identity: "spark-pxe-firmware-enablement" as HumanInterventionIdentity,
     frequency: DeviceOnce,
     subject: "UEFI network stack",
-    instruction: "At this unit's console, either disable secure boot or enroll grubnetaa64.efi.signed, then enable PXE on the chosen interface under Network Stack Configuration.",
+    instruction: concat(
+      "At this unit's console, either disable secure boot or enroll ",
+      concat(
+        spark_pxe_bootloader_filename as String,
+        ", then enable PXE on the chosen interface under Network Stack Configuration.",
+      ),
+    ),
     completion_evidence: NoDischargeSiteModeled,
   }
 }
