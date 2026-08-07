@@ -402,6 +402,18 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       expectation: ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as NonEmptyStr },
     },
     GuaranteeProbeRow {
+      probe: sole_ctor_admitted_caller_green_probe,
+      class: sole_constructor_cross_module_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: sole_ctor_cast_red_probe,
+      class: sole_constructor_cross_module_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "SoleConstructorViolation" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
       probe: sole_ctor_forged_red_probe,
       class: sole_constructor_cross_module_class,
       path: v1_compile_rust_path_id,
@@ -420,22 +432,10 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       expectation: ExpectBlockingRefusal { diagnostic_class: "SoleConstructorViolation" as NonEmptyStr },
     },
     GuaranteeProbeRow {
-      probe: sole_ctor_cast_red_probe,
-      class: sole_constructor_cross_module_class,
-      path: v1_compile_rust_path_id,
-      expectation: ExpectBlockingRefusal { diagnostic_class: "SoleConstructorViolation" as NonEmptyStr },
-    },
-    GuaranteeProbeRow {
       probe: sole_ctor_unadmitted_caller_red_probe,
       class: sole_constructor_cross_module_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "ConstructorCallAdmissionRefused" as NonEmptyStr },
-    },
-    GuaranteeProbeRow {
-      probe: sole_ctor_admitted_caller_green_probe,
-      class: sole_constructor_cross_module_class,
-      path: v1_compile_rust_path_id,
-      expectation: ExpectZeroDiagnostics,
     },
     GuaranteeProbeRow {
       probe: v2_frontier_green_probe,

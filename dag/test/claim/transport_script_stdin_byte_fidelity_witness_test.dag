@@ -1,0 +1,38 @@
+module test.claim.transport_script_stdin_byte_fidelity_witness
+
+// The whole TransportScript construction wall rests on one transport fact:
+// when the carrier became a sole_constructor record, `shell.Exec.Run` had to
+// route `stdin: script.body` rather than a bare identifier, and NO corpus site
+// had ever projected a record field to stdin. This witness is that fact's
+// executing evidence, not a demonstration: it feeds a payload carrying a tab,
+// an unexpanded dollar and embedded double quotes through the production
+// bridge and asserts the bytes that come back are the bytes that went in.
+//
+// The second control exists because a strict round-trip comparison during the
+// spike returned false and the cause was REASONED rather than executed. It
+// pins the difference to the RETURN side (stdout's trailing newline), not to
+// stdin delivery, by running the same shape with and without a terminal
+// newline. Reasoning about which side ate a byte is exactly the thing this
+// witness replaces.
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.retained_shell_script { retained_runtime }
+
+fn stdin_exact_bytes(body: String) -> String {
+  let script = retained_runtime(
+    body: body,
+    reason: "witness: TransportScript stdin byte fidelity through the production bridge" as NonEmptyStr,
+  )
+  shell.Exec.Run(script: script).stdout
+}
+
+test fn transport_script_stdin_delivers_exact_bytes() -> Bool {
+  let observed = stdin_exact_bytes(body: "printf '%s' 'alpha beta\ttab $dollar \"dq\" end'")
+  observed == "alpha beta\ttab $dollar \"dq\" end"
+}
+
+test fn transport_script_stdin_fidelity_is_independent_of_terminal_newline() -> Bool {
+  let without_terminal_newline = stdin_exact_bytes(body: "printf '%s' 'newline-probe'")
+  let with_terminal_newline = stdin_exact_bytes(body: "printf '%s' 'newline-probe'\n")
+  without_terminal_newline == "newline-probe" && with_terminal_newline == "newline-probe"
+}
