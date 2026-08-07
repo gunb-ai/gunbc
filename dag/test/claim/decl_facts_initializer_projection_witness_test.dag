@@ -1,7 +1,6 @@
 module test.claim.decl_facts_initializer_projection_witness_test
 
 import test.fixture.decl_facts_reflection.ambiguous_shared_a
-import test.fixture.decl_facts_reflection.ambiguous_shared_b { OtherTwo }
 import test.fixture.decl_facts_reflection.ambiguous_specimen
 import test.claim.decl_facts_reflection_witness_support {
   decl_facts_reflection_constructor_parent,
@@ -49,8 +48,6 @@ data scaffold_named_field_bind_qn: String = "test.fixture.decl_facts_reflection.
 data whole_declaration_bind_qn: String = "test.fixture.decl_facts_reflection.specimens.disposition_scaffold"
 data scaffold_with_data_ref_qn: String = "test.fixture.decl_facts_reflection.specimens.scaffold_with_data_ref"
 data dimensionless_anchor_qn: String = "extdeps.units.dimensionless.extdeps_external_authority_anchor"
-
-data initializer_projection_ambiguous_shared_b_side_effect: OtherTwo = OtherTwo
 
 test fn decl_facts_reflection_data_ref_with_coproduct_type_is_not_variant_value() -> Bool {
   match decl_facts_reflection_field_projection(qn: scaffold_with_data_ref_qn, field: "dissolves_to") {
