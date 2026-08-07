@@ -18,6 +18,8 @@ import std.cache_interface {
   OperatorObserved,
   ManualPurge,
   Repo,
+  CapacityUnbounded,
+  ReleasedAtProviderScopeExit,
 }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

@@ -100,6 +100,16 @@ enum Commands {
         host: String,
         #[arg(long, default_value = "8080")]
         port: u16,
+        /// Release revision this process serves, bound ONCE at startup and
+        /// immutable for the process lifetime. Required and validated before
+        /// the listener binds: `gunbc serve` compiles its graph once, so the
+        /// launch argument is the only fact that describes what this PROCESS
+        /// serves. Re-reading a file, an env var, or git HEAD per request
+        /// would report mutable disk state wearing a process-shaped
+        /// interface. Published through /healthz beside the served-surface
+        /// identity (gunbc.running_release_identity).
+        #[arg(long = "release-revision")]
+        release_revision: String,
     },
 }
 
@@ -656,8 +666,9 @@ fn main() {
             function,
             host,
             port,
+            release_revision,
         } => {
-            cli_run::handle_serve(source_roots, entry, function, host, port);
+            cli_run::handle_serve(source_roots, entry, function, host, port, release_revision);
         }
     };
 }
