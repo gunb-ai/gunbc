@@ -119,7 +119,7 @@ fn x86_64_abi_pdf_retrieval_observation_from_hex(hex: String) -> X86_64AbiPdfRet
       X86_64AbiPdfRetrievalObserved(
         RepresentationRetrieved {
           request: CitationRetrievalRequest {
-            locator: x86_64_abi_pdf_authority.uri,
+            locator: x86_64_abi_pdf_authority().uri,
           },
           observed_at: 0,
           http_status: 200,
@@ -241,7 +241,7 @@ fn x86_64_abi_syscall_evidence_link_construction() -> X86_64AbiEvidenceLinkConst
           fact: fact,
           direction: EvidenceSupports,
           inference_rule: "citation-extraction-supports-syscall-arg3-claim" as InferenceRuleId,
-          authority: x86_64_abi_pdf_authority,
+          authority: x86_64_abi_pdf_authority(),
           provenance: EvidenceProvenance {
             entity: "x86-64-abi-pdf-byte-extraction" as ProvEntityId,
             activity: "wet-representation-retrieval" as ProvActivityId,
@@ -296,7 +296,7 @@ fn x86_64_abi_pdf_navigable_uri_from_safe(
   construction: PdfSafeParameterSequenceConstruction,
 ) -> X86_64AbiPdfNavigableUriProjection {
   match project_navigable_uri_safe(
-    base: x86_64_abi_pdf_authority.uri,
+    base: x86_64_abi_pdf_authority().uri,
     construction: construction,
   ) {
     NavigableUriSafeProjected { uri: u } => X86_64AbiPdfNavigableUriProjected { uri: u }
@@ -315,7 +315,7 @@ fn x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points(
       }
     PdfProfileParameterWired { wire: wire } =>
       match navigable_uri_projection_from_sequence_wire(
-        base: x86_64_abi_pdf_authority.uri,
+        base: x86_64_abi_pdf_authority().uri,
         sequence_wire: PdfOpenParameterSequenceWired { wire: wire },
       ) {
         NavigableUriProjected { uri: u } => X86_64AbiPdfNavigableUriProjected { uri: u }
