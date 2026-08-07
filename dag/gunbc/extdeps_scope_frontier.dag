@@ -182,7 +182,12 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/darwin/sysctl.dag",
   "dag/extdeps/linux/procfs.dag",
   "dag/extdeps/llm/claude_sdk.dag",
-  "dag/extdeps/llm/codex_app_server.dag"
+  "dag/extdeps/llm/codex_app_server.dag",
+  "dag/extdeps/llm/cursor_sdk.dag",
+  "dag/extdeps/llm/cursor_sdk_errors.dag",
+  "dag/extdeps/llm/cursor_sdk_facts.dag",
+  "dag/extdeps/llm/cursor_stream.dag",
+  "dag/extdeps/probes/provider_interface_acquisition.dag"
 ]
 
 data scope_machinery_exempt_paths: List<String> = [

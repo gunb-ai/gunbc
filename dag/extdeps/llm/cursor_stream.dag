@@ -1,0 +1,272 @@
+module extdeps.llm.cursor_stream
+
+import std.types { String, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  json_string_value_or_empty,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
+import extdeps.languages.json.emit { JsonValue }
+import extdeps.llm.cursor_sdk_errors { parse_cursor_sdk_error_code, CursorSdkErrorCode }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cursor.com/docs/sdk/typescript"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.cursor_stream",
+      decl_name: "CursorSdkStreamTerminalReconcile",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data cursor_stream_authority_note: String = "WIRE AUTHORITY for @cursor/sdk local stream vocabulary (messages.d.ts @ 1.0.26). Terminal RunResult and LocalRunStreamEvent envelopes only — no retry, switch, or escalation decisions."
+
+type CursorSdkMessageKind
+  = CursorSdkMessageSystem
+  | CursorSdkMessageUser
+  | CursorSdkMessageAssistant
+  | CursorSdkMessageToolCall
+  | CursorSdkMessageThinking
+  | CursorSdkMessageStatus
+  | CursorSdkMessageRequest
+  | CursorSdkMessageTask
+  | CursorSdkMessageUsage
+  | CursorSdkMessageUnclassified { wire_type: String }
+
+type CursorSdkLocalRunStreamKind
+  = CursorSdkLocalRunStreamSdkMessage
+  | CursorSdkLocalRunStreamResult
+  | CursorSdkLocalRunStreamDone
+  | CursorSdkLocalRunStreamUnclassified { wire_type: String }
+
+type CursorSdkTerminalStatus
+  = CursorSdkTerminalFinished
+  | CursorSdkTerminalError
+  | CursorSdkTerminalCancelled
+
+type CursorSdkTerminalErrorWire
+  = CursorSdkTerminalErrorObserved {
+      message: String,
+      code: CursorSdkErrorCode,
+    }
+  | CursorSdkTerminalErrorAbsent
+
+type CursorSdkStreamTerminalReconcile
+  = CursorSdkStreamTerminalsReconciled {
+      status: CursorSdkTerminalStatus,
+      error: CursorSdkTerminalErrorWire,
+      raw: String,
+    }
+  | CursorSdkStreamTerminalsUnclassified {
+      reason: NonEmptyStr,
+      raw: String,
+    }
+
+fn cursor_sdk_message_kind_from_wire(wire_type: String) -> CursorSdkMessageKind {
+  if wire_type == "system" {
+    CursorSdkMessageSystem
+  } else if wire_type == "user" {
+    CursorSdkMessageUser
+  } else if wire_type == "assistant" {
+    CursorSdkMessageAssistant
+  } else if wire_type == "tool_call" {
+    CursorSdkMessageToolCall
+  } else if wire_type == "thinking" {
+    CursorSdkMessageThinking
+  } else if wire_type == "status" {
+    CursorSdkMessageStatus
+  } else if wire_type == "request" {
+    CursorSdkMessageRequest
+  } else if wire_type == "task" {
+    CursorSdkMessageTask
+  } else if wire_type == "usage" {
+    CursorSdkMessageUsage
+  } else {
+    CursorSdkMessageUnclassified { wire_type: wire_type }
+  }
+}
+
+fn cursor_sdk_local_run_stream_kind_from_wire(wire_type: String) -> CursorSdkLocalRunStreamKind {
+  if wire_type == "sdk_message" {
+    CursorSdkLocalRunStreamSdkMessage
+  } else if wire_type == "result" {
+    CursorSdkLocalRunStreamResult
+  } else if wire_type == "done" {
+    CursorSdkLocalRunStreamDone
+  } else {
+    CursorSdkLocalRunStreamUnclassified { wire_type: wire_type }
+  }
+}
+
+fn cursor_sdk_terminal_status_from_wire(wire_status: String) -> CursorSdkTerminalStatus? {
+  if wire_status == "finished" {
+    Present { value: CursorSdkTerminalFinished }
+  } else if wire_status == "error" {
+    Present { value: CursorSdkTerminalError }
+  } else if wire_status == "cancelled" {
+    Present { value: CursorSdkTerminalCancelled }
+  } else {
+    none
+  }
+}
+
+fn cursor_sdk_error_from_object(v: JsonValue) -> CursorSdkTerminalErrorWire? {
+  match json_object_unique_member(v: v, key: "message") {
+    JsonMemberFound { value: msg_v } => {
+      let message = json_string_value_or_empty(v: msg_v)
+      match json_object_unique_member(v: v, key: "code") {
+        JsonMemberFound { value: code_v } =>
+          Present {
+            value: CursorSdkTerminalErrorObserved {
+              message: message,
+              code: parse_cursor_sdk_error_code(
+                raw: json_string_value_or_empty(v: code_v),
+              ),
+            },
+          }
+        JsonMemberAbsent =>
+          Present {
+            value: CursorSdkTerminalErrorObserved {
+              message: message,
+              code: parse_cursor_sdk_error_code(raw: ""),
+            },
+          }
+        JsonMemberDuplicated { count: _ } => none
+        JsonMemberNotAnObject => none
+      }
+    }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn cursor_sdk_stream_reconcile_run_result(raw: String) -> CursorSdkStreamTerminalReconcile {
+  if raw == "" {
+    CursorSdkStreamTerminalsUnclassified {
+      reason: "empty Cursor SDK run result" as NonEmptyStr,
+      raw: raw,
+    }
+  } else {
+    match parse_json(s: raw) {
+      Present { value: v } =>
+        match json_object_unique_member(v: v, key: "status") {
+          JsonMemberFound { value: status_v } =>
+            match cursor_sdk_terminal_status_from_wire(
+              wire_status: json_string_value_or_empty(v: status_v),
+            ) {
+              Present { value: status } =>
+                match json_object_unique_member(v: v, key: "error") {
+                  JsonMemberFound { value: err_v } =>
+                    match cursor_sdk_error_from_object(v: err_v) {
+                      Present { value: error_wire } =>
+                        CursorSdkStreamTerminalsReconciled {
+                          status: status,
+                          error: error_wire,
+                          raw: raw,
+                        }
+                      Absent =>
+                        CursorSdkStreamTerminalsUnclassified {
+                          reason: "malformed error object in Cursor SDK run result" as NonEmptyStr,
+                          raw: raw,
+                        }
+                    }
+                  JsonMemberAbsent =>
+                    CursorSdkStreamTerminalsReconciled {
+                      status: status,
+                      error: CursorSdkTerminalErrorAbsent,
+                      raw: raw,
+                    }
+                  JsonMemberDuplicated { count: _ } =>
+                    CursorSdkStreamTerminalsUnclassified {
+                      reason: "duplicate error member in Cursor SDK run result" as NonEmptyStr,
+                      raw: raw,
+                    }
+                  JsonMemberNotAnObject =>
+                    CursorSdkStreamTerminalsUnclassified {
+                      reason: "Cursor SDK run result error member not an object" as NonEmptyStr,
+                      raw: raw,
+                    }
+                }
+              Absent =>
+                CursorSdkStreamTerminalsUnclassified {
+                  reason: "Cursor SDK run result missing or unknown status member" as NonEmptyStr,
+                  raw: raw,
+                }
+            }
+          JsonMemberAbsent =>
+            CursorSdkStreamTerminalsUnclassified {
+              reason: "Cursor SDK run result missing status member" as NonEmptyStr,
+              raw: raw,
+            }
+          JsonMemberDuplicated { count: _ } =>
+            CursorSdkStreamTerminalsUnclassified {
+              reason: "duplicate status member in Cursor SDK run result" as NonEmptyStr,
+              raw: raw,
+            }
+          JsonMemberNotAnObject =>
+            CursorSdkStreamTerminalsUnclassified {
+              reason: "Cursor SDK run result is not a JSON object" as NonEmptyStr,
+              raw: raw,
+            }
+        }
+      Absent =>
+        CursorSdkStreamTerminalsUnclassified {
+          reason: "Cursor SDK run result is not parseable JSON" as NonEmptyStr,
+          raw: raw,
+        }
+    }
+  }
+}
+
+fn cursor_sdk_stream_classify_message_line(raw: String) -> CursorSdkMessageKind? {
+  match parse_json(s: raw) {
+    Present { value: v } =>
+      match json_object_unique_member(v: v, key: "type") {
+        JsonMemberFound { value: type_v } =>
+          Present {
+            value: cursor_sdk_message_kind_from_wire(
+              wire_type: json_string_value_or_empty(v: type_v),
+            ),
+          }
+        JsonMemberAbsent => none
+        JsonMemberDuplicated { count: _ } => none
+        JsonMemberNotAnObject => none
+      }
+    Absent => none
+  }
+}
+
+fn cursor_sdk_stream_classify_local_run_event(raw: String) -> CursorSdkLocalRunStreamKind? {
+  match parse_json(s: raw) {
+    Present { value: v } =>
+      match json_object_unique_member(v: v, key: "type") {
+        JsonMemberFound { value: type_v } =>
+          Present {
+            value: cursor_sdk_local_run_stream_kind_from_wire(
+              wire_type: json_string_value_or_empty(v: type_v),
+            ),
+          }
+        JsonMemberAbsent => none
+        JsonMemberDuplicated { count: _ } => none
+        JsonMemberNotAnObject => none
+      }
+    Absent => none
+  }
+}
