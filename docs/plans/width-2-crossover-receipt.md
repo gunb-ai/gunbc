@@ -220,6 +220,23 @@ C/D are **SIGKILLed inside the window** — not a wall-duration comparison. **Co
 | CLOSE crossover | **Not banked** — hold for operator larger-host or waiver |
 | 50-entry 198 s / 1,098 s comparison | **Not cited** as settling this small-cohort / this-host question |
 
+### Terminal run (operator ruling 2026-08-07 — **pending corrected host**)
+
+**Do not run on this container** (~5 GiB external kill band proven confound). Lane survives for **one** corrected-host experiment, then **extract one mechanism or close** — not a program, no new instrumentation.
+
+**Escalation:** host with headroom above kill band (operator allocation). **Do not start until host lands.**
+
+**Result counts only if:**
+
+| Gate | Requirement |
+|------|-------------|
+| C completes | `EXIT=0` with `PASS` — if C SIGKILLs again, measured the host again, not width-2 |
+| D exercises JSON path | `encode` / `decode` counters **non-zero** — `encode=0` is not a D run |
+| Completion evidence | `typecheck_compute` reaches **181** (A's level), not 18 |
+| Spread | Within-cell spread beside between-cell delta; **≥2 runs of one cell** minimum |
+
+**Terminal outcomes:** (1) discriminating C-vs-D reading → extract one mechanism per decision table; (2) still cannot discriminate on corrected host → close with "this host class cannot answer the question" (legitimate); (3) **not** legitimate: close on runs where the experiment never started.
+
 ## Counters
 
 `shared_store_hit`, `shared_store_miss`, `shared_store_encode`, `shared_store_decode`, `private_store_fallback` — process-wide via `shared_typecheck_store_counters_snapshot()`.
