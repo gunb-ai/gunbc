@@ -114,6 +114,32 @@ fn host_identity_presentation(identity: HostIdentity) -> NonEmptyStr {
   identity as NonEmptyStr
 }
 
+// The vendor envelope's `host` field is presentation evidence about a dispatch-side subject. It must
+// never establish identity, but a disagreement is worth recording beside admission rather than
+// silently resolving or blocking on it.
+type EnvelopeHostPresentationEvidence
+  = EnvelopeHostAgreesWithSubject
+  | EnvelopeHostDisagreesWithSubject {
+      subject: HostIdentity,
+      observed_host: NonEmptyStr,
+      expected_presentation: NonEmptyStr,
+    }
+
+fn envelope_host_presentation_evidence(
+  observation: FleetLifecycleObservation,
+) -> EnvelopeHostPresentationEvidence {
+  let expected = host_identity_presentation(identity: observation.subject)
+  if observation.envelope.host == expected {
+    EnvelopeHostAgreesWithSubject
+  } else {
+    EnvelopeHostDisagreesWithSubject {
+      subject: observation.subject,
+      observed_host: observation.envelope.host,
+      expected_presentation: expected,
+    }
+  }
+}
+
 // The tool's self-report agrees with our own record of the process. Two independent facts, checked against each other rather than one of them trusted alone.
 fn execution_evidence_agrees(observation: FleetLifecycleObservation) -> Bool {
   observation.execution_receipt.exit_status == observation.envelope.rc

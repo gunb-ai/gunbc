@@ -1,10 +1,18 @@
 module extdeps.runtime.abi.sysv_amd64
 
 import std.abi { ArchitecturalRegister, CallingConvention }
-import std.types { Bool }
-
-import extdeps.external_authority { ExternalAuthority }
+import std.types { Bool, NonEmptyStr, String }
+import std.citation { CitedRepresentationIdentity, RawResponseBody, cited_representation_identity }
+import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.version { VersionIdentity }
+import extdeps.http.server { MediaType, TopLevelApplication }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.integer { PositiveInt }
+
+// Upstream System V AMD64 ABI authority: cited PDF document identity, edition, and
+// register/syscall calling-convention facts. Citation consumer receipts (pin, selector,
+// evidence links, wet observations) live in gunbc.citation.x86_64_abi_pdf_consumer.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -12,6 +20,34 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf"
   }
 }
+
+data x86_64_abi_specification: NonEmptyStr = "System V AMD64 ABI"
+
+data x86_64_abi_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
+  declaration: DeclarationRef {
+    module_path: "extdeps.runtime.abi.sysv_amd64",
+    decl_name: "x86_64_abi_specification",
+    field: WholeDeclaration,
+  },
+}
+
+data x86_64_abi_pdf_identity: CitedRepresentationIdentity = cited_representation_identity(
+  source: x86_64_abi_subject_ref,
+  access_route: extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri,
+  byte_domain: RawResponseBody,
+)
+
+data x86_64_abi_pdf_draft_edition_note: String = "Document cover: Draft Version 0.99.6, dated July 2 2012 — NOT the filename 0.99. VersionIdentity carries the edition string 0.99.6."
+
+data x86_64_abi_pdf_draft_version: VersionIdentity = "0.99.6" as VersionIdentity
+
+data x86_64_abi_application_pdf: MediaType = MediaType {
+  top_level: TopLevelApplication,
+  subtype: "pdf",
+  parameters: [],
+}
+
+data x86_64_abi_syscall_convention_authoritative_page: PositiveInt = 125
 
 type Amd64Gpr = Rdi | Rsi | Rdx | R10 | R8 | R9 | Rax | Rcx
 

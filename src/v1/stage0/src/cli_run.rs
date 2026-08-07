@@ -1138,6 +1138,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn affected_set_stop_line_bridge_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER,
+            "cli_run_affected_set_stop_line_bridge"
+        );
+    }
+
+    #[test]
     fn truncate_histogram_label_respects_utf8_boundaries() {
         let max = 80;
         let s = "é".repeat(50); // 2-byte chars; byte slice at 79 would straddle
@@ -6283,6 +6291,9 @@ fn entry_eligible_for_discovery_skip_before_resolve(
             return Ok(false);
         }
     } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_paths) {
+        return Ok(false);
+    }
+    if compile_clean_broad_stop_line_blocks_skip(entry_path, touched_paths) {
         return Ok(false);
     }
     Ok(true)
@@ -17943,6 +17954,34 @@ pub fn collect_frozen_path_deferral_additions_for(
         }
     };
 
+    // THE CURRENT SIDE IS THE SELECTED HEAD, not an ambient one, and this runs BEFORE any arm that
+    // can permit. Reading the live filesystem keeps an uncommitted local roster edit in scope (the
+    // check must catch a row added but not yet committed), so the coherence is established rather
+    // than assumed: the workspace must BE at the resolved head. An exact replay whose head is some
+    // other commit therefore refuses instead of silently answering about whatever is checked out.
+    //
+    // ORDER IS LOAD-BEARING, and it was wrong when this wall first landed. The confirmed-absence
+    // arm below returns `Ok` — a PERMIT — and it sat above this check, so a comparison whose
+    // baseline predates the freeze file was blessed without ever establishing which tree was being
+    // adjudicated. Discriminating history: base B has no roster, selected head H introduces {X},
+    // the actual checkout C is some later commit carrying {X, Y}; the gate saw B lacking the roster
+    // and permitted, never noticing it had answered about C rather than H. Bounded in practice
+    // (today's push and PR baselines all carry the roster) but reachable through an exact replay or
+    // an operator-selected historical baseline — and it contradicted the very law this check
+    // states. A validation that any permitting arm can jump over is not a wall, so it is hoisted
+    // above every one of them.
+    let checkout = run(&["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])?;
+    let checkout_commit = String::from_utf8_lossy(&checkout.stdout).trim().to_string();
+    if !checkout.status.success() || checkout_commit != head_commit {
+        return Err(located(format!(
+            "WITNESS ADMISSION REFUSAL cause=FreezeHeadEndpointMismatch resolved_head={head_commit} \
+             checkout={checkout_commit} — the current side of this comparison is read from the \
+             working tree, and the working tree is not at the head the authority selected, so the \
+             roster it reports is not the roster of the subject under check. Answering about the \
+             checkout anyway would substitute one endpoint for another."
+        )));
+    }
+
     let base_keys = match read_frozen_roster_at_commit(&run, &baseline_commit).map_err(located)? {
         Some(source) => frozen_path_deferral_keys_from_source(&source),
         None => {
@@ -17958,23 +17997,6 @@ pub fn collect_frozen_path_deferral_additions_for(
             return Ok(Vec::new());
         }
     };
-
-    // THE CURRENT SIDE IS THE SELECTED HEAD, not an ambient one. Reading the live filesystem keeps
-    // an uncommitted local roster edit in scope (the check must catch a row added but not yet
-    // committed), so the coherence is established rather than assumed: the workspace must BE at the
-    // resolved head. An exact replay whose head is some other commit therefore refuses instead of
-    // silently answering about whatever happens to be checked out.
-    let checkout = run(&["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])?;
-    let checkout_commit = String::from_utf8_lossy(&checkout.stdout).trim().to_string();
-    if !checkout.status.success() || checkout_commit != head_commit {
-        return Err(located(format!(
-            "WITNESS ADMISSION REFUSAL cause=FreezeHeadEndpointMismatch resolved_head={head_commit} \
-             checkout={checkout_commit} — the current side of this comparison is read from the \
-             working tree, and the working tree is not at the head the authority selected, so the \
-             roster it reports is not the roster of the subject under check. Answering about the \
-             checkout anyway would substitute one endpoint for another."
-        )));
-    }
     let current_source = std::fs::read_to_string(root.join(WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL))
         .map_err(|e| {
             located(format!(
@@ -19457,7 +19479,7 @@ fn floor_git_diff_range() -> Result<String, String> {
 /// answers "which ref" for a diagnostic, and a DECIDING consumer that takes it has to invent the
 /// missing head and relation. Inventing them is what shipped the merge-base-on-every-arm fail-open,
 /// so the deciding consumers read this one and a `ComparisonReadoutRefused` propagates.
-fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison, String> {
+pub(crate) fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison, String> {
     use v1_interpreter::Value;
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
@@ -20745,6 +20767,64 @@ fn declared_source_refs_blocks_skip(axis: DeclaredSourceRefAxis) -> bool {
     )
 }
 
+// SCAFFOLD (§7 HAND-RUST — `cli_run_affected_set_stop_line_bridge`):
+// Lane: 7933A temporary safety stop-line (calm-fox-44) — any non-docs .dag touch blocks
+// discovery skip for compile-clean shard_a and scope witness entries. BROAD interim rule,
+// not precise self-confirmation; rationale/cost receipt in `gunbc.affected_set_stop_line`,
+// 7933B plan in `gunbc.plans.affected_set_self_confirmation`.
+// Sole executable authority for 7933A: the consts and helpers below (no .dag path twin).
+// 7933B replaces this scaffold with symbolic refs + generated/direct host projection.
+// DELETE WHEN dissolved: `COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY`,
+// `COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY`, `compile_clean_touched_path_norm`,
+// `compile_clean_touched_path_is_docs_only`, `compile_clean_touched_path_is_dag_source`,
+// `compile_clean_verdict_affecting_touch`, `compile_clean_broad_stop_line_blocks_skip`,
+// and `CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER`.
+// Receipt: `rg 'pub\(crate\) const CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER'
+// src/v1/stage0/src/cli_run.rs` == 1 until deletion; executing witness
+// `cargo test -p v1-compiler --lib stop_line`.
+pub(crate) const CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER: &str =
+    "cli_run_affected_set_stop_line_bridge";
+
+const COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY: &str =
+    "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag";
+const COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY: &str =
+    "dag/test/claim/dag_compile_clean_scope_witness_test.dag";
+
+fn compile_clean_touched_path_norm(path: &str) -> &str {
+    path.strip_prefix("./").unwrap_or(path)
+}
+
+fn compile_clean_touched_path_is_docs_only(path: &str) -> bool {
+    compile_clean_touched_path_norm(path).starts_with("docs/")
+}
+
+fn compile_clean_touched_path_is_dag_source(path: &str) -> bool {
+    compile_clean_touched_path_norm(path).ends_with(".dag")
+}
+
+fn compile_clean_verdict_affecting_touch(touched_paths: &[String]) -> bool {
+    !touched_paths.is_empty()
+        && !touched_paths
+            .iter()
+            .all(|p| compile_clean_touched_path_is_docs_only(p))
+        && touched_paths
+            .iter()
+            .any(|p| compile_clean_touched_path_is_dag_source(p))
+}
+
+fn compile_clean_broad_stop_line_blocks_skip(entry_path: &str, touched_paths: &[String]) -> bool {
+    if !compile_clean_verdict_affecting_touch(touched_paths) {
+        return false;
+    }
+    let entry_rel = workspace_relative_repo_path(entry_path);
+    [
+        COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+        COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
+    ]
+    .iter()
+    .any(|check| workspace_relative_repo_path(check) == entry_rel)
+}
+
 fn entry_has_declared_source_refs(entry_path: &str, facts: &ModuleGraphFactsLive) -> bool {
     !declared_source_ref_paths_for_entry(entry_path, facts).is_empty()
 }
@@ -20874,6 +20954,7 @@ fn entry_qualifies_for_skip_without_resolve(
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
     touched_entry_paths: &[String],
+    stop_line_changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
 ) -> Result<bool, String> {
     // Fail-closed on the substrate-declared disposition (v2.std.live_tree): a
@@ -20921,6 +21002,9 @@ fn entry_qualifies_for_skip_without_resolve(
     } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_entry_paths) {
         return Ok(false);
     }
+    if compile_clean_broad_stop_line_blocks_skip(entry_path, stop_line_changed_paths) {
+        return Ok(false);
+    }
     if !diff_edits.overlapping_data_items.is_empty() {
         let data_item_files: Vec<String> = diff_edits
             .overlapping_data_items
@@ -20946,6 +21030,7 @@ fn discovery_entry_fast_skip_without_resolve(
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
     touched_entry_paths: &[String],
+    stop_line_changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
 ) -> Result<HashSet<String>, String> {
     // Entry-grain disposition: OR the rows' `reads_live_tree` per entry (they agree by
@@ -20963,6 +21048,7 @@ fn discovery_entry_fast_skip_without_resolve(
             facts,
             declared_paths,
             touched_entry_paths,
+            stop_line_changed_paths,
             diff_edits,
         )? {
             fast.insert(entry);
@@ -21819,6 +21905,7 @@ fn run_discovery_corpus_with_options_inner(
                 &index.module_graph_facts,
                 &declared_paths,
                 &touched,
+                &changed_paths,
                 &diff_edits,
             ) {
                 Ok(_) => None,
@@ -22431,6 +22518,7 @@ fn eprintln_affected_set_categorization(
                 &index.module_graph_facts,
                 &declared_paths,
                 &touched,
+                changed_paths,
                 diff_edits,
             )
             .map(|fast| rows.iter().filter(|r| fast.contains(&r.entry)).count());
@@ -22696,6 +22784,7 @@ fn run_discovery_rows(
             &index.module_graph_facts,
             &module_graph_declared_paths,
             &touched_entry_paths,
+            changed_paths,
             diff_edits,
         )?
     } else {
@@ -24667,6 +24756,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -24699,6 +24789,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -25508,6 +25599,66 @@ mod node_frontier_plumbing_controls {
         assert!(err.contains("FreezeBaselineUnobservable"), "{err}");
     }
 
+    // CONTROL 7c — THE CROSS-PRODUCT, and the fail-open it closes. Each of these two facts is
+    // individually handled: an absent baseline roster PERMITS (the freeze-introduction arm) and a
+    // checkout that is not the selected head REFUSES. Their conjunction was the hole, because the
+    // permitting arm returned first and the endpoint check never ran — so a comparison naming head
+    // H was silently answered from checkout C.
+    //
+    // This is the shape review found after #7953 merged. It is bounded in practice, since today's
+    // push and PR baselines all carry the roster, and reachable through an exact replay or an
+    // operator-selected historical baseline. Reordering the endpoint check back below the absence
+    // arm must make this control red; that mutation is the proof it is load-bearing.
+    #[test]
+    fn frozen_roster_absent_baseline_still_refuses_a_mismatched_checkout() {
+        let repo = FreezeRepo::new("absent-baseline-mismatched-head");
+        std::fs::write(repo.dir.join("unrelated.txt"), "no roster yet\n").expect("write");
+        let base_without_roster = repo.commit("B: baseline predating the freeze");
+
+        repo.write_roster(&["introduced_here"]);
+        let selected_head = repo.commit("H: the selected head introduces the roster");
+
+        repo.write_roster(&["introduced_here", "added_later"]);
+        repo.commit("C: the actual checkout, a different subject");
+
+        // The permitting arm is genuinely reachable: this baseline really has no roster.
+        assert!(
+            !std::process::Command::new("git")
+                .args([
+                    "ls-tree",
+                    "-z",
+                    &base_without_roster,
+                    "--",
+                    super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL,
+                ])
+                .current_dir(&repo.dir)
+                .output()
+                .expect("git ls-tree")
+                .stdout
+                .iter()
+                .any(|b| *b != 0),
+            "the fixture's baseline must genuinely lack the roster, else the permitting arm is \
+             never reached and this control proves nothing"
+        );
+
+        let err = repo
+            .collect(&repo.direct(&base_without_roster, &selected_head))
+            .expect_err(
+                "an absent baseline must not permit while the checkout is a different subject",
+            );
+        assert!(err.contains("FreezeHeadEndpointMismatch"), "{err}");
+
+        // The same absent baseline, with the checkout AT the selected head, still permits — the
+        // repair tightened the order, it did not delete the freeze-introduction arm.
+        repo.git(&["checkout", "--quiet", &selected_head]);
+        assert!(
+            repo.collect(&repo.direct(&base_without_roster, &selected_head))
+                .expect("confirmed absence at a coherent endpoint is readable")
+                .is_empty(),
+            "the introducing change must still pass when the checkout IS the selected head"
+        );
+    }
+
     // CONTROL 7b — THE ABSENCE/IGNORANCE SPLIT, at the only grain that actually discriminates it.
     //
     // This control exists because its first version did not. That version asked the question with
@@ -25742,6 +25893,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -25769,6 +25921,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -25796,6 +25949,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -25854,6 +26008,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -35529,6 +35684,85 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
+    // THE PAYLOAD ROUTE, end to end, which the OperatorOverride control beside it deliberately does
+    // not cover. The repository already proves `GITHUB_EVENT_PATH` parses into a before SHA, and the
+    // recut proves a resolved comparison decides correctly once it reaches Rust; nothing joined the
+    // two. This composes the whole chain on the production route:
+    //
+    //   GITHUB_EVENT_NAME=push + real payload file + GITHUB_SHA
+    //     -> resolve_diff_baseline -> PushBeforeBaseline -> DirectComparison -> the Rust bridge
+    //
+    // Direct mode is the load-bearing assertion. A push resolving to merge-base is exactly the
+    // fail-open that shipped in gunbc#7953's first cut, and this is the only control that reaches
+    // that conclusion through the real payload rather than through a hand-built comparison.
+    #[test]
+    fn push_payload_resolves_through_the_public_route_to_a_direct_comparison() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let ws = workspace_root();
+                let before = String::from_utf8_lossy(
+                    &std::process::Command::new("git")
+                        .args(["rev-parse", "HEAD^{commit}"])
+                        .current_dir(&ws)
+                        .output()
+                        .expect("git rev-parse")
+                        .stdout,
+                )
+                .trim()
+                .to_string();
+                let head_sha = String::from_utf8_lossy(
+                    &std::process::Command::new("git")
+                        .args(["rev-parse", "HEAD^{commit}"])
+                        .current_dir(&ws)
+                        .output()
+                        .expect("git rev-parse")
+                        .stdout,
+                )
+                .trim()
+                .to_string();
+
+                let payload = std::env::temp_dir().join(format!(
+                    "gunbc-push-payload-{}-{}.json",
+                    std::process::id(),
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .expect("clock")
+                        .as_nanos()
+                ));
+                std::fs::write(&payload, format!("{{\"before\": \"{before}\"}}\n"))
+                    .expect("write push payload");
+
+                // The two competing baseline sources must be absent, or this control would silently
+                // measure the OperatorOverride / ExactReplay arm instead of the payload route.
+                let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
+                let _window = EnvGuard::remove("GUNBC_DIFF_WINDOW_PATH");
+                let _head_override = EnvGuard::remove("GUNBC_CI_DIFF_HEAD");
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "push");
+                let _path = EnvGuard::set("GITHUB_EVENT_PATH", &payload.to_string_lossy());
+                let _sha = EnvGuard::set("GITHUB_SHA", &head_sha);
+
+                let comparison = crate::cli_run::floor_diff_comparison_readout()
+                    .expect("a real push payload must resolve to a comparison");
+                std::fs::remove_file(&payload).ok();
+
+                match comparison {
+                    crate::cli_run::FreezeBaselineComparison::Direct { base, head, kind } => {
+                        assert_eq!(base, before, "the exact payload before SHA is the base");
+                        assert_eq!(head, "HEAD", "the selected head comes from the diff policy");
+                        assert_eq!(
+                            kind, "PushBeforeBaseline",
+                            "the payload route must select the PushBefore arm"
+                        );
+                    }
+                    other => panic!(
+                        "a push payload must resolve to a DIRECT (two-dot) comparison; \
+                         merge-base on a push is the reintroduction fail-open: {other:?}"
+                    ),
+                }
+            });
+        });
+    }
+
     fn with_env_test_lock<F: FnOnce()>(f: F) {
         let _guard = ENV_TEST_LOCK
             .lock()
@@ -36413,6 +36647,127 @@ mod witness_layer_roots_compile_clean_tests {
             SelectionControlRefusalCause::DiffObservationFailed.token(),
             SelectionControlRefusalCause::InputClosureFailed.token()
         );
+    }
+
+    fn repair_receipt_touched_paths() -> Vec<String> {
+        vec![
+            "dag/extdeps/systems/nvidia.dag".to_string(),
+            "dag/test/claim/generated_artifact_drift_test.dag".to_string(),
+        ]
+    }
+
+    /// #7915 receipt: repair PR touched only nvidia.dag and generated_artifact_drift_test.dag;
+    /// broad stop-line must block skip for compile_clean_shard_a (import-closure would miss it).
+    #[test]
+    fn stop_line_repair_receipt_blocks_shard_a_skip() {
+        let touched = repair_receipt_touched_paths();
+        assert!(compile_clean_broad_stop_line_blocks_skip(
+            COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+            &touched
+        ));
+    }
+
+    /// #7915 receipt: scope witness must also remain eligible on the same touch set.
+    #[test]
+    fn stop_line_repair_receipt_blocks_scope_skip() {
+        let touched = repair_receipt_touched_paths();
+        assert!(compile_clean_broad_stop_line_blocks_skip(
+            COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
+            &touched
+        ));
+    }
+
+    /// Mechanism-touch pair (7933A): any non-docs .dag change blocks scope witness skip.
+    #[test]
+    fn stop_line_mechanism_touch_dag_blocks_scope_skip() {
+        let touched = vec!["src/v2/lens/module_graph.dag".to_string()];
+        assert!(compile_clean_broad_stop_line_blocks_skip(
+            COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
+            &touched
+        ));
+    }
+
+    /// Mechanism-touch pair (7933A): same .dag touch blocks shard_a skip under the broad rule.
+    #[test]
+    fn stop_line_mechanism_touch_dag_blocks_shard_a_skip() {
+        let touched = vec!["src/v2/lens/module_graph.dag".to_string()];
+        assert!(compile_clean_broad_stop_line_blocks_skip(
+            COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+            &touched
+        ));
+    }
+
+    /// Docs-only touches must not trigger the broad stop-line.
+    #[test]
+    fn stop_line_docs_only_touch_does_not_block() {
+        let touched = vec!["docs/plans/foo.md".to_string()];
+        assert!(!compile_clean_broad_stop_line_blocks_skip(
+            COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+            &touched
+        ));
+    }
+
+    /// RED control: a scope-only rule would not block shard_a; broad stop-line does on #7915 receipt.
+    #[test]
+    fn stop_line_repair_receipt_red_control_scope_only_omits_shard_a() {
+        let touched = repair_receipt_touched_paths();
+        let scope_only_blocks_shard_a = |entry: &str| {
+            compile_clean_verdict_affecting_touch(&touched)
+                && workspace_relative_repo_path(entry)
+                    == workspace_relative_repo_path(COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY)
+        };
+        assert!(
+            !scope_only_blocks_shard_a(COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY),
+            "scope-only subject must omit shard-a"
+        );
+        assert!(
+            compile_clean_broad_stop_line_blocks_skip(
+                COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+                &touched
+            ),
+            "broad stop-line must block shard-a on repair receipt"
+        );
+    }
+
+    /// #7915 production-path receipt: data-item-only edits populate `overlapping_data_items`
+    /// (not `touched_entry_files`), so the stop-line must read the full name-status list —
+    /// not the filtered entry-path set — or shard_a fast-skips through the defect.
+    #[test]
+    fn stop_line_data_only_dag_edit_blocks_shard_a_fast_skip() {
+        with_workspace_cwd(|| {
+            let index = build_multi_entry_index(&default_source_roots());
+            let mut diff_edits = FloorDiffEdits::default();
+            diff_edits.overlapping_data_items.insert((
+                "dag/extdeps/systems/nvidia.dag".to_string(),
+                "nvidia_catalog_row".to_string(),
+            ));
+            diff_edits.overlapping_data_items.insert((
+                "dag/test/claim/generated_artifact_drift_test.dag".to_string(),
+                "drift_fixture".to_string(),
+            ));
+            let touched_entry_paths: Vec<String> = Vec::new();
+            let changed_paths = repair_receipt_touched_paths();
+            let shard_a_row = DiscoveryRow {
+                label: "shard_a".to_string(),
+                entry: COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY.to_string(),
+                function: "compile_clean_shard_a_exemplar_compile_green".to_string(),
+                reads_live_tree: false,
+            };
+            let declared = index.module_graph_facts.declared_repo_paths();
+            let fast_skip = discovery_entry_fast_skip_without_resolve(
+                &[shard_a_row],
+                &index.module_graph_facts,
+                &declared,
+                &touched_entry_paths,
+                &changed_paths,
+                &diff_edits,
+            )
+            .expect("fast-skip disposition");
+            assert!(
+                !fast_skip.contains(COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY),
+                "shard_a must not fast-skip when name-status lists non-docs .dag data-item edits outside import closure"
+            );
+        });
     }
 
     /// The unblocked scoped arm, by execution: a single touched dag entry selects at least

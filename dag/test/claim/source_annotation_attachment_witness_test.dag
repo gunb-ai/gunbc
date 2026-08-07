@@ -42,11 +42,11 @@ fn probe_span(start: Int, end: Int) -> SourceSpan {
 }
 
 fn subject_f() -> AnnotationSubject {
-  AnnotationSubject { occurrence: OccurrenceId { value: 7 }, span: probe_span(start: 100, end: 200) }
+  AnnotationSubject { occurrence: OccurrenceId { value: 7 }, span: probe_span(start: 100, end: 200), module_root: false }
 }
 
 fn subject_g() -> AnnotationSubject {
-  AnnotationSubject { occurrence: OccurrenceId { value: 9 }, span: probe_span(start: 300, end: 400) }
+  AnnotationSubject { occurrence: OccurrenceId { value: 9 }, span: probe_span(start: 300, end: 400), module_root: false }
 }
 
 fn subjects() -> List<AnnotationSubject> {
@@ -59,6 +59,7 @@ fn leading(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
     origin: probe_span(start: start, end: end),
     placement: LeadingAfterLineIndent,
     preceded_by_blank_line: false,
+    preceded_by_annotation_line: false,
   }
 }
 
@@ -68,6 +69,7 @@ fn leading_after_blank(text: String, start: Int, end: Int) -> NormalizedAnnotati
     origin: probe_span(start: start, end: end),
     placement: LeadingAfterLineIndent,
     preceded_by_blank_line: true,
+    preceded_by_annotation_line: false,
   }
 }
 
@@ -77,6 +79,7 @@ fn trailing(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
     origin: probe_span(start: start, end: end),
     placement: TrailingAfterSemanticToken,
     preceded_by_blank_line: false,
+    preceded_by_annotation_line: false,
   }
 }
 
