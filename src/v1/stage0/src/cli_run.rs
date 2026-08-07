@@ -2766,6 +2766,65 @@ fn referenced_module_paths_in_text(content: &str, index: &ModuleSourceIndex) -> 
     out.into_iter().collect()
 }
 
+#[cfg(test)]
+mod referenced_module_paths_comment_probe_tests {
+    use super::{referenced_module_paths_in_text, ModuleSourceIndex};
+    use crate::v1_compiler_compile::SourceFile;
+    use std::rc::Rc;
+
+    fn probe_index_with(module_path: &str) -> ModuleSourceIndex {
+        let mut index = ModuleSourceIndex::new();
+        index.insert(
+            module_path.to_string(),
+            Rc::new(SourceFile {
+                path: format!("dag/{module_path}.dag"),
+                content: format!("module {module_path}\n"),
+            }),
+        );
+        index
+    }
+
+    /// DESIGN §4c: dotted module paths inside comments must not affect closure
+    /// discovery. This probe compares baseline vs comment-only perturbation.
+    #[test]
+    fn comment_only_dotted_module_path_does_not_change_reference_scan() {
+        let index = probe_index_with("std.occurrence_binding_candidates");
+        let baseline = "module test.probe\nimport std.types { Bool }\n";
+        let perturbed = concat!(
+            "module test.probe\n",
+            "// std.occurrence_binding_candidates.foo\n",
+            "import std.types { Bool }\n"
+        );
+        let base_refs = referenced_module_paths_in_text(baseline, &index);
+        let pert_refs = referenced_module_paths_in_text(perturbed, &index);
+        assert_eq!(
+            base_refs, pert_refs,
+            "comment-only dotted module path must not change reference scan (§4c)"
+        );
+    }
+
+    #[test]
+    fn moved_comment_only_dotted_module_path_does_not_change_reference_scan() {
+        let index = probe_index_with("gunbc.namespace_clause_e_projection_law");
+        let baseline = concat!(
+            "module test.probe\n",
+            "import std.types { Bool }\n",
+            "// gunbc.namespace_clause_e_projection_law.tail\n"
+        );
+        let perturbed = concat!(
+            "module test.probe\n",
+            "// gunbc.namespace_clause_e_projection_law.head\n",
+            "import std.types { Bool }\n"
+        );
+        let base_refs = referenced_module_paths_in_text(baseline, &index);
+        let pert_refs = referenced_module_paths_in_text(perturbed, &index);
+        assert_eq!(
+            base_refs, pert_refs,
+            "moving a comment-only dotted module path must not change reference scan (§4c)"
+        );
+    }
+}
+
 fn compile_clean_resolve_has_hard_errors(
     result: &v1_compiler_compile::ResolvedPipelineResult,
 ) -> bool {
