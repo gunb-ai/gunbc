@@ -138,6 +138,7 @@ pub fn annotation_subjects(
                         Rc::new(AnnotationSubject {
                             occurrence: entry.projection.clone().occurrence.clone(),
                             span: span.clone(),
+                            module_root: true,
                         }),
                     )
                 } else {
@@ -162,6 +163,7 @@ pub fn annotation_subjects(
                                             span.end.clone(),
                                         ),
                                     }),
+                                    module_root: false,
                                 }),
                             )
                         }
@@ -361,6 +363,7 @@ pub fn normalize_dag_annotation(
         origin: capture.origin.clone(),
         placement: capture.placement.clone(),
         preceded_by_blank_line: capture.preceded_by_blank_line.clone(),
+        preceded_by_annotation_line: capture.preceded_by_annotation_line.clone(),
     })
 }
 

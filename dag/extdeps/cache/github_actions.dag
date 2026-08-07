@@ -15,7 +15,6 @@ import std.cache_interface {
   MissThenCreate,
   TarArchive,
   CrossHostNetwork,
-  Lru,
   ApiKey,
   WanTensMs,
   Eventual,
@@ -66,7 +65,7 @@ data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: TarArchive
     locality: CrossHostNetwork
-    eviction: Lru
+    retention: { release_policy: ReleasedNever, capacity: CapacityBounded { limit: ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } } }
     atomicity: WriteThenCommit
     auth: ApiKey
     read_latency: WanTensMs
