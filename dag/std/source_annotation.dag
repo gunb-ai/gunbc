@@ -17,11 +17,13 @@ type AnnotationPlacement
 // WHY THIS LIVES IN std RATHER THAN IN A TOKENIZER: the v1 seed tokenizer cannot import v2 modules, so a capture shape declared inside either realization forces the other to mint a second spelling of one concept. v2's lexing module additionally carries an annotation_class Symbol on its own capture row because that lexer is generic over many languages with many annotation syntaxes; the v1 .dag tokenizer has exactly one, so it uses this shape directly. That is a real difference in what the two realizations must distinguish, not a fork — and both converge on SourceAnnotationDebt once a subject is known, which is the row that actually persists.
 
 // THE FIELD IS `lexeme`, NOT `text`, AND THE DISTINCTION IS LOAD-BEARING. A capture carries RAW SYNTAX exactly as it appeared, delimiter included: the lexer reports what it saw, and the language-specific attachment realization owns normalization into SourceAnnotationDebt.text. Naming it `text` while storing a `//`-prefixed lexeme would make the two indistinguishable at the type level, and the failure is not hypothetical — if one realization strips the delimiter and another does not, parse then render then parse either doubles the delimiter or silently changes annotation content, and the D-C round-trip control is what would catch it. Every realization capturing into this field stores raw; every realization reading it for durable text strips.
+// TWO ADJACENCY BITS, BOTH OBSERVED AT CAPTURE, BECAUSE NEITHER IS RECOVERABLE LATER. `preceded_by_blank_line` says the previous line is whitespace only — it decides where one authored block ENDS. `preceded_by_annotation_line` says the previous line is itself a standalone annotation line — it decides that this capture CONTINUES the block that line opened, which is what makes a block's subject a fact about its first line rather than something re-derived per line. The pair is not redundant: a capture with both false sits directly under a code line, and that is the only shape eligible to open a module-header block.
 type UnboundAnnotationCapture {
   lexeme: String
   origin: SourceSpan
   placement: AnnotationPlacement
   preceded_by_blank_line: Bool
+  preceded_by_annotation_line: Bool
 }
 
 
@@ -168,9 +170,11 @@ fn placement_from_line_prefix(indent_only: Bool) -> AnnotationPlacement {
 
 
 // What a realization offers as attachable subjects, and deliberately NOT DeclarationOccurrence. Two reasons, both structural. First, this module would otherwise depend on the whole occurrence transport to express a rule that needs exactly two facts per subject — an identity to refer to and a span to compare against. Second, the roster IS where the module-item narrowing lives: a realization admitting only module-scope declarations supplies only those, and widening to a finer grain later is a change in what the caller enumerates, not a change to the fold. The occurrence is REFERRED to, never minted; every id in a roster was already allocated by the semantic parser before attachment runs.
+// `module_root` says this subject IS the module declaration itself, stated by the realization because only the realization knows — the fold sees identities and spans, and guessing the module structurally (say, as the earliest subject by start) would misread any roster whose earliest subject is an ordinary member. The module-header rule below fires only for a roster that declares one.
 type AnnotationSubject {
   occurrence: OccurrenceId
   span: SourceSpan
+  module_root: Bool
 }
 
 
@@ -180,6 +184,7 @@ type NormalizedAnnotationCapture {
   origin: SourceSpan
   placement: AnnotationPlacement
   preceded_by_blank_line: Bool
+  preceded_by_annotation_line: Bool
 }
 
 
@@ -207,30 +212,29 @@ type AnnotationSubjectPick {
 
 // POST-MODULE HEADER GAP: prose on the line immediately after `module p.q` attaches to the module, not the first depth-1 member. A blank line between the module declaration and the comment starts a new block that follows the ordinary nearest-following rule instead. Without this arm, a line-2 comment would skip the module (its span ends before the capture) and bind to the first import or declaration — the wrong subject for module-level rationale while still satisfying line-1 CI layout.
 
+// Adjacency to the module line needs no width constant. The two observed bits pin the shape exactly: a capture that is neither blank-preceded nor annotation-preceded has NON-COMMENT CONTENT on the line above it, and if it also starts after the module subject and ends before the first member starts, the only thing that line can be is the module declaration itself — a member there would put the capture past `first_member_start`. A capture that IS annotation-preceded is a continuation line; its block's subject was decided by the block's first line, so the arm refuses it and the attach fold merges it instead. An earlier revision used a tolerance window (`span.end + 12`) in place of the annotation-line bit; that both under-covered long dotted module names (the window is a guess about how many characters a module declaration spans) and mis-fired on the adjacent second line of a blank-separated block below the module, which the window happened to exclude only when the module name was short.
+
 // The roster is scanned rather than indexed, so resolution is captures times subjects. That is a join without a sorted index, not a copied accumulator, and it is bounded by one source's declarations.
 data annotation_subject_pick_note: String = "DISSOLVE-ON: a span-ordered subject index exists on the parse artifact; then the nearest-following pick becomes a lookup and this fold reads it."
 
-fn earliest_subject_by_start(subjects: List<AnnotationSubject>) -> AnnotationSubject? {
-  let min_start = fold(
-    subjects,
-    init: 0 - 1,
-    f: (best, row) =>
-      if best < 0 { row.span.start } else if row.span.start < best { row.span.start } else { best }
-  )
-  if min_start < 0 {
-    none
+fn module_root_pick_step(acc: AnnotationSubject?, row: AnnotationSubject) -> AnnotationSubject? {
+  if row.module_root {
+    match acc {
+      Absent => Present { value: row }
+      Present { value: best } =>
+        if row.span.start < best.span.start { Present { value: row } } else { acc }
+    }
   } else {
-    fold(
-      subjects,
-      init: none,
-      f: (acc, row) =>
-        if row.span.start == min_start {
-          Present { value: row }
-        } else {
-          acc
-        }
-    )
+    acc
   }
+}
+
+fn module_root_subject(subjects: List<AnnotationSubject>) -> AnnotationSubject? {
+  fold(
+    subjects,
+    init: none,
+    f: (acc, row) => module_root_pick_step(acc: acc, row: row)
+  )
 }
 
 fn earliest_member_start_after(subjects: List<AnnotationSubject>, after: Int, fallback: Int) -> Int {
@@ -249,12 +253,13 @@ fn earliest_member_start_after(subjects: List<AnnotationSubject>, after: Int, fa
 fn module_header_gap_subject(
   subjects: List<AnnotationSubject>,
   origin: SourceSpan,
-  preceded_by_blank_line: Bool
+  preceded_by_blank_line: Bool,
+  preceded_by_annotation_line: Bool
 ) -> AnnotationSubject? {
-  if preceded_by_blank_line {
+  if preceded_by_blank_line || preceded_by_annotation_line {
     none
   } else {
-    match earliest_subject_by_start(subjects: subjects) {
+    match module_root_subject(subjects: subjects) {
       Absent => none
       Present { value: mod_subject } =>
         let first_member_start = earliest_member_start_after(
@@ -263,7 +268,6 @@ fn module_header_gap_subject(
           fallback: origin.end + 1
         )
         if origin.start >= mod_subject.span.end
-          && origin.start <= mod_subject.span.end + 12
           && origin.end <= first_member_start {
           Present { value: mod_subject }
         } else {
@@ -276,12 +280,14 @@ fn module_header_gap_subject(
 fn annotation_subject_pick(
   subjects: List<AnnotationSubject>,
   origin: SourceSpan,
-  preceded_by_blank_line: Bool
+  preceded_by_blank_line: Bool,
+  preceded_by_annotation_line: Bool
 ) -> AnnotationSubjectPick {
   match module_header_gap_subject(
     subjects: subjects,
     origin: origin,
-    preceded_by_blank_line: preceded_by_blank_line
+    preceded_by_blank_line: preceded_by_blank_line,
+    preceded_by_annotation_line: preceded_by_annotation_line
   ) {
     Present { value: mod_subject } =>
       AnnotationSubjectPick { contained: false, following: Present { value: mod_subject } }
@@ -365,10 +371,12 @@ fn keyed_annotation_rows_agree(
   walk.agreed && (walk.rest |> count) == 0
 }
 
+// `pending_adjacent` records whether the immediately previous capture opened or extended `pending`. A continuation line (annotation-preceded, not blank-preceded) merges into `pending` only when this is true: captures arrive in source order, so the standalone comment line above a continuation IS the previous capture, and if that capture was refused rather than admitted, the continuation must not ride into whatever OLDER block still sits open — it falls through to the ordinary rule and is judged on its own.
 type AnnotationAttachAcc {
   rows: List<SourceAnnotationDebt>
   refusals: List<AnnotationAttachmentRefusal>
   pending: SourceAnnotationDebt?
+  pending_adjacent: Bool
 }
 
 fn annotation_attach_flush(acc: AnnotationAttachAcc) -> List<SourceAnnotationDebt> {
@@ -400,74 +408,112 @@ fn annotation_attach_step(
       rows: acc.rows,
       refusals: list_push(acc.refusals, TrailingNotModeled { origin: capture.origin }),
       pending: acc.pending,
+      pending_adjacent: false,
     }
   } else {
     let pick = annotation_subject_pick(
       subjects: subjects,
       origin: capture.origin,
-      preceded_by_blank_line: capture.preceded_by_blank_line
+      preceded_by_blank_line: capture.preceded_by_blank_line,
+      preceded_by_annotation_line: capture.preceded_by_annotation_line
     )
     if pick.contained {
       AnnotationAttachAcc {
         rows: acc.rows,
         refusals: list_push(acc.refusals, BodyGrainNotModeled { origin: capture.origin }),
         pending: acc.pending,
+        pending_adjacent: false,
+      }
+    } else if capture.preceded_by_annotation_line && !capture.preceded_by_blank_line && acc.pending_adjacent {
+      match acc.pending {
+        Present { value: open } =>
+          AnnotationAttachAcc {
+            rows: acc.rows,
+            refusals: acc.refusals,
+            pending: Present {
+              value: SourceAnnotationDebt {
+                subject: open.subject,
+                text: concat(open.text, concat("\n", capture.text)),
+                origin: SourceSpan {
+                  file: open.origin.file,
+                  start: open.origin.start,
+                  end: capture.origin.end,
+                },
+              },
+            },
+            pending_adjacent: true,
+          }
+        Absent =>
+          annotation_attach_resolve(acc: acc, capture: capture, pick: pick)
       }
     } else {
-      match pick.following {
+      annotation_attach_resolve(acc: acc, capture: capture, pick: pick)
+    }
+  }
+}
+
+// The ordinary (non-continuation) resolution: the capture's own pick decides its subject. A continuation line never reaches this — its subject is its block's first line's subject, held in `pending` — except when the line it continues was refused, in which case it is judged here on its own and typically shares that refusal.
+fn annotation_attach_resolve(
+  acc: AnnotationAttachAcc,
+  capture: NormalizedAnnotationCapture,
+  pick: AnnotationSubjectPick
+) -> AnnotationAttachAcc {
+  match pick.following {
+    Absent =>
+      AnnotationAttachAcc {
+        rows: acc.rows,
+        refusals: list_push(acc.refusals, UnattachedAtScopeEnd { origin: capture.origin }),
+        pending: acc.pending,
+        pending_adjacent: false,
+      }
+    Present { value: subject } =>
+      match acc.pending {
+        Present { value: open } =>
+          if open.subject.value == subject.occurrence.value && !capture.preceded_by_blank_line {
+            AnnotationAttachAcc {
+              rows: acc.rows,
+              refusals: acc.refusals,
+              pending: Present {
+                value: SourceAnnotationDebt {
+                  subject: open.subject,
+                  text: concat(open.text, concat("\n", capture.text)),
+                  origin: SourceSpan {
+                    file: open.origin.file,
+                    start: open.origin.start,
+                    end: capture.origin.end,
+                  },
+                },
+              },
+              pending_adjacent: true,
+            }
+          } else {
+            AnnotationAttachAcc {
+              rows: list_push(acc.rows, open),
+              refusals: acc.refusals,
+              pending: Present {
+                value: SourceAnnotationDebt {
+                  subject: subject.occurrence,
+                  text: capture.text,
+                  origin: capture.origin,
+                },
+              },
+              pending_adjacent: true,
+            }
+          }
         Absent =>
           AnnotationAttachAcc {
             rows: acc.rows,
-            refusals: list_push(acc.refusals, UnattachedAtScopeEnd { origin: capture.origin }),
-            pending: acc.pending,
-          }
-        Present { value: subject } =>
-          match acc.pending {
-            Present { value: open } =>
-              if open.subject.value == subject.occurrence.value && !capture.preceded_by_blank_line {
-                AnnotationAttachAcc {
-                  rows: acc.rows,
-                  refusals: acc.refusals,
-                  pending: Present {
-                    value: SourceAnnotationDebt {
-                      subject: open.subject,
-                      text: concat(open.text, concat("\n", capture.text)),
-                      origin: SourceSpan {
-                        file: open.origin.file,
-                        start: open.origin.start,
-                        end: capture.origin.end,
-                      },
-                    },
-                  },
-                }
-              } else {
-                AnnotationAttachAcc {
-                  rows: list_push(acc.rows, open),
-                  refusals: acc.refusals,
-                  pending: Present {
-                    value: SourceAnnotationDebt {
-                      subject: subject.occurrence,
-                      text: capture.text,
-                      origin: capture.origin,
-                    },
-                  },
-                }
-              }
-            Absent =>
-              AnnotationAttachAcc {
-                rows: acc.rows,
-                refusals: acc.refusals,
-                pending: Present {
-                  value: SourceAnnotationDebt {
-                    subject: subject.occurrence,
-                    text: capture.text,
-                    origin: capture.origin,
-                  },
-                },
-              }
+            refusals: acc.refusals,
+            pending: Present {
+              value: SourceAnnotationDebt {
+                subject: subject.occurrence,
+                text: capture.text,
+                origin: capture.origin,
+              },
+            },
+            pending_adjacent: true,
           }
       }
-    }
   }
 }
 
@@ -481,7 +527,7 @@ fn attach_annotations(
 ) -> AnnotationAttachmentResult {
   let acc = fold(
     captures,
-    init: AnnotationAttachAcc { rows: [], refusals: [], pending: none },
+    init: AnnotationAttachAcc { rows: [], refusals: [], pending: none, pending_adjacent: false },
     f: (acc, capture) =>
       annotation_attach_step(acc: acc, capture: capture, subjects: subjects)
   )

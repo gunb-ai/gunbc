@@ -1,6 +1,6 @@
 module v1.compiler.annotation_bind
 // The .dag realization of annotation attachment: it turns what the tokenizer captured into subject-bound rows by calling std.source_annotation.attach_annotations. Everything here is either .dag-specific — what the comment delimiter looks like, how a module item is recognized in this parser's transport — or a projection of facts the parser already produced. The RULE itself is not here; a second copy of the rule beside the shared one is the fork this lane exists to prevent.
-
+//
 // It is a PURE DOWNSTREAM READER of the occurrence transport. No allocator is in scope, so the identities it reads were all minted by the semantic parser before it ran, and no edit to a comment can shift one.
 
 import std.types { Bool, Int, String, SourceSpan, List }
@@ -100,7 +100,7 @@ fn annotation_subjects(
       let depth = entry_ancestor_depth(entry: entry)
       let span = entry.projection.diagnostic_span
       if depth == 0 {
-        list_push(acc, AnnotationSubject { occurrence: entry.projection.occurrence, span: span })
+        list_push(acc, AnnotationSubject { occurrence: entry.projection.occurrence, span: span, module_root: true })
       } else if depth == 1 {
         let limit = next_module_item_start(items: items, after: span.start, fallback: source_length)
         list_push(
@@ -112,6 +112,7 @@ fn annotation_subjects(
               start: span.start,
               end: module_item_extent_end(entries: entries, start: span.start, limit: limit, own_end: span.end),
             },
+            module_root: false,
           }
         )
       } else {
@@ -266,6 +267,7 @@ fn normalize_dag_annotation(capture: UnboundAnnotationCapture) -> NormalizedAnno
     origin: capture.origin,
     placement: capture.placement,
     preceded_by_blank_line: capture.preceded_by_blank_line,
+    preceded_by_annotation_line: capture.preceded_by_annotation_line,
   }
 }
 
