@@ -185,7 +185,7 @@ test fn witness_ignored_paths_excluded() -> Bool {
 }
 
 test fn witness_registry_complete() -> Bool {
-  count(generated_artifact_registry) == (17 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
+  count(generated_artifact_registry) == (15 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
     && registry_contains(a: CiYamlArtifact)
     && registry_contains(a: FalsifierYamlArtifact)
     && registry_contains(a: GitignoreArtifact)

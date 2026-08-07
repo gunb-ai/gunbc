@@ -1,6 +1,5 @@
 module test.claim.live_deploy.intent
 
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import gunbc.live_deploy.intent {
   live_deploy_readback_for_spec,
   live_deploy_health_url_for_port,

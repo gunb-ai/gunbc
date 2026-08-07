@@ -1,6 +1,5 @@
 module test.claim.deploy_mutation_gate_witness
 
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data mutation_gate_marker: String = "deploy-mutation-gate-marker-c4e2"
