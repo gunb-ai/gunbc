@@ -2270,6 +2270,21 @@ fn stage0_partition_crate_rows_outcome() -> Stage0PartitionCrateRowsOutcome {
   }
 }
 
+fn stage0_partition_package_names() -> List<String> {
+  match stage0_partition_crate_rows_outcome() {
+    Stage0PartitionCrateRowsOk { rows: rows } =>
+      rows |> map(row => row.package_name)
+    Stage0PartitionCrateRowsRefused { cause: _ } => []
+  }
+}
+
+fn stage0_physical_crate_count() -> Int {
+  match stage0_partition_crate_rows_outcome() {
+    Stage0PartitionCrateRowsOk { rows: rows } => rows |> count
+    Stage0PartitionCrateRowsRefused { cause: _ } => 0
+  }
+}
+
 fn stage0_physical_crate_count_holds(expected: Int) -> Bool {
   match stage0_partition_crate_rows_outcome() {
     Stage0PartitionCrateRowsOk { rows: rows } => (rows |> count) == expected

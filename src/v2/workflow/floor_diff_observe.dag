@@ -240,7 +240,10 @@ fn floor_observe_git_diff_unified_for_ci() -> FloorUnifiedDiffResult {
   floor_observe_git_diff_unified(policy: gunbc_ci_spec.diff_policy)
 }
 
-data floor_diff_baseline_readout_note: String = "A PROJECTION of the already-resolved baseline — it observes no git, decides nothing, and adds no second baseline authority (resolve_diff_baseline stays the single one, DESIGN section 3). IT IS NO LONGER DIAGNOSTICS-ONLY, and the correction is recorded rather than quietly applied: this note read 'for diagnostics only' until 2026-08-06, when the frozen path-deferral monotonicity gate (v1_compiler.cli_run collect_frozen_path_deferral_additions) became its second consumer. That gate had forked the baseline decision and hardcoded origin/main — the exact policy-as-literal this module's resolver exists to de-fork — and reading the resolved baseline here is what deleted the fork. A projection acquiring a DECIDING consumer changes nothing about the single-authority claim (it still re-derives nothing) but it does change what a reader may assume about blast radius, so the sentence saying otherwise had to go. Its first consumer is the affected-set no-observed-change diagnostic in the seed executor: when the observation returns zero changed paths, the receipt must be able to NAME the baseline the comparison was made against, because 'nothing changed' and 'the baseline could not express what changed' are different states with different remedies and the second is what a self-referential baseline produces (a push whose base ref is the pushed ref itself). Locating the state requires naming its base and event, so the diagnostic reads them from here rather than re-deriving them."
+data floor_diff_baseline_readout_note: String = "A PROJECTION of the already-resolved baseline FOR DIAGNOSTICS ONLY — it observes no git, decides nothing, and adds no second baseline authority (resolve_diff_baseline stays the single one, DESIGN section 3). Its consumer is the affected-set no-observed-change diagnostic in the seed executor: when the observation returns zero changed paths, the receipt must be able to NAME the baseline the comparison was made against, because 'nothing changed' and 'the baseline could not express what changed' are different states with different remedies and the second is what a self-referential baseline produces (a push whose base ref is the pushed ref itself). Locating the state requires naming its base and event, so the diagnostic reads them from here rather than re-deriving them.
+
+THE FULL HISTORY OF THAT CLAIM, recorded because this row briefly said the opposite and a corrected sentence that hides its own correction teaches nothing. gunbc#7953's FIRST repair made this lossy \{ref, event_name\} readout a DECIDING consumer: the frozen-roster monotonicity gate took it and then reconstructed the head and relation it does not carry, which is how merge-base came to be imposed on every baseline arm and how a rewritten push could reintroduce a frozen row unnoticed. The RECUT in that same PR restored this row to diagnostics-only and introduced FloorDiffComparisonReadout beside it for consumers that decide. So the rule is not that a projection may never gain a deciding consumer — it is that a LOSSY projection may not, because the missing members do not stay missing, they get invented. This note carried the interim claim for exactly one commit; it is corrected here rather than reverted silently.
+"
 
 type FloorDiffBaselineReadout
   = BaselineReadout { ref: String, event_name: String }
@@ -279,14 +282,12 @@ type FloorDiffComparisonReadout
   = DirectComparison {
       base: String,
       head: String,
-      kind: DiffBaselineKind,
-      event_name: String
+      kind: DiffBaselineKind
     }
   | MergeBaseComparison {
       base: String,
       head: String,
-      kind: DiffBaselineKind,
-      event_name: String
+      kind: DiffBaselineKind
     }
   | ComparisonReadoutRefused { reason: String }
 
@@ -294,14 +295,13 @@ fn floor_comparison_of_mode(
   mode: DiffMode,
   base: String,
   head: String,
-  kind: DiffBaselineKind,
-  event_name: String
+  kind: DiffBaselineKind
 ) -> FloorDiffComparisonReadout {
   match mode {
     DiffTwoDot =>
-      DirectComparison { base: base, head: head, kind: kind, event_name: event_name }
+      DirectComparison { base: base, head: head, kind: kind }
     DiffMergeBase =>
-      MergeBaseComparison { base: base, head: head, kind: kind, event_name: event_name }
+      MergeBaseComparison { base: base, head: head, kind: kind }
   }
 }
 
@@ -326,8 +326,7 @@ fn floor_observe_diff_comparison_readout(policy: DiffPolicy) -> FloorDiffCompari
           b: baseline,
           default_head: floor_resolved_head(policy: policy)
         ),
-        kind: diff_baseline_kind(b: baseline),
-        event_name: floor_observe_ci_diff_event().event_name
+        kind: diff_baseline_kind(b: baseline)
       )
   }
 }
