@@ -1,9 +1,11 @@
 module gunbc.session_auto_publish
 
-import std.types { CommitSha, Timestamp, Bool, String, List }
+import std.types { CommitSha, Timestamp, Bool, String, List, Int }
+import std.content_hash { Fnv1a64Structural }
 import v2.std.optional { Absent, Present }
+import gunbc.session_auto_publish_ctrl_ingest { PublicationRequest }
 
-data session_auto_publish_note: String = "AUTO-PUBLISH: three independent publication facts (slice 0 recut) with immediate policy adjudication (slice 1) and default-deny remote-publish conjunction (slice 2). LocalCheckpoint tracks the local commit after dashboard autosave only — not after a push. RemoteBranchPublication tracks the remote branch head after an explicit publish and successful push. WorkerNotification tracks the worker-notification baseline stamped on user publish or drift-reminder delivery. Drift reminders diff WorkerNotification.notified_head..HEAD; conflating any axis with another sweeps unrelated churn into the worker notice (DASHBOARD_OPS_HYGIENE_BRIEF section 6.1). Silent polling OBSERVES state and must not call any transition fn — a poll push is an unrequested publication, not a local checkpoint. SLICE 2 MODELS THE DEFAULT-DENY CONSUMER BUT STILL CHANGES NO RUNTIME BEHAVIOUR: admit_remote_publication stacks slice-1 policy under a refusal conjunction — explicit PublicationRequest, expected-head compare-and-swap, clean index, zero unmerged stages, zero conflict markers, declared write set, post-write compile green, peer authorship known — and every unevaluable precondition refuses rather than passes. Incident specimens (auto_publish_incident_specimens_note) record what produced this work; neither specimen alone proves which mechanism moved a ref. Slices 0–2 change no publication behaviour until shell transport calls admit_remote_publication before any git push, gh pr create, or healer branch mutation. Deferred halves, each with a dissolution trigger: (1) shell transport wiring — session-dashboard schema and publishSessionWorktree route every publish attempt through admit_remote_publication and the slice-0 state fns instead of conflated pr_publish_head || pr_publish_notified_head; dissolves when a harness integration witness executes against the live transport; (2) publication attribution — RemoteBranchPublication carries who requested the publication and under what authority as typed facts the publication cannot be performed without, not as a log line; dissolves when every remote publication transition requires a PublicationRequest carrier with requester identity and a harness witness proves an unattributed advance is unwritable."
+data session_auto_publish_note: String = "AUTO-PUBLISH: three independent publication facts (slice 0 recut) with immediate policy adjudication (slice 1) and default-deny remote-publish conjunction (slice 2). LocalCheckpoint tracks the local commit after dashboard autosave only — not after a push. RemoteBranchPublication tracks the remote branch head after an explicit publish and successful push. WorkerNotification tracks the worker-notification baseline stamped on user publish or drift-reminder delivery. Drift reminders diff WorkerNotification.notified_head..HEAD; conflating any axis with another sweeps unrelated churn into the worker notice (DASHBOARD_OPS_HYGIENE_BRIEF section 6.1). Silent polling OBSERVES state and must not call any transition fn — a poll push is an unrequested publication, not a local checkpoint. SLICE 2 MODELS THE DEFAULT-DENY CONSUMER BUT STILL CHANGES NO RUNTIME BEHAVIOUR: admit_remote_publication stacks slice-1 policy under a refusal conjunction — PublicationRequest minted only through gunbc.session_auto_publish_ctrl_ingest, expected-head compare-and-swap, clean index, zero unmerged stages, zero conflict markers, declared write set, PostWriteValidationReceipt exact-joined to produced_head, peer authorship known — and every unevaluable precondition refuses rather than passes. User authorization is the ingested request, not a parallel PublicationSubjectExplicitUserIntent flag. Incident specimens (auto_publish_incident_specimens_note) record what produced this work; neither specimen alone proves which mechanism moved a ref. Slices 0–2 change no publication behaviour until shell transport calls admit_remote_publication before any git push, gh pr create, or healer branch mutation. Deferred halves, each with a dissolution trigger: (1) shell transport wiring — session-dashboard schema and publishSessionWorktree route every publish attempt through admit_remote_publication and the slice-0 state fns instead of conflated pr_publish_head || pr_publish_notified_head; dissolves when a harness integration witness executes against the live transport; (2) publication attribution — RemoteBranchPublication carries who requested the publication and under what authority as typed facts the publication cannot be performed without, not as a log line; dissolves when every remote publication transition requires a PublicationRequest carrier with requester identity and a harness witness proves an unattributed advance is unwritable."
 
 data auto_publish_incident_specimens_note: String = "SPECIMEN 1 (#7904): WIP auto-commit swept a throwaway spike file into a commit, pushed the branch to origin, and opened PR #7904 without author act. Proven class: local checkpoint became remote publication with no author act; author initially misattributed it to another session before discovering it was theirs. SPECIMEN 2 (2026-08-07, during operator freeze forbidding pushes): origin/session/royal-ant-539-cgroup-vertical-backup advanced from f94c17019b6 to e4e51154765e4d4b326591b9dac7479679782b4d (author and committer Brian Searls, timestamp 2026-08-07T04:52:05Z) within roughly four minutes; branch owner states they did not push in that session. HONEST BOUND ON WHAT SPECIMEN 2 PROVES: a remote ref moved and nobody can say who moved it after the fact — not that the harness auto-published it. Events API returned nothing for this repo; git author identity is the same for every session so it cannot discriminate session push from automated push; owner denial is not proof no owned process pushed. A person or subagent could have pushed. WHAT BOTH SPECIMENS ARGUE FOR: default-deny stops unauthorized publication (slice 2); attribution makes authorized publication auditable (slice 3 deferred) — a publication path whose provenance is unreconstructible after the fact is one where a wrong publication cannot be attributed, and RemoteBranchPublication describing only a head commit is weaker than it appears."
 
@@ -165,9 +167,9 @@ fn drift_poll_may_run(state: SessionPublishState) -> Bool {
   }
 }
 
-data immediate_policy_note: String = "Slice 1 immediate policy. Three rules, pure adjudication: scratch/probe worktree permits local checkpoint only and refuses every remote kind; dashboard autosave permits local checkpoint only; artifact healer permits bot-owned repair branch or patch artifact and refuses author-branch mutation. PublicationSubjectUnknown and HealerRepairTargetUnknown refuse remote publication — unevaluable preconditions never pass. Shell transport must call adjudicate_remote_publication before any remote write; until then the rules are modeled and witnessed only."
+data immediate_policy_note: String = "Slice 1 immediate policy. Three rules, pure adjudication: scratch/probe worktree permits local checkpoint only and refuses every remote operation; dashboard autosave permits local checkpoint only; artifact healer permits by (repair_target, operation) PAIR — bot branch permits only RemotePushBranch, patch artifact is local-only and never remote publication, author branch always refused. PublicationContextUnknown refuses remote publication — unevaluable preconditions never pass. User authorization is PublicationContextCtrlUserPublish { request } — one authority, not a parallel explicit-intent flag. Shell transport must call adjudicate_remote_publication before any remote write; until then the rules are modeled and witnessed only."
 
-type RemotePublicationKind
+type RemotePublicationOperation
   = RemotePushBranch
   | RemoteCreatePullRequest
   | HealerMutateAuthorBranch
@@ -178,18 +180,20 @@ type HealerRepairTarget
   | HealerRepairTargetAuthorBranch
   | HealerRepairTargetUnknown
 
-type PublicationSubject
-  = PublicationSubjectScratchProbe
-  | PublicationSubjectDashboardAutosave
-  | PublicationSubjectArtifactHealer { repair_target: HealerRepairTarget }
-  | PublicationSubjectExplicitUserIntent
-  | PublicationSubjectUnknown
+type PublicationContext
+  = PublicationContextScratchProbe
+  | PublicationContextDashboardAutosave
+  | PublicationContextArtifactHealer { repair_target: HealerRepairTarget }
+  | PublicationContextCtrlUserPublish { request: PublicationRequest }
+  | PublicationContextUnknown
 
 type PublicationRefusalCause
   = ScratchProbeRemotePublicationForbidden
   | AutosaveRemotePublicationForbidden
   | HealerAuthorBranchMutationForbidden
-  | PublicationSubjectUnknownRefused
+  | HealerBotBranchOperationForbidden
+  | PatchArtifactRemotePublicationForbidden
+  | PublicationContextUnknownRefused
   | HealerRepairTargetUnknownRefused
   | NoExplicitPublicationRequest
   | RemoteHeadObservationUnknownRefused
@@ -201,10 +205,16 @@ type PublicationRefusalCause
   | ConflictMarkersPresent { count: Int }
   | ConflictMarkerCountUnknownRefused
   | WriteOutsideDeclaredSet { path: String }
-  | PostWriteCompileRedRefused
-  | PostWriteCompileUnknownRefused
+  | PostWriteValidationReceiptAbsent
+  | PostWriteValidationReceiptHeadMismatch
+  | PostWriteValidationReceiptDeclaredDigestMismatch
+  | PostWriteValidationReceiptActualDigestMismatch
+  | PostWriteValidationRejectedRefused
+  | PostWriteValidationUnknownRefused
   | PeerCommitNotAuthoredByPublisherRefused
   | PeerAuthorshipUnknownRefused
+  | LocalHeadMismatchWithValidatedCandidate
+  | EquivalentPrePushReceiptAbsent
 
 type PublicationDisposition
   = PublicationPermit
@@ -215,7 +225,9 @@ fn publication_refusal_cause_token(cause: PublicationRefusalCause) -> String {
     ScratchProbeRemotePublicationForbidden => "ScratchProbeRemotePublicationForbidden"
     AutosaveRemotePublicationForbidden => "AutosaveRemotePublicationForbidden"
     HealerAuthorBranchMutationForbidden => "HealerAuthorBranchMutationForbidden"
-    PublicationSubjectUnknownRefused => "PublicationSubjectUnknownRefused"
+    HealerBotBranchOperationForbidden => "HealerBotBranchOperationForbidden"
+    PatchArtifactRemotePublicationForbidden => "PatchArtifactRemotePublicationForbidden"
+    PublicationContextUnknownRefused => "PublicationContextUnknownRefused"
     HealerRepairTargetUnknownRefused => "HealerRepairTargetUnknownRefused"
     NoExplicitPublicationRequest => "NoExplicitPublicationRequest"
     RemoteHeadObservationUnknownRefused => "RemoteHeadObservationUnknownRefused"
@@ -227,10 +239,16 @@ fn publication_refusal_cause_token(cause: PublicationRefusalCause) -> String {
     ConflictMarkersPresent { count: _ } => "ConflictMarkersPresent"
     ConflictMarkerCountUnknownRefused => "ConflictMarkerCountUnknownRefused"
     WriteOutsideDeclaredSet { path: _ } => "WriteOutsideDeclaredSet"
-    PostWriteCompileRedRefused => "PostWriteCompileRedRefused"
-    PostWriteCompileUnknownRefused => "PostWriteCompileUnknownRefused"
+    PostWriteValidationReceiptAbsent => "PostWriteValidationReceiptAbsent"
+    PostWriteValidationReceiptHeadMismatch => "PostWriteValidationReceiptHeadMismatch"
+    PostWriteValidationReceiptDeclaredDigestMismatch => "PostWriteValidationReceiptDeclaredDigestMismatch"
+    PostWriteValidationReceiptActualDigestMismatch => "PostWriteValidationReceiptActualDigestMismatch"
+    PostWriteValidationRejectedRefused => "PostWriteValidationRejectedRefused"
+    PostWriteValidationUnknownRefused => "PostWriteValidationUnknownRefused"
     PeerCommitNotAuthoredByPublisherRefused => "PeerCommitNotAuthoredByPublisherRefused"
     PeerAuthorshipUnknownRefused => "PeerAuthorshipUnknownRefused"
+    LocalHeadMismatchWithValidatedCandidate => "LocalHeadMismatchWithValidatedCandidate"
+    EquivalentPrePushReceiptAbsent => "EquivalentPrePushReceiptAbsent"
   }
 }
 
@@ -241,74 +259,114 @@ fn publication_is_permitted(disposition: PublicationDisposition) -> Bool {
   }
 }
 
-fn adjudicate_local_checkpoint(subject: PublicationSubject) -> PublicationDisposition {
-  match subject {
-    PublicationSubjectScratchProbe => PublicationPermit
-    PublicationSubjectDashboardAutosave => PublicationPermit
-    PublicationSubjectArtifactHealer { repair_target: _ } => PublicationPermit
-    PublicationSubjectExplicitUserIntent => PublicationPermit
-    PublicationSubjectUnknown => PublicationRefuse { cause: PublicationSubjectUnknownRefused }
+fn publication_request_from_context(context: PublicationContext) -> PublicationRequest? {
+  match context {
+    PublicationContextCtrlUserPublish { request: request } => Present { value: request }
+    PublicationContextScratchProbe => Absent
+    PublicationContextDashboardAutosave => Absent
+    PublicationContextArtifactHealer { repair_target: _ } => Absent
+    PublicationContextUnknown => Absent
+  }
+}
+
+fn adjudicate_local_checkpoint(context: PublicationContext) -> PublicationDisposition {
+  match context {
+    PublicationContextScratchProbe => PublicationPermit
+    PublicationContextDashboardAutosave => PublicationPermit
+    PublicationContextArtifactHealer { repair_target: _ } => PublicationPermit
+    PublicationContextCtrlUserPublish { request: _ } => PublicationPermit
+    PublicationContextUnknown => PublicationRefuse { cause: PublicationContextUnknownRefused }
   }
 }
 
 fn adjudicate_remote_publication(
-  subject: PublicationSubject,
-  kind: RemotePublicationKind,
+  context: PublicationContext,
+  operation: RemotePublicationOperation,
 ) -> PublicationDisposition {
-  match subject {
-    PublicationSubjectScratchProbe =>
+  match context {
+    PublicationContextScratchProbe =>
       PublicationRefuse { cause: ScratchProbeRemotePublicationForbidden }
-    PublicationSubjectDashboardAutosave =>
+    PublicationContextDashboardAutosave =>
       PublicationRefuse { cause: AutosaveRemotePublicationForbidden }
-    PublicationSubjectArtifactHealer { repair_target: target } =>
-      adjudicate_healer_remote_publication(target: target, kind: kind)
-    PublicationSubjectExplicitUserIntent => PublicationPermit
-    PublicationSubjectUnknown =>
-      PublicationRefuse { cause: PublicationSubjectUnknownRefused }
+    PublicationContextArtifactHealer { repair_target: target } =>
+      adjudicate_healer_remote_publication(target: target, operation: operation)
+    PublicationContextCtrlUserPublish { request: _ } => PublicationPermit
+    PublicationContextUnknown =>
+      PublicationRefuse { cause: PublicationContextUnknownRefused }
   }
 }
 
 fn adjudicate_healer_remote_publication(
   target: HealerRepairTarget,
-  kind: RemotePublicationKind,
+  operation: RemotePublicationOperation,
 ) -> PublicationDisposition {
   match target {
     HealerRepairTargetAuthorBranch =>
       PublicationRefuse { cause: HealerAuthorBranchMutationForbidden }
     HealerRepairTargetUnknown =>
       PublicationRefuse { cause: HealerRepairTargetUnknownRefused }
-    HealerRepairTargetBotBranch => PublicationPermit
     HealerRepairTargetPatchArtifact =>
-      match kind {
+      PublicationRefuse { cause: PatchArtifactRemotePublicationForbidden }
+    HealerRepairTargetBotBranch =>
+      match operation {
+        RemotePushBranch => PublicationPermit
+        RemoteCreatePullRequest =>
+          PublicationRefuse { cause: HealerBotBranchOperationForbidden }
         HealerMutateAuthorBranch =>
           PublicationRefuse { cause: HealerAuthorBranchMutationForbidden }
-        RemotePushBranch => PublicationPermit
-        RemoteCreatePullRequest => PublicationPermit
       }
   }
 }
 
-data default_deny_conjunction_note: String = "Slice 2 default-deny consumer. admit_remote_publication runs slice-1 policy first, then a conjunction of refusals. Every arm refuses; unevaluable observations refuse rather than pass. Shell transport must call this before any remote write; until then the conjunction is modeled and witnessed only. OPEN CONDITION ON SLICE-3 TRANSPORT (post_write_compile arm): publish_session_worktree_push_no_verify_note."
+data publication_pipeline_note: String = "Slice-3 transport design (operator ruling 2026-08-07): expensive post-write validation moves OFF the synchronous git push subprocess path. No remote write until an exact PostWriteValidationReceipt exists. Three stages: PreparePublication — explicit user request via ctrl ingest, local candidate commit, expected remote head, candidate head, declared write set; ValidatePublicationCandidate — converge repo-local git integration, conflict/index/write-set checks, parse+format+compile the exact candidate, emit PostWriteValidationReceipt bound to candidate head + write-set digests + tool revisions; PublishValidatedCandidate — re-read local head, re-read remote head, require local head == validated candidate, require receipt subject == candidate, compare-and-swap remote head, push exact candidate. Timeout, missing receipt, or unknown observation means NO PUSH — not a degraded push. --no-verify disappears once the explicit path covers hook obligations; during transition it is admissible ONLY when an EquivalentPrePushReceipt proves those obligations for the exact candidate — the flag itself is never authority. Fast configuration convergence (core.hooksPath, merge driver, repo-local bindings) is invoked EXPLICITLY by prepare/validate rather than depending on an implicitly skipped hook."
 
-data publish_session_worktree_push_no_verify_note: String = "TENSION BETWEEN DEFAULT-DENY AND LIVE TRANSPORT (open, unresolved — do not solve in slice 2). ctrl publishSessionWorktree already runs git push --no-verify because pre-push hooks exceed PUBLISH_SUBPROCESS_TIMEOUT_MS (90s). DESIGN Building-&-checks: the generated pre-commit/pre-push hooks idempotently converge merge.generated-artifact.driver and re-assert core.hooksPath. On the automated publish path — a large share of fleet pushes — that convergence never runs; the cause is a timeout budget, not an operator decision to exempt automated publishes. The slice-2 conjunction requires PostWriteCompileGreen before remote write; enrolling compile-clean on the synchronous push path is wall-clock inside the same 90s cap that forced --no-verify. One of three must be chosen before slice-3 transport lands; the design does not pick yet: (A) raise or re-scope PUBLISH_SUBPROCESS_TIMEOUT_MS so pre-push compile-clean can run inside the cap; (B) move post-write compile off the synchronous push path (async gate, pre-push on a separate cadence, or admit only after an out-of-band green receipt); (C) keep the cap and arm — PostWriteCompileUnknownRefused / compile refusal dominates admits in practice. Dissolves when slice-3 transport names which fork and a harness integration witness proves the chosen path."
-
-type PublicationRequest sole_constructor {
-  requester: String
-  expected_remote_head: CommitSha
-  produced_head: CommitSha
+type PreparePublicationRecord {
+  request: PublicationRequest
+  declared_write_paths: List<String>
 }
 
-fn mint_publication_request(
-  requester: String,
-  expected_remote_head: CommitSha,
-  produced_head: CommitSha,
-) -> PublicationRequest {
-  PublicationRequest {
-    requester: requester,
-    expected_remote_head: expected_remote_head,
-    produced_head: produced_head,
-  }
+type PostWriteValidationVerdict
+  = PostWriteValidationAccepted
+  | PostWriteValidationRejected
+  | PostWriteValidationUnknown
+
+type PostWriteValidationReceipt {
+  candidate_head: CommitSha
+  declared_write_set_digest: Fnv1a64Structural
+  actual_write_set_digest: Fnv1a64Structural
+  parser_revision: String
+  formatter_revision: String
+  compiler_revision: String
+  verdict: PostWriteValidationVerdict
 }
+
+type ValidatePublicationCandidateRecord {
+  prepare: PreparePublicationRecord
+  receipt: PostWriteValidationReceipt
+}
+
+type EquivalentPrePushReceipt {
+  candidate_head: CommitSha
+  hooks_path_converged: Bool
+  merge_driver_converged: Bool
+  repo_local_bindings_converged: Bool
+}
+
+type PublishValidatedCandidateAttempt {
+  validate: ValidatePublicationCandidateRecord
+  observed_remote_head: ObservedRemoteHead
+  current_remote_head: ObservedRemoteHead
+  current_local_head: CommitSha?
+  index_cleanliness: IndexCleanliness
+  unmerged_stage_count: CountObservation
+  conflict_marker_count: CountObservation
+  declared_write_paths: List<String>
+  actual_write_paths: List<String>
+  peer_authorship: PeerAuthorship
+  equivalent_pre_push: EquivalentPrePushReceipt?
+}
+
+data default_deny_conjunction_note: String = "Slice 2 default-deny consumer. admit_remote_publication runs slice-1 policy first, then a conjunction of refusals. PostWriteValidationReceipt is exact-joined to PublicationRequest.produced_head and write-set digests — transferable green evidence from another head is refused. Shell transport must call this before any remote write; until then the conjunction is modeled and witnessed only. Slice-3 transport path: publication_pipeline_note."
 
 type ObservedRemoteHead
   = RemoteHeadKnown { head: CommitSha }
@@ -323,29 +381,25 @@ type CountObservation
   = CountKnown { count: Int }
   | CountUnknown
 
-type PostWriteCompile
-  = PostWriteCompileGreen
-  | PostWriteCompileRed
-  | PostWriteCompileUnknown
-
 type PeerAuthorship
   = PeerAuthoredByPublisher
   | PeerNotAuthoredByPublisher
   | PeerAuthorshipUnknown
 
 type RemotePublishAttempt {
-  subject: PublicationSubject
-  kind: RemotePublicationKind
-  request: PublicationRequest?
+  context: PublicationContext
+  operation: RemotePublicationOperation
   observed_remote_head: ObservedRemoteHead
   current_remote_head: ObservedRemoteHead
+  current_local_head: CommitSha?
   index_cleanliness: IndexCleanliness
   unmerged_stage_count: CountObservation
   conflict_marker_count: CountObservation
   declared_write_paths: List<String>
   actual_write_paths: List<String>
-  post_write_compile: PostWriteCompile
+  post_write_validation: PostWriteValidationReceipt?
   peer_authorship: PeerAuthorship
+  equivalent_pre_push: EquivalentPrePushReceipt?
 }
 
 fn remote_head_conjunction_refusals(
@@ -419,11 +473,51 @@ fn write_set_refusals(
   )
 }
 
-fn post_write_compile_refusals(status: PostWriteCompile) -> List<PublicationRefusalCause> {
-  match status {
-    PostWriteCompileGreen => []
-    PostWriteCompileRed => [PostWriteCompileRedRefused]
-    PostWriteCompileUnknown => [PostWriteCompileUnknownRefused]
+fn post_write_validation_refusals(
+  request: PublicationRequest?,
+  receipt: PostWriteValidationReceipt?,
+  declared_digest: Fnv1a64Structural,
+  actual_digest: Fnv1a64Structural,
+) -> List<PublicationRefusalCause> {
+  match request {
+    Absent => []
+    Present { value: req } =>
+      match receipt {
+        Absent => [PostWriteValidationReceiptAbsent]
+        Present { value: validation } =>
+          if (validation.candidate_head as String) != (req.produced_head as String) {
+            [PostWriteValidationReceiptHeadMismatch]
+          } else if validation.declared_write_set_digest != declared_digest {
+            [PostWriteValidationReceiptDeclaredDigestMismatch]
+          } else if validation.actual_write_set_digest != actual_digest {
+            [PostWriteValidationReceiptActualDigestMismatch]
+          } else {
+            match validation.verdict {
+              PostWriteValidationAccepted => []
+              PostWriteValidationRejected => [PostWriteValidationRejectedRefused]
+              PostWriteValidationUnknown => [PostWriteValidationUnknownRefused]
+            }
+          }
+      }
+  }
+}
+
+fn local_head_validation_refusals(
+  request: PublicationRequest?,
+  current_local_head: CommitSha?,
+) -> List<PublicationRefusalCause> {
+  match request {
+    Absent => []
+    Present { value: req } =>
+      match current_local_head {
+        Absent => [LocalHeadMismatchWithValidatedCandidate]
+        Present { value: local_head } =>
+          if (local_head as String) != (req.produced_head as String) {
+            [LocalHeadMismatchWithValidatedCandidate]
+          } else {
+            []
+          }
+      }
   }
 }
 
@@ -438,31 +532,51 @@ fn peer_authorship_refusals(authorship: PeerAuthorship) -> List<PublicationRefus
 fn remote_publish_conjunction_refusals(
   attempt: RemotePublishAttempt,
 ) -> List<PublicationRefusalCause> {
+  let request = publication_request_from_context(context: attempt.context)
+  let declared_digest = match attempt.post_write_validation {
+    Absent => Fnv1a64Structural { digest: "0000000000000000" }
+    Present { value: receipt } => receipt.declared_write_set_digest
+  }
+  let actual_digest = match attempt.post_write_validation {
+    Absent => Fnv1a64Structural { digest: "0000000000000000" }
+    Present { value: receipt } => receipt.actual_write_set_digest
+  }
   append(
-    match attempt.request {
+    match request {
       Absent => [NoExplicitPublicationRequest]
       Present { value: _ } => []
     },
     items: append(
       remote_head_conjunction_refusals(
-        request: attempt.request,
+        request: request,
         observed: attempt.observed_remote_head,
         current: attempt.current_remote_head,
       ),
       items: append(
-        index_cleanliness_refusals(cleanliness: attempt.index_cleanliness),
+        local_head_validation_refusals(
+          request: request,
+          current_local_head: attempt.current_local_head,
+        ),
         items: append(
-          unmerged_stage_refusals(count_obs: attempt.unmerged_stage_count),
+          index_cleanliness_refusals(cleanliness: attempt.index_cleanliness),
           items: append(
-            conflict_marker_refusals(count_obs: attempt.conflict_marker_count),
+            unmerged_stage_refusals(count_obs: attempt.unmerged_stage_count),
             items: append(
-              write_set_refusals(
-                declared: attempt.declared_write_paths,
-                actual: attempt.actual_write_paths,
-              ),
+              conflict_marker_refusals(count_obs: attempt.conflict_marker_count),
               items: append(
-                post_write_compile_refusals(status: attempt.post_write_compile),
-                items: peer_authorship_refusals(authorship: attempt.peer_authorship),
+                write_set_refusals(
+                  declared: attempt.declared_write_paths,
+                  actual: attempt.actual_write_paths,
+                ),
+                items: append(
+                  post_write_validation_refusals(
+                    request: request,
+                    receipt: attempt.post_write_validation,
+                    declared_digest: declared_digest,
+                    actual_digest: actual_digest,
+                  ),
+                  items: peer_authorship_refusals(authorship: attempt.peer_authorship),
+                ),
               ),
             ),
           ),
@@ -473,7 +587,7 @@ fn remote_publish_conjunction_refusals(
 }
 
 fn admit_remote_publication(attempt: RemotePublishAttempt) -> PublicationDisposition {
-  match adjudicate_remote_publication(subject: attempt.subject, kind: attempt.kind) {
+  match adjudicate_remote_publication(context: attempt.context, operation: attempt.operation) {
     PublicationRefuse { cause: cause } => PublicationRefuse { cause: cause }
     PublicationPermit =>
       match remote_publish_conjunction_refusals(attempt: attempt).first() {
