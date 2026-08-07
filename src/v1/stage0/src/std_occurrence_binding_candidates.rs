@@ -370,6 +370,27 @@ pub fn declaration_exposure_module_local_member(
     }
 }
 
+pub fn declaration_exposure_namespace_structural_root(
+    module_path: String,
+    containment: Rc<OccurrenceContainmentPath>,
+) -> Rc<DeclarationExposure> {
+    match occurrence_containment_parent_scope(containment.ancestors.clone()) {
+        None => Rc::new(DeclarationExposure::RootExposure),
+        Some(exposing_scope) => {
+            let __fm = exposing_scope.ancestors.clone();
+            if __fm.is_empty() {
+                Rc::new(DeclarationExposure::ModuleExposure {
+                    module: module_path.clone(),
+                })
+            } else {
+                Rc::new(DeclarationExposure::LexicalExposure {
+                    exposing_scope: exposing_scope.clone(),
+                })
+            }
+        }
+    }
+}
+
 pub fn declaration_exposure_from_containment(
     module_path: String,
     containment: Rc<OccurrenceContainmentPath>,
@@ -377,14 +398,7 @@ pub fn declaration_exposure_from_containment(
 ) -> Rc<DeclarationExposure> {
     match grounding.clone() {
         DeclarationExposureGrounding::NamespaceStructuralRootExposure => {
-            let __fm = containment.ancestors.clone();
-            if __fm.is_empty() {
-                Rc::new(DeclarationExposure::RootExposure)
-            } else {
-                Rc::new(DeclarationExposure::ModuleExposure {
-                    module: module_path.clone(),
-                })
-            }
+            declaration_exposure_namespace_structural_root(module_path.clone(), containment.clone())
         }
         DeclarationExposureGrounding::ModuleLocalMemberExposure => {
             declaration_exposure_module_local_member(module_path.clone(), containment.clone())
@@ -1800,19 +1814,19 @@ pub struct OccurrenceTransportRekeyResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceIndexRekeyBuild {
-    pub entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
+    pub entries_reversed: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
     pub state: Rc<OccurrenceIdRemapState>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceDeclarationRekeyBuild {
-    pub declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
+    pub declarations_reversed: Rc<Vec<Rc<DeclarationOccurrence>>>,
     pub state: Rc<OccurrenceIdRemapState>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceReferenceRekeyBuild {
-    pub references: Rc<Vec<Rc<ReferenceOccurrence>>>,
+    pub references_reversed: Rc<Vec<Rc<ReferenceOccurrence>>>,
     pub state: Rc<OccurrenceIdRemapState>,
 }
 
@@ -1830,7 +1844,7 @@ pub fn rekey_occurrence_transport(
             .cloned()
             .fold(
                 Rc::new(OccurrenceIndexRekeyBuild {
-                    entries: Rc::new(vec![]),
+                    entries_reversed: Rc::new(vec![]),
                     state: state.clone(),
                 }),
                 |acc: Rc<OccurrenceIndexRekeyBuild>, entry: Rc<OccurrenceIndexEntry>| {
@@ -1845,8 +1859,7 @@ pub fn rekey_occurrence_transport(
                             remapped_occ.state.clone(),
                         );
                         Rc::new(OccurrenceIndexRekeyBuild {
-                            entries: v1_rt::concat(
-                                acc.entries,
+                            entries_reversed: v1_rt::concat(
                                 Rc::new(vec![Rc::new(OccurrenceIndexEntry {
                                     projection: Rc::new(OccurrenceProjection {
                                         occurrence: remapped_occ.id.clone(),
@@ -1863,6 +1876,7 @@ pub fn rekey_occurrence_transport(
                                     }),
                                     containment: remapped_containment.path.clone(),
                                 })]),
+                                acc.entries_reversed,
                             ),
                             state: remapped_containment.state.clone(),
                         })
@@ -1871,7 +1885,7 @@ pub fn rekey_occurrence_transport(
             );
         let declarations_build = transport.declarations.clone().iter().cloned().fold(
             Rc::new(OccurrenceDeclarationRekeyBuild {
-                declarations: Rc::new(vec![]),
+                declarations_reversed: Rc::new(vec![]),
                 state: index_build.state.clone(),
             }),
             |acc: Rc<OccurrenceDeclarationRekeyBuild>, declaration: Rc<DeclarationOccurrence>| {
@@ -1884,14 +1898,14 @@ pub fn rekey_occurrence_transport(
                         remapped_occ.state.clone(),
                     );
                     Rc::new(OccurrenceDeclarationRekeyBuild {
-                        declarations: v1_rt::concat(
-                            acc.declarations,
+                        declarations_reversed: v1_rt::concat(
                             Rc::new(vec![Rc::new(DeclarationOccurrence {
                                 occurrence: remapped_occ.id.clone(),
                                 containment: remapped_containment.path.clone(),
                                 category: declaration.category.clone(),
                                 diagnostic_span: declaration.diagnostic_span.clone(),
                             })]),
+                            acc.declarations_reversed,
                         ),
                         state: remapped_containment.state.clone(),
                     })
@@ -1900,7 +1914,7 @@ pub fn rekey_occurrence_transport(
         );
         let references_build = transport.references.clone().iter().cloned().fold(
             Rc::new(OccurrenceReferenceRekeyBuild {
-                references: Rc::new(vec![]),
+                references_reversed: Rc::new(vec![]),
                 state: declarations_build.state.clone(),
             }),
             |acc: Rc<OccurrenceReferenceRekeyBuild>, reference: Rc<ReferenceOccurrence>| {
@@ -1912,14 +1926,14 @@ pub fn rekey_occurrence_transport(
                         remapped_occ.state.clone(),
                     );
                     Rc::new(OccurrenceReferenceRekeyBuild {
-                        references: v1_rt::concat(
-                            acc.references,
+                        references_reversed: v1_rt::concat(
                             Rc::new(vec![Rc::new(ReferenceOccurrence {
                                 occurrence: remapped_occ.id.clone(),
                                 containment: remapped_containment.path.clone(),
                                 category: reference.category.clone(),
                                 diagnostic_span: reference.diagnostic_span.clone(),
                             })]),
+                            acc.references_reversed,
                         ),
                         state: remapped_containment.state.clone(),
                     })
@@ -1929,10 +1943,10 @@ pub fn rekey_occurrence_transport(
         Rc::new(OccurrenceTransportRekeyResult {
             transport: Rc::new(OccurrenceTransport {
                 index: Rc::new(OccurrenceIndex {
-                    entries: index_build.entries.clone(),
+                    entries: v1_rt::reverse(index_build.entries_reversed.clone()),
                 }),
-                declarations: declarations_build.declarations.clone(),
-                references: references_build.references.clone(),
+                declarations: v1_rt::reverse(declarations_build.declarations_reversed.clone()),
+                references: v1_rt::reverse(references_build.references_reversed.clone()),
             }),
             state: references_build.state.clone(),
         })
@@ -1947,19 +1961,19 @@ pub struct OccurrenceBindingInputsRekeyResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceModulePathRekeyBuild {
-    pub rows: Rc<Vec<Rc<OccurrenceModulePathRow>>>,
+    pub rows_reversed: Rc<Vec<Rc<OccurrenceModulePathRow>>>,
     pub state: Rc<OccurrenceIdRemapState>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceExposureRekeyBuild {
-    pub rows: Rc<Vec<Rc<DeclarationExposureRow>>>,
+    pub rows_reversed: Rc<Vec<Rc<DeclarationExposureRow>>>,
     pub state: Rc<OccurrenceIdRemapState>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceOrderRekeyBuild {
-    pub rows: Rc<Vec<Rc<AuthoredOrderRow>>>,
+    pub rows_reversed: Rc<Vec<Rc<AuthoredOrderRow>>>,
     pub state: Rc<OccurrenceIdRemapState>,
 }
 
@@ -1970,7 +1984,7 @@ pub fn rekey_occurrence_binding_inputs(
     {
         let module_paths_build = inputs.module_paths.clone().iter().cloned().fold(
             Rc::new(OccurrenceModulePathRekeyBuild {
-                rows: Rc::new(vec![]),
+                rows_reversed: Rc::new(vec![]),
                 state: state.clone(),
             }),
             |acc: Rc<OccurrenceModulePathRekeyBuild>, row: Rc<OccurrenceModulePathRow>| {
@@ -1978,12 +1992,12 @@ pub fn rekey_occurrence_binding_inputs(
                 {
                     let remapped_occ = remap_occurrence_id(row.occurrence.clone(), acc.state);
                     Rc::new(OccurrenceModulePathRekeyBuild {
-                        rows: v1_rt::concat(
-                            acc.rows,
+                        rows_reversed: v1_rt::concat(
                             Rc::new(vec![Rc::new(OccurrenceModulePathRow {
                                 occurrence: remapped_occ.id.clone(),
                                 module_path: row.module_path.clone(),
                             })]),
+                            acc.rows_reversed,
                         ),
                         state: remapped_occ.state.clone(),
                     })
@@ -1992,7 +2006,7 @@ pub fn rekey_occurrence_binding_inputs(
         );
         let exposure_rows_build = inputs.exposure_rows.clone().iter().cloned().fold(
             Rc::new(OccurrenceExposureRekeyBuild {
-                rows: Rc::new(vec![]),
+                rows_reversed: Rc::new(vec![]),
                 state: module_paths_build.state.clone(),
             }),
             |acc: Rc<OccurrenceExposureRekeyBuild>, row: Rc<DeclarationExposureRow>| {
@@ -2007,39 +2021,39 @@ pub fn rekey_occurrence_binding_inputs(
                             remapped_occ.state.clone(),
                         );
                         Rc::new(OccurrenceExposureRekeyBuild {
-                            rows: v1_rt::concat(
-                                acc.rows.clone(),
+                            rows_reversed: v1_rt::concat(
                                 Rc::new(vec![Rc::new(DeclarationExposureRow {
                                     occurrence: remapped_occ.id.clone(),
                                     exposure: Rc::new(DeclarationExposure::LexicalExposure {
                                         exposing_scope: remapped_scope.path.clone(),
                                     }),
                                 })]),
+                                acc.rows_reversed.clone(),
                             ),
                             state: remapped_scope.state.clone(),
                         })
                     }
                     DeclarationExposure::ModuleExposure { module, .. } => {
                         Rc::new(OccurrenceExposureRekeyBuild {
-                            rows: v1_rt::concat(
-                                acc.rows.clone(),
+                            rows_reversed: v1_rt::concat(
                                 Rc::new(vec![Rc::new(DeclarationExposureRow {
                                     occurrence: remapped_occ.id.clone(),
                                     exposure: Rc::new(DeclarationExposure::ModuleExposure {
                                         module: module.clone(),
                                     }),
                                 })]),
+                                acc.rows_reversed.clone(),
                             ),
                             state: remapped_occ.state.clone(),
                         })
                     }
                     DeclarationExposure::RootExposure => Rc::new(OccurrenceExposureRekeyBuild {
-                        rows: v1_rt::concat(
-                            acc.rows.clone(),
+                        rows_reversed: v1_rt::concat(
                             Rc::new(vec![Rc::new(DeclarationExposureRow {
                                 occurrence: remapped_occ.id.clone(),
                                 exposure: Rc::new(DeclarationExposure::RootExposure),
                             })]),
+                            acc.rows_reversed.clone(),
                         ),
                         state: remapped_occ.state.clone(),
                     }),
@@ -2048,7 +2062,7 @@ pub fn rekey_occurrence_binding_inputs(
         );
         let order_rows_build = inputs.authored_order_rows.clone().iter().cloned().fold(
             Rc::new(OccurrenceOrderRekeyBuild {
-                rows: Rc::new(vec![]),
+                rows_reversed: Rc::new(vec![]),
                 state: exposure_rows_build.state.clone(),
             }),
             |acc: Rc<OccurrenceOrderRekeyBuild>, row: Rc<AuthoredOrderRow>| {
@@ -2056,12 +2070,12 @@ pub fn rekey_occurrence_binding_inputs(
                 {
                     let remapped_occ = remap_occurrence_id(row.occurrence.clone(), acc.state);
                     Rc::new(OccurrenceOrderRekeyBuild {
-                        rows: v1_rt::concat(
-                            acc.rows,
+                        rows_reversed: v1_rt::concat(
                             Rc::new(vec![Rc::new(AuthoredOrderRow {
                                 occurrence: remapped_occ.id.clone(),
                                 ordinal: row.ordinal.clone(),
                             })]),
+                            acc.rows_reversed,
                         ),
                         state: remapped_occ.state.clone(),
                     })
@@ -2070,9 +2084,9 @@ pub fn rekey_occurrence_binding_inputs(
         );
         Rc::new(OccurrenceBindingInputsRekeyResult {
             inputs: Rc::new(OccurrenceBindingCandidateInputs {
-                module_paths: module_paths_build.rows.clone(),
-                exposure_rows: exposure_rows_build.rows.clone(),
-                authored_order_rows: order_rows_build.rows.clone(),
+                module_paths: v1_rt::reverse(module_paths_build.rows_reversed.clone()),
+                exposure_rows: v1_rt::reverse(exposure_rows_build.rows_reversed.clone()),
+                authored_order_rows: v1_rt::reverse(order_rows_build.rows_reversed.clone()),
             }),
             state: order_rows_build.state.clone(),
         })
@@ -2162,10 +2176,23 @@ pub enum AssembledCrossFileBindingClosure {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AssembledCrossFileFold {
-    pub transport: Rc<OccurrenceTransport>,
-    pub inputs: Rc<OccurrenceBindingCandidateInputs>,
-    pub module_files: Rc<Vec<Rc<ModulePathFileRow>>>,
+    pub entries_reversed: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
+    pub declarations_reversed: Rc<Vec<Rc<DeclarationOccurrence>>>,
+    pub references_reversed: Rc<Vec<Rc<ReferenceOccurrence>>>,
+    pub module_paths_reversed: Rc<Vec<Rc<OccurrenceModulePathRow>>>,
+    pub exposure_rows_reversed: Rc<Vec<Rc<DeclarationExposureRow>>>,
+    pub order_rows_reversed: Rc<Vec<Rc<AuthoredOrderRow>>>,
+    pub module_files_reversed: Rc<Vec<Rc<ModulePathFileRow>>>,
     pub remap_state: Rc<OccurrenceIdRemapState>,
+}
+
+pub fn assemble_cross_file_binding_closure_cost_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The provider fold accumulates each provider's rekeyed rows by PREPENDING onto seven `_reversed` populations (index entries, declarations, references, module paths, exposure rows, authored-order rows, module=>file rows) rather than by re-concatenating the whole left-hand assembled graph onto each small provider chunk -- that pairwise-append shape cost O(total assembled rows) per provider (O(n^2) over all providers) because concat's cost is proportional to its first argument's length. Prepending a provider's own (small, per-file-bounded) chunk onto the accumulator costs O(that provider's row count) regardless of how much has already been assembled, so the fold is linear in the total row count across all providers. Each `_reversed` population is reversed exactly once, at the end, never per provider.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn assemble_cross_file_binding_closure(
@@ -2182,9 +2209,43 @@ pub fn assemble_cross_file_binding_closure(
             consumer_transport_rekey.state.clone(),
         );
         let seed = Rc::new(AssembledCrossFileFold {
-            transport: consumer_transport_rekey.transport.clone(),
-            inputs: consumer_inputs_rekey.inputs.clone(),
-            module_files: Rc::new(vec![Rc::new(ModulePathFileRow {
+            entries_reversed: v1_rt::reverse(
+                consumer_transport_rekey
+                    .transport
+                    .clone()
+                    .index
+                    .clone()
+                    .entries
+                    .clone(),
+            ),
+            declarations_reversed: v1_rt::reverse(
+                consumer_transport_rekey
+                    .transport
+                    .clone()
+                    .declarations
+                    .clone(),
+            ),
+            references_reversed: v1_rt::reverse(
+                consumer_transport_rekey
+                    .transport
+                    .clone()
+                    .references
+                    .clone(),
+            ),
+            module_paths_reversed: v1_rt::reverse(
+                consumer_inputs_rekey.inputs.clone().module_paths.clone(),
+            ),
+            exposure_rows_reversed: v1_rt::reverse(
+                consumer_inputs_rekey.inputs.clone().exposure_rows.clone(),
+            ),
+            order_rows_reversed: v1_rt::reverse(
+                consumer_inputs_rekey
+                    .inputs
+                    .clone()
+                    .authored_order_rows
+                    .clone(),
+            ),
+            module_files_reversed: Rc::new(vec![Rc::new(ModulePathFileRow {
                 module_path: consumer.module_path.clone(),
                 file_path: consumer.file_path.clone(),
             })]),
@@ -2206,36 +2267,93 @@ pub fn assemble_cross_file_binding_closure(
                         provider_transport_rekey.state.clone(),
                     );
                     Rc::new(AssembledCrossFileFold {
-                        transport: merge_occurrence_transports(
-                            acc.transport,
-                            provider_transport_rekey.transport.clone(),
+                        entries_reversed: v1_rt::concat(
+                            v1_rt::reverse(
+                                provider_transport_rekey
+                                    .transport
+                                    .clone()
+                                    .index
+                                    .clone()
+                                    .entries
+                                    .clone(),
+                            ),
+                            acc.entries_reversed,
                         ),
-                        inputs: occurrence_binding_inputs_append(
-                            acc.inputs,
-                            provider_inputs_rekey.inputs.clone(),
+                        declarations_reversed: v1_rt::concat(
+                            v1_rt::reverse(
+                                provider_transport_rekey
+                                    .transport
+                                    .clone()
+                                    .declarations
+                                    .clone(),
+                            ),
+                            acc.declarations_reversed,
                         ),
-                        module_files: v1_rt::concat(
-                            acc.module_files,
+                        references_reversed: v1_rt::concat(
+                            v1_rt::reverse(
+                                provider_transport_rekey
+                                    .transport
+                                    .clone()
+                                    .references
+                                    .clone(),
+                            ),
+                            acc.references_reversed,
+                        ),
+                        module_paths_reversed: v1_rt::concat(
+                            v1_rt::reverse(
+                                provider_inputs_rekey.inputs.clone().module_paths.clone(),
+                            ),
+                            acc.module_paths_reversed,
+                        ),
+                        exposure_rows_reversed: v1_rt::concat(
+                            v1_rt::reverse(
+                                provider_inputs_rekey.inputs.clone().exposure_rows.clone(),
+                            ),
+                            acc.exposure_rows_reversed,
+                        ),
+                        order_rows_reversed: v1_rt::concat(
+                            v1_rt::reverse(
+                                provider_inputs_rekey
+                                    .inputs
+                                    .clone()
+                                    .authored_order_rows
+                                    .clone(),
+                            ),
+                            acc.order_rows_reversed,
+                        ),
+                        module_files_reversed: v1_rt::concat(
                             Rc::new(vec![Rc::new(ModulePathFileRow {
                                 module_path: provider.module_path.clone(),
                                 file_path: provider.file_path.clone(),
                             })]),
+                            acc.module_files_reversed,
                         ),
                         remap_state: provider_inputs_rekey.state.clone(),
                     })
                 }
             },
         );
-        match (*module_path_file_index_from_rows(assembled.module_files.clone())).clone() {
+        let assembled_module_files = v1_rt::reverse(assembled.module_files_reversed.clone());
+        match (*module_path_file_index_from_rows(assembled_module_files.clone())).clone() {
     ModulePathFileIndex::ModulePathFileIndexRefused { refusal: refusal, .. } => Rc::new(AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureRefused {
     refusal: Rc::new(AssembledCrossFileBindingClosureRefusal::AssembledCrossFileBindingClosureModulePathFileRefused {
     refusal: refusal.clone(),
 }),
 }),
     ModulePathFileIndex::ModulePathFileIndexReady { entries: _, .. } => Rc::new(AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady {
-    transport: assembled.transport.clone(),
-    inputs: assembled.inputs.clone(),
-    module_files: assembled.module_files.clone(),
+    transport: Rc::new(OccurrenceTransport {
+    index: Rc::new(OccurrenceIndex {
+    entries: v1_rt::reverse(assembled.entries_reversed.clone()),
+}),
+    declarations: v1_rt::reverse(assembled.declarations_reversed.clone()),
+    references: v1_rt::reverse(assembled.references_reversed.clone()),
+}),
+    inputs: Rc::new(OccurrenceBindingCandidateInputs {
+    module_paths: v1_rt::reverse(assembled.module_paths_reversed.clone()),
+    exposure_rows: v1_rt::reverse(assembled.exposure_rows_reversed.clone()),
+    authored_order_rows: v1_rt::reverse(assembled.order_rows_reversed.clone()),
+}),
+    module_files: assembled_module_files.clone(),
     consumer_file: consumer.file_path.clone(),
 }),
 }
