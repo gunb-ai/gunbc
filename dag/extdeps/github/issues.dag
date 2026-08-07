@@ -77,6 +77,8 @@ type IssueComment {
   created_at: Timestamp
 }
 
+data issues_labels_and_raw_listing_note: String = "TWO NAMING-AND-SHAPE CORRECTIONS, both the same defect seen from different sides (review on the ALERT-0..3 PR).\n\nlabels IS A LIST, NOT A STRING. GitHub's issues API takes labels as a JSON array, and modeling it as one String meant the caller owned the join — which is to say the caller owned a piece of the wire format, in a module whose whole job is to own the wire format. A label containing the separator would have silently become two labels, and the shape the type advertised was not the shape the endpoint accepts.\n\nListForRepo IS RENAMED ListForRepoRaw BECAUSE IT RETURNS UNPARSED TEXT. An operation named for a typed resource whose output is an undecoded String is the naming half of rung inflation: the name asserts a guarantee — you get issues — that the signature does not deliver, and every consumer then writes its own ad-hoc parse while believing it was handed a resource. The honest options were to decode it here or to say what it actually returns; decoding a list of issues needs a total Issue decoder, which is real work with no consumer yet, so the name now matches the output. When a consumer lands, ListForRepo returns List<Issue> with a decoder beside it and this operation becomes its transport rather than its interface.\n\nTHE TWO labels FIELDS ARE DIFFERENT SHAPES BECAUSE UPSTREAM MAKES THEM DIFFERENT, and this is deliberate rather than an oversight. Create sends labels in the request BODY, where GitHub takes a JSON array, so it is List<String>. ListForRepoRaw sends labels as a QUERY parameter, which GitHub documents as `a list of comma separated label names` (docs.github.com/en/rest/issues/issues#list-repository-issues, read 2026-08-06) — a query string cannot carry a JSON array, so comma-separated text IS the wire form there and typing it as a list would be modeling a shape the endpoint does not accept. The residue this leaves is that the caller still performs the join for the query case; the right end state is a transport that models list-valued query parameters and encodes them per the operation's declared separator, at which point both fields are List<String> and neither caller joins anything. Dissolve-on: the rest transport carries a list-valued query encoding."
+
 data issues_list_comments_absent_note: String = "THERE IS DELIBERATELY NO ListComments OPERATION HERE, and its absence is a modeling decision worth stating because the obvious next edit is to add one. The only thing that ever wanted it was a throttle that recovered `when did we last notify` by fetching an issue's comment list and reading the newest one's timestamp. That is a second source of truth for a fact the alert itself produced: the alert knows exactly when it last notified, because it did the notifying. Recovering it by scanning comments made the throttle depend on pagination (the first version read comments[length-1] from one per_page=100 page, so past 100 comments it read the 100th and the throttle inverted into notify-every-run), on nobody else commenting on the issue, and on the comment list being readable at all. The fact belongs in the alert's own typed state marker instead, where it is written by the same step that sends the notification and read back with no API call, no pagination and no boundary. Adding ListComments would re-open all three failure modes to serve a question that no longer needs asking."
 
 service github.Issues {
@@ -87,7 +89,7 @@ service github.Issues {
     rate_limit: { requests: 5000, per: hour, scope: core }
   }
 
-  operation ListForRepo {
+  operation ListForRepoRaw {
     input {
       auth_token: Secret
       owner: String
@@ -121,7 +123,7 @@ service github.Issues {
       repo: String
       title: String
       body: String
-      labels: String
+      labels: List<String>
     }
     output {
       number: Int from "number"

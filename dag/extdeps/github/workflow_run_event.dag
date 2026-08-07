@@ -47,6 +47,8 @@ type WorkflowRunEvent {
 
   run_id: NonEmptyStr
   workflow_name: String
+  workflow_id: NonEmptyStr
+  workflow_path: String
   conclusion: WorkflowRunConclusion
   html_url: NonEmptyStr
   run_started_at: NonEmptyStr
@@ -92,9 +94,9 @@ type WorkflowRunEventText
   = WorkflowRunEventTextFound { text: String }
   | WorkflowRunEventTextFailed { observation: WorkflowRunEventObservation }
 
-data workflow_run_event_number_as_text_note: String = "A JSON number is admitted here beside a JSON string because GitHub delivers run id as a number and every other field this module reads as a string. Admitting the number's LEXEME is not a coercion — it is the digits the payload actually carried, unchanged — and the alternative (refusing numbers) would force the run id to be read through a second, number-shaped path for no gain, since the consumer compares it to a string. Null, bool, array and object all refuse, so the widening is exactly one wire form wide and every other shape is still a located malformation."
+data workflow_run_event_field_specific_decode_note: String = "TWO DECODERS, NOT ONE, AND THE NUMERIC WIDENING BELONGS TO EXACTLY ONE OF THEM. An earlier revision had a single helper that admitted a JSON string OR a JSON number and used it for every member — workflow name, conclusion, html_url, run_started_at, head_sha, head_branch, repository, originating event, and run id alike. The widening was introduced for run id, which GitHub genuinely delivers as a number, and it then applied to eight members for which a number is not a representation at all but a sign the payload shape changed or something else is answering.\n\nThat is the absorbing fallback in decoder form: the arm that should refuse instead widens, so `\"conclusion\": 0` or `\"head_branch\": 42` decodes to the text \"0\" and \"42\" and flows into a TRUST WALL that compares it against an expected value. It would not match, so it would refuse — but it would refuse with the WRONG reason (branch is not main) instead of the true one (branch is not a string), and a decoder whose diagnostics are wrong about why is a decoder nobody can debug against.\n\nSo: workflow_run_event_required_string_at admits ONLY a JSON string, and workflow_run_event_numeric_identity_at is the single place a numeric lexeme is accepted.\n\nIT HAS TWO CONSUMERS, AND ITS NAME NOW SAYS SO. It was called workflow_run_event_run_id_at while serving both `id` and `workflow_id`, and this paragraph described the widening as belonging to `exactly one member` — true of the decoder, false of the members, which is the prose-contradicting-mechanism class this file has already been caught by once. Both consumers are GitHub numeric identities and both are genuinely delivered as numbers, so one reader is correct; what was wrong was a name asserting a narrower scope than the code had. The widening is bounded by that reader's call sites, which are these two, and planting a number at any other member produces a located refusal naming that member."
 
-fn workflow_run_event_text_at(v: JsonValue, key: String) -> WorkflowRunEventText {
+fn workflow_run_event_required_string_at(v: JsonValue, key: String) -> WorkflowRunEventText {
   match workflow_run_event_member_at(v: v, key: key) {
     WorkflowRunEventMemberFailed { observation: o } =>
       WorkflowRunEventTextFailed { observation: o }
@@ -108,8 +110,10 @@ fn workflow_run_event_text_at(v: JsonValue, key: String) -> WorkflowRunEventText
           } else {
             WorkflowRunEventTextFound { text: s }
           }
-        JsonNumber { lexeme: l } =>
-          WorkflowRunEventTextFound { text: l as String }
+        JsonNumber { lexeme: _ } =>
+          WorkflowRunEventTextFailed {
+            observation: WorkflowRunEventMemberMalformed { member: key, detail: "member is a number, expected a string" }
+          }
         JsonNull =>
           WorkflowRunEventTextFailed {
             observation: WorkflowRunEventMemberMalformed { member: key, detail: "member is null" }
@@ -130,12 +134,50 @@ fn workflow_run_event_text_at(v: JsonValue, key: String) -> WorkflowRunEventText
   }
 }
 
+data workflow_run_event_run_id_decode_note: String = "THE ONLY MEMBER WHOSE DECODER ADMITS A NUMBER. GitHub delivers workflow_run.id as a JSON number, and the lexeme is the digits the payload actually carried, unchanged — accepting it is not a coercion. A string is admitted beside it because the identity comparison downstream is string-to-string either way and a payload quoting the id is still unambiguously the same id. Every non-textual, non-numeric shape refuses, so this decoder is exactly one wire form wider than the required-string decoder and not one form wider than that."
+
+fn workflow_run_event_numeric_identity_at(v: JsonValue, key: String) -> WorkflowRunEventText {
+  match workflow_run_event_member_at(v: v, key: key) {
+    WorkflowRunEventMemberFailed { observation: o } =>
+      WorkflowRunEventTextFailed { observation: o }
+    WorkflowRunEventMemberFound { value: found } =>
+      match found {
+        JsonNumber { lexeme: l } =>
+          WorkflowRunEventTextFound { text: l as String }
+        JsonString { value: s } =>
+          if s == "" {
+            WorkflowRunEventTextFailed {
+              observation: WorkflowRunEventMemberMalformed { member: key, detail: "run id is the empty string" }
+            }
+          } else {
+            WorkflowRunEventTextFound { text: s }
+          }
+        JsonNull =>
+          WorkflowRunEventTextFailed {
+            observation: WorkflowRunEventMemberMalformed { member: key, detail: "run id is null" }
+          }
+        JsonBool { value: _ } =>
+          WorkflowRunEventTextFailed {
+            observation: WorkflowRunEventMemberMalformed { member: key, detail: "run id is a bool, expected a number" }
+          }
+        JsonArray { elements: _ } =>
+          WorkflowRunEventTextFailed {
+            observation: WorkflowRunEventMemberMalformed { member: key, detail: "run id is an array, expected a number" }
+          }
+        JsonObject { members: _ } =>
+          WorkflowRunEventTextFailed {
+            observation: WorkflowRunEventMemberMalformed { member: key, detail: "run id is an object, expected a number" }
+          }
+      }
+  }
+}
+
 fn workflow_run_event_nested_text(v: JsonValue, outer: String, inner: String) -> WorkflowRunEventText {
   match workflow_run_event_member_at(v: v, key: outer) {
     WorkflowRunEventMemberFailed { observation: o } =>
       WorkflowRunEventTextFailed { observation: o }
     WorkflowRunEventMemberFound { value: nested } =>
-      match workflow_run_event_text_at(v: nested, key: inner) {
+      match workflow_run_event_required_string_at(v: nested, key: inner) {
         WorkflowRunEventTextFailed { observation: o } =>
           WorkflowRunEventTextFailed { observation: o }
         WorkflowRunEventTextFound { text: t } =>
@@ -152,6 +194,8 @@ fn workflow_run_event_assemble(
   activity: String,
   run_id: String,
   workflow_name: String,
+  workflow_id: String,
+  workflow_path: String,
   conclusion: WorkflowRunConclusion,
   html_url: String,
   run_started_at: String,
@@ -166,6 +210,8 @@ fn workflow_run_event_assemble(
       activity: activity,
       run_id: run_id as NonEmptyStr,
       workflow_name: workflow_name,
+      workflow_id: workflow_id as NonEmptyStr,
+      workflow_path: workflow_path,
       conclusion: conclusion,
       html_url: html_url as NonEmptyStr,
       run_started_at: run_started_at as NonEmptyStr,
@@ -183,7 +229,7 @@ fn workflow_run_event_from_json(text: String) -> WorkflowRunEventObservation {
     Absent =>
       WorkflowRunEventMalformed { detail: "GITHUB_EVENT_PATH payload is not valid JSON" }
     Present { value: doc } =>
-      match workflow_run_event_text_at(v: doc, key: "action") {
+      match workflow_run_event_required_string_at(v: doc, key: "action") {
         WorkflowRunEventTextFailed { observation: o } => o
         WorkflowRunEventTextFound { text: activity } =>
           match workflow_run_event_nested_text(v: doc, outer: "repository", inner: "full_name") {
@@ -192,13 +238,19 @@ fn workflow_run_event_from_json(text: String) -> WorkflowRunEventObservation {
               match workflow_run_event_member_at(v: doc, key: workflow_run_event_member) {
                 WorkflowRunEventMemberFailed { observation: o } => o
                 WorkflowRunEventMemberFound { value: run } =>
-                  match workflow_run_event_text_at(v: run, key: "id") {
+                  match workflow_run_event_numeric_identity_at(v: run, key: "id") {
                     WorkflowRunEventTextFailed { observation: o } => o
                     WorkflowRunEventTextFound { text: run_id } =>
-                      match workflow_run_event_text_at(v: run, key: "name") {
+                      match workflow_run_event_required_string_at(v: run, key: "name") {
                         WorkflowRunEventTextFailed { observation: o } => o
                         WorkflowRunEventTextFound { text: wf_name } =>
-                          match workflow_run_event_text_at(v: run, key: "conclusion") {
+                          match workflow_run_event_numeric_identity_at(v: run, key: "workflow_id") {
+                        WorkflowRunEventTextFailed { observation: o } => o
+                        WorkflowRunEventTextFound { text: wf_id } =>
+                      match workflow_run_event_required_string_at(v: run, key: "path") {
+                        WorkflowRunEventTextFailed { observation: o } => o
+                        WorkflowRunEventTextFound { text: wf_path } =>
+                      match workflow_run_event_required_string_at(v: run, key: "conclusion") {
                             WorkflowRunEventTextFailed { observation: o } => o
                             WorkflowRunEventTextFound { text: raw_conclusion } =>
                               match parse_workflow_run_conclusion(raw: raw_conclusion) {
@@ -208,28 +260,30 @@ fn workflow_run_event_from_json(text: String) -> WorkflowRunEventObservation {
                                     detail: concat("unmodelled workflow run conclusion: ", raw_conclusion)
                                   }
                                 Present { value: conclusion } =>
-                                  match workflow_run_event_text_at(v: run, key: "html_url") {
+                                  match workflow_run_event_required_string_at(v: run, key: "html_url") {
                                     WorkflowRunEventTextFailed { observation: o } => o
                                     WorkflowRunEventTextFound { text: html_url } =>
-                                      match workflow_run_event_text_at(v: run, key: "run_started_at") {
+                                      match workflow_run_event_required_string_at(v: run, key: "run_started_at") {
                                         WorkflowRunEventTextFailed { observation: o } => o
                                         WorkflowRunEventTextFound { text: started } =>
-                                          match workflow_run_event_text_at(v: run, key: "head_sha") {
+                                          match workflow_run_event_required_string_at(v: run, key: "head_sha") {
                                             WorkflowRunEventTextFailed { observation: o } => o
                                             WorkflowRunEventTextFound { text: head_sha } =>
-                                              match workflow_run_event_text_at(v: run, key: "head_branch") {
+                                              match workflow_run_event_required_string_at(v: run, key: "head_branch") {
                                                 WorkflowRunEventTextFailed { observation: o } => o
                                                 WorkflowRunEventTextFound { text: head_branch } =>
                                                   match workflow_run_event_nested_text(v: run, outer: "head_repository", inner: "full_name") {
                                                     WorkflowRunEventTextFailed { observation: o } => o
                                                     WorkflowRunEventTextFound { text: head_repo } =>
-                                                      match workflow_run_event_text_at(v: run, key: "event") {
+                                                      match workflow_run_event_required_string_at(v: run, key: "event") {
                                                         WorkflowRunEventTextFailed { observation: o } => o
                                                         WorkflowRunEventTextFound { text: originating } =>
                                                           workflow_run_event_assemble(
                                                             activity: activity,
                                                             run_id: run_id,
                                                             workflow_name: wf_name,
+                                                            workflow_id: wf_id,
+                                                            workflow_path: wf_path,
                                                             conclusion: conclusion,
                                                             html_url: html_url,
                                                             run_started_at: started,
@@ -247,6 +301,8 @@ fn workflow_run_event_from_json(text: String) -> WorkflowRunEventObservation {
                                   }
                               }
                           }
+                      }
+                      }
                       }
                   }
               }
