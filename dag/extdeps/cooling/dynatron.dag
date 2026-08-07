@@ -1,0 +1,38 @@
+module extdeps.cooling.dynatron
+
+import std.types { NonEmptyStr, List }
+import std.measure { watt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.cooling.types { CpuCoolerCatalogRow }
+import extdeps.vendor.dynatron { dynatron }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.dynatron.co/product-page/w1"
+  }
+}
+
+data dynatron_w1_catalog: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
+  model: "W1",
+  manufacturer: dynatron,
+  socket: "LGA4926",
+  active_passive_switchable: true,
+  minimum_rack_units: 2,
+  max_design_power: watt(250),
+  supported_motherboards: ["ALTRAD8UD-1L2T"],
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cooling.dynatron",
+      decl_name: "dynatron_w1_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

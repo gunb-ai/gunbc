@@ -1,0 +1,37 @@
+module extdeps.rack.navepoint
+
+import std.types { NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.rack.types { RackCatalogRow }
+import extdeps.vendor.navepoint { navepoint }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.navepoint.com"
+  }
+}
+
+data navepoint_18u_open_frame_catalog: RackCatalogRow = RackCatalogRow {
+  model: "18U 4-post open-frame rack",
+  manufacturer: navepoint,
+  rack_units: 18,
+  post_count: 4,
+  open_frame: true,
+}
+
+data navepoint_rack_catalog_note: String = "Operator-supplied NavePoint 18U 4-post open-frame rack identity. Exact serial and U layout are OBSERVATIONS on the owned instance, not facts to author here."
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.rack.navepoint",
+      decl_name: "navepoint_18u_open_frame_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

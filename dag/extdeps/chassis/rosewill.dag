@@ -1,0 +1,73 @@
+module extdeps.chassis.rosewill
+
+import std.types { NonEmptyStr, List }
+import std.measure { millimeter }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.chassis.types {
+  ChassisCatalogRow,
+  Atx,
+  MicroAtx,
+  MiniItx,
+}
+import extdeps.vendor.rosewill { rosewill }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rosewill.com/product-group/Rackmount-Cases/213-rosewill-rsv-r4000u-4u-rackmount-server-chassis-case"
+  }
+}
+
+data rsv_r4000u_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rosewill.com/product-group/Rackmount-Cases/213-rosewill-rsv-r4000u-4u-rackmount-server-chassis-case"
+  }
+}
+
+data rsv_z2600u_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rosewill.com/product-group/Rackmount-Cases/214-rosewill-rsv-z2600u-2u-rackmount-server-chassis-case"
+  }
+}
+
+data rosewill_rsv_r4000u_catalog: ChassisCatalogRow = ChassisCatalogRow {
+  model: "RSV-R4000U",
+  manufacturer: rosewill,
+  rack_units: 4,
+  motherboard_support: [Atx, MicroAtx, MiniItx],
+  internal_35_bay_count: 8,
+  internal_525_bay_count: 3,
+  expansion_slot_count: 7,
+  included_fan_count: 4,
+  max_gpu_length: Present { value: millimeter(270) },
+  max_cooler_height: none,
+}
+
+data rosewill_rsv_z2600u_catalog: ChassisCatalogRow = ChassisCatalogRow {
+  model: "RSV-Z2600U",
+  manufacturer: rosewill,
+  rack_units: 2,
+  motherboard_support: [MicroAtx, MiniItx],
+  internal_35_bay_count: 4,
+  internal_525_bay_count: 0,
+  expansion_slot_count: 4,
+  included_fan_count: 0,
+  max_gpu_length: Present { value: millimeter(150) },
+  max_cooler_height: Present { value: millimeter(70) },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.chassis.rosewill",
+      decl_name: "rosewill_rsv_r4000u_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [rsv_r4000u_authority, rsv_z2600u_authority]
+}

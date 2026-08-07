@@ -1,0 +1,40 @@
+module extdeps.power.types
+
+import std.types { NonEmptyStr, Int }
+import std.measure { Volt, Ampere, Foot }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Power_distribution_unit"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.power.types",
+      decl_name: "PduCatalogRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type PduCatalogRow {
+  model_family: NonEmptyStr
+  manufacturer: Vendor<Hardware>
+  rack_units: Int
+  nominal_supply_voltage: Volt
+  rated_current: Ampere
+  outlet_count: Int
+  front_outlet_count: Int
+  rear_outlet_count: Int
+  cord_length: Foot
+}
