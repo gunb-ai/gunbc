@@ -101,6 +101,8 @@ data five_minute_ci_gate_program_note: String = "PROGRAM BOUNDARY, NOT A SINGLE 
 
 data namespace_node_recut_note: String = "THE BROAD NAMESPACE NODE WAS TOO COARSE TO CLOSE HONESTLY, and the recut is the fix (operator ruling, 2026-07-31). namespace-canonical-binding previously combined two separable things in one boundary: working out which declarations a name can see, and calling one decision function on them. A check proving only the none/one/many decision could therefore have marked the whole node accepted while candidate derivation, reference-derived dependency closure, and the production changeover all remained unbuilt — an acceptance hazard, and the exact shape of rung inflation DESIGN 4b forbids, where a carrier named for the top rung occupies the bottom one.\\n\\nThree prerequisites now stand in front of it. namespace-binding-kernel owns the decision alone, on a candidate population SUPPLIED to it. namespace-reference-derived-closure owns structural exposure, authored order, the candidate index, exact reference-to-declaration binding, and the derived dependency edges. namespace-ambiguity-discharge settles the genuinely-many cases from real compilation. namespace-canonical-binding KEEPS ITS DURABLE IDENTITY and is now the final production changeover only, so historical links resolve and no identity is reused.\\n\\nWhy the split falls exactly there: dependency edges are a PROJECTION OF THE BINDING, not a second authored statement. A program that instead authored the missing edges by hand reached 400 of 771 files at roughly one import per CI floor before it was stopped; the unresolved population was evidence that binding and module discovery are coupled at the wrong boundary, not a backlog to grind down.\\n\\nTHE CHANGEOVER AND ITS SUCCESSOR ARE DISJOINT, and an earlier revision of this recut broke that (review 45649). It retitled namespace-canonical-binding as 'switch the whole compiler over' with a boundary reading 'every place that resolves a name', which swallowed namespace-bound-only-consumers underneath it — that node's own boundary is type checking, call lookup, and argument-count checks reading the decided answer. Overlapping boundaries are the §2 redundancy this document exists to remove, and they are worse on a roadmap than in code: completing the parent would already entail most of the child, so either the child can never be honestly accepted or the parent was silently read narrower than it was written. The cut is PRODUCER versus READER. The changeover node owns the sites that WORK OUT what a name refers to, and the deletion of the search-everything fallback behind them. Its successor owns the READERS of that answer and their obligation to stop on unresolved or ambiguous. Neither entails the other, and each can be accepted on its own evidence.\\n\\nONE EDGE WAS DELIBERATELY NOT CHANGED. pderive-source-slot-binding still depends on namespace-canonical-binding, which now means it waits for the whole production changeover. It plausibly needs only occurrence transport plus the binding kernel, but that is unproven: the dependency moves only once the focused P-derive consumer demonstrates it can operate on an exact supplied candidate population. Loosening it on the strength of the argument alone would be asserting a fact nobody has measured."
 
+data compute_consumer_admission_sequencing_note: String = "THE RULE THAT ORDERS THE COMPUTE LANE, and it is a sequencing ruling rather than a design preference (operator, 2026-08-07): do not move the present arrangement onto our own machines. Move exact computations onto one shared fabric, and DELETE THE DUPLICATED WORK BEFORE increasing the number of things asking for it. Handing agents a build capability without deduplication and admission would not be a fabric — it would be a tidier way for ten callers to launch ten cold builds of one tree, which is the failure the lane exists to prevent. That is why compute-deduplication-and-admission stands in front of ci-owned-execution in the graph rather than beside it: owning CI adds a consumer, and a consumer added before the duplication is removed multiplies the load instead of sharing it.\n\nTHE SECOND HALF OF THE SAME RULE APPLIES TO NATIVE EXECUTION. Emitting a native witness bundle and running it is the right destination, and the miniature is decisive at the scale it measures — direct native calls in single-digit milliseconds against tens interpreted and hundreds through warm cargo transport. But the cited production enrolment delivered zero of three native and three of three fallback, so the required path took no benefit from it, and native bodies surrounded by duplicated preparation would still be bad CI. Native realization and shared preparation are ONE programme, not two lanes competing for the same slot; native-selected-witness-bundle owns the first, and the discovery snapshot, scoped substrate, early selection and streaming rows own the second.\n\nWHY THE MECHANISM ROWS ARE A CHAIN AND NOT A SET. The measured floor is dominated by preparation rather than by the work being prepared for: on the clearest full-floor subject, the discovery batch spent the large majority of its wall on setup and resolve and a small minority actually evaluating witnesses, and the two workers walked the same roots twice. Each row therefore removes a DIFFERENT duplicate — the second walk, the second initialised world, preparation that precedes selection, and the barrier between preparing and executing — and each is only measurable once the one before it has landed. Chaining them with dependency edges is what keeps at most the next one startable, so the standing limit on concurrent performance mechanisms falls out of the graph rather than being restated as prose that nothing enforces. Width two is deliberately absent from that chain and stays parked: the tested implementation shared typed bytes while each worker still built its own world, and the architectural prerequisite is that no second private semantic world exists."
+
 data roadmap_execution_contract_frontier_note: String = "Every node below is ExecutionContractUnspecified: the declared, fail-closed migration frontier for gunbc.roadmap_execution_contract. A node states the exact validation operations that close it before the actuator will spawn for it, so dispatch refuses with a typed environment-admission diagnostic rather than guessing validations or dependencies. The prior binding lived on a pre-refresh operator-TODO node deleted by the 2026-07-27 authority refresh; re-binding is per-node roadmap authoring, never a merge-time default."
 
 fn authored(identity: String,
@@ -1131,6 +1133,51 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The result produced once, both consumers reading it, the three refusals, and the measured displacement on the whole path."
       )
     ),
+    active_large(
+      identity: "rn_8QDBM3ZVKT5XWN0RCPHJLG2764",
+      id: "ci-scoped-worker-shared-substrate",
+      owner: "ci-cost",
+      path: "docs/plans/cross-worker-typecheck-share-design.md",
+      t: fields(
+        headline: "Stop building a second compiler world in order to run twenty-seven witnesses",
+        boundary: "The scoped worker consumes an already-initialised substrate, or runs as a later stage inside the ordinary one, rather than constructing its own sources, indexes and environments. Staying in its own process remains allowed: isolation means separate mutable scratch and its own lifetime, never recomputing facts that are already fixed and immutable.",
+        displaced_cost: "The scoped worker executes twenty-seven witnesses and pays for a whole second world to do it. The process boundary is being used as a way of handing memory back, and a cold start is the price currently paid for that.",
+        first_slice: "Run the scoped population against the ordinary world's initialised substrate while keeping its own scratch.",
+        red_control: "The same twenty-seven witnesses reach the same outcomes. No second source or index construction happens. The scoped segment falls by at least three minutes on the same subject, and memory stays inside the fixed envelope.",
+        out_of_scope: "Not sharing the discovery walk, which the row above owns. Not widening to two workers — that stays parked until private worlds stop being rebuilt.",
+        handback: "The same population and outcomes, no second construction, and the measured segment reduction."
+      )
+    ),
+    active(
+      identity: "rn_2VNCX7QBZK9TWM4RDPHJLG0538",
+      id: "ci-selection-before-preparation",
+      owner: "ci-cost",
+      path: "docs/plans/ci-selection-vs-scheduling.md",
+      t: fields(
+        headline: "Decide what matters before paying to prepare everything",
+        boundary: "Which computations a change affects is decided from source and module facts, ahead of broad roster, index, grouping and closure preparation. Only the views that decision actually needs are then prepared.",
+        displaced_cost: "Selection is already sharp about meaning and blunt about cost: it can correctly conclude that most of the corpus is irrelevant, but only after the corpus has been discovered, named, rostered and indexed. The saving it reports is real while the work it claims to have avoided has largely already been done.",
+        first_slice: "Move the affected-computation decision ahead of broad preparation on one required path, and prepare only what it selected.",
+        red_control: "A selection that still needs whole-corpus preparation to reach its answer reds. Preparing anything the selection did not ask for reds. A provenance gap in selection still refuses rather than widening to everything, exactly as it does today.",
+        out_of_scope: "Not what the selection decides — its correctness is owned elsewhere and does not change here. Not the discovery result itself.",
+        handback: "The reordered path, the prepared population matching the selected one, and the measured displacement."
+      )
+    ),
+    active_large(
+      identity: "rn_4XKBW0ZQNV6TCM2RDPHJLG7135",
+      id: "ci-streaming-realization",
+      owner: "ci-cost",
+      path: "docs/plans/floor-prep-tax-program.md",
+      t: fields(
+        headline: "Start running as soon as the first thing is ready",
+        boundary: "Preparation stops being a barrier standing in front of execution. A module's facts becoming ready makes an entry view ready, which makes a witness ready, which runs — while everything else is still being prepared.",
+        displaced_cost: "Several hundred seconds are currently spent preparing every selected entry before the first one executes. That is a barrier, not work that had to finish first.",
+        first_slice: "Let one family execute as it becomes ready, rather than after the whole selected population has been prepared.",
+        red_control: "The first witness executes before the last selected entry has finished being prepared — the property this row exists for, measured rather than asserted. Outcomes and the order they are reported in stay stable however the readiness order falls out. A failure during preparation still refuses rather than surfacing as a witness that passed.",
+        out_of_scope: "Not running more things at once — this overlaps preparation with execution, it widens neither.",
+        handback: "The measured overlap, the stable outcomes under reordering, and the reduction in time before first execution."
+      )
+    ),
 
     active_small(
       identity: "rn_2K8HXQ4MZV7NC3B6WD9YFT5J1E",
@@ -1266,6 +1313,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A run reporting success while a declared output is absent refuses instead. An output whose content does not match what the manifest claims refuses. A provider unable to return outputs refuses a producing request rather than answering it with a verdict.",
         out_of_scope: "Not a distributed content store — exact subject binding, durability, retrieval and refusal come first. Not work that changes a machine, which needs a lease and a read-back rather than an artefact.",
         handback: "The manifest with content identities, one materialisation into a working tree, and the three refusals demonstrated."
+      )
+    ),
+
+    active_large(
+      identity: "rn_5PZBW1KVNT7XCQ3RDMHJLG0946",
+      id: "compute-deduplication-and-admission",
+      owner: "compute",
+      path: "docs/plans/execution-spine-design.md",
+      t: fields(
+        headline: "Identical work runs once and is handed to everyone who asked for it",
+        boundary: "Two requests naming the same computation are the same work: one producer runs and everyone else attaches to its result as a consumer. The fabric decides what may run — how many cold builds a machine carries at once, what the compile pool's total demand may be, which host serves a request, and what order competing work is served in — and tells a caller which of those it is waiting on. A caller never starts something merely because it cannot tell whether somebody else is already producing it.",
+        displaced_cost: "Ten agents needing the same binary for the same tree currently means ten builds, because nothing lets one of them discover the other nine. Moving the present arrangement onto our own machines WITHOUT this multiplies the load instead of sharing it, which is why this row comes before more consumers rather than after them.",
+        first_slice: "Collapse two identical requests into one producer with two consumers, and report the standing that says which one a caller is.",
+        red_control: "Two identical requests produce one execution and both callers receive the same result. Two requests differing anywhere in the identity — tree, toolchain, target, profile, features, environment — must NOT collapse. A caller refused for want of capacity is told so, and that refusal is counted rather than becoming a longer queue nobody can see.",
+        out_of_scope: "Not what any operation computes. Not the handing back of outputs, which is its sibling. Not provisioning the machines the pool runs on.",
+        handback: "One producer serving several consumers on a real operation, the non-collapse controls, the standing a caller sees, and agents no longer launching duplicate cold builds."
       )
     ),
 
@@ -2176,8 +2239,15 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "ci-floor-discovery-snapshot", parent: "module-grain-materialization"),
 
     edge(child: "compute-artifact-return-and-materialization", parent: "compute-exact-work-contract"),
+    edge(child: "compute-deduplication-and-admission", parent: "compute-exact-work-contract"),
     edge(child: "ci-owned-execution", parent: "compute-exact-work-contract"),
     edge(child: "ci-owned-execution", parent: "compute-artifact-return-and-materialization"),
+    edge(child: "ci-owned-execution", parent: "compute-deduplication-and-admission"),
+    edge(child: "ci-scoped-worker-shared-substrate", parent: "ci-floor-discovery-snapshot"),
+    edge(child: "ci-selection-before-preparation", parent: "ci-floor-discovery-snapshot"),
+    edge(child: "ci-streaming-realization", parent: "ci-selection-before-preparation"),
+    edge(child: "ci-streaming-realization", parent: "ci-scoped-worker-shared-substrate"),
+    edge(child: "phased-single-process-ci", parent: "ci-scoped-worker-shared-substrate"),
     edge(child: "ci-remote-build-containment", parent: "compute-artifact-return-and-materialization"),
     edge(child: "ci-check-projection", parent: "ci-owned-execution"),
     edge(child: "ci-actions-runner-retirement", parent: "ci-check-projection"),
