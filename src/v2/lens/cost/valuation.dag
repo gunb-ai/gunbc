@@ -132,7 +132,7 @@ fn combine_evaluation(
       match b {
         CostEvaluationRefused { causes: cb } =>
           CostEvaluationRefused { causes: non_empty_append(left: ca, right: cb) }
-        _ => CostEvaluationRefused { causes: ca }
+        ExactCost { value: vb } => CostEvaluationRefused { causes: ca }
       }
     ExactCost { value: va } =>
       match b {
@@ -206,7 +206,7 @@ fn evaluate_summation(
         index: Succ { prev: state.index },
         accumulated: match state.accumulated {
           CostEvaluationRefused { causes: c } => CostEvaluationRefused { causes: c }
-          _ => combine_evaluation(
+          ExactCost { value: acc } => combine_evaluation(
             a: state.accumulated,
             b: evaluate_body(
               env_bind(
