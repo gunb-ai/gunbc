@@ -57,9 +57,6 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
   srv1_live_dashboard_instance,
-  srv1_dashboard_live_id,
-  srv1_dashboard_green_id,
-  srv1_dashboard_lab_id,
   srv2_lab_dashboard_instance,
   srv2_dashboard_lab_id,
   srv2_dashboard_preview_id,
@@ -346,7 +343,7 @@ fn automatic_refusal_reason_for_inventory(
 data dispatch_claude_default_workflow_mode: NonEmptyStr = "default" as NonEmptyStr
 data dispatch_claude_default_credential_root: FilePath = "~/.claude" as FilePath
 
-data claude_offer_inventory_wiring_note: String = "OfferClaude lands in provider_inventory_for_instance only for explicit srv1 dashboard instance ids (srv1-live, srv1-green, srv1-lab-codex-feedback-v0). srv2 lab/preview carry Cursor instead; any other host id gets Codex-only inventory until a separate operator row wires Claude there. Standing is inventory-unobserved until enrollment publishes RecordedFact ProviderStandingObservationFact or a live probe path supersedes it. Credential is ClaudeStateRootRef with an explicit root — not ambient inheritance. The inventory executable field carries extdeps.llm.cli claude_cli_program (PATH token), not a host path literal — host resolution is a spawn/preflight observation, same discipline as belt claude-on-PATH preflight. Managed ClaudeOAuthTokenSecretRef enrollment binding is the enrollment-slice follow-on that replaces the state-root row when Secret Manager materialization lands."
+data claude_offer_inventory_wiring_note: String = "PRODUCTION WIRING DEFERRED (operator ruling msg_3b291a6a, 2026-08-07): OfferClaude does NOT land in provider_inventory_for_instance on this PR. Enrollment is a standing producer only; production inventory and resolve_claude_offer consumption move to the WorkerTurn PR where real standing, credential binding, and turn actuator exist together. Fixture-level selection controls (fixture_inventory_codex_then_claude, resolve_claude_offer) remain to prove a future eligible Claude standing is selectable. Managed ClaudeOAuthTokenSecretRef replaces ClaudeStateRootRef when Secret Manager materialization lands on WorkerTurn."
 
 data dispatch_selection_temporal_unobserved_reason: NonEmptyStr = "selection time; temporal bounds assigned at spawn observation" as NonEmptyStr
 data dispatch_selection_usage_unobserved_reason: NonEmptyStr = "selection time; usage observations assigned during provider runtime" as NonEmptyStr
@@ -516,12 +513,6 @@ fn claude_offer_for_instance(instance: HostDashboardInstance) -> ClaudeOffer {
   )
 }
 
-fn provider_inventory_includes_claude_offer(instance: HostDashboardInstance) -> Bool {
-  instance.instance_id == srv1_dashboard_live_id
-    || instance.instance_id == srv1_dashboard_green_id
-    || instance.instance_id == srv1_dashboard_lab_id
-}
-
 fn provider_inventory_for_instance(instance: HostDashboardInstance) -> ProviderInventory {
   if instance.instance_id == srv2_dashboard_lab_id
     || instance.instance_id == srv2_dashboard_preview_id {
@@ -555,13 +546,6 @@ fn provider_inventory_for_instance(instance: HostDashboardInstance) -> ProviderI
             process_fingerprint: dispatch_cursor_process_fingerprint,
           },
         },
-      ],
-    }
-  } else if provider_inventory_includes_claude_offer(instance: instance) {
-    ProviderInventory {
-      offers: [
-        OfferCodex { offer: codex_offer_for_instance(instance: instance) },
-        OfferClaude { offer: claude_offer_for_instance(instance: instance) },
       ],
     }
   } else {
@@ -917,11 +901,12 @@ fn resolve_provider_offer(
       request: request,
       node_sizing: node_sizing,
     )
-    OfferClaude { offer: claude } => resolve_claude_offer(
-      offer: claude,
-      request: request,
-      node_sizing: node_sizing,
-    )
+    OfferClaude { offer: _ } =>
+      DispatchSelectionRefused {
+        node_sizing: node_sizing,
+        requested_selection: request,
+        reason: claude_offer_not_wired_reason,
+      }
     OfferCursor { offer: cursor } =>
       match request {
         SelectAutomatically { profile: ProfileAutomatic } => {

@@ -225,6 +225,36 @@ test fn witness_srv1_inventory_includes_codex() -> Bool {
 
 test fn witness_srv1_inventory_includes_claude() -> Bool {
   inventory_includes_provider_kind(
+    inventory: fixture_inventory_codex_then_claude(
+      instance: srv1_live_dashboard_instance(),
+      codex_standing: provider_standing_inventory_unobserved(),
+      claude_standing: provider_standing_from_fixture_bundle(
+        provider: ProviderInstance {
+          kind: ClaudeCliProvider,
+          host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as NonEmptyStr },
+          executable: "claude" as NonEmptyStr,
+          observed_version: ProviderInstanceFieldUnobserved {
+            reason: "fixture claude inventory row" as NonEmptyStr,
+          },
+          state_directory: ProviderInstanceFieldUnobserved {
+            reason: "fixture claude inventory row" as NonEmptyStr,
+          },
+          credential_storage_method: ProviderInstanceFieldUnobserved {
+            reason: "fixture claude inventory row" as NonEmptyStr,
+          },
+          service_identity: ProviderInstanceFieldUnobserved {
+            reason: "fixture claude inventory row" as NonEmptyStr,
+          },
+        },
+        bundle: fixture_standing_bundle_authenticated_available(),
+      ),
+    ),
+    kind: ClaudeCliProvider,
+  )
+}
+
+test fn witness_production_inventory_excludes_claude() -> Bool {
+  !inventory_includes_provider_kind(
     inventory: provider_inventory_for_instance(
       instance: srv1_live_dashboard_instance(),
     ),
@@ -574,6 +604,7 @@ test fn dispatch_selection_keystone_holds() -> Bool {
     && witness_deep_profile_refuses_without_realization()
     && witness_srv1_inventory_includes_codex()
     && witness_srv1_inventory_includes_claude()
+    && witness_production_inventory_excludes_claude()
     && witness_srv2_inventory_includes_cursor()
     && witness_srv2_cursor_selection_resolves()
     && witness_srv1_claude_selection_resolves_with_fixture_standing()

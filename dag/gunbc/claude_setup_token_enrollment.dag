@@ -2,6 +2,8 @@ module gunbc.claude_setup_token_enrollment
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, list_length }
 import std.measure { CharacterCount, character_count }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.optional { Present, Absent }
 import extdeps.llm.claude_setup_token_cli {
   ClaudeSetupTokenFormatObservation,
@@ -9,9 +11,6 @@ import extdeps.llm.claude_setup_token_cli {
   SetupTokenFormatMeasured,
   ClaudeSetupTokenFormatMeasured,
   ClaudeSetupTokenBrowserChallenge,
-  ClaudeSetupTokenChallengeParse,
-  SetupTokenChallengeParsed,
-  SetupTokenChallengeParseRefused,
   claude_code_oauth_token_env_var,
   claude_config_dir_env_var,
   count_setup_token_candidates,
@@ -21,7 +20,6 @@ import extdeps.llm.claude_setup_token_cli {
 import gunbc.provider_standing {
   ProviderStanding,
   ProviderStandingBundle,
-  ProviderStandingFromFact,
   ProviderInstallationStanding,
   ProviderAuthenticationStanding,
   ProviderEntitlementObservation,
@@ -32,7 +30,6 @@ import gunbc.provider_standing {
   InstallationStandingUnobserved,
   AuthenticationCredentialsAbsent,
   AuthenticationAuthenticated,
-  AuthenticationExpired,
   AuthenticationRefreshFailed,
   AuthenticationStandingUnobserved,
   EntitlementObservationUnobserved,
@@ -58,11 +55,19 @@ import extdeps.llm.cli_lifecycle {
 }
 import std.claim_evidence { RecordedFactId }
 
-data claude_setup_token_enrollment_authority_note: String = "Claude Code enrollment station workflow (operator direction 2026-08-07). The host is an enrollment station, not an ambient prerequisite workers inherit. Personal browser gesture is irreducible; every other step is deterministic control-plane workflow. Enrollment is INITIATED ONLY through the pinned Claude CLI setup-token path — the SDK has no login RPC and may only CONSUME credential state the executable already holds. Managed binding uses ClaudeOAuthTokenSecretRef with an EXACT Secret Manager version, never latest. Credential durable-state mutation is observed before and after admitted runtime use; write-back creates a new secret version only when the observed artifact digest changes — never unconditionally. NO WorkerTurn and NO UI workflow progress in this slice."
+data claude_setup_token_enrollment_authority_note: String = "Claude Code enrollment station workflow (operator direction 2026-08-07; revised msg_3b291a6a). The enrollment host is where the irreducible browser gesture happens — NOT the roadmap worker host. Enrollment INITIATES ONLY through the pinned Claude CLI setup-token path. This module is a STANDING PRODUCER: it emits ProviderStanding from managed enrollment; it does NOT wire OfferClaude into production dispatch inventory (WorkerTurn PR). NO WorkerTurn and NO UI workflow progress in this slice."
 
-data claude_ambient_oauth_home_separate_lifecycle_note: String = "ClaudeStateRootRef ambient OAuth home carries refresh state with finite observed expiry and is useful only as a comparison control — production authority is the managed Secret Manager binding, not ambient inheritance. setup-token enrollment capture and runtime-managed OAuth materialization are separate lifecycles that must not fuse, but BOTH require before/after artifact observation and conditional write-back when durable state changes (operator ruling 2026-08-07: static materialization alone is insufficient for Claude)."
+data claude_enrollment_no_invented_binding_note: String = "HARD PROHIBITION (msg_3b291a6a): no exact enrollment host, GCP project, secret ID, or Unix service-principal binding is established anywhere in this module. Operator proposals (claude-personal-max, claude-code-oauth-personal-max, gunbai-secrets) are NOT selected values. Model the shape; leave values unbound; refuse rather than default."
+
+data claude_ambient_oauth_home_separate_lifecycle_note: String = "Ambient claudeAiOauth home (refresh/access state, finite refresh-token expiry) may mutate in normal operation — write-back behaviour for THAT realization must be MEASURED, not assumed. CLAUDE_CODE_OAUTH_TOKEN from setup-token is supplied through environment with NO evidence the runtime mutates or rotates it; setup-token standing uses ClaudeSetupTokenStanding, not the ambient OAuth write-back path."
 
 data claude_enrollment_no_provider_authenticated_literal_note: String = "Acceptance: no authored ProviderAuthenticated literal from extdeps.llm.cli_lifecycle exists anywhere in this workflow. Authentication standing is projected into gunbc.provider_standing ProviderAuthenticationStanding only."
+
+type ClaudeSetupTokenStanding
+  = SetupTokenUsable
+  | SetupTokenRejected { reason: NonEmptyStr }
+  | SetupTokenExpiryObserved { expires_at: NonEmptyStr }
+  | SetupTokenRotationSemanticsUnobserved
 
 type ClaudeCredentialStanding
   = ClaudeCredentialUsable
@@ -75,24 +80,66 @@ type ClaudeProviderEnrollmentAction
   | ReconnectClaude { cause: NonEmptyStr }
   | EnrollmentActionNotRequired
 
-type ClaudeEnrollmentServiceIdentity {
-  label: NonEmptyStr
-  enrollment_root: FilePath
+type ClaudeEnrollmentHostPlacement
+  = EnrollmentHostUnbound
+  | EnrollmentHostSpecified { hostname: NonEmptyStr }
+
+type ClaudeEnrollmentUnixServicePrincipal
+  = EnrollmentUnixPrincipalUnbound
+  | EnrollmentUnixPrincipalSpecified { principal: NonEmptyStr }
+
+type ClaudeEnrollmentSecretTarget
+  = EnrollmentSecretTargetUnbound
+  | EnrollmentSecretTargetSpecified {
+      project: NonEmptyStr,
+      secret: NonEmptyStr,
+    }
+
+type ClaudeExactSecretVersionBinding {
+  project: NonEmptyStr,
+  secret: NonEmptyStr,
+  version: NonEmptyStr,
+  private_content_identity: NonEmptyStr,
 }
 
-type ClaudeEnrollmentSecretBinding {
-  project: NonEmptyStr
-  secret: NonEmptyStr
-  version: NonEmptyStr
+type ClaudeEnrollmentPrincipalPopulation
+  = EnrollmentPrincipalPopulationDerived { members: List<NonEmptyStr> }
+  | EnrollmentPrincipalPopulationDeploymentModelGap {
+      reason: NonEmptyStr,
+    }
+
+type ClaudeEnrollmentRuntimeBinding {
+  executable: NonEmptyStr,
+  version_pin: NonEmptyStr,
 }
 
-type ClaudeEnrollmentConfig {
-  service: ClaudeEnrollmentServiceIdentity
-  claude_executable: NonEmptyStr
-  claude_version_pin: NonEmptyStr
-  secret_binding: ClaudeEnrollmentSecretBinding
-  sdk_version_pin: NonEmptyStr
-  standing_fact_id: RecordedFactId
+type ClaudeEnrollmentPlacement {
+  host: ClaudeEnrollmentHostPlacement,
+  run_as: ClaudeEnrollmentUnixServicePrincipal,
+  enrollment_root: FilePath,
+  account_label: NonEmptyStr,
+  secret_target: ClaudeEnrollmentSecretTarget,
+  writer: ClaudeEnrollmentPrincipalPopulation,
+  readers: ClaudeEnrollmentPrincipalPopulation,
+  claude_runtime: ClaudeEnrollmentRuntimeBinding,
+  sdk_runtime: ClaudeEnrollmentRuntimeBinding,
+}
+
+type ClaudeEnrollmentOperatorChoices {
+  enrollment_host: NonEmptyStr?,
+  run_as_principal: NonEmptyStr?,
+  gcp_project: NonEmptyStr?,
+  secret_id_or_create_authorization: NonEmptyStr?,
+  account_label: NonEmptyStr?,
+}
+
+type ClaudeEnrollmentPlacementAdmission
+  = EnrollmentPlacementAdmitted { placement: ClaudeEnrollmentPlacement }
+  | EnrollmentPlacementRefusedUnbound { missing_axes: List<NonEmptyStr> }
+
+type ClaudeEnrollmentSession {
+  placement: ClaudeEnrollmentPlacement,
+  standing_fact_id: RecordedFactId,
 }
 
 type ClaudeEnrollmentInitiationSurface
@@ -105,24 +152,24 @@ type ClaudeEnrollmentInitiationAdmission
       reason: NonEmptyStr,
     }
 
-type ClaudeCredentialArtifactDigest {
+type ClaudeAmbientOAuthArtifactDigest {
   digest: NonEmptyStr
 }
 
-type ClaudeCredentialArtifactObservationPair {
-  before_use: ClaudeCredentialArtifactDigest
-  after_use: ClaudeCredentialArtifactDigest
+type ClaudeAmbientOAuthArtifactObservationPair {
+  before_use: ClaudeAmbientOAuthArtifactDigest,
+  after_use: ClaudeAmbientOAuthArtifactDigest,
 }
 
-type ClaudeCredentialWriteBackAdmission
-  = CredentialWriteBackAdmitted {
-      prior: ClaudeCredentialArtifactDigest,
-      observed: ClaudeCredentialArtifactDigest,
+type ClaudeAmbientOAuthHomeWriteBackAdmission
+  = AmbientOAuthWriteBackAdmitted {
+      prior: ClaudeAmbientOAuthArtifactDigest,
+      observed: ClaudeAmbientOAuthArtifactDigest,
     }
-  | CredentialWriteBackRefusedUnchanged {
-      digest: ClaudeCredentialArtifactDigest,
+  | AmbientOAuthWriteBackRefusedUnchanged {
+      digest: ClaudeAmbientOAuthArtifactDigest,
     }
-  | CredentialWriteBackRefusedMissingObservation {
+  | AmbientOAuthWriteBackRefusedMissingObservation {
       reason: NonEmptyStr,
     }
 
@@ -179,8 +226,38 @@ type ClaudeEnrollmentSecretWriteOutcome
   | EnrollmentSecretWriteRefused { reason: NonEmptyStr }
 
 type ClaudeEnrollmentSecretReadBackOutcome
-  = EnrollmentSecretReadBackOk { version: NonEmptyStr, digest_matches: Bool }
+  = EnrollmentSecretReadBackOk {
+      version: NonEmptyStr,
+      private_content_identity: NonEmptyStr,
+      digest_matches: Bool,
+    }
   | EnrollmentSecretReadBackRefused { reason: NonEmptyStr }
+
+type ClaudeExactSecretVersionBindingAdmission
+  = ExactSecretVersionBindingAdmitted {
+      binding: ClaudeExactSecretVersionBinding,
+    }
+  | ExactSecretVersionBindingRefusedWrite { reason: NonEmptyStr }
+  | ExactSecretVersionBindingRefusedReadBack { reason: NonEmptyStr }
+  | ExactSecretVersionBindingRefusedDigestMismatch
+
+type ClaudeEnrollmentWorkflowStage
+  = EnrollmentSpawnCliPrivatePty
+  | EnrollmentObserveBrowserChallenge {
+      challenge: ClaudeSetupTokenBrowserChallenge,
+    }
+  | EnrollmentCaptureSetupTokenPrivate
+  | EnrollmentSecretManagerAddVersion
+  | EnrollmentExactVersionReadBack
+  | EnrollmentCleanContextMaterialization
+  | EnrollmentManagedPairedProbe
+  | EnrollmentProviderStandingReceipt
+
+type ClaudeEnrollmentWorkflowAdmission
+  = EnrollmentWorkflowAdmitted
+  | EnrollmentWorkflowRefusedPlacementUnbound { missing_axes: List<NonEmptyStr> }
+  | EnrollmentWorkflowRefusedDeploymentModelGap { reason: NonEmptyStr }
+  | EnrollmentWorkflowRefusedHostEffectsScaffold { stage: NonEmptyStr }
 
 type ClaudeIsolationPathObservation
   = IsolationPathObserved { paths_read: List<FilePath> }
@@ -188,32 +265,180 @@ type ClaudeIsolationPathObservation
 
 data claude_enrollment_managed_home_relative: String = ".gunbc/claude-enrollment"
 
-fn claude_enrollment_config_dir(service: ClaudeEnrollmentServiceIdentity) -> FilePath {
+data claude_enrollment_writer_reader_deployment_model_gap_reason: NonEmptyStr = "writer and reader service-identity populations are not yet derived from deployed service identities — name the deployment-model gap rather than asking the operator nine placement questions" as NonEmptyStr
+
+data claude_enrollment_host_effect_realization_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "HostEffectTransport",
+    field: WholeDeclaration,
+  }
+}
+
+data claude_enrollment_acceptance_control_note: String = "ACCEPTANCE CONTROL (msg_3b291a6a): with the enrollment host ambient credential HIDDEN OR ABSENT, the workflow initiates setup-token, the operator authorizes, an exact Secret Manager version is produced; then a CLEAN SECOND CONTEXT materializes only that exact version and reaches authenticated Claude subscription standing."
+
+data claude_enrollment_workflow_realization_note: String = "Required host effects (not yet realized): spawn exact Claude CLI in a private PTY; observe browser challenge and project ONLY url and code; capture token privately; Secret Manager AddVersion; exact-version independent read-back; clean-context materialization; managed paired probe; ProviderStanding receipt. Until realization lands this module remains an enrollment specification with honest scaffold refusal — not a silent no-op."
+
+fn claude_enrollment_root_for_account(account_label: NonEmptyStr) -> FilePath {
+  join(
+    ["/var/lib/gunbc/claude-enrollment/", account_label as String],
+    "",
+  ) as FilePath
+}
+
+fn claude_enrollment_config_dir_for_placement(
+  placement: ClaudeEnrollmentPlacement,
+) -> FilePath {
   join(
     [
-      service.enrollment_root as String,
+      placement.enrollment_root as String,
       "/",
       claude_enrollment_managed_home_relative,
       "/",
-      service.label as String,
+      placement.account_label as String,
       "/config",
     ],
     "",
   ) as FilePath
 }
 
-fn claude_enrollment_data_dir(service: ClaudeEnrollmentServiceIdentity) -> FilePath {
+fn claude_enrollment_data_dir_for_placement(
+  placement: ClaudeEnrollmentPlacement,
+) -> FilePath {
   join(
     [
-      service.enrollment_root as String,
+      placement.enrollment_root as String,
       "/",
       claude_enrollment_managed_home_relative,
       "/",
-      service.label as String,
+      placement.account_label as String,
       "/home",
     ],
     "",
   ) as FilePath
+}
+
+data claude_enrollment_empty_non_empty_str_list: List<NonEmptyStr> = []
+
+fn missing_operator_choice_axes(
+  choices: ClaudeEnrollmentOperatorChoices,
+) -> List<NonEmptyStr> {
+  let host_axis = match choices.enrollment_host {
+    Present { value: _ } => claude_enrollment_empty_non_empty_str_list
+    Absent => ["enrollment_host" as NonEmptyStr]
+  }
+  let run_as_axis = match choices.run_as_principal {
+    Present { value: _ } => host_axis
+    Absent => append(host_axis, ["run_as_principal" as NonEmptyStr])
+  }
+  let project_axis = match choices.gcp_project {
+    Present { value: _ } => run_as_axis
+    Absent => append(run_as_axis, ["gcp_project" as NonEmptyStr])
+  }
+  let secret_axis = match choices.secret_id_or_create_authorization {
+    Present { value: _ } => project_axis
+    Absent => append(project_axis, ["secret_id_or_create_authorization" as NonEmptyStr])
+  }
+  match choices.account_label {
+    Present { value: _ } => secret_axis
+    Absent => append(secret_axis, ["account_label" as NonEmptyStr])
+  }
+}
+
+fn admit_enrollment_placement(
+  choices: ClaudeEnrollmentOperatorChoices,
+  claude_runtime: ClaudeEnrollmentRuntimeBinding,
+  sdk_runtime: ClaudeEnrollmentRuntimeBinding,
+) -> ClaudeEnrollmentPlacementAdmission {
+  let missing = missing_operator_choice_axes(choices: choices)
+  if list_length(items: missing) > 0 {
+    EnrollmentPlacementRefusedUnbound { missing_axes: missing }
+  } else {
+    let account_label = match choices.account_label {
+      Present { value: label } => label
+      Absent => "unreachable" as NonEmptyStr
+    }
+    EnrollmentPlacementAdmitted {
+      placement: ClaudeEnrollmentPlacement {
+        host: EnrollmentHostSpecified {
+          hostname: match choices.enrollment_host {
+            Present { value: host } => host
+            Absent => "unreachable" as NonEmptyStr
+          },
+        },
+        run_as: EnrollmentUnixPrincipalSpecified {
+          principal: match choices.run_as_principal {
+            Present { value: principal } => principal
+            Absent => "unreachable" as NonEmptyStr
+          },
+        },
+        enrollment_root: claude_enrollment_root_for_account(account_label: account_label),
+        account_label: account_label,
+        secret_target: EnrollmentSecretTargetSpecified {
+          project: match choices.gcp_project {
+            Present { value: project } => project
+            Absent => "unreachable" as NonEmptyStr
+          },
+          secret: match choices.secret_id_or_create_authorization {
+            Present { value: secret } => secret
+            Absent => "unreachable" as NonEmptyStr
+          },
+        },
+        writer: EnrollmentPrincipalPopulationDeploymentModelGap {
+          reason: claude_enrollment_writer_reader_deployment_model_gap_reason,
+        },
+        readers: EnrollmentPrincipalPopulationDeploymentModelGap {
+          reason: claude_enrollment_writer_reader_deployment_model_gap_reason,
+        },
+        claude_runtime: claude_runtime,
+        sdk_runtime: sdk_runtime,
+      },
+    }
+  }
+}
+
+fn admit_enrollment_workflow_start(
+  placement_admission: ClaudeEnrollmentPlacementAdmission,
+) -> ClaudeEnrollmentWorkflowAdmission {
+  match placement_admission {
+    EnrollmentPlacementRefusedUnbound { missing_axes } =>
+      EnrollmentWorkflowRefusedPlacementUnbound { missing_axes: missing_axes }
+    EnrollmentPlacementAdmitted { placement } =>
+      match placement.writer {
+        EnrollmentPrincipalPopulationDeploymentModelGap { reason } =>
+          EnrollmentWorkflowRefusedDeploymentModelGap { reason: reason }
+        EnrollmentPrincipalPopulationDerived { members: _ } =>
+          match placement.readers {
+            EnrollmentPrincipalPopulationDeploymentModelGap { reason } =>
+              EnrollmentWorkflowRefusedDeploymentModelGap { reason: reason }
+            EnrollmentPrincipalPopulationDerived { members: _ } =>
+              EnrollmentWorkflowRefusedHostEffectsScaffold {
+                stage: "EnrollmentSpawnCliPrivatePty" as NonEmptyStr,
+              }
+          }
+      }
+  }
+}
+
+fn claude_setup_token_standing_from_capture(
+  capture: ClaudeSetupTokenCaptureAdmission,
+) -> ClaudeSetupTokenStanding {
+  match capture {
+    SetupTokenCaptureAdmitted { token_length: _ } => SetupTokenUsable
+    SetupTokenCaptureRefusedMultipleCandidates { count: _ } =>
+      SetupTokenRejected {
+        reason: "multiple setup-token candidates in capture stream" as NonEmptyStr,
+      }
+    SetupTokenCaptureRefusedMalformedPrefix =>
+      SetupTokenRejected { reason: "setup-token candidate missing required prefix" as NonEmptyStr }
+    SetupTokenCaptureRefusedMalformedLength { observed: _, min: _, max: _ } =>
+      SetupTokenRejected { reason: "setup-token candidate length out of measured bounds" as NonEmptyStr }
+    SetupTokenCaptureRefusedFormatUnobserved { reason } =>
+      SetupTokenRejected { reason: reason }
+    SetupTokenCaptureRefusedNoCandidate =>
+      SetupTokenRejected { reason: "no setup-token candidate observed" as NonEmptyStr }
+  }
 }
 
 fn admit_enrollment_initiation(
@@ -240,26 +465,26 @@ fn admit_enrollment_cold_start(
   }
 }
 
-fn credential_artifact_digest_eq(
-  a: ClaudeCredentialArtifactDigest,
-  b: ClaudeCredentialArtifactDigest,
+fn ambient_oauth_artifact_digest_eq(
+  a: ClaudeAmbientOAuthArtifactDigest,
+  b: ClaudeAmbientOAuthArtifactDigest,
 ) -> Bool {
   a.digest == b.digest
 }
 
-fn admit_credential_write_back(
-  observation: ClaudeCredentialArtifactObservationPair?,
-) -> ClaudeCredentialWriteBackAdmission {
+fn admit_ambient_oauth_home_write_back(
+  observation: ClaudeAmbientOAuthArtifactObservationPair?,
+) -> ClaudeAmbientOAuthHomeWriteBackAdmission {
   match observation {
     Absent =>
-      CredentialWriteBackRefusedMissingObservation {
-        reason: "credential artifact must be observed before and after admitted runtime use before any write-back" as NonEmptyStr,
+      AmbientOAuthWriteBackRefusedMissingObservation {
+        reason: "ambient OAuth home artifact must be observed before and after admitted runtime use before any write-back" as NonEmptyStr,
       }
     Present { value: pair } =>
-      if credential_artifact_digest_eq(a: pair.before_use, b: pair.after_use) {
-        CredentialWriteBackRefusedUnchanged { digest: pair.after_use }
+      if ambient_oauth_artifact_digest_eq(a: pair.before_use, b: pair.after_use) {
+        AmbientOAuthWriteBackRefusedUnchanged { digest: pair.after_use }
       } else {
-        CredentialWriteBackAdmitted {
+        AmbientOAuthWriteBackAdmitted {
           prior: pair.before_use,
           observed: pair.after_use,
         }
@@ -274,6 +499,50 @@ fn admit_enrollment_secret_version(version: String) -> ClaudeEnrollmentSecretVer
     EnrollmentSecretVersionRefusedLatest
   } else {
     EnrollmentSecretVersionAdmitted
+  }
+}
+
+fn admit_exact_secret_version_binding(
+  target: ClaudeEnrollmentSecretTarget,
+  write: ClaudeEnrollmentSecretWriteOutcome,
+  readback: ClaudeEnrollmentSecretReadBackOutcome,
+) -> ClaudeExactSecretVersionBindingAdmission {
+  match target {
+    EnrollmentSecretTargetUnbound =>
+      ExactSecretVersionBindingRefusedWrite {
+        reason: "secret target unbound — cannot produce exact version binding" as NonEmptyStr,
+      }
+    EnrollmentSecretTargetSpecified { project, secret } =>
+      match write {
+        EnrollmentSecretWriteRefused { reason } =>
+          ExactSecretVersionBindingRefusedWrite { reason: reason }
+        EnrollmentSecretWritten { version } =>
+          match readback {
+            EnrollmentSecretReadBackRefused { reason } =>
+              ExactSecretVersionBindingRefusedReadBack { reason: reason }
+            EnrollmentSecretReadBackOk {
+              version: read_version,
+              private_content_identity,
+              digest_matches,
+            } =>
+              if read_version != version {
+                ExactSecretVersionBindingRefusedReadBack {
+                  reason: "read-back version does not match write outcome" as NonEmptyStr,
+                }
+              } else if !digest_matches {
+                ExactSecretVersionBindingRefusedDigestMismatch
+              } else {
+                ExactSecretVersionBindingAdmitted {
+                  binding: ClaudeExactSecretVersionBinding {
+                    project: project,
+                    secret: secret,
+                    version: version,
+                    private_content_identity: private_content_identity,
+                  },
+                }
+              }
+          }
+      }
   }
 }
 
@@ -516,34 +785,34 @@ fn claude_enrollment_standing_bundle_from_paired_probe_verdict(
 }
 
 fn claude_enrollment_provider_standing_from_bundle(
-  config: ClaudeEnrollmentConfig,
+  session: ClaudeEnrollmentSession,
   bundle: ProviderStandingBundle,
 ) -> ProviderStanding {
   provider_standing_from_observed_bundle(
-    fact_id: config.standing_fact_id,
+    fact_id: session.standing_fact_id,
     provider: ProviderInstance {
       kind: ClaudeCliProvider,
       host: ProviderInstanceFieldObserved {
-        value: config.service.label,
+        value: session.placement.account_label,
       },
-      executable: config.claude_executable,
+      executable: session.placement.claude_runtime.executable,
       observed_version: ProviderInstanceFieldObserved {
-        value: config.claude_version_pin,
+        value: session.placement.claude_runtime.version_pin,
       },
       state_directory: ProviderInstanceFieldObserved {
-        value: config.service.enrollment_root as String as NonEmptyStr,
+        value: session.placement.enrollment_root as String as NonEmptyStr,
       },
       credential_storage_method: ProviderInstanceFieldObserved {
         value: "managed-setup-token-secret-version" as NonEmptyStr,
       },
       service_identity: ProviderInstanceFieldObserved {
-        value: config.service.label,
+        value: session.placement.account_label,
       },
     },
     bundle: bundle,
   )
 }
 
-data claude_enrollment_materialization_frontier_note: String = "Materialize CLAUDE_CODE_OAUTH_TOKEN from the exact Secret Manager version via gunbc.auth.materialized_secret EnvVar binding, observe the credential artifact digest BEFORE admitted official Claude Agent SDK runtime use, observe AFTER use, and write back a new Secret Manager version ONLY when admit_credential_write_back reports durable-state change. Then erase process env and temp staging bytes. with_materialized_secret is the construction wall; staging destruction is the bracket exit. Host binding realization is a declared scaffold until gunbc.auth.materialized_secret host effects land for env injection and shred."
+data claude_enrollment_materialization_frontier_note: String = "Clean-second-context materialization: load CLAUDE_CODE_OAUTH_TOKEN from ClaudeExactSecretVersionBinding via gunbc.auth.materialized_secret EnvVar binding in a context that does NOT inherit the enrollment host ambient credential. Setup-token capture does NOT use admit_ambient_oauth_home_write_back — rotation semantics are SetupTokenRotationSemanticsUnobserved until measured. Host binding realization remains a declared scaffold until gunbc.auth.materialized_secret host effects land."
 
 data claude_enrollment_writer_lease_epoch_note: String = "One account credential has exactly one writer lease epoch. admit_enrollment_writer_lease_publish refuses when holder_epoch < current_epoch so a stale writer cannot publish after another lease epoch advanced. Concurrent holder and newer-binding refusals remain independent axes."

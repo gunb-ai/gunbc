@@ -34,12 +34,28 @@ import gunbc.claude_setup_token_enrollment {
   ClaudeEnrollmentColdStartAdmission,
   EnrollmentColdStartAdmitted,
   EnrollmentColdStartRefusedAmbientPrerequisite,
-  ClaudeCredentialArtifactDigest,
-  ClaudeCredentialArtifactObservationPair,
-  ClaudeCredentialWriteBackAdmission,
-  CredentialWriteBackAdmitted,
-  CredentialWriteBackRefusedUnchanged,
-  CredentialWriteBackRefusedMissingObservation,
+  ClaudeAmbientOAuthArtifactDigest,
+  ClaudeAmbientOAuthArtifactObservationPair,
+  ClaudeAmbientOAuthHomeWriteBackAdmission,
+  AmbientOAuthWriteBackAdmitted,
+  AmbientOAuthWriteBackRefusedUnchanged,
+  AmbientOAuthWriteBackRefusedMissingObservation,
+  ClaudeSetupTokenStanding,
+  SetupTokenUsable,
+  ClaudeEnrollmentOperatorChoices,
+  ClaudeEnrollmentPlacementAdmission,
+  EnrollmentPlacementRefusedUnbound,
+  ClaudeEnrollmentWorkflowAdmission,
+  EnrollmentWorkflowRefusedDeploymentModelGap,
+  ClaudeEnrollmentRuntimeBinding,
+  ClaudeEnrollmentSecretTarget,
+  EnrollmentSecretTargetSpecified,
+  ClaudeEnrollmentSecretWriteOutcome,
+  EnrollmentSecretWritten,
+  ClaudeEnrollmentSecretReadBackOutcome,
+  EnrollmentSecretReadBackOk,
+  ClaudeExactSecretVersionBindingAdmission,
+  ExactSecretVersionBindingAdmitted,
   ClaudeSetupTokenCaptureAdmission,
   SetupTokenCaptureRefusedMultipleCandidates,
   SetupTokenCaptureRefusedFormatUnobserved,
@@ -50,7 +66,11 @@ import gunbc.claude_setup_token_enrollment {
   admit_enrollment_secret_version,
   admit_enrollment_initiation,
   admit_enrollment_cold_start,
-  admit_credential_write_back,
+  admit_ambient_oauth_home_write_back,
+  admit_enrollment_placement,
+  admit_enrollment_workflow_start,
+  admit_exact_secret_version_binding,
+  claude_setup_token_standing_from_capture,
   admit_enrollment_writer_lease,
   admit_enrollment_writer_lease_against_binding,
   admit_enrollment_writer_lease_publish,
@@ -271,45 +291,124 @@ test fn witness_cold_start_admits_isolated_context() -> Bool {
 }
 
 test fn witness_credential_write_back_refuses_unchanged_digest() -> Bool {
-  let digest = ClaudeCredentialArtifactDigest {
+  let digest = ClaudeAmbientOAuthArtifactDigest {
     digest: "sha256:deadbeef" as NonEmptyStr,
   }
-  match admit_credential_write_back(
+  match admit_ambient_oauth_home_write_back(
     observation: Present {
-      value: ClaudeCredentialArtifactObservationPair {
+      value: ClaudeAmbientOAuthArtifactObservationPair {
         before_use: digest,
         after_use: digest,
       },
     },
   ) {
-    CredentialWriteBackRefusedUnchanged { digest: observed } =>
+    AmbientOAuthWriteBackRefusedUnchanged { digest: observed } =>
       observed.digest == ("sha256:deadbeef" as NonEmptyStr)
     _ => false
   }
 }
 
 test fn witness_credential_write_back_admits_changed_digest() -> Bool {
-  match admit_credential_write_back(
+  match admit_ambient_oauth_home_write_back(
     observation: Present {
-      value: ClaudeCredentialArtifactObservationPair {
-        before_use: ClaudeCredentialArtifactDigest {
+      value: ClaudeAmbientOAuthArtifactObservationPair {
+        before_use: ClaudeAmbientOAuthArtifactDigest {
           digest: "sha256:before" as NonEmptyStr,
         },
-        after_use: ClaudeCredentialArtifactDigest {
+        after_use: ClaudeAmbientOAuthArtifactDigest {
           digest: "sha256:after" as NonEmptyStr,
         },
       },
     },
   ) {
-    CredentialWriteBackAdmitted { prior: _, observed: observed } =>
+    AmbientOAuthWriteBackAdmitted { prior: _, observed: observed } =>
       observed.digest == ("sha256:after" as NonEmptyStr)
     _ => false
   }
 }
 
 test fn witness_credential_write_back_refuses_missing_observation() -> Bool {
-  match admit_credential_write_back(observation: Absent) {
-    CredentialWriteBackRefusedMissingObservation { reason: _ } => true
+  match admit_ambient_oauth_home_write_back(observation: Absent) {
+    AmbientOAuthWriteBackRefusedMissingObservation { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_setup_token_standing_is_rotation_unobserved_by_default() -> Bool {
+  claude_setup_token_standing_from_capture(
+    capture: SetupTokenCaptureAdmitted {
+      token_length: character_count(count: 42),
+    },
+  ) == SetupTokenUsable
+}
+
+test fn witness_enrollment_placement_refuses_unbound_operator_choices() -> Bool {
+  match admit_enrollment_placement(
+    choices: ClaudeEnrollmentOperatorChoices {
+      enrollment_host: Absent,
+      run_as_principal: Absent,
+      gcp_project: Absent,
+      secret_id_or_create_authorization: Absent,
+      account_label: Absent,
+    },
+    claude_runtime: ClaudeEnrollmentRuntimeBinding {
+      executable: "claude" as NonEmptyStr,
+      version_pin: "pinned" as NonEmptyStr,
+    },
+    sdk_runtime: ClaudeEnrollmentRuntimeBinding {
+      executable: "claude-agent-sdk" as NonEmptyStr,
+      version_pin: "0.3.220" as NonEmptyStr,
+    },
+  ) {
+    EnrollmentPlacementRefusedUnbound { missing_axes } =>
+      list_length(items: missing_axes) == 5
+    _ => false
+  }
+}
+
+test fn witness_enrollment_workflow_refuses_host_effects_scaffold() -> Bool {
+  match admit_enrollment_workflow_start(
+    placement_admission: admit_enrollment_placement(
+      choices: ClaudeEnrollmentOperatorChoices {
+        enrollment_host: Present { value: "enrollment-host.example" as NonEmptyStr },
+        run_as_principal: Present { value: "claude-enrollment" as NonEmptyStr },
+        gcp_project: Present { value: "operator-selected-project" as NonEmptyStr },
+        secret_id_or_create_authorization: Present {
+          value: "operator-selected-secret" as NonEmptyStr,
+        },
+        account_label: Present { value: "operator-selected-label" as NonEmptyStr },
+      },
+      claude_runtime: ClaudeEnrollmentRuntimeBinding {
+        executable: "claude" as NonEmptyStr,
+        version_pin: "pinned" as NonEmptyStr,
+      },
+      sdk_runtime: ClaudeEnrollmentRuntimeBinding {
+        executable: "claude-agent-sdk" as NonEmptyStr,
+        version_pin: "0.3.220" as NonEmptyStr,
+      },
+    ),
+  ) {
+    EnrollmentWorkflowRefusedDeploymentModelGap { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_exact_secret_version_binding_admits_write_and_readback() -> Bool {
+  match admit_exact_secret_version_binding(
+    target: EnrollmentSecretTargetSpecified {
+      project: "operator-selected-project" as NonEmptyStr,
+      secret: "operator-selected-secret" as NonEmptyStr,
+    },
+    write: EnrollmentSecretWritten { version: "7" as NonEmptyStr },
+    readback: EnrollmentSecretReadBackOk {
+      version: "7" as NonEmptyStr,
+      private_content_identity: "sha256:managed-token" as NonEmptyStr,
+      digest_matches: true,
+    },
+  ) {
+    ExactSecretVersionBindingAdmitted { binding } =>
+      binding.version == ("7" as NonEmptyStr)
+        && binding.private_content_identity == ("sha256:managed-token" as NonEmptyStr)
     _ => false
   }
 }
@@ -442,4 +541,8 @@ test fn claude_setup_token_enrollment_keystone_holds() -> Bool {
     && witness_writer_lease_grants_absent_incumbent()
     && witness_writer_lease_publish_refuses_stale_epoch()
     && witness_writer_lease_publish_grants_current_epoch()
+    && witness_enrollment_placement_refuses_unbound_operator_choices()
+    && witness_enrollment_workflow_refuses_host_effects_scaffold()
+    && witness_exact_secret_version_binding_admits_write_and_readback()
+    && witness_setup_token_standing_is_rotation_unobserved_by_default()
 }
