@@ -724,7 +724,10 @@ impl CiControlPlane {
 
     fn execute_run(&mut self, run_id: &str) -> Result<(), String> {
         let mut record = self.read_run(&run_id)?;
-        let worktree = self.state_root().join("worktrees").join(run_id);
+        let worktree = self
+            .state_root()
+            .join("worktrees")
+            .join(record.run_id.clone());
         if worktree.exists() {
             fs::remove_dir_all(&worktree)
                 .map_err(|e| format!("remove stale worktree {run_id}: {e}"))?;
@@ -985,22 +988,26 @@ impl CiControlPlane {
     }
 
     fn read_run(&self, run_id: &str) -> Result<RunRecord, String> {
-        read_json(self.run_path(run_id))
+        validate_run_id(run_id)?;
+        read_json(self.run_path(run_id)?)
     }
 
     fn write_run(&self, record: &RunRecord) -> Result<(), String> {
-        let path = self.run_path(&record.run_id);
+        validate_run_id(&record.run_id)?;
+        let path = self.run_path(&record.run_id)?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("mkdir run dir: {e}"))?;
         }
         write_json_atomic(path, record)
     }
 
-    fn run_path(&self, run_id: &str) -> PathBuf {
-        self.state_root().join("runs").join(run_id).join("run.json")
+    fn run_path(&self, run_id: &str) -> Result<PathBuf, String> {
+        validate_run_id(run_id)?;
+        Ok(self.state_root().join("runs").join(run_id).join("run.json"))
     }
 
     fn enqueue_pending(&self, run_id: &str, record: &RunRecord) -> Result<(), String> {
+        validate_run_id(run_id)?;
         let path = self
             .state_root()
             .join("queue/pending")
@@ -1009,6 +1016,7 @@ impl CiControlPlane {
     }
 
     fn move_queue_file(&self, run_id: &str, from: &str, to: &str) -> Result<(), String> {
+        validate_run_id(run_id)?;
         let from_path = self
             .state_root()
             .join("queue")
@@ -1049,6 +1057,7 @@ impl CiControlPlane {
         stage: &str,
         record: &RunRecord,
     ) -> Result<(), String> {
+        validate_run_id(run_id)?;
         let path = self
             .state_root()
             .join("receipts")
@@ -1186,6 +1195,48 @@ fn status_ok(status: ExitStatus, label: &str) -> Result<(), String> {
     }
 }
 
+fn validate_run_id(run_id: &str) -> Result<(), String> {
+    if run_id.is_empty()
+        || run_id == "."
+        || run_id == ".."
+        || run_id.contains('/')
+        || run_id.contains('\\')
+        || run_id.contains('\n')
+        || run_id.contains('\r')
+        || run_id.contains('\0')
+    {
+        return Err(format!(
+            "run_id refused (unsafe path segment): {:?}",
+            run_id
+        ));
+    }
+    let Some((unix, hex)) = run_id.split_once('-') else {
+        return Err(format!(
+            "run_id refused (expected {{unix}}-{{8hex}}): {:?}",
+            run_id
+        ));
+    };
+    if unix.is_empty() || !unix.chars().all(|c| c.is_ascii_digit()) {
+        return Err(format!(
+            "run_id refused (unix prefix must be decimal digits): {:?}",
+            run_id
+        ));
+    }
+    if hex.len() != 8 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(format!(
+            "run_id refused (suffix must be exactly 8 hex digits): {:?}",
+            run_id
+        ));
+    }
+    if hex.contains('-') {
+        return Err(format!(
+            "run_id refused (multiple hyphen segments): {:?}",
+            run_id
+        ));
+    }
+    Ok(())
+}
+
 fn read_json<T: for<'de> Deserialize<'de>>(path: PathBuf) -> Result<T, String> {
     let text = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
     serde_json::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))
@@ -1193,7 +1244,7 @@ fn read_json<T: for<'de> Deserialize<'de>>(path: PathBuf) -> Result<T, String> {
 
 fn write_json_atomic<T: Serialize>(path: PathBuf, value: &T) -> Result<(), String> {
     let text = serde_json::to_string_pretty(value).map_err(|e| format!("serialize json: {e}"))?;
-    let tmp = path.with_extension("json.tmp");
+    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
     {
         let mut file =
             fs::File::create(&tmp).map_err(|e| format!("create {}: {e}", tmp.display()))?;
@@ -1202,7 +1253,13 @@ fn write_json_atomic<T: Serialize>(path: PathBuf, value: &T) -> Result<(), Strin
         file.sync_all()
             .map_err(|e| format!("sync {}: {e}", tmp.display()))?;
     }
-    fs::rename(&tmp, &path).map_err(|e| format!("rename {}: {e}", path.display()))
+    fs::rename(&tmp, &path).map_err(|e| format!("rename {}: {e}", path.display()))?;
+    if let Some(parent) = path.parent() {
+        if let Ok(dir) = fs::File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1228,6 +1285,17 @@ mod tests {
     #[test]
     fn parse_github_link_rel_next_none_when_absent() {
         assert!(parse_github_link_rel_next("").is_none());
+    }
+
+    #[test]
+    fn validate_run_id_refuses_traversal() {
+        assert!(validate_run_id("../etc/passwd").is_err());
+        assert!(validate_run_id("a/b").is_err());
+    }
+
+    #[test]
+    fn validate_run_id_accepts_produced_shape() {
+        assert!(validate_run_id("1730000000-deadbeef").is_ok());
     }
 
     #[test]

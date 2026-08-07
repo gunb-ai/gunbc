@@ -36,6 +36,7 @@ import gunbc.owned_ci {
   check_publication_reports_github_success,
   check_publication_is_pending_honest,
   owned_ci_check_name,
+  owned_ci_run_id_admits,
 }
 import extdeps.auth.jwt { NumericDateWholeSeconds, NumericDateFractionalSeconds }
 import extdeps.github.checks { Success, Failure }
@@ -264,6 +265,20 @@ test fn witness_executor_stage_labels_match_plan() -> Bool {
     && (labels.skip(n: 2).first() == "floor")
 }
 
+test fn witness_run_id_admits_produced_shape() -> Bool {
+  owned_ci_run_id_admits(run_id: "1730000000-deadbeef")
+    && owned_ci_run_id_admits(run_id: "42-abcdef12")
+}
+
+test fn witness_run_id_refuses_path_traversal_and_malformed() -> Bool {
+  !(owned_ci_run_id_admits(run_id: "../etc/passwd"))
+    && !(owned_ci_run_id_admits(run_id: "a/b"))
+    && !(owned_ci_run_id_admits(run_id: ".."))
+    && !(owned_ci_run_id_admits(run_id: "1730000000-deadbeef-extra"))
+    && !(owned_ci_run_id_admits(run_id: "notdigits-deadbeef"))
+    && !(owned_ci_run_id_admits(run_id: "1730000000-short"))
+}
+
 test fn witness_owned_ci_witness_bundle() -> Bool {
   witness_poll_without_github_read_refuses()
     && witness_refused_subject_has_no_head_sha()
@@ -275,6 +290,8 @@ test fn witness_owned_ci_witness_bundle() -> Bool {
     && witness_publication_pending_is_not_github_success()
     && witness_publication_completed_is_github_success()
     && witness_execution_plan_stages_build_regen_floor()
+    && witness_run_id_admits_produced_shape()
+    && witness_run_id_refuses_path_traversal_and_malformed()
     && witness_executor_stage_labels_match_plan()
     && witness_unpublished_completed_run_has_no_check_conclusion()
     && witness_subject_identity_keys_differ_by_sha()

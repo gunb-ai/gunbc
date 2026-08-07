@@ -1,6 +1,6 @@
 module gunbc.owned_ci
 
-import std.types { String, Int, CommitSha, NonEmptyStr, Bool }
+import std.types { String, Int, CommitSha, NonEmptyStr, Bool, path_segment_is_safe }
 import std.measure { Second, second, second_count }
 import extdeps.auth.jwt {
   NumericDate,
@@ -57,6 +57,64 @@ fn owned_ci_index_rel_path() -> String {
 
 fn owned_ci_run_record_rel_path(run_id: String) -> String {
   concat(concat(concat(owned_ci_state_root_rel, "/runs/"), run_id), "/run.json")
+}
+
+data owned_ci_run_id_note: String = "Run ids are path segments under .gunbc/owned-ci/runs/<run_id>/run.json on both the writer (ci_control_plane new_run_id) and the served /ci/run/{run_id} reader. path_segment_is_safe alone is insufficient: the brand must also match the produced grammar {unix_seconds}-{8_hex_from_head_sha} so a traversal-shaped segment cannot reach filesystem_read by convention alone."
+
+fn owned_ci_run_id_char_is_digit(c: String) -> Bool {
+  (c != "") && string_contains(s: "0123456789", pattern: c)
+}
+
+fn owned_ci_run_id_char_is_hex(c: String) -> Bool {
+  (c != "") && string_contains(s: "0123456789abcdefABCDEF", pattern: c)
+}
+
+fn owned_ci_run_id_find_char(s: String, ch: String, i: Int) -> Int {
+  if i >= string_length(s: s) {
+    0 - 1
+  } else if char_at(s: s, i: i) == ch {
+    i
+  } else {
+    owned_ci_run_id_find_char(s: s, ch: ch, i: i + 1)
+  }
+}
+
+fn owned_ci_run_id_digits_only(s: String, i: Int, end: Int) -> Bool {
+  if i >= end {
+    true
+  } else {
+    owned_ci_run_id_char_is_digit(c: char_at(s: s, i: i))
+      && owned_ci_run_id_digits_only(s: s, i: i + 1, end: end)
+  }
+}
+
+fn owned_ci_run_id_hex_only(s: String, i: Int, end: Int) -> Bool {
+  if i >= end {
+    true
+  } else {
+    owned_ci_run_id_char_is_hex(c: char_at(s: s, i: i))
+      && owned_ci_run_id_hex_only(s: s, i: i + 1, end: end)
+  }
+}
+
+fn owned_ci_run_id_matches_produced_grammar(run_id: String) -> Bool {
+  let hyphen = owned_ci_run_id_find_char(s: run_id, ch: "-", i: 0)
+  if hyphen < 1 {
+    false
+  } else {
+    let len = string_length(s: run_id)
+    let suffix_start = hyphen + 1
+    let suffix_len = len - suffix_start
+    (suffix_len == 8)
+      && owned_ci_run_id_digits_only(s: run_id, i: 0, end: hyphen)
+      && owned_ci_run_id_hex_only(s: run_id, i: suffix_start, end: len)
+      && (owned_ci_run_id_find_char(s: run_id, ch: "-", i: suffix_start) == 0 - 1)
+  }
+}
+
+fn owned_ci_run_id_admits(run_id: String) -> Bool {
+  path_segment_is_safe(raw: run_id)
+    && owned_ci_run_id_matches_produced_grammar(run_id: run_id)
 }
 
 fn owned_ci_queue_pending_rel_dir() -> String {
