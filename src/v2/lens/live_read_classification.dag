@@ -482,22 +482,9 @@ fn carriers_from_reachable_decls(reachable: List<FnArrowDecl>) -> List<LiveReadC
   })
 }
 
-fn g1_carriers_from_classification(g1: LiveReadClassification) -> List<LiveReadCarrier> {
-  match g1 {
-    LocalRead => empty_carrier_list
-    RuntimeRead { carriers: cs } => cs
-  }
-}
+data g2_carrier_homes_parameter_role_note: String = "WHY carrier_homes IS STILL A PARAMETER WHILE A COMPLETED G2 RESULT IGNORES IT. Until 2026-08-07 this function unioned the G1 carrier-home result into its answer, so a completed G2 classification inherited every carrier home reachable through the import graph. That made the answer a function of import reachability rather than of reachable invocations: an entry whose closure happens to contain a broad carrier home was classified RuntimeRead on every nonempty diff, and the floor's runtime axis therefore refused to skip it. Measured consequence: the two-entry helper-edit control ran both entries (SelectionSuperset, 2 of 2) because the unrelated entry's 474-module closure reaches a carrier home while calling no carrier at all.
 
-fn merge_g1_and_g2_carriers(
-  g1: LiveReadClassification,
-  g2_carriers: List<LiveReadCarrier>
-) -> List<LiveReadCarrier> {
-  merge_carriers(
-    left: g1_carriers_from_classification(g1: g1),
-    right: g2_carriers
-  )
-}
+G1 IS NOW EVIDENCE, NOT AN ANSWER. A COMPLETED G2 classification is derived from reachable carrier invocations only, so this parameter is deliberately unread on that path. It is retained rather than deleted because the classified/refused projection still to land needs it on the OTHER path: when the fn-arrow facts required to establish G2 are unavailable or incomplete, carrier-home reachability is the evidence that decides between refusing loudly and refusing at all — it must never silently become a successful classification, because an unavailable G2 producer would then be observationally identical to the defect just repaired. Deleting the parameter now and reintroducing it with that seam would be churn; leaving it undocumented would read as an oversight. This row is the difference."
 
 fn live_read_classification_g2_from_facts(
   entry_module: String,
