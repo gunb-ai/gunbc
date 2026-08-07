@@ -7934,6 +7934,33 @@ pub fn typed_module_cache_content_keys_for_test(
     index.typed_module_cache.borrow().keys().cloned().collect()
 }
 
+/// Remove one typed-module cache entry so the next reconcile has exactly one miss.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn evict_typed_module_cache_key_for_test(index: &MultiEntryIndex, key: &str) -> bool {
+    index.typed_module_cache.borrow_mut().remove(key).is_some()
+}
+
+/// Reset per-thread resolve stage attribution (measurement isolation).
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn reset_resolve_stage_attribution_for_test() {
+    RESOLVE_STAGE_SLOT.with(|s| s.set(ResolveStageNanos::default()));
+    RESOLVE_STAGE_TOTAL.with(|t| *t.borrow_mut() = ResolveStageNanos::default());
+    RESOLVE_STAGE_BY_ENTRY.with(|m| m.borrow_mut().clear());
+    RESOLVE_SPAN_BY_ENTRY.with(|m| m.borrow_mut().clear());
+    RESOLVE_SPAN_ACCOUNT.with(|s| s.set(ResolveSpanAccount::default()));
+}
+
+/// Stage rows attributed to one entry file after `reset_resolve_stage_attribution_for_test`
+/// and a single resolve.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn resolve_stage_for_entry_file(entry_file: &str) -> ResolveStageNanos {
+    let key = workspace_relative_entry_path(entry_file);
+    resolve_stage_rows_by_entry()
+        .get(&key)
+        .copied()
+        .unwrap_or_default()
+}
+
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn typed_cache_evictions_for_test(index: &MultiEntryIndex) -> u64 {
     index.typed_cache_evictions.get()
