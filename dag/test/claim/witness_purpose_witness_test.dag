@@ -1,0 +1,124 @@
+module test.claim.witness_purpose_witness
+
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64,
+  Fnv1a64StructuralDigestHex,
+  structural_content_hash,
+}
+import std.measure { millisecond, byte_size }
+import std.witness_purpose {
+  WitnessPurpose,
+  BehavioralDiscriminator,
+  BoundaryCrossing,
+  PopulationTotality,
+  ExternalFidelity,
+  ResourceContract,
+  WitnessResourceBound,
+  EvalWallTimeBound,
+  EvalThreadCpuBound,
+  PeakMemoryBound,
+}
+
+data witness_purpose_witness_note: String = "First executing consumer for std.witness_purpose (slice C-a). Exhaustive-match witnesses over WitnessPurpose and WitnessResourceBound: each fixture must land on its own named arm and every other arm in the same match must read false, so a coproduct member silently dropped or two arms silently collapsed reds one of these rather than passing by construction-only inspection. behavioral_discriminator_is_the_only_bare_constructor_holds is the discriminating control against the five-vs-six question this slice settles: it asserts BehavioralDiscriminator is a value with no fields, not the removed TerminatingOneShot arm under another name."
+
+fn fixture_hash() -> ContentHash {
+  Fnv1a64(
+    structural_content_hash(digest: "deadbeefdeadbeef" as Fnv1a64StructuralDigestHex)
+  )
+}
+
+fn fixture_boundary_ref() -> DeclarationRef {
+  decl_ref(
+    module_path: "std.witness_purpose",
+    decl_name: "witness_purpose_authority_note",
+  )
+}
+
+test fn behavioral_discriminator_is_the_only_bare_constructor_holds() -> Bool {
+  let purpose: WitnessPurpose = BehavioralDiscriminator
+  match purpose {
+    BehavioralDiscriminator => true
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    PopulationTotality { population: _ } => false
+    ExternalFidelity { effect: _ } => false
+    ResourceContract { bound: _ } => false
+  }
+}
+
+test fn boundary_crossing_carries_boundary_and_input_holds() -> Bool {
+  let purpose: WitnessPurpose = BoundaryCrossing {
+    modeled_boundary: fixture_boundary_ref(),
+    chosen_input: fixture_hash(),
+  }
+  match purpose {
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => true
+    BehavioralDiscriminator => false
+    PopulationTotality { population: _ } => false
+    ExternalFidelity { effect: _ } => false
+    ResourceContract { bound: _ } => false
+  }
+}
+
+test fn population_totality_carries_population_holds() -> Bool {
+  let purpose: WitnessPurpose = PopulationTotality { population: fixture_boundary_ref() }
+  match purpose {
+    PopulationTotality { population: _ } => true
+    BehavioralDiscriminator => false
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    ExternalFidelity { effect: _ } => false
+    ResourceContract { bound: _ } => false
+  }
+}
+
+test fn external_fidelity_carries_effect_holds() -> Bool {
+  let purpose: WitnessPurpose = ExternalFidelity { effect: fixture_boundary_ref() }
+  match purpose {
+    ExternalFidelity { effect: _ } => true
+    BehavioralDiscriminator => false
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    PopulationTotality { population: _ } => false
+    ResourceContract { bound: _ } => false
+  }
+}
+
+test fn resource_contract_carries_bound_holds() -> Bool {
+  let purpose: WitnessPurpose = ResourceContract {
+    bound: EvalWallTimeBound { bound: millisecond(count: 5000) },
+  }
+  match purpose {
+    ResourceContract { bound: _ } => true
+    BehavioralDiscriminator => false
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    PopulationTotality { population: _ } => false
+    ExternalFidelity { effect: _ } => false
+  }
+}
+
+test fn resource_bound_wall_time_holds() -> Bool {
+  let bound: WitnessResourceBound = EvalWallTimeBound { bound: millisecond(count: 5000) }
+  match bound {
+    EvalWallTimeBound { bound: _ } => true
+    EvalThreadCpuBound { bound: _ } => false
+    PeakMemoryBound { bound: _ } => false
+  }
+}
+
+test fn resource_bound_thread_cpu_holds() -> Bool {
+  let bound: WitnessResourceBound = EvalThreadCpuBound { bound: millisecond(count: 5000) }
+  match bound {
+    EvalThreadCpuBound { bound: _ } => true
+    EvalWallTimeBound { bound: _ } => false
+    PeakMemoryBound { bound: _ } => false
+  }
+}
+
+test fn resource_bound_peak_memory_is_byte_typed_not_millisecond_holds() -> Bool {
+  let bound: WitnessResourceBound = PeakMemoryBound { bound: byte_size(count: 1048576) }
+  match bound {
+    PeakMemoryBound { bound: _ } => true
+    EvalWallTimeBound { bound: _ } => false
+    EvalThreadCpuBound { bound: _ } => false
+  }
+}

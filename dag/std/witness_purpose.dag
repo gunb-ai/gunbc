@@ -1,0 +1,23 @@
+module std.witness_purpose
+
+import std.decl_ref { DeclarationRef }
+import std.content_hash { ContentHash }
+import std.measure { Millisecond, ByteSize }
+
+type WitnessResourceBound
+  = EvalWallTimeBound { bound: Millisecond }
+  | EvalThreadCpuBound { bound: Millisecond }
+  | PeakMemoryBound { bound: ByteSize }
+
+data witness_purpose_resource_contract_note: String = "ResourceContract bound is axis-typed: wall/cpu limits are Millisecond; peak memory is ByteSize (std.measure). A single Millisecond field on all axes would be state-space conflation — PeakMemory with a millisecond bound would be writable. Aligns with discrete_cost_derivation section 10 bound: Measure; the full Measure coproduct lands when a C5 consumer derives bounds from it."
+
+data witness_purpose_authority_note: String = "DECLARED witness purpose taxonomy — slice C-a of the witness-cost-derives-from-purpose program (operator ruling 2026-08-04; DESIGN.md witness cost derives from purpose open thread; discrete_cost_derivation section 10). What semantic fact the witness exists to prove — authored, not inferred from the implementation it exercises. Cost and placement are DERIVED consequences of purpose plus an enrollment envelope; this module carries neither. They are separate slices (C-b: typed enrollment envelope; C-c: derived route projection; C-d: declared-vs-observed comparator) and land as their own consumers against this authority, never a duplicate purpose carrier."
+
+data witness_purpose_five_arms_note: String = "FIVE arms, not six. gunbc.witness_deferral_freeze witness_deferral_freeze_purpose_frontier_note names three live dispositions plus one arm THIS MODULE DELIBERATELY OMITS: a permanent regression witness needing a scheduled consumer decomposes into BehavioralDiscriminator / BoundaryCrossing / PopulationTotality / ExternalFidelity / ResourceContract below, each naming the boundary, population, external effect, or resource contract that justifies running at all (the same four grounds witness_deferral_freeze_authority_note enumerates for a test's size, plus BehavioralDiscriminator for the ordinary crossing-a-modeled-boundary case). The terminating one-shot survey — a witness with a pinned subject, a dissolution trigger, and a deadline after which it must refuse rather than linger — is a real fifth disposition per that same note, but it depends on a typed deadline/instant carrier that std.measure does not yet have (no Instant or WallDeadline exists). A prior draft of this taxonomy (origin/session/swift-wren-710, PR #7893, retired/superseded rather than landed) carried it anyway as TerminatingOneShot { deadline: NonEmptyStr } routed unconditionally to a permanent OneShotUnavailable placement arm — a named capability (\"TerminatingOneShot\") that could never succeed, which is rung inflation at the vocabulary layer: the type promises a disposition the implementation cannot deliver. This module DEFERS that arm outright rather than land it unavailable-by-construction: WitnessPurpose has five constructors, not six, and the sixth is a residue this note names rather than a silent omission. DISSOLVE-ON: std.measure gains a typed deadline/instant carrier; TerminatingOneShot { pinned_subject: ContentHash, dissolution_trigger: DeclarationRef, deadline: <typed carrier> } is added as the sixth WitnessPurpose arm in that same change, so the type and its only satisfiable representation land together."
+
+type WitnessPurpose
+  = BehavioralDiscriminator
+  | BoundaryCrossing { modeled_boundary: DeclarationRef, chosen_input: ContentHash }
+  | PopulationTotality { population: DeclarationRef }
+  | ExternalFidelity { effect: DeclarationRef }
+  | ResourceContract { bound: WitnessResourceBound }
