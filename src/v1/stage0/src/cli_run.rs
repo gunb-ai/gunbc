@@ -2784,10 +2784,11 @@ mod referenced_module_paths_comment_probe_tests {
         index
     }
 
-    /// DESIGN §4c: dotted module paths inside comments must not affect closure
-    /// discovery. This probe compares baseline vs comment-only perturbation.
+    /// RED-by-design until B2 moves closure discovery onto annotation-erased
+    /// projection. Passes while the §4c defect is present; invert to equality
+    /// when B2 lands.
     #[test]
-    fn comment_only_dotted_module_path_does_not_change_reference_scan() {
+    fn comment_only_dotted_module_path_leaks_reference_scan_red() {
         let index = probe_index_with("std.occurrence_binding_candidates");
         let baseline = "module test.probe\nimport std.types { Bool }\n";
         let perturbed = concat!(
@@ -2797,9 +2798,15 @@ mod referenced_module_paths_comment_probe_tests {
         );
         let base_refs = referenced_module_paths_in_text(baseline, &index);
         let pert_refs = referenced_module_paths_in_text(perturbed, &index);
-        assert_eq!(
+        assert_ne!(
             base_refs, pert_refs,
-            "comment-only dotted module path must not change reference scan (§4c)"
+            "§4c defect receipt: comment-only dotted path must not change scan"
+        );
+        assert!(
+            pert_refs
+                .iter()
+                .any(|path| path == "std.occurrence_binding_candidates"),
+            "expected comment-only module path in scan output"
         );
     }
 
