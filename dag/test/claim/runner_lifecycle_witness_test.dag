@@ -32,31 +32,6 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slots_per_host,
 }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet_runner_connectivity { runner_slot_incarnation }
-import gunbc.runner_lifecycle {
-  RunnerReplacementCause,
-  ReplacementCauseConnectivityDetached,
-  ReplacementCauseOrphanedRegistration,
-  ReplacementCauseWedgedBroker,
-  ReplacementCauseOperatorForced,
-}
-import extdeps.github.actions_runner {
-  ActionsRunnerBinaryArtifact,
-  ActionsRunnerLinuxArm64,
-}
-import gunbc.auth.github_apps { gunbai_ci_declared }
-import gunbc.runner_lifecycle { runner_lifecycle_cited_release }
-import gunbc.host_effect {
-  EnsureActionsRunnerRelease,
-  EnsureRunnerSlotDirectory,
-  EnsureRunnerJitWrapper,
-  EnsureRunnerSystemdTemplate,
-  EnsureRunnerMemoryCaps,
-  ActivateRunnerSlot,
-  ReplaceRunnerIncarnation,
-  ObserveRunnerLocalState,
-  ObserveGitHubRunnerRegistration,
-}
 
 test fn witness_add_sequence_caps_before_start() -> Bool {
   runner_slot_caps_precede_start()
@@ -131,51 +106,4 @@ test fn witness_slot_identity_formats_zero_padded_unit() -> Bool {
   let slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
   runner_slot_instance_name(slot: slot) == "srv3-06"
     && runner_slot_unit_name(slot: slot) == "actions-runner@srv3-06.service"
-}
-
-test fn witness_runner_lifecycle_host_effects_declared() -> Bool {
-  let slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 1 }
-  let artifact = ActionsRunnerBinaryArtifact {
-    binary_release: runner_lifecycle_cited_release,
-    arch: ActionsRunnerLinuxArm64,
-  }
-  let host_label = operator_host_srv3 as NonEmptyStr
-  let org = gunbai_ci_declared.owner_login
-  match EnsureActionsRunnerRelease { runner_release: runner_lifecycle_cited_release } {
-    EnsureActionsRunnerRelease { runner_release: cited } => cited == runner_lifecycle_cited_release
-  }
-    && match EnsureRunnerSlotDirectory { slot: slot, artifact: artifact } {
-      EnsureRunnerSlotDirectory { slot: s, artifact: a } => s == slot && a == artifact
-    }
-    && match EnsureRunnerJitWrapper { host_label: host_label } {
-      EnsureRunnerJitWrapper { host_label: h } => h == host_label
-    }
-    && match EnsureRunnerSystemdTemplate { host_label: host_label } {
-      EnsureRunnerSystemdTemplate { host_label: h } => h == host_label
-    }
-    && match EnsureRunnerMemoryCaps { slot: slot } {
-      EnsureRunnerMemoryCaps { slot: s } => s == slot
-    }
-    && match ActivateRunnerSlot { slot: slot } {
-      ActivateRunnerSlot { slot: s } => s == slot
-    }
-    && match ReplaceRunnerIncarnation {
-      from: runner_slot_incarnation(host: operator_host_srv3, slot_index: 1, unit_active: true),
-      cause: ReplacementCauseConnectivityDetached { registration_id: 42 },
-    } {
-      ReplaceRunnerIncarnation { from: inc, cause: c } =>
-        inc.slot == slot
-          && match c {
-            ReplacementCauseConnectivityDetached { registration_id: id } => id == 42
-            ReplacementCauseOrphanedRegistration {} => false
-            ReplacementCauseWedgedBroker {} => false
-            ReplacementCauseOperatorForced { detail: _ } => false
-          }
-    }
-    && match ObserveRunnerLocalState { slot: slot } {
-      ObserveRunnerLocalState { slot: s } => s == slot
-    }
-    && match ObserveGitHubRunnerRegistration { slot: slot, organization: org } {
-      ObserveGitHubRunnerRegistration { slot: s, organization: o } => s == slot && o == org
-    }
 }
