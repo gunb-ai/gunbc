@@ -1789,6 +1789,10 @@ impl ExpectationRefusal {
 /// `gunbc.floor_component_receipt` `floor_component_failure_mode_of` parses.
 const EXPECTED_RED_EVIDENCE_ABSENT_MODE: &str = "ExpectedRedEvidenceAbsent";
 
+/// A batch whose entries all DECLARE a typed pre-verdict refusal, stopped before any verdict.
+/// Non-green: the declaration classifies the stop, it does not verify it. See the Err arm.
+const EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE: &str = "ExpectedRedPreVerdictUnverified";
+
 const STALE_KNOWN_RED_MODE: &str = "StaleKnownRed";
 
 /// Which verdict is AGREEMENT for one witness — `std.witness_admission`
@@ -4224,16 +4228,31 @@ fn run_discovery_batch_node(
             // batch declared expected-red, so one ordinary entry keeps the refusal loud.
             if batch_entries_all_expect_pre_verdict_refusal(&explicit_entries, &pre_verdict_refusal)
             {
-                // Resolve-refuse is the documented known-red shape for logic_ground_truth
-                // (imported bare variants unbound in expression position).
+                // NON-GREEN, and the declaration only classifies WHY (operator ruling,
+                // 2026-08-07). This arm previously returned ok:true whenever every entry
+                // DECLARED a typed pre-verdict refusal. That made an unobserved fact
+                // verdict-bearing: no `ClaimOutcome` exists on this path, `run_claim` has
+                // already formatted the typed `InterpError` into a String, so the observed
+                // phase and cause cannot be matched against the declared ones — a row
+                // declaring `PreVerdictResolve`/`UnboundImportedVariantConstructor` was
+                // admitted when some entirely different pre-verdict fault occurred. A
+                // declaration may be expressible before typed observation survives the
+                // execution boundary; it may not flip the result green until it can be
+                // structurally matched. Dissolve-on: EXPECTED-RED-CAUSE-1 — `ClaimOutcome`
+                // preserves typed phase and cause, at which point this arm becomes
+                // agreement exactly when observed == declared, and refuses on either
+                // mismatch.
                 eprintln!(
-                    "[expect-red] known-red probe still red via resolve/eval refuse (agreement — quarantine holds): {msg}"
+                    "[expect-red] REFUSED: every entry declares a typed pre-verdict refusal, but no typed observation survives this path, so the declared phase/cause CANNOT be matched — declaration classifies, it does not verify: {msg}"
                 );
                 ClaimResult {
-                    function: format!("{label} (expect_red still-red OK)"),
+                    function: format!("{label} ({EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE})"),
                     entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
-                    ok: true,
-                    detail: String::new(),
+                    ok: false,
+                    detail: format!(
+                        "{EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE}: {} entry(ies) declare a typed pre-verdict refusal and the batch stopped before any verdict, but the observed phase/cause is unavailable at this seam so the declaration cannot be verified — non-green by construction until EXPECTED-RED-CAUSE-1 lands: {msg}",
+                        explicit_entries.len()
+                    ),
                     wall_nanos: 0,
                     resolve_nanos: 0,
                     corpus_resolve_nanos: 0,
@@ -11094,6 +11113,33 @@ mod tests {
     /// batch of declared pre-verdict rows are both "all expected-red"; only the second may
     /// invert a refuse. Without that block this test would pass against the defect it exists
     /// to hold closed, because the defect's population is a superset of this one's.
+    /// The pre-verdict arm is NON-GREEN, and its mode is distinct from every sibling.
+    ///
+    /// A declaration classifies the stop; it does not verify it. This test pins the two facts
+    /// that together make that real: the mode string the Err arm reports is its own, and the
+    /// receipt vocabulary maps it to a refusal rather than to done. If someone restores the
+    /// green arm, the first assertion here fails; if someone folds it into an existing mode,
+    /// the second does.
+    #[test]
+    fn declared_pre_verdict_refusal_is_non_green_and_carries_its_own_mode() {
+        assert_eq!(
+            EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE,
+            "ExpectedRedPreVerdictUnverified"
+        );
+        // Distinct from BOTH siblings on the same axis — different remedies, different modes.
+        assert_ne!(
+            EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE,
+            EXPECTED_RED_EVIDENCE_ABSENT_MODE
+        );
+        assert_ne!(
+            EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE,
+            ExpectationRefusal::StaleKnownRed {
+                witnesses: Vec::new()
+            }
+            .mode()
+        );
+    }
+
     #[test]
     fn resolve_refuse_agreement_requires_every_entry_expect_a_pre_verdict_refusal() {
         let pre_verdict = (

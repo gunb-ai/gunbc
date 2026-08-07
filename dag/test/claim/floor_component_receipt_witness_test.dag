@@ -386,6 +386,23 @@ test fn fcr_stale_known_red_is_a_refusal_distinct_from_witness_red_and_from_done
     && !(stale_doc == red_doc)
 }
 
+data fcr_pre_verdict_unverified_note: String = "The THIRD arm on this axis, and it must be distinguishable from BOTH of the others because all three demand different actions. StaleKnownRed says an executed row passed — DELETE the admission. ExpectedRedEvidenceAbsent says a rostered row produced no observation — make it RUN. ExpectedRedPreVerdictUnverified says the row stopped as declared, before any verdict, and nothing yet proves it stopped for the DECLARED REASON — the remedy is neither delete nor rerun but carrying the typed phase and cause across the execution boundary. It renders as refused, never done: a declaration classifies a stop, it does not verify one, and rendering it green was the defect this arm replaces."
+
+test fn fcr_pre_verdict_unverified_is_a_refusal_distinct_from_both_siblings() -> Bool {
+  let unverified_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedPreVerdictUnverified" as NonEmptyStr)])
+  let absent_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedEvidenceAbsent" as NonEmptyStr)])
+  let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as NonEmptyStr)])
+  let unverified_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: unverified_rows)
+  let absent_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: absent_rows)
+  let stale_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: stale_rows)
+  count(unverified_rows) == 1
+    && string_contains(s: unverified_doc, pattern: "\"failure_mode\": \"ExpectedRedPreVerdictUnverified\"")
+    && string_contains(s: unverified_doc, pattern: "\"outcome\": \"refused\"")
+    && !string_contains(s: unverified_doc, pattern: "\"outcome\": \"done\"")
+    && !(unverified_doc == absent_doc)
+    && !(unverified_doc == stale_doc)
+}
+
 data fcr_expected_red_evidence_absent_note: String = "The COVERAGE half of the same axis, and the discrimination is that it is neither of its neighbours: not done (a batch whose admitted red control produced no observation is not a batch that is fine), and not StaleKnownRed (nobody observed the witness passing — nobody observed it at all), so the two refusals must render differently or the alert cannot tell delete-the-row from make-the-row-run. Absence establishing neither agreement nor failure is exactly why it needs its own mode rather than being folded into either verdict arm."
 
 test fn fcr_expected_red_evidence_absent_is_a_refusal_distinct_from_stale_and_from_done() -> Bool {

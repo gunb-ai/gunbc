@@ -604,7 +604,45 @@ fn falsifier_self_host_wet_batch_holds(r: Runnable) -> Bool {
   }
 }
 
-data known_red_probe_lane_partition_witness_note: String = "The known-red probe lane carries ONE runnable PER DECLARED BUDGET, not one runnable holding the whole roster. Eval ceilings are scoped per batch, so a single mixed batch could only obtain the long ceiling by widening every fast sibling with it — the axis conflation this lane exists to remove. What this witness pins is therefore stronger than the count it replaced: each runnable's entries equal EXACTLY one derived budget roster (identity join, not a length agreement, so a same-sized wrong population refuses), the runnable count equals the number of NONEMPTY rosters (an empty side schedules no batch rather than an empty one), and every runnable independently keeps the lane's hermetic/no-host-compiler/SelectionApplied profile. Pinning only the total would let the two rosters be swapped between runnables — the budget inversion — and pinning only the count would let either carry the wrong rows."
+data known_red_probe_lane_partition_witness_note: String = "The known-red probe lane carries ONE runnable PER DECLARED BUDGET, not one runnable holding the whole roster. Eval ceilings are scoped per batch, so a single mixed batch could only obtain the long ceiling by widening every fast sibling with it — the axis conflation this lane exists to remove. Each runnable's entries equal EXACTLY one derived budget roster as a SET (see known_red_roster_set_eq), the runnable count equals the number of NONEMPTY rosters (an empty side schedules no batch rather than an empty one), and every runnable independently keeps the lane's hermetic/no-host-compiler/SelectionApplied profile. Pinning only the total would let the two rosters be swapped between runnables — the budget inversion — and pinning only the count would let either carry the wrong rows."
+
+data known_red_roster_set_eq_note: String = "SET equality, and the two-way half of it is load-bearing (defect found in review, 2026-08-07). The first shape of this witness asserted length agreement PLUS one-way containment (every actual entry appears in the expected roster), and called that an identity join. It is not: actual [A, A] against expected [A, B] satisfies both — the lengths agree at 2 and every actual entry is present — while B is DROPPED and A is DUPLICATED. So a same-sized wrong population passed, which is precisely the property the note claimed to establish and the PR's whole thesis (identity agreement replacing count agreement). The repair asserts duplicate-freedom on BOTH sides and containment in BOTH directions, which for rosters that are identity sets is set equality. Why one-way containment looked sufficient: the swap probe that verified this witness exchanges the two rosters, and one-way containment DOES catch that, because a fast entry is genuinely absent from the long roster. Multiplicity is an orthogonal axis the swap never perturbs — evidence that a clause is non-vacuous is not evidence that it is exact, and one discriminating RED can only establish the failure mode it actually drives."
+
+fn known_red_roster_occurrence_count(xs: List<ScheduleWitnessEntry>, w: ScheduleWitnessEntry) -> Int {
+  fold(xs, init: 0, f: fn(acc, x) {
+    if schedule_witness_entry_eq(a: x, b: w) { acc + 1 } else { acc }
+  })
+}
+
+fn known_red_roster_duplicate_free(xs: List<ScheduleWitnessEntry>) -> Bool {
+  fold(xs, init: true, f: fn(ok, x) {
+    ok && (known_red_roster_occurrence_count(xs: xs, w: x) == 1)
+  })
+}
+
+fn known_red_roster_subset(a: List<ScheduleWitnessEntry>, b: List<ScheduleWitnessEntry>) -> Bool {
+  fold(a, init: true, f: fn(ok, x) {
+    ok && schedule_witness_entry_roster_contains(xs: b, w: x)
+  })
+}
+
+fn known_red_roster_set_eq(a: List<ScheduleWitnessEntry>, b: List<ScheduleWitnessEntry>) -> Bool {
+  known_red_roster_duplicate_free(xs: a)
+    && known_red_roster_duplicate_free(xs: b)
+    && known_red_roster_subset(a: a, b: b)
+    && known_red_roster_subset(a: b, b: a)
+}
+
+test fn witness_known_red_roster_set_eq_is_exact_not_a_length_agreement() -> Bool {
+  let a = synthetic_corpus_row
+  let b = synthetic_execution_row
+  known_red_roster_set_eq(a: [a, b], b: [a, b])
+    && known_red_roster_set_eq(a: [a, b], b: [b, a])
+    && !known_red_roster_set_eq(a: [a, a], b: [a, b])
+    && !known_red_roster_set_eq(a: [a, b], b: [a, a])
+    && !known_red_roster_set_eq(a: [a], b: [a, b])
+    && !known_red_roster_set_eq(a: [a, b], b: [a])
+}
 
 fn known_red_probe_batch_matches_roster(r: Runnable, roster: List<ScheduleWitnessEntry>) -> Bool {
   match r {
@@ -615,10 +653,7 @@ fn known_red_probe_batch_matches_roster(r: Runnable, roster: List<ScheduleWitnes
         SelectionOff => false
       }
         && (length(xs: dirs) == 0)
-        && (length(xs: entries) == length(xs: roster))
-        && fold(entries, init: true, f: fn(ok, e) {
-             ok && schedule_witness_entry_roster_contains(xs: roster, w: e)
-           })
+        && known_red_roster_set_eq(a: entries, b: roster)
         && discovery_batch_declares_hermetic(r: r)
         && (p.spawns_host_compiler == false)
     RunnableScopedWitnessBatch { batch: _ } => false
@@ -645,7 +680,7 @@ fn falsifier_known_red_probe_batches_hold(b: List<Runnable>) -> Bool {
   } else {
     true
   }
-  let covers_lane = (length(xs: fast) + length(xs: long)) == length(xs: known_red_probe_corpus_roster())
+  let covers_lane = known_red_roster_set_eq(a: concat(fast, long), b: known_red_probe_corpus_roster())
   count_ok && fast_ok && long_ok && covers_lane
 }
 
@@ -861,7 +896,8 @@ test fn witness_live_floor_discovery_batch_count_is_four() -> Bool {
 }
 
 test fn ci_floor_plan_witnesses() -> Bool {
-  witness_floor_compile_gate_honest_heavy_profile() &&
+  witness_known_red_roster_set_eq_is_exact_not_a_length_agreement() &&
+    witness_floor_compile_gate_honest_heavy_profile() &&
     witness_cheap_gate_membership_declared() &&
     witness_cheap_gates_are_resource_anchors() &&
     witness_live_floor_discovery_tracks_optin_roster() &&
