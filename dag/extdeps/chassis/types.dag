@@ -1,6 +1,7 @@
 module extdeps.chassis.types
 
 import std.types { NonEmptyStr, Int, List }
+import std.measure { Millimeter }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -37,6 +38,6 @@ type ChassisCatalogRow {
   internal_525_bay_count: Int
   expansion_slot_count: Int
   included_fan_count: Int
-  max_gpu_length_mm: Int?
-  max_cooler_height_mm: Int?
+  max_gpu_length: Millimeter?
+  max_cooler_height: Millimeter?
 }

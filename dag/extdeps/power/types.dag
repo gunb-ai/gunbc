@@ -1,6 +1,7 @@
 module extdeps.power.types
 
 import std.types { NonEmptyStr, Int }
+import std.measure { Volt, Ampere, Foot }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -30,10 +31,10 @@ type PduCatalogRow {
   model_family: NonEmptyStr
   manufacturer: Vendor<Hardware>
   rack_units: Int
-  voltage: Int
-  amperage: Int
+  nominal_supply_voltage: Volt
+  rated_current: Ampere
   outlet_count: Int
   front_outlet_count: Int
   rear_outlet_count: Int
-  cord_length_ft: Int
+  cord_length: Foot
 }

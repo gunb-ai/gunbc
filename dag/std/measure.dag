@@ -233,6 +233,14 @@ type Millicore = Measure<Count, Milli, Nat>
 
 type Watt = Measure<Power, One, Nat>
 
+type Volt = Measure<ElectricPotential, One, Nat>
+
+type Ampere = Measure<ElectricCurrent, One, Nat>
+
+type Foot = Measure<Length, One, Nat>
+
+type Millimeter = Measure<Length, One, Nat>
+
 type Joule = Measure<Energy, One, Nat>
 
 type Celsius = Measure<Temperature, One, Int>
@@ -292,6 +300,38 @@ fn watt(count: Nat) -> Watt {
 
 fn watt_count(w: Watt) -> Nat {
   measure_count(w)
+}
+
+fn volt(count: Nat) -> Volt {
+  Measure { count: count }
+}
+
+fn volt_count(v: Volt) -> Nat {
+  measure_count(v)
+}
+
+fn ampere(count: Nat) -> Ampere {
+  Measure { count: count }
+}
+
+fn ampere_count(a: Ampere) -> Nat {
+  measure_count(a)
+}
+
+fn foot(count: Nat) -> Foot {
+  Measure { count: count }
+}
+
+fn foot_count(f: Foot) -> Nat {
+  measure_count(f)
+}
+
+fn millimeter(count: Nat) -> Millimeter {
+  Measure { count: count }
+}
+
+fn millimeter_count(m: Millimeter) -> Nat {
+  measure_count(m)
 }
 
 fn joule(count: Nat) -> Joule {

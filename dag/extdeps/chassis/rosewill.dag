@@ -1,6 +1,7 @@
 module extdeps.chassis.rosewill
 
 import std.types { NonEmptyStr, List }
+import std.measure { millimeter }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.chassis.types {
   ChassisCatalogRow,
@@ -42,8 +43,8 @@ data rosewill_rsv_r4000u_catalog: ChassisCatalogRow = ChassisCatalogRow {
   internal_525_bay_count: 3,
   expansion_slot_count: 7,
   included_fan_count: 4,
-  max_gpu_length_mm: Present { value: 270 },
-  max_cooler_height_mm: none,
+  max_gpu_length: Present { value: millimeter(270) },
+  max_cooler_height: none,
 }
 
 data rosewill_rsv_z2600u_catalog: ChassisCatalogRow = ChassisCatalogRow {
@@ -55,8 +56,8 @@ data rosewill_rsv_z2600u_catalog: ChassisCatalogRow = ChassisCatalogRow {
   internal_525_bay_count: 0,
   expansion_slot_count: 4,
   included_fan_count: 0,
-  max_gpu_length_mm: Present { value: 150 },
-  max_cooler_height_mm: Present { value: 70 },
+  max_gpu_length: Present { value: millimeter(150) },
+  max_cooler_height: Present { value: millimeter(70) },
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
