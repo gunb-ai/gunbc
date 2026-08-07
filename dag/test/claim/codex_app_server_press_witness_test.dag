@@ -71,6 +71,8 @@ data fixture_rate_limits_empty_object_line: String = "{\"jsonrpc\":\"2.0\",\"id\
 
 data fixture_rate_limits_primary_saturated_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"limitId\":\"codex\",\"primary\":{\"usedPercent\":100,\"resetsAt\":1893456000},\"rateLimitReachedType\":\"rate_limit_reached\"}}}\n"
 
+data fixture_rate_limits_negative_resets_at_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"limitId\":\"codex\",\"primary\":{\"usedPercent\":100,\"resetsAt\":-1},\"rateLimitReachedType\":\"rate_limit_reached\"}}}\n"
+
 data fixture_rate_limits_spend_control_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"limitId\":\"codex\",\"spendControlReached\":true}}}\n"
 
 data fixture_rate_limits_live_exhausted_multibucket_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"limitId\":\"codex\",\"limitName\":null,\"primary\":{\"usedPercent\":100,\"windowDurationMins\":10080,\"resetsAt\":1786159940},\"secondary\":null,\"credits\":{\"hasCredits\":false,\"unlimited\":false,\"balance\":\"0\"},\"individualLimit\":null,\"spendControlReached\":false,\"planType\":\"pro\",\"rateLimitReachedType\":\"rate_limit_reached\"},\"rateLimitsByLimitId\":{\"codex\":{\"limitId\":\"codex\",\"limitName\":null,\"primary\":{\"usedPercent\":100,\"windowDurationMins\":10080,\"resetsAt\":1786159940},\"secondary\":null,\"credits\":{\"hasCredits\":false,\"unlimited\":false,\"balance\":\"0\"},\"individualLimit\":null,\"spendControlReached\":false,\"planType\":\"pro\",\"rateLimitReachedType\":\"rate_limit_reached\"},\"codex_bengalfox\":{\"limitId\":\"codex_bengalfox\",\"limitName\":\"GPT-5.3-Codex-Spark\",\"primary\":{\"usedPercent\":0,\"windowDurationMins\":10080,\"resetsAt\":1786656789},\"secondary\":null,\"credits\":null,\"individualLimit\":null,\"spendControlReached\":null,\"planType\":null,\"rateLimitReachedType\":null}},\"rateLimitResetCredits\":{\"availableCount\":0,\"credits\":[]}}}\n"
@@ -470,6 +472,39 @@ test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
         && codex_press_outcome_operator_caption(outcome: outcome) == "codex quota exhausted"
         && codex_press_outcome_wire_status(outcome: outcome) != "accepted"
         && codex_press_outcome_wire_status(outcome: outcome) != "turn_started"
+  }
+}
+
+test fn negative_resets_at_refuses_epoch_secs_mint() -> Bool {
+  let evidence = parse_account_trip_stdout_for_tests(
+    stdout: concat(
+      "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
+      concat(
+        fixture_account_read_chatgpt_requires_auth_true_line,
+        fixture_rate_limits_negative_resets_at_line,
+      ),
+    ),
+  )
+  match evidence.classification {
+    AccountStandingQuotaReached =>
+      fold(
+        evidence.rate_limit_buckets,
+        init: false,
+        f: (acc, bucket) =>
+          match bucket {
+            CodexBucketUnavailableUntilReset { limit_id: id, reached_type: _, resets_at: resets } =>
+              if (id as String) == "codex" {
+                match resets {
+                  Absent => true
+                  Present { value: _ } => false
+                }
+              } else {
+                acc
+              }
+            _ => acc
+          },
+      )
+    _ => false
   }
 }
 

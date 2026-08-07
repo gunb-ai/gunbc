@@ -381,6 +381,18 @@ fn json_number_as_int(v: JsonValue) -> Int? {
   }
 }
 
+fn json_number_as_epoch_secs(v: JsonValue) -> EpochSecs? {
+  match json_number_as_int(v: v) {
+    Absent => none
+    Present { value: n } =>
+      if n < 0 {
+        none
+      } else {
+        Present { value: n }
+      }
+  }
+}
+
 fn rate_limit_window_used_percent(window: JsonValue) -> Int? {
   match json_object_unique_member(
     v: window,
@@ -461,7 +473,7 @@ fn rate_limits_primary_resets_at(snapshot: JsonValue) -> EpochSecs? {
         v: window,
         key: codex_rate_limits_window_resets_at_key as String,
       ) {
-        JsonMemberFound { value: ts } => json_number_as_int(v: ts)
+        JsonMemberFound { value: ts } => json_number_as_epoch_secs(v: ts)
         _ => none
       }
     _ => none
