@@ -58,9 +58,9 @@ import extdeps.llm.cli_lifecycle {
 }
 import std.claim_evidence { RecordedFactId }
 
-data claude_setup_token_enrollment_authority_note: String = "Claude Code enrollment station workflow (operator direction 2026-08-07). The host is an enrollment station, not an ambient prerequisite workers inherit. Personal browser gesture is irreducible; every other step is deterministic control-plane workflow. setup-token credential lifecycle is SEPARATE from ambient ~/.claude OAuth refresh home — mutation observation and write-back apply only to the ambient path. Managed binding uses ClaudeOAuthTokenSecretRef with an EXACT Secret Manager version, never latest. NO WorkerTurn and NO UI workflow progress in this slice."
+data claude_setup_token_enrollment_authority_note: String = "Claude Code enrollment station workflow (operator direction 2026-08-07). The host is an enrollment station, not an ambient prerequisite workers inherit. Personal browser gesture is irreducible; every other step is deterministic control-plane workflow. Enrollment is INITIATED ONLY through the pinned Claude CLI setup-token path — the SDK has no login RPC and may only CONSUME credential state the executable already holds. Managed binding uses ClaudeOAuthTokenSecretRef with an EXACT Secret Manager version, never latest. Credential durable-state mutation is observed before and after admitted runtime use; write-back creates a new secret version only when the observed artifact digest changes — never unconditionally. NO WorkerTurn and NO UI workflow progress in this slice."
 
-data claude_ambient_oauth_home_separate_lifecycle_note: String = "ClaudeStateRootRef ambient OAuth home carries refresh state with finite observed expiry and needs mutation observation plus write-back. ClaudeOAuthTokenSecretRef setup-token managed binding is a static secret version materialized as CLAUDE_CODE_OAUTH_TOKEN for the admitted official runtime only. These lifecycles must not fuse."
+data claude_ambient_oauth_home_separate_lifecycle_note: String = "ClaudeStateRootRef ambient OAuth home carries refresh state with finite observed expiry and is useful only as a comparison control — production authority is the managed Secret Manager binding, not ambient inheritance. setup-token enrollment capture and runtime-managed OAuth materialization are separate lifecycles that must not fuse, but BOTH require before/after artifact observation and conditional write-back when durable state changes (operator ruling 2026-08-07: static materialization alone is insufficient for Claude)."
 
 data claude_enrollment_no_provider_authenticated_literal_note: String = "Acceptance: no authored ProviderAuthenticated literal from extdeps.llm.cli_lifecycle exists anywhere in this workflow. Authentication standing is projected into gunbc.provider_standing ProviderAuthenticationStanding only."
 
@@ -95,15 +95,70 @@ type ClaudeEnrollmentConfig {
   standing_fact_id: RecordedFactId
 }
 
+type ClaudeEnrollmentInitiationSurface
+  = EnrollmentInitiationClaudeCli
+  | EnrollmentInitiationSdkAttempt
+
+type ClaudeEnrollmentInitiationAdmission
+  = EnrollmentInitiationAdmitted
+  | EnrollmentInitiationRefusedSdkPath {
+      reason: NonEmptyStr,
+    }
+
+type ClaudeCredentialArtifactDigest {
+  digest: NonEmptyStr
+}
+
+type ClaudeCredentialArtifactObservationPair {
+  before_use: ClaudeCredentialArtifactDigest
+  after_use: ClaudeCredentialArtifactDigest
+}
+
+type ClaudeCredentialWriteBackAdmission
+  = CredentialWriteBackAdmitted {
+      prior: ClaudeCredentialArtifactDigest,
+      observed: ClaudeCredentialArtifactDigest,
+    }
+  | CredentialWriteBackRefusedUnchanged {
+      digest: ClaudeCredentialArtifactDigest,
+    }
+  | CredentialWriteBackRefusedMissingObservation {
+      reason: NonEmptyStr,
+    }
+
+type ClaudeEnrollmentColdStartAdmission
+  = EnrollmentColdStartAdmitted
+  | EnrollmentColdStartRefusedAmbientPrerequisite {
+      reason: NonEmptyStr,
+    }
+
+type ClaudeEnrollmentWriterLeaseEpoch {
+  holder: NonEmptyStr
+  epoch: Int
+  binding_version: NonEmptyStr
+}
+
 type ClaudeEnrollmentWriterLeaseAdmission
-  = EnrollmentLeaseGranted { holder: NonEmptyStr }
+  = EnrollmentLeaseGranted { holder: NonEmptyStr, epoch: Int }
   | EnrollmentLeaseRefusedConcurrent {
       incumbent_holder: NonEmptyStr,
       incumbent_binding_version: NonEmptyStr,
+      incumbent_epoch: Int,
     }
   | EnrollmentLeaseRefusedNewerBindingExists {
       incumbent_version: NonEmptyStr,
       attempted_version: NonEmptyStr,
+    }
+  | EnrollmentLeaseRefusedStaleEpoch {
+      holder_epoch: Int,
+      current_epoch: Int,
+    }
+
+type ClaudeEnrollmentWriterLeasePublishAdmission
+  = EnrollmentLeasePublishGranted
+  | EnrollmentLeasePublishRefusedStaleEpoch {
+      holder_epoch: Int,
+      current_epoch: Int,
     }
 
 type ClaudeSetupTokenCaptureAdmission
@@ -165,6 +220,57 @@ fn claude_enrollment_data_dir(service: ClaudeEnrollmentServiceIdentity) -> FileP
   ) as FilePath
 }
 
+fn admit_enrollment_initiation(
+  surface: ClaudeEnrollmentInitiationSurface,
+) -> ClaudeEnrollmentInitiationAdmission {
+  match surface {
+    EnrollmentInitiationClaudeCli => EnrollmentInitiationAdmitted
+    EnrollmentInitiationSdkAttempt =>
+      EnrollmentInitiationRefusedSdkPath {
+        reason: "Claude Agent SDK has no login RPC; enrollment must initiate through claude setup-token CLI only" as NonEmptyStr,
+      }
+  }
+}
+
+fn admit_enrollment_cold_start(
+  relies_on_ambient_enrollment_host_credential: Bool,
+) -> ClaudeEnrollmentColdStartAdmission {
+  if relies_on_ambient_enrollment_host_credential {
+    EnrollmentColdStartRefusedAmbientPrerequisite {
+      reason: "enrollment must not depend on ambient enrollment-host Claude credential; managed binding is the authority" as NonEmptyStr,
+    }
+  } else {
+    EnrollmentColdStartAdmitted
+  }
+}
+
+fn credential_artifact_digest_eq(
+  a: ClaudeCredentialArtifactDigest,
+  b: ClaudeCredentialArtifactDigest,
+) -> Bool {
+  a.digest == b.digest
+}
+
+fn admit_credential_write_back(
+  observation: ClaudeCredentialArtifactObservationPair?,
+) -> ClaudeCredentialWriteBackAdmission {
+  match observation {
+    Absent =>
+      CredentialWriteBackRefusedMissingObservation {
+        reason: "credential artifact must be observed before and after admitted runtime use before any write-back" as NonEmptyStr,
+      }
+    Present { value: pair } =>
+      if credential_artifact_digest_eq(a: pair.before_use, b: pair.after_use) {
+        CredentialWriteBackRefusedUnchanged { digest: pair.after_use }
+      } else {
+        CredentialWriteBackAdmitted {
+          prior: pair.before_use,
+          observed: pair.after_use,
+        }
+      }
+  }
+}
+
 fn admit_enrollment_secret_version(version: String) -> ClaudeEnrollmentSecretVersionAdmission {
   if version == "" {
     EnrollmentSecretVersionRefusedEmpty
@@ -177,14 +283,16 @@ fn admit_enrollment_secret_version(version: String) -> ClaudeEnrollmentSecretVer
 
 fn admit_enrollment_writer_lease(
   holder: NonEmptyStr,
+  holder_epoch: Int,
   incumbent_holder: NonEmptyStr?,
   incumbent_version: NonEmptyStr?,
+  incumbent_epoch: Int?,
   attempted_version: NonEmptyStr,
 ) -> ClaudeEnrollmentWriterLeaseAdmission {
   match incumbent_holder {
     Present { value: incumbent } =>
       if incumbent == holder {
-        EnrollmentLeaseGranted { holder: holder }
+        EnrollmentLeaseGranted { holder: holder, epoch: holder_epoch }
       } else {
         EnrollmentLeaseRefusedConcurrent {
           incumbent_holder: incumbent as NonEmptyStr,
@@ -192,16 +300,36 @@ fn admit_enrollment_writer_lease(
             Present { value: v } => v
             Absent => "unknown" as NonEmptyStr
           },
+          incumbent_epoch: match incumbent_epoch {
+            Present { value: e } => e
+            Absent => 0
+          },
         }
       }
-    Absent => EnrollmentLeaseGranted { holder: holder }
+    Absent => EnrollmentLeaseGranted { holder: holder, epoch: holder_epoch }
+  }
+}
+
+fn admit_enrollment_writer_lease_publish(
+  holder_epoch: Int,
+  current_epoch: Int,
+) -> ClaudeEnrollmentWriterLeasePublishAdmission {
+  if holder_epoch < current_epoch {
+    EnrollmentLeasePublishRefusedStaleEpoch {
+      holder_epoch: holder_epoch,
+      current_epoch: current_epoch,
+    }
+  } else {
+    EnrollmentLeasePublishGranted
   }
 }
 
 fn admit_enrollment_writer_lease_against_binding(
   holder: NonEmptyStr,
+  holder_epoch: Int,
   incumbent_holder: NonEmptyStr?,
   incumbent_version: NonEmptyStr,
+  incumbent_epoch: Int?,
   attempted_version: NonEmptyStr,
   incumbent_version_is_newer: Bool,
 ) -> ClaudeEnrollmentWriterLeaseAdmission {
@@ -213,8 +341,10 @@ fn admit_enrollment_writer_lease_against_binding(
   } else {
     admit_enrollment_writer_lease(
       holder: holder,
+      holder_epoch: holder_epoch,
       incumbent_holder: incumbent_holder,
       incumbent_version: Present { value: incumbent_version },
+      incumbent_epoch: incumbent_epoch,
       attempted_version: attempted_version,
     )
   }
@@ -420,4 +550,6 @@ fn claude_enrollment_provider_standing_from_bundle(
   )
 }
 
-data claude_enrollment_materialization_frontier_note: String = "Materialize CLAUDE_CODE_OAUTH_TOKEN from the exact Secret Manager version via gunbc.auth.materialized_secret EnvVar binding, run the admitted official Claude Agent SDK runtime, then erase process env and temp staging bytes. with_materialized_secret is the construction wall; staging destruction is the bracket exit. Host binding realization is a declared scaffold until gunbc.auth.materialized_secret host effects land for env injection and shred."
+data claude_enrollment_materialization_frontier_note: String = "Materialize CLAUDE_CODE_OAUTH_TOKEN from the exact Secret Manager version via gunbc.auth.materialized_secret EnvVar binding, observe the credential artifact digest BEFORE admitted official Claude Agent SDK runtime use, observe AFTER use, and write back a new Secret Manager version ONLY when admit_credential_write_back reports durable-state change. Then erase process env and temp staging bytes. with_materialized_secret is the construction wall; staging destruction is the bracket exit. Host binding realization is a declared scaffold until gunbc.auth.materialized_secret host effects land for env injection and shred."
+
+data claude_enrollment_writer_lease_epoch_note: String = "One account credential has exactly one writer lease epoch. admit_enrollment_writer_lease_publish refuses when holder_epoch < current_epoch so a stale writer cannot publish after another lease epoch advanced. Concurrent holder and newer-binding refusals remain independent axes."
