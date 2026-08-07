@@ -1758,6 +1758,106 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
     )
 }
 
+/// One symbol's binding observation on a declared-import-closure-only compile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeclaredImportClosureBindingObserved {
+    pub binding_source: Option<UnlistedImportBindingSource>,
+    pub definer_module: Option<String>,
+    pub symbol_resolves: bool,
+    pub blocking_hard_diagnostic_count: i64,
+}
+
+/// Result of [`observe_declared_import_closure_symbol_binding`]. `NotRunnable` is distinct from
+/// an observed refusal so could-not-measure never reads as the subject passing (DESIGN §5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeclaredImportClosureBindingObservation {
+    Observed(DeclaredImportClosureBindingObserved),
+    NotRunnable(String),
+}
+
+fn declared_import_closure_hard_diagnostic_count(
+    resolved: &v1_compiler_compile::ResolvedPipelineResult,
+) -> i64 {
+    resolved
+        .diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .count() as i64
+}
+
+/// Classify binding on an already-resolved declared-import-closure compile. `graph: None` is not
+/// an observed refusal — the module never ingested — so it returns `NotRunnable` (P1(b), #7835).
+/// Any hard diagnostic on the compile also refuses observation: a graph with hard errors did not
+/// produce a trustworthy binding observation (#7835 producer control).
+pub fn declared_import_closure_binding_observation_from_resolved(
+    resolved: &v1_compiler_compile::ResolvedPipelineResult,
+    consumer_module: &str,
+    symbol: &str,
+) -> DeclaredImportClosureBindingObservation {
+    let graph = match resolved.graph.as_ref() {
+        Some(g) => g.as_ref(),
+        None => {
+            return DeclaredImportClosureBindingObservation::NotRunnable(
+                "declared-import-closure compile produced no graph (parse/frontend refusal)"
+                    .to_string(),
+            );
+        }
+    };
+    let hard_count = declared_import_closure_hard_diagnostic_count(resolved);
+    if hard_count > 0 {
+        return DeclaredImportClosureBindingObservation::NotRunnable(format!(
+            "declared-import-closure compile produced {hard_count} hard diagnostic(s); binding observation refused"
+        ));
+    }
+    let definer = definer_module_for_name(graph, symbol);
+    let symbol_resolves = definer.is_some();
+    let binding_source = if symbol_resolves {
+        Some(classify_unlisted_import_binding_source(graph, consumer_module, symbol).0)
+    } else {
+        None
+    };
+    DeclaredImportClosureBindingObservation::Observed(DeclaredImportClosureBindingObserved {
+        binding_source,
+        definer_module: definer,
+        symbol_resolves,
+        blocking_hard_diagnostic_count: 0,
+    })
+}
+
+/// Host realization backing the `observe_declared_import_closure_symbol_binding` builtin:
+/// compile an entry's **declared import-edge closure only** (no reference-derived widening) under
+/// primary-precedence `pool_roots`, then classify how `consumer_module` binds `symbol`.
+///
+/// MEASUREMENT ONLY — binding-source classification (`ListedImport` vs `PoolCoincidence`) is
+/// carried as data for Class B (#6985) controls; callers judge acceptance.
+pub fn observe_declared_import_closure_symbol_binding(
+    pool_roots: &[String],
+    entry_path: &str,
+    consumer_module: &str,
+    symbol: &str,
+) -> DeclaredImportClosureBindingObservation {
+    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        compile_declared_import_closure_only_with_pool(pool_roots, entry_path, None)
+    }));
+    let resolved = match compiled {
+        Ok(Ok(r)) => r,
+        Ok(Err(cause)) => {
+            return DeclaredImportClosureBindingObservation::NotRunnable(cause);
+        }
+        Err(_) => {
+            return DeclaredImportClosureBindingObservation::NotRunnable(
+                "observe_declared_import_closure_symbol_binding: compile panicked before producing a graph"
+                    .to_string(),
+            );
+        }
+    };
+    declared_import_closure_binding_observation_from_resolved(
+        resolved.as_ref(),
+        consumer_module,
+        symbol,
+    )
+}
+
 /// Host realization backing the `compile_dag_rust_emit_check` builtin: compile an in-memory
 /// `.dag` program to Rust and check that the named emitted file contains every string in
 /// `includes` and none of `excludes`, with zero **compile-clean hard** diagnostics
@@ -3871,6 +3971,279 @@ pub fn selection_control_skip_label_for_ci() -> Result<String, SelectionControlS
             Ok(SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL.to_string())
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Class B import-closure gate affected-set skip (#7835).
+//
+// `run_class_b_import_closure_gate` costs ~2.3 min wall per cold run; skip when the
+// merge-base diff is provably disjoint from the gate's input closure (declared-import
+// pool ∪ witness layer ∪ perturbation fixtures ∪ gate transport modules). Same shape as
+// regen_floor_skip_label_for_ci / selection_control_skip_label_for_ci: skip only on a
+// non-empty diff proven disjoint; run on empty diff, departed non-docs paths, and any
+// observation/closure failure (fail-closed — regen shape: still RUN the gate, but the two
+// failure arms carry grep-countable labels distinct from structural run_class_b_gate).
+// Gated to pull_request events — push-to-main runs the full gate as the cold control.
+// ---------------------------------------------------------------------------
+
+pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
+pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_transport.dag";
+pub const CLASS_B_BINDING_REL: &str = "dag/gunbc/declared_import_closure_binding.dag";
+pub const CLASS_B_OVERLAY_REL: &str = "dag/gunbc/class_b_import_closure_overlay.dag";
+pub const CLASS_B_FIXTURES_PREFIX: &str = "fixtures/class_b_import_closure";
+const CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME: &str = "class_b_declared_import_pool_roots";
+
+pub const CLASS_B_GATE_INPUT_ENTRIES: &[&str] = &[
+    CLASS_B_ENTRY_REL,
+    CLASS_B_TRANSPORT_REL,
+    CLASS_B_BINDING_REL,
+    CLASS_B_OVERLAY_REL,
+];
+
+pub const CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL: &str = "class_b_gate_not_affected_skip";
+pub const RUN_CLASS_B_GATE_LABEL: &str = "run_class_b_gate";
+/// Grep-countable run-arm markers for failure paths that still execute the gate (regen shape:
+/// fail-closed by running, not by widening). Distinct from structural `run_class_b_gate` arms
+/// so routine closure/diff failures are observable in job logs (loyal-ram-550 #7835).
+pub const RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL: &str =
+    "run_class_b_gate:diff_observation_failed";
+pub const RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL: &str =
+    "run_class_b_gate:input_closure_failed";
+
+fn class_b_overlay_authority_content() -> &'static str {
+    static CONTENT: OnceLock<String> = OnceLock::new();
+    CONTENT
+        .get_or_init(|| {
+            let path = process_workspace_root().join(CLASS_B_OVERLAY_REL);
+            std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!(
+                    "class_b overlay authority: failed to read {}: {e}",
+                    path.display()
+                )
+            })
+        })
+        .as_str()
+}
+
+/// Project `class_b_declared_import_pool_roots` out of the overlay authority source text.
+pub(crate) fn class_b_declared_import_pool_roots_from_source(content: &str) -> Vec<String> {
+    string_list_data_from_module_source(
+        CLASS_B_OVERLAY_REL,
+        content,
+        CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME,
+        false,
+    )
+}
+
+/// The Class B rows 1–2 declared-import pool roots, read live from the single `.dag` authority.
+pub(crate) fn class_b_declared_import_pool_roots() -> Vec<String> {
+    static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
+    ROOTS
+        .get_or_init(|| {
+            class_b_declared_import_pool_roots_from_source(class_b_overlay_authority_content())
+        })
+        .clone()
+}
+
+fn class_b_pool_source_roots(workspace: &Path, pool_roots: &[String]) -> Vec<PathBuf> {
+    pool_roots.iter().map(|rel| workspace.join(rel)).collect()
+}
+
+fn import_closure_dag_files(
+    workspace: &Path,
+    source_roots: &[PathBuf],
+    seed_entries: &[&str],
+) -> Result<HashSet<String>, String> {
+    let index = selection_control_module_index(source_roots)?;
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut queue: Vec<String> = Vec::new();
+    for rel in seed_entries {
+        let path = workspace.join(rel);
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("read declared Class B gate entry {rel}: {e}"))?;
+        seen.insert(normalize_repo_path(rel));
+        queue.push(content);
+    }
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            let Some(candidates) = index.get(&module_path) else {
+                continue;
+            };
+            for path in candidates {
+                let rel = normalize_repo_path(&regen_workspace_relpath(path, workspace));
+                if !seen.insert(rel) {
+                    continue;
+                }
+                let file_content = std::fs::read_to_string(path)
+                    .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
+                queue.push(file_content);
+            }
+        }
+    }
+    Ok(seen)
+}
+
+fn collect_repo_files_under_prefix(
+    workspace: &Path,
+    prefix: &str,
+    seen: &mut HashSet<String>,
+) -> Result<(), String> {
+    let root = workspace.join(prefix);
+    if !root.exists() {
+        return Err(format!("Class B fixture prefix does not exist: {prefix}"));
+    }
+    fn walk(dir: &Path, workspace: &Path, seen: &mut HashSet<String>) -> Result<(), String> {
+        for entry in
+            std::fs::read_dir(dir).map_err(|e| format!("read_dir {}: {e}", dir.display()))?
+        {
+            let entry = entry.map_err(|e| format!("read_dir entry: {e}"))?;
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, workspace, seen)?;
+            } else if path.is_file() {
+                seen.insert(normalize_repo_path(&regen_workspace_relpath(
+                    &path, workspace,
+                )));
+            }
+        }
+        Ok(())
+    }
+    walk(&root, workspace, seen)
+}
+
+/// Every workspace-relative path whose content can change `run_class_b_import_closure_gate`'s
+/// verdict: witness-layer import closure of the gate transport modules (rows 3–4 wide pool),
+/// declared-import-pool closure of the subject entry (rows 1–2 minimal pool), perturbation
+/// fixtures, sorted.
+///
+/// 🟡 dissolve-on (two triggers, near then terminal):
+///
+/// NEAR — the import walk here duplicates the shape of `selection_control_input_sources` and
+/// `regen_input_sources`. They are NOT unified yet because regen's closure is guarded by a
+/// byte-identical oracle (`regen_stage0 --verify`) that this change is not in a position to
+/// re-verify, and the three differ in duplicate policy (refuse vs. superset) and entry
+/// selection (whole-root walk vs. declared list). DISSOLVES WHEN the walk is lifted to one
+/// parameterized helper (duplicate policy + entry source as arguments) and regen's byte oracle
+/// re-greens on it.
+///
+/// TERMINAL — owning lane: `docs/plans/affected-set-precompute-pruning.md`, whose **Step 5
+/// "delete Rust parallel"** (NOT STARTED, gated on Step 4) is what retires host-side selection
+/// Rust in favour of the `.dag` authority. This fn and
+/// `class_b_import_closure_gate_skip_label_for_ci` are new members of exactly that Rust-parallel
+/// set — a path/import-closure skip decision living in the seed rather than in `.dag` — so they
+/// inherit Step 5's terminal condition. They are ENUMERATED on that roster as an explicit
+/// deferral (the "Step 5 roster — CI skip-decision surfaces" row, extended by PR #7835), which
+/// is what makes this a declared, countable seed-retained surface rather than a silent escape
+/// hatch (DESIGN §7). Why deferred rather than modeled now: the decision must run BEFORE the
+/// floor resolves anything — that is its entire purpose — so a `.dag` consumer would pay the
+/// ~100s cold whole-pool resolve the skip exists to avoid; it therefore dissolves with the
+/// persistent content-keyed node store, not on its own schedule. Declared pool roots are NOT
+/// forked here: they are projected live from
+/// `gunbc.class_b_import_closure_overlay.class_b_declared_import_pool_roots` (same authority the
+/// transport and witnesses read).
+///
+/// Receipt bar, per DESIGN §5: this is a scaffold because the decision is *checkable* by
+/// execution — skip/run label arms (structural + 2 refusal), discriminating in both directions,
+/// plus bin unit tests and a live authority identity join for the declared pool roots.
+pub fn class_b_import_closure_input_sources(workspace: &Path) -> Result<Vec<String>, String> {
+    let witness_roots = class_b_pool_source_roots(workspace, &witness_layer_roots());
+    let pool_roots = class_b_pool_source_roots(workspace, &class_b_declared_import_pool_roots());
+    let mut seen = import_closure_dag_files(workspace, &witness_roots, CLASS_B_GATE_INPUT_ENTRIES)?;
+    seen.extend(import_closure_dag_files(
+        workspace,
+        &pool_roots,
+        &[CLASS_B_ENTRY_REL],
+    )?);
+    collect_repo_files_under_prefix(workspace, CLASS_B_FIXTURES_PREFIX, &mut seen)?;
+    let mut result: Vec<String> = seen.into_iter().collect();
+    result.sort();
+    Ok(result)
+}
+
+fn class_b_path_affects_gate(changed: &str, dag_closure: &HashSet<String>) -> bool {
+    let p = normalize_repo_path(changed);
+    if p.starts_with("src/v1/") {
+        return true;
+    }
+    if p.starts_with("fixtures/class_b_import_closure/") || p == "fixtures/class_b_import_closure" {
+        return true;
+    }
+    if p == "Cargo.lock"
+        || p == "Cargo.toml"
+        || p.ends_with("/Cargo.toml")
+        || p == "rust-toolchain.toml"
+        || p == "rust-toolchain"
+        || p == ".cargo/config.toml"
+        || p == ".cargo/config"
+    {
+        return true;
+    }
+    dag_closure.contains(&p)
+}
+
+/// CI skip label for the Class B gate inside `source_root_ingest_gate_passes`.
+pub fn class_b_import_closure_gate_skip_label_for_ci() -> String {
+    if std::env::var("GITHUB_EVENT_NAME").ok().as_deref() != Some("pull_request") {
+        eprintln!("class B gate skip: not pull_request — run gate (cold control)");
+        return RUN_CLASS_B_GATE_LABEL.to_string();
+    }
+    let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
+        Ok(v) => v,
+        Err(msg) => {
+            eprintln!(
+                "[{RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL}] class B gate skip: diff observation failed ({msg}) — run gate"
+            );
+            return RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL.to_string();
+        }
+    };
+    if changed_paths.is_empty() {
+        eprintln!("class B gate skip: empty diff — run gate (fail-closed cold control)");
+        return RUN_CLASS_B_GATE_LABEL.to_string();
+    }
+    if let Some(gone) = departed_paths.iter().find(|p| {
+        let n = normalize_repo_path(p);
+        !n.starts_with("docs/")
+    }) {
+        eprintln!(
+            "class B gate skip: departed non-docs path in diff ({}) — run gate (current-tree closure cannot see deletions)",
+            normalize_repo_path(gone)
+        );
+        return RUN_CLASS_B_GATE_LABEL.to_string();
+    }
+    let workspace = workspace_root();
+    let dag_closure: HashSet<String> = match class_b_import_closure_input_sources(&workspace) {
+        Ok(sources) => sources.into_iter().collect(),
+        Err(msg) => {
+            eprintln!(
+                "[{RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL}] class B gate skip: input-closure computation failed ({msg}) — run gate"
+            );
+            return RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL.to_string();
+        }
+    };
+    match changed_paths
+        .iter()
+        .find(|p| class_b_path_affects_gate(p, &dag_closure))
+    {
+        Some(example) => {
+            eprintln!(
+                "class B gate skip: diff intersects Class B gate inputs (e.g. {}) — run gate",
+                normalize_repo_path(example)
+            );
+            RUN_CLASS_B_GATE_LABEL.to_string()
+        }
+        None => {
+            eprintln!(
+                "class B gate skip: {} changed path(s), none intersect the Class B gate input closure (declared-import pool ∪ witness layer ∪ fixtures ∪ src/v1/** ∪ Cargo/toolchain) — gate verdict provably unchanged (push-to-main runs gate unconditionally as cold control)",
+                changed_paths.len()
+            );
+            CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL.to_string()
+        }
+    }
+}
+
+/// Builtin backing `class_b_import_closure_gate_not_affected_skip` in the transport gate.
+pub fn class_b_import_closure_gate_not_affected_skip_for_ci() -> bool {
+    class_b_import_closure_gate_skip_label_for_ci() == CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL
 }
 
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
@@ -6195,6 +6568,140 @@ pub fn load_sources_for_entry_with_pool_index(
     // fresh build (process_shared_index only builds strict).
     let index = process_shared_index(source_roots);
     load_sources_for_entry_with_pool(&index, entry_path)
+}
+
+/// Import-edge closure ONLY — no reference-derived or bare-reference extension.
+/// Host twin for witnesses proving a module's cross-module bindings come from
+/// declared `import` edges, not pool membership or bare-reference coincidence
+/// (Class B controls per DESIGN import-strip witness-discovery cascade).
+#[cfg(feature = "test_hooks")]
+pub fn declared_import_closure_live_paths(
+    source_roots: &[String],
+    entry_path: &str,
+) -> Result<Vec<String>, String> {
+    let index = build_multi_entry_index_primary_precedence(source_roots);
+    let entry_rel = workspace_relative_entry_path(entry_path);
+    if !index.module_graph_facts.declares_repo_path(&entry_rel) {
+        return Err(format!(
+            "declared_import_closure_live_paths: entry '{entry_rel}' has no provenance in the module-graph facts pool (fail-closed)"
+        ));
+    }
+    Ok(import_closure_live_paths_with_facts(
+        &entry_rel,
+        &index.module_graph_facts,
+    ))
+}
+
+/// Whether `module_path` is indexed under primary-precedence `pool_roots`.
+#[cfg(feature = "test_hooks")]
+pub fn primary_precedence_pool_contains_module(pool_roots: &[String], module_path: &str) -> bool {
+    let index = build_multi_entry_index_primary_precedence(pool_roots);
+    index.source_files.contains_key(module_path)
+}
+
+/// Repo-relative paths of modules loaded for the entry's declared import closure.
+#[cfg(feature = "test_hooks")]
+pub fn declared_import_closure_source_paths(
+    pool_roots: &[String],
+    entry_path: &str,
+) -> Result<Vec<String>, String> {
+    let index = build_multi_entry_index_primary_precedence(pool_roots);
+    let sources = load_declared_import_closure_sources(&index, entry_path)?;
+    Ok(sources
+        .iter()
+        .map(|s| workspace_relative_repo_path(&s.path))
+        .collect())
+}
+
+fn load_declared_import_closure_sources(
+    index: &MultiEntryIndex,
+    entry_path: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let entry_source = entry_source_from_index_or_disk(&index.source_files, entry_path)?;
+    let rel_path = entry_source.path.clone();
+    let mut sources = resolve_transitively(
+        vec![entry_source.clone()],
+        &index.source_files,
+        &index.module_graph_facts,
+    )?;
+    if !sources
+        .iter()
+        .any(|s| s.path == rel_path || same_canonical_file(&s.path, &rel_path))
+    {
+        sources.push(entry_source);
+    }
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    sources.dedup_by(|a, b| a.path == b.path);
+    Ok(sources)
+}
+
+/// Resolve/typecheck an entry using ONLY its declared import-edge closure.
+#[cfg(feature = "test_hooks")]
+pub fn compile_entry_on_declared_import_closure_only(
+    source_roots: &[String],
+    entry_path: &str,
+) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
+    compile_declared_import_closure_only_with_pool(source_roots, entry_path, None)
+}
+
+/// Pool-scoped variant: builds the module index from `pool_roots` but compiles only
+/// the entry's declared import-edge closure. Use a tmp-root overlay (primary-precedence
+/// root[0]) when simulating a stripped entry so pool membership can affect resolution
+/// while the import closure stays entry-only; `entry_content_override` skips the pool
+/// entirely and is only for fast isolated negative controls without ambient pressure.
+pub fn compile_declared_import_closure_only_with_pool(
+    pool_roots: &[String],
+    entry_path: &str,
+    entry_content_override: Option<&str>,
+) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
+    let index = build_multi_entry_index_primary_precedence(pool_roots);
+    let sources = if let Some(content) = entry_content_override {
+        vec![Rc::new(v1_compiler_compile::SourceFile {
+            path: entry_path.to_string(),
+            content: content.to_string(),
+        })]
+    } else {
+        load_declared_import_closure_sources(&index, entry_path)?
+    };
+    Ok(v1_compiler_compile::compile_to_resolved(Rc::new(
+        sources.into(),
+    )))
+}
+
+/// Declaration identity + binding-source receipt for one cross-module symbol site.
+#[cfg(feature = "test_hooks")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrossModuleBindingReceipt {
+    pub definer_module: Option<String>,
+    pub binding_source: Option<UnlistedImportBindingSource>,
+}
+
+/// Extract per-symbol binding receipts for a consumer module against a resolved graph.
+#[cfg(feature = "test_hooks")]
+pub fn cross_module_binding_receipts_for_symbols(
+    graph: &ResolvedGraph,
+    consumer_module: &str,
+    symbols: &[&str],
+) -> std::collections::BTreeMap<String, CrossModuleBindingReceipt> {
+    use std::collections::BTreeMap;
+    symbols
+        .iter()
+        .map(|sym| {
+            let definer = definer_module_for_name(graph, sym);
+            let binding_source = if definer.is_some() {
+                Some(classify_unlisted_import_binding_source(graph, consumer_module, sym).0)
+            } else {
+                None
+            };
+            (
+                (*sym).to_string(),
+                CrossModuleBindingReceipt {
+                    definer_module: definer,
+                    binding_source,
+                },
+            )
+        })
+        .collect::<BTreeMap<_, _>>()
 }
 
 /// Builtins that REQUIRE a service registration to dispatch, paired with the
@@ -17290,51 +17797,243 @@ pub fn collect_stale_frozen_path_deferrals() -> Vec<(String, String, &'static st
 /// states. The one non-refusing arm is the base ref resolving while the roster file is ABSENT from
 /// it — that is the change introducing the freeze, where "may only shrink" has nothing to shrink
 /// from; it is decidable, it is reachable exactly once, and every later PR sees the file at base.
+///
+/// WHAT THIS GATE CONSUMES, and the two forks it took to get here. `gunbc.diff_baseline` is the
+/// single authority for what a run compares against — it exists as "the de-fork of the origin/main
+/// policy-as-literal". This gate originally hardcoded `origin/main`, which is that fork at the
+/// SOURCE. The first repair deleted the literal but then imposed `merge-base(base, HEAD)` on every
+/// arm, which is the same fork one member over — at the RELATION. Both are the same underlying
+/// defect: consuming an untyped baseline STRING where the authority resolves a comparison WINDOW.
+/// So the carrier that crosses the seam is `FloorDiffComparisonReadout`: resolved base, resolved
+/// head, and the relation between them, with the mode as the discriminator so no consumer can pick
+/// a relation for itself.
 pub fn collect_frozen_path_deferral_additions() -> Result<Vec<String>, String> {
-    let base = std::env::var("GUNBC_CI_DIFF_BASE").unwrap_or_else(|_| "origin/main".to_string());
-    collect_frozen_path_deferral_additions_against(&base)
+    let comparison = floor_diff_comparison_readout().map_err(|reason| {
+        format!(
+            "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnresolved — the frozen path-deferral \
+             roster is a monotone debt contract and gunbc.diff_baseline could not resolve the \
+             comparison window this run is taken over, so growth cannot be ruled out. \
+             Could-not-resolve and permits-this are different states and this arm refuses rather \
+             than conflating them (it does NOT fall back to a constant ref — that fork is what \
+             this gate was repaired to delete). Resolver reason: {reason}"
+        )
+    })?;
+    collect_frozen_path_deferral_additions_for(&workspace_root(), &comparison)
 }
 
-/// The same gate against an explicit baseline — the grain the controls execute, so proving the
-/// git read path needs no environment mutation and no cross-test lock.
-pub fn collect_frozen_path_deferral_additions_against(base: &str) -> Result<Vec<String>, String> {
-    let root = workspace_root();
+/// THE COMPARISON WINDOW, as the seed sees it. Mirrors `FloorDiffComparisonReadout` arm for arm;
+/// the mode is a variant rather than a flag because it selects which commit the base side is read
+/// at, and a bool would let a caller forget to ask.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FreezeBaselineComparison {
+    /// Two-dot: the endpoints are compared directly. `PushBefore` and `ExactReplayBoundary` are
+    /// this, and for them the base is EXACT — imposing a merge base here is what passes real
+    /// growth on a rewritten push.
+    Direct {
+        base: String,
+        head: String,
+        kind: String,
+    },
+    /// Three-dot: the comparison is against the point the head departed the base from, so a base
+    /// that moves after the subject is fixed does not change the verdict.
+    MergeBase {
+        base: String,
+        head: String,
+        kind: String,
+    },
+}
+
+impl FreezeBaselineComparison {
+    fn base(&self) -> &str {
+        match self {
+            Self::Direct { base, .. } | Self::MergeBase { base, .. } => base,
+        }
+    }
+
+    fn head(&self) -> &str {
+        match self {
+            Self::Direct { head, .. } | Self::MergeBase { head, .. } => head,
+        }
+    }
+
+    fn kind(&self) -> &str {
+        match self {
+            Self::Direct { kind, .. } | Self::MergeBase { kind, .. } => kind,
+        }
+    }
+}
+
+/// The gate against an explicit repository root and an explicit comparison — the grain the controls
+/// execute, so every arm can be proven against a hermetic git history instead of being asserted
+/// about the live tree, whose history no test may author.
+pub fn collect_frozen_path_deferral_additions_for(
+    root: &std::path::Path,
+    comparison: &FreezeBaselineComparison,
+) -> Result<Vec<String>, String> {
     let run = |args: &[&str]| -> Result<std::process::Output, String> {
         std::process::Command::new("git")
             .args(args)
-            .current_dir(&root)
+            .current_dir(root)
             .output()
             .map_err(|e| format!("git {args:?}: {e}"))
     };
-    let commit = format!("{base}^{{commit}}");
-    let resolved = run(&["rev-parse", "--verify", "--quiet", &commit])?;
-    if !resolved.status.success() {
-        return Err(format!(
-            "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnobservable base={base} — the frozen \
-             path-deferral roster is a monotone debt contract and its baseline could not be read, \
-             so growth cannot be ruled out. Could-not-read and permits-this are different states \
-             and this arm refuses rather than conflating them. Fetch the base ref (git fetch \
-             origin main) or set GUNBC_CI_DIFF_BASE to a resolvable rev."
-        ));
+    let located = |msg: String| -> String {
+        format!(
+            "{msg} (comparison base={} head={} kind={} mode={})",
+            comparison.base(),
+            comparison.head(),
+            comparison.kind(),
+            match comparison {
+                FreezeBaselineComparison::Direct { .. } => "two-dot",
+                FreezeBaselineComparison::MergeBase { .. } => "merge-base",
+            }
+        )
+    };
+    let base = comparison.base();
+    let resolve = |rev: &str, role: &str| -> Result<String, String> {
+        let out = run(&[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("{rev}^{{commit}}"),
+        ])?;
+        if !out.status.success() {
+            return Err(located(format!(
+                "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnobservable {role}={rev} — the \
+                 frozen path-deferral roster is a monotone debt contract and one endpoint of its \
+                 comparison could not be read, so growth cannot be ruled out. Could-not-read and \
+                 permits-this are different states and this arm refuses rather than conflating \
+                 them. Fetch the ref, or set GUNBC_CI_DIFF_BASE to a resolvable rev."
+            )));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    };
+    let base_commit = resolve(base, "base")?;
+    let head_commit = resolve(comparison.head(), "head")?;
+
+    // THE BASELINE COMMIT, and the whole content of the relation half: two-dot compares the exact
+    // base, merge-base compares the departure point. Choosing one for both is a fork of the
+    // authority's own decision, and the direction it fails matters — imposing merge-base on a
+    // two-dot arm passes growth (a fail-open), so this match may never grow a default.
+    let baseline_commit = match comparison {
+        FreezeBaselineComparison::Direct { .. } => base_commit,
+        FreezeBaselineComparison::MergeBase { .. } => {
+            let merge_base = run(&["merge-base", &base_commit, &head_commit])?;
+            if !merge_base.status.success() {
+                return Err(located(format!(
+                    "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnrelatedHistory base={base} — \
+                     this comparison is merge-base mode, so the roster is monotone against the \
+                     commit the head DEPARTED from, and git merge-base found no common ancestor. \
+                     No-common-ancestor and permits-this are different states and this arm refuses \
+                     rather than conflating them. (Under two-dot mode the same history is directly \
+                     comparable and does NOT reach here.)"
+                )));
+            }
+            let fork_point = String::from_utf8_lossy(&merge_base.stdout)
+                .trim()
+                .to_string();
+            if fork_point.is_empty() {
+                return Err(located(format!(
+                    "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnrelatedHistory base={base} — \
+                     git merge-base succeeded but named no commit, so the baseline is unobservable \
+                     and growth cannot be ruled out."
+                )));
+            }
+            fork_point
+        }
+    };
+
+    let base_keys = match read_frozen_roster_at_commit(&run, &baseline_commit).map_err(located)? {
+        Some(source) => frozen_path_deferral_keys_from_source(&source),
+        None => {
+            // CONFIRMED absent at a valid commit — not a failed read. This is the change that
+            // introduces the freeze, the one arm with no baseline to shrink from. Counted, never
+            // silent, and unreachable once the roster is on the base branch.
+            eprintln!(
+                "{} [freeze-monotonicity] {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL} is confirmed \
+                 absent at baseline_commit={baseline_commit} (base={base}) — treating this change \
+                 as the freeze point",
+                floor_ts()
+            );
+            return Ok(Vec::new());
+        }
+    };
+
+    // THE CURRENT SIDE IS THE SELECTED HEAD, not an ambient one. Reading the live filesystem keeps
+    // an uncommitted local roster edit in scope (the check must catch a row added but not yet
+    // committed), so the coherence is established rather than assumed: the workspace must BE at the
+    // resolved head. An exact replay whose head is some other commit therefore refuses instead of
+    // silently answering about whatever happens to be checked out.
+    let checkout = run(&["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])?;
+    let checkout_commit = String::from_utf8_lossy(&checkout.stdout).trim().to_string();
+    if !checkout.status.success() || checkout_commit != head_commit {
+        return Err(located(format!(
+            "WITNESS ADMISSION REFUSAL cause=FreezeHeadEndpointMismatch resolved_head={head_commit} \
+             checkout={checkout_commit} — the current side of this comparison is read from the \
+             working tree, and the working tree is not at the head the authority selected, so the \
+             roster it reports is not the roster of the subject under check. Answering about the \
+             checkout anyway would substitute one endpoint for another."
+        )));
     }
-    let spec = format!("{base}:{WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL}");
-    let shown = run(&["show", &spec])?;
-    if !shown.status.success() {
-        // Base resolves, path absent at base: the introducing change. Counted, never silent.
-        eprintln!(
-            "{} [freeze-monotonicity] {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL} is absent at \
-             base={base} — treating this change as the freeze point (the only arm with no \
-             baseline to shrink from; unreachable once the roster is on the base branch)",
-            floor_ts()
-        );
-        return Ok(Vec::new());
-    }
-    let base_keys =
-        frozen_path_deferral_keys_from_source(&String::from_utf8_lossy(&shown.stdout).into_owned());
+    let current_source = std::fs::read_to_string(root.join(WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL))
+        .map_err(|e| {
+            located(format!(
+                "WITNESS ADMISSION REFUSAL cause=FreezeRosterUnreadable — the frozen path-deferral \
+                 roster {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL} could not be read from the \
+                 repository under check, so growth cannot be ruled out: {e}"
+            ))
+        })?;
     Ok(frozen_path_deferral_additions_in(
-        frozen_path_deferral_keys(),
+        &frozen_path_deferral_keys_from_source(&current_source),
         &base_keys,
     ))
+}
+
+/// Read the roster at a commit, distinguishing CONFIRMED ABSENCE from FAILURE TO OBSERVE.
+///
+/// `git show <commit>:<path>` cannot tell those apart — it exits nonzero for a path that is not in
+/// the tree AND for an unreadable object, a broken repository, or an I/O failure — so treating its
+/// nonzero exit as "absent, therefore the introducing change" converts ignorance into permission
+/// and admits the entire current roster. `ls-tree` separates them: the command either succeeds (and
+/// its emptiness is a positive fact about the tree) or it does not (and that is ignorance).
+///
+/// `Ok(None)` therefore means "this commit is valid and does not contain the path". Every other
+/// unhappy path is an `Err`.
+fn read_frozen_roster_at_commit(
+    run: &dyn Fn(&[&str]) -> Result<std::process::Output, String>,
+    commit: &str,
+) -> Result<Option<String>, String> {
+    let listed = run(&[
+        "ls-tree",
+        "-z",
+        commit,
+        "--",
+        WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL,
+    ])?;
+    if !listed.status.success() {
+        return Err(format!(
+            "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnobservable commit={commit} — \
+             `git ls-tree` could not observe whether {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL} \
+             exists at the baseline, so neither its presence nor its absence is established and \
+             growth cannot be ruled out: {}",
+            String::from_utf8_lossy(&listed.stderr).trim()
+        ));
+    }
+    if String::from_utf8_lossy(&listed.stdout).trim().is_empty() {
+        return Ok(None);
+    }
+    let spec = format!("{commit}:{WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL}");
+    let shown = run(&["show", &spec])?;
+    if !shown.status.success() {
+        // ls-tree says the path IS there, so a failed blob read is a real failure, never absence.
+        return Err(format!(
+            "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnobservable commit={commit} — \
+             {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL} is present at the baseline per ls-tree but \
+             its blob could not be read, so the baseline population is unknown: {}",
+            String::from_utf8_lossy(&shown.stderr).trim()
+        ));
+    }
+    Ok(Some(String::from_utf8_lossy(&shown.stdout).into_owned()))
 }
 
 /// The pure fold the gate is built from — the grain the fixture controls plant into.
@@ -18750,6 +19449,92 @@ fn floor_git_diff_range() -> Result<String, String> {
 /// interesting case is precisely a base that names the head commit itself. Failure to
 /// read it is not fatal here — the diagnostic degrades to an unnamed baseline and says
 /// so, rather than suppressing the state.
+/// Read the resolved COMPARISON WINDOW — base, head and relation — from
+/// `v2.workflow.floor_diff_observe` `floor_observe_diff_comparison_readout_for_ci`. A projection of
+/// `resolve_diff_baseline`, never a second derivation.
+///
+/// Distinct from `floor_diff_baseline_readout` beside it, and the distinction is the point: that one
+/// answers "which ref" for a diagnostic, and a DECIDING consumer that takes it has to invent the
+/// missing head and relation. Inventing them is what shipped the merge-base-on-every-arm fail-open,
+/// so the deciding consumers read this one and a `ComparisonReadoutRefused` propagates.
+fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison, String> {
+    use v1_interpreter::Value;
+    let roots = default_source_roots();
+    let entry = "src/v2/workflow/floor_diff_observe.dag";
+    let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
+        .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let result =
+        v1_interpreter::run_in_context(&ctx, "floor_observe_diff_comparison_readout_for_ci", false)
+            .map_err(|e| format!("floor_observe_diff_comparison_readout_for_ci: {e}"))?;
+    let str_field = |fields: &_, name: &str| -> Result<String, String> {
+        match ctx.field(fields, name) {
+            Some(Value::Str(s)) => Ok(s.clone()),
+            _ => Err(format!("comparison readout missing `{name}`")),
+        }
+    };
+    // The baseline KIND is a closed coproduct in `gunbc.diff_baseline`, so an unrecognized arm is an
+    // unmodeled state rather than a formatting question: it refuses instead of rendering a guess.
+    let kind_name = |fields: &_| -> Result<String, String> {
+        match ctx.field(fields, "kind") {
+            Some(Value::Variant { variant_name, .. }) => {
+                for name in [
+                    "MergeTargetBaseline",
+                    "ExactReplayBaseline",
+                    "PushBeforeBaseline",
+                    "PushParentBaseline",
+                    "OperatorOverrideBaseline",
+                ] {
+                    if ctx.sym_eq(*variant_name, name) {
+                        return Ok(name.to_string());
+                    }
+                }
+                Err("comparison readout carries an unmodeled DiffBaselineKind arm".to_string())
+            }
+            _ => Err("comparison readout missing `kind`".to_string()),
+        }
+    };
+    match &result {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "DirectComparison") => {
+            Ok(FreezeBaselineComparison::Direct {
+                base: str_field(fields, "base")?,
+                head: str_field(fields, "head")?,
+                kind: kind_name(fields)?,
+            })
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "MergeBaseComparison") => {
+            Ok(FreezeBaselineComparison::MergeBase {
+                base: str_field(fields, "base")?,
+                head: str_field(fields, "head")?,
+                kind: kind_name(fields)?,
+            })
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "ComparisonReadoutRefused") => {
+            match ctx.field(fields, "reason") {
+                Some(Value::Str(r)) => Err(r.clone()),
+                _ => Err("comparison readout refused (no reason)".to_string()),
+            }
+        }
+        other => Err(format!(
+            "floor_observe_diff_comparison_readout_for_ci returned `{}`, expected \
+             FloorDiffComparisonReadout",
+            ctx.format_value(other)
+        )),
+    }
+}
+
 fn floor_diff_baseline_readout() -> Result<(String, String), String> {
     use v1_interpreter::Value;
     let roots = default_source_roots();
@@ -24225,8 +25010,15 @@ mod node_frontier_plumbing_controls {
     fn frozen_roster_monotonicity_reads_a_real_baseline() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
-        let additions = super::collect_frozen_path_deferral_additions_against("HEAD")
-            .expect("HEAD baseline is readable");
+        let additions = super::collect_frozen_path_deferral_additions_for(
+            &ws,
+            &super::FreezeBaselineComparison::Direct {
+                base: "HEAD".to_string(),
+                head: "HEAD".to_string(),
+                kind: "PushBeforeBaseline".to_string(),
+            },
+        )
+        .expect("HEAD baseline is readable");
         assert!(
             additions.is_empty(),
             "the roster cannot have grown against itself: {additions:?}"
@@ -24351,11 +25143,467 @@ mod node_frontier_plumbing_controls {
     fn frozen_roster_monotonicity_refuses_an_unresolvable_baseline() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
-        let err = super::collect_frozen_path_deferral_additions_against(
-            "refs/heads/no-such-baseline-for-freeze",
+        let err = super::collect_frozen_path_deferral_additions_for(
+            &ws,
+            &super::FreezeBaselineComparison::Direct {
+                base: "refs/heads/no-such-baseline-for-freeze".to_string(),
+                head: "HEAD".to_string(),
+                kind: "PushBeforeBaseline".to_string(),
+            },
         )
         .expect_err("an unresolvable baseline must refuse");
-        assert!(err.contains("FreezeBaselineUnobservable"));
+        assert!(err.contains("FreezeBaselineUnobservable"), "{err}");
+    }
+
+    // ONE HISTORY BUILDER for every comparison-window control below. Each case needs a real git
+    // history — the defects being walled are about WHICH COMMIT gets read, which no pure fixture
+    // can reach — so the shape is authored once and each test plants its own topology into it.
+    struct FreezeRepo {
+        dir: std::path::PathBuf,
+    }
+
+    impl Drop for FreezeRepo {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.dir).ok();
+        }
+    }
+
+    impl FreezeRepo {
+        fn new(tag: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "gunbc-freeze-{tag}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("clock")
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(
+                dir.join(super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL)
+                    .parent()
+                    .expect("roster parent"),
+            )
+            .expect("mkdir fixture");
+            let repo = FreezeRepo { dir };
+            repo.git(&["init", "--quiet", "--initial-branch", "main", "."]);
+            repo.git(&["config", "user.email", "fixture@gunbc.invalid"]);
+            repo.git(&["config", "user.name", "fixture"]);
+            repo
+        }
+
+        fn git(&self, args: &[&str]) -> String {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&self.dir)
+                .output()
+                .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        }
+
+        /// Write the roster carrying exactly these identities. Absent-roster states are modelled by
+        /// deleting the file, never by writing an empty one — the gate distinguishes them.
+        fn write_roster(&self, rows: &[&str]) {
+            let body: String = rows
+                .iter()
+                .map(|r| {
+                    format!(
+                        "  FrozenPathDeferral {{ entry: \"{r}_test.dag\", functions: \
+                         [\"{r}_holds\"] }},\n"
+                    )
+                })
+                .collect();
+            std::fs::write(
+                self.dir.join(super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL),
+                format!(
+                    "module gunbc.witness_deferral_freeze\n\n\
+                     data frozen_path_deferrals: List<FrozenPathDeferral> = [\n{body}]\n"
+                ),
+            )
+            .expect("write roster");
+        }
+
+        fn commit(&self, message: &str) -> String {
+            self.git(&["add", "-A"]);
+            self.git(&["commit", "--quiet", "--allow-empty", "-m", message]);
+            self.git(&["rev-parse", "HEAD"])
+        }
+
+        fn direct(&self, base: &str, head: &str) -> super::FreezeBaselineComparison {
+            super::FreezeBaselineComparison::Direct {
+                base: base.to_string(),
+                head: head.to_string(),
+                kind: "PushBeforeBaseline".to_string(),
+            }
+        }
+
+        fn merge_base(&self, base: &str, head: &str) -> super::FreezeBaselineComparison {
+            super::FreezeBaselineComparison::MergeBase {
+                base: base.to_string(),
+                head: head.to_string(),
+                kind: "MergeTargetBaseline".to_string(),
+            }
+        }
+
+        fn collect(
+            &self,
+            comparison: &super::FreezeBaselineComparison,
+        ) -> Result<Vec<String>, String> {
+            super::collect_frozen_path_deferral_additions_for(&self.dir, comparison)
+        }
+    }
+
+    // CONTROL 1 — ordinary push whose `before` IS an ancestor. Two-dot reads the exact base, so a
+    // row this push adds is caught and an unchanged roster passes. This is the common case and it
+    // must not depend on the base being anywhere in particular relative to head.
+    #[test]
+    fn frozen_roster_direct_push_uses_the_exact_base() {
+        let repo = FreezeRepo::new("direct-ancestor");
+        repo.write_roster(&["inherited"]);
+        let before = repo.commit("push before");
+        repo.write_roster(&["inherited"]);
+        repo.commit("pushed head: roster untouched");
+        assert!(
+            repo.collect(&repo.direct(&before, "HEAD"))
+                .expect("readable")
+                .is_empty(),
+            "an unchanged roster must not read as growth"
+        );
+
+        repo.write_roster(&["inherited", "added_by_this_push"]);
+        repo.commit("pushed head: adds a row");
+        assert_eq!(
+            repo.collect(&repo.direct(&before, "HEAD"))
+                .expect("readable"),
+            vec!["added_by_this_push_test.dag::added_by_this_push_holds".to_string()],
+            "a row this push adds must be caught against the exact before SHA"
+        );
+    }
+
+    // CONTROL 2 — THE BLOCKING FALSE NEGATIVE the first cut of this repair shipped. A rewritten
+    // (non-fast-forward) push: `before` is NOT an ancestor of the pushed head, and the push
+    // REINTRODUCES a frozen row that `before` had removed.
+    //
+    //   A: roster = {X}
+    //   ├── B: push.before, roster = {}
+    //   └── H: pushed head, roster = {X}
+    //
+    // The repository's push-baseline law is `before .. head`, two-dot, and it explicitly holds for
+    // non-ancestor force pushes: the endpoint trees stay directly comparable. So the true answer is
+    // roster(H) - roster(B) = {X} and this must REFUSE. Imposing merge-base computes
+    // roster(H) - roster(A) = {} and passes real growth — a fail-open strictly worse than the
+    // false refusal the repair set out to fix. Both are asserted, so a regression in either
+    // direction is red.
+    #[test]
+    fn frozen_roster_non_fast_forward_push_refuses_reintroduced_row() {
+        let repo = FreezeRepo::new("force-push");
+        repo.write_roster(&["reintroduced"]);
+        let ancestor = repo.commit("A: row present");
+
+        repo.write_roster(&[]);
+        let before = repo.commit("B: push before — row removed");
+
+        repo.git(&["checkout", "--quiet", "-b", "rewritten", &ancestor]);
+        repo.write_roster(&["reintroduced"]);
+        let head = repo.commit("H: rewritten push reintroduces the row");
+
+        assert_eq!(
+            repo.git(&["merge-base", &before, &head]),
+            ancestor,
+            "the fixture must actually be non-fast-forward: before is not an ancestor of head"
+        );
+
+        let additions = repo
+            .collect(&repo.direct(&before, "HEAD"))
+            .expect("readable");
+        assert_eq!(
+            additions,
+            vec!["reintroduced_test.dag::reintroduced_holds".to_string()],
+            "a two-dot push comparison must read the EXACT before SHA; reading the common ancestor \
+             instead passes a genuinely reintroduced frozen row"
+        );
+        super::refuse_frozen_path_deferral_additions(&additions)
+            .expect_err("reintroduced growth must refuse");
+
+        // The merge-base reading of the same history is the fail-open, asserted so the contrast is
+        // executed rather than argued: it reports nothing added.
+        assert!(
+            repo.collect(&repo.merge_base(&before, "HEAD"))
+                .expect("readable")
+                .is_empty(),
+            "this is the state the blanket merge-base rule produced — kept as the executed contrast"
+        );
+    }
+
+    // CONTROL 3 — THE INCIDENT, and the case merge-base mode exists for. gunbc main went red on
+    // 2026-08-06 because the gate read the roster at a MOVING BASE TIP: `177e0725` merged carrying
+    // a row, `82914f2` removed it from main four minutes later, and the floor run — queued behind
+    // ~6h of runner backlog — compared the older commit's unchanged roster against a tip that no
+    // longer had the row, reporting `FrozenPathDeferralGrew` for a change that added nothing.
+    //
+    // Under merge-base mode the moved tip does not change the verdict, and a row the subject
+    // genuinely adds is still caught. Both are asserted.
+    #[test]
+    fn frozen_roster_merge_base_mode_survives_a_moved_base_tip() {
+        let repo = FreezeRepo::new("moved-tip");
+        repo.write_roster(&["inherited", "other"]);
+        let fork_point = repo.commit("fork point: row present");
+
+        repo.git(&["checkout", "--quiet", "-b", "under-check"]);
+        repo.commit("under check: roster untouched");
+
+        repo.git(&["checkout", "--quiet", "main"]);
+        repo.write_roster(&["other"]);
+        let moved_tip = repo.commit("base advances: row removed");
+        repo.git(&["checkout", "--quiet", "under-check"]);
+        assert_ne!(
+            fork_point, moved_tip,
+            "the base tip must actually have moved"
+        );
+
+        assert!(
+            repo.collect(&repo.merge_base(&moved_tip, "HEAD"))
+                .expect("readable")
+                .is_empty(),
+            "a subject that added no freeze row must not refuse because the base tip moved past it"
+        );
+
+        // Reading that same base directly IS the incident, asserted so this fixture keeps modelling
+        // it: the inherited row reads as an addition.
+        assert_eq!(
+            repo.collect(&repo.direct(&moved_tip, "HEAD"))
+                .expect("readable"),
+            vec!["inherited_test.dag::inherited_holds".to_string()],
+            "the fixture must still reproduce the incident under a direct read of the moved tip"
+        );
+
+        repo.write_roster(&["inherited", "other", "genuinely_new"]);
+        repo.commit("under check: adds a row");
+        assert_eq!(
+            repo.collect(&repo.merge_base(&moved_tip, "HEAD"))
+                .expect("readable"),
+            vec!["genuinely_new_test.dag::genuinely_new_holds".to_string()],
+            "merge-base mode must still catch a real addition"
+        );
+    }
+
+    // CONTROL 4 — the same moved-tip topology in the shape a `pull_request` run actually presents:
+    // the checkout is a synthetic merge commit joining the PR head to the base tip, not the raw
+    // branch head. The merge commit descends BOTH parents, so the fork point is the base tip
+    // itself and an inherited row cannot read as an addition.
+    #[test]
+    fn frozen_roster_merge_base_mode_handles_the_pr_merge_commit_topology() {
+        let repo = FreezeRepo::new("pr-merge-commit");
+        repo.write_roster(&["inherited"]);
+        repo.commit("fork point");
+
+        repo.git(&["checkout", "--quiet", "-b", "pr-head"]);
+        repo.commit("pr work");
+
+        repo.git(&["checkout", "--quiet", "main"]);
+        repo.write_roster(&[]);
+        let base_tip = repo.commit("base advances: row removed");
+
+        // GitHub's `github.sha` for a pull_request event is this merge commit, not `pr-head`.
+        repo.git(&["checkout", "--quiet", "-b", "pr-merge", "pr-head"]);
+        repo.git(&["merge", "--quiet", "--no-edit", &base_tip]);
+        let merged = repo.git(&["rev-parse", "HEAD"]);
+        assert_eq!(
+            repo.git(&["merge-base", &base_tip, &merged]),
+            base_tip,
+            "the merge commit must descend the base tip"
+        );
+
+        // The merge resolved the roster to the base tip's version (row removed), so nothing was
+        // added; the subject's own additions are what must still be caught.
+        assert!(
+            repo.collect(&repo.merge_base(&base_tip, "HEAD"))
+                .expect("readable")
+                .is_empty(),
+            "the merge-commit topology must not manufacture an addition"
+        );
+
+        repo.write_roster(&["added_on_the_pr"]);
+        repo.commit("pr adds a frozen row");
+        assert_eq!(
+            repo.collect(&repo.merge_base(&base_tip, "HEAD"))
+                .expect("readable"),
+            vec!["added_on_the_pr_test.dag::added_on_the_pr_holds".to_string()],
+            "a row added on the PR must be caught against the merge-commit topology"
+        );
+    }
+
+    // CONTROL 5/6 — unrelated histories are ignorance under MERGE-BASE mode (no departure point
+    // exists, so refuse) and are perfectly comparable under DIRECT mode (two trees, two rosters, a
+    // set difference). One history, both modes, opposite verdicts — which is the whole content of
+    // "the rule is per comparison mode, not universal".
+    #[test]
+    fn frozen_roster_unrelated_history_refuses_only_under_merge_base_mode() {
+        let repo = FreezeRepo::new("unrelated");
+        // `main` must carry a commit before an orphan branch is cut, or there is no branch to
+        // return to — a fresh repository has no `main` until something lands on it.
+        repo.write_roster(&["only_on_main"]);
+        repo.commit("main root");
+
+        repo.git(&["checkout", "--quiet", "--orphan", "orphan"]);
+        repo.write_roster(&["only_on_the_orphan"]);
+        let orphan_root = repo.commit("orphan root");
+        repo.git(&["checkout", "--quiet", "main"]);
+        assert!(
+            std::process::Command::new("git")
+                .args(["merge-base", &orphan_root, "HEAD"])
+                .current_dir(&repo.dir)
+                .output()
+                .expect("git merge-base")
+                .stdout
+                .is_empty(),
+            "the fixture must actually be two unrelated histories"
+        );
+
+        let err = repo
+            .collect(&repo.merge_base(&orphan_root, "HEAD"))
+            .expect_err("merge-base mode has no departure point here and must refuse");
+        assert!(err.contains("FreezeBaselineUnrelatedHistory"), "{err}");
+
+        let additions = repo
+            .collect(&repo.direct(&orphan_root, "HEAD"))
+            .expect("direct mode compares the endpoint trees and needs no common ancestor");
+        assert_eq!(
+            additions,
+            vec!["only_on_main_test.dag::only_on_main_holds".to_string()],
+            "direct mode must compare the exact endpoints rather than refusing"
+        );
+    }
+
+    // CONTROL 7 — the freeze-introduction arm. CONFIRMED absence of the roster at a valid commit is
+    // the one permitting arm, because a change that introduces the freeze has nothing to shrink
+    // from. Paired with control 7b below, which holds the permitting arm fixed and moves only the
+    // reason the roster could not be read.
+    #[test]
+    fn frozen_roster_confirmed_absence_is_the_freeze_introduction_arm() {
+        let repo = FreezeRepo::new("introduction");
+        std::fs::write(repo.dir.join("unrelated.txt"), "no roster yet\n").expect("write");
+        let before_the_freeze = repo.commit("a commit with no roster at all");
+
+        repo.write_roster(&["first_frozen_row"]);
+        repo.commit("the change that introduces the freeze");
+
+        assert!(
+            repo.collect(&repo.direct(&before_the_freeze, "HEAD"))
+                .expect("confirmed absence is readable")
+                .is_empty(),
+            "the introducing change has no baseline to shrink from and must pass"
+        );
+
+        // A baseline that does not resolve at all is ignorance, not the introducing change. This
+        // arm is caught by the endpoint resolve, one guard earlier than the roster read — stated
+        // so the two are not confused for each other.
+        let err = repo
+            .collect(&repo.direct("0000000000000000000000000000000000000000", "HEAD"))
+            .expect_err("an unresolvable baseline must refuse, never read as absence");
+        assert!(err.contains("FreezeBaselineUnobservable"), "{err}");
+    }
+
+    // CONTROL 7b — THE ABSENCE/IGNORANCE SPLIT, at the only grain that actually discriminates it.
+    //
+    // This control exists because its first version did not. That version asked the question with
+    // an all-zero SHA, which `rev-parse` rejects one guard earlier, so it proved the endpoint
+    // resolve while its name claimed it proved the roster read: reverting the `ls-tree` split left
+    // it GREEN. A control whose name outruns its evidence is the same defect as a status row
+    // claiming a rung it does not occupy, and the sweep that reverts each wall in turn is what
+    // caught it.
+    //
+    // The discriminating state is a commit that RESOLVES, whose tree LISTS the roster, and whose
+    // blob cannot be read. `git show` exits nonzero there — identically to a path that is genuinely
+    // absent — so deciding absence from that exit code permits, and permitting means admitting the
+    // ENTIRE current roster on an unreadable repository. `ls-tree` separates them: it answers about
+    // the tree, so its success plus an empty result is a positive fact, and a failed blob read
+    // afterwards is unambiguously a failure rather than an absence.
+    #[test]
+    fn frozen_roster_unreadable_baseline_blob_refuses_instead_of_reading_as_absence() {
+        let repo = FreezeRepo::new("unreadable-blob");
+        repo.write_roster(&["already_frozen"]);
+        let baseline = repo.commit("baseline carrying the roster");
+        repo.write_roster(&["already_frozen", "added_here"]);
+        repo.commit("head adds a row");
+
+        // Destroy only the baseline's roster BLOB. The commit and tree objects survive, so the
+        // repository still resolves the endpoint and still lists the path.
+        let blob = repo.git(&[
+            "rev-parse",
+            &format!(
+                "{baseline}:{}",
+                super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL
+            ),
+        ]);
+        let object = repo
+            .dir
+            .join(".git/objects")
+            .join(&blob[..2])
+            .join(&blob[2..]);
+        std::fs::remove_file(&object).expect("remove the baseline roster blob");
+
+        // The fixture must actually reach the wall: endpoint resolves, tree lists the path, blob
+        // read fails. Asserted, so this cannot quietly degrade into testing an earlier guard the
+        // way its predecessor did.
+        assert!(
+            std::process::Command::new("git")
+                .args([
+                    "ls-tree",
+                    "-z",
+                    &baseline,
+                    "--",
+                    super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL
+                ])
+                .current_dir(&repo.dir)
+                .output()
+                .expect("git ls-tree")
+                .status
+                .success(),
+            "the fixture must still LIST the path at the baseline"
+        );
+        assert!(
+            !std::process::Command::new("git")
+                .args([
+                    "show",
+                    &format!(
+                        "{baseline}:{}",
+                        super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL
+                    )
+                ])
+                .current_dir(&repo.dir)
+                .output()
+                .expect("git show")
+                .status
+                .success(),
+            "the fixture must make the blob unreadable, else this control proves nothing"
+        );
+
+        let err = repo
+            .collect(&repo.direct(&baseline, "HEAD"))
+            .expect_err("an unreadable baseline roster is ignorance and must refuse");
+        assert!(err.contains("FreezeBaselineUnobservable"), "{err}");
+    }
+
+    // The current side is the SELECTED head, not whatever is checked out. An exact replay whose
+    // head is a different commit cannot be answered from this working tree, so it refuses rather
+    // than silently substituting one endpoint for another.
+    #[test]
+    fn frozen_roster_refuses_when_the_checkout_is_not_the_selected_head() {
+        let repo = FreezeRepo::new("endpoint-mismatch");
+        repo.write_roster(&["row"]);
+        let first = repo.commit("first");
+        repo.write_roster(&["row"]);
+        repo.commit("second — the checkout");
+
+        let err = repo
+            .collect(&repo.direct(&first, &first))
+            .expect_err("a head that is not the checkout must refuse");
+        assert!(err.contains("FreezeHeadEndpointMismatch"), "{err}");
     }
 
     #[test]
@@ -34253,6 +35501,34 @@ mod witness_layer_roots_compile_clean_tests {
 
     static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
 
+    // THE PUBLIC ENTRY POINT, which every planted-history control deliberately bypasses in order
+    // to reach a topology it authored. This one enters through
+    // `collect_frozen_path_deferral_additions()` so the modeled seam — resolve
+    // `floor_observe_diff_comparison_readout_for_ci`, project base/head/mode/kind, cross into the
+    // seed — is proven to execute end to end, which is the half no fixture can establish. It lives
+    // in this module because it mutates the environment the resolver reads, and this is where that
+    // mutation is serialized against other tests.
+    //
+    // `GUNBC_CI_DIFF_BASE` selects the OperatorOverride arm whatever the ambient CI event is, so the
+    // control is deterministic on a runner and on a laptop alike; pointed at HEAD, the live roster
+    // is compared against itself and cannot have grown.
+    #[test]
+    fn frozen_roster_public_entry_resolves_the_modeled_comparison() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _base = EnvGuard::set("GUNBC_CI_DIFF_BASE", "HEAD");
+                let _window = EnvGuard::remove("GUNBC_DIFF_WINDOW_PATH");
+                let additions = crate::cli_run::collect_frozen_path_deferral_additions()
+                    .expect("the modeled comparison readout must resolve and the gate must run");
+                assert!(
+                    additions.is_empty(),
+                    "the live roster cannot have grown against itself through the public entry: \
+                     {additions:?}"
+                );
+            });
+        });
+    }
+
     fn with_env_test_lock<F: FnOnce()>(f: F) {
         let _guard = ENV_TEST_LOCK
             .lock()
@@ -34654,6 +35930,269 @@ mod witness_layer_roots_compile_clean_tests {
                     REGEN_NOT_AFFECTED_SKIP_LABEL
                 );
             });
+        });
+    }
+
+    /// Class B gate skip: unrelated path outside the gate input closure skips on pull_request.
+    #[test]
+    fn class_b_gate_skip_skips_on_unrelated_path() {
+        const UNRELATED: &str = "src/v2/lens/machine_shape.dag";
+        let closure = class_b_import_closure_input_sources(&workspace_root())
+            .expect("Class B gate closure must compute");
+        assert!(
+            !closure.iter().any(|p| p == UNRELATED),
+            "{UNRELATED} entered the Class B gate input closure — choose a new skip subject"
+        );
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    &format!("M\\000{UNRELATED}\\000"),
+                );
+                assert_eq!(
+                    class_b_import_closure_gate_skip_label_for_ci(),
+                    CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL
+                );
+            });
+        });
+    }
+
+    /// Class B gate skip: touching the subject entry runs the gate.
+    #[test]
+    fn class_b_gate_skip_runs_on_subject_entry() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    &format!("M\\000{CLASS_B_ENTRY_REL}\\000"),
+                );
+                assert_eq!(
+                    class_b_import_closure_gate_skip_label_for_ci(),
+                    RUN_CLASS_B_GATE_LABEL
+                );
+            });
+        });
+    }
+
+    /// Class B gate skip: departed non-docs path runs the gate.
+    #[test]
+    fn class_b_gate_skip_runs_on_departed_dag_path() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "D\\000src/v2/lens/machine_shape.dag\\000",
+                );
+                assert_eq!(
+                    class_b_import_closure_gate_skip_label_for_ci(),
+                    RUN_CLASS_B_GATE_LABEL
+                );
+            });
+        });
+    }
+
+    /// Class B gate skip: non-pull_request always runs (cold control).
+    #[test]
+    fn class_b_gate_skip_runs_on_push_event() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "push");
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "M\\000src/v2/lens/machine_shape.dag\\000",
+                );
+                assert_eq!(
+                    class_b_import_closure_gate_skip_label_for_ci(),
+                    RUN_CLASS_B_GATE_LABEL
+                );
+            });
+        });
+    }
+
+    /// Failure arm — diff observation failed still RUNs the gate (regen shape), but carries a
+    /// grep-countable label distinct from structural `run_class_b_gate` so routine observation
+    /// failures are observable in job logs without widening to skip.
+    #[test]
+    fn class_b_gate_skip_runs_with_countable_label_when_diff_observation_fails() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
+                let _ns =
+                    EnvGuard::set("GUNBC_CI_DIFF_NAME_STATUS", "Z\\000src/v1/whatever.rs\\000");
+                assert_eq!(
+                    class_b_import_closure_gate_skip_label_for_ci(),
+                    RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL
+                );
+                assert!(
+                    !class_b_import_closure_gate_not_affected_skip_for_ci(),
+                    "a failure arm must still run the gate, never skip"
+                );
+            });
+        });
+    }
+
+    /// The two failure run labels must stay distinguishable from each other and from the
+    /// structural run / skip labels so each deficit is separately countable in job logs.
+    #[test]
+    fn class_b_gate_skip_labels_are_distinct_and_countable() {
+        assert_ne!(
+            RUN_CLASS_B_GATE_LABEL,
+            RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL
+        );
+        assert_ne!(
+            RUN_CLASS_B_GATE_LABEL,
+            RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
+        );
+        assert_ne!(
+            RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL,
+            RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
+        );
+        assert_ne!(
+            CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL,
+            RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL
+        );
+        assert_ne!(
+            CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL,
+            RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
+        );
+    }
+
+    #[test]
+    fn class_b_declared_pool_roots_reader_follows_synthetic_authority() {
+        let synthetic = "module gunbc.class_b_import_closure_overlay\n\n\
+             data class_b_declared_import_pool_roots: List<String> = [\"alpha\", \"beta\"]\n";
+        assert_eq!(
+            class_b_declared_import_pool_roots_from_source(synthetic),
+            vec!["alpha".to_string(), "beta".to_string()],
+            "the Class B pool-roots reader must FOLLOW the overlay authority, not a hardcoded copy"
+        );
+    }
+
+    #[test]
+    fn class_b_declared_pool_roots_matches_overlay_authority() {
+        let overlay = std::fs::read_to_string(workspace_root().join(CLASS_B_OVERLAY_REL))
+            .expect("read class_b overlay authority");
+        assert_eq!(
+            class_b_declared_import_pool_roots(),
+            class_b_declared_import_pool_roots_from_source(&overlay),
+            "live memoized pool roots must match the overlay authority on disk (identity join)"
+        );
+    }
+
+    /// P1(b) discriminating control: `graph: None` must NOT read as
+    /// `symbol_resolves: false` with zero blocking diagnostics — that vacuously passes row 3.
+    #[test]
+    fn parse_failure_observation_is_not_runnable_not_seam_refusal() {
+        use crate::v1_compiler_complexity::empty_complexity_report;
+        let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
+            graph: None,
+            diagnostics: Rc::new(im::Vector::new()),
+            source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            complexity: empty_complexity_report(),
+            ownership: Rc::new(im::Vector::new()),
+            newline_indices: Rc::new(im::Vector::new()),
+        });
+        let observation = declared_import_closure_binding_observation_from_resolved(
+            resolved.as_ref(),
+            "v2.extdeps.languages.rust_test",
+            "rust_selection_policy_node",
+        );
+        assert!(
+            matches!(
+                observation,
+                DeclaredImportClosureBindingObservation::NotRunnable(_)
+            ),
+            "graph:None must be NotRunnable, not an observed seam refusal; got {observation:?}"
+        );
+        with_workspace_cwd(|| {
+            let malformed = "module broken.syntax\n@@@ not valid dag\n";
+            let compiled = compile_declared_import_closure_only_with_pool(
+                &class_b_declared_import_pool_roots(),
+                "broken/syntax.dag",
+                Some(malformed),
+            )
+            .expect("content override bypasses pool load");
+            if compiled.graph.is_none() {
+                let live = declared_import_closure_binding_observation_from_resolved(
+                    compiled.as_ref(),
+                    "broken.syntax",
+                    "rust_selection_policy_node",
+                );
+                assert!(
+                    matches!(
+                        live,
+                        DeclaredImportClosureBindingObservation::NotRunnable(_)
+                    ),
+                    "live malformed compile with graph:None must also be NotRunnable; got {live:?}"
+                );
+            } else {
+                panic!(
+                    "malformed source unexpectedly produced a graph — this control no longer proves that a parse failure reaches the graph:None path"
+                );
+            }
+        });
+    }
+
+    /// Producer control: graph-present compile with an unrelated hard diagnostic must refuse
+    /// observation — not populate `blocking_hard_diagnostic_count: 0` on an unresolved symbol.
+    #[test]
+    fn unrelated_hard_diagnostic_observation_is_not_runnable_at_producer() {
+        use crate::v1_std_core::{make_error_node, CompilerDiagnostic};
+        const CONSUMER: &str = "v2.extdeps.languages.rust_test";
+        const SYMBOL: &str = "rust_selection_policy_node";
+        with_workspace_cwd(|| {
+            let valid = "module v2.extdeps.languages.rust_test\n\nimport std.types { Bool }\n\ndata probe: Bool = true\n";
+            let compiled = compile_declared_import_closure_only_with_pool(
+                &class_b_declared_import_pool_roots(),
+                "src/v2/extdeps/languages/rust_test_fixtures.dag",
+                Some(valid),
+            )
+            .expect("content override bypasses pool load");
+            assert!(
+                compiled.graph.is_some(),
+                "valid fixture must produce a graph so this control exercises the hard-diagnostic refusal path"
+            );
+            let mut diagnostics = compiled.diagnostics.iter().cloned().collect::<Vec<_>>();
+            diagnostics.push(make_error_node(
+                Rc::new(CompilerDiagnostic::InternalError {
+                    message: "producer control unrelated hard diagnostic".to_string(),
+                    span: Rc::new(SourceSpan {
+                        file: "src/v2/extdeps/languages/rust_test_fixtures.dag".to_string(),
+                        start: 0,
+                        end: 1,
+                    }),
+                }),
+                CONSUMER.to_string(),
+            ));
+            let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
+                graph: compiled.graph.clone(),
+                diagnostics: Rc::new(diagnostics.into()),
+                source_indices: compiled.source_indices.clone(),
+                complexity: compiled.complexity.clone(),
+                ownership: compiled.ownership.clone(),
+                newline_indices: compiled.newline_indices.clone(),
+            });
+            let observation = declared_import_closure_binding_observation_from_resolved(
+                resolved.as_ref(),
+                CONSUMER,
+                SYMBOL,
+            );
+            assert!(
+                matches!(
+                    observation,
+                    DeclaredImportClosureBindingObservation::NotRunnable(_)
+                ),
+                "unrelated hard diagnostic must refuse observation at producer; got {observation:?}"
+            );
+            if let DeclaredImportClosureBindingObservation::Observed(observed) = observation {
+                assert!(
+                    !observed.symbol_resolves || observed.blocking_hard_diagnostic_count == 0,
+                    "would have vacuously passed row 3: {observed:?}"
+                );
+            }
         });
     }
 
@@ -35840,6 +37379,51 @@ mod module_path_index_tests {
             ws.join(sample).is_file(),
             "indexed rel path must resolve under workspace_root()"
         );
+    }
+
+    #[test]
+    fn build_module_path_index_matches_primary_precedence_module_source_index() {
+        let ws = workspace_root();
+        let tmp = ws.join("target").join(format!(
+            "path-index-prec-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let stub_dir = tmp.join("dag/gunbc");
+        std::fs::create_dir_all(&stub_dir).expect("overlay parents");
+        std::fs::write(
+            stub_dir.join("ci_layer_roots.dag"),
+            "module gunbc.ci_layer_roots\n\ndata overlay_shadow_marker: Int = 0\n",
+        )
+        .expect("write overlay stub");
+
+        let roots = vec![
+            tmp.to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let source_index = super::build_module_index_primary_precedence(&roots);
+        let path_index = build_module_path_index(&roots);
+        let module = "gunbc.ci_layer_roots";
+        let source_path = workspace_relative_repo_path(
+            &source_index
+                .get(module)
+                .expect("primary-precedence source index")
+                .path,
+        );
+        let indexed_path = path_index.get(module).expect("module path index").clone();
+        assert_eq!(
+            indexed_path, source_path,
+            "module-graph facts path index must agree with primary-precedence source index"
+        );
+        assert!(
+            indexed_path.contains("path-index-prec"),
+            "root[0] overlay must win over later dag root for the same module path"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
