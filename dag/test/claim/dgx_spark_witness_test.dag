@@ -64,6 +64,14 @@ import gunbc.dgx_spark_procurement {
   spark_3bd5_reservation,
   observed_dgx_spark_router_reservations,
   DgxSparkRouterBinding,
+  SlotAssigned,
+  SlotUnassigned,
+  router_binding_identity,
+  SlotAllocationDecision,
+  dgx_spark_slot_allocation_decision,
+  dgx_spark_arrival_standing,
+  AllOrderedUnitsObservedOnLan,
+  OrderedUnitsOutstanding,
   admit_dgx_spark_deployment,
   DgxSparkAdmissionOutcome,
   DgxSparkDeploymentAdmitted,
@@ -145,25 +153,53 @@ test fn w_procurement_intent_reserves_two_identities_not_enrolled() -> Bool {
 
 test fn w_reserved_identities_derive_from_the_router_binding_roster() -> Bool {
   count(dgx_spark_router_bindings) == 2
-    && dgx_spark_reserved_identities() == map(dgx_spark_router_bindings, b => b.identity)
-    && srv5_router_binding.identity == operator_host_srv5
-    && srv6_router_binding.identity == operator_host_srv6
+    && dgx_spark_reserved_identities() == map(dgx_spark_router_bindings, b => router_binding_identity(binding: b))
+    && router_binding_identity(binding: srv5_router_binding) == operator_host_srv5
+    && router_binding_identity(binding: srv6_router_binding) == operator_host_srv6
 }
 
-// The live state as of 2026-08-07: both units have ARRIVED and the operator has authored two static reservations on the CR1000A, so those rows are facts and are modeled. What is NOT established is which box takes the srv5 slot and which takes srv6 -- the operator supplied the router table but never stated the assignment, and it may be a free choice rather than a discovered fact. This witness pins exactly that split: the two observed reservations exist with their transcribed MACs and addresses, and NEITHER is yet joined to a fleet subject. It reds in both useful directions -- if someone drops the observed router facts, and if someone guesses the assignment without an operator statement.
-test fn w_router_reservations_are_observed_but_not_yet_assigned_to_a_slot() -> Bool {
+// The live state: both units arrived and each holds a Static, Active CR1000A reservation, and each
+// slot is now ASSIGNED to one of them. This witness pins the assignment as a DECISION rather than a
+// measurement: it asserts the addresses AND that every binding carries an attributable allocation
+// decision, so an assignment authored with no named authority reds here. Basis is ascending address
+// order -- srv5 to the lower reserved address -- an arbitrary tie-break between two identical units,
+// which is exactly why it must be recorded as a choice someone made.
+test fn w_slots_are_assigned_by_an_attributable_allocation_decision() -> Bool {
   count(observed_dgx_spark_router_reservations) == 2
     && spark_a3ee_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222)
     && spark_3bd5_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 223)
+    && match srv5_router_binding {
+      SlotAssigned { identity: _, reservation: r, decision: d } =>
+        r.ipv4_address == spark_a3ee_reservation.ipv4_address
+          && r.mac_address == spark_a3ee_reservation.mac_address
+          && d.decided_on == dgx_spark_slot_allocation_decision.decided_on
+      SlotUnassigned { identity: _ } => false
+    }
+    && match srv6_router_binding {
+      SlotAssigned { identity: _, reservation: r, decision: _ } =>
+        r.ipv4_address == spark_3bd5_reservation.ipv4_address
+          && r.mac_address == spark_3bd5_reservation.mac_address
+      SlotUnassigned { identity: _ } => false
+    }
     && fold(
       dgx_spark_router_bindings,
       init: true,
       f: (acc, b) =>
-        acc && match b.reservation {
-          Absent => true
-          Present { value: _ } => false
+        acc && match b {
+          SlotAssigned { identity: _, reservation: _, decision: d } => d.decided_by != ""
+          SlotUnassigned { identity: _ } => false
         }
     )
+}
+
+// Arrival is DERIVED from the observed reservation rows against the ordered unit count, never
+// stored beside them. The stored-flag version is what let this module claim the units had not
+// arrived while they sat on the LAN: prose cannot be kept in step with facts by discipline alone.
+test fn w_arrival_standing_derives_from_the_observed_reservation_rows() -> Bool {
+  match dgx_spark_arrival_standing() {
+    AllOrderedUnitsObservedOnLan { observed_count: n } => n == 2
+    OrderedUnitsOutstanding { ordered_count: _, observed_count: _ } => false
+  }
 }
 
 fn synthetic_envelope_for(host: NonEmptyStr) -> FleetLifecycleEnvelope {
@@ -182,17 +218,20 @@ fn synthetic_envelope_for(host: NonEmptyStr) -> FleetLifecycleEnvelope {
 
 // A synthetic reservation fixture, carrying the all-zero MAC so it can never be mistaken for an observed router row (the convention gunbc.network_identity_subsumption's post-install fixture uses). Its only job is to make the router-binding wall a proven discriminator: without a bound fixture the positive control could not exist, and a wall no input can pass proves nothing.
 fn synthetic_bound_binding_for(identity_host: NonEmptyStr, last_octet: Int) -> DgxSparkRouterBinding {
-  DgxSparkRouterBinding {
+  SlotAssigned {
     identity: identity_host as HostIdentity,
-    reservation: Present {
-      value: Cr1000aDhcpLeaseRow {
-        mac_address: "00:00:00:00:00:00" as MacAddress,
-        ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: last_octet),
-        lease: StaticDhcpReservation {
-          reservation_label: "synthetic-dgx-spark-fixture" as NonEmptyStr,
-          status: Active,
-        },
-      }
+    reservation: Cr1000aDhcpLeaseRow {
+      mac_address: "00:00:00:00:00:00" as MacAddress,
+      ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: last_octet),
+      lease: StaticDhcpReservation {
+        reservation_label: "synthetic-dgx-spark-fixture" as NonEmptyStr,
+        status: Active,
+      },
+    },
+    decision: SlotAllocationDecision {
+      decided_by: "synthetic fixture",
+      decided_on: "2026-08-07",
+      basis: "fixture allocation, not a real slot decision",
     },
   }
 }
@@ -365,13 +404,13 @@ test fn w_red_admission_of_unreserved_identity_refuses() -> Bool {
   }
 }
 
-// The LIVE srv5 binding, whose reservation is Absent because the slot-to-box assignment has not been stated. Everything else about this call is valid, so this isolates the router-binding requirement as the sole reason for refusal. It flips of its own accord the day the operator states which box serves srv5.
+// An UNASSIGNED binding: everything else about this call is valid, so this isolates the assignment requirement as the sole reason for refusal. Until 2026-08-07 this control used the live srv5 row, which was genuinely unassigned; now that both slots are decided it uses a synthetic unassigned binding, because the wall must stay proven for the next unit that arrives before anyone has decided where it goes -- a wall that only held while a particular row happened to be empty is not a wall.
 test fn w_red_admission_with_pending_router_binding_refuses() -> Bool {
   match admit_dgx_spark_deployment(
     identity: operator_host_srv5,
     catalog: nvidia_dgx_spark_4tb_catalog,
     selection: ObservationUnique { observation: srv5_good_observation() },
-    router_binding: srv5_router_binding,
+    router_binding: SlotUnassigned { identity: operator_host_srv5 },
   ) {
     DgxSparkDeploymentRefused {
       reason: DeploymentAdmissionRouterBindingPending { requested_identity: i }
@@ -546,7 +585,10 @@ test fn w_procurement_converges_when_both_units_are_bound_and_observed() -> Bool
 // Partial arrival is Pending, not converged: one unit bound and observed, the other still unassigned. The discriminator against a converge that folds with an OR.
 test fn w_red_partial_arrival_does_not_converge() -> Bool {
   match converge_dgx_spark_procurement(
-    bindings: [synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222), srv6_router_binding],
+    bindings: [
+      synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
+      SlotUnassigned { identity: operator_host_srv6 },
+    ],
     observations: [
       srv5_good_observation(),
       synthetic_observation(subject_host: "srv6", envelope_host: "srv6", last_octet: 223, attempt_label: "attempt-srv6"),

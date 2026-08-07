@@ -36,7 +36,7 @@ import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 
 // SPARK-0 (2026-08-05). Three deliberately separate fact classes: (1) the vendor catalog (extdeps.systems.nvidia) -- what NVIDIA documents the product to be; (2) operator procurement intent (this module) -- that two units were ordered and that srv5/srv6 are RESERVED identities for them; (3) deployment observation -- physical binding evidence that must never be fabricated. A reserved identity is explicitly NOT enrollment: srv5/srv6 do not appear in gunbc.fleet_intent_network's endpoint list, gunbc.fleet_intent's ComputeHost list, or any phase matrix/compute offer.
 // SPARK-LANE-A (2026-08-06) moved the identities to gunbc.fleet_intent_network, the single authority for a host's fleet identity (§3 -- SPARK-0 forked them privately here only because that file was mid-refactor at the time).
-// SPARK-LANE-A revision (2026-08-07), operator review of #7952. Two identity defects and one staleness, all repaired below. The staleness: BOTH UNITS HAVE ARRIVED and are on the LAN, and the router now carries two static reservations for them -- so the earlier "not yet arrived / no MAC exists / no address chosen" rows were false. Those observed reservations are modeled below as what they are. What is still NOT established is which physical box takes the srv5 slot and which takes srv6: the operator supplied the router table and the hotspot credentials but never assigned the slots, and per the parent lane this may be a FREE CHOICE (an allocation decision to be made and recorded) rather than a discovered fact to be recovered. Either way it requires an operator statement, so the two DgxSparkRouterBinding rows deliberately stay unreserved and admission keeps refusing on them. Binding a fleet subject to the wrong physical box is precisely what this wall exists to prevent, so shipping the wall without the assignment is the correct order, not an omission.
+// SPARK-LANE-A revision (2026-08-07), operator review of #7952. Two identity defects and one staleness, repaired below and in gunbc.fleet_lifecycle_observation. The staleness: BOTH UNITS ARRIVED and hold Static, Active CR1000A reservations, so the earlier "not yet arrived / no MAC exists / no address chosen" rows were false -- and, having been written before the hardware landed, they rotted without anyone touching them. Arrival is therefore DERIVED from the observed reservation rows now (dgx_spark_arrival_standing) rather than asserted in prose that has to be remembered. The slot allocation was then delegated by the operator ("the 5, 6 decision is arbitrary - just make it yourself") and decided on ascending address order; it is recorded as an attributable DECISION, never as an observation, for the reasons set out on DgxSparkSlotAssignment.
 type HardwareProcurementIntent {
   vendor_catalog: IntegratedComputeSystemCatalogRow
   unit_count: Int
@@ -44,7 +44,7 @@ type HardwareProcurementIntent {
   ordered_note: NonEmptyStr
 }
 
-// The two static reservations the operator authored on the CR1000A, transcribed verbatim from the router table they supplied (spark-a3ee 192.168.1.222 4C:BB:47:E8:A3:EE / spark-3bd5 192.168.1.223 4C:BB:47:E8:3B:D5; both MACs independently ARP-confirmed on the LAN). These are OBSERVED ROUTER FACTS and nothing more. The reservation labels are vendor-derived from the MAC tail -- they are the units' factory hotspot SSIDs -- which makes them display aliases of the box, NOT fleet identity: a label that the vendor generated cannot decide which fleet subject a machine serves, and reading one as if it could is the same presentation-as-identity error the collector-observation carrier below exists to prevent. So these rows are held apart from the srv5/srv6 bindings on purpose, and the join between them is the operator statement that has not been made.
+// The two static reservations the operator authored on the CR1000A, transcribed verbatim from the router table they supplied (spark-a3ee 192.168.1.222 4C:BB:47:E8:A3:EE / spark-3bd5 192.168.1.223 4C:BB:47:E8:3B:D5; both MACs independently ARP-confirmed on the LAN). These are OBSERVED ROUTER FACTS and nothing more. The reservation labels are vendor-derived from the MAC tail -- they are the units' factory hotspot SSIDs -- which makes them display aliases of the box, NOT fleet identity: a label that the vendor generated cannot decide which fleet subject a machine serves, and reading one as if it could is the same presentation-as-identity error the collector-observation carrier below exists to prevent. So the join to a slot is never inferred from a label: it is the explicit allocation decision recorded below.
 data spark_a3ee_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
   mac_address: "4C:BB:47:E8:A3:EE" as MacAddress,
   ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
@@ -68,34 +68,110 @@ data observed_dgx_spark_router_reservations: List<Cr1000aDhcpLeaseRow> = [
   spark_3bd5_reservation,
 ]
 
-// SPARK-LANE-A. The router-side half of a reserved identity: a DHCP static reservation is the act that turns "a slot we intend to use" into "an address the fleet can reach", and gunbc.fleet_intent_network's endpoint note recorded that this act had no carrier anywhere in the tree. It has one here. The reservation is NOT re-modeled: it is the cited extdeps.router.verizon_cr1000a Cr1000aDhcpLeaseRow, the same row gunbc.network_identity_subsumption consumes for srv3 -- minting a second mac/address pair beside it would be the §3 nickname failure. `reservation` is Optional because the two rows above exist but are not yet ASSIGNED to a slot; Absent therefore means "which box serves this subject is undecided", a downstream obligation recorded by the observer (§3), and it is fail-closed: admit_dgx_spark_deployment refuses on it, so an unassigned slot blocks admission rather than being skipped past. When the operator states the assignment, the reservation moves onto the binding and cites that statement -- never an inference from the vendor label.
-type DgxSparkRouterBinding {
-  identity: HostIdentity
-  reservation: Cr1000aDhcpLeaseRow?
+// SPARK-LANE-A. The router-side half of a slot: a DHCP static reservation is the act that turns "a slot we intend to use" into "an address the fleet can reach", and gunbc.fleet_intent_network's endpoint note recorded that this act had no carrier anywhere in the tree. It has one here. The reservation is NOT re-modeled: it is the cited extdeps.router.verizon_cr1000a Cr1000aDhcpLeaseRow, the same row gunbc.network_identity_subsumption consumes for srv3 -- minting a second mac/address pair beside it would be the §3 nickname failure.
+//
+// THE JOIN IS A DECISION, NOT AN OBSERVATION, and the carrier says so structurally rather than in
+// prose: an assignment cannot be authored without naming the authority that made it. The two boxes
+// are identical and nothing physical distinguishes them, so which one serves srv5 was not waiting
+// in the world to be discovered -- it was a free choice, and the operator delegated it ("the 5, 6
+// decision is arbitrary - just make it yourself"). Recording that as an observation would be the
+// worse error of the two available: it would present a coin-flip as a measurement, and every later
+// reader would treat it as recoverable evidence rather than a commitment someone made.
+//
+// A COLLECTOR READING CANNOT CONFIRM THIS. When device_identity.py observations eventually exist,
+// nothing in this module compares a serial to an assignment, and nothing may be added that does: a
+// serial binding to a slot is DOWNSTREAM of this choice, not evidence for it, so a future
+// "the serial matches" check would be circular -- it would be re-deriving the allocation from data
+// the allocation itself produced. The one check that does read the assignment
+// (DeploymentAdmissionEndpointBindingMismatch) asks whether evidence arrived from the address we
+// ALLOCATED to this subject; it cannot validate the allocation, because there is no independent
+// fact for it to be validated against.
+type SlotAllocationDecision {
+  decided_by: NonEmptyStr
+  decided_on: NonEmptyStr
+  basis: NonEmptyStr
 }
 
-data srv5_router_binding: DgxSparkRouterBinding = DgxSparkRouterBinding {
+// A coproduct rather than a record with an Optional assignment, for two reasons.
+// MODELING: an assigned slot structurally carries BOTH the reservation and the decision that
+// joined them, in one variant -- there is no representable state where a reservation is attached
+// with no authority behind it, which is stronger than an Optional pair that a later edit could
+// half-fill.
+// SUBSTRATE: the Optional-of-record encoding is also currently unusable at this arity. Two data
+// rows of a record type carrying an inhabited `DgxSparkSlotAssignment?` field reliably exhaust
+// memory during resolve (SIGKILL, exit 137, no diagnostic); ONE such row resolves in ~40s. Measured
+// by bisection on 2026-08-07: one assigned + one unassigned binding passes, both assigned dies,
+// and it reproduces whether the value is an inline literal, a cross-data reference, or built by a
+// shared constructor fn -- so it is arity in the number of inhabited Optional-record rows, not
+// literal duplication. Reported to the parent lane; this is a substrate cost-shape defect, not a
+// property of these rows, and the coproduct is the encoding that expresses the intent without
+// meeting it. dissolve-on: the resolve blowup is fixed, at which point this comment retires while
+// the coproduct stays on its own modeling merits.
+type DgxSparkRouterBinding
+  = SlotUnassigned { identity: HostIdentity }
+  | SlotAssigned {
+      identity: HostIdentity,
+      reservation: Cr1000aDhcpLeaseRow,
+      decision: SlotAllocationDecision,
+    }
+
+fn router_binding_identity(binding: DgxSparkRouterBinding) -> HostIdentity {
+  match binding {
+    SlotUnassigned { identity: i } => i
+    SlotAssigned { identity: i, reservation: _, decision: _ } => i
+  }
+}
+
+data dgx_spark_slot_allocation_decision: SlotAllocationDecision = SlotAllocationDecision {
+  decided_by: "bold-eagle-107 (operator-delegated: 'the 5, 6 decision is arbitrary - just make it yourself')",
+  decided_on: "2026-08-07",
+  basis: "Ascending address order: the lower reserved address takes the lower slot number. An arbitrary tie-break between two identical units, recorded so the choice is attributable rather than appearing to be a fact someone measured.",
+}
+
+data srv5_router_binding: DgxSparkRouterBinding = SlotAssigned {
   identity: operator_host_srv5,
-  reservation: none,
+  reservation: spark_a3ee_reservation,
+  decision: dgx_spark_slot_allocation_decision,
 }
 
-data srv6_router_binding: DgxSparkRouterBinding = DgxSparkRouterBinding {
+data srv6_router_binding: DgxSparkRouterBinding = SlotAssigned {
   identity: operator_host_srv6,
-  reservation: none,
+  reservation: spark_3bd5_reservation,
+  decision: dgx_spark_slot_allocation_decision,
 }
 
 data dgx_spark_router_bindings: List<DgxSparkRouterBinding> = [srv5_router_binding, srv6_router_binding]
 
+// Arrival is DERIVED from the observed router rows, never stored beside them: a stored "arrived"
+// flag is a second representation of what the reservation roster already says, and it is the copy
+// that goes stale -- which is exactly how this module came to claim the units had not arrived while
+// they were sitting on the LAN. Each row is a Static, Active reservation the operator read off the
+// CR1000A, which is presence evidence; the count against unit_count is the standing.
+type DgxSparkArrivalStanding
+  = AllOrderedUnitsObservedOnLan { observed_count: Int }
+  | OrderedUnitsOutstanding { ordered_count: Int, observed_count: Int }
+
+fn dgx_spark_arrival_standing() -> DgxSparkArrivalStanding {
+  if count(observed_dgx_spark_router_reservations) == dgx_spark_procurement_intent.unit_count {
+    AllOrderedUnitsObservedOnLan { observed_count: count(observed_dgx_spark_router_reservations) }
+  } else {
+    OrderedUnitsOutstanding {
+      ordered_count: dgx_spark_procurement_intent.unit_count,
+      observed_count: count(observed_dgx_spark_router_reservations),
+    }
+  }
+}
+
 // Derived, not spelled: the set of reserved identities IS the set of identities carrying a router binding row, so the two cannot disagree (§2 -- a second hand-written identity list would be the copy that drifts).
 fn dgx_spark_reserved_identities() -> List<HostIdentity> {
-  map(dgx_spark_router_bindings, b => b.identity)
+  map(dgx_spark_router_bindings, b => router_binding_identity(binding: b))
 }
 
 data dgx_spark_procurement_intent: HardwareProcurementIntent = HardwareProcurementIntent {
   vendor_catalog: nvidia_dgx_spark_4tb_catalog,
   unit_count: 2,
   reserved_identities: dgx_spark_reserved_identities(),
-  ordered_note: "2x NVIDIA DGX Spark ordered; both units arrived and are live on the operator LAN as of 2026-08-07, holding the static reservations spark-a3ee (192.168.1.222) and spark-3bd5 (192.168.1.223). Which unit serves the srv5 slot and which the srv6 slot is NOT yet stated by the operator and is not inferable from the router table, so neither is bound.",
+  ordered_note: "2x NVIDIA DGX Spark ordered. Both units arrived and are live on the operator LAN, each holding a Static, Active CR1000A reservation (spark-a3ee 192.168.1.222 and spark-3bd5 192.168.1.223, MACs ARP-confirmed). Arrival is not asserted here -- it is derived by dgx_spark_arrival_standing from those observed rows, so this prose cannot drift out of step with them.",
 }
 
 type DgxSparkDeployment {
@@ -193,20 +269,20 @@ fn admit_selected_dgx_spark_observation(
                 reason: DeploymentAdmissionIdentityNotReserved { requested_identity: identity }
               }
             } else {
-              if router_binding.identity != identity {
+              if router_binding_identity(binding: router_binding) != identity {
                 DgxSparkDeploymentRefused {
                   reason: DeploymentAdmissionRouterBindingMismatch {
-                    binding_identity: router_binding.identity,
+                    binding_identity: router_binding_identity(binding: router_binding),
                     requested_identity: identity,
                   }
                 }
               } else {
-                match router_binding.reservation {
-                  Absent =>
+                match router_binding {
+                  SlotUnassigned { identity: _ } =>
                     DgxSparkDeploymentRefused {
                       reason: DeploymentAdmissionRouterBindingPending { requested_identity: identity }
                     }
-                  Present { value: reservation } =>
+                  SlotAssigned { identity: _, reservation: reservation, decision: _ } =>
                     if observation.endpoint_binding.address != reservation.ipv4_address {
                       DgxSparkDeploymentRefused {
                         reason: DeploymentAdmissionEndpointBindingMismatch { requested_identity: identity }
@@ -283,14 +359,14 @@ fn dgx_spark_unit_disposition(
   observations: List<FleetLifecycleObservation>,
 ) -> DgxSparkUnitDisposition {
   match admit_dgx_spark_deployment(
-    identity: binding.identity,
+    identity: router_binding_identity(binding: binding),
     catalog: dgx_spark_procurement_intent.vendor_catalog,
-    selection: select_observation_for_subject(subject: binding.identity, observations: observations),
+    selection: select_observation_for_subject(subject: router_binding_identity(binding: binding), observations: observations),
     router_binding: binding,
   ) {
     DgxSparkDeploymentAdmitted { deployment: d } => DgxSparkUnitDeployed { deployment: d }
     DgxSparkDeploymentRefused { reason: r } =>
-      DgxSparkUnitPending { identity: binding.identity, reason: r }
+      DgxSparkUnitPending { identity: router_binding_identity(binding: binding), reason: r }
   }
 }
 
