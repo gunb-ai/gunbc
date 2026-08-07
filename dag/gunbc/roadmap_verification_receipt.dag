@@ -109,8 +109,7 @@ type VerificationSelectionPublishOutcome
 
 data verification_directory_segment: String = "verification"
 
-data exact_verification_receipt_absence_note: String = "Positive absence only: ExactVerificationReceiptAbsent means a successful listing of verification/ proved the exact basename is not present. A failed list or read never collapses to absent."
-
+// Positive absence only: ExactVerificationReceiptAbsent means a successful listing of verification/ proved the exact basename is not present. A failed list or read never collapses to absent.
 type ExactVerificationReceiptSource
   = ExactVerificationReceiptAbsent
   | ExactVerificationReceiptPresent { text: String }
@@ -607,8 +606,7 @@ fn belt_verification_decision(
   }
 }
 
-data validation_execution_note: String = "AN EXECUTION RECORDS THE DECLARED OPERATION, THE REALIZED COMMAND, AND THE PROCESS EVIDENCE AS STRUCTURE. ValidationOperation is the existing semantic validation authority; ModeledValidationCommand keeps program and argv separate instead of persisting a shell sentence; exit_code, stdout and stderr preserve the three observations without rendering them into explanatory prose. A command that never ran contributes no ValidationExecution — its reason belongs to the existing ValidationRefused verdict. This is why executions is a list: a contract may declare several validations, and one summary command string cannot honestly describe all of them."
-
+// AN EXECUTION RECORDS THE DECLARED OPERATION, THE REALIZED COMMAND, AND THE PROCESS EVIDENCE AS STRUCTURE. ValidationOperation is the existing semantic validation authority; ModeledValidationCommand keeps program and argv separate instead of persisting a shell sentence; exit_code, stdout and stderr preserve the three observations without rendering them into explanatory prose. A command that never ran contributes no ValidationExecution — its reason belongs to the existing ValidationRefused verdict. This is why executions is a list: a contract may declare several validations, and one summary command string cannot honestly describe all of them.
 type ValidationExecution {
   validation: ValidationOperation
   command: ModeledValidationCommand

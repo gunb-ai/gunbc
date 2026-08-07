@@ -32,8 +32,11 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
 import std.types { CommitSha, List, String }
 import std.content_hash { Fnv1a64Structural }
 
-data live_contract_test_note: String = "Controls 2 through 7 of the live observation closing contract, executed HERMETICALLY against constructed observations. This file publishes no Git mock and claims no liveness: it exercises the pure fold admit_live_rust_observation, which is why it can run in the ordinary discovery corpus at no host cost.\n\nControl 1 -- observed revision equals the workflow's immutable tested SHA -- is deliberately absent here, because it is the one claim that cannot be made without the host. It lives in the wet entry, and asserting it here against a constructed observation would be the fabricated-evidence failure this whole contract exists to prevent: two constants agreeing proves nothing about any repository.\n\nControl 8 is structural rather than asserted. The fold takes its observation as a parameter and never calls the host, so nothing in this file can reach Git even by accident; only live_rust_observation_wet can, and it is not imported here."
-
+// Controls 2 through 7 of the live observation closing contract, executed HERMETICALLY against constructed observations. This file publishes no Git mock and claims no liveness: it exercises the pure fold admit_live_rust_observation, which is why it can run in the ordinary discovery corpus at no host cost.
+//
+// Control 1 -- observed revision equals the workflow's immutable tested SHA -- is deliberately absent here, because it is the one claim that cannot be made without the host. It lives in the wet entry, and asserting it here against a constructed observation would be the fabricated-evidence failure this whole contract exists to prevent: two constants agreeing proves nothing about any repository.
+//
+// Control 8 is structural rather than asserted. The fold takes its observation as a parameter and never calls the host, so nothing in this file can reach Git even by accident; only live_rust_observation_wet can, and it is not imported here.
 data test_revision: CommitSha = "0123456789abcdef0123456789abcdef01234567"
 data other_revision: CommitSha = "fedcba9876543210fedcba9876543210fedcba98"
 

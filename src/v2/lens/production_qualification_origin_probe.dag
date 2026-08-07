@@ -88,8 +88,7 @@ data direct_rust_door_inferred_tree_atom: String = "direct_rust_door_inferred_tr
 
 data ingest_mint_skeleton_classifier_note: String = "Ingest entry skeleton grain (review 47980): generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact directly. Callee identity alone does not prove compiler origin — mint_provenanced accepts raw InferredTree — so skeleton discovery without fixture marker or call/dataflow evidence stays UnknownOrigin until call-occurrence derivation lands."
 
-data production_qualification_origin_compiler_derived_frontier_note: String = "CompilerDerived is declared but UNWRITABLE at skeleton grain: callee identity proves a qualification boundary was called, not that the InferredTree argument came from production infer(assemble(...)). Until call/dataflow evidence connects arguments, non-fixture mint surfaces classify UnknownOrigin and fail admission."
-
+// CompilerDerived is declared but UNWRITABLE at skeleton grain: callee identity proves a qualification boundary was called, not that the InferredTree argument came from production infer(assemble(...)). Until call/dataflow evidence connects arguments, non-fixture mint surfaces classify UnknownOrigin and fail admission.
 data ingest_mint_entry_name_suffix: String = "generate_provenanced_rust_candidate_from_ingest"
 
 fn string_eq(a: String, b: String) -> Bool {
@@ -309,8 +308,7 @@ fn decl_has_source_produced_mint_callee(decl: FnArrowDecl) -> Bool {
 
 data direct_rust_door_target_model_callee: String = "direct_rust_door_target_model"
 
-data fixture_marker_classifier_note: String = "FixtureDerived requires the direct_rust_door_inferred_tree fixture-tree marker atom in the fn-arrow skeleton. Target-model choice (direct_rust_door_target_model) is NOT an origin proxy — mint_written + target without the fixture-tree marker classifies UnknownOrigin."
-
+// FixtureDerived requires the direct_rust_door_inferred_tree fixture-tree marker atom in the fn-arrow skeleton. Target-model choice (direct_rust_door_target_model) is NOT an origin proxy — mint_written + target without the fixture-tree marker classifies UnknownOrigin.
 fn decl_has_fixture_marker(decl: FnArrowDecl) -> Bool {
   decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom)
 }
@@ -394,8 +392,7 @@ fn count_derived_fixture_origin_mint_sites(
   count_derived_mint_sites_with_origin(sites: sites, origin: FixtureDerived)
 }
 
-data production_qualification_planted_fixture_origin_oracle_note: String = "Closed-subject oracle (DESIGN §5): structural_red_control_planted_decl carries exactly one FixtureDerived SourceProduced row by construction — independent of fn_arrow_decl_facts_live() population."
-
+// Closed-subject oracle (DESIGN §5): structural_red_control_planted_decl carries exactly one FixtureDerived SourceProduced row by construction — independent of fn_arrow_decl_facts_live() population.
 data production_qualification_planted_fixture_origin_oracle_count: Int = 1
 
 data production_qualification_live_scope_fixture_origin_policy_note: String = "Live-scope policy (DESIGN §5, review 48255): G2 fn-arrow marshal does not yet surface mint callees on live fixture fns in the witness entry closure, so known_fixture_origin_mint_surface_count_in_scope() reads zero today — documented expectation, NOT an executing tree-copied equality oracle. Discriminating signal is the planted closed-subject oracle (production_qualification_planted_fixture_origin_oracle_count). Frontier: witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds (explicit_witness_admission) expects live FixtureDerived discovery once marshal exposes callee atoms — greens when count > 0, then row deletes and a closed-subject expected population or monotone debt contract may enroll."
@@ -428,8 +425,7 @@ fn ingest_mint_surface_discovered_in_live_scope() -> Bool {
   )
 }
 
-data production_qualification_origin_probe_admission_note: String = "Production admission (not mere classification totality): refuses both UnknownOrigin and FixtureDerived discovered rows — fixture-derived production qualification is the forbidden class. discovered_origin_classification_is_total_for_decls is the weaker predicate (UnknownOrigin count zero only) for witnesses that need classification totality without production admission."
-
+// Production admission (not mere classification totality): refuses both UnknownOrigin and FixtureDerived discovered rows — fixture-derived production qualification is the forbidden class. discovered_origin_classification_is_total_for_decls is the weaker predicate (UnknownOrigin count zero only) for witnesses that need classification totality without production admission.
 fn discovered_origin_classification_is_total_for_decls(
   decls: List<FnArrowDecl>
 ) -> Bool {

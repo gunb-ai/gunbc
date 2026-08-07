@@ -129,8 +129,7 @@ test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
   }
 }
 
-data refusal_first_class_note: String = "A refusal is a first-class presentation state with its LOCATED reason, never a styling variant of progress (DESIGN 5: typed, located; the attention rule auto-expands it). The discriminating fixture puts the refusal mid-ledger; the view must surface the refusing obligation's own detail string, and a failed segment must rank as anomalous ActiveWork — the two are distinct states with distinct remedies, and a refused ledger outranks a failed one because the refusal names an evidence gap the failure count cannot explain."
-
+// A refusal is a first-class presentation state with its LOCATED reason, never a styling variant of progress (DESIGN 5: typed, located; the attention rule auto-expands it). The discriminating fixture puts the refusal mid-ledger; the view must surface the refusing obligation's own detail string, and a failed segment must rank as anomalous ActiveWork — the two are distinct states with distinct remedies, and a refused ledger outranks a failed one because the refusal names an evidence gap the failure count cannot explain.
 test fn witness_refused_segment_projects_located_reason() -> Bool {
   let segments = [
     WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
@@ -174,8 +173,7 @@ test fn witness_failed_segment_is_anomalous_active_work() -> Bool {
   }
 }
 
-data headline_no_fusion_note: String = "The ticket headline is ONE typed field read end-to-end. The discriminating input is a headline that CONTAINS the legacy separators (an em-dash clause and a sentence break): under the deleted recompose-and-reparse round trip ('**headline** — brief' then split at punctuation) this headline would come back truncated at its own dash. The legacy residue is asserted separately on an AuthoredLine, where the lead heuristic is the declared residue of this projection."
-
+// The ticket headline is ONE typed field read end-to-end. The discriminating input is a headline that CONTAINS the legacy separators (an em-dash clause and a sentence break): under the deleted recompose-and-reparse round trip ('**headline** — brief' then split at punctuation) this headline would come back truncated at its own dash. The legacy residue is asserted separately on an AuthoredLine, where the lead heuristic is the declared residue of this projection.
 test fn witness_ticket_headline_survives_own_punctuation() -> Bool {
   let t = gunbc.roadmap_authority.fields(
     headline: "Close the wall — phase 2. Cleanly",
@@ -252,8 +250,7 @@ test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool {
   }
 }
 
-data availability_priority_note: String = "The two-axis discrimination over the TYPED scheduling position: a SchedulingReady row's dispatch is Available AND Primary; an upcoming/unplanned row's dispatch is the preserved manual override — fully operable, but AvailableAsOverride and Secondary. The RED control is the conjunction: if availability implied priority (the A1 ten-equal-pills defect), the override arm would surface as primary and the second assertion fails; if the override were dropped entirely (losing the deliberate out-of-order path), the secondary list would be empty and it also fails."
-
+// The two-axis discrimination over the TYPED scheduling position: a SchedulingReady row's dispatch is Available AND Primary; an upcoming/unplanned row's dispatch is the preserved manual override — fully operable, but AvailableAsOverride and Secondary. The RED control is the conjunction: if availability implied priority (the A1 ten-equal-pills defect), the override arm would surface as primary and the second assertion fails; if the override were dropped entirely (losing the deliberate out-of-order path), the secondary list would be empty and it also fails.
 test fn witness_ready_dispatch_is_primary_override_is_secondary() -> Bool {
   let ready_view = action_view(scheduling: SchedulingReady, lifecycle: OpenLifecycle)
   let blocked_view = action_view(scheduling: SchedulingUpcoming { blockers: ["a2-parent-1"] }, lifecycle: OpenLifecycle)
@@ -417,8 +414,7 @@ test fn witness_work_row_view_composes_from_fixture() -> Bool {
     && match row.activity { NoActiveWork => true ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false CompletedWork { outcome: _, evidence: _ } => false ActivityUnobservable { reason: _ } => false }
 }
 
-data scheduling_typed_position_note: String = "The scheduling axis discriminates by the SAME predicates spawn_frontier filters (operator blocker 2: ready was a caller-assertable Bool; now the position is projected, not asserted). The fixtures cover the five arms: a sized dependency-met node is Ready; a sized node under an open parent is Upcoming CARRYING that blocker; an unsized node is Unplanned (never conflated with Upcoming — it has no blockers to fabricate); a superseded line is Superseded whatever else holds; and the dependency line renders only for an Upcoming row with more than one blocker."
-
+// The scheduling axis discriminates by the SAME predicates spawn_frontier filters (operator blocker 2: ready was a caller-assertable Bool; now the position is projected, not asserted). The fixtures cover the five arms: a sized dependency-met node is Ready; a sized node under an open parent is Upcoming CARRYING that blocker; an unsized node is Unplanned (never conflated with Upcoming — it has no blockers to fabricate); a superseded line is Superseded whatever else holds; and the dependency line renders only for an Upcoming row with more than one blocker.
 test fn witness_scheduling_projects_typed_positions() -> Bool {
   let nodes = fx_row_nodes()
   let edges = fx_row_edges()
@@ -469,8 +465,7 @@ test fn witness_daily_workspace_surfaces_active_above_ready() -> Bool {
     && !band_entry_has_active(entries: ws.upcoming)
 }
 
-data family_grouping_witness_note: String = "The family-once receipts, all against constructed facts. Stated-once: two listed members plus one UNLISTED lookalike (its headline literally starts with the family claim prose) produce ONE BandFamily carrying the claim, member rows whose headlines are the typed SUBJECTS verbatim, and the lookalike as an ungrouped BandRow with its fused headline untouched — proving membership is the typed fact list, never a prefix scan, in both directions (a subject CONTAINING claim prose is not stripped; a headline MATCHING claim prose is not captured). Attention-outranks-taxonomy: a member with active work leaves for the Active band as an individual row while the group keeps only its remaining member. Missing decl: a member fact naming an undeclared family renders as its own ungrouped row (no fabricated header)."
-
+// The family-once receipts, all against constructed facts. Stated-once: two listed members plus one UNLISTED lookalike (its headline literally starts with the family claim prose) produce ONE BandFamily carrying the claim, member rows whose headlines are the typed SUBJECTS verbatim, and the lookalike as an ungrouped BandRow with its fused headline untouched — proving membership is the typed fact list, never a prefix scan, in both directions (a subject CONTAINING claim prose is not stripped; a headline MATCHING claim prose is not captured). Attention-outranks-taxonomy: a member with active work leaves for the Active band as an individual row while the group keeps only its remaining member. Missing decl: a member fact naming an undeclared family renders as its own ungrouped row (no fabricated header).
 fn fx_family_member_row(node_id: String, headline: String, activity: ActivityView) -> WorkRowView {
   let base = fx_row(activity: activity)
   WorkRowView {
@@ -573,8 +568,7 @@ test fn witness_lifecycle_chip_only_when_discriminating() -> Bool {
     && lifecycle_chip_renders(l: SupersededLifecycle)
 }
 
-data narrated_once_note: String = "The one-failure-once discrimination: a workspace-level refusal produces ONE banner (the impact view carries the located reason) and covers each row's unobservable narration — but only the unobservable arm, and only while the workspace impact is present. The REDs: an active row is never covered (a live attempt's narration must survive a broken observation channel claim), and with a nominal workspace observation a row-specific unobservable reason narrates on its own row (coverage false)."
-
+// The one-failure-once discrimination: a workspace-level refusal produces ONE banner (the impact view carries the located reason) and covers each row's unobservable narration — but only the unobservable arm, and only while the workspace impact is present. The REDs: an active row is never covered (a live attempt's narration must survive a broken observation channel claim), and with a nominal workspace observation a row-specific unobservable reason narrates on its own row (coverage false).
 test fn witness_workspace_impact_narrates_once() -> Bool {
   let impact = observation_impact_view(workflow_refused: Present { value: "GET /workflow.json refused: connection refused" })
   let nominal = observation_impact_view(workflow_refused: none)

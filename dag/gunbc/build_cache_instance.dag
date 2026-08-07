@@ -105,8 +105,7 @@ type BuildCacheEndpointObservation
       reason: EndpointObservationUnavailableReason
     }
 
-data build_cache_server_placement_authority_note: String = "THE SINGLE PLACEMENT AUTHORITY, homed here rather than in gunbc.host_build_cache_provision because placement is derived from an OBSERVATION of a deployed instance, and the verdict fold is a CONSUMER of it. Keeping the type beside the observation it is derived from means there is exactly one definition of what 'correctly placed' is, and the provisioning fold cannot drift a second opinion. Placement is a verdict axis and not a detail because extdeps.cache.sccache.sccache_server_process_facts cites that cache-miss compiles execute as CHILDREN OF THE SERVER PROCESS: the server's cgroup is the cgroup every compile on the host runs in, so the server's caps bound every compile on the host and not merely the caps of the job that issued them. A responsive daemon proves nothing about where it runs."
-
+// THE SINGLE PLACEMENT AUTHORITY, homed here rather than in gunbc.host_build_cache_provision because placement is derived from an OBSERVATION of a deployed instance, and the verdict fold is a CONSUMER of it. Keeping the type beside the observation it is derived from means there is exactly one definition of what 'correctly placed' is, and the provisioning fold cannot drift a second opinion. Placement is a verdict axis and not a detail because extdeps.cache.sccache.sccache_server_process_facts cites that cache-miss compiles execute as CHILDREN OF THE SERVER PROCESS: the server's cgroup is the cgroup every compile on the host runs in, so the server's caps bound every compile on the host and not merely the caps of the job that issued them. A responsive daemon proves nothing about where it runs.
 type BuildCacheServerPlacement
   = ServerManagedUnitOwned { unit: NonEmptyStr }
   | ServerRunnerOwned { slot: RunnerSlotIdentity, lifecycle: RunnerSlotLifecycle }

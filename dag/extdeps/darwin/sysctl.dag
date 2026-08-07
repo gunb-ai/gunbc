@@ -31,8 +31,7 @@ data darwin_sysctl_mibs_read_by_this_repository: List<DarwinSysctlMib> = [
   HwPagesize,
 ]
 
-data darwin_sysctl_units_are_bytes_note: String = "Both MIB entries modeled here are denominated in BYTES, unlike /proc/meminfo's kibibyte fields. The unit is stated as a typed row rather than left to the reader because the two interfaces are consumed by the same governor for the same purpose, and the only thing distinguishing a correct conversion from a 1024x error is which platform produced the number."
-
+// Both MIB entries modeled here are denominated in BYTES, unlike /proc/meminfo's kibibyte fields. The unit is stated as a typed row rather than left to the reader because the two interfaces are consumed by the same governor for the same purpose, and the only thing distinguishing a correct conversion from a 1024x error is which platform produced the number.
 type DarwinMemoryFacts {
   total_physical: ByteSize
   page_size: ByteSize

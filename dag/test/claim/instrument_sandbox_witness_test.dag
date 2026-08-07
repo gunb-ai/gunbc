@@ -67,8 +67,7 @@ fn first_segment(s: String, marker: String) -> String {
   fold(split(s: s, delimiter: marker), init: "", f: (acc, part) => if acc == "" { part } else { acc })
 }
 
-data derived_role_witness_note: String = "The load-bearing claim: the role the audition is admitted at is the one the projection derived for the selected subject, not a literal."
-
+// The load-bearing claim: the role the audition is admitted at is the one the projection derived for the selected subject, not a literal.
 fn witness_the_served_role_is_the_derived_one() -> Bool {
   salience_key(role: audition_subject_role()) == salience_key(role: SalienceFocal)
     && audition_subject_key() == "compiler-fixed-point"
@@ -96,8 +95,7 @@ fn witness_red_a_refused_audition_paints_nothing() -> Bool {
     && !string_contains(s: instrument_css_at_role(role: SalienceSupporting), pattern: "0 0 48px")
 }
 
-data block_position_note: String = "Occurrence INSIDE each theme block, not merely somewhere in the stylesheet: the CSS is split on the two later block selectors and the variable is required in every resulting piece. The first version asserted the variable existed and the selectors existed, which one hand-written block would have satisfied while the toggle silently did nothing."
-
+// Occurrence INSIDE each theme block, not merely somewhere in the stylesheet: the CSS is split on the two later block selectors and the variable is required in every resulting piece. The first version asserted the variable existed and the selectors existed, which one hand-written block would have satisfied while the toggle silently did nothing.
 fn witness_the_emission_var_occurs_inside_every_theme_block() -> Bool {
   let css = instrument_emission_root_css_for(role: audition_subject_role())
   let v = emission_var_ref(i: AuditionHero)

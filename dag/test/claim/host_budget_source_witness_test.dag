@@ -42,8 +42,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_subject_note: String = "These rows are about the RELATION between a kernel family and a budget source, not about the machine running them, so they are SubstrateInputsOnly and give the same verdict on every platform. That is deliberate and is the point: the defect being walled is a claim the code makes about a platform, and a check that could only run on the affected platform would be untestable from the fleet's own Linux CI — which is how the fabricated label survived in the first place."
-
+// These rows are about the RELATION between a kernel family and a budget source, not about the machine running them, so they are SubstrateInputsOnly and give the same verdict on every platform. That is deliberate and is the point: the defect being walled is a claim the code makes about a platform, and a check that could only run on the affected platform would be untestable from the fleet's own Linux CI — which is how the fabricated label survived in the first place.
 data all_kernels: List<KernelFamily> = [Linux, Darwin, WindowsNt, LinuxGuestOnWindows]
 
 data all_sources: List<HostBudgetSource> = [
@@ -115,8 +114,7 @@ test fn procfs_sources_stay_admissible_on_kernels_with_procfs() -> Bool {
   )
 }
 
-data every_kernel_source_is_admissible_on_its_own_kernel_note: String = "The per-kernel source selection must be admissible on the very kernel it was selected for, which sounds tautological and is exactly the property the old code violated: it selected a procfs source for Darwin. WindowsNt has no arm and is asserted absent rather than skipped — an unmodeled platform must produce no source at all, because the alternative is inventing one, and a plausible invention here is what the whole change removes."
-
+// The per-kernel source selection must be admissible on the very kernel it was selected for, which sounds tautological and is exactly the property the old code violated: it selected a procfs source for Darwin. WindowsNt has no arm and is asserted absent rather than skipped — an unmodeled platform must produce no source at all, because the alternative is inventing one, and a plausible invention here is what the whole change removes.
 test fn each_kernel_selects_a_source_admissible_on_itself() -> Bool {
   all(
     all_kernels,

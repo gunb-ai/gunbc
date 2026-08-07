@@ -21,8 +21,7 @@ type DockerCeAptRepo {
   arch: NonEmptyStr
 }
 
-data docker_gpg_key_fingerprint_note: String = "Docker's apt signing-key fingerprint is a PUBLISHED fact (docs.docker.com/engine/install/ubuntu: 9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88). A keyring fetched by blind curl is a supply-chain fail-open — the install script verifies the imported key's fingerprint against the pinned row and refuses on mismatch, the same posture as sccache's pinned release digests."
-
+// Docker's apt signing-key fingerprint is a PUBLISHED fact (docs.docker.com/engine/install/ubuntu: 9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88). A keyring fetched by blind curl is a supply-chain fail-open — the install script verifies the imported key's fingerprint against the pinned row and refuses on mismatch, the same posture as sccache's pinned release digests.
 data docker_ce_apt_repo_noble_arm64: DockerCeAptRepo = DockerCeAptRepo {
   keyring_url: "https://download.docker.com/linux/ubuntu/gpg",
   keyring_path: "/etc/apt/keyrings/docker.gpg",

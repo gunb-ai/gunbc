@@ -37,8 +37,7 @@ test fn witness_negative_results_from_a_tainted_probe_survive() -> Bool {
     )
 }
 
-data witness_inert_probe_note: String = "The non-vacuity control in the other direction. `systemctl show` and `systemctl --user is-active` read the manager's recorded state and start nothing, so their Converged results must survive untouched. Without this, a criterion that refused every probe would satisfy every other conjunct in this file while making read-back worthless — the absorbing fallback wearing a safety badge, which is precisely the failure this lane keeps catching."
-
+// The non-vacuity control in the other direction. `systemctl show` and `systemctl --user is-active` read the manager's recorded state and start nothing, so their Converged results must survive untouched. Without this, a criterion that refused every probe would satisfy every other conjunct in this file while making read-back worthless — the absorbing fallback wearing a safety badge, which is precisely the failure this lane keeps catching.
 test fn witness_inert_probes_keep_their_evidence() -> Bool {
   observation_verdict_eq(
     a: readback_evidence_verdict(
@@ -57,8 +56,7 @@ test fn witness_inert_probes_keep_their_evidence() -> Bool {
     && readback_probe_is_independent(p: proc_swaps_read_probe)
 }
 
-data witness_unknown_effect_note: String = "An unaudited transport must be treated as tainted, not as clean. This is the fail-closed default and it is where the criterion earns most of its value, because the classified probes are a handful and the unclassified ones are everything else."
-
+// An unaudited transport must be treated as tainted, not as clean. This is the fail-closed default and it is where the criterion earns most of its value, because the classified probes are a handful and the unclassified ones are everything else.
 test fn witness_unclassified_probe_is_treated_as_tainted() -> Bool {
   let unaudited = ReadBackProbe {
     label: "hypothetical unaudited transport",

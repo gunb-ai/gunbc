@@ -17,8 +17,7 @@ import std.disposition { Scaffold, SingleAuthority }
 import std.types { Bool }
 import v2.std.algebra { length }
 
-data witness_model_refusal_controls_note: String = "Model-layer control only: these imported witnesses are already on main, so this row does not exercise the Rust bridge."
-
+// Model-layer control only: these imported witnesses are already on main, so this row does not exercise the Rust bridge.
 test fn materialization_provider_consumer_hand_rust_scaffold_is_seed_retained() -> Bool {
   match materialization_provider_consumer_hand_rust_scaffold {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true

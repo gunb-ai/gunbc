@@ -23,8 +23,7 @@ data ssh_key_algorithm_token_registry_authority: ExternalAuthority = ExternalAut
   }
 }
 
-data ssh_key_algorithm_token_registry_note: String = "ssh_key_algorithm_token emits registered wire tokens: the token SET is owned by the IANA SSH Protocol Parameters public-key-algorithm-names registry (anchor above); each variant's cryptosystem and token carry their own upstream authorities in the per-variant rows below — a referenced entity carries ITS authority, never its consumer's (the Vendor<Domain> precedent)."
-
+// ssh_key_algorithm_token emits registered wire tokens: the token SET is owned by the IANA SSH Protocol Parameters public-key-algorithm-names registry (anchor above); each variant's cryptosystem and token carry their own upstream authorities in the per-variant rows below — a referenced entity carries ITS authority, never its consumer's (the Vendor<Domain> precedent).
 data ed25519_cryptosystem_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -50,8 +49,7 @@ data ecdsa_p256_cryptosystem_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ecdsa_p256_authority_note: String = "EcdsaP256: ECC in SSH per RFC 5656; curve P-256 per FIPS 186 / SEC 2; wire token ecdsa-sha2-nistp256."
-
+// EcdsaP256: ECC in SSH per RFC 5656; curve P-256 per FIPS 186 / SEC 2; wire token ecdsa-sha2-nistp256.
 fn ssh_key_algorithm_token(a: SshKeyAlgorithm) -> NonEmptyStr {
   match a {
     Ed25519 => "ssh-ed25519"
