@@ -61,3 +61,13 @@ fn cursor_sdk_error_code_label(code: CursorSdkErrorCode) -> String {
     CursorSdkErrorCodeOther { raw: r } => r
   }
 }
+
+fn cursor_sdk_error_code_is_authentication_failure(code: CursorSdkErrorCode) -> Bool {
+  match code {
+    CursorSdkAuthenticationError => true
+    CursorSdkRateLimitError => false
+    CursorSdkAgentNotFoundError => false
+    CursorSdkAgentBusyError => false
+    CursorSdkErrorCodeOther { raw: _ } => false
+  }
+}

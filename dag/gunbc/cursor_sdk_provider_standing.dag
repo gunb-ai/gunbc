@@ -25,6 +25,7 @@ import gunbc.cursor_sdk_auth_probe {
   CursorSdkAuthProbeResult,
   CursorSdkAuthProbeAuthenticated,
   CursorSdkAuthProbeCredentialsRejected,
+  CursorSdkAuthProbeTerminalNonAuthenticationError,
   CursorSdkAuthProbeUnclassified,
 }
 
@@ -42,6 +43,7 @@ fn cursor_sdk_authentication_standing_from_probe(
   match probe {
     CursorSdkAuthProbeAuthenticated => AuthenticationAuthenticated
     CursorSdkAuthProbeCredentialsRejected { code: _ } => AuthenticationCredentialsAbsent
+    CursorSdkAuthProbeTerminalNonAuthenticationError { code: _ } => AuthenticationAuthenticated
     CursorSdkAuthProbeUnclassified { reason } =>
       AuthenticationStandingUnobserved { reason: reason }
   }
