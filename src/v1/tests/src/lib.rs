@@ -140,6 +140,8 @@ mod optional_receiver_method_unwrap_test;
 #[cfg(test)]
 mod parse_table_memo_amortization_test;
 #[cfg(test)]
+mod partition_floor_wall_mapping_receipt_test;
+#[cfg(test)]
 mod pd3_adversarial;
 #[cfg(test)]
 mod peano_materialization_cap_test;

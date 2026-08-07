@@ -1,0 +1,17 @@
+# Anchored receipt: partition additive universe ↔ floor wall (same-base control floor, 2026-08-07)
+# GitHub Actions run 31156588100 (main push d0722a4175, gunbc#7984 merge)
+# Floor step: gunbc ci (.dag witnesses + gates) 2026-08-07T07:40:40Z → 2026-08-07T08:35:10Z
+
+[github-actions-step] gunbc_ci_floor_step_wall_seconds=3290
+
+[calibration] roster_import_closure_nodes=2460 rows=7487 (loader both-closure union, pre-resolve, no resolve/typecheck; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)
+run_discovery_corpus: adaptive pool over 981 entry-group(s), 7487 row(s) (governor target_width=1)
+[measurement] discovery corpus: 7487 witness(es) (4105 skipped, 1042 deferred), resolve 802434.506ms, evalu 96820.309ms, CostAccount.time basis=Measured 96820308909ns, roster-closure 694 nodes (max shard)
+[resolve-split] load=2.9ms parse=5974.8ms resolve=19170.6ms normalize=694.3ms typecheck=40971.1ms parent_envs=7.4ms reconcile_assembly=5446.1ms ownership=2097.6ms other=3080.5ms
+[assembly-split] schedule=573.5ms probe=1484.3ms graph=527.8ms symbol_index=180332.1ms pool_fill=0.3ms symbol_index_merge=10925.4ms variant_base=10619.5ms root_symbol_index=5986.9ms root_variant_base=51830.6ms environment=7181.0ms diagnostics=102.4ms registry=1187.5ms services=57412.8ms rewire_type_env=13479.5ms rewire_import_str=322082.7ms rewire_func_env=5938.7ms emit_info=55324.2ms other=5446.1ms rewire_total_observation=341501.1ms
+[floor-worker-wait] worker=ordinary elapsed_seconds=2190 state=running  # pulse at discovery corpus end (worker still running post-discovery batches)
+
+# Note: [cost-partition] JSON is emitted immediately after [assembly-split] in the same
+# discovery batch, but the GitHub Actions log transport truncated before that line in the
+# downloaded artifact. parent_span_nanos is therefore anchored from [measurement] resolve
+# serial sum (802434.506ms ≈ 799s partition universe cited by lane parent).
