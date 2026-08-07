@@ -1,16 +1,23 @@
 module gunbc.auth.patterns
 
 import extdeps.cloud.gcp.secret_manager {
-  decode_sm_access_version_secret_wire,
-  SmAccessVersionSecretDecoded,
-  SmAccessVersionSecretDecodeRefused,
+  decode_sm_access_version_wire_response,
+  SmAccessVersionWireDecoded,
+  SmAccessVersionWireDecodeRefused,
+  utf8_secret_from_access_payload,
 }
-import std.bytes { pure_dag_seam_unreachable }
 
 type AuthRuntime
   = GitHubActions { runtime: GitHubActionsRuntime }
   | GcpMetadata { runtime: MetadataRuntime }
   | LocalDev { runtime: LocalDevRuntime }
+
+type CredentialChainOutcome
+  = CredentialChainReady { token: AccessToken }
+  | CredentialChainWireDecodeRefused {
+      identity_cause: SmResolvedVersionIdentityRefusal?
+      payload_cause: SmAccessVersionPayloadRefusal?
+    }
 
 pattern acquire_subject_token(
   runtime: AuthRuntime,
@@ -38,7 +45,7 @@ pattern credential_chain(
   source_id: NonEmptyStr,
   required_scopes: List<String>,
   lifetime_seconds: Int where range(min: 1, max: 3600)= 3600
-) -> { token: AccessToken }
+) -> CredentialChainOutcome
   uses net: std.resources.Network
 
 {
@@ -61,21 +68,25 @@ pattern credential_chain(
     secret: secret_name
   )
 
-  return {
-    token: build_token(
-      payload: access_version_secret_from_data_b64(data_b64: secret.data_b64),
-      scheme: Bearer,
-      header_name: header_name,
-      source_id: source_id,
-      required_scopes: required_scopes
-    )
-  }
-}
-
-fn access_version_secret_from_data_b64(data_b64: String) -> Secret {
-  match decode_sm_access_version_secret_wire(data_b64: data_b64) {
-    SmAccessVersionSecretDecoded { credential: credential } => credential
-    SmAccessVersionSecretDecodeRefused { cause: _ } => pure_dag_seam_unreachable()
+  return match decode_sm_access_version_wire_response(
+    name: secret.name as String,
+    data_b64: secret.data_b64
+  ) {
+    SmAccessVersionWireDecoded { identity: _, payload: payload } =>
+      CredentialChainReady {
+        token: build_token(
+          payload: utf8_secret_from_access_payload(payload: payload),
+          scheme: Bearer,
+          header_name: header_name,
+          source_id: source_id,
+          required_scopes: required_scopes
+        ),
+      }
+    SmAccessVersionWireDecodeRefused { identity_cause: identity_cause, payload_cause: payload_cause } =>
+      CredentialChainWireDecodeRefused {
+        identity_cause: identity_cause,
+        payload_cause: payload_cause,
+      }
   }
 }
 
