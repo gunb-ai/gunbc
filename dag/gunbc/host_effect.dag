@@ -19,6 +19,8 @@ import gunbc.host_converge { HostConverge }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
+import gunbc.fleet_runner_connectivity { LocalRunnerSlotIncarnation }
+import gunbc.runner_lifecycle { RunnerReplacementCause }
 import gunbc.auth.github_apps { gunbai_ci_declared }
 import std.effects {
   EffectShape,
@@ -64,7 +66,7 @@ type HostEffect =
   | EnsureRunnerSystemdTemplate { host_label: NonEmptyStr }
   | EnsureRunnerMemoryCaps { slot: RunnerSlotIdentity }
   | ActivateRunnerSlot { slot: RunnerSlotIdentity }
-  | ReplaceRunnerIncarnation { slot: RunnerSlotIdentity }
+  | ReplaceRunnerIncarnation { from: LocalRunnerSlotIncarnation, cause: RunnerReplacementCause }
   | ObserveRunnerLocalState { slot: RunnerSlotIdentity }
   | ObserveGitHubRunnerRegistration { slot: RunnerSlotIdentity, organization: NonEmptyStr }
 

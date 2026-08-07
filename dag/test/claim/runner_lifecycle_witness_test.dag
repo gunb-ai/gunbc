@@ -32,6 +32,14 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slots_per_host,
 }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_runner_connectivity { runner_slot_incarnation }
+import gunbc.runner_lifecycle {
+  RunnerReplacementCause,
+  ReplacementCauseConnectivityDetached,
+  ReplacementCauseOrphanedRegistration,
+  ReplacementCauseWedgedBroker,
+  ReplacementCauseOperatorForced,
+}
 import extdeps.github.actions_runner {
   ActionsRunnerBinaryArtifact,
   ActionsRunnerLinuxArm64,
@@ -134,7 +142,7 @@ test fn witness_runner_lifecycle_host_effects_declared() -> Bool {
   let host_label = operator_host_srv3 as NonEmptyStr
   let org = gunbai_ci_declared.owner_login
   match EnsureActionsRunnerRelease { runner_release: runner_lifecycle_cited_release } {
-    EnsureActionsRunnerRelease { runner_release: release } => release == runner_lifecycle_cited_release
+    EnsureActionsRunnerRelease { runner_release: cited } => cited == runner_lifecycle_cited_release
   }
     && match EnsureRunnerSlotDirectory { slot: slot, artifact: artifact } {
       EnsureRunnerSlotDirectory { slot: s, artifact: a } => s == slot && a == artifact
@@ -151,8 +159,18 @@ test fn witness_runner_lifecycle_host_effects_declared() -> Bool {
     && match ActivateRunnerSlot { slot: slot } {
       ActivateRunnerSlot { slot: s } => s == slot
     }
-    && match ReplaceRunnerIncarnation { slot: slot } {
-      ReplaceRunnerIncarnation { slot: s } => s == slot
+    && match ReplaceRunnerIncarnation {
+      from: runner_slot_incarnation(host: operator_host_srv3, slot_index: 1, unit_active: true),
+      cause: ReplacementCauseConnectivityDetached { registration_id: 42 },
+    } {
+      ReplaceRunnerIncarnation { from: inc, cause: c } =>
+        inc.slot == slot
+          && match c {
+            ReplacementCauseConnectivityDetached { registration_id: id } => id == 42
+            ReplacementCauseOrphanedRegistration {} => false
+            ReplacementCauseWedgedBroker {} => false
+            ReplacementCauseOperatorForced { detail: _ } => false
+          }
     }
     && match ObserveRunnerLocalState { slot: slot } {
       ObserveRunnerLocalState { slot: s } => s == slot

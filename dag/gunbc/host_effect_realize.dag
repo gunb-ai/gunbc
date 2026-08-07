@@ -120,6 +120,8 @@ import gunbc.runner_lifecycle_realize {
   runner_lifecycle_realize_observe_github_runner_registration,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_runner_connectivity { LocalRunnerSlotIncarnation }
+import gunbc.runner_lifecycle { RunnerReplacementCause }
 import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
 import gunbc.roadmap_static_site { roadmap_site_digest_readback_script }
 import gunbc.host_build_cache_provision_script { build_cache_provision_shell_script }
@@ -227,7 +229,11 @@ type ResolvedHostEffectCell =
   | EnsureRunnerSystemdTemplateOnHost { node: ComputeHost, host_label: NonEmptyStr }
   | EnsureRunnerMemoryCapsOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
   | ActivateRunnerSlotOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
-  | ReplaceRunnerIncarnationOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
+  | ReplaceRunnerIncarnationOnHost {
+      node: ComputeHost,
+      from: LocalRunnerSlotIncarnation,
+      cause: RunnerReplacementCause,
+    }
   | ObserveRunnerLocalStateOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
   | ObserveGitHubRunnerRegistrationOnHost {
       node: ComputeHost,
@@ -335,8 +341,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               EnsureRunnerMemoryCapsOnHost { node: n, slot: s }
             ActivateRunnerSlot { slot: s } =>
               ActivateRunnerSlotOnHost { node: n, slot: s }
-            ReplaceRunnerIncarnation { slot: s } =>
-              ReplaceRunnerIncarnationOnHost { node: n, slot: s }
+            ReplaceRunnerIncarnation { from: inc, cause: c } =>
+              ReplaceRunnerIncarnationOnHost { node: n, from: inc, cause: c }
             ObserveRunnerLocalState { slot: s } =>
               ObserveRunnerLocalStateOnHost { node: n, slot: s }
             ObserveGitHubRunnerRegistration { slot: s, organization: o } =>
@@ -412,7 +418,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               IncompatibleCell { reason: "host_effect: EnsureRunnerMemoryCaps is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             ActivateRunnerSlot { slot: _ } =>
               IncompatibleCell { reason: "host_effect: ActivateRunnerSlot is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ReplaceRunnerIncarnation { slot: _ } =>
+            ReplaceRunnerIncarnation { from: _, cause: _ } =>
               IncompatibleCell { reason: "host_effect: ReplaceRunnerIncarnation is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             ObserveRunnerLocalState { slot: _ } =>
               IncompatibleCell { reason: "host_effect: ObserveRunnerLocalState is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -1795,7 +1801,7 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       runner_lifecycle_realize_ensure_runner_memory_caps(intent: intent)
     ActivateRunnerSlotOnHost { node: _, slot: _ } =>
       runner_lifecycle_realize_activate_runner_slot(intent: intent)
-    ReplaceRunnerIncarnationOnHost { node: _, slot: _ } =>
+    ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } =>
       runner_lifecycle_realize_replace_runner_incarnation(intent: intent)
     ObserveRunnerLocalStateOnHost { node: _, slot: _ } =>
       runner_lifecycle_realize_observe_runner_local_state(intent: intent)
@@ -1969,7 +1975,7 @@ fn host_effect_apply_gated(
           runner_lifecycle_realize_ensure_runner_memory_caps(intent: intent)
         ActivateRunnerSlotOnHost { node: _, slot: _ } =>
           runner_lifecycle_realize_activate_runner_slot(intent: intent)
-        ReplaceRunnerIncarnationOnHost { node: _, slot: _ } =>
+        ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } =>
           runner_lifecycle_realize_replace_runner_incarnation(intent: intent)
         ObserveRunnerLocalStateOnHost { node: _, slot: _ } =>
           runner_lifecycle_realize_observe_runner_local_state(intent: intent)
@@ -2038,7 +2044,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ActivateRunnerSlotOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            ReplaceRunnerIncarnationOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ObserveRunnerLocalStateOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ObserveGitHubRunnerRegistrationOnHost { node: _, slot: _, organization: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))

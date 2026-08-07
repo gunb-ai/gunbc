@@ -2,6 +2,7 @@ module gunbc.runner_lifecycle
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.nat { Nat }
+import gunbc.fleet_runner_connectivity { LocalRunnerSlotIncarnation }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.disposition { Disposition, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -32,6 +33,14 @@ import extdeps.github.actions_runner { actions_runner_base_dir }
 // PR B seam (operator 2026-08-06): vivid-eagle-131 owns gunbc.apply plan + typed actions;
 // still-ram-738 owns these HostEffect arms + ADD sequence + shared RunnerSlotIdentity;
 // vivid-otter-718 stacks ReplaceRunnerIncarnation / repair arms on the SAME identity — no fork.
+
+data runner_local_incarnation_authority_note: String = "RunnerLocalIncarnation is fleet_runner_connectivity LocalRunnerSlotIncarnation — the single authority for a slot's local systemd incarnation (slot, unit, unit_active, registration_name). ReplaceRunnerIncarnation carries from: that record so apply can refuse a stale plan when the process identity changed since planning."
+
+type RunnerReplacementCause
+  = ReplacementCauseConnectivityDetached { registration_id: Nat }
+  | ReplacementCauseOrphanedRegistration {}
+  | ReplacementCauseWedgedBroker {}
+  | ReplacementCauseOperatorForced { detail: String }
 
 data runner_lifecycle_authority_disposition: Disposition = SingleAuthority
 
