@@ -66,6 +66,8 @@ data provider_standing_probe_bridge_limit_unobserved_reason: NonEmptyStr = "acco
 
 data provider_standing_probe_bridge_installation_unobserved_reason: NonEmptyStr = "installation could not be observed before auth probe" as NonEmptyStr
 
+data provider_standing_probe_bridge_state_root_absent_installation_reason: NonEmptyStr = "provider state root absent; executable not probed at this bridge" as NonEmptyStr
+
 data provider_standing_probe_bridge_tool_environment_unobserved_reason: NonEmptyStr = "tool environment could not be observed before auth probe" as NonEmptyStr
 
 fn provider_dashboard_exec_probe_refused(
@@ -150,7 +152,9 @@ fn provider_standing_bundle_from_codex_dashboard_probes(
       }
     CodexStateRootAbsent =>
       ProviderStandingBundle {
-        installation: InstallationExecutableMissing,
+        installation: provider_standing_bundle_unobserved_installation(
+          reason: provider_standing_probe_bridge_state_root_absent_installation_reason,
+        ),
         authentication: AuthenticationCredentialsAbsent,
         entitlement: provider_standing_bundle_honest_entitlement_unobserved(),
         limits: provider_standing_bundle_honest_limit_unobserved(),
