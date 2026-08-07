@@ -221,6 +221,19 @@ pub struct DiscoveredSubject {
     pub pr_number: Option<u64>,
 }
 
+#[derive(Debug, Clone)]
+struct ForkRefusal {
+    pr_number: u64,
+    head_repo_full_name: String,
+    head_sha: String,
+}
+
+#[derive(Debug, Clone)]
+struct DiscoverOutcome {
+    admitted: Vec<DiscoveredSubject>,
+    fork_refusals: Vec<ForkRefusal>,
+}
+
 pub struct CiControlPlane {
     pub config: Config,
     pub authority: SeedAuthority,
@@ -294,8 +307,9 @@ impl CiControlPlane {
     pub fn poll_once(&mut self) -> Result<(), String> {
         self.fetch_mirror()?;
         self.reclaim_expired_claims()?;
-        let discovered = self.discover_subjects()?;
-        self.reconcile_subjects(&discovered)?;
+        let outcome = self.discover_subjects()?;
+        self.reconcile_subjects(&outcome.admitted)?;
+        self.reconcile_fork_refusals(&outcome.fork_refusals)?;
         if let Some(run_id) = self.claim_next_pending()? {
             if self.config.dry_run {
                 eprintln!("owned-ci: dry-run would execute {run_id}");
@@ -309,7 +323,7 @@ impl CiControlPlane {
     fn reclaim_expired_claims(&mut self) -> Result<(), String> {
         let claimed_dir = self.state_root().join("queue/claimed");
         let pending_dir = self.state_root().join("queue/pending");
-        let now = now_unix();
+        let now = now_unix()?;
         let entries: Vec<_> = fs::read_dir(&claimed_dir)
             .map_err(|e| format!("read claimed queue: {e}"))?
             .filter_map(Result::ok)
@@ -365,11 +379,11 @@ impl CiControlPlane {
         Ok(())
     }
 
-    fn discover_subjects(&self) -> Result<Vec<DiscoveredSubject>, String> {
-        let mut out = Vec::new();
+    fn discover_subjects(&self) -> Result<DiscoverOutcome, String> {
+        let mut admitted = Vec::new();
         let main_sha = rev_parse(&self.config.mirror_path, "refs/remotes/origin/main")
             .or_else(|_| rev_parse(&self.config.mirror_path, "refs/heads/main"))?;
-        out.push(DiscoveredSubject {
+        admitted.push(DiscoveredSubject {
             subject_key: format!("main:{main_sha}"),
             head_sha: main_sha,
             kind: "main_push".to_string(),
@@ -377,7 +391,10 @@ impl CiControlPlane {
         });
 
         if std::env::var("OWNED_CI_POLL_MAIN_ONLY").is_ok() {
-            return Ok(out);
+            return Ok(DiscoverOutcome {
+                admitted,
+                fork_refusals: vec![],
+            });
         }
 
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
@@ -388,11 +405,18 @@ impl CiControlPlane {
                 "GITHUB_TOKEN empty (fail-closed: cannot discover PR subjects)".to_string(),
             );
         }
-        out.extend(self.discover_open_prs(&token)?);
-        Ok(out)
+        let (prs, fork_refusals) = self.discover_open_prs(&token)?;
+        admitted.extend(prs);
+        Ok(DiscoverOutcome {
+            admitted,
+            fork_refusals,
+        })
     }
 
-    fn discover_open_prs(&self, token: &str) -> Result<Vec<DiscoveredSubject>, String> {
+    fn discover_open_prs(
+        &self,
+        token: &str,
+    ) -> Result<(Vec<DiscoveredSubject>, Vec<ForkRefusal>), String> {
         let url = format!(
             "https://api.github.com/repos/{}/pulls?state=open",
             self.authority.repo_full_name
@@ -412,7 +436,8 @@ impl CiControlPlane {
         }
         let pulls: Vec<serde_json::Value> =
             serde_json::from_str(&body).map_err(|e| format!("parse pulls json: {e}"))?;
-        let mut out = Vec::new();
+        let mut admitted = Vec::new();
+        let mut fork_refusals = Vec::new();
         for pull in pulls {
             let number = pull["number"].as_u64();
             let head_sha = pull["head"]["sha"].as_str().map(str::to_string);
@@ -424,19 +449,21 @@ impl CiControlPlane {
                 continue;
             };
             if head_repo != self.authority.repo_full_name {
-                eprintln!(
-                    "owned-ci: refusing fork PR #{number} from {head_repo} (v0 same-repo only)"
-                );
+                fork_refusals.push(ForkRefusal {
+                    pr_number: number,
+                    head_repo_full_name: head_repo,
+                    head_sha,
+                });
                 continue;
             }
-            out.push(DiscoveredSubject {
+            admitted.push(DiscoveredSubject {
                 subject_key: format!("pr:{head_sha}"),
                 head_sha,
                 kind: "pull_request".to_string(),
                 pr_number: Some(number),
             });
         }
-        Ok(out)
+        Ok((admitted, fork_refusals))
     }
 
     fn reconcile_subjects(&mut self, discovered: &[DiscoveredSubject]) -> Result<(), String> {
@@ -450,8 +477,8 @@ impl CiControlPlane {
             if already {
                 continue;
             }
-            let run_id = new_run_id(&subject.head_sha);
-            let now = now_unix();
+            let run_id = new_run_id(&subject.head_sha)?;
+            let now = now_unix()?;
             let details_url = format!(
                 "{}/ci/run/{}",
                 self.config.serve_base_url.trim_end_matches('/'),
@@ -505,6 +532,75 @@ impl CiControlPlane {
         Ok(())
     }
 
+    fn reconcile_fork_refusals(&mut self, refusals: &[ForkRefusal]) -> Result<(), String> {
+        if refusals.is_empty() {
+            return Ok(());
+        }
+        let mut ledger = self.read_ledger()?;
+        let mut index = self.read_index()?;
+        for refusal in refusals {
+            let subject_key = format!("fork-refused:{}", refusal.head_repo_full_name);
+            let already = ledger.subjects.iter().any(|s| {
+                s.kind == "fork_refused"
+                    && s.pr_number == Some(refusal.pr_number)
+                    && s.last_enqueued_run_id.is_some()
+            });
+            if already {
+                continue;
+            }
+            let run_id = new_run_id(&refusal.head_sha)?;
+            let now = now_unix()?;
+            let reason = format!(
+                "fork PR #{} from {} refused in v0 (same-repo only)",
+                refusal.pr_number, refusal.head_repo_full_name
+            );
+            let details_url = format!(
+                "{}/ci/run/{}",
+                self.config.serve_base_url.trim_end_matches('/'),
+                run_id
+            );
+            let record = RunRecord {
+                run_id: run_id.clone(),
+                head_sha: refusal.head_sha.clone(),
+                subject_key: subject_key.clone(),
+                queue_state: "refused".to_string(),
+                publication_state: PublicationState {
+                    kind: "not_started".to_string(),
+                    check_run_id: None,
+                    local_conclusion: None,
+                    details_url: Some(details_url.clone()),
+                    cause: Some(reason.clone()),
+                },
+                stages: vec![],
+                details_url,
+                lease: None,
+                created_at_unix: now,
+                updated_at_unix: now,
+            };
+            self.write_run(&record)?;
+            index.runs.push(RunIndexRow {
+                run_id: run_id.clone(),
+                head_sha: refusal.head_sha.clone(),
+                subject_key: subject_key.clone(),
+                status: "refused".to_string(),
+                conclusion: Some("refused".to_string()),
+                created_at_unix: now,
+                updated_at_unix: now,
+            });
+            ledger.subjects.push(SubjectEntry {
+                subject_key,
+                head_sha: refusal.head_sha.clone(),
+                kind: "fork_refused".to_string(),
+                pr_number: Some(refusal.pr_number),
+                last_enqueued_run_id: Some(run_id),
+            });
+            eprintln!("owned-ci: recorded fork PR refusal — {reason}");
+        }
+        self.write_index(&index)?;
+        self.write_ledger(&ledger)?;
+        Ok(())
+    }
+
     fn claim_next_pending(&mut self) -> Result<Option<String>, String> {
         let pending_dir = self.state_root().join("queue/pending");
         let mut entries: Vec<_> = fs::read_dir(&pending_dir)
@@ -527,7 +623,7 @@ impl CiControlPlane {
         let to = claimed_dir.join(format!("{run_id}.json"));
         fs::rename(&from, &to).map_err(|e| format!("claim rename {run_id}: {e}"))?;
         let mut record = self.read_run(&run_id)?;
-        let now = now_unix();
+        let now = now_unix()?;
         record.queue_state = "claimed".to_string();
         record.lease = Some(QueueLease {
             holder: self.config.lease_holder.clone(),
@@ -572,7 +668,8 @@ impl CiControlPlane {
         let stages = self.authority.stage_labels.clone();
         let mut failed = false;
         for stage in &stages {
-            set_stage_running(&mut record, stage);
+            let now = now_unix()?;
+            set_stage_running(&mut record, stage, now);
             self.write_run(&record)?;
             let result = match stage.as_str() {
                 "build" => self.stage_build(&worktree),
@@ -582,10 +679,11 @@ impl CiControlPlane {
                     "unknown execution stage {other} from CiExecutionPlan"
                 )),
             };
+            let now = now_unix()?;
             match result {
-                Ok(()) => set_stage_succeeded(&mut record, stage),
+                Ok(()) => set_stage_succeeded(&mut record, stage, now),
                 Err(detail) => {
-                    set_stage_failed(&mut record, stage, &detail);
+                    set_stage_failed(&mut record, stage, &detail, now);
                     failed = true;
                     break;
                 }
@@ -600,7 +698,7 @@ impl CiControlPlane {
         } else {
             "completed".to_string()
         };
-        record.updated_at_unix = now_unix();
+        record.updated_at_unix = now_unix()?;
         self.write_run(&record)?;
         self.update_index_row(run_id, &record.queue_state, Some(conclusion))?;
         self.move_queue_file(run_id, "claimed", "completed")?;
@@ -637,7 +735,7 @@ impl CiControlPlane {
             details_url: Some(record.details_url.clone()),
             cause: Some(cause.to_string()),
         };
-        updated.updated_at_unix = now_unix();
+        updated.updated_at_unix = now_unix()?;
         self.write_run(&updated)
     }
 
@@ -858,7 +956,7 @@ impl CiControlPlane {
         conclusion: Option<&str>,
     ) -> Result<(), String> {
         let mut index = self.read_index()?;
-        let now = now_unix();
+        let now = now_unix()?;
         for row in &mut index.runs {
             if row.run_id == run_id {
                 row.status = status.to_string();
@@ -915,8 +1013,7 @@ fn default_stages(labels: &[String]) -> Vec<StageRecord> {
         .collect()
 }
 
-fn set_stage_running(record: &mut RunRecord, stage: &str) {
-    let now = now_unix();
+fn set_stage_running(record: &mut RunRecord, stage: &str, now: u64) {
     for s in &mut record.stages {
         if s.stage == stage {
             s.status = "running".to_string();
@@ -926,8 +1023,7 @@ fn set_stage_running(record: &mut RunRecord, stage: &str) {
     record.updated_at_unix = now;
 }
 
-fn set_stage_succeeded(record: &mut RunRecord, stage: &str) {
-    let now = now_unix();
+fn set_stage_succeeded(record: &mut RunRecord, stage: &str, now: u64) {
     for s in &mut record.stages {
         if s.stage == stage {
             s.status = "succeeded".to_string();
@@ -937,8 +1033,7 @@ fn set_stage_succeeded(record: &mut RunRecord, stage: &str) {
     record.updated_at_unix = now;
 }
 
-fn set_stage_failed(record: &mut RunRecord, stage: &str, detail: &str) {
-    let now = now_unix();
+fn set_stage_failed(record: &mut RunRecord, stage: &str, detail: &str, now: u64) {
     for s in &mut record.stages {
         if s.stage == stage {
             s.status = "failed".to_string();
@@ -949,16 +1044,16 @@ fn set_stage_failed(record: &mut RunRecord, stage: &str, detail: &str) {
     record.updated_at_unix = now;
 }
 
-fn new_run_id(head_sha: &str) -> String {
+fn new_run_id(head_sha: &str) -> Result<String, String> {
     let prefix = head_sha.chars().take(8).collect::<String>();
-    format!("{}-{}", now_unix(), prefix)
+    Ok(format!("{}-{}", now_unix()?, prefix))
 }
 
-fn now_unix() -> u64 {
+fn now_unix() -> Result<u64, String> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
-        .unwrap_or(0)
+        .map_err(|e| format!("system clock before UNIX epoch: {e}"))
 }
 
 fn hostname() -> String {
@@ -1024,7 +1119,7 @@ mod tests {
 
     #[test]
     fn new_run_id_includes_sha_prefix() {
-        let id = new_run_id("deadbeef01234567");
+        let id = new_run_id("deadbeef01234567").expect("run id");
         assert!(id.contains("deadbeef"));
     }
 }
