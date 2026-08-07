@@ -17,9 +17,12 @@ import v2.std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.llm.cli { claude_cli_external_authority_anchor }
-
-data extdeps_external_authority_anchor: ExternalAuthority = claude_cli_external_authority_anchor
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.claude.com/en/docs/claude-code/cli-reference"
+  }
+}
 
 data claude_setup_token_command: NonEmptyStr = "setup-token" as NonEmptyStr
 
