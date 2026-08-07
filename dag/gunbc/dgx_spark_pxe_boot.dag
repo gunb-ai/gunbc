@@ -9,7 +9,12 @@ import std.human_intervention {
   NoDischargeSiteModeled,
 }
 import extdeps.uri { Uri }
-import extdeps.provisioning.network_boot { NetworkBootChain, NativeDhcpBootOptions }
+import extdeps.provisioning.network_boot {
+  NetworkBootChain,
+  DhcpBootDirection,
+  NativeDhcpBootOptions,
+  ProxyDhcp,
+}
 import extdeps.systems.nvidia_dgx_spark_pxe {
   SparkPxeBootImageKind,
   FastOsRecoveryTarball,
@@ -146,6 +151,15 @@ fn pxe_network_present_authorities(
               }
           }
       }
+  }
+}
+
+fn pxe_network_isolation_dhcp_direction(isolation: PxeNetworkIsolation) -> DhcpBootDirection {
+  match isolation {
+    ProxyDhcpPxeOnly => ProxyDhcp
+    IsolatedProvisioningSegment => NativeDhcpBootOptions
+    DedicatedNicDirectCable => NativeDhcpBootOptions
+    AdmittedRouterDhcpChange => NativeDhcpBootOptions
   }
 }
 
@@ -304,12 +318,13 @@ fn spark_unattended_image_boot(
   image_kind: SparkPxeBootImageKind,
   tftp_root: Uri,
   http_image_root: Uri,
+  isolation: PxeNetworkIsolation,
 ) -> SparkUnattendedImageBoot {
   SparkUnattendedImageBoot {
     image_kind: image_kind,
     network_chain: NetworkBootChain {
       boot_mode: spark_pxe_client_boot_mode(tftp_root: tftp_root),
-      dhcp_direction: NativeDhcpBootOptions,
+      dhcp_direction: pxe_network_isolation_dhcp_direction(isolation: isolation),
       image_http_root: http_image_root,
     },
     tftp_bootloader: spark_pxe_tftp_relative_path(p: TftpBootloader, image: image_kind),
@@ -366,7 +381,12 @@ fn admit_spark_unattended_pxe_boot(
           SparkUnattendedPxeBootRefused {
             reason: UnattendedPxeBootNetworkStandingIncomplete { gaps: network_gaps }
           }
-        PxeNetworkReady { dhcp_authority: _, tftp_endpoint: _, http_endpoint: _, isolation: _ } =>
+        PxeNetworkReady {
+          dhcp_authority: _,
+          tftp_endpoint: _,
+          http_endpoint: _,
+          isolation: network_isolation,
+        } =>
           match firmware_config {
             Absent =>
               SparkUnattendedPxeBootRefused {
@@ -384,6 +404,7 @@ fn admit_spark_unattended_pxe_boot(
                       image_kind: image_kind,
                       tftp_root: tftp_root,
                       http_image_root: http_image_root,
+                      isolation: network_isolation,
                     )
                   }
               }

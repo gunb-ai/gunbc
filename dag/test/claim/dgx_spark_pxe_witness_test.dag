@@ -3,7 +3,7 @@ module test.claim.dgx_spark_pxe_witness
 import std.types { NonEmptyStr, Bool, String, List, Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import extdeps.uri { Uri, Http, Tftp }
-import extdeps.provisioning.network_boot { UefiPxe }
+import extdeps.provisioning.network_boot { UefiPxe, ProxyDhcp, NativeDhcpBootOptions }
 import extdeps.systems.nvidia_dgx_spark_pxe {
   spark_pxe_bootloader_filename,
   spark_pxe_tftp_relative_path,
@@ -29,6 +29,7 @@ import gunbc.dgx_spark_pxe_boot {
   PxeNetworkObservation,
   PxeNetworkIsolation,
   ProxyDhcpPxeOnly,
+  IsolatedProvisioningSegment,
   DhcpBootfileNotOffered,
   DhcpIsolationUnobserved,
   SparkPxeFirmwareStanding,
@@ -101,10 +102,50 @@ test fn w_unattended_boot_model_uses_uefi_pxe_not_http_boot() -> Bool {
     image_kind: FastOsRecoveryTarball,
     tftp_root: witness_tftp_root,
     http_image_root: witness_http_root,
+    isolation: ProxyDhcpPxeOnly,
   ).network_chain.boot_mode {
     UefiPxe { tftp_root: _ } => true
     _ => false
   }
+}
+
+test fn w_admitted_boot_dhcp_direction_matches_proven_isolation() -> Bool {
+  match admit_spark_unattended_pxe_boot(
+    image_kind: FastOsRecoveryTarball,
+    tftp_root: witness_tftp_root,
+    http_image_root: witness_http_root,
+    network_observation: Present { value: synthetic_ready_network_observation() },
+    dhcp_authority: Present { value: witness_dhcp_authority },
+    tftp_endpoint: Present { value: witness_tftp_endpoint },
+    http_endpoint: Present { value: witness_http_endpoint },
+    isolation: Present { value: ProxyDhcpPxeOnly },
+    firmware_config: Present { value: synthetic_ready_firmware_config() },
+  ) {
+    SparkUnattendedPxeBootAdmitted { boot: b } =>
+      match b.network_chain.dhcp_direction {
+        ProxyDhcp => true
+        NativeDhcpBootOptions => false
+      }
+    SparkUnattendedPxeBootRefused { reason: _ } => false
+  }
+    && match admit_spark_unattended_pxe_boot(
+      image_kind: FastOsRecoveryTarball,
+      tftp_root: witness_tftp_root,
+      http_image_root: witness_http_root,
+      network_observation: Present { value: synthetic_ready_network_observation() },
+      dhcp_authority: Present { value: witness_dhcp_authority },
+      tftp_endpoint: Present { value: witness_tftp_endpoint },
+      http_endpoint: Present { value: witness_http_endpoint },
+      isolation: Present { value: IsolatedProvisioningSegment },
+      firmware_config: Present { value: synthetic_ready_firmware_config() },
+    ) {
+      SparkUnattendedPxeBootAdmitted { boot: b } =>
+        match b.network_chain.dhcp_direction {
+          NativeDhcpBootOptions => true
+          ProxyDhcp => false
+        }
+      SparkUnattendedPxeBootRefused { reason: _ } => false
+    }
 }
 
 test fn w_red_network_standing_without_observation_is_unobserved() -> Bool {
@@ -266,7 +307,12 @@ test fn w_admission_with_ready_standings_succeeds() -> Bool {
     firmware_config: Present { value: synthetic_ready_firmware_config() },
   ) {
     SparkUnattendedPxeBootAdmitted { boot: b } =>
-      b.image_kind == FastOsRecoveryTarball && b.tftp_kernel == "fastos/vmlinuz"
+      b.image_kind == FastOsRecoveryTarball
+        && b.tftp_kernel == "fastos/vmlinuz"
+        && match b.network_chain.dhcp_direction {
+          ProxyDhcp => true
+          NativeDhcpBootOptions => false
+        }
     SparkUnattendedPxeBootRefused { reason: _ } => false
   }
 }
