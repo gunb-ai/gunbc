@@ -1,6 +1,7 @@
 module test.claim.claude_setup_token_enrollment_witness
 
 import std.types { Bool, NonEmptyStr, List, list_length }
+import std.measure { character_count }
 import v2.std.optional { Present, Absent }
 import extdeps.llm.claude_setup_token_cli {
   SetupTokenFormatMeasured,
@@ -68,8 +69,8 @@ test fn witness_setup_token_capture_refuses_multiple_candidates() -> Bool {
     format: SetupTokenFormatMeasured {
       format: ClaudeSetupTokenFormatMeasured {
         token_prefix: "sk-ant-oat01-" as NonEmptyStr,
-        min_length: 20,
-        max_length: 200,
+        min_length: character_count(count: 20),
+        max_length: character_count(count: 200),
       },
     },
   ) {
@@ -85,8 +86,8 @@ test fn witness_setup_token_capture_admits_single_candidate() -> Bool {
     format: SetupTokenFormatMeasured {
       format: ClaudeSetupTokenFormatMeasured {
         token_prefix: "sk-ant-oat01-" as NonEmptyStr,
-        min_length: 20,
-        max_length: 200,
+        min_length: character_count(count: 20),
+        max_length: character_count(count: 200),
       },
     },
   ) {

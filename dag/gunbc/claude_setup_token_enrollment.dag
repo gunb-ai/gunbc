@@ -1,6 +1,7 @@
 module gunbc.claude_setup_token_enrollment
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, list_length }
+import std.measure { CharacterCount, character_count }
 import v2.std.optional { Present, Absent }
 import extdeps.llm.claude_setup_token_cli {
   ClaudeSetupTokenFormatObservation,
@@ -105,10 +106,14 @@ type ClaudeEnrollmentWriterLeaseAdmission
     }
 
 type ClaudeSetupTokenCaptureAdmission
-  = SetupTokenCaptureAdmitted { token_length: Int }
+  = SetupTokenCaptureAdmitted { token_length: CharacterCount }
   | SetupTokenCaptureRefusedMultipleCandidates { count: Int }
   | SetupTokenCaptureRefusedMalformedPrefix
-  | SetupTokenCaptureRefusedMalformedLength { observed: Int, min: Int, max: Int }
+  | SetupTokenCaptureRefusedMalformedLength {
+      observed: CharacterCount,
+      min: CharacterCount,
+      max: CharacterCount,
+    }
   | SetupTokenCaptureRefusedFormatUnobserved { reason: NonEmptyStr }
   | SetupTokenCaptureRefusedNoCandidate
 
@@ -239,12 +244,14 @@ fn admit_setup_token_capture(
               max_length: measured.max_length,
             ) {
               SetupTokenCaptureRefusedMalformedLength {
-                observed: string_length(s: candidate),
+                observed: character_count(count: string_length(s: candidate)),
                 min: measured.min_length,
                 max: measured.max_length,
               }
             } else {
-              SetupTokenCaptureAdmitted { token_length: string_length(s: candidate) }
+              SetupTokenCaptureAdmitted {
+                token_length: character_count(count: string_length(s: candidate)),
+              }
             }
         }
       }

@@ -8,6 +8,11 @@ import std.types {
   List,
   RenderedTerminalText,
 }
+import std.measure {
+  CharacterCount,
+  character_count,
+  measure_le,
+}
 import v2.std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -44,8 +49,8 @@ fn shape_claude_setup_token_argv(executable: NonEmptyStr) -> List<String> {
 
 type ClaudeSetupTokenFormatMeasured {
   token_prefix: NonEmptyStr
-  min_length: Int
-  max_length: Int
+  min_length: CharacterCount
+  max_length: CharacterCount
 }
 
 type ClaudeSetupTokenFormatObservation
@@ -161,9 +166,9 @@ fn extract_setup_token_candidate(
 
 fn setup_token_candidate_length_ok(
   token: String,
-  min_length: Int,
-  max_length: Int,
+  min_length: CharacterCount,
+  max_length: CharacterCount,
 ) -> Bool {
-  let n = string_length(s: token)
-  n >= min_length && n <= max_length
+  let observed = character_count(count: string_length(s: token))
+  measure_le(a: min_length, b: observed) && measure_le(a: observed, b: max_length)
 }

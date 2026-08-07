@@ -51,11 +51,11 @@ import extdeps.llm.codex_app_server {
 import gunbc.dispatch_selection {
   ProfileAutomatic,
   DispatchSelectionRefused,
+  DispatchSelectionResolved,
   SelectAutomatically,
   default_provider_selection_request,
   resolve_dispatch_selection,
   automatic_selection_selected_kind,
-  claude_offer_not_wired_reason,
   fixture_inventory_codex_then_claude,
   fixture_inventory_claude_then_codex,
   fixture_codex_offer_with_standing,
@@ -441,9 +441,8 @@ test fn witness_standing_ineligible_codex_selects_claude_before_resolve() -> Boo
     request: default_provider_selection_request(),
     node_sizing: Unsized,
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
-      reason == claude_offer_not_wired_reason
-    _ => false
+    DispatchSelectionResolved { receipt } => receipt.provider_kind == ClaudeCliProvider
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
 
