@@ -20,7 +20,7 @@ import gunbc.session_auto_publish {
   drift_poll_may_run,
 }
 
-data witness_scope_note: String = "AUTO-PUBLISH-0 harness: the publish state machine is pure and total over constructed values, so every arm is reachable with no git, no gh, and no sqlite. What is claimed is the SEPARATION of LocalCheckpoint from RemotePublication — poll push advances only the local axis; user intent stamps both; drift reminders read and advance only the remote axis. What is NOT claimed: nothing here executes publishSessionWorktree. A regression that re-merges the axes in production shell would keep these green until the shell slice lands."
+data witness_scope_note: String = "AUTO-PUBLISH-0 harness: the publish state machine is pure and total over constructed values, so every arm is reachable with no git, no gh, and no sqlite. What is claimed is the SEPARATION of LocalCheckpoint from RemotePublication — poll push advances only the local axis; user intent stamps both; drift reminders read and advance only the remote axis. What is NOT claimed: slice 0 prevents no publication behaviour — scratch auto-push, autosave remote branches, and healer author-branch mutation are unchanged; nothing here executes publishSessionWorktree or enforces immediate policy. A regression that re-merges the axes in production shell would keep these green until the shell transport slice lands."
 
 data head_a: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 data head_b: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
