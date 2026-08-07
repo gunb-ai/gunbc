@@ -75,7 +75,7 @@ fn cursor_sdk_local_package_closure() -> CursorSdkPackageClosure {
   }
 }
 
-data cursor_sdk_api_key_never_in_argv_note: String = "RED control for slice E: a modeled SDK local credential must not project to argv tokens. CursorSdkApiKeyFromSecretRef and CursorSdkApiKeyFromEnvironment are the only admitted materialization arms for automation."
+data cursor_sdk_api_key_never_in_argv_note: String = "Slice E: modeled SDK local credential must not project to argv tokens. CursorSdkApiKeyFromSecretRef and CursorSdkApiKeyFromEnvironment are the only admitted materialization arms for automation; argv projection refuses via cursor_sdk_refuse_argv_api_key_projection."
 
 data cursor_sdk_usage_capability_gap_note: String = "Cursor local exposes NO account-level remaining capacity. The SDK usage API is per-agent and cloud-only (provider-control-interface-audit §6, §10). Local usage standing must be CursorSdkLocalAccountUsageUnobservable — a typed capability gap naming the missing capability — never an estimated or assumed healthy balance. Coordinate arm adoption with valiant-stag-845 (ProviderLimitObservation decomposition). Silence is not a positive observation (DESIGN §5)."
 

@@ -1,11 +1,16 @@
 module extdeps.llm.cursor_sdk
 
-import std.types { String, NonEmptyStr, FilePath }
+import std.types { String, NonEmptyStr, FilePath, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
-import extdeps.llm.cursor_cli { CursorModelId, cursor_api_key_env_var }
+import extdeps.llm.cursor_cli {
+  CursorModelId,
+  cursor_api_key_env_var,
+  CursorEnvBinding,
+  cursor_argv_contains,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -58,6 +63,66 @@ fn cursor_sdk_materialize_api_key(
 
 fn cursor_sdk_environment_api_key_materialization() -> CursorSdkApiKeyMaterialization {
   CursorSdkApiKeyFromEnvironment { env_var: cursor_api_key_env_var }
+}
+
+data cursor_sdk_argv_projection_note: String = "SDK local credential delivery is in-call apiKey or process environment only. argv projection is structurally refused — contrast extdeps.llm.cursor_cli CursorApiKeyArgument, which is the legacy CLI argv leak surface and is not an admitted SDK-local arm."
+
+type CursorSdkCredentialProjection
+  = CursorSdkCredentialProjected {
+      argv: List<String>,
+      environment: List<CursorEnvBinding>,
+    }
+  | CursorSdkCredentialProjectionRefused { reason: NonEmptyStr }
+
+fn cursor_sdk_project_materialization(
+  materialization: CursorSdkApiKeyMaterialization,
+  environment_key_plaintext: NonEmptyStr,
+) -> CursorSdkCredentialProjection {
+  match materialization {
+    CursorSdkApiKeyFromSecretRef { secret_ref: _ } =>
+      CursorSdkCredentialProjected {
+        argv: [],
+        environment: [],
+      }
+    CursorSdkApiKeyFromEnvironment { env_var: var } =>
+      CursorSdkCredentialProjected {
+        argv: [],
+        environment: [
+          CursorEnvBinding { name: var, value: environment_key_plaintext },
+        ],
+      }
+  }
+}
+
+fn cursor_sdk_refuse_argv_api_key_projection(
+  _key: NonEmptyStr,
+) -> CursorSdkCredentialProjection {
+  CursorSdkCredentialProjectionRefused {
+    reason: "Cursor SDK local must not project API key material into argv tokens" as NonEmptyStr,
+  }
+}
+
+fn cursor_sdk_projection_argv_excludes_token(
+  projection: CursorSdkCredentialProjection,
+  forbidden_token: String,
+) -> Bool {
+  match projection {
+    CursorSdkCredentialProjected { argv: argv, environment: _ } =>
+      !cursor_argv_contains(argv: argv, token: forbidden_token)
+        && !cursor_argv_contains(argv: argv, token: "--api-key")
+    CursorSdkCredentialProjectionRefused { reason: _ } => false
+  }
+}
+
+fn cursor_sdk_projection_binds_environment(
+  projection: CursorSdkCredentialProjection,
+  env_var: NonEmptyStr,
+) -> Bool {
+  match projection {
+    CursorSdkCredentialProjected { argv: _, environment: environment } =>
+      any(environment, b => (b.name as String) == (env_var as String))
+    CursorSdkCredentialProjectionRefused { reason: _ } => false
+  }
 }
 
 type CursorSdkLocalInvocation {

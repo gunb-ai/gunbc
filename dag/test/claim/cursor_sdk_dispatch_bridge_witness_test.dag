@@ -19,6 +19,8 @@ import gunbc.cursor_sdk_local_binding {
 import extdeps.llm.cursor_sdk {
   CursorSdkApiKeyFromEnvironment,
   cursor_sdk_environment_api_key_materialization,
+  cursor_sdk_project_materialization,
+  cursor_sdk_projection_argv_excludes_token,
 }
 import extdeps.llm.cursor_cli { cursor_api_key_env_var }
 
@@ -28,6 +30,8 @@ data witness_secret_ref: SecretRef = SecretRef {
   version: "7" as NonEmptyStr,
   hash_state: HashPending,
 }
+
+data witness_key: NonEmptyStr = "synthetic-not-a-real-key" as NonEmptyStr
 
 test fn dispatch_secret_ref_admits_sdk_local_binding() -> Bool {
   match cursor_sdk_local_credential_from_dispatch(
@@ -80,10 +84,27 @@ test fn dispatch_binding_refuses_latest_secret_version() -> Bool {
   }
 }
 
+test fn dispatch_binding_projection_keeps_argv_clean() -> Bool {
+  match cursor_sdk_local_credential_from_dispatch(
+    credential: CursorApiKeySecretRef { secret_ref: witness_secret_ref },
+  ) {
+    CursorSdkLocalCredentialAdmitted { credential: _, materialization } =>
+      cursor_sdk_projection_argv_excludes_token(
+        projection: cursor_sdk_project_materialization(
+          materialization: materialization,
+          environment_key_plaintext: witness_key,
+        ),
+        forbidden_token: witness_key as String,
+      )
+    CursorSdkLocalCredentialRefused { reason: _ } => false
+  }
+}
+
 test fn cursor_sdk_dispatch_bridge_witness_keystone_holds() -> Bool {
   dispatch_secret_ref_admits_sdk_local_binding()
     && dispatch_local_login_ref_refuses()
     && dispatch_secret_ref_materializes_via_secret_ref_arm()
     && environment_materialization_consumes_cli_env_var()
     && dispatch_binding_refuses_latest_secret_version()
+    && dispatch_binding_projection_keeps_argv_clean()
 }
