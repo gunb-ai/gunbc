@@ -48,7 +48,11 @@ pub fn classify_length(xs: Rc<Vec<i64>>) -> LengthClass {
         if __fm.is_empty() {
             LengthClass::Zero
         } else {
-            LengthClass::One
+            if __fm.len() == 1 {
+                LengthClass::One
+            } else {
+                LengthClass::Many
+            }
         }
     }
 }

@@ -8017,11 +8017,50 @@ fn emit_typed_first_arg(args: List<Node>, registry: Map<String, ItemInfo>, scope
   }
 }
 
-fn freemonoid_match_arm_for(arms: List<Node>, variant: String) -> Node? {
+fn freemonoid_match_arms_for(arms: List<Node>, variant: String) -> List<Node> {
   arms |> filter(arm => match arm_pattern(n: arm) {
     VariantPattern { name: n, parent_enum: _, field_bindings: _ } => n == variant
     _ => false
-  }) |> first
+  })
+}
+
+fn freemonoid_match_arm_for(arms: List<Node>, variant: String) -> Node? {
+  freemonoid_match_arms_for(arms: arms, variant: variant) |> first
+}
+
+fn freemonoid_arm_field_pattern(arm: Node, field: String, source_indices: Map<String, NewlineIndex>) -> MatchPattern? {
+  match arm_pattern(n: arm) {
+    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+      match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: source_indices) == field) |> first {
+        Present { value: fb } => Present { value: field_binding_pattern(n: fb) }
+        Absent => Absent
+      }
+    _ => Absent
+  }
+}
+
+fn freemonoid_cons_tail_discriminator(cons_arm: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match freemonoid_arm_field_pattern(arm: cons_arm, field: "tail", source_indices: source_indices) {
+    Present { value: pat } => match pat {
+      VariantPattern { name: n, parent_enum: _, field_bindings: _ } =>
+        if n == "Empty" { "Empty" } else if n == "Cons" { "NestedCons" } else { "Other" }
+      Wildcard => "Wildcard"
+      Bind { declaration: _ } => "Bind"
+      _ => "Other"
+    }
+    Absent => "Wildcard"
+  }
+}
+
+fn list_has_duplicate_strings(xs: List<String>) -> Bool {
+  xs |> any(x => xs |> filter(y => y == x) |> count > 1)
+}
+
+fn freemonoid_cons_arms_are_length_discriminable(cons_arms: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if cons_arms |> count <= 1 { true } else {
+    let discs = cons_arms |> map(arm => freemonoid_cons_tail_discriminator(cons_arm: arm, source_indices: source_indices))
+    !list_has_duplicate_strings(xs: discs)
+  }
 }
 
 fn freemonoid_cons_binding(cons_arm: Node, field: String, source_indices: Map<String, NewlineIndex>) -> String {
@@ -8069,7 +8108,7 @@ fn freemonoid_catchall_bind_name(arm: Node) -> String {
   }
 }
 
-fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> Bool {
+fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summaries: Map<String, TypeSummary>, source_indices: Map<String, NewlineIndex>) -> Bool {
   let has_empty = match freemonoid_match_arm_for(arms: arms, variant: "Empty") { Present { value: _ } => true  Absent => false }
   let has_cons = match freemonoid_match_arm_for(arms: arms, variant: "Cons") { Present { value: _ } => true  Absent => false }
   let empty_is_fm = match freemonoid_match_arm_for(arms: arms, variant: "Empty") {
@@ -8080,11 +8119,13 @@ fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summ
     Present { value: ca } => parent_enum_is_freemonoid(p: arm_resolved_parent_enum(arm: ca, scrut_type: scrut_type, type_summaries: type_summaries))
     Absent => false
   }
+  let cons_arms = freemonoid_match_arms_for(arms: arms, variant: "Cons")
+  let cons_discriminable = freemonoid_cons_arms_are_length_discriminable(cons_arms: cons_arms, source_indices: source_indices)
   let has_catchall = match freemonoid_catchall_arm(arms: arms) { Present { value: _ } => true  Absent => false }
   let is_fm = empty_is_fm || cons_is_fm
   let empty_fillable = has_empty || has_catchall
   let cons_fillable = has_cons || has_catchall
-  is_fm && empty_fillable && cons_fillable
+  is_fm && empty_fillable && cons_fillable && cons_discriminable
 }
 
 fn freemonoid_tail_let_from_fm(tail_bind: String) -> String {
@@ -8122,15 +8163,84 @@ fn freemonoid_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map<Str
   }
 }
 
+fn emit_native_freemonoid_cons_branch_body(
+  cons_arm: Node,
+  si: Map<String, NewlineIndex>,
+  registry: Map<String, ItemInfo>,
+  scope: InferScope,
+  depth: Int,
+  shared_types: Set<String>,
+  emit_info: EmitGraphInfo
+) -> String {
+  freemonoid_nonempty_branch_body(cons_arm: Present { value: cons_arm }, catchall: none, si: si, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+}
+
+fn emit_native_freemonoid_cons_branches(
+  cons_arms: List<Node>,
+  si: Map<String, NewlineIndex>,
+  registry: Map<String, ItemInfo>,
+  scope: InferScope,
+  depth: Int,
+  shared_types: Set<String>,
+  emit_info: EmitGraphInfo
+) -> String {
+  let empty_tail_arm = cons_arms |> filter(arm => freemonoid_cons_tail_discriminator(cons_arm: arm, source_indices: si) == "Empty") |> first
+  let nested_tail_arm = cons_arms |> filter(arm => freemonoid_cons_tail_discriminator(cons_arm: arm, source_indices: si) == "NestedCons") |> first
+  let wildcard_arm = cons_arms |> filter(arm =>
+    let disc = freemonoid_cons_tail_discriminator(cons_arm: arm, source_indices: si)
+    disc != "Empty" && disc != "NestedCons"
+  ) |> first
+  let empty_tail_body = match empty_tail_arm {
+    Present { value: arm } => emit_native_freemonoid_cons_branch_body(cons_arm: arm, si: si, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    Absent => ""
+  }
+  let nested_tail_body = match nested_tail_arm {
+    Present { value: arm } => emit_native_freemonoid_cons_branch_body(cons_arm: arm, si: si, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    Absent => ""
+  }
+  let wildcard_body = match wildcard_arm {
+    Present { value: arm } => emit_native_freemonoid_cons_branch_body(cons_arm: arm, si: si, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    Absent => ""
+  }
+  if wildcard_body != "" {
+    let chain1 = if empty_tail_body == "" { "" } else { concat("if __fm.len() == 1 { ", empty_tail_body, " }") }
+    let chain2 = if nested_tail_body == "" { chain1 } else if chain1 == "" {
+      concat("if __fm.len() >= 2 { ", nested_tail_body, " }")
+    } else {
+      concat(chain1, " else if __fm.len() >= 2 { ", nested_tail_body, " }")
+    }
+    if chain2 == "" { wildcard_body } else { concat(chain2, " else { ", wildcard_body, " }") }
+  } else if empty_tail_body != "" && nested_tail_body != "" {
+    concat("if __fm.len() == 1 { ", empty_tail_body, " } else { ", nested_tail_body, " }")
+  } else if nested_tail_body != "" {
+    concat("if __fm.len() >= 2 { ", nested_tail_body, " } else { unreachable!() }")
+  } else if empty_tail_body != "" {
+    empty_tail_body
+  } else {
+    ""
+  }
+}
+
 fn emit_native_freemonoid_match(scrut_str: String, arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   let empty_arm = freemonoid_match_arm_for(arms: arms, variant: "Empty")
-  let cons_arm = freemonoid_match_arm_for(arms: arms, variant: "Cons")
+  let cons_arms = freemonoid_match_arms_for(arms: arms, variant: "Cons")
   let catchall = freemonoid_catchall_arm(arms: arms)
   let empty_body = freemonoid_empty_branch_body(empty_arm: empty_arm, catchall: catchall, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let nonempty_body = freemonoid_nonempty_branch_body(cons_arm: cons_arm, catchall: catchall, si: si, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  if empty_body == "" || nonempty_body == "" { "" } else {
-    concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", nonempty_body, " } }")
+  if empty_body == "" { "" }
+  else if cons_arms |> count == 0 {
+    concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } }")
+  } else if cons_arms |> count == 1 {
+    let cons_arm = cons_arms |> first
+    let nonempty_body = freemonoid_nonempty_branch_body(cons_arm: cons_arm, catchall: catchall, si: si, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    if nonempty_body == "" { "" } else {
+      concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", nonempty_body, " } }")
+    }
+  } else {
+    let cons_chain = emit_native_freemonoid_cons_branches(cons_arms: cons_arms, si: si, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    if cons_chain == "" { "" } else {
+      concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", cons_chain, " } }")
+    }
   }
 }
 
@@ -8144,7 +8254,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
       } else { authored_name_at(source_indices: scope.type_env.source_indices, node: rt) }
     _ => ""
   }
-  let native_fm = if arms_are_freemonoid_coproduct(arms: arms, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) {
+  let native_fm = if arms_are_freemonoid_coproduct(arms: arms, scrut_type: scrut_type, type_summaries: emit_info.type_summaries, source_indices: scope.type_env.source_indices) {
     emit_native_freemonoid_match(scrut_str: scrut_str, arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   } else { "" }
   if native_fm != "" { return native_fm }
@@ -8982,15 +9092,88 @@ fn freemonoid_tco_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map
   }
 }
 
+fn emit_native_freemonoid_tco_cons_branch_body(
+  cons_arm: Node,
+  si: Map<String, NewlineIndex>,
+  fn_name: String,
+  params: List<Node>,
+  registry: Map<String, ItemInfo>,
+  scope: InferScope,
+  depth: Int,
+  shared_types: Set<String>,
+  emit_info: EmitGraphInfo
+) -> String {
+  freemonoid_tco_nonempty_branch_body(cons_arm: Present { value: cons_arm }, catchall: none, si: si, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+}
+
+fn emit_native_freemonoid_tco_cons_branches(
+  cons_arms: List<Node>,
+  si: Map<String, NewlineIndex>,
+  fn_name: String,
+  params: List<Node>,
+  registry: Map<String, ItemInfo>,
+  scope: InferScope,
+  depth: Int,
+  shared_types: Set<String>,
+  emit_info: EmitGraphInfo
+) -> String {
+  let empty_tail_arm = cons_arms |> filter(arm => freemonoid_cons_tail_discriminator(cons_arm: arm, source_indices: si) == "Empty") |> first
+  let nested_tail_arm = cons_arms |> filter(arm => freemonoid_cons_tail_discriminator(cons_arm: arm, source_indices: si) == "NestedCons") |> first
+  let wildcard_arm = cons_arms |> filter(arm =>
+    let disc = freemonoid_cons_tail_discriminator(cons_arm: arm, source_indices: si)
+    disc != "Empty" && disc != "NestedCons"
+  ) |> first
+  let empty_tail_body = match empty_tail_arm {
+    Present { value: arm } => emit_native_freemonoid_tco_cons_branch_body(cons_arm: arm, si: si, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    Absent => ""
+  }
+  let nested_tail_body = match nested_tail_arm {
+    Present { value: arm } => emit_native_freemonoid_tco_cons_branch_body(cons_arm: arm, si: si, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    Absent => ""
+  }
+  let wildcard_body = match wildcard_arm {
+    Present { value: arm } => emit_native_freemonoid_tco_cons_branch_body(cons_arm: arm, si: si, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    Absent => ""
+  }
+  if wildcard_body != "" {
+    let chain1 = if empty_tail_body == "" { "" } else { concat("if __fm.len() == 1 { ", empty_tail_body, " }") }
+    let chain2 = if nested_tail_body == "" { chain1 } else if chain1 == "" {
+      concat("if __fm.len() >= 2 { ", nested_tail_body, " }")
+    } else {
+      concat(chain1, " else if __fm.len() >= 2 { ", nested_tail_body, " }")
+    }
+    if chain2 == "" { wildcard_body } else { concat(chain2, " else { ", wildcard_body, " }") }
+  } else if empty_tail_body != "" && nested_tail_body != "" {
+    concat("if __fm.len() == 1 { ", empty_tail_body, " } else { ", nested_tail_body, " }")
+  } else if nested_tail_body != "" {
+    concat("if __fm.len() >= 2 { ", nested_tail_body, " } else { unreachable!() }")
+  } else if empty_tail_body != "" {
+    empty_tail_body
+  } else {
+    ""
+  }
+}
+
 fn emit_native_freemonoid_tco_match(scrut_str: String, arms: List<Node>, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   let empty_arm = freemonoid_match_arm_for(arms: arms, variant: "Empty")
-  let cons_arm = freemonoid_match_arm_for(arms: arms, variant: "Cons")
+  let cons_arms = freemonoid_match_arms_for(arms: arms, variant: "Cons")
   let catchall = freemonoid_catchall_arm(arms: arms)
   let empty_body = freemonoid_tco_empty_branch_body(empty_arm: empty_arm, catchall: catchall, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let nonempty_body = freemonoid_tco_nonempty_branch_body(cons_arm: cons_arm, catchall: catchall, si: si, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  if empty_body == "" || nonempty_body == "" { "" } else {
-    concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", nonempty_body, " } }")
+  if empty_body == "" { "" }
+  else if cons_arms |> count == 0 {
+    concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } }")
+  } else if cons_arms |> count == 1 {
+    let cons_arm = cons_arms |> first
+    let nonempty_body = freemonoid_tco_nonempty_branch_body(cons_arm: cons_arm, catchall: catchall, si: si, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    if nonempty_body == "" { "" } else {
+      concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", nonempty_body, " } }")
+    }
+  } else {
+    let cons_chain = emit_native_freemonoid_tco_cons_branches(cons_arms: cons_arms, si: si, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    if cons_chain == "" { "" } else {
+      concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", cons_chain, " } }")
+    }
   }
 }
 
@@ -9008,7 +9191,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
           } else { authored_name_at(source_indices: frame.scope.type_env.source_indices, node: rt) }
         _ => ""
       }
-      let native_tco_fm = if arms_are_freemonoid_coproduct(arms: arm_list, scrut_type: tco_scrut_type, type_summaries: emit_info.type_summaries) {
+      let native_tco_fm = if arms_are_freemonoid_coproduct(arms: arm_list, scrut_type: tco_scrut_type, type_summaries: emit_info.type_summaries, source_indices: frame.scope.type_env.source_indices) {
         emit_native_freemonoid_tco_match(scrut_str: scrut_str, arms: arm_list, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
       } else { "" }
       if native_tco_fm != "" { native_tco_fm } else {
