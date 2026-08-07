@@ -12,7 +12,15 @@ import extdeps.languages.json.parse {
   JsonMemberDuplicated,
   JsonMemberNotAnObject,
 }
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray }
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonString,
+  JsonArray,
+  JsonNull,
+  JsonBool,
+  JsonNumber,
+  JsonObject,
+}
 import v2.std.algebra { list_snoc_item }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -63,11 +71,19 @@ fn decode_json_string_array(v: JsonValue) -> JsonStringListDecode {
             match head {
               JsonString { value: s } =>
                 JsonStringListOk { values: list_snoc_item(xs: vs, item: s) }
-              _ => JsonStringListFail
+              JsonNull => JsonStringListFail
+              JsonBool { value: _ } => JsonStringListFail
+              JsonNumber { lexeme: _ } => JsonStringListFail
+              JsonArray { elements: _ } => JsonStringListFail
+              JsonObject { members: _ } => JsonStringListFail
             }
         }
       })
-    _ => JsonStringListFail
+    JsonNull => JsonStringListFail
+    JsonBool { value: _ } => JsonStringListFail
+    JsonNumber { lexeme: _ } => JsonStringListFail
+    JsonString { value: _ } => JsonStringListFail
+    JsonObject { members: _ } => JsonStringListFail
   }
 }
 
