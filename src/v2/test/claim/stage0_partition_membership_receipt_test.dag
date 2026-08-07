@@ -1,9 +1,11 @@
 module v2.test.claim.stage0_partition_membership_receipt
 
+import v2.test.claim.stage0_partition_membership_baseline {
+  stage0_partition_derived_membership_matches_enrolled_baseline_holds
+}
 import v2.workflow.rust_crate_partition {
   stage0_derived_assignment_succeeds_on_enrolled_graph,
   stage0_partition_crate_rows_refusal_propagates_holds,
-  stage0_partition_derived_membership_matches_enrolled_baseline_holds,
   stage0_partition_derived_refusal_propagates_to_receipt_holds,
   stage0_partition_membership_closure_covers_seeds,
   stage0_partition_membership_order_independence,
@@ -12,6 +14,10 @@ import v2.workflow.rust_crate_partition {
   stage0_planted_order_independence_holds,
   stage0_planted_separated_membership_differs_holds,
   stage0_planted_shared_dependency_fixture_holds,
+  stage0_planted_three_unit_unrouted_reach_refuses_holds,
+  stage0_string_set_equality_duplicate_substitution_refuses_holds,
+  stage0_string_set_equality_order_independent_holds,
+  stage0_string_set_equality_identical_holds,
   stage0_partition_red_control_synthetic_module_not_in_derived_holds,
   stage0_partition_witness_assignment_conflict_refuses_holds,
   stage0_partition_witness_assignment_conflict_cause_carries_reachers_holds,
@@ -21,7 +27,7 @@ import v2.workflow.rust_crate_partition {
   stage0_physical_crate_count_holds
 }
 
-data stage0_partition_membership_receipt_note: String = "C2 equivalence receipt: derived per-unit membership matches stage0_partition_unit_membership_baseline, frozen at stage0_partition_enrolled_membership_baseline_frozen_commit (origin/main hand per-crate module lists, pre-derivation; independent of derivation). Baseline update rule: a baseline names the commit it was frozen at so a reader can tell what the snapshot is of; a baseline update is authored from the graph change — which modules moved between units and why — and lands as a reviewable diff of the baseline itself; a baseline is never updated by pasting derivation output, and if the only way to produce the new expected values is to run the thing under test, the update stops and asks. RED controls: synthetic unreachable module absent from derived membership; zero-step raw reach refuses; two-unit owner ambiguity refuses; forward vs reversed unit-order iteration yields identical membership."
+data stage0_partition_membership_receipt_note: String = "C2 equivalence receipt: derived per-unit membership matches the terminating one-shot baseline in v2.test.claim.stage0_partition_membership_baseline (frozen at stage0_partition_enrolled_membership_baseline_frozen_commit). Baseline dissolves when C1 all-seven passes on C2 AND C3 structural reference totality lands. RED controls: synthetic unreachable module absent from derived membership; zero-step raw reach refuses; two-unit owner ambiguity refuses; three-unit unrouted cross-unit reach refuses; forward vs reversed unit-order iteration yields identical membership."
 
 test fn stage0_partition_membership_closure_covers_seeds_holds() -> Bool {
   stage0_partition_membership_closure_covers_seeds()
@@ -85,6 +91,22 @@ test fn stage0_planted_separated_membership_differs_witness_holds() -> Bool {
 
 test fn stage0_planted_convergence_chain_succeeds_witness_holds() -> Bool {
   stage0_planted_convergence_chain_succeeds_holds()
+}
+
+test fn stage0_planted_three_unit_unrouted_reach_refuses_witness_holds() -> Bool {
+  stage0_planted_three_unit_unrouted_reach_refuses_holds()
+}
+
+test fn stage0_string_set_equality_duplicate_substitution_refuses_witness_holds() -> Bool {
+  stage0_string_set_equality_duplicate_substitution_refuses_holds()
+}
+
+test fn stage0_string_set_equality_order_independent_witness_holds() -> Bool {
+  stage0_string_set_equality_order_independent_holds()
+}
+
+test fn stage0_string_set_equality_identical_witness_holds() -> Bool {
+  stage0_string_set_equality_identical_holds()
 }
 
 test fn stage0_partition_red_control_wrong_module_not_derived_holds() -> Bool {

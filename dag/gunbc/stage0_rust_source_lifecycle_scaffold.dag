@@ -26,6 +26,8 @@ import v2.std.collection { List }
 import v2.std.text { String }
 import v2.workflow.rust_crate_partition {
   Stage0PartitionCrateRowsOk,
+  Stage0PartitionCrateRowsRefused,
+  Stage0UnitMembershipFoldRefusalCause,
   stage0_partition_crate_rows_outcome
 }
 
@@ -440,18 +442,25 @@ fn generated_artifact_stage0_src_disjoint_from_residue_holds() -> Bool {
   )
 }
 
+type DerivedPartitionCratePathsOutcome
+  = PathsProduced { paths: List<String> }
+  | PathsRefused { cause: Stage0UnitMembershipFoldRefusalCause }
+
 fn partition_crate_lib_repo_path(crate_dir: String) -> String {
   concat(crate_dir, "/src/lib.rs")
 }
 
-fn derived_partition_crate_lib_repo_paths() -> List<String> {
+fn derived_partition_crate_lib_repo_paths_outcome() -> DerivedPartitionCratePathsOutcome {
   match stage0_partition_crate_rows_outcome() {
-    Stage0PartitionCrateRowsRefused { cause: _ } => []
+    Stage0PartitionCrateRowsRefused { cause: cause } =>
+      PathsRefused { cause: cause }
     Stage0PartitionCrateRowsOk { rows: rows } =>
-      list_map(
-        xs: rows,
-        f: fn(row) { partition_crate_lib_repo_path(crate_dir: row.crate_dir) }
-      )
+      PathsProduced {
+        paths: list_map(
+          xs: rows,
+          f: fn(row) { partition_crate_lib_repo_path(crate_dir: row.crate_dir) }
+        )
+      }
   }
 }
 
@@ -726,10 +735,14 @@ fn generated_authority_subset_of_derived_holds() -> Bool {
 }
 
 fn partition_crate_paths_complete_holds() -> Bool {
-  match stage0_partition_crate_rows_outcome() {
-    Stage0PartitionCrateRowsRefused { cause: _ } => false
-    Stage0PartitionCrateRowsOk { rows: rows } =>
-      length(xs: derived_partition_crate_lib_repo_paths()) == (rows |> count)
+  match derived_partition_crate_lib_repo_paths_outcome() {
+    PathsRefused { cause: _ } => false
+    PathsProduced { paths: paths } =>
+      match stage0_partition_crate_rows_outcome() {
+        Stage0PartitionCrateRowsRefused { cause: _ } => false
+        Stage0PartitionCrateRowsOk { rows: rows } =>
+          length(xs: paths) == (rows |> count)
+      }
   }
 }
 

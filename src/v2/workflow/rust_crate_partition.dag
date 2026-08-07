@@ -55,6 +55,7 @@ type ExplicitPartition {
 
 type PartitionParameter
   = ExplicitPartitionParam { partition: ExplicitPartition }
+  | DerivedStage0PartitionParam
   | PolicyPartitionParam { policy: PartitionPolicy }
 
 type PolicyResolverUnimplemented {
@@ -114,6 +115,11 @@ type Stage0PartitionReachDisposition
   | Stage0PartitionSharedDependencyThroughPackage {
       module: ModuleId
       owner_package: String
+    }
+  | Stage0PartitionUnroutedCrossUnitReach {
+      module: ModuleId
+      claimer: CompilationUnitId
+      owner: CompilationUnitId
     }
   | Stage0PartitionAssignmentConflict {
       collision: Stage0PartitionAssignmentCollisionCause
@@ -200,6 +206,11 @@ type Stage0PlantedPartitionVariant
   | Stage0PlantedLowHighAssignmentConflict
   | Stage0PlantedLowHighSeparated
   | Stage0PlantedLowHighConvergenceChain
+  | Stage0PlantedThreeUnitUnroutedReach
+
+data stage0_planted_unit_mid: CompilationUnitId = "stage0-planted-unit-mid" as CompilationUnitId
+data stage0_planted_basename_m: String = "stage0_planted_mod_m"
+data stage0_planted_pkg_mid: String = "stage0-planted-pkg-mid"
 
 type Stage0PartitionDerivationContext
   = Stage0PartitionDerivationContextEnrolled
@@ -446,10 +457,18 @@ fn stage0_planted_low_high_unit_ids() -> List<CompilationUnitId> {
   [stage0_planted_unit_low, stage0_planted_unit_high]
 }
 
+fn stage0_planted_three_unit_ids() -> List<CompilationUnitId> {
+  [stage0_planted_unit_low, stage0_planted_unit_mid, stage0_planted_unit_high]
+}
+
 fn stage0_derivation_unit_ids(ctx: Stage0PartitionDerivationContext) -> List<CompilationUnitId> {
   match ctx {
     Stage0PartitionDerivationContextEnrolled => stage0_module_bearing_unit_ids()
-    Stage0PartitionDerivationContextPlanted { variant: _ } => stage0_planted_low_high_unit_ids()
+    Stage0PartitionDerivationContextPlanted { variant: variant } =>
+      match variant {
+        Stage0PlantedThreeUnitUnroutedReach => stage0_planted_three_unit_ids()
+        _ => stage0_planted_low_high_unit_ids()
+      }
   }
 }
 
@@ -460,9 +479,11 @@ fn stage0_derivation_package_name(
   match ctx {
     Stage0PartitionDerivationContextEnrolled =>
       stage0_package_name_for_unit(unit_id: unit_id)
-    Stage0PartitionDerivationContextPlanted { variant: _ } =>
+    Stage0PartitionDerivationContextPlanted { variant: variant } =>
       if unit_id == stage0_planted_unit_low {
         stage0_planted_pkg_low
+      } else if unit_id == stage0_planted_unit_mid {
+        stage0_planted_pkg_mid
       } else if unit_id == stage0_planted_unit_high {
         stage0_planted_pkg_high
       } else {
@@ -485,6 +506,7 @@ fn stage0_derivation_reexport_packages(
           Stage0PlantedLowHighAssignmentConflict => []
           Stage0PlantedLowHighSeparated => [stage0_planted_pkg_low]
           Stage0PlantedLowHighConvergenceChain => [stage0_planted_pkg_low]
+          Stage0PlantedThreeUnitUnroutedReach => [stage0_planted_pkg_low]
         }
       } else {
         []
@@ -499,9 +521,14 @@ fn stage0_derivation_seed_basenames(
   match ctx {
     Stage0PartitionDerivationContextEnrolled =>
       stage0_unit_seed_basenames(unit_id: unit_id)
-    Stage0PartitionDerivationContextPlanted { variant: _ } =>
+    Stage0PartitionDerivationContextPlanted { variant: variant } =>
       if unit_id == stage0_planted_unit_low {
         [stage0_planted_basename_l]
+      } else if unit_id == stage0_planted_unit_mid {
+        match variant {
+          Stage0PlantedThreeUnitUnroutedReach => [stage0_planted_basename_m]
+          _ => []
+        }
       } else if unit_id == stage0_planted_unit_high {
         [stage0_planted_basename_h]
       } else {
@@ -535,6 +562,8 @@ fn stage0_derivation_domain_basenames(ctx: Stage0PartitionDerivationContext) -> 
           [stage0_planted_basename_h]
             |> concat(stage0_planted_chain_basenames())
             |> concat([stage0_planted_basename_l])
+        Stage0PlantedThreeUnitUnroutedReach =>
+          [stage0_planted_basename_h, stage0_planted_basename_m, stage0_planted_basename_l]
       }
   }
 }
@@ -586,6 +615,13 @@ fn stage0_derivation_edges(ctx: Stage0PartitionDerivationContext) -> List<Module
               to: stage0_planted_basename_l
             )
           ]
+        Stage0PlantedThreeUnitUnroutedReach =>
+          [
+            stage0_module_dag_edge(
+              from: stage0_planted_basename_h,
+              to: stage0_planted_basename_m
+            )
+          ]
       }
   }
 }
@@ -605,107 +641,42 @@ fn stage0_derivation_unit_reexports_package(
   )
 }
 
+data stage0_string_lists_equal_as_sets_note: String = "Duplicate-safe exact-set equality: both operands are normalized to unique membership via stage0_string_list_to_unique_set before comparison. A duplicate in one list cannot substitute for a missing element in the other — [a,a] vs [a,b] normalizes to singleton-a vs pair-a-b and reports unequal. Order after normalization is ignored; [a,b] vs [b,a] reports equal. Shared authority for partition baseline and member comparisons; import this symbol rather than reimplementing length-plus-membership."
+
+fn stage0_string_list_to_unique_set(xs: List<String>) -> List<String> {
+  fold_list(
+    xs: xs,
+    empty: Empty,
+    cons: fn(acc, item) { stage0_snoc_unique_string(xs: acc, item: item) }
+  )
+}
+
+fn stage0_module_id_list_to_unique_set(xs: List<ModuleId>) -> List<ModuleId> {
+  fold_list(
+    xs: xs,
+    empty: Empty,
+    cons: fn(acc, item) { stage0_module_id_list_snoc_unique(xs: acc, item: item) }
+  )
+}
+
 fn stage0_string_lists_equal_as_sets(
   left: List<String>,
   right: List<String>
 ) -> Bool {
-  (left |> count) == (right |> count)
-    && left
+  let left_norm = stage0_string_list_to_unique_set(xs: left)
+  let right_norm = stage0_string_list_to_unique_set(xs: right)
+  (left_norm |> count) == (right_norm |> count)
+    && left_norm
       |> fold(init: true, f: fn(ok, item) {
-        ok && any(xs: right, predicate: fn(s) { s == item })
+        ok && any(xs: right_norm, predicate: fn(s) { s == item })
       })
 }
-
-data stage0_partition_enrolled_membership_baseline_frozen_commit: String = "34210a0d07b706677650eb71b3e7fd139a158484"
-
-data stage0_partition_enrolled_membership_baseline_note: String = "Frozen at C2 landing from origin/main hand per-crate module lists (pre-derivation); commit pinned at stage0_partition_enrolled_membership_baseline_frozen_commit. Independent oracle for derived membership equivalence — not row.modules, which is populated from the same derivation at row construction. Baseline update: name the commit superseded; author from the graph change (which modules moved between units and why) as a reviewable baseline diff; never paste derivation output — if the only way to produce new expected values is to run the derivation under test, stop and ask."
 
 fn stage0_snoc_unique_string(xs: List<String>, item: String) -> List<String> {
   if any(xs: xs, predicate: fn(s) { s == item }) {
     xs
   } else {
     xs |> concat([item])
-  }
-}
-
-fn stage0_partition_unit_membership_baseline(unit_id: CompilationUnitId) -> List<String> {
-  if unit_id == stage0_unit_runtime {
-    ["v1_rt"]
-  } else if unit_id == stage0_unit_std_core {
-    [
-      "std_content_hash",
-      "std_coercion",
-      "std_currency",
-      "std_decl_ref",
-      "std_keyed_row",
-      "std_keyed_roster",
-      "std_roster_frontier",
-      "std_disposition",
-      "std_error_primitives",
-      "std_http_path",
-      "std_emit_model",
-      "std_magnitude",
-      "std_measure",
-      "std_types",
-      "std_unicode_types",
-      "std_lens_verdict",
-      "std_algebra",
-      "std_nat",
-      "std_node",
-      "std_syntax",
-      "std_computation",
-      "std_termination",
-      "std_induction",
-      "std_iteration",
-      "std_graph",
-      "extdeps_uri",
-      "extdeps_external_authority",
-      "extdeps_container_oci_digest",
-      "extdeps_units_dimensionless",
-      "extdeps_units_iec_80000_13",
-      "extdeps_units_iso8601",
-      "std_occurrence_identity",
-      "std_source_annotation",
-      "v1_std_core"
-    ]
-  } else if unit_id == stage0_unit_std_surface {
-    [
-      "std_effects",
-      "std_execution_mode",
-      "std_interface_summary",
-      "std_pareto",
-      "std_realization_schedule",
-      "std_trait_derive_shape"
-    ]
-  } else if unit_id == stage0_unit_extdeps_languages {
-    [
-      "extdeps_languages_dag_emit",
-      "extdeps_languages_dag_syntax",
-      "extdeps_languages_dag_types",
-      "extdeps_languages_go_emit",
-      "extdeps_languages_go_syntax",
-      "extdeps_languages_go_types",
-      "extdeps_languages_python_emit",
-      "extdeps_languages_python_syntax",
-      "extdeps_languages_python_types",
-      "extdeps_languages_rust_emit",
-      "extdeps_languages_rust_syntax",
-      "extdeps_languages_rust_types"
-    ]
-  } else if unit_id == stage0_unit_v1_infer {
-    [
-      "v1_compiler_infer_emit_info",
-      "v1_compiler_infer_env",
-      "v1_compiler_infer_items",
-      "v1_compiler_infer_occurrence_binding",
-      "v1_compiler_infer_service",
-      "v1_compiler_infer_sigs",
-      "v1_compiler_infer_types"
-    ]
-  } else if unit_id == stage0_unit_v1_artifact {
-    ["v1_compiler_artifact", "v1_compiler_languages"]
-  } else {
-    []
   }
 }
 
@@ -751,21 +722,13 @@ fn stage0_module_id_lists_equal_as_sets(
   left: List<ModuleId>,
   right: List<ModuleId>
 ) -> Bool {
-  (left |> count) == (right |> count)
-    && left
+  let left_norm = stage0_module_id_list_to_unique_set(xs: left)
+  let right_norm = stage0_module_id_list_to_unique_set(xs: right)
+  (left_norm |> count) == (right_norm |> count)
+    && left_norm
       |> fold(init: true, f: fn(ok, member_module) {
-        ok && stage0_module_id_list_contains(xs: right, item: member_module)
+        ok && stage0_module_id_list_contains(xs: right_norm, item: member_module)
       })
-}
-
-fn stage0_unit_reexports_package(
-  claimer: CompilationUnitId,
-  owner: CompilationUnitId
-) -> Bool {
-  stage0_package_name_list_contains(
-    xs: stage0_unit_reexport_packages(unit_id: claimer),
-    package: stage0_package_name_for_unit(unit_id: owner)
-  )
 }
 
 fn stage0_unit_raw_reach_extend_once(
@@ -807,17 +770,6 @@ fn stage0_unit_raw_reach_fixpoint(
       remaining_steps: remaining_steps - 1
     )
   }
-}
-
-fn stage0_unit_reexports_package(
-  claimer: CompilationUnitId,
-  owner: CompilationUnitId
-) -> Bool {
-  stage0_derivation_unit_reexports_package(
-    ctx: Stage0PartitionDerivationContextEnrolled,
-    claimer: claimer,
-    owner: owner
-  )
 }
 
 fn stage0_unit_raw_reach_outcome(
@@ -911,12 +863,60 @@ fn stage0_reach_disposition_for_unit_module(
 ) -> Stage0PartitionReachDisposition {
   if owner == unit_id {
     Stage0PartitionReachMember
-  } else {
+  } else if stage0_derivation_unit_reexports_package(
+    ctx: ctx,
+    claimer: unit_id,
+    owner: owner
+  ) {
     Stage0PartitionSharedDependencyThroughPackage {
       module: module,
       owner_package: stage0_derivation_package_name(ctx: ctx, unit_id: owner)
     }
+  } else {
+    Stage0PartitionUnroutedCrossUnitReach {
+      module: module,
+      claimer: unit_id,
+      owner: owner
+    }
   }
+}
+
+type Stage0UnroutedReachScanOutcome
+  = Stage0UnroutedReachAbsent
+  | Stage0UnroutedReachFound {
+      cause: Stage0UnitMembershipFoldRefusalCause
+    }
+
+fn stage0_scan_rows_for_unrouted_refusal(
+  rows: List<Stage0UnitModuleReachDispositionRow>
+) -> Stage0UnroutedReachScanOutcome {
+  fold_list(
+    xs: rows,
+    empty: Stage0UnroutedReachAbsent,
+    cons: fn(acc, row) {
+      match acc {
+        Stage0UnroutedReachFound { cause: _ } => acc
+        Stage0UnroutedReachAbsent =>
+          match row.disposition {
+            Stage0PartitionUnroutedCrossUnitReach {
+              module: module,
+              claimer: claimer,
+              owner: owner
+            } =>
+              Stage0UnroutedReachFound {
+                cause: Stage0UnitMembershipReachRefused {
+                  disposition: Stage0PartitionUnroutedCrossUnitReach {
+                    module: module,
+                    claimer: claimer,
+                    owner: owner
+                  }
+                }
+              }
+            _ => Stage0UnroutedReachAbsent
+          }
+      }
+    }
+  )
 }
 
 fn stage0_owned_members_from_raw_reach(
@@ -1049,29 +1049,36 @@ fn stage0_derived_partition_build_result(
         Stage0DerivedPartitionRefused { cause: _ } => acc
         Stage0DerivedPartitionOk { assignment: kept_assignment, members_by_unit: members_by_unit, reach_dispositions_by_unit: reach_dispositions_by_unit } =>
           match map_get(raw_members_by_unit, unit_id) {
-            Accepted { value: Present { value: raw_members }, diagnostics: _ } =>
-              Stage0DerivedPartitionOk {
-                assignment: kept_assignment,
-                members_by_unit: map_insert(
-                  members_by_unit,
-                  unit_id,
-                  stage0_owned_members_from_raw_reach(
-                    unit_id: unit_id,
-                    raw_members: raw_members,
-                    assignment: kept_assignment
-                  )
-                ),
-                reach_dispositions_by_unit: map_insert(
-                  reach_dispositions_by_unit,
-                  unit_id,
-                  stage0_build_unit_reach_dispositions(
-                    ctx: ctx,
-                    unit_id: unit_id,
-                    raw_members: raw_members,
-                    assignment: kept_assignment
-                  )
-                )
+            Accepted { value: Present { value: raw_members }, diagnostics: _ } => {
+              let disposition_rows = stage0_build_unit_reach_dispositions(
+                ctx: ctx,
+                unit_id: unit_id,
+                raw_members: raw_members,
+                assignment: kept_assignment
+              )
+              match stage0_scan_rows_for_unrouted_refusal(rows: disposition_rows) {
+                Stage0UnroutedReachFound { cause: cause } =>
+                  Stage0DerivedPartitionRefused { cause: cause }
+                Stage0UnroutedReachAbsent =>
+                  Stage0DerivedPartitionOk {
+                    assignment: kept_assignment,
+                    members_by_unit: map_insert(
+                      members_by_unit,
+                      unit_id,
+                      stage0_owned_members_from_raw_reach(
+                        unit_id: unit_id,
+                        raw_members: raw_members,
+                        assignment: kept_assignment
+                      )
+                    ),
+                    reach_dispositions_by_unit: map_insert(
+                      reach_dispositions_by_unit,
+                      unit_id,
+                      disposition_rows
+                    )
+                  }
               }
+            }
             _ => Stage0DerivedPartitionRefused {
               cause: Stage0UnitMembershipReachRefused {
                 disposition: Stage0PartitionAssignmentConflict {
@@ -1309,22 +1316,16 @@ fn stage0_interim_explicit_assignment_outcome() -> ResolvePartitionOutcome {
 
 data stage0_partition_derived_membership_production_refusal_note: String = "Production partition membership is obtained only through outcome-shaped surfaces: stage0_derived_partition_outcome, stage0_partition_crate_rows_outcome, stage0_interim_explicit_assignment_outcome, and stage0_partition_receipt_outcome. stage0_partition_receipt_outcome and stage0_partition_r4_valid resolve through stage0_interim_explicit_assignment_outcome — not through an ExplicitPartition carrying assignment. Collapsing list/map projections of Stage0DerivedPartitionRefused are deleted from this carrier."
 
-fn stage0_partition_derived_membership_matches_enrolled_baseline_holds() -> Bool {
-  match stage0_derived_partition_outcome() {
-    Stage0DerivedPartitionRefused { cause: _ } => false
-    Stage0DerivedPartitionOk { assignment: _, members_by_unit: members_by_unit, reach_dispositions_by_unit: _ } =>
-      stage0_module_bearing_unit_ids()
-        |> fold(init: true, f: fn(ok, unit_id) {
-          ok
-            && stage0_string_lists_equal_as_sets(
-              left: stage0_derived_unit_member_basenames_from_members(
-                members_by_unit: members_by_unit,
-                unit_id: unit_id
-              ),
-              right: stage0_partition_unit_membership_baseline(unit_id: unit_id)
-            )
-        })
-  }
+fn stage0_string_set_equality_duplicate_substitution_refuses_holds() -> Bool {
+  !stage0_string_lists_equal_as_sets(left: ["a", "a"], right: ["a", "b"])
+}
+
+fn stage0_string_set_equality_order_independent_holds() -> Bool {
+  stage0_string_lists_equal_as_sets(left: ["a", "b"], right: ["b", "a"])
+}
+
+fn stage0_string_set_equality_identical_holds() -> Bool {
+  stage0_string_lists_equal_as_sets(left: ["a", "b"], right: ["a", "b"])
 }
 
 fn stage0_partition_membership_closure_covers_seeds() -> Bool {
@@ -1491,6 +1492,41 @@ fn stage0_planted_assignment_conflict_holds() -> Bool {
     } => true
     _ => false
   }
+}
+
+fn stage0_planted_three_unit_unrouted_reach_refuses_holds() -> Bool {
+  let ctx = Stage0PartitionDerivationContextPlanted {
+    variant: Stage0PlantedThreeUnitUnroutedReach
+  }
+  let module_m = stage0_module_id(basename: stage0_planted_basename_m)
+  let disposition = stage0_reach_disposition_for_unit_module(
+    ctx: ctx,
+    unit_id: stage0_planted_unit_high,
+    module: module_m,
+    owner: stage0_planted_unit_mid
+  )
+  let disposition_ok = match disposition {
+    Stage0PartitionUnroutedCrossUnitReach {
+      module: _,
+      claimer: claimer,
+      owner: owner
+    } =>
+      claimer == stage0_planted_unit_high && owner == stage0_planted_unit_mid
+    Stage0PartitionSharedDependencyThroughPackage { module: _, owner_package: _ } => false
+    _ => false
+  }
+  let scan_ok = match stage0_scan_rows_for_unrouted_refusal(
+    rows: [
+      Stage0UnitModuleReachDispositionRow {
+        module: module_m,
+        disposition: disposition
+      }
+    ]
+  ) {
+    Stage0UnroutedReachFound { cause: _ } => true
+    Stage0UnroutedReachAbsent => false
+  }
+  disposition_ok && scan_ok
 }
 
 fn stage0_planted_separated_membership_differs_holds() -> Bool {
@@ -1812,12 +1848,18 @@ fn resolve_partition_outcome(
   module_dag: ModuleDag
 ) -> ResolvePartitionOutcome {
   match parameter {
-    ExplicitPartitionParam { partition: _ } => stage0_interim_explicit_assignment_outcome()
+    ExplicitPartitionParam { partition: partition } =>
+      ResolvePartitionOk { assignment: partition.assignment }
+    DerivedStage0PartitionParam => stage0_interim_explicit_assignment_outcome()
     PolicyPartitionParam { policy: policy } =>
       ResolvePartitionRefused {
         cause: PolicyResolverUnimplemented { policy: policy }
       }
   }
+}
+
+fn stage0_partition_parameter() -> PartitionParameter {
+  DerivedStage0PartitionParam
 }
 
 fn stage0_partition_receipt_outcome() -> Stage0PartitionReceiptOutcome {

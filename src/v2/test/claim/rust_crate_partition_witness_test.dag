@@ -28,6 +28,7 @@ import v2.std.compilers.compilation_unit {
   partition_unit_by_id
 }
 import v2.workflow.rust_crate_partition {
+  DerivedStage0PartitionParam,
   ExplicitPartition,
   ExplicitPartitionParam,
   PolicyPartitionParam,
@@ -260,17 +261,29 @@ test fn witness_partition_r4_valid_on_interim_holds() -> Bool {
 
 test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
   let dag = stage0_module_dag()
-  let ignored_explicit_param = ExplicitPartitionParam {
-    partition: ExplicitPartition { assignment: empty_map() }
+  let explicit_assignment = empty_map()
+    |> map_insert(witness_mod_p, witness_unit_p)
+    |> map_insert(witness_mod_q, witness_unit_q)
+  let explicit_param = ExplicitPartitionParam {
+    partition: ExplicitPartition { assignment: explicit_assignment }
   }
+  match resolve_partition_outcome(parameter: explicit_param, module_dag: dag) {
+    ResolvePartitionOk { assignment: resolved } =>
+      (resolved |> count) == (explicit_assignment |> count)
+    ResolvePartitionRefused { cause: _ } => false
+  }
+}
+
+test fn witness_resolve_partition_derived_stage0_route_holds() -> Bool {
+  let dag = stage0_module_dag()
   match stage0_derived_partition_outcome() {
     Stage0DerivedPartitionRefused { cause: _ } =>
-      match resolve_partition_outcome(parameter: ignored_explicit_param, module_dag: dag) {
+      match resolve_partition_outcome(parameter: DerivedStage0PartitionParam, module_dag: dag) {
         ResolvePartitionRefused { cause: Stage0DerivedMembershipRefused { cause: _ } } => true
         ResolvePartitionOk { assignment: _ } => false
       }
     Stage0DerivedPartitionOk { assignment: expected, members_by_unit: _, reach_dispositions_by_unit: _ } =>
-      match resolve_partition_outcome(parameter: ignored_explicit_param, module_dag: dag) {
+      match resolve_partition_outcome(parameter: DerivedStage0PartitionParam, module_dag: dag) {
         ResolvePartitionOk { assignment: resolved } =>
           (resolved |> count) == (expected |> count)
         ResolvePartitionRefused { cause: _ } => false

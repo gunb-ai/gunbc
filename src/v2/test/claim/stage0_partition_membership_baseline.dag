@@ -1,0 +1,128 @@
+module v2.test.claim.stage0_partition_membership_baseline
+
+import v2.std.compilers.compilation_unit { CompilationUnitId }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.workflow.rust_crate_partition {
+  Stage0DerivedPartitionOk,
+  Stage0DerivedPartitionRefused,
+  stage0_derived_partition_outcome,
+  stage0_derived_unit_member_basenames_from_members,
+  stage0_module_bearing_unit_ids,
+  stage0_string_lists_equal_as_sets,
+  stage0_unit_extdeps_languages,
+  stage0_unit_runtime,
+  stage0_unit_std_core,
+  stage0_unit_std_surface,
+  stage0_unit_v1_artifact,
+  stage0_unit_v1_infer
+}
+
+data stage0_partition_membership_baseline_purpose: String = "TerminatingOneShot"
+
+data stage0_partition_membership_baseline_subject: String = "pre-C2 membership at stage0_partition_enrolled_membership_baseline_frozen_commit (origin/main hand per-crate module lists, pre-derivation)"
+
+data stage0_partition_enrolled_membership_baseline_frozen_commit: String = "34210a0d07b706677650eb71b3e7fd139a158484"
+
+data stage0_partition_membership_baseline_dissolves_when: String = "DELETE this module when C1 all-seven generated crates execute against C2 membership AND C3 structural reference totality lands; afterward membership changes are judged by C1 and C3 only — never by editing another full roster."
+
+data stage0_partition_enrolled_membership_baseline_note: String = "Terminating one-shot migration oracle — NOT a standing production authority. Frozen at C2 landing from origin/main hand per-crate module lists (pre-derivation); commit pinned at stage0_partition_enrolled_membership_baseline_frozen_commit. Independent oracle for derived membership equivalence — not row.modules, which is populated from the same derivation at row construction. Baseline update: name the commit superseded; author from the graph change (which modules moved between units and why) as a reviewable baseline diff; never paste derivation output — if the only way to produce new expected values is to run the derivation under test, stop and ask."
+
+fn stage0_partition_unit_membership_baseline(unit_id: CompilationUnitId) -> List<String> {
+  if unit_id == stage0_unit_runtime {
+    ["v1_rt"]
+  } else if unit_id == stage0_unit_std_core {
+    [
+      "std_content_hash",
+      "std_coercion",
+      "std_currency",
+      "std_decl_ref",
+      "std_keyed_row",
+      "std_keyed_roster",
+      "std_roster_frontier",
+      "std_disposition",
+      "std_error_primitives",
+      "std_http_path",
+      "std_emit_model",
+      "std_magnitude",
+      "std_measure",
+      "std_types",
+      "std_unicode_types",
+      "std_lens_verdict",
+      "std_algebra",
+      "std_nat",
+      "std_node",
+      "std_syntax",
+      "std_computation",
+      "std_termination",
+      "std_induction",
+      "std_iteration",
+      "std_graph",
+      "extdeps_uri",
+      "extdeps_external_authority",
+      "extdeps_container_oci_digest",
+      "extdeps_units_dimensionless",
+      "extdeps_units_iec_80000_13",
+      "extdeps_units_iso8601",
+      "std_occurrence_identity",
+      "std_source_annotation",
+      "v1_std_core"
+    ]
+  } else if unit_id == stage0_unit_std_surface {
+    [
+      "std_effects",
+      "std_execution_mode",
+      "std_interface_summary",
+      "std_pareto",
+      "std_realization_schedule",
+      "std_trait_derive_shape"
+    ]
+  } else if unit_id == stage0_unit_extdeps_languages {
+    [
+      "extdeps_languages_dag_emit",
+      "extdeps_languages_dag_syntax",
+      "extdeps_languages_dag_types",
+      "extdeps_languages_go_emit",
+      "extdeps_languages_go_syntax",
+      "extdeps_languages_go_types",
+      "extdeps_languages_python_emit",
+      "extdeps_languages_python_syntax",
+      "extdeps_languages_python_types",
+      "extdeps_languages_rust_emit",
+      "extdeps_languages_rust_syntax",
+      "extdeps_languages_rust_types"
+    ]
+  } else if unit_id == stage0_unit_v1_infer {
+    [
+      "v1_compiler_infer_emit_info",
+      "v1_compiler_infer_env",
+      "v1_compiler_infer_items",
+      "v1_compiler_infer_occurrence_binding",
+      "v1_compiler_infer_service",
+      "v1_compiler_infer_sigs",
+      "v1_compiler_infer_types"
+    ]
+  } else if unit_id == stage0_unit_v1_artifact {
+    ["v1_compiler_artifact", "v1_compiler_languages"]
+  } else {
+    []
+  }
+}
+
+fn stage0_partition_derived_membership_matches_enrolled_baseline_holds() -> Bool {
+  match stage0_derived_partition_outcome() {
+    Stage0DerivedPartitionRefused { cause: _ } => false
+    Stage0DerivedPartitionOk { assignment: _, members_by_unit: members_by_unit, reach_dispositions_by_unit: _ } =>
+      stage0_module_bearing_unit_ids()
+        |> fold(init: true, f: fn(ok, unit_id) {
+          ok
+            && stage0_string_lists_equal_as_sets(
+              left: stage0_derived_unit_member_basenames_from_members(
+                members_by_unit: members_by_unit,
+                unit_id: unit_id
+              ),
+              right: stage0_partition_unit_membership_baseline(unit_id: unit_id)
+            )
+        })
+  }
+}

@@ -33,6 +33,8 @@ import gunbc.stage0_crate_layout_emit {
   expected_stage0_crate_layout_generated_rs
 }
 import gunbc.stage0_crate_partition_emit {
+  SourceProduced,
+  SourceRefused,
   expected_stage0_crate_partition_generated_dag
 }
 import gunbc.stage0_emit_plan_emit {
@@ -75,7 +77,11 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
     RunnerDeployArtifact => artifact_generated(content: expected_runner_deploy_manifest())
     Stage0CrateLayoutGeneratedDagArtifact => artifact_generated(content: expected_stage0_crate_layout_generated_dag())
     Stage0CrateLayoutGeneratedRsArtifact => artifact_generated(content: expected_stage0_crate_layout_generated_rs())
-    Stage0CratePartitionGeneratedDagArtifact => artifact_generated(content: expected_stage0_crate_partition_generated_dag())
+    Stage0CratePartitionGeneratedDagArtifact => match expected_stage0_crate_partition_generated_dag() {
+      SourceProduced { content: content } => artifact_generated(content: content)
+      SourceRefused { cause: _ } =>
+        ArtifactGenerationRefused { reason: "stage0 partition derivation refused" }
+    }
     Stage0EmitPlanGeneratedDagArtifact => match expected_stage0_emit_plan_generated_dag() {
       Stage0EmitPlanGenerated { content } => artifact_generated(content: content)
       Stage0EmitPlanGenerationRefused => ArtifactGenerationRefused { reason: "stage0 emission plan refused" }
@@ -109,7 +115,10 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     RunnerDeployArtifact => true
     Stage0CrateLayoutGeneratedDagArtifact => true
     Stage0CrateLayoutGeneratedRsArtifact => true
-    Stage0CratePartitionGeneratedDagArtifact => true
+    Stage0CratePartitionGeneratedDagArtifact => match generated {
+      ArtifactGenerated { content: _ } => true
+      ArtifactGenerationRefused { reason: _ } => false
+    }
     Stage0EmitPlanGeneratedDagArtifact => match generated {
       ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false
