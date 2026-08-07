@@ -130,6 +130,54 @@ fn ambiguous_candidate_projection_count(node: Node) -> Int {
   )
 }
 
+type ExactDeclarationIdentity {
+  qualified_name: String
+  name: String
+  module_path: String
+  rel_path: String
+}
+
+fn decl_fact_module_path_from_qualified_name(fact: DeclFact) -> String {
+  let suffix = concat(".", fact.name)
+  let qn_len = string_length(s: fact.qualified_name)
+  let suffix_len = string_length(s: suffix)
+  if qn_len >= suffix_len
+    && substring(s: fact.qualified_name, start: qn_len - suffix_len, end: qn_len) == suffix {
+    substring(s: fact.qualified_name, start: 0, end: qn_len - suffix_len)
+  } else {
+    ""
+  }
+}
+
+fn decl_fact_exact_declaration_identity(fact: DeclFact) -> ExactDeclarationIdentity {
+  ExactDeclarationIdentity {
+    qualified_name: fact.qualified_name,
+    name: fact.name,
+    module_path: decl_fact_module_path_from_qualified_name(fact: fact),
+    rel_path: fact.rel_path,
+  }
+}
+
+fn exact_declaration_identities_equal(
+  a: ExactDeclarationIdentity,
+  b: ExactDeclarationIdentity
+) -> Bool {
+  a.qualified_name == b.qualified_name
+    && a.name == b.name
+    && a.module_path == b.module_path
+    && a.rel_path == b.rel_path
+}
+
+fn decl_fact_matches_exact_declaration_identity(
+  fact: DeclFact,
+  identity: ExactDeclarationIdentity
+) -> Bool {
+  exact_declaration_identities_equal(
+    a: decl_fact_exact_declaration_identity(fact: fact),
+    b: identity
+  )
+}
+
 type DeclFactLookup
   = DeclFactMissing
   | DeclFactUnique { fact: DeclFact }
@@ -144,6 +192,27 @@ fn decl_fact_lookup_by_qualified_name(qn: String, facts: List<DeclFact>) -> Decl
         DeclFactMissing => DeclFactUnique { fact: fact }
         DeclFactUnique { fact: first } => DeclFactAmbiguous { candidates: list_snoc_item(xs: list_snoc_item(xs: std.algebra.Empty, item: first), item: fact) }
         DeclFactAmbiguous { candidates: xs } => DeclFactAmbiguous { candidates: list_snoc_item(xs: xs, item: fact) }
+      }
+    }
+  })
+}
+
+fn decl_fact_lookup_by_exact_declaration_identity(
+  identity: ExactDeclarationIdentity,
+  facts: List<DeclFact>
+) -> DeclFactLookup {
+  fold(facts, init: DeclFactMissing, f: fn(acc, fact) {
+    if !decl_fact_matches_exact_declaration_identity(fact: fact, identity: identity) {
+      acc
+    } else {
+      match acc {
+        DeclFactMissing => DeclFactUnique { fact: fact }
+        DeclFactUnique { fact: first } =>
+          DeclFactAmbiguous {
+            candidates: list_snoc_item(xs: list_snoc_item(xs: std.algebra.Empty, item: first), item: fact)
+          }
+        DeclFactAmbiguous { candidates: xs } =>
+          DeclFactAmbiguous { candidates: list_snoc_item(xs: xs, item: fact) }
       }
     }
   })
