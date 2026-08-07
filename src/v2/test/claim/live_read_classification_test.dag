@@ -321,7 +321,7 @@ fn selection_entry_seed_decl() -> FnArrowDecl {
   FnArrowDecl {
     qualified_name: "synthetic.live_read_selection.entry.seed",
     name: "seed",
-    output: selection_body_node(callee: "v2.compiler.self_host.carrier_fn"),
+    output: selection_body_node(callee: "carrier_fn"),
     params: []
   }
 }
