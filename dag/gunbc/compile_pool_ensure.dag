@@ -196,7 +196,11 @@ fn ensure_yields_slice(admission: EnsureCompilePoolAdmission) -> Bool {
   )
 }
 
-fn ensure_is_converged(admission: EnsureCompilePoolAdmission) -> Bool {
+// Named for its admission type, not generically. This was `ensure_is_converged` and collided with
+// gunbc.build_cache_ensure's identically-spelled helper over EnsureBuildCacheAdmission, which both witness
+// modules reference bare — see that module's annotation on build_cache_ensure_is_converged for the full
+// account, including the selection-invariance defect that hid the collision from this PR's own CI.
+fn compile_pool_ensure_is_converged(admission: EnsureCompilePoolAdmission) -> Bool {
   ensure_compile_pool_admission_fold(
     admission: admission,
     fold: EnsureCompilePoolAdmissionFold {
