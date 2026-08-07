@@ -306,7 +306,7 @@ fn ci_fmt_gate_step() -> Step {
   }
 }
 
-data ci_v1_compiler_tests_compile_gate_eagain_retry_note: String = "ci_v1_compiler_tests_compile_gate_run_script routes through the same v2.workflow.ci_retry_emit ci_cargo_eagain_retry_script seam as ci_release_build_script (EAGAIN-detect → CARGO_BUILD_JOBS=1 cold retry, keeps sscache, no RUSTC_WRAPPER drop). This is NOT a new fallback class: it widens the srvN open-thread population that docs/plans/srvn-buildcache-provisioning-design.md STEP 2 names for removal (operator-sequenced after T4 live read-back) — the same interim debt as the release build, not an independent mask. Dissolves with ci_release_build_script when STEP 2 retires the level-1 arm or converts it to typed refusal."
+data ci_v1_compiler_tests_compile_gate_eagain_retry_note: String = "ci_v1_compiler_tests_compile_gate_run_script routes through the same v2.workflow.ci_retry_emit ci_cargo_eagain_retry_script seam as ci_release_build_script (EAGAIN-detect → CARGO_BUILD_JOBS=1 cold retry, keeps sscache, no RUSTC_WRAPPER drop). This is NOT a new fallback class: it widens the srvN open-thread population that docs/plans/srvn-buildcache-provisioning-design.md STEP 2 names for removal (operator-sequenced after T4 live read-back) — the same interim debt as the release build, not an independent mask. STEP 2 roll-up must retire level-1 retry on BOTH build-job consumers (ci_release_build_script and this run_script); this PR adds the second gate to that tracked population. Dissolves with ci_release_build_script when STEP 2 retires the level-1 arm or converts it to typed refusal."
 
 fn ci_v1_compiler_tests_compile_gate_run_script() -> String {
   let _note = ci_v1_compiler_tests_compile_gate_eagain_retry_note
