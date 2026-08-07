@@ -51,11 +51,13 @@ fn scope_exit_runtime_derived_replace_existing() -> ProviderRetention {
   ProviderRetention {
     release_policy: ReleasedAtProviderScopeExit,
     capacity: CapacityBounded {
-      limit: RuntimeDerivedLimit {
-        authority: {
-          module_path: "gunbc.host_budget_source",
-          decl_name: "HostBudgetResolution",
-          field: WholeDeclaration
+      limit: EntryCountCapacity {
+        limit: RuntimeDerivedLimit {
+          authority: {
+            module_path: "gunbc.host_budget_source",
+            decl_name: "HostBudgetResolution",
+            field: WholeDeclaration
+          }
         }
       },
       at_capacity: ReplaceExisting { strategy: ProviderNativeReplacement }

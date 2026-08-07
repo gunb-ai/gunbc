@@ -1037,9 +1037,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "src/v2/test/claim/compiler_materialization_witness_test.dag",
       check_fns: [
         "compiler_materialization_ladder_holds",
-        "compiler_catalog_projection_has_no_refusals",
-        "parse_table_memo_provider_projects_from_catalog",
-        "compile_stage_memo_provider_projects_from_catalog",
+        "parse_table_memo_provider_preserves_catalog_retention",
+        "compile_stage_memo_provider_preserves_catalog_retention",
         "parse_table_carrier_inhabits_realization",
         "compile_stage_carrier_inhabits_realization",
         "parse_table_empty_uses_catalog_identity",
@@ -1075,7 +1074,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       check_fns: [
         "ci_ladder_holds_on_live_workflow",
         "ci_ladder_holds_without_sccache_single_build",
-        "ci_catalog_projection_has_no_refusals"
+        "ci_sccache_is_eligible_for_the_capacity_bounded_role"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared

@@ -14,8 +14,8 @@ import std.materialization_ladder {
   string_list_contains
 }
 import extdeps.cache.materialization {
-  CatalogProviderProjection, provider_from_catalog, provider_for_capacity_bounded_role,
-  projected_providers, projection_refusal_count
+  CatalogProviderEligibility, provider_for_capacity_bounded_role,
+  eligible_providers, eligibility_refusal_count
 }
 import extdeps.cache.sccache { sccache_local_facts, sccache_local_id }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
@@ -145,7 +145,7 @@ data ci_cost_floor_exempt_step_names: List<String> = [
 
 data ci_sccache_provider_note: String = "C0 (operator ruling, 2026-07-09): this provider row is DERIVED from the cited catalog, never hand-typed. extdeps.cache.sccache owns what sccache IS (NativeInternal content hashing over RustcInvocation+ToolchainSpec, PerHostFilesystem locality, and a cited retention: a finite on-disk ceiling with least-recently-used replacement); this module owns only the ROLE: scope (whole tree, covers every LCA including the fleet frame - why the release build is already cross-run warm while the floor is not) and coverage (the release build script). WHAT THIS ROW USED TO REST ON, and no longer does (2026-08-06): the sentence here read Lru => SpacePacked, sound to drop, costs one recompile - an inference from a replacement ORDER to a space GUARANTEE, which the old fused eviction axis made silently for every Lru row. A least-recently-used order says which entry goes first when the store is full; it does not establish that the store is ever full rather than growing without limit. The boundedness now comes from the fact that actually carries it: sccache v0.15.0 Configuration.md documents SCCACHE_CACHE_SIZE as the maximum size of the local on-disk cache (default 10G), pinned at the modeled binary version rather than main, so the row projects through CapacityBounded with LeastRecentlyUsed replacement. The effective ceiling stays LimitUnobserved because a runner may override it and none was read. A catalog correction still flows into this gate with zero edits here, but eligibility is now ASKED rather than minted by the projection, and a row that stopped establishing a ceiling would refuse here, counted, never a silent shrink of the provider list."
 
-fn ci_sccache_projection() -> CatalogProviderProjection {
+fn ci_sccache_eligibility() -> CatalogProviderEligibility {
   provider_for_capacity_bounded_role(
     facts: sccache_local_facts,
     scope: empty_frame_path,
@@ -153,16 +153,21 @@ fn ci_sccache_projection() -> CatalogProviderProjection {
   )
 }
 
-fn ci_catalog_provider_projections() -> List<CatalogProviderProjection> {
-  [ci_sccache_projection()]
+fn ci_catalog_provider_eligibilities() -> List<CatalogProviderEligibility> {
+  [ci_sccache_eligibility()]
 }
 
 fn ci_cache_providers() -> List<CacheProvider> {
-  projected_providers(ps: ci_catalog_provider_projections())
+  eligible_providers(es: ci_catalog_provider_eligibilities())
 }
 
-fn ci_catalog_projection_refusals() -> Int {
-  projection_refusal_count(ps: ci_catalog_provider_projections())
+// UNLIKE the compiler carrier's deleted refusal count, this one is not
+// tautological: it goes through the capacity-bounded ELIGIBILITY door, which
+// genuinely refuses when sccache's cited row stops establishing a ceiling. That
+// is the difference the accounting/eligibility split makes legible — the same
+// sentence was true of both call sites before, and only one of them meant it.
+fn ci_catalog_eligibility_refusals() -> Int {
+  eligibility_refusal_count(es: ci_catalog_provider_eligibilities())
 }
 
 fn ci_sccache_provider_id() -> String {
