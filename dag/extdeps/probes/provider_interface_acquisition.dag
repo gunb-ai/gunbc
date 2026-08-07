@@ -2,15 +2,13 @@ module extdeps.probes.provider_interface_acquisition
 
 import std.types { String, NonEmptyStr, Int }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https, File }
+import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-
-data provider_interface_acquisition_probe_receipt_path: String = "docs/probes/provider_interface_acquisition_2026-08-03.json"
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
-    scheme: File
-    locator: provider_interface_acquisition_probe_receipt_path,
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/blob/main/docs/probes/provider_interface_acquisition_2026-08-03.json"
   }
 }
 
