@@ -283,9 +283,11 @@ fn bob_sequence_refusal_key(r: BobSequenceRefusal) -> String {
   }
 }
 
+data budget_allowed_not_remaining_note: String = "THE FIELD SAYS WHAT IT MEANS. An earlier revision reported the REMAINING budget at the moment of exhaustion — which is always zero — under a name a reader takes for the budget the sequence was given, and the control pinned that zero, making the inaccurate receipt load-bearing. A number rendered under a name it does not mean is worse than an absent number, because it reads as information. The allowed budget is threaded down so the refusal can name the bound it actually failed against."
+
 type BobSequence
   = BobSequenceSettled { frames: List<BobFrame> }
-  | BobSequenceRefused { cause: BobSequenceRefusal, frames_emitted: Int, budget: Int }
+  | BobSequenceRefused { cause: BobSequenceRefusal, frames_emitted: Int, budget_allowed: Int }
 
 fn bob_frame_of(s: BobState) -> BobFrame {
   BobFrame {
@@ -295,9 +297,13 @@ fn bob_frame_of(s: BobState) -> BobFrame {
   }
 }
 
-fn bob_frames_from(s: BobState, interval_ms: Milliseconds, budget: Int) -> BobSequence {
+fn bob_frames_from(s: BobState, interval_ms: Milliseconds, budget: Int, budget_allowed: Int) -> BobSequence {
   if budget <= 0 {
-    BobSequenceRefused { cause: BudgetExhaustedBeforeSettling, frames_emitted: 0, budget: budget }
+    BobSequenceRefused {
+      cause: BudgetExhaustedBeforeSettling,
+      frames_emitted: 0,
+      budget_allowed: budget_allowed,
+    }
   } else {
     let next = advance(s: s, dt_ms: interval_ms)
     let frame = bob_frame_of(s: next)
@@ -305,10 +311,10 @@ fn bob_frames_from(s: BobState, interval_ms: Milliseconds, budget: Int) -> BobSe
       BobSettled => BobSequenceSettled { frames: [frame] }
       BobAtRest => BobSequenceSettled { frames: [frame] }
       BobRinging =>
-        match bob_frames_from(s: next, interval_ms: interval_ms, budget: budget - 1) {
+        match bob_frames_from(s: next, interval_ms: interval_ms, budget: budget - 1, budget_allowed: budget_allowed) {
           BobSequenceSettled { frames: rest } => BobSequenceSettled { frames: concat([frame], rest) }
-          BobSequenceRefused { cause: c, frames_emitted: n, budget: b } =>
-            BobSequenceRefused { cause: c, frames_emitted: n + 1, budget: b }
+          BobSequenceRefused { cause: c, frames_emitted: n, budget_allowed: a } =>
+            BobSequenceRefused { cause: c, frames_emitted: n + 1, budget_allowed: a }
         }
     }
   }
@@ -316,18 +322,23 @@ fn bob_frames_from(s: BobState, interval_ms: Milliseconds, budget: Int) -> BobSe
 
 fn bob_sequence(i: PhysicalImpulse, m: MotionPreference, interval_ms: Milliseconds) -> BobSequence {
   if interval_ms <= 0 {
-    BobSequenceRefused { cause: NonPositiveFrameInterval, frames_emitted: 0, budget: 0 }
+    BobSequenceRefused { cause: NonPositiveFrameInterval, frames_emitted: 0, budget_allowed: 0 }
   } else {
     let start = apply_impulse(i: i, m: m)
     match start.phase {
       BobAtRest => BobSequenceSettled { frames: [bob_frame_of(s: start)] }
       BobSettled => BobSequenceSettled { frames: [bob_frame_of(s: start)] }
       BobRinging =>
-        match bob_frames_from(s: start, interval_ms: interval_ms, budget: max_frame_count(interval_ms: interval_ms)) {
+        match bob_frames_from(
+          s: start,
+          interval_ms: interval_ms,
+          budget: max_frame_count(interval_ms: interval_ms),
+          budget_allowed: max_frame_count(interval_ms: interval_ms),
+        ) {
           BobSequenceSettled { frames: fs } =>
             BobSequenceSettled { frames: concat([bob_frame_of(s: start)], fs) }
-          BobSequenceRefused { cause: c, frames_emitted: n, budget: b } =>
-            BobSequenceRefused { cause: c, frames_emitted: n, budget: b }
+          BobSequenceRefused { cause: c, frames_emitted: n, budget_allowed: a } =>
+            BobSequenceRefused { cause: c, frames_emitted: n, budget_allowed: a }
         }
     }
   }
@@ -335,12 +346,7 @@ fn bob_sequence(i: PhysicalImpulse, m: MotionPreference, interval_ms: Millisecon
 
 data starts_at_rest_note: String = "The start state is emitted as its own frame, so the sequence literally begins at rest at time zero rather than beginning already displaced one interval in. It costs one frame and it is what makes 'starts at rest, travels downward' a property of the shipped wire rather than of the reader's charity."
 
-fn bob_sequence_frames_or_empty(q: BobSequence) -> List<BobFrame> {
-  match q {
-    BobSequenceSettled { frames: fs } => fs
-    BobSequenceRefused { cause: _, frames_emitted: _, budget: _ } => []
-  }
-}
+data no_frames_or_empty_helper_note: String = "THERE IS DELIBERATELY NO HELPER THAT TURNS A REFUSAL INTO AN EMPTY LIST. One existed, and it reintroduced the absorbing fallback at a second seam one layer above the one the typed sequence had just closed: a refused sequence became [], the wire became the empty string, and a consumer asserting that the page contains that wire passed vacuously because every string contains the empty string. Every consumer matches the coproduct, which costs two lines and cannot be satisfied by a refusal."
 
 data frame_bound_note: String = "Every frame in a sequence stays inside the envelope in BOTH directions, which is the bound restated over the signed value: a plate that travelled nine pixels down would violate the register just as surely as one that travelled nine pixels up."
 

@@ -34,9 +34,14 @@ import extdeps.languages.typescript.program {
 }
 import extdeps.w3c.device_orientation_and_motion {
   devicemotion_event_type, device_motion_event_interface,
+  device_motion_acceleration_property,
+  device_motion_axis_x_property, device_motion_axis_y_property, device_motion_axis_z_property,
   PermissionGranted, permission_state_wire,
 }
-import extdeps.w3c.accelerometer { LinearAccelerationSensor, accelerometer_interface_name }
+import extdeps.w3c.accelerometer {
+  LinearAccelerationSensor, accelerometer_interface_name,
+  axis_x_property, axis_y_property, axis_z_property,
+}
 import extdeps.w3c.generic_sensor { SensorActivating, sensor_lifecycle_key }
 import gunbc.design.sound {
   SoundSpec, engage_detent_click,
@@ -3853,6 +3858,37 @@ fn js_motion_typeof_undefined(name: String) -> TsExpr {
   )
 }
 
+data any_axis_is_the_upstream_predicate_note: String = "A READING IS ANY NON-NULL AXIS, NOT THE X AXIS (review finding, 2026-08-07). Both probes decided what counted as a value by reading one field: the event path tested acceleration.x alone, and the sensor path tested nothing at all and counted reading EVENTS as readings. The first misclassifies a device whose knock lands on y or z as producing hollow events; the second reports readings on a route whose axes are declared nullable, which is the events-versus-values collapse the cited module went to the trouble of naming.
+
+This is the emitted form of acceleration_carries_any_value: any axis carrying a value makes the reading a reading. The axis names arrive as parameters from whichever specification defines the object being read, so neither probe spells them at the reading site."
+
+fn js_motion_axis_not_null(obj: TsExpr, axis: String) -> TsExpr {
+  ts_binop(left: ts_member(object: obj, property: axis), op: "!==", right: ts_ident(name: "null"))
+}
+
+fn js_motion_any_axis_valued(obj: TsExpr, x: String, y: String, z: String) -> TsExpr {
+  ts_binop(
+    left: js_motion_axis_not_null(obj: obj, axis: x),
+    op: "||",
+    right: ts_binop(
+      left: js_motion_axis_not_null(obj: obj, axis: y),
+      op: "||",
+      right: js_motion_axis_not_null(obj: obj, axis: z),
+    ),
+  )
+}
+
+fn js_motion_count_if(cond: TsExpr, counter: String) -> TsStmt {
+  ts_if(
+    cond: cond,
+    then: js_motion_assign(
+      target: ts_ident(name: counter),
+      value: ts_binop(left: ts_ident(name: counter), op: "+", right: ts_lit_num(text: "1")),
+    ),
+    else_stmt: none,
+  )
+}
+
 fn js_motion_now() -> TsExpr {
   ts_call(callee: ts_member(object: ts_ident(name: "Date"), property: "now"), args: [])
 }
@@ -4058,22 +4094,19 @@ fn motion_devicemotion_listen_statements() -> List<TsStmt> {
         target: ts_ident(name: "events"),
         value: ts_binop(left: ts_ident(name: "events"), op: "+", right: ts_lit_num(text: "1")),
       ),
-      ts_const(name: "a", value: ts_member(object: ts_ident(name: "ev"), property: "acceleration")),
-      ts_if(
+      ts_const(name: "a", value: ts_member(object: ts_ident(name: "ev"), property: device_motion_acceleration_property)),
+      js_motion_count_if(
         cond: ts_binop(
           left: ts_ident(name: "a"),
           op: "&&",
-          right: ts_binop(
-            left: ts_member(object: ts_ident(name: "a"), property: "x"),
-            op: "!==",
-            right: ts_ident(name: "null"),
+          right: js_motion_any_axis_valued(
+            obj: ts_ident(name: "a"),
+            x: device_motion_axis_x_property,
+            y: device_motion_axis_y_property,
+            z: device_motion_axis_z_property,
           ),
         ),
-        then: js_motion_assign(
-          target: ts_ident(name: "valued"),
-          value: ts_binop(left: ts_ident(name: "valued"), op: "+", right: ts_lit_num(text: "1")),
-        ),
-        else_stmt: none,
+        counter: "valued",
       ),
     ]))),
     ts_expr_stmt(expr: ts_call(
@@ -4195,6 +4228,7 @@ fn motion_sensor_probe_statement() -> TsStmt {
       ts_try(
         body: ts_block(stmts: [
           ts_let(name: "readings", value: ts_lit_num(text: "0")),
+          ts_let(name: "valued", value: ts_lit_num(text: "0")),
           ts_const(
             name: "s",
             value: ts_new(
@@ -4226,6 +4260,15 @@ fn motion_sensor_probe_statement() -> TsStmt {
                   target: ts_ident(name: "readings"),
                   value: ts_binop(left: ts_ident(name: "readings"), op: "+", right: ts_lit_num(text: "1")),
                 ),
+                js_motion_count_if(
+                  cond: js_motion_any_axis_valued(
+                    obj: ts_ident(name: "s"),
+                    x: axis_x_property,
+                    y: axis_y_property,
+                    z: axis_z_property,
+                  ),
+                  counter: "valued",
+                ),
               ])),
             ],
           )),
@@ -4244,7 +4287,9 @@ fn motion_sensor_probe_statement() -> TsStmt {
             js_motion_line_call(index: "1", text: js_motion_cat(parts: [
               ts_lit_str(value: join([accelerometer_interface_name(i: LinearAccelerationSensor), " · "], "")),
               ts_ident(name: "readings"),
-              ts_lit_str(value: " readings over "),
+              ts_lit_str(value: " reading events, "),
+              ts_ident(name: "valued"),
+              ts_lit_str(value: " carrying values, over "),
               ts_binop(left: js_motion_now(), op: "-", right: ts_ident(name: "t0")),
               ts_lit_str(value: "ms · activated "),
               ts_member(object: ts_ident(name: "s"), property: "activated"),

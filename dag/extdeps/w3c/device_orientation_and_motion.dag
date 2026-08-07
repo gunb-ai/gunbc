@@ -39,6 +39,12 @@ data device_motion_event_rotation_rate_interface: String = "DeviceMotionEventRot
 
 data device_motion_acceleration_property: String = "acceleration"
 data device_motion_acceleration_including_gravity_property: String = "accelerationIncludingGravity"
+data acceleration_axis_property_note: String = "The three axis attribute names DeviceMotionEventAcceleration declares, carried as data because a consumer reading these fields off a live event needs the names and would otherwise hard-code them at the reading site. They are cited from this specification's own WebIDL, quoted in nullable_motion_fields_note above; the identically spelled attributes on the Accelerometer extension's interfaces are that specification's facts and live in extdeps.w3c.accelerometer, because two independently versioned upstreams that happen to agree on a letter are not one authority."
+
+data device_motion_axis_x_property: String = "x"
+data device_motion_axis_y_property: String = "y"
+data device_motion_axis_z_property: String = "z"
+
 data device_motion_rotation_rate_property: String = "rotationRate"
 data device_motion_interval_property: String = "interval"
 data request_permission_method: String = "requestPermission"

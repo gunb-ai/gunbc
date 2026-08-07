@@ -9,7 +9,7 @@ import gunbc.design.instrument_physical { instrument_displacement_max_px }
 import gunbc.capability_binding {
   PhysicalImpulse, ImpulseDown, ImpulseUp,
   SyntheticTapStrength, SyntheticTapLight, SyntheticTapFirm, SyntheticTapKnock,
-  synthetic_tap_impulse, synthetic_tap_binding, impulse_is_synthetic,
+  synthetic_tap_impulse, synthetic_tap_provider, impulse_is_synthetic,
 }
 import gunbc.design.instrument_bob {
   BobPhase, BobAtRest, BobRinging, BobSettled, bob_phase_key,
@@ -27,7 +27,7 @@ import gunbc.design.instrument_bob {
   settled_frame_count, frames_terminate_exactly_once, frames_cross_rest,
   BobSequence, BobSequenceSettled, BobSequenceRefused, BobSequenceRefusal,
   BudgetExhaustedBeforeSettling, NonPositiveFrameInterval,
-  bob_sequence, bob_sequence_refusal_key, bob_sequence_frames_or_empty, bob_frames_from,
+  bob_sequence, bob_sequence_refusal_key, bob_frames_from,
   frames_visit_an_intermediate_position, frames_max_abs_between, frames_last_displacement,
 }
 
@@ -37,7 +37,7 @@ data instrument_bob_witness_note: String = "The three properties that make the b
 
 fn an_impulse(magnitude: Int) -> PhysicalImpulse {
   PhysicalImpulse {
-    source_binding: DeclarationRef {
+    source_provider: DeclarationRef {
       module_path: "gunbc.capability_binding",
       decl_name: "synthetic_tap_impulse",
       field: WholeDeclaration
@@ -156,7 +156,7 @@ fn witness_reduced_motion_removes_travel_and_keeps_the_impulse() -> Bool {
     && bob_phase_key(p: reduced.phase) == "at-rest"
     && bob_amplitude_milli(s: full) > 0
     && i.magnitude_milli_m_per_s2 == impulse_reference_magnitude_milli
-    && i.source_binding.decl_name == "synthetic_tap_impulse"
+    && i.source_provider.decl_name == "synthetic_tap_impulse"
     && motion_preference_key(m: MotionReduced) == "reduced"
 }
 
@@ -169,7 +169,7 @@ data platform_blindness_note: String = "The physics never learns where the knock
 fn witness_the_physics_is_blind_to_which_binding_produced_the_impulse() -> Bool {
   let synthetic = an_impulse(magnitude: 3000)
   let hardware = PhysicalImpulse {
-    source_binding: DeclarationRef {
+    source_provider: DeclarationRef {
       module_path: "extdeps.w3c.device_orientation_and_motion",
       decl_name: "devicemotion_event_type",
       field: WholeDeclaration
@@ -180,7 +180,7 @@ fn witness_the_physics_is_blind_to_which_binding_produced_the_impulse() -> Bool 
   }
   bob_amplitude_milli(s: apply_impulse(i: synthetic, m: MotionFull)) ==
       bob_amplitude_milli(s: apply_impulse(i: hardware, m: MotionFull))
-    && synthetic.source_binding.module_path != hardware.source_binding.module_path
+    && synthetic.source_provider.module_path != hardware.source_provider.module_path
 }
 
 data frame_sequence_witness_note: String = "The deterministic frame sequence is what makes the bob judgeable without a browser: the whole response is a finite list computed with no clock and no host, so a physics regression is a diff over a list rather than something someone has to watch for. These claims assert the four properties a renderer relies on — it is deterministic, it terminates exactly once, every frame stays inside the envelope in BOTH directions, and it actually crosses rest rather than sagging."
@@ -189,48 +189,51 @@ fn a_knock_sequence() -> BobSequence {
   bob_sequence(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull, interval_ms: 16)
 }
 
-fn a_knock_frames() -> List<BobFrame> {
-  bob_sequence_frames_or_empty(q: a_knock_sequence())
-}
+data no_or_empty_helper_note: String = "THE FRAMES ARE REACHED ONLY THROUGH THE SETTLED ARM (review finding, 2026-08-07). This file used to call a helper that answered a refused sequence with an empty list, and five claims below then asserted properties of that empty list — every one of which a vacuous fold or an empty-list predicate can satisfy. The helper is deleted at its authority; here the consequence is that each frame claim takes the frames as a parameter, and the single match in the keystone is the one place a refusal is answered, with false."
 
 data settled_arm_note: String = "The sequence a consumer receives is the SETTLED arm or nothing. This asserts the arm itself rather than inspecting a list that might have been truncated, which is the whole point of making exhaustion a refusal: a consumer that matched only the settled arm cannot accidentally render a bob that never came to rest."
 
 fn witness_the_production_sequence_is_admitted_not_truncated() -> Bool {
   match a_knock_sequence() {
     BobSequenceSettled { frames: fs } => fs.length() > 4
-    BobSequenceRefused { cause: _, frames_emitted: _, budget: _ } => false
+        BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
   }
 }
 
 fn witness_red_an_exhausted_budget_refuses_rather_than_truncating() -> Bool {
   let hit = apply_impulse(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull)
-  let starved = bob_frames_from(s: hit, interval_ms: 16, budget: 3)
+  let starved = bob_frames_from(s: hit, interval_ms: 16, budget: 3, budget_allowed: 3)
   let refused_interval = bob_sequence(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull, interval_ms: 0)
   match starved {
-    BobSequenceRefused { cause: c, frames_emitted: n, budget: b } =>
+    BobSequenceRefused { cause: c, frames_emitted: n, budget_allowed: b } =>
       bob_sequence_refusal_key(r: c) == "budget-exhausted-before-settling"
         && n == 3
-        && b == 0
+        && b == 3
     BobSequenceSettled { frames: _ } => false
   }
   && match refused_interval {
-    BobSequenceRefused { cause: c2, frames_emitted: _, budget: _ } =>
+    BobSequenceRefused { cause: c2, frames_emitted: _, budget_allowed: _ } =>
       bob_sequence_refusal_key(r: c2) == "non-positive-frame-interval"
     BobSequenceSettled { frames: _ } => false
   }
 }
 
 fn witness_the_frame_sequence_is_deterministic() -> Bool {
-  let a = a_knock_frames()
-  let b = a_knock_frames()
-  a.length() == b.length()
-    && a.length() > 1
-    && fold(a, init: 0, f: (acc, f) => acc + f.displacement_px) ==
-         fold(b, init: 0, f: (acc, f) => acc + f.displacement_px)
+  match a_knock_sequence() {
+    BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+    BobSequenceSettled { frames: a } =>
+      match a_knock_sequence() {
+        BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+        BobSequenceSettled { frames: b } =>
+          a.length() == b.length()
+            && a.length() > 1
+            && fold(a, init: 0, f: (acc, f) => acc + f.displacement_px) ==
+                 fold(b, init: 0, f: (acc, f) => acc + f.displacement_px)
+      }
+  }
 }
 
-fn witness_the_sequence_terminates_exactly_once_and_is_bounded() -> Bool {
-  let fs = a_knock_frames()
+fn witness_the_sequence_terminates_exactly_once_and_is_bounded(fs: List<BobFrame>) -> Bool {
   frames_terminate_exactly_once(fs: fs)
     && settled_frame_count(fs: fs) == 1
     && fs.length() <= max_frame_count(interval_ms: 16) + 1
@@ -239,8 +242,7 @@ fn witness_the_sequence_terminates_exactly_once_and_is_bounded() -> Bool {
 
 data crosses_rest_note: String = "A bobber crosses the waterline; a sag does not; and a square wave jumps over it. The sequence must start at rest, travel downward first because a knock pushes the plate away from the hand, occupy positions that are neither rest nor an extreme, appear on both sides of rest, visibly lose reach, and end at zero on its own."
 
-fn witness_the_plate_bobs_rather_than_sagging() -> Bool {
-  let fs = a_knock_frames()
+fn witness_the_plate_bobs_rather_than_sagging(fs: List<BobFrame>) -> Bool {
   frames_cross_rest(fs: fs)
     && frames_visit_an_intermediate_position(fs: fs)
     && frames_max_abs_between(fs: fs, from_ms: 0, to_ms: 1) == 0
@@ -260,8 +262,7 @@ fn witness_the_waveform_passes_through_rest_rather_than_jumping() -> Bool {
 
 data reach_falls_note: String = "The reach of the SHIPPED frames diminishes: the largest displacement in the first third of the settle window strictly exceeds the largest in the last third. Stated over the emitted list rather than over the envelope function, because the defect this replaces left the envelope function correct in isolation while the sequence it produced never fell."
 
-fn witness_the_shipped_reach_actually_falls() -> Bool {
-  let fs = a_knock_frames()
+fn witness_the_shipped_reach_actually_falls(fs: List<BobFrame>) -> Bool {
   let settle = max_settle_time_ms()
   frames_max_abs_between(fs: fs, from_ms: 0, to_ms: settle / 3) >
     frames_max_abs_between(fs: fs, from_ms: (settle * 2) / 3, to_ms: settle * 4)
@@ -280,34 +281,40 @@ fn witness_red_a_frame_outside_the_envelope_is_rejected_in_both_directions() -> 
 }
 
 fn witness_reduced_motion_yields_one_still_frame() -> Bool {
-  let fs = bob_sequence_frames_or_empty(
-    q: bob_sequence(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionReduced, interval_ms: 16))
-  fs.length() == 1
-    && fold(fs, init: true, f: (acc, f) => acc && f.displacement_px == 0)
+  match bob_sequence(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionReduced, interval_ms: 16) {
+    BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+    BobSequenceSettled { frames: fs } =>
+          fs.length() == 1
+            && fold(fs, init: true, f: (acc, f) => acc && f.displacement_px == 0)
+  }
 }
 
 data keystone_conjunction_note: String = "EVERY CLAIM IN THIS FILE IS JOINED INTO ONE EXPRESSION, and the reason is a defect that shipped. The frame-sequence controls used to sit in a statement of their own above the returned conjunction — a discarded expression the evaluator computed and threw away — so five claims about the shipped sequence had no bearing on whether the keystone was green. That is how a bob that could not settle reported a passing keystone. There is exactly one returned expression here now."
 
 test fn instrument_bob_keystone_holds() -> Bool {
-  witness_the_production_sequence_is_admitted_not_truncated()
-    && witness_red_an_exhausted_budget_refuses_rather_than_truncating()
-    && witness_the_frame_sequence_is_deterministic()
-    && witness_the_sequence_terminates_exactly_once_and_is_bounded()
-    && witness_the_plate_bobs_rather_than_sagging()
-    && witness_the_waveform_passes_through_rest_rather_than_jumping()
-    && witness_the_shipped_reach_actually_falls()
-    && witness_red_a_frame_outside_the_envelope_is_rejected_in_both_directions()
-    && witness_reduced_motion_yields_one_still_frame()
-    && witness_a_harder_smack_never_travels_further_than_the_bound()
-    && witness_a_gentler_knock_travels_proportionally_less()
-    && witness_the_bob_stays_under_the_registers_attraction_travel()
-    && witness_red_every_advanced_state_stays_bounded()
-    && witness_decay_is_independent_of_how_the_caller_steps()
-    && witness_the_bob_always_settles_with_strict_descent()
-    && witness_the_envelope_strictly_decays_and_reaches_rest()
-    && witness_the_settle_time_is_derived_and_finite()
-    && witness_halving_is_monotone()
-    && witness_reduced_motion_removes_travel_and_keeps_the_impulse()
-    && witness_the_bob_carries_no_domain_fact()
-    && witness_the_physics_is_blind_to_which_binding_produced_the_impulse()
+  match a_knock_sequence() {
+    BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+    BobSequenceSettled { frames: fs } =>
+      witness_the_production_sequence_is_admitted_not_truncated()
+        && witness_red_an_exhausted_budget_refuses_rather_than_truncating()
+        && witness_the_frame_sequence_is_deterministic()
+        && witness_the_sequence_terminates_exactly_once_and_is_bounded(fs: fs)
+        && witness_the_plate_bobs_rather_than_sagging(fs: fs)
+        && witness_the_waveform_passes_through_rest_rather_than_jumping()
+        && witness_the_shipped_reach_actually_falls(fs: fs)
+        && witness_red_a_frame_outside_the_envelope_is_rejected_in_both_directions()
+        && witness_reduced_motion_yields_one_still_frame()
+        && witness_a_harder_smack_never_travels_further_than_the_bound()
+        && witness_a_gentler_knock_travels_proportionally_less()
+        && witness_the_bob_stays_under_the_registers_attraction_travel()
+        && witness_red_every_advanced_state_stays_bounded()
+        && witness_decay_is_independent_of_how_the_caller_steps()
+        && witness_the_bob_always_settles_with_strict_descent()
+        && witness_the_envelope_strictly_decays_and_reaches_rest()
+        && witness_the_settle_time_is_derived_and_finite()
+        && witness_halving_is_monotone()
+        && witness_reduced_motion_removes_travel_and_keeps_the_impulse()
+        && witness_the_bob_carries_no_domain_fact()
+        && witness_the_physics_is_blind_to_which_binding_produced_the_impulse()
+  }
 }

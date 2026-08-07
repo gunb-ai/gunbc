@@ -60,21 +60,18 @@ fn sequence_for(t: SyntheticTapStrength, m: MotionPreference) -> BobSequence {
     interval_ms: motion_frame_interval_ms)
 }
 
-fn frames_for(t: SyntheticTapStrength, m: MotionPreference) -> List<BobFrame> {
-  match sequence_for(t: t, m: m) {
-    BobSequenceSettled { frames: fs } => fs
-    BobSequenceRefused { cause: _, frames_emitted: _, budget: _ } => []
-  }
-}
-
 fn frame_wire(f: BobFrame) -> String {
   to_string(f.displacement_px)
 }
 
 data refusal_removes_the_attribute_note: String = "A REFUSED SEQUENCE SHIPS NO WIRE AT ALL. The button is not rendered as a button: the tap becomes a visible line naming the refusal, its cause, how many frames it managed and the budget it was given. The client binds taps by the presence of the frames attribute, so a refusal cannot be clicked and there is no attribute for a renderer to parse — never a plausible-looking list, and never a control whose press does nothing without saying why. A page cannot render motion the model refused to decide."
 
-fn frames_wire(t: SyntheticTapStrength, m: MotionPreference) -> String {
-  join(map(frames_for(t: t, m: m), f => frame_wire(f: f)), ",")
+data wire_takes_frames_not_a_tap_note: String = "THE SERIALIZER TAKES FRAMES, NOT A TAP (review finding, 2026-08-07). It used to take a strength and a preference and resolve the sequence itself, which meant it had to answer for a refusal — and it answered by rendering the empty string, exactly the absorbing fallback this lane exists to remove. Two things went wrong at once: a refused sequence became indistinguishable from a settled sequence of no frames, and every assertion of the form string_contains(html, wire) went VACUOUSLY TRUE, because every string contains the empty one. So the control that was supposed to pin the shipped sequence would have passed on a page that shipped nothing.
+
+The repair is that the function can no longer be reached with a refusal in hand: it takes the frames a caller obtained by matching BobSequenceSettled, so the refusal arm is answered where the refusal is known — as a rendered line naming its cause — and there is no arm here to answer it wrongly."
+
+fn frames_wire(frames: List<BobFrame>) -> String {
+  join(map(frames, f => frame_wire(f: f)), ",")
 }
 
 fn cls(name: String) -> SelectorSubject {
@@ -141,14 +138,14 @@ fn tap_refused_fragment(t: SyntheticTapStrength, c: BobSequenceRefusal, n: Int, 
   el_class("div", "motion-tap-refused", [
     txt(join([
       tap_label(t: t), " — sequence refused · ", bob_sequence_refusal_key(r: c),
-      " · ", to_string(n), " frames emitted against a budget of ", to_string(b),
+      " · ", to_string(n), " frames emitted against an allowed budget of ", to_string(b),
     ], "")),
   ])
 }
 
 fn tap_button_with(t: SyntheticTapStrength, full: String) -> Fragment {
   match sequence_for(t: t, m: MotionReduced) {
-    BobSequenceRefused { cause: c, frames_emitted: n, budget: b } =>
+    BobSequenceRefused { cause: c, frames_emitted: n, budget_allowed: b } =>
       tap_refused_fragment(t: t, c: c, n: n, b: b)
     BobSequenceSettled { frames: rs } =>
       el_attrs("button", [
@@ -156,17 +153,17 @@ fn tap_button_with(t: SyntheticTapStrength, full: String) -> Fragment {
         attr(name: "type", value: "button"),
         attr(name: "data-strength", value: synthetic_tap_strength_key(t: t)),
         attr(name: motion_frame_data_attr, value: full),
-        attr(name: motion_reduced_frame_data_attr, value: join(map(rs, f => frame_wire(f: f)), ",")),
+        attr(name: motion_reduced_frame_data_attr, value: frames_wire(frames: rs)),
       ], [ txt(tap_label(t: t)) ])
   }
 }
 
 fn tap_button(t: SyntheticTapStrength) -> Fragment {
   match sequence_for(t: t, m: MotionFull) {
-    BobSequenceRefused { cause: c, frames_emitted: n, budget: b } =>
+    BobSequenceRefused { cause: c, frames_emitted: n, budget_allowed: b } =>
       tap_refused_fragment(t: t, c: c, n: n, b: b)
     BobSequenceSettled { frames: fs } =>
-      tap_button_with(t: t, full: join(map(fs, f => frame_wire(f: f)), ","))
+      tap_button_with(t: t, full: frames_wire(frames: fs))
   }
 }
 
@@ -264,12 +261,14 @@ fn coverage_row(t: BindingCoverageTarget) -> Fragment {
   el_class("div", "motion-coverage-row", [
     txt(join([
       t.platform, " · ", coverage_provider_text(p: t.provider),
-      " · ", coverage_state_key(s: t.state),
+      " · ", coverage_state_key(implementation: t.implementation, probe: t.probe),
     ], "")),
   ])
 }
 
-data coverage_section_note: String = "The coverage frontier, rendered so the gap between what is implemented and what is merely intended is visible rather than inferred. No row here is a support claim — not even implemented, which means the binding exists and can be probed. Support is a verdict derived from an executed observation on an exact host, and no such verdict is shown until one has run."
+data coverage_section_note: String = "The coverage frontier, rendered so the gap between what is implemented and what is merely intended is visible rather than inferred. No row here is a support claim — not even implemented, which means the binding exists and can be probed. Support is a verdict derived from an executed observation on an exact host, and no such verdict is shown until one has run.
+
+EACH ROW SHOWS TWO STATES BECAUSE THERE ARE TWO FACTS. Whether the binding is written and whether anything has run against it are independent, and rendering them as one word let a written-but-unprobed target read the same as a probed one. A reader wants exactly this pair: the second half is the column that is almost entirely 'probe required', which is the honest shape of a lane whose hardware receipts do not exist yet."
 
 fn coverage_section() -> Fragment {
   el("section", concat(

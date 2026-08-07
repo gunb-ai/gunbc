@@ -12,6 +12,8 @@ data capability_binding_note: String = "SUPPORT IS NEVER AN OPERATING-SYSTEM BOO
 
 So the support matrix is a PROJECTION over executed observations, never an authored table, and this module carries the join that makes that projection possible: a host, a requirement, a provider, and what actually happened when they met."
 
+data source_provider_naming_note: String = "THE FIELD NAMES A PROVIDER, SO IT IS CALLED ONE (review finding, 2026-08-07). It was source_binding, and what it actually carries is a reference to a producer — the synthetic tap's own function, or an upstream interface declaration. A CapabilityBinding is the join of a host, a requirement and a provider; neither of those references is one, and calling them bindings made a three-way join look present where a single provider identity stood. The rename is the whole repair at this rung: an impulse does not need a binding to be a valid impulse, and inventing one to satisfy a field name would have been worse than the name."
+
 data physical_impulse_note: String = "THE ONE FACT EVERY BINDING PRODUCES, AND THE REASON THE BOBBER PHYSICS NEVER LEARNS WHERE MOTION CAME FROM. A web DeviceMotion event, a web LinearAccelerationSensor reading, a Windows sensor sample, an Apple Core Motion update, an Android SensorManager callback, a Linux IIO read and the deterministic synthetic tap all converge here. The display consumes PhysicalImpulse and nothing else, so a new platform binding is a new producer and changes no physics, no projection and no roadmap semantics (DESIGN §2 Realization: one kernel, N handlers).
 
 MAGNITUDE IS A Nat, NOT A SIGNED Int (review finding, 2026-08-06 — and this repeats a mistake the corpus already paid for once). gunbc.design.instrument_physical's amplitude_note records the same defect being fixed there: a signed amplitude let two disturbances cancel and pass a budget, so the carrier became Nat and a negative amplitude lost its constructor. Direction is a separate field here for exactly that reason, so a signed magnitude would have been a second encoding of direction sitting beside the real one — two representations of one fact, disagreeing at will."
@@ -32,7 +34,7 @@ fn impulse_direction_key(d: ImpulseDirection) -> String {
 }
 
 type PhysicalImpulse {
-  source_binding: DeclarationRef
+  source_provider: DeclarationRef
   magnitude_milli_m_per_s2: Nat
   direction: ImpulseDirection
   observed_at_ms: Milliseconds
@@ -241,9 +243,18 @@ fn qualify_tap(r: PhysicalImpulseRequirement, s: SampleReceipt) -> TapQualificat
 
 data capability_binding_join_note: String = "A binding is the join of a host, a requirement, and a provider — and the provider is a symbolic reference to ITS own authority, never an arm of an enumeration here. The W3C Device Orientation and Motion contract, the W3C Accelerometer extension's concrete interfaces, the Windows sensor namespace, Apple Core Motion, Android SensorManager, the Linux IIO subsystem and the synthetic source each belong in their own module, and combining the standards with the operating-system frameworks in a single motion-support file would fuse independently governed upstreams into one authority (DESIGN §3)."
 
+data requirement_identity_and_snapshot_note: String = "ONE REQUIREMENT PER OBSERVATION, OWNED ONCE (review finding, 2026-08-07). The previous shape had the binding carry a requirement IDENTITY as a DeclarationRef while the stream independently carried a requirement VALUE — two writable authorities for one fact, and the verdict read the second while the row reported the first. The witness demonstrated the hazard without meaning to: it bound every observation to the provisional candidate and passed the signed twin through the stream, so a row said it was measured against unsigned thresholds while its supported verdict came from signed ones. On an exact host that disagreement reaches the durable-claim gate.
+
+Identity and snapshot travel together because both are needed and neither substitutes for the other: the identity says WHICH requirement this is, so rows can be joined and compared across observations; the snapshot says what its thresholds WERE when the measurement was taken, so a later retune cannot silently re-decide an old receipt. Binding them in one carrier on the binding — and giving the stream no requirement field at all — means there is no second value to disagree with."
+
+type BoundCapabilityRequirement {
+  identity: DeclarationRef
+  snapshot: PhysicalImpulseRequirement
+}
+
 type CapabilityBinding {
   host: HostRealization
-  requirement: DeclarationRef
+  requirement: BoundCapabilityRequirement
   provider: DeclarationRef
 }
 
@@ -268,10 +279,10 @@ type BindingStreamState
   | PermissionRefused
   | HardwareUnavailable
   | BackendConnectionRefused { error_name: String }
-  | NoSamplesObserved { lifecycle: SampleLifecycle, window_ms: Milliseconds }
-  | HollowSamplesObserved { count: Nat, window_ms: Milliseconds }
+  | NoSamplesObserved { lifecycle: SampleLifecycle }
+  | HollowSamplesObserved { count: Nat }
   | SamplesObserved { receipt: SampleReceipt }
-  | TapOutcome { requirement: PhysicalImpulseRequirement, receipt: SampleReceipt }
+  | TapOutcome { receipt: SampleReceipt }
   | BindingStreamUnobserved
 
 fn binding_stream_key(s: BindingStreamState) -> String {
@@ -281,16 +292,17 @@ fn binding_stream_key(s: BindingStreamState) -> String {
     PermissionRefused => "permission-refused"
     HardwareUnavailable => "hardware-unavailable"
     BackendConnectionRefused { error_name } => "backend-connection-refused"
-    NoSamplesObserved { lifecycle, window_ms } => concat("no-samples-observed-", sample_lifecycle_key(l: lifecycle))
-    HollowSamplesObserved { count, window_ms } => "hollow-samples-observed"
+    NoSamplesObserved { lifecycle } => concat("no-samples-observed-", sample_lifecycle_key(l: lifecycle))
+    HollowSamplesObserved { count } => "hollow-samples-observed"
     SamplesObserved { receipt } => "samples-observed"
-    TapOutcome { requirement, receipt } => match qualify_tap(r: requirement, s: receipt) {
-      TapQualified { receipt: _ } => "tap-qualified"
-      TapRejected { receipt: _, causes: _ } => "tap-rejected"
-    }
+    TapOutcome { receipt } => "tap-outcome"
     BindingStreamUnobserved => "unobserved"
   }
 }
+
+data one_window_authority_note: String = "THE OBSERVATION OWNS THE WINDOW, AND ONLY THE OBSERVATION (review finding, 2026-08-07). Two arms of the stream carried a window_ms of their own while the observation carried observation_window_ms, so the same fact — how long anything was watched for — had two independently writable homes and nothing made them agree. A record whose stream said four seconds and whose observation said zero was constructible, typechecked, and had no defined reading; worse, the silence arms are exactly where a window is load-bearing, because zero samples in an unrecorded window is not a bounded claim at all.
+
+The window is now a field of the observation and nowhere else. The silence arms keep only what is theirs — which lifecycle state was reached, how many hollow events arrived — and every consumer that needs a duration reads it from the one place it lives."
 
 type CapabilityBindingObservation {
   binding: CapabilityBinding
@@ -334,7 +346,7 @@ fn degradation_key(d: DegradationCause) -> String {
 
 data capability_verdict_note: String = "THE DERIVED VERDICT, PER CAPABILITY AND PER HOST, WITH A RESOLVABLE ALTERNATIVE WHEN IT DEGRADES. Supported means the interaction was actually QUALIFIED on this host against a total check of every declared dimension — not that a sensor existed and not that a caller said so. Degraded means the product still works while this capability does not, and it names both a typed missing cause and a reference to the binding offered instead. Unavailable carries a typed obstacle. Unobserved is the honest default and is never a soft no.
 
-A synthetic impulse may be the explicit alternative and may never masquerade as a hardware reading: it is named in the verdict by reference, named on the impulse through source_binding, and the predicate that says so derives from the producing binding rather than from a flag."
+A synthetic impulse may be the explicit alternative and may never masquerade as a hardware reading: it is named in the verdict by reference, named on the impulse through source_provider, and the predicate that says so derives from the producing declaration rather than from a flag."
 
 data provisional_thresholds_cannot_authorize_support_note: String = "A MEASUREMENT THAT CLEARS UNSIGNED THRESHOLDS HAS NOT ESTABLISHED SUPPORT (review finding, 2026-08-06). The requirement's own standing says its numbers are audition candidates rather than a signed contract, and an earlier revision let a receipt that cleared them produce CapabilitySupported anyway — so the module simultaneously declared its thresholds unproven and issued durable claims against them.
 
@@ -358,7 +370,7 @@ fn capability_verdict_key(v: TargetCapabilityVerdict) -> String {
   }
 }
 
-data synthetic_tap_binding: DeclarationRef = DeclarationRef {
+data synthetic_tap_provider: DeclarationRef = DeclarationRef {
   module_path: "gunbc.capability_binding",
   decl_name: "synthetic_tap_impulse",
   field: WholeDeclaration
@@ -369,8 +381,9 @@ data verdict_qualifies_its_own_receipt_note: String = "THE VERDICT CALLS qualify
 The stream now carries the RAW ingredients — the requirement the measurement was taken against, and the receipt of what was measured — and every consumer that wants a fitness answer derives it. There is no qualified value to hand in, so there is nothing to forge. The requirement travels ON the observation rather than being looked up, because a receipt is only meaningful against the thresholds it was measured against, and a later retune of the requirement must not silently re-decide an old measurement."
 
 fn derive_capability_verdict(o: CapabilityBindingObservation) -> TargetCapabilityVerdict {
+  let requirement = o.binding.requirement.snapshot
   match o.stream {
-    TapOutcome { requirement, receipt } => match qualify_tap(r: requirement, s: receipt) {
+    TapOutcome { receipt } => match qualify_tap(r: requirement, s: receipt) {
       TapQualified { receipt: q } => match requirement.standing {
         RequirementSigned { audition_receipt } => CapabilitySupported { receipt: q }
         AuditionProvisional { pending } =>
@@ -379,23 +392,23 @@ fn derive_capability_verdict(o: CapabilityBindingObservation) -> TargetCapabilit
       TapRejected { receipt: _, causes: causes } =>
         CapabilityDegraded {
           missing: DegradedTapRejected { causes: causes },
-          alternative: synthetic_tap_binding,
+          alternative: synthetic_tap_provider,
         }
     }
     SamplesObserved { receipt } =>
       CapabilityDegraded {
         missing: DegradedSamplesWithoutQualification,
-        alternative: synthetic_tap_binding,
+        alternative: synthetic_tap_provider,
       }
-    HollowSamplesObserved { count, window_ms } =>
+    HollowSamplesObserved { count } =>
       CapabilityDegraded {
         missing: DegradedSamplesCarryNoValues,
-        alternative: synthetic_tap_binding,
+        alternative: synthetic_tap_provider,
       }
-    NoSamplesObserved { lifecycle, window_ms } =>
+    NoSamplesObserved { lifecycle } =>
       CapabilityDegraded {
         missing: DegradedNoSamplesInWindow { lifecycle: lifecycle },
-        alternative: synthetic_tap_binding,
+        alternative: synthetic_tap_provider,
       }
     InterfaceUnavailable => CapabilityUnavailable { obstacle: ObstacleInterfaceUnavailable }
     PolicyRefused => CapabilityUnavailable { obstacle: ObstaclePolicyRefused }
@@ -456,7 +469,7 @@ fn synthetic_tap_magnitude_milli(t: SyntheticTapStrength) -> Nat {
 
 fn synthetic_tap_impulse(t: SyntheticTapStrength, at_ms: Milliseconds) -> PhysicalImpulse {
   PhysicalImpulse {
-    source_binding: synthetic_tap_binding,
+    source_provider: synthetic_tap_provider,
     magnitude_milli_m_per_s2: synthetic_tap_magnitude_milli(t: t),
     direction: ImpulseDown,
     observed_at_ms: at_ms,
@@ -466,8 +479,8 @@ fn synthetic_tap_impulse(t: SyntheticTapStrength, at_ms: Milliseconds) -> Physic
 data synthetic_is_never_a_hardware_claim_note: String = "The predicate a receipt uses to label an impulse honestly, derived from which producer made it rather than from a flag whoever renders it could set. A hardware reading routed through a synthetic label, or the reverse, is not expressible."
 
 fn impulse_is_synthetic(i: PhysicalImpulse) -> Bool {
-  i.source_binding.module_path == synthetic_tap_binding.module_path &&
-    i.source_binding.decl_name == synthetic_tap_binding.decl_name
+  i.source_provider.module_path == synthetic_tap_provider.module_path &&
+    i.source_provider.decl_name == synthetic_tap_provider.decl_name
 }
 
 fn synthetic_tap_clears_requirement(t: SyntheticTapStrength, r: PhysicalImpulseRequirement) -> Bool {
@@ -476,27 +489,56 @@ fn synthetic_tap_clears_requirement(t: SyntheticTapStrength, r: PhysicalImpulseR
 
 data coverage_frontier_note: String = "COVERAGE OBLIGATIONS, NOT SUPPORT CLAIMS. Every platform this product could eventually reach is a target with a typed disposition and, where deferred, an explicit trigger. There is no WindowsSupported here, no MacUnsupported, and no placeholder observation standing in for a run that never happened: a target nobody has probed is ProbeRequired or Deferred, both of which say plainly that nothing is known. The page renders this so the gap between what is implemented and what is merely intended is visible rather than inferred."
 
-type BindingCoverageState
-  = CoverageImplemented { receipt: DeclarationRef }
-  | CoverageProbeRequired
-  | CoverageProbeBlocked { cause: String }
-  | CoverageDeferred { trigger: String }
+data coverage_is_two_axes_note: String = "IMPLEMENTED AND UNPROBED IS A REAL STATE, AND ONE COPRODUCT COULD NOT SAY IT (review finding, 2026-08-07). Whether a binding EXISTS and whether anyone has RUN it are independent facts that coexist — which is precisely the state of both web probes in this change — and a single mutually exclusive enumeration forced a row to pick one and drop the other. Worse, its implemented arm carried a field named receipt whose value was a producer FUNCTION reference: not an executed receipt, not evidence of anything having run, but the strongest-sounding word available for a declaration that proves only that someone wrote code.
 
-fn coverage_state_key(s: BindingCoverageState) -> String {
+Two axes, and the implementation arm names an implementation rather than a receipt. A probe receipt appears on exactly one arm, ProbeObserved, and only where something executed."
+
+type BindingImplementationState
+  = Implemented { implementation: DeclarationRef }
+  | NotImplemented
+  | NotModelled
+
+fn implementation_state_key(s: BindingImplementationState) -> String {
   match s {
-    CoverageImplemented { receipt } => "implemented"
-    CoverageProbeRequired => "probe-required"
-    CoverageProbeBlocked { cause } => "probe-blocked"
-    CoverageDeferred { trigger } => "deferred"
+    Implemented { implementation } => "implemented"
+    NotImplemented => "not-implemented"
+    NotModelled => "not-modelled"
   }
 }
 
-fn coverage_state_is_a_support_claim(s: BindingCoverageState) -> Bool {
+type BindingProbeState
+  = ProbeRequired
+  | ProbeObserved { receipt: DeclarationRef }
+  | ProbeBlocked { cause: String }
+  | ProbeDeferred { trigger: String }
+
+fn probe_state_key(s: BindingProbeState) -> String {
   match s {
-    CoverageImplemented { receipt } => false
-    CoverageProbeRequired => false
-    CoverageProbeBlocked { cause } => false
-    CoverageDeferred { trigger } => false
+    ProbeRequired => "probe-required"
+    ProbeObserved { receipt } => "probe-observed"
+    ProbeBlocked { cause } => "probe-blocked"
+    ProbeDeferred { trigger } => "deferred"
+  }
+}
+
+fn coverage_state_key(implementation: BindingImplementationState, probe: BindingProbeState) -> String {
+  join([implementation_state_key(s: implementation), " · ", probe_state_key(s: probe)], "")
+}
+
+fn implementation_state_is_a_support_claim(s: BindingImplementationState) -> Bool {
+  match s {
+    Implemented { implementation } => false
+    NotImplemented => false
+    NotModelled => false
+  }
+}
+
+fn probe_state_is_a_support_claim(s: BindingProbeState) -> Bool {
+  match s {
+    ProbeRequired => false
+    ProbeObserved { receipt } => false
+    ProbeBlocked { cause } => false
+    ProbeDeferred { trigger } => false
   }
 }
 
@@ -518,7 +560,8 @@ fn coverage_provider_is_modelled(p: CoverageProvider) -> Bool {
 type BindingCoverageTarget {
   platform: String
   provider: CoverageProvider
-  state: BindingCoverageState
+  implementation: BindingImplementationState
+  probe: BindingProbeState
 }
 
 data coverage_targets_note: String = "Seeded with the targets that have a real near-term reason and nothing else. Three are implemented in this lane; one is probed immediately after it; four are deferred behind a named trigger that is a CONSUMER appearing, not a date. No row asserts support, no row carries a placeholder observation, and there is deliberately no row for a platform nobody has a reason to reach — an empty space is more honest than a Deferred row invented to look thorough."
@@ -526,8 +569,15 @@ data coverage_targets_note: String = "Seeded with the targets that have a real n
 data coverage_targets: List<BindingCoverageTarget> = [
   BindingCoverageTarget {
     platform: "any",
-    provider: ProviderModelled { declaration: synthetic_tap_binding },
-    state: CoverageImplemented { receipt: synthetic_tap_binding },
+    provider: ProviderModelled { declaration: synthetic_tap_provider },
+    implementation: Implemented { implementation: synthetic_tap_provider },
+    probe: ProbeObserved {
+      receipt: DeclarationRef {
+        module_path: "test.claim.instrument_bob_witness",
+        decl_name: "instrument_bob_keystone_holds",
+        field: WholeDeclaration
+      }
+    },
   },
   BindingCoverageTarget {
     platform: "web",
@@ -538,7 +588,14 @@ data coverage_targets: List<BindingCoverageTarget> = [
         field: WholeDeclaration
       }
     },
-    state: CoverageProbeRequired,
+    implementation: Implemented {
+      implementation: DeclarationRef {
+        module_path: "gunbc.roadmap_component",
+        decl_name: "motion_devicemotion_probe_statement",
+        field: WholeDeclaration
+      }
+    },
+    probe: ProbeRequired,
   },
   BindingCoverageTarget {
     platform: "web",
@@ -549,49 +606,83 @@ data coverage_targets: List<BindingCoverageTarget> = [
         field: WholeDeclaration
       }
     },
-    state: CoverageProbeRequired,
+    implementation: Implemented {
+      implementation: DeclarationRef {
+        module_path: "gunbc.roadmap_component",
+        decl_name: "motion_sensor_probe_statement",
+        field: WholeDeclaration
+      }
+    },
+    probe: ProbeRequired,
   },
   BindingCoverageTarget {
     platform: "macos",
     provider: ProviderNotYetModelled { intended_upstream: "Apple Core Motion, if a public macOS laptop binding exists at all" },
-    state: CoverageProbeRequired,
+    implementation: NotModelled,
+    probe: ProbeRequired,
   },
   BindingCoverageTarget {
     platform: "windows",
     provider: ProviderNotYetModelled { intended_upstream: "Windows.Devices.Sensors.Accelerometer" },
-    state: CoverageDeferred { trigger: "a Windows test host or a Windows consumer exists" },
+    implementation: NotModelled,
+    probe: ProbeDeferred { trigger: "a Windows test host or a Windows consumer exists" },
   },
   BindingCoverageTarget {
     platform: "ios",
     provider: ProviderNotYetModelled { intended_upstream: "Apple Core Motion" },
-    state: CoverageDeferred { trigger: "mobile instrument work begins" },
+    implementation: NotModelled,
+    probe: ProbeDeferred { trigger: "mobile instrument work begins" },
   },
   BindingCoverageTarget {
     platform: "android",
     provider: ProviderNotYetModelled { intended_upstream: "Android SensorManager" },
-    state: CoverageDeferred { trigger: "an Android consumer begins" },
+    implementation: NotModelled,
+    probe: ProbeDeferred { trigger: "an Android consumer begins" },
   },
   BindingCoverageTarget {
     platform: "linux",
     provider: ProviderNotYetModelled { intended_upstream: "Linux Industrial I/O subsystem" },
-    state: CoverageDeferred { trigger: "Linux host integration begins" },
+    implementation: NotModelled,
+    probe: ProbeDeferred { trigger: "Linux host integration begins" },
   },
 ]
 
 fn coverage_targets_asserting_support() -> Int {
   fold(coverage_targets, init: 0, f: (acc, t) =>
-    if coverage_state_is_a_support_claim(s: t.state) { acc + 1 } else { acc })
+    if implementation_state_is_a_support_claim(s: t.implementation)
+        || probe_state_is_a_support_claim(s: t.probe) {
+      acc + 1
+    } else {
+      acc
+    })
 }
 
-fn state_names_a_trigger_if_it_needs_one(s: BindingCoverageState) -> Bool {
+data probe_receipt_is_an_execution_receipt_note: String = "A PROBE RECEIPT NAMES SOMETHING THAT RAN (review finding, 2026-08-07). The field was called receipt and the value on the one row that used it was synthetic_tap_provider — a reference to the function that PRODUCES the impulse, which has never executed anything and cannot be evidence that a probe was run. A declaration reference is a fine thing to carry; calling it a receipt is where the claim was invented.
+
+The predicate says what the arm means: a probe receipt points into a witness module, because that is the only kind of declaration whose existence implies an execution. It is a naming rule rather than a proof — nothing here checks the named witness is enrolled or green — so it is honestly the lower rung, and its next-rung trigger is the witness-identity join the enforcement-intent lane owns. What it does close is the class that actually occurred: a producer reference silently standing in for evidence."
+
+fn probe_receipt_names_a_witness(s: BindingProbeState) -> Bool {
   match s {
-    CoverageDeferred { trigger } => trigger != ""
-    CoverageProbeBlocked { cause } => cause != ""
-    CoverageImplemented { receipt } => true
-    CoverageProbeRequired => true
+    ProbeObserved { receipt } => starts_with(s: receipt.module_path, prefix: "test.claim.")
+    ProbeRequired => true
+    ProbeBlocked { cause } => true
+    ProbeDeferred { trigger } => true
+  }
+}
+
+fn every_probe_receipt_names_a_witness() -> Bool {
+  all(coverage_targets, t => probe_receipt_names_a_witness(s: t.probe))
+}
+
+fn state_names_a_trigger_if_it_needs_one(s: BindingProbeState) -> Bool {
+  match s {
+    ProbeDeferred { trigger } => trigger != ""
+    ProbeBlocked { cause } => cause != ""
+    ProbeObserved { receipt } => true
+    ProbeRequired => true
   }
 }
 
 fn deferred_targets_all_name_a_trigger() -> Bool {
-  all(coverage_targets, t => state_names_a_trigger_if_it_needs_one(s: t.state))
+  all(coverage_targets, t => state_names_a_trigger_if_it_needs_one(s: t.probe))
 }

@@ -35,7 +35,7 @@ import gunbc.capability_binding {
   SampleRateBelowMinimum, GravityNotHandledAsRequired, NegativeControlNotSatisfied,
   RequirementDimensionUnobserved, tap_cause_key,
   TapQualification, TapQualified, TapRejected, qualify_tap, tap_rejection_causes,
-  CapabilityBinding,
+  CapabilityBinding, BoundCapabilityRequirement,
   SampleLifecycle, LifecycleActivated, LifecycleActivationUnobserved, sample_lifecycle_key,
   BindingStreamState, InterfaceUnavailable, PolicyRefused, PermissionRefused,
   HardwareUnavailable, BackendConnectionRefused, NoSamplesObserved, HollowSamplesObserved,
@@ -50,9 +50,13 @@ import gunbc.capability_binding {
   CapabilityVerdictRow, verdict_rows, row_supports_a_durable_claim,
   SyntheticTapStrength, SyntheticTapLight, SyntheticTapFirm, SyntheticTapKnock,
   synthetic_tap_strength_key, synthetic_tap_magnitude_milli, synthetic_tap_impulse,
-  synthetic_tap_binding, impulse_is_synthetic, synthetic_tap_clears_requirement,
-  BindingCoverageState, CoverageImplemented, CoverageProbeRequired, CoverageProbeBlocked,
-  CoverageDeferred, coverage_state_key, coverage_state_is_a_support_claim,
+  synthetic_tap_provider, impulse_is_synthetic, synthetic_tap_clears_requirement,
+  BindingImplementationState, Implemented, NotImplemented, NotModelled,
+  BindingProbeState, ProbeRequired, ProbeObserved, ProbeBlocked, ProbeDeferred,
+  implementation_state_key, probe_state_key, coverage_state_key,
+  implementation_state_is_a_support_claim, probe_state_is_a_support_claim,
+  coverage_targets_asserting_support, deferred_targets_all_name_a_trigger,
+  probe_receipt_names_a_witness, every_probe_receipt_names_a_witness,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -166,15 +170,27 @@ fn a_receipt(peak: Nat, latency: Milliseconds) -> SampleReceipt {
   }
 }
 
-fn an_observation(s: BindingStreamState) -> CapabilityBindingObservation {
+data candidate_requirement_ref: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.capability_binding",
+  decl_name: "bob_impulse_requirement_candidate",
+  field: WholeDeclaration
+}
+
+data signed_requirement_ref: DeclarationRef = DeclarationRef {
+  module_path: "test.claim.capability_binding_witness",
+  decl_name: "a_signed_requirement",
+  field: WholeDeclaration
+}
+
+fn an_observation_bound_to(
+  identity: DeclarationRef,
+  snapshot: PhysicalImpulseRequirement,
+  s: BindingStreamState,
+) -> CapabilityBindingObservation {
   CapabilityBindingObservation {
     binding: CapabilityBinding {
       host: a_host(container: BrowserDocument, renderer: DomCssRenderer),
-      requirement: DeclarationRef {
-        module_path: "gunbc.capability_binding",
-        decl_name: "bob_impulse_requirement_candidate",
-        field: WholeDeclaration
-      },
+      requirement: BoundCapabilityRequirement { identity: identity, snapshot: snapshot },
       provider: DeclarationRef {
         module_path: "extdeps.w3c.accelerometer",
         decl_name: "LinearAccelerationSensor",
@@ -186,8 +202,26 @@ fn an_observation(s: BindingStreamState) -> CapabilityBindingObservation {
   }
 }
 
+fn an_observation(s: BindingStreamState) -> CapabilityBindingObservation {
+  an_observation_bound_to(
+    identity: candidate_requirement_ref,
+    snapshot: bob_impulse_requirement_candidate,
+    s: s)
+}
+
+fn a_signed_observation(s: BindingStreamState) -> CapabilityBindingObservation {
+  an_observation_bound_to(
+    identity: signed_requirement_ref,
+    snapshot: a_signed_requirement,
+    s: s)
+}
+
 fn verdict_of(s: BindingStreamState) -> String {
   capability_verdict_key(v: derive_capability_verdict(o: an_observation(s: s)))
+}
+
+fn signed_verdict_of(s: BindingStreamState) -> String {
+  capability_verdict_key(v: derive_capability_verdict(o: a_signed_observation(s: s)))
 }
 
 data qualification_is_minted_witness_note: String = "THE CENTRAL RED OF THIS FILE, AND IT EXISTS BECAUSE THE EARLIER MODEL FAILED IT. A caller used to be able to author a coproduct arm named qualified and receive a supported verdict, while the function that checked the requirement was never called by the verdict and checked only two of five dimensions. These claims plant a receipt that FAILS on each dimension in turn and assert that none of them qualifies — so a supported verdict is now reachable only through a total check."
@@ -335,16 +369,16 @@ data a_signed_requirement: PhysicalImpulseRequirement = PhysicalImpulseRequireme
 data supported_needs_a_receipt_note: String = "The seam claim, and it is now a claim about DERIVATION rather than about routing: the stream hands the verdict a raw requirement and a raw receipt, the verdict qualifies them itself, and there is no qualified value anyone could have authored instead. A rejected measurement degrades with its typed causes carried through rather than flattened to a sentence."
 
 fn witness_only_a_derived_qualification_reaches_supported() -> Bool {
-  verdict_of(s: TapOutcome { requirement: a_signed_requirement, receipt: a_receipt(peak: 3100, latency: 40) }) == "supported"
-    && verdict_of(s: TapOutcome { requirement: a_signed_requirement, receipt: a_receipt(peak: 1900, latency: 40) }) == "degraded"
+  signed_verdict_of(s: TapOutcome { receipt: a_receipt(peak: 3100, latency: 40) }) == "supported"
+    && signed_verdict_of(s: TapOutcome { receipt: a_receipt(peak: 1900, latency: 40) }) == "degraded"
     && verdict_of(s: SamplesObserved { receipt: a_receipt(peak: 2600, latency: 40) }) == "degraded"
-    && verdict_of(s: HollowSamplesObserved { count: 12, window_ms: 4000 }) == "degraded"
-    && verdict_of(s: NoSamplesObserved { lifecycle: LifecycleActivated, window_ms: 4000 }) == "degraded"
+    && verdict_of(s: HollowSamplesObserved { count: 12 }) == "degraded"
+    && verdict_of(s: NoSamplesObserved { lifecycle: LifecycleActivated }) == "degraded"
 }
 
 fn witness_a_rejected_tap_carries_its_typed_causes() -> Bool {
-  match derive_capability_verdict(o: an_observation(s: TapOutcome {
-      requirement: a_signed_requirement, receipt: a_receipt(peak: 1900, latency: 400)
+  match derive_capability_verdict(o: a_signed_observation(s: TapOutcome {
+      receipt: a_receipt(peak: 1900, latency: 400)
     })) {
     CapabilityDegraded { missing, alternative } => match missing {
       DegradedTapRejected { causes } =>
@@ -381,14 +415,30 @@ fn witness_red_a_negative_control_above_the_floor_rejects() -> Bool {
 
 fn witness_red_provisional_thresholds_cannot_authorize_support() -> Bool {
   let good = a_receipt(peak: 3100, latency: 40)
-  verdict_of(s: TapOutcome { requirement: bob_impulse_requirement_candidate, receipt: good }) ==
-      "qualified-against-provisional-requirement"
-    && verdict_of(s: TapOutcome { requirement: a_signed_requirement, receipt: good }) == "supported"
+  verdict_of(s: TapOutcome { receipt: good }) == "qualified-against-provisional-requirement"
+    && signed_verdict_of(s: TapOutcome { receipt: good }) == "supported"
     && !row_supports_a_durable_claim(r: CapabilityVerdictRow {
-         binding: an_observation(s: TapOutcome { requirement: bob_impulse_requirement_candidate, receipt: good }).binding,
-         verdict: derive_capability_verdict(o: an_observation(s: TapOutcome {
-           requirement: bob_impulse_requirement_candidate, receipt: good })),
+         binding: an_observation(s: TapOutcome { receipt: good }).binding,
+         verdict: derive_capability_verdict(o: an_observation(s: TapOutcome { receipt: good })),
        })
+}
+
+data one_requirement_per_observation_note: String = "ONE REQUIREMENT, AND THE SNAPSHOT IS THE ONE THAT DECIDES (review finding, 2026-08-07). The observation used to carry two independently writable requirements — one on the binding, naming what this row is a claim about, and one on the tap outcome, naming what the measurement was taken against — with nothing making them the same requirement. A row whose binding pointed at signed thresholds while its outcome carried provisional ones was constructible and typechecked, and read from the outside as a signed claim.
+
+They are one field now: the binding carries the identity of the requirement declaration and the snapshot of its thresholds at measurement time, and the tap outcome carries only the receipt. The snapshot is what qualification reads, and this control asserts that in both directions — an identity naming the signed declaration does not lift provisional thresholds into support, and an identity naming the candidate does not push a signed measurement down. A label is not a threshold."
+
+fn witness_red_the_snapshot_decides_and_the_identity_does_not() -> Bool {
+  let good = a_receipt(peak: 3100, latency: 40)
+  capability_verdict_key(v: derive_capability_verdict(o: an_observation_bound_to(
+      identity: signed_requirement_ref,
+      snapshot: bob_impulse_requirement_candidate,
+      s: TapOutcome { receipt: good }))) == "qualified-against-provisional-requirement"
+    && capability_verdict_key(v: derive_capability_verdict(o: an_observation_bound_to(
+         identity: candidate_requirement_ref,
+         snapshot: a_signed_requirement,
+         s: TapOutcome { receipt: good }))) == "supported"
+    && an_observation(s: TapOutcome { receipt: good }).binding.requirement.identity.decl_name ==
+         "bob_impulse_requirement_candidate"
 }
 
 fn witness_red_an_unobserved_latency_refuses_rather_than_passing() -> Bool {
@@ -423,14 +473,14 @@ fn witness_red_an_unexercised_binding_is_not_a_failure() -> Bool {
   verdict_of(s: BindingStreamUnobserved) == "unobserved"
     && verdict_of(s: BindingStreamUnobserved) != verdict_of(s: HardwareUnavailable)
     && verdict_of(s: BindingStreamUnobserved) !=
-         verdict_of(s: NoSamplesObserved { lifecycle: LifecycleActivationUnobserved, window_ms: 4000 })
+         verdict_of(s: NoSamplesObserved { lifecycle: LifecycleActivationUnobserved })
 }
 
 data lifecycle_carried_note: String = "The two silences stay distinguishable in the neutral layer: an activated sensor that never read is a different key from a stream whose activation was never observed."
 
 fn witness_silence_carries_its_lifecycle() -> Bool {
-  binding_stream_key(s: NoSamplesObserved { lifecycle: LifecycleActivated, window_ms: 4000 }) !=
-      binding_stream_key(s: NoSamplesObserved { lifecycle: LifecycleActivationUnobserved, window_ms: 4000 })
+  binding_stream_key(s: NoSamplesObserved { lifecycle: LifecycleActivated }) !=
+      binding_stream_key(s: NoSamplesObserved { lifecycle: LifecycleActivationUnobserved })
     && sample_lifecycle_key(l: LifecycleActivated) == "activated"
 }
 
@@ -448,19 +498,19 @@ fn degraded_alternative_module(s: BindingStreamState) -> String {
 
 fn witness_every_degradation_points_at_the_synthetic_binding() -> Bool {
   degraded_alternative_module(s: SamplesObserved { receipt: a_receipt(peak: 2600, latency: 40) }) ==
-      synthetic_tap_binding.decl_name
-    && degraded_alternative_module(s: HollowSamplesObserved { count: 12, window_ms: 4000 }) ==
-      synthetic_tap_binding.decl_name
-    && degraded_alternative_module(s: NoSamplesObserved { lifecycle: LifecycleActivated, window_ms: 4000 }) ==
-      synthetic_tap_binding.decl_name
-    && synthetic_tap_binding.decl_name == "synthetic_tap_impulse"
+      synthetic_tap_provider.decl_name
+    && degraded_alternative_module(s: HollowSamplesObserved { count: 12 }) ==
+      synthetic_tap_provider.decl_name
+    && degraded_alternative_module(s: NoSamplesObserved { lifecycle: LifecycleActivated }) ==
+      synthetic_tap_provider.decl_name
+    && synthetic_tap_provider.decl_name == "synthetic_tap_impulse"
 }
 
 data verdict_row_note: String = "A verdict keeps its binding, so one supported row cannot answer for a list spanning different devices, requirements or providers — and a durable support claim additionally needs an exact host, which this reduced-identity fixture does not have."
 
 fn witness_verdict_rows_retain_their_binding_identity() -> Bool {
   let rows = verdict_rows(rows: [
-    an_observation(s: TapOutcome { requirement: a_signed_requirement, receipt: a_receipt(peak: 3100, latency: 40) }),
+    a_signed_observation(s: TapOutcome { receipt: a_receipt(peak: 3100, latency: 40) }),
     an_observation(s: InterfaceUnavailable),
   ])
   rows.length() == 2
@@ -471,7 +521,7 @@ fn witness_verdict_rows_retain_their_binding_identity() -> Bool {
 
 fn witness_red_a_reduced_host_cannot_carry_a_durable_support_claim() -> Bool {
   let rows = verdict_rows(rows: [
-    an_observation(s: TapOutcome { requirement: a_signed_requirement, receipt: a_receipt(peak: 3100, latency: 40) }),
+    a_signed_observation(s: TapOutcome { receipt: a_receipt(peak: 3100, latency: 40) }),
   ])
   fold(rows, init: true, f: (acc, r) => acc && !row_supports_a_durable_claim(r: r))
     && fold(rows, init: false, f: (acc, r) => acc || capability_verdict_key(v: r.verdict) == "supported")
@@ -503,7 +553,7 @@ fn witness_the_synthetic_tap_is_deterministic_and_straddles_the_requirement() ->
 fn witness_red_a_synthetic_impulse_can_never_pass_as_hardware() -> Bool {
   let synth = synthetic_tap_impulse(t: SyntheticTapFirm, at_ms: 1000)
   let hardware = PhysicalImpulse {
-    source_binding: DeclarationRef {
+    source_provider: DeclarationRef {
       module_path: "extdeps.w3c.accelerometer",
       decl_name: "LinearAccelerationSensor",
       field: WholeDeclaration
@@ -519,16 +569,51 @@ fn witness_red_a_synthetic_impulse_can_never_pass_as_hardware() -> Bool {
          synthetic_tap_impulse(t: SyntheticTapFirm, at_ms: 99999).magnitude_milli_m_per_s2
 }
 
-data coverage_note: String = "Coverage states are obligations, never support claims — not even Implemented, which means the binding exists and can be probed. The predicate is total and constantly false so a fifth state asserting support forces an author to write the arm."
+data coverage_note: String = "Coverage states are obligations, never support claims — not even Implemented, which means the binding exists and can be probed. Both predicates are total and constantly false, so a state asserting support forces an author to write the arm.
+
+TWO AXES, AND THE CONTROL ASSERTS THEY ARE INDEPENDENT (review finding, 2026-08-07). The single coverage state fused two facts — whether the binding is written and whether anything has run against it — and it fused them at exactly the seam where the second was being forged: the implemented arm carried a field called receipt whose value was a reference to a producer function, so a declaration that had never executed read as an execution receipt. The last conjuncts here are what makes the split real rather than cosmetic: a written binding nobody has probed and an unwritten one nobody has probed are different rows, and so are a written binding whose probe was blocked and one whose probe is merely required."
+
+fn a_ref(name: String) -> DeclarationRef {
+  DeclarationRef { module_path: "gunbc.capability_binding", decl_name: name, field: WholeDeclaration }
+}
 
 fn witness_no_coverage_state_is_a_support_claim() -> Bool {
-  !coverage_state_is_a_support_claim(s: CoverageImplemented {
-      receipt: DeclarationRef { module_path: "x", decl_name: "y", field: WholeDeclaration }
-    })
-    && !coverage_state_is_a_support_claim(s: CoverageProbeRequired)
-    && !coverage_state_is_a_support_claim(s: CoverageProbeBlocked { cause: "no windows host" })
-    && !coverage_state_is_a_support_claim(s: CoverageDeferred { trigger: "mobile instrument work begins" })
-    && coverage_state_key(s: CoverageProbeRequired) != coverage_state_key(s: CoverageDeferred { trigger: "t" })
+  !implementation_state_is_a_support_claim(s: Implemented { implementation: a_ref(name: "synthetic_tap_impulse") })
+    && !implementation_state_is_a_support_claim(s: NotImplemented)
+    && !implementation_state_is_a_support_claim(s: NotModelled)
+    && !probe_state_is_a_support_claim(s: ProbeRequired)
+    && !probe_state_is_a_support_claim(s: ProbeObserved { receipt: a_ref(name: "qualify_tap") })
+    && !probe_state_is_a_support_claim(s: ProbeBlocked { cause: "no windows host" })
+    && !probe_state_is_a_support_claim(s: ProbeDeferred { trigger: "mobile instrument work begins" })
+    && witness_the_two_coverage_axes_vary_independently()
+    && witness_the_coverage_roster_claims_nothing_it_has_not_earned()
+}
+
+data roster_predicates_had_no_consumer_note: String = "THREE ROSTER PREDICATES EXISTED AND NOTHING RAN THEM. coverage_targets_asserting_support and deferred_targets_all_name_a_trigger were written to hold the roster honest and had zero executing consumers, which is the specification-without-execution trap in its plainest form: the rule was authored, the corpus was never measured against it, and a row that broke it would have landed green. They execute here, over the live roster rather than over a fixture, together with the receipt rule that is the actual repair for the misnamed field."
+
+fn witness_the_coverage_roster_claims_nothing_it_has_not_earned() -> Bool {
+  coverage_targets_asserting_support() == 0
+    && deferred_targets_all_name_a_trigger()
+    && every_probe_receipt_names_a_witness()
+    && !probe_receipt_names_a_witness(s: ProbeObserved { receipt: a_ref(name: "synthetic_tap_impulse") })
+    && probe_receipt_names_a_witness(s: ProbeObserved {
+         receipt: DeclarationRef {
+           module_path: "test.claim.instrument_bob_witness",
+           decl_name: "instrument_bob_keystone_holds",
+           field: WholeDeclaration
+         }
+       })
+}
+
+fn witness_the_two_coverage_axes_vary_independently() -> Bool {
+  let written = Implemented { implementation: a_ref(name: "synthetic_tap_impulse") }
+  coverage_state_key(implementation: written, probe: ProbeRequired) !=
+      coverage_state_key(implementation: NotImplemented, probe: ProbeRequired)
+    && coverage_state_key(implementation: written, probe: ProbeRequired) !=
+         coverage_state_key(implementation: written, probe: ProbeBlocked { cause: "no windows host" })
+    && coverage_state_key(implementation: NotImplemented, probe: ProbeRequired) !=
+         coverage_state_key(implementation: NotModelled, probe: ProbeRequired)
+    && probe_state_key(s: ProbeRequired) != probe_state_key(s: ProbeDeferred { trigger: "t" })
 }
 
 test fn capability_binding_keystone_holds() -> Bool {
@@ -548,6 +633,7 @@ test fn capability_binding_keystone_holds() -> Bool {
     && witness_only_a_derived_qualification_reaches_supported()
     && witness_red_a_negative_control_above_the_floor_rejects()
     && witness_red_provisional_thresholds_cannot_authorize_support()
+    && witness_red_the_snapshot_decides_and_the_identity_does_not()
     && witness_red_an_unobserved_latency_refuses_rather_than_passing()
     && witness_a_rejected_tap_carries_its_typed_causes()
     && witness_every_obstacle_reaches_unavailable_with_its_own_typed_cause()

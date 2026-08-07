@@ -110,9 +110,9 @@ type MotionStreamState
   | StreamPolicyBlocked
   | StreamPermissionDenied
   | StreamConnectionRefused { error_name: String }
-  | StreamActivatedNoReading { window_ms: Milliseconds }
-  | StreamNoEventsObserved { window_ms: Milliseconds }
-  | StreamHollowEventsObserved { count: Int, window_ms: Milliseconds }
+  | StreamActivatedNoReading
+  | StreamNoEventsObserved
+  | StreamHollowEventsObserved { count: Int }
   | StreamReadingsObserved { count: Int, peak_milli_m_per_s2: Int, sample_interval_ms: Milliseconds }
   | StreamUnobserved
 
@@ -122,9 +122,9 @@ fn stream_state_key(s: MotionStreamState) -> String {
     StreamPolicyBlocked => "policy-blocked"
     StreamPermissionDenied => "permission-denied"
     StreamConnectionRefused { error_name } => "connection-refused"
-    StreamActivatedNoReading { window_ms } => "activated-no-reading"
-    StreamNoEventsObserved { window_ms } => "no-events-observed"
-    StreamHollowEventsObserved { count, window_ms } => "hollow-events-observed"
+    StreamActivatedNoReading => "activated-no-reading"
+    StreamNoEventsObserved => "no-events-observed"
+    StreamHollowEventsObserved { count } => "hollow-events-observed"
     StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } => "readings-observed"
     StreamUnobserved => "unobserved"
   }
@@ -136,15 +136,17 @@ fn stream_delivered_a_value(s: MotionStreamState) -> Bool {
     StreamPolicyBlocked => false
     StreamPermissionDenied => false
     StreamConnectionRefused { error_name } => false
-    StreamActivatedNoReading { window_ms } => false
-    StreamNoEventsObserved { window_ms } => false
-    StreamHollowEventsObserved { count, window_ms } => false
+    StreamActivatedNoReading => false
+    StreamNoEventsObserved => false
+    StreamHollowEventsObserved { count } => false
     StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } => true
     StreamUnobserved => false
   }
 }
 
-data observation_window_note: String = "An observation with no window is not a measurement of silence, so the window is a field of the observation rather than an optional annotation on it. A window of zero means nothing was watched, which is a different claim from a window that elapsed and stayed quiet."
+data observation_window_note: String = "An observation with no window is not a measurement of silence, so the window is a field of the observation rather than an optional annotation on it. A window of zero means nothing was watched, which is a different claim from a window that elapsed and stayed quiet.
+
+IT IS ALSO THE ONLY HOME (review finding, 2026-08-07). Three silence arms above used to carry a window_ms each, beside the observation's own observation_window_ms — one duration, two independently writable authorities, and no rule saying which a reader should believe when they disagreed. A record whose stream reported four seconds of quiet inside an observation that watched for zero was constructible and typechecked. The arms now carry only what is theirs, and the duration is read from here."
 
 data exact_provider_note: String = "GENERIC-SENSOR WAS TOO COARSE TO SAY WHAT WAS TESTED (review finding, 2026-08-06). An earlier revision split the web into DeviceMotionEventApi and GenericSensorApi, and the second arm cannot say which constructor was tried, whether gravity was included in what it would have returned, or which specification's policy facts applied — three interfaces with three different meanings collapsed into one word. The provider is now the exact interface, each grounded in the specification that defines it: DeviceMotionEvent from Device Orientation and Motion, and the three concrete sensors from the Accelerometer extension."
 
@@ -229,11 +231,11 @@ fn derive_reachability(o: WebMotionObservation) -> MotionReachability {
       MotionReachabilityUnresolved {
         pending: concat("the backend refused this connection attempt with ", concat(error_name, "; that describes one attempt, not the machine")),
       }
-    StreamActivatedNoReading { window_ms } =>
+    StreamActivatedNoReading =>
       MotionReachabilityUnresolved { pending: "activated but no reading within the observation window" }
-    StreamNoEventsObserved { window_ms } =>
+    StreamNoEventsObserved =>
       MotionReachabilityUnresolved { pending: "no events within the observation window; hollow emission is advisory, so silence names no cause" }
-    StreamHollowEventsObserved { count, window_ms } =>
+    StreamHollowEventsObserved { count } =>
       MotionReachabilityUnresolved { pending: "events arrived carrying null motion fields; the spec's advisory hint for a never-providing implementation, which is not a determination" }
     StreamUnobserved =>
       MotionReachabilityUnresolved { pending: "this path was never exercised" }
@@ -245,17 +247,25 @@ data projection_is_deliberately_lossy_note: String = "THE PROJECTION LOSES INFOR
 
 TWO PROJECTIONS ARE RULED AND NOT NEGOTIABLE. StreamNoEventsObserved projects to SensorAvailabilityUnknown and NEVER to SensorAbsent (operator ruling, 2026-08-06): silence has at least seven candidate causes and naming one of them is the empty-observation narrow. StreamConnectionRefused likewise projects to Unknown rather than Absent — the spec's NotReadableError says the implementation could not connect, which is a statement about this attempt and not a proof that no hardware exists. Only StreamInterfaceNotExposed reaches SensorAbsent, because an interface that is not on the global object is genuinely not there to be used."
 
+data availability_runs_the_same_admission_note: String = "THE THIRD CONSUMER RAN WITHOUT THE CHECK (review finding, 2026-08-07). derive_reachability and project_binding_stream were both moved onto the coherence check, and project_sensor_availability — which feeds the sandbox page's admission input, the one that decides whether an impulse source may be trusted — was left matching the stream arm alone. So the exact bypass that repair closed stayed open at the projection whose consumer acts on the answer: an insecure context with a blocked policy, a denied permission and arriving readings still projected to SensorPresent.
+
+It runs the check first now, and a contradicted observation lands on SensorAvailabilityUnknown. That is the correct arm rather than a convenient one: it is could-not-determine, not absent, and sensor_may_deliver_impulses admits only SensorPresent, so an incoherent record delivers nothing while staying visibly distinct from a machine with no sensor."
+
 fn project_sensor_availability(o: WebMotionObservation) -> SensorAvailability {
+  if observation_contradictions(o: o).length() > 0 {
+    SensorAvailabilityUnknown
+  } else {
   match o.stream {
     StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } => SensorPresent
     StreamInterfaceNotExposed => SensorAbsent
     StreamPermissionDenied => SensorPermissionDenied
     StreamPolicyBlocked => SensorAvailabilityUnknown
     StreamConnectionRefused { error_name } => SensorAvailabilityUnknown
-    StreamActivatedNoReading { window_ms } => SensorAvailabilityUnknown
-    StreamNoEventsObserved { window_ms } => SensorAvailabilityUnknown
-    StreamHollowEventsObserved { count, window_ms } => SensorAvailabilityUnknown
+    StreamActivatedNoReading => SensorAvailabilityUnknown
+    StreamNoEventsObserved => SensorAvailabilityUnknown
+    StreamHollowEventsObserved { count } => SensorAvailabilityUnknown
     StreamUnobserved => SensorAvailabilityUnknown
+  }
   }
 }
 
@@ -331,9 +341,9 @@ fn stream_unread(s: MotionStreamState) -> Int {
     StreamPolicyBlocked => 0
     StreamPermissionDenied => 0
     StreamConnectionRefused { error_name } => 0
-    StreamActivatedNoReading { window_ms } => 0
-    StreamNoEventsObserved { window_ms } => 0
-    StreamHollowEventsObserved { count, window_ms } => 0
+    StreamActivatedNoReading => 0
+    StreamNoEventsObserved => 0
+    StreamHollowEventsObserved { count } => 0
     StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } => 0
   }
 }
@@ -423,12 +433,12 @@ fn project_binding_stream(o: WebMotionObservation) -> BindingStreamState {
     StreamPolicyBlocked => PolicyRefused
     StreamPermissionDenied => PermissionRefused
     StreamConnectionRefused { error_name } => BackendConnectionRefused { error_name: error_name }
-    StreamActivatedNoReading { window_ms } =>
-      NoSamplesObserved { lifecycle: LifecycleActivated, window_ms: window_ms }
-    StreamNoEventsObserved { window_ms } =>
-      NoSamplesObserved { lifecycle: LifecycleActivationUnobserved, window_ms: window_ms }
-    StreamHollowEventsObserved { count, window_ms } =>
-      HollowSamplesObserved { count: count, window_ms: window_ms }
+    StreamActivatedNoReading =>
+      NoSamplesObserved { lifecycle: LifecycleActivated }
+    StreamNoEventsObserved =>
+      NoSamplesObserved { lifecycle: LifecycleActivationUnobserved }
+    StreamHollowEventsObserved { count } =>
+      HollowSamplesObserved { count: count }
     StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } =>
       SamplesObserved {
         receipt: web_sample_receipt(
@@ -471,13 +481,13 @@ fn contradiction_key(c: ObservationContradiction) -> String {
 fn stream_carries_readings(s: MotionStreamState) -> Bool {
   match s {
     StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } => true
-    StreamHollowEventsObserved { count, window_ms } => true
+    StreamHollowEventsObserved { count } => true
     StreamInterfaceNotExposed => false
     StreamPolicyBlocked => false
     StreamPermissionDenied => false
     StreamConnectionRefused { error_name } => false
-    StreamActivatedNoReading { window_ms } => false
-    StreamNoEventsObserved { window_ms } => false
+    StreamActivatedNoReading => false
+    StreamNoEventsObserved => false
     StreamUnobserved => false
   }
 }

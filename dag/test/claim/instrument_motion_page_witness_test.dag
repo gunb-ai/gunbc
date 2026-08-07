@@ -12,10 +12,10 @@ import gunbc.roadmap_component {
   motion_plate_id, motion_receipt_id, motion_probe_run_id,
 }
 import gunbc.roadmap_instrument_motion {
-  frames_for, frames_wire, sequence_for, motion_frame_interval_ms,
+  frames_wire, sequence_for, motion_frame_interval_ms,
 }
 import gunbc.capability_binding {
-  SyntheticTapLight, SyntheticTapFirm, SyntheticTapKnock,
+  SyntheticTapStrength, SyntheticTapLight, SyntheticTapFirm, SyntheticTapKnock,
 }
 import gunbc.design.instrument_bob {
   BobFrame, MotionFull, MotionReduced, bob_max_travel_px, max_settle_time_ms,
@@ -67,29 +67,51 @@ test fn witness_motion_page_renders_through_its_route() -> Bool {
     && string_contains(s: html, pattern: instrument_motion_asset_path)
 }
 
+data nonempty_wire_note: String = "EVERY WIRE ASSERTION CHECKS THE WIRE IS NON-EMPTY BEFORE CHECKING THE PAGE CARRIES IT (review finding, 2026-08-07). string_contains(anything, \"\") is true, so a control written as contains(html, wire) passes on a page that ships nothing the moment the wire collapses to the empty string. That is not a hypothetical: the helper this file used to call answered a refused sequence with an empty list, and these three claims would all have gone green over an empty attribute. Each claim now reaches the wire only through a settled sequence, and asserts the wire is non-empty in the same breath."
+
+fn page_ships_full_wire(t: SyntheticTapStrength) -> Bool {
+  match sequence_for(t: t, m: MotionFull) {
+    BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+    BobSequenceSettled { frames: fs } => {
+      let w = frames_wire(frames: fs)
+      w != "" && string_contains(s: motion_page_body(), pattern: w)
+    }
+  }
+}
+
 test fn witness_page_ships_both_decided_sequences() -> Bool {
   let html = motion_page_body()
   string_contains(s: html, pattern: motion_frame_data_attr)
     && string_contains(s: html, pattern: motion_reduced_frame_data_attr)
     && string_contains(s: html, pattern: motion_frame_interval_attr)
     && string_contains(s: html, pattern: concat(motion_frame_interval_attr, concat("=\"", concat(to_string(motion_frame_interval_ms), "\""))))
-    && string_contains(s: html, pattern: frames_wire(t: SyntheticTapKnock, m: MotionFull))
-    && string_contains(s: html, pattern: frames_wire(t: SyntheticTapLight, m: MotionFull))
-    && string_contains(s: html, pattern: frames_wire(t: SyntheticTapFirm, m: MotionFull))
+    && page_ships_full_wire(t: SyntheticTapKnock)
+    && page_ships_full_wire(t: SyntheticTapLight)
+    && page_ships_full_wire(t: SyntheticTapFirm)
 }
 
 test fn witness_reduced_is_a_decided_answer_not_an_opt_out() -> Bool {
-  let full = frames_wire(t: SyntheticTapKnock, m: MotionFull)
-  let reduced = frames_wire(t: SyntheticTapKnock, m: MotionReduced)
-  reduced == "0"
-    && full != reduced
-    && count(frames_for(t: SyntheticTapKnock, m: MotionReduced)) == 1
-    && count(frames_for(t: SyntheticTapKnock, m: MotionFull)) > 3
+  match sequence_for(t: SyntheticTapKnock, m: MotionFull) {
+    BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+    BobSequenceSettled { frames: fulls } =>
+      match sequence_for(t: SyntheticTapKnock, m: MotionReduced) {
+        BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+        BobSequenceSettled { frames: reduceds } => {
+          let full = frames_wire(frames: fulls)
+          let reduced = frames_wire(frames: reduceds)
+          reduced == "0" && full != reduced && count(reduceds) == 1 && count(fulls) > 3
+        }
+      }
+  }
 }
 
 test fn witness_shipped_sequence_respects_the_modelled_bound() -> Bool {
-  let fs = frames_for(t: SyntheticTapKnock, m: MotionFull)
-  all(fs, f => f.displacement_px <= bob_max_travel_px && f.displacement_px >= (0 - bob_max_travel_px))
+  match sequence_for(t: SyntheticTapKnock, m: MotionFull) {
+    BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+    BobSequenceSettled { frames: fs } =>
+      count(fs) > 0
+        && all(fs, f => f.displacement_px <= bob_max_travel_px && f.displacement_px >= (0 - bob_max_travel_px))
+  }
 }
 
 data shipped_sequence_control_note: String = "THE ROUTE-LEVEL CONTROL ON THE ACTUAL PRODUCTION SEQUENCE (review requirement, 2026-08-06). Every property here is asserted over the sixteen-millisecond wire the page really ships, not over the physics in isolation — which is the whole point, because the defect this replaces left the envelope function correct while the emitted sequence rang at full reach for about a second and then had a zero supplied for it by the renderer.
@@ -98,7 +120,7 @@ Seven conjuncts, one per property the review named: the sequence is ADMITTED rat
 
 test fn witness_the_shipped_sequence_moves_decays_and_settles() -> Bool {
   match sequence_for(t: SyntheticTapKnock, m: MotionFull) {
-    BobSequenceRefused { cause: _, frames_emitted: _, budget: _ } => false
+    BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
     BobSequenceSettled { frames: fs } => {
       let settle = max_settle_time_ms()
       fs.length() > 8
@@ -129,6 +151,19 @@ test fn witness_asset_route_serves_the_modeled_client() -> Bool {
     && string_contains(s: js, pattern: "catch (err)")
     && string_contains(s: js, pattern: "interface absent in this container")
     && string_contains(s: js, pattern: "construction refused")
+}
+
+data axes_are_read_in_the_shipped_client_note: String = "THE READING PREDICATE, ASSERTED ON THE FILE THE ROUTE SERVES (review finding, 2026-08-07). Both probes decided what counted as a value by reading one field — the event path tested acceleration.x alone, the sensor path counted reading events and tested nothing — so a device whose knock landed on y or z was reported as emitting hollow events, and the sensor route reported readings on axes the specification declares nullable.
+
+Pinning the emitted disjunction rather than the constructor is the point: the fix is a change to what the browser executes, so a control that only exercised the AST helper would go green on a client that still shipped the single-axis test. The last two conjuncts hold the vocabulary apart, because 'readings' and 'values' are exactly the two words the collapse merged."
+
+test fn witness_the_shipped_probes_count_any_axis_as_a_value() -> Bool {
+  let js = motion_asset_body()
+  string_contains(s: js, pattern: "a.x !== null || a.y !== null || a.z !== null")
+    && string_contains(s: js, pattern: "s.x !== null || s.y !== null || s.z !== null")
+    && !string_contains(s: js, pattern: "a && a.x !== null)")
+    && string_contains(s: js, pattern: " reading events, ")
+    && string_contains(s: js, pattern: " carrying values, over ")
 }
 
 data client_manufactures_no_zero_note: String = "The renderer used to set translateY(0) after consuming the frames, which supplied the ending a non-settling model had failed to reach. That line is gone, and this asserts its absence directly rather than trusting the diff: the client contains no translateY built from a literal zero, and the sequence it replays ends at zero because the model proved it does."

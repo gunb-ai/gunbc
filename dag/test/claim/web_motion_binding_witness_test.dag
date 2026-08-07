@@ -125,7 +125,7 @@ fn discredited_probe_observation() -> WebMotionObservation {
     gyroscope_policy: PolicyAdmissionUnobserved,
     permission_method: PermissionMethodAbsent,
     permission: PermissionObservationUnobserved,
-    stream: StreamNoEventsObserved { window_ms: 0 },
+    stream: StreamNoEventsObserved,
     observation_window_ms: 0,
   }
 }
@@ -184,9 +184,9 @@ fn witness_only_named_obstacles_are_unreachable() -> Bool {
     && reachability_of(s: StreamPolicyBlocked) == "unreachable"
     && reachability_of(s: StreamPermissionDenied) == "unreachable"
     && reachability_of(s: StreamConnectionRefused { error_name: "NotReadableError" }) == "unresolved"
-    && reachability_of(s: StreamActivatedNoReading { window_ms: 4000 }) == "unresolved"
-    && reachability_of(s: StreamNoEventsObserved { window_ms: 4000 }) == "unresolved"
-    && reachability_of(s: StreamHollowEventsObserved { count: 12, window_ms: 4000 }) == "unresolved"
+    && reachability_of(s: StreamActivatedNoReading) == "unresolved"
+    && reachability_of(s: StreamNoEventsObserved) == "unresolved"
+    && reachability_of(s: StreamHollowEventsObserved { count: 12 }) == "unresolved"
     && reachability_of(s: StreamUnobserved) == "unresolved"
 }
 
@@ -200,10 +200,10 @@ fn witness_only_an_unexposed_interface_reaches_absent() -> Bool {
 }
 
 fn witness_hollow_events_are_distinct_from_silence() -> Bool {
-  stream_state_key(s: StreamHollowEventsObserved { count: 12, window_ms: 4000 }) !=
-      stream_state_key(s: StreamNoEventsObserved { window_ms: 4000 })
-    && !stream_delivered_a_value(s: StreamHollowEventsObserved { count: 12, window_ms: 4000 })
-    && !stream_delivered_a_value(s: StreamNoEventsObserved { window_ms: 4000 })
+  stream_state_key(s: StreamHollowEventsObserved { count: 12 }) !=
+      stream_state_key(s: StreamNoEventsObserved)
+    && !stream_delivered_a_value(s: StreamHollowEventsObserved { count: 12 })
+    && !stream_delivered_a_value(s: StreamNoEventsObserved)
     && stream_delivered_a_value(s: StreamReadingsObserved { count: 1, peak_milli_m_per_s2: 200, sample_interval_ms: 16 })
 }
 
@@ -284,7 +284,7 @@ data projection_honesty_note: String = "THE THREE FABRICATIONS THIS CONTROL CLOS
 fn witness_the_web_stream_projects_without_inventing_facts() -> Bool {
   binding_stream_key(s: project_binding_stream(o: discredited_probe_observation())) ==
       "no-samples-observed-activation-unobserved"
-    && binding_stream_key(s: project_binding_stream(o: observation_with_stream(s: StreamActivatedNoReading { window_ms: 4000 }))) ==
+    && binding_stream_key(s: project_binding_stream(o: observation_with_stream(s: StreamActivatedNoReading))) ==
       "no-samples-observed-activated"
     && binding_stream_key(s: project_binding_stream(o: observation_with_stream(s: StreamInterfaceNotExposed))) ==
       "interface-unavailable"
@@ -404,6 +404,26 @@ fn witness_red_a_contradicted_observation_has_no_route_to_a_verdict() -> Bool {
     && reachability_of_observation(o: contradicted_observation(c: ReadingsUnderDeniedPermission)) == "unresolved"
     && reachability_of_observation(o: observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 })) == "reachable"
     && binding_stream_key(s: project_binding_stream(o: contradicted_observation(c: ReadingsUnderBlockedGyroscopePolicy))) == "unobserved"
+    && witness_red_no_third_path_around_admission()
+}
+
+data three_paths_note: String = "ALL THREE PROJECTIONS, NOT THE TWO THAT WERE REPAIRED (review finding, 2026-08-07). The claim this control makes is that a contradicted observation has NO route to a verdict, and it was asserting that over reachability and the binding stream while a third projection — the one feeding the sandbox page's admission input — still read the stream arm on its own. A control that checks two of three exits is not a claim about the room.
+
+Each conjunct names the arm the bypass would have produced, so a regression reads as the exact wrong answer rather than as a generic failure: readings under an insecure context would have projected SensorPresent. The positive control is here for the same reason the negatives are — a projection hard-wired to Unknown would satisfy every refusal above and prove nothing."
+
+fn witness_red_no_third_path_around_admission() -> Bool {
+  sensor_availability_key(a: project_sensor_availability(o: contradicted_observation(c: ReadingsUnderInsecureContext))) ==
+      "availability-unknown"
+    && sensor_availability_key(a: project_sensor_availability(o: contradicted_observation(c: ReadingsUnderBlockedPolicy))) ==
+         "availability-unknown"
+    && sensor_availability_key(a: project_sensor_availability(o: contradicted_observation(c: ReadingsUnderBlockedGyroscopePolicy))) ==
+         "availability-unknown"
+    && sensor_availability_key(a: project_sensor_availability(o: contradicted_observation(c: ReadingsUnderDeniedPermission))) ==
+         "availability-unknown"
+    && sensor_availability_key(a: project_sensor_availability(o: contradicted_observation(c: ReadingsUnderUnansweredPermissionPrompt))) ==
+         "availability-unknown"
+    && sensor_availability_key(a: project_sensor_availability(o: observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 }))) ==
+         "present"
 }
 
 fn witness_red_a_contradictory_observation_refuses_rather_than_deriving() -> Bool {
