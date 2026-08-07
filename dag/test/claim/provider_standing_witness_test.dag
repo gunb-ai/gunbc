@@ -35,6 +35,7 @@ import gunbc.provider_standing {
   ToolEnvironmentReady,
   provider_standing_from_fixture_bundle,
   provider_standing_is_selection_eligible,
+  limit_observations_are_selection_eligible,
   fixture_standing_bundle_authenticated_available,
   fixture_standing_bundle_authenticated_unavailable_until_reset,
   fixture_standing_bundle_cursor_capability_gap,
@@ -177,27 +178,28 @@ test fn witness_claude_native_bucket_exhaustion_blocks_model_draw() -> Bool {
 }
 
 test fn witness_model_limit_rejection_does_not_block_unspecified_draw() -> Bool {
-  let bundle = ProviderStandingBundle {
-    installation: InstallationReady,
-    authentication: AuthenticationAuthenticated,
-    entitlement: EntitlementObservedAvailable,
-    limits: [
-      LimitRejected {
-        subject: ProviderModelLimit {
-          credential: LimitCredentialUnspecified,
-          model: "fable" as NonEmptyStr,
-        },
-        native_token: "fable" as NonEmptyStr,
-        reason: "fable bucket rejected" as NonEmptyStr,
+  let limits = [
+    LimitRejected {
+      subject: ProviderModelLimit {
+        credential: LimitCredentialUnspecified,
+        model: "fable" as NonEmptyStr,
       },
-      LimitObservedAvailable {
-        subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
-      },
-    ],
-    turn: TurnNotStarted,
-    tool_environment: ToolEnvironmentReady,
-  }
-  provider_standing_is_selection_eligible(
+      native_token: "fable" as NonEmptyStr,
+      reason: "fable bucket rejected" as NonEmptyStr,
+    },
+    LimitObservedAvailable {
+      subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
+    },
+  ]
+  limit_observations_are_selection_eligible(
+    observations: limits,
+    draw: LimitDispatchDrawUnspecified,
+  )
+}
+
+test fn witness_unspecified_draw_refuses_selection_eligibility() -> Bool {
+  let bundle = fixture_standing_bundle_authenticated_available()
+  !provider_standing_is_selection_eligible(
     standing: provider_standing_from_fixture_bundle(
       provider: ProviderInstance {
         kind: ClaudeCliProvider,
@@ -569,6 +571,7 @@ test fn provider_standing_keystone_holds() -> Bool {
     && witness_model_limit_rejection_does_not_block_account_selection()
     && witness_claude_native_bucket_exhaustion_blocks_model_draw()
     && witness_model_limit_rejection_does_not_block_unspecified_draw()
+    && witness_unspecified_draw_refuses_selection_eligibility()
     && witness_native_bucket_rejection_blocks_automatic_draw()
     && witness_native_bucket_exhaustion_automatic_fail_closed_explicit_bengalfox_admitted()
     && witness_unobserved_standing_is_ineligible()

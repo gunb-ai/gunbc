@@ -15,8 +15,10 @@ import gunbc.provider_standing {
   AuthenticationProfilePresentTokenAbsent,
   EntitlementObservationUnobserved,
   LimitObservationUnobserved,
+  InstallationStandingUnobserved,
+  ToolEnvironmentStandingUnobserved,
   InstallationReady,
-  LimitDispatchDrawAutomatic,
+  ToolEnvironmentReady,
   LimitDispatchDrawAutomatic,
   provider_standing_is_selection_eligible,
   provider_standing_from_observed_bundle,
@@ -34,6 +36,8 @@ import gunbc.provider_standing_probe_bridge {
   provider_standing_bundle_from_claude_credential_control_probe,
   provider_standing_probe_bridge_limit_unobserved_reason,
   provider_standing_probe_bridge_entitlement_unobserved_reason,
+  provider_standing_probe_bridge_claude_installation_unobserved_reason,
+  provider_standing_probe_bridge_claude_tool_environment_unobserved_reason,
 }
 
 fn fixture_codex_provider_instance() -> ProviderInstance {
@@ -120,6 +124,31 @@ test fn witness_bridge_honest_limit_unobserved_blocks_even_when_authenticated() 
   )
 }
 
+test fn witness_bridge_claude_control_probe_honest_installation_and_tool_unobserved() -> Bool {
+  let bundle = provider_standing_bundle_from_claude_credential_control_probe(
+    observation: ClaudeCredentialControlProbeObservation {
+      token_source: "oauth" as NonEmptyStr,
+      subscription_tier: "claude_max" as NonEmptyStr,
+    },
+  )
+  match bundle.installation {
+    InstallationStandingUnobserved { reason } =>
+      reason == provider_standing_probe_bridge_claude_installation_unobserved_reason
+    InstallationReady => false
+    _ => false
+  }
+    && match bundle.tool_environment {
+      ToolEnvironmentStandingUnobserved { reason } =>
+        reason == provider_standing_probe_bridge_claude_tool_environment_unobserved_reason
+      ToolEnvironmentReady => false
+      _ => false
+    }
+    && match bundle.authentication {
+      AuthenticationAuthenticated => true
+      _ => false
+    }
+}
+
 test fn witness_bridge_profile_present_token_absent_refuses_through_mapper() -> Bool {
   let bundle = provider_standing_bundle_from_claude_credential_control_probe(
     observation: ClaudeCredentialControlProbeObservation {
@@ -176,6 +205,7 @@ test fn provider_standing_probe_bridge_keystone_holds() -> Bool {
   witness_bridge_codex_successful_probes_map_authenticated_not_entitled()
     && witness_bridge_codex_auth_failure_is_credentials_absent_not_authenticated()
     && witness_bridge_honest_limit_unobserved_blocks_even_when_authenticated()
+    && witness_bridge_claude_control_probe_honest_installation_and_tool_unobserved()
     && witness_bridge_profile_present_token_absent_refuses_through_mapper()
     && witness_bridge_profile_present_token_absent_not_authenticated_arm()
     && witness_bridge_standing_is_from_fact_not_inventory_unobserved()

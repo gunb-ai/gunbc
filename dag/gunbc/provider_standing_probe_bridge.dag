@@ -32,7 +32,11 @@ data provider_standing_probe_bridge_entitlement_note: String = "EntitlementObser
 
 data provider_standing_probe_bridge_limit_note: String = "LimitObservationUnobserved at the login-status bridge is silence on account capacity, not a healthy balance. It blocks automatic dispatch so an exhausted account cannot read as available merely because login-status succeeded."
 
-data provider_standing_probe_bridge_claude_control_note: String = "Claude credential control probes ground authentication from token state, never from subscription profile metadata alone. tokenSource=none with profile metadata present maps to AuthenticationProfilePresentTokenAbsent, not AuthenticationAuthenticated."
+data provider_standing_probe_bridge_claude_control_note: String = "Claude credential control probes ground authentication from token state, never from subscription profile metadata alone. tokenSource=none with profile metadata present maps to AuthenticationProfilePresentTokenAbsent, not AuthenticationAuthenticated. Installation and tool environment are not observed at this bridge — only authentication is derived from the credential-control input."
+
+data provider_standing_probe_bridge_claude_installation_unobserved_reason: NonEmptyStr = "installation not observed at credential-control bridge" as NonEmptyStr
+
+data provider_standing_probe_bridge_claude_tool_environment_unobserved_reason: NonEmptyStr = "tool environment not observed at credential-control bridge" as NonEmptyStr
 
 type ProviderDashboardExecProbe
   = ProviderDashboardExecProbeRefused { detail: NonEmptyStr }
@@ -225,11 +229,15 @@ fn provider_standing_bundle_from_claude_credential_control_probe(
       AuthenticationAuthenticated
     }
   ProviderStandingBundle {
-    installation: InstallationReady,
+    installation: provider_standing_bundle_unobserved_installation(
+      reason: provider_standing_probe_bridge_claude_installation_unobserved_reason,
+    ),
     authentication: authentication,
     entitlement: provider_standing_bundle_honest_entitlement_unobserved(),
     limits: provider_standing_bundle_honest_limit_unobserved(),
     turn: TurnNotStarted,
-    tool_environment: ToolEnvironmentReady,
+    tool_environment: provider_standing_bundle_unobserved_tool_environment(
+      reason: provider_standing_probe_bridge_claude_tool_environment_unobserved_reason,
+    ),
   }
 }
