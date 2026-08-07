@@ -2,7 +2,12 @@ module gunbc.dispatch_selection
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, list_length }
 import v2.std.optional { optional_absent, optional_present }
-import extdeps.llm.cli { ReasoningEffort, ReasoningMedium, ReasoningHigh }
+import extdeps.llm.cli {
+  ReasoningEffort,
+  ReasoningMedium,
+  ReasoningHigh,
+  claude_cli_program,
+}
 import extdeps.llm.cli_lifecycle {
   ProviderInstance,
   ProviderInstanceField,
@@ -53,6 +58,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_provider_executable,
   srv1_live_dashboard_instance,
   srv1_dashboard_live_id,
+  srv1_dashboard_green_id,
   srv1_dashboard_lab_id,
   srv2_lab_dashboard_instance,
   srv2_dashboard_lab_id,
@@ -340,9 +346,7 @@ fn automatic_refusal_reason_for_inventory(
 data dispatch_claude_default_workflow_mode: NonEmptyStr = "default" as NonEmptyStr
 data dispatch_claude_default_credential_root: FilePath = "~/.claude" as FilePath
 
-data dispatch_claude_executable: FilePath = "/usr/bin/claude" as FilePath
-
-data claude_offer_inventory_wiring_note: String = "OfferClaude lands in provider_inventory_for_instance for srv1-class hosts (operator direction 2026-08-07). Standing is inventory-unobserved until enrollment publishes RecordedFact ProviderStandingObservationFact or a live probe path supersedes it. Credential is ClaudeStateRootRef with an explicit root — not ambient inheritance. Managed ClaudeOAuthTokenSecretRef enrollment binding is the enrollment-slice follow-on that replaces the state-root row when Secret Manager materialization lands."
+data claude_offer_inventory_wiring_note: String = "OfferClaude lands in provider_inventory_for_instance only for explicit srv1 dashboard instance ids (srv1-live, srv1-green, srv1-lab-codex-feedback-v0). srv2 lab/preview carry Cursor instead; any other host id gets Codex-only inventory until a separate operator row wires Claude there. Standing is inventory-unobserved until enrollment publishes RecordedFact ProviderStandingObservationFact or a live probe path supersedes it. Credential is ClaudeStateRootRef with an explicit root — not ambient inheritance. The inventory executable field carries extdeps.llm.cli claude_cli_program (PATH token), not a host path literal — host resolution is a spawn/preflight observation, same discipline as belt claude-on-PATH preflight. Managed ClaudeOAuthTokenSecretRef enrollment binding is the enrollment-slice follow-on that replaces the state-root row when Secret Manager materialization lands."
 
 data dispatch_selection_temporal_unobserved_reason: NonEmptyStr = "selection time; temporal bounds assigned at spawn observation" as NonEmptyStr
 data dispatch_selection_usage_unobserved_reason: NonEmptyStr = "selection time; usage observations assigned during provider runtime" as NonEmptyStr
@@ -483,7 +487,7 @@ fn claude_offer_for_instance_with_standing(
       host: ProviderInstanceFieldUnobserved {
         reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
       },
-      executable: dispatch_claude_executable as String as NonEmptyStr,
+      executable: claude_cli_program as NonEmptyStr,
       observed_version: ProviderInstanceFieldUnobserved {
         reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
       },
@@ -510,6 +514,12 @@ fn claude_offer_for_instance(instance: HostDashboardInstance) -> ClaudeOffer {
     instance: instance,
     standing: provider_standing_inventory_unobserved(),
   )
+}
+
+fn provider_inventory_includes_claude_offer(instance: HostDashboardInstance) -> Bool {
+  instance.instance_id == srv1_dashboard_live_id
+    || instance.instance_id == srv1_dashboard_green_id
+    || instance.instance_id == srv1_dashboard_lab_id
 }
 
 fn provider_inventory_for_instance(instance: HostDashboardInstance) -> ProviderInventory {
@@ -547,11 +557,17 @@ fn provider_inventory_for_instance(instance: HostDashboardInstance) -> ProviderI
         },
       ],
     }
-  } else {
+  } else if provider_inventory_includes_claude_offer(instance: instance) {
     ProviderInventory {
       offers: [
         OfferCodex { offer: codex_offer_for_instance(instance: instance) },
         OfferClaude { offer: claude_offer_for_instance(instance: instance) },
+      ],
+    }
+  } else {
+    ProviderInventory {
+      offers: [
+        OfferCodex { offer: codex_offer_for_instance(instance: instance) },
       ],
     }
   }

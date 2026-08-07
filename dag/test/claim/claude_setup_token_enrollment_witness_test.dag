@@ -1,6 +1,6 @@
 module test.claim.claude_setup_token_enrollment_witness
 
-import std.types { Bool, NonEmptyStr, List, list_length }
+import std.types { Bool, NonEmptyStr, List, list_length, RenderedTerminalText }
 import std.measure { character_count }
 import v2.std.optional { Present, Absent }
 import extdeps.llm.claude_setup_token_cli {
@@ -8,6 +8,10 @@ import extdeps.llm.claude_setup_token_cli {
   SetupTokenFormatUnobserved,
   ClaudeSetupTokenFormatMeasured,
   ClaudeSetupTokenFormatObservation,
+  ClaudeSetupTokenBrowserChallenge,
+  SetupTokenChallengeParsed,
+  SetupTokenChallengeParseRefused,
+  parse_setup_token_challenge_from_terminal,
 }
 import gunbc.claude_setup_token_enrollment {
   ClaudeEnrollmentSecretVersionAdmission,
@@ -382,6 +386,34 @@ test fn witness_writer_lease_publish_grants_current_epoch() -> Bool {
   }
 }
 
+test fn witness_setup_token_challenge_extracts_https_url_from_sentence() -> Bool {
+  let pane = concat(
+    concat("Open https://claude.ai/oauth/verify in your browser", "\n"),
+    concat(concat("Enter this code", "\n"), "ABCD-1234"),
+  ) as RenderedTerminalText
+  match parse_setup_token_challenge_from_terminal(pane: pane) {
+    SetupTokenChallengeParsed {
+      challenge: ClaudeSetupTokenBrowserChallenge {
+        verification_uri: uri,
+        user_code: _,
+      },
+    } =>
+      uri == "https://claude.ai/oauth/verify" as NonEmptyStr
+    SetupTokenChallengeParseRefused { reason: _ } => false
+  }
+}
+
+test fn witness_setup_token_challenge_refuses_url_line_without_token() -> Bool {
+  let pane = concat(
+    concat("Openhttps://claude.ai/oauth/verify", "\n"),
+    concat(concat("Enter this code", "\n"), "ABCD-1234"),
+  ) as RenderedTerminalText
+  match parse_setup_token_challenge_from_terminal(pane: pane) {
+    SetupTokenChallengeParseRefused { reason: _ } => true
+    SetupTokenChallengeParsed { challenge: _ } => false
+  }
+}
+
 test fn claude_setup_token_enrollment_keystone_holds() -> Bool {
   witness_secret_version_refuses_latest()
     && witness_secret_version_refuses_empty()
@@ -399,6 +431,8 @@ test fn claude_setup_token_enrollment_keystone_holds() -> Bool {
     && witness_setup_token_capture_refuses_malformed_prefix()
     && witness_setup_token_capture_refuses_malformed_length()
     && witness_setup_token_capture_admits_single_candidate()
+    && witness_setup_token_challenge_extracts_https_url_from_sentence()
+    && witness_setup_token_challenge_refuses_url_line_without_token()
     && witness_paired_probe_native_limit_encoding()
     && witness_rejected_credential_emits_reconnect_action()
     && witness_usable_credential_emits_no_enrollment_action()

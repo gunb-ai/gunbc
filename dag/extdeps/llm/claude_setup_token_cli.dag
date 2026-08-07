@@ -93,6 +93,22 @@ fn setup_token_code_scan(lines: List<String>) -> SetupTokenCodeScan {
   })
 }
 
+fn first_https_url_token(line: String) -> String? {
+  let tokens = split(s: line, delimiter: " ")
+  fold(tokens, init: Absent, f: fn(acc, token) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => {
+        let trimmed = trim(token)
+        match starts_with(s: trimmed, prefix: setup_token_challenge_url_marker) {
+          true => Present { value: trimmed }
+          false => Absent
+        }
+      }
+    }
+  })
+}
+
 fn parse_setup_token_challenge_from_terminal(
   pane: RenderedTerminalText,
 ) -> ClaudeSetupTokenChallengeParse {
@@ -105,19 +121,25 @@ fn parse_setup_token_challenge_from_terminal(
       reason: "no verification uri in setup-token terminal output" as NonEmptyStr,
     }
     Present { value: url_line } =>
-      match setup_token_code_scan(lines: lines) {
-        SetupTokenCodeScanSeeking => SetupTokenChallengeParseRefused {
-          reason: "verification uri present but user code marker missing" as NonEmptyStr,
+      match first_https_url_token(line: url_line) {
+        Absent => SetupTokenChallengeParseRefused {
+          reason: "verification uri line contains no extractable https url token" as NonEmptyStr,
         }
-        SetupTokenCodeScanAfterMarker => SetupTokenChallengeParseRefused {
-          reason: "user code marker present but code line not yet rendered" as NonEmptyStr,
-        }
-        SetupTokenCodeScanFound { code } => SetupTokenChallengeParsed {
-          challenge: ClaudeSetupTokenBrowserChallenge {
-            verification_uri: url_line as NonEmptyStr,
-            user_code: code as NonEmptyStr,
-          },
-        }
+        Present { value: url } =>
+          match setup_token_code_scan(lines: lines) {
+            SetupTokenCodeScanSeeking => SetupTokenChallengeParseRefused {
+              reason: "verification uri present but user code marker missing" as NonEmptyStr,
+            }
+            SetupTokenCodeScanAfterMarker => SetupTokenChallengeParseRefused {
+              reason: "user code marker present but code line not yet rendered" as NonEmptyStr,
+            }
+            SetupTokenCodeScanFound { code } => SetupTokenChallengeParsed {
+              challenge: ClaudeSetupTokenBrowserChallenge {
+                verification_uri: url as NonEmptyStr,
+                user_code: code as NonEmptyStr,
+              },
+            }
+          }
       }
   }
 }
