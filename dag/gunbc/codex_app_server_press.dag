@@ -1,6 +1,6 @@
 module gunbc.codex_app_server_press
 
-import std.types { NonEmptyStr, String, FilePath, List, Bool, Int }
+import std.types { NonEmptyStr, String, FilePath, List, Bool, Int, EpochSecs }
 import std.content_hash { ContentHash, content_hash_of_value }
 import gunbc.provider_interface_binding {
   ProviderInterfaceBinding,
@@ -12,8 +12,12 @@ import gunbc.package_delivery { CodexRuntimeBundle }
 import gunbc.codex_runtime_bundle { codex_bundle_identity }
 import gunbc.provider_wire_evidence {
   ProviderWireEvidenceReceipt,
+  ProviderWireCaptureOk,
+  ProviderWireCaptureRefused,
   retain_provider_wire_capture,
   retain_private_evidence_bytes_detailed,
+  PrivateEvidenceBytesRetained,
+  PrivateEvidenceBytesRetentionRefused,
 }
 import extdeps.llm.codex_app_server {
   CodexAppServerMethod,
@@ -138,7 +142,7 @@ type CodexRateLimitBucketVerdict
   | CodexBucketUnavailableUntilReset {
       limit_id: NonEmptyStr
       reached_type: NonEmptyStr?
-      resets_at: Int?
+      resets_at: EpochSecs?
     }
   | CodexBucketCapacityUnknown { limit_id: NonEmptyStr }
 
@@ -156,6 +160,8 @@ type CodexAccountStandingEvidence {
 type CodexAccountStandingSummary {
   evidence: CodexAccountStandingEvidence
 }
+
+data provider_process_exit_divergence_note: String = "ProviderProcessExit is the press receipt projection, not a second std.process authority. std.process.ProcessExit (ExitSuccess | ExitFailure with code and reason) models CLI/program exit semantics with a typed reason string. ProcessExitObservation in gunbc.provider_wire_evidence models shell.Exec transport (success bool + optional exit_code from the host). ProviderProcessExited carries only the parsed sentinel exit code while ProviderProcessObservationFailed means the mux marker or exit observation was absent — a press-parse outcome, not a host refusal reason. Converge when shell→intent typed stdio transport lands (docs/plans/shell-intent-emit-realization-design.md) and replaces sentinel reparsing — this coproduct deletes with that scaffold."
 
 type ProviderProcessExit
   = ProviderProcessExited { code: Int }
@@ -249,6 +255,8 @@ fn binding_from_initialize_session(
     protocol_schema_identity: bundle.receipt.protocol_schema_identity,
   }
 }
+
+data codex_press_stdio_sentinel_mux_dissolve_note: String = "Interim stdout/stderr/exit capture muxes shell.Exec.Run output through literal ---GUNBC_EXIT---/---GUNBC_STDOUT---/---GUNBC_STDERR--- sentinels (codex_press_account_trip_script → split_gunbc_stdio_capture). Wrapped in retained_foreign with dissolve-on v2.workflow.bash_emit. The sentinel concat itself dissolves when shell→intent typed stdio transport replaces foreign script muxing (docs/plans/shell-intent-emit-realization-design.md Phase 2 host-effect route for runtime-present press sites)."
 
 fn codex_press_account_trip_script(
   executable: FilePath,
@@ -443,7 +451,7 @@ fn rate_limits_snapshot_window_has_capacity(snapshot: JsonValue, key: String) ->
   }
 }
 
-fn rate_limits_primary_resets_at(snapshot: JsonValue) -> Int? {
+fn rate_limits_primary_resets_at(snapshot: JsonValue) -> EpochSecs? {
   match json_object_unique_member(
     v: snapshot,
     key: codex_rate_limits_snapshot_primary_key as String,
@@ -761,8 +769,9 @@ fn digest_account_trip_line(
         Present { value: content_hash_of_value(value: line as NonEmptyStr) }
       AccountTripDigestRetainPrivateSha512 =>
         match retain_private_evidence_bytes_detailed(root: evidence_root, bytes: line) {
-          Absent => none
-          Present { value: retained } => Present { value: retained.content_digest }
+          PrivateEvidenceBytesRetentionRefused { cause: _ } => none
+          PrivateEvidenceBytesRetained { ref: _, content_digest: digest, byte_count: _ } =>
+            Present { value: digest }
         }
     }
   }
@@ -1185,7 +1194,7 @@ fn observe_codex_account_preflight(
         )
         let run = shell.Exec.Run(script: script)
         let capture = split_gunbc_stdio_capture(combined: run.stdout)
-        let wire_evidence = retain_provider_wire_capture(
+        let wire_capture = retain_provider_wire_capture(
           evidence_root: evidence_root,
           stdout: capture.stdout,
           stderr: capture.stderr,
@@ -1194,16 +1203,19 @@ fn observe_codex_account_preflight(
         )
         let process = process_receipt_from_capture(
           capture: capture,
-          wire: wire_evidence,
+          wire: match wire_capture {
+            ProviderWireCaptureOk { receipt: wire } => Present { value: wire }
+            ProviderWireCaptureRefused { cause: _ } => none
+          },
           run_success: run.success,
         )
-        match wire_evidence {
-          Absent =>
+        match wire_capture {
+          ProviderWireCaptureRefused { cause: reason } =>
             CodexPressUnavailable {
-              reason: "provider wire evidence retention refused" as NonEmptyStr,
+              reason: reason,
               process: process,
             }
-          Present { value: wire } => {
+          ProviderWireCaptureOk { receipt: wire } => {
             let evidence = parse_account_trip_session(
               stdout: capture.stdout,
               stderr: capture.stderr,
