@@ -30,4 +30,6 @@ type CodexAppServerTransport
 
 data codex_default_rate_limit_id: NonEmptyStr = "codex" as NonEmptyStr
 
+data codex_bengalfox_rate_limit_id: NonEmptyStr = "codex_bengalfox" as NonEmptyStr
+
 data codex_model_to_limit_bucket_gap_note: String = "TYPED GAP — model → native limit_id is NOT observable on the 0.146 app-server surface. Model has no limitId; TurnStartParams.model is a free string with no bucket edge; RateLimitSnapshot carries limitId/limitName but no model join. Live limitName GPT-5.3-Codex-Spark on codex_bengalfox is suggestive folklore, not a cited join. dissolve-on: an upstream field or documented map that binds turn model (or service tier) to metered limit_id. Until then, consumers must not invent a closed mapping. The symbol codex_default_rate_limit_id names the backward-compatible rateLimits mirror's native key (live limitId=codex), which is the press AccountReady gate key — not a proven claim that every unspecified-model turn/start consumes that bucket."

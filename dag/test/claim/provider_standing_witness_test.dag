@@ -43,6 +43,10 @@ import gunbc.provider_standing {
   dispatch_automatic_provider_preference,
 }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import extdeps.llm.codex_app_server {
+  codex_default_rate_limit_id,
+  codex_bengalfox_rate_limit_id,
+}
 import gunbc.dispatch_selection {
   ProfileAutomatic,
   DispatchSelectionRefused,
@@ -54,8 +58,6 @@ import gunbc.dispatch_selection {
   fixture_inventory_codex_then_claude,
   fixture_inventory_claude_then_codex,
   fixture_codex_offer_with_standing,
-  codex_default_native_limit_bucket,
-  codex_bengalfox_native_limit_bucket,
   dispatch_codex_default_model,
   Unsized,
 }
@@ -180,9 +182,9 @@ test fn witness_native_bucket_rejection_blocks_automatic_draw() -> Bool {
       LimitRejected {
         subject: ProviderNativeLimitBucket {
           credential: LimitCredentialUnspecified,
-          native_key: codex_default_native_limit_bucket,
+          native_key: codex_default_rate_limit_id,
         },
-        native_token: codex_default_native_limit_bucket,
+        native_token: codex_default_rate_limit_id,
         reason: "rate_limit_reached" as NonEmptyStr,
       },
     ],
@@ -215,14 +217,14 @@ test fn witness_native_bucket_exhaustion_automatic_fail_closed_explicit_bengalfo
       LimitExhausted {
         subject: ProviderNativeLimitBucket {
           credential: LimitCredentialUnspecified,
-          native_key: codex_default_native_limit_bucket,
+          native_key: codex_default_rate_limit_id,
         },
-        native_token: codex_default_native_limit_bucket,
+        native_token: codex_default_rate_limit_id,
       },
       LimitObservedAvailable {
         subject: ProviderNativeLimitBucket {
           credential: LimitCredentialUnspecified,
-          native_key: codex_bengalfox_native_limit_bucket,
+          native_key: codex_bengalfox_rate_limit_id,
         },
       },
     ],
@@ -249,7 +251,7 @@ test fn witness_native_bucket_exhaustion_automatic_fail_closed_explicit_bengalfo
       standing: standing,
       draw: LimitDispatchDrawNativeBucket {
         credential: LimitCredentialUnspecified,
-        native_key: codex_bengalfox_native_limit_bucket,
+        native_key: codex_bengalfox_rate_limit_id,
       },
     )
 }

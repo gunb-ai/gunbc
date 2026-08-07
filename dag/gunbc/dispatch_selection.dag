@@ -243,9 +243,6 @@ data dispatch_cursor_process_fingerprint: NonEmptyStr = "cursor-agent" as NonEmp
 data dispatch_codex_default_model: NonEmptyStr = "account-default" as NonEmptyStr
 data dispatch_claude_default_model: NonEmptyStr = "account-default" as NonEmptyStr
 
-data codex_default_native_limit_bucket: NonEmptyStr = "codex" as NonEmptyStr
-data codex_bengalfox_native_limit_bucket: NonEmptyStr = "codex_bengalfox" as NonEmptyStr
-
 data dispatch_limit_draw_note: String = "LimitDispatchDrawAutomatic fail-closes on any observed ProviderNativeLimitBucket exhaustion because model-to-limitId join is unobserved (extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note). ProfileExactOverride SelectCodex may carry operator_asserted_native_limit_bucket — a human-asserted native_key attribution recorded on the request, NOT a cited join and NOT inferred from model or limitName. DISSOLVES ON: cited model-to-bucket join lands; automatic draw becomes decidable without operator assertion."
 
 data codex_operator_asserted_native_limit_bucket_note: String = "Operator assertion path (deep-raven-684, 2026-08-06): ProfileExactOverride plus Present operator_asserted_native_limit_bucket names which native limit bucket the operator asserts this dispatch draws on. The system records the assertion; it does not observe or infer a model-to-bucket join. Absent assertion on override, or any non-override SelectCodex, uses LimitDispatchDrawAutomatic."

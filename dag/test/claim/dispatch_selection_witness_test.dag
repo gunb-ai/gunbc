@@ -50,6 +50,10 @@ import gunbc.provider_standing_probe_bridge {
   ProviderDashboardExecProbeReported,
   provider_standing_bundle_from_codex_dashboard_probes,
 }
+import extdeps.llm.codex_app_server {
+  codex_default_rate_limit_id,
+  codex_bengalfox_rate_limit_id,
+}
 import gunbc.dispatch_selection {
   CursorLocalLoginRef,
   ProfileAutomatic,
@@ -92,8 +96,6 @@ import gunbc.dispatch_selection {
   dispatch_selection_shape_mismatch_reason,
   dispatch_selection_standing_ineligible_reason,
   dispatch_selection_automatic_native_bucket_join_undetermined_refusal,
-  codex_default_native_limit_bucket,
-  codex_bengalfox_native_limit_bucket,
   Unsized,
 }
 
@@ -124,14 +126,14 @@ fn fixture_multibucket_codex_standing_inventory(
               LimitExhausted {
                 subject: ProviderNativeLimitBucket {
                   credential: LimitCredentialUnspecified,
-                  native_key: codex_default_native_limit_bucket,
+                  native_key: codex_default_rate_limit_id,
                 },
-                native_token: codex_default_native_limit_bucket,
+                native_token: codex_default_rate_limit_id,
               },
               LimitObservedAvailable {
                 subject: ProviderNativeLimitBucket {
                   credential: LimitCredentialUnspecified,
-                  native_key: codex_bengalfox_native_limit_bucket,
+                  native_key: codex_bengalfox_rate_limit_id,
                 },
               },
             ],
@@ -423,7 +425,7 @@ test fn witness_automatic_multibucket_native_exhaustion_refuses_join_undetermine
     node_sizing: Unsized,
   ) {
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
-      reason == dispatch_selection_automatic_native_bucket_join_undetermined_refusal(native_key: codex_default_native_limit_bucket)
+      reason == dispatch_selection_automatic_native_bucket_join_undetermined_refusal(native_key: codex_default_rate_limit_id)
     DispatchSelectionResolved { receipt: _ } => false
   }
 }
@@ -440,7 +442,7 @@ test fn witness_explicit_override_bengalfox_admitted_from_same_inventory() -> Bo
       model: dispatch_codex_default_model,
       effort: ReasoningMedium,
       operator_asserted_native_limit_bucket: Present {
-        value: codex_bengalfox_native_limit_bucket,
+        value: codex_bengalfox_rate_limit_id,
       },
     },
     node_sizing: Unsized,
