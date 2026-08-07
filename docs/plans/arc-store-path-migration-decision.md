@@ -1,10 +1,10 @@
 # Arc store-path migration — decision record (2026-08-06)
 
-> **Status:** CLOSED for Arc-1 prelude flip; OPEN for consolidation-only land; PARKED for alias flip + C1 until v1-run-stability width>1 exit bar.
+> **Status:** CLOSED — lane complete. Wrapper consolidation **LANDED** (#7919). Prelude alias flip **REJECTED** (#7875 closed unmerged). C1 in-memory store and Send+Sync frontier **PARKED** until v1-run-stability width>1 exit bar.
 >
 > **Lane:** loyal-ferret-892 / smart-badger-549 (CI Perf — actual benefits)
 >
-> **Operator verdict (msg_a1d9d4a4):** Do **not** land the prelude alias flip (`std::rc::Rc` → `std::sync::Arc as Rc`). Split: land wrapper-authority consolidation if no detectable regression at measurement resolution; park flip, Send+Sync frontier, and C1 in-memory store behind the un-latch trigger.
+> **Manager recommendation (smart-badger-549, msg_a1d9d4a4, msg_df5f756a):** Do **not** land the prelude alias flip (`std::rc::Rc` → `std::sync::Arc as Rc`). Land wrapper-authority consolidation if no detectable regression at measurement resolution; park flip, Send+Sync frontier, and C1 in-memory store behind the un-latch trigger. **Operator ratification:** #7919 merged; #7875 closed unmerged. The operator did not message this lane directly — warrant is recommendation plus merge/close actions, not an explicit operator ruling.
 
 ---
 
@@ -12,17 +12,17 @@
 
 | Piece | Description | Disposition |
 |-------|-------------|-------------|
-| **Wrapper consolidation** | `sharing_wrap_ctor_for_target` / `sharing_type_is_wrapped_for_target` in `languages.dag`; emitter routes through `rust_shared_wrap_ctor` in `05_emit_rust.dag` | **Land if neutral** (verified §4) |
-| **Prelude alias flip** | `emit_prelude` + stage0 regen: `use std::sync::Arc as Rc` | **Do not land** — carries the tax |
+| **Wrapper consolidation** | `sharing_wrap_ctor_for_target` / `sharing_type_is_wrapped_for_target` in `languages.dag`; emitter routes through `rust_shared_wrap_ctor` in `05_emit_rust.dag` | **LANDED** (#7919) |
+| **Prelude alias flip** | `emit_prelude` + stage0 regen: `use std::sync::Arc as Rc` | **REJECTED** — carries measured tax; #7875 closed |
 | **Send+Sync frontier** | `typecheck_module_result_assert_send_sync` | **Park** — requires flip |
 | **C1 in-memory store** | Retire serde `Arc<Vec<u8>>` transport; share `Arc<TypecheckModuleResult>` handles | **Park** — no payoff until width>1 |
 | **Serde scaffold** | Interim cross-worker byte bridge | **Keep** on main until un-latch |
 
 ---
 
-## 2. Measured cost (Arc-1 alias flip)
+## 2. Measured cost (Arc-1 alias flip) — banked negative result
 
-**Receipt:** `docs/plans/receipts/arc-1-shareability-frontier/summary.json`
+**Receipt:** `docs/plans/receipts/arc-1-shareability-frontier/summary.json` (2 replicates per arm)
 
 | Metric | Main (Rc) | Arc-1 (Arc as Rc) | Delta |
 |--------|-----------|-------------------|-------|
@@ -34,11 +34,13 @@
 
 **Production impact today:** width=1 inline drain → `cross_worker_store withheld` → **zero cross-worker benefit** while paying serial tax on every interpreted path.
 
+**Certainty:** +5.8% cost is measured (n=2 per arm). This is the trade case against landing the alias flip.
+
 ---
 
-## 3. Measured payoff shape (C1 prototype — parked)
+## 3. Payoff shape (C1 prototype — parked, not banked as receipt)
 
-**Receipt:** `docs/plans/receipts/c1-in-memory-arc-payoff/summary.json`
+C1 prototype lived on closed branch `session/loyal-ferret-892` only; no `c1-in-memory-arc-payoff` receipt directory was landed. Qualitative shape for the next session:
 
 | Arm | `typecheck_compute_count` | Denominator |
 |-----|---------------------------|-------------|
@@ -50,9 +52,13 @@
 
 **If width>1 ever lands:** shared-N-thread total typecheck work stays near serial-1-thread; win is parallel speedup, with C1 preventing duplicate typechecking from eating it.
 
+**Payoff is not available today:** production is latched at width=1 (§5); the measured cost in §2 is paid with zero cross-worker benefit until un-latch.
+
 ---
 
-## 4. Consolidation-only neutrality (verified 2026-08-06)
+## 4. Consolidation-only neutrality — LANDED (#7919)
+
+**Receipt:** `docs/plans/receipts/wrapper-consolidation-neutrality/summary.json`
 
 **Method:** `origin/main` vs consolidation-only worktree — same `languages.dag` + `05_emit_rust.dag` authority routing, **prelude stays `std::rc::Rc`**, stage0 regen, 50-entry `p1_cohort_probe` serial cohort.
 
@@ -64,18 +70,7 @@
 
 **Measurement:** n=1 paired run per arm (no repeats).
 
-**Conclusion:** No regression detectable at this resolution; both metrics within half a percent on a single paired run, which does not resolve an effect of that size either way. Half a percent does not change whether a single-authority wrap constructor is worth having (§3 grounds, independent of cost). Safe to land as a small PR independent of the alias flip.
-
-**Split PR contents (land now):**
-- `src/v1/languages.dag` — `wrap_ctor_template`, `wrap_type_prefix`, `sharing_wrap_ctor_for_target`, `sharing_type_is_wrapped_for_target`
-- `src/v1/05_emit_rust.dag` — `rust_shared_wrap_ctor*` helpers; route existing wrap sites through authority (**prelude line stays `use std::rc::Rc`**)
-- Regenerated `src/v1/stage0/**` from that emitter (no Arc prelude)
-
-**Park on branch `session/loyal-ferret-892` (or dedicated park branch):**
-- Prelude alias flip + full Arc stage0 regen
-- `typecheck_module_result_assert_send_sync`
-- C1 `shared_typecheck_store.rs` in-memory handles + `c1_payoff_probe`
-- Hand-written `cli_run.rs` Arc-as-Rc imports (if any beyond serde scaffold)
+**Conclusion:** +0.56% is a **resolution bound**, not a measured improvement — a single paired run cannot resolve an effect of that size either way. No regression detectable at this resolution; safe to land consolidation on §3 single-authority grounds independent of cost. **Merged #7919.**
 
 ---
 
@@ -113,15 +108,16 @@
 
 ---
 
-## 7. Trade summary (for operator escalation)
+## 7. Trade summary (banked for next Arc-store proposal)
 
 | | |
 |---|---|
-| **Certain cost** | +5.84% serial wall on interpreted paths (alias flip only) |
+| **Certain cost** | +5.84% serial wall on interpreted paths (alias flip only) — measured, n=2/arm |
 | **Repayment condition** | width>1 discovery + `cross_worker_store` armed |
 | **Production today** | width=1 latched; cost paid, benefit zero |
+| **Consolidation** | +0.56% at n=1 — resolution bound only, not improvement claim |
 | **Gating lane** | v1-run-stability width>1 exit bar (not CI Perf) |
-| **Action** | Do not merge Arc-1 flip; land consolidation-only PR; park remainder |
+| **Action taken** | #7919 merged (consolidation); #7875 closed (flip rejected) |
 
 ---
 
@@ -129,8 +125,8 @@
 
 | Path | Contents |
 |------|----------|
-| `docs/plans/receipts/arc-1-shareability-frontier/summary.json` | Arc vs Rc cohort cost |
-| `docs/plans/receipts/c1-in-memory-arc-payoff/summary.json` | C1 payoff shape + width admission |
-| `scripts/arc1_cohort_receipt.sh` | Cohort A/B harness |
-| `session/loyal-ferret-892` branch | Full Arc-1 + C1 prototype (draft, do not merge whole) |
-| `.worktrees/consolidation-only` | Consolidation-only verify worktree (local, ephemeral) |
+| `docs/plans/receipts/arc-1-shareability-frontier/summary.json` | Arc vs Rc cohort cost (banked negative result) |
+| `docs/plans/receipts/arc-1-shareability-frontier/*.tsv` | Raw cohort rows (2 reps/arm) |
+| `docs/plans/receipts/wrapper-consolidation-neutrality/summary.json` | Consolidation n=1 resolution bound |
+| `scripts/arc1_cohort_receipt.sh` | Cohort A/B harness to reproduce §2 |
+| `session/loyal-ferret-892` branch | Full Arc-1 + C1 prototype (closed unmerged; reference only) |
