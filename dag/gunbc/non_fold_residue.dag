@@ -611,7 +611,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/complexity.dag::complexity_bound_from_class" },
+    subject: PathSubject { path: "src/v2/lens/complexity.dag::complexity_bound_from_cost" },
     reason: nfr_reason_mint_era,
     trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
   },
@@ -854,6 +854,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/live_deploy/readiness.dag::healthz_release_identity_refusal" },
     reason: nfr_reason_release_identity_absent_split,
     trigger: TriggerProse { text: nfr_dissolve_release_identity_absent_split },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/codex_app_server_press.dag::rate_limit_buckets_from_by_limit_id" },
+    reason: nfr_reason_mint_era,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
   },
 ]
 
