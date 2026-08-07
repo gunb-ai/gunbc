@@ -1,0 +1,507 @@
+module test.claim.host_name_allocation_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.keyed_row { KeyedRow }
+import extdeps.dns.domain_name { DnsLabel, parse_dns_label_raw }
+import extdeps.dhcp.v4 { MacAddress }
+import product.placement_supply { HostIdentity }
+import std.error_primitives { Ok, Err }
+import gunbc.mnemonic_name {
+  MnemonicSchemeVersion,
+  MnemonicNameV1,
+  MnemonicProjection,
+  MnemonicProjected,
+  MnemonicProjectionRefused,
+  MnemonicNegativeAttempt,
+  mnemonic_project,
+  mnemonic_projected_label,
+  mnemonic_name_space_size,
+  mnemonic_suffix_width,
+}
+import gunbc.host_name_allocation {
+  HostNameSubject,
+  HostNameRegistry,
+  HostNameRegistryEntry,
+  HostNameActive,
+  HostNameRetired,
+  HostNameAllocated,
+  HostNameSubjectAlreadyNamed,
+  HostNameAllocationRefused,
+  HostNameSpaceProbeExhausted,
+  HostNameRegistryNotUnique,
+  HostNameRetiredOk,
+  HostNameRetirementRefused,
+  HostNameNotAllocated,
+  HostNameAlreadyRetired,
+  HostNameProjectionSubject,
+  LogicalHostIdentitySubject,
+  FabricIdentitySubject,
+  HostNameSubjectAdmitted,
+  HostNameSubjectAuthorityNotSelected,
+  HostNameProjectionSubjectNotSelected,
+  HostNamePhysicalBinding,
+  host_name_subject_admit,
+  host_name_subject_for_host,
+  host_name_physical_binding,
+  allocate_host_name,
+  retire_host_name,
+  empty_host_name_registry,
+  host_name_registry_row,
+  host_name_registry_active_count,
+  host_name_registry_retired_count,
+  host_name_allocation_collision_count,
+  current_host_name_scheme_version,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_subject_a() -> HostNameSubject {
+  host_name_subject_for_host(host: "srv5" as HostIdentity)
+}
+
+fn witness_subject_b() -> HostNameSubject {
+  host_name_subject_for_host(host: "srv6" as HostIdentity)
+}
+
+// A refused admission has NO key — answering one would be the fabrication the
+// admission exists to prevent, and NonEmptyStr cannot hold an empty sentinel
+// anyway (the substrate refused that spelling outright). Comparison sites use
+// the _text form, which reports "" for a refusal so no assertion can pass on it.
+fn witness_subject_key(subject: HostNameSubject) -> NonEmptyStr? {
+  match host_name_subject_admit(subject: subject) {
+    HostNameSubjectAdmitted { key: key } => Present { value: key }
+    HostNameSubjectAuthorityNotSelected { selected: _, presented: _ } => none
+  }
+}
+
+fn witness_subject_key_text(subject: HostNameSubject) -> String {
+  match witness_subject_key(subject: subject) {
+    Present { value: key } => key as String
+    Absent => ""
+  }
+}
+
+// Absent means the SUBJECT was not admitted, which is a different fact from any
+// projection refusal — so it answers Absent rather than manufacturing a
+// MnemonicProjectionRefused whose cause would name a reason that did not occur.
+fn witness_project(subject: HostNameSubject, attempt: Int) -> MnemonicProjection? {
+  match witness_subject_key(subject: subject) {
+    Absent => none
+    Present { value: key } =>
+      Present { value: mnemonic_project(version: MnemonicNameV1, subject_key: key, attempt: attempt) }
+  }
+}
+
+// Labels are compared as text and planted from projections directly: minting a
+// DnsLabel by cast here would forge the very carrier the projection is required
+// to obtain by parse. A refused projection yields "", which no assertion below
+// can pass, so a refusal cannot read as agreement.
+fn witness_label_text(subject: HostNameSubject, attempt: Int) -> String {
+  match witness_project(subject: subject, attempt: attempt) {
+    Absent => ""
+    Present { value: projection } =>
+      match mnemonic_projected_label(projection: projection) {
+        Present { value: label } => label as String
+        Absent => ""
+      }
+  }
+}
+
+// Plants the names subject `owner_of_names` WOULD derive, owned in the registry
+// by `holder` — the collision shape the allocator must resolve.
+fn witness_occupied_registry(
+  owner_of_names: HostNameSubject,
+  holder: HostNameSubject,
+  attempts: List<Int>,
+) -> HostNameRegistry {
+  fold(attempts, init: empty_host_name_registry, f: fn(acc, attempt) {
+    match witness_project(subject: owner_of_names, attempt: attempt) {
+      Absent => acc
+      Present { value: projection } =>
+        match projection {
+          MnemonicProjectionRefused { cause: _ } => acc
+          MnemonicProjected {
+            label: label, adjective: _, animal: _, suffix: _, digest: _, attempt: _, version: _
+          } =>
+            acc |> list_push(host_name_registry_row(entry: HostNameRegistryEntry {
+              label: label,
+              subject: holder,
+              version: MnemonicNameV1,
+              standing: HostNameActive,
+            }))
+        }
+    }
+  })
+}
+
+test fn mnemonic_projection_is_stable_for_one_subject_and_attempt() -> Bool {
+  let first = witness_label_text(subject: witness_subject_a(), attempt: 0)
+  let second = witness_label_text(subject: witness_subject_a(), attempt: 0)
+  first == second && first != ""
+}
+
+test fn mnemonic_projection_moves_between_attempts() -> Bool {
+  let a0 = witness_label_text(subject: witness_subject_a(), attempt: 0)
+  let a1 = witness_label_text(subject: witness_subject_a(), attempt: 1)
+  a0 != a1
+}
+
+test fn mnemonic_projection_separates_two_subjects() -> Bool {
+  let a = witness_label_text(subject: witness_subject_a(), attempt: 0)
+  let b = witness_label_text(subject: witness_subject_b(), attempt: 0)
+  a != b
+}
+
+test fn mnemonic_projection_renders_adjective_animal_suffix() -> Bool {
+  match witness_project(subject: witness_subject_a(), attempt: 0) {
+    Absent => false
+    Present { value: projection } =>
+      match projection {
+        MnemonicProjectionRefused { cause: _ } => false
+        MnemonicProjected {
+          label: label,
+          adjective: adjective,
+          animal: animal,
+          suffix: suffix,
+          digest: _,
+          attempt: attempt,
+          version: _,
+        } =>
+          attempt == 0
+            && string_length(s: suffix) == mnemonic_suffix_width(version: MnemonicNameV1)
+            && (label as String) == join([adjective, "-", animal, "-", suffix], "")
+      }
+  }
+}
+
+test fn mnemonic_projected_label_is_a_parsed_dns_label() -> Bool {
+  let label = witness_label_text(subject: witness_subject_a(), attempt: 0)
+  match parse_dns_label_raw(raw: label) {
+    Ok { value: parsed } => (parsed as String) == label
+    Err { value: _ } => false
+  }
+}
+
+test fn mnemonic_negative_attempt_refuses() -> Bool {
+  match witness_project(subject: witness_subject_a(), attempt: 0 - 1) {
+    Absent => false
+    Present { value: projection } =>
+      match projection {
+        MnemonicProjectionRefused { cause: MnemonicNegativeAttempt { attempt: n } } => n == (0 - 1)
+        MnemonicProjectionRefused { cause: _ } => false
+        MnemonicProjected {
+          label: _, adjective: _, animal: _, suffix: _, digest: _, attempt: _, version: _
+        } => false
+      }
+  }
+}
+
+test fn mnemonic_v1_name_space_is_the_declared_product() -> Bool {
+  mnemonic_name_space_size(version: MnemonicNameV1) == 32 * 32 * 1000
+}
+
+test fn allocation_on_empty_registry_settles_at_attempt_zero() -> Bool {
+  match allocate_host_name(
+    registry: empty_host_name_registry,
+    subject: witness_subject_a(),
+    version: current_host_name_scheme_version,
+  ) {
+    HostNameAllocated { receipt: receipt, registry: registry } =>
+      receipt.attempt == 0
+        && host_name_allocation_collision_count(receipt: receipt) == 0
+        && host_name_registry_active_count(registry: registry) == 1
+        && (receipt.label as String) == witness_label_text(subject: witness_subject_a(), attempt: 0)
+    HostNameSubjectAlreadyNamed { entry: _ } => false
+    HostNameAllocationRefused { cause: _ } => false
+  }
+}
+
+test fn allocating_the_same_subject_twice_is_idempotent_not_a_second_name() -> Bool {
+  match allocate_host_name(
+    registry: empty_host_name_registry,
+    subject: witness_subject_a(),
+    version: current_host_name_scheme_version,
+  ) {
+    HostNameAllocated { receipt: first, registry: registry } =>
+      match allocate_host_name(
+        registry: registry,
+        subject: witness_subject_a(),
+        version: current_host_name_scheme_version,
+      ) {
+        HostNameSubjectAlreadyNamed { entry: entry } =>
+          (entry.label as String) == (first.label as String)
+            && host_name_registry_active_count(registry: registry) == 1
+        HostNameAllocated { receipt: _, registry: _ } => false
+        HostNameAllocationRefused { cause: _ } => false
+      }
+    HostNameSubjectAlreadyNamed { entry: _ } => false
+    HostNameAllocationRefused { cause: _ } => false
+  }
+}
+
+test fn a_taken_name_produces_a_typed_collision_and_the_next_attempt() -> Bool {
+  let taken = witness_label_text(subject: witness_subject_a(), attempt: 0)
+  match allocate_host_name(
+    registry: witness_occupied_registry(
+      owner_of_names: witness_subject_a(),
+      holder: witness_subject_b(),
+      attempts: [0],
+    ),
+    subject: witness_subject_a(),
+    version: current_host_name_scheme_version,
+  ) {
+    HostNameAllocated { receipt: receipt, registry: registry } =>
+      receipt.attempt == 1
+        && host_name_allocation_collision_count(receipt: receipt) == 1
+        && (receipt.label as String) == witness_label_text(subject: witness_subject_a(), attempt: 1)
+        && host_name_registry_active_count(registry: registry) == 2
+        && fold(receipt.collisions, init: false, f: fn(acc, c) {
+             acc || ((c.label as String) == taken && c.attempt == 0)
+           })
+    HostNameSubjectAlreadyNamed { entry: _ } => false
+    HostNameAllocationRefused { cause: _ } => false
+  }
+}
+
+test fn every_probe_taken_exhausts_with_counted_collisions() -> Bool {
+  let subject = witness_subject_a()
+  let occupied = witness_occupied_registry(
+    owner_of_names: subject,
+    holder: witness_subject_b(),
+    attempts: [0, 1, 2, 3, 4, 5, 6, 7],
+  )
+  match allocate_host_name(
+    registry: occupied,
+    subject: subject,
+    version: current_host_name_scheme_version,
+  ) {
+    HostNameAllocationRefused {
+      cause: HostNameSpaceProbeExhausted {
+        subject: refused_subject,
+        attempts: attempts,
+        name_space_size: size,
+        collisions: collisions,
+      }
+    } =>
+      attempts == 8
+        && size == mnemonic_name_space_size(version: MnemonicNameV1)
+        && witness_subject_key_text(subject: refused_subject) == witness_subject_key_text(subject: subject)
+        && fold(collisions, init: 0, f: fn(n, _c) { n + 1 }) == 8
+    HostNameAllocationRefused { cause: _ } => false
+    HostNameAllocated { receipt: _, registry: _ } => false
+    HostNameSubjectAlreadyNamed { entry: _ } => false
+  }
+}
+
+test fn a_duplicate_keyed_registry_refuses_instead_of_widening() -> Bool {
+  let taken = witness_label_text(subject: witness_subject_b(), attempt: 0)
+  let invalid = witness_occupied_registry(
+    owner_of_names: witness_subject_b(),
+    holder: witness_subject_b(),
+    attempts: [0, 0],
+  )
+  match allocate_host_name(
+    registry: invalid,
+    subject: witness_subject_a(),
+    version: current_host_name_scheme_version,
+  ) {
+    HostNameAllocationRefused {
+      cause: HostNameRegistryNotUnique { key: key, first: _, duplicate: _ }
+    } => key == taken
+    HostNameAllocationRefused { cause: _ } => false
+    HostNameAllocated { receipt: _, registry: _ } => false
+    HostNameSubjectAlreadyNamed { entry: _ } => false
+  }
+}
+
+test fn retirement_keeps_the_row_and_moves_standing() -> Bool {
+  match allocate_host_name(
+    registry: empty_host_name_registry,
+    subject: witness_subject_a(),
+    version: current_host_name_scheme_version,
+  ) {
+    HostNameAllocated { receipt: receipt, registry: registry } =>
+      match retire_host_name(
+        registry: registry,
+        label: receipt.label,
+        reason: "witness: host decommissioned",
+      ) {
+        HostNameRetiredOk { receipt: retirement, registry: after } =>
+          (retirement.label as String) == (receipt.label as String)
+            && witness_subject_key_text(subject: retirement.subject) == witness_subject_key_text(subject: witness_subject_a())
+            && (retirement.reason as String) == "witness: host decommissioned"
+            && host_name_registry_active_count(registry: after) == 0
+            && host_name_registry_retired_count(registry: after) == 1
+        HostNameRetirementRefused { cause: _ } => false
+      }
+    HostNameSubjectAlreadyNamed { entry: _ } => false
+    HostNameAllocationRefused { cause: _ } => false
+  }
+}
+
+test fn a_retired_name_is_never_reissued_to_its_own_subject() -> Bool {
+  let subject = witness_subject_a()
+  match allocate_host_name(
+    registry: empty_host_name_registry,
+    subject: subject,
+    version: current_host_name_scheme_version,
+  ) {
+    HostNameAllocated { receipt: first, registry: registry } =>
+      match retire_host_name(
+        registry: registry,
+        label: first.label,
+        reason: "witness: mainboard replaced",
+      ) {
+        HostNameRetiredOk { receipt: _, registry: after } =>
+          match allocate_host_name(
+            registry: after,
+            subject: subject,
+            version: current_host_name_scheme_version,
+          ) {
+            HostNameAllocated { receipt: second, registry: final_registry } =>
+              (second.label as String) != (first.label as String)
+                && second.attempt == 1
+                && host_name_registry_retired_count(registry: final_registry) == 1
+                && fold(second.collisions, init: false, f: fn(acc, c) {
+                     acc || match c.incumbent_standing {
+                       HostNameRetired { reason: _ } => (c.label as String) == (first.label as String)
+                       HostNameActive => false
+                     }
+                   })
+            HostNameSubjectAlreadyNamed { entry: _ } => false
+            HostNameAllocationRefused { cause: _ } => false
+          }
+        HostNameRetirementRefused { cause: _ } => false
+      }
+    HostNameSubjectAlreadyNamed { entry: _ } => false
+    HostNameAllocationRefused { cause: _ } => false
+  }
+}
+
+test fn retiring_an_unallocated_name_refuses() -> Bool {
+  match witness_project(subject: witness_subject_a(), attempt: 0) {
+    Absent => false
+    Present { value: MnemonicProjectionRefused { cause: _ } } => false
+    Present { value: MnemonicProjected {
+      label: label, adjective: _, animal: _, suffix: _, digest: _, attempt: _, version: _
+    } } =>
+      match retire_host_name(
+        registry: empty_host_name_registry,
+        label: label,
+        reason: "witness: never allocated",
+      ) {
+        HostNameRetirementRefused { cause: HostNameNotAllocated { label: _ } } => true
+        HostNameRetirementRefused { cause: _ } => false
+        HostNameRetiredOk { receipt: _, registry: _ } => false
+      }
+  }
+}
+
+test fn retiring_twice_refuses_with_the_prior_reason() -> Bool {
+  match allocate_host_name(
+    registry: empty_host_name_registry,
+    subject: witness_subject_a(),
+    version: current_host_name_scheme_version,
+  ) {
+    HostNameAllocated { receipt: receipt, registry: registry } =>
+      match retire_host_name(registry: registry, label: receipt.label, reason: "witness: first") {
+        HostNameRetiredOk { receipt: _, registry: after } =>
+          match retire_host_name(registry: after, label: receipt.label, reason: "witness: second") {
+            HostNameRetirementRefused {
+              cause: HostNameAlreadyRetired { label: _, prior_reason: prior }
+            } => (prior as String) == "witness: first"
+            HostNameRetirementRefused { cause: _ } => false
+            HostNameRetiredOk { receipt: _, registry: _ } => false
+          }
+        HostNameRetirementRefused { cause: _ } => false
+      }
+    HostNameSubjectAlreadyNamed { entry: _ } => false
+    HostNameAllocationRefused { cause: _ } => false
+  }
+}
+
+// The conflation the identity coproduct closes: a serial and a MAC carrying the
+// same text are DIFFERENT subjects, because the arm tag enters the derived key.
+// Under the earlier bare durable_key + provenance pair they would have keyed
+// identically and collapsed into one allocation.
+
+// A BMC that reported no serial yields no serial-grounded subject. Refusing is
+// the point: substituting another identifier under the serial arm's name would
+// be the fabrication DESIGN section 5 forbids.
+
+
+
+// THE RULING'S CENTRAL REQUIREMENT, AS A DISCRIMINATING WITNESS.
+// The canonical name must survive hardware replacement in the same logical slot.
+// Two physical bindings for one host — different serial AND different NIC MAC,
+// as after a mainboard swap — and the allocated name is unchanged, because
+// neither is an input to the projection. Under the earlier revision, which
+// projected from the serial, this returned a different name.
+test fn the_name_survives_hardware_replacement_in_the_same_slot() -> Bool {
+  let host = "srv5" as HostIdentity
+  let before = host_name_physical_binding(
+    host: host,
+    observed_serial: Present { value: "SERIAL-ORIGINAL-2f19c4" },
+    observed_primary_nic_mac: Present { value: "3c:ec:ef:70:1a:44" as MacAddress },
+  )
+  let after = host_name_physical_binding(
+    host: host,
+    observed_serial: Present { value: "SERIAL-REPLACEMENT-90ae31" },
+    observed_primary_nic_mac: Present { value: "b8:3f:d2:0c:55:e1" as MacAddress },
+  )
+  let name_before = witness_label_text(subject: host_name_subject_for_host(host: before.host), attempt: 0)
+  let name_after = witness_label_text(subject: host_name_subject_for_host(host: after.host), attempt: 0)
+  name_before == name_after && name_before != ""
+}
+
+// The other half of that requirement: the name is a function of the slot, so two
+// slots differ even when the same physical machine moves between them.
+test fn two_logical_slots_get_different_names() -> Bool {
+  let a = witness_label_text(subject: host_name_subject_for_host(host: "srv5" as HostIdentity), attempt: 0)
+  let b = witness_label_text(subject: host_name_subject_for_host(host: "srv6" as HostIdentity), attempt: 0)
+  a != b && a != "" && b != ""
+}
+
+// A binding with no observed serial is representable — a BMC may report none —
+// and it still changes no name, because bindings are not projection inputs.
+test fn an_unobserved_serial_binding_still_names_the_slot() -> Bool {
+  let binding = host_name_physical_binding(
+    host: "srv5" as HostIdentity,
+    observed_serial: none,
+    observed_primary_nic_mac: none,
+  )
+  let named = witness_label_text(subject: host_name_subject_for_host(host: binding.host), attempt: 0)
+  named == witness_label_text(subject: witness_subject_a(), attempt: 0) && named != ""
+}
+
+// The open fabric decision is a ROW, and an unselected authority REFUSES rather
+// than projecting from a subject nobody ruled on.
+test fn an_unselected_projection_authority_refuses_admission() -> Bool {
+  match host_name_subject_admit(
+    subject: HostNameSubject {
+      projection_subject: FabricIdentitySubject { fabric_id: "fabric-node-7" }
+    }
+  ) {
+    HostNameSubjectAuthorityNotSelected { selected: selected, presented: presented } =>
+      selected == "LogicalHostIdentityAuthority" && presented == "FabricIdentitySubject"
+    HostNameSubjectAdmitted { key: _ } => false
+  }
+}
+
+test fn allocation_under_an_unselected_authority_refuses() -> Bool {
+  match allocate_host_name(
+    registry: empty_host_name_registry,
+    subject: HostNameSubject {
+      projection_subject: FabricIdentitySubject { fabric_id: "fabric-node-7" }
+    },
+    version: current_host_name_scheme_version,
+  ) {
+    HostNameAllocationRefused {
+      cause: HostNameProjectionSubjectNotSelected { selected: _, presented: presented }
+    } => presented == "FabricIdentitySubject"
+    HostNameAllocationRefused { cause: _ } => false
+    HostNameAllocated { receipt: _, registry: _ } => false
+    HostNameSubjectAlreadyNamed { entry: _ } => false
+  }
+}

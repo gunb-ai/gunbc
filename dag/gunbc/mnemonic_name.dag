@@ -1,0 +1,253 @@
+module gunbc.mnemonic_name
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.error_primitives { Result, Ok, Err }
+import std.content_hash {
+  Fnv1a64Structural,
+  Fnv1a64StructuralDigestHex,
+  content_hash_atom,
+  content_hash_tagged_structural,
+}
+import std.decimal { decimal_pow10, zero_pad_left }
+import extdeps.dns.domain_name { DnsLabel, DomainNameParseError, parse_dns_label_raw }
+
+// WHY A VERSION IS PART OF THE SCHEME AND NOT A CHANGELOG ENTRY.
+// A mnemonic name is a projection of a subject key through a word corpus. The
+// projection is only stable while the corpus it indexes is fixed: inserting one
+// adjective renumbers every index above it, so a corpus edit silently re-derives
+// a different name for a subject that never moved. The version selects the
+// corpus, so growing the vocabulary is a new version rather than an edit to an
+// existing one, and a name already allocated under an older version keeps
+// re-deriving.
+data mnemonic_scheme_version_note: String = "Versioned mnemonic name scheme (adjective-animal-suffix). The version selects the word corpora AND the index derivation; both together are what makes a projection reproducible. Editing MnemonicNameV1's corpora in place is a silent re-derivation of every V1 name and is the one change this carrier exists to prevent — add MnemonicNameV2 instead. Consumers: gunbc.host_name_allocation, which has NO production consumer and is off the critical path by operator ruling — see its host_name_allocation_adoption_standing. This line names a module edge, never adoption."
+
+type MnemonicSchemeVersion =
+  | MnemonicNameV1
+
+fn mnemonic_scheme_version_label(version: MnemonicSchemeVersion) -> NonEmptyStr {
+  match version {
+    MnemonicNameV1 => "mnemonic.v1"
+  }
+}
+
+data mnemonic_v1_adjectives: List<String> = [
+  "neat", "bold", "calm", "crisp", "eager", "fair", "glad", "keen",
+  "lively", "loyal", "merry", "noble", "quick", "quiet", "rapid", "ready",
+  "sharp", "sleek", "snappy", "solid", "spry", "steady", "stout", "sunny",
+  "swift", "tidy", "tough", "vivid", "warm", "wise", "witty", "zesty",
+]
+
+data mnemonic_v1_animals: List<String> = [
+  "ram", "eagle", "tern", "bat", "boar", "crane", "deer", "dove",
+  "elk", "falcon", "finch", "fox", "gecko", "hare", "heron", "ibex",
+  "jay", "koi", "lark", "lynx", "mole", "moth", "newt", "otter",
+  "owl", "pika", "quail", "raven", "seal", "stoat", "swan", "wren",
+]
+
+fn mnemonic_adjectives(version: MnemonicSchemeVersion) -> List<String> {
+  match version {
+    MnemonicNameV1 => mnemonic_v1_adjectives
+  }
+}
+
+fn mnemonic_animals(version: MnemonicSchemeVersion) -> List<String> {
+  match version {
+    MnemonicNameV1 => mnemonic_v1_animals
+  }
+}
+
+// The suffix width is part of the scheme, not a rendering preference: it fixes
+// the suffix cardinality (1000 for width 3) that the index derivation divides by.
+fn mnemonic_suffix_width(version: MnemonicSchemeVersion) -> Int {
+  match version {
+    MnemonicNameV1 => 3
+  }
+}
+
+fn mnemonic_suffix_cardinality(version: MnemonicSchemeVersion) -> Int {
+  decimal_pow10(exponent: mnemonic_suffix_width(version: version))
+}
+
+fn mnemonic_name_space_size(version: MnemonicSchemeVersion) -> Int {
+  let adjective_count = mnemonic_adjectives(version: version).length()
+  let animal_count = mnemonic_animals(version: version).length()
+  adjective_count * animal_count * mnemonic_suffix_cardinality(version: version)
+}
+
+type MnemonicWordScan {
+  seen: Int
+  found: String?
+}
+
+fn mnemonic_word_at(words: List<String>, index: Int) -> String? {
+  fold(words, init: MnemonicWordScan { seen: 0, found: none }, f: fn(acc, word) {
+    if acc.seen == index {
+      MnemonicWordScan { seen: acc.seen + 1, found: Present { value: word } }
+    } else {
+      MnemonicWordScan { seen: acc.seen + 1, found: acc.found }
+    }
+  }).found
+}
+
+// The digest carrier is `String where lower_hex_16`, so a non-hex digit has no
+// representation here. The Absent arm is therefore unreachable rather than a
+// fallback — and it stays a refusal instead of a fabricated 0 precisely because
+// a fabricated digit would silently move the projection (DESIGN §5).
+fn mnemonic_hex_digit_value(ch: String) -> Int? {
+  let cp = code_point(ch)
+  if cp >= 48 && cp <= 57 {
+    Present { value: cp - 48 }
+  } else if cp >= 97 && cp <= 102 {
+    Present { value: cp - 87 }
+  } else {
+    none
+  }
+}
+
+data mnemonic_projection_width_note: String = "The projection reads the LOW 12 hex digits (48 bits) of the 16-digit fnv1a64 digest rather than all 16. 64 bits does not fit a signed machine integer, and folding all 16 digits would overflow into a value whose sign depends on the digest — the projection would still be deterministic but would index by an unmodeled quantity. 48 bits is 2.8e14 against a V1 name space of 1,024,000, so the modulo bias contributed by the truncation is far below the bias already present from taking a modulo at all."
+
+fn mnemonic_digest_projection_value(digest: Fnv1a64StructuralDigestHex) -> Int? {
+  fold([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], init: Present { value: 0 }, f: fn(acc, i) {
+    match acc {
+      Absent => none
+      Present { value: n } =>
+        match mnemonic_hex_digit_value(ch: char_at(digest as String, i)) {
+          Absent => none
+          Present { value: d } => Present { value: n * 16 + d }
+        }
+    }
+  })
+}
+
+// One attempt index is folded into the digest rather than scanning forward from
+// a base name: a linear probe would make the name a function of the registry's
+// insertion history, so the same subject would derive different names on two
+// registries that merely differ elsewhere. Tagging keeps the whole probe
+// sequence a function of (version, subject key, attempt) alone.
+fn mnemonic_projection_digest(
+  version: MnemonicSchemeVersion,
+  subject_key: NonEmptyStr,
+  attempt: Int,
+) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: join([mnemonic_scheme_version_label(version: version) as String, ".attempt.", to_string(attempt)], ""),
+    payload: content_hash_atom(value: subject_key),
+  )
+}
+
+type MnemonicProjectionRefusal
+  = MnemonicNegativeAttempt { attempt: Int }
+  | MnemonicDigestNotLowerHex { digest: String }
+  | MnemonicCorpusIndexUnreachable { corpus: String, index: Int, size: Int }
+  | MnemonicLabelRejected { candidate: String, error: DomainNameParseError }
+
+type MnemonicProjection
+  = MnemonicProjected {
+      label: DnsLabel
+      adjective: String
+      animal: String
+      suffix: String
+      digest: Fnv1a64StructuralDigestHex
+      attempt: Int
+      version: MnemonicSchemeVersion
+    }
+  | MnemonicProjectionRefused { cause: MnemonicProjectionRefusal }
+
+fn mnemonic_project(
+  version: MnemonicSchemeVersion,
+  subject_key: NonEmptyStr,
+  attempt: Int,
+) -> MnemonicProjection {
+  if attempt < 0 {
+    MnemonicProjectionRefused { cause: MnemonicNegativeAttempt { attempt: attempt } }
+  } else {
+    let digest = mnemonic_projection_digest(
+      version: version,
+      subject_key: subject_key,
+      attempt: attempt,
+    ).digest
+    match mnemonic_digest_projection_value(digest: digest) {
+      Absent =>
+        MnemonicProjectionRefused { cause: MnemonicDigestNotLowerHex { digest: digest as String } }
+      Present { value: n } =>
+        mnemonic_project_from_value(
+          version: version,
+          digest: digest,
+          attempt: attempt,
+          n: n,
+        )
+    }
+  }
+}
+
+fn mnemonic_project_from_value(
+  version: MnemonicSchemeVersion,
+  digest: Fnv1a64StructuralDigestHex,
+  attempt: Int,
+  n: Int,
+) -> MnemonicProjection {
+  let adjectives = mnemonic_adjectives(version: version)
+  let animals = mnemonic_animals(version: version)
+  let adjective_count = adjectives.length()
+  let animal_count = animals.length()
+  let suffix_cardinality = mnemonic_suffix_cardinality(version: version)
+  let adjective_index = n % adjective_count
+  let animal_index = (n / adjective_count) % animal_count
+  let suffix_value = (n / (adjective_count * animal_count)) % suffix_cardinality
+  match mnemonic_word_at(words: adjectives, index: adjective_index) {
+    Absent =>
+      MnemonicProjectionRefused {
+        cause: MnemonicCorpusIndexUnreachable {
+          corpus: "adjective",
+          index: adjective_index,
+          size: adjective_count,
+        }
+      }
+    Present { value: adjective } =>
+      match mnemonic_word_at(words: animals, index: animal_index) {
+        Absent =>
+          MnemonicProjectionRefused {
+            cause: MnemonicCorpusIndexUnreachable {
+              corpus: "animal",
+              index: animal_index,
+              size: animal_count,
+            }
+          }
+        Present { value: animal } => {
+          let suffix = zero_pad_left(
+            digits: to_string(suffix_value),
+            width: mnemonic_suffix_width(version: version),
+          )
+          let candidate = join([adjective, "-", animal, "-", suffix], "")
+          match parse_dns_label_raw(raw: candidate) {
+            Err { value: e } =>
+              MnemonicProjectionRefused {
+                cause: MnemonicLabelRejected { candidate: candidate, error: e }
+              }
+            Ok { value: label } =>
+              MnemonicProjected {
+                label: label,
+                adjective: adjective,
+                animal: animal,
+                suffix: suffix,
+                digest: digest,
+                attempt: attempt,
+                version: version,
+              }
+          }
+        }
+      }
+  }
+}
+
+// A rendered name is grounded as an RFC 1123 host label by parse, never by a
+// cast: the corpora are authored here, so "these words are all LDH" would be a
+// second representation of a rule extdeps.dns.domain_name already decides.
+fn mnemonic_projected_label(projection: MnemonicProjection) -> DnsLabel? {
+  match projection {
+    MnemonicProjected {
+      label: label, adjective: _, animal: _, suffix: _, digest: _, attempt: _, version: _
+    } => Present { value: label }
+    MnemonicProjectionRefused { cause: _ } => none
+  }
+}
