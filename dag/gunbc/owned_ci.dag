@@ -16,6 +16,7 @@ import extdeps.github.checks {
   Failure,
   check_conclusion_is_success,
 }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.collection { Absent, Present }
 
 data owned_ci_authority_note: String = "Owned CI control plane v0 state carriers (docs/plans/owned-ci-control-plane-design.md). Poll-first subject discovery, durable filesystem queue with expiring lease, one local executor, Checks projection honesty boundary."
@@ -61,6 +62,22 @@ fn owned_ci_index_rel_path() -> String {
 
 fn owned_ci_run_record_rel_path(run_id: String) -> String {
   concat(concat(concat(owned_ci_state_root_rel, "/runs/"), run_id), "/run.json")
+}
+
+type OwnedCiFilesystemText
+  = OwnedCiFilesystemTextPresent { content: String }
+  | OwnedCiFilesystemTextEmpty
+  | OwnedCiFilesystemTextMissing { cause: String }
+
+fn owned_ci_classify_filesystem_text(path: String) -> OwnedCiFilesystemText {
+  let read_out = Filesystem.Read(path: path)
+  if !read_out.success {
+    OwnedCiFilesystemTextMissing { cause: read_out.error }
+  } else if read_out.content == "" {
+    OwnedCiFilesystemTextEmpty
+  } else {
+    OwnedCiFilesystemTextPresent { content: read_out.content }
+  }
 }
 
 data owned_ci_run_id_note: String = "Run ids are path segments under .gunbc/owned-ci/runs/<run_id>/run.json on both the writer (ci_control_plane new_run_id) and the served /ci/run/{run_id} reader. path_segment_is_safe alone is insufficient: the brand must also match the produced grammar {unix_seconds}-{8_hex_from_head_sha} so a traversal-shaped segment cannot reach filesystem_read by convention alone."
