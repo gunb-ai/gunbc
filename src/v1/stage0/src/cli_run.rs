@@ -1138,6 +1138,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn affected_set_stop_line_bridge_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER,
+            "cli_run_affected_set_stop_line_bridge"
+        );
+    }
+
+    #[test]
     fn truncate_histogram_label_respects_utf8_boundaries() {
         let max = 80;
         let s = "é".repeat(50); // 2-byte chars; byte slice at 79 would straddle
@@ -6283,6 +6291,9 @@ fn entry_eligible_for_discovery_skip_before_resolve(
             return Ok(false);
         }
     } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_paths) {
+        return Ok(false);
+    }
+    if compile_clean_broad_stop_line_blocks_skip(entry_path, touched_paths) {
         return Ok(false);
     }
     Ok(true)
@@ -20745,6 +20756,64 @@ fn declared_source_refs_blocks_skip(axis: DeclaredSourceRefAxis) -> bool {
     )
 }
 
+// SCAFFOLD (§7 HAND-RUST — `cli_run_affected_set_stop_line_bridge`):
+// Lane: 7933A temporary safety stop-line (calm-fox-44) — any non-docs .dag touch blocks
+// discovery skip for compile-clean shard_a and scope witness entries. BROAD interim rule,
+// not precise self-confirmation; rationale/cost receipt in `gunbc.affected_set_stop_line`,
+// 7933B plan in `gunbc.plans.affected_set_self_confirmation`.
+// Sole executable authority for 7933A: the consts and helpers below (no .dag path twin).
+// 7933B replaces this scaffold with symbolic refs + generated/direct host projection.
+// DELETE WHEN dissolved: `COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY`,
+// `COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY`, `compile_clean_touched_path_norm`,
+// `compile_clean_touched_path_is_docs_only`, `compile_clean_touched_path_is_dag_source`,
+// `compile_clean_verdict_affecting_touch`, `compile_clean_broad_stop_line_blocks_skip`,
+// and `CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER`.
+// Receipt: `rg 'pub\(crate\) const CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER'
+// src/v1/stage0/src/cli_run.rs` == 1 until deletion; executing witness
+// `cargo test -p v1-compiler --lib stop_line`.
+pub(crate) const CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER: &str =
+    "cli_run_affected_set_stop_line_bridge";
+
+const COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY: &str =
+    "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag";
+const COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY: &str =
+    "dag/test/claim/dag_compile_clean_scope_witness_test.dag";
+
+fn compile_clean_touched_path_norm(path: &str) -> &str {
+    path.strip_prefix("./").unwrap_or(path)
+}
+
+fn compile_clean_touched_path_is_docs_only(path: &str) -> bool {
+    compile_clean_touched_path_norm(path).starts_with("docs/")
+}
+
+fn compile_clean_touched_path_is_dag_source(path: &str) -> bool {
+    compile_clean_touched_path_norm(path).ends_with(".dag")
+}
+
+fn compile_clean_verdict_affecting_touch(touched_paths: &[String]) -> bool {
+    !touched_paths.is_empty()
+        && !touched_paths
+            .iter()
+            .all(|p| compile_clean_touched_path_is_docs_only(p))
+        && touched_paths
+            .iter()
+            .any(|p| compile_clean_touched_path_is_dag_source(p))
+}
+
+fn compile_clean_broad_stop_line_blocks_skip(entry_path: &str, touched_paths: &[String]) -> bool {
+    if !compile_clean_verdict_affecting_touch(touched_paths) {
+        return false;
+    }
+    let entry_rel = workspace_relative_repo_path(entry_path);
+    [
+        COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+        COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
+    ]
+    .iter()
+    .any(|check| workspace_relative_repo_path(check) == entry_rel)
+}
+
 fn entry_has_declared_source_refs(entry_path: &str, facts: &ModuleGraphFactsLive) -> bool {
     !declared_source_ref_paths_for_entry(entry_path, facts).is_empty()
 }
@@ -20874,6 +20943,7 @@ fn entry_qualifies_for_skip_without_resolve(
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
     touched_entry_paths: &[String],
+    stop_line_changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
 ) -> Result<bool, String> {
     // Fail-closed on the substrate-declared disposition (v2.std.live_tree): a
@@ -20921,6 +20991,9 @@ fn entry_qualifies_for_skip_without_resolve(
     } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_entry_paths) {
         return Ok(false);
     }
+    if compile_clean_broad_stop_line_blocks_skip(entry_path, stop_line_changed_paths) {
+        return Ok(false);
+    }
     if !diff_edits.overlapping_data_items.is_empty() {
         let data_item_files: Vec<String> = diff_edits
             .overlapping_data_items
@@ -20946,6 +21019,7 @@ fn discovery_entry_fast_skip_without_resolve(
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
     touched_entry_paths: &[String],
+    stop_line_changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
 ) -> Result<HashSet<String>, String> {
     // Entry-grain disposition: OR the rows' `reads_live_tree` per entry (they agree by
@@ -20963,6 +21037,7 @@ fn discovery_entry_fast_skip_without_resolve(
             facts,
             declared_paths,
             touched_entry_paths,
+            stop_line_changed_paths,
             diff_edits,
         )? {
             fast.insert(entry);
@@ -21819,6 +21894,7 @@ fn run_discovery_corpus_with_options_inner(
                 &index.module_graph_facts,
                 &declared_paths,
                 &touched,
+                &changed_paths,
                 &diff_edits,
             ) {
                 Ok(_) => None,
@@ -22431,6 +22507,7 @@ fn eprintln_affected_set_categorization(
                 &index.module_graph_facts,
                 &declared_paths,
                 &touched,
+                changed_paths,
                 diff_edits,
             )
             .map(|fast| rows.iter().filter(|r| fast.contains(&r.entry)).count());
@@ -22696,6 +22773,7 @@ fn run_discovery_rows(
             &index.module_graph_facts,
             &module_graph_declared_paths,
             &touched_entry_paths,
+            changed_paths,
             diff_edits,
         )?
     } else {
@@ -24667,6 +24745,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -24699,6 +24778,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -25742,6 +25822,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -25769,6 +25850,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -25796,6 +25878,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -25854,6 +25937,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -36413,6 +36497,127 @@ mod witness_layer_roots_compile_clean_tests {
             SelectionControlRefusalCause::DiffObservationFailed.token(),
             SelectionControlRefusalCause::InputClosureFailed.token()
         );
+    }
+
+    fn repair_receipt_touched_paths() -> Vec<String> {
+        vec![
+            "dag/extdeps/systems/nvidia.dag".to_string(),
+            "dag/test/claim/generated_artifact_drift_test.dag".to_string(),
+        ]
+    }
+
+    /// #7915 receipt: repair PR touched only nvidia.dag and generated_artifact_drift_test.dag;
+    /// broad stop-line must block skip for compile_clean_shard_a (import-closure would miss it).
+    #[test]
+    fn stop_line_repair_receipt_blocks_shard_a_skip() {
+        let touched = repair_receipt_touched_paths();
+        assert!(compile_clean_broad_stop_line_blocks_skip(
+            COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+            &touched
+        ));
+    }
+
+    /// #7915 receipt: scope witness must also remain eligible on the same touch set.
+    #[test]
+    fn stop_line_repair_receipt_blocks_scope_skip() {
+        let touched = repair_receipt_touched_paths();
+        assert!(compile_clean_broad_stop_line_blocks_skip(
+            COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
+            &touched
+        ));
+    }
+
+    /// Mechanism-touch pair (7933A): any non-docs .dag change blocks scope witness skip.
+    #[test]
+    fn stop_line_mechanism_touch_dag_blocks_scope_skip() {
+        let touched = vec!["src/v2/lens/module_graph.dag".to_string()];
+        assert!(compile_clean_broad_stop_line_blocks_skip(
+            COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
+            &touched
+        ));
+    }
+
+    /// Mechanism-touch pair (7933A): same .dag touch blocks shard_a skip under the broad rule.
+    #[test]
+    fn stop_line_mechanism_touch_dag_blocks_shard_a_skip() {
+        let touched = vec!["src/v2/lens/module_graph.dag".to_string()];
+        assert!(compile_clean_broad_stop_line_blocks_skip(
+            COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+            &touched
+        ));
+    }
+
+    /// Docs-only touches must not trigger the broad stop-line.
+    #[test]
+    fn stop_line_docs_only_touch_does_not_block() {
+        let touched = vec!["docs/plans/foo.md".to_string()];
+        assert!(!compile_clean_broad_stop_line_blocks_skip(
+            COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+            &touched
+        ));
+    }
+
+    /// RED control: a scope-only rule would not block shard_a; broad stop-line does on #7915 receipt.
+    #[test]
+    fn stop_line_repair_receipt_red_control_scope_only_omits_shard_a() {
+        let touched = repair_receipt_touched_paths();
+        let scope_only_blocks_shard_a = |entry: &str| {
+            compile_clean_verdict_affecting_touch(&touched)
+                && workspace_relative_repo_path(entry)
+                    == workspace_relative_repo_path(COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY)
+        };
+        assert!(
+            !scope_only_blocks_shard_a(COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY),
+            "scope-only subject must omit shard-a"
+        );
+        assert!(
+            compile_clean_broad_stop_line_blocks_skip(
+                COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+                &touched
+            ),
+            "broad stop-line must block shard-a on repair receipt"
+        );
+    }
+
+    /// #7915 production-path receipt: data-item-only edits populate `overlapping_data_items`
+    /// (not `touched_entry_files`), so the stop-line must read the full name-status list —
+    /// not the filtered entry-path set — or shard_a fast-skips through the defect.
+    #[test]
+    fn stop_line_data_only_dag_edit_blocks_shard_a_fast_skip() {
+        with_workspace_cwd(|| {
+            let index = build_multi_entry_index(&default_source_roots());
+            let mut diff_edits = FloorDiffEdits::default();
+            diff_edits.overlapping_data_items.insert((
+                "dag/extdeps/systems/nvidia.dag".to_string(),
+                "nvidia_catalog_row".to_string(),
+            ));
+            diff_edits.overlapping_data_items.insert((
+                "dag/test/claim/generated_artifact_drift_test.dag".to_string(),
+                "drift_fixture".to_string(),
+            ));
+            let touched_entry_paths: Vec<String> = Vec::new();
+            let changed_paths = repair_receipt_touched_paths();
+            let shard_a_row = DiscoveryRow {
+                label: "shard_a".to_string(),
+                entry: COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY.to_string(),
+                function: "compile_clean_shard_a_exemplar_compile_green".to_string(),
+                reads_live_tree: false,
+            };
+            let declared = index.module_graph_facts.declared_repo_paths();
+            let fast_skip = discovery_entry_fast_skip_without_resolve(
+                &[shard_a_row],
+                &index.module_graph_facts,
+                &declared,
+                &touched_entry_paths,
+                &changed_paths,
+                &diff_edits,
+            )
+            .expect("fast-skip disposition");
+            assert!(
+                !fast_skip.contains(COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY),
+                "shard_a must not fast-skip when name-status lists non-docs .dag data-item edits outside import closure"
+            );
+        });
     }
 
     /// The unblocked scoped arm, by execution: a single touched dag entry selects at least
