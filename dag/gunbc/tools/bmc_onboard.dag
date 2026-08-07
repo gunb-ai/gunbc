@@ -3,7 +3,17 @@ module gunbc.tools.bmc_onboard
 import extdeps.bmc.http
 import extdeps.filesystem.filesystem_io
 import extdeps.entropy
-import extdeps.cloud.gcp.secret_manager
+import extdeps.cloud.gcp.secret_manager {
+  decode_sm_access_version_payload_wire,
+  decode_sm_resolved_version_identity_wire,
+  decode_sm_access_version_secret_wire,
+  SmAccessVersionPayloadDecoded,
+  SmAccessVersionPayloadDecodeRefused,
+  SmAccessVersionSecretDecoded,
+  SmAccessVersionSecretDecodeRefused,
+  SmResolvedVersionIdentityDecoded,
+  SmResolvedVersionIdentityDecodeRefused,
+}
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.bmc_onboarding {
   BmcOnboardingPlan,
@@ -165,8 +175,28 @@ func bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSour
         secret: secret_id,
         version: "latest"
       )
-      if readback.data_b64 != payload_b64 {
-        return exit_failure(reason: concat(concat(concat("store: GCP durability read-back mismatch — refusing to rotate (would lock out ", plan.bmc.host), concat("); stored version ", stored.name)), ""))
+      let readback_ok = match decode_sm_access_version_payload_wire(data_b64: readback.data_b64) {
+        SmAccessVersionPayloadDecoded { payload: stored_payload } =>
+          match decode_sm_access_version_payload_wire(data_b64: payload_b64) {
+            SmAccessVersionPayloadDecoded { payload: expected_payload } =>
+              stored_payload == expected_payload
+            SmAccessVersionPayloadDecodeRefused { cause: _ } => false
+          }
+        SmAccessVersionPayloadDecodeRefused { cause: _ } => false
+      }
+      match decode_sm_resolved_version_identity_wire(name: stored.name as String) {
+        SmResolvedVersionIdentityDecoded { identity: stored_identity } =>
+          match decode_sm_resolved_version_identity_wire(name: readback.name as String) {
+            SmResolvedVersionIdentityDecoded { identity: readback_identity } => {
+              if !readback_ok || stored_identity != readback_identity {
+                return exit_failure(reason: concat(concat(concat("store: GCP durability read-back mismatch — refusing to rotate (would lock out ", plan.bmc.host), concat("); stored version ", stored_identity as String)), ""))
+              }
+            }
+            SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
+              return exit_failure(reason: "store: GCP read-back resolved version identity refused by wire decoder")
+          }
+        SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
+          return exit_failure(reason: "store: GCP AddVersion resolved version identity refused by wire decoder")
       }
 
       return bmc_rotate_credential(plan: plan, new_credential: credential)
@@ -223,15 +253,21 @@ func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTok
         secret: onboarding_secret_id(plan: plan),
         version: "latest"
       )
-      rotated_verify = redfish.Http.GetSystem(
-        bmc_host: host,
-        username: account,
-        password: secret_resp.data_b64 as Secret
-      )
-      return if rotated_verify.success {
-        RotatedCredentialActive
-      } else {
-        CredentialStateUnknown { reason: "stored credential rejected by BMC" }
+      match decode_sm_access_version_secret_wire(data_b64: secret_resp.data_b64) {
+        SmAccessVersionSecretDecoded { credential: password } => {
+          rotated_verify = redfish.Http.GetSystem(
+            bmc_host: host,
+            username: account,
+            password: password
+          )
+          return if rotated_verify.success {
+            RotatedCredentialActive
+          } else {
+            CredentialStateUnknown { reason: "stored credential rejected by BMC" }
+          }
+        }
+        SmAccessVersionSecretDecodeRefused { cause: _ } =>
+          CredentialStateUnknown { reason: "stored credential payload refused by wire decoder" }
       }
     }
   }
