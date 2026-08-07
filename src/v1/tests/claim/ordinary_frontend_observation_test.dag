@@ -47,7 +47,7 @@ data probe_record_literal: ProbeRecord = ProbeRecord { alpha: true, beta: false 
 // RED before this lane: `map_keys` refused a brace literal in a Map-typed
 // position with `map_keys expects a map, got Record`, because the interpreter
 // built a record where the emitter builds a HashMap.
-fn w_map_typed_literal_is_a_map() -> Bool {
+test fn w_map_typed_literal_is_a_map() -> Bool {
   let keys = map_keys(probe_keyed_literal) |> sort_by(k => k)
   (keys |> count) == 3
     && keys == ["alpha", "beta", "gamma"]
@@ -56,7 +56,7 @@ fn w_map_typed_literal_is_a_map() -> Bool {
 
 // The control that keeps the fix from over-converting: a literal in a NAMED
 // record position stays a record, with ordinary field access.
-fn w_record_literal_is_still_a_record() -> Bool {
+test fn w_record_literal_is_still_a_record() -> Bool {
   probe_record_literal.alpha && !probe_record_literal.beta
 }
 
@@ -75,7 +75,7 @@ fn broken_subject() -> List<SourceFile> {
   }]
 }
 
-fn w_ordinary_frontend_runs_on_a_tiny_subject() -> Bool {
+test fn w_ordinary_frontend_runs_on_a_tiny_subject() -> Bool {
   let observed = observe_ordinary_frontend(sources: tiny_subject())
   (observed.diagnostics |> count) == 0
     && observed.receipt.graph_present
@@ -88,7 +88,7 @@ fn w_ordinary_frontend_runs_on_a_tiny_subject() -> Bool {
 // The discriminating arm: a producer fabricating a clean observation, or one
 // that never fed the subject to the front end at all, stays green on the arm
 // above and reds here.
-fn w_ordinary_frontend_reports_a_broken_subject() -> Bool {
+test fn w_ordinary_frontend_reports_a_broken_subject() -> Bool {
   let observed = observe_ordinary_frontend(sources: broken_subject())
   (observed.diagnostics |> count) > 0
 }
