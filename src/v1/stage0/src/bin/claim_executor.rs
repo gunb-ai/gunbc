@@ -1770,10 +1770,19 @@ const FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID: &str = "walk_memo";
 
 /// A refusal about the EXPECTATION machinery itself, as distinct from a witness verdict.
 ///
-/// Both arms mean the same class of thing — the known-red roster no longer describes reality —
-/// and neither is an ordinary `WitnessRed`, because their remedies are edits to the admission
-/// authority rather than to a witness. They are separate arms because the edits are opposite:
-/// a stale quarantine means DELETE the row, an absent observation means make the row RUN.
+/// Every arm means the same class of thing — the known-red roster does not describe reality as
+/// observed — and NONE is an ordinary `WitnessRed`, because their remedies are edits to the
+/// admission authority or to the seam, never to a witness. They are separate arms because the
+/// edits differ: a stale quarantine means DELETE the row, an absent observation means make the
+/// row RUN, and an unverified pre-verdict declaration means carry the typed cause across the
+/// execution boundary.
+///
+/// This enum is also the ONLY structural route to a typed receipt mode. `batch_failure_mode_and_detail`
+/// reads it off the VALUE and otherwise falls through to `falsifier_failure_mode`, whose fallback
+/// arm is `"WitnessRed"` — so a mode carried only in prose (in `function`/`detail`) is not carried
+/// at all. That is exactly how the pre-verdict arm shipped half-wired: the `.dag` vocabulary and
+/// the non-green result existed while the receipt still said `WitnessRed`, which is the
+/// one-fact-two-representations defect this PR exists to remove, committed by the PR itself.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ExpectationRefusal {
     /// Declared expected-red, ran GREEN. The quarantine is stale.
@@ -1787,6 +1796,13 @@ enum ExpectationRefusal {
     /// coverage-by-illusion tier: the roster claims a red control exists, the run produces no
     /// evidence either way, and the green report is read as though it did.
     ExpectedRedEvidenceAbsent { witnesses: Vec<(String, String)> },
+    /// Every entry DECLARED a typed pre-verdict refusal and the batch stopped before any
+    /// verdict — so the stop is real, but the observed phase/cause is unavailable at this seam
+    /// and the declaration cannot be checked against it. Neither agreement nor a witness red.
+    PreVerdictUnverified {
+        declared_entries: usize,
+        cause: String,
+    },
 }
 
 impl ExpectationRefusal {
@@ -1794,6 +1810,7 @@ impl ExpectationRefusal {
         match self {
             Self::StaleKnownRed { .. } => STALE_KNOWN_RED_MODE,
             Self::ExpectedRedEvidenceAbsent { .. } => EXPECTED_RED_EVIDENCE_ABSENT_MODE,
+            Self::PreVerdictUnverified { .. } => EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE,
         }
     }
 
@@ -1808,6 +1825,12 @@ impl ExpectationRefusal {
                 "{EXPECTED_RED_EVIDENCE_ABSENT_MODE}: {} witness(es) declared expected-red produced NO observation on this batch: {} — the red control did not execute, so neither agreement nor failure was established; restore its execution or delete the admission row",
                 witnesses.len(),
                 render_witness_ids(witnesses)
+            ),
+            Self::PreVerdictUnverified {
+                declared_entries,
+                cause,
+            } => format!(
+                "{EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE}: {declared_entries} entry(ies) declare a typed pre-verdict refusal and the batch stopped before any verdict, but the observed phase/cause is unavailable at this seam so the declaration cannot be verified — non-green by construction until EXPECTED-RED-CAUSE-1 lands: {cause}"
             ),
         }
     }
@@ -1833,14 +1856,21 @@ fn pre_verdict_unverified_claim_result(
     declared_entries: usize,
     msg: &str,
 ) -> ClaimResult {
+    // The mode must reach the receipt off the VALUE. Carried only in `function`/`detail` it is
+    // not carried at all: `batch_failure_mode_and_detail` reads `expectation_refusal`
+    // structurally and otherwise falls through to `falsifier_failure_mode`, whose fallback arm
+    // is "WitnessRed" — so these batches were reported as ordinary witness failures while the
+    // `.dag` vocabulary said `Refused`. Found by cursor review 50221.
+    let refusal = ExpectationRefusal::PreVerdictUnverified {
+        declared_entries,
+        cause: msg.to_string(),
+    };
     ClaimResult {
         function: format!("{label} ({EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE})"),
         entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
         // NON-GREEN. A declaration classifies the stop; it does not verify it.
         ok: false,
-        detail: format!(
-            "{EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE}: {declared_entries} entry(ies) declare a typed pre-verdict refusal and the batch stopped before any verdict, but the observed phase/cause is unavailable at this seam so the declaration cannot be verified — non-green by construction until EXPECTED-RED-CAUSE-1 lands: {msg}"
-        ),
+        detail: refusal.detail(),
         wall_nanos: 0,
         resolve_nanos: 0,
         corpus_resolve_nanos: 0,
@@ -1850,7 +1880,7 @@ fn pre_verdict_unverified_claim_result(
         // UNAVAILABLE rather than zero. Zero would assert a measurement nobody took.
         runtime_unit_count: runtime_unit_count_unavailable(msg),
         witness_row_costs: Vec::new(),
-        expectation_refusal: None,
+        expectation_refusal: Some(refusal),
         budget_refusal: None,
         selection_degradation: None,
         resolve_realization: None,
@@ -11252,6 +11282,26 @@ mod tests {
             !r.ok,
             "a declaration classifies a stop; it does not verify it"
         );
+
+        // THE MODE MUST REACH THE RECEIPT OFF THE VALUE, not off the prose. Carried only in
+        // `function`/`detail`, `batch_failure_mode_and_detail` fell through to
+        // `falsifier_failure_mode` and reported these batches as ordinary "WitnessRed" while
+        // the .dag vocabulary said Refused — one mode in two representations, the second
+        // guessed back from a string, which is the defect this PR exists to remove.
+        // cursor review 50221 found it; this assertion is what would have caught it.
+        let (mode, receipt_detail) = batch_failure_mode_and_detail(&batch_record_for_test(vec![
+            pre_verdict_unverified_claim_result("known-red probe", 3, "resolve refused"),
+        ]));
+        assert_eq!(
+            mode, EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE,
+            "the receipt must classify structurally, never as WitnessRed"
+        );
+        assert_ne!(mode, "WitnessRed");
+        assert!(receipt_detail.contains(EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE));
+        assert!(matches!(
+            &r.expectation_refusal,
+            Some(ExpectationRefusal::PreVerdictUnverified { .. })
+        ));
         assert!(
             r.detail.contains(EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE),
             "the refusal must be typed at the mode, not left as prose"
