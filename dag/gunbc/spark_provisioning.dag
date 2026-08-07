@@ -317,20 +317,35 @@ fn select_spark_strategy(
 // ------------------------------------------------------------------------------------
 
 // An intent carries desired_hostname, and the cited first-boot page lists no hostname
-// field. Under FactoryOobe that is a real residue and the honest outcome is the third arm
+// field. Under FactoryOobe that is a real residue and the honest outcome is an intervention
 // — a step a human or a later modeled effect must take — NOT a refusal, because nothing
-// rejected anything, and NOT an interruption, because no transition is pending. Under
-// PxeAutoinstall the autoinstall payload carries it and no residue exists.
+// rejected anything, and NOT an interruption, because no transition is pending.
+//
+// Under PxeAutoinstall the answer is neither "handled" nor "residue": it is NOT MODELED.
+// SparkAutoinstallSpec carries only the cited kernel-parameter switches, and neither it nor
+// extdeps.systems.nvidia_dgx_spark_setup models a hostname anywhere in the PXE path. An
+// earlier revision returned Absent here and a comment asserted the autoinstall payload
+// carries the hostname — a claim with no cited carrier behind it, i.e. the fabricated
+// plausible output DESIGN §5 forbids, and one that made a modeling gap read as coverage
+// (review 49796). The third arm below is what an unmodeled path is entitled to: a typed,
+// located, countable gap, not a silent zero. It dissolves when SPARK-PXE-0 lands a cited
+// hostname carrier in the PXE path — at which point this arm becomes a real residue or a
+// real "handled", decided by the citation rather than by this function.
+type SparkHostnameResidue
+  = HostnameResidueIntervention { intervention: HumanIntervention }
+  | HostnameSetWithinStrategy
+  | HostnameHandlingUnmodeled { strategy_detail: NonEmptyStr }
+
 fn spark_hostname_residue(
   strategy: SparkProvisioningStrategy,
   allocation: SparkHostnameAllocation
-) -> HumanIntervention? {
+) -> SparkHostnameResidue {
   match strategy {
     FactoryOobe { bootstrap: _ } =>
       match dgx_spark_oobe_offers_field(field: OobeHostnameAssignment) {
-        true => Absent
-        false => Present {
-          value: spark_intervention(
+        true => HostnameSetWithinStrategy
+        false => HostnameResidueIntervention {
+          intervention: spark_intervention(
             identity: "spark-oobe-hostname-residue",
             frequency: DeviceOnce,
             subject: "hostname assignment",
@@ -338,7 +353,10 @@ fn spark_hostname_residue(
           )
         }
       }
-    PxeAutoinstall { environment: _, image: _, install_spec: _ } => Absent
+    PxeAutoinstall { environment: _, image: _, install_spec: _ } =>
+      HostnameHandlingUnmodeled {
+        strategy_detail: "PxeAutoinstall: SparkAutoinstallSpec carries only the cited kernel-parameter switches, and no cited NVIDIA surface in this repository states how a hostname is set on the PXE path. Owed to SPARK-PXE-0."
+      }
   }
 }
 
@@ -370,7 +388,7 @@ data srv6_spark_bootstrap: SparkFactoryBootstrap = SparkFactoryBootstrap {
 
 data spark_license_acceptance: LicenseAcceptance = LicenseAcceptance {
   terms_identity: "NVIDIA DGX Spark first-boot terms and conditions",
-  accepted_by: "briansrls",
+  accepted_by: fleet_posix_operator_user.name,
 }
 
 fn spark_provisioning_intent(

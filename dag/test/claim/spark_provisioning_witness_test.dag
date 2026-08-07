@@ -33,10 +33,11 @@ fn classify_tag(progress: SparkProvisioningProgress) -> String {
   ))
 }
 
-fn residue_count(strategy: SparkProvisioningStrategy) -> Int {
+fn residue_tag(strategy: SparkProvisioningStrategy) -> String {
   match spark_hostname_residue(strategy: strategy, allocation: HostnameAllocationPending) {
-    Present { value: _ } => 1
-    Absent => 0
+    HostnameResidueIntervention { intervention: _ } => "residue"
+    HostnameSetWithinStrategy => "handled"
+    HostnameHandlingUnmodeled { strategy_detail: _ } => "unmodeled"
   }
 }
 
@@ -205,8 +206,9 @@ test fn spark_cited_setup_surface_holds() -> Bool {
     && update_tag(d: InitialUpdateAppliedDuringSetup) != update_tag(d: dgx_spark_documented_initial_update)
     && update_tag(d: InitialUpdateDeferredToOperator) != update_tag(d: dgx_spark_documented_initial_update)
     && dgx_spark_oobe_offers_field(field: OobeHostnameAssignment) == false
-    && residue_count(strategy: oobe_strategy) == 1
-    && residue_count(strategy: pxe_strategy) == 0
+    && residue_tag(strategy: oobe_strategy) == "residue"
+    && residue_tag(strategy: pxe_strategy) == "unmodeled"
+    && residue_tag(strategy: pxe_strategy) != "handled"
     && post_setup_route_requires_existing_account(route: PostSetupSsh)
     && post_setup_route_requires_existing_account(route: PostSetupNvidiaSync)
 }
@@ -241,6 +243,7 @@ test fn spark_intents_are_grounded() -> Bool {
     && srv5_spark_intent.administrator.name == "briansrls"
     && srv5_spark_intent.administrator.uid == 1000
     && srv6_spark_intent.administrator.uid == 1000
+    && srv5_spark_intent.license.accepted_by == srv5_spark_intent.administrator.name
     && allocation_tag(a: srv5_spark_intent.desired_hostname) == "pending"
     && allocation_tag(a: srv6_spark_intent.desired_hostname) == "pending"
 }
@@ -270,7 +273,7 @@ test fn spark_hostname_is_allocated_never_derived_from_slot() -> Bool {
 
   allocation_tag(a: srv5_spark_intent.desired_hostname) == "pending"
     && allocation_tag(a: allocated.desired_hostname) == "allocated"
-    && residue_count(strategy: oobe_strategy) == 1
+    && residue_tag(strategy: oobe_strategy) == "residue"
     && pending_instruction != allocated_instruction
     && allocation_tag(a: spark_receipt_from_intent(intent: allocated).hostname) == "allocated"
     && allocation_tag(a: spark_receipt_from_intent(intent: srv5_spark_intent).hostname) == "pending"
