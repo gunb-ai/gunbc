@@ -81,6 +81,10 @@ data nfr_reason_dispatch_selection_routing: String = "provider-selection routing
 
 data nfr_dissolve_dispatch_selection_routing: String = "total matches over the closed selection request and offer coproducts land and the wildcard arms migrate to named variants — rows delete with that fold"
 
+data nfr_reason_provider_standing_limit_dispatch_routing: String = "provider-standing limit dispatch routing residue (match on ProviderLimitDispatchDraw, ProviderLimitSubject, or ProviderLimitObservation with off-variant wildcard arms partitioning account-scope vs native-bucket vs model coverage) landed with gunbc.provider_standing shared selection kernel (PR 7922); declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_provider_standing_limit_dispatch_routing: String = "total matches over ProviderLimitDispatchDraw × ProviderLimitSubject × ProviderLimitObservation land on the shared selection kernel and the wildcard arms migrate to named variants — rows delete with that fold"
+
 data nfr_reason_binding_outcome_resolution_wildcard: String = "StructuralBindingResolution admission projection (StructuralBindingResolved arm extracts binding_outcome; off-variant wildcard Absent collapses six typed index-build refusal variants into option-absence) landed with N3-A carrier move (#7772); un-migrated modeling at assess_reference_binding_observation — the carrier distinguishes refusals but binding_outcome_from_resolution still absorbs them; declared at landing so the ratchet re-arms"
 
 data nfr_dissolve_binding_outcome_resolution_wildcard: String = "assess_reference_binding_observation routes each StructuralBindingResolution variant to a distinct capability assessment without Absent collapse — total match lands with P0-2 factual carrier recut and the wildcard arm deletes with its row"
@@ -109,6 +113,16 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::selection_requests_match" },
     reason: nfr_reason_dispatch_selection_routing,
     trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/provider_standing.dag::limit_subject_covers_dispatch_draw" },
+    reason: nfr_reason_provider_standing_limit_dispatch_routing,
+    trigger: TriggerProse { text: nfr_dissolve_provider_standing_limit_dispatch_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/provider_standing.dag::limit_observation_blocks_dispatch" },
+    reason: nfr_reason_provider_standing_limit_dispatch_routing,
+    trigger: TriggerProse { text: nfr_dissolve_provider_standing_limit_dispatch_routing },
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/namespace_reference_derived_closure_admission.dag::binding_outcome_from_resolution" },
