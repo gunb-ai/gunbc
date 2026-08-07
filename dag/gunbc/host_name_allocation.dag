@@ -1,0 +1,398 @@
+module gunbc.host_name_allocation
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.keyed_row { KeyedRow, keyed_row_find }
+import std.keyed_roster {
+  KeyedRosterDuplicateEvidence,
+  KeyedRosterInsert,
+  KeyedRosterInserted,
+  KeyedRosterDuplicateKey,
+  KeyedRosterInvalidRoster,
+  keyed_roster_insert_into_unique,
+  keyed_roster_locate_duplicate,
+}
+import std.content_hash { Fnv1a64StructuralDigestHex }
+import extdeps.dns.domain_name { DnsLabel }
+import gunbc.mnemonic_name {
+  MnemonicSchemeVersion,
+  MnemonicNameV1,
+  MnemonicProjection,
+  MnemonicProjected,
+  MnemonicProjectionRefused,
+  MnemonicProjectionRefusal,
+  mnemonic_project,
+  mnemonic_name_space_size,
+}
+
+data host_name_allocation_authority_note: String = "Single authority for allocating and retiring mnemonic host names (adjective-animal-suffix, gunbc.mnemonic_name). Three facts are kept separate here because collapsing any pair is a state-space conflation: WHICH NAME a subject derives is a pure projection of (version, durable subject key, attempt) and lives in gunbc.mnemonic_name; WHETHER that name is free is an exact identity join against the registry, reusing std.keyed_roster rather than forking a second duplicate-detection rule; and WHETHER the subject already has a name is a separate join on the subject key, whose answer is idempotent re-derivation and NOT an allocation. Retirement writes standing, never deletes a row: an exactly-unique registry is a claim across time (DESIGN section 1 A3), so a retired name stays a collision forever and is never reissued to a second machine. Every collision is a typed row carried in the allocation receipt, so probe pressure is countable rather than absorbed into a silent re-roll (DESIGN section 5)."
+
+// WHAT A SUBJECT KEY IS, AND WHY IT IS NOT THE HOST LABEL.
+// The projection is stable exactly insofar as its input is. Keying on the
+// operator label (srv1) would make the mnemonic name a function of a name
+// someone already chose, so re-labelling a machine would re-derive it, and two
+// machines that swapped labels would swap mnemonic names. The key is therefore
+// a durable machine fact, and where no such fact was read the provenance says
+// so rather than presenting an operator string as a hardware observation.
+type HostNameSubjectProvenance
+  = MachineSerial
+  | PrimaryNicMac
+  | OperatorAssigned { reason: NonEmptyStr }
+
+type HostNameSubject {
+  durable_key: NonEmptyStr
+  provenance: HostNameSubjectProvenance
+}
+
+fn host_name_subject_eq(left: HostNameSubject, right: HostNameSubject) -> Bool {
+  (left.durable_key as String) == (right.durable_key as String)
+}
+
+type HostNameStanding
+  = HostNameActive
+  | HostNameRetired { reason: NonEmptyStr }
+
+type HostNameRegistryEntry {
+  label: DnsLabel
+  subject: HostNameSubject
+  version: MnemonicSchemeVersion
+  standing: HostNameStanding
+}
+
+// The registry IS a keyed roster over the label text — one value per key by
+// construction, duplicate-key input refused rather than unioned. Reusing that
+// carrier is the point: a second uniqueness rule authored here would be a
+// second representation of exactness (DESIGN section 2/3).
+type HostNameRegistry = List<KeyedRow<String, HostNameRegistryEntry>>
+
+data empty_host_name_registry: List<KeyedRow<String, HostNameRegistryEntry>> = []
+
+fn host_name_label_key_eq(left: String, right: String) -> Bool {
+  left == right
+}
+
+fn host_name_registry_row(entry: HostNameRegistryEntry) -> KeyedRow<String, HostNameRegistryEntry> {
+  KeyedRow { row_key: entry.label as String, value: entry }
+}
+
+fn host_name_registry_find(registry: HostNameRegistry, label: DnsLabel) -> HostNameRegistryEntry? {
+  match keyed_row_find(
+    rows: registry,
+    wanted_key: label as String,
+    key_eq: host_name_label_key_eq,
+  ) {
+    Present { value: row } => Present { value: row.value }
+    Absent => none
+  }
+}
+
+type HostNameSubjectScan {
+  found: HostNameRegistryEntry?
+}
+
+// Active-only: a subject whose name was retired has no name, and re-allocating
+// it derives a NEW one (its retired name still collides at attempt 0). That is
+// the intended behaviour of retirement — the old name is spent, not recycled.
+fn host_name_registry_find_active_subject(
+  registry: HostNameRegistry,
+  subject: HostNameSubject,
+) -> HostNameRegistryEntry? {
+  fold(registry, init: HostNameSubjectScan { found: none }, f: fn(acc, row) {
+    match acc.found {
+      Present { value: _ } => acc
+      Absent =>
+        match row.value.standing {
+          HostNameActive =>
+            if host_name_subject_eq(left: row.value.subject, right: subject) {
+              HostNameSubjectScan { found: Present { value: row.value } }
+            } else {
+              acc
+            }
+          HostNameRetired { reason: _ } => acc
+        }
+    }
+  }).found
+}
+
+type HostNameCollision {
+  label: DnsLabel
+  attempt: Int
+  incumbent_subject: HostNameSubject
+  incumbent_standing: HostNameStanding
+}
+
+type HostNameAllocationReceipt {
+  label: DnsLabel
+  subject: HostNameSubject
+  version: MnemonicSchemeVersion
+  attempt: Int
+  digest: Fnv1a64StructuralDigestHex
+  collisions: List<HostNameCollision>
+}
+
+type HostNameRetirementReceipt {
+  label: DnsLabel
+  subject: HostNameSubject
+  version: MnemonicSchemeVersion
+  reason: NonEmptyStr
+}
+
+type HostNameAllocationRefusal
+  = HostNameProjectionRefused { cause: MnemonicProjectionRefusal, attempt: Int }
+  | HostNameSpaceProbeExhausted {
+      subject: HostNameSubject
+      attempts: Int
+      name_space_size: Int
+      collisions: List<HostNameCollision>
+    }
+  | HostNameRegistryNotUnique {
+      key: String
+      first: HostNameRegistryEntry
+      duplicate: HostNameRegistryEntry
+    }
+
+type HostNameAllocation
+  = HostNameAllocated { receipt: HostNameAllocationReceipt, registry: HostNameRegistry }
+  | HostNameSubjectAlreadyNamed { entry: HostNameRegistryEntry }
+  | HostNameAllocationRefused { cause: HostNameAllocationRefusal }
+
+// WHY THE PROBE IS BOUNDED AND WHY EXHAUSTION REFUSES.
+// A collision is resolved by re-projecting under the next attempt index, which
+// keeps the whole sequence a function of (version, subject key) and independent
+// of registry insertion order. The bound exists so that a saturated corpus
+// stops the line with a counted refusal instead of spinning: refusing names the
+// deficit (the V1 space is 1,024,000, so exhausting eight independent probes is
+// evidence about the registry, not bad luck) where an unbounded re-roll would
+// hide it.
+data host_name_probe_indices: List<Int> = [0, 1, 2, 3, 4, 5, 6, 7]
+
+// The limit is the length of the probe sequence, never a second literal beside
+// it: two numbers that must agree are one fact written twice (DESIGN section 2).
+fn host_name_probe_attempt_limit() -> Int {
+  host_name_probe_indices.length()
+}
+
+type HostNameProbe
+  = HostNameProbing { collisions: List<HostNameCollision> }
+  | HostNameProbeSettled { receipt: HostNameAllocationReceipt, registry: HostNameRegistry }
+  | HostNameProbeRefused { cause: HostNameAllocationRefusal }
+
+fn host_name_probe_step(
+  state: HostNameProbe,
+  registry: HostNameRegistry,
+  subject: HostNameSubject,
+  version: MnemonicSchemeVersion,
+  attempt: Int,
+) -> HostNameProbe {
+  match state {
+    HostNameProbeSettled { receipt: _, registry: _ } => state
+    HostNameProbeRefused { cause: _ } => state
+    HostNameProbing { collisions: collisions } =>
+      match mnemonic_project(version: version, subject_key: subject.durable_key, attempt: attempt) {
+        MnemonicProjectionRefused { cause: cause } =>
+          HostNameProbeRefused {
+            cause: HostNameProjectionRefused { cause: cause, attempt: attempt }
+          }
+        MnemonicProjected {
+          label: label,
+          adjective: _,
+          animal: _,
+          suffix: _,
+          digest: digest,
+          attempt: _,
+          version: _,
+        } => {
+          let candidate = HostNameRegistryEntry {
+            label: label,
+            subject: subject,
+            version: version,
+            standing: HostNameActive,
+          }
+          match keyed_roster_insert_into_unique(
+            rows: registry,
+            incoming: host_name_registry_row(entry: candidate),
+            key_eq: host_name_label_key_eq,
+          ) {
+            KeyedRosterInserted { rows: rows } =>
+              HostNameProbeSettled {
+                receipt: HostNameAllocationReceipt {
+                  label: label,
+                  subject: subject,
+                  version: version,
+                  attempt: attempt,
+                  digest: digest,
+                  collisions: collisions,
+                },
+                registry: rows,
+              }
+            KeyedRosterDuplicateKey { key: _, existing: existing, incoming: _ } =>
+              HostNameProbing {
+                collisions: collisions |> list_push(HostNameCollision {
+                  label: label,
+                  attempt: attempt,
+                  incumbent_subject: existing.value.subject,
+                  incumbent_standing: existing.value.standing,
+                })
+              }
+            KeyedRosterInvalidRoster { key: key, first: first, duplicate: duplicate } =>
+              HostNameProbeRefused {
+                cause: HostNameRegistryNotUnique {
+                  key: key,
+                  first: first.value,
+                  duplicate: duplicate.value,
+                }
+              }
+          }
+        }
+      }
+  }
+}
+
+data empty_host_name_collisions: List<HostNameCollision> = []
+
+// The roster is validated ONCE, here, rather than on every probe: allocation
+// must never widen an already-invalid registry, and re-checking it per attempt
+// would pay the O(n^2) locate up to eight times for one answer. That is why the
+// probe below inserts through keyed_roster_insert_into_unique, whose precondition
+// this check discharges, rather than through keyed_roster_insert.
+fn allocate_host_name(
+  registry: HostNameRegistry,
+  subject: HostNameSubject,
+  version: MnemonicSchemeVersion,
+) -> HostNameAllocation {
+  match keyed_roster_locate_duplicate(rows: registry, key_eq: host_name_label_key_eq) {
+    Present { value: evidence } =>
+      HostNameAllocationRefused {
+        cause: HostNameRegistryNotUnique {
+          key: evidence.key,
+          first: evidence.first.value,
+          duplicate: evidence.duplicate.value,
+        }
+      }
+    Absent =>
+      match host_name_registry_find_active_subject(registry: registry, subject: subject) {
+        Present { value: entry } => HostNameSubjectAlreadyNamed { entry: entry }
+        Absent =>
+          match fold(host_name_probe_indices,
+            init: HostNameProbing { collisions: empty_host_name_collisions },
+            f: fn(acc, attempt) {
+              host_name_probe_step(
+                state: acc,
+                registry: registry,
+                subject: subject,
+                version: version,
+                attempt: attempt,
+              )
+            }
+          ) {
+            HostNameProbeSettled { receipt: receipt, registry: rows } =>
+              HostNameAllocated { receipt: receipt, registry: rows }
+            HostNameProbeRefused { cause: cause } =>
+              HostNameAllocationRefused { cause: cause }
+            HostNameProbing { collisions: collisions } =>
+              HostNameAllocationRefused {
+                cause: HostNameSpaceProbeExhausted {
+                  subject: subject,
+                  attempts: host_name_probe_attempt_limit(),
+                  name_space_size: mnemonic_name_space_size(version: version),
+                  collisions: collisions,
+                }
+              }
+          }
+      }
+  }
+}
+
+type HostNameRetirementRefusal
+  = HostNameNotAllocated { label: DnsLabel }
+  | HostNameAlreadyRetired { label: DnsLabel, prior_reason: NonEmptyStr }
+
+type HostNameRetirement
+  = HostNameRetiredOk { receipt: HostNameRetirementReceipt, registry: HostNameRegistry }
+  | HostNameRetirementRefused { cause: HostNameRetirementRefusal }
+
+fn host_name_retire_row(
+  row: KeyedRow<String, HostNameRegistryEntry>,
+  label: DnsLabel,
+  reason: NonEmptyStr,
+) -> KeyedRow<String, HostNameRegistryEntry> {
+  if row.row_key == (label as String) {
+    KeyedRow {
+      row_key: row.row_key,
+      value: HostNameRegistryEntry {
+        label: row.value.label,
+        subject: row.value.subject,
+        version: row.value.version,
+        standing: HostNameRetired { reason: reason },
+      },
+    }
+  } else {
+    row
+  }
+}
+
+// Retirement rewrites standing in place and keeps the row. Deleting it would
+// free the name for reissue to a different machine, which is the one thing an
+// exact-uniqueness registry exists to prevent: two machines that answered to
+// one name at different times are indistinguishable in every receipt that
+// survives them.
+fn retire_host_name(
+  registry: HostNameRegistry,
+  label: DnsLabel,
+  reason: NonEmptyStr,
+) -> HostNameRetirement {
+  match host_name_registry_find(registry: registry, label: label) {
+    Absent =>
+      HostNameRetirementRefused { cause: HostNameNotAllocated { label: label } }
+    Present { value: entry } =>
+      match entry.standing {
+        HostNameRetired { reason: prior } =>
+          HostNameRetirementRefused {
+            cause: HostNameAlreadyRetired { label: label, prior_reason: prior }
+          }
+        HostNameActive =>
+          HostNameRetiredOk {
+            receipt: HostNameRetirementReceipt {
+              label: entry.label,
+              subject: entry.subject,
+              version: entry.version,
+              reason: reason,
+            },
+            registry: fold(registry, init: empty_host_name_registry, f: fn(acc, row) {
+              acc |> list_push(host_name_retire_row(row: row, label: label, reason: reason))
+            }),
+          }
+      }
+  }
+}
+
+fn host_name_registry_active_count(registry: HostNameRegistry) -> Int {
+  fold(registry, init: 0, f: fn(n, row) {
+    match row.value.standing {
+      HostNameActive => n + 1
+      HostNameRetired { reason: _ } => n
+    }
+  })
+}
+
+fn host_name_registry_retired_count(registry: HostNameRegistry) -> Int {
+  fold(registry, init: 0, f: fn(n, row) {
+    match row.value.standing {
+      HostNameActive => n
+      HostNameRetired { reason: _ } => n + 1
+    }
+  })
+}
+
+fn host_name_allocation_collision_count(receipt: HostNameAllocationReceipt) -> Int {
+  fold(receipt.collisions, init: 0, f: fn(n, _c) { n + 1 })
+}
+
+fn host_name_subject_from_machine_serial(serial: NonEmptyStr) -> HostNameSubject {
+  HostNameSubject { durable_key: serial, provenance: MachineSerial }
+}
+
+fn host_name_subject_from_primary_nic_mac(mac: NonEmptyStr) -> HostNameSubject {
+  HostNameSubject { durable_key: mac, provenance: PrimaryNicMac }
+}
+
+data current_host_name_scheme_version: MnemonicSchemeVersion = MnemonicNameV1
