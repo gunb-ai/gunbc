@@ -370,6 +370,27 @@ pub fn declaration_exposure_module_local_member(
     }
 }
 
+pub fn declaration_exposure_namespace_structural_root(
+    module_path: String,
+    containment: Rc<OccurrenceContainmentPath>,
+) -> Rc<DeclarationExposure> {
+    match occurrence_containment_parent_scope(containment.ancestors.clone()) {
+        None => Rc::new(DeclarationExposure::RootExposure),
+        Some(exposing_scope) => {
+            let __fm = exposing_scope.ancestors.clone();
+            if __fm.is_empty() {
+                Rc::new(DeclarationExposure::ModuleExposure {
+                    module: module_path.clone(),
+                })
+            } else {
+                Rc::new(DeclarationExposure::LexicalExposure {
+                    exposing_scope: exposing_scope.clone(),
+                })
+            }
+        }
+    }
+}
+
 pub fn declaration_exposure_from_containment(
     module_path: String,
     containment: Rc<OccurrenceContainmentPath>,
@@ -377,12 +398,7 @@ pub fn declaration_exposure_from_containment(
 ) -> Rc<DeclarationExposure> {
     match grounding.clone() {
         DeclarationExposureGrounding::NamespaceStructuralRootExposure => {
-            let __fm = containment.ancestors.clone();
-            if __fm.is_empty() {
-                Rc::new(DeclarationExposure::RootExposure)
-            } else {
-                declaration_exposure_module_local_member(module_path.clone(), containment.clone())
-            }
+            declaration_exposure_namespace_structural_root(module_path.clone(), containment.clone())
         }
         DeclarationExposureGrounding::ModuleLocalMemberExposure => {
             declaration_exposure_module_local_member(module_path.clone(), containment.clone())

@@ -223,6 +223,27 @@ fn declaration_exposure_module_local_member(
   }
 }
 
+fn declaration_exposure_namespace_structural_root(
+  module_path: NonEmptyStr,
+  containment: OccurrenceContainmentPath,
+) -> DeclarationExposure {
+  match occurrence_containment_parent_scope(
+    ancestors: containment.ancestors,
+  ) {
+    Absent =>
+      RootExposure
+
+    Present { value: exposing_scope } =>
+      match exposing_scope.ancestors {
+        Empty =>
+          ModuleExposure { module: module_path }
+
+        Cons { head: _, tail: _ } =>
+          LexicalExposure { exposing_scope: exposing_scope }
+      }
+  }
+}
+
 fn declaration_exposure_from_containment(
   module_path: NonEmptyStr,
   containment: OccurrenceContainmentPath,
@@ -230,14 +251,10 @@ fn declaration_exposure_from_containment(
 ) -> DeclarationExposure {
   match grounding {
     NamespaceStructuralRootExposure =>
-      match containment.ancestors {
-        Empty => RootExposure
-        Cons { head: _, tail: _ } =>
-          declaration_exposure_module_local_member(
-            module_path: module_path,
-            containment: containment,
-          )
-      }
+      declaration_exposure_namespace_structural_root(
+        module_path: module_path,
+        containment: containment,
+      )
     ModuleLocalMemberExposure =>
       declaration_exposure_module_local_member(
         module_path: module_path,
