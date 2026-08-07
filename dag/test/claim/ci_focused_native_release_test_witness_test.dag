@@ -1,0 +1,78 @@
+module test.claim.ci_focused_native_release_test_witness
+
+import gunbc.ci_focused_native_release_tests {
+  nested_match_6777_focused_native_release_test_row,
+  comment_path_probe_focused_native_release_test_row,
+}
+import v2.workflow.ci_focused_native_release_test_emit {
+  ci_focused_native_release_test_script,
+  ci_focused_native_release_test_shell_emit_scaffold,
+}
+import gunbc.ci_spec { ci_focused_native_release_test_run_script }
+import gunbc.ci_workflow { ci_build_job }
+import gunbc.ci_materialization { step_display_name }
+import extdeps.github.actions { Step }
+import std.disposition { Scaffold }
+
+data compile_gate_step_name: String = "cargo test -p v1-compiler-tests --release --no-run (compile-contract gate; reuses release v1-compiler)"
+
+fn step_index_of(steps: List<Step>, name: String) -> Int {
+  let seen = fold(steps, init: { idx: 0, hit: 0 - 1 }, f: fn(acc, s) {
+    if step_display_name(s: s) == name {
+      if acc.hit >= 0 { { idx: acc.idx + 1, hit: acc.hit } } else { { idx: acc.idx + 1, hit: acc.idx } }
+    } else {
+      { idx: acc.idx + 1, hit: acc.hit }
+    }
+  })
+  seen.hit
+}
+
+test fn w_nested_match_row_script_runs_one_named_test_not_suite() -> Bool {
+  let row = nested_match_6777_focused_native_release_test_row
+  let script = ci_focused_native_release_test_script(row: row)
+  string_contains(s: script, pattern: "'test'")
+    && string_contains(s: script, pattern: concat("'", row.package_name, "'"))
+    && string_contains(s: script, pattern: "'--release'")
+    && string_contains(s: script, pattern: concat("'", row.test_filter, "'"))
+    && !string_contains(s: script, pattern: "'--no-run'")
+    && !string_contains(s: script, pattern: "nextest")
+}
+
+test fn w_nested_match_row_run_script_emits_execution_receipt() -> Bool {
+  let row = nested_match_6777_focused_native_release_test_row
+  let script = ci_focused_native_release_test_run_script(row: row)
+  string_contains(s: script, pattern: row.receipt_prefix)
+    && string_contains(s: script, pattern: concat("test=", row.test_filter))
+    && string_contains(s: script, pattern: "members=0:Zero,1:One,2:Many,3:Many")
+    && string_contains(s: script, pattern: "outcome=passed")
+}
+
+test fn w_focused_native_release_test_carrier_is_scaffold() -> Bool {
+  match ci_focused_native_release_test_shell_emit_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn w_build_job_runs_nested_match_row_after_compile_gate() -> Bool {
+  let steps = ci_build_job().steps
+  let gate = step_index_of(steps: steps, name: compile_gate_step_name)
+  let reproducer = step_index_of(
+    steps: steps,
+    name: nested_match_6777_focused_native_release_test_row.step_display_name
+  )
+  (gate >= 0) && (reproducer >= 0) && (gate < reproducer)
+}
+
+test fn w_comment_path_probe_row_defined_for_7996_enrollment() -> Bool {
+  comment_path_probe_focused_native_release_test_row.control_id == "comment_path_probe"
+    && comment_path_probe_focused_native_release_test_row.package_name == "v1-compiler"
+    && string_contains(
+      s: comment_path_probe_focused_native_release_test_row.row_note,
+      pattern: "assert_ne!"
+    )
+    && string_contains(
+      s: comment_path_probe_focused_native_release_test_row.row_note,
+      pattern: "assert_eq!"
+    )
+}

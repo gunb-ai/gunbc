@@ -128,7 +128,7 @@ jobs:
         run: |
           set -e
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          # 🟡 dissolve-on: ci_nested_match_6777_reproducer_script — foreign-executor shell transport for one cargo.Build.Test filter; DISSOLVES WHEN bash-emit binds the build-job step to orchestration emit over the typed cargo operation (same seam as ci_v1_compiler_tests_compile_gate_emit)
+          # 🟡 dissolve-on: ci_focused_native_release_test_script — foreign-executor shell transport for one cargo.Build.Test filter per FocusedNativeReleaseTestRow; DISSOLVES WHEN bash-emit binds the build-job step to orchestration emit over the typed cargo operation (same seam as ci_v1_compiler_tests_compile_gate_emit)
           "$CARGO_BIN" 'test' '-p' 'v1-compiler-tests' '--release' 'nested_match_6777_emitted_matches_interpreted'
           echo "[nested-match-6777-reproducer-receipt] repository=${GITHUB_REPOSITORY:-local} head=${GITHUB_SHA:-unknown} test=nested_match_6777_emitted_matches_interpreted execution_class=native_release_test members=0:Zero,1:One,2:Many,3:Many outcome=passed"
         timeout-minutes: 5

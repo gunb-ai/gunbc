@@ -1,6 +1,6 @@
 module test.claim.ci_workflow_witness_test
 
-import std.types { Bool, Int }
+import std.types { Bool, Int, list_length }
 import std.measure { minute_count }
 import gunbc.ci_workflow {
   gunbc_ci_job_backstop_timeout_minutes,
@@ -9,10 +9,12 @@ import gunbc.ci_workflow {
   gunbc_ci_aux_step_timeout_minutes,
   gunbc_ci_workflow_wrapper_timeout_minutes,
   gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes,
-  gunbc_ci_nested_match_6777_reproducer_timeout_minutes,
+  gunbc_ci_focused_native_release_test_step_timeout_minutes,
+  gunbc_ci_focused_native_release_test_step_budget_minutes,
   gunbc_ci_release_build_step_timeout_minutes,
   gunbc_ci_prelude_allowance_minutes,
 }
+import gunbc.ci_focused_native_release_tests { gunbc_ci_focused_native_release_test_rows }
 import gunbc.ci_spec {
   gunbc_ci_ordinary_floor_budget_minutes,
   gunbc_ci_admission_postcondition_budget_minutes,
@@ -28,7 +30,12 @@ fn ci_job_backstop_is_step_sum_plus_prelude() -> Bool {
 }
 
 fn ci_build_job_backstop_is_step_sum_plus_prelude() -> Bool {
-  gunbc_ci_build_job_backstop_timeout_minutes() == (gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_nested_match_6777_reproducer_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes)
+  gunbc_ci_build_job_backstop_timeout_minutes() == (gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_focused_native_release_test_step_budget_minutes() + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes)
+}
+
+fn ci_focused_native_release_test_budget_matches_enrollment() -> Bool {
+  gunbc_ci_focused_native_release_test_step_budget_minutes()
+    == (list_length(items: gunbc_ci_focused_native_release_test_rows) * gunbc_ci_focused_native_release_test_step_timeout_minutes)
 }
 
 data backstop_magnitude_pin_deleted_note: String = "ci_job_backstop_equals_one_hundred_minutes DELETED (the live-state count-transcription class, operator ruling 2026-07-30 — same class as the roadmap 63-declared pin): it mirrored the derived step-sum as a literal, so any legitimate step roster change redded it and the reviewer's move was editing the number until it matched. It redded here when the two receipt-gate steps moved in-executor (100 -> 90) — a correct change reported as a failure. The invariants that MATTER are magnitude-independent and stay asserted: the backstop equals the exact step-sum + prelude, and the selection-control term stayed dropped."
@@ -40,6 +47,7 @@ fn ci_job_backstop_dropped_the_selection_control_term() -> Bool {
 test fn ci_workflow_witness_holds() -> Bool {
   ci_job_backstop_is_step_sum_plus_prelude()
     && ci_build_job_backstop_is_step_sum_plus_prelude()
+    && ci_focused_native_release_test_budget_matches_enrollment()
     && ci_job_backstop_dropped_the_selection_control_term()
     && (minute_count(m: gunbc_ci_ordinary_floor_budget_minutes) == 55)
     && (minute_count(m: gunbc_ci_admission_postcondition_budget_minutes) == 5)

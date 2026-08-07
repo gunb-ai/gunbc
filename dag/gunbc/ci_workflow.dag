@@ -21,8 +21,13 @@ import gunbc.ci_spec {
   gunbc_ci_heal_repo_local_git_config_invoke,
   ci_fmt_gate_line,
   ci_v1_compiler_tests_compile_gate_run_script,
-  ci_nested_match_6777_reproducer_run_script,
+  ci_focused_native_release_test_run_script,
 }
+import gunbc.ci_focused_native_release_tests {
+  FocusedNativeReleaseTestRow,
+  gunbc_ci_focused_native_release_test_rows,
+}
+import std.types { list_length }
 import v2.workflow.ci_heal_revalidation_preflight_emit {
   ci_heal_revalidation_preflight_script,
 }
@@ -316,18 +321,24 @@ fn ci_v1_compiler_tests_compile_gate_step() -> Step {
   }
 }
 
-fn ci_nested_match_6777_reproducer_step() -> Step {
+fn ci_focused_native_release_test_step(row: FocusedNativeReleaseTestRow) -> Step {
   RunStep {
-    name: Present { value: "cargo test -p v1-compiler-tests --release nested_match_6777_emitted_matches_interpreted (#6777 emitted control)" },
+    name: Present { value: row.step_display_name },
     id: none,
-    run: ci_nested_match_6777_reproducer_run_script(),
+    run: ci_focused_native_release_test_run_script(row: row),
     shell: none,
     env: none,
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_nested_match_6777_reproducer_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_focused_native_release_test_step_timeout_minutes }
   }
+}
+
+fn ci_focused_native_release_test_steps() -> List<Step> {
+  fold(gunbc_ci_focused_native_release_test_rows, init: [], f: fn(acc, row) {
+    concat(acc, [ci_focused_native_release_test_step(row: row)])
+  })
 }
 
 fn ci_release_build_step() -> Step {
@@ -505,9 +516,9 @@ data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
-data gunbc_ci_nested_match_6777_reproducer_timeout_minutes: Duration = 5
+data gunbc_ci_focused_native_release_test_step_timeout_minutes: Duration = 5
 
-data gunbc_ci_nested_match_6777_reproducer_timeout_note: String = "Focused #6777 emitted/native reproducer test (nested_match_6777_emitted_matches_interpreted). Runs after compile-contract --no-run; should complete in seconds on warm artifacts. 5m retains cold-host envelope without re-enrolling the Rust suite (commit_gate_rust_suite_removed_disposition)."
+data gunbc_ci_focused_native_release_test_step_timeout_note: String = "Per-row budget for enrolled FocusedNativeReleaseTestRow steps (gunbc.ci_focused_native_release_tests). Each runs after compile-contract --no-run; warm runs complete in seconds. 5m per row retains cold-host envelope without re-enrolling the Rust suite (commit_gate_rust_suite_removed_disposition). Build backstop multiplies by list_length(gunbc_ci_focused_native_release_test_rows)."
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests compile-contract gate step budget (operator ruling 2026-08-05, PR A / fierce-heron-177): reordered after the release build and switched to cargo test --release --no-run so v1-compiler compiles once per job. Warm runs should complete in seconds once the release artifact is warm; 15m retains the prior cold-host envelope without raising the cap."
 
@@ -527,8 +538,12 @@ data gunbc_ci_deploy_job_backstop_timeout_minutes: Int = 10
 data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
 data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
 
+fn gunbc_ci_focused_native_release_test_step_budget_minutes() -> Int {
+  list_length(items: gunbc_ci_focused_native_release_test_rows) * gunbc_ci_focused_native_release_test_step_timeout_minutes
+}
+
 fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_nested_match_6777_reproducer_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_focused_native_release_test_step_budget_minutes() + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 data gunbc_ci_receipt_gate_steps_moved_in_executor_note: String = "The resolve-receipt and materialization-receipt gate STEPS are deleted (ruling 2026-07-30): their laws — resolves_total equals the declared count, and the materialization receipt exists/parses/keyed nonzero — now run INSIDE claim_executor as ordinary-floor finalization (run_walk, FloorFinalization), so a receipt-law violation blocks every on-success stage instead of redding a step AFTER admission had already stamped. The two aux terms leave the backstop sum in the same motion, keeping it the exact step-sum + prelude the witness pins. The receipt FILES keep writing — they are observability the falsifier and operators read — only the shell re-validation of them is gone, because keeping it would be a second representation of the floor-completion rule."
@@ -698,7 +713,7 @@ fn ci_build_job() -> Job {
     id: "build",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_heal_revalidation_prelude_steps(), [ci_fmt_gate_step(), ci_release_build_step(), ci_v1_compiler_tests_compile_gate_step(), ci_nested_match_6777_reproducer_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
+    steps: concat(ci_heal_revalidation_prelude_steps(), concat([ci_fmt_gate_step(), ci_release_build_step(), ci_v1_compiler_tests_compile_gate_step()], concat(ci_focused_native_release_test_steps(), [ci_release_bins_pack_step(), ci_release_bins_upload_step()]))),
     needs: [],
     env: none,
     outputs: none,

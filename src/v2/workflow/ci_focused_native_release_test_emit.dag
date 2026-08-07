@@ -1,0 +1,132 @@
+module v2.workflow.ci_focused_native_release_test_emit
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { List }
+import v2.std.effect_plan { Do, EffectPlan }
+import v2.std.operation_argv {
+  OperationRef,
+  operation_argv_bind_text_list
+}
+import v2.std.orchestration { FailFast }
+import v2.std.text { String }
+import v2.workflow.effect_plan_bash_materialize {
+  BashBoundOperationInvocation,
+  EffectPlanBashMaterializationRefused,
+  EffectPlanBashMaterialized,
+  bash_bind_operation_invocation_host_env_executable,
+  effect_plan_bash_materialize,
+  effect_plan_bash_refusal_label
+}
+
+type FocusedNativeReleaseTestRow {
+  control_id: String,
+  package_name: String,
+  test_filter: String,
+  receipt_prefix: String,
+  receipt_members_suffix: String,
+  step_display_name: String,
+  row_note: String
+}
+
+data ci_focused_native_release_test_cargo_path: String = "dag/extdeps/rust/cargo_build.dag"
+data ci_focused_native_release_test_cargo_service: String = "cargo.Build"
+data ci_focused_native_release_test_cargo_operation: String = "Test"
+data ci_focused_native_release_test_cargo_bin_env_var: String = "CARGO_BIN"
+
+data ci_focused_native_release_test_authority_note: String = "Build-job focused native release test execution after the v1-compiler-tests compile-contract gate (--no-run). ONE named cargo.Build.Test per enrolled FocusedNativeReleaseTestRow; argv tail is (package_name, test_filter); receipt carries test identity + execution_class=native_release_test. NOT RustMonolithGate or nextest re-enrollment — gunbc.commit_workflow commit_gate_rust_suite_removed_disposition remains terminal. Operation shape: v2.workflow.ci_focused_native_release_test_emit."
+
+data ci_focused_native_release_test_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_focused_native_release_test_emit",
+    decl_name: "ci_focused_native_release_test_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_focused_native_release_test_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_focused_native_release_test_script — foreign-executor shell transport for one cargo.Build.Test filter per FocusedNativeReleaseTestRow; DISSOLVES WHEN bash-emit binds the build-job step to orchestration emit over the typed cargo operation (same seam as ci_v1_compiler_tests_compile_gate_emit)"
+
+fn ci_focused_native_release_test_refusal_prefix(control_id: String) -> String {
+  concat(
+    "__GUNBC_EFFECT_PLAN_BASH_REFUSED__ focused native release test ",
+    concat(control_id, ": ")
+  )
+}
+
+fn ci_focused_native_release_test_extra_args(row: FocusedNativeReleaseTestRow) -> List<String> {
+  ["-p", row.package_name, "--release", row.test_filter]
+}
+
+fn ci_focused_native_release_test_check_step(row: FocusedNativeReleaseTestRow) -> BashBoundOperationInvocation {
+  bash_bind_operation_invocation_host_env_executable(
+    at: OperationRef {
+      path: ci_focused_native_release_test_cargo_path,
+      service: ci_focused_native_release_test_cargo_service,
+      operation: ci_focused_native_release_test_cargo_operation
+    },
+    bindings: [
+      operation_argv_bind_text_list(
+        name: "extra_args",
+        items: ci_focused_native_release_test_extra_args(row: row)
+      )
+    ],
+    env_var: ci_focused_native_release_test_cargo_bin_env_var
+  )
+}
+
+fn ci_focused_native_release_test_intent(row: FocusedNativeReleaseTestRow) -> EffectPlan<BashBoundOperationInvocation> {
+  EffectPlan {
+    steps: [Do { effect: ci_focused_native_release_test_check_step(row: row) }],
+    on_failure: FailFast
+  }
+}
+
+fn ci_focused_native_release_test_render(
+  row: FocusedNativeReleaseTestRow,
+  plan: EffectPlan<BashBoundOperationInvocation>
+) -> String {
+  match effect_plan_bash_materialize(plan: plan) {
+    EffectPlanBashMaterialized { source: source } => source
+    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+      concat(
+        ci_focused_native_release_test_refusal_prefix(control_id: row.control_id),
+        effect_plan_bash_refusal_label(refusal: refusal)
+      )
+  }
+}
+
+fn ci_focused_native_release_test_receipt_line(row: FocusedNativeReleaseTestRow) -> String {
+  concat(
+    "echo \"",
+    concat(
+      row.receipt_prefix,
+      concat(
+        " repository=$\{GITHUB_REPOSITORY:-local} head=$\{GITHUB_SHA:-unknown}",
+        concat(
+          concat(" test=", row.test_filter),
+          concat(
+            " execution_class=native_release_test",
+            concat(row.receipt_members_suffix, " outcome=passed\"")
+          )
+        )
+      )
+    )
+  )
+}
+
+fn ci_focused_native_release_test_script(row: FocusedNativeReleaseTestRow) -> String {
+  concat(
+    concat("# ", concat(ci_focused_native_release_test_shell_emit_dissolution_trigger, "\n")),
+    concat(
+      concat(
+        ci_focused_native_release_test_render(
+          row: row,
+          plan: ci_focused_native_release_test_intent(row: row)
+        ),
+        "\n"
+      ),
+      concat(ci_focused_native_release_test_receipt_line(row: row), "\n")
+    )
+  )
+}

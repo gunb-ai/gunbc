@@ -1,0 +1,37 @@
+module gunbc.ci_focused_native_release_tests
+
+import std.types { List }
+import v2.workflow.ci_focused_native_release_test_emit {
+  FocusedNativeReleaseTestRow,
+  ci_focused_native_release_test_script
+}
+
+data nested_match_6777_focused_native_release_test_row: FocusedNativeReleaseTestRow = FocusedNativeReleaseTestRow {
+  control_id: "nested_match_6777",
+  package_name: "v1-compiler-tests",
+  test_filter: "nested_match_6777_emitted_matches_interpreted",
+  receipt_prefix: "[nested-match-6777-reproducer-receipt]",
+  receipt_members_suffix: " members=0:Zero,1:One,2:Many,3:Many",
+  step_display_name: "cargo test -p v1-compiler-tests --release nested_match_6777_emitted_matches_interpreted (#6777 emitted control)",
+  row_note: "Implements gunbc.roadmap_authority unreachable_patterns_construction_residue_note (#7982): emitted/native classify_length four-case control (0->Zero, 1->One, 2/3->Many)."
+}
+
+data comment_path_probe_focused_native_release_test_row: FocusedNativeReleaseTestRow = FocusedNativeReleaseTestRow {
+  control_id: "comment_path_probe",
+  package_name: "v1-compiler",
+  test_filter: "comment_only_dotted_module_path_leaks_reference_scan_red",
+  receipt_prefix: "[comment-path-probe-receipt]",
+  receipt_members_suffix: "",
+  step_display_name: "cargo test -p v1-compiler --release comment_only_dotted_module_path_leaks_reference_scan_red (#7996 §4c probe)",
+  row_note: "N3-C §4c comment-path leak probe ( #7996 ). RED-by-design until B2 lands annotation-erased closure discovery; when B2 lands, invert assert_ne! to assert_eq! in the SAME PR as the repair — §4b permanent regression control, do not delete."
+}
+
+data gunbc_ci_focused_native_release_test_rows: List<FocusedNativeReleaseTestRow> = [
+  nested_match_6777_focused_native_release_test_row
+]
+
+data gunbc_ci_focused_native_release_test_registry_note: String = "Enrolled build-job focused native release tests. Row definitions are stable registry entries; gunbc_ci_focused_native_release_test_rows is the enrollment authority. #7996 appends comment_path_probe_focused_native_release_test_row when the cli_run probe lands — do not copy v2.workflow.ci_focused_native_release_test_emit."
+
+fn nested_match_6777_focused_native_release_test_script() -> String {
+  ci_focused_native_release_test_script(row: nested_match_6777_focused_native_release_test_row)
+}
