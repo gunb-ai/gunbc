@@ -1,4 +1,4 @@
-module test.claim.long.qualified_declaration_reference_emit_cross_module_witness_test
+module test.claim.qualified_declaration_reference_emit_cross_module_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

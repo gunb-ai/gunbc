@@ -1416,7 +1416,7 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness_test.dag",
     function: "cross_module_qualified_reference_emits_call_from_correct_module",
-    reason: "compile_dag_rust_emit_check cross-module fixture importing std.emit_on_demand.interpreter_surviving_roles_ceiling: measured ~4125ms thread-CPU warm locally; PR CI run 31198854678 discovery batch 3 killed at 5544ms > 5000ms fast-lane budget. Same-module sibling stays per-PR in dag/test/claim/qualified_declaration_reference_emit_witness_test.dag.",
+    reason: "compile_dag_rust_emit_check cross-module fixture (std.unicode.types.unicode_scalar_max_code_point — minimal std closure, not the heavy std.emit_on_demand roster the prior fixture dragged in): measured 5436-5544ms thread-CPU vs 5000ms fast-lane cap on srv_fleet_arm64 PR CI discovery batch 3. Same-module sibling stays per-PR in dag/test/claim/qualified_declaration_reference_emit_witness_test.dag.",
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery; row deletes with the long-lane file"
   },
   SubstrateLongLaneRow {
