@@ -343,14 +343,24 @@ test fn a_retired_name_is_never_reissued_to_its_own_subject() -> Bool {
 }
 
 test fn retiring_an_unallocated_name_refuses() -> Bool {
-  match retire_host_name(
-    registry: empty_host_name_registry,
-    label: witness_label_text(subject: witness_subject_a(), attempt: 0),
-    reason: "witness: never allocated",
+  match mnemonic_project(
+    version: MnemonicNameV1,
+    subject_key: witness_subject_a().durable_key,
+    attempt: 0,
   ) {
-    HostNameRetirementRefused { cause: HostNameNotAllocated { label: _ } } => true
-    HostNameRetirementRefused { cause: _ } => false
-    HostNameRetiredOk { receipt: _, registry: _ } => false
+    MnemonicProjectionRefused { cause: _ } => false
+    MnemonicProjected {
+      label: label, adjective: _, animal: _, suffix: _, digest: _, attempt: _, version: _
+    } =>
+      match retire_host_name(
+        registry: empty_host_name_registry,
+        label: label,
+        reason: "witness: never allocated",
+      ) {
+        HostNameRetirementRefused { cause: HostNameNotAllocated { label: _ } } => true
+        HostNameRetirementRefused { cause: _ } => false
+        HostNameRetiredOk { receipt: _, registry: _ } => false
+      }
   }
 }
 
