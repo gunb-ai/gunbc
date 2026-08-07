@@ -13,6 +13,7 @@ import gunbc.falsifier_workflow {
   gunbc_falsifier_step_timeout_minutes,
   gunbc_falsifier_step_timeout_basis_is_measured_not_composed,
   falsifier_aggregate_verdict_if,
+  falsifier_aggregate_verdict_shell_emit_dissolution_trigger,
   expected_falsifier_yml
 }
 import gunbc.falsifier_run_control {
@@ -28,7 +29,16 @@ import gunbc.falsifier_cold_corpus_execution {
   cold_corpus_execution_receipt_json,
   cold_corpus_execution_tag,
   corpus_not_run_build_failed_tag,
+  corpus_not_run_build_cancelled_tag,
+  corpus_not_run_build_skipped_tag,
   corpus_not_run_cold_failed_before_receipt_tag,
+  aggregate_shell_receipt_build_failed,
+  aggregate_shell_receipt_build_cancelled,
+  aggregate_shell_receipt_build_skipped,
+  aggregate_shell_receipt_cold_skipped,
+  aggregate_shell_receipt_cold_cancelled,
+  aggregate_shell_receipt_cold_failed_before_receipt,
+  aggregate_shell_receipt_corpus_executed,
   corpus_executed_tag,
   corpus_not_run_tag,
   cadence_verdict_should_fail,
@@ -232,6 +242,26 @@ test fn aggregate_verdict_job_waits_for_all_arms() -> Bool {
       acc
     }
   })
+}
+
+test fn aggregate_verdict_shell_has_dissolve_on_marker() -> Bool {
+  string_contains(s: expected_falsifier_yml(), pattern: falsifier_aggregate_verdict_shell_emit_dissolution_trigger)
+}
+
+test fn aggregate_verdict_shell_receipt_literals_match_model() -> Bool {
+  let yml = expected_falsifier_yml()
+  string_contains(s: yml, pattern: aggregate_shell_receipt_build_failed())
+    && string_contains(s: yml, pattern: aggregate_shell_receipt_build_cancelled())
+    && string_contains(s: yml, pattern: aggregate_shell_receipt_build_skipped())
+    && string_contains(s: yml, pattern: aggregate_shell_receipt_cold_skipped())
+    && string_contains(s: yml, pattern: aggregate_shell_receipt_cold_cancelled())
+    && string_contains(s: yml, pattern: aggregate_shell_receipt_cold_failed_before_receipt())
+    && string_contains(s: yml, pattern: aggregate_shell_receipt_corpus_executed())
+}
+
+test fn aggregate_verdict_shell_distinguishes_build_cancelled_from_failed() -> Bool {
+  string_contains(s: expected_falsifier_yml(), pattern: corpus_not_run_build_cancelled_tag)
+    && string_contains(s: expected_falsifier_yml(), pattern: corpus_not_run_build_skipped_tag)
 }
 
 test fn aggregate_verdict_writes_cold_corpus_execution_receipt() -> Bool {

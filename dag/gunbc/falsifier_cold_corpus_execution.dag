@@ -174,3 +174,45 @@ fn cadence_verdict_should_fail(
       selection != JobOutcomeSuccess || cold != JobOutcomeSuccess
   }
 }
+
+fn aggregate_shell_receipt_build_failed() -> String {
+  cold_corpus_execution_receipt_json(
+    c: classify_cold_corpus_execution(build: JobOutcomeFailure, cold: JobOutcomeSkipped, floor_receipt_present: false)
+  )
+}
+
+fn aggregate_shell_receipt_build_cancelled() -> String {
+  cold_corpus_execution_receipt_json(
+    c: classify_cold_corpus_execution(build: JobOutcomeCancelled, cold: JobOutcomeSkipped, floor_receipt_present: false)
+  )
+}
+
+fn aggregate_shell_receipt_build_skipped() -> String {
+  cold_corpus_execution_receipt_json(
+    c: classify_cold_corpus_execution(build: JobOutcomeSkipped, cold: JobOutcomeSkipped, floor_receipt_present: false)
+  )
+}
+
+fn aggregate_shell_receipt_cold_skipped() -> String {
+  cold_corpus_execution_receipt_json(
+    c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeSkipped, floor_receipt_present: false)
+  )
+}
+
+fn aggregate_shell_receipt_cold_cancelled() -> String {
+  cold_corpus_execution_receipt_json(
+    c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeCancelled, floor_receipt_present: false)
+  )
+}
+
+fn aggregate_shell_receipt_cold_failed_before_receipt() -> String {
+  cold_corpus_execution_receipt_json(
+    c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: false)
+  )
+}
+
+fn aggregate_shell_receipt_corpus_executed() -> String {
+  cold_corpus_execution_receipt_json(
+    c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: true)
+  )
+}
