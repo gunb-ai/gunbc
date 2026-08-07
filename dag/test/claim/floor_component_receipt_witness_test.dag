@@ -2,6 +2,10 @@ module test.claim.floor_component_receipt_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool, List, Int, CommitSha }
+import gunbc.floor_component_receipt_document {
+  FloorComponentReceiptDecoding, ReceiptDecoded,
+  floor_component_receipt_decode_with
+}
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond }
 import std.measure { ClockBasis, CpuClock, WallClock }
@@ -425,4 +429,19 @@ test fn fcr_red_control_tag_built_row_records_no_mode_rather_than_guessing() -> 
   count(rows) == 1
     && string_contains(s: doc, pattern: "\"failure_mode\": \"unrecorded\"")
     && !string_contains(s: doc, pattern: "\"failure_mode\": \"none\"")
+}
+
+data selection_degradation_round_trip_note: String = "The writer/reader round trip is witnessed on the NO-SELECTION path specifically, because that is the path that was broken: the selection path always emitted the member and would have passed a round-trip check that never exercised its sibling. A claim that only covers the arm which already worked is the shape that let this ship."
+
+test fn fcr_no_selection_receipt_decodes_through_the_strict_reader() -> Bool {
+  let doc = floor_component_receipt_document(
+    workflow_name: fcr_workflow_name,
+    run_id: fcr_run_id,
+    head_sha: fcr_head_sha,
+    rows: fcr_real_run_rows()
+  )
+  match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as NonEmptyStr) {
+    ReceiptDecoded { document: d } => (d.subject.run_id as String) == (fcr_run_id as String)
+    _ => false
+  }
 }

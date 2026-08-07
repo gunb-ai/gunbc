@@ -21,6 +21,8 @@ import std.cache_interface {
   ToolchainChange,
   ManualPurge,
   Org,
+  CapacityUnobserved,
+  ReleasedNever,
 }
 
 import extdeps.external_authority { ExternalAuthority }

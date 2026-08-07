@@ -177,6 +177,8 @@ Operator pause — **last dispatch wave of this stretch**. No new PRs or childre
 
 **Sibling (do not duplicate):** [#7720](https://github.com/gunb-ai/gunbc/pull/7720) (sleek-dove) — selection skip + release≠eviction log accounting; still OPEN at park; absorb after merge.
 
+**Input to P3 (measurement, not a width trial):** [worker-private-memory-decomposition](worker-private-memory-decomposition.md) — what one worker's private footprint is MADE OF, so a width-2 failure on memory does not require re-measuring from scratch. Armed-retention worker = 2.65 GiB on the 50-entry cohort, of which **79.3% is one mutually-pinned bundle** anchored on the live `ResolvedGraph`; the whole-pool heads (518.5 MiB separable, plus the census layers inside the bundle) are entry-count-independent and duplicated per worker with zero amortization. Bears directly on this section's index-share conjunction: sharing `typed_module_cache` alone frees a **range** (83.8–1147.1 MiB), not a number, because a privately-held resolved graph pins the same bytes.
+
 **On resume (ordered):**
 
 1. Operator merges #7725 (P1 REJECT banked) and #7721 / #7722 when green — do not `gh pr merge` from session.

@@ -91,6 +91,23 @@ test fn design_witness_stats_ok_lazy_spawned_refuses() -> Bool {
   stats_ok_lazy_spawned_refuses()
 }
 
+test fn design_witness_stats_ok_active_slot_runner_owned_refuses() -> Bool {
+  match provision_build_cache_verdict(
+    catalog_id: sccache_local_id,
+    observed: DaemonStatsOk {
+      stats_line: "compile_requests=42",
+      placement: ServerRunnerOwned {
+        slot: RunnerSlotIdentity { host: "srv1", slot_index: 2 },
+        lifecycle: DesiredRunnerSlot,
+      },
+    },
+  ) {
+    ProvisionRefused { cause: RefusalServerRunnerOwned, reason: _ } => true
+    ProvisionRefused { cause: _, reason: _ } => false
+    ProvisionConverged { catalog_id: _, stats_line: _ } => false
+  }
+}
+
 test fn design_witness_stats_ok_placement_unknown_refuses() -> Bool {
   stats_ok_placement_unknown_refuses()
 }

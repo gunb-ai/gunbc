@@ -8,6 +8,8 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchLiveSession,
   CodexDispatchProvider,
   dispatch_provider_instance_for,
+  dispatch_live_sessions_from_entries,
+  fixture_projection_standing_refusal_tmux_entry,
 }
 import gunbc.worker_lifecycle {
   WorkerProcessExited,
@@ -23,7 +25,20 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data sessions_panel_witness_note: String = "Sessions receipts keep five axes mechanically distinct on the wire and client: session-container presence, pane/process lifecycle, configured provider versus provider observation, readiness/phase, and cleanup eligibility. A retained dead pane remains session present, projects process exited, and offers clear; the unprobed fixture projects process unobserved and cleanup unavailable. Session-list refusal remains LOUD/503 and can never become an empty successful set."
+data sessions_panel_witness_note: String = "Sessions receipts keep five axes mechanically distinct on the wire and client: session-container presence, pane/process lifecycle, configured provider versus provider observation, readiness/phase, and cleanup eligibility. A retained dead pane remains session present, projects process exited, and offers clear; the unprobed fixture projects process unobserved and cleanup unavailable. Session-list refusal remains LOUD/503 and can never become an empty successful set. Production standing refusal omits tmux rows from admission (fixture_projection_standing_refusal_tmux_entry) — the wire must not fabricate a partial session row."
+
+test fn witness_projection_standing_refusal_specimen_omits_wire_row() -> Bool {
+  let o = Observed {
+    live: dispatch_live_sessions_from_entries(
+      entries: [fixture_projection_standing_refusal_tmux_entry()],
+    ),
+  }
+  let j = belt_sessions_observed_json(o: o)
+  string_contains(s: j, pattern: "\"observe_refused\": false")
+    && string_contains(s: j, pattern: "\"sessions\": []")
+    && !string_contains(s: j, pattern: "\"node_id\": \"panel-a\"")
+    && belt_sessions_http_status(o: o) == 200
+}
 
 fn fixture_live() -> DispatchLiveSession {
   DispatchLiveSession {
@@ -171,7 +186,8 @@ test fn sessions_banner_is_styled_loud() -> Bool {
 }
 
 test fn sessions_panel_keystone_holds() -> Bool {
-  sessions_observed_projects_to_wire()
+  witness_projection_standing_refusal_specimen_omits_wire_row()
+    && sessions_observed_projects_to_wire()
     && retained_dead_process_projects_clear_without_erasing_session()
     && sessions_refusal_is_loud_on_the_wire()
     && sessions_client_marks_presence_reobserves_and_shouts_refusal()
