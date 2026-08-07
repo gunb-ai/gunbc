@@ -1,0 +1,274 @@
+module gunbc.provider_wire_evidence
+
+import std.types { String, NonEmptyStr, FilePath, Bool, Int }
+import std.content_hash { ContentHash, as_content_hash_sha512 }
+import std.measure { ByteSize, byte_size }
+import extdeps.shell
+import extdeps.shell.exec
+import extdeps.filesystem.filesystem_io
+import extdeps.tools.sha512sum {
+  sha512sum_observe_file,
+  Sha512FileObserved,
+  Sha512FileObservationRefused,
+}
+import gunbc.retained_shell_script { retained_foreign }
+
+data provider_wire_evidence_note: String = "Durable private wire evidence for provider account-standing captures. Publication is exclusive under an evidence root: 0700 directory → unique same-directory temporary file → write raw bytes → SHA-512 → hardlink to content-addressed name (fails closed if a concurrent writer already published a different object at that hex) → independent digest read-back → 0600 retained object → remove temporary. byte_count is ByteSize (std.measure) over the UTF-8 code-unit length of the retained String carrier (substrate String length), not a separate host byte-count observation."
+
+data process_exit_observation_divergence_note: String = "ProcessExitObservation models shell.Exec transport facts (success bool + optional exit_code), not std.process.ProcessExit (ExitSuccess | ExitFailure with code and reason). Press receipt exit semantics live in gunbc.codex_app_server_press.ProviderProcessExit (parsed sentinel mux vs observation-failed). Converge on shell→intent typed stdio transport (docs/plans/shell-intent-emit-realization-design.md) — this observation carrier deletes when typed stdio replaces sentinel reparsing."
+
+type PrivateEvidenceRef {
+  root: FilePath
+  content_address_hex: NonEmptyStr
+}
+
+type ProcessExitObservation {
+  success: Bool
+  exit_code: Int?
+}
+
+type ProviderWireEvidenceReceipt {
+  private_ref: PrivateEvidenceRef
+  content_digest: ContentHash
+  byte_count: ByteSize
+  process_exit: ProcessExitObservation
+  stderr_ref: PrivateEvidenceRef?
+}
+
+type PrivateEvidenceBytesRetention
+  = PrivateEvidenceBytesRetained {
+      ref: PrivateEvidenceRef
+      content_digest: ContentHash
+      byte_count: ByteSize
+    }
+  | PrivateEvidenceBytesRetentionRefused {
+      cause: NonEmptyStr
+    }
+
+type ProviderWireCaptureOutcome
+  = ProviderWireCaptureOk {
+      receipt: ProviderWireEvidenceReceipt
+    }
+  | ProviderWireCaptureRefused {
+      cause: NonEmptyStr
+    }
+
+fn private_evidence_object_path(root: FilePath, hex: NonEmptyStr) -> String {
+  concat(root as String, concat("/", hex as String))
+}
+
+fn ensure_private_evidence_root(root: FilePath) -> Bool {
+  let made = shell.Mkdir.Parents(path: root)
+  if made.success == false {
+    false
+  } else {
+    let mode = retained_foreign(
+      body: concat("chmod 0700 '", concat(root as String, "'")),
+      reason: "Private evidence root must be owner-only (0700)" as NonEmptyStr,
+    )
+    shell.Exec.Run(script: mode).success
+  }
+}
+
+fn mktemp_file_in_dir(dir: FilePath) -> FilePath? {
+  let script = retained_foreign(
+    body: concat("mktemp -p '", concat(dir as String, "'")),
+    reason: "Unique same-directory staging file for exclusive evidence publication" as NonEmptyStr,
+  )
+  let run = shell.Exec.Run(script: script)
+  if run.success == false || run.stdout.trim() == "" {
+    none
+  } else {
+    Present { value: run.stdout.trim() as FilePath }
+  }
+}
+
+fn publish_evidence_object_exclusive(
+  staging: FilePath,
+  dest: FilePath,
+) -> Bool {
+  let script = retained_foreign(
+    body: concat(
+      "ln '",
+      concat(
+        staging as String,
+        concat(
+          "' '",
+          concat(
+            dest as String,
+            "' && chmod 0600 '",
+            concat(dest as String, "' && rm -f '"),
+            concat(staging as String, "'"),
+          ),
+        ),
+      ),
+    ),
+    reason: "Exclusive hardlink publish of content-addressed evidence then 0600 + remove staging" as NonEmptyStr,
+  )
+  shell.Exec.Run(script: script).success
+}
+
+fn retain_private_evidence_bytes_detailed(
+  root: FilePath,
+  bytes: String,
+) -> PrivateEvidenceBytesRetention {
+  if ensure_private_evidence_root(root: root) == false {
+    PrivateEvidenceBytesRetentionRefused {
+      cause: "private evidence root mkdir/chmod failed" as NonEmptyStr,
+    }
+  } else {
+    match mktemp_file_in_dir(dir: root) {
+      Absent =>
+        PrivateEvidenceBytesRetentionRefused {
+          cause: "private evidence staging mktemp failed" as NonEmptyStr,
+        }
+      Present { value: staging } => {
+        let wrote = Filesystem.Write(path: staging as String, content: bytes)
+        if wrote.success == false {
+          let _ = shell.Remove.RecursiveForce(path: staging)
+          PrivateEvidenceBytesRetentionRefused {
+            cause: "private evidence staging write failed" as NonEmptyStr,
+          }
+        } else {
+          match sha512sum_observe_file(path: staging) {
+            Sha512FileObservationRefused { cause: cause } => {
+              let _ = shell.Remove.RecursiveForce(path: staging)
+              PrivateEvidenceBytesRetentionRefused { cause: cause }
+            }
+            Sha512FileObserved { digest } => {
+              let dest_path = private_evidence_object_path(root: root, hex: digest.hex) as FilePath
+              let existing = shell.Test.IsFile(path: dest_path)
+              if existing.is_file {
+                match sha512sum_observe_file(path: dest_path) {
+                  Sha512FileObservationRefused { cause: cause } => {
+                    let _ = shell.Remove.RecursiveForce(path: staging)
+                    PrivateEvidenceBytesRetentionRefused { cause: cause }
+                  }
+                  Sha512FileObserved { digest: existing_digest } => {
+                    let _ = shell.Remove.RecursiveForce(path: staging)
+                    if (existing_digest.hex as String) != (digest.hex as String) {
+                      PrivateEvidenceBytesRetentionRefused {
+                        cause: "concurrent private evidence digest mismatch" as NonEmptyStr,
+                      }
+                    } else {
+                      PrivateEvidenceBytesRetained {
+                        ref: PrivateEvidenceRef {
+                          root: root,
+                          content_address_hex: digest.hex,
+                        },
+                        content_digest: as_content_hash_sha512(digest: digest),
+                        byte_count: byte_size(count: string_length(s: bytes)),
+                      }
+                    }
+                  }
+                }
+              } else if publish_evidence_object_exclusive(
+                staging: staging,
+                dest: dest_path,
+              ) == false {
+                let _ = shell.Remove.RecursiveForce(path: staging)
+                match sha512sum_observe_file(path: dest_path) {
+                  Sha512FileObserved { digest: winner } =>
+                    if (winner.hex as String) == (digest.hex as String) {
+                      PrivateEvidenceBytesRetained {
+                        ref: PrivateEvidenceRef {
+                          root: root,
+                          content_address_hex: digest.hex,
+                        },
+                        content_digest: as_content_hash_sha512(digest: digest),
+                        byte_count: byte_size(count: string_length(s: bytes)),
+                      }
+                    } else {
+                      PrivateEvidenceBytesRetentionRefused {
+                        cause: "exclusive evidence publish lost race to different digest" as NonEmptyStr,
+                      }
+                    }
+                  Sha512FileObservationRefused { cause: cause } =>
+                    PrivateEvidenceBytesRetentionRefused { cause: cause }
+                }
+              } else {
+                match sha512sum_observe_file(path: dest_path) {
+                  Sha512FileObservationRefused { cause: cause } =>
+                    PrivateEvidenceBytesRetentionRefused { cause: cause }
+                  Sha512FileObserved { digest: readback } =>
+                    if (readback.hex as String) != (digest.hex as String) {
+                      PrivateEvidenceBytesRetentionRefused {
+                        cause: "private evidence read-back digest mismatch" as NonEmptyStr,
+                      }
+                    } else {
+                      PrivateEvidenceBytesRetained {
+                        ref: PrivateEvidenceRef {
+                          root: root,
+                          content_address_hex: digest.hex,
+                        },
+                        content_digest: as_content_hash_sha512(digest: digest),
+                        byte_count: byte_size(count: string_length(s: bytes)),
+                      }
+                    }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn retain_private_evidence_bytes(root: FilePath, bytes: String) -> PrivateEvidenceRef? {
+  match retain_private_evidence_bytes_detailed(root: root, bytes: bytes) {
+    PrivateEvidenceBytesRetentionRefused { cause: _ } => none
+    PrivateEvidenceBytesRetained { ref: ref, content_digest: _, byte_count: _ } =>
+      Present { value: ref }
+  }
+}
+
+fn retain_provider_wire_capture(
+  evidence_root: FilePath,
+  stdout: String,
+  stderr: String,
+  success: Bool,
+  exit_code: Int?,
+) -> ProviderWireCaptureOutcome {
+  match retain_private_evidence_bytes_detailed(root: evidence_root, bytes: stdout) {
+    PrivateEvidenceBytesRetentionRefused { cause: cause } =>
+      ProviderWireCaptureRefused { cause: cause }
+    PrivateEvidenceBytesRetained {
+      ref: stdout_ref,
+      content_digest: stdout_digest,
+      byte_count: stdout_bytes,
+    } =>
+      if stderr == "" {
+        ProviderWireCaptureOk {
+          receipt: ProviderWireEvidenceReceipt {
+            private_ref: stdout_ref,
+            content_digest: stdout_digest,
+            byte_count: stdout_bytes,
+            process_exit: ProcessExitObservation {
+              success: success,
+              exit_code: exit_code,
+            },
+            stderr_ref: none,
+          },
+        }
+      } else {
+        match retain_private_evidence_bytes_detailed(root: evidence_root, bytes: stderr) {
+          PrivateEvidenceBytesRetentionRefused { cause: cause } =>
+            ProviderWireCaptureRefused { cause: cause }
+          PrivateEvidenceBytesRetained { ref: stderr_ref, content_digest: _, byte_count: _ } =>
+            ProviderWireCaptureOk {
+              receipt: ProviderWireEvidenceReceipt {
+                private_ref: stdout_ref,
+                content_digest: stdout_digest,
+                byte_count: stdout_bytes,
+                process_exit: ProcessExitObservation {
+                  success: success,
+                  exit_code: exit_code,
+                },
+                stderr_ref: Present { value: stderr_ref },
+              },
+            }
+        }
+      }
+  }
+}

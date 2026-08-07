@@ -3,8 +3,9 @@ module extdeps.container.oci.digest
 import std.types { NonEmptyStr, String }
 import std.content_hash {
   Sha256Digest,
+  Sha512Digest,
   sha256_hex_digest,
-  content_hash_validate_lower_hex_length,
+  sha512_hex_digest,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -29,7 +30,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data oci_content_digest_note: String = "OCI digest authority (image-spec descriptor.md; distribution-spec digest): algorithm-qualified content address with wire form algorithm:encoded. Modelled as OciContentDigest coproduct (review 45466) — OciSha256Digest(Sha256Digest) | OciSha512Digest(OciSha512DigestBody) | OciOtherDigest(OciOtherDigestBody) — so algorithm tag and payload cannot be forged independently. sha256 arm carries std.content_hash.Sha256Digest directly; sha512 body uses OciSha512DigestHex (String where lower_hex_128); other body uses OciOtherDigestAlgorithm (String where oci_other_digest_algorithm — construction-walls reserved sha256/sha512 wire tokens and cites image-spec algorithm grammar algorithm-component ([a-z0-9]+) separated by [+._-], review 45505) plus OciOtherDigestEncoded (String where oci_other_digest_encoded — [a-zA-Z0-9=_-]+ per descriptor.md, review 45479/45731). Equality is substrate structural == on the coproduct (no parallel oci_content_digest_eq predicate). dissolve-on: cite digest-length law per algorithm when a second validated sha512 consumer needs more than length-128 wire check."
+data oci_content_digest_note: String = "OCI digest authority (image-spec descriptor.md; distribution-spec digest): algorithm-qualified content address with wire form algorithm:encoded. Modelled as OciContentDigest coproduct (review 45466) — OciSha256Digest(Sha256Digest) | OciSha512Digest(Sha512Digest) | OciOtherDigest(OciOtherDigestBody) — so algorithm tag and payload cannot be forged independently. Both sha256 and sha512 arms carry std.content_hash digest carriers directly (operator portfolio 2026-08-04: npm is the second validated SHA-512 consumer that dissolved OciSha512DigestHex / OciSha512DigestBody). other body uses OciOtherDigestAlgorithm (String where oci_other_digest_algorithm — construction-walls reserved sha256/sha512 wire tokens and cites image-spec algorithm grammar algorithm-component ([a-z0-9]+) separated by [+._-], review 45505) plus OciOtherDigestEncoded (String where oci_other_digest_encoded — [a-zA-Z0-9=_-]+ per descriptor.md, review 45479/45731). Equality is substrate structural == on the coproduct (no parallel oci_content_digest_eq predicate)."
 
 fn oci_encoded_digest_char_allowed(cp: Int) -> Bool {
   (cp >= 48 && cp <= 57)
@@ -118,15 +119,9 @@ fn oci_other_digest_encoded(value: String) -> Bool {
   oci_encoded_digest_syntax_valid(text: value, index: 0)
 }
 
-type OciSha512DigestHex = String where lower_hex_128
-
 type OciOtherDigestAlgorithm = String where oci_other_digest_algorithm
 
 type OciOtherDigestEncoded = String where oci_other_digest_encoded
-
-type OciSha512DigestBody {
-  hex: OciSha512DigestHex
-}
 
 type OciOtherDigestBody {
   algorithm: OciOtherDigestAlgorithm
@@ -135,13 +130,13 @@ type OciOtherDigestBody {
 
 type OciContentDigest
   = OciSha256Digest(Sha256Digest)
-  | OciSha512Digest(OciSha512DigestBody)
+  | OciSha512Digest(Sha512Digest)
   | OciOtherDigest(OciOtherDigestBody)
 
 fn oci_content_digest_wire_algorithm(d: OciContentDigest) -> String {
   match d {
     OciSha256Digest(_) => "sha256"
-    OciSha512Digest(body) => "sha512"
+    OciSha512Digest(_) => "sha512"
     OciOtherDigest(body) => body.algorithm as String
   }
 }
@@ -149,7 +144,7 @@ fn oci_content_digest_wire_algorithm(d: OciContentDigest) -> String {
 fn oci_content_digest_encoded_hex(d: OciContentDigest) -> String {
   match d {
     OciSha256Digest(digest) => digest.hex as String
-    OciSha512Digest(body) => body.hex as String
+    OciSha512Digest(digest) => digest.hex as String
     OciOtherDigest(body) => body.encoded as String
   }
 }
@@ -197,19 +192,9 @@ fn parse_oci_content_digest_wire(raw: String) -> OciContentDigest? {
           Absent => none
         }
       } else if parts.algorithm == "sha512" {
-        if content_hash_validate_lower_hex_length(
-          text: parts.encoded,
-          expected_hex_digits: 128,
-        ) {
-          Present {
-            value: OciSha512Digest(
-              OciSha512DigestBody {
-                hex: parts.encoded as OciSha512DigestHex,
-              },
-            )
-          }
-        } else {
-          none
+        match sha512_hex_digest(hex: parts.encoded) {
+          Present { value: digest } => Present { value: OciSha512Digest(digest) }
+          Absent => none
         }
       } else if !(oci_other_digest_algorithm(value: parts.algorithm)) {
         none

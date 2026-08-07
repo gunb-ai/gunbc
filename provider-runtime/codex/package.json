@@ -1,0 +1,8 @@
+{
+  "name": "gunbc-provider-runtime-codex",
+  "private": true,
+  "description": "Exact Codex app-server runtime selection for gunbc.package_delivery — not a published package.",
+  "dependencies": {
+    "@openai/codex": "0.146.0"
+  }
+}

@@ -48,6 +48,19 @@ func run_generated_artifact_drift_gate_body() -> ProcessExit {
   }
 }
 
+data generated_artifact_drift_failure_receipt_note: String = "The floor witness collapses this gate's ProcessExit to Bool via tools.ci_gates.exit_ok, so a red CI run reports only 'returned Bool(false)' and drops the located path run_generated_artifact_drift_gate_body already builds. This projects that SAME exit reason into the claim_executor failure-receipt companion channel (same pattern as tools.extdeps_scope_placement_gate.scope_placement_failure_receipt)."
+
+fn generated_artifact_drift_failure_reason(exit: ProcessExit) -> String {
+  match exit {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason: reason } => reason
+  }
+}
+
+func generated_artifact_drift_failure_receipt() -> String {
+  generated_artifact_drift_failure_reason(exit: run_generated_artifact_drift_gate_body())
+}
+
 func main() -> ProcessExit {
   run_generated_artifact_drift_gate_body()
 }

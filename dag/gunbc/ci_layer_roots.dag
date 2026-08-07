@@ -663,6 +663,18 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_install_media_dissolve
   },
   WitnessExclusionRow {
+    pattern: "codex_package_delivery_wet_witness_test.dag",
+    classification: FalsifierRehomedBinWet,
+    reason: "wet real-execution class re-homed off the per-PR floor (witness-time ruling + wet_integration posture): DownloadToFile + sha512sum + npm cache add of admitted bytes + npm ci --offline + content-addressed release publish. Measured claim_batch --wet materialize wall ~150s (> bin_witness_wet_per_row_wall_budget_seconds). Exact fns enroll in falsifier_rehomed_bin_wet_rows (falsifier batch 5). OfflineLocalRecipe alone is UnclassifiedPathDeferral since 2026-08-04.",
+    dissolve_on: "a dedicated integration workflow enrolls these exact fns with durable receipts, or measured wall lands under bin_witness_wet_per_row_wall_budget_seconds and re-enrolls per-PR consciously"
+  },
+  WitnessExclusionRow {
+    pattern: "codex_app_server_press_wet_witness_test.dag",
+    classification: FalsifierRehomedBinWet,
+    reason: "wet real-execution class re-homed off the per-PR floor: materialize Codex runtime then typed app-server account-standing session. Measured wall >> bin_witness_wet_per_row_wall_budget_seconds. Exact fn enrolls in falsifier_rehomed_bin_wet_rows. OfflineLocalRecipe alone is UnclassifiedPathDeferral since 2026-08-04.",
+    dissolve_on: "a dedicated integration workflow enrolls the account-standing trip with a durable receipt, or measured wall lands under bin_witness_wet_per_row_wall_budget_seconds and re-enrolls per-PR consciously"
+  },
+  WitnessExclusionRow {
     pattern: "resolution_divergence_silent_pick_gate_witness_test.dag",
     classification: BinWitnessWet,
     reason: "nightly falsifier batch 4 bin-execution witness: closure-scoped resolution-divergence census with SILENT-PICK-GATE fail-closed arms (falsifier_silent_pick_gate_note)",
@@ -1157,6 +1169,36 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
     function: "frontier_probe_second_source_root_population_gates_pass_holds",
     reason: "742109ms measured eval on claim_batch --wet 2026-08-04 (123x bin_witness_wet_per_row_wall_budget_seconds): full receipt_for_subject with observed SourceRef through assemble on a two-root closure — population-totality integration leg, not admission-algebra",
     dissolve_on: "measured eval lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR consciously, or delete when emit-stage receipt is no longer full-pipeline priced"
+  },
+  RehomedBinWetRow {
+    entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag",
+    function: "acquire_required_codex_tarball_sha512_matches_lock",
+    reason: "Wet Codex package-delivery trip: HTTPS registry acquire + SHA-512 admit of the lock-pinned wrapper tarball. Hermetic discovery refuses host effects; measured sibling materialize wall ~150s so the file is off the per-PR bin wet floor (witness-time ruling). Falsifier batch 5 is the executing consumer.",
+    dissolve_on: "dedicated integration workflow enrolls with durable receipt, or measured wall under bin_witness_wet_per_row_wall_budget_seconds re-enrolls per-PR"
+  },
+  RehomedBinWetRow {
+    entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag",
+    function: "acquire_exact_target_pair_admits_wrapper_and_platform",
+    reason: "Wet Codex package-delivery trip: admit exact wrapper+platform lock-node pair. Same wet cost class as its file siblings; falsifier batch 5 executes.",
+    dissolve_on: "fires with acquire_required_codex_tarball_sha512_matches_lock dissolve_on (same file, same cadence)"
+  },
+  RehomedBinWetRow {
+    entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag",
+    function: "materialize_codex_runtime_bundle_produces_native_executable",
+    reason: "~150s measured claim_batch --wet wall (npm ci --offline + tree/schema receipt + atomic publish): exceeds bin_witness_wet_per_row_wall_budget_seconds; not per-PR floor. Falsifier batch 5 executes.",
+    dissolve_on: "dedicated integration workflow enrolls with durable receipt, or measured wall under bin_witness_wet_per_row_wall_budget_seconds re-enrolls per-PR"
+  },
+  RehomedBinWetRow {
+    entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag",
+    function: "materialize_identical_input_twice_reuses_same_release_identity",
+    reason: "Positive control for content-addressed release reuse after external scratch + atomic no-replace publish. Same materialize cost class (~2x first-trip wall); falsifier batch 5 executes.",
+    dissolve_on: "fires with materialize_codex_runtime_bundle_produces_native_executable dissolve_on (same file, same mechanism)"
+  },
+  RehomedBinWetRow {
+    entry: "dag/test/claim/codex_app_server_press_wet_witness_test.dag",
+    function: "press_account_trip_yields_standing_or_typed_refusal_never_turn_started",
+    reason: "Wet Codex account-standing trip (materialize + app-server initialize/account/rateLimits). Wall >> per-PR bin budget; must never claim turn_started. Falsifier batch 5 is the executing consumer until a dedicated integration workflow lands.",
+    dissolve_on: "dedicated integration workflow enrolls with durable receipt, or measured wall under bin_witness_wet_per_row_wall_budget_seconds re-enrolls per-PR"
   }
 ]
 

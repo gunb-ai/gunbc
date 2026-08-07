@@ -125,6 +125,8 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 
 data scope_carrier_paths: List<String> = [
   "dag/extdeps/automation/playwright.dag",
+  "dag/extdeps/package.dag",
+  "dag/extdeps/npm.dag",
   "dag/extdeps/browser/chromium.dag",
   "dag/extdeps/container/oci/digest.dag",
   "dag/extdeps/git/publication_transport.dag",
@@ -173,6 +175,10 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/systems/nvidia_fleet_lifecycle.dag",
   "dag/extdeps/systems/types.dag",
   "dag/extdeps/tools/wc.dag",
+  "dag/extdeps/tools/sha512sum.dag",
+  "dag/extdeps/tools/npm.dag",
+  "dag/extdeps/tools/node.dag",
+  "dag/extdeps/llm/codex_app_server.dag",
   "dag/extdeps/vendor/atlassian.dag",
   "dag/extdeps/vendor/microsoft.dag",
   "dag/extdeps/vendor/the_wand_company.dag",
