@@ -185,6 +185,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/vendor/rosewill.dag",
   "dag/extdeps/vendor/tp_link.dag",
   "dag/extdeps/systems/nvidia.dag",
+  "dag/extdeps/systems/nvidia_dgx_spark_pxe.dag",
   "dag/extdeps/systems/nvidia_fleet_lifecycle.dag",
   "dag/extdeps/systems/nvidia_dgx_spark_setup.dag",
   "dag/extdeps/systems/types.dag",
