@@ -18,19 +18,11 @@ import v2.std.orchestration {
 import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
 import v2.extdeps.languages.bash_orch_if {
-  bash_path_predicate_target_model,
-  bash_dirname_ascent_target_model
+  bash_nearest_ancestor_locate_assign_command,
+  bash_nearest_ancestor_locate_cond_command,
+  bash_nearest_ancestor_locate_body_command,
 }
-import std.path_intent {
-  DirnameAscent,
-  PathEntryKind,
-  PathIntent,
-  PathJoin,
-  PathLiteral,
-  PathNonempty,
-  PathNotEq,
-  PathRef
-}
+import std.path_intent { NearestAncestorContaining, PathRef }
 import std.filesystem.types { RegularFile }
 import std.types { FilePathParts, NonEmptyStr }
 
@@ -38,64 +30,30 @@ data ci_floor_peak_path_predicate_qualification_note: String = "PathPredicate IS
 
 data ci_floor_peak_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ floor-peak cgroup observation emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
 
-data ci_floor_peak_assign_cgroup_dir_command: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\{print $3\}' /proc/self/cgroup)\""
+data ci_floor_peak_nearest_ancestor_spec: NearestAncestorContaining = NearestAncestorContaining {
+  start: PathRef { name: "d" as NonEmptyStr },
+  stop_before: FilePathParts { segments: ["sys", "fs", "cgroup"] },
+  relative_entry: FilePathParts { segments: ["memory.peak"] },
+  expected_kind: RegularFile,
+}
 
-data ci_floor_peak_path_leaf_adoption_note: String = "THE CGROUP-ASCENT LOOP'S TWO COMMAND LEAVES ARE DERIVED FROM std.path_intent, NOT AUTHORED (shell -> intent, this PR). Before this change ci_floor_peak_while_cond_command and ci_floor_peak_while_body_command were hand-spelled bash held in String rows: the loop's INTENT — walk up from the process's own cgroup directory until a readable memory.peak turns up, stopping at the mount root — lived only in that spelling, so nothing in the substrate could see that $d is a path, that /sys/fs/cgroup is a path literal, that $d/memory.peak is a join, or that -f asks a filesystem entry-kind question. A typo inside those quotes was writable and would have emitted silently. Now the predicate and the ascent are constructed as PathPredicate and DirnameAscent values and the bash text is produced by bash_orch_if's target models, which is the SAME lowering the v2.workflow.orchestration_while_emit witness already proved byte-for-byte against hand-authored goldens; that witness's model rows and this module's are now two consumers of one authority rather than a model beside an unmodeled production copy (DESIGN section 2 / section 5 construction-over-validation). WHAT IS NOT CLIMBED, stated so the partial is not read as the whole: Run.command remains String-typed, so these two leaves are derived text flowing into an untyped seam and a THIRD leaf on the same pipeline — ci_floor_peak_assign_cgroup_dir_command, the awk parse of /proc/self/cgroup — stays raw because no model covers reading a field out of a procfs line. The successor that closes both is the orchestration-type extension named in ci_floor_peak_path_leaf_residue_note."
+data ci_floor_peak_cgroup_locate_vertical_note: String = "THE CGROUP LOCATE VERTICAL COMPOSEES TWO TYPED AUTHORITIES. extdeps.linux.proc_self_cgroup owns unified-hierarchy membership decode and its bash assign (refuses missing/ambiguous/malformed distinctly; no head -1; no empty-path widen). std.path_intent NearestAncestorContaining names the nearest-ancestor search policy (start PathRef, stop_before mount, relative_entry memory.peak). bash_orch_if lowers both without reimplementing the parser. Peak reset/cat/echo calibration leaves stay raw String — Phase 2 typed filesystem observation."
 
 data ci_floor_peak_path_model_refused_poison: String = "__GUNBC_PATH_INTENT_LOWERING_REFUSED__ floor-peak cgroup path-intent leaf lowering was rejected by v2.extdeps.languages.bash_orch_if; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red (DESIGN 5: refuse, never widen). WHY A POISON RATHER THAN EMPTY TEXT, on the measured facts rather than the intuitive ones: the Run.command seam is String-typed and cannot carry an Outcome, so the refusal arm has to be SOME string, and the sibling witness file's model-text helpers return \"\" there. An earlier draft of this row justified the poison by claiming an empty while-condition is an always-true loop that would spin forever. THAT IS FALSE, tested 2026-08-05 against /bin/sh, /bin/dash and /bin/bash: 'while ; do' is a SYNTAX ERROR in all three, so an empty leaf would fail loudly rather than hang. The real argument is smaller and survives the correction. An empty String is a well-typed, ordinary-looking value flowing through an untyped seam; it says nothing about which lowering refused or why, and its first observable symptom is a shell parse failure inside a generated workflow — attributed to ci.yml at CI runtime, several layers from the path model that actually refused. The poison carries the cause to the place the reader lands. In practice the drift gate catches either one, because both differ from the committed bytes; what the poison buys is a LOCATED refusal instead of an anonymous one, which is the half of DESIGN section 5 that a mere red does not supply."
 
-data ci_floor_peak_cgroup_dir_ref: PathIntent = PathRef { name: "d" as NonEmptyStr }
-
-data ci_floor_peak_cgroup_mount_root: PathIntent = PathLiteral {
-  parts: FilePathParts { segments: ["sys", "fs", "cgroup"] }
-}
-
-data ci_floor_peak_memory_peak_path: PathIntent = PathJoin {
-  base: ci_floor_peak_cgroup_dir_ref,
-  suffix: FilePathParts { segments: ["memory.peak"] }
-}
-
-data ci_floor_peak_while_predicate: std.path_intent.PathPredicate = std.path_intent.And {
-  lhs: PathNonempty { path: ci_floor_peak_cgroup_dir_ref },
-  rhs: std.path_intent.And {
-    lhs: PathNotEq {
-      lhs: ci_floor_peak_cgroup_dir_ref,
-      rhs: ci_floor_peak_cgroup_mount_root
-    },
-    rhs: std.path_intent.Not {
-      inner: PathEntryKind {
-        path: ci_floor_peak_memory_peak_path,
-        kind: RegularFile
-      }
-    }
-  }
-}
-
-data ci_floor_peak_while_ascent: DirnameAscent = DirnameAscent {
-  path: ci_floor_peak_cgroup_dir_ref,
-  target: "d" as NonEmptyStr
+fn ci_floor_peak_assign_cgroup_dir_command() -> String {
+  let cmd = bash_nearest_ancestor_locate_assign_command(spec: ci_floor_peak_nearest_ancestor_spec)
+  if cmd == "" { ci_floor_peak_path_model_refused_poison } else { cmd }
 }
 
 fn ci_floor_peak_while_cond_command() -> String {
-  match bash_path_predicate_target_model(predicate: ci_floor_peak_while_predicate) {
-    Accepted { value: source, diagnostics: d } =>
-      match d {
-        None => source.authority_source_text
-        Some { diagnostics: _ } => ci_floor_peak_path_model_refused_poison
-      }
-    Rejected { diagnostics: _ } => ci_floor_peak_path_model_refused_poison
-  }
+  let cmd = bash_nearest_ancestor_locate_cond_command(spec: ci_floor_peak_nearest_ancestor_spec)
+  if cmd == "" { ci_floor_peak_path_model_refused_poison } else { cmd }
 }
 
 fn ci_floor_peak_while_body_command() -> String {
-  match bash_dirname_ascent_target_model(ascent: ci_floor_peak_while_ascent) {
-    Accepted { value: source, diagnostics: d } =>
-      match d {
-        None => source.authority_source_text
-        Some { diagnostics: _ } => ci_floor_peak_path_model_refused_poison
-      }
-    Rejected { diagnostics: _ } => ci_floor_peak_path_model_refused_poison
-  }
+  let cmd = bash_nearest_ancestor_locate_body_command(spec: ci_floor_peak_nearest_ancestor_spec)
+  if cmd == "" { ci_floor_peak_path_model_refused_poison } else { cmd }
 }
 
 data ci_floor_peak_test_f_memory_peak_command: String = "[ -f \"$d/memory.peak\" ]"
@@ -190,7 +148,7 @@ fn ci_floor_peak_emit_pipeline(p: Pipeline) -> String {
   }
 }
 
-data ci_floor_peak_path_leaf_residue_note: String = "🟡 dissolve-on: v2.std.orchestration gains a path arm — Predicate carries PathPredicate and PipelineStep carries DirnameAscent — so the cgroup ascent is a typed node in the pipeline instead of derived text at a String seam. TODAY'S EXACT STATE, which is what makes the trigger checkable rather than aspirational: Predicate is ExitZero | LogMatches | StrEq | StrEmpty | StrNonempty | IntNe | Not | And | Or and PipelineStep is Do | Comment | Exit | If | For | While | BoundedPoll — neither coproduct has a path member, which is precisely why this module must lower to text HERE and hand a String to Run.command. When those arms exist, ci_floor_peak_while_cond_command and ci_floor_peak_while_body_command delete outright and orch_emit_step lowers the model at emission time, one layer down, where the medium already lives; the two model rows above survive unchanged as the arms' payloads. The third leaf, ci_floor_peak_assign_cgroup_dir_command, does NOT dissolve on that trigger and is deliberately not counted against it: parsing the cgroup path out of a /proc/self/cgroup line is a procfs field read that std.path_intent does not model at all, so it is separately owed to the shell -> intent Phase 2 typed-observation work (host_effect_apply), the same trigger ci_floor_phase_journal_shell_emit_dissolution_trigger names."
+data ci_floor_peak_path_leaf_residue_note: String = "🟡 dissolve-on: v2.std.orchestration gains a path arm — Predicate carries PathPredicate and PipelineStep carries DirnameAscent — so the cgroup ascent is a typed node in the pipeline instead of derived text at a String seam. TODAY'S EXACT STATE: Predicate and PipelineStep lack path members, so this module lowers NearestAncestorContaining to text HERE. When those arms exist, ci_floor_peak_while_cond_command and ci_floor_peak_while_body_command delete; ci_floor_peak_nearest_ancestor_spec survives as the arm payload. Membership assign now derives from extdeps.linux.proc_self_cgroup; peak reset/cat/echo calibration leaves remain raw String — Phase 2 typed filesystem observation."
 
 fn ci_floor_peak_cgroup_locate_while() -> PipelineStep {
   While {
@@ -206,7 +164,7 @@ fn ci_floor_peak_cgroup_locate_while() -> PipelineStep {
 
 fn ci_floor_peak_cgroup_locate_steps() -> List<PipelineStep> {
   [
-    ci_floor_peak_do(command: ci_floor_peak_assign_cgroup_dir_command),
+    ci_floor_peak_do(command: ci_floor_peak_assign_cgroup_dir_command()),
     ci_floor_peak_cgroup_locate_while()
   ]
 }

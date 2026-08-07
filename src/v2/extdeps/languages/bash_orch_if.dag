@@ -22,7 +22,8 @@ import v2.std.diagnostic {
 }
 import std.filesystem.types { EntryKind }
 import v2.std.node { Node, Symbol }
-import std.path_intent { PathIntent, PathPredicate, DirnameAscent, PathRef, PathLiteral, PathJoin, PathNonempty, PathNotEq, PathEntryKind, Not, And, Or }
+import std.path_intent { PathIntent, PathPredicate, DirnameAscent, PathRef, PathLiteral, PathJoin, PathNonempty, PathNotEq, PathEntryKind, Not, And, Or, NearestAncestorContaining, nearest_ancestor_while_predicate, nearest_ancestor_while_ascent, nearest_ancestor_walk_target }
+import extdeps.linux.proc_self_cgroup { bash_membership_assign_from_source, proc_self_cgroup_default_source }
 import std.types { FilePathParts }
 import v2.std.text { String }
 import v2.extdeps.languages.bash {
@@ -1072,4 +1073,48 @@ fn bash_test_int_ne_target_model(lhs: String, rhs: String) -> Outcome<TargetMode
       )
     }
   )
+}
+
+fn bash_nearest_ancestor_locate_assign_command_from_source(
+  spec: NearestAncestorContaining,
+  cgroup_source: String,
+) -> String {
+  bash_membership_assign_from_source(
+    cgroup_source: cgroup_source,
+    walk_var: nearest_ancestor_walk_target(spec: spec),
+    mount_root: spec.stop_before,
+  )
+}
+
+fn bash_nearest_ancestor_locate_assign_command(spec: NearestAncestorContaining) -> String {
+  bash_nearest_ancestor_locate_assign_command_from_source(
+    spec: spec,
+    cgroup_source: proc_self_cgroup_default_source,
+  )
+}
+
+fn bash_nearest_ancestor_locate_cond_command(spec: NearestAncestorContaining) -> String {
+  match bash_path_predicate_target_model(
+    predicate: nearest_ancestor_while_predicate(spec: spec)
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source.authority_source_text
+        Some { diagnostics: _ } => ""
+      }
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+fn bash_nearest_ancestor_locate_body_command(spec: NearestAncestorContaining) -> String {
+  match bash_dirname_ascent_target_model(
+    ascent: nearest_ancestor_while_ascent(spec: spec)
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source.authority_source_text
+        Some { diagnostics: _ } => ""
+      }
+    Rejected { diagnostics: _ } => ""
+  }
 }
