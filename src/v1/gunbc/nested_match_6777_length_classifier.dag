@@ -2,7 +2,7 @@ module v1.gunbc.nested_match_6777_length_classifier
 
 import std.logic { Bool }
 
-data nested_match_6777_reproducer_note: String = "Reproducer for #6777 construction residue: two sibling Cons arms differing only by nested tail subpattern (Empty vs Cons). Authored match is correct; main emitter collapses to the first Cons arm body for every nonempty list. Permanent regression control once nested-match grouping lands (DESIGN §4b)."
+data nested_match_6777_reproducer_note: String = "Fixture specimen for gunbc.roadmap_authority unreachable_patterns_construction_residue_note (#6777 declared construction residue): two sibling Cons arms differing only by nested tail subpattern (Empty vs Cons). Authored match is correct; pre-fix emitter collapsed to the first Cons arm body for every nonempty list. Permanent regression control for freemonoid nested-tail grouping (DESIGN §4b)."
 
 type LengthClass
   = Zero

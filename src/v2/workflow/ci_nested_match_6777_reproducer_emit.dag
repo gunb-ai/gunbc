@@ -33,7 +33,7 @@ data ci_nested_match_6777_reproducer_cargo_bin_env_var: String = "CARGO_BIN"
 
 data ci_nested_match_6777_reproducer_refusal_prefix: String = "__GUNBC_EFFECT_PLAN_BASH_REFUSED__ nested_match_6777 reproducer: "
 
-data ci_nested_match_6777_reproducer_authority_note: String = "Build-job focused execution receipt for #6777/#7982: ONE named cargo test (nested_match_6777_emitted_matches_interpreted) after the v1-compiler-tests compile-contract gate (--no-run). Exercises the emitted/native classify_length four-case control (0->Zero, 1->One, 2/3->Many). NOT a RustMonolithGate or nextest re-enrollment — gunbc.commit_workflow commit_gate_rust_suite_removed_disposition remains terminal; this is a single named test with an execution receipt, not suite restoration."
+data ci_nested_match_6777_reproducer_authority_note: String = "Build-job focused execution receipt for #7982 implementing gunbc.roadmap_authority unreachable_patterns_construction_residue_note: ONE named cargo test (nested_match_6777_emitted_matches_interpreted) after the v1-compiler-tests compile-contract gate (--no-run). Exercises the emitted/native classify_length four-case control (0->Zero, 1->One, 2/3->Many). NOT a RustMonolithGate or nextest re-enrollment — gunbc.commit_workflow commit_gate_rust_suite_removed_disposition remains terminal; this is a single named test with an execution receipt, not suite restoration."
 
 data ci_nested_match_6777_reproducer_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
