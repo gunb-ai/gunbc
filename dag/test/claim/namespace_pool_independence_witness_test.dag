@@ -14,7 +14,7 @@ import gunbc.namespace_pool_independence {
   FileDependencyMismatch,
 }
 import std.types { Bool, FilePath, List }
-import std.occurrence_identity { OccurrenceId }
+import std.occurrence_identity { OccurrenceId, ReferenceOccurrence }
 import std.occurrence_binding_candidates {
   ReferenceDerivedDependencyProjection,
   ReferenceDerivedDependencyProjectionReady,
@@ -25,8 +25,12 @@ import std.occurrence_binding_candidates {
   AllReferencesBound,
   ReferencePopulationRefused,
   ReferenceBindingProjectionUnbound,
+  ReferenceBindingProjectionAmbiguous,
   AssembledCrossFileBindingClosure,
+  AssembledCrossFileBindingClosureReady,
   AssembledClosureDependencyProjectionReady,
+  AssembledClosureDependencyProjectionRefused,
+  AssembledClosureDependencyProjectionBindingRefused,
   CrossFileBindingClosureRow,
   reference_derived_dependency_projection_for_assembled_closure,
 }
@@ -37,9 +41,11 @@ import test.fixture.cross_file_clause_e_fixture {
   cross_file_clause_e_fixture_provider_file,
 }
 
-data namespace_pool_independence_witness_note: String = "N3-C witnesses for gunbc.namespace_pool_independence assess_pool_independent_projection_equality. Positive controls assemble baseline (consumer + intended provider) and perturbed (same + one unrelated loaded source) independently via B0 assemble_cross_file_binding_closure, project each via B1 reference_derived_dependency_projection_for_assembled_closure, then compare the full carriers. unrelated_loaded_unrelated_spellings_preserves_full_carrier_holds: PASS. unrelated_loaded_same_spelled_decoy_preserves_full_carrier_holds: FAIL (substrate finding, 2026-08-07) — unrelated loaded app.decoy exporting helper via CrossFileProviderExportedExposure => RootExposure enters the same-spelled candidate population and perturbed projection diverges; NOT papered over per loyal-ram-550 routing instruction. Load-bearing RED: same provider file, different declaration, unchanged file-dependency set. Per-clause RED controls exercise each PoolIndependenceFailure arm."
+data namespace_pool_independence_witness_note: String = "N3-C witnesses for gunbc.namespace_pool_independence. Pool independence proper: unrelated_loaded_unrelated_spellings_preserves_full_carrier_holds assembles baseline vs perturbed (+unrelated loaded file, different spelling) via B0+B1 and compares full carriers. Class B silent-reselection discriminator: colliding_root_exported_homonym_refuses_ambiguity_holds — adding a colliding root-exported homonym must typed-refuse (ReferenceBindingProjectionAmbiguous on both consumer references), never produce Ready, never alternate-select, never add a dependency edge. Load-bearing RED: same-file reselection with unchanged file-deps. Per-clause RED controls exercise each PoolIndependenceFailure arm."
 
-data npi_decoy_same_spelled_substrate_finding_note: String = "CLASS B DISCRIMINATOR FINDING (loyal-ram-550 2026-08-07): baseline consumer+app.provider vs perturbed consumer+app.provider+app.decoy(helper) — B1 projection is NOT pool-independent. RootExposure on the unrelated loaded export makes the decoy a same-spelled candidate for consumer references; the substrate lacks the structural fact distinguishing an applicable provider from a merely loaded one. Route before closing N3-C lane; witness stays red, not hand-built."
+data npi_decoy_same_spelled_substrate_finding_note: String = "EXECUTED CONCLUSION (loyal-ram-550 routing 2026-08-07): colliding decoy fixture (app.provider + app.decoy both root-export helper) — perturbed B1 projection is AssembledClosureDependencyProjectionBindingRefused with ReferenceBindingProjectionAmbiguous on BOTH consumer references; no Ready projection, no alternate selection, no extra dependency edge. Substrate behaviour is CORRECT under namespace-only double-bound-is-error; prior equality expectation was wrong. Stronger Class B control: proves silent pool-driven reselection does NOT occur. OPEN (operator, non-blocking): CrossFileProviderExportedExposure => RootExposure may be wrong exposure model if cross-module access is projection (provider.helper) not bare-name root injection — if exposure model changes later this control remains as regression evidence."
+
+data npi_cross_file_export_exposure_open_question_note: String = "OPEN QUESTION (loyal-ram-550 escalation 2026-08-07, operator-signed territory): fixture models cross-file provider export as CrossFileProviderExportedExposure => RootExposure, injecting helper into root scope. Namespace-only design says cross-module access is projection — sibling module visible, members reached as provider.helper, not bare-name injection. If projection governs, app.provider.helper and app.decoy.helper never collide at root and the decoy collision may be a fixture exposure artifact. Does not block N3-C; colliding_root_exported_homonym_refuses_ambiguity_holds stays enrolled regardless."
 
 fn npi_witness_consumer_file() -> FilePath {
   "app/consumer.dag"
@@ -175,14 +181,77 @@ test fn unrelated_loaded_unrelated_spellings_preserves_full_carrier_holds() -> B
   )
 }
 
-test fn unrelated_loaded_same_spelled_decoy_preserves_full_carrier_holds() -> Bool {
-  npi_pool_perturbation_preserves_full_carrier(
-    unrelated_loaded_provider: cross_file_clause_e_fixture_unrelated_loaded_provider_row(
-      declaration_authored_name: "helper",
-      module_dotted: "app.decoy",
-      file_path: "app/decoy.dag",
-    ),
+fn npi_reference_occurrence_in_transport(
+  occurrence: OccurrenceId,
+  references: List<ReferenceOccurrence>,
+) -> Bool {
+  fold(
+    references,
+    init: false,
+    f: (acc, reference) => acc || (reference.occurrence == occurrence),
   )
+}
+
+fn npi_colliding_decoy_row() -> CrossFileBindingClosureRow {
+  cross_file_clause_e_fixture_unrelated_loaded_provider_row(
+    declaration_authored_name: "helper",
+    module_dotted: "app.decoy",
+    file_path: "app/decoy.dag",
+  )
+}
+
+test fn colliding_root_exported_homonym_refuses_ambiguity_holds() -> Bool {
+  let baseline_closure = cross_file_clause_e_fixture_baseline_assembled_closure()
+  let perturbed_closure = cross_file_clause_e_fixture_perturbed_assembled_closure(
+    unrelated_loaded_provider: npi_colliding_decoy_row(),
+  )
+  match reference_derived_dependency_projection_for_assembled_closure(closure: baseline_closure) {
+    AssembledClosureDependencyProjectionReady { projection: _ } =>
+      match perturbed_closure {
+        AssembledCrossFileBindingClosureReady {
+          transport: transport,
+          inputs: _,
+          module_files: _,
+          consumer_file: _,
+        } =>
+          match reference_derived_dependency_projection_for_assembled_closure(
+            closure: perturbed_closure,
+          ) {
+            AssembledClosureDependencyProjectionRefused {
+              refusal: AssembledClosureDependencyProjectionBindingRefused {
+                population: ReferencePopulationRefused {
+                  first_failure: ReferenceBindingProjectionAmbiguous {
+                    occurrence: first_ambiguous,
+                  },
+                  more_failures: more_failures,
+                },
+              },
+            } =>
+              (transport.references |> count) == 2
+                && npi_reference_occurrence_in_transport(
+                  occurrence: first_ambiguous,
+                  references: transport.references,
+                )
+                && match more_failures |> first {
+                  Present {
+                    value: ReferenceBindingProjectionAmbiguous {
+                      occurrence: second_ambiguous,
+                    },
+                  } =>
+                    (more_failures |> count) == 1
+                      && npi_reference_occurrence_in_transport(
+                        occurrence: second_ambiguous,
+                        references: transport.references,
+                      )
+                      && first_ambiguous != second_ambiguous
+                  Absent => false
+                }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
 }
 
 test fn same_file_reselection_red_refuses_full_carrier_holds() -> Bool {
