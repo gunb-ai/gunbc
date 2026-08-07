@@ -1332,17 +1332,17 @@ type OccurrenceTransportRekeyResult {
 }
 
 type OccurrenceIndexRekeyBuild {
-  entries: List<OccurrenceIndexEntry>
+  entries_reversed: List<OccurrenceIndexEntry>
   state: OccurrenceIdRemapState
 }
 
 type OccurrenceDeclarationRekeyBuild {
-  declarations: List<DeclarationOccurrence>
+  declarations_reversed: List<DeclarationOccurrence>
   state: OccurrenceIdRemapState
 }
 
 type OccurrenceReferenceRekeyBuild {
-  references: List<ReferenceOccurrence>
+  references_reversed: List<ReferenceOccurrence>
   state: OccurrenceIdRemapState
 }
 
@@ -1352,7 +1352,7 @@ fn rekey_occurrence_transport(
 ) -> OccurrenceTransportRekeyResult {
   let index_build = fold(
     transport.index.entries,
-    init: OccurrenceIndexRekeyBuild { entries: [], state: state },
+    init: OccurrenceIndexRekeyBuild { entries_reversed: [], state: state },
     f: (acc, entry) => {
       let remapped_occ = remap_occurrence_id(
         id: entry.projection.occurrence,
@@ -1363,7 +1363,7 @@ fn rekey_occurrence_transport(
         state: remapped_occ.state,
       )
       OccurrenceIndexRekeyBuild {
-        entries: concat(acc.entries, [
+        entries_reversed: concat([
           OccurrenceIndexEntry {
             projection: OccurrenceProjection {
               occurrence: remapped_occ.id,
@@ -1372,7 +1372,7 @@ fn rekey_occurrence_transport(
             },
             containment: remapped_containment.path,
           },
-        ]),
+        ], acc.entries_reversed),
         state: remapped_containment.state,
       }
     },
@@ -1380,7 +1380,7 @@ fn rekey_occurrence_transport(
   let declarations_build = fold(
     transport.declarations,
     init: OccurrenceDeclarationRekeyBuild {
-      declarations: [],
+      declarations_reversed: [],
       state: index_build.state,
     },
     f: (acc, declaration) => {
@@ -1393,14 +1393,14 @@ fn rekey_occurrence_transport(
         state: remapped_occ.state,
       )
       OccurrenceDeclarationRekeyBuild {
-        declarations: concat(acc.declarations, [
+        declarations_reversed: concat([
           DeclarationOccurrence {
             occurrence: remapped_occ.id,
             containment: remapped_containment.path,
             category: declaration.category,
             diagnostic_span: declaration.diagnostic_span,
           },
-        ]),
+        ], acc.declarations_reversed),
         state: remapped_containment.state,
       }
     },
@@ -1408,7 +1408,7 @@ fn rekey_occurrence_transport(
   let references_build = fold(
     transport.references,
     init: OccurrenceReferenceRekeyBuild {
-      references: [],
+      references_reversed: [],
       state: declarations_build.state,
     },
     f: (acc, reference) => {
@@ -1421,23 +1421,23 @@ fn rekey_occurrence_transport(
         state: remapped_occ.state,
       )
       OccurrenceReferenceRekeyBuild {
-        references: concat(acc.references, [
+        references_reversed: concat([
           ReferenceOccurrence {
             occurrence: remapped_occ.id,
             containment: remapped_containment.path,
             category: reference.category,
             diagnostic_span: reference.diagnostic_span,
           },
-        ]),
+        ], acc.references_reversed),
         state: remapped_containment.state,
       }
     },
   )
   OccurrenceTransportRekeyResult {
     transport: OccurrenceTransport {
-      index: OccurrenceIndex { entries: index_build.entries },
-      declarations: declarations_build.declarations,
-      references: references_build.references,
+      index: OccurrenceIndex { entries: reverse(index_build.entries_reversed) },
+      declarations: reverse(declarations_build.declarations_reversed),
+      references: reverse(references_build.references_reversed),
     },
     state: references_build.state,
   }
@@ -1449,17 +1449,17 @@ type OccurrenceBindingInputsRekeyResult {
 }
 
 type OccurrenceModulePathRekeyBuild {
-  rows: List<OccurrenceModulePathRow>
+  rows_reversed: List<OccurrenceModulePathRow>
   state: OccurrenceIdRemapState
 }
 
 type OccurrenceExposureRekeyBuild {
-  rows: List<DeclarationExposureRow>
+  rows_reversed: List<DeclarationExposureRow>
   state: OccurrenceIdRemapState
 }
 
 type OccurrenceOrderRekeyBuild {
-  rows: List<AuthoredOrderRow>
+  rows_reversed: List<AuthoredOrderRow>
   state: OccurrenceIdRemapState
 }
 
@@ -1469,16 +1469,16 @@ fn rekey_occurrence_binding_inputs(
 ) -> OccurrenceBindingInputsRekeyResult {
   let module_paths_build = fold(
     inputs.module_paths,
-    init: OccurrenceModulePathRekeyBuild { rows: [], state: state },
+    init: OccurrenceModulePathRekeyBuild { rows_reversed: [], state: state },
     f: (acc, row) => {
       let remapped_occ = remap_occurrence_id(id: row.occurrence, state: acc.state)
       OccurrenceModulePathRekeyBuild {
-        rows: concat(acc.rows, [
+        rows_reversed: concat([
           OccurrenceModulePathRow {
             occurrence: remapped_occ.id,
             module_path: row.module_path,
           },
-        ]),
+        ], acc.rows_reversed),
         state: remapped_occ.state,
       }
     },
@@ -1486,7 +1486,7 @@ fn rekey_occurrence_binding_inputs(
   let exposure_rows_build = fold(
     inputs.exposure_rows,
     init: OccurrenceExposureRekeyBuild {
-      rows: [],
+      rows_reversed: [],
       state: module_paths_build.state,
     },
     f: (acc, row) => {
@@ -1498,33 +1498,33 @@ fn rekey_occurrence_binding_inputs(
             state: remapped_occ.state,
           )
           OccurrenceExposureRekeyBuild {
-            rows: concat(acc.rows, [
+            rows_reversed: concat([
               DeclarationExposureRow {
                 occurrence: remapped_occ.id,
                 exposure: LexicalExposure { exposing_scope: remapped_scope.path },
               },
-            ]),
+            ], acc.rows_reversed),
             state: remapped_scope.state,
           }
         }
         ModuleExposure { module: module } =>
           OccurrenceExposureRekeyBuild {
-            rows: concat(acc.rows, [
+            rows_reversed: concat([
               DeclarationExposureRow {
                 occurrence: remapped_occ.id,
                 exposure: ModuleExposure { module: module },
               },
-            ]),
+            ], acc.rows_reversed),
             state: remapped_occ.state,
           }
         RootExposure =>
           OccurrenceExposureRekeyBuild {
-            rows: concat(acc.rows, [
+            rows_reversed: concat([
               DeclarationExposureRow {
                 occurrence: remapped_occ.id,
                 exposure: RootExposure,
               },
-            ]),
+            ], acc.rows_reversed),
             state: remapped_occ.state,
           }
       }
@@ -1533,27 +1533,27 @@ fn rekey_occurrence_binding_inputs(
   let order_rows_build = fold(
     inputs.authored_order_rows,
     init: OccurrenceOrderRekeyBuild {
-      rows: [],
+      rows_reversed: [],
       state: exposure_rows_build.state,
     },
     f: (acc, row) => {
       let remapped_occ = remap_occurrence_id(id: row.occurrence, state: acc.state)
       OccurrenceOrderRekeyBuild {
-        rows: concat(acc.rows, [
+        rows_reversed: concat([
           AuthoredOrderRow {
             occurrence: remapped_occ.id,
             ordinal: row.ordinal,
           },
-        ]),
+        ], acc.rows_reversed),
         state: remapped_occ.state,
       }
     },
   )
   OccurrenceBindingInputsRekeyResult {
     inputs: OccurrenceBindingCandidateInputs {
-      module_paths: module_paths_build.rows,
-      exposure_rows: exposure_rows_build.rows,
-      authored_order_rows: order_rows_build.rows,
+      module_paths: reverse(module_paths_build.rows_reversed),
+      exposure_rows: reverse(exposure_rows_build.rows_reversed),
+      authored_order_rows: reverse(order_rows_build.rows_reversed),
     },
     state: order_rows_build.state,
   }
@@ -1621,11 +1621,17 @@ type AssembledCrossFileBindingClosure
     }
 
 type AssembledCrossFileFold {
-  transport: OccurrenceTransport
-  inputs: OccurrenceBindingCandidateInputs
-  module_files: List<ModulePathFileRow>
+  entries_reversed: List<OccurrenceIndexEntry>
+  declarations_reversed: List<DeclarationOccurrence>
+  references_reversed: List<ReferenceOccurrence>
+  module_paths_reversed: List<OccurrenceModulePathRow>
+  exposure_rows_reversed: List<DeclarationExposureRow>
+  order_rows_reversed: List<AuthoredOrderRow>
+  module_files_reversed: List<ModulePathFileRow>
   remap_state: OccurrenceIdRemapState
 }
+
+data assemble_cross_file_binding_closure_cost_note: String = "The provider fold accumulates each provider's rekeyed rows by PREPENDING onto seven `_reversed` populations (index entries, declarations, references, module paths, exposure rows, authored-order rows, module=>file rows) rather than by re-concatenating the whole left-hand assembled graph onto each small provider chunk -- that pairwise-append shape cost O(total assembled rows) per provider (O(n^2) over all providers) because concat's cost is proportional to its first argument's length. Prepending a provider's own (small, per-file-bounded) chunk onto the accumulator costs O(that provider's row count) regardless of how much has already been assembled, so the fold is linear in the total row count across all providers. Each `_reversed` population is reversed exactly once, at the end, never per provider."
 
 fn assemble_cross_file_binding_closure(
   consumer: CrossFileBindingClosureRow,
@@ -1643,9 +1649,13 @@ fn assemble_cross_file_binding_closure(
     state: consumer_transport_rekey.state,
   )
   let seed = AssembledCrossFileFold {
-    transport: consumer_transport_rekey.transport,
-    inputs: consumer_inputs_rekey.inputs,
-    module_files: [
+    entries_reversed: reverse(consumer_transport_rekey.transport.index.entries),
+    declarations_reversed: reverse(consumer_transport_rekey.transport.declarations),
+    references_reversed: reverse(consumer_transport_rekey.transport.references),
+    module_paths_reversed: reverse(consumer_inputs_rekey.inputs.module_paths),
+    exposure_rows_reversed: reverse(consumer_inputs_rekey.inputs.exposure_rows),
+    order_rows_reversed: reverse(consumer_inputs_rekey.inputs.authored_order_rows),
+    module_files_reversed: [
       ModulePathFileRow {
         module_path: consumer.module_path,
         file_path: consumer.file_path,
@@ -1669,25 +1679,42 @@ fn assemble_cross_file_binding_closure(
         state: provider_transport_rekey.state,
       )
       AssembledCrossFileFold {
-        transport: merge_occurrence_transports(
-          left: acc.transport,
-          right: provider_transport_rekey.transport,
+        entries_reversed: concat(
+          reverse(provider_transport_rekey.transport.index.entries),
+          acc.entries_reversed,
         ),
-        inputs: occurrence_binding_inputs_append(
-          left: acc.inputs,
-          right: provider_inputs_rekey.inputs,
+        declarations_reversed: concat(
+          reverse(provider_transport_rekey.transport.declarations),
+          acc.declarations_reversed,
         ),
-        module_files: concat(acc.module_files, [
+        references_reversed: concat(
+          reverse(provider_transport_rekey.transport.references),
+          acc.references_reversed,
+        ),
+        module_paths_reversed: concat(
+          reverse(provider_inputs_rekey.inputs.module_paths),
+          acc.module_paths_reversed,
+        ),
+        exposure_rows_reversed: concat(
+          reverse(provider_inputs_rekey.inputs.exposure_rows),
+          acc.exposure_rows_reversed,
+        ),
+        order_rows_reversed: concat(
+          reverse(provider_inputs_rekey.inputs.authored_order_rows),
+          acc.order_rows_reversed,
+        ),
+        module_files_reversed: concat([
           ModulePathFileRow {
             module_path: provider.module_path,
             file_path: provider.file_path,
           },
-        ]),
+        ], acc.module_files_reversed),
         remap_state: provider_inputs_rekey.state,
       }
     },
   )
-  match module_path_file_index_from_rows(rows: assembled.module_files) {
+  let assembled_module_files = reverse(assembled.module_files_reversed)
+  match module_path_file_index_from_rows(rows: assembled_module_files) {
     ModulePathFileIndexRefused { refusal: refusal } =>
       AssembledCrossFileBindingClosureRefused {
         refusal: AssembledCrossFileBindingClosureModulePathFileRefused {
@@ -1696,9 +1723,17 @@ fn assemble_cross_file_binding_closure(
       }
     ModulePathFileIndexReady { entries: _ } =>
       AssembledCrossFileBindingClosureReady {
-        transport: assembled.transport,
-        inputs: assembled.inputs,
-        module_files: assembled.module_files,
+        transport: OccurrenceTransport {
+          index: OccurrenceIndex { entries: reverse(assembled.entries_reversed) },
+          declarations: reverse(assembled.declarations_reversed),
+          references: reverse(assembled.references_reversed),
+        },
+        inputs: OccurrenceBindingCandidateInputs {
+          module_paths: reverse(assembled.module_paths_reversed),
+          exposure_rows: reverse(assembled.exposure_rows_reversed),
+          authored_order_rows: reverse(assembled.order_rows_reversed),
+        },
+        module_files: assembled_module_files,
         consumer_file: consumer.file_path,
       }
   }
