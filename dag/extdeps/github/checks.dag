@@ -10,6 +10,7 @@ import extdeps.github.checks_contracts {
   check_status_wire_contract,
   check_conclusion_wire_contract,
 }
+import v2.std.collection { Absent, Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -86,6 +87,13 @@ fn check_conclusion_wire_label(c: CheckConclusion) -> String {
     Stale => "stale"
     Success => "success"
     TimedOut => "timed_out"
+  }
+}
+
+fn check_conclusion_wire_optional(c: CheckConclusion?) -> String? {
+  match c {
+    Present { value: v } => Present { value: check_conclusion_wire_label(c: v) }
+    Absent => none
   }
 }
 
@@ -215,7 +223,7 @@ service github.Checks {
       path: "/repos/\{owner\}/\{repo\}/check-runs/\{check_run_id\}",
       body: {
         status: check_status_wire_label(s: status),
-        conclusion: conclusion,
+        conclusion: check_conclusion_wire_optional(c: conclusion),
         details_url: details_url,
         output: { title: output_title, summary: output_summary },
       }

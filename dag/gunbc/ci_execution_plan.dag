@@ -64,15 +64,6 @@ fn ci_execution_plan_for_subject(subject: CiExecutionSubject) -> CiExecutionPlan
   }
 }
 
-fn ci_subject_is_fork_refused(subject: CiExecutionSubject) -> Bool {
-  match subject {
-    ForkPullRequestRefused { pr_number: _, head_repo_full_name: _, reason: _ } => true
-    PushToMain { head_sha: _, base_tree_hash: _ } => false
-    PullRequestToMain { pr_number: _, head_sha: _, base_ref: _, base_tree_hash: _, head_repo_full_name: _ } => false
-    OperatorRerun { head_sha: _, base_ref: _, base_tree_hash: _ } => false
-  }
-}
-
 fn ci_subject_head_sha(subject: CiExecutionSubject) -> CommitSha {
   match subject {
     PushToMain { head_sha: sha, base_tree_hash: _ } => sha

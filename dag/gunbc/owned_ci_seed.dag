@@ -1,10 +1,14 @@
 module gunbc.owned_ci_seed
 
-import std.types { String, List }
+import std.types { String, List, Int }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.repository { gunbc_repository }
-import gunbc.owned_ci { owned_ci_check_name }
+import gunbc.owned_ci {
+  owned_ci_check_name,
+  owned_ci_state_root_rel,
+  owned_ci_default_lease_seconds_count,
+}
 import gunbc.ci_execution_plan {
   ci_execution_default_stages,
   ci_execution_stage_wire,
@@ -21,7 +25,7 @@ data owned_ci_control_plane_seed_scaffold: Disposition = Scaffold {
   }
 }
 
-data owned_ci_control_plane_seed_note: String = "§7 seed-retained projection for ci_control_plane (docs/plans/owned-ci-control-plane-design.md). The Rust bin MUST read repository identity, stage order, and floor plan entry/function ONLY through these rows — never parallel literals. dissolve-on: hand-Rust ureq for extdeps.github.checks CreateRun/UpdateRun and extdeps.github.pulls List folds into the interpreter REST bridge (effects_rest_transport_witness tracked-op class; add github.Checks to that roster when wiring lands). Until then this module is the single authority the seed consults."
+data owned_ci_control_plane_seed_note: String = "§7 seed-retained projection for ci_control_plane (docs/plans/owned-ci-control-plane-design.md). The Rust bin MUST read repository identity, stage order, floor plan entry/function, state root, and lease duration ONLY through these rows — never parallel literals. dissolve-on: hand-Rust ureq for extdeps.github.checks CreateRun/UpdateRun and extdeps.github.pulls List folds into the interpreter REST bridge (effects_rest_transport_witness tracked-op class; add github.Checks to that roster when wiring lands). Until then this module is the single authority the seed consults."
 
 fn owned_ci_seed_repo_owner() -> String {
   gunbc_repository.owner
@@ -37,6 +41,14 @@ fn owned_ci_seed_repo_full_name() -> String {
 
 fn owned_ci_seed_check_name() -> String {
   owned_ci_check_name as String
+}
+
+fn owned_ci_seed_state_root_rel() -> String {
+  owned_ci_state_root_rel
+}
+
+fn owned_ci_seed_default_lease_seconds() -> Int {
+  owned_ci_default_lease_seconds_count()
 }
 
 fn owned_ci_seed_floor_plan_entry() -> String {

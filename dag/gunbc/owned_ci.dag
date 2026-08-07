@@ -1,6 +1,8 @@
 module gunbc.owned_ci
 
 import std.types { String, Int, CommitSha, NonEmptyStr, Bool }
+import std.measure { Second, second, second_count }
+import extdeps.auth.jwt { NumericDate, NumericDateWholeSeconds }
 import extdeps.github.checks { CheckConclusion, CheckStatus, Queued, InProgress, Completed, Success, ActionRequired, Cancelled, Failure, Neutral, Skipped, Stale, TimedOut }
 import v2.std.collection { Absent, Present }
 
@@ -8,11 +10,15 @@ data owned_ci_authority_note: String = "Owned CI control plane v0 state carriers
 
 data owned_ci_state_root_rel: String = ".gunbc/owned-ci"
 data owned_ci_check_name: NonEmptyStr = "gunbc-ci"
-data owned_ci_default_lease_seconds: Int = 3600
+data owned_ci_default_lease: Second = second(count: 3600)
 
 type QueueLease {
   holder: String
-  expires_at_unix: Int
+  expires_at: NumericDate
+}
+
+fn owned_ci_default_lease_seconds_count() -> Int {
+  second_count(s: owned_ci_default_lease)
 }
 
 type CiRunQueueState
@@ -60,16 +66,23 @@ fn owned_ci_queue_claimed_rel_dir() -> String {
   concat(owned_ci_state_root_rel, "/queue/claimed")
 }
 
-fn queue_lease_expired(lease: QueueLease, now_unix: Int) -> Bool {
-  now_unix >= lease.expires_at_unix
+fn queue_lease_expired(lease: QueueLease, now: NumericDate) -> Bool {
+  match lease.expires_at {
+    NumericDateWholeSeconds { seconds: exp } =>
+      match now {
+        NumericDateWholeSeconds { seconds: n } => n >= exp
+        NumericDateFractionalSeconds { whole_seconds: _, fractional_digits: _ } => false
+      }
+    NumericDateFractionalSeconds { whole_seconds: _, fractional_digits: _ } => false
+  }
 }
 
-fn queue_lease_valid(lease: QueueLease, holder: String, now_unix: Int) -> Bool {
-  (lease.holder == holder) && !(queue_lease_expired(lease: lease, now_unix: now_unix))
+fn queue_lease_valid(lease: QueueLease, holder: String, now: NumericDate) -> Bool {
+  (lease.holder == holder) && !(queue_lease_expired(lease: lease, now: now))
 }
 
-fn queue_lease_should_reclaim(lease: QueueLease, now_unix: Int) -> Bool {
-  queue_lease_expired(lease: lease, now_unix: now_unix)
+fn queue_lease_should_reclaim(lease: QueueLease, now: NumericDate) -> Bool {
+  queue_lease_expired(lease: lease, now: now)
 }
 
 fn check_publication_reports_github_success(state: CheckPublicationState) -> Bool {
@@ -126,9 +139,9 @@ fn owned_ci_check_conclusion_for_queue(state: CiRunQueueState, publication: Chec
         CheckPublicationCompleted { check_run_id: _, conclusion: c } => Present { value: c }
         CheckPublicationPending { local_conclusion: c, details_url: _ } => Present { value: c }
         CheckPublicationFailed { cause: _, local_conclusion: c } => Present { value: c }
-        CheckPublicationNotStarted => Present { value: Failure }
-        CheckPublicationQueued { check_run_id: _ } => Present { value: Failure }
-        CheckPublicationInProgress { check_run_id: _ } => Present { value: Failure }
+        CheckPublicationNotStarted => none
+        CheckPublicationQueued { check_run_id: _ } => none
+        CheckPublicationInProgress { check_run_id: _ } => none
       }
     QueueFailed { detail: _ } => Present { value: Failure }
   }

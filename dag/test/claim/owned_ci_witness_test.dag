@@ -4,7 +4,6 @@ import gunbc.ci_execution_plan {
   CiExecutionSubject,
   PushToMain, PullRequestToMain, OperatorRerun, ForkPullRequestRefused,
   ci_subject_identity_key,
-  ci_subject_is_fork_refused,
   ci_pull_request_is_same_repo,
   ci_execution_plan_for_subject,
   ci_execution_default_stages,
@@ -16,16 +15,25 @@ import gunbc.owned_ci {
   QueueLease,
   CheckPublicationState,
   CheckPublicationCompleted, CheckPublicationPending,
-  CheckPublicationNotStarted,
+  CheckPublicationNotStarted, CheckPublicationQueued, CheckPublicationInProgress,
+  CiRunQueueState, QueueCompleted,
   queue_lease_expired,
   queue_lease_valid,
   queue_lease_should_reclaim,
+  owned_ci_check_conclusion_for_queue,
   check_publication_reports_github_success,
   check_publication_is_pending_honest,
   owned_ci_check_name,
 }
+import extdeps.auth.jwt { NumericDateWholeSeconds }
 import extdeps.github.checks { Success, Failure }
-import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_sha1_object_id }
+import extdeps.git.object_store {
+  GitObjectId,
+  GitSha1ObjectId,
+  git_sha1_object_id,
+  Sha1Digest,
+  Sha1DigestHex,
+}
 import std.types { String, Bool, NonEmptyStr }
 import v2.std.collection { Absent, Present }
 import gunbc.repository { gunbc_repository }
@@ -35,7 +43,12 @@ data owned_ci_witness_note: String = "Owned CI v0 decision-procedure witnesses: 
 fn sample_tree_hash() -> GitObjectId {
   match git_sha1_object_id(hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904") {
     Present { value: oid } => oid
-    Absent => GitSha1ObjectId { digest: "" }
+    Absent =>
+      GitSha1ObjectId {
+        digest: Sha1Digest {
+          hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904" as Sha1DigestHex,
+        },
+      }
   }
 }
 
@@ -45,7 +58,12 @@ test fn witness_fork_pr_refused() -> Bool {
     head_repo_full_name: "other/fork",
     reason: "fork PRs refuse in v0" as NonEmptyStr,
   }
-  ci_subject_is_fork_refused(subject: subject)
+  match subject {
+    ForkPullRequestRefused { pr_number: _, head_repo_full_name: _, reason: _ } => true
+    PushToMain { head_sha: _, base_tree_hash: _ } => false
+    PullRequestToMain { pr_number: _, head_sha: _, base_ref: _, base_tree_hash: _, head_repo_full_name: _ } => false
+    OperatorRerun { head_sha: _, base_ref: _, base_tree_hash: _ } => false
+  }
     && !(ci_pull_request_is_same_repo(head_repo_full_name: "other/fork"))
 }
 
@@ -54,19 +72,50 @@ test fn witness_same_repo_pr_admits() -> Bool {
 }
 
 test fn witness_expired_lease_is_reclaimed() -> Bool {
-  let lease = QueueLease { holder: "stale-host", expires_at_unix: 50 }
-  queue_lease_should_reclaim(lease: lease, now_unix: 50)
-    && queue_lease_should_reclaim(lease: lease, now_unix: 51)
-    && !(queue_lease_should_reclaim(lease: lease, now_unix: 49))
+  let lease = QueueLease {
+    holder: "stale-host",
+    expires_at: NumericDateWholeSeconds { seconds: 50 },
+  }
+  let now = NumericDateWholeSeconds { seconds: 50 }
+  queue_lease_should_reclaim(lease: lease, now: now)
+    && queue_lease_should_reclaim(lease: lease, now: NumericDateWholeSeconds { seconds: 51 })
+    && !(queue_lease_should_reclaim(lease: lease, now: NumericDateWholeSeconds { seconds: 49 }))
 }
 
 test fn witness_queue_lease_expiry() -> Bool {
-  let lease = QueueLease { holder: "host-1", expires_at_unix: 100 }
-  queue_lease_expired(lease: lease, now_unix: 100)
-    && queue_lease_expired(lease: lease, now_unix: 101)
-    && !(queue_lease_expired(lease: lease, now_unix: 99))
-    && queue_lease_valid(lease: lease, holder: "host-1", now_unix: 50)
-    && !(queue_lease_valid(lease: lease, holder: "host-2", now_unix: 50))
+  let lease = QueueLease {
+    holder: "host-1",
+    expires_at: NumericDateWholeSeconds { seconds: 100 },
+  }
+  let at = NumericDateWholeSeconds { seconds: 100 }
+  let after = NumericDateWholeSeconds { seconds: 101 }
+  let before = NumericDateWholeSeconds { seconds: 99 }
+  let mid = NumericDateWholeSeconds { seconds: 50 }
+  queue_lease_expired(lease: lease, now: at)
+    && queue_lease_expired(lease: lease, now: after)
+    && !(queue_lease_expired(lease: lease, now: before))
+    && queue_lease_valid(lease: lease, holder: "host-1", now: mid)
+    && !(queue_lease_valid(lease: lease, holder: "host-2", now: mid))
+}
+
+test fn witness_unpublished_completed_run_has_no_check_conclusion() -> Bool {
+  match owned_ci_check_conclusion_for_queue(
+    state: QueueCompleted,
+    publication: CheckPublicationNotStarted,
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+    && match owned_ci_check_conclusion_for_queue(
+      state: QueueCompleted,
+      publication: CheckPublicationPending {
+        local_conclusion: Success,
+        details_url: "http://localhost/ci/run/x" as NonEmptyStr,
+      },
+    ) {
+      Present { value: c } => c == Success
+      Absent => false
+    }
 }
 
 test fn witness_publication_pending_is_not_github_success() -> Bool {
@@ -122,5 +171,6 @@ test fn witness_owned_ci_witness_bundle() -> Bool {
     && witness_publication_completed_is_github_success()
     && witness_execution_plan_stages_build_regen_floor()
     && witness_executor_stage_labels_match_plan()
+    && witness_unpublished_completed_run_has_no_check_conclusion()
     && witness_subject_identity_keys_differ_by_sha()
 }

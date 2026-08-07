@@ -19,8 +19,6 @@ use crate::cli_run::{
 use crate::v1_interpreter::{ExecutionMode, Value};
 use serde::{Deserialize, Serialize};
 
-pub const STATE_ROOT_REL: &str = ".gunbc/owned-ci";
-pub const DEFAULT_LEASE_SECS: u64 = 3600;
 pub const DEFAULT_POLL_INTERVAL_SECS: u64 = 60;
 
 /// Receipt marker for scaffold census (`rg OWNED_CI_CONTROL_PLANE_SEED_SCAFFOLD_MARKER`).
@@ -35,6 +33,8 @@ pub struct SeedAuthority {
     pub repo_name: String,
     pub repo_full_name: String,
     pub check_name: String,
+    pub state_root_rel: String,
+    pub default_lease_seconds: u64,
     pub stage_labels: Vec<String>,
     pub floor_plan_entry: String,
     pub floor_plan_function: String,
@@ -50,10 +50,22 @@ impl SeedAuthority {
             repo_name: eval_string(&ctx, "owned_ci_seed_repo_name")?,
             repo_full_name: eval_string(&ctx, "owned_ci_seed_repo_full_name")?,
             check_name: eval_string(&ctx, "owned_ci_seed_check_name")?,
+            state_root_rel: eval_string(&ctx, "owned_ci_seed_state_root_rel")?,
+            default_lease_seconds: eval_int(&ctx, "owned_ci_seed_default_lease_seconds")?,
             stage_labels: eval_string_list(&ctx, "owned_ci_seed_stage_labels")?,
             floor_plan_entry: eval_string(&ctx, "owned_ci_seed_floor_plan_entry")?,
             floor_plan_function: eval_string(&ctx, "owned_ci_seed_floor_plan_function")?,
         })
+    }
+}
+
+fn eval_int(ctx: &crate::v1_interpreter::InterpContext, function: &str) -> Result<u64, String> {
+    match run_value(ctx, function)? {
+        Value::Int(n) if n >= 0 => Ok(n as u64),
+        Value::Int(n) => Err(format!("{function} must be non-negative Int, got {n}")),
+        other => Err(format!(
+            "{function} must return Int, got {other:?} (fail-closed)"
+        )),
     }
 }
 
@@ -108,7 +120,7 @@ impl Config {
             .or_else(|_| std::env::current_dir().map_err(|e| format!("cwd unavailable: {e}")))?;
         let mirror_path = std::env::var("OWNED_CI_MIRROR")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| workspace_root.join(STATE_ROOT_REL).join("mirror.git"));
+            .unwrap_or_else(|_| workspace_root.join(".gunbc/owned-ci/mirror.git"));
         let serve_base_url = std::env::var("OWNED_CI_SERVE_BASE_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:8787".to_string());
         let once = std::env::var("OWNED_CI_ONCE").is_ok();
@@ -119,16 +131,17 @@ impl Config {
             mirror_path,
             serve_base_url,
             poll_interval_secs: DEFAULT_POLL_INTERVAL_SECS,
-            lease_secs: DEFAULT_LEASE_SECS,
+            lease_secs: 0,
             lease_holder,
             once,
             dry_run,
         })
     }
+}
 
-    pub fn state_root(&self) -> PathBuf {
-        self.workspace_root.join(STATE_ROOT_REL)
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnixWholeSeconds {
+    pub seconds: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,7 +178,7 @@ pub struct RunIndexRow {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueueLease {
     pub holder: String,
-    pub expires_at_unix: u64,
+    pub expires_at: UnixWholeSeconds,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -215,14 +228,20 @@ pub struct CiControlPlane {
 
 impl CiControlPlane {
     pub fn new(config: Config) -> Result<Self, String> {
-        Ok(Self {
-            config,
-            authority: SeedAuthority::load()?,
-        })
+        let authority = SeedAuthority::load()?;
+        let mut config = config;
+        config.lease_secs = authority.default_lease_seconds;
+        Ok(Self { config, authority })
+    }
+
+    fn state_root(&self) -> PathBuf {
+        self.config
+            .workspace_root
+            .join(&self.authority.state_root_rel)
     }
 
     pub fn ensure_layout(&self) -> Result<(), String> {
-        let root = self.config.state_root();
+        let root = self.state_root();
         for rel in [
             "queue/pending",
             "queue/claimed",
@@ -288,8 +307,8 @@ impl CiControlPlane {
     }
 
     fn reclaim_expired_claims(&mut self) -> Result<(), String> {
-        let claimed_dir = self.config.state_root().join("queue/claimed");
-        let pending_dir = self.config.state_root().join("queue/pending");
+        let claimed_dir = self.state_root().join("queue/claimed");
+        let pending_dir = self.state_root().join("queue/pending");
         let now = now_unix();
         let entries: Vec<_> = fs::read_dir(&claimed_dir)
             .map_err(|e| format!("read claimed queue: {e}"))?
@@ -307,7 +326,7 @@ impl CiControlPlane {
             let reclaim = record
                 .lease
                 .as_ref()
-                .is_some_and(|lease| now >= lease.expires_at_unix);
+                .is_some_and(|lease| now >= lease.expires_at.seconds);
             if !reclaim {
                 continue;
             }
@@ -487,7 +506,7 @@ impl CiControlPlane {
     }
 
     fn claim_next_pending(&mut self) -> Result<Option<String>, String> {
-        let pending_dir = self.config.state_root().join("queue/pending");
+        let pending_dir = self.state_root().join("queue/pending");
         let mut entries: Vec<_> = fs::read_dir(&pending_dir)
             .map_err(|e| format!("read pending queue: {e}"))?
             .filter_map(Result::ok)
@@ -503,7 +522,7 @@ impl CiControlPlane {
             .and_then(|s| s.to_str())
             .ok_or_else(|| "pending queue file has no stem".to_string())?
             .to_string();
-        let claimed_dir = self.config.state_root().join("queue/claimed");
+        let claimed_dir = self.state_root().join("queue/claimed");
         let from = entry.path();
         let to = claimed_dir.join(format!("{run_id}.json"));
         fs::rename(&from, &to).map_err(|e| format!("claim rename {run_id}: {e}"))?;
@@ -512,7 +531,9 @@ impl CiControlPlane {
         record.queue_state = "claimed".to_string();
         record.lease = Some(QueueLease {
             holder: self.config.lease_holder.clone(),
-            expires_at_unix: now + self.config.lease_secs,
+            expires_at: UnixWholeSeconds {
+                seconds: now + self.config.lease_secs,
+            },
         });
         record.updated_at_unix = now;
         self.write_run(&record)?;
@@ -527,7 +548,7 @@ impl CiControlPlane {
 
     fn execute_run(&mut self, run_id: &str) -> Result<(), String> {
         let mut record = self.read_run(&run_id)?;
-        let worktree = self.config.state_root().join("worktrees").join(run_id);
+        let worktree = self.state_root().join("worktrees").join(run_id);
         if worktree.exists() {
             fs::remove_dir_all(&worktree)
                 .map_err(|e| format!("remove stale worktree {run_id}: {e}"))?;
@@ -778,19 +799,19 @@ impl CiControlPlane {
     }
 
     fn read_ledger(&self) -> Result<SubjectLedger, String> {
-        read_json(self.config.state_root().join("subject-ledger.json"))
+        read_json(self.state_root().join("subject-ledger.json"))
     }
 
     fn write_ledger(&self, ledger: &SubjectLedger) -> Result<(), String> {
-        write_json_atomic(self.config.state_root().join("subject-ledger.json"), ledger)
+        write_json_atomic(self.state_root().join("subject-ledger.json"), ledger)
     }
 
     fn read_index(&self) -> Result<RunIndex, String> {
-        read_json(self.config.state_root().join("index.json"))
+        read_json(self.state_root().join("index.json"))
     }
 
     fn write_index(&self, index: &RunIndex) -> Result<(), String> {
-        write_json_atomic(self.config.state_root().join("index.json"), index)
+        write_json_atomic(self.state_root().join("index.json"), index)
     }
 
     fn read_run(&self, run_id: &str) -> Result<RunRecord, String> {
@@ -806,16 +827,11 @@ impl CiControlPlane {
     }
 
     fn run_path(&self, run_id: &str) -> PathBuf {
-        self.config
-            .state_root()
-            .join("runs")
-            .join(run_id)
-            .join("run.json")
+        self.state_root().join("runs").join(run_id).join("run.json")
     }
 
     fn enqueue_pending(&self, run_id: &str, record: &RunRecord) -> Result<(), String> {
         let path = self
-            .config
             .state_root()
             .join("queue/pending")
             .join(format!("{run_id}.json"));
@@ -824,13 +840,11 @@ impl CiControlPlane {
 
     fn move_queue_file(&self, run_id: &str, from: &str, to: &str) -> Result<(), String> {
         let from_path = self
-            .config
             .state_root()
             .join("queue")
             .join(from)
             .join(format!("{run_id}.json"));
         let to_path = self
-            .config
             .state_root()
             .join("queue")
             .join(to)
@@ -866,7 +880,6 @@ impl CiControlPlane {
         record: &RunRecord,
     ) -> Result<(), String> {
         let path = self
-            .config
             .state_root()
             .join("receipts")
             .join(run_id)
@@ -1017,10 +1030,10 @@ mod tests {
     fn queue_lease_expiry_logic() {
         let lease = QueueLease {
             holder: "host".to_string(),
-            expires_at_unix: 100,
+            expires_at: UnixWholeSeconds { seconds: 100 },
         };
-        assert!(100 >= lease.expires_at_unix);
-        assert!(lease.expires_at_unix <= 100);
+        assert!(100 >= lease.expires_at.seconds);
+        assert!(lease.expires_at.seconds <= 100);
         assert!(lease.holder == "host");
     }
 
