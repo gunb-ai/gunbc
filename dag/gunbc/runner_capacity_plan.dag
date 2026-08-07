@@ -12,7 +12,6 @@ import gunbc.fleet_runner_connectivity {
   RosterObserved,
   RosterReadUnavailable,
   runner_slot_connectivity_verdict,
-  unit_active_width_for_host,
   local_incarnations_for_host,
   SlotConnectivityDetached,
   SlotConnectivityOrphaned,
@@ -95,9 +94,9 @@ fn desired_slot_identities(host: HostIdentity, requested_width: Int) -> List<Run
   )
 }
 
-fn observed_slot_identities(host: HostIdentity) -> List<RunnerSlotIdentity> {
+fn observed_slot_identities(host: HostIdentity, observed_unit_active_width: Int) -> List<RunnerSlotIdentity> {
   map(
-    local_incarnations_for_host(host: host, width: unit_active_width_for_host(host: host)),
+    local_incarnations_for_host(host: host, width: observed_unit_active_width),
     inc => inc.slot
   )
 }
@@ -114,8 +113,11 @@ fn slot_in_list(slot: RunnerSlotIdentity, slots: List<RunnerSlotIdentity>) -> Bo
   )
 }
 
-fn connectivity_replace_action(slot: RunnerSlotIdentity) -> RunnerCapacityAction? {
-  match runner_slot_connectivity_verdict(slot: slot) {
+fn connectivity_replace_action(
+  slot: RunnerSlotIdentity,
+  roster: OrganizationRunnerRosterEvidence,
+) -> RunnerCapacityAction? {
+  match runner_slot_connectivity_verdict(slot: slot, roster: roster) {
     SlotConnectivityDetached { slot: s, registration_id: _ } =>
       Present {
         value: RunnerIncarnationReplace {
@@ -146,7 +148,7 @@ fn connectivity_actions_for_observed(
         value: flat_map(
           observed,
           slot =>
-            match connectivity_replace_action(slot: slot) {
+            match connectivity_replace_action(slot: slot, roster: roster) {
               Present { value: a } => [a]
               Absent => []
             }
@@ -200,9 +202,10 @@ fn plan_runner_capacity_host(
   host: HostIdentity,
   requested_width: Int,
   roster: OrganizationRunnerRosterEvidence,
+  observed_unit_active_width: Int,
 ) -> RunnerCapacityHostPlan? {
   let admission = admit_runner_capacity_width(host: host, requested: requested_width)
-  let observed_width = unit_active_width_for_host(host: host)
+  let observed_width = observed_unit_active_width
   match admission {
     WidthRefused { requested: _, cause: _ } =>
       Present {
@@ -215,7 +218,10 @@ fn plan_runner_capacity_host(
         }
       }
     WidthAdmitted { width: admitted } =>
-      match connectivity_actions_for_observed(roster: roster, observed: observed_slot_identities(host: host)) {
+      match connectivity_actions_for_observed(
+        roster: roster,
+        observed: observed_slot_identities(host: host, observed_unit_active_width: observed_width)
+      ) {
         Absent =>
           none
         Present { value: repairs } =>
@@ -239,11 +245,23 @@ fn runner_capacity_plan(
   srv3_width: Int,
   srv4_width: Int,
   roster: OrganizationRunnerRosterEvidence,
+  observed_srv3_unit_active_width: Int,
+  observed_srv4_unit_active_width: Int,
 ) -> RunnerCapacityPlan {
-  match plan_runner_capacity_host(host: operator_host_srv3, requested_width: srv3_width, roster: roster) {
+  match plan_runner_capacity_host(
+    host: operator_host_srv3,
+    requested_width: srv3_width,
+    roster: roster,
+    observed_unit_active_width: observed_srv3_unit_active_width
+  ) {
     Absent => PlanRefused { reason: "roster unavailable — refusing destructive runner capacity plan" }
     Present { value: srv3 } =>
-      match plan_runner_capacity_host(host: operator_host_srv4, requested_width: srv4_width, roster: roster) {
+      match plan_runner_capacity_host(
+        host: operator_host_srv4,
+        requested_width: srv4_width,
+        roster: roster,
+        observed_unit_active_width: observed_srv4_unit_active_width
+      ) {
         Absent => PlanRefused { reason: "roster unavailable — refusing destructive runner capacity plan" }
         Present { value: srv4 } => PlanReady { hosts: [srv3, srv4] }
       }

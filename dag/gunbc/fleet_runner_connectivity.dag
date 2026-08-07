@@ -175,31 +175,114 @@ data stale_runner_file_rewritten_at_start_note: String = "Stale .runner on disk 
 
 data incident_local_unit_active_width_note: String = "UNIT_ACTIVE WIDTH IS ACTIVE SYSTEMD INCARNATION STATE, pinned from the incident corpus: five active actions-runner@<slot>.service units per host on all four hosts (20 total), even though gunbc_runner_slots_per_host admits 22 desired slots today. MATERIALIZED WIDTH names on-disk install artifacts separately and must not be equated with directory count. This row is the seam where local incarnation observation should eventually ground gunbc.runner_slot_allocation observed_live_width when that carrier lands — without taking a dependency on an unmerged PR."
 
-fn materialized_width_for_host(host: HostIdentity) -> Int {
+type UnitActiveWidthByHostEvidence {
+  srv1_width: Int
+  srv2_width: Int
+  srv3_width: Int
+  srv4_width: Int
+}
+
+type MaterializedWidthByHostEvidence {
+  srv1_width: Int
+  srv2_width: Int
+  srv3_width: Int
+  srv4_width: Int
+}
+
+data incident_unit_active_width_by_host: UnitActiveWidthByHostEvidence = UnitActiveWidthByHostEvidence {
+  srv1_width: 5,
+  srv2_width: 5,
+  srv3_width: 5,
+  srv4_width: 5,
+}
+
+data incident_materialized_width_by_host: MaterializedWidthByHostEvidence = MaterializedWidthByHostEvidence {
+  srv1_width: 5,
+  srv2_width: 5,
+  srv3_width: 5,
+  srv4_width: 5,
+}
+
+data local_unit_active_width_producer_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_runner_connectivity",
+    decl_name: "unit_active_width_show_effective_read",
+    field: WholeDeclaration,
+  }
+}
+
+data local_materialized_width_producer_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_runner_connectivity",
+    decl_name: "materialized_width_show_effective_read",
+    field: WholeDeclaration,
+  }
+}
+
+data unit_active_width_show_effective_read: ShowEffectiveRead<UnitActiveWidthByHostEvidence> = ReadAbsent {
+  reason: "no live per-host systemd unit-active width read has executed on the fleet yet; incident_unit_active_width_for_host pins the 2026-08-06 acceptance corpus until this read binds ReadObserved"
+}
+
+data materialized_width_show_effective_read: ShowEffectiveRead<MaterializedWidthByHostEvidence> = ReadAbsent {
+  reason: "no live per-host materialized slot-width read has executed on the fleet yet; incident_materialized_width_for_host pins the 2026-08-06 acceptance corpus until this read binds ReadObserved"
+}
+
+fn unit_active_width_from_evidence(host: HostIdentity, evidence: UnitActiveWidthByHostEvidence) -> Int {
   if (host as String) == (operator_host_srv1 as String) {
-    5
+    evidence.srv1_width
   } else if (host as String) == (operator_host_srv2 as String) {
-    5
+    evidence.srv2_width
   } else if (host as String) == (operator_host_srv3 as String) {
-    5
+    evidence.srv3_width
   } else if (host as String) == (operator_host_srv4 as String) {
-    5
+    evidence.srv4_width
   } else {
     0
   }
 }
 
-fn unit_active_width_for_host(host: HostIdentity) -> Int {
+fn materialized_width_from_evidence(host: HostIdentity, evidence: MaterializedWidthByHostEvidence) -> Int {
   if (host as String) == (operator_host_srv1 as String) {
-    5
+    evidence.srv1_width
   } else if (host as String) == (operator_host_srv2 as String) {
-    5
+    evidence.srv2_width
   } else if (host as String) == (operator_host_srv3 as String) {
-    5
+    evidence.srv3_width
   } else if (host as String) == (operator_host_srv4 as String) {
-    5
+    evidence.srv4_width
   } else {
     0
+  }
+}
+
+fn incident_unit_active_width_for_host(host: HostIdentity) -> Int {
+  unit_active_width_from_evidence(host: host, evidence: incident_unit_active_width_by_host)
+}
+
+fn incident_materialized_width_for_host(host: HostIdentity) -> Int {
+  materialized_width_from_evidence(host: host, evidence: incident_materialized_width_by_host)
+}
+
+fn unit_active_width_for_host(host: HostIdentity) -> Int {
+  match unit_active_width_show_effective_read {
+    ReadObserved { value: v } => unit_active_width_from_evidence(host: host, evidence: v)
+    ReadAbsent { reason: _ } => incident_unit_active_width_for_host(host: host)
+  }
+}
+
+fn unit_active_width_for_apply_plan(host: HostIdentity) -> Int? {
+  match unit_active_width_show_effective_read {
+    ReadAbsent { reason: _ } => none
+    ReadObserved { value: v } => Present { value: unit_active_width_from_evidence(host: host, evidence: v) }
+  }
+}
+
+fn materialized_width_for_host(host: HostIdentity) -> Int {
+  match materialized_width_show_effective_read {
+    ReadObserved { value: v } => materialized_width_from_evidence(host: host, evidence: v)
+    ReadAbsent { reason: _ } => incident_materialized_width_for_host(host: host)
   }
 }
 
@@ -293,8 +376,10 @@ fn runner_slot_connectivity_verdict_for_incarnation(
   }
 }
 
-fn runner_slot_connectivity_verdict(slot: RunnerSlotIdentity) -> RunnerSlotConnectivityVerdict {
-  let roster = organization_runner_roster_evidence()
+fn runner_slot_connectivity_verdict(
+  slot: RunnerSlotIdentity,
+  roster: OrganizationRunnerRosterEvidence,
+) -> RunnerSlotConnectivityVerdict {
   let incarnations = local_runner_slot_incarnations()
   match fold(
     incarnations,

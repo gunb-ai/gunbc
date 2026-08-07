@@ -14,7 +14,11 @@ import gunbc.runner_capacity_plan {
   WidthExceedsModeledCeiling,
   runner_capacity_plan,
 }
-import gunbc.fleet_runner_connectivity { organization_runner_roster_for_apply_plan }
+import gunbc.fleet_runner_connectivity {
+  organization_runner_roster_for_apply_plan,
+  unit_active_width_for_apply_plan,
+}
+import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 
 data apply_dispatcher_note: String = "TOP-LEVEL gunbc.apply dispatcher. gunbc.live_deploy.apply remains the srv1 dashboard child workflow only — it is not converted into a multipurpose module. RunnerCapacity is a separate child whose plan half lives here and whose realizer is PR B (vivid-otter-718). mode=apply refuses as RunnerCapacityRealizerUnavailable until the realizer lands."
 
@@ -92,13 +96,29 @@ fn apply_runner_capacity_plan(
                     reason: "roster read absent — refusing runner capacity plan until live org roster binds"
                   )
                 Present { value: roster } =>
-                  runner_capacity_plan_exit(
-                    plan: runner_capacity_plan(
-                      srv3_width: w3,
-                      srv4_width: w4,
-                      roster: roster
-                    )
-                  )
+                  match unit_active_width_for_apply_plan(host: operator_host_srv3) {
+                    Absent =>
+                      exit_failure(
+                        reason: "unit-active width read absent — refusing runner capacity plan until live local width binds"
+                      )
+                    Present { value: obs3 } =>
+                      match unit_active_width_for_apply_plan(host: operator_host_srv4) {
+                        Absent =>
+                          exit_failure(
+                            reason: "unit-active width read absent — refusing runner capacity plan until live local width binds"
+                          )
+                        Present { value: obs4 } =>
+                          runner_capacity_plan_exit(
+                            plan: runner_capacity_plan(
+                              srv3_width: w3,
+                              srv4_width: w4,
+                              roster: roster,
+                              observed_srv3_unit_active_width: obs3,
+                              observed_srv4_unit_active_width: obs4
+                            )
+                          )
+                      }
+                  }
               }
           }
       }

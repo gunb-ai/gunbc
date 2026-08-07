@@ -44,8 +44,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data acceptance_corpus_note: String = "These rows pin the 2026-08-06 broker-session incident exactly. Fifteen registrations are offline, one is online and busy, and local systemd units stayed active throughout — the wedge shape PR B's repair loop must not misread as detached on a roster API blip."
 
 test fn srv1_01_is_healthy_while_busy() -> Bool {
+  let roster = organization_runner_roster_evidence()
   match runner_slot_connectivity_verdict(
-    slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
+    slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 },
+    roster: roster
   ) {
     SlotConnectivityHealthy { slot: _, registration_id: id } => id == 1
     _ => false
@@ -53,8 +55,10 @@ test fn srv1_01_is_healthy_while_busy() -> Bool {
 }
 
 test fn active_offline_registration_is_detached_not_healthy() -> Bool {
+  let roster = organization_runner_roster_evidence()
   match runner_slot_connectivity_verdict(
-    slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 2 }
+    slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 2 },
+    roster: roster
   ) {
     SlotConnectivityDetached { slot: _, registration_id: _ } => true
     _ => false
@@ -62,14 +66,17 @@ test fn active_offline_registration_is_detached_not_healthy() -> Bool {
 }
 
 test fn active_without_registration_is_orphaned() -> Bool {
+  let roster = organization_runner_roster_evidence()
   match runner_slot_connectivity_verdict(
-    slot: RunnerSlotIdentity { host: operator_host_srv2, slot_index: 3 }
+    slot: RunnerSlotIdentity { host: operator_host_srv2, slot_index: 3 },
+    roster: roster
   ) {
     SlotConnectivityOrphaned { slot: _ } => true
     _ => false
   }
     && match runner_slot_connectivity_verdict(
-      slot: RunnerSlotIdentity { host: operator_host_srv3, slot_index: 3 }
+      slot: RunnerSlotIdentity { host: operator_host_srv3, slot_index: 3 },
+      roster: roster
     ) {
       SlotConnectivityOrphaned { slot: _ } => true
       _ => false
@@ -149,8 +156,10 @@ test fn local_incarnation_observation_covers_twenty_active_units() -> Bool {
 }
 
 test fn fleet_runner_connectivity_RED_orphaned_slot_must_not_read_detached() -> Bool {
+  let roster = organization_runner_roster_evidence()
   match runner_slot_connectivity_verdict(
-    slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 3 }
+    slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 3 },
+    roster: roster
   ) {
     SlotConnectivityOrphaned { slot: _ } => true
     SlotConnectivityDetached { slot: _, registration_id: _ } => false

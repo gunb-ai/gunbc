@@ -15,6 +15,7 @@ import gunbc.runner_capacity_plan {
 }
 import gunbc.fleet_runner_connectivity {
   organization_runner_roster_evidence,
+  incident_unit_active_width_for_host,
   RosterReadUnavailable,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -25,7 +26,9 @@ test fn seven_requested_with_five_observed_plans_exactly_two_additions_on_srv3_o
   let plan = runner_capacity_plan(
     srv3_width: 7,
     srv4_width: 7,
-    roster: organization_runner_roster_evidence()
+    roster: organization_runner_roster_evidence(),
+    observed_srv3_unit_active_width: incident_unit_active_width_for_host(host: operator_host_srv3),
+    observed_srv4_unit_active_width: incident_unit_active_width_for_host(host: operator_host_srv4)
   )
   match plan {
     PlanReady { hosts: _ } =>
@@ -39,7 +42,9 @@ test fn srv4_requested_above_committed_width_refuses_admission() -> Bool {
   let plan = runner_capacity_plan(
     srv3_width: 7,
     srv4_width: 7,
-    roster: organization_runner_roster_evidence()
+    roster: organization_runner_roster_evidence(),
+    observed_srv3_unit_active_width: incident_unit_active_width_for_host(host: operator_host_srv3),
+    observed_srv4_unit_active_width: incident_unit_active_width_for_host(host: operator_host_srv4)
   )
   match plan {
     PlanReady { hosts: hs } =>
@@ -82,7 +87,9 @@ test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
   match runner_capacity_plan(
     srv3_width: 7,
     srv4_width: 7,
-    roster: RosterReadUnavailable { reason: "503" }
+    roster: RosterReadUnavailable { reason: "503" },
+    observed_srv3_unit_active_width: incident_unit_active_width_for_host(host: operator_host_srv3),
+    observed_srv4_unit_active_width: incident_unit_active_width_for_host(host: operator_host_srv4)
   ) {
     PlanRefused { reason: _ } => true
     PlanReady { hosts: _ } => false
