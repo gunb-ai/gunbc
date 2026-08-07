@@ -20158,6 +20158,7 @@ fn entry_qualifies_for_skip_without_resolve(
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
     touched_entry_paths: &[String],
+    stop_line_changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
 ) -> Result<bool, String> {
     // Fail-closed on the substrate-declared disposition (v2.std.live_tree): a
@@ -20205,7 +20206,7 @@ fn entry_qualifies_for_skip_without_resolve(
     } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_entry_paths) {
         return Ok(false);
     }
-    if compile_clean_broad_stop_line_blocks_skip(entry_path, touched_entry_paths) {
+    if compile_clean_broad_stop_line_blocks_skip(entry_path, stop_line_changed_paths) {
         return Ok(false);
     }
     if !diff_edits.overlapping_data_items.is_empty() {
@@ -20233,6 +20234,7 @@ fn discovery_entry_fast_skip_without_resolve(
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
     touched_entry_paths: &[String],
+    stop_line_changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
 ) -> Result<HashSet<String>, String> {
     // Entry-grain disposition: OR the rows' `reads_live_tree` per entry (they agree by
@@ -20250,6 +20252,7 @@ fn discovery_entry_fast_skip_without_resolve(
             facts,
             declared_paths,
             touched_entry_paths,
+            stop_line_changed_paths,
             diff_edits,
         )? {
             fast.insert(entry);
@@ -21106,6 +21109,7 @@ fn run_discovery_corpus_with_options_inner(
                 &index.module_graph_facts,
                 &declared_paths,
                 &touched,
+                &changed_paths,
                 &diff_edits,
             ) {
                 Ok(_) => None,
@@ -21718,6 +21722,7 @@ fn eprintln_affected_set_categorization(
                 &index.module_graph_facts,
                 &declared_paths,
                 &touched,
+                changed_paths,
                 diff_edits,
             )
             .map(|fast| rows.iter().filter(|r| fast.contains(&r.entry)).count());
@@ -21983,6 +21988,7 @@ fn run_discovery_rows(
             &index.module_graph_facts,
             &module_graph_declared_paths,
             &touched_entry_paths,
+            changed_paths,
             diff_edits,
         )?
     } else {
@@ -23954,6 +23960,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -23986,6 +23993,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -24566,6 +24574,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -24593,6 +24602,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -24620,6 +24630,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -24678,6 +24689,7 @@ mod node_frontier_plumbing_controls {
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
+                &[],
                 &diff_edits,
             )
             .expect("qualify"),
@@ -35026,6 +35038,47 @@ mod witness_layer_roots_compile_clean_tests {
             ),
             "broad stop-line must block shard-a on repair receipt"
         );
+    }
+
+    /// #7915 production-path receipt: data-item-only edits populate `overlapping_data_items`
+    /// (not `touched_entry_files`), so the stop-line must read the full name-status list —
+    /// not the filtered entry-path set — or shard_a fast-skips through the defect.
+    #[test]
+    fn stop_line_data_only_dag_edit_blocks_shard_a_fast_skip() {
+        with_workspace_cwd(|| {
+            let index = build_multi_entry_index(&default_source_roots());
+            let mut diff_edits = FloorDiffEdits::default();
+            diff_edits.overlapping_data_items.insert((
+                "dag/extdeps/systems/nvidia.dag".to_string(),
+                "nvidia_catalog_row".to_string(),
+            ));
+            diff_edits.overlapping_data_items.insert((
+                "dag/test/claim/generated_artifact_drift_test.dag".to_string(),
+                "drift_fixture".to_string(),
+            ));
+            let touched_entry_paths: Vec<String> = Vec::new();
+            let changed_paths = repair_receipt_touched_paths();
+            let shard_a_row = DiscoveryRow {
+                label: "shard_a".to_string(),
+                entry: COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY.to_string(),
+                function: "compile_clean_shard_a_exemplar_compile_green".to_string(),
+                reads_live_tree: false,
+            };
+            let declared = index.module_graph_facts.declared_repo_paths();
+            let fast_skip = discovery_entry_fast_skip_without_resolve(
+                &[shard_a_row],
+                &index.module_graph_facts,
+                &declared,
+                &touched_entry_paths,
+                &changed_paths,
+                &diff_edits,
+            )
+            .expect("fast-skip disposition");
+            assert!(
+                !fast_skip.contains(COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY),
+                "shard_a must not fast-skip when name-status lists non-docs .dag data-item edits outside import closure"
+            );
+        });
     }
 
     /// The unblocked scoped arm, by execution: a single touched dag entry selects at least
