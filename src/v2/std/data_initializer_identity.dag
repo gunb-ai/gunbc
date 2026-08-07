@@ -5,7 +5,7 @@ import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.decl_index { DeclFact }
 import v2.std.optional { optional_present, optional_absent }
 
-data data_initializer_identity_authority_note: String = "Resolved constructor and variant-value identity projections marshaled into DeclFact.node for DataItem rows — reads projection Node trees produced by the v1 decl_facts host bridge, never spelling heuristics."
+data data_initializer_identity_authority_note: String = "Resolved parent/arm projection for DataItem rows — qualified_name, module_path, rel_path, and name locator grain (not occurrence identity). Host bridge marshals projection Node trees from typechecked subjects; parse-pool decl_facts rows use PoolDeclarationIdentity only."
 
 fn projection_kind_lexeme_optional(node: Node) -> Optional<String> {
   match node.kind {
@@ -137,12 +137,27 @@ type PoolDeclarationIdentity {
   rel_path: String
 }
 
-type ExactDeclarationIdentity {
+type ResolvedDeclarationLocator {
   qualified_name: String
   name: String
   module_path: String
   rel_path: String
 }
+
+fn resolved_declaration_locators_equal(
+  a: ResolvedDeclarationLocator,
+  b: ResolvedDeclarationLocator
+) -> Bool {
+  a.qualified_name == b.qualified_name
+    && a.name == b.name
+    && a.module_path == b.module_path
+    && a.rel_path == b.rel_path
+}
+
+type DeclFactLookup
+  = DeclFactMissing
+  | DeclFactUnique { fact: DeclFact }
+  | DeclFactAmbiguous { candidates: List<DeclFact> }
 
 fn decl_fact_module_path_from_qualified_name(fact: DeclFact) -> String {
   let suffix = concat(".", fact.name)
@@ -184,21 +199,6 @@ fn decl_fact_matches_pool_declaration_identity(
     b: identity
   )
 }
-
-fn exact_declaration_identities_equal(
-  a: ExactDeclarationIdentity,
-  b: ExactDeclarationIdentity
-) -> Bool {
-  a.qualified_name == b.qualified_name
-    && a.name == b.name
-    && a.module_path == b.module_path
-    && a.rel_path == b.rel_path
-}
-
-type DeclFactLookup
-  = DeclFactMissing
-  | DeclFactUnique { fact: DeclFact }
-  | DeclFactAmbiguous { candidates: List<DeclFact> }
 
 fn decl_fact_lookup_by_qualified_name(qn: String, facts: List<DeclFact>) -> DeclFactLookup {
   fold(facts, init: DeclFactMissing, f: fn(acc, fact) {

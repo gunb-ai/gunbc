@@ -223,30 +223,25 @@ fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedDeclarationIdentity {
+pub struct ResolvedDeclarationLocator {
     pub qualified_name: String,
     pub name: String,
     pub module_path: String,
     pub rel_path: String,
 }
 
-/// Exact declaration identity for a coproduct parent and variant arm pair.
-pub type ExactDeclarationIdentity = ResolvedDeclarationIdentity;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedVariantIdentity {
-    pub parent: ResolvedDeclarationIdentity,
-    pub arm: ResolvedDeclarationIdentity,
+pub struct ResolvedVariantLocator {
+    pub parent: ResolvedDeclarationLocator,
+    pub arm: ResolvedDeclarationLocator,
 }
-
-pub type ExactVariantIdentity = ResolvedVariantIdentity;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DataInitializerValueResolution {
-    Resolved(ResolvedVariantIdentity),
+    Resolved(ResolvedVariantLocator),
     NotVariantValue,
     Missing,
-    Ambiguous(Vec<ResolvedVariantIdentity>),
+    Ambiguous(Vec<ResolvedVariantLocator>),
 }
 
 fn rel_path_from_node(node: &Rc<Node>) -> String {
@@ -354,11 +349,11 @@ fn declaration_identity_for_type_item(
     type_item: &Rc<Node>,
     si: &SourceIndices,
     fallback_module_path: &str,
-) -> ResolvedDeclarationIdentity {
+) -> ResolvedDeclarationLocator {
     let module_path = module_path_for_type_decl_node(ctx, type_item, si)
         .unwrap_or_else(|| fallback_module_path.to_string());
     let name = authored_name_at(si.clone(), type_item.clone());
-    ResolvedDeclarationIdentity {
+    ResolvedDeclarationLocator {
         qualified_name: decl_logical_qualified_name(&module_path, &name),
         name,
         module_path,
@@ -372,7 +367,7 @@ fn declaration_identity_for_variant_arm(
     variant_name: &str,
     si: &SourceIndices,
     fallback_module_path: &str,
-) -> Option<ResolvedVariantIdentity> {
+) -> Option<ResolvedVariantLocator> {
     let arm = coproduct_variant_arm_by_name(coproduct, variant_name, si)?;
     let parent = declaration_identity_for_type_item(ctx, coproduct, si, fallback_module_path);
     let arm_name = {
@@ -383,13 +378,13 @@ fn declaration_identity_for_variant_arm(
             bare_symbol_tail(&authored).to_string()
         }
     };
-    let arm_id = ResolvedDeclarationIdentity {
+    let arm_id = ResolvedDeclarationLocator {
         qualified_name: format!("{}.{}", parent.qualified_name, arm_name),
         name: arm_name,
         module_path: parent.module_path.clone(),
         rel_path: parent.rel_path.clone(),
     };
-    Some(ResolvedVariantIdentity {
+    Some(ResolvedVariantLocator {
         parent,
         arm: arm_id,
     })
@@ -643,7 +638,7 @@ fn projection_node_with_named_edges(
 
 fn marshal_declaration_identity_node(
     ctx: &InterpContext,
-    id: &ResolvedDeclarationIdentity,
+    id: &ResolvedDeclarationLocator,
 ) -> Value {
     projection_node_with_named_edges(
         ctx,
@@ -669,7 +664,7 @@ fn marshal_declaration_identity_node(
     )
 }
 
-fn marshal_variant_identity_node(ctx: &InterpContext, id: &ResolvedVariantIdentity) -> Value {
+fn marshal_variant_identity_node(ctx: &InterpContext, id: &ResolvedVariantLocator) -> Value {
     projection_node_with_named_edges(
         ctx,
         "VariantDeclarationIdentityProjection",
@@ -696,8 +691,8 @@ fn marshal_variant_identity_node(ctx: &InterpContext, id: &ResolvedVariantIdenti
 
 fn marshal_constructor_identity_node(
     ctx: &InterpContext,
-    parent: &ResolvedDeclarationIdentity,
-    variant: &ResolvedVariantIdentity,
+    parent: &ResolvedDeclarationLocator,
+    variant: &ResolvedVariantLocator,
 ) -> Value {
     projection_node_with_named_edges(
         ctx,
@@ -957,9 +952,9 @@ fn marshal_coproduct_record_projection(
         importing_module,
     ) {
         Some(variant_id) => variant_id,
-        None => ResolvedVariantIdentity {
+        None => ResolvedVariantLocator {
             parent: parent_id.clone(),
-            arm: ResolvedDeclarationIdentity {
+            arm: ResolvedDeclarationLocator {
                 qualified_name: format!("{}.{}", parent_id.qualified_name, variant_name),
                 name: variant_name.clone(),
                 module_path: parent_id.module_path.clone(),

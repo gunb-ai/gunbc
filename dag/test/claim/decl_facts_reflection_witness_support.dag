@@ -272,7 +272,7 @@ fn decl_facts_reflection_named_field_projection_surfaces(qn: String) -> Bool {
   }
 }
 
-fn duplicate_qn_exact_declaration_lookup_per_candidate_is_unique(lookup: DeclFactLookup) -> Bool {
+fn duplicate_qn_pool_declaration_lookup_per_candidate_is_unique(lookup: DeclFactLookup) -> Bool {
   match lookup {
     DeclFactAmbiguous { candidates: cands } =>
       fold(cands, init: true, f: fn(ok, fact) {

@@ -10,7 +10,7 @@ import test.claim.decl_facts_reflection_witness_support {
   decl_facts_reflection_fact_node,
   decl_facts_reflection_lookup,
   duplicate_qualified_identity_lookup_names_primary_and_shadow,
-  duplicate_qn_exact_declaration_lookup_per_candidate_is_unique,
+  duplicate_qn_pool_declaration_lookup_per_candidate_is_unique,
   decl_facts_reflection_value_identity_projection,
   decl_facts_reflection_projection_variant_label_optional,
   decl_facts_reflection_resolved_nullary_parent,
@@ -267,8 +267,8 @@ test fn decl_facts_reflection_absent_vs_refused_vs_missing_projections_distinct(
   }
 }
 
-test fn decl_facts_duplicate_qn_exact_declaration_lookup_per_candidate_is_unique() -> Bool {
-  duplicate_qn_exact_declaration_lookup_per_candidate_is_unique(
+test fn decl_facts_duplicate_qn_pool_declaration_lookup_per_candidate_is_unique() -> Bool {
+  duplicate_qn_pool_declaration_lookup_per_candidate_is_unique(
     lookup: decl_facts_reflection_lookup(qn: duplicate_shadowed_specimen_qn)
   )
 }
