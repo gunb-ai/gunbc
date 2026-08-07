@@ -1793,6 +1793,39 @@ const EXPECTED_RED_EVIDENCE_ABSENT_MODE: &str = "ExpectedRedEvidenceAbsent";
 /// Non-green: the declaration classifies the stop, it does not verify it. See the Err arm.
 const EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE: &str = "ExpectedRedPreVerdictUnverified";
 
+/// The Err-path result for a batch whose entries ALL declare a typed pre-verdict refusal.
+///
+/// Extracted from the arm so `ok == false` is reachable by a test. Inline, the non-green
+/// property was asserted only by a doc comment: nothing executed `run_discovery_batch_node`,
+/// so flipping `ok` back to `true` left every assertion green — a stated regression control
+/// that did not exist, the same defect class as a stated identity join that was a length
+/// agreement. The arm has exactly one construction site and it is this function.
+fn pre_verdict_unverified_claim_result(
+    label: &str,
+    declared_entries: usize,
+    msg: &str,
+) -> ClaimResult {
+    ClaimResult {
+        function: format!("{label} ({EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE})"),
+        entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
+        // NON-GREEN. A declaration classifies the stop; it does not verify it.
+        ok: false,
+        detail: format!(
+            "{EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE}: {declared_entries} entry(ies) declare a typed pre-verdict refusal and the batch stopped before any verdict, but the observed phase/cause is unavailable at this seam so the declaration cannot be verified — non-green by construction until EXPECTED-RED-CAUSE-1 lands: {msg}"
+        ),
+        wall_nanos: 0,
+        resolve_nanos: 0,
+        corpus_resolve_nanos: 0,
+        corpus_eval_nanos: 0,
+        corpus_witnesses: 0,
+        witness_row_costs: Vec::new(),
+        expectation_refusal: None,
+        budget_refusal: None,
+        selection_degradation: None,
+        resolve_realization: None,
+    }
+}
+
 const STALE_KNOWN_RED_MODE: &str = "StaleKnownRed";
 
 /// Which verdict is AGREEMENT for one witness — `std.witness_admission`
@@ -4245,25 +4278,7 @@ fn run_discovery_batch_node(
                 eprintln!(
                     "[expect-red] REFUSED: every entry declares a typed pre-verdict refusal, but no typed observation survives this path, so the declared phase/cause CANNOT be matched — declaration classifies, it does not verify: {msg}"
                 );
-                ClaimResult {
-                    function: format!("{label} ({EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE})"),
-                    entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
-                    ok: false,
-                    detail: format!(
-                        "{EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE}: {} entry(ies) declare a typed pre-verdict refusal and the batch stopped before any verdict, but the observed phase/cause is unavailable at this seam so the declaration cannot be verified — non-green by construction until EXPECTED-RED-CAUSE-1 lands: {msg}",
-                        explicit_entries.len()
-                    ),
-                    wall_nanos: 0,
-                    resolve_nanos: 0,
-                    corpus_resolve_nanos: 0,
-                    corpus_eval_nanos: 0,
-                    corpus_witnesses: 0,
-                    witness_row_costs: Vec::new(),
-                    expectation_refusal: None,
-                    budget_refusal: None,
-                    selection_degradation: None,
-                    resolve_realization: None,
-                }
+                pre_verdict_unverified_claim_result(&label, explicit_entries.len(), &msg)
             } else {
                 ClaimResult {
                     function: label,
@@ -11113,19 +11128,45 @@ mod tests {
     /// batch of declared pre-verdict rows are both "all expected-red"; only the second may
     /// invert a refuse. Without that block this test would pass against the defect it exists
     /// to hold closed, because the defect's population is a superset of this one's.
-    /// The pre-verdict arm is NON-GREEN, and its mode is distinct from every sibling.
+    /// The pre-verdict arm is NON-GREEN, and this OBSERVES the result rather than restating
+    /// the constant.
     ///
-    /// A declaration classifies the stop; it does not verify it. This test pins the two facts
-    /// that together make that real: the mode string the Err arm reports is its own, and the
-    /// receipt vocabulary maps it to a refusal rather than to done. If someone restores the
-    /// green arm, the first assertion here fails; if someone folds it into an existing mode,
-    /// the second does.
+    /// The first shape of this test compared string constants to each other and to a literal,
+    /// while its doc comment claimed "if someone restores the green arm, the first assertion
+    /// fails". It did not: nothing executed the arm, so flipping `ok` back to `true` left every
+    /// assertion green — a stated regression control that did not exist. That is the same
+    /// defect class as a stated identity join that was really a length agreement, and it was
+    /// caught the same way, by someone checking the claim against what the code drives. The
+    /// arm's construction is now extracted to one function and this asserts its `ok`.
     #[test]
     fn declared_pre_verdict_refusal_is_non_green_and_carries_its_own_mode() {
-        assert_eq!(
-            EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE,
-            "ExpectedRedPreVerdictUnverified"
+        let r = pre_verdict_unverified_claim_result("known-red probe", 3, "resolve refused");
+
+        // THE REGRESSION CONTROL, and it now observes the value: restoring the green arm
+        // flips this and the test fails.
+        assert!(
+            !r.ok,
+            "a declaration classifies a stop; it does not verify it"
         );
+        assert!(
+            r.detail.contains(EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE),
+            "the refusal must be typed at the mode, not left as prose"
+        );
+        assert!(
+            r.detail.contains("resolve refused"),
+            "the located cause is carried"
+        );
+        assert!(
+            r.detail.contains('3'),
+            "the declared entry count is carried"
+        );
+        assert!(r
+            .function
+            .contains(EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE));
+        // It is a refusal, not a verdict about any witness: no per-witness populations.
+        assert_eq!(r.expectation_refusal, None);
+        assert!(r.witness_row_costs.is_empty());
+
         // Distinct from BOTH siblings on the same axis — different remedies, different modes.
         assert_ne!(
             EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE,
