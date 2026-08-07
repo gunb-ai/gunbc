@@ -1,0 +1,41 @@
+module extdeps.power.eaton_tripp_lite
+
+import std.types { NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.power.types { PduCatalogRow }
+import extdeps.vendor.eaton { eaton }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "tripplite.eaton.com/product/RS-1215"
+  }
+}
+
+data eaton_tripp_lite_rs_1215_family_catalog: PduCatalogRow = PduCatalogRow {
+  model_family: "RS-1215",
+  manufacturer: eaton,
+  rack_units: 1,
+  voltage: 120,
+  amperage: 15,
+  outlet_count: 12,
+  front_outlet_count: 6,
+  rear_outlet_count: 6,
+  cord_length_ft: 15,
+}
+
+data pdu_variant_selection_note: String = "RS-1215 vs RS-1215-RA differ in outlet geometry and must come from the physical label on pdu-01 — do not pick one until observed."
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.power.eaton_tripp_lite",
+      decl_name: "eaton_tripp_lite_rs_1215_family_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

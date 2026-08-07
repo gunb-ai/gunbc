@@ -1,5 +1,276 @@
 module product.placement_supply
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Bool, List, String, Int }
+import std.decl_ref { DeclarationRef }
+import extdeps.dhcp.v4 { MacAddress }
 
 type HostIdentity = NonEmptyStr where brand("HostIdentity")
+type PhysicalAssetIdentity = NonEmptyStr where brand("PhysicalAssetIdentity")
+type SiteIdentity = NonEmptyStr where brand("SiteIdentity")
+type RoomIdentity = NonEmptyStr where brand("RoomIdentity")
+type RackIdentity = NonEmptyStr where brand("RackIdentity")
+type RackShelfIdentity = NonEmptyStr where brand("RackShelfIdentity")
+type ProcurementReceiptIdentity = NonEmptyStr where brand("ProcurementReceiptIdentity")
+
+data spatial_placement_note: String = "SPATIAL-0: physical placement and RF reachability — the product-layer authority for WHERE assets sit, whether they share a rack, and whether a wireless bootstrap step is admissible. Logical packet reach (extdeps.network.reach) and logical topology zones (product.network_topology.network_reachability) are separate facts. Rack identity is allocated — hostname, MAC, serial, and IP must never construct it. same_rack compares only exact RackIdentity on RackResidence rows; unobserved residence is unknown (Absent), not false. Same rack makes a Wi-Fi probe a sensible candidate only — only WirelessReachStanding with TargetAssociationObserved establishes reach. Physical colocation does not propagate beyond the rack unless another model supplies a broader relation. Unknown reach refuses bootstrap rather than widening (DESIGN section 5). Vendor/product facts live in extdeps; owned inventory and placement live here. DISSOLVE-ON: RackIdentity becomes OpaqueIdentity<RackSubject> when that carrier lands; observed RF survey receipts may add broader colocation arms when a cited propagation model lands in extdeps/, never by loosening the rack ceiling."
+
+type RackUnit = Int
+type RackUnitCount = Int
+
+type RackPositionStanding
+  = RackUnitsObserved { first_u: RackUnit, height: RackUnitCount }
+  | RackPositionUnobserved
+
+type RackResidence
+  = RackMounted { rack: RackIdentity, position: RackPositionStanding }
+  | RackShelfResident { rack: RackIdentity, shelf: RackShelfIdentity? }
+  | RackResidenceUnobserved
+
+type PhysicalSite {
+  identity: SiteIdentity
+  racks: List<RackIdentity>
+}
+
+type PhysicalContainment
+  = SiteContainsRoom { site: SiteIdentity, room: RoomIdentity }
+  | RoomContainsRack { room: RoomIdentity, rack: RackIdentity }
+  | RackContainsPlacement { rack: RackIdentity, asset: PhysicalAssetIdentity }
+  | ChassisContainsHost { chassis: PhysicalAssetIdentity, host: HostIdentity }
+  | HostContainsComponent { host: HostIdentity, component: PhysicalAssetIdentity }
+
+type PhysicalAsset {
+  identity: PhysicalAssetIdentity
+  catalog: DeclarationRef
+  physical_serial: NonEmptyStr?
+  procurement: ProcurementReceiptIdentity?
+}
+
+type StationModeStanding
+  = StationModeObserved { mode: NonEmptyStr }
+  | StationModeUnobserved
+
+type WirelessAdapterStanding
+  = WirelessAdapterPresent { interface: NonEmptyStr, station_mode: StationModeStanding }
+  | WirelessAdapterAbsent
+  | WirelessAdapterUnobserved
+
+type SignalStrength = Int
+
+type WirelessReachStanding
+  = TargetSsidObserved {
+      controller: HostIdentity,
+      target: HostIdentity,
+      interface: NonEmptyStr,
+      bssid: MacAddress,
+      signal: SignalStrength?,
+    }
+  | TargetAssociationObserved {
+      controller: HostIdentity,
+      target: HostIdentity,
+      interface: NonEmptyStr,
+      management_path_preserved: Bool,
+    }
+  | TargetNotObserved
+  | WirelessReachUnobserved
+  | WirelessReachRefused { cause: NonEmptyStr }
+
+type WifiRelayProvision
+  = RelayProvisioned
+  | RelayUnprovisioned
+  | RelayIncapable
+
+type WifiBootstrapNeed
+  = BootstrapNeeded
+  | BootstrapNotNeeded
+  | BootstrapNeedUnobserved
+
+type WifiBootstrapStep {
+  bootstrapper: HostIdentity
+  target: HostIdentity
+}
+
+type WifiBootstrapChain {
+  steps: List<WifiBootstrapStep>
+}
+
+type WifiBootstrapAdmissibility
+  = WifiBootstrapAdmissible
+  | WifiBootstrapRefused { cause: NonEmptyStr }
+
+type HostSpatialFacts {
+  host: HostIdentity
+  asset: PhysicalAssetIdentity
+  residence: RackResidence
+  wireless: WirelessAdapterStanding
+  relay: WifiRelayProvision
+  bootstrap_need: WifiBootstrapNeed
+}
+
+fn site_contains_rack(site: PhysicalSite, rack: RackIdentity) -> Bool {
+  any(site.racks, r => r == rack)
+}
+
+fn rack_residence_rack(residence: RackResidence) -> RackIdentity? {
+  match residence {
+    RackMounted { rack: r, position: _ } => Present { value: r }
+    RackShelfResident { rack: r, shelf: _ } => Present { value: r }
+    RackResidenceUnobserved => Absent
+  }
+}
+
+fn same_rack(a: RackResidence, b: RackResidence) -> Bool? {
+  match rack_residence_rack(residence: a) {
+    Absent => Absent
+    Present { value: ra } =>
+      match rack_residence_rack(residence: b) {
+        Absent => Absent
+        Present { value: rb } => Present { value: ra == rb }
+      }
+  }
+}
+
+fn wireless_adapter_can_associate(standing: WirelessAdapterStanding) -> Bool {
+  match standing {
+    WirelessAdapterPresent { interface: _, station_mode: _ } => true
+    WirelessAdapterAbsent => false
+    WirelessAdapterUnobserved => false
+  }
+}
+
+fn wifi_relay_can_bootstrap(relay: WifiRelayProvision, wireless: WirelessAdapterStanding) -> Bool {
+  match relay {
+    RelayProvisioned => wireless_adapter_can_associate(standing: wireless)
+    RelayUnprovisioned => false
+    RelayIncapable => false
+  }
+}
+
+fn wifi_target_needs_bootstrap(need: WifiBootstrapNeed) -> Bool {
+  match need {
+    BootstrapNeeded => true
+    BootstrapNotNeeded => false
+    BootstrapNeedUnobserved => false
+  }
+}
+
+fn wireless_reach_established(
+  bootstrapper: HostIdentity,
+  target: HostIdentity,
+  standings: List<WirelessReachStanding>,
+) -> Bool {
+  fold(
+    standings,
+    init: false,
+    f: (acc, row) =>
+      if acc {
+        true
+      } else {
+        match row {
+          TargetAssociationObserved {
+            controller: c,
+            target: t,
+            interface: _,
+            management_path_preserved: _,
+          } => c == bootstrapper && t == target
+          TargetSsidObserved { controller: _, target: _, interface: _, bssid: _, signal: _ } => false
+          TargetNotObserved => false
+          WirelessReachUnobserved => false
+          WirelessReachRefused { cause: _ } => false
+        }
+      },
+  )
+}
+
+fn wifi_probe_is_candidate(
+  bootstrapper_residence: RackResidence,
+  target_residence: RackResidence,
+  bootstrapper_wireless: WirelessAdapterStanding,
+) -> Bool {
+  if !wireless_adapter_can_associate(standing: bootstrapper_wireless) {
+    false
+  } else {
+    match same_rack(a: bootstrapper_residence, b: target_residence) {
+      Absent => false
+      Present { value: same } => same
+    }
+  }
+}
+
+fn host_spatial_facts_for(
+  facts: List<HostSpatialFacts>,
+  host: HostIdentity,
+) -> HostSpatialFacts? {
+  fold(facts, init: none, f: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if row.host == host {
+          Present { value: row }
+        } else {
+          acc
+        }
+    }
+  })
+}
+
+fn wifi_bootstrap_step_admissible(
+  step: WifiBootstrapStep,
+  facts: List<HostSpatialFacts>,
+  reach_standings: List<WirelessReachStanding>,
+) -> WifiBootstrapAdmissibility {
+  if step.bootstrapper == step.target {
+    WifiBootstrapRefused { cause: "bootstrapper_equals_target" as NonEmptyStr }
+  } else {
+    match host_spatial_facts_for(facts: facts, host: step.bootstrapper) {
+      Absent => WifiBootstrapRefused { cause: "bootstrapper_facts_absent" as NonEmptyStr }
+      Present { value: bootstrapper } =>
+        match host_spatial_facts_for(facts: facts, host: step.target) {
+          Absent => WifiBootstrapRefused { cause: "target_facts_absent" as NonEmptyStr }
+          Present { value: target } =>
+            if !wifi_relay_can_bootstrap(
+              relay: bootstrapper.relay,
+              wireless: bootstrapper.wireless,
+            ) {
+              WifiBootstrapRefused { cause: "bootstrapper_not_provisioned" as NonEmptyStr }
+            } else if !wifi_target_needs_bootstrap(need: target.bootstrap_need) {
+              WifiBootstrapRefused { cause: "target_does_not_need_bootstrap" as NonEmptyStr }
+            } else if !wifi_probe_is_candidate(
+              bootstrapper_residence: bootstrapper.residence,
+              target_residence: target.residence,
+              bootstrapper_wireless: bootstrapper.wireless,
+            ) {
+              WifiBootstrapRefused { cause: "wifi_probe_not_candidate" as NonEmptyStr }
+            } else if !wireless_reach_established(
+              bootstrapper: step.bootstrapper,
+              target: step.target,
+              standings: reach_standings,
+            ) {
+              WifiBootstrapRefused { cause: "wireless_reach_unobserved" as NonEmptyStr }
+            } else {
+              WifiBootstrapAdmissible
+            }
+        }
+    }
+  }
+}
+
+fn wifi_bootstrap_chain_admissible(
+  chain: WifiBootstrapChain,
+  facts: List<HostSpatialFacts>,
+  reach_standings: List<WirelessReachStanding>,
+) -> WifiBootstrapAdmissibility {
+  fold(
+    chain.steps,
+    init: WifiBootstrapAdmissible,
+    f: (acc, step) =>
+      match acc {
+        WifiBootstrapRefused { cause: c } => WifiBootstrapRefused { cause: c }
+        WifiBootstrapAdmissible =>
+          wifi_bootstrap_step_admissible(
+            step: step,
+            facts: facts,
+            reach_standings: reach_standings,
+          )
+      },
+  )
+}

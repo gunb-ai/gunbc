@@ -1,0 +1,42 @@
+module extdeps.chassis.types
+
+import std.types { NonEmptyStr, Int, List }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Computer_case"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.chassis.types",
+      decl_name: "ChassisCatalogRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type MotherboardFormFactor = Atx | MicroAtx | MiniItx
+
+type ChassisCatalogRow {
+  model: NonEmptyStr
+  manufacturer: Vendor<Hardware>
+  rack_units: Int
+  motherboard_support: List<MotherboardFormFactor>
+  internal_35_bay_count: Int
+  internal_525_bay_count: Int
+  expansion_slot_count: Int
+  included_fan_count: Int
+  max_gpu_length_mm: Int?
+  max_cooler_height_mm: Int?
+}

@@ -1,0 +1,260 @@
+module test.claim.spatial_placement
+
+import product.placement_supply {
+  HostIdentity,
+  PhysicalAssetIdentity,
+  SiteIdentity,
+  RackIdentity,
+  RackResidence,
+  RackMounted,
+  RackShelfResident,
+  RackPositionUnobserved,
+  RackResidenceUnobserved,
+  PhysicalSite,
+  HostSpatialFacts,
+  WirelessAdapterStanding,
+  WirelessAdapterPresent,
+  WirelessAdapterAbsent,
+  WirelessAdapterUnobserved,
+  StationModeUnobserved,
+  WirelessReachStanding,
+  TargetAssociationObserved,
+  RelayProvisioned,
+  RelayIncapable,
+  BootstrapNeeded,
+  BootstrapNotNeeded,
+  WifiBootstrapStep,
+  WifiBootstrapChain,
+  site_contains_rack,
+  same_rack,
+  wireless_adapter_can_associate,
+  wifi_relay_can_bootstrap,
+  wifi_probe_is_candidate,
+  wireless_reach_established,
+  wifi_bootstrap_step_admissible,
+  wifi_bootstrap_chain_admissible,
+  host_spatial_facts_for,
+}
+import std.types { NonEmptyStr, List }
+import gunbc.fleet_physical_inventory {
+  operator_physical_site,
+  rack_01,
+  host_srv1,
+  fleet_host_spatial_facts,
+  fleet_nominal_rackmount_arithmetic_holds,
+  srv1_measured_wireless_note,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data spatial_placement_witness_note: String = "SPATIAL-0 green-by-execution proofs for product.placement_supply and gunbc.fleet_physical_inventory: RackResidence/same_rack (exact RackIdentity only; unobserved is Absent not false), WirelessAdapterStanding, WirelessReachStanding receipt-grounded reach, and the Wi-Fi bootstrap chain. The load-bearing fail-closed control is same_rack_without_receipt_refuses_bootstrap: co-rack placement makes a probe candidate but never establishes RF reach — bootstrap refuses until TargetAssociationObserved exists. The synthetic second-rack specimen proves same_rack returns Present(false) across different RackIdentity values. srv1 is the live WirelessAdapterAbsent specimen."
+
+data rack_a: RackIdentity = "rack-a" as RackIdentity
+data rack_b: RackIdentity = "rack-b" as RackIdentity
+
+data synthetic_site: PhysicalSite = PhysicalSite {
+  identity: "synthetic-lab" as SiteIdentity,
+  racks: [rack_a, rack_b],
+}
+
+data asset_seed: PhysicalAssetIdentity = "asset-seed" as PhysicalAssetIdentity
+data asset_next: PhysicalAssetIdentity = "asset-next" as PhysicalAssetIdentity
+data asset_far: PhysicalAssetIdentity = "asset-far" as PhysicalAssetIdentity
+
+data host_seed: HostIdentity = "seed-host" as HostIdentity
+data host_next: HostIdentity = "next-host" as HostIdentity
+data host_far: HostIdentity = "far-host" as HostIdentity
+
+data seed_rack_a_residence: RackResidence = RackMounted {
+  rack: rack_a,
+  position: RackPositionUnobserved,
+}
+
+data next_rack_a_residence: RackResidence = RackShelfResident {
+  rack: rack_a,
+  shelf: none,
+}
+
+data far_rack_b_residence: RackResidence = RackMounted {
+  rack: rack_b,
+  position: RackPositionUnobserved,
+}
+
+data spatial_fixture_facts: List<HostSpatialFacts> = [
+  HostSpatialFacts {
+    host: host_seed,
+    asset: asset_seed,
+    residence: seed_rack_a_residence,
+    wireless: WirelessAdapterPresent {
+      interface: "wlan0" as NonEmptyStr,
+      station_mode: StationModeUnobserved,
+    },
+    relay: RelayProvisioned,
+    bootstrap_need: BootstrapNotNeeded,
+  },
+  HostSpatialFacts {
+    host: host_next,
+    asset: asset_next,
+    residence: next_rack_a_residence,
+    wireless: WirelessAdapterUnobserved,
+    relay: RelayIncapable,
+    bootstrap_need: BootstrapNeeded,
+  },
+  HostSpatialFacts {
+    host: host_far,
+    asset: asset_far,
+    residence: far_rack_b_residence,
+    wireless: WirelessAdapterUnobserved,
+    relay: RelayIncapable,
+    bootstrap_need: BootstrapNeeded,
+  },
+]
+
+data seed_to_next_association: WirelessReachStanding = TargetAssociationObserved {
+  controller: host_seed,
+  target: host_next,
+  interface: "wlan0" as NonEmptyStr,
+  management_path_preserved: true,
+}
+
+test fn site_contains_declared_racks_holds() -> Bool {
+  site_contains_rack(site: synthetic_site, rack: rack_a)
+    && site_contains_rack(site: synthetic_site, rack: rack_b)
+    && site_contains_rack(site: operator_physical_site, rack: rack_01)
+}
+
+test fn same_rack_exact_identity_holds_for_co_residents() -> Bool {
+  match same_rack(a: seed_rack_a_residence, b: next_rack_a_residence) {
+    Present { value: same } => same
+    Absent => false
+  }
+}
+
+test fn same_rack_different_racks_is_false_not_unknown() -> Bool {
+  match same_rack(a: seed_rack_a_residence, b: far_rack_b_residence) {
+    Present { value: same } => !same
+    Absent => false
+  }
+}
+
+test fn same_rack_unobserved_is_absent_not_false() -> Bool {
+  match same_rack(a: RackResidenceUnobserved, b: seed_rack_a_residence) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn wireless_standing_discriminates_present_vs_absent() -> Bool {
+  wireless_adapter_can_associate(
+    standing: WirelessAdapterPresent {
+      interface: "wlan0" as NonEmptyStr,
+      station_mode: StationModeUnobserved,
+    },
+  )
+    && !wireless_adapter_can_associate(standing: WirelessAdapterAbsent)
+    && !wireless_adapter_can_associate(standing: WirelessAdapterUnobserved)
+    && wifi_relay_can_bootstrap(
+      relay: RelayProvisioned,
+      wireless: WirelessAdapterPresent {
+        interface: "wlan0" as NonEmptyStr,
+        station_mode: StationModeUnobserved,
+      },
+    )
+}
+
+test fn srv1_measured_adapter_absent_specimen() -> Bool {
+  match host_spatial_facts_for(facts: fleet_host_spatial_facts, host: host_srv1) {
+    Present { value: srv1 } =>
+      match srv1.wireless {
+        WirelessAdapterAbsent =>
+          !wireless_adapter_can_associate(standing: srv1.wireless)
+        WirelessAdapterPresent { interface: _, station_mode: _ } => false
+        WirelessAdapterUnobserved => false
+      }
+    Absent => false
+  }
+    && srv1_measured_wireless_note != ""
+}
+
+test fn same_rack_makes_probe_candidate_without_establishing_reach() -> Bool {
+  wifi_probe_is_candidate(
+    bootstrapper_residence: seed_rack_a_residence,
+    target_residence: next_rack_a_residence,
+    bootstrapper_wireless: WirelessAdapterPresent {
+      interface: "wlan0" as NonEmptyStr,
+      station_mode: StationModeUnobserved,
+    },
+  )
+    && !wireless_reach_established(
+      bootstrapper: host_seed,
+      target: host_next,
+      standings: [],
+    )
+}
+
+test fn same_rack_without_receipt_refuses_bootstrap() -> Bool {
+  match wifi_bootstrap_step_admissible(
+    step: WifiBootstrapStep { bootstrapper: host_seed, target: host_next },
+    facts: spatial_fixture_facts,
+    reach_standings: [],
+  ) {
+    WifiBootstrapRefused { cause: c } => c == "wireless_reach_unobserved"
+    WifiBootstrapAdmissible => false
+  }
+}
+
+test fn association_receipt_establishes_reach_and_admits_bootstrap() -> Bool {
+  wireless_reach_established(
+    bootstrapper: host_seed,
+    target: host_next,
+    standings: [seed_to_next_association],
+  )
+    && match wifi_bootstrap_step_admissible(
+      step: WifiBootstrapStep { bootstrapper: host_seed, target: host_next },
+      facts: spatial_fixture_facts,
+      reach_standings: [seed_to_next_association],
+    ) {
+      WifiBootstrapAdmissible => true
+      WifiBootstrapRefused { cause: _ } => false
+    }
+}
+
+test fn synthetic_second_rack_refuses_probe_and_bootstrap() -> Bool {
+  !wifi_probe_is_candidate(
+    bootstrapper_residence: seed_rack_a_residence,
+    target_residence: far_rack_b_residence,
+    bootstrapper_wireless: WirelessAdapterPresent {
+      interface: "wlan0" as NonEmptyStr,
+      station_mode: StationModeUnobserved,
+    },
+  )
+    && match wifi_bootstrap_step_admissible(
+      step: WifiBootstrapStep { bootstrapper: host_seed, target: host_far },
+      facts: spatial_fixture_facts,
+      reach_standings: [seed_to_next_association],
+    ) {
+      WifiBootstrapRefused { cause: c } => c == "wifi_probe_not_candidate"
+      WifiBootstrapAdmissible => false
+    }
+}
+
+test fn wifi_bootstrap_chain_one_hop_with_receipt_holds() -> Bool {
+  let chain = WifiBootstrapChain {
+    steps: [
+      WifiBootstrapStep { bootstrapper: host_seed, target: host_next },
+    ],
+  }
+  match wifi_bootstrap_chain_admissible(
+    chain: chain,
+    facts: spatial_fixture_facts,
+    reach_standings: [seed_to_next_association],
+  ) {
+    WifiBootstrapAdmissible => true
+    WifiBootstrapRefused { cause: _ } => false
+  }
+}
+
+test fn fleet_nominal_rackmount_arithmetic_witness_holds() -> Bool {
+  fleet_nominal_rackmount_arithmetic_holds()
+}
