@@ -3,6 +3,7 @@
 
 use self::NodeOccurrenceIdentity::*;
 use self::OccurrenceCategory::*;
+use self::OccurrenceCategoryClauseEDependencyInducingVerdict::*;
 use self::OccurrenceCategoryModuleScopeExposureVerdict::*;
 use self::OccurrenceRole::*;
 use self::OccurrenceTransportRefusal::*;
@@ -218,33 +219,33 @@ pub fn occurrence_category_clause_e_dependency_inducing_verdict(
     category: OccurrenceCategory,
 ) -> Rc<OccurrenceCategoryClauseEDependencyInducingVerdict> {
     match category.clone() {
-        OccurrenceCategory::LexicalValueOccurrence => Rc::new(
-            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing,
-        ),
-        OccurrenceCategory::CallableOccurrence => Rc::new(
-            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing,
-        ),
-        OccurrenceCategory::ConstructorOccurrence => Rc::new(
-            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing,
-        ),
-        OccurrenceCategory::NamespaceSegmentOccurrence => Rc::new(
-            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing,
-        ),
-        OccurrenceCategory::TypeOccurrence => Rc::new(
-            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyNotInducing {
+        OccurrenceCategory::LexicalValueOccurrence => {
+            Rc::new(OccurrenceCategoryClauseEDependencyInducing)
+        }
+        OccurrenceCategory::CallableOccurrence => {
+            Rc::new(OccurrenceCategoryClauseEDependencyInducing)
+        }
+        OccurrenceCategory::ConstructorOccurrence => {
+            Rc::new(OccurrenceCategoryClauseEDependencyInducing)
+        }
+        OccurrenceCategory::NamespaceSegmentOccurrence => {
+            Rc::new(OccurrenceCategoryClauseEDependencyInducing)
+        }
+        OccurrenceCategory::TypeOccurrence => {
+            Rc::new(OccurrenceCategoryClauseEDependencyNotInducing {
                 category: category.clone(),
-            },
-        ),
-        OccurrenceCategory::FieldOccurrence => Rc::new(
-            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyNotInducing {
+            })
+        }
+        OccurrenceCategory::FieldOccurrence => {
+            Rc::new(OccurrenceCategoryClauseEDependencyNotInducing {
                 category: category.clone(),
-            },
-        ),
-        OccurrenceCategory::MethodOccurrence => Rc::new(
-            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyNotInducing {
+            })
+        }
+        OccurrenceCategory::MethodOccurrence => {
+            Rc::new(OccurrenceCategoryClauseEDependencyNotInducing {
                 category: category.clone(),
-            },
-        ),
+            })
+        }
     }
 }
 
