@@ -5,6 +5,8 @@ import gunbc.explicit_witness_admission {
   known_red_probe_corpus_roster,
   known_red_probe_corpus_fast_budget_roster,
   known_red_probe_corpus_long_budget_roster,
+  known_red_probe_corpus_pre_verdict_fast_budget_roster,
+  known_red_probe_corpus_pre_verdict_long_budget_roster,
   known_red_probe_v1_envelope_roster,
   known_red_pre_verdict_refusal_roster
 }
@@ -1023,7 +1025,7 @@ fn gunbc_falsifier_self_host_wet_known_red_batch() -> Runnable {
   }
 }
 
-data falsifier_known_red_probe_budget_partition_note: String = "ONE lane, TWO budget-homogeneous batches, both DERIVED from the declared budget on the admission row — never a list naming a witness. claim_executor arms an eval ceiling per BATCH, so a batch mixing fast and long rows gives every fast row the long ceiling; splitting the roster by declared budget makes the ceiling each batch arms equal to the budget its own rows declared. Neither side is authored: known_red_probe_corpus_fast_budget_roster and known_red_probe_corpus_long_budget_roster partition the same corpus roster, so adding a long-budget admission moves it across without editing this plan, and a side that empties schedules no batch (an empty explicit-entry discovery batch would be a run over nothing reporting green — the vacuity DESIGN 6 names). Lane count and lane enrollment are unchanged: the outer FalsifierLaneBatch.batch was already a list."
+data falsifier_known_red_probe_budget_partition_note: String = "ONE lane, FOUR batches at most, each homogeneous in BOTH facts that govern it: the declared EVAL BUDGET and the declared EXPECTATION KIND. Neither is authored — every batch is derived from the admission rows, so a new admission moves itself into the right batch without editing this plan, and an empty side schedules no batch (an empty explicit-entry discovery batch would be a run over nothing reporting green — the vacuity DESIGN 6 names). BUDGET, because claim_executor arms an eval ceiling per BATCH, so a batch mixing fast and long rows gives every fast row the long ceiling. EXPECTATION KIND, because a pre-verdict row stops the batch at RESOLVE before any witness produces an outcome, and that stop is admitted only when EVERY entry declared a pre-verdict refusal — so one such row mixed in with assertion-false rows reds siblings that were holding quarantine correctly (cursor review 50216 found exactly this; the budget split alone reintroduced the batch-wide coupling this lane exists to remove, one axis over). Lane count and lane enrollment are unchanged: the outer FalsifierLaneBatch.batch was already a list."
 
 fn gunbc_falsifier_known_red_probe_batch_over(
   entries: List<ScheduleWitnessEntry>
@@ -1044,22 +1046,32 @@ fn gunbc_falsifier_known_red_probe_batch_over(
   }
 }
 
+fn gunbc_falsifier_known_red_probe_batch_if_nonempty(entries: List<ScheduleWitnessEntry>) -> List<Runnable> {
+  if length(xs: entries) > 0 {
+    [gunbc_falsifier_known_red_probe_batch_over(entries: entries)]
+  } else {
+    []
+  }
+}
+
 fn gunbc_falsifier_known_red_probe_batches() -> List<Runnable> {
   concat(
-    if length(xs: known_red_probe_corpus_fast_budget_roster()) > 0 {
-      [gunbc_falsifier_known_red_probe_batch_over(
+    concat(
+      gunbc_falsifier_known_red_probe_batch_if_nonempty(
         entries: known_red_probe_corpus_fast_budget_roster()
-      )]
-    } else {
-      []
-    },
-    if length(xs: known_red_probe_corpus_long_budget_roster()) > 0 {
-      [gunbc_falsifier_known_red_probe_batch_over(
+      ),
+      gunbc_falsifier_known_red_probe_batch_if_nonempty(
         entries: known_red_probe_corpus_long_budget_roster()
-      )]
-    } else {
-      []
-    }
+      )
+    ),
+    concat(
+      gunbc_falsifier_known_red_probe_batch_if_nonempty(
+        entries: known_red_probe_corpus_pre_verdict_fast_budget_roster()
+      ),
+      gunbc_falsifier_known_red_probe_batch_if_nonempty(
+        entries: known_red_probe_corpus_pre_verdict_long_budget_roster()
+      )
+    )
   )
 }
 

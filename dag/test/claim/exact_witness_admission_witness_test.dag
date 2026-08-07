@@ -17,6 +17,8 @@ import gunbc.explicit_witness_admission {
   known_red_probe_execution_roster,
   known_red_probe_corpus_fast_budget_roster,
   known_red_probe_corpus_long_budget_roster,
+  known_red_probe_corpus_pre_verdict_fast_budget_roster,
+  known_red_probe_corpus_pre_verdict_long_budget_roster,
   known_red_pre_verdict_refusal_roster,
   known_red_probe_expecting
 }
@@ -319,22 +321,54 @@ fn budget_partition_side_count(xs: List<ScheduleWitnessEntry>) -> Int {
 test fn budget_rosters_partition_the_known_red_corpus_lane() -> Bool {
   let fast = known_red_probe_corpus_fast_budget_roster()
   let long = known_red_probe_corpus_long_budget_roster()
+  let pv_fast = known_red_probe_corpus_pre_verdict_fast_budget_roster()
+  let pv_long = known_red_probe_corpus_pre_verdict_long_budget_roster()
   let whole = known_red_probe_corpus_roster()
-  let split = budget_partition_side_count(xs: fast) + budget_partition_side_count(xs: long)
+  let split = budget_partition_side_count(xs: fast)
+    + budget_partition_side_count(xs: long)
+    + budget_partition_side_count(xs: pv_fast)
+    + budget_partition_side_count(xs: pv_long)
   (split == budget_partition_side_count(xs: whole))
     && fold(whole, init: true, f: fn(ok, w) {
-      let in_fast = schedule_witness_entry_roster_contains(xs: fast, w: w)
-      let in_long = schedule_witness_entry_roster_contains(xs: long, w: w)
-      ok && (in_fast != in_long)
+      let sides = (if schedule_witness_entry_roster_contains(xs: fast, w: w) { 1 } else { 0 })
+        + (if schedule_witness_entry_roster_contains(xs: long, w: w) { 1 } else { 0 })
+        + (if schedule_witness_entry_roster_contains(xs: pv_fast, w: w) { 1 } else { 0 })
+        + (if schedule_witness_entry_roster_contains(xs: pv_long, w: w) { 1 } else { 0 })
+      ok && (sides == 1)
     })
+}
+
+test fn no_batch_mixes_a_pre_verdict_row_with_an_assertion_false_row() -> Bool {
+  let pv = known_red_pre_verdict_refusal_roster()
+  let assertion_false_sides = concat(
+    known_red_probe_corpus_fast_budget_roster(),
+    known_red_probe_corpus_long_budget_roster()
+  )
+  let pre_verdict_sides = concat(
+    known_red_probe_corpus_pre_verdict_fast_budget_roster(),
+    known_red_probe_corpus_pre_verdict_long_budget_roster()
+  )
+  fold(assertion_false_sides, init: true, f: fn(ok, w) {
+    ok && !schedule_witness_entry_roster_contains(xs: pv, w: w)
+  })
+    && fold(pre_verdict_sides, init: true, f: fn(ok, w) {
+      ok && schedule_witness_entry_roster_contains(xs: pv, w: w)
+    })
+    && (length(xs: pre_verdict_sides) > 0)
 }
 
 test fn each_budget_roster_is_homogeneous_in_declared_budget() -> Bool {
   let declared = witness_long_eval_budget_roster()
-  fold(known_red_probe_corpus_long_budget_roster(), init: true, f: fn(ok, w) {
+  fold(concat(
+    known_red_probe_corpus_long_budget_roster(),
+    known_red_probe_corpus_pre_verdict_long_budget_roster()
+  ), init: true, f: fn(ok, w) {
     ok && schedule_witness_entry_roster_contains(xs: declared, w: w)
   })
-    && fold(known_red_probe_corpus_fast_budget_roster(), init: true, f: fn(ok, w) {
+    && fold(concat(
+      known_red_probe_corpus_fast_budget_roster(),
+      known_red_probe_corpus_pre_verdict_fast_budget_roster()
+    ), init: true, f: fn(ok, w) {
       ok && !schedule_witness_entry_roster_contains(xs: declared, w: w)
     })
 }

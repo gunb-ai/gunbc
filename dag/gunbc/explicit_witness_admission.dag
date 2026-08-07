@@ -455,9 +455,79 @@ fn known_red_probe_corpus_roster() -> List<ScheduleWitnessEntry> {
 
 data known_red_probe_budget_partition_note: String = "The known-red probe lane partitions into BUDGET-HOMOGENEOUS batches, and the partition is DERIVED from each row's declared budget rather than naming any witness (operator ruling, 2026-08-06). The first shape of the budget separation left the lane one mixed batch and let the eval ceiling be armed for it as a whole, because claim_executor scopes a ceiling to a batch; that raised the ceiling for every fast row sharing the batch with one declared-long row — a real widening, disclosed but still a widening, and the ceiling is the only thing standing between a runaway fast witness and the step budget. Two batches over the same roster remove it: each batch is homogeneous in declared budget, so the ceiling it arms is the budget its rows actually declared and no row is widened by a neighbour. Nothing here is a singleton and nothing names direct_rust — the long population is whatever declares SubstrateLongLaneEvalBudget, so it grows and shrinks with the admission rows and an empty side schedules no batch at all. Dissolve-on is unchanged and shared with witness_long_eval_budget_entries_note: per-witness declared cost envelopes replace the lane ceiling entirely, at which point the partition collapses back to one batch because every row carries its own bound."
 
-fn known_red_probe_corpus_long_budget_roster() -> List<ScheduleWitnessEntry> {
+data known_red_probe_expectation_partition_note: String = "The lane partitions on BOTH axes, and the second half was missing until review caught it (cursor review 50216, 2026-08-07). Budget homogeneity alone still let an ExpectTypedPreVerdictRefusal row share a batch with ExpectAssertionFalse rows, and those two cannot coexist: a pre-verdict row stops the whole batch at RESOLVE, so no per-witness outcome exists for anyone, and the Err arm admits that stop only when EVERY entry declared a pre-verdict refusal. One pre-verdict row in a mixed batch therefore reds its siblings, which were holding quarantine correctly — the batch-wide coupling this PR exists to remove, reintroduced one axis over. So the corpus lane splits first by EXPECTATION KIND and then by DECLARED BUDGET: a batch is homogeneous in the fact that decides its verdict AND in the ceiling it needs. Note the pre-verdict batches are non-green by construction today (a declaration classifies a stop, it does not verify it), so the point of isolating them is not to make them pass — it is that their refusal stays THEIR refusal, located and countable, instead of being spread over rows it says nothing about."
+
+fn known_red_probe_corpus_assertion_false_roster() -> List<ScheduleWitnessEntry> {
   reverse(fold(
     known_red_probe_corpus_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: known_red_pre_verdict_refusal_roster(),
+        w: witness
+      ) {
+        acc
+      } else {
+        Cons { head: witness, tail: acc }
+      }
+    }
+  ))
+}
+
+fn known_red_probe_corpus_pre_verdict_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: known_red_pre_verdict_refusal_roster(),
+        w: witness
+      ) {
+        Cons { head: witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+fn known_red_probe_corpus_pre_verdict_long_budget_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_pre_verdict_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: witness_long_eval_budget_roster(),
+        w: witness
+      ) {
+        Cons { head: witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+fn known_red_probe_corpus_pre_verdict_fast_budget_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_pre_verdict_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: witness_long_eval_budget_roster(),
+        w: witness
+      ) {
+        acc
+      } else {
+        Cons { head: witness, tail: acc }
+      }
+    }
+  ))
+}
+
+fn known_red_probe_corpus_long_budget_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_assertion_false_roster(),
     init: Empty,
     f: fn(acc, witness) {
       if schedule_witness_entry_roster_contains(
@@ -474,7 +544,7 @@ fn known_red_probe_corpus_long_budget_roster() -> List<ScheduleWitnessEntry> {
 
 fn known_red_probe_corpus_fast_budget_roster() -> List<ScheduleWitnessEntry> {
   reverse(fold(
-    known_red_probe_corpus_roster(),
+    known_red_probe_corpus_assertion_false_roster(),
     init: Empty,
     f: fn(acc, witness) {
       if schedule_witness_entry_roster_contains(
