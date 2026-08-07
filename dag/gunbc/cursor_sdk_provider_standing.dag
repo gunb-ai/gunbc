@@ -1,6 +1,6 @@
 module gunbc.cursor_sdk_provider_standing
 
-import std.types { NonEmptyStr, String, List }
+import std.types { NonEmptyStr, String, List, Bool }
 import gunbc.provider_standing {
   ProviderStandingBundle,
   ProviderInstallationStanding,
@@ -10,6 +10,7 @@ import gunbc.provider_standing {
   ProviderTurnOutcome,
   ProviderToolEnvironmentStanding,
   InstallationStandingUnobserved,
+  AuthenticationStandingUnobserved,
   AuthenticationCredentialsAbsent,
   AuthenticationAuthenticated,
   EntitlementObservationUnobserved,
@@ -19,7 +20,6 @@ import gunbc.provider_standing {
 }
 import extdeps.llm.cursor_sdk_facts {
   cursor_sdk_local_limit_standing_reason,
-  cursor_sdk_local_provision_missing_capability,
 }
 import gunbc.cursor_sdk_auth_probe {
   CursorSdkAuthProbeResult,
