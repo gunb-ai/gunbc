@@ -1,0 +1,197 @@
+module test.claim.claude_setup_token_enrollment_witness
+
+import std.types { Bool, NonEmptyStr, List, list_length }
+import v2.std.optional { Present, Absent }
+import extdeps.llm.claude_setup_token_cli {
+  SetupTokenFormatMeasured,
+  ClaudeSetupTokenFormatMeasured,
+}
+import gunbc.claude_setup_token_enrollment {
+  ClaudeEnrollmentSecretVersionAdmission,
+  EnrollmentSecretVersionRefusedLatest,
+  EnrollmentSecretVersionRefusedEmpty,
+  EnrollmentSecretVersionAdmitted,
+  ClaudeEnrollmentWriterLeaseAdmission,
+  EnrollmentLeaseGranted,
+  EnrollmentLeaseRefusedConcurrent,
+  EnrollmentLeaseRefusedNewerBindingExists,
+  ClaudeSetupTokenCaptureAdmission,
+  SetupTokenCaptureRefusedMultipleCandidates,
+  SetupTokenCaptureAdmitted,
+  admit_enrollment_secret_version,
+  admit_enrollment_writer_lease,
+  admit_enrollment_writer_lease_against_binding,
+  admit_setup_token_capture,
+  claude_enrollment_standing_bundle_from_paired_probe_verdict,
+  claude_enrollment_limit_subject,
+  claude_enrollment_action_for_absent_credential,
+  ReconnectClaude,
+  ConnectClaude,
+  claude_enrollment_action_for_credential_standing,
+  ClaudeCredentialRejected,
+}
+import gunbc.provider_standing {
+  ProviderLimitSubject,
+  ProviderNativeLimitBucket,
+  LimitCredentialLabel,
+  LimitObservedAvailable,
+  LimitObservationUnobserved,
+  AuthenticationAuthenticated,
+  EntitlementObservedAvailable,
+}
+
+test fn witness_secret_version_refuses_latest() -> Bool {
+  match admit_enrollment_secret_version(version: "latest") {
+    EnrollmentSecretVersionRefusedLatest => true
+    _ => false
+  }
+}
+
+test fn witness_secret_version_refuses_empty() -> Bool {
+  match admit_enrollment_secret_version(version: "") {
+    EnrollmentSecretVersionRefusedEmpty => true
+    _ => false
+  }
+}
+
+test fn witness_secret_version_admits_exact() -> Bool {
+  match admit_enrollment_secret_version(version: "7") {
+    EnrollmentSecretVersionAdmitted => true
+    _ => false
+  }
+}
+
+test fn witness_setup_token_capture_refuses_multiple_candidates() -> Bool {
+  match admit_setup_token_capture(
+    candidate_count: 2,
+    token: Present { value: "sk-ant-oat01-test" },
+    format: SetupTokenFormatMeasured {
+      format: ClaudeSetupTokenFormatMeasured {
+        token_prefix: "sk-ant-oat01-" as NonEmptyStr,
+        min_length: 20,
+        max_length: 200,
+      },
+    },
+  ) {
+    SetupTokenCaptureRefusedMultipleCandidates { count: 2 } => true
+    _ => false
+  }
+}
+
+test fn witness_setup_token_capture_admits_single_candidate() -> Bool {
+  match admit_setup_token_capture(
+    candidate_count: 1,
+    token: Present { value: "sk-ant-oat01-abcdefghijklmnopqrstuvwxyz" },
+    format: SetupTokenFormatMeasured {
+      format: ClaudeSetupTokenFormatMeasured {
+        token_prefix: "sk-ant-oat01-" as NonEmptyStr,
+        min_length: 20,
+        max_length: 200,
+      },
+    },
+  ) {
+    SetupTokenCaptureAdmitted { token_length: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_paired_probe_native_limit_encoding() -> Bool {
+  let seven_day_opus = "seven_day_opus" as NonEmptyStr
+  let five_hour = "five_hour" as NonEmptyStr
+  let bundle = claude_enrollment_standing_bundle_from_paired_probe_verdict(
+    auth_succeeded: true,
+    observed_native_limit_keys: [seven_day_opus, five_hour],
+    auth_failure_reason: "unused" as NonEmptyStr,
+    credential_label: "managed-enrollment" as NonEmptyStr,
+  )
+  let subject = claude_enrollment_limit_subject(
+    credential_label: "managed-enrollment" as NonEmptyStr,
+    native_key: seven_day_opus,
+  )
+  bundle.authentication == AuthenticationAuthenticated
+    && bundle.entitlement == EntitlementObservedAvailable
+    && list_length(items: bundle.limits) == 2
+    && match subject {
+      ProviderNativeLimitBucket {
+        credential: LimitCredentialLabel { label },
+        native_key,
+      } =>
+        label == ("managed-enrollment" as NonEmptyStr)
+          && native_key == seven_day_opus
+      _ => false
+    }
+}
+
+test fn witness_rejected_credential_emits_reconnect_action() -> Bool {
+  match claude_enrollment_action_for_credential_standing(
+    standing: ClaudeCredentialRejected { reason: "token revoked" as NonEmptyStr },
+  ) {
+    ReconnectClaude { cause } => cause == ("token revoked" as NonEmptyStr)
+    ConnectClaude => false
+  }
+}
+
+test fn witness_absent_credential_emits_connect_action() -> Bool {
+  claude_enrollment_action_for_absent_credential() == ConnectClaude
+}
+
+test fn witness_writer_lease_refuses_concurrent_holder() -> Bool {
+  match admit_enrollment_writer_lease(
+    holder: "host-b" as NonEmptyStr,
+    incumbent_holder: Present { value: "host-a" as NonEmptyStr },
+    incumbent_version: Present { value: "7" as NonEmptyStr },
+    attempted_version: "8" as NonEmptyStr,
+  ) {
+    EnrollmentLeaseRefusedConcurrent {
+      incumbent_holder,
+      incumbent_binding_version,
+    } =>
+      incumbent_holder == ("host-a" as NonEmptyStr)
+        && incumbent_binding_version == ("7" as NonEmptyStr)
+    _ => false
+  }
+}
+
+test fn witness_writer_lease_refuses_newer_binding() -> Bool {
+  match admit_enrollment_writer_lease_against_binding(
+    holder: "host-a" as NonEmptyStr,
+    incumbent_holder: Absent,
+    incumbent_version: "9" as NonEmptyStr,
+    attempted_version: "8" as NonEmptyStr,
+    incumbent_version_is_newer: true,
+  ) {
+    EnrollmentLeaseRefusedNewerBindingExists {
+      incumbent_version,
+      attempted_version,
+    } =>
+      incumbent_version == ("9" as NonEmptyStr)
+        && attempted_version == ("8" as NonEmptyStr)
+    _ => false
+  }
+}
+
+test fn witness_writer_lease_grants_absent_incumbent() -> Bool {
+  match admit_enrollment_writer_lease(
+    holder: "host-a" as NonEmptyStr,
+    incumbent_holder: Absent,
+    incumbent_version: Absent,
+    attempted_version: "1" as NonEmptyStr,
+  ) {
+    EnrollmentLeaseGranted { holder } => holder == ("host-a" as NonEmptyStr)
+    _ => false
+  }
+}
+
+test fn claude_setup_token_enrollment_keystone_holds() -> Bool {
+  witness_secret_version_refuses_latest()
+    && witness_secret_version_refuses_empty()
+    && witness_secret_version_admits_exact()
+    && witness_setup_token_capture_refuses_multiple_candidates()
+    && witness_setup_token_capture_admits_single_candidate()
+    && witness_paired_probe_native_limit_encoding()
+    && witness_rejected_credential_emits_reconnect_action()
+    && witness_absent_credential_emits_connect_action()
+    && witness_writer_lease_refuses_concurrent_holder()
+    && witness_writer_lease_refuses_newer_binding()
+    && witness_writer_lease_grants_absent_incumbent()
+}

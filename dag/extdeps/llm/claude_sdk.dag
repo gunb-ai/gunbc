@@ -20,7 +20,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps.llm.claude_sdk.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [],
 }
 

@@ -340,6 +340,10 @@ fn automatic_refusal_reason_for_inventory(
 data dispatch_claude_default_workflow_mode: NonEmptyStr = "default" as NonEmptyStr
 data dispatch_claude_default_credential_root: FilePath = "~/.claude" as FilePath
 
+data dispatch_claude_executable: FilePath = "/usr/bin/claude" as FilePath
+
+data claude_offer_inventory_wiring_note: String = "OfferClaude lands in provider_inventory_for_instance for srv1-class hosts (operator direction 2026-08-07). Standing is inventory-unobserved until enrollment publishes RecordedFact ProviderStandingObservationFact or a live probe path supersedes it. Credential is ClaudeStateRootRef with an explicit root — not ambient inheritance. Managed ClaudeOAuthTokenSecretRef enrollment binding is the enrollment-slice follow-on that replaces the state-root row when Secret Manager materialization lands."
+
 data dispatch_selection_temporal_unobserved_reason: NonEmptyStr = "selection time; temporal bounds assigned at spawn observation" as NonEmptyStr
 data dispatch_selection_usage_unobserved_reason: NonEmptyStr = "selection time; usage observations assigned during provider runtime" as NonEmptyStr
 data dispatch_selection_attempt_unassigned_reason: NonEmptyStr = "selection time; attempt identity assigned at spawn" as NonEmptyStr
@@ -469,6 +473,45 @@ fn codex_offer_for_instance(instance: HostDashboardInstance) -> CodexOffer {
   )
 }
 
+fn claude_offer_for_instance_with_standing(
+  instance: HostDashboardInstance,
+  standing: ProviderStanding,
+) -> ClaudeOffer {
+  ClaudeOffer {
+    instance: ProviderInstance {
+      kind: ClaudeCliProvider,
+      host: ProviderInstanceFieldUnobserved {
+        reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+      },
+      executable: dispatch_claude_executable as String as NonEmptyStr,
+      observed_version: ProviderInstanceFieldUnobserved {
+        reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+      },
+      state_directory: ProviderInstanceFieldUnobserved {
+        reason: "ClaudeStateRootRef is the credential reference" as NonEmptyStr,
+      },
+      credential_storage_method: ProviderInstanceFieldUnobserved {
+        reason: "claude credentials live under explicit state root or managed secret" as NonEmptyStr,
+      },
+      service_identity: ProviderInstanceFieldUnobserved {
+        reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+      },
+    },
+    credential: ClaudeStateRootRef { root: dispatch_claude_default_credential_root },
+    standing: standing,
+    default_effort: ReasoningMedium,
+    deep: DeepUnavailable,
+    process_fingerprint: dispatch_claude_process_fingerprint,
+  }
+}
+
+fn claude_offer_for_instance(instance: HostDashboardInstance) -> ClaudeOffer {
+  claude_offer_for_instance_with_standing(
+    instance: instance,
+    standing: provider_standing_inventory_unobserved(),
+  )
+}
+
 fn provider_inventory_for_instance(instance: HostDashboardInstance) -> ProviderInventory {
   if instance.instance_id == srv2_dashboard_lab_id
     || instance.instance_id == srv2_dashboard_preview_id {
@@ -506,7 +549,10 @@ fn provider_inventory_for_instance(instance: HostDashboardInstance) -> ProviderI
     }
   } else {
     ProviderInventory {
-      offers: [OfferCodex { offer: codex_offer_for_instance(instance: instance) }],
+      offers: [
+        OfferCodex { offer: codex_offer_for_instance(instance: instance) },
+        OfferClaude { offer: claude_offer_for_instance(instance: instance) },
+      ],
     }
   }
 }
@@ -694,6 +740,156 @@ fn resolve_codex_offer(
   }
 }
 
+fn resolve_claude_offer(
+  offer: ClaudeOffer,
+  request: ProviderSelectionRequest,
+  node_sizing: NodeSizing,
+) -> DispatchSelectionResult {
+  match request {
+    SelectAutomatically { profile } =>
+      match profile {
+        ProfileAutomatic => {
+          let resolved = ResolvedClaude {
+            selection: ResolvedClaudeSelection {
+              credential: offer.credential,
+              model: dispatch_claude_default_model,
+              effort: offer.default_effort,
+              workflow_mode: dispatch_claude_default_workflow_mode,
+              process_fingerprint: offer.process_fingerprint,
+            },
+            instance: offer.instance,
+          }
+          DispatchSelectionResolved {
+            receipt: dispatch_execution_receipt(
+              node_sizing: node_sizing,
+              requested_selection: request,
+              resolved_selection: resolved,
+              provider_kind: ClaudeCliProvider,
+              applied_effort: offer.default_effort,
+            ),
+          }
+        }
+        ProfileDeep =>
+          match offer.deep {
+            DeepConfigured { effort } => {
+              let resolved = ResolvedClaude {
+                selection: ResolvedClaudeSelection {
+                  credential: offer.credential,
+                  model: dispatch_claude_default_model,
+                  effort: effort,
+                  workflow_mode: dispatch_claude_default_workflow_mode,
+                  process_fingerprint: offer.process_fingerprint,
+                },
+                instance: offer.instance,
+              }
+              DispatchSelectionResolved {
+                receipt: dispatch_execution_receipt(
+                  node_sizing: node_sizing,
+                  requested_selection: request,
+                  resolved_selection: resolved,
+                  provider_kind: ClaudeCliProvider,
+                  applied_effort: effort,
+                ),
+              }
+            }
+            DeepUnavailable =>
+              DispatchSelectionRefused {
+                node_sizing: node_sizing,
+                requested_selection: request,
+                reason: "Claude offer has no configured Deep realization" as NonEmptyStr,
+              }
+          }
+        ProfileExactOverride =>
+          DispatchSelectionRefused {
+            node_sizing: node_sizing,
+            requested_selection: request,
+            reason: "ExactOverride requires an explicit provider selection arm" as NonEmptyStr,
+          }
+      }
+    SelectClaude { profile, credential, model, effort, workflow_mode } =>
+      match profile {
+        ProfileAutomatic => {
+          let resolved = ResolvedClaude {
+            selection: ResolvedClaudeSelection {
+              credential: offer.credential,
+              model: dispatch_claude_default_model,
+              effort: offer.default_effort,
+              workflow_mode: workflow_mode,
+              process_fingerprint: offer.process_fingerprint,
+            },
+            instance: offer.instance,
+          }
+          DispatchSelectionResolved {
+            receipt: dispatch_execution_receipt(
+              node_sizing: node_sizing,
+              requested_selection: request,
+              resolved_selection: resolved,
+              provider_kind: ClaudeCliProvider,
+              applied_effort: offer.default_effort,
+            ),
+          }
+        }
+        ProfileDeep =>
+          match offer.deep {
+            DeepConfigured { effort: deep_effort } => {
+              let resolved = ResolvedClaude {
+                selection: ResolvedClaudeSelection {
+                  credential: offer.credential,
+                  model: model,
+                  effort: deep_effort,
+                  workflow_mode: workflow_mode,
+                  process_fingerprint: offer.process_fingerprint,
+                },
+                instance: offer.instance,
+              }
+              DispatchSelectionResolved {
+                receipt: dispatch_execution_receipt(
+                  node_sizing: node_sizing,
+                  requested_selection: request,
+                  resolved_selection: resolved,
+                  provider_kind: ClaudeCliProvider,
+                  applied_effort: deep_effort,
+                ),
+              }
+            }
+            DeepUnavailable =>
+              DispatchSelectionRefused {
+                node_sizing: node_sizing,
+                requested_selection: request,
+                reason: "Claude offer has no configured Deep realization" as NonEmptyStr,
+              }
+          }
+        ProfileExactOverride => {
+          let resolved = ResolvedClaude {
+            selection: ResolvedClaudeSelection {
+              credential: credential,
+              model: model,
+              effort: effort,
+              workflow_mode: workflow_mode,
+              process_fingerprint: offer.process_fingerprint,
+            },
+            instance: offer.instance,
+          }
+          DispatchSelectionResolved {
+            receipt: dispatch_execution_receipt(
+              node_sizing: node_sizing,
+              requested_selection: request,
+              resolved_selection: resolved,
+              provider_kind: ClaudeCliProvider,
+              applied_effort: effort,
+            ),
+          }
+        }
+      }
+    _ =>
+      DispatchSelectionRefused {
+        node_sizing: node_sizing,
+        requested_selection: request,
+        reason: "selection request shape does not match Claude offer" as NonEmptyStr,
+      }
+  }
+}
+
 fn resolve_provider_offer(
   offer: ProviderOffer,
   request: ProviderSelectionRequest,
@@ -705,12 +901,11 @@ fn resolve_provider_offer(
       request: request,
       node_sizing: node_sizing,
     )
-    OfferClaude { offer: _ } =>
-      DispatchSelectionRefused {
-        node_sizing: node_sizing,
-        requested_selection: request,
-        reason: claude_offer_not_wired_reason,
-      }
+    OfferClaude { offer: claude } => resolve_claude_offer(
+      offer: claude,
+      request: request,
+      node_sizing: node_sizing,
+    )
     OfferCursor { offer: cursor } =>
       match request {
         SelectAutomatically { profile: ProfileAutomatic } => {

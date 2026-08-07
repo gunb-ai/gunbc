@@ -1,0 +1,415 @@
+module gunbc.claude_setup_token_enrollment
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, list_length }
+import v2.std.optional { Present, Absent }
+import extdeps.llm.claude_setup_token_cli {
+  ClaudeSetupTokenFormatObservation,
+  SetupTokenFormatUnobserved,
+  SetupTokenFormatMeasured,
+  ClaudeSetupTokenFormatMeasured,
+  ClaudeSetupTokenBrowserChallenge,
+  ClaudeSetupTokenChallengeParse,
+  SetupTokenChallengeParsed,
+  SetupTokenChallengeParseRefused,
+  claude_code_oauth_token_env_var,
+  claude_config_dir_env_var,
+  count_setup_token_candidates,
+  extract_setup_token_candidate,
+  setup_token_candidate_length_ok,
+}
+import gunbc.provider_standing {
+  ProviderStanding,
+  ProviderStandingBundle,
+  ProviderStandingFromFact,
+  ProviderInstallationStanding,
+  ProviderAuthenticationStanding,
+  ProviderEntitlementObservation,
+  ProviderLimitObservation,
+  ProviderTurnOutcome,
+  ProviderToolEnvironmentStanding,
+  InstallationReady,
+  InstallationStandingUnobserved,
+  AuthenticationCredentialsAbsent,
+  AuthenticationAuthenticated,
+  AuthenticationExpired,
+  AuthenticationRefreshFailed,
+  AuthenticationStandingUnobserved,
+  EntitlementObservationUnobserved,
+  LimitObservationUnobserved,
+  TurnNotStarted,
+  TurnFailed,
+  ToolEnvironmentReady,
+  ToolEnvironmentStandingUnobserved,
+  ProviderLimitSubject,
+  ProviderNativeLimitBucket,
+  LimitCredentialLabel,
+  LimitObservedAvailable,
+  EntitlementObservedAvailable,
+  provider_standing_from_observed_bundle,
+}
+import extdeps.llm.claude_sdk {
+  claude_native_limit_token_to_model_gap_note,
+}
+import extdeps.llm.cli_lifecycle {
+  ProviderInstance,
+  ProviderInstanceFieldObserved,
+  ClaudeCliProvider,
+}
+import std.claim_evidence { RecordedFactId }
+
+data claude_setup_token_enrollment_authority_note: String = "Claude Code enrollment station workflow (operator direction 2026-08-07). The host is an enrollment station, not an ambient prerequisite workers inherit. Personal browser gesture is irreducible; every other step is deterministic control-plane workflow. setup-token credential lifecycle is SEPARATE from ambient ~/.claude OAuth refresh home — mutation observation and write-back apply only to the ambient path. Managed binding uses ClaudeOAuthTokenSecretRef with an EXACT Secret Manager version, never latest. NO WorkerTurn and NO UI workflow progress in this slice."
+
+data claude_ambient_oauth_home_separate_lifecycle_note: String = "ClaudeStateRootRef ambient OAuth home carries refresh state with finite observed expiry and needs mutation observation plus write-back. ClaudeOAuthTokenSecretRef setup-token managed binding is a static secret version materialized as CLAUDE_CODE_OAUTH_TOKEN for the admitted official runtime only. These lifecycles must not fuse."
+
+data claude_enrollment_no_provider_authenticated_literal_note: String = "Acceptance: no authored ProviderAuthenticated literal from extdeps.llm.cli_lifecycle exists anywhere in this workflow. Authentication standing is projected into gunbc.provider_standing ProviderAuthenticationStanding only."
+
+type ClaudeCredentialStanding
+  = ClaudeCredentialUsable
+  | ClaudeCredentialExpiringSoon { detail: NonEmptyStr }
+  | ClaudeCredentialRejected { reason: NonEmptyStr }
+  | ClaudeCredentialObservationRefused { reason: NonEmptyStr }
+
+type ClaudeProviderEnrollmentAction
+  = ConnectClaude
+  | ReconnectClaude { cause: NonEmptyStr }
+
+type ClaudeEnrollmentServiceIdentity {
+  label: NonEmptyStr
+  enrollment_root: FilePath
+}
+
+type ClaudeEnrollmentSecretBinding {
+  project: NonEmptyStr
+  secret: NonEmptyStr
+  version: NonEmptyStr
+}
+
+type ClaudeEnrollmentConfig {
+  service: ClaudeEnrollmentServiceIdentity
+  claude_executable: NonEmptyStr
+  claude_version_pin: NonEmptyStr
+  secret_binding: ClaudeEnrollmentSecretBinding
+  sdk_version_pin: NonEmptyStr
+  standing_fact_id: RecordedFactId
+}
+
+type ClaudeEnrollmentWriterLeaseAdmission
+  = EnrollmentLeaseGranted { holder: NonEmptyStr }
+  | EnrollmentLeaseRefusedConcurrent {
+      incumbent_holder: NonEmptyStr,
+      incumbent_binding_version: NonEmptyStr,
+    }
+  | EnrollmentLeaseRefusedNewerBindingExists {
+      incumbent_version: NonEmptyStr,
+      attempted_version: NonEmptyStr,
+    }
+
+type ClaudeSetupTokenCaptureAdmission
+  = SetupTokenCaptureAdmitted { token_length: Int }
+  | SetupTokenCaptureRefusedMultipleCandidates { count: Int }
+  | SetupTokenCaptureRefusedMalformedPrefix
+  | SetupTokenCaptureRefusedMalformedLength { observed: Int, min: Int, max: Int }
+  | SetupTokenCaptureRefusedFormatUnobserved { reason: NonEmptyStr }
+  | SetupTokenCaptureRefusedNoCandidate
+
+type ClaudeEnrollmentSecretVersionAdmission
+  = EnrollmentSecretVersionAdmitted
+  | EnrollmentSecretVersionRefusedLatest
+  | EnrollmentSecretVersionRefusedEmpty
+
+type ClaudeEnrollmentSecretWriteOutcome
+  = EnrollmentSecretWritten { version: NonEmptyStr }
+  | EnrollmentSecretWriteRefused { reason: NonEmptyStr }
+
+type ClaudeEnrollmentSecretReadBackOutcome
+  = EnrollmentSecretReadBackOk { version: NonEmptyStr, digest_matches: Bool }
+  | EnrollmentSecretReadBackRefused { reason: NonEmptyStr }
+
+type ClaudeIsolationPathObservation
+  = IsolationPathObserved { paths_read: List<FilePath> }
+  | IsolationPathObservationRefused { reason: NonEmptyStr }
+
+data claude_enrollment_managed_home_relative: String = ".gunbc/claude-enrollment"
+
+fn claude_enrollment_config_dir(service: ClaudeEnrollmentServiceIdentity) -> FilePath {
+  join(
+    [
+      service.enrollment_root as String,
+      "/",
+      claude_enrollment_managed_home_relative,
+      "/",
+      service.label as String,
+      "/config",
+    ],
+    "",
+  ) as FilePath
+}
+
+fn claude_enrollment_data_dir(service: ClaudeEnrollmentServiceIdentity) -> FilePath {
+  join(
+    [
+      service.enrollment_root as String,
+      "/",
+      claude_enrollment_managed_home_relative,
+      "/",
+      service.label as String,
+      "/home",
+    ],
+    "",
+  ) as FilePath
+}
+
+fn admit_enrollment_secret_version(version: String) -> ClaudeEnrollmentSecretVersionAdmission {
+  if version == "" {
+    EnrollmentSecretVersionRefusedEmpty
+  } else if version == "latest" {
+    EnrollmentSecretVersionRefusedLatest
+  } else {
+    EnrollmentSecretVersionAdmitted
+  }
+}
+
+fn admit_enrollment_writer_lease(
+  holder: NonEmptyStr,
+  incumbent_holder: NonEmptyStr?,
+  incumbent_version: NonEmptyStr?,
+  attempted_version: NonEmptyStr,
+) -> ClaudeEnrollmentWriterLeaseAdmission {
+  match incumbent_holder {
+    Present { value: incumbent } =>
+      if incumbent == holder {
+        EnrollmentLeaseGranted { holder: holder }
+      } else {
+        EnrollmentLeaseRefusedConcurrent {
+          incumbent_holder: incumbent as NonEmptyStr,
+          incumbent_binding_version: match incumbent_version {
+            Present { value: v } => v
+            Absent => "unknown" as NonEmptyStr
+          },
+        }
+      }
+    Absent => EnrollmentLeaseGranted { holder: holder }
+  }
+}
+
+fn admit_enrollment_writer_lease_against_binding(
+  holder: NonEmptyStr,
+  incumbent_holder: NonEmptyStr?,
+  incumbent_version: NonEmptyStr,
+  attempted_version: NonEmptyStr,
+  incumbent_version_is_newer: Bool,
+) -> ClaudeEnrollmentWriterLeaseAdmission {
+  if incumbent_version_is_newer {
+    EnrollmentLeaseRefusedNewerBindingExists {
+      incumbent_version: incumbent_version,
+      attempted_version: attempted_version,
+    }
+  } else {
+    admit_enrollment_writer_lease(
+      holder: holder,
+      incumbent_holder: incumbent_holder,
+      incumbent_version: Present { value: incumbent_version },
+      attempted_version: attempted_version,
+    )
+  }
+}
+
+fn admit_setup_token_capture(
+  candidate_count: Int,
+  token: String?,
+  format: ClaudeSetupTokenFormatObservation,
+) -> ClaudeSetupTokenCaptureAdmission {
+  match format {
+    SetupTokenFormatUnobserved { reason } =>
+      SetupTokenCaptureRefusedFormatUnobserved { reason: reason }
+    SetupTokenFormatMeasured { format: measured } =>
+      if candidate_count > 1 {
+        SetupTokenCaptureRefusedMultipleCandidates { count: candidate_count }
+      } else if candidate_count == 0 {
+        SetupTokenCaptureRefusedNoCandidate
+      } else {
+        match token {
+          Absent => SetupTokenCaptureRefusedNoCandidate
+          Present { value: candidate } =>
+            if !starts_with(s: candidate, prefix: measured.token_prefix as String) {
+              SetupTokenCaptureRefusedMalformedPrefix
+            } else if !setup_token_candidate_length_ok(
+              token: candidate,
+              min_length: measured.min_length,
+              max_length: measured.max_length,
+            ) {
+              SetupTokenCaptureRefusedMalformedLength {
+                observed: string_length(s: candidate),
+                min: measured.min_length,
+                max: measured.max_length,
+              }
+            } else {
+              SetupTokenCaptureAdmitted { token_length: string_length(s: candidate) }
+            }
+        }
+      }
+  }
+}
+
+fn claude_enrollment_action_for_absent_credential() -> ClaudeProviderEnrollmentAction {
+  ConnectClaude
+}
+
+fn claude_enrollment_action_for_credential_standing(
+  standing: ClaudeCredentialStanding,
+) -> ClaudeProviderEnrollmentAction {
+  match standing {
+    ClaudeCredentialUsable => ConnectClaude
+    ClaudeCredentialExpiringSoon { detail } =>
+      ReconnectClaude { cause: detail }
+    ClaudeCredentialRejected { reason } =>
+      ReconnectClaude { cause: reason }
+    ClaudeCredentialObservationRefused { reason } =>
+      ReconnectClaude { cause: reason }
+  }
+}
+
+fn claude_managed_credential_standing_from_probe_auth_failed(
+  reason: NonEmptyStr,
+) -> ClaudeCredentialStanding {
+  ClaudeCredentialRejected { reason: reason }
+}
+
+fn claude_authentication_standing_from_managed_credential(
+  standing: ClaudeCredentialStanding,
+) -> ProviderAuthenticationStanding {
+  match standing {
+    ClaudeCredentialUsable => AuthenticationAuthenticated
+    ClaudeCredentialExpiringSoon { detail: _ } => AuthenticationAuthenticated
+    ClaudeCredentialRejected { reason } =>
+      AuthenticationRefreshFailed { reason: reason as String }
+    ClaudeCredentialObservationRefused { reason } =>
+      AuthenticationStandingUnobserved { reason: reason }
+  }
+}
+
+fn claude_enrollment_standing_bundle_before_probe() -> ProviderStandingBundle {
+  ProviderStandingBundle {
+    installation: InstallationReady,
+    authentication: AuthenticationCredentialsAbsent,
+    entitlement: EntitlementObservationUnobserved {
+      reason: "paired probe not yet executed under managed binding" as NonEmptyStr,
+    },
+    limits: [
+      LimitObservationUnobserved {
+        reason: "paired probe not yet executed under managed binding" as NonEmptyStr,
+      },
+    ],
+    turn: TurnNotStarted,
+    tool_environment: ToolEnvironmentStandingUnobserved {
+      reason: "paired probe not yet executed under managed binding" as NonEmptyStr,
+    },
+  }
+}
+
+data claude_paired_probe_open_question_note: String = "Step 7 MEASURES an open question for the first time. The unauthenticated 7921 receipt leaves authenticated entitlement dissolution undecided. A negative authenticated probe result is a finding, not a harness bug."
+
+data claude_enrollment_writer_lease_version_order_note: String = "incumbent_version_is_newer is computed at the host boundary with numeric Secret Manager version ordering. The substrate does not compare version strings lexicographically here because GCP version ids are integers and lexicographic order disagrees on multi-digit ids."
+
+data claude_enrollment_native_limit_encoding_note: String = "Limits axis encodes SDK rateLimitType tokens as ProviderNativeLimitBucket { native_key } — never ProviderModelLimit from token spelling (seven_day_opus is not a cited Opus join). Authority: extdeps.llm.claude_sdk claude_native_limit_token_to_model_gap_note."
+
+fn claude_enrollment_limit_subject(
+  credential_label: NonEmptyStr,
+  native_key: NonEmptyStr,
+) -> ProviderLimitSubject {
+  ProviderNativeLimitBucket {
+    credential: LimitCredentialLabel { label: credential_label },
+    native_key: native_key,
+  }
+}
+
+fn claude_enrollment_limit_observed_available(
+  credential_label: NonEmptyStr,
+  native_key: NonEmptyStr,
+) -> ProviderLimitObservation {
+  LimitObservedAvailable {
+    subject: claude_enrollment_limit_subject(
+      credential_label: credential_label,
+      native_key: native_key,
+    ),
+  }
+}
+
+fn claude_enrollment_standing_bundle_from_paired_probe_verdict(
+  auth_succeeded: Bool,
+  observed_native_limit_keys: List<NonEmptyStr>,
+  auth_failure_reason: NonEmptyStr,
+  credential_label: NonEmptyStr,
+) -> ProviderStandingBundle {
+  let authentication = if auth_succeeded {
+    AuthenticationAuthenticated
+  } else {
+    AuthenticationRefreshFailed { reason: auth_failure_reason as String }
+  }
+  let limits_observed = list_length(items: observed_native_limit_keys) > 0
+  let entitlement = if limits_observed {
+    EntitlementObservedAvailable
+  } else {
+    EntitlementObservationUnobserved {
+      reason: "entitlement surface not reached or not observed by paired probe" as NonEmptyStr,
+    }
+  }
+  let limits = if limits_observed {
+    observed_native_limit_keys |> map(key =>
+      claude_enrollment_limit_observed_available(
+        credential_label: credential_label,
+        native_key: key,
+      )
+    )
+  } else {
+    [
+      LimitObservationUnobserved {
+        reason: "limit surface not reached or not observed by paired probe" as NonEmptyStr,
+      },
+    ]
+  }
+  let turn = if auth_succeeded {
+    TurnNotStarted
+  } else {
+    TurnFailed { reason: auth_failure_reason }
+  }
+  ProviderStandingBundle {
+    installation: InstallationReady,
+    authentication: authentication,
+    entitlement: entitlement,
+    limits: limits,
+    turn: turn,
+    tool_environment: ToolEnvironmentReady,
+  }
+}
+
+fn claude_enrollment_provider_standing_from_bundle(
+  config: ClaudeEnrollmentConfig,
+  bundle: ProviderStandingBundle,
+) -> ProviderStanding {
+  provider_standing_from_observed_bundle(
+    fact_id: config.standing_fact_id,
+    provider: ProviderInstance {
+      kind: ClaudeCliProvider,
+      host: ProviderInstanceFieldObserved {
+        value: config.service.label,
+      },
+      executable: config.claude_executable,
+      observed_version: ProviderInstanceFieldObserved {
+        value: config.claude_version_pin,
+      },
+      state_directory: ProviderInstanceFieldObserved {
+        value: config.service.enrollment_root as String as NonEmptyStr,
+      },
+      credential_storage_method: ProviderInstanceFieldObserved {
+        value: "managed-setup-token-secret-version" as NonEmptyStr,
+      },
+      service_identity: ProviderInstanceFieldObserved {
+        value: config.service.label,
+      },
+    },
+    bundle: bundle,
+  )
+}
+
+data claude_enrollment_materialization_frontier_note: String = "Materialize CLAUDE_CODE_OAUTH_TOKEN from the exact Secret Manager version via gunbc.auth.materialized_secret EnvVar binding, run the admitted official Claude Agent SDK runtime, then erase process env and temp staging bytes. with_materialized_secret is the construction wall; staging destruction is the bracket exit. Host binding realization is a declared scaffold until gunbc.auth.materialized_secret host effects land for env injection and shred."
