@@ -41,6 +41,9 @@ import gunbc.codex_app_server_press {
   AccountStandingIncomplete,
   ProviderProcessReceipt,
   ProviderProcessObservationFailed,
+  CodexBucketCapacityAvailable,
+  CodexBucketUnavailableUntilReset,
+  CodexBucketCapacityUnknown,
 }
 import gunbc.provider_turn_adjudication {
   automatic_recovery_authorized,
@@ -60,17 +63,24 @@ import extdeps.llm.codex_app_server {
   codex_app_server_method_wire_name,
 }
 
-data witness_note: String = "Hermetic press carriers: account-trip itinerary (3) vs turn-target itinerary (5) + projected stdio binding + preflight subject + terminal/cause adjudication RED. AccountReady requires RateLimitSnapshot capacity (usedPercent below 100), never an empty rateLimits object, and never turn_started. Live JSON-RPC turn execution remains open."
+data witness_note: String = "Hermetic press carriers: account-trip itinerary (3) vs turn-target itinerary (5) + projected stdio binding + preflight subject + terminal/cause adjudication RED. AccountReady gates on native limit_id codex bucket capacity (usedPercent below 100), never an empty rateLimits object, never sibling-bucket availability alone, and never turn_started. Live multi-bucket exhausted specimen enrolled under dag/test/fixture/provider_terminal/. Live JSON-RPC turn execution remains open."
 
-data fixture_rate_limits_capacity_available_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"primary\":{\"usedPercent\":12},\"secondary\":{\"usedPercent\":3},\"spendControlReached\":false}}}\n"
+data fixture_rate_limits_capacity_available_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"limitId\":\"codex\",\"primary\":{\"usedPercent\":12},\"secondary\":{\"usedPercent\":3},\"spendControlReached\":false}}}\n"
 
 data fixture_rate_limits_empty_object_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{}}}\n"
 
-data fixture_rate_limits_primary_saturated_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"primary\":{\"usedPercent\":100,\"resetsAt\":1893456000},\"rateLimitReachedType\":\"rate_limit_reached\"}}}\n"
+data fixture_rate_limits_primary_saturated_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"limitId\":\"codex\",\"primary\":{\"usedPercent\":100,\"resetsAt\":1893456000},\"rateLimitReachedType\":\"rate_limit_reached\"}}}\n"
 
-data fixture_rate_limits_spend_control_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"spendControlReached\":true}}}\n"
+data fixture_rate_limits_spend_control_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"limitId\":\"codex\",\"spendControlReached\":true}}}\n"
+
+data fixture_rate_limits_live_exhausted_multibucket_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"limitId\":\"codex\",\"limitName\":null,\"primary\":{\"usedPercent\":100,\"windowDurationMins\":10080,\"resetsAt\":1786159940},\"secondary\":null,\"credits\":{\"hasCredits\":false,\"unlimited\":false,\"balance\":\"0\"},\"individualLimit\":null,\"spendControlReached\":false,\"planType\":\"pro\",\"rateLimitReachedType\":\"rate_limit_reached\"},\"rateLimitsByLimitId\":{\"codex\":{\"limitId\":\"codex\",\"limitName\":null,\"primary\":{\"usedPercent\":100,\"windowDurationMins\":10080,\"resetsAt\":1786159940},\"secondary\":null,\"credits\":{\"hasCredits\":false,\"unlimited\":false,\"balance\":\"0\"},\"individualLimit\":null,\"spendControlReached\":false,\"planType\":\"pro\",\"rateLimitReachedType\":\"rate_limit_reached\"},\"codex_bengalfox\":{\"limitId\":\"codex_bengalfox\",\"limitName\":\"GPT-5.3-Codex-Spark\",\"primary\":{\"usedPercent\":0,\"windowDurationMins\":10080,\"resetsAt\":1786656789},\"secondary\":null,\"credits\":null,\"individualLimit\":null,\"spendControlReached\":null,\"planType\":null,\"rateLimitReachedType\":null}},\"rateLimitResetCredits\":{\"availableCount\":0,\"credits\":[]}}}\n"
+
+data fixture_account_read_chatgpt_requires_auth_true_line: String = "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\",\"planType\":\"pro\",\"email\":\"REDACTED@example.invalid\"},\"requiresOpenaiAuth\":true}}\n"
+
+data fixture_live_exhausted_multibucket_path: String = "dag/test/fixture/provider_terminal/codex_account_rate_limits_exhausted_multibucket_2026-08-06.jsonl"
 
 data fixture_digest_hex: String = "c86dec3d635d6bfd980084080eaf4caeb8e8093210eebc5833921ab2b1b754172e8422d39207a0fc9cea989ab557df11138309e630b10d75d094e8eb762b4547"
+
 
 fn fixture_digest() -> Sha512Digest? {
   sha512_hex_digest(hex: fixture_digest_hex)
@@ -275,7 +285,7 @@ test fn account_ready_wire_status_is_not_turn_started_or_dispatch_accepted() -> 
         && status != "turn_started"
         && status != "accepted"
         && status != "spawned"
-        && caption == "authenticated; capacity available"
+        && caption == "authenticated; codex capacity available"
         && caption != "turn started"
       match evidence.classification {
         AccountStandingAuthenticatedRateLimitsReadable => ready_ok
@@ -457,9 +467,61 @@ test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
         },
       }
       codex_press_outcome_wire_status(outcome: outcome) == "press_refused"
-        && codex_press_outcome_operator_caption(outcome: outcome) == "quota exhausted"
+        && codex_press_outcome_operator_caption(outcome: outcome) == "codex quota exhausted"
         && codex_press_outcome_wire_status(outcome: outcome) != "accepted"
         && codex_press_outcome_wire_status(outcome: outcome) != "turn_started"
+  }
+}
+
+test fn live_exhausted_multibucket_is_quota_on_codex_with_bengalfox_available() -> Bool {
+  let evidence = parse_account_trip_stdout_for_tests(
+    stdout: concat(
+      "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
+      concat(
+        fixture_account_read_chatgpt_requires_auth_true_line,
+        fixture_rate_limits_live_exhausted_multibucket_line,
+      ),
+    ),
+  )
+  let quota_ok = match evidence.classification {
+    AccountStandingQuotaReached => true
+    _ => false
+  }
+  let bucket_count_ok = count(evidence.rate_limit_buckets) == 2
+  let codex_exhausted = fold(
+    evidence.rate_limit_buckets,
+    init: false,
+    f: (acc, bucket) =>
+      match bucket {
+        CodexBucketUnavailableUntilReset { limit_id: id, reached_type: _, resets_at: _ } =>
+          acc || (id as String) == "codex"
+        _ => acc
+      },
+  )
+  let bengalfox_available = fold(
+    evidence.rate_limit_buckets,
+    init: false,
+    f: (acc, bucket) =>
+      match bucket {
+        CodexBucketCapacityAvailable { limit_id: id } =>
+          acc || (id as String) == "codex_bengalfox"
+        _ => acc
+      },
+  )
+  quota_ok && bucket_count_ok && codex_exhausted && bengalfox_available
+    && (fixture_live_exhausted_multibucket_path as String).contains("provider_terminal")
+}
+
+test fn missing_rate_limits_response_after_auth_is_incomplete_handshake_class() -> Bool {
+  let evidence = parse_account_trip_stdout_for_tests(
+    stdout: concat(
+      "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
+      fixture_account_read_chatgpt_requires_auth_true_line,
+    ),
+  )
+  match evidence.classification {
+    AccountStandingIncomplete => count(evidence.rate_limit_buckets) == 0
+    _ => false
   }
 }
 
