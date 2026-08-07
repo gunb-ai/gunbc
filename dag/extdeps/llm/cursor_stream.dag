@@ -1,6 +1,6 @@
 module extdeps.llm.cursor_stream
 
-import std.types { String, NonEmptyStr, Int }
+import std.types { String, NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -36,9 +36,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data cursor_stream_authority_note: String = "WIRE AUTHORITY for @cursor/sdk local stream vocabulary (messages.d.ts @ 1.0.26). Terminal RunResult and LocalRunStreamEvent envelopes only — no retry, switch, or escalation decisions."
-
-data cursor_local_run_stream_schema_version: Int = 1
-data cursor_local_run_stream_event_type: NonEmptyStr = "run_stream_event" as NonEmptyStr
 
 type CursorSdkMessageKind
   = CursorSdkMessageSystem
