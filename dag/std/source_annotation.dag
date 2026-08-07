@@ -205,33 +205,109 @@ type AnnotationSubjectPick {
 
 // Resolves one capture against the subject roster in a single pass, answering both questions the attachment rule asks: is the capture INSIDE some subject (body grain, refused), and what is the nearest subject STARTING AFTER it (its leading subject). Containment is checked before proximity because the two overlap — prose inside a function body always has some later declaration after it, and picking that one would silently reattach body commentary to the next unrelated declaration. That is the specific misattachment BodyGrainNotModeled exists to prevent, and checking proximity first would produce a plausible wrong answer rather than a refusal.
 
+// POST-MODULE HEADER GAP: prose on the line immediately after `module p.q` attaches to the module, not the first depth-1 member. A blank line between the module declaration and the comment starts a new block that follows the ordinary nearest-following rule instead. Without this arm, a line-2 comment would skip the module (its span ends before the capture) and bind to the first import or declaration — the wrong subject for module-level rationale while still satisfying line-1 CI layout.
+
 // The roster is scanned rather than indexed, so resolution is captures times subjects. That is a join without a sorted index, not a copied accumulator, and it is bounded by one source's declarations.
 data annotation_subject_pick_note: String = "DISSOLVE-ON: a span-ordered subject index exists on the parse artifact; then the nearest-following pick becomes a lookup and this fold reads it."
-fn annotation_subject_pick(
-  subjects: List<AnnotationSubject>,
-  origin: SourceSpan
-) -> AnnotationSubjectPick {
+
+fn earliest_subject_by_start(subjects: List<AnnotationSubject>) -> AnnotationSubject? {
+  let min_start = fold(
+    subjects,
+    init: 0 - 1,
+    f: (best, row) =>
+      if best < 0 { row.span.start } else if row.span.start < best { row.span.start } else { best }
+  )
+  if min_start < 0 {
+    none
+  } else {
+    fold(
+      subjects,
+      init: none,
+      f: (acc, row) =>
+        if row.span.start == min_start {
+          Present { value: row }
+        } else {
+          acc
+        }
+    )
+  }
+}
+
+fn earliest_member_start_after(subjects: List<AnnotationSubject>, after: Int, fallback: Int) -> Int {
   fold(
     subjects,
-    init: AnnotationSubjectPick { contained: false, following: none },
-    f: (acc, subject) =>
-      if origin.start >= subject.span.start && origin.end <= subject.span.end {
-        AnnotationSubjectPick { contained: true, following: acc.following }
-      } else if subject.span.start < origin.end {
-        acc
+    init: fallback,
+    f: (best, row) =>
+      if row.span.start > after && row.span.start < best {
+        row.span.start
       } else {
-        match acc.following {
-          Absent =>
-            AnnotationSubjectPick { contained: acc.contained, following: Present { value: subject } }
-          Present { value: best } =>
-            if subject.span.start < best.span.start {
-              AnnotationSubjectPick { contained: acc.contained, following: Present { value: subject } }
-            } else {
-              acc
-            }
-        }
+        best
       }
   )
+}
+
+fn module_header_gap_subject(
+  subjects: List<AnnotationSubject>,
+  origin: SourceSpan,
+  preceded_by_blank_line: Bool
+) -> AnnotationSubject? {
+  if preceded_by_blank_line {
+    none
+  } else {
+    match earliest_subject_by_start(subjects: subjects) {
+      Absent => none
+      Present { value: mod_subject } =>
+        let first_member_start = earliest_member_start_after(
+          subjects: subjects,
+          after: mod_subject.span.end,
+          fallback: origin.end + 1
+        )
+        if origin.start >= mod_subject.span.end
+          && origin.start <= mod_subject.span.end + 12
+          && origin.end <= first_member_start {
+          Present { value: mod_subject }
+        } else {
+          none
+        }
+    }
+  }
+}
+
+fn annotation_subject_pick(
+  subjects: List<AnnotationSubject>,
+  origin: SourceSpan,
+  preceded_by_blank_line: Bool
+) -> AnnotationSubjectPick {
+  match module_header_gap_subject(
+    subjects: subjects,
+    origin: origin,
+    preceded_by_blank_line: preceded_by_blank_line
+  ) {
+    Present { value: mod_subject } =>
+      AnnotationSubjectPick { contained: false, following: Present { value: mod_subject } }
+    Absent =>
+      fold(
+        subjects,
+        init: AnnotationSubjectPick { contained: false, following: none },
+        f: (acc, subject) =>
+          if origin.start >= subject.span.start && origin.end <= subject.span.end {
+            AnnotationSubjectPick { contained: true, following: acc.following }
+          } else if subject.span.start < origin.end {
+            acc
+          } else {
+            match acc.following {
+              Absent =>
+                AnnotationSubjectPick { contained: acc.contained, following: Present { value: subject } }
+              Present { value: best } =>
+                if subject.span.start < best.span.start {
+                  AnnotationSubjectPick { contained: acc.contained, following: Present { value: subject } }
+                } else {
+                  acc
+                }
+            }
+          }
+      )
+  }
 }
 
 
@@ -326,7 +402,11 @@ fn annotation_attach_step(
       pending: acc.pending,
     }
   } else {
-    let pick = annotation_subject_pick(subjects: subjects, origin: capture.origin)
+    let pick = annotation_subject_pick(
+      subjects: subjects,
+      origin: capture.origin,
+      preceded_by_blank_line: capture.preceded_by_blank_line
+    )
     if pick.contained {
       AnnotationAttachAcc {
         rows: acc.rows,
