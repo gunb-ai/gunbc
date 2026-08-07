@@ -1,0 +1,63 @@
+module gunbc.hostname_allocation
+
+import std.types { List, Bool, String }
+import std.disposition { Disposition, Terminal }
+import product.placement_supply { HostIdentity }
+import extdeps.dns.domain_name { DnsLabel }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+
+type HostnameAllocation {
+  fleet_slot: HostIdentity
+  canonical_hostname: DnsLabel
+}
+
+data gunbc_hostname_allocation_scope_disposition: Disposition = Terminal {
+  reason: "Single authority for the canonical hostname a fleet slot is allocated. A slot's HostIdentity is an internal placement identity; the hostname a machine answers to is a separate allocated fact governed by the DNS-label grammar (extdeps.dns.domain_name). Deriving one from the other by parsing the identity string is the §3 nicknaming violation: it makes the hostname a coincidence of how the slot happens to be spelled, so an identity that is not a legal label silently has no hostname and an identity that is one silently claims a hostname nobody allocated. Here the mapping is explicit and the lookup fails closed: an unallocated slot yields Absent, never a name reconstructed from the identity. srv1-srv4 carry LEGACY allocations whose hostname equals the slot spelling — that coincidence is now a stated row rather than a derivation rule, so the four deployed intents stay byte-identical while a fifth slot must be allocated a hostname rather than inheriting one."
+}
+
+data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
+  HostnameAllocation {
+    fleet_slot: operator_host_srv1,
+    canonical_hostname: "srv1" as DnsLabel,
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_srv2,
+    canonical_hostname: "srv2" as DnsLabel,
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_srv3,
+    canonical_hostname: "srv3" as DnsLabel,
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_srv4,
+    canonical_hostname: "srv4" as DnsLabel,
+  },
+]
+
+fn hostname_allocation_matches_slot(row: HostnameAllocation, fleet_slot: HostIdentity) -> Bool {
+  (row.fleet_slot as String) == (fleet_slot as String)
+}
+
+fn hostname_allocation_pick(
+  acc: DnsLabel?,
+  row: HostnameAllocation,
+  fleet_slot: HostIdentity,
+) -> DnsLabel? {
+  match acc {
+    Present { value: found } => Present { value: found }
+    Absent =>
+      if hostname_allocation_matches_slot(row: row, fleet_slot: fleet_slot) {
+        Present { value: row.canonical_hostname }
+      } else {
+        none
+      }
+  }
+}
+
+fn canonical_hostname_for_fleet_slot(fleet_slot: HostIdentity) -> DnsLabel? {
+  fold(
+    gunbc_fleet_hostname_allocations,
+    init: none,
+    f: (acc, row) => hostname_allocation_pick(acc: acc, row: row, fleet_slot: fleet_slot),
+  )
+}
