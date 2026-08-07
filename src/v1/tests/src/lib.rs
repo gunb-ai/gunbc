@@ -126,6 +126,8 @@ mod nested_fold_generic_param_emit_test;
 #[cfg(test)]
 mod nested_list_alias_emit_test;
 #[cfg(test)]
+mod nested_match_6777_reproducer_test;
+#[cfg(test)]
 mod node_keyed_graph_artifact_codec_test;
 #[cfg(test)]
 mod nodefold_generic_instantiation_test;
