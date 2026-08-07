@@ -72,8 +72,6 @@ fn host_effect_plan_apply_step(
       host_effect_plan_unsupported_step_refusal(ctx: ctx)
     While { cond: _, body: _ } =>
       host_effect_plan_unsupported_step_refusal(ctx: ctx)
-    BoundedPoll { max_attempts: _, body: _, success: _ } =>
-      host_effect_plan_unsupported_step_refusal(ctx: ctx)
     Retry { body: _, escalations: _, on_exhausted: _ } =>
       host_effect_plan_unsupported_step_refusal(ctx: ctx)
     Let { name: _, value: _ } =>

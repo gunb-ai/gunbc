@@ -69,6 +69,8 @@ data nfr_reason_resolve_realization_predicate: String = "discriminating subset p
 
 data nfr_reason_cost_loop_zero_body_fold: String = "C1 zero-body summation fold over CostExpr (zero-valued CostConst collapses before binder-carrying CostSum construction; the wildcard arm is the non-degenerate summation path, not anonymous recursion) — landed with v2.lens.cost.expr carrier; surfaced by whole-corpus nfr receipt on first CI run"
 
+data nfr_reason_cost_expr_zero_absorbing_compose: String = "zero-absorbing CostExpr composition (zero-valued CostConst is the identity for sequential add and parallel max; nested wildcard arms are the non-degenerate CostAdd/CostMax construction path, not anonymous recursion) — landed with v2.lens.cost.expr cost_expr_seq/cost_expr_par for C2 ComplexitySummary composition; surfaced by whole-corpus nfr receipt on first CI run"
+
 data nfr_reason_provider_terminal_absorb: String = "terminal-state absorption over the provider/worker observation coproducts: the arm names each TERMINAL variant (ProviderCompleted / ProviderFailed / ProviderEventsRefused, or WorkerProcessRunning) and gives every non-terminal variant one shared arm, because those variants reduce to the identical behaviour — enumerating them would clone the arm per variant, which is the redundancy DESIGN §2 forbids rather than the totality DESIGN §4 asks for. Landed with the Codex dispatch and recursive workflow evidence slice; declared at landing (not surfaced by a later cold sweep) so the ratchet arms with the code."
 
 data nfr_dissolve_provider_terminal_absorb: String = "ProviderExecutionState and WorkerProcessEvidence carry a DERIVED terminality projection from inhabitance (dag/std/algebra, DESIGN §3/§4 — the same move as derived equality), so these folds match on the partition rather than on the variant list, the shared arm becomes a named case instead of a wildcard, and the rows delete."
@@ -81,6 +83,10 @@ data nfr_reason_dispatch_selection_routing: String = "provider-selection routing
 
 data nfr_dissolve_dispatch_selection_routing: String = "total matches over the closed selection request and offer coproducts land and the wildcard arms migrate to named variants — rows delete with that fold"
 
+data nfr_reason_provider_standing_limit_draw: String = "dispatch-scoped limit relevance folds (match on ProviderLimitDispatchDraw × ProviderLimitSubject and LimitRejected carve-outs with wildcard arms routing off-shape subjects) landed with provider_standing authority #7926; declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_provider_standing_limit_draw: String = "cited model-to-native-token joins land per provider gap notes and limit_subject_covers_dispatch_draw becomes a total match — rows delete with that fold"
+
 data nfr_reason_binding_outcome_resolution_wildcard: String = "StructuralBindingResolution admission projection (StructuralBindingResolved arm extracts binding_outcome; off-variant wildcard Absent collapses six typed index-build refusal variants into option-absence) landed with N3-A carrier move (#7772); un-migrated modeling at assess_reference_binding_observation — the carrier distinguishes refusals but binding_outcome_from_resolution still absorbs them; declared at landing so the ratchet re-arms"
 
 data nfr_dissolve_binding_outcome_resolution_wildcard: String = "assess_reference_binding_observation routes each StructuralBindingResolution variant to a distinct capability assessment without Absent collapse — total match lands with P0-2 factual carrier recut and the wildcard arm deletes with its row"
@@ -89,9 +95,17 @@ data nfr_reason_content_hash_structural_refusal: String = "ContentHash family st
 
 data nfr_dissolve_content_hash_structural_refusal: String = "SourceRef digest construction grounds each ContentHash family at inhabitance and the wildcard arm becomes a total match — row deletes with that fold (std.content_hash family grounding)"
 
+data nfr_reason_class_b_binding_projection: String = "Class B declared-import-closure observation projection (match on DeclaredImportClosureBindingObservation with off-variant wildcard refusal arms) landed with #7835 observe_declared_import_closure_symbol_binding builtin; callers judge ListedImport vs PoolCoincidence vs refusal — the match is the typed verdict fold over the host observation carrier, not business policy; declared at landing so the ratchet re-arms"
+
+data nfr_reason_release_identity_absent_split: String = "one-special-variant split over RunningReleaseUnidentifiedCause: ReleaseRevisionAbsent answers ProcessIdentityAbsent because a process predating the identity channel is a MIGRATION state, and the other nine causes answer ProcessIdentityMalformed because a live channel carrying something that is not an identity is a DEFECT in the deploying machinery. The nine share one arm because they already differ where it matters — running_release_unidentified_detail names each cause before the match runs, so the arm carries the distinction rather than erasing it, and enumerating the nine would clone one arm nine times (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with Phase A release-identity readiness; declared at landing so the ratchet arms with the code."
+
+data nfr_dissolve_release_identity_absent_split: String = "the migration arm becomes unreachable once the identity-publishing release is deployed everywhere routed, at which point ReleaseRevisionAbsent is the executing RED control rather than a live arm; the split then folds into a derived migration-vs-defect partition over RunningReleaseUnidentifiedCause (the same derived-from-inhabitance move that clears the terminal-absorption rows) and this row deletes with it."
+
+data nfr_dissolve_class_b_binding_projection: String = "the observation carrier's verdict partition becomes derived from inhabitance (total match over BindingObserved vs BindingNotRunnable and over UnlistedImportBindingSource) and the wildcard arms delete with their rows"
+
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request" },
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request_shape" },
     reason: nfr_reason_dispatch_selection_routing,
     trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
   },
@@ -109,6 +123,36 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::selection_requests_match" },
     reason: nfr_reason_dispatch_selection_routing,
     trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::codex_limit_dispatch_draw_for_selection" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::find_offer_for_request" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::dispatch_selection_refusal_reason_for_miss" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/provider_standing.dag::limit_subject_covers_dispatch_draw" },
+    reason: nfr_reason_provider_standing_limit_draw,
+    trigger: TriggerProse { text: nfr_dissolve_provider_standing_limit_draw },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/provider_standing.dag::limit_observation_blocks_dispatch" },
+    reason: nfr_reason_provider_standing_limit_draw,
+    trigger: TriggerProse { text: nfr_dissolve_provider_standing_limit_draw },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/provider_standing.dag::provider_standing_bundle_is_selection_eligible" },
+    reason: nfr_reason_provider_standing_limit_draw,
+    trigger: TriggerProse { text: nfr_dissolve_provider_standing_limit_draw },
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/namespace_reference_derived_closure_admission.dag::binding_outcome_from_resolution" },
@@ -656,6 +700,16 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
   },
   FrontierRow {
+    subject: PathSubject { path: "src/v2/lens/cost/expr.dag::cost_expr_seq" },
+    reason: nfr_reason_cost_expr_zero_absorbing_compose,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "src/v2/lens/cost/expr.dag::cost_expr_par" },
+    reason: nfr_reason_cost_expr_zero_absorbing_compose,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
     subject: PathSubject { path: "src/v2/lens/fact_density.dag::connective_is_kernel_ambient_atom" },
     reason: nfr_reason_mint_era,
     trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
@@ -814,6 +868,26 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/host_standup.dag::assimilation_complete_input_eq" },
     reason: nfr_reason_structural_eq_backfill,
     trigger: TriggerProse { text: nfr_dissolve_derived_equality },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_listed_import" },
+    reason: nfr_reason_class_b_binding_projection,
+    trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_pool_coincidence" },
+    reason: nfr_reason_class_b_binding_projection,
+    trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_refused_at_intended_seam" },
+    reason: nfr_reason_class_b_binding_projection,
+    trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/live_deploy/readiness.dag::healthz_release_identity_refusal" },
+    reason: nfr_reason_release_identity_absent_split,
+    trigger: TriggerProse { text: nfr_dissolve_release_identity_absent_split },
   },
 ]
 

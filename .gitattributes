@@ -11,8 +11,6 @@
 .githooks/generated-artifact-merge merge=generated-artifact
 .githooks/pre-commit merge=generated-artifact
 .githooks/pre-push merge=generated-artifact
-.github/live-deploy-srv1-apply.sh merge=generated-artifact
-.github/live-deploy-srv1-retract.sh merge=generated-artifact
 .github/workflows/ci.yml merge=generated-artifact
 .github/workflows/falsifier.yml merge=generated-artifact
 .gitignore merge=generated-artifact
@@ -207,6 +205,7 @@ src/v1/stage0/src/v1_tests_claim_required_expr_newline_continuation_test.rs merg
 src/v1/stage0/src/v1_tests_claim_v1_annotation_binding_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_v1_annotation_capture_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_v1_annotation_erasure_test.rs merge=generated-artifact
+src/v1/stage0/src/v1_tests_claim_v1_annotation_round_trip_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_v1_annotation_target_emission_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_v1_complexity_eviction_hazard_test.rs merge=generated-artifact
 src/v1/stage0/src/wt_a.rs merge=generated-artifact

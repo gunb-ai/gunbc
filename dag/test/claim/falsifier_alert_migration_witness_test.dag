@@ -499,7 +499,7 @@ test fn the_trust_wall_admits_the_expected_workflow_file() -> Bool {
   }
 }
 
-data malformed_state_claim_note: String = "The load-bearing claim of item B: a malformed marker must NOT reach any notify arm, because every notify arm is followed by a write that would overwrite the corrupt marker and destroy the only record of when the incident began."
+data malformed_state_claim_note: String = "The load-bearing claim of item B: a malformed marker must NOT reach any notify arm, because every notify arm is followed by a write that would overwrite the corrupt marker and destroy the only record of when the incident began. THE WITNESSES FOR IT NO LONGER LIVE IN THIS FILE. They moved to falsifier_alert_decision_witness_test when the forked throttle decision was deleted, and they execute there against alert_decision as a_decoded_malformed_marker_refuses_instead_of_starting_a_new_incident. This note is kept where the claim was first argued; a reader looking for its executing evidence should look there, not here."
 
 data receipt_strictness_claim_note: String = "Item C's claims. The count check is the one worth naming: the decoder previously IGNORED the wire component_count and recomputed it from the array, which is the recompute-instead-of-check pattern — it cannot disagree with itself, so it can never report that the producer and its own array are inconsistent. Checking the declared value against the decoded one is what makes the field mean anything."
 

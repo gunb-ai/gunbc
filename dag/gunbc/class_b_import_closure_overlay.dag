@@ -1,0 +1,118 @@
+module gunbc.class_b_import_closure_overlay
+
+import extdeps.filesystem.filesystem_io
+import extdeps.shell
+import std.types { String, Bool, Int, List, NonEmptyStr }
+
+data class_b_overlay_note: String = "Derives the Class B stripped entry overlay from the live rust_test_fixtures.dag at execution time (#7817 strip_import_block property, moved to the executing transport/witness path). No checked-in copy of the live corpus file — the overlay is read from disk, the declared rust import block removed under a typed strip receipt, and written under a caller-supplied overlay root so pool-membership coincidence cannot drift silently."
+
+data class_b_entry_rel: String = "src/v2/extdeps/languages/rust_test_fixtures.dag"
+data class_b_rust_import_prefix: String = "import v2.extdeps.languages.rust"
+
+data class_b_declared_import_pool_roots_note: String = "Minimal explicit pool for Class B rows 1-2 (#7835): the declared-import-closure footprint for rust_test_fixtures — entry plus v2.extdeps.languages.rust and its transitive std/extdeps dependencies — NOT witness_layer_roots. Stronger control: binding is observed with no unrelated ambient modules that could accidentally supply rust symbols; row 2 prepends fixtures/class_b_import_closure/perturbation_overlay to this baseline only. Rows 3-4 on the transport gate keep witness_layer_roots for stripped-entry pool-coincidence pressure."
+
+data class_b_declared_import_pool_roots: List<String> = [
+  "dag/std",
+  "dag/extdeps",
+  "src/v2/extdeps/languages",
+  "src/v2/std"
+]
+
+type StripImportFoldState {
+  skipping: Bool
+  blocks_found: Int
+  blocks_removed: Int
+  out: List<String>
+}
+
+fn strip_import_line_fold(acc: StripImportFoldState, line: String) -> StripImportFoldState {
+  if starts_with(s: line, prefix: class_b_rust_import_prefix) {
+    StripImportFoldState {
+      skipping: true,
+      blocks_found: acc.blocks_found + 1,
+      blocks_removed: acc.blocks_removed,
+      out: acc.out
+    }
+  } else if acc.skipping {
+    if line == "}" {
+      StripImportFoldState {
+        skipping: false,
+        blocks_found: acc.blocks_found,
+        blocks_removed: acc.blocks_removed + 1,
+        out: acc.out
+      }
+    } else {
+      acc
+    }
+  } else {
+    StripImportFoldState {
+      skipping: false,
+      blocks_found: acc.blocks_found,
+      blocks_removed: acc.blocks_removed,
+      out: concat(acc.out, [line])
+    }
+  }
+}
+
+type StripImportBlockReceipt
+  = StripImportValid { content: String }
+  | StripImportRefused { cause: NonEmptyStr }
+
+fn strip_rust_test_fixtures_import_block(content: String) -> StripImportBlockReceipt {
+  let final_state = fold(
+    split(s: content, delimiter: "\n"),
+    init: StripImportFoldState { skipping: false, blocks_found: 0, blocks_removed: 0, out: [] },
+    f: fn(acc, line) { strip_import_line_fold(acc: acc, line: line) }
+  )
+  if final_state.blocks_found != 1 {
+    StripImportRefused { cause: "expected exactly one rust import block" as NonEmptyStr }
+  } else if final_state.blocks_removed != 1 {
+    StripImportRefused { cause: "rust import block opened but not closed" as NonEmptyStr }
+  } else if final_state.skipping {
+    StripImportRefused { cause: "strip terminated inside import block" as NonEmptyStr }
+  } else {
+    StripImportValid { content: join(final_state.out, "\n") }
+  }
+}
+
+type ClassBOverlayMaterialization
+  = OverlayMaterialized { overlay_entry_path: String }
+  | OverlayMaterializationRefused { phase: NonEmptyStr, cause: NonEmptyStr }
+
+func class_b_materialize_stripped_entry_overlay(root: String, overlay_dir: String) -> ClassBOverlayMaterialization {
+  let live_path = concat(root, "/", class_b_entry_rel)
+  let overlay_path = concat(overlay_dir, "/", class_b_entry_rel)
+  let read = Filesystem.Read(path: live_path)
+  if read.success {
+    match strip_rust_test_fixtures_import_block(content: read.content) {
+      StripImportValid { content } => {
+        let parents = shell.Mkdir.Parents(path: overlay_path)
+        if parents.success {
+          let write = Filesystem.Write(path: overlay_path, content: content)
+          if write.success {
+            OverlayMaterialized { overlay_entry_path: overlay_path }
+          } else {
+            OverlayMaterializationRefused {
+              phase: "write" as NonEmptyStr,
+              cause: "overlay write refused" as NonEmptyStr
+            }
+          }
+        } else {
+          OverlayMaterializationRefused {
+            phase: "mkdir" as NonEmptyStr,
+            cause: "overlay parent mkdir refused" as NonEmptyStr
+          }
+        }
+      }
+      StripImportRefused { cause } => OverlayMaterializationRefused {
+        phase: "strip" as NonEmptyStr,
+        cause: cause
+      }
+    }
+  } else {
+    OverlayMaterializationRefused {
+      phase: "read" as NonEmptyStr,
+      cause: "live rust_test_fixtures read refused" as NonEmptyStr
+    }
+  }
+}

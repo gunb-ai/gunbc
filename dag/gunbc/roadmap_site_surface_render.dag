@@ -1,7 +1,8 @@
 module gunbc.roadmap_site_surface_render
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, List, CommitSha }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import gunbc.running_release_identity { running_release_healthz_members }
 import std.markup { Fragment }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.languages.json.emit {
@@ -42,14 +43,14 @@ fn served_surface_digest_kv(url_path: NonEmptyStr, body: String) -> JsonKeyValue
   json_kv(key: url_path as String, value: json_string(s: site_artifact_digest(body: body).digest as String))
 }
 
-fn healthz_body_from_surface_artifacts(
+fn healthz_surface_members(
   roadmap: RoadmapSiteSurfaceArtifact,
   dispatch: RoadmapSiteSurfaceArtifact,
   daily: RoadmapSiteSurfaceArtifact,
   full: RoadmapSiteSurfaceArtifact,
   dispatch_js: RoadmapSiteSurfaceArtifact,
-) -> String {
-  serialize_json(v: json_object(members: [
+) -> List<JsonKeyValue> {
+  [
     json_kv(key: "status", value: json_string(s: "ok")),
     json_kv(key: "service", value: json_string(s: roadmap_site_service_name)),
     json_kv(key: "artifacts", value: json_object(members: [
@@ -59,5 +60,49 @@ fn healthz_body_from_surface_artifacts(
       served_surface_digest_kv(url_path: full.url_path, body: full.body),
       served_surface_digest_kv(url_path: dispatch_js.url_path, body: dispatch_js.body),
     ])),
-  ]))
+  ]
 }
+
+data healthz_surface_members_note: String = "THE SURFACE MEMBERS ARE FACTORED OUT SO THE SERVED DOCUMENT AND THE BUNDLE'S OWN healthz_body CANNOT DRIFT. The served /healthz body is these members PLUS the running process's release identity (gunbc.running_release_identity); the bundle's retained healthz_body is these members alone. One member list, two documents differing by exactly the launch-identity members — never two spellings of the surface, which is the dual-representation DESIGN section 3 forbids and which would let the deploy's freshness comparison go green against a document the route does not serve."
+
+fn healthz_body_from_surface_artifacts(
+  roadmap: RoadmapSiteSurfaceArtifact,
+  dispatch: RoadmapSiteSurfaceArtifact,
+  daily: RoadmapSiteSurfaceArtifact,
+  full: RoadmapSiteSurfaceArtifact,
+  dispatch_js: RoadmapSiteSurfaceArtifact,
+) -> String {
+  serialize_json(v: json_object(members: healthz_surface_members(
+    roadmap: roadmap,
+    dispatch: dispatch,
+    daily: daily,
+    full: full,
+    dispatch_js: dispatch_js,
+  )))
+}
+
+fn healthz_body_with_release_identity(
+  roadmap: RoadmapSiteSurfaceArtifact,
+  dispatch: RoadmapSiteSurfaceArtifact,
+  daily: RoadmapSiteSurfaceArtifact,
+  full: RoadmapSiteSurfaceArtifact,
+  dispatch_js: RoadmapSiteSurfaceArtifact,
+  release_revision: CommitSha,
+  surface_bundle_identity: Fnv1a64Structural,
+) -> String {
+  serialize_json(v: json_object(members: list_append(
+    healthz_surface_members(
+      roadmap: roadmap,
+      dispatch: dispatch,
+      daily: daily,
+      full: full,
+      dispatch_js: dispatch_js,
+    ),
+    running_release_healthz_members(
+      revision: release_revision,
+      surface_bundle_identity: surface_bundle_identity,
+    ),
+  )))
+}
+
+data healthz_body_with_release_identity_note: String = "THE SERVED DOCUMENT HAS EXACTLY ONE PRODUCER, AND THIS IS IT. The healthz handler renders it for the live bundle, the readiness healthy fixture renders it for a supplied bundle, and nothing else spells the document. That matters more here than in an ordinary factoring, because the readiness comparison decides whether a deploy converged: a second spelling of the served body would let the comparison agree with a document the route does not serve, which is the state-space the whole readiness contract exists to exclude.\\n\\nThe surface members come first and the identity members last, so the surface half of this document is a PREFIX of it in member order — but nothing downstream may depend on that, because the comparison projects members by KEY rather than by position (roadmap_site_healthz_surface_is_current). Order here is only the emitter's, not a contract."

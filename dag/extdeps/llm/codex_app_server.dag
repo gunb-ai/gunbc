@@ -1,0 +1,35 @@
+module extdeps.llm.codex_app_server
+
+import std.types { NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openai/codex"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.codex_app_server",
+      decl_name: "CodexAppServerTransport",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.llm.codex_app_server.extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+type CodexAppServerTransport
+  = CodexAppServerStdio
+  | CodexAppServerUnixSocket
+
+data codex_default_rate_limit_id: NonEmptyStr = "codex" as NonEmptyStr
+
+data codex_bengalfox_rate_limit_id: NonEmptyStr = "codex_bengalfox" as NonEmptyStr
+
+data codex_model_to_limit_bucket_gap_note: String = "TYPED GAP — model → native limit_id is NOT observable on the 0.146 app-server surface. Model has no limitId; TurnStartParams.model is a free string with no bucket edge; RateLimitSnapshot carries limitId/limitName but no model join. Live limitName GPT-5.3-Codex-Spark on codex_bengalfox is suggestive folklore, not a cited join. dissolve-on: an upstream field or documented map that binds turn model (or service tier) to metered limit_id. Until then, consumers must not invent a closed mapping. The symbol codex_default_rate_limit_id names the backward-compatible rateLimits mirror's native key (live limitId=codex), which is the press AccountReady gate key — not a proven claim that every unspecified-model turn/start consumes that bucket."

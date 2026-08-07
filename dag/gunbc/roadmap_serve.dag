@@ -1,6 +1,6 @@
 module gunbc.roadmap_serve
 
-import std.types { String, Int, Bool, List, HttpMethod, GET, POST, HttpStatus }
+import std.types { String, Int, Bool, List, CommitSha, HttpMethod, GET, POST, HttpStatus }
 import std.http_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -44,7 +44,7 @@ import gunbc.roadmap_instrument_tuner { instrument_tuner_page }
 import gunbc.roadmap_static_site {
   roadmap_site_roadmap_md_body,
   roadmap_site_dispatch_json_body,
-  roadmap_site_healthz_body,
+  roadmap_site_healthz_body_for_release,
 }
 import gunbc.roadmap_site_surface_render { page_render_refusal_body }
 import gunbc.roadmap_belt_actuate {
@@ -244,14 +244,14 @@ data belt_dispatch_status_note: String = "TOTAL per-variant status mapping — e
 
 fn belt_dispatch_status(r: BeltDispatchResult) -> HttpStatus {
   match r {
-    DispatchSpawned { node_id: _, session_name: _ } => 200
+    DispatchSpawned { node_id: _, session_name: _, provider: _ } => 200
     DispatchAlreadyLive { node_id: _, session_name: _ } => 200
     DispatchDisabled { node_id: _, instance_id: _, reason: _ } => 403
     DispatchNodeNotFound { node_id: _ } => 404
     DispatchNodeAlreadyDone { node_id: _ } => 409
     DispatchObserveRefused { node_id: _, reason: _ } => 503
     DispatchAuthorityRefused { node_id: _, detail: _ } => 503
-    DispatchSpawnFailed { node_id: _, step: _, detail: _ } => 502
+    DispatchSpawnFailed { node_id: _, step: _, detail: _, provider: _ } => 502
   }
 }
 
@@ -382,13 +382,14 @@ fn roadmap_serve_invoke_for_instance(
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
   request: ServeHttpRequest,
+  release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match handler {
     RoadmapDailyPageHandler => serve_daily_page_response_for_instance(instance: instance)
     RoadmapFullPageHandler => serve_page_response(page: roadmap_page_for_authority())
     RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body())
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body())
-    HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body())
+    HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
     DashboardInstanceHandler =>
       serve_text_response(
         status: 200,
@@ -422,12 +423,14 @@ fn roadmap_serve_invoke(
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
   request: ServeHttpRequest,
+  release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_for_instance(
     instance: srv1_live_dashboard_instance(),
     handler: handler,
     params: params,
     request: request,
+    release_revision: release_revision,
   )
 }
 
@@ -540,6 +543,7 @@ fn roadmap_serve_selection_response_for_instance(
   instance: HostDashboardInstance,
   sel: RouteSelection<RoadmapServeHandler>,
   request: ServeHttpRequest,
+  release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match sel {
     SelectedDynamic { handler: h, params: ps } =>
@@ -548,6 +552,7 @@ fn roadmap_serve_selection_response_for_instance(
         handler: h,
         params: ps,
         request: request,
+        release_revision: release_revision,
       )
     SelectedStatic { route: r } =>
       ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
@@ -565,11 +570,13 @@ fn roadmap_serve_selection_response_for_instance(
 fn roadmap_serve_selection_response(
   sel: RouteSelection<RoadmapServeHandler>,
   request: ServeHttpRequest,
+  release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_for_instance(
     instance: srv1_live_dashboard_instance(),
     sel: sel,
     request: request,
+    release_revision: release_revision,
   )
 }
 
@@ -578,6 +585,7 @@ fn roadmap_serve_respond_for_instance(
   method_label: String,
   path: String,
   body: String,
+  release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match parse_http_method_label(label: method_label) {
     UnknownMethod { label: l } =>
@@ -604,61 +612,98 @@ fn roadmap_serve_respond_for_instance(
             instance: instance,
             sel: serve_select_route(table: t, method: m, path: path),
             request: ServeHttpRequest { method: m, path: path, body: body },
+            release_revision: release_revision,
           )
       }
   }
 }
 
-fn roadmap_serve_respond(method_label: String, path: String, body: String) -> ServeHttpResponse {
+fn roadmap_serve_respond(
+  method_label: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeHttpResponse {
   roadmap_serve_respond_for_instance(
     instance: srv1_live_dashboard_instance(),
     method_label: method_label,
     path: path,
     body: body,
+    release_revision: release_revision,
   )
 }
 
-fn roadmap_serve_handle(method: String, path: String, body: String) -> ServeWireResponse {
+fn roadmap_serve_handle(
+  method: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
     instance: srv1_live_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
+    release_revision: release_revision,
   ))
 }
 
-fn roadmap_serve_handle_srv1_green(method: String, path: String, body: String) -> ServeWireResponse {
+fn roadmap_serve_handle_srv1_green(
+  method: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
     instance: srv1_green_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
+    release_revision: release_revision,
   ))
 }
 
-fn roadmap_serve_handle_srv1_lab(method: String, path: String, body: String) -> ServeWireResponse {
+fn roadmap_serve_handle_srv1_lab(
+  method: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
     instance: srv1_lab_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
+    release_revision: release_revision,
   ))
 }
 
-fn roadmap_serve_handle_srv2_preview(method: String, path: String, body: String) -> ServeWireResponse {
+fn roadmap_serve_handle_srv2_preview(
+  method: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
+    release_revision: release_revision,
   ))
 }
 
-fn roadmap_serve_handle_srv2_lab(method: String, path: String, body: String) -> ServeWireResponse {
+fn roadmap_serve_handle_srv2_lab(
+  method: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
     instance: srv2_lab_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
+    release_revision: release_revision,
   ))
 }
