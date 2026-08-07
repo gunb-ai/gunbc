@@ -670,6 +670,16 @@ fn marshal_generic(
         // G2 live-read call reachability: callee atoms make cross-fn carrier chains
         // visible in the fn-arrow skeleton (docs/plans/live-read-witness-classification-design.md P1).
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    } else if matches!(node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) && !name.is_empty()
+    {
+        // Record-construction identity: the constructor name rides a NAMED edge so a
+        // constructor census cannot conflate it with a string literal spelling the same
+        // lexeme (string-literal atoms and callee atoms are positional edges).
+        edges.push(edge_named(
+            ctx,
+            "record_construction",
+            atom_identity_node(ctx, &name),
+        ));
     }
     if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
         edges.push(literal_edge);

@@ -1,0 +1,75 @@
+module test.claim.record_construction_census_witness_test
+
+import v2.std.decl_index { DeclFact, decl_facts }
+import v2.std.node { Atom, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data record_construction_census_witness_note: String = "Executing consumer for the decl-fact skeleton's record_construction identity edge (the marshal capability that grounded the BoundedPoll deletion census, adhoc-429f6982-280). A record construction marshals its constructor name as an Atom under a NAMED record_construction edge; string-literal atoms and callee atoms ride positional edges, and match patterns marshal no construction identity at all. The witness proves that discrimination on a closed fixture pool with authored oracle counts: the planted construction counts exactly 1, the match-pattern-only specimen counts 0, and the same-lexeme string literal counts 0. The BoundedPoll deletion itself needs no standing corpus census: with the variant deleted, any future construction is an unresolved name the compile-clean gate refuses, so unwritability is structural and this witness guards the census MECHANISM, not the deleted symbol."
+
+type CensusConstructionCount {
+  constructions: Int
+  self_is_target_atom: Bool
+}
+
+fn census_edge_is_construction(e: Edge) -> Bool {
+  match e.label {
+    Named { name: nm } => nm == ^record_construction
+    Positional => false
+  }
+}
+
+fn census_construction_fold(n: Node, target: Symbol) -> CensusConstructionCount {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match n0.kind {
+          TypeNode { connective: Atom { identity: s } } =>
+            CensusConstructionCount { constructions: 0, self_is_target_atom: s == target }
+          _ => CensusConstructionCount { constructions: 0, self_is_target_atom: false }
+        }
+      },
+      step: fn(acc, e, child) {
+        CensusConstructionCount {
+          constructions: acc.constructions + child.constructions + (if census_edge_is_construction(e: e) && child.self_is_target_atom { 1 } else { 0 }),
+          self_is_target_atom: acc.self_is_target_atom
+        }
+      }
+    }
+  )
+}
+
+fn census_construction_count(n: Node, target: Symbol) -> Int {
+  census_construction_fold(n: n, target: target).constructions
+}
+
+data census_fixture_pool_roots: List<String> = ["dag/test/fixture/record_construction_census"]
+
+fn census_count_for_decl(name: String, target: Symbol) -> Int {
+  fold(decl_facts(pool_roots: census_fixture_pool_roots), init: 0 - 1, f: fn(acc, fact) {
+    if fact.name == name {
+      census_construction_count(n: fact.node, target: target)
+    } else {
+      acc
+    }
+  })
+}
+
+test fn planted_construction_counts_exactly_one() -> Bool {
+  census_count_for_decl(name: "census_probe_constructs_subject", target: ^CensusProbeSubject) == 1
+}
+
+test fn match_pattern_only_counts_zero() -> Bool {
+  census_count_for_decl(name: "census_probe_matches_subject_only", target: ^CensusProbeSubject) == 0
+}
+
+test fn string_literal_same_lexeme_counts_zero() -> Bool {
+  census_count_for_decl(name: "census_probe_string_literal_same_lexeme", target: ^CensusProbeSubject) == 0
+}
+
+test fn missing_specimen_refuses_as_negative_sentinel() -> Bool {
+  census_count_for_decl(name: "census_probe_absent_decl", target: ^CensusProbeSubject) == (0 - 1)
+}

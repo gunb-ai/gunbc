@@ -150,7 +150,6 @@ fn orch_retry_perturbed_intent() -> PipelineStep {
     If { cond: _, then_: _, else_: _ } => retry_eagain_intent()
     For { binder: _, over: _, body: _ } => retry_eagain_intent()
     While { cond: _, body: _ } => retry_eagain_intent()
-    BoundedPoll { max_attempts: _, body: _, success: _ } => retry_eagain_intent()
     Let { name: _, value: _ } => retry_eagain_intent()
     Call { callee: _, args: _ } => retry_eagain_intent()
   }
@@ -195,7 +194,6 @@ fn orch_retry_perturbed_exhausted_intent() -> PipelineStep {
     If { cond: _, then_: _, else_: _ } => retry_eagain_intent()
     For { binder: _, over: _, body: _ } => retry_eagain_intent()
     While { cond: _, body: _ } => retry_eagain_intent()
-    BoundedPoll { max_attempts: _, body: _, success: _ } => retry_eagain_intent()
     Let { name: _, value: _ } => retry_eagain_intent()
     Call { callee: _, args: _ } => retry_eagain_intent()
   }
@@ -298,7 +296,6 @@ fn orch_retry_1level_perturbed_intent() -> PipelineStep {
     If { cond: _, then_: _, else_: _ } => orch_retry_1level_intent()
     For { binder: _, over: _, body: _ } => orch_retry_1level_intent()
     While { cond: _, body: _ } => orch_retry_1level_intent()
-    BoundedPoll { max_attempts: _, body: _, success: _ } => orch_retry_1level_intent()
     Let { name: _, value: _ } => orch_retry_1level_intent()
     Call { callee: _, args: _ } => orch_retry_1level_intent()
   }
