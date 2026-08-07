@@ -1019,13 +1019,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "ci-cost",
       path: "docs/plans/five-minute-ci-gate-design.md",
       t: fields(
-        headline: "Migrate the production selected witness set onto native bundle execution",
-        boundary: "A selected witness population executes as native code in one process: a SelectedWitnessPlan names the population, the bundle carries a content-addressed identity, witnesses run as direct calls rather than through the interpreter, an equivalence oracle establishes that the native result matches the interpreted one, and every failure is a typed refusal. Native execution is dispositive only at the scale actually measured, and any timing ratio against interpreted and warm-cargo paths is reported with its evidence, never asserted unverified. The next step cuts over a bounded production witness population. Migration rate, fallback, artifact identity, and fail-closed memory remain open.",
-        displaced_cost: "Running selected witnesses interpreted still pays per-row interpreter tax documented in ci-floor-child-spawn-attribution.",
-        first_slice: "Merge #7599 once controls clear; then enroll bounded production cutover with counted interpreted-fallback rows.",
-        red_control: "A provenance gap in selection refuses rather than widening to the whole corpus; stale compiler identity, missing native realization, or uncounted fallback refuses.",
-        out_of_scope: "No change to the scheduled falsifier's whole-corpus cold control; no claim that #7599 slice alone closes the five-minute gate.",
-        handback: "#7599 merge receipt; production cutover receipts with native-vs-interpreted attribution and fallback counts trending to zero."
+        headline: "Replace the interpreter for a bounded required population with the emitted native bundle",
+        boundary: "REPLACEMENT, NOT ADDITION. The selected population is emitted as one identified Rust bundle, compiled as part of the build that already happens, and executed by direct call on the required path — with the ordinary interpreter scheduling for that same population DELETED in the same change. The mechanism landed already; what has not happened is the cutover. Interpretation survives only as an explicitly named differential control on a cadence, never as a success arm the production path can fall through to.",
+        displaced_cost: "The bundle mechanism exists and the required path takes no benefit from it: the cited production enrolment ran none of its three selected members natively and fell back on all three, so the interpreter tax is still paid in full while the machinery reads as delivered. That gap is the whole content of this row.",
+        first_slice: "Cut one bounded required population over: emit its bundle, execute it by direct call, and delete its interpreter scheduling in the same change.",
+        red_control: "The migrated population is measured as executing natively with nothing falling back, nothing interpreted, and nothing unavailable — a fallback that still counts is the state this row exists to leave, not a tolerated residue. A provenance gap in selection refuses rather than widening to the whole corpus. Stale compiler identity or a missing native realization refuses. The planted-red discriminator still reds, so the native path is proven to be able to fail.",
+        out_of_scope: "No change to the scheduled falsifier's whole-corpus cold control. Not sharing discovery, not owned CI, not the local-agent compute fabric, not width two — this row changes HOW the selected population executes, not what is prepared before it.",
+        handback: "The emitted bundle identity naming source, plan, compiler and toolchain; the migrated population executing by direct call with no fallback, interpretation or unavailable arm remaining on the required path; and the deleted interpreter scheduling."
       )
     ),
     active_large(
@@ -1143,7 +1143,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         boundary: "The scoped worker consumes an already-initialised substrate, or runs as a later stage inside the ordinary one, rather than constructing its own sources, indexes and environments. Staying in its own process remains allowed: isolation means separate mutable scratch and its own lifetime, never recomputing facts that are already fixed and immutable.",
         displaced_cost: "The scoped worker executes twenty-seven witnesses and pays for a whole second world to do it. The process boundary is being used as a way of handing memory back, and a cold start is the price currently paid for that.",
         first_slice: "Run the scoped population against the ordinary world's initialised substrate while keeping its own scratch.",
-        red_control: "The same twenty-seven witnesses reach the same outcomes. No second source or index construction happens. The scoped segment falls by at least three minutes on the same subject, and memory stays inside the fixed envelope.",
+        red_control: "STRUCTURAL, NOT A STOPWATCH. No second source loading, no second index construction, no second initialised semantic world, the same exact witness population with the same outcomes and effects, worker-private scratch still bounded, and no path back to cold construction. Wall, CPU and memory before and after are recorded as observations beside that verdict — a timer moving cannot stand in for a duplicate that is still reachable, and a duplicate genuinely removed is not disqualified by a noisy host.",
         out_of_scope: "Not sharing the discovery walk, which the row above owns. Not widening to two workers — that stays parked until private worlds stop being rebuilt.",
         handback: "The same population and outcomes, no second construction, and the measured segment reduction."
       )
@@ -1325,8 +1325,8 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Identical work runs once and is handed to everyone who asked for it",
         boundary: "Two requests naming the same computation are the same work: one producer runs and everyone else attaches to its result as a consumer. The fabric decides what may run — how many cold builds a machine carries at once, what the compile pool's total demand may be, which host serves a request, and what order competing work is served in — and tells a caller which of those it is waiting on. A caller never starts something merely because it cannot tell whether somebody else is already producing it.",
         displaced_cost: "Ten agents needing the same binary for the same tree currently means ten builds, because nothing lets one of them discover the other nine. Moving the present arrangement onto our own machines WITHOUT this multiplies the load instead of sharing it, which is why this row comes before more consumers rather than after them.",
-        first_slice: "Collapse two identical requests into one producer with two consumers, and report the standing that says which one a caller is.",
-        red_control: "Two identical requests produce one execution and both callers receive the same result. Two requests differing anywhere in the identity — tree, toolchain, target, profile, features, environment — must NOT collapse. A caller refused for want of capacity is told so, and that refusal is counted rather than becoming a longer queue nobody can see.",
+        first_slice: "Two agent sessions ask for the same artefact-producing build of the same tree: one producer runs, one compiler build happens, one output is returned, and both attach to it. Deliberately NOT a read-only check — collapsing two verdicts would demonstrate the mechanism on the one case where duplicate work costs nothing, while the case that swamps the fleet is two cold builds.",
+        red_control: "Two identical requests produce one execution and both callers receive the same result, with the same output identity. Two requests differing anywhere in the identity — tree, toolchain, target, profile, features, environment — must NOT collapse, each difference proven separately. A caller refused for want of capacity is told so, and that refusal is counted rather than becoming a longer queue nobody can see.",
         out_of_scope: "Not what any operation computes. Not the handing back of outputs, which is its sibling. Not provisioning the machines the pool runs on.",
         handback: "One producer serving several consumers on a real operation, the non-collapse controls, the standing a caller sees, and agents no longer launching duplicate cold builds."
       )
@@ -2218,8 +2218,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "observation-raw-print-retirement", parent: "observation-collapse-watchdog-restatement"),
 
     edge(child: "warm-merge-admission", parent: "five-minute-ci-gate"),
-    edge(child: "native-selected-witness-bundle", parent: "five-minute-ci-gate"),
-    edge(child: "native-selected-witness-bundle", parent: "warm-merge-admission"),
+    edge(child: "five-minute-ci-gate", parent: "native-selected-witness-bundle"),
     edge(child: "module-grain-materialization", parent: "five-minute-ci-gate"),
     edge(child: "pre-index-materialization-lookup", parent: "five-minute-ci-gate"),
     edge(child: "phased-single-process-ci", parent: "five-minute-ci-gate"),
@@ -2240,6 +2239,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
 
     edge(child: "compute-artifact-return-and-materialization", parent: "compute-exact-work-contract"),
     edge(child: "compute-deduplication-and-admission", parent: "compute-exact-work-contract"),
+    edge(child: "compute-deduplication-and-admission", parent: "compute-artifact-return-and-materialization"),
     edge(child: "ci-owned-execution", parent: "compute-exact-work-contract"),
     edge(child: "ci-owned-execution", parent: "compute-artifact-return-and-materialization"),
     edge(child: "ci-owned-execution", parent: "compute-deduplication-and-admission"),
