@@ -20,15 +20,15 @@ fn authenticate_ctrl_publication_ingest(
   dashboard_session_id: String,
   authenticated_requester: String,
 ) -> CtrlPublicationIngestAuthority? {
-  if authenticated_requester == "" || dashboard_session_id == "" {
-    Absent
-  } else {
-    Present {
-      value: CtrlPublicationIngestAuthority {
-        authenticated_requester: authenticated_requester,
-        dashboard_session_id: dashboard_session_id,
+  match authenticated_requester == "" || dashboard_session_id == "" {
+    true => Absent
+    false =>
+      Present {
+        value: CtrlPublicationIngestAuthority {
+          authenticated_requester: authenticated_requester,
+          dashboard_session_id: dashboard_session_id,
+        }
       }
-    }
   }
 }
 
