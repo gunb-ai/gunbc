@@ -1,7 +1,6 @@
 module test.claim.decl_facts_reflection_witness_support
 
 import test.fixture.decl_facts_reflection.ambiguous_shared_a
-import test.fixture.decl_facts_reflection.ambiguous_shared_b { OtherTwo }
 import test.fixture.decl_facts_reflection.ambiguous_specimen
 import test.fixture.decl_facts_reflection.globally_unique_carrier
 import test.fixture.decl_facts_reflection.specimens
@@ -49,8 +48,6 @@ fn decl_facts_reflection_lookup(qn: String) -> DeclFactLookup {
     facts: decl_facts_reflection_fixture_facts()
   )
 }
-
-data decl_facts_reflection_ambiguous_shared_b_side_effect: OtherTwo = OtherTwo
 
 fn decl_fact_lookup_candidate_rel_path_contains(lookup: DeclFactLookup, fragment: String) -> Bool {
   match lookup {
