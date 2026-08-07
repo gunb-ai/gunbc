@@ -83,16 +83,15 @@ data observed_dgx_spark_router_reservations: List<Cr1000aDhcpLeaseRow> = [
 // MODELING: an assigned slot structurally carries BOTH the reservation and the OperatorAllocation
 // that joined them, in one variant -- there is no representable state where a reservation is
 // attached with no authority behind it.
-// SUBSTRATE: the Optional-of-record encoding is also currently unusable at this arity. Two data
-// rows of a record type carrying an inhabited optional reservation field reliably exhaust memory
-// during resolve (SIGKILL, exit 137, no diagnostic); ONE such row resolves in ~40s. Measured by
-// bisection on 2026-08-07: one assigned + one unassigned binding passes, both assigned dies, and it
-// reproduces whether the value is an inline literal, a cross-data reference, or built by a shared
-// constructor fn -- so it is arity in the number of inhabited Optional-record rows, not literal
-// duplication. Reported to the parent lane; this is a substrate cost-shape defect, not a property
-// of these rows, and the coproduct is the encoding that expresses the intent without meeting it.
-// dissolve-on: the resolve blowup is fixed, at which point this comment retires while the coproduct
-// stays on its own modeling merits.
+// SUBSTRATE (inherited report, unverified here): an earlier lane reported that two data rows of a
+// record type carrying inhabited optional reservation fields exhaust memory during claim_batch
+// resolve (SIGKILL exit 137). THIS lane did not discriminate that claim: exit 137 reproduced on
+// unmodified main in the same host-pressure window as the first two-SlotAssigned attempt, and a
+// quiet-host follow-up patched two inhabited Optional rows to resolve cleanly (gunbc compile:
+// resolved 98 sources; claim_batch ~40s). The inherited report is neither confirmed nor refuted;
+// the coproduct encoding is kept for modeling merit regardless.
+// dissolve-on: inherited Optional-record resolve blowup is confirmed or refuted at the substrate,
+// at which point the inherited-report half of this comment retires while the coproduct stays.
 type OperatorAllocation {
   decided_by: NonEmptyStr
   decided_on: NonEmptyStr
