@@ -58,9 +58,10 @@ pub use crate::std_occurrence_identity::{
     occurrence_id_allocator_initial, occurrence_transport_validate,
 };
 pub use crate::std_occurrence_identity::{
-    AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceCategory, OccurrenceContainmentPath,
-    OccurrenceId, OccurrenceIdAllocResult, OccurrenceIdAllocator, OccurrenceIndex,
-    OccurrenceIndexEntry, OccurrenceProjection, OccurrenceTransport, OccurrenceTransportRefusal,
+    AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceCategory,
+    OccurrenceCategoryClauseEDependencyInducingVerdict, OccurrenceContainmentPath, OccurrenceId,
+    OccurrenceIdAllocResult, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceIndexEntry,
+    OccurrenceProjection, OccurrenceTransport, OccurrenceTransportRefusal,
     OccurrenceTransportValidation, ReferenceOccurrence, ValidatedOccurrenceTransport,
 };
 pub use crate::std_roster_frontier::declaration_ref_eq;
@@ -2076,27 +2077,14 @@ pub fn reference_derived_dependency_binding_references(
     references: Rc<Vec<Rc<ReferenceOccurrence>>>,
 ) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
     {
-        let build = references.clone().iter().cloned().fold(
-            Rc::new(ReferenceDerivedDependencyBindingReferenceBuild {
-                references_reversed: Rc::new(vec![]),
-            }),
-            |acc: Rc<ReferenceDerivedDependencyBindingReferenceBuild>,
-             reference: Rc<ReferenceOccurrence>| {
-                match *occurrence_category_clause_e_dependency_inducing_verdict(
-                    reference.category.clone(),
-                ) {
-                    OccurrenceCategoryClauseEDependencyInducing => {
-                        Rc::new(ReferenceDerivedDependencyBindingReferenceBuild {
-                            references_reversed: v1_rt::concat(
-                                Rc::new(vec![reference.clone()]),
-                                acc.references_reversed.clone(),
-                            ),
-                        })
-                    }
-                    OccurrenceCategoryClauseEDependencyNotInducing { category: _ } => acc.clone(),
-                }
-            },
-        );
+        let build = references.clone().iter().cloned().fold(Rc::new(ReferenceDerivedDependencyBindingReferenceBuild {
+    references_reversed: Rc::new(vec![]),
+}), |acc: Rc<ReferenceDerivedDependencyBindingReferenceBuild>, reference: Rc<ReferenceOccurrence>| match (*occurrence_category_clause_e_dependency_inducing_verdict(reference.category.clone())).clone() {
+    OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing => Rc::new(ReferenceDerivedDependencyBindingReferenceBuild {
+    references_reversed: v1_rt::concat(Rc::new(vec![reference.clone()]), acc.references_reversed.clone()),
+}),
+    OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyNotInducing { category: _, .. } => acc.clone(),
+});
         v1_rt::reverse(build.references_reversed.clone())
     }
 }
