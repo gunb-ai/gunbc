@@ -1,0 +1,124 @@
+module v1.tests.claim.direct_import_exporter_counts_traversal_shape_test
+
+import std.types { Bool, Int, String, List }
+import v1.compiler.infer {
+  TypeBinding, TypeEnv, nominal_type_binding, direct_import_exporter_counts, dedup_type_bindings_by_name,
+  module_exported_type_bindings, build_module_interface, empty_type_env_cache, empty_symbol_index,
+  TypedModule, ResolvedFuncEnv, nominal_leaf_type
+}
+import v1.std.core { Node, InternTable, empty_intern_table }
+
+data traversal_shape_control_note: String = "Discriminating correctness control for the calm-carp-36 direct_import_exporter_counts rewrite (DESIGN section 6 bare-minimum cost, DESIGN section 5 — a faster function that rewires differently is strictly worse than the slow one). The old shape answered a per-KEY question by allocating a Vec and scanning every direct-import export Set with set_contains, once per inherited key. The new shape answers the same question by folding each module's direct-import binding LISTS once per module into a saturating Map<String, Int>, then reading the per-key answer with a single map_get. naive_reference_exporter_count below is an independent, deliberately Set-based re-implementation of the ORIGINAL per-key predicate (fresh set_contains scan over every import, no shared per-name state) — an independently authored oracle, not a copy of the production fold, saturating at 2 the same way the pre-rewrite direct_import_exporter_count already did (the caller only ever asks `> 1`, so 2 and 3-plus were always the same answer) — so agreement between it and direct_import_exporter_counts across the fixtures below is real evidence the traversal-shape rewrite preserved behavior, not a restated assumption. The saturation-at-3-imports and the duplicate-name-within-one-import fixtures are the two cases most likely to diverge under a naive one-bump-per-binding rewrite: the former exercises the `> 1` predicate's insensitivity to a count above 2, the latter exercises dedup_type_bindings_by_name (a module can hold two TypeBinding rows for the same name, mirrored from export_index_merge_module's own seen_names guard) — production applies that dedup BEFORE an import's binding list ever reaches direct_import_exporter_counts (module_exported_type_bindings calls it), so the duplicate-name fixture below deliberately dedups its raw fixture first, the same way the real pipeline does, rather than asserting a dedup direct_import_exporter_counts was never meant to own."
+
+fn naive_reference_exporter_count(import_export_bindings: List<List<TypeBinding>>, name: String) -> Int {
+  fold(import_export_bindings, init: 0, f: (n, bindings) =>
+    let names = fold(bindings, init: empty_set(), f: (acc, b) => set_insert(acc, b.name))
+    if n >= 2 { 2 } else if set_contains(names, name) { n + 1 } else { n }
+  )
+}
+
+fn count_of(counts: Map<String, Int>, name: String) -> Int {
+  match map_get(counts, name) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+fn agrees_on(import_export_bindings: List<List<TypeBinding>>, names: List<String>) -> Bool {
+  let counts = direct_import_exporter_counts(import_export_bindings: import_export_bindings)
+  fold(names, init: true, f: (ok, name) =>
+    ok && count_of(counts: counts, name: name) == naive_reference_exporter_count(import_export_bindings: import_export_bindings, name: name)
+  )
+}
+
+test fn no_imports_yields_zero_for_every_name() -> Bool {
+  agrees_on(import_export_bindings: [], names: ["Foo", "Bar"])
+}
+
+test fn single_import_exports_one_name() -> Bool {
+  let imports = [[nominal_type_binding(name: "Foo"), nominal_type_binding(name: "Bar")]]
+  agrees_on(import_export_bindings: imports, names: ["Foo", "Bar", "Baz"])
+}
+
+test fn two_imports_sharing_a_name_reach_the_predicate_boundary() -> Bool {
+  let imports = [
+    [nominal_type_binding(name: "Foo")],
+    [nominal_type_binding(name: "Foo"), nominal_type_binding(name: "Bar")]
+  ]
+  agrees_on(import_export_bindings: imports, names: ["Foo", "Bar"])
+}
+
+test fn three_imports_sharing_a_name_saturate_at_the_naive_reference_value() -> Bool {
+  let imports = [
+    [nominal_type_binding(name: "Foo")],
+    [nominal_type_binding(name: "Foo")],
+    [nominal_type_binding(name: "Foo")]
+  ]
+  agrees_on(import_export_bindings: imports, names: ["Foo"])
+}
+
+test fn dedup_collapses_a_repeated_name_to_one_binding() -> Bool {
+  let deduped = dedup_type_bindings_by_name(bindings: [nominal_type_binding(name: "Foo"), nominal_type_binding(name: "Foo")])
+  (deduped |> count) == 1
+}
+
+test fn duplicate_name_within_one_import_still_counts_as_one_exporter() -> Bool {
+  let raw_first_import = [nominal_type_binding(name: "Foo"), nominal_type_binding(name: "Foo")]
+  let imports = [
+    dedup_type_bindings_by_name(bindings: raw_first_import),
+    [nominal_type_binding(name: "Bar")]
+  ]
+  agrees_on(import_export_bindings: imports, names: ["Foo", "Bar"])
+}
+
+test fn saturation_value_is_two_not_three() -> Bool {
+  let imports = [
+    [nominal_type_binding(name: "Foo")],
+    [nominal_type_binding(name: "Foo")],
+    [nominal_type_binding(name: "Foo")]
+  ]
+  let counts = direct_import_exporter_counts(import_export_bindings: imports)
+  count_of(counts: counts, name: "Foo") == 2
+}
+
+data wiring_gap_control_note: String = "Closes the coverage gap smart-badger-549 found reviewing this file (gunbc#7983): every test above exercises dedup_type_bindings_by_name and direct_import_exporter_counts DIRECTLY, so none of them notices if module_exported_type_bindings ever stopped calling dedup_type_bindings_by_name — deleting that call still passes all seven. fixture_typed_module_with_bindings builds a CONTROLLED TypedModule (operator ruling 2026-08-01: independently authored input and expected population, not a measurement copied from a real resolve) whose type_env.bindings holds two distinct Int keys mapping to two separately-constructed TypeBinding rows that share one .name — the exact shape export_index_merge_module's seen_names guard exists to prevent, and the shape dedup_type_bindings_by_name collapses. Every other TypedModule field is a placeholder (module_exported_type_bindings reads only m.type_env.bindings) constructed from existing empty/build helpers, never hand-faked data pretending to be resolved output. module_exported_type_bindings_wires_through_dedup asserts the CALLER'S answer, not the callee's — proof the wiring exists requires this test to fail if the dedup_type_bindings_by_name call is deleted from module_exported_type_bindings, which was verified by mutation testing this file (removing the call reds this test with 2 Foo bindings instead of 1; every other test in this file stays green because none of them route through module_exported_type_bindings)."
+
+fn fixture_typed_module_with_bindings(bindings: Map<Int, TypeBinding>) -> TypedModule {
+  let module_node = nominal_leaf_type(name: "fixture_module")
+  let type_env = TypeEnv {
+    module_path: "fixture_module",
+    bindings: bindings,
+    str_bindings: empty_map(),
+    ancestry_str_bindings: empty_map(),
+    parents: [],
+    recursive_types: [],
+    recursive_type_set: empty_map(),
+    inductive_fields: empty_map(),
+    source_indices: empty_map(),
+    intern_table: empty_intern_table(),
+    source_visible_names: empty_map(),
+    symbol_index: empty_symbol_index()
+  }
+  TypedModule {
+    module: module_node,
+    items: [],
+    type_env: type_env,
+    type_env_cache: empty_type_env_cache(),
+    interface: build_module_interface(module_path: "fixture_module", module: module_node, env: type_env, cache: empty_type_env_cache(), source_indices: empty_map()),
+    func_env: ResolvedFuncEnv { name: "fixture_module", local: empty_map(), parents: [] },
+    item_registry: empty_map(),
+    occurrence_transport: none
+  }
+}
+
+test fn module_exported_type_bindings_wires_through_dedup() -> Bool {
+  let bindings = map_insert(
+    map_insert(
+      map_insert(empty_map(), 1, nominal_type_binding(name: "Foo")),
+      2, nominal_type_binding(name: "Foo")
+    ),
+    3, nominal_type_binding(name: "Bar")
+  )
+  let m = fixture_typed_module_with_bindings(bindings: bindings)
+  (module_exported_type_bindings(m: m) |> count) == 2
+}
