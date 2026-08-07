@@ -1,0 +1,58 @@
+# annotation first line -> authored subject (M1C-1 self-application receipt)
+dag/std/source_annotation.dag	The language-agnostic authority for source annotations, per DESIGN 4c.	MODULE
+dag/std/source_annotation.dag	Placement is OBSERVED at capture, not reconstructed later	AnnotationPlacement
+dag/std/source_annotation.dag	What a tokenizer produces before any structural subject is known	UnboundAnnotationCapture
+dag/std/source_annotation.dag	Every inhabitant is MODELING DEBT	SourceAnnotationDebt
+dag/std/source_annotation.dag	An ORDERED sequence, because order and multiplicity	SourceAnnotationGraph
+dag/std/source_annotation.dag	Joins the graphs of separately parsed sources	source_annotation_graph_concat
+dag/std/source_annotation.dag	Refusals are typed and located rather than dropped	AnnotationAttachmentRefusal
+dag/std/source_annotation.dag	Every refusal carries where it happened	annotation_attachment_refusal_origin
+dag/std/source_annotation.dag	The human-facing sentence for each refusal	annotation_attachment_refusal_message
+dag/std/source_annotation.dag	The gate between analysing attachment and CONTINUING	admit_annotations
+dag/std/source_annotation.dag	WHAT THIS ACTUALLY GUARANTEES, AT ITS HONEST RUNG	annotation_admission_note
+dag/std/source_annotation.dag	The first realization admits leading annotations only	annotation_placement_is_attachable
+dag/std/source_annotation.dag	Placement is decided by the PHYSICAL LINE PREFIX	advance_line_prefix_indent_only
+dag/std/source_annotation.dag	The rule is stated over CODE POINTS	advance_line_prefix_indent_only_text
+dag/std/source_annotation.dag	What a realization offers as attachable subjects	AnnotationSubject
+dag/std/source_annotation.dag	The capture after the realization has stripped its delimiter	NormalizedAnnotationCapture
+dag/std/source_annotation.dag	Both halves of the outcome, because either alone is a lie	AnnotationAttachmentResult
+dag/std/source_annotation.dag	Resolves one capture against the subject roster	annotation_subject_pick
+dag/std/source_annotation.dag	DISSOLVE-ON: a span-ordered subject index	annotation_subject_pick_note
+dag/std/source_annotation.dag	WHY AGREEMENT IS KEYED ON A STRING AND NOT ON OccurrenceId	KeyedAnnotationRow
+dag/std/source_annotation.dag	DISSOLVE-ON: when the containment tree is the single naming authority	annotation_subject_key_note
+dag/std/source_annotation.dag	WHAT AGREEMENT MEANS, and deliberately what it does not	keyed_annotation_rows_agree
+dag/std/source_annotation.dag	Walks both row lists together rather than comparing counts	keyed_annotation_rows_agree
+dag/std/source_annotation.dag	A BLANK LINE SPLITS A BLOCK	annotation_attach_step
+dag/std/source_annotation.dag	THE RENDERER'S OBLIGATION, stated here because it is the exact inverse	annotation_attach_step
+dag/std/source_annotation.dag	The single attachment authority both realizations call	attach_annotations
+src/v1/annotation_bind.dag	The .dag realization of annotation attachment	MODULE
+src/v1/annotation_bind.dag	WHAT CONSUMES THIS TODAY	annotation_render_consumer_scope_note
+src/v1/annotation_bind.dag	The roster comes from the occurrence INDEX	entry_ancestor_depth
+src/v1/annotation_bind.dag	A module item's occurrence span is a START MARKER	annotation_subjects
+src/v1/annotation_bind.dag	DISSOLVE-ON: index entries expose source order	subject_extent_derivation_note
+src/v1/annotation_bind.dag	The single place `//` is removed	strip_line_comment_delimiter
+src/v1/annotation_bind.dag	THE CANONICAL .dag SPELLING	render_line_comment_delimiter
+src/v1/annotation_bind.dag	One row becomes one BLOCK	render_annotation_block
+src/v1/annotation_bind.dag	SELECTION AND RENDERING ARE ONE OPERATION	render_subject_annotation_blocks
+src/v1/annotation_bind.dag	Projects a graph's rows onto the cross-parse-stable key	keyed_annotation_rows
+src/v1/annotation_bind.dag	Pins the element type of the accumulator's empty list	empty_keyed_rows
+src/v1/annotation_bind.dag	The .dag entry point: normalize, roster, attach	bind_annotations
+src/v1/annotation_bind.dag	THE single seam both production frontend paths use	admit_source_annotations
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	D-C property 7: parse, render, parse	AnnotationParsedSource
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	ONE ARTIFACT AND ONE PARSE PER SOURCE VALUE	AnnotationParsedSource
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	THE SEMANTIC PARSE MUST SUCCEED	annotation_parse_is_clean
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	The keyed projection of a CLEANLY PARSED, ADMITTED graph	keyed_rows_of
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	Rebuilds a source from the CANONICAL rendering	rendered_source_for_parsed
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	THE AUTHORED-NAME KEY IS SOUND ONLY WHERE THE NAME IS UNIQUE	subjects_named_in
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	ONE predicate for `this arm is evidence`	round_trip_is_evidence_for
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	THE CASE THAT DECIDES THE RENDERER	w_two_blocks_survive_the_round_trip
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	The RED control: a renderer joining blocks	w_a_renderer_without_the_blank_line_merges_them
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	Vacuity is asserted to FAIL	w_a_source_with_no_prose_is_not_evidence
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	THE ARM THAT PROVES THE ADMISSION ROUTING	w_a_refused_source_is_not_evidence
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	The MEASURED fact that makes the control below discriminating	w_the_two_declarations_share_an_occurrence_ordinal
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	THE FALSE-POSITIVE CONTROL for the keying decision	w_same_text_same_position_different_declaration_disagrees
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	The control the single-declaration fixtures could not provide	w_each_declaration_keeps_its_own_prose
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	THE ARM THAT PROVES THE PARSE GATE	w_a_parse_error_is_not_evidence
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	The control for the authored-name uniqueness refusal	w_a_duplicated_authored_name_refuses_as_subject
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	THE DISCRIMINATOR AT THE PROJECTION ITSELF	w_duplicate_names_refuse_the_keyed_projection
+src/v1/tests/claim/v1_annotation_round_trip_test.dag	WHAT THIS ARM CAN AND CANNOT SHOW	w_mixed_subject_rows_cannot_reach_the_renderer
