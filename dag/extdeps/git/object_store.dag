@@ -1711,85 +1711,164 @@ type GitNulQuartet {
   fourth: List<UInt8>
 }
 
-type GitNulQuartetPending
-  = GitNulQuartetAwaitFirst
-  | GitNulQuartetAwaitSecond { first: List<UInt8> }
-  | GitNulQuartetAwaitThird {
-      first: List<UInt8>,
-      second: List<UInt8>,
-    }
-  | GitNulQuartetAwaitFourth {
-      first: List<UInt8>,
-      second: List<UInt8>,
-      third: List<UInt8>,
-    }
-
 type GitNulQuartetRefusal
   = GitNulQuartetMissingTerminator
   | GitNulQuartetEmptyField
   | GitNulQuartetIncompleteRecord { field_count: NonNegativeInt }
 
-type GitNulQuartetFoldState
-  = GitNulQuartetAccumulating {
-      pending: GitNulQuartetPending,
-      rows: List<GitNulQuartet>,
-      field_count: NonNegativeInt,
-    }
-  | GitNulQuartetFoldRefused { cause: GitNulQuartetRefusal }
-
 type GitNulQuartetDecodeOutcome
   = GitNulQuartetsDecoded { rows: List<GitNulQuartet> }
   | GitNulQuartetsRefused { cause: GitNulQuartetRefusal }
 
-fn git_nul_quartet_step(
-  state: GitNulQuartetFoldState,
-  field: List<UInt8>,
-) -> GitNulQuartetFoldState {
+// A single ls-files -z / ls-tree -z record is ONE NUL-terminated chunk whose
+// internal fields are SP SP TAB delimited ("<a> <b> <c>\t<d>"), never four
+// separate NUL-delimited fields — verified against real git output via
+// `git ls-files -z --stage | od -c` (one NUL total for one staged file).
+type GitNulRecordSplitState
+  = GitNulRecordSplitAwaitFirstSpace { first: List<UInt8> }
+  | GitNulRecordSplitAwaitSecondSpace {
+      first: List<UInt8>,
+      second: List<UInt8>,
+    }
+  | GitNulRecordSplitAwaitTab {
+      first: List<UInt8>,
+      second: List<UInt8>,
+      third: List<UInt8>,
+    }
+  | GitNulRecordSplitFourth {
+      first: List<UInt8>,
+      second: List<UInt8>,
+      third: List<UInt8>,
+      fourth: List<UInt8>,
+    }
+  | GitNulRecordSplitRefused { cause: GitNulQuartetRefusal }
+
+fn git_nul_record_split_octet_step(
+  state: GitNulRecordSplitState,
+  octet: UInt8,
+) -> GitNulRecordSplitState {
   match state {
-    GitNulQuartetFoldRefused { cause } =>
-      GitNulQuartetFoldRefused { cause: cause }
-    GitNulQuartetAccumulating { pending, rows, field_count } =>
-      if count(field) == 0 {
-        GitNulQuartetFoldRefused { cause: GitNulQuartetEmptyField }
-      } else {
-        match pending {
-          GitNulQuartetAwaitFirst => GitNulQuartetAccumulating {
-            pending: GitNulQuartetAwaitSecond { first: field },
-            rows: rows,
-            field_count: field_count + 1,
-          }
-          GitNulQuartetAwaitSecond { first } => GitNulQuartetAccumulating {
-            pending: GitNulQuartetAwaitThird {
-              first: first,
-              second: field,
-            },
-            rows: rows,
-            field_count: field_count + 1,
-          }
-          GitNulQuartetAwaitThird { first, second } =>
-            GitNulQuartetAccumulating {
-              pending: GitNulQuartetAwaitFourth {
-                first: first,
-                second: second,
-                third: field,
-              },
-              rows: rows,
-              field_count: field_count + 1,
-            }
-          GitNulQuartetAwaitFourth { first, second, third } =>
-            GitNulQuartetAccumulating {
-              pending: GitNulQuartetAwaitFirst,
-              rows: append(rows, items: [
-                GitNulQuartet {
-                  first: first,
-                  second: second,
-                  third: third,
-                  fourth: field,
-                },
-              ]),
-              field_count: field_count + 1,
-            }
+    GitNulRecordSplitRefused { cause } =>
+      GitNulRecordSplitRefused { cause: cause }
+    GitNulRecordSplitAwaitFirstSpace { first } =>
+      if octet == 32 {
+        if count(first) == 0 {
+          GitNulRecordSplitRefused { cause: GitNulQuartetEmptyField }
+        } else {
+          GitNulRecordSplitAwaitSecondSpace { first: first, second: [] }
         }
+      } else {
+        GitNulRecordSplitAwaitFirstSpace {
+          first: append(first, items: [octet])
+        }
+      }
+    GitNulRecordSplitAwaitSecondSpace { first, second } =>
+      if octet == 32 {
+        if count(second) == 0 {
+          GitNulRecordSplitRefused { cause: GitNulQuartetEmptyField }
+        } else {
+          GitNulRecordSplitAwaitTab {
+            first: first,
+            second: second,
+            third: [],
+          }
+        }
+      } else {
+        GitNulRecordSplitAwaitSecondSpace {
+          first: first,
+          second: append(second, items: [octet]),
+        }
+      }
+    GitNulRecordSplitAwaitTab { first, second, third } =>
+      if octet == 9 {
+        if count(third) == 0 {
+          GitNulRecordSplitRefused { cause: GitNulQuartetEmptyField }
+        } else {
+          GitNulRecordSplitFourth {
+            first: first,
+            second: second,
+            third: third,
+            fourth: [],
+          }
+        }
+      } else {
+        GitNulRecordSplitAwaitTab {
+          first: first,
+          second: second,
+          third: append(third, items: [octet]),
+        }
+      }
+    GitNulRecordSplitFourth { first, second, third, fourth } =>
+      GitNulRecordSplitFourth {
+        first: first,
+        second: second,
+        third: third,
+        fourth: append(fourth, items: [octet]),
+      }
+  }
+}
+
+type GitNulRecordSplitOutcome
+  = GitNulRecordSplitDecoded { quartet: GitNulQuartet }
+  | GitNulRecordSplitRefusedOutcome { cause: GitNulQuartetRefusal }
+
+fn git_split_nul_record_quartet(
+  record: List<UInt8>,
+) -> GitNulRecordSplitOutcome {
+  match fold(
+    record,
+    init: GitNulRecordSplitAwaitFirstSpace { first: [] },
+    f: git_nul_record_split_octet_step,
+  ) {
+    GitNulRecordSplitRefused { cause } =>
+      GitNulRecordSplitRefusedOutcome { cause: cause }
+    GitNulRecordSplitFourth { first, second, third, fourth } =>
+      if count(fourth) == 0 {
+        GitNulRecordSplitRefusedOutcome { cause: GitNulQuartetEmptyField }
+      } else {
+        GitNulRecordSplitDecoded {
+          quartet: GitNulQuartet {
+            first: first,
+            second: second,
+            third: third,
+            fourth: fourth,
+          }
+        }
+      }
+    GitNulRecordSplitAwaitFirstSpace { first: _ } =>
+      GitNulRecordSplitRefusedOutcome {
+        cause: GitNulQuartetIncompleteRecord { field_count: 0 }
+      }
+    GitNulRecordSplitAwaitSecondSpace { first: _, second: _ } =>
+      GitNulRecordSplitRefusedOutcome {
+        cause: GitNulQuartetIncompleteRecord { field_count: 1 }
+      }
+    GitNulRecordSplitAwaitTab { first: _, second: _, third: _ } =>
+      GitNulRecordSplitRefusedOutcome {
+        cause: GitNulQuartetIncompleteRecord { field_count: 2 }
+      }
+  }
+}
+
+type GitNulQuartetRowsFoldState
+  = GitNulQuartetRowsAccumulating { rows: List<GitNulQuartet> }
+  | GitNulQuartetRowsRefused { cause: GitNulQuartetRefusal }
+
+fn git_nul_quartet_rows_step(
+  state: GitNulQuartetRowsFoldState,
+  record: List<UInt8>,
+) -> GitNulQuartetRowsFoldState {
+  match state {
+    GitNulQuartetRowsRefused { cause } =>
+      GitNulQuartetRowsRefused { cause: cause }
+    GitNulQuartetRowsAccumulating { rows } =>
+      match git_split_nul_record_quartet(record: record) {
+        GitNulRecordSplitRefusedOutcome { cause } =>
+          GitNulQuartetRowsRefused { cause: cause }
+        GitNulRecordSplitDecoded { quartet } =>
+          GitNulQuartetRowsAccumulating {
+            rows: append(rows, items: [quartet])
+          }
       }
   }
 }
@@ -1847,24 +1926,13 @@ fn git_decode_nul_quartets(payload: Bytes) -> GitNulQuartetDecodeOutcome {
       } else {
         match fold(
           fields,
-          init: GitNulQuartetAccumulating {
-            pending: GitNulQuartetAwaitFirst,
-            rows: [],
-            field_count: 0,
-          },
-          f: git_nul_quartet_step,
+          init: GitNulQuartetRowsAccumulating { rows: [] },
+          f: git_nul_quartet_rows_step,
         ) {
-          GitNulQuartetFoldRefused { cause } =>
+          GitNulQuartetRowsRefused { cause } =>
             GitNulQuartetsRefused { cause: cause }
-          GitNulQuartetAccumulating { pending, rows, field_count } =>
-            match pending {
-              GitNulQuartetAwaitFirst => GitNulQuartetsDecoded { rows: rows }
-              _ => GitNulQuartetsRefused {
-                cause: GitNulQuartetIncompleteRecord {
-                  field_count: field_count,
-                }
-              }
-            }
+          GitNulQuartetRowsAccumulating { rows } =>
+            GitNulQuartetsDecoded { rows: rows }
         }
       }
   }
