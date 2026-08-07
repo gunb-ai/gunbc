@@ -1,7 +1,5 @@
 module extdeps.cpu.ampere
 
-import extdeps.vendor.ampere { ampere }
-
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
