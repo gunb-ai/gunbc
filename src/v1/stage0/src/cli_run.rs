@@ -45,10 +45,15 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
+pub(crate) mod floor_naming_hygiene_materialization;
 pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod test_module_hygiene_bridge;
+pub use floor_naming_hygiene_materialization::{
+    materialize_pre_plan_naming_hygiene_walk, naming_hygiene_compute_count,
+    NamingHygieneComputationIdentity, NamingHygieneConsumerRole,
+};
 #[doc(hidden)]
 pub use materialization_provider_consumer::{
     materialization_provider_ctx_build_count_for_test, provider_ctx_reentrancy_refusal_for_test,
@@ -19028,6 +19033,20 @@ pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverla
 }
 
 pub fn discover_floor_witness_roster(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    exclude_substrings: &[String],
+    discovery_scope_dirs: &[String],
+) -> Result<Vec<DiscoveryRow>, String> {
+    floor_naming_hygiene_materialization::discover_floor_witness_roster_materialized(
+        source_roots,
+        scan_dirs,
+        exclude_substrings,
+        discovery_scope_dirs,
+    )
+}
+
+pub(crate) fn discover_floor_witness_roster_inner(
     source_roots: &[String],
     scan_dirs: &[String],
     exclude_substrings: &[String],

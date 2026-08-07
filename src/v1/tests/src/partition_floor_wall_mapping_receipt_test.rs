@@ -3,6 +3,10 @@
 //! Anchors on GitHub Actions run 31156588100 (main, 2026-08-07) — the same-base control
 //! floor whose `[assembly-split]` rows match the lane parent's exclusive partition receipt
 //! (7487 witnesses, assembly_rewire_import_str 40.3%, assembly_symbol_index 22.6%, …).
+//!
+//! Reports descriptive ratios only (`row_seconds / floor_wall`, `row_seconds / discovery_wall`,
+//! `resolve_seconds / floor_wall`). Realized floor savings require a measured A/B — no causal
+//! multiplier from discovery_wall / resolve_serial.
 
 use std::collections::BTreeMap;
 
@@ -72,20 +76,18 @@ fn sum_ms(map: &BTreeMap<String, f64>) -> f64 {
     map.values().sum()
 }
 
-/// Derivation carried in the receipt (not a silent ratio substitution).
+/// Descriptive mapping — ratios only, no causal conversion factor.
 struct PartitionFloorMapping {
     partition_resolve_serial_seconds: f64,
     partition_split_sum_seconds: f64,
     floor_step_wall_seconds: u64,
     discovery_wall_seconds: f64,
-    /// resolve_serial / discovery_wall — serial resolve accounted per discovery wall second.
+    /// resolve_serial / discovery_wall (descriptive, not causal).
     resolve_serial_per_discovery_wall: f64,
-    /// resolve_serial / floor_step_wall — fraction of floor step wall explained by discovery resolve serial alone.
+    /// resolve_serial / floor_step_wall.
     partition_coverage_of_floor: f64,
-    /// discovery_wall / floor_step_wall — discovery batch share of floor step.
+    /// discovery_wall / floor_step_wall.
     discovery_share_of_floor: f64,
-    /// floor savings per second removed from partition resolve serial during discovery (width=1).
-    discovery_floor_seconds_per_partition_second: f64,
 }
 
 fn derive_mapping(a: &FloorRunAnchors) -> PartitionFloorMapping {
@@ -103,17 +105,7 @@ fn derive_mapping(a: &FloorRunAnchors) -> PartitionFloorMapping {
         resolve_serial_per_discovery_wall: resolve_serial / discovery_wall,
         partition_coverage_of_floor: resolve_serial / floor_wall,
         discovery_share_of_floor: discovery_wall / floor_wall,
-        discovery_floor_seconds_per_partition_second: discovery_wall / resolve_serial,
     }
-}
-
-/// Convert a partition-row delta (seconds) into an expected floor wall delta (seconds)
-/// for optimizations confined to the discovery corpus at governor target_width=1.
-fn partition_delta_to_floor_seconds_discovery(
-    mapping: &PartitionFloorMapping,
-    partition_delta_seconds: f64,
-) -> f64 {
-    partition_delta_seconds * mapping.discovery_floor_seconds_per_partition_second
 }
 
 #[test]
@@ -164,16 +156,10 @@ fn partition_floor_wall_mapping_receipt() {
         m.partition_coverage_of_floor
     );
 
-    // Example conversions (25% row reduction) — stated as derivations, not silent ratios.
-    let symbol_index_25pct_partition_s = 0.25 * symbol_index_s;
-    let floor_s_from_symbol_index =
-        partition_delta_to_floor_seconds_discovery(&m, symbol_index_25pct_partition_s);
-    let floor_min_from_symbol_index = floor_s_from_symbol_index / 60.0;
-
-    let parse_typecheck_100pct_partition_s = parse_s + typecheck_s;
-    let floor_s_parse_typecheck_ceiling =
-        partition_delta_to_floor_seconds_discovery(&m, parse_typecheck_100pct_partition_s);
-    let floor_min_parse_typecheck_ceiling = floor_s_parse_typecheck_ceiling / 60.0;
+    // Row shares of floor wall (descriptive only — no multiplier substitution).
+    let symbol_index_share_of_floor = symbol_index_s / (m.floor_step_wall_seconds as f64);
+    let parse_typecheck_share_of_floor =
+        (parse_s + typecheck_s) / (m.floor_step_wall_seconds as f64);
 
     eprintln!(
     "[partition-floor-mapping] run={} floor_step_wall_s={} discovery_wall_s={} resolve_serial_s={:.3} split_sum_s={:.1} width={}",
@@ -185,10 +171,10 @@ fn partition_floor_wall_mapping_receipt() {
     a.governor_target_width,
   );
     eprintln!(
-    "[partition-floor-mapping] partition_coverage_of_floor={:.3} discovery_share_of_floor={:.3} discovery_floor_s_per_partition_s={:.3}",
+    "[partition-floor-mapping] partition_coverage_of_floor={:.3} discovery_share_of_floor={:.3} resolve_per_discovery_wall={:.3} (ratio only)",
     m.partition_coverage_of_floor,
     m.discovery_share_of_floor,
-    m.discovery_floor_seconds_per_partition_second,
+    m.resolve_serial_per_discovery_wall,
   );
     eprintln!(
     "[partition-floor-mapping] row_shares_of_resolve_serial: rewire_import_str={:.1}% symbol_index={:.1}% parse+typecheck={:.1}%",
@@ -197,33 +183,25 @@ fn partition_floor_wall_mapping_receipt() {
     parse_typecheck_share * 100.0,
   );
     eprintln!(
-    "[partition-floor-mapping] DERIVATION example: 25% off assembly_symbol_index ({:.1}s partition) → {:.2} floor_s → {:.2} floor_min (discovery batch, width=1)",
-    symbol_index_25pct_partition_s,
-    floor_s_from_symbol_index,
-    floor_min_from_symbol_index,
+    "[partition-floor-mapping] row_shares_of_floor_wall: symbol_index={:.3}% parse+typecheck={:.3}% (descriptive — realized savings need A/B)",
+    symbol_index_share_of_floor * 100.0,
+    parse_typecheck_share_of_floor * 100.0,
   );
     eprintln!(
-    "[partition-floor-mapping] DERIVATION ceiling: 100% parse+typecheck elimination ({:.1}s partition) → {:.2} floor_s → {:.2} floor_min (NOT 25% of floor)",
-    parse_typecheck_100pct_partition_s,
-    floor_s_parse_typecheck_ceiling,
-    floor_min_parse_typecheck_ceiling,
-  );
-    eprintln!(
-    "[partition-floor-mapping] WRONG substitution: 25% of partition_resolve_serial ({:.1}s) as floor_min without bridge = {:.2} min",
-    0.25 * m.partition_resolve_serial_seconds,
-    0.25 * m.partition_resolve_serial_seconds / 60.0,
+    "[partition-floor-mapping] NOT CAUSAL: discovery_wall/resolve_serial={:.3} does not convert partition deltas to floor seconds",
+    m.discovery_wall_seconds / m.partition_resolve_serial_seconds,
   );
 
-    // Sanity: perfect parse+typecheck skip cannot meet a 25% floor bar on this run.
+    // Sanity: parse+typecheck is a small share of total floor wall on this run.
     assert!(
-        floor_min_parse_typecheck_ceiling < (m.floor_step_wall_seconds as f64 / 60.0) * 0.10,
-        "parse+typecheck ceiling should be <10% of floor minutes"
+        parse_typecheck_share_of_floor < 0.10,
+        "parse+typecheck should be <10% of floor wall"
     );
 
-    // 25% symbol_index savings is under 2 minutes floor on this run — not a 25% floor win.
+    // symbol_index is under 8% of floor wall on this run.
     assert!(
-        floor_min_from_symbol_index < 2.0,
-        "25% symbol_index should be <2 floor minutes, got {}",
-        floor_min_from_symbol_index
+        symbol_index_share_of_floor < 0.08,
+        "symbol_index should be <8% of floor wall, got {}",
+        symbol_index_share_of_floor
     );
 }

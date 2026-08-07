@@ -13,15 +13,16 @@ use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
     compute_histogram_data, enable_floor_compile_clean_lazy_install, heartbeat_feed_enter_batch,
     heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
-    make_eval_context, project_witness_cost_receipt, record_resolution_divergence_phase,
-    render_selection_degradation_receipt_body, reset_resolution_divergence_phase_receipt,
-    resolution_divergence_parent_plan_capture_begin,
+    make_eval_context, materialize_pre_plan_naming_hygiene_walk, project_witness_cost_receipt,
+    record_resolution_divergence_phase, render_selection_degradation_receipt_body,
+    reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
     resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, BudgetKind, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
-    DiscoveryWidthPolicy, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
-    ResolutionDivergencePhase, ResolutionDivergencePhaseState, SelectionDegradationSnapshot,
-    TimingPercentiles, WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    DiscoveryWidthPolicy, FloorPhase, HistogramData, NamingHygieneConsumerRole,
+    NodeFrontierSelectionMode, PhaseProfile, ResolutionDivergencePhase,
+    ResolutionDivergencePhaseState, SelectionDegradationSnapshot, TimingPercentiles,
+    WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
@@ -8845,11 +8846,15 @@ fn run() -> Result<ExitCode, ExitCode> {
     // when not enrolled (an unnameable witness could never be opted in), so the plan
     // path always runs the fail-closed walk once up front — before the (expensive)
     // plan evaluation, so a naming violation is the cheapest possible failure.
+    // R0: materialize once per proven subject — ordinary publishes, scoped verifies.
+    let hygiene_role = match floor_worker_role.as_ref() {
+        Some(FloorWorkerRole::Scoped { .. }) => NamingHygieneConsumerRole::SecondConsumerVerify,
+        Some(FloorWorkerRole::Ordinary) | None => NamingHygieneConsumerRole::FirstConsumerPublish,
+    };
     {
         let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
         if let Err(msg) =
-            v1_compiler::cli_run::discover_floor_witness_roster(&source_roots, &[], &excludes, &[])
-                .map(|_| ())
+            materialize_pre_plan_naming_hygiene_walk(&source_roots, &excludes, hygiene_role)
         {
             eprintln!("claim_executor: witness naming hygiene (pre-plan walk): {msg}");
             return Err(ExitCode::from(1));
