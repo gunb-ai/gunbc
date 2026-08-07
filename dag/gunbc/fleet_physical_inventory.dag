@@ -19,13 +19,6 @@ import product.placement_supply {
   BootstrapNeeded,
   BootstrapNotNeeded,
 }
-import std.human_intervention {
-  HumanIntervention,
-  HumanInterventionIdentity,
-  FleetOnce,
-  ProvisioningHumanBurden,
-  NoDischargeSiteModeled,
-}
 import extdeps.chassis.rosewill { rosewill_rsv_r4000u_catalog, rosewill_rsv_z2600u_catalog }
 import extdeps.network.tp_link { tp_link_tl_sg1024s_catalog }
 import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
@@ -147,17 +140,7 @@ data fleet_host_spatial_facts: List<HostSpatialFacts> = [
   },
 ]
 
-data wifi_bootstrap_human_burden: ProvisioningHumanBurden = ProvisioningHumanBurden {
-  interventions: [
-    HumanIntervention {
-      identity: "wifi-first-relay-standing" as HumanInterventionIdentity,
-      frequency: FleetOnce,
-      subject: "first wireless reach provider",
-      instruction: "Stand up the first machine that can associate with a DGX OOBE hotspot so fleet provisioning can bootstrap subsequent devices.",
-      completion_evidence: NoDischargeSiteModeled,
-    },
-  ],
-}
+data wifi_bootstrap_human_burden_deferred_note: String = "FleetOnce wifi-first-relay-standing human burden row is intentionally absent here — std.human_intervention authority is gunbc#7950; this module imports it and authors the burden row when that PR merges, not as a fourth fork of the carrier."
 
 data srv1_measured_wireless_note: String = "srv1 fleet controller measured WirelessAdapterAbsent: docker0 enP3p3s0f0 enP3p3s0f1 enP3p5s0 enx62a53617b395 lo tailscale0 veth*, no nmcli wireless interface — so no current fleet host can associate with a DGX OOBE hotspot without a dedicated relay."
 
