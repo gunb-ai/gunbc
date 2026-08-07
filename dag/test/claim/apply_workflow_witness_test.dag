@@ -5,11 +5,16 @@ import extdeps.github.actions {
 }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
-  YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping,
+  YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping, YamlKeyValue,
 }
 import gunbc.apply_workflow {
   apply_workflow_dispatch_inputs,
   apply_wet_invoke_script,
+  apply_wet_invoke_step_env,
+  apply_wet_workflow_env_name,
+  apply_wet_srv3_width_env_name,
+  apply_wet_srv4_width_env_name,
+  apply_wet_mode_env_name,
   apply_workflow_hosted_runner_spec,
   apply_workflow_actuation_runner_labels,
   apply_mode_apply_if,
@@ -65,13 +70,40 @@ test fn apply_workflow_dispatch_carries_runner_capacity_inputs() -> Bool {
     && value_has_input_field(v: entry.value, name: "mode")
 }
 
+fn env_entry_has_key_value(entries: List<YamlKeyValue>, key: String, value_contains: String) -> Bool {
+  fold(
+    entries,
+    init: false,
+    f: (found, entry) =>
+      found
+        || (
+          entry.key == key
+            && match entry.value {
+              YamlString { value: v } => v.contains(s: value_contains)
+              YamlNull => false
+              YamlBool { value: _ } => false
+              YamlInt { lexeme: _ } => false
+              YamlFloat { lexeme: _ } => false
+              YamlSequence { elements: _ } => false
+              YamlMapping { entries: _ } => false
+            }
+        )
+  )
+}
+
 test fn apply_workflow_dispatch_input_names_match_apply_wet() -> Bool {
   let names = dispatch_input_names(inputs: apply_workflow_dispatch_inputs)
+  let env = apply_wet_invoke_step_env()
   names.length() == 4
-    && apply_wet_invoke_script().contains(s: "inputs.workflow")
-    && apply_wet_invoke_script().contains(s: "inputs.srv3_width")
-    && apply_wet_invoke_script().contains(s: "inputs.srv4_width")
-    && apply_wet_invoke_script().contains(s: "inputs.mode")
+    && env_entry_has_key_value(entries: env, key: apply_wet_workflow_env_name, value_contains: "inputs.workflow")
+    && env_entry_has_key_value(entries: env, key: apply_wet_srv3_width_env_name, value_contains: "inputs.srv3_width")
+    && env_entry_has_key_value(entries: env, key: apply_wet_srv4_width_env_name, value_contains: "inputs.srv4_width")
+    && env_entry_has_key_value(entries: env, key: apply_wet_mode_env_name, value_contains: "inputs.mode")
+    && apply_wet_invoke_script().contains(s: concat("$", apply_wet_workflow_env_name))
+    && apply_wet_invoke_script().contains(s: concat("$", apply_wet_srv3_width_env_name))
+    && apply_wet_invoke_script().contains(s: concat("$", apply_wet_srv4_width_env_name))
+    && apply_wet_invoke_script().contains(s: concat("$", apply_wet_mode_env_name))
+    && !apply_wet_invoke_script().contains(s: "inputs.workflow")
 }
 
 test fn apply_workflow_plan_uses_hosted_runner_not_self_hosted() -> Bool {

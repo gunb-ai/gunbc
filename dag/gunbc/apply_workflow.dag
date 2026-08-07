@@ -1,6 +1,6 @@
 module gunbc.apply_workflow
 
-import extdeps.languages.yaml.types { yaml_string, kv }
+import extdeps.languages.yaml.types { yaml_string, kv, YamlKeyValue }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.std.collection { Present }
@@ -61,6 +61,20 @@ data apply_workflow_dispatch_inputs: List<DispatchInput> = [
   },
 ]
 
+data apply_wet_workflow_env_name: String = "APPLY_WORKFLOW"
+data apply_wet_srv3_width_env_name: String = "APPLY_SRV3_WIDTH"
+data apply_wet_srv4_width_env_name: String = "APPLY_SRV4_WIDTH"
+data apply_wet_mode_env_name: String = "APPLY_MODE"
+
+fn apply_wet_invoke_step_env() -> List<YamlKeyValue> {
+  [
+    kv(key: apply_wet_workflow_env_name, value: yaml_string(s: "${{ inputs.workflow }}")),
+    kv(key: apply_wet_srv3_width_env_name, value: yaml_string(s: "${{ inputs.srv3_width }}")),
+    kv(key: apply_wet_srv4_width_env_name, value: yaml_string(s: "${{ inputs.srv4_width }}")),
+    kv(key: apply_wet_mode_env_name, value: yaml_string(s: "${{ inputs.mode }}")),
+  ]
+}
+
 fn apply_wet_invoke_script() -> String {
   concat(
     concat("ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\n"),
@@ -69,12 +83,12 @@ fn apply_wet_invoke_script() -> String {
       concat(
         " --entry dag/gunbc/apply.dag --function apply_wet",
         concat(
-          " --arg workflow=${{ inputs.workflow }}",
+          " --arg workflow=\"$APPLY_WORKFLOW\"",
           concat(
-            " --arg srv3_width=${{ inputs.srv3_width }}",
+            " --arg srv3_width=\"$APPLY_SRV3_WIDTH\"",
             concat(
-              " --arg srv4_width=${{ inputs.srv4_width }}",
-              " --arg mode=${{ inputs.mode }}\n"
+              " --arg srv4_width=\"$APPLY_SRV4_WIDTH\"",
+              " --arg mode=\"$APPLY_MODE\"\n"
             )
           )
         )
@@ -89,7 +103,7 @@ fn apply_runner_capacity_step(name: String) -> Step {
     id: none,
     run: apply_wet_invoke_script(),
     shell: none,
-    env: none,
+    env: Present { value: apply_wet_invoke_step_env() },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,

@@ -106,7 +106,12 @@ jobs:
       - name: gunbc.apply plan (mode=apply actuation is per-host self-hosted below)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/apply.dag --function apply_wet --arg workflow=${{ inputs.workflow }} --arg srv3_width=${{ inputs.srv3_width }} --arg srv4_width=${{ inputs.srv4_width }} --arg mode=${{ inputs.mode }}
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/apply.dag --function apply_wet --arg workflow="$APPLY_WORKFLOW" --arg srv3_width="$APPLY_SRV3_WIDTH" --arg srv4_width="$APPLY_SRV4_WIDTH" --arg mode="$APPLY_MODE"
+        env:
+          APPLY_WORKFLOW: ${{ inputs.workflow }}
+          APPLY_SRV3_WIDTH: ${{ inputs.srv3_width }}
+          APPLY_SRV4_WIDTH: ${{ inputs.srv4_width }}
+          APPLY_MODE: ${{ inputs.mode }}
         timeout-minutes: 30
   actuate_srv3:
     name: gunbc.apply runner-capacity actuate srv3 (in-band LocalShell; refused in PR A)
@@ -191,7 +196,12 @@ jobs:
       - name: gunbc.apply runner-capacity actuate srv3 (in-band LocalShell; refused in PR A)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/apply.dag --function apply_wet --arg workflow=${{ inputs.workflow }} --arg srv3_width=${{ inputs.srv3_width }} --arg srv4_width=${{ inputs.srv4_width }} --arg mode=${{ inputs.mode }}
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/apply.dag --function apply_wet --arg workflow="$APPLY_WORKFLOW" --arg srv3_width="$APPLY_SRV3_WIDTH" --arg srv4_width="$APPLY_SRV4_WIDTH" --arg mode="$APPLY_MODE"
+        env:
+          APPLY_WORKFLOW: ${{ inputs.workflow }}
+          APPLY_SRV3_WIDTH: ${{ inputs.srv3_width }}
+          APPLY_SRV4_WIDTH: ${{ inputs.srv4_width }}
+          APPLY_MODE: ${{ inputs.mode }}
         timeout-minutes: 30
   actuate_srv4:
     name: gunbc.apply runner-capacity actuate srv4 (in-band LocalShell; refused in PR A)
@@ -276,5 +286,10 @@ jobs:
       - name: gunbc.apply runner-capacity actuate srv4 (in-band LocalShell; refused in PR A)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/apply.dag --function apply_wet --arg workflow=${{ inputs.workflow }} --arg srv3_width=${{ inputs.srv3_width }} --arg srv4_width=${{ inputs.srv4_width }} --arg mode=${{ inputs.mode }}
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/apply.dag --function apply_wet --arg workflow="$APPLY_WORKFLOW" --arg srv3_width="$APPLY_SRV3_WIDTH" --arg srv4_width="$APPLY_SRV4_WIDTH" --arg mode="$APPLY_MODE"
+        env:
+          APPLY_WORKFLOW: ${{ inputs.workflow }}
+          APPLY_SRV3_WIDTH: ${{ inputs.srv3_width }}
+          APPLY_SRV4_WIDTH: ${{ inputs.srv4_width }}
+          APPLY_MODE: ${{ inputs.mode }}
         timeout-minutes: 30

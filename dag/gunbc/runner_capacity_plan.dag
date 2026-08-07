@@ -277,7 +277,7 @@ fn runner_capacity_add_count(plan: RunnerCapacityPlan, host: HostIdentity) -> In
         init: 0,
         f: (n, h) =>
           if (h.host as String) == (host as String) {
-            n + count_matching_actions(actions: h.actions, is_add: true)
+            n + count_add_actions(actions: h.actions)
           } else {
             n
           }
@@ -285,21 +285,14 @@ fn runner_capacity_add_count(plan: RunnerCapacityPlan, host: HostIdentity) -> In
   }
 }
 
-fn count_matching_actions(actions: List<RunnerCapacityAction>, is_add: Bool) -> Int {
+fn count_add_actions(actions: List<RunnerCapacityAction>) -> Int {
   fold(
     actions,
     init: 0,
     f: (n, a) =>
-      if is_add {
-        match a {
-          RunnerSlotAdd { to: _ } => n + 1
-          _ => n
-        }
-      } else {
-        match a {
-          RunnerIncarnationReplace { slot: _, cause: _ } => n + 1
-          _ => n
-        }
+      match a {
+        RunnerSlotAdd { to: _ } => n + 1
+        _ => n
       }
   )
 }
