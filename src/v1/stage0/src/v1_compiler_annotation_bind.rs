@@ -24,6 +24,15 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
+pub fn annotation_render_consumer_scope_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WHAT CONSUMES THIS TODAY, stated because the honest answer is `no production renderer yet` and the reason is measured rather than assumed. There is no authored-.dag-source renderer in this tree to wire the canonical form into: `gunbc compile --target dag` emits dag-artifact.json, a JSON graph dump, and extdeps.languages.dag.emit is a keyword-and-template vocabulary consumed by the shared emitter fold rather than a module that writes .dag text. Threading the annotation graph to such a renderer additionally requires crossing the erasure boundary property 4 pinned, where ResolvedPipelineResult and emit_resolved_for_target carry no authored graph at all.\n\nSo this module supplies the canonical spelling and the round-trip evidence, and the production consumer is EXPLICITLY OPEN rather than quietly implied. That distinction is the whole point of saying it here: a helper with no consumer that is described as an emitter would read as delivered.\n\nWHAT THE OPEN RENDERER DOES AND DOES NOT BLOCK, corrected 2026-08-05 by operator ruling because an earlier cut of this note asserted the wrong dependency. The renderer is required before any AUTOMATED SOURCE RECONSTRUCTION OR FORMATTING may rewrite .dag source — a machine that regenerates a file from the semantic graph must be able to write prose back, or it silently drops it. It does NOT block migrating hand-authored .dag files. Their committed bytes are the authority, no process in this tree reconstructs and overwrites them from the semantic graph, and M1A already captures, attaches, admits, and retains their annotations. An author replacing a `data ..._note: String` row with authored `//` text is editing the authority directly; there is no rendering path in between to drop anything. The earlier claim — that a rendering path could still drop newly modeled prose — reasoned about a path that does not exist, and an absent hypothetical cannot rewrite a committed file.\n\nDISSOLVE-ON: an authored-source renderer exists and carries the annotation graph; then the round-trip property re-executes through it end to end and this note goes away with the scaffolding it describes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn entry_ancestor_depth(entry: Rc<OccurrenceIndexEntry>) -> i64 {
     (entry.containment.clone().ancestors.clone().len() as i64)
 }
@@ -100,6 +109,15 @@ pub fn module_item_extent_end(
             }
         },
     )
+}
+
+pub fn subject_extent_derivation_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "DISSOLVE-ON: index entries expose source order, or a declaration carries its own extent; then the successor is a neighbor lookup and the extent is read rather than derived.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn annotation_subjects(

@@ -19,7 +19,7 @@ import v2.std.optional { Optional }
 // promise about what will be.
 //
 // A PATH IN SCOPE IS NOT A PATH WITH NO PROSE LEFT, and the distinction is load-bearing rather than
-// pedantic. `dag/extdeps/auth/` is enrolled by the batch that migrated five rows out of jwt.dag; M1C-1 migrated the two deferred jwt.dag rows (registered claims above JwtRegisteredClaims and the verification boundary as a module annotation). Four legacy rows still stand in oidc.dag. They stay editable in place, because introduction is keyed on the declaration NAME and an edit removes and re-adds the same name. What enrollment buys is exactly one property: no NEW prose row lands here. Waiting for a directory to be prose-free before defending it would let fresh debt accumulate in the very files being cleaned, at the pace the cleanup runs.
+// pedantic. `jwt.dag` carries no legacy prose rows; four grandfathered rows remain in `oidc.dag`. They stay editable in place, because introduction is keyed on the declaration NAME and an edit removes and re-adds the same name. What enrollment buys is exactly one property: no NEW prose row lands here. Waiting for a path to be prose-free before defending it would let fresh debt accumulate in the very files being cleaned, at the pace the cleanup runs.
 //
 // (An earlier revision of this paragraph said a path enters scope `only once its prose actually left`.
 // That was false of the first entry the same change enrolled — a claim in the authority contradicted by
@@ -43,6 +43,9 @@ import v2.std.optional { Optional }
 // row, and this declaration goes with it.
 data prose_row_migration_scope: List<String> = [
   "dag/extdeps/auth/",
+  "dag/std/source_annotation.dag",
+  "src/v1/annotation_bind.dag",
+  "src/v1/tests/claim/v1_annotation_round_trip_test.dag",
 ]
 
 // The shape the wall recognises, stated once so the gate, the receipt and the controls cannot drift

@@ -136,6 +136,15 @@ pub fn non_empty_refusals_all(
     v1_rt::concat(Rc::new(vec![refusals.head.clone()]), refusals.tail.clone())
 }
 
+pub fn annotation_admission_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WHAT THIS ACTUALLY GUARANTEES, AT ITS HONEST RUNG. Both production v1 frontend paths route through this function, and on that path a refusal withholds the graph entirely and blocks emitted output. That is a ROUTING INVARIANT enforced by every caller using one seam — it is NOT a construction impossibility. `AnnotationAttachmentResult` is a plain record and `annotation_attachment_result_graph` returns its graph without consulting admission, so a newly written caller could bypass this and nothing would stop it.\n\nThe two fail differently, and the distinction is why this paragraph exists rather than a stronger-sounding one. A routing invariant holds while every caller goes through the seam and breaks SILENTLY the first time one does not; an impossibility cannot break, because the bypass has no representation. Calling the first the second is the rung inflation DESIGN 4b names as worse than sitting low, since an inflated class never ranks for climbing.\n\nNEXT-RUNG TRIGGER, and it is small and known: make the bypass unrepresentable — remove the unadmitted graph accessor and seal the result carrier so a graph can only be obtained through admission — landed with a discriminating control proving a bypass does not compile. Until that exists, this is a mechanically preventive wall on the production path, not a language-level guarantee.\n\nThe refusal payload is a NON-EMPTY carrier, which does make `refused, with nothing to report` unwritable rather than merely unlikely — a refusal arm holding an empty list would be a silent success wearing a refusal's name.\n\nThis is deliberately all-or-nothing per compilation unit. A partial admission — take the rows that bound, ignore the ones that did not — is the absorbing fallback in its authored form: the deficit's frequency drops to zero, nothing counts it, and the unattachable prose quietly stops existing.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn admit_annotations(result: Rc<AnnotationAttachmentResult>) -> Rc<AnnotationAdmission> {
     match result.refusals.clone().first().cloned() {
         None => Rc::new(AnnotationAdmission::AnnotationsAdmitted {
@@ -240,6 +249,15 @@ pub struct AnnotationSubjectPick {
     pub following: Option<Rc<AnnotationSubject>>,
 }
 
+pub fn annotation_subject_pick_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "DISSOLVE-ON: a span-ordered subject index exists on the parse artifact; then the nearest-following pick becomes a lookup and this fold reads it.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn annotation_subject_pick(
     subjects: Rc<Vec<Rc<AnnotationSubject>>>,
     origin: Rc<SourceSpan>,
@@ -283,6 +301,15 @@ pub fn annotation_subject_pick(
             }
         },
     )
+}
+
+pub fn annotation_subject_key_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "DISSOLVE-ON: when the containment tree is the single naming authority, the key becomes the containment path and uniqueness stops being a per-realization precondition.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
