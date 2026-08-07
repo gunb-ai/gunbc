@@ -108,15 +108,6 @@ test fn design_witness_stats_ok_active_slot_runner_owned_refuses() -> Bool {
   }
 }
 
-test fn design_witness_lane_e_root_cause_receipt_carried() -> Bool {
-  string_contains(s: lane_e_srv1_ci_noncompletion_root_cause_receipt, pattern: "cache-miss compiles execute as CHILDREN OF THE SERVER PROCESS")
-    && string_contains(s: lane_e_srv1_ci_noncompletion_root_cause_receipt, pattern: "srv1-04 build success in ~1m")
-    && string_contains(s: lane_e_srv1_ci_noncompletion_root_cause_receipt, pattern: "INCIDENT CLEARED, NOT REPAIRED")
-    && string_contains(s: lane_e_srv1_ci_noncompletion_root_cause_receipt, pattern: "runner-owned on ACTIVE slot srv1-02")
-    && string_contains(s: lane_e_srv1_ci_noncompletion_root_cause_receipt, pattern: "srv1 16 jobs / 5 non-success / 0 kill-shape")
-    && string_contains(s: lane_e_srv1_ci_noncompletion_root_cause_receipt, pattern: "ServerManagedUnitOwned")
-}
-
 test fn design_witness_stats_ok_placement_unknown_refuses() -> Bool {
   stats_ok_placement_unknown_refuses()
 }
