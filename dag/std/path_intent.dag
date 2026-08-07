@@ -36,3 +36,56 @@ fn path_intent_join(base: PathIntent, suffix: FilePathParts) -> PathIntent {
 fn dirname_ascent(path: PathIntent, target: NonEmptyStr) -> DirnameAscent {
   DirnameAscent { path: path, target: target }
 }
+
+data nearest_ancestor_containing_note: String = "NearestAncestorContaining is a pure search policy over path predicates: walk upward from start, stopping before mount_root, until relative_entry exists at expected_kind. It is NOT an extdeps filesystem operation — entry-kind observation is the filesystem interface; the walk policy lives beside PathPredicate / DirnameAscent so bash and native realizations share one authority."
+
+type NearestAncestorContaining {
+  path_var: NonEmptyStr
+  mount_root: FilePathParts
+  relative_entry: FilePathParts
+  expected_kind: EntryKind
+}
+
+type NearestAncestorContainingResult
+  = AncestorFound { path: PathIntent }
+  | NoAncestorContainsEntry
+
+fn nearest_ancestor_path_ref(spec: NearestAncestorContaining) -> PathIntent {
+  PathRef { name: spec.path_var }
+}
+
+fn nearest_ancestor_mount_literal(spec: NearestAncestorContaining) -> PathIntent {
+  PathLiteral { parts: spec.mount_root }
+}
+
+fn nearest_ancestor_entry_join(spec: NearestAncestorContaining) -> PathIntent {
+  PathJoin {
+    base: nearest_ancestor_path_ref(spec: spec),
+    suffix: spec.relative_entry,
+  }
+}
+
+fn nearest_ancestor_while_predicate(spec: NearestAncestorContaining) -> PathPredicate {
+  And {
+    lhs: PathNonempty { path: nearest_ancestor_path_ref(spec: spec) },
+    rhs: And {
+      lhs: PathNotEq {
+        lhs: nearest_ancestor_path_ref(spec: spec),
+        rhs: nearest_ancestor_mount_literal(spec: spec),
+      },
+      rhs: Not {
+        inner: PathEntryKind {
+          path: nearest_ancestor_entry_join(spec: spec),
+          kind: spec.expected_kind,
+        },
+      },
+    },
+  }
+}
+
+fn nearest_ancestor_while_ascent(spec: NearestAncestorContaining) -> DirnameAscent {
+  DirnameAscent {
+    path: nearest_ancestor_path_ref(spec: spec),
+    target: spec.path_var,
+  }
+}
