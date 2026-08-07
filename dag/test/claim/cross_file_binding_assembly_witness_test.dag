@@ -1,0 +1,462 @@
+module test.claim.cross_file_binding_assembly_witness_test
+
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, String, Int, NonEmptyStr, SourceSpan, FilePath }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceContainmentPath,
+  OccurrenceProjection,
+  OccurrenceIndexEntry,
+  OccurrenceIndex,
+  OccurrenceTransport,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  OccurrenceCategory,
+  TypeOccurrence,
+  CallableOccurrence,
+}
+import std.occurrence_binding_candidates {
+  DeclarationExposure,
+  LexicalExposure,
+  ModuleExposure,
+  RootExposure,
+  DeclarationExposureRow,
+  AuthoredOrderRow,
+  AuthoredTokenOrdinal,
+  OccurrenceModulePathRow,
+  OccurrenceBindingCandidateInputs,
+  DeclarationExposureGrounding,
+  NamespaceStructuralRootExposure,
+  ModuleLocalMemberExposure,
+  CrossFileProviderExportedExposure,
+  declaration_exposure_from_containment,
+  ModulePathFileRow,
+  ModulePathFileIndex,
+  ModulePathFileIndexReady,
+  ModulePathFileIndexRefused,
+  ModulePathFileIndexRefusal,
+  ModulePathFileDuplicateSame,
+  ModulePathFileConflict,
+  module_path_file_index_from_rows,
+  CrossFileBindingClosureRow,
+  AssembledCrossFileBindingClosure,
+  AssembledCrossFileBindingClosureReady,
+  AssembledCrossFileBindingClosureRefused,
+  AssembledCrossFileBindingClosureModulePathFileRefused,
+  assemble_cross_file_binding_closure,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data cfba_witness_note: String = "N3-B0 acceptance witness: one exposure authority (DeclarationExposureGrounding, all three variants pairwise-discriminated across module-root and single-ancestor containment shapes) plus the collision-free cross-file assembly substrate (assemble_cross_file_binding_closure) in std.occurrence_binding_candidates. Structural controls at the bottom prove the two former duplicate helpers (gunbc.type_reference_binding_context's local exposure walk, v1.gunbc.occurrence_binding_parser_walk's local exposure walk + StructuralBindingWalk copy) are deleted from their old homes and the single authority is present where claimed."
+
+fn cfba_path(dotted: String) -> NonEmptyStr {
+  dotted as NonEmptyStr
+}
+
+fn cfba_span(marker: Int) -> SourceSpan {
+  SourceSpan { file: "fixture.dag", start: marker, end: marker + 1 }
+}
+
+fn cfba_containment(ancestors: List<OccurrenceId>, terminal: OccurrenceId) -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath { ancestors: ancestors, terminal: terminal }
+}
+
+fn cfba_index_entry(occurrence: OccurrenceId, name: String, containment: OccurrenceContainmentPath) -> OccurrenceIndexEntry {
+  OccurrenceIndexEntry {
+    projection: OccurrenceProjection {
+      occurrence: occurrence,
+      authored_name: name,
+      diagnostic_span: cfba_span(marker: occurrence.value),
+    },
+    containment: containment,
+  }
+}
+
+fn cfba_declaration(occurrence: OccurrenceId, containment: OccurrenceContainmentPath, category: OccurrenceCategory) -> DeclarationOccurrence {
+  DeclarationOccurrence {
+    occurrence: occurrence,
+    containment: containment,
+    category: category,
+    diagnostic_span: cfba_span(marker: occurrence.value),
+  }
+}
+
+fn cfba_reference(occurrence: OccurrenceId, containment: OccurrenceContainmentPath, category: OccurrenceCategory) -> ReferenceOccurrence {
+  ReferenceOccurrence {
+    occurrence: occurrence,
+    containment: containment,
+    category: category,
+    diagnostic_span: cfba_span(marker: occurrence.value),
+  }
+}
+
+// --- DeclarationExposureGrounding: all three variants pairwise-discriminated ---
+
+test fn module_local_member_exposure_at_module_root_holds() -> Bool {
+  let decl = OccurrenceId { value: 10 }
+  let path = cfba_containment(ancestors: [], terminal: decl)
+  match declaration_exposure_from_containment(
+    module_path: cfba_path(dotted: "extdeps.a"),
+    containment: path,
+    grounding: ModuleLocalMemberExposure,
+  ) {
+    ModuleExposure { module: module } => module == cfba_path(dotted: "extdeps.a")
+    _ => false
+  }
+}
+
+test fn cross_file_provider_exported_exposure_at_module_root_upgrades_to_root_holds() -> Bool {
+  let decl = OccurrenceId { value: 11 }
+  let path = cfba_containment(ancestors: [], terminal: decl)
+  match declaration_exposure_from_containment(
+    module_path: cfba_path(dotted: "extdeps.a"),
+    containment: path,
+    grounding: CrossFileProviderExportedExposure,
+  ) {
+    RootExposure => true
+    _ => false
+  }
+}
+
+test fn module_local_member_exposure_at_direct_child_stays_module_exposure_holds() -> Bool {
+  let outer = OccurrenceId { value: 1 }
+  let decl = OccurrenceId { value: 20 }
+  let path = cfba_containment(ancestors: [outer], terminal: decl)
+  match declaration_exposure_from_containment(
+    module_path: cfba_path(dotted: "extdeps.b"),
+    containment: path,
+    grounding: ModuleLocalMemberExposure,
+  ) {
+    ModuleExposure { module: module } => module == cfba_path(dotted: "extdeps.b")
+    _ => false
+  }
+}
+
+test fn cross_file_provider_exported_exposure_at_direct_child_upgrades_to_root_holds() -> Bool {
+  let outer = OccurrenceId { value: 1 }
+  let decl = OccurrenceId { value: 21 }
+  let path = cfba_containment(ancestors: [outer], terminal: decl)
+  match declaration_exposure_from_containment(
+    module_path: cfba_path(dotted: "extdeps.b"),
+    containment: path,
+    grounding: CrossFileProviderExportedExposure,
+  ) {
+    RootExposure => true
+    _ => false
+  }
+}
+
+test fn namespace_structural_root_exposure_at_direct_child_stays_module_exposure_holds() -> Bool {
+  let outer = OccurrenceId { value: 1 }
+  let decl = OccurrenceId { value: 22 }
+  let path = cfba_containment(ancestors: [outer], terminal: decl)
+  match declaration_exposure_from_containment(
+    module_path: cfba_path(dotted: "extdeps.c"),
+    containment: path,
+    grounding: NamespaceStructuralRootExposure,
+  ) {
+    ModuleExposure { module: module } => module == cfba_path(dotted: "extdeps.c")
+    _ => false
+  }
+}
+
+// --- Collision-free cross-file assembly: two transports, both mint raw id 0 ---
+
+fn cfba_single_occurrence_closure_row(
+  module_path: NonEmptyStr,
+  file_path: String,
+  name: String,
+  category: OccurrenceCategory
+) -> CrossFileBindingClosureRow {
+  let occ = OccurrenceId { value: 0 }
+  let path = cfba_containment(ancestors: [], terminal: occ)
+  CrossFileBindingClosureRow {
+    transport: OccurrenceTransport {
+      index: OccurrenceIndex { entries: [cfba_index_entry(occurrence: occ, name: name, containment: path)] },
+      declarations: [cfba_declaration(occurrence: occ, containment: path, category: category)],
+      references: [],
+    },
+    inputs: OccurrenceBindingCandidateInputs {
+      module_paths: [OccurrenceModulePathRow { occurrence: occ, module_path: module_path }],
+      exposure_rows: [DeclarationExposureRow { occurrence: occ, exposure: ModuleExposure { module: module_path } }],
+      authored_order_rows: [AuthoredOrderRow { occurrence: occ, ordinal: AuthoredTokenOrdinal { value: 0 } }],
+    },
+    module_path: module_path,
+    file_path: file_path as FilePath,
+  }
+}
+
+fn cfba_exposure_module_matches(exposure: DeclarationExposure, module_path: NonEmptyStr) -> Bool {
+  match exposure {
+    ModuleExposure { module: module } => module == module_path
+    _ => false
+  }
+}
+
+fn cfba_joined_at(
+  transport: OccurrenceTransport,
+  inputs: OccurrenceBindingCandidateInputs,
+  value: Int,
+  module_path: NonEmptyStr,
+  name: String,
+  category: OccurrenceCategory
+) -> Bool {
+  (transport.declarations |> any(d => d.occurrence.value == value && d.category == category && d.containment.terminal.value == value))
+    && (transport.index.entries |> any(e => e.projection.occurrence.value == value && e.projection.authored_name == name))
+    && (inputs.module_paths |> any(r => r.occurrence.value == value && r.module_path == module_path))
+    && (inputs.exposure_rows |> any(r => r.occurrence.value == value && cfba_exposure_module_matches(exposure: r.exposure, module_path: module_path)))
+    && (inputs.authored_order_rows |> any(r => r.occurrence.value == value))
+}
+
+fn cfba_reference_joined_at(
+  transport: OccurrenceTransport,
+  inputs: OccurrenceBindingCandidateInputs,
+  value: Int,
+  module_path: NonEmptyStr,
+  name: String,
+  category: OccurrenceCategory
+) -> Bool {
+  (transport.references |> any(r => r.occurrence.value == value && r.category == category && r.containment.terminal.value == value))
+    && (transport.index.entries |> any(e => e.projection.occurrence.value == value && e.projection.authored_name == name))
+    && (inputs.module_paths |> any(r => r.occurrence.value == value && r.module_path == module_path))
+    && (inputs.authored_order_rows |> any(r => r.occurrence.value == value))
+}
+
+fn cfba_closure_id_by_name(entries: List<OccurrenceIndexEntry>, name: String) -> Int {
+  fold(
+    entries,
+    init: -1,
+    f: (acc, e) =>
+      if e.projection.authored_name == name {
+        e.projection.occurrence.value
+      } else {
+        acc
+      },
+  )
+}
+
+// Provider row carrying BOTH a declaration and a reference, minting raw ids 0 and 1 from
+// its own independent zero-based allocator -- the raw declaration id collides with the
+// consumer's raw declaration id (also 0, from cfba_single_occurrence_closure_row) even
+// though the two rows come from entirely independent transports.
+fn cfba_provider_with_reference_closure_row(
+  module_path: NonEmptyStr,
+  file_path: String,
+  decl_name: String,
+  decl_category: OccurrenceCategory,
+  ref_name: String,
+  ref_category: OccurrenceCategory
+) -> CrossFileBindingClosureRow {
+  let decl_occ = OccurrenceId { value: 0 }
+  let ref_occ = OccurrenceId { value: 1 }
+  let decl_path = cfba_containment(ancestors: [], terminal: decl_occ)
+  let ref_path = cfba_containment(ancestors: [], terminal: ref_occ)
+  CrossFileBindingClosureRow {
+    transport: OccurrenceTransport {
+      index: OccurrenceIndex {
+        entries: [
+          cfba_index_entry(occurrence: decl_occ, name: decl_name, containment: decl_path),
+          cfba_index_entry(occurrence: ref_occ, name: ref_name, containment: ref_path),
+        ],
+      },
+      declarations: [cfba_declaration(occurrence: decl_occ, containment: decl_path, category: decl_category)],
+      references: [cfba_reference(occurrence: ref_occ, containment: ref_path, category: ref_category)],
+    },
+    inputs: OccurrenceBindingCandidateInputs {
+      module_paths: [
+        OccurrenceModulePathRow { occurrence: decl_occ, module_path: module_path },
+        OccurrenceModulePathRow { occurrence: ref_occ, module_path: module_path },
+      ],
+      exposure_rows: [
+        DeclarationExposureRow { occurrence: decl_occ, exposure: ModuleExposure { module: module_path } },
+      ],
+      authored_order_rows: [
+        AuthoredOrderRow { occurrence: decl_occ, ordinal: AuthoredTokenOrdinal { value: 0 } },
+        AuthoredOrderRow { occurrence: ref_occ, ordinal: AuthoredTokenOrdinal { value: 1 } },
+      ],
+    },
+    module_path: module_path,
+    file_path: file_path as FilePath,
+  }
+}
+
+test fn colliding_raw_ids_assemble_to_distinct_closure_ids_with_joins_intact_holds() -> Bool {
+  let consumer_module = cfba_path(dotted: "extdeps.consumer")
+  let provider_module = cfba_path(dotted: "extdeps.provider")
+  let consumer = cfba_single_occurrence_closure_row(
+    module_path: consumer_module,
+    file_path: "extdeps/consumer.dag",
+    name: "ConsumerDecl",
+    category: TypeOccurrence,
+  )
+  // Provider carries BOTH a declaration and a reference, minting raw ids 0 and 1 from its
+  // own independent allocator -- the declaration's raw id (0) collides with the consumer's
+  // raw declaration id (also 0), so this exercises reference rekeying alongside declaration
+  // rekeying, not references: [] as before.
+  let provider = cfba_provider_with_reference_closure_row(
+    module_path: provider_module,
+    file_path: "extdeps/provider.dag",
+    decl_name: "ProviderDecl",
+    decl_category: CallableOccurrence,
+    ref_name: "ProviderRef",
+    ref_category: TypeOccurrence,
+  )
+  let pre_assembly_raw_ids_collide =
+    (consumer.transport.declarations |> any(d => d.occurrence.value == 0))
+      && (provider.transport.declarations |> any(d => d.occurrence.value == 0))
+  match assemble_cross_file_binding_closure(consumer: consumer, providers: [provider]) {
+    AssembledCrossFileBindingClosureReady { transport: transport, inputs: inputs, module_files: _, consumer_file: consumer_file } => {
+      let consumer_id = cfba_closure_id_by_name(entries: transport.index.entries, name: "ConsumerDecl")
+      let provider_decl_id = cfba_closure_id_by_name(entries: transport.index.entries, name: "ProviderDecl")
+      let provider_ref_id = cfba_closure_id_by_name(entries: transport.index.entries, name: "ProviderRef")
+      let consumer_joined =
+        cfba_joined_at(transport: transport, inputs: inputs, value: consumer_id, module_path: consumer_module, name: "ConsumerDecl", category: TypeOccurrence)
+      let provider_decl_joined =
+        cfba_joined_at(transport: transport, inputs: inputs, value: provider_decl_id, module_path: provider_module, name: "ProviderDecl", category: CallableOccurrence)
+      let provider_ref_joined =
+        cfba_reference_joined_at(transport: transport, inputs: inputs, value: provider_ref_id, module_path: provider_module, name: "ProviderRef", category: TypeOccurrence)
+      let all_closure_ids_distinct =
+        consumer_id != provider_decl_id
+          && consumer_id != provider_ref_id
+          && provider_decl_id != provider_ref_id
+      pre_assembly_raw_ids_collide
+        && (transport.declarations |> count) == 2
+        && (transport.references |> count) == 1
+        && (transport.index.entries |> count) == 3
+        && (inputs.module_paths |> count) == 3
+        && (inputs.exposure_rows |> count) == 2
+        && (inputs.authored_order_rows |> count) == 3
+        && consumer_joined
+        && provider_decl_joined
+        && provider_ref_joined
+        && all_closure_ids_distinct
+        && (consumer_file as String) == "extdeps/consumer.dag"
+    }
+    AssembledCrossFileBindingClosureRefused { refusal: _ } => false
+  }
+}
+
+test fn lexical_exposure_scope_rekeys_to_same_closure_id_as_its_index_entry_holds() -> Bool {
+  let outer = OccurrenceId { value: 5 }
+  let binder = OccurrenceId { value: 6 }
+  let outer_path = cfba_containment(ancestors: [], terminal: outer)
+  let binder_path = cfba_containment(ancestors: [outer], terminal: binder)
+  let consumer = CrossFileBindingClosureRow {
+    transport: OccurrenceTransport {
+      index: OccurrenceIndex {
+        entries: [
+          cfba_index_entry(occurrence: outer, name: "Outer", containment: outer_path),
+          cfba_index_entry(occurrence: binder, name: "Binder", containment: binder_path),
+        ],
+      },
+      declarations: [cfba_declaration(occurrence: binder, containment: binder_path, category: CallableOccurrence)],
+      references: [],
+    },
+    inputs: OccurrenceBindingCandidateInputs {
+      module_paths: [],
+      exposure_rows: [
+        DeclarationExposureRow {
+          occurrence: binder,
+          exposure: LexicalExposure { exposing_scope: outer_path },
+        },
+      ],
+      authored_order_rows: [],
+    },
+    module_path: cfba_path(dotted: "extdeps.lexical"),
+    file_path: "extdeps/lexical.dag" as FilePath,
+  }
+  match assemble_cross_file_binding_closure(consumer: consumer, providers: []) {
+    AssembledCrossFileBindingClosureReady { transport: transport, inputs: inputs, module_files: _, consumer_file: _ } => {
+      let entries = transport.index.entries
+      let outer_reused_by_scope =
+        inputs.exposure_rows
+        |> any(r =>
+          match r.exposure {
+            LexicalExposure { exposing_scope: scope } =>
+              entries |> any(e => e.projection.authored_name == "Outer" && e.projection.occurrence.value == scope.terminal.value)
+            _ => false
+          }
+        )
+      let binder_and_declaration_agree =
+        transport.declarations
+        |> any(d =>
+          entries |> any(e => e.projection.authored_name == "Binder" && e.projection.occurrence.value == d.occurrence.value)
+        )
+      outer_reused_by_scope && binder_and_declaration_agree
+    }
+    AssembledCrossFileBindingClosureRefused { refusal: _ } => false
+  }
+}
+
+// --- ModulePathFileRow refusal: duplicate-same vs conflict, distinct typed variants ---
+
+test fn module_path_file_duplicate_same_rows_refuse_distinctly_holds() -> Bool {
+  match module_path_file_index_from_rows(rows: [
+    ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a.dag" as FilePath },
+    ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a.dag" as FilePath },
+  ]) {
+    ModulePathFileIndexRefused { refusal: ModulePathFileDuplicateSame { module_path: module_path, file_path: file_path } } =>
+      module_path == cfba_path(dotted: "extdeps.a") && (file_path as String) == "extdeps/a.dag"
+    _ => false
+  }
+}
+
+test fn module_path_file_conflicting_rows_refuse_distinctly_holds() -> Bool {
+  match module_path_file_index_from_rows(rows: [
+    ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a.dag" as FilePath },
+    ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a_moved.dag" as FilePath },
+  ]) {
+    ModulePathFileIndexRefused { refusal: ModulePathFileConflict { module_path: module_path, first_file: first_file, second_file: second_file } } =>
+      module_path == cfba_path(dotted: "extdeps.a")
+        && (first_file as String) == "extdeps/a.dag"
+        && (second_file as String) == "extdeps/a_moved.dag"
+    _ => false
+  }
+}
+
+test fn assembly_refuses_when_provider_conflicts_consumer_module_path_holds() -> Bool {
+  let consumer = cfba_single_occurrence_closure_row(
+    module_path: cfba_path(dotted: "extdeps.shared"),
+    file_path: "extdeps/shared.dag",
+    name: "ConsumerDecl",
+    category: TypeOccurrence,
+  )
+  let provider = cfba_single_occurrence_closure_row(
+    module_path: cfba_path(dotted: "extdeps.shared"),
+    file_path: "extdeps/shared_other.dag",
+    name: "ProviderDecl",
+    category: CallableOccurrence,
+  )
+  match assemble_cross_file_binding_closure(consumer: consumer, providers: [provider]) {
+    AssembledCrossFileBindingClosureRefused {
+      refusal: AssembledCrossFileBindingClosureModulePathFileRefused {
+        refusal: ModulePathFileConflict { module_path: module_path, first_file: _, second_file: _ },
+      },
+    } => module_path == cfba_path(dotted: "extdeps.shared")
+    _ => false
+  }
+}
+
+// --- Structural control: the two former duplicate exposure/binding-walk helpers are gone ---
+
+fn cfba_source_text(path: String) -> String {
+  filesystem_read(path: path).content
+}
+
+test fn single_authority_lives_only_in_std_occurrence_binding_candidates_holds() -> Bool {
+  let std_text = cfba_source_text(path: "dag/std/occurrence_binding_candidates.dag")
+  let type_ref_ctx_text = cfba_source_text(path: "dag/gunbc/type_reference_binding_context.dag")
+  let parser_walk_text = cfba_source_text(path: "src/v1/gunbc/occurrence_binding_parser_walk.dag")
+  string_contains(s: std_text, pattern: "fn declaration_exposure_from_containment(")
+    && string_contains(s: std_text, pattern: "fn structural_binding_walk(")
+    && !string_contains(s: type_ref_ctx_text, pattern: "fn declaration_exposure_from_containment_tree(")
+    && !string_contains(s: type_ref_ctx_text, pattern: "fn occurrence_containment_parent_scope(")
+    && string_contains(s: type_ref_ctx_text, pattern: "declaration_exposure_from_containment(")
+    && !string_contains(s: parser_walk_text, pattern: "type StructuralBindingWalk")
+    && !string_contains(s: parser_walk_text, pattern: "fn structural_binding_walk(")
+    && !string_contains(s: parser_walk_text, pattern: "fn occurrence_containment_parent_scope(")
+    && !string_contains(s: parser_walk_text, pattern: "fn declaration_exposure_from_containment(")
+    && string_contains(s: parser_walk_text, pattern: "declaration_exposure_from_containment(")
+}

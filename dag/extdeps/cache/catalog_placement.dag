@@ -6,7 +6,7 @@ import extdeps.uri { Uri, Https }
 import std.cache_interface {
   ValueShape,
   PersistenceLocality,
-  EvictionPolicy,
+  ProviderRetention,
   AtomicityModel,
   AuthScope,
   ReadLatencyClass,
@@ -23,7 +23,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 type CacheInterfaceCatalogPlacement {
   value_shape: ValueShape
   locality: PersistenceLocality
-  eviction: EvictionPolicy
+  retention: ProviderRetention
   atomicity: AtomicityModel
   auth: AuthScope
   read_latency: ReadLatencyClass

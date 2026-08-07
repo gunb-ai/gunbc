@@ -17,7 +17,6 @@ import std.cache_interface {
   MissThenCreate,
   RawBytes,
   PerHostFilesystem,
-  Lru,
   FilesystemPerms,
   LocalDiskUs,
   ReadYourWrites,
@@ -329,7 +328,7 @@ data sccache_local_facts: CacheInterfaceCatalogFacts = {
     value_shape: RawBytes
     locality: PerHostFilesystem
 
-    eviction: Lru
+    retention: { release_policy: ReleasedNever, capacity: CapacityBounded { limit: ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } } }
     atomicity: WriteThenRename
     auth: FilesystemPerms
     read_latency: LocalDiskUs
@@ -344,10 +343,10 @@ data sccache_local_facts: CacheInterfaceCatalogFacts = {
       }
     },
     {
-      field: "eviction"
+      field: "retention.capacity"
       evidence: VendorCitation {
-        source: "sccache cache size and LRU eviction policy"
-        url: "https://github.com/mozilla/sccache/blob/main/docs/Configuration.md#cache-size"
+        source: "sccache v0.15.0 Configuration.md: SCCACHE_CACHE_SIZE is the maximum size of the local on-disk cache, default 10G. The pinned tag is the modeled binary's version, not main, because a doc read at a moving ref cannot say what THIS binary does. The limit stays ByteCapacity(EffectiveLimitUnobserved) rather than ByteCapacity(ExactLimit(10G)): 10G is the vendor DEFAULT and the effective value may be overridden per runner by env or config, and no runner was read for this row. What the citation establishes is that a finite ceiling EXISTS, which is the fact CapacityBounded asserts"
+        url: "https://github.com/mozilla/sccache/blob/v0.15.0/docs/Configuration.md#cache-size"
       }
     },
     {
