@@ -17943,6 +17943,34 @@ pub fn collect_frozen_path_deferral_additions_for(
         }
     };
 
+    // THE CURRENT SIDE IS THE SELECTED HEAD, not an ambient one, and this runs BEFORE any arm that
+    // can permit. Reading the live filesystem keeps an uncommitted local roster edit in scope (the
+    // check must catch a row added but not yet committed), so the coherence is established rather
+    // than assumed: the workspace must BE at the resolved head. An exact replay whose head is some
+    // other commit therefore refuses instead of silently answering about whatever is checked out.
+    //
+    // ORDER IS LOAD-BEARING, and it was wrong when this wall first landed. The confirmed-absence
+    // arm below returns `Ok` — a PERMIT — and it sat above this check, so a comparison whose
+    // baseline predates the freeze file was blessed without ever establishing which tree was being
+    // adjudicated. Discriminating history: base B has no roster, selected head H introduces {X},
+    // the actual checkout C is some later commit carrying {X, Y}; the gate saw B lacking the roster
+    // and permitted, never noticing it had answered about C rather than H. Bounded in practice
+    // (today's push and PR baselines all carry the roster) but reachable through an exact replay or
+    // an operator-selected historical baseline — and it contradicted the very law this check
+    // states. A validation that any permitting arm can jump over is not a wall, so it is hoisted
+    // above every one of them.
+    let checkout = run(&["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])?;
+    let checkout_commit = String::from_utf8_lossy(&checkout.stdout).trim().to_string();
+    if !checkout.status.success() || checkout_commit != head_commit {
+        return Err(located(format!(
+            "WITNESS ADMISSION REFUSAL cause=FreezeHeadEndpointMismatch resolved_head={head_commit} \
+             checkout={checkout_commit} — the current side of this comparison is read from the \
+             working tree, and the working tree is not at the head the authority selected, so the \
+             roster it reports is not the roster of the subject under check. Answering about the \
+             checkout anyway would substitute one endpoint for another."
+        )));
+    }
+
     let base_keys = match read_frozen_roster_at_commit(&run, &baseline_commit).map_err(located)? {
         Some(source) => frozen_path_deferral_keys_from_source(&source),
         None => {
@@ -17958,23 +17986,6 @@ pub fn collect_frozen_path_deferral_additions_for(
             return Ok(Vec::new());
         }
     };
-
-    // THE CURRENT SIDE IS THE SELECTED HEAD, not an ambient one. Reading the live filesystem keeps
-    // an uncommitted local roster edit in scope (the check must catch a row added but not yet
-    // committed), so the coherence is established rather than assumed: the workspace must BE at the
-    // resolved head. An exact replay whose head is some other commit therefore refuses instead of
-    // silently answering about whatever happens to be checked out.
-    let checkout = run(&["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])?;
-    let checkout_commit = String::from_utf8_lossy(&checkout.stdout).trim().to_string();
-    if !checkout.status.success() || checkout_commit != head_commit {
-        return Err(located(format!(
-            "WITNESS ADMISSION REFUSAL cause=FreezeHeadEndpointMismatch resolved_head={head_commit} \
-             checkout={checkout_commit} — the current side of this comparison is read from the \
-             working tree, and the working tree is not at the head the authority selected, so the \
-             roster it reports is not the roster of the subject under check. Answering about the \
-             checkout anyway would substitute one endpoint for another."
-        )));
-    }
     let current_source = std::fs::read_to_string(root.join(WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL))
         .map_err(|e| {
             located(format!(
@@ -19457,7 +19468,7 @@ fn floor_git_diff_range() -> Result<String, String> {
 /// answers "which ref" for a diagnostic, and a DECIDING consumer that takes it has to invent the
 /// missing head and relation. Inventing them is what shipped the merge-base-on-every-arm fail-open,
 /// so the deciding consumers read this one and a `ComparisonReadoutRefused` propagates.
-fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison, String> {
+pub(crate) fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison, String> {
     use v1_interpreter::Value;
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
@@ -25506,6 +25517,66 @@ mod node_frontier_plumbing_controls {
             .collect(&repo.direct("0000000000000000000000000000000000000000", "HEAD"))
             .expect_err("an unresolvable baseline must refuse, never read as absence");
         assert!(err.contains("FreezeBaselineUnobservable"), "{err}");
+    }
+
+    // CONTROL 7c — THE CROSS-PRODUCT, and the fail-open it closes. Each of these two facts is
+    // individually handled: an absent baseline roster PERMITS (the freeze-introduction arm) and a
+    // checkout that is not the selected head REFUSES. Their conjunction was the hole, because the
+    // permitting arm returned first and the endpoint check never ran — so a comparison naming head
+    // H was silently answered from checkout C.
+    //
+    // This is the shape review found after #7953 merged. It is bounded in practice, since today's
+    // push and PR baselines all carry the roster, and reachable through an exact replay or an
+    // operator-selected historical baseline. Reordering the endpoint check back below the absence
+    // arm must make this control red; that mutation is the proof it is load-bearing.
+    #[test]
+    fn frozen_roster_absent_baseline_still_refuses_a_mismatched_checkout() {
+        let repo = FreezeRepo::new("absent-baseline-mismatched-head");
+        std::fs::write(repo.dir.join("unrelated.txt"), "no roster yet\n").expect("write");
+        let base_without_roster = repo.commit("B: baseline predating the freeze");
+
+        repo.write_roster(&["introduced_here"]);
+        let selected_head = repo.commit("H: the selected head introduces the roster");
+
+        repo.write_roster(&["introduced_here", "added_later"]);
+        repo.commit("C: the actual checkout, a different subject");
+
+        // The permitting arm is genuinely reachable: this baseline really has no roster.
+        assert!(
+            !std::process::Command::new("git")
+                .args([
+                    "ls-tree",
+                    "-z",
+                    &base_without_roster,
+                    "--",
+                    super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL,
+                ])
+                .current_dir(&repo.dir)
+                .output()
+                .expect("git ls-tree")
+                .stdout
+                .iter()
+                .any(|b| *b != 0),
+            "the fixture's baseline must genuinely lack the roster, else the permitting arm is \
+             never reached and this control proves nothing"
+        );
+
+        let err = repo
+            .collect(&repo.direct(&base_without_roster, &selected_head))
+            .expect_err(
+                "an absent baseline must not permit while the checkout is a different subject",
+            );
+        assert!(err.contains("FreezeHeadEndpointMismatch"), "{err}");
+
+        // The same absent baseline, with the checkout AT the selected head, still permits — the
+        // repair tightened the order, it did not delete the freeze-introduction arm.
+        repo.git(&["checkout", "--quiet", &selected_head]);
+        assert!(
+            repo.collect(&repo.direct(&base_without_roster, &selected_head))
+                .expect("confirmed absence at a coherent endpoint is readable")
+                .is_empty(),
+            "the introducing change must still pass when the checkout IS the selected head"
+        );
     }
 
     // CONTROL 7b — THE ABSENCE/IGNORANCE SPLIT, at the only grain that actually discriminates it.
@@ -35525,6 +35596,85 @@ mod witness_layer_roots_compile_clean_tests {
                     "the live roster cannot have grown against itself through the public entry: \
                      {additions:?}"
                 );
+            });
+        });
+    }
+
+    // THE PAYLOAD ROUTE, end to end, which the OperatorOverride control beside it deliberately does
+    // not cover. The repository already proves `GITHUB_EVENT_PATH` parses into a before SHA, and the
+    // recut proves a resolved comparison decides correctly once it reaches Rust; nothing joined the
+    // two. This composes the whole chain on the production route:
+    //
+    //   GITHUB_EVENT_NAME=push + real payload file + GITHUB_SHA
+    //     -> resolve_diff_baseline -> PushBeforeBaseline -> DirectComparison -> the Rust bridge
+    //
+    // Direct mode is the load-bearing assertion. A push resolving to merge-base is exactly the
+    // fail-open that shipped in gunbc#7953's first cut, and this is the only control that reaches
+    // that conclusion through the real payload rather than through a hand-built comparison.
+    #[test]
+    fn push_payload_resolves_through_the_public_route_to_a_direct_comparison() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let ws = workspace_root();
+                let before = String::from_utf8_lossy(
+                    &std::process::Command::new("git")
+                        .args(["rev-parse", "HEAD^{commit}"])
+                        .current_dir(&ws)
+                        .output()
+                        .expect("git rev-parse")
+                        .stdout,
+                )
+                .trim()
+                .to_string();
+                let head_sha = String::from_utf8_lossy(
+                    &std::process::Command::new("git")
+                        .args(["rev-parse", "HEAD^{commit}"])
+                        .current_dir(&ws)
+                        .output()
+                        .expect("git rev-parse")
+                        .stdout,
+                )
+                .trim()
+                .to_string();
+
+                let payload = std::env::temp_dir().join(format!(
+                    "gunbc-push-payload-{}-{}.json",
+                    std::process::id(),
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .expect("clock")
+                        .as_nanos()
+                ));
+                std::fs::write(&payload, format!("{{\"before\": \"{before}\"}}\n"))
+                    .expect("write push payload");
+
+                // The two competing baseline sources must be absent, or this control would silently
+                // measure the OperatorOverride / ExactReplay arm instead of the payload route.
+                let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
+                let _window = EnvGuard::remove("GUNBC_DIFF_WINDOW_PATH");
+                let _head_override = EnvGuard::remove("GUNBC_CI_DIFF_HEAD");
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "push");
+                let _path = EnvGuard::set("GITHUB_EVENT_PATH", &payload.to_string_lossy());
+                let _sha = EnvGuard::set("GITHUB_SHA", &head_sha);
+
+                let comparison = crate::cli_run::floor_diff_comparison_readout()
+                    .expect("a real push payload must resolve to a comparison");
+                std::fs::remove_file(&payload).ok();
+
+                match comparison {
+                    crate::cli_run::FreezeBaselineComparison::Direct { base, head, kind } => {
+                        assert_eq!(base, before, "the exact payload before SHA is the base");
+                        assert_eq!(head, "HEAD", "the selected head comes from the diff policy");
+                        assert_eq!(
+                            kind, "PushBeforeBaseline",
+                            "the payload route must select the PushBefore arm"
+                        );
+                    }
+                    other => panic!(
+                        "a push payload must resolve to a DIRECT (two-dot) comparison; \
+                         merge-base on a push is the reintroduction fail-open: {other:?}"
+                    ),
+                }
             });
         });
     }
