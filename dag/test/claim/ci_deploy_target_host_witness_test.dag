@@ -58,16 +58,16 @@ test fn witness_ssh_transport_mismatch_refused() -> Bool {
   )
 }
 
-fn label_list_contains(labels: List<String>, needle: String) -> Bool {
-  fold(labels, init: false, f: (acc, l) => acc || (l == needle))
+fn deploy_runner_labels_contain(xs: List<String>, x: String) -> Bool {
+  fold(xs, init: false, f: (acc, l) => acc || (l == x))
 }
 
 test fn witness_deploy_stage_pins_srv1_runner_label() -> Bool {
   gunbc_ci_deploy_srv1_stage.runner == gunbc_ci_deploy_srv1_runner_spec()
     && match gunbc_ci_deploy_srv1_stage.runner {
       SelfHosted { labels: labels } =>
-        label_list_contains(labels: labels, needle: "srv1")
-          && label_list_contains(labels: labels, needle: "self-hosted")
+        deploy_runner_labels_contain(xs: labels, x: "srv1")
+          && deploy_runner_labels_contain(xs: labels, x: "self-hosted")
       _ => false
     }
 }

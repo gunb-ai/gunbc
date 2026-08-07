@@ -57,7 +57,9 @@ type FleetRunnerCapacityWidthSnapshot {
   achieved: FleetAchievedRunnerWidths
 }
 
-data incident_2026_08_06_roster_note: String = "PINNED ACCEPTANCE CORPUS from the live GitHub org runners API during the 2026-08-06 broker-session incident (15 of 16 registrations offline; 1 functional runner). srv1 registered 01-05 with only 01 online+busy; srv2 registered 01,02,05 all offline with 03,04 absent; srv3 registered 01,02,04,05 all offline with 03 absent; srv4 registered 01,02,04,05 all offline with 03 absent. desired_width stays 22 while connected is 1."
+data incident_2026_08_06_roster_note: String = "PINNED ACCEPTANCE CORPUS from the live GitHub org runners API during the 2026-08-06 broker-session incident (15 of 16 registrations offline; 1 functional runner). srv1 registered 01-05 with only 01 online+busy; srv2 registered 01,02,05 all offline with 03,04 absent; srv3 registered 01,02,04,05 all offline with 03 absent; srv4 registered 01,02,04,05 all offline with 03 absent. desired_width stays 22 while connected is 1 (pinned at incident_fleet_desired_width_total — live fleet_desired_width_total is 24 after srv4 commits 7 at the memory axis)."
+
+data incident_fleet_desired_width_total: Int = 22
 
 data incident_runner_version: NonEmptyStr = "2.334.0"
 
@@ -281,6 +283,34 @@ fn organization_runner_roster_converged_seven_evidence() -> OrganizationRunnerRo
   }
 }
 
+data width_five_online_srv3_registrations: List<GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 301, name: "srv3-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 302, name: "srv3-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 303, name: "srv3-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 304, name: "srv3-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 305, name: "srv3-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+]
+
+data width_five_online_srv4_registrations: List<GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 401, name: "srv4-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 402, name: "srv4-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 403, name: "srv4-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 404, name: "srv4-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 405, name: "srv4-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+]
+
+data width_five_online_managed_registrations: List<GitHubSelfHostedRunnerRegistration> = concat(
+  width_five_online_srv3_registrations,
+  width_five_online_srv4_registrations,
+)
+
+fn organization_runner_roster_materialized_slots_online_evidence() -> OrganizationRunnerRosterEvidence {
+  RosterObserved {
+    observed_on: "2026-08-07" as NonEmptyStr,
+    registrations: width_five_online_managed_registrations,
+  }
+}
+
 fn local_incarnations_for_host(host: HostIdentity, width: Int) -> List<LocalRunnerSlotIncarnation> {
   if width == 7 {
     map(
@@ -433,7 +463,7 @@ fn fleet_runner_capacity_width_snapshot_from_roster(
   roster: OrganizationRunnerRosterEvidence,
 ) -> FleetRunnerCapacityWidthSnapshot {
   FleetRunnerCapacityWidthSnapshot {
-    desired_width: fleet_desired_width_total(),
+    desired_width: incident_fleet_desired_width_total,
     materialized_width: fleet_materialized_width_total(),
     unit_active_width: fleet_unit_active_width_total(),
     achieved: fleet_achieved_runner_widths_from_roster(roster: roster),

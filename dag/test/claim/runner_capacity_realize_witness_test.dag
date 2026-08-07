@@ -11,6 +11,7 @@ import gunbc.runner_capacity_plan {
 import gunbc.fleet_runner_connectivity {
   organization_runner_roster_evidence,
   organization_runner_roster_converged_seven_evidence,
+  organization_runner_roster_materialized_slots_online_evidence,
 }
 import gunbc.runner_capacity_realize {
   runner_capacity_apply_plan,
@@ -43,7 +44,7 @@ test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool {
   let plan = runner_capacity_plan(
     srv3_width: 7,
     srv4_width: 7,
-    roster: organization_runner_roster_evidence(),
+    roster: organization_runner_roster_materialized_slots_online_evidence(),
   )
   match runner_capacity_apply_plan(plan: plan) {
     RunnerCapacityApplyCompleted { hosts: _ } =>
