@@ -1,0 +1,103 @@
+module gunbc.runner_lifecycle_realize
+
+import gunbc.host_effect {
+  HostEffectIntent,
+  HostEffectEvidence,
+  HostEffectTransport,
+}
+import std.realization_reconcile { Reconciliation, NotConverged }
+import gunbc.runner_lifecycle { RunnerSlotIdentity }
+import extdeps.github.actions_runner { ActionsRunnerBinaryArtifact }
+import std.types { NonEmptyStr, String }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// All nine runner_lifecycle HostEffect realize arms delegate here until wet transport lands.
+// Honest scaffold: typed, located NotConverged — not an absorbing fallback and not a converged receipt.
+// Dissolves when the add path is bound through LocalShell on an in-band job targeted at the host
+// label AND the executing principal holds the enumerated sudo grants (ReadEffectivePosixPrincipal +
+// SudoNopasswdGrantListProbe), AND host_effect_apply routes each arm through HostEffectTransport
+// with independent read-back (org-roster for registration observe; local unit/process facts for
+// ObserveRunnerLocalState; release digest before extract for ADD arms).
+
+data runner_lifecycle_realize_wet_transport_dissolve_on: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "HostEffectTransport",
+    field: WholeDeclaration,
+  }
+}
+
+data runner_lifecycle_realize_scaffold_dissolution_note: String = "DISSOLUTION TRIGGER (section 6): each runner_lifecycle_realize_* arm retires when (1) the add path is bound through LocalShell on an in-band GHA job labelled for the target host AND the executing principal holds passwordless sudo for runner-root mkdir, systemd unit install, daemon-reload, and unit start (verified via ReadEffectivePosixPrincipal + SudoNopasswdGrantListProbe — srv1 observed 2026-08-07; srv3/srv4 pending in-band probe), (2) host_effect_apply binds the arm through HostEffectTransport instead of this scaffold, and (3) the bound handler performs independent read-back before claiming Converged (org-roster for ObserveGitHubRunnerRegistration; local unit/process for ObserveRunnerLocalState; digest-verified release before extract for EnsureActionsRunnerRelease). Until then every arm returns NotConverged citing runner_lifecycle_realize_wet_transport_dissolve_on — provisions nothing."
+
+fn runner_lifecycle_realize_scaffold(
+  effect_label: String,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  NotConverged {
+    reason: join(
+      [
+        "host_effect_apply: ",
+        effect_label,
+        " realization scaffold (NotConverged) — dissolve-on runner_lifecycle_realize_wet_transport_dissolve_on: LocalShell in-band transport + enumerated sudo grants + HostEffectTransport binding; gunbc-owned realization (read live ctrl installer for shape, never invoke from gunbc run)",
+      ],
+      "",
+    ),
+    applied: intent,
+  }
+}
+
+fn runner_lifecycle_realize_ensure_actions_runner_release(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "EnsureActionsRunnerRelease", intent: intent)
+}
+
+fn runner_lifecycle_realize_ensure_runner_slot_directory(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "EnsureRunnerSlotDirectory", intent: intent)
+}
+
+fn runner_lifecycle_realize_ensure_runner_jit_wrapper(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "EnsureRunnerJitWrapper", intent: intent)
+}
+
+fn runner_lifecycle_realize_ensure_runner_systemd_template(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "EnsureRunnerSystemdTemplate", intent: intent)
+}
+
+fn runner_lifecycle_realize_ensure_runner_memory_caps(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "EnsureRunnerMemoryCaps", intent: intent)
+}
+
+fn runner_lifecycle_realize_activate_runner_slot(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "ActivateRunnerSlot", intent: intent)
+}
+
+fn runner_lifecycle_realize_replace_runner_incarnation(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "ReplaceRunnerIncarnation", intent: intent)
+}
+
+fn runner_lifecycle_realize_observe_runner_local_state(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "ObserveRunnerLocalState", intent: intent)
+}
+
+fn runner_lifecycle_realize_observe_github_runner_registration(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  runner_lifecycle_realize_scaffold(effect_label: "ObserveGitHubRunnerRegistration", intent: intent)
+}

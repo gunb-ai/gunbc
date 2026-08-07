@@ -1,0 +1,71 @@
+module gunbc.host_disk_observation
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_shell_transport_observation {
+  fleet_shell_transport_observation,
+  ShellTransportSucceeded,
+  ShellTransportReachRefused,
+  ShellTransportUnobserved,
+}
+import gunbc.host_phase_status { fleet_subsumption_hosts }
+
+data host_disk_observation_authority_disposition: Disposition = SingleAuthority
+
+// DISK FREE SPACE IS AN OBSERVATION AXIS, not a hand-authored width cap.
+// gunbc.runner_slot_allocation.host_disk_admitted_width admits width only for srv4 from a deploy row;
+// srv1–srv3 carry DiskWidthUnconstrained because nobody measured them. This module owns the PRODUCER
+// that will return typed free-space observations through shell transport; until it lands,
+// host_disk_observed_producer returns DiskUnobserved with a located reason — never fabricated df output.
+
+type HostDiskObservation
+  = DiskObserved { free_bytes: ByteSize, observed_on: NonEmptyStr }
+  | DiskObservationRefused { detail: NonEmptyStr }
+  | DiskUnobserved { reason: String }
+
+fn host_disk_observed_producer(host: HostIdentity) -> HostDiskObservation {
+  match fleet_shell_transport_observation(host: host) {
+    ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } =>
+      DiskUnobserved {
+        reason: "shell transport available but df/free-space read has no host_effect producer yet; dissolve-on HostEffectTransport",
+      }
+    ShellTransportReachRefused { observed_on: _, principal: _, detail: d, gap: _ } =>
+      DiskUnobserved {
+        reason: concat("disk observation refused: shell transport failed: ", d as String),
+      }
+    ShellTransportUnobserved { reason: r } =>
+      DiskUnobserved { reason: concat("disk observation unobserved: ", r) }
+  }
+}
+
+fn host_disk_observation(host: HostIdentity) -> HostDiskObservation {
+  host_disk_observed_producer(host: host)
+}
+
+fn host_disk_unobserved_count(hosts: List<HostIdentity>) -> Int {
+  filter(
+    hosts,
+    h =>
+      match host_disk_observation(host: h) {
+        DiskUnobserved { reason: _ } => true
+        DiskObserved { free_bytes: _, observed_on: _ } => false
+        DiskObservationRefused { detail: _ } => false
+      },
+  ).length()
+}
+
+fn host_disk_fleet_unobserved_count() -> Int {
+  host_disk_unobserved_count(hosts: fleet_subsumption_hosts)
+}
+
+data host_disk_observed_producer_dissolve_on: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "HostEffectTransport",
+    field: WholeDeclaration,
+  }
+}
