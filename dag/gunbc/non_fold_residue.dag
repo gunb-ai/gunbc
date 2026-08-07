@@ -83,6 +83,10 @@ data nfr_reason_dispatch_selection_routing: String = "provider-selection routing
 
 data nfr_dissolve_dispatch_selection_routing: String = "total matches over the closed selection request and offer coproducts land and the wildcard arms migrate to named variants — rows delete with that fold"
 
+data nfr_reason_provider_standing_limit_draw: String = "dispatch-scoped limit relevance folds (match on ProviderLimitDispatchDraw × ProviderLimitSubject and LimitRejected carve-outs with wildcard arms routing off-shape subjects) landed with provider_standing authority #7926; declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_provider_standing_limit_draw: String = "cited model-to-native-token joins land per provider gap notes and limit_subject_covers_dispatch_draw becomes a total match — rows delete with that fold"
+
 data nfr_reason_binding_outcome_resolution_wildcard: String = "StructuralBindingResolution admission projection (StructuralBindingResolved arm extracts binding_outcome; off-variant wildcard Absent collapses six typed index-build refusal variants into option-absence) landed with N3-A carrier move (#7772); un-migrated modeling at assess_reference_binding_observation — the carrier distinguishes refusals but binding_outcome_from_resolution still absorbs them; declared at landing so the ratchet re-arms"
 
 data nfr_dissolve_binding_outcome_resolution_wildcard: String = "assess_reference_binding_observation routes each StructuralBindingResolution variant to a distinct capability assessment without Absent collapse — total match lands with P0-2 factual carrier recut and the wildcard arm deletes with its row"
@@ -97,7 +101,7 @@ data nfr_dissolve_class_b_binding_projection: String = "the observation carrier'
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request" },
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request_shape" },
     reason: nfr_reason_dispatch_selection_routing,
     trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
   },
@@ -115,6 +119,36 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::selection_requests_match" },
     reason: nfr_reason_dispatch_selection_routing,
     trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::codex_limit_dispatch_draw_for_selection" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::find_offer_for_request" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::dispatch_selection_refusal_reason_for_miss" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/provider_standing.dag::limit_subject_covers_dispatch_draw" },
+    reason: nfr_reason_provider_standing_limit_draw,
+    trigger: TriggerProse { text: nfr_dissolve_provider_standing_limit_draw },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/provider_standing.dag::limit_observation_blocks_dispatch" },
+    reason: nfr_reason_provider_standing_limit_draw,
+    trigger: TriggerProse { text: nfr_dissolve_provider_standing_limit_draw },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/provider_standing.dag::provider_standing_bundle_is_selection_eligible" },
+    reason: nfr_reason_provider_standing_limit_draw,
+    trigger: TriggerProse { text: nfr_dissolve_provider_standing_limit_draw },
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/namespace_reference_derived_closure_admission.dag::binding_outcome_from_resolution" },
