@@ -93,6 +93,8 @@ data nfr_reason_class_b_binding_projection: String = "Class B declared-import-cl
 
 data nfr_dissolve_class_b_binding_projection: String = "the observation carrier's verdict partition becomes derived from inhabitance (total match over BindingObserved vs BindingNotRunnable and over UnlistedImportBindingSource) and the wildcard arms delete with their rows"
 
+data nfr_reason_connectivity_verdict_predicate: String = "discriminating subset predicate over RunnerSlotConnectivityVerdict (param scrutinee, off-variant wildcard arm returning false) — each arms fleet_runner_connectivity_witness_test.dag census witnesses; landed with PR #7939 fleet connectivity truth slice; declared at landing so the ratchet re-arms"
+
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request" },
@@ -833,6 +835,26 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_refused_at_intended_seam" },
     reason: nfr_reason_class_b_binding_projection,
     trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/fleet_runner_connectivity.dag::connectivity_verdict_is_healthy" },
+    reason: nfr_reason_connectivity_verdict_predicate,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/fleet_runner_connectivity.dag::connectivity_verdict_is_detached" },
+    reason: nfr_reason_connectivity_verdict_predicate,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/fleet_runner_connectivity.dag::connectivity_verdict_is_orphaned" },
+    reason: nfr_reason_connectivity_verdict_predicate,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/fleet_runner_connectivity.dag::connectivity_verdict_is_unknown" },
+    reason: nfr_reason_connectivity_verdict_predicate,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
   },
 ]
 

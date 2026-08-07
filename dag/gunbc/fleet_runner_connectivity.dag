@@ -1,0 +1,435 @@
+module gunbc.fleet_runner_connectivity
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.realization_reconcile { ShowEffectiveRead, ReadAbsent }
+import product.placement_supply { HostIdentity }
+import extdeps.github.ci_runner {
+  GitHubSelfHostedRunnerRegistration,
+  GitHubRunnerRegistrationStatus,
+  GitHubRunnerOnline,
+  GitHubRunnerOffline,
+  github_runner_registration_is_online,
+  github_runner_registration_is_schedulable,
+}
+import extdeps.github.effect { GitHubOrganizationRef }
+import gunbc.auth.github_apps { gunbai_ci_declared }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_intent_network {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+
+data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
+  reason: "Single authority for GITHUB REGISTRATION CONNECTIVITY versus LOCAL RUNNER INCARNATIONS. It joins one org-level registration roster (remote ground truth from the GitHub Actions runners API) to per-slot stable identities (host, index) and their local systemd incarnations. It does NOT repair wedged runners — that is PR B. It refuses to fold connected width into desired width, and it refuses to treat a roster read failure as 'everything detached' (empty-observation narrow)."
+}
+
+data organization_roster_is_one_org_read_note: String = "THE ROSTER IS ONE CENTRAL ORG READ, not a per-host poll. GitHub's org runners API returns every self-hosted registration for the organization in one response; slot health is derived by joining that roster to stable (host, index) identities. The gunbai-ci GitHub App carries organization_self_hosted_runners read permission for this producer. Local journal mining and per-host gh api calls are not the authority for whether GitHub will schedule work onto a registration."
+
+data achieved_widths_are_orthogonal_to_desired_width_note: String = "THE ACHIEVED AXES HERE ARE ORTHOGONAL TO gunbc.runner_slot_allocation's desired-side widths (#7930 candidate/actuatable/observed). registered_width counts GitHub org roster rows; connected_width counts status == online; schedulable_width counts online AND NOT busy; executing_width counts online AND busy. desired_width is INTENT from gunbc_runner_slots_per_host and does NOT reconcile down when connected collapses during an outage. unit_active_width counts active systemd units (never slot directories — see do_not_count_directories_for_width_note). materialized_width names on-disk install artifacts separately until a live producer grounds them."
+
+type OrganizationRunnerRosterEvidence
+  = RosterObserved { observed_on: NonEmptyStr, registrations: List<GitHubSelfHostedRunnerRegistration> }
+  | RosterReadUnavailable { reason: String }
+
+type FleetAchievedRunnerWidths
+  = AchievedWidthsObserved {
+      registered_width: Int
+      connected_width: Int
+      schedulable_width: Int
+      executing_width: Int
+    }
+  | AchievedWidthsUnobserved { reason: String }
+
+type LocalRunnerSlotIncarnation {
+  slot: RunnerSlotIdentity
+  unit: NonEmptyStr
+  unit_active: Bool
+  registration_name: NonEmptyStr
+}
+
+type RunnerSlotConnectivityVerdict
+  = SlotConnectivityHealthy { slot: RunnerSlotIdentity, registration_id: Nat }
+  | SlotConnectivityDetached { slot: RunnerSlotIdentity, registration_id: Nat }
+  | SlotConnectivityOrphaned { slot: RunnerSlotIdentity }
+  | SlotConnectivityUnknown { slot: RunnerSlotIdentity, reason: String }
+
+type FleetRunnerCapacityWidthSnapshot {
+  desired_width: Int
+  materialized_width: Int
+  unit_active_width: Int
+  achieved: FleetAchievedRunnerWidths
+}
+
+data incident_2026_08_06_roster_note: String = "PINNED ACCEPTANCE CORPUS from the live GitHub org runners API during the 2026-08-06 broker-session incident (15 of 16 registrations offline; 1 functional runner). srv1 registered 01-05 with only 01 online+busy; srv2 registered 01,02,05 all offline with 03,04 absent; srv3 registered 01,02,04,05 all offline with 03 absent; srv4 registered 01,02,04,05 all offline with 03 absent. desired_width stays 22 while connected is 1."
+
+data incident_runner_version: NonEmptyStr = "2.334.0"
+
+data incident_runner_labels: List<NonEmptyStr> = [
+  "self-hosted" as NonEmptyStr,
+  "linux" as NonEmptyStr,
+  "arm64" as NonEmptyStr,
+  "gunbc-heavy" as NonEmptyStr,
+]
+
+fn github_organization_ref() -> GitHubOrganizationRef {
+  GitHubOrganizationRef { login: gunbai_ci_declared.owner_login }
+}
+
+fn incident_registration(
+  id: Nat,
+  name: NonEmptyStr,
+  status: GitHubRunnerRegistrationStatus,
+  busy: Bool,
+) -> GitHubSelfHostedRunnerRegistration {
+  GitHubSelfHostedRunnerRegistration {
+    id: id,
+    name: name,
+    status: status,
+    busy: busy,
+    ephemeral: true,
+    version: incident_runner_version,
+    os: "Linux" as NonEmptyStr,
+    labels: incident_runner_labels,
+  }
+}
+
+data incident_2026_08_06_registrations: List<GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 1, name: "srv1-01", status: GitHubRunnerOnline, busy: true),
+  incident_registration(id: 2, name: "srv1-02", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 3, name: "srv1-03", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 4, name: "srv1-04", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 5, name: "srv1-05", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 6, name: "srv2-01", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 7, name: "srv2-02", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 8, name: "srv2-05", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 9, name: "srv3-01", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 10, name: "srv3-02", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 11, name: "srv3-04", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 12, name: "srv3-05", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 13, name: "srv4-01", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 14, name: "srv4-02", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 15, name: "srv4-04", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 16, name: "srv4-05", status: GitHubRunnerOffline, busy: false),
+]
+
+fn organization_runner_roster_evidence() -> OrganizationRunnerRosterEvidence {
+  RosterObserved {
+    observed_on: "2026-08-06" as NonEmptyStr,
+    registrations: incident_2026_08_06_registrations,
+  }
+}
+
+data organization_runner_roster_producer_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_runner_connectivity",
+    decl_name: "organization_runner_roster_show_effective_read",
+    field: WholeDeclaration,
+  }
+}
+
+data organization_runner_roster_show_effective_read: ShowEffectiveRead<OrganizationRunnerRosterEvidence> = ReadAbsent {
+  reason: "no live org-level GET /orgs/gunb-ai/actions/runners has executed through the gunbai-ci GitHub App yet; the incident fixture in organization_runner_roster_evidence is the pinned acceptance corpus until this read binds ReadObserved"
+}
+
+fn registration_matches_name(
+  reg: GitHubSelfHostedRunnerRegistration,
+  name: NonEmptyStr,
+) -> Bool {
+  (reg.name as String) == (name as String)
+}
+
+fn find_registration_by_name(
+  registrations: List<GitHubSelfHostedRunnerRegistration>,
+  name: NonEmptyStr,
+) -> GitHubSelfHostedRunnerRegistration? {
+  fold(
+    registrations,
+    init: none,
+    f: (acc, reg) =>
+      if registration_matches_name(reg: reg, name: name) {
+        Present { value: reg }
+      } else {
+        acc
+      }
+  )
+}
+
+data do_not_count_directories_for_width_note: String = "DO NOT COUNT DIRECTORIES FOR WIDTH. srv1 carries fifty slot directories with only five active systemd units; srv1-06/07 directories exist since 2026-07-11 with no unit. srv3-06/07 and srv4-06/07 directories may already exist from prior attempts without a matching unit. Live width authority is unit/process state joined with the org roster — never filesystem enumeration. A directory-counting producer reads fifty, computes nothing missing, and reports success having provisioned nothing."
+
+data incident_local_unit_active_width_note: String = "UNIT_ACTIVE WIDTH IS ACTIVE SYSTEMD INCARNATION STATE, pinned from the incident corpus: five active actions-runner@<slot>.service units per host on all four hosts (20 total), even though gunbc_runner_slots_per_host admits 22 desired slots today. MATERIALIZED WIDTH names on-disk install artifacts separately and must not be equated with directory count. This row is the seam where local incarnation observation should eventually ground gunbc.runner_slot_allocation observed_live_width when that carrier lands — without taking a dependency on an unmerged PR."
+
+fn materialized_width_for_host(host: HostIdentity) -> Int {
+  if (host as String) == (operator_host_srv1 as String) {
+    5
+  } else if (host as String) == (operator_host_srv2 as String) {
+    5
+  } else if (host as String) == (operator_host_srv3 as String) {
+    5
+  } else if (host as String) == (operator_host_srv4 as String) {
+    5
+  } else {
+    0
+  }
+}
+
+fn unit_active_width_for_host(host: HostIdentity) -> Int {
+  if (host as String) == (operator_host_srv1 as String) {
+    5
+  } else if (host as String) == (operator_host_srv2 as String) {
+    5
+  } else if (host as String) == (operator_host_srv3 as String) {
+    5
+  } else if (host as String) == (operator_host_srv4 as String) {
+    5
+  } else {
+    0
+  }
+}
+
+data incident_materialized_slot_indices: List<Nat> = [1, 2, 3, 4, 5]
+
+fn slot_suffix(slot_index: Nat) -> String {
+  if slot_index == 1 {
+    "01"
+  } else if slot_index == 2 {
+    "02"
+  } else if slot_index == 3 {
+    "03"
+  } else if slot_index == 4 {
+    "04"
+  } else if slot_index == 5 {
+    "05"
+  } else if slot_index == 6 {
+    "06"
+  } else if slot_index == 7 {
+    "07"
+  } else {
+    "00"
+  }
+}
+
+fn runner_slot_incarnation(
+  host: HostIdentity,
+  slot_index: Nat,
+  unit_active: Bool,
+) -> LocalRunnerSlotIncarnation {
+  let registration_name = join([host as String, "-", slot_suffix(slot_index: slot_index)], "") as NonEmptyStr
+  LocalRunnerSlotIncarnation {
+    slot: RunnerSlotIdentity { host: host, slot_index: slot_index },
+    unit: join(["actions-runner@", registration_name as String, ".service"], "") as NonEmptyStr,
+    unit_active: unit_active,
+    registration_name: registration_name,
+  }
+}
+
+fn local_incarnations_for_host(host: HostIdentity, width: Int) -> List<LocalRunnerSlotIncarnation> {
+  if width == 5 {
+    map(
+      incident_materialized_slot_indices,
+      i => runner_slot_incarnation(host: host, slot_index: i, unit_active: true)
+    )
+  } else {
+    []
+  }
+}
+
+fn local_runner_slot_incarnations() -> List<LocalRunnerSlotIncarnation> {
+  concat(
+    local_incarnations_for_host(host: operator_host_srv1, width: materialized_width_for_host(host: operator_host_srv1)),
+    concat(
+      local_incarnations_for_host(host: operator_host_srv2, width: materialized_width_for_host(host: operator_host_srv2)),
+      concat(
+        local_incarnations_for_host(host: operator_host_srv3, width: materialized_width_for_host(host: operator_host_srv3)),
+        local_incarnations_for_host(host: operator_host_srv4, width: materialized_width_for_host(host: operator_host_srv4))
+      )
+    )
+  )
+}
+
+fn runner_slot_connectivity_verdict_for_incarnation(
+  incarnation: LocalRunnerSlotIncarnation,
+  roster: OrganizationRunnerRosterEvidence,
+) -> RunnerSlotConnectivityVerdict {
+  if !incarnation.unit_active {
+    SlotConnectivityUnknown {
+      slot: incarnation.slot,
+      reason: "inactive systemd unit is outside the active-incarnation connectivity model"
+    }
+  } else {
+    match roster {
+      RosterReadUnavailable { reason: r } =>
+        SlotConnectivityUnknown { slot: incarnation.slot, reason: r }
+      RosterObserved { observed_on: _, registrations: regs } =>
+        match find_registration_by_name(registrations: regs, name: incarnation.registration_name) {
+          Absent => SlotConnectivityOrphaned { slot: incarnation.slot }
+          Present { value: reg } =>
+            match reg.status {
+              GitHubRunnerOnline =>
+                SlotConnectivityHealthy { slot: incarnation.slot, registration_id: reg.id }
+              GitHubRunnerOffline =>
+                SlotConnectivityDetached { slot: incarnation.slot, registration_id: reg.id }
+            }
+        }
+    }
+  }
+}
+
+fn runner_slot_connectivity_verdict(slot: RunnerSlotIdentity) -> RunnerSlotConnectivityVerdict {
+  let roster = organization_runner_roster_evidence()
+  let incarnations = local_runner_slot_incarnations()
+  match fold(
+    incarnations,
+    init: none,
+    f: (acc, inc) =>
+      if (inc.slot.host as String) == (slot.host as String) && inc.slot.slot_index == slot.slot_index {
+        Present {
+          value: runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster)
+        }
+      } else {
+        acc
+      }
+  ) {
+    Absent =>
+      SlotConnectivityUnknown {
+        slot: slot,
+        reason: "no local incarnation is modeled for this slot identity"
+      }
+    Present { value: v } => v
+  }
+}
+
+fn count_online_registrations(registrations: List<GitHubSelfHostedRunnerRegistration>) -> Int {
+  fold(
+    registrations,
+    init: 0,
+    f: (n, reg) => if github_runner_registration_is_online(reg: reg) { n + 1 } else { n }
+  )
+}
+
+fn count_schedulable_registrations(registrations: List<GitHubSelfHostedRunnerRegistration>) -> Int {
+  fold(
+    registrations,
+    init: 0,
+    f: (n, reg) => if github_runner_registration_is_schedulable(reg: reg) { n + 1 } else { n }
+  )
+}
+
+fn count_executing_registrations(registrations: List<GitHubSelfHostedRunnerRegistration>) -> Int {
+  fold(
+    registrations,
+    init: 0,
+    f: (n, reg) => if github_runner_registration_is_online(reg: reg) && reg.busy { n + 1 } else { n }
+  )
+}
+
+fn fleet_hosts() -> List<HostIdentity> {
+  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
+}
+
+fn fleet_desired_width_total() -> Int {
+  fold(
+    fleet_hosts(),
+    init: 0,
+    f: (n, h) => n + gunbc_runner_slots_per_host(host: h)
+  )
+}
+
+fn fleet_materialized_width_total() -> Int {
+  fold(
+    fleet_hosts(),
+    init: 0,
+    f: (n, h) => n + materialized_width_for_host(host: h)
+  )
+}
+
+fn fleet_unit_active_width_total() -> Int {
+  fold(
+    fleet_hosts(),
+    init: 0,
+    f: (n, h) => n + unit_active_width_for_host(host: h)
+  )
+}
+
+fn fleet_achieved_runner_widths_from_roster(
+  roster: OrganizationRunnerRosterEvidence,
+) -> FleetAchievedRunnerWidths {
+  match roster {
+    RosterReadUnavailable { reason: r } => AchievedWidthsUnobserved { reason: r }
+    RosterObserved { observed_on: _, registrations: regs } =>
+      AchievedWidthsObserved {
+        registered_width: regs.length(),
+        connected_width: count_online_registrations(registrations: regs),
+        schedulable_width: count_schedulable_registrations(registrations: regs),
+        executing_width: count_executing_registrations(registrations: regs),
+      }
+  }
+}
+
+fn fleet_runner_capacity_width_snapshot_from_roster(
+  roster: OrganizationRunnerRosterEvidence,
+) -> FleetRunnerCapacityWidthSnapshot {
+  FleetRunnerCapacityWidthSnapshot {
+    desired_width: fleet_desired_width_total(),
+    materialized_width: fleet_materialized_width_total(),
+    unit_active_width: fleet_unit_active_width_total(),
+    achieved: fleet_achieved_runner_widths_from_roster(roster: roster),
+  }
+}
+
+fn fleet_runner_capacity_width_snapshot() -> FleetRunnerCapacityWidthSnapshot {
+  fleet_runner_capacity_width_snapshot_from_roster(roster: organization_runner_roster_evidence())
+}
+
+fn connectivity_verdicts_for_active_incarnations(
+  roster: OrganizationRunnerRosterEvidence,
+) -> List<RunnerSlotConnectivityVerdict> {
+  map(
+    local_runner_slot_incarnations(),
+    inc => runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster)
+  )
+}
+
+fn connectivity_verdict_is_healthy(v: RunnerSlotConnectivityVerdict) -> Bool {
+  match v {
+    SlotConnectivityHealthy { slot: _, registration_id: _ } => true
+    _ => false
+  }
+}
+
+fn connectivity_verdict_is_detached(v: RunnerSlotConnectivityVerdict) -> Bool {
+  match v {
+    SlotConnectivityDetached { slot: _, registration_id: _ } => true
+    _ => false
+  }
+}
+
+fn connectivity_verdict_is_orphaned(v: RunnerSlotConnectivityVerdict) -> Bool {
+  match v {
+    SlotConnectivityOrphaned { slot: _ } => true
+    _ => false
+  }
+}
+
+fn connectivity_verdict_is_unknown(v: RunnerSlotConnectivityVerdict) -> Bool {
+  match v {
+    SlotConnectivityUnknown { slot: _, reason: _ } => true
+    _ => false
+  }
+}
+
+fn roster_unavailable_yields_unknown_not_detached(
+  roster: OrganizationRunnerRosterEvidence,
+) -> Bool {
+  match roster {
+    RosterReadUnavailable { reason: _ } =>
+      all(
+        connectivity_verdicts_for_active_incarnations(roster: roster),
+        v => connectivity_verdict_is_unknown(v: v) && !connectivity_verdict_is_detached(v: v)
+      )
+    RosterObserved { observed_on: _, registrations: _ } => true
+  }
+}

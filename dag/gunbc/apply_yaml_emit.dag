@@ -1,0 +1,8 @@
+module gunbc.apply_yaml_emit
+
+import gunbc.apply_workflow { expected_apply_yml }
+import gunbc.ci_yaml_validate { ci_yml_parses }
+
+fn apply_yml_drifted(committed: String) -> Bool {
+  !(committed == expected_apply_yml())
+}
