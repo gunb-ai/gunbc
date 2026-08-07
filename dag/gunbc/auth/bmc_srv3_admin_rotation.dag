@@ -1,0 +1,99 @@
+module gunbc.auth.bmc_srv3_admin_rotation
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.credentials { FactoryLogin }
+import extdeps.bmc.openbmc { openbmc_factory_login }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import gunbc.assimilate.bmc_wif_delegation_chain { bmc_srv3_admin_secret_ref }
+import gunbc.auth.secret_rotation {
+  SecretRotationIntent,
+  ReplacementPayloadStrategy,
+  GeneratedInWorkflow,
+  ConsumerVerificationRequirement,
+  RetirementPolicy,
+  DisableOnly,
+  RotationConsumer,
+  SecretVersionSelector,
+  AliasLatest,
+  secret_ref_selector,
+  selector_is_alias,
+  ConsumerVersionEvidence,
+  ConsumerReportedSuccessOnly,
+  ConsumerProofOutcome,
+  prove_consumer_on_version,
+}
+
+data consumer_module_separation_note: String = "The BMC lives here and not in the kernel. gunbc.auth.secret_rotation names no BMC, no host and no specific credential, because the same sequence must later rotate service administrator passwords, serving API keys and model-hub credentials without an edit — so every fact that is true of THIS credential and not of rotation in general is a row in this module. The test of whether the split held is mechanical: adding a second subject must add a file beside this one and change nothing in the kernel."
+
+// ---------------------------------------------------------------------------
+// The actual cause
+// ---------------------------------------------------------------------------
+
+data bmc_srv3_admin_rotation_cause_note: String = "WHY THIS CREDENTIAL IS BEING ROTATED, recorded correctly because the wrong version of this sentence changes what the next reader concludes. The cause is NOT that the value leaked in a pull request. The value stored at this SecretRef IS the OpenBMC PUBLISHED FACTORY DEFAULT — the same constant this repository already cites at extdeps.bmc.openbmc `openbmc_factory_login`, whose `published_password` field is public documentation and always was. srv3's BMC was never rotated off that default, and Secret Manager holding it made it LOOK rotated: a credential in a secret store reads as a secret, so every consumer of the model, and every human reading the fleet's state, was given false assurance about a controller with full out-of-band access to a live host — power, console, and virtual media. The defect is the never-rotated default plus the false assurance, and it long predates any pull request. Writing it down as a leak would tell the next reader that the BMC was secure until we broke it, which is the opposite of true and would retire exactly the wrong follow-up work."
+
+data bmc_srv3_admin_verification_is_not_ceremonial_note: String = "The consumer-verification step is REAL here rather than procedural, and the reason is a direct consequence of the cause above. The version currently in the store is a published string that never protected anything, so proving the BMC accepts the NEW version is the first genuine evidence that srv3's controller takes a credential this fleet controls. Until that proof exists, a rotation of this subject has not established anything, and the kernel's refusal to retire an unproven version is therefore load-bearing rather than cautious — retiring the factory default while the BMC still only accepts the factory default would lock the fleet out of the controller it is trying to secure."
+
+fn bmc_srv3_admin_stored_value_is_factory_default() -> FactoryLogin {
+  openbmc_factory_login
+}
+
+// ---------------------------------------------------------------------------
+// The consumer, as it actually reports today
+// ---------------------------------------------------------------------------
+
+data bmc_srv3_admin_consumer_shape_note: String = "The consumer as it really is, not as a rotation would like it. gunbc.srv3_bmc_credential_resolve materializes this credential and hands it to a bmcweb login that answers with an HTTP status and no version, so the strongest evidence available from it today is ConsumerReportedSuccessOnly — and the SecretRef it resolves through pins the moving alias, since bmc_srv3_admin_secret_ref carries version `latest`. That pair is the one combination the kernel's proof rule refuses, so this consumer discriminates the wall by FAILING it. The refusal is the correct answer and it is locatable: it names this consumer and the reason, and the two remedies it admits are both work on the consumer — pin the ref to the exact new version, or have the login path report the version it resolved — never a weakening of the rule."
+
+data bmc_srv3_admin_consumer_name: NonEmptyStr = "bmc_assimilate_srv3"
+
+data bmc_srv3_admin_rotation_consumer: RotationConsumer = RotationConsumer {
+  name: bmc_srv3_admin_consumer_name,
+  selector: AliasLatest,
+}
+
+data bmc_srv3_admin_today_evidence: ConsumerVersionEvidence = ConsumerReportedSuccessOnly {
+  consumer: bmc_srv3_admin_consumer_name,
+}
+
+fn bmc_srv3_admin_verification() -> ConsumerVerificationRequirement {
+  ConsumerVerificationRequirement { consumers: [bmc_srv3_admin_rotation_consumer] }
+}
+
+fn bmc_srv3_admin_proof_today(added: SmResolvedVersionIdentity) -> ConsumerProofOutcome {
+  prove_consumer_on_version(
+    consumer: bmc_srv3_admin_rotation_consumer,
+    evidence: bmc_srv3_admin_today_evidence,
+    secret: bmc_srv3_admin_secret_ref,
+    added: added,
+  )
+}
+
+fn bmc_srv3_admin_ref_is_alias_pinned() -> Bool {
+  selector_is_alias(selector: secret_ref_selector(ref: bmc_srv3_admin_secret_ref))
+}
+
+// ---------------------------------------------------------------------------
+// The intent
+// ---------------------------------------------------------------------------
+
+data prior_version_is_a_parameter_note: String = "The intent is a FUNCTION of the observed prior version rather than a data row naming one, and that is a deliberate refusal to fabricate an observation. Which resolved version this subject currently sits at is a fact about the live store; nobody in this session has read it, and writing a plausible identity into a row would be exactly the fabricated-plausible-output failure the kernel spends its length refusing — worse here, because a wrong prior identity is what a retirement step would act on. So the caller supplies the identity it actually observed, and the kernel's own read-back and inventory joins then check it against the store rather than trusting it."
+
+data replacement_generation_note: String = "Generated in the workflow rather than received out of band, because there is no human channel in this rotation and inventing one would be a fiction. The generator is named so the entropy source is a modeled fact; the value itself has no representation on this type, so it cannot be written into source here or anywhere else the intent travels."
+
+data bmc_srv3_admin_retirement_policy_note: String = "DisableOnly, not DisableThenDestroy, and the choice is substantive rather than timid. The prior version's value is a PUBLISHED constant, so destroying it protects nothing that is not already public — the entire security benefit of this rotation comes from the new version existing and the old one no longer being accepted, both of which disable achieves. What destroy would add is irreversibility, on a controller whose loss of access is expensive to recover, at the exact moment the fleet has the least evidence its replacement credential works. Since the kernel makes destroy unreachable under this policy by construction, that judgement is enforced rather than merely intended."
+
+fn bmc_srv3_admin_rotation_intent(prior: SmResolvedVersionIdentity) -> SecretRotationIntent {
+  SecretRotationIntent {
+    intent_id: "rotate-bmc-srv3-admin-off-factory-default" as NonEmptyStr,
+    subject: bmc_srv3_admin_secret_ref,
+    prior_version: prior,
+    replacement: GeneratedInWorkflow {
+      generator: "workflow-generated BMC administrator password" as NonEmptyStr,
+      entropy_bits: 128,
+    },
+    verification: bmc_srv3_admin_verification(),
+    retirement: DisableOnly,
+  }
+}
+
+data bmc_srv3_admin_actuation_frontier_note: String = "No rotation of this subject has been performed. This module declares the intent, the consumer and the cause; it drives nothing, because the credential path that would let it run does not exist yet — the operator-token route is refuted upstream and the workload-identity rows the kernel's actuation seam names live on an unmerged branch. Stated plainly so that the presence of a complete-looking intent is not read as a completed rotation: srv3's BMC still accepts the published factory default at the time this row was written, and the first thing that will change when this lane actuates is that claim."
