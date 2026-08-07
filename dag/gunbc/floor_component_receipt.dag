@@ -64,7 +64,11 @@ import gunbc.floor_component_receipt_document {
   receipt_member_affected_set_cold_control, receipt_member_unsuccessful_components,
   receipt_member_components, receipt_member_selection_degradation,
   receipt_member_workflow_name, receipt_member_head_sha
-}
+,
+  FloorComponentFailureMode, ModeNoFailure, ModeBudgetExceeded, ModeInfra, ModeWitnessRed, ModeNotReached, ModeUnrecorded,
+  floor_component_failure_mode_of, floor_component_failure_mode_tag,
+  ComponentOutcomeRead, ComponentConcluded, ComponentNotConcluded,
+  floor_component_outcome_tag, floor_component_outcome_wire_tag}
 
 data floor_component_receipt_note: String = "The floor's per-COMPONENT receipt, machine-readable, written on every exit path including a red one. WHY IT EXISTS, priced: .github/workflows/falsifier-alert.yml read only the overall workflow conclusion and hardcoded one causal story for every failure — 'affected-set cold control is dark, per-PR selection UNVERIFIED, Gate-1 receipts do not execute'. On run 30509024051 all three clauses were FALSE: the predict-only affected-set control concluded Done over 5217 witnesses and the expect_red batches produced their receipts; the single failing component was the silent-pick gate, killed at its whole-receipt wall budget. An overall-red composite that erases the green state of its completed children is a state-space conflation (DESIGN section 5), and it misdirects triage every time it fires. This module is the projection that makes the alert read state instead of inferring it. THE RECORD IS NOT NEW: each component is one batch-grain Concluded std.observation.ObservationEvent — the same authority gunbc.witness_row_cost names as THE record ('not a TSV schema') — so Refused stays distinct from Failed and a budget kill is TimedOut with its budget and elapsed, not a flattened red. A bespoke status schema here would have been a second representation of that record (DESIGN section 3)."
 
@@ -83,34 +87,6 @@ data floor_component_receipt_path: String = "target/floor-component-receipt.json
 data floor_component_receipt_artifact_name: String = "floor-component-receipt"
 
 data floor_component_failure_mode_edge_note: String = "WHY THE MODE RIDES BESIDE THE OUTCOME INSTEAD OF BEING RECOVERED FROM IT. floor_component_outcome_of_failure_mode is deliberately many-to-one: Infra and WitnessRed BOTH map to Failed, because both are a component that broke and ObservationOutcome is the right grain for the observation record. But they are not the same fault and they do not route to the same place — Infra is the fleet's (a runner died, a toolchain went missing), WitnessRed is the witness owner's (a claim is genuinely false). A consumer holding only the Failed arm cannot tell them apart, so it either routes both to one owner or re-derives the class by sniffing the diagnostic prose, which is the string-classification this module already refuses at the seed boundary. The mode therefore rides ON THE ROW, at row grain, and std.observation is NOT widened: ObservationOutcome stays the canonical record of WHAT the transition was, and the mode records WHICH declared failure vocabulary produced it. The two are derived from ONE tag in one place (floor_component_row_of_failure_mode), so they cannot disagree — a row whose mode says Infra while its outcome says Done is not constructible through the seed path. ModeUnrecorded is the honest arm for the tag-built constructor, which is handed an outcome directly and genuinely never saw a mode; the seed path never produces it."
-
-type FloorComponentFailureMode
-  = ModeNoFailure
-  | ModeBudgetExceeded
-  | ModeInfra
-  | ModeWitnessRed
-  | ModeNotReached
-  | ModeUnrecorded
-
-fn floor_component_failure_mode_of(mode: NonEmptyStr) -> FloorComponentFailureMode? {
-  if (mode as String) == "none" { Present { value: ModeNoFailure } }
-  else if (mode as String) == "BudgetExceeded" { Present { value: ModeBudgetExceeded } }
-  else if (mode as String) == "Infra" { Present { value: ModeInfra } }
-  else if (mode as String) == "WitnessRed" { Present { value: ModeWitnessRed } }
-  else if (mode as String) == "not_reached" { Present { value: ModeNotReached } }
-  else { none }
-}
-
-fn floor_component_failure_mode_tag(m: FloorComponentFailureMode) -> String {
-  match m {
-    ModeNoFailure => "none"
-    ModeBudgetExceeded => "BudgetExceeded"
-    ModeInfra => "Infra"
-    ModeWitnessRed => "WitnessRed"
-    ModeNotReached => "not_reached"
-    ModeUnrecorded => "unrecorded"
-  }
-}
 
 type FloorComponentRow {
   event: ObservationEvent
@@ -186,17 +162,6 @@ fn floor_component_outcome_of_failure_mode(mode: NonEmptyStr, detail: NonEmptySt
   match floor_component_failure_mode_of(mode: mode) {
     Absent => none
     Present { value: m } => floor_component_outcome_of_mode(m: m, detail: detail)
-  }
-}
-
-fn floor_component_outcome_tag(o: ObservationOutcome) -> String {
-  match o {
-    Done => "done"
-    Refused { diagnostic: _ } => "refused"
-    Failed { error: _, output: _ } => "failed"
-    TimedOut { basis: _, budget: _, elapsed: _ } => "timed_out"
-    Skipped { reason: _ } => "skipped"
-    Final { shown_failures: _ } => "final"
   }
 }
 
@@ -384,7 +349,7 @@ fn floor_component_row_json(row: FloorComponentRow) -> JsonValue {
       json_kv(key: "index", value: json_int(n: floor_component_row_index(row: row))),
       json_kv(key: "label", value: json_string(s: floor_component_row_label(row: row))),
       json_kv(key: "selection", value: json_string(s: floor_component_selection_tag(s: row.selection))),
-      json_kv(key: "outcome", value: json_string(s: "not_concluded")),
+      json_kv(key: "outcome", value: json_string(s: floor_component_outcome_wire_tag(r: ComponentNotConcluded))),
       json_kv(key: "failure_mode", value: json_string(s: floor_component_failure_mode_tag(m: row.failure_mode)))
     ])
     Present { value: o } => json_object(members: concat(
@@ -393,7 +358,7 @@ fn floor_component_row_json(row: FloorComponentRow) -> JsonValue {
         json_kv(key: "label", value: json_string(s: floor_component_row_label(row: row))),
         json_kv(key: "selection", value: json_string(s: floor_component_selection_tag(s: row.selection))),
         json_kv(key: "witnesses", value: json_int(n: row.witnesses)),
-        json_kv(key: "outcome", value: json_string(s: floor_component_outcome_tag(o: o))),
+        json_kv(key: "outcome", value: json_string(s: floor_component_outcome_wire_tag(r: ComponentConcluded { outcome: o }))),
         json_kv(key: "failure_mode", value: json_string(s: floor_component_failure_mode_tag(m: row.failure_mode))),
         json_kv(key: "is_affected_set_cold_control", value: json_bool(
           b: node_frontier_selection_eq(left: row.selection, right: SelectionPredictOnly)

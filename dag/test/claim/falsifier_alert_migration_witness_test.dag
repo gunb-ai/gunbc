@@ -580,11 +580,13 @@ fn receipt_with(component_count: String, components: String, unsuccessful: Strin
     unsuccessful), concat(",\"components\":", concat(components, "}")))
 }
 
-data one_component: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"failed\",\"failure_mode\":\"WitnessRed\"}"
+data one_component: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"failed\",\"error\":\"claim is false\",\"failure_mode\":\"WitnessRed\"}"
+
+data one_done_component: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"done\",\"failure_mode\":\"none\"}"
 
 test fn a_declared_component_count_that_disagrees_with_the_array_refuses() -> Bool {
   match floor_component_receipt_decode_with(
-    text: receipt_with(component_count: "7", components: concat(concat("[", one_component), "]"), unsuccessful: "[]"),
+    text: receipt_with(component_count: "7", components: concat(concat("[", one_done_component), "]"), unsuccessful: "[]"),
     expected_schema: alert_expected_schema
   ) {
     ReceiptComponentCountMismatch { declared: d, decoded: n } => d == "7" && n == 1
@@ -594,7 +596,7 @@ test fn a_declared_component_count_that_disagrees_with_the_array_refuses() -> Bo
 
 test fn an_agreeing_component_count_decodes() -> Bool {
   match floor_component_receipt_decode_with(
-    text: receipt_with(component_count: "1", components: concat(concat("[", one_component), "]"), unsuccessful: "[]"),
+    text: receipt_with(component_count: "1", components: concat(concat("[", one_done_component), "]"), unsuccessful: "[]"),
     expected_schema: alert_expected_schema
   ) {
     ReceiptDecoded { document: doc } => doc.component_count == 1
@@ -621,10 +623,10 @@ test fn the_alert_summary_decodes_the_four_signature_fields() -> Bool {
     ReceiptDecoded { document: doc } =>
       match doc.unsuccessful_summaries.first() {
         Present { value: sm } =>
-          (sm.index as String) == "6"
+          sm.index == 6
             && (sm.label as String) == "witness discovery"
-            && (sm.outcome as String) == "failed"
-            && (sm.failure_mode as String) == "WitnessRed"
+            && summary_outcome_is_unsuccessful(s: sm)
+            && floor_component_failure_mode_tag(m: sm.failure_mode) == "WitnessRed"
         Absent => false
       }
     _ => false
@@ -671,15 +673,15 @@ fn component_with(index: String, label: String, outcome: String, mode: String) -
 
 data csum_valid_index: String = "6"
 data csum_valid_label: String = "\"witness discovery\""
-data csum_valid_outcome: String = "\"failed\""
-data csum_valid_mode: String = "\"WitnessRed\""
+data csum_valid_outcome: String = "\"done\""
+data csum_valid_mode: String = "\"none\""
 
 fn decode_receipt_with_component(component: String) -> FloorComponentReceiptDecoding {
   floor_component_receipt_decode_with(
     text: receipt_with(
       component_count: "1",
       components: concat(concat("[", component), "]"),
-      unsuccessful: concat(concat("[", component), "]")
+      unsuccessful: "[]"
     ),
     expected_schema: alert_expected_schema
   )
@@ -714,10 +716,106 @@ test fn a_numeric_component_failure_mode_refuses_located() -> Bool {
 test fn the_component_index_still_accepts_its_numeric_wire_form() -> Bool {
   match decode_receipt_with_component(component: component_with(index: csum_valid_index, label: csum_valid_label, outcome: csum_valid_outcome, mode: csum_valid_mode)) {
     ReceiptDecoded { document: doc } =>
-      match doc.unsuccessful_summaries.first() {
-        Present { value: sm } => (sm.index as String) == "6"
+      match doc.component_summaries.first() {
+        Present { value: sm } => sm.index == 6
         Absent => false
       }
+    _ => false
+  }
+}
+
+data operator_strict_boundary_claims_note: String = "The operator verdict's four decision-grain corrections, each asserted on the arm that was NOT already working. Every one of these fixtures decoded cleanly before the corrections landed, which is the whole point: the boundary guaranteed the fields were PRESENT and it did not guarantee they MEANT anything, and presence is invisible to a witness that only ever feeds well-formed input."
+
+data component_with_text_index: String = "{\"index\":\"6\",\"label\":\"witness discovery\",\"outcome\":\"done\",\"failure_mode\":\"none\"}"
+
+test fn a_text_component_index_refuses_rather_than_being_read_as_an_identity() -> Bool {
+  match decode_receipt_with_component(component: component_with_text_index) {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "index"
+    _ => false
+  }
+}
+
+data component_with_invented_outcome: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"banana\",\"failure_mode\":\"none\"}"
+
+test fn an_outcome_outside_the_modelled_vocabulary_refuses() -> Bool {
+  match decode_receipt_with_component(component: component_with_invented_outcome) {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "outcome"
+    _ => false
+  }
+}
+
+data component_with_invented_mode: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"done\",\"failure_mode\":\"looks-plausible\"}"
+
+test fn a_failure_mode_outside_the_modelled_vocabulary_refuses() -> Bool {
+  match decode_receipt_with_component(component: component_with_invented_mode) {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "failure_mode"
+    _ => false
+  }
+}
+
+test fn a_failed_outcome_without_its_error_payload_refuses_rather_than_defaulting() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":6,\"label\":\"x\",\"outcome\":\"failed\",\"failure_mode\":\"WitnessRed\"}") {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "outcome"
+    _ => false
+  }
+}
+
+data population_join_claims_note: String = "The identity join, asserted in BOTH directions, because the two failures are not symmetric in consequence. A row listed as unsuccessful that is not failing over-reports and is merely noisy; a failing row MISSING from the list under-reports, and the alert then tells an operator that a component is fine while the receipt beside it says otherwise. The second is the one a uniqueness check could never see, so it is the one written first."
+
+test fn a_failing_component_omitted_from_the_unsuccessful_list_refuses() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", one_component), "]"), unsuccessful: "[]"),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptUnsuccessfulPopulationMismatch { listed: l, derived: d } => l == 0 && d == 1
+    _ => false
+  }
+}
+
+test fn a_successful_component_listed_as_unsuccessful_refuses() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", one_done_component), "]"), unsuccessful: concat(concat("[", one_done_component), "]")),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptUnsuccessfulPopulationMismatch { listed: l, derived: d } => l == 1 && d == 0
+    _ => false
+  }
+}
+
+test fn an_unsuccessful_row_naming_an_absent_component_refuses() -> Bool {
+  let ghost = "{\"index\":99,\"label\":\"never ran\",\"outcome\":\"failed\",\"error\":\"e\",\"failure_mode\":\"WitnessRed\"}"
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", one_component), "]"), unsuccessful: concat(concat("[", ghost), "]")),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptUnsuccessfulPopulationMismatch { listed: _, derived: _ } => true
+    _ => false
+  }
+}
+
+test fn the_matching_population_decodes() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", one_component), "]"), unsuccessful: concat(concat("[", one_component), "]")),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptDecoded { document: doc } => count(doc.unsuccessful_summaries) == 1 && count(doc.component_summaries) == 1
+    _ => false
+  }
+}
+
+test fn a_string_component_count_refuses_rather_than_comparing_as_text() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "\"1\"", components: concat(concat("[", one_done_component), "]"), unsuccessful: "[]"),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "component_count"
+    _ => false
+  }
+}
+
+test fn the_unrecorded_failure_mode_the_writer_emits_decodes() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":6,\"label\":\"x\",\"outcome\":\"done\",\"failure_mode\":\"unrecorded\"}") {
+    ReceiptDecoded { document: _ } => true
     _ => false
   }
 }

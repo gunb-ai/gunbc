@@ -94,7 +94,7 @@ type WorkflowRunEventText
   = WorkflowRunEventTextFound { text: String }
   | WorkflowRunEventTextFailed { observation: WorkflowRunEventObservation }
 
-data workflow_run_event_field_specific_decode_note: String = "TWO DECODERS, NOT ONE, AND THE NUMERIC WIDENING BELONGS TO EXACTLY ONE OF THEM. An earlier revision had a single helper that admitted a JSON string OR a JSON number and used it for every member — workflow name, conclusion, html_url, run_started_at, head_sha, head_branch, repository, originating event, and run id alike. The widening was introduced for run id, which GitHub genuinely delivers as a number, and it then applied to eight members for which a number is not a representation at all but a sign the payload shape changed or something else is answering.\n\nThat is the absorbing fallback in decoder form: the arm that should refuse instead widens, so `\"conclusion\": 0` or `\"head_branch\": 42` decodes to the text \"0\" and \"42\" and flows into a TRUST WALL that compares it against an expected value. It would not match, so it would refuse — but it would refuse with the WRONG reason (branch is not main) instead of the true one (branch is not a string), and a decoder whose diagnostics are wrong about why is a decoder nobody can debug against.\n\nSo: workflow_run_event_required_string_at admits ONLY a JSON string, and workflow_run_event_run_id_at is the single place a numeric lexeme is accepted. The widening is now one member wide by construction rather than by convention, and planting a number at any other member produces a located refusal naming that member."
+data workflow_run_event_field_specific_decode_note: String = "TWO DECODERS, NOT ONE, AND THE NUMERIC WIDENING BELONGS TO EXACTLY ONE OF THEM. An earlier revision had a single helper that admitted a JSON string OR a JSON number and used it for every member — workflow name, conclusion, html_url, run_started_at, head_sha, head_branch, repository, originating event, and run id alike. The widening was introduced for run id, which GitHub genuinely delivers as a number, and it then applied to eight members for which a number is not a representation at all but a sign the payload shape changed or something else is answering.\n\nThat is the absorbing fallback in decoder form: the arm that should refuse instead widens, so `\"conclusion\": 0` or `\"head_branch\": 42` decodes to the text \"0\" and \"42\" and flows into a TRUST WALL that compares it against an expected value. It would not match, so it would refuse — but it would refuse with the WRONG reason (branch is not main) instead of the true one (branch is not a string), and a decoder whose diagnostics are wrong about why is a decoder nobody can debug against.\n\nSo: workflow_run_event_required_string_at admits ONLY a JSON string, and workflow_run_event_numeric_identity_at is the single place a numeric lexeme is accepted.\n\nIT HAS TWO CONSUMERS, AND ITS NAME NOW SAYS SO. It was called workflow_run_event_run_id_at while serving both `id` and `workflow_id`, and this paragraph described the widening as belonging to `exactly one member` — true of the decoder, false of the members, which is the prose-contradicting-mechanism class this file has already been caught by once. Both consumers are GitHub numeric identities and both are genuinely delivered as numbers, so one reader is correct; what was wrong was a name asserting a narrower scope than the code had. The widening is bounded by that reader's call sites, which are these two, and planting a number at any other member produces a located refusal naming that member."
 
 fn workflow_run_event_required_string_at(v: JsonValue, key: String) -> WorkflowRunEventText {
   match workflow_run_event_member_at(v: v, key: key) {
@@ -136,7 +136,7 @@ fn workflow_run_event_required_string_at(v: JsonValue, key: String) -> WorkflowR
 
 data workflow_run_event_run_id_decode_note: String = "THE ONLY MEMBER WHOSE DECODER ADMITS A NUMBER. GitHub delivers workflow_run.id as a JSON number, and the lexeme is the digits the payload actually carried, unchanged — accepting it is not a coercion. A string is admitted beside it because the identity comparison downstream is string-to-string either way and a payload quoting the id is still unambiguously the same id. Every non-textual, non-numeric shape refuses, so this decoder is exactly one wire form wider than the required-string decoder and not one form wider than that."
 
-fn workflow_run_event_run_id_at(v: JsonValue, key: String) -> WorkflowRunEventText {
+fn workflow_run_event_numeric_identity_at(v: JsonValue, key: String) -> WorkflowRunEventText {
   match workflow_run_event_member_at(v: v, key: key) {
     WorkflowRunEventMemberFailed { observation: o } =>
       WorkflowRunEventTextFailed { observation: o }
@@ -238,13 +238,13 @@ fn workflow_run_event_from_json(text: String) -> WorkflowRunEventObservation {
               match workflow_run_event_member_at(v: doc, key: workflow_run_event_member) {
                 WorkflowRunEventMemberFailed { observation: o } => o
                 WorkflowRunEventMemberFound { value: run } =>
-                  match workflow_run_event_run_id_at(v: run, key: "id") {
+                  match workflow_run_event_numeric_identity_at(v: run, key: "id") {
                     WorkflowRunEventTextFailed { observation: o } => o
                     WorkflowRunEventTextFound { text: run_id } =>
                       match workflow_run_event_required_string_at(v: run, key: "name") {
                         WorkflowRunEventTextFailed { observation: o } => o
                         WorkflowRunEventTextFound { text: wf_name } =>
-                          match workflow_run_event_run_id_at(v: run, key: "workflow_id") {
+                          match workflow_run_event_numeric_identity_at(v: run, key: "workflow_id") {
                         WorkflowRunEventTextFailed { observation: o } => o
                         WorkflowRunEventTextFound { text: wf_id } =>
                       match workflow_run_event_required_string_at(v: run, key: "path") {
