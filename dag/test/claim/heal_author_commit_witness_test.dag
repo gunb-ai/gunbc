@@ -2,7 +2,7 @@
 module test.claim.heal_author_commit_witness
 
 import gunbc.generated_artifact {
-  CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, DesignArtifact,
+  CiYamlArtifact, FalsifierYamlArtifact, ApplyYamlArtifact, GitignoreArtifact, DesignArtifact,
   artifact_path
 }
 import gunbc.heal_push_plan {
@@ -33,12 +33,14 @@ test fn control_non_workflow_drift_is_auto_push_eligible_only() -> Bool {
 test fn control_workflow_only_drift_is_author_commit_required() -> Bool {
   match classify_heal_repair_paths(changed_paths: [
     artifact_path(a: CiYamlArtifact),
-    artifact_path(a: FalsifierYamlArtifact)
+    artifact_path(a: FalsifierYamlArtifact),
+    artifact_path(a: ApplyYamlArtifact)
   ]) {
     HealRepairAuthorCommitRequired { paths } =>
       (paths == [
         artifact_path(a: CiYamlArtifact),
-        artifact_path(a: FalsifierYamlArtifact)
+        artifact_path(a: FalsifierYamlArtifact),
+        artifact_path(a: ApplyYamlArtifact)
       ])
     HealRepairNoDrift => false
     HealRepairAutoPushEligibleOnly { paths: _ } => false
@@ -63,7 +65,8 @@ test fn control_mixed_drift_partitions_both_populations() -> Bool {
 test fn control_workflow_shell_never_stages_workflow_paths() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
   !string_contains(s: script, pattern: concat("git add \"", artifact_path(a: CiYamlArtifact)))
-    && !string_contains(s: script, pattern: concat("git add \"", artifact_path(a: FalsifierYamlArtifact)))
+    &&   !string_contains(s: script, pattern: concat("git add \"", artifact_path(a: FalsifierYamlArtifact)))
+    && !string_contains(s: script, pattern: concat("git add \"", artifact_path(a: ApplyYamlArtifact)))
     && string_contains(s: script, pattern: concat("git add \"", artifact_path(a: GitignoreArtifact)))
 }
 
@@ -81,4 +84,8 @@ test fn red_control_gitignore_is_not_author_commit_required() -> Bool {
 
 test fn red_control_ci_yml_is_author_commit_required() -> Bool {
   path_requires_author_commit(path: artifact_path(a: CiYamlArtifact))
+}
+
+test fn red_control_apply_yml_is_author_commit_required() -> Bool {
+  path_requires_author_commit(path: artifact_path(a: ApplyYamlArtifact))
 }

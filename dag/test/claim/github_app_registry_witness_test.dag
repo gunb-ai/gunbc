@@ -561,6 +561,7 @@ test fn witness_effect_permissions_are_derived_not_authored() -> Bool {
 test fn witness_workflow_path_rule_is_prefix_not_substring() -> Bool {
   is_workflow_projection_path(path: RepositoryPath { value: ".github/workflows/ci.yml" })
     && is_workflow_projection_path(path: RepositoryPath { value: ".github/workflows/falsifier.yml" })
+    && is_workflow_projection_path(path: RepositoryPath { value: ".github/workflows/apply.yml" })
     && !is_workflow_projection_path(path: RepositoryPath { value: ".github/live-deploy-srv1-apply.sh" })
     && !is_workflow_projection_path(path: RepositoryPath { value: "docs/.github/workflows/ci.yml" })
     && !is_workflow_projection_path(path: RepositoryPath { value: "DESIGN.md" })

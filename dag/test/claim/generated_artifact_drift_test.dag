@@ -406,7 +406,7 @@ test fn witness_machine_fault_never_becomes_author_work() -> Bool {
   } && (count(remediation_author_commit_paths(r: plan_remediation(plan: broken_checkout))) == 0)
     && match live_heal_remediation {
          AuthorCommitRequired { paths, causes } =>
-           (count(paths) == 2) && (count(causes) == 1) && any(
+           (count(paths) == 3) && (count(causes) == 1) && any(
              map(causes, c => heal_push_refusal_cause_token(cause: c)),
              t => t == "ActionsJobCredentialScopeUnavailable"
            )
@@ -589,10 +589,11 @@ test fn witness_heal_plan_workflow_only_refuses_wholesale() -> Bool {
 }
 
 test fn witness_heal_policy_workflow_artifacts_require_author_commit() -> Bool {
-  (count(author_commit_required_committed_artifacts()) == 2)
-    && (count(auto_push_eligible_committed_artifacts()) == count(committed_generated_artifacts()) - 2)
+  (count(author_commit_required_committed_artifacts()) == 3)
+    && (count(auto_push_eligible_committed_artifacts()) == count(committed_generated_artifacts()) - 3)
     && path_requires_author_commit(path: ".github/workflows/ci.yml")
     && path_requires_author_commit(path: ".github/workflows/falsifier.yml")
+    && path_requires_author_commit(path: ".github/workflows/apply.yml")
     && !path_requires_author_commit(path: ".gitignore")
 
 }

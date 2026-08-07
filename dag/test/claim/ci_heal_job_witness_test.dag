@@ -32,7 +32,7 @@ import gunbc.ci_spec {
 }
 import std.disposition { Scaffold }
 import gunbc.generated_artifact {
-  CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, artifact_path
+  CiYamlArtifact, FalsifierYamlArtifact, ApplyYamlArtifact, GitignoreArtifact, artifact_path
 }
 import gunbc.heal_push_plan {
   auto_push_eligible_committed_artifact_paths,
@@ -258,10 +258,11 @@ test fn heal_commit_scope_is_auto_push_eligible_only() -> Bool {
   string_contains(s: script, pattern: concat("git add \"", artifact_path(a: GitignoreArtifact)))
     && !string_contains(s: script, pattern: concat("git add \"", artifact_path(a: CiYamlArtifact)))
     && !string_contains(s: script, pattern: concat("git add \"", artifact_path(a: FalsifierYamlArtifact)))
+    && !string_contains(s: script, pattern: concat("git add \"", artifact_path(a: ApplyYamlArtifact)))
     && string_contains(s: script, pattern: "git diff --cached --quiet")
     && !string_contains(s: script, pattern: "git add -A")
     && (count(auto_push_eligible_committed_artifact_paths()) > 0)
-    && (count(author_commit_required_committed_artifact_paths()) == 2)
+    && (count(author_commit_required_committed_artifact_paths()) == 3)
 }
 
 // The packaging diagnostic must be reachable. GitHub runs `run:` under
@@ -290,6 +291,7 @@ test fn heal_workflow_drift_is_author_commit_required() -> Bool {
     && string_contains(s: script, pattern: ci_heal_author_commit_regen_command)
     && string_contains(s: script, pattern: concat("git diff --quiet -- \"", artifact_path(a: CiYamlArtifact)))
     && string_contains(s: script, pattern: concat("git diff --quiet -- \"", artifact_path(a: FalsifierYamlArtifact)))
+    && string_contains(s: script, pattern: concat("git diff --quiet -- \"", artifact_path(a: ApplyYamlArtifact)))
     && string_contains(s: script, pattern: "AUTHOR_COMMIT_DRIFT=")
     && string_contains(s: script, pattern: ci_heal_author_commit_artifact_dir)
 }
