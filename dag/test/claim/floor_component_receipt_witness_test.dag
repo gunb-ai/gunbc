@@ -367,6 +367,7 @@ test fn fcr_failure_mode_edge_agrees_with_the_outcome_mapping() -> Bool {
     && fcr_mode_of(mode: "Infra" as NonEmptyStr) == "Infra"
     && fcr_mode_of(mode: "WitnessRed" as NonEmptyStr) == "WitnessRed"
     && fcr_mode_of(mode: "StaleKnownRed" as NonEmptyStr) == "StaleKnownRed"
+    && fcr_mode_of(mode: "ExpectedRedEvidenceAbsent" as NonEmptyStr) == "ExpectedRedEvidenceAbsent"
     && fcr_mode_of(mode: "not_reached" as NonEmptyStr) == "not_reached"
 }
 
@@ -375,14 +376,28 @@ data fcr_stale_known_red_note: String = "A known-red witness that starts PASSING
 test fn fcr_stale_known_red_is_a_refusal_distinct_from_witness_red_and_from_done() -> Bool {
   let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as NonEmptyStr)])
   let red_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "WitnessRed" as NonEmptyStr)])
-  let stale_doc = floor_component_receipt_document(run_id: fcr_run_id, rows: stale_rows)
-  let red_doc = floor_component_receipt_document(run_id: fcr_run_id, rows: red_rows)
+  let stale_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: stale_rows)
+  let red_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: red_rows)
   count(stale_rows) == 1
     && string_contains(s: stale_doc, pattern: "\"failure_mode\": \"StaleKnownRed\"")
     && string_contains(s: stale_doc, pattern: "\"outcome\": \"refused\"")
     && string_contains(s: stale_doc, pattern: "\"diagnostic\"")
     && !string_contains(s: stale_doc, pattern: "\"outcome\": \"done\"")
     && !(stale_doc == red_doc)
+}
+
+data fcr_expected_red_evidence_absent_note: String = "The COVERAGE half of the same axis, and the discrimination is that it is neither of its neighbours: not done (a batch whose admitted red control produced no observation is not a batch that is fine), and not StaleKnownRed (nobody observed the witness passing — nobody observed it at all), so the two refusals must render differently or the alert cannot tell delete-the-row from make-the-row-run. Absence establishing neither agreement nor failure is exactly why it needs its own mode rather than being folded into either verdict arm."
+
+test fn fcr_expected_red_evidence_absent_is_a_refusal_distinct_from_stale_and_from_done() -> Bool {
+  let absent_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedEvidenceAbsent" as NonEmptyStr)])
+  let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as NonEmptyStr)])
+  let absent_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: absent_rows)
+  let stale_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: stale_rows)
+  count(absent_rows) == 1
+    && string_contains(s: absent_doc, pattern: "\"failure_mode\": \"ExpectedRedEvidenceAbsent\"")
+    && string_contains(s: absent_doc, pattern: "\"outcome\": \"refused\"")
+    && !string_contains(s: absent_doc, pattern: "\"outcome\": \"done\"")
+    && !(absent_doc == stale_doc)
 }
 
 test fn fcr_red_control_tag_built_row_records_no_mode_rather_than_guessing() -> Bool {

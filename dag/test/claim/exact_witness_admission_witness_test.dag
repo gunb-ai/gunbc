@@ -14,9 +14,13 @@ import gunbc.explicit_witness_admission {
   known_red_probe,
   known_red_probe_corpus_roster,
   known_red_probe_v1_envelope_roster,
-  known_red_probe_execution_roster
+  known_red_probe_execution_roster,
+  known_red_probe_corpus_fast_budget_roster,
+  known_red_probe_corpus_long_budget_roster,
+  known_red_pre_verdict_refusal_roster,
+  known_red_probe_expecting
 }
-import gunbc.ci_layer_roots { known_red_probe_roster, witness_long_eval_budget_entries, witness_long_eval_budget_contains, witness_long_eval_budget_union_in, falsifier_substrate_long_lane_entries }
+import gunbc.ci_layer_roots { known_red_probe_roster, witness_long_eval_budget_entries, witness_long_eval_budget_union_in, falsifier_substrate_long_lane_entries }
 import v2.workflow.witness_admission {
   explicit_witness_admission_uniqueness_holds,
   explicit_witness_admission_rows_well_formed_holds,
@@ -29,7 +33,8 @@ import std.realization_schedule {
   ScheduleWitnessEntry,
   CorpusWitnessKind,
   ExecutionWitnessKind,
-  schedule_witness_entry_eq
+  schedule_witness_entry_eq,
+  schedule_witness_entry_roster_contains
 }
 import std.witness_admission {
   OfflineLocalRecipe,
@@ -37,7 +42,10 @@ import std.witness_admission {
   QuarantineProbeExpectRed,
   SubstrateLongLaneEvalBudget,
   FastLaneEvalBudget,
-  ExpectWitnessRed,
+  ExpectAssertionFalse,
+  ExpectTypedPreVerdictRefusal,
+  PreVerdictResolve,
+  UnboundImportedVariantConstructor,
   ExpectWitnessHolds
 }
 import v2.std.algebra { length }
@@ -159,7 +167,7 @@ test fn red_control_admission_with_non_executing_cadence_reds() -> Bool {
         },
         cadence: OfflineLocalRecipe,
         budget: FastLaneEvalBudget,
-        expected: ExpectWitnessRed,
+        expected: ExpectAssertionFalse,
         reason: "synthetic",
         dissolve_on: "synthetic"
       }
@@ -196,7 +204,7 @@ fn synthetic_long_lane_cadence_but_expected_red() -> ExplicitWitnessAdmission {
     },
     cadence: FalsifierSubstrateLongLane,
     budget: SubstrateLongLaneEvalBudget,
-    expected: ExpectWitnessRed,
+    expected: ExpectAssertionFalse,
     reason: "synthetic",
     dissolve_on: "synthetic"
   }
@@ -286,8 +294,8 @@ test fn red_control_long_budget_union_collapses_a_row_present_in_both_inputs() -
     && (length(xs: witness_long_eval_budget_union_in(batch: batch, declared: declared)) == 3)
     && (planted_union_occurrences(batch: batch, declared: declared, w: absent) == 0)
     && (planted_union_occurrences(batch: batch, declared: declared, w: declared_only) == 1)
-    && witness_long_eval_budget_contains(xs: batch, w: overlapping)
-    && !witness_long_eval_budget_contains(xs: batch, w: declared_only)
+    && schedule_witness_entry_roster_contains(xs: batch, w: overlapping)
+    && !schedule_witness_entry_roster_contains(xs: batch, w: declared_only)
 }
 
 test fn every_declared_long_budget_row_is_also_expected_red_today() -> Bool {
@@ -301,3 +309,70 @@ test fn every_declared_long_budget_row_is_also_expected_red_today() -> Bool {
 }
 
 data both_axes_on_one_row_note: String = "every_declared_long_budget_row_is_also_expected_red_today is the live receipt that the previously inexpressible combination — expensive AND known-red — is now carried on ONE row. It is an observation of today's population, not a law: a green witness may declare a long budget, and when one does this claim retires rather than being relaxed."
+
+data budget_partition_witness_note: String = "THE RECUT CLAIM. Two facts have to hold together and neither alone is enough: the two batches must PARTITION the lane (every known-red corpus row on exactly one side, nothing invented, nothing dropped) and each side must be HOMOGENEOUS in declared budget. A partition alone would be satisfied by any split, including the mixed batch this replaces; homogeneity alone would be satisfied by dropping every row that does not fit. The population is derived, so these hold at any roster size including an empty long side."
+
+fn budget_partition_side_count(xs: List<ScheduleWitnessEntry>) -> Int {
+  length(xs: xs)
+}
+
+test fn budget_rosters_partition_the_known_red_corpus_lane() -> Bool {
+  let fast = known_red_probe_corpus_fast_budget_roster()
+  let long = known_red_probe_corpus_long_budget_roster()
+  let whole = known_red_probe_corpus_roster()
+  let split = budget_partition_side_count(xs: fast) + budget_partition_side_count(xs: long)
+  (split == budget_partition_side_count(xs: whole))
+    && fold(whole, init: true, f: fn(ok, w) {
+      let in_fast = schedule_witness_entry_roster_contains(xs: fast, w: w)
+      let in_long = schedule_witness_entry_roster_contains(xs: long, w: w)
+      ok && (in_fast != in_long)
+    })
+}
+
+test fn each_budget_roster_is_homogeneous_in_declared_budget() -> Bool {
+  let declared = witness_long_eval_budget_roster()
+  fold(known_red_probe_corpus_long_budget_roster(), init: true, f: fn(ok, w) {
+    ok && schedule_witness_entry_roster_contains(xs: declared, w: w)
+  })
+    && fold(known_red_probe_corpus_fast_budget_roster(), init: true, f: fn(ok, w) {
+      ok && !schedule_witness_entry_roster_contains(xs: declared, w: w)
+    })
+}
+
+data pre_verdict_roster_witness_note: String = "known_red_pre_verdict_refusal_roster must be a STRICT SUBSET of the known-red roster and must not swallow it, because it is the only population allowed to turn a corpus-level refuse — which carries no per-witness outcome — into agreement. If it ever equals the known-red roster, the narrowing this claim exists to hold has been undone and any resolve failure in a known-red batch reports every quarantine as holding again. The synthetic pair below is the discrimination: the same predicate answers true for a declared pre-verdict row and false for an ordinary known-red row, so the live subset relation is a decision rather than a predicate that never matches."
+
+fn synthetic_pre_verdict_row() -> ExplicitWitnessAdmission {
+  known_red_probe_expecting(
+    entry: "dag/test/claim/synthetic_admission_witness_test.dag",
+    f: "cannot_resolve_at_all",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    expected: ExpectTypedPreVerdictRefusal {
+      phase: PreVerdictResolve,
+      cause: UnboundImportedVariantConstructor
+    },
+    reason: "synthetic",
+    dissolve_on: "synthetic"
+  )
+}
+
+fn synthetic_assertion_false_row() -> ExplicitWitnessAdmission {
+  known_red_probe_expecting(
+    entry: "dag/test/claim/synthetic_admission_witness_test.dag",
+    f: "runs_and_returns_false",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    expected: ExpectAssertionFalse,
+    reason: "synthetic",
+    dissolve_on: "synthetic"
+  )
+}
+
+test fn both_red_expectations_are_known_red_but_only_one_expects_a_pre_verdict_refusal() -> Bool {
+  let pre_verdict_count = budget_partition_side_count(xs: known_red_pre_verdict_refusal_roster())
+  let known_red_count = budget_partition_side_count(xs: known_red_probe_roster())
+  explicit_witness_admission_is_known_red(row: synthetic_pre_verdict_row())
+    && explicit_witness_admission_is_known_red(row: synthetic_assertion_false_row())
+    && (pre_verdict_count < known_red_count)
+    && (pre_verdict_count > 0)
+}

@@ -1,8 +1,14 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
-import gunbc.explicit_witness_admission { known_red_probe_corpus_roster, known_red_probe_v1_envelope_roster }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, scoped_witness_batches, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_silent_pick_gate_roster, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries }
+import gunbc.explicit_witness_admission {
+  known_red_probe_corpus_roster,
+  known_red_probe_corpus_fast_budget_roster,
+  known_red_probe_corpus_long_budget_roster,
+  known_red_probe_v1_envelope_roster,
+  known_red_pre_verdict_refusal_roster
+}
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, scoped_witness_batches, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_silent_pick_gate_roster, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries, witness_long_eval_budget_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
   falsifier_native_cache_cold_roster,
@@ -1017,11 +1023,15 @@ fn gunbc_falsifier_self_host_wet_known_red_batch() -> Runnable {
   }
 }
 
-fn gunbc_falsifier_known_red_probe_batch() -> Runnable {
+data falsifier_known_red_probe_budget_partition_note: String = "ONE lane, TWO budget-homogeneous batches, both DERIVED from the declared budget on the admission row — never a list naming a witness. claim_executor arms an eval ceiling per BATCH, so a batch mixing fast and long rows gives every fast row the long ceiling; splitting the roster by declared budget makes the ceiling each batch arms equal to the budget its own rows declared. Neither side is authored: known_red_probe_corpus_fast_budget_roster and known_red_probe_corpus_long_budget_roster partition the same corpus roster, so adding a long-budget admission moves it across without editing this plan, and a side that empties schedules no batch (an empty explicit-entry discovery batch would be a run over nothing reporting green — the vacuity DESIGN 6 names). Lane count and lane enrollment are unchanged: the outer FalsifierLaneBatch.batch was already a list."
+
+fn gunbc_falsifier_known_red_probe_batch_over(
+  entries: List<ScheduleWitnessEntry>
+) -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
-    explicit_entries: known_red_probe_corpus_roster(),
+    explicit_entries: entries,
     node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
@@ -1032,6 +1042,25 @@ fn gunbc_falsifier_known_red_probe_batch() -> Runnable {
       execution_mode: Hermetic
     )
   }
+}
+
+fn gunbc_falsifier_known_red_probe_batches() -> List<Runnable> {
+  concat(
+    if length(xs: known_red_probe_corpus_fast_budget_roster()) > 0 {
+      [gunbc_falsifier_known_red_probe_batch_over(
+        entries: known_red_probe_corpus_fast_budget_roster()
+      )]
+    } else {
+      []
+    },
+    if length(xs: known_red_probe_corpus_long_budget_roster()) > 0 {
+      [gunbc_falsifier_known_red_probe_batch_over(
+        entries: known_red_probe_corpus_long_budget_roster()
+      )]
+    } else {
+      []
+    }
+  )
 }
 
 fn gunbc_falsifier_self_host_wet_batch() -> Runnable {
@@ -1173,7 +1202,7 @@ fn gunbc_falsifier_lane_batches() -> List<FalsifierLaneBatch> {
     FalsifierLaneBatch {
       lane: LaneKnownRedProbe,
       enrolled: falsifier_known_red_probe_batch_enrolled(),
-      batch: [gunbc_falsifier_known_red_probe_batch()]
+      batch: gunbc_falsifier_known_red_probe_batches()
     },
     FalsifierLaneBatch {
       lane: LaneSilentPickGate,
