@@ -1,0 +1,269 @@
+module test.claim.merge_readiness_tally_witness_test
+
+import gunbc.merge_readiness_tally {
+  StatusCheckObservation,
+  RequiredForMerge,
+  NotApplicableToThisSubject,
+  ApplicabilityUnknown,
+  DashboardProviderReview,
+  DashboardApprove,
+  MergeReadinessAssessment,
+  ChecksPassing,
+  ChecksPending,
+  ChecksFailing,
+  ChecksAbsent,
+  CheckCancelled,
+  CheckSkippedWhenRequired,
+  RequiredCheckSatisfied,
+  RequiredCheckUnsatisfied,
+  CurrentHeadVerdict,
+  StaleHeadVerdict,
+  classify_required_check,
+  classify_checks_rollup,
+  assess_merge_readiness,
+}
+import extdeps.github.checks {
+  CheckConclusion,
+  Completed,
+  InProgress,
+  Success,
+  Cancelled,
+  Skipped,
+}
+import std.types { CommitSha, Bool, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data head_493de348: CommitSha = "493de3484fa7e58c8f5fbe9af51f7a4a676d3dd0"
+data head_8b86900b: CommitSha = "8b86900bc1c013cadfb41f3d91b05e492be2b4bd"
+data head_f84dc035: CommitSha = "f84dc035e2712299a07d71515935bcc2797cdafd"
+
+data provider_claude: NonEmptyStr = "claude" as NonEmptyStr
+data provider_cursor: NonEmptyStr = "cursor" as NonEmptyStr
+
+fn completed_required_check(
+  name: NonEmptyStr,
+  conclusion: CheckConclusion?,
+) -> StatusCheckObservation {
+  StatusCheckObservation {
+    name: name,
+    status: Completed,
+    conclusion: conclusion,
+    applicability: RequiredForMerge,
+  }
+}
+
+fn pr7932_cancelled_checks() -> List<StatusCheckObservation> {
+  [
+    completed_required_check(name: "build" as NonEmptyStr, conclusion: Present { value: Success }),
+    completed_required_check(name: "regen" as NonEmptyStr, conclusion: Present { value: Success }),
+    completed_required_check(
+      name: "heal_generated_artifacts" as NonEmptyStr,
+      conclusion: Present { value: Success }
+    ),
+    completed_required_check(name: "ci" as NonEmptyStr, conclusion: Present { value: Cancelled }),
+    completed_required_check(
+      name: "deploy_dashboard_srv1" as NonEmptyStr,
+      conclusion: Present { value: Cancelled }
+    ),
+  ]
+}
+
+fn pr7932_current_head_approvals() -> List<DashboardProviderReview> {
+  [
+    DashboardProviderReview {
+      provider: provider_claude,
+      reviewed_head_sha: head_493de348,
+      verdict: DashboardApprove,
+    },
+    DashboardProviderReview {
+      provider: provider_cursor,
+      reviewed_head_sha: head_493de348,
+      verdict: DashboardApprove,
+    },
+  ]
+}
+
+fn stale_head_approvals() -> List<DashboardProviderReview> {
+  [
+    DashboardProviderReview {
+      provider: provider_claude,
+      reviewed_head_sha: head_f84dc035,
+      verdict: DashboardApprove,
+    },
+    DashboardProviderReview {
+      provider: provider_cursor,
+      reviewed_head_sha: head_f84dc035,
+      verdict: DashboardApprove,
+    },
+  ]
+}
+
+test fn witness_cancelled_required_check_refuses() -> Bool {
+  match classify_required_check(
+    applicability: RequiredForMerge,
+    status: Completed,
+    conclusion: Present { value: Cancelled }
+  ) {
+    RequiredCheckUnsatisfied { cause: CheckCancelled } => true
+    RequiredCheckSatisfied { satisfaction: _ } => false
+  }
+}
+
+test fn witness_pr7932_cancelled_rollup_is_failing_not_passing() -> Bool {
+  match classify_checks_rollup(observations: pr7932_cancelled_checks()) {
+    ChecksFailing { first_cause: CheckCancelled } => true
+    ChecksPassing => false
+    ChecksPending => false
+    ChecksAbsent => false
+  }
+}
+
+test fn witness_pr7932_cancelled_checks_block_ready_even_with_current_head_approvals() -> Bool {
+  let assessment = assess_merge_readiness(
+    head_sha: head_493de348,
+    checks: pr7932_cancelled_checks(),
+    reviews: pr7932_current_head_approvals(),
+    required_approval_count: 2,
+    is_draft: false,
+    is_open: true,
+  )
+  !assessment.ready
+    && assessment.approval_count == 2
+    && assessment.stale_provider_count == 0
+    && match assessment.checks_state {
+      ChecksFailing { first_cause: CheckCancelled } => true
+      ChecksPassing => false
+      ChecksPending => false
+      ChecksAbsent => false
+    }
+}
+
+test fn witness_stale_head_approvals_do_not_count_toward_current_head_rule() -> Bool {
+  let assessment = assess_merge_readiness(
+    head_sha: head_8b86900b,
+    checks: [
+      completed_required_check(name: "ci" as NonEmptyStr, conclusion: Present { value: Success }),
+    ],
+    reviews: stale_head_approvals(),
+    required_approval_count: 2,
+    is_draft: false,
+    is_open: true,
+  )
+  !assessment.ready
+    && assessment.approval_count == 0
+    && assessment.stale_provider_count == 2
+    && length(assessment.current_head_verdicts) == 0
+}
+
+test fn witness_stale_providers_are_visible_separately_from_approval_count() -> Bool {
+  let assessment = assess_merge_readiness(
+    head_sha: head_8b86900b,
+    checks: [
+      completed_required_check(name: "ci" as NonEmptyStr, conclusion: Present { value: Success }),
+    ],
+    reviews: stale_head_approvals(),
+    required_approval_count: 2,
+    is_draft: false,
+    is_open: true,
+  )
+  provider_list_contains_assessment_stale(assessment: assessment, provider: provider_claude)
+    && provider_list_contains_assessment_stale(assessment: assessment, provider: provider_cursor)
+}
+
+fn provider_list_contains_assessment_stale(
+  assessment: MergeReadinessAssessment,
+  provider: NonEmptyStr,
+) -> Bool {
+  fold(assessment.stale_providers, init: false, f: fn(found, row) {
+    found || row == provider
+  })
+}
+
+test fn witness_running_required_check_is_pending_not_passing() -> Bool {
+  match classify_checks_rollup(observations: [
+    StatusCheckObservation {
+      name: "ci" as NonEmptyStr,
+      status: InProgress,
+      conclusion: none,
+      applicability: RequiredForMerge,
+    }
+  ]) {
+    ChecksPending => true
+    ChecksPassing => false
+    ChecksFailing { first_cause: _ } => false
+    ChecksAbsent => false
+  }
+}
+
+test fn witness_explicit_not_applicable_skip_does_not_block_ready() -> Bool {
+  let assessment = assess_merge_readiness(
+    head_sha: head_493de348,
+    checks: [
+      completed_required_check(name: "ci" as NonEmptyStr, conclusion: Present { value: Success }),
+      StatusCheckObservation {
+        name: "deploy_dashboard_srv1" as NonEmptyStr,
+        status: Completed,
+        conclusion: Present { value: Skipped },
+        applicability: NotApplicableToThisSubject,
+      },
+    ],
+    reviews: pr7932_current_head_approvals(),
+    required_approval_count: 2,
+    is_draft: false,
+    is_open: true,
+  )
+  assessment.ready
+    && match assessment.checks_state {
+      ChecksPassing => true
+      ChecksPending => false
+      ChecksFailing { first_cause: _ } => false
+      ChecksAbsent => false
+    }
+}
+
+test fn witness_unknown_skipped_required_check_refuses() -> Bool {
+  match classify_required_check(
+    applicability: ApplicabilityUnknown,
+    status: Completed,
+    conclusion: Present { value: Skipped }
+  ) {
+    RequiredCheckUnsatisfied { cause: CheckSkippedWhenRequired } => true
+    RequiredCheckSatisfied { satisfaction: _ } => false
+  }
+}
+
+test fn witness_current_head_verdict_list_surfaces_only_current_head_rows() -> Bool {
+  let assessment = assess_merge_readiness(
+    head_sha: head_493de348,
+    checks: [
+      completed_required_check(name: "ci" as NonEmptyStr, conclusion: Present { value: Success }),
+    ],
+    reviews: [
+      DashboardProviderReview {
+        provider: provider_claude,
+        reviewed_head_sha: head_493de348,
+        verdict: DashboardApprove,
+      },
+      DashboardProviderReview {
+        provider: provider_cursor,
+        reviewed_head_sha: head_f84dc035,
+        verdict: DashboardApprove,
+      },
+    ],
+    required_approval_count: 2,
+    is_draft: false,
+    is_open: true,
+  )
+  length(assessment.current_head_verdicts) == 1
+    && match assessment.current_head_verdicts.first() {
+      Present { value: CurrentHeadVerdict { provider: p, verdict: DashboardApprove } } =>
+        p == provider_claude
+      Absent => false
+    }
+    && assessment.approval_count == 1
+    && assessment.stale_provider_count == 1
+}
+
+data merge_readiness_tally_witness_note: String = "Discriminating witnesses for merge-readiness tally P0. The cancelled-check control uses the gunbc#7932 shape: build/regen/heal succeed while ci and deploy_dashboard_srv1 are CANCELLED — aggregate checks must be failing, never passing, even when two providers approve the current head. The stale-approval control uses head 8b86900b with claude/cursor approvals pinned to f84dc035: approval_count must be zero, stale_provider_count two, and current_head_verdicts empty. The explicit-not-applicable control proves deploy_dashboard_srv1 Skipped is admissible only when modeled NotApplicableToThisSubject, not inferred from skip alone. The unknown-skip control refuses ApplicabilityUnknown + Skipped."

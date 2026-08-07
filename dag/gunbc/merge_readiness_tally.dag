@@ -1,0 +1,465 @@
+module gunbc.merge_readiness_tally
+
+import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
+import extdeps.github.checks {
+  CheckConclusion,
+  CheckStatus,
+  Success,
+  Cancelled,
+  Failure,
+  Skipped,
+  Stale,
+  Neutral,
+  TimedOut,
+  ActionRequired,
+  Queued,
+  InProgress,
+  Completed,
+  Waiting,
+  Pending,
+  Requested,
+}
+
+data merge_readiness_tally_authority_note: String = "Dashboard merge-readiness is a PRODUCT of review authorization at the current PR head and required-check satisfaction — never a single GitHub mergeable field and never a provider approval pinned to an earlier head. A required check is satisfied ONLY by Success or an explicitly modeled NotApplicableToThisSubject; Cancelled, Skipped-without-applicability, Pending, and every other non-success arm mean NOT ready. Provider approvals count only when reviewed_head_sha equals current_pr_head_sha; an approval on an earlier head is stale immediately on push. This module is the substrate authority; ctrl session-dashboard consumes it after adoption."
+
+type StatusCheckApplicability
+  = RequiredForMerge
+  | NotApplicableToThisSubject
+  | ApplicabilityUnknown
+
+type RequiredCheckSatisfaction
+  = CheckSucceeded
+  | CheckNotApplicableToSubject
+
+type RequiredCheckUnsatisfiedCause
+  = CheckQueued
+  | CheckPending
+  | CheckInProgress
+  | CheckMissing
+  | CheckCancelled
+  | CheckFailed
+  | CheckTimedOut
+  | CheckActionRequired
+  | CheckStartupFailure
+  | CheckStale
+  | CheckSkippedWhenRequired
+  | CheckNeutral
+  | CheckConclusionUnknown
+
+type RequiredCheckDisposition
+  = RequiredCheckSatisfied { satisfaction: RequiredCheckSatisfaction }
+  | RequiredCheckUnsatisfied { cause: RequiredCheckUnsatisfiedCause }
+
+type StatusCheckObservation {
+  name: NonEmptyStr
+  status: CheckStatus
+  conclusion: CheckConclusion?
+  applicability: StatusCheckApplicability
+}
+
+type ChecksState
+  = ChecksPassing
+  | ChecksPending
+  | ChecksFailing { first_cause: RequiredCheckUnsatisfiedCause }
+  | ChecksAbsent
+
+type DashboardReviewVerdict
+  = DashboardApprove
+  | DashboardApproveWithComments
+  | DashboardRequestChanges
+  | DashboardOther
+
+type DashboardProviderReview {
+  provider: NonEmptyStr
+  reviewed_head_sha: CommitSha
+  verdict: DashboardReviewVerdict
+}
+
+type HeadBoundProviderVerdict
+  = CurrentHeadVerdict { provider: NonEmptyStr, verdict: DashboardReviewVerdict }
+  | StaleHeadVerdict {
+      provider: NonEmptyStr,
+      reviewed_head_sha: CommitSha,
+      verdict: DashboardReviewVerdict,
+    }
+
+type MergeReadinessRequirement {
+  key: NonEmptyStr
+  label: String
+  ok: Bool
+  actual: String
+}
+
+type MergeReadinessAssessment {
+  head_sha: CommitSha
+  checks_state: ChecksState
+  approval_count: Int
+  approval_providers: List<NonEmptyStr>
+  request_changes_count: Int
+  request_change_providers: List<NonEmptyStr>
+  stale_provider_count: Int
+  stale_providers: List<NonEmptyStr>
+  current_head_verdicts: List<HeadBoundProviderVerdict>
+  ready: Bool
+  requirements: List<MergeReadinessRequirement>
+}
+
+fn dashboard_review_is_approval(verdict: DashboardReviewVerdict) -> Bool {
+  match verdict {
+    DashboardApprove => true
+    DashboardApproveWithComments => true
+    DashboardRequestChanges => false
+    DashboardOther => false
+  }
+}
+
+fn dashboard_review_is_request_changes(verdict: DashboardReviewVerdict) -> Bool {
+  match verdict {
+    DashboardRequestChanges => true
+    DashboardApprove => false
+    DashboardApproveWithComments => false
+    DashboardOther => false
+  }
+}
+
+fn checks_state_worse(left: ChecksState, right: ChecksState) -> ChecksState {
+  match left {
+    ChecksFailing { first_cause: cause } => ChecksFailing { first_cause: cause }
+    ChecksPending =>
+      match right {
+        ChecksFailing { first_cause: cause } => ChecksFailing { first_cause: cause }
+        ChecksPending => ChecksPending
+        ChecksPassing => ChecksPending
+        ChecksAbsent => ChecksPending
+      }
+    ChecksPassing =>
+      match right {
+        ChecksFailing { first_cause: cause } => ChecksFailing { first_cause: cause }
+        ChecksPending => ChecksPending
+        ChecksPassing => ChecksPassing
+        ChecksAbsent => ChecksPassing
+      }
+    ChecksAbsent => right
+  }
+}
+
+fn classify_completed_required_check(
+  applicability: StatusCheckApplicability,
+  conclusion: CheckConclusion?,
+) -> RequiredCheckDisposition {
+  match conclusion {
+    Absent => RequiredCheckUnsatisfied { cause: CheckConclusionUnknown }
+    Present { value: c } =>
+      match c {
+        Success => RequiredCheckSatisfied { satisfaction: CheckSucceeded }
+        Cancelled => RequiredCheckUnsatisfied { cause: CheckCancelled }
+        Failure => RequiredCheckUnsatisfied { cause: CheckFailed }
+        TimedOut => RequiredCheckUnsatisfied { cause: CheckTimedOut }
+        ActionRequired => RequiredCheckUnsatisfied { cause: CheckActionRequired }
+        Stale => RequiredCheckUnsatisfied { cause: CheckStale }
+        Neutral => RequiredCheckUnsatisfied { cause: CheckNeutral }
+        Skipped =>
+          match applicability {
+            ApplicabilityUnknown =>
+              RequiredCheckUnsatisfied { cause: CheckSkippedWhenRequired }
+            RequiredForMerge =>
+              RequiredCheckUnsatisfied { cause: CheckSkippedWhenRequired }
+            NotApplicableToThisSubject =>
+              RequiredCheckSatisfied { satisfaction: CheckNotApplicableToSubject }
+          }
+      }
+  }
+}
+
+fn classify_required_check(
+  applicability: StatusCheckApplicability,
+  status: CheckStatus,
+  conclusion: CheckConclusion?,
+) -> RequiredCheckDisposition {
+  match applicability {
+    NotApplicableToThisSubject =>
+      RequiredCheckSatisfied { satisfaction: CheckNotApplicableToSubject }
+    RequiredForMerge =>
+      match status {
+        Queued => RequiredCheckUnsatisfied { cause: CheckQueued }
+        InProgress => RequiredCheckUnsatisfied { cause: CheckInProgress }
+        Waiting => RequiredCheckUnsatisfied { cause: CheckPending }
+        Pending => RequiredCheckUnsatisfied { cause: CheckPending }
+        Requested => RequiredCheckUnsatisfied { cause: CheckPending }
+        Completed =>
+          classify_completed_required_check(
+            applicability: applicability,
+            conclusion: conclusion
+          )
+      }
+    ApplicabilityUnknown =>
+      match status {
+        Queued => RequiredCheckUnsatisfied { cause: CheckQueued }
+        InProgress => RequiredCheckUnsatisfied { cause: CheckInProgress }
+        Waiting => RequiredCheckUnsatisfied { cause: CheckPending }
+        Pending => RequiredCheckUnsatisfied { cause: CheckPending }
+        Requested => RequiredCheckUnsatisfied { cause: CheckPending }
+        Completed =>
+          classify_completed_required_check(
+            applicability: applicability,
+            conclusion: conclusion
+          )
+      }
+  }
+}
+
+fn disposition_to_checks_state(disposition: RequiredCheckDisposition) -> ChecksState {
+  match disposition {
+    RequiredCheckSatisfied { satisfaction: _ } => ChecksPassing
+    RequiredCheckUnsatisfied { cause: CheckQueued } => ChecksPending
+    RequiredCheckUnsatisfied { cause: CheckPending } => ChecksPending
+    RequiredCheckUnsatisfied { cause: CheckInProgress } => ChecksPending
+    RequiredCheckUnsatisfied { cause: cause } => ChecksFailing { first_cause: cause }
+  }
+}
+
+fn fold_status_check_observation(acc: ChecksState, row: StatusCheckObservation) -> ChecksState {
+  match row.applicability {
+    NotApplicableToThisSubject => acc
+    RequiredForMerge =>
+      checks_state_worse(
+        left: acc,
+        right: disposition_to_checks_state(
+          disposition: classify_required_check(
+            applicability: row.applicability,
+            status: row.status,
+            conclusion: row.conclusion
+          )
+        )
+      )
+    ApplicabilityUnknown =>
+      checks_state_worse(
+        left: acc,
+        right: disposition_to_checks_state(
+          disposition: classify_required_check(
+            applicability: row.applicability,
+            status: row.status,
+            conclusion: row.conclusion
+          )
+        )
+      )
+  }
+}
+
+fn classify_checks_rollup(observations: List<StatusCheckObservation>) -> ChecksState {
+  fold(observations, init: ChecksAbsent, f: fold_status_check_observation)
+}
+
+fn provider_list_contains(xs: List<NonEmptyStr>, provider: NonEmptyStr) -> Bool {
+  fold(xs, init: false, f: fn(found, row) {
+    found || row == provider
+  })
+}
+
+fn prepend_provider(xs: List<NonEmptyStr>, provider: NonEmptyStr) -> List<NonEmptyStr> {
+  [provider] |> concat(xs)
+}
+
+fn append_provider_if_absent(xs: List<NonEmptyStr>, provider: NonEmptyStr) -> List<NonEmptyStr> {
+  if provider_list_contains(xs: xs, provider: provider) {
+    xs
+  } else {
+    prepend_provider(xs: xs, provider: provider)
+  }
+}
+
+fn prepend_head_bound_verdict(
+  xs: List<HeadBoundProviderVerdict>,
+  row: HeadBoundProviderVerdict,
+) -> List<HeadBoundProviderVerdict> {
+  [row] |> concat(xs)
+}
+
+fn fold_dashboard_provider_review(
+  acc: MergeReadinessAssessment,
+  review: DashboardProviderReview,
+  current_head: CommitSha,
+) -> MergeReadinessAssessment {
+  if review.reviewed_head_sha == current_head {
+    let verdicts = prepend_head_bound_verdict(
+      xs: acc.current_head_verdicts,
+      row: CurrentHeadVerdict { provider: review.provider, verdict: review.verdict },
+    )
+    if dashboard_review_is_approval(verdict: review.verdict) {
+      MergeReadinessAssessment {
+        head_sha: acc.head_sha,
+        checks_state: acc.checks_state,
+        approval_count: acc.approval_count,
+        approval_providers: append_provider_if_absent(
+          xs: acc.approval_providers,
+          provider: review.provider
+        ),
+        request_changes_count: acc.request_changes_count,
+        request_change_providers: acc.request_change_providers,
+        stale_provider_count: acc.stale_provider_count,
+        stale_providers: acc.stale_providers,
+        current_head_verdicts: verdicts,
+        ready: acc.ready,
+        requirements: acc.requirements,
+      }
+    } else if dashboard_review_is_request_changes(verdict: review.verdict) {
+      MergeReadinessAssessment {
+        head_sha: acc.head_sha,
+        checks_state: acc.checks_state,
+        approval_count: acc.approval_count,
+        approval_providers: acc.approval_providers,
+        request_changes_count: acc.request_changes_count,
+        request_change_providers: append_provider_if_absent(
+          xs: acc.request_change_providers,
+          provider: review.provider
+        ),
+        stale_provider_count: acc.stale_provider_count,
+        stale_providers: acc.stale_providers,
+        current_head_verdicts: verdicts,
+        ready: acc.ready,
+        requirements: acc.requirements,
+      }
+    } else {
+      MergeReadinessAssessment {
+        head_sha: acc.head_sha,
+        checks_state: acc.checks_state,
+        approval_count: acc.approval_count,
+        approval_providers: acc.approval_providers,
+        request_changes_count: acc.request_changes_count,
+        request_change_providers: acc.request_change_providers,
+        stale_provider_count: acc.stale_provider_count,
+        stale_providers: acc.stale_providers,
+        current_head_verdicts: verdicts,
+        ready: acc.ready,
+        requirements: acc.requirements,
+      }
+    }
+  } else if dashboard_review_is_approval(verdict: review.verdict)
+      || dashboard_review_is_request_changes(verdict: review.verdict) {
+    MergeReadinessAssessment {
+      head_sha: acc.head_sha,
+      checks_state: acc.checks_state,
+      approval_count: acc.approval_count,
+      approval_providers: acc.approval_providers,
+      request_changes_count: acc.request_changes_count,
+      request_change_providers: acc.request_change_providers,
+      stale_provider_count: acc.stale_provider_count,
+      stale_providers: append_provider_if_absent(xs: acc.stale_providers, provider: review.provider),
+      current_head_verdicts: acc.current_head_verdicts,
+      ready: acc.ready,
+      requirements: acc.requirements,
+    }
+  } else {
+    acc
+  }
+}
+
+fn provider_count(providers: List<NonEmptyStr>) -> Int {
+  length(providers)
+}
+
+fn checks_state_passes(checks_state: ChecksState) -> Bool {
+  match checks_state {
+    ChecksPassing => true
+    ChecksPending => false
+    ChecksFailing { first_cause: _ } => false
+    ChecksAbsent => false
+  }
+}
+
+fn checks_state_label(checks_state: ChecksState) -> String {
+  match checks_state {
+    ChecksPassing => "passing"
+    ChecksPending => "pending"
+    ChecksFailing { first_cause: _ } => "failing"
+    ChecksAbsent => "none"
+  }
+}
+
+fn merge_readiness_requirement(
+  key: NonEmptyStr,
+  label: String,
+  ok: Bool,
+  actual: String,
+) -> MergeReadinessRequirement {
+  MergeReadinessRequirement { key: key, label: label, ok: ok, actual: actual }
+}
+
+fn assess_merge_readiness(
+  head_sha: CommitSha,
+  checks: List<StatusCheckObservation>,
+  reviews: List<DashboardProviderReview>,
+  required_approval_count: Int,
+  is_draft: Bool,
+  is_open: Bool,
+) -> MergeReadinessAssessment {
+  let checks_state = classify_checks_rollup(observations: checks)
+  let folded = fold(reviews, init: MergeReadinessAssessment {
+    head_sha: head_sha,
+    checks_state: checks_state,
+    approval_count: 0,
+    approval_providers: [],
+    request_changes_count: 0,
+    request_change_providers: [],
+    stale_provider_count: 0,
+    stale_providers: [],
+    current_head_verdicts: [],
+    ready: false,
+    requirements: [],
+  }, f: fn(acc, review) {
+    fold_dashboard_provider_review(acc: acc, review: review, current_head: head_sha)
+  })
+  let approval_count = provider_count(providers: folded.approval_providers)
+  let request_changes_count = provider_count(providers: folded.request_change_providers)
+  let stale_provider_count = provider_count(providers: folded.stale_providers)
+  let approvals_ok = approval_count >= required_approval_count
+  let request_changes_ok = request_changes_count == 0
+  let checks_ok = checks_state_passes(checks_state: checks_state)
+  let draft_ok = !is_draft
+  let open_ok = is_open
+  let ready = approvals_ok && request_changes_ok && checks_ok && draft_ok && open_ok
+  MergeReadinessAssessment {
+    head_sha: head_sha,
+    checks_state: checks_state,
+    approval_count: approval_count,
+    approval_providers: folded.approval_providers,
+    request_changes_count: request_changes_count,
+    request_change_providers: folded.request_change_providers,
+    stale_provider_count: stale_provider_count,
+    stale_providers: folded.stale_providers,
+    current_head_verdicts: folded.current_head_verdicts,
+    ready: ready,
+    requirements: [
+      merge_readiness_requirement(
+        key: "approvals" as NonEmptyStr,
+        label: "Distinct dashboard approvals on current head",
+        ok: approvals_ok,
+        actual: "current-head approvals",
+      ),
+      merge_readiness_requirement(
+        key: "request_changes" as NonEmptyStr,
+        label: "No dashboard REQUEST_CHANGES on current head",
+        ok: request_changes_ok,
+        actual: "current-head request-changes",
+      ),
+      merge_readiness_requirement(
+        key: "checks" as NonEmptyStr,
+        label: "Required checks satisfied on current head",
+        ok: checks_ok,
+        actual: checks_state_label(checks_state: checks_state),
+      ),
+      merge_readiness_requirement(
+        key: "draft" as NonEmptyStr,
+        label: "PR is not draft",
+        ok: draft_ok,
+        actual: if is_draft { "draft" } else { "ready" },
+      ),
+      merge_readiness_requirement(
+        key: "open" as NonEmptyStr,
+        label: "PR is open",
+        ok: open_ok,
+        actual: if is_open { "open" } else { "closed" },
+      ),
+    ],
+  }
+}
