@@ -18,6 +18,8 @@ import v1.gunbc.namespace_reference_derived_closure_production_observations {
   namespace_structural_binding_observations_mutation_c,
   namespace_structural_binding_observations_mutation_d,
   n3a_base_ordinary_compile_observation,
+  nrdfc_specimen_path,
+  nrdfc_fixture_source_root,
   N3aStageTokenize,
   N3aStageParse,
   N3aStageOccurrenceWalk,
@@ -124,8 +126,8 @@ data n3a_ordinary_compile_closing_receipt_note: String = "The closing receipt ab
 
 fn n3a_ordinary_compile_closing_receipt_holds() -> Bool {
   let observation = n3a_base_ordinary_compile_observation()
-  observation.file == "fixtures/namespace/reference_derived_closure/specimen.dag"
-    && observation.source_root == "fixtures/namespace/reference_derived_closure"
+  observation.file == nrdfc_specimen_path
+    && observation.source_root == nrdfc_fixture_source_root
     && observation.stages_executed |> any(stage => stage == N3aStageTokenize)
     && observation.stages_executed |> any(stage => stage == N3aStageParse)
     && observation.stages_executed |> any(stage => stage == N3aStageOccurrenceWalk)

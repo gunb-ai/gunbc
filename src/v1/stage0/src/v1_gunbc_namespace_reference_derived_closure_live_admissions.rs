@@ -14,7 +14,7 @@ use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerived
 pub use crate::std_reference_binding_observation::{ReferenceBindingObservation};
 use crate::std_reference_binding_observation::ReferenceBindingObservation::*;
 pub use crate::v1_gunbc_namespace_reference_derived_closure_production_observations::{N3aPipelineStage};
-pub use crate::v1_gunbc_namespace_reference_derived_closure_production_observations::{namespace_structural_binding_observations_a_through_d, namespace_structural_binding_observations_mutation_a, namespace_structural_binding_observations_mutation_b, namespace_structural_binding_observations_mutation_c, namespace_structural_binding_observations_mutation_d, n3a_base_ordinary_compile_observation};
+pub use crate::v1_gunbc_namespace_reference_derived_closure_production_observations::{namespace_structural_binding_observations_a_through_d, namespace_structural_binding_observations_mutation_a, namespace_structural_binding_observations_mutation_b, namespace_structural_binding_observations_mutation_c, namespace_structural_binding_observations_mutation_d, n3a_base_ordinary_compile_observation, nrdfc_specimen_path, nrdfc_fixture_source_root};
 use crate::v1_gunbc_namespace_reference_derived_closure_production_observations::N3aPipelineStage::{N3aStageTokenize, N3aStageParse, N3aStageOccurrenceWalk, N3aStageResolve, N3aStageBinder};
 pub use crate::std_types::{Bool, List};
 use crate::std_types::Bool::*;
@@ -180,10 +180,8 @@ pub fn n3a_ordinary_compile_closing_receipt_note() -> String {
 pub fn n3a_ordinary_compile_closing_receipt_holds() -> bool {
     {
         let observation = n3a_base_ordinary_compile_observation();
-        ((((((((observation.file()
-            == "fixtures/namespace/reference_derived_closure/specimen.dag".to_string())
-            && (observation.source_root()
-                == "fixtures/namespace/reference_derived_closure".to_string()))
+        ((((((((observation.file() == nrdfc_specimen_path())
+            && (observation.source_root() == nrdfc_fixture_source_root()))
             && {
                 let mut __found = false;
                 for stage in observation.stages_executed().iter().cloned() {
