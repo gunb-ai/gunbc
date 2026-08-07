@@ -87,12 +87,16 @@ fn decode_json_string_array(v: JsonValue) -> JsonStringListDecode {
   }
 }
 
-fn parser_drop_receipt_member_array(v: JsonValue, key: String) -> JsonValue {
+type JsonMemberRequiredDecode
+  = JsonMemberRequiredOk { value: JsonValue }
+  | JsonMemberRequiredRefuse
+
+fn parser_drop_receipt_required_member(v: JsonValue, key: String) -> JsonMemberRequiredDecode {
   match json_object_unique_member(v: v, key: key) {
-    JsonMemberFound { value: found } => found
-    JsonMemberAbsent => JsonArray { elements: [] }
-    JsonMemberDuplicated { count: _ } => JsonArray { elements: [] }
-    JsonMemberNotAnObject => JsonArray { elements: [] }
+    JsonMemberFound { value: found } => JsonMemberRequiredOk { value: found }
+    JsonMemberAbsent => JsonMemberRequiredRefuse
+    JsonMemberDuplicated { count: _ } => JsonMemberRequiredRefuse
+    JsonMemberNotAnObject => JsonMemberRequiredRefuse
   }
 }
 
@@ -100,20 +104,35 @@ fn claude_sdk_parser_drop_receipt_holds(text: String) -> Bool {
   match parse_json(s: text) {
     Absent => false
     Present { value: root } =>
-      let comparison = parser_drop_receipt_member_array(v: root, key: "comparison")
-      let raw_types_v = parser_drop_receipt_member_array(v: comparison, key: "sdk_subprocess_raw_event_types")
-      let parsed_types_v = parser_drop_receipt_member_array(v: comparison, key: "sdk_parsed_event_types")
-      match decode_json_string_array(v: raw_types_v) {
-        JsonStringListOk { values: raw_types } =>
-          match decode_json_string_array(v: parsed_types_v) {
-            JsonStringListOk { values: parsed_types } =>
-              claude_sdk_control_response_parser_drop_holds(
-                subprocess_raw_types: raw_types,
-                sdk_parsed_types: parsed_types
-              )
-            JsonStringListFail => false
+      match parser_drop_receipt_required_member(v: root, key: "comparison") {
+        JsonMemberRequiredRefuse => false
+        JsonMemberRequiredOk { value: comparison } =>
+          match parser_drop_receipt_required_member(
+            v: comparison,
+            key: "sdk_subprocess_raw_event_types"
+          ) {
+            JsonMemberRequiredRefuse => false
+            JsonMemberRequiredOk { value: raw_types_v } =>
+              match parser_drop_receipt_required_member(
+                v: comparison,
+                key: "sdk_parsed_event_types"
+              ) {
+                JsonMemberRequiredRefuse => false
+                JsonMemberRequiredOk { value: parsed_types_v } =>
+                  match decode_json_string_array(v: raw_types_v) {
+                    JsonStringListOk { values: raw_types } =>
+                      match decode_json_string_array(v: parsed_types_v) {
+                        JsonStringListOk { values: parsed_types } =>
+                          claude_sdk_control_response_parser_drop_holds(
+                            subprocess_raw_types: raw_types,
+                            sdk_parsed_types: parsed_types
+                          )
+                        JsonStringListFail => false
+                      }
+                    JsonStringListFail => false
+                  }
+              }
           }
-        JsonStringListFail => false
       }
   }
 }
