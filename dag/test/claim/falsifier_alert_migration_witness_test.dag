@@ -30,6 +30,7 @@ import gunbc.falsifier_alert_admission {
   falsifier_alert_job_condition
 }
 import gunbc.falsifier_alert_state {
+  FirstRedStanding, FirstRedObserved, FirstRedUnknownBeforeTracking,
   FalsifierAlertState,
   FalsifierAlertStateDecoding,
   CurrentState, LegacyStateWithoutLastNotification, StateAbsent, StateMalformed,
@@ -199,7 +200,7 @@ fn legacy_state_marker(first_red: Int, signature: String) -> String {
 test fn current_state_marker_round_trips() -> Bool {
   match falsifier_alert_state_from_payload(payload: current_state_marker(first_red: 1000, signature: "6:witness discovery:WitnessRed:failed", last: 5000)) {
     CurrentState { state: s } =>
-      s.first_red == 1000
+      match s.first_red { FirstRedObserved { at: t } => t == 1000, FirstRedUnknownBeforeTracking => false }
         && s.last_notification_at == 5000
         && (s.signature as String) == "6:witness discovery:WitnessRed:failed"
     _ => false
@@ -208,7 +209,8 @@ test fn current_state_marker_round_trips() -> Bool {
 
 test fn legacy_marker_is_its_own_state_not_malformed() -> Bool {
   match falsifier_alert_state_from_payload(payload: legacy_state_marker(first_red: 1000, signature: "6:witness discovery:failed")) {
-    LegacyStateWithoutLastNotification { first_red: f, signature: _ } => f == 1000
+    LegacyStateWithoutLastNotification { first_red: f, signature: _ } =>
+      match f { FirstRedObserved { at: t } => t == 1000, FirstRedUnknownBeforeTracking => false }
     _ => false
   }
 }
