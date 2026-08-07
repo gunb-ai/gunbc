@@ -106,7 +106,7 @@ data typed_module_cache_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: StructuredArtifact
     locality: InProcess
-    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityBounded { limit: EntryCountCapacity { limit: RuntimeDerivedLimit { authority: { module_path: "v1_compiler.cli_run", decl_name: "typed_module_cache_cap_derivation", field: WholeDeclaration } } }, at_capacity: ReplaceExisting { strategy: ProviderNativeReplacement } } }
+    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityBounded { limit: EntryCountCapacity { limit: RuntimeDerivedLimit { authority: { module_path: "gunbc.typed_module_cache_capacity", decl_name: "typed_module_cache_entry_cap", field: WholeDeclaration } } }, at_capacity: ReplaceExisting { strategy: ProviderNativeReplacement } } }
     atomicity: PerFile
     auth: None
     read_latency: InProcessNs
