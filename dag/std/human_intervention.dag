@@ -1,6 +1,6 @@
 module std.human_intervention
 
-import std.types { NonEmptyStr, Int, List, Bool }
+import std.types { NonEmptyStr, Int, List }
 import std.decl_ref { DeclarationRef }
 import std.algebra { Ordering, Less, Equal, Greater }
 
@@ -50,15 +50,6 @@ type ProvisioningHumanBurden {
   interventions: List<HumanIntervention>
 }
 
-fn human_intervention_frequency_eq(a: HumanInterventionFrequency, b: HumanInterventionFrequency) -> Bool {
-  match a {
-    FleetOnce => match b { FleetOnce => true  DeviceOnce => false  EveryProvision => false  BreakGlassOnly => false }
-    DeviceOnce => match b { FleetOnce => false  DeviceOnce => true  EveryProvision => false  BreakGlassOnly => false }
-    EveryProvision => match b { FleetOnce => false  DeviceOnce => false  EveryProvision => true  BreakGlassOnly => false }
-    BreakGlassOnly => match b { FleetOnce => false  DeviceOnce => false  EveryProvision => false  BreakGlassOnly => true }
-  }
-}
-
 // DERIVED. No burden carries a stored count; a stored one is a second representation of
 // the list beside it and goes stale the moment an intervention is added (DESIGN §2/§3).
 // The result is an Int rather than std.nat.Nat because Nat at this layer is the algebraic
@@ -71,7 +62,7 @@ fn human_intervention_count_at(
 ) -> Int {
   list_length(items: filter(
     xs: burden.interventions,
-    f: i => human_intervention_frequency_eq(a: i.frequency, b: frequency)
+    f: i => i.frequency == frequency
   ))
 }
 

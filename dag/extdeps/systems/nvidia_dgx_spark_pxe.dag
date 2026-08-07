@@ -49,14 +49,14 @@ fn spark_pxe_tftp_relative_path(p: SparkPxeTftpRelativePath, image: SparkPxeBoot
   match image {
     FastOsRecoveryTarball =>
       match p {
-        TftpBootloader => "grubnetaa64.efi.signed"
+        TftpBootloader => spark_pxe_bootloader_filename
         TftpGrubConfig => "grub/grub.cfg"
         TftpKernelImage => "fastos/vmlinuz"
         TftpInitrdImage => "fastos/initrd"
       }
     DgxOsIsoImage =>
       match p {
-        TftpBootloader => "grubnetaa64.efi.signed"
+        TftpBootloader => spark_pxe_bootloader_filename
         TftpGrubConfig => "grub/grub.cfg"
         TftpKernelImage => "baseos/vmlinuz"
         TftpInitrdImage => "baseos/initrd"
