@@ -22403,7 +22403,7 @@ pub fn freemonoid_arm_field_pattern(
 pub fn freemonoid_cons_branch_grouping_order_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "#6777 nested-Cons grouping emits by tail discriminator (Empty, then NestedCons, then wildcard), not authored arm order. Pre-fix emit collapsed to the first Cons arm, so later specific tail arms were dead; grouping revives them only when tail discriminators are distinct. A bind-tail wildcard authored before a more-specific tail arm would change behavior vs that collapse; no such site is known in-tree (specimens have specific arms first).".to_string()
+            "Implements gunbc.roadmap_authority unreachable_patterns_construction_residue_note (#6777 declared construction residue): nested-Cons grouping emits by tail discriminator (Empty, then NestedCons, then wildcard), not authored arm order. Pre-fix emit collapsed to the first Cons arm, so later specific tail arms were dead; grouping revives them only when tail discriminators are distinct. A bind-tail wildcard authored before a more-specific tail arm would change behavior vs that collapse; no such site is known in-tree (specimens have specific arms first).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

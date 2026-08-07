@@ -12,7 +12,7 @@ use std::rc::Rc;
 pub fn nested_match_6777_reproducer_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Reproducer for #6777 construction residue: two sibling Cons arms differing only by nested tail subpattern (Empty vs Cons). Authored match is correct; main emitter collapses to the first Cons arm body for every nonempty list. Permanent regression control once nested-match grouping lands (DESIGN §4b).".to_string()
+            "Fixture specimen for gunbc.roadmap_authority unreachable_patterns_construction_residue_note (#6777 declared construction residue): two sibling Cons arms differing only by nested tail subpattern (Empty vs Cons). Authored match is correct; pre-fix emitter collapsed to the first Cons arm body for every nonempty list. Permanent regression control for freemonoid nested-tail grouping (DESIGN §4b).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
