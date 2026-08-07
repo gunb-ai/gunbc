@@ -1,9 +1,21 @@
 module gunbc.assimilate.bmc_token_federation
 
-import gunbc.repository { gunbc_repository }
+import gunbc.github_actions_wif {
+  gunbai_secrets_project_number,
+  github_actions_wif_federated_repository,
+  github_actions_wif_pool_id,
+  github_actions_wif_pool_display_name,
+  github_actions_wif_provider_id,
+  github_actions_wif_issuer_uri,
+  github_actions_wif_attribute_mapping,
+  github_actions_wif_pool,
+  github_actions_wif_provider,
+  github_actions_wif_provider_resource,
+  github_actions_wif_principal_set,
+  github_actions_wif_attribute_condition,
+}
 import extdeps.cloud.gcp.gcp {
   ServiceAccountEmail, GcpProjectId, WifPool, WifProvider,
-  wif_provider_resource, wif_principal_set_for_repo
 }
 import extdeps.cloud.gcp.iam {
   role_secretmanager_secret_accessor,
@@ -76,64 +88,46 @@ fn gcp_token_smoke_script() -> String {
 
 data bmc_secrets_project_id: GcpProjectId = "gunbai-secrets"
 
-data bmc_secrets_project_number: String = "582015116396"
+data bmc_secrets_project_number: String = gunbai_secrets_project_number
 
 data bmc_srv3_secret_name: String = "bmc-srv3-admin"
 
 data bmc_assimilator_sa_email: ServiceAccountEmail = "bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
 
-data bmc_federated_github_repo: String = gunbc_repository.full_name
+data bmc_federated_github_repo: String = github_actions_wif_federated_repository
 
-data bmc_wif_pool_id: NonEmptyStr = "github-actions"
+data bmc_wif_pool_id: NonEmptyStr = github_actions_wif_pool_id
 
-data bmc_wif_pool_display_name: NonEmptyStr = "GitHub Actions OIDC"
+data bmc_wif_pool_display_name: NonEmptyStr = github_actions_wif_pool_display_name
 
-data bmc_wif_provider_id: NonEmptyStr = "github-oidc"
+data bmc_wif_provider_id: NonEmptyStr = github_actions_wif_provider_id
 
-data bmc_wif_issuer_uri: NonEmptyStr = "https://token.actions.githubusercontent.com"
+data bmc_wif_issuer_uri: NonEmptyStr = github_actions_wif_issuer_uri
 
-data bmc_wif_attribute_mapping: Map<String, String> = {
-  "google.subject": "assertion.sub",
-  "attribute.repository": "assertion.repository",
-  "attribute.ref": "assertion.ref"
-}
+data bmc_wif_attribute_mapping: Map<String, String> = github_actions_wif_attribute_mapping
 
 data bmc_assimilator_account_id: NonEmptyStr = "bmc-assimilator"
 
 data bmc_assimilator_display_name: NonEmptyStr = "BMC assimilator (keyless, srv3 secret only)"
 
-data bmc_wif_pool: WifPool = WifPool {
-  name: bmc_wif_pool_id
-  project: "gunbai-secrets"
-  display_name: Present { value: bmc_wif_pool_display_name }
-  disabled: false
-}
+data bmc_wif_pool: WifPool = github_actions_wif_pool
 
-data bmc_wif_provider: WifProvider = WifProvider {
-  name: bmc_wif_provider_id
-  pool: bmc_wif_pool_id
-  issuer_uri: bmc_wif_issuer_uri
-  attribute_mapping: Present { value: bmc_wif_attribute_mapping }
-}
+data bmc_wif_provider: WifProvider = github_actions_wif_provider
 
 fn bmc_assimilator_sa_member() -> String {
   concat("serviceAccount:", bmc_assimilator_sa_email as String)
 }
 
 fn bmc_wif_provider_resource() -> String {
-  wif_provider_resource(project_number: bmc_secrets_project_number, provider: bmc_wif_provider)
+  github_actions_wif_provider_resource()
 }
 
 fn bmc_wif_principal_set() -> String {
-  wif_principal_set_for_repo(
-    project_number: bmc_secrets_project_number,
-    pool_id: bmc_wif_pool.name,
-    repository: bmc_federated_github_repo
-  )
+  github_actions_wif_principal_set()
 }
 
 fn bmc_wif_attribute_condition() -> String {
-  concat("assertion.repository == '", concat(bmc_federated_github_repo, "'"))
+  github_actions_wif_attribute_condition()
 }
 
 data bmc_assimilator_allowed_roles: List<String> = [

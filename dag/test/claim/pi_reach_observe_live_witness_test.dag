@@ -1,0 +1,27 @@
+module test.claim.pi_reach_observe_live_witness
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, String }
+import std.content_hash { serialize_content_hash }
+import gunbc.pi_reach_observe {
+  PiObserveRefused,
+  PiObserveHumanInterventionRequired,
+  FleetAutomationWifBindingIntervention,
+  pi_reach_observe_dispatch,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data pi_reach_observe_live_witness_note: String = "PI-OBSERVE-BUTTON-0 dispatch witness. GREEN when pi_reach_observe_dispatch returns PiObserveRefused or PiObserveHumanInterventionRequired with FleetAutomationWifBindingIntervention off-srv1 / missing workflow bracket env. Production path is adopt-rack-pi workflow_dispatch on default branch."
+
+test fn pi_reach_observe_dispatch_returns_typed_outcome() -> Bool {
+  match pi_reach_observe_dispatch() {
+    PiObserveRefused { refused: refused } => (refused.cause_detail as String) != ""
+    PiObserveHumanInterventionRequired { attempt: attempt, intervention: intervention } =>
+      (serialize_content_hash(hash: attempt.hash) as String) != ""
+        && match intervention {
+          FleetAutomationWifBindingIntervention { intervention: _ } => true
+        }
+    _ => false
+  }
+}

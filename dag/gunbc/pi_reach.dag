@@ -1,0 +1,725 @@
+module gunbc.pi_reach
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.keyed_row { KeyedRow }
+import std.change {
+  KeyedDiffHunk,
+  KeyedDiffAddedHunk,
+  KeyedPatch,
+  keyed_two_way_diff,
+}
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.network.ipv4 { Ipv4Address }
+import extdeps.dhcp.v4 { MacAddress }
+import extdeps.toolchain.types { Architecture, Armv7, Aarch64 }
+import extdeps.netplan.netplan {
+  InterfaceObservation,
+  NetplanRenderer,
+  NetworkManager,
+}
+import extdeps.ssh { SshPublicKey }
+import extdeps.systems.raspberry_pi {
+  RaspberryPiBootstrapControllerCatalogRow,
+  RaspberryPiBoardFamily,
+  RaspberryPi3ModelBPlus,
+  RaspberryPiOsBookworm,
+  RaspberryPiOsProduct,
+  RaspberryPiOsProductUnobserved,
+  WifiStationModeDocumented,
+  WifiStationCapability,
+  WifiStationCapabilityUnobserved,
+  NetworkManagerPresent,
+  NetworkManagerAvailability,
+  NetworkManagerAbsent,
+  NetworkManagerUnobserved,
+  catalog_row_from_observed_board,
+  raspberry_pi_board_family_from_observed,
+}
+import gunbc.fleet_ssh_access { fleet_host_authorized_keys }
+import product.placement_supply { HostIdentity }
+
+data pi_reach_authority_note: String = "PI-REACH-0 (2026-08-07). Discover and adopt the rack Raspberry Pi as the permanent bootstrap controller. Every observation and effect is a modeled workflow producing a typed receipt — never a one-off shell probe whose answer lives only in chat. Load-bearing claims: before/after LAN endpoint diff for newly attached devices (zero/one/many), KnownEndpointAdoptionSubject for already-connected devices, machine-observed hardware/OS/architecture/interfaces/default-route, host-identity and completion participation only (no GCP/secret-store reach), and ethernet-preserving Wi-Fi station plus bounded portal relay. Operator-supplied labels are INPUTS TO VERIFY, never authored facts."
+
+type PhysicalAssetIdentity = NonEmptyStr where brand("PhysicalAssetIdentity")
+type RackIdentity = NonEmptyStr where brand("RackIdentity")
+type EndpointBindingIdentity = NonEmptyStr where brand("EndpointBindingIdentity")
+type NetworkInterfaceIdentity = NonEmptyStr where brand("NetworkInterfaceIdentity")
+type SshHostKeyFingerprint = NonEmptyStr where brand("SshHostKeyFingerprint")
+type BoardSerialNumber = NonEmptyStr where brand("BoardSerialNumber")
+type SparkHotspotSsid = NonEmptyStr where brand("SparkHotspotSsid")
+
+type KnownEndpointAdoptionSubject {
+  operator_observed_wifi_endpoint: Ipv4Address
+  expected_mac: MacAddress
+  fleet_account: NonEmptyStr
+  access_authority: SshPublicKey
+}
+
+type LanEndpointObservation {
+  mac: MacAddress
+  ipv4: Ipv4Address?
+  hostname: String?
+  probed_at: NonEmptyStr
+}
+
+type LanEndpointSnapshot {
+  probed_at: NonEmptyStr
+  endpoints: List<LanEndpointObservation>
+}
+
+fn lan_endpoint_key(o: LanEndpointObservation) -> MacAddress {
+  o.mac
+}
+
+fn lan_endpoint_key_eq(a: MacAddress, b: MacAddress) -> Bool {
+  (a as String) == (b as String)
+}
+
+fn lan_endpoint_observation_eq(a: LanEndpointObservation, b: LanEndpointObservation) -> Bool {
+  (a.mac as String) == (b.mac as String)
+    && a.ipv4 == b.ipv4
+    && a.hostname == b.hostname
+    && (a.probed_at as String) == (b.probed_at as String)
+}
+
+fn lan_endpoint_rows(endpoints: List<LanEndpointObservation>) -> List<KeyedRow<MacAddress, LanEndpointObservation>> {
+  map(endpoints, o => KeyedRow { row_key: lan_endpoint_key(o: o), value: o })
+}
+
+fn lan_endpoint_added_hunks(
+  before: LanEndpointSnapshot,
+  after: LanEndpointSnapshot,
+) -> List<LanEndpointObservation> {
+  let patch = keyed_two_way_diff(
+    left: lan_endpoint_rows(endpoints: before.endpoints),
+    right: lan_endpoint_rows(endpoints: after.endpoints),
+    key_eq: lan_endpoint_key_eq,
+    value_eq: lan_endpoint_observation_eq,
+  )
+  fold(
+    patch.hunks,
+    init: [],
+    f: fn(acc, h) {
+      match h {
+        KeyedDiffAddedHunk { hunk_key: _, to: o } => append(acc, [o])
+        KeyedDiffRemovedHunk { hunk_key: _, from: _ } => acc
+        KeyedDiffModifiedHunk { hunk_key: _, from: _, to: _ } => acc
+      }
+    },
+  )
+}
+
+data endpoint_discovery_cardinality_note: String = "Discovery is EXACTLY-ONE, not first-pick. Zero -> PiEndpointNotObserved. One -> may proceed. Many -> PiEndpointAmbiguous. First-match selection is forbidden."
+
+type EndpointDiscoveryCardinality
+  = DiscoveryZero
+  | DiscoveryOne { endpoint: LanEndpointObservation }
+  | DiscoveryMany { candidates: List<LanEndpointObservation> }
+
+fn classify_discovered_endpoints(added: List<LanEndpointObservation>) -> EndpointDiscoveryCardinality {
+  let n = count(added)
+  if n == 0 {
+    DiscoveryZero
+  } else if n == 1 {
+    match added |> first {
+      Present { value: o } => DiscoveryOne { endpoint: o }
+      Absent => DiscoveryZero
+    }
+  } else {
+    DiscoveryMany { candidates: added }
+  }
+}
+
+fn discover_endpoints_by_diff(
+  before: LanEndpointSnapshot,
+  after: LanEndpointSnapshot,
+) -> EndpointDiscoveryCardinality {
+  classify_discovered_endpoints(added: lan_endpoint_added_hunks(before: before, after: after))
+}
+
+type ObservedControllerHardware {
+  board_model: NonEmptyStr
+  board_revision: NonEmptyStr?
+  serial: BoardSerialNumber?
+}
+
+type ObservedControllerOs {
+  kernel_release: NonEmptyStr?
+  os_pretty_name: NonEmptyStr?
+  storage_identity: NonEmptyStr?
+}
+
+type ObservedRunningArchitecture
+  = RunningArchitectureObserved { architecture: Architecture }
+  | RunningArchitectureUnobserved
+
+type ObservedWifiStationCapability
+  = WifiStationCapabilityPresentObserved
+  | WifiStationCapabilityAbsentObserved
+  | WifiStationCapUnobserved
+
+type ObservedControllerInterfaces {
+  management_uplink: InterfaceObservation?
+  wifi_station: InterfaceObservation?
+}
+
+type DefaultRouteObservation
+  = DefaultRouteViaInterface { interface: NonEmptyStr }
+  | DefaultRouteUnobserved
+
+type NetworkManagerObservation
+  = NetworkManagerRendererObserved { renderer: NetplanRenderer }
+  | NetworkManagerAbsentObserved
+  | NetworkManagerObsUnobserved
+
+type SparkHotspotObservation
+  = SparkHotspotPresent { ssid: SparkHotspotSsid, observed_on: NetworkInterfaceIdentity }
+  | SparkHotspotAbsent
+  | SparkHotspotUnobserved
+
+type WirelessInterfaceLease
+  = WirelessInterfaceLeased { interface: NetworkInterfaceIdentity, holder: SparkHotspotSsid }
+  | WirelessInterfaceUnleased
+  | WirelessInterfaceLeaseConflict { interface: NetworkInterfaceIdentity, holders: List<SparkHotspotSsid> }
+
+type ObservedProvisioningController {
+  hardware: ObservedControllerHardware
+  os: ObservedControllerOs
+  running_architecture: ObservedRunningArchitecture
+  interfaces: ObservedControllerInterfaces
+  default_route: DefaultRouteObservation
+  network_manager: NetworkManagerObservation
+  wifi_station_capability: ObservedWifiStationCapability
+  ssh_host_key: SshHostKeyFingerprint?
+  asset: PhysicalAssetIdentity?
+}
+
+fn observed_os_product(os: ObservedControllerOs) -> RaspberryPiOsProduct {
+  match os.os_pretty_name {
+    Present { value: name } =>
+      if string_contains(s: name as String, pattern: "bookworm") {
+        RaspberryPiOsBookworm
+      } else {
+        RaspberryPiOsProductUnobserved
+      }
+    Absent => RaspberryPiOsProductUnobserved
+  }
+}
+
+fn observed_network_manager_availability(nm: NetworkManagerObservation) -> NetworkManagerAvailability {
+  match nm {
+    NetworkManagerRendererObserved { renderer: _ } => NetworkManagerPresent
+    NetworkManagerAbsentObserved => NetworkManagerAbsent
+    NetworkManagerObsUnobserved => NetworkManagerUnobserved
+  }
+}
+
+fn observed_wifi_station_capability_row(
+  capability: ObservedWifiStationCapability,
+) -> WifiStationCapability {
+  match capability {
+    WifiStationCapabilityPresentObserved => WifiStationModeDocumented
+    WifiStationCapabilityAbsentObserved => WifiStationCapabilityUnobserved
+    WifiStationCapUnobserved => WifiStationCapabilityUnobserved
+  }
+}
+
+fn observed_running_architecture_value(
+  arch: ObservedRunningArchitecture,
+) -> Architecture? {
+  match arch {
+    RunningArchitectureObserved { architecture: a } => Present { value: a }
+    RunningArchitectureUnobserved => none
+  }
+}
+
+fn catalog_from_observed_controller(observed: ObservedProvisioningController) -> RaspberryPiBootstrapControllerCatalogRow? {
+  let board_family = raspberry_pi_board_family_from_observed(
+    model: observed.hardware.board_model,
+    revision: observed.hardware.board_revision,
+  )
+  match observed_running_architecture_value(arch: observed.running_architecture) {
+    Present { value: running_arch } =>
+      catalog_row_from_observed_board(
+        model: observed.hardware.board_model,
+        board_family: board_family,
+        os_product: observed_os_product(os: observed.os),
+        wifi_station: observed_wifi_station_capability_row(capability: observed.wifi_station_capability),
+        network_manager: observed_network_manager_availability(nm: observed.network_manager),
+        running_architecture: running_arch,
+      )
+    Absent => none
+  }
+}
+
+data bounded_portal_relay_note: String = "The portal relay is BOUNDED: SSH/SOCKS-style forwarding from srv1 through the Pi to the Spark setup portal only. Playwright and secrets stay on srv1; the Pi exposes reach, not a browser runtime."
+
+type PortalRelayTransport
+  = Socks5PortalRelay
+  | SshDynamicForwardPortalRelay
+
+type PortalRelayBound {
+  transport: PortalRelayTransport
+  max_concurrent_sessions: Int
+  allowed_destination_prefix: NonEmptyStr
+}
+
+type BoundedPortalRelay {
+  bind_address: Ipv4Address?
+  bound: PortalRelayBound
+}
+
+type PortalRelayCleanupObservation
+  = PortalRelayCleanupReceipted { receipt_id: NonEmptyStr }
+  | PortalRelayCleanupUnobserved
+
+type PortalRelayCapability {
+  relay: BoundedPortalRelay
+  cleanup: PortalRelayCleanupObservation
+}
+
+data ethernet_preserving_wifi_station_note: String = "Ethernet-preserving: the wired management interface holds the default route. wlan0 operates in station mode for one Spark hotspot association. A Pi still routing over wlan0 is NOT Ready — that is a typed gap, not a warning."
+
+type EthernetPreservingWifiStation {
+  management_uplink_interface: NetworkInterfaceIdentity
+  wifi_station_interface: NetworkInterfaceIdentity
+  relay: BoundedPortalRelay
+}
+
+type ProvisioningControllerRole {
+  host: HostIdentity
+  wifi_station: EthernetPreservingWifiStation
+  catalog: RaspberryPiBootstrapControllerCatalogRow
+}
+
+data bootstrap_controller_reserved: HostIdentity = "bootstrap-controller"
+
+type ProvisioningControllerAdoptionRealization
+  = PreconfiguredImageAdoption
+  | ManualAccountAdoption {
+      disposition: Disposition,
+    }
+
+data manual_account_adoption_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.pi_reach",
+    decl_name: "manual_account_adoption_dissolution_trigger",
+    field: WholeDeclaration,
+  },
+}
+
+data manual_account_adoption_dissolution_trigger: String = "🟡 dissolve-on: ManualAccountAdoption interim realization — PreconfiguredImageAdoption is the PI-REACH-0 wet-path authority; ManualAccountAdoption carries Scaffold disposition only for manual-image admission witnesses not yet subsumed by fleet-managed bootstrap images. DISSOLVES WHEN bootstrap-controller images ship fleet-managed credentials without operator hand-provisioned accounts and the ManualAccountAdoption arm deletes from ProvisioningControllerAdoptionRealization"
+
+type ProvisioningControllerAdoptionRefusalReason
+  = AdoptionNoDiscoveryEvidence
+  | AdoptionDiscoveryAmbiguous { candidate_count: Int }
+  | AdoptionDiscoveryZero
+  | AdoptionHostMismatch { observed_mac: MacAddress, expected_mac: MacAddress? }
+  | AdoptionObservationAbsent
+  | AdoptionBoardModelUnrecognized { model: NonEmptyStr, revision: NonEmptyStr? }
+  | AdoptionCatalogObservationIncomplete { detail: NonEmptyStr }
+
+type ProvisioningControllerAdoptionOutcome
+  = ProvisioningControllerAdopted {
+      role: ProvisioningControllerRole,
+      discovered: LanEndpointObservation,
+      observed: ObservedProvisioningController,
+      realization: ProvisioningControllerAdoptionRealization,
+      authorized_keys: List<SshPublicKey>,
+    }
+  | ProvisioningControllerAdoptionRefused { reason: ProvisioningControllerAdoptionRefusalReason }
+
+fn provisioning_controller_authorized_keys() -> List<SshPublicKey> {
+  fleet_host_authorized_keys()
+}
+
+fn provisioning_controller_catalog_admission(
+  observed: ObservedProvisioningController,
+) -> ProvisioningControllerAdoptionRefusalReason? {
+  let board_family = raspberry_pi_board_family_from_observed(
+    model: observed.hardware.board_model,
+    revision: observed.hardware.board_revision,
+  )
+  match board_family {
+    RaspberryPiBoardUnobserved =>
+      Present {
+        value: AdoptionBoardModelUnrecognized {
+          model: observed.hardware.board_model,
+          revision: observed.hardware.board_revision,
+        },
+      }
+    _ =>
+      match catalog_from_observed_controller(observed: observed) {
+        Present { value: _ } => none
+        Absent =>
+          Present {
+            value: AdoptionCatalogObservationIncomplete {
+              detail: "observed OS, Wi-Fi interface, or network-manager facts insufficient for catalog row" as NonEmptyStr,
+            },
+          }
+      }
+  }
+}
+
+fn admit_provisioning_controller_for_endpoint(
+  identity: HostIdentity,
+  ep: LanEndpointObservation,
+  observed: ObservedProvisioningController?,
+  wifi_station: EthernetPreservingWifiStation,
+  realization: ProvisioningControllerAdoptionRealization,
+  keys: List<SshPublicKey>,
+) -> ProvisioningControllerAdoptionOutcome {
+  match observed {
+    Present { value: obs } =>
+      match provisioning_controller_catalog_admission(observed: obs) {
+        Present { value: reason } =>
+          ProvisioningControllerAdoptionRefused { reason: reason }
+        Absent =>
+          match catalog_from_observed_controller(observed: obs) {
+            Present { value: catalog } =>
+              ProvisioningControllerAdopted {
+                role: ProvisioningControllerRole {
+                  host: identity,
+                  wifi_station: wifi_station,
+                  catalog: catalog,
+                },
+                discovered: ep,
+                observed: obs,
+                realization: realization,
+                authorized_keys: keys,
+              }
+            Absent =>
+              ProvisioningControllerAdoptionRefused {
+                reason: AdoptionCatalogObservationIncomplete {
+                  detail: "catalog row absent after admission check" as NonEmptyStr,
+                },
+              }
+          }
+      }
+    Absent =>
+      ProvisioningControllerAdoptionRefused { reason: AdoptionObservationAbsent }
+  }
+}
+
+fn admit_provisioning_controller_adoption(
+  identity: HostIdentity,
+  discovery: EndpointDiscoveryCardinality,
+  expected_mac: MacAddress?,
+  observed: ObservedProvisioningController?,
+  wifi_station: EthernetPreservingWifiStation,
+  realization: ProvisioningControllerAdoptionRealization,
+) -> ProvisioningControllerAdoptionOutcome {
+  let keys = provisioning_controller_authorized_keys()
+  match discovery {
+    DiscoveryZero => ProvisioningControllerAdoptionRefused { reason: AdoptionDiscoveryZero }
+    DiscoveryMany { candidates: cs } =>
+      ProvisioningControllerAdoptionRefused {
+        reason: AdoptionDiscoveryAmbiguous { candidate_count: count(cs) },
+      }
+    DiscoveryOne { endpoint: ep } =>
+      match expected_mac {
+        Present { value: want } =>
+          if (want as String) != (ep.mac as String) {
+            ProvisioningControllerAdoptionRefused {
+              reason: AdoptionHostMismatch { observed_mac: ep.mac, expected_mac: expected_mac },
+            }
+          } else {
+            admit_provisioning_controller_for_endpoint(
+              identity: identity,
+              ep: ep,
+              observed: observed,
+              wifi_station: wifi_station,
+              realization: realization,
+              keys: keys,
+            )
+          }
+        Absent =>
+          admit_provisioning_controller_for_endpoint(
+            identity: identity,
+            ep: ep,
+            observed: observed,
+            wifi_station: wifi_station,
+            realization: realization,
+            keys: keys,
+          )
+      }
+  }
+}
+
+type RackBootstrapGap
+  = PiEndpointNotObserved
+  | PiEndpointAmbiguous { candidate_count: Int }
+  | RackBindingAbsent
+  | EthernetManagementNotIndependent { default_route: DefaultRouteObservation }
+  | WifiStationCapabilityAbsent
+  | WifiStationBindingAbsent
+  | SparkHotspotNotObserved
+  | WirelessLeaseConflict { interface: NetworkInterfaceIdentity, holder_count: Int }
+  | PortalRelayAbsent
+  | PortalRelayCleanupGapUnobserved
+  | SensitiveInputPolicyViolation
+  | ObservationIncomplete { detail: NonEmptyStr }
+
+type RackBootstrapControllerReadyFacts {
+  controller: PhysicalAssetIdentity
+  rack: RackIdentity
+  management_endpoint: EndpointBindingIdentity
+  wireless_interface: NetworkInterfaceIdentity
+  browser_relay: PortalRelayCapability
+}
+
+type AllocatedBootstrapIdentities {
+  controller: PhysicalAssetIdentity
+  rack: RackIdentity
+  management_endpoint: EndpointBindingIdentity
+}
+
+type RackBootstrapControllerStanding
+  = RackBootstrapControllerReady { facts: RackBootstrapControllerReadyFacts }
+  | RackBootstrapControllerGapped { gaps: List<RackBootstrapGap> }
+  | RackBootstrapControllerUnobserved
+
+fn default_route_on_wifi_is_gap(
+  route: DefaultRouteObservation,
+  wifi_interface: NetworkInterfaceIdentity,
+) -> Bool {
+  match route {
+    DefaultRouteViaInterface { interface: iface } =>
+      (iface as String) == (wifi_interface as String)
+    DefaultRouteUnobserved => false
+  }
+}
+
+fn management_route_is_ethernet(
+  route: DefaultRouteObservation,
+  management_interface: NetworkInterfaceIdentity,
+) -> Bool {
+  match route {
+    DefaultRouteViaInterface { interface: iface } =>
+      (iface as String) == (management_interface as String)
+    DefaultRouteUnobserved => false
+  }
+}
+
+fn discovery_gap(discovery: EndpointDiscoveryCardinality) -> RackBootstrapGap? {
+  match discovery {
+    DiscoveryZero => Present { value: PiEndpointNotObserved }
+    DiscoveryMany { candidates: cs } =>
+      Present { value: PiEndpointAmbiguous { candidate_count: count(cs) } }
+    DiscoveryOne { endpoint: _ } => none
+  }
+}
+
+fn gaps_from_discovery(discovery: EndpointDiscoveryCardinality) -> List<RackBootstrapGap> {
+  match discovery_gap(discovery: discovery) {
+    Present { value: g } => [g]
+    Absent => []
+  }
+}
+
+fn gaps_from_rack_binding(rack: RackIdentity?) -> List<RackBootstrapGap> {
+  match rack {
+    Absent => [RackBindingAbsent]
+    Present { value: _ } => []
+  }
+}
+
+fn gaps_from_default_route(
+  route: DefaultRouteObservation,
+  wifi_station: EthernetPreservingWifiStation?,
+) -> List<RackBootstrapGap> {
+  match wifi_station {
+    Absent => []
+    Present { value: ws } =>
+      if default_route_on_wifi_is_gap(route: route, wifi_interface: ws.wifi_station_interface)
+        || !management_route_is_ethernet(
+          route: route,
+          management_interface: ws.management_uplink_interface,
+        )
+      {
+        [EthernetManagementNotIndependent { default_route: route }]
+      } else {
+        []
+      }
+  }
+}
+
+fn gaps_from_observed_controller(
+  observed: ObservedProvisioningController?,
+  wifi_station: EthernetPreservingWifiStation?,
+) -> List<RackBootstrapGap> {
+  match observed {
+    Absent => [ObservationIncomplete { detail: "controller not observed" as NonEmptyStr }]
+    Present { value: obs } =>
+      concat(
+        gaps_from_default_route(route: obs.default_route, wifi_station: wifi_station),
+        match wifi_station {
+          Absent => [WifiStationBindingAbsent]
+          Present { value: _ } => []
+        },
+        match obs.wifi_station_capability {
+          WifiStationCapabilityPresentObserved => []
+          WifiStationCapabilityAbsentObserved => [WifiStationCapabilityAbsent]
+          WifiStationCapUnobserved => [WifiStationCapabilityAbsent]
+        },
+        match catalog_from_observed_controller(observed: obs) {
+          Present { value: catalog } =>
+            match catalog.wifi_station_capability {
+              WifiStationModeDocumented => []
+              WifiStationCapabilityUnobserved => [WifiStationCapabilityAbsent]
+            }
+          Absent => [WifiStationCapabilityAbsent]
+        },
+      )
+  }
+}
+
+fn gaps_from_hotspot(hotspot: SparkHotspotObservation) -> List<RackBootstrapGap> {
+  match hotspot {
+    SparkHotspotPresent { ssid: _, observed_on: _ } => []
+    SparkHotspotAbsent => [SparkHotspotNotObserved]
+    SparkHotspotUnobserved => [SparkHotspotNotObserved]
+  }
+}
+
+fn gaps_from_lease(lease: WirelessInterfaceLease) -> List<RackBootstrapGap> {
+  match lease {
+    WirelessInterfaceLeaseConflict { interface: iface, holders: hs } =>
+      [WirelessLeaseConflict { interface: iface, holder_count: count(hs) }]
+    WirelessInterfaceUnleased => []
+    WirelessInterfaceLeased { interface: _, holder: _ } => []
+  }
+}
+
+fn gaps_from_relay(relay: PortalRelayCapability?) -> List<RackBootstrapGap> {
+  match relay {
+    Absent => [PortalRelayAbsent]
+    Present { value: r } =>
+      match r.cleanup {
+        PortalRelayCleanupReceipted { receipt_id: _ } => []
+        PortalRelayCleanupUnobserved => [PortalRelayCleanupGapUnobserved]
+      }
+  }
+}
+
+fn collect_rack_bootstrap_gaps(
+  discovery: EndpointDiscoveryCardinality,
+  rack: RackIdentity?,
+  observed: ObservedProvisioningController?,
+  wifi_station: EthernetPreservingWifiStation?,
+  hotspot: SparkHotspotObservation,
+  lease: WirelessInterfaceLease,
+  relay: PortalRelayCapability?,
+) -> List<RackBootstrapGap> {
+  concat(
+    gaps_from_discovery(discovery: discovery),
+    concat(
+      gaps_from_rack_binding(rack: rack),
+      concat(
+        gaps_from_observed_controller(observed: observed, wifi_station: wifi_station),
+        concat(
+          gaps_from_hotspot(hotspot: hotspot),
+          concat(
+            gaps_from_lease(lease: lease),
+            gaps_from_relay(relay: relay),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+fn admit_rack_bootstrap_controller_standing(
+  discovery: EndpointDiscoveryCardinality,
+  allocated: AllocatedBootstrapIdentities?,
+  observed: ObservedProvisioningController?,
+  wifi_station: EthernetPreservingWifiStation?,
+  hotspot: SparkHotspotObservation,
+  lease: WirelessInterfaceLease,
+  relay: PortalRelayCapability?,
+) -> RackBootstrapControllerStanding {
+  let gaps = collect_rack_bootstrap_gaps(
+    discovery: discovery,
+    rack: match allocated {
+      Present { value: a } => Present { value: a.rack }
+      Absent => none
+    },
+    observed: observed,
+    wifi_station: wifi_station,
+    hotspot: hotspot,
+    lease: lease,
+    relay: relay,
+  )
+  if count(gaps) == 0 {
+    match observed {
+      Present { value: obs } =>
+        match allocated {
+          Present { value: ids } =>
+            match wifi_station {
+              Present { value: ws } =>
+                match relay {
+                  Present { value: relay_cap } =>
+                    match obs.asset {
+                      Present { value: asset } =>
+                        if (asset as String) == (ids.controller as String) {
+                          RackBootstrapControllerReady {
+                            facts: RackBootstrapControllerReadyFacts {
+                              controller: ids.controller,
+                              rack: ids.rack,
+                              management_endpoint: ids.management_endpoint,
+                              wireless_interface: ws.wifi_station_interface,
+                              browser_relay: relay_cap,
+                            },
+                          }
+                        } else {
+                          RackBootstrapControllerGapped {
+                            gaps: [ObservationIncomplete { detail: "observed asset does not match allocated controller identity" as NonEmptyStr }],
+                          }
+                        }
+                      Absent =>
+                        RackBootstrapControllerGapped {
+                          gaps: [ObservationIncomplete { detail: "asset identity unobserved" as NonEmptyStr }],
+                        }
+                    }
+                  Absent => RackBootstrapControllerGapped { gaps: gaps }
+                }
+              Absent => RackBootstrapControllerGapped { gaps: gaps }
+            }
+          Absent => RackBootstrapControllerGapped { gaps: [RackBindingAbsent] }
+        }
+      Absent => RackBootstrapControllerGapped { gaps: gaps }
+    }
+  } else {
+    RackBootstrapControllerGapped { gaps: gaps }
+  }
+}
+
+fn admit_known_endpoint_bootstrap_standing(
+  subject: KnownEndpointAdoptionSubject,
+  allocated: AllocatedBootstrapIdentities?,
+  observed: ObservedProvisioningController?,
+  wifi_station: EthernetPreservingWifiStation?,
+  hotspot: SparkHotspotObservation,
+  lease: WirelessInterfaceLease,
+  relay: PortalRelayCapability?,
+) -> RackBootstrapControllerStanding {
+  let discovery = DiscoveryOne {
+    endpoint: LanEndpointObservation {
+      mac: subject.expected_mac,
+      ipv4: Present { value: subject.operator_observed_wifi_endpoint },
+      hostname: none,
+      probed_at: "known-endpoint" as NonEmptyStr,
+    },
+  }
+  admit_rack_bootstrap_controller_standing(
+    discovery: discovery,
+    allocated: allocated,
+    observed: observed,
+    wifi_station: wifi_station,
+    hotspot: hotspot,
+    lease: lease,
+    relay: relay,
+  )
+}

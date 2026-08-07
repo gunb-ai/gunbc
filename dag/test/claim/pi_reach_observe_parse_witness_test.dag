@@ -1,0 +1,142 @@
+module test.claim.pi_reach_observe_parse_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, NonEmptyStr }
+import extdeps.ssh { SshPublicKey, Ed25519, ssh_public_key_line }
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
+import gunbc.pi_reach_observe {
+  pi_reach_parse_default_route,
+  pi_reach_parse_route_to_srv1_interface,
+  pi_reach_parse_fleet_key,
+  pi_reach_parse_ethernet_ipv4,
+  pi_reach_split_transport_output,
+  FleetKeyPresent,
+  FleetKeyAbsent,
+  DefaultRouteViaInterface,
+  DefaultRouteUnobserved,
+  PiReachSplitTransportDecodeRefused,
+}
+import extdeps.network.ipv4 { render_ipv4_address }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fixture_stdout_route_sections: String = concat(
+  "===ROUTE_GET===\n",
+  concat(
+    "[{\"dst\":\"192.168.1.185\",\"dev\":\"eth0\"}]\n",
+    concat(
+      "===DEFAULT_ROUTE===\n",
+      "[{\"dst\":\"default\",\"gateway\":\"192.168.1.1\",\"dev\":\"wlan0\"}]\n",
+    ),
+  ),
+)
+
+data fixture_stdout_eth0_ipv4: String = concat(
+  "===IP_ADDR===\n",
+  "[{\"ifname\":\"eth0\",\"addr_info\":[{\"family\":\"inet\",\"local\":\"192.168.1.50\",\"prefixlen\":24}]}]\n",
+)
+
+data fixture_stdout_auth_keys_ten_lines: String = concat(
+  "===AUTH_KEYS===\n",
+  concat(
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc\n",
+    concat(
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc\n",
+      concat(
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc\n",
+        concat(
+          "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc\n",
+          concat(
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc\n",
+            concat(
+              "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc\n",
+              concat(
+                "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc\n",
+                concat(
+                  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc\n",
+                  concat(
+                    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc\n",
+                    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc\n",
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  ),
+)
+
+test fn witness_default_route_reads_default_route_section_only() -> Bool {
+  match pi_reach_parse_default_route(stdout: fixture_stdout_route_sections) {
+    DefaultRouteViaInterface { interface: iface } => (iface as String) == "wlan0"
+    DefaultRouteUnobserved => false
+  }
+}
+
+test fn witness_route_to_srv1_reads_route_get_section_only() -> Bool {
+  match pi_reach_parse_route_to_srv1_interface(stdout: fixture_stdout_route_sections) {
+    Present { value: iface } => (iface as String) == "eth0"
+    Absent => false
+  }
+}
+
+test fn witness_ethernet_ipv4_extracts_eth0_inet_local() -> Bool {
+  match pi_reach_parse_ethernet_ipv4(stdout: fixture_stdout_eth0_ipv4) {
+    Present { value: addr } => (render_ipv4_address(addr: addr) as String) == "192.168.1.50"
+    Absent => false
+  }
+}
+
+test fn witness_fleet_key_membership_matches_exact_public_material_not_grep_count() -> Bool {
+  pi_reach_parse_fleet_key(stdout: fixture_stdout_auth_keys_ten_lines) == FleetKeyPresent
+}
+
+test fn witness_split_transport_missing_markers_refuses_not_absorbs() -> Bool {
+  match pi_reach_split_transport_output(combined: "no markers here") {
+    PiReachSplitTransportDecodeRefused { detail: detail } =>
+      string_contains(s: detail as String, pattern: "PiObserveObservationDecodeRefused")
+    _ => false
+  }
+}
+
+test fn witness_split_transport_stdout_without_exit_refuses_truncation() -> Bool {
+  match pi_reach_split_transport_output(combined: "===PI_STDOUT===\nfoo\n") {
+    PiReachSplitTransportDecodeRefused { detail: detail } =>
+      string_contains(s: detail as String, pattern: "===PI_EXIT===")
+    _ => false
+  }
+}
+
+test fn witness_split_transport_captures_nonzero_exit_code() -> Bool {
+  let combined = concat(
+    "===PI_STDOUT===\n",
+    concat(
+      "probe failed\n",
+      concat(
+        "===PI_STDERR===\n",
+        concat(
+          "permission denied\n",
+          "===PI_EXIT===\n5\n",
+        ),
+      ),
+    ),
+  )
+  match pi_reach_split_transport_output(combined: combined) {
+    PiReachSplitTransportDecoded { stdout: _, stderr: _, exit_code: exit_code } => exit_code == 5
+    _ => false
+  }
+}
+
+test fn witness_fleet_key_membership_absent_without_exact_material() -> Bool {
+  let wrong_key = SshPublicKey {
+    algorithm: Ed25519,
+    material: "AAAAC3NzaC1lZDI1NTE5AAAAIWRPTkdLRVlfTUFURVJJQUwK" as NonEmptyStr,
+    comment: "wrong",
+  }
+  pi_reach_parse_fleet_key(stdout: "===AUTH_KEYS===\n1\n") == FleetKeyAbsent
+    && pi_reach_parse_fleet_key(
+      stdout: concat("===AUTH_KEYS===\n", ssh_public_key_line(k: wrong_key)),
+    ) == FleetKeyAbsent
+}

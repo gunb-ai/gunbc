@@ -1,0 +1,155 @@
+module extdeps.systems.raspberry_pi
+
+import std.types { NonEmptyStr, Bool, List, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.raspberry_pi { raspberry_pi }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.toolchain.types { Architecture, Armv7, Aarch64 }
+
+data pi_reach_vendor_surface_note: String = "PI-REACH-0 (2026-08-07). What Raspberry Pi DOCUMENTS about the product class the rack bootstrap controller belongs to — hardware shape, supported operating systems, and station-mode Wi-Fi capability for associating with a downstream provisioning hotspot without displacing the wired management path. Separate from gunbc.pi_reach because this is the vendor/setup surface and that module is fleet intent, discovery, and adoption; they version independently."
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.raspberrypi.com/documentation/computers/configuration.html",
+  }
+}
+
+data raspberry_pi_wifi_station_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.raspberrypi.com/documentation/computers/configuration.html#setting-up-your-country",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.systems.raspberry_pi",
+      decl_name: "catalog_row_from_observed_board",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [raspberry_pi_wifi_station_authority],
+}
+
+type RaspberryPiBoardFamily
+  = RaspberryPi3ModelBPlus
+  | RaspberryPi4ModelB
+  | RaspberryPi5
+  | RaspberryPiBoardUnobserved
+
+type RaspberryPiOsProduct
+  = RaspberryPiOsBookworm
+  | RaspberryPiOsProductUnobserved
+
+data wifi_station_capability_note: String = "Station mode on wlan0 associates with a Spark hotspot for provisioning while eth0 keeps the management default route. A single-radio Pi that still routes over wlan0 is NOT ready — association would displace the management path."
+
+type WifiStationCapability
+  = WifiStationModeDocumented
+  | WifiStationCapabilityUnobserved
+
+type NetworkManagerAvailability
+  = NetworkManagerPresent
+  | NetworkManagerAbsent
+  | NetworkManagerUnobserved
+
+type RaspberryPiBootstrapControllerCatalogRow {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  architecture: Architecture
+  board_family: RaspberryPiBoardFamily
+  os_product: RaspberryPiOsProduct
+  wifi_station_capability: WifiStationCapability
+  network_manager: NetworkManagerAvailability
+}
+
+fn catalog_row_from_observed_board(
+  model: NonEmptyStr,
+  board_family: RaspberryPiBoardFamily,
+  os_product: RaspberryPiOsProduct,
+  wifi_station: WifiStationCapability,
+  network_manager: NetworkManagerAvailability,
+  running_architecture: Architecture,
+) -> RaspberryPiBootstrapControllerCatalogRow? {
+  match board_family {
+    RaspberryPiBoardUnobserved => none
+    _ =>
+      Present {
+        value: RaspberryPiBootstrapControllerCatalogRow {
+          vendor: raspberry_pi,
+          model: model,
+          architecture: running_architecture,
+          board_family: board_family,
+          os_product: os_product,
+          wifi_station_capability: wifi_station,
+          network_manager: network_manager,
+        },
+      }
+  }
+}
+
+data raspberry_pi_board_revision_mapping_note: String = "Revision hex from /proc/cpuinfo mapped to board family per Raspberry Pi hardware documentation. Unlisted revision codes refuse at RaspberryPiBoardUnobserved rather than guessing."
+
+fn raspberry_pi_revision_hex_normalized(revision: NonEmptyStr) -> String {
+  trim(revision as String)
+}
+
+fn raspberry_pi_board_family_from_revision(revision: NonEmptyStr) -> RaspberryPiBoardFamily? {
+  let rev = raspberry_pi_revision_hex_normalized(revision: revision)
+  if rev == (raspberry_pi3_model_b_plus_revision_a020d3 as String) {
+    Present { value: RaspberryPi3ModelBPlus }
+  } else {
+    none
+  }
+}
+
+data raspberry_pi3_model_b_plus_revision_a020d3: NonEmptyStr = "a020d3"
+
+data raspberry_pi3_model_b_plus_device_tree_base: NonEmptyStr = "Raspberry Pi 3 Model B Plus"
+data raspberry_pi4_model_b_device_tree_base: NonEmptyStr = "Raspberry Pi 4 Model B"
+data raspberry_pi5_model_b_device_tree_base: NonEmptyStr = "Raspberry Pi 5 Model B"
+
+data raspberry_pi_device_tree_model_roster_note: String = "Board family from /proc/device-tree/model uses exact base strings (suffix ' Rev …' stripped) per Raspberry Pi hardware documentation — substring classification refused because 'Raspberry Pi 400' falsely matched 'Raspberry Pi 4' and CM variants were ambiguous."
+
+fn raspberry_pi_device_tree_model_base(model: String) -> String {
+  match split(s: model, delimiter: " Rev") |> first {
+    Present { value: base } => trim(s: base)
+    Absent => trim(s: model)
+  }
+}
+
+fn raspberry_pi_board_family_from_model(model: NonEmptyStr) -> RaspberryPiBoardFamily? {
+  let base = raspberry_pi_device_tree_model_base(model: model as String)
+  if base == (raspberry_pi3_model_b_plus_device_tree_base as String) {
+    Present { value: RaspberryPi3ModelBPlus }
+  } else if base == (raspberry_pi4_model_b_device_tree_base as String) {
+    Present { value: RaspberryPi4ModelB }
+  } else if base == (raspberry_pi5_model_b_device_tree_base as String) {
+    Present { value: RaspberryPi5 }
+  } else {
+    none
+  }
+}
+
+fn raspberry_pi_board_family_from_observed(
+  model: NonEmptyStr,
+  revision: NonEmptyStr?,
+) -> RaspberryPiBoardFamily {
+  match revision {
+    Present { value: rev } =>
+      match raspberry_pi_board_family_from_revision(revision: rev) {
+        Present { value: family } => family
+        Absent => RaspberryPiBoardUnobserved
+      }
+    Absent =>
+      match raspberry_pi_board_family_from_model(model: model) {
+        Present { value: family } => family
+        Absent => RaspberryPiBoardUnobserved
+      }
+  }
+}

@@ -1,0 +1,58 @@
+name: Adopt rack Pi
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  adopt_rack_pi:
+    name: Adopt rack Pi
+    runs-on: [self-hosted, linux, arm64, srv1]
+    timeout-minutes: 360
+    if: github.actor == 'briansrls'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Build gunbc
+        id: build_gunbc
+        run: cargo build -p v1-compiler --bin gunbc --release
+      - name: Authenticate to GCP (fleet-automation WIF)
+        id: gcp_auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
+          service_account: fleet-automation@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: "false"
+          export_environment_variables: "false"
+      - name: Observe rack Pi (read-only)
+        id: pi_observe
+        run: |
+          set -euo pipefail
+          umask 077
+          WORKDIR=$(mktemp -d /tmp/pi-observe-XXXXXX)
+          KEY="$WORKDIR/fleet_key"
+          KH="$WORKDIR/known_hosts"
+          mkdir -p pi-observe-receipt
+          cleanup() { rm -rf "$WORKDIR"; }
+          trap cleanup EXIT HUP INT TERM
+          export PI_OBSERVE_WORK_DIR="$WORKDIR" PI_OBSERVE_KEY_PATH="$KEY" PI_OBSERVE_KNOWN_HOSTS_PATH="$KH"
+          ./target/release/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/pi_reach_observe.dag --function pi_reach_write_fleet_ssh_key_to_path --arg key_path="$KEY"
+          chmod 600 "$KEY"
+          EXPECTED='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc'
+          DERIVED=$(ssh-keygen -y -f "$KEY" 2>/dev/null | head -n1)
+          [ "$(echo "$DERIVED" | awk '{print $1,$2}')" = "$(echo "$EXPECTED" | awk '{print $1,$2}')" ]
+          ./target/release/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/pi_reach_observe.dag --function pi_reach_observe_dispatch_and_write_receipt --arg receipt_path="pi-observe-receipt/receipt.json"
+          trap - EXIT HUP INT TERM
+          rm -rf "$WORKDIR"
+          test ! -e "$KEY" && test ! -e "$KH" && test ! -d "$WORKDIR"
+        env:
+          FLEET_AUTOMATION_ACCESS_TOKEN: ${{ steps.gcp_auth.outputs.access_token }}
+      - name: Upload Pi observe receipt artifact
+        id: upload_receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-observe-receipt
+          path: pi-observe-receipt/receipt.json
+          if-no-files-found: error
+

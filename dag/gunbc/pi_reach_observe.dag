@@ -1,0 +1,1577 @@
+module gunbc.pi_reach_observe
+
+import std.types { NonEmptyStr, String, Bool, Int, List, Secret }
+import std.resources { Network }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address, parse_ipv4_address, Ipv4Parsed }
+import extdeps.dhcp.v4 { MacAddress }
+import extdeps.toolchain.types { Architecture, Armv7, Aarch64 }
+import extdeps.ssh { SshPublicKey, ssh_public_key_line }
+import extdeps.netplan.netplan { NetworkManager }
+import extdeps.shell.exec { TransportScript }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.fleet_ssh_access {
+  fleet_automation_ssh_key,
+  fleet_automation_ssh_privkey_secret,
+}
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.ci_deploy_target_host { runner_name_proves_host_identity }
+import gunbc.pi_observe_button {
+  pi_observe_dispatch_allowed_actor,
+  pi_observe_wif_binding_refusal,
+  pi_observe_wif_federated_token_refusal,
+  pi_observe_fleet_access_token_env,
+}
+import gunbc.auth.secret_ref_credential {
+  SecretCredentialReady,
+  SecretCredentialAccessUpsertRequired,
+  SecretCredentialFetchRefused,
+  SecretCredentialWireDecodeRefused,
+  fetch_secret_ref_credential,
+}
+import gunbc.auth.access_token_source {
+  WorkflowEnvAccessToken,
+}
+import extdeps.shell
+import gunbc.pi_reach {
+  KnownEndpointAdoptionSubject,
+  ObservedProvisioningController,
+  ObservedControllerHardware,
+  BoardSerialNumber,
+  ObservedControllerOs,
+  ObservedControllerInterfaces,
+  ObservedRunningArchitecture,
+  RunningArchitectureObserved,
+  RunningArchitectureUnobserved,
+  ObservedWifiStationCapability,
+  WifiStationCapabilityPresentObserved,
+  WifiStationCapabilityAbsentObserved,
+  WifiStationCapUnobserved,
+  DefaultRouteObservation,
+  DefaultRouteViaInterface,
+  DefaultRouteUnobserved,
+  NetworkManagerObservation,
+  NetworkManagerRendererObserved,
+  NetworkManagerAbsentObserved,
+  NetworkManagerObsUnobserved,
+  SshHostKeyFingerprint,
+  NetworkInterfaceIdentity,
+}
+
+data pi_reach_observe_authority_note: String = "PI-REACH-0 observe producer (2026-08-07). Execution locus is srv1 via adopt-rack-pi workflow_dispatch. Workflow-local shell bracket (umask 077, mktemp, trap) materializes fleet-automation-ssh-key before gunbc runs; gunbc reads PI_OBSERVE_KEY_PATH / PI_OBSERVE_KNOWN_HOSTS_PATH / PI_OBSERVE_WORK_DIR from env. Secret fetch uses #7995 decode_sm_access_version_wire_response via fetch_secret_ref_credential. Pi SSH uses briansrls@192.168.1.197 with attempt-scoped known_hosts."
+
+type PiObserveKeyPaths {
+  work_dir: String
+  key_path: String
+  known_hosts_path: String
+}
+
+type CleanupStanding
+  = CleanupObservedAbsent
+  | CleanupObservedPresent
+  | CleanupUnobserved
+  | CleanupNotApplicable
+
+data pi_observe_workflow_key_env_note: String = "Workflow bracket exports PI_OBSERVE_WORK_DIR, PI_OBSERVE_KEY_PATH, PI_OBSERVE_KNOWN_HOSTS_PATH before pi_reach_observe_dispatch. pi_reach_write_fleet_ssh_key_to_path runs in the same shell after umask 077 so file creation inherits mode."
+
+type PiReachJsonQuotedFieldRead
+  = PiReachJsonQuotedFieldPresent { value: String }
+  | PiReachJsonQuotedFieldAbsent
+  | PiReachJsonQuotedFieldUnparseable
+
+fn pi_reach_extract_quoted_value_after_needle(body: String, needle: String) -> String? {
+  match split(s: body, delimiter: needle) |> skip(n: 1) |> first {
+    Present { value: after } =>
+      match split(s: after, delimiter: "\"") |> first {
+        Present { value: extracted } => Present { value: extracted }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn pi_reach_extract_json_quoted_field(body: String, field: String) -> PiReachJsonQuotedFieldRead {
+  let compact_needle = concat(concat("\"", concat(field, "\":\"")), "")
+  let spaced_needle = concat(concat("\"", concat(field, "\": \"")), "")
+  if string_contains(s: body, pattern: compact_needle) {
+    match pi_reach_extract_quoted_value_after_needle(body: body, needle: compact_needle) {
+      Present { value: extracted } => PiReachJsonQuotedFieldPresent { value: extracted }
+      Absent => PiReachJsonQuotedFieldUnparseable
+    }
+  } else if string_contains(s: body, pattern: spaced_needle) {
+    match pi_reach_extract_quoted_value_after_needle(body: body, needle: spaced_needle) {
+      Present { value: extracted } => PiReachJsonQuotedFieldPresent { value: extracted }
+      Absent => PiReachJsonQuotedFieldUnparseable
+    }
+  } else if string_contains(s: body, pattern: concat("\"", concat(field, "\""))) {
+    PiReachJsonQuotedFieldUnparseable
+  } else {
+    PiReachJsonQuotedFieldAbsent
+  }
+}
+
+data pi_reach_observe_transport_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.pi_reach_observe",
+    decl_name: "pi_reach_observe_transport_dissolution_trigger",
+    field: WholeDeclaration,
+  },
+}
+
+data pi_reach_observe_transport_dissolution_trigger: String = "🟡 dissolve-on: pi_reach_observe transport — pi_reach_observe_transport_script written to $WORK/transport.sh plus minimal bash launcher on shell.Exec.Run stdin (stdin-contamination fix); remote body in pi_reach_observe_remote_script via ssh heredoc; marker framing (===PI_STDOUT===/===PI_STDERR===/===PI_EXIT===). DISSOLVES WHEN host_effect_apply binds Pi SSH observe (keyscan, liveness, remote observe, framed capture) as typed transport and dag/gunbc/pi_reach_observe.dag retires concat TransportScript + shell.Exec.Run glue"
+
+data pi_reach_observe_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.pi_reach_observe",
+    decl_name: "pi_reach_observe_remote_script",
+    field: WholeDeclaration,
+  },
+}
+
+type PiObserveAttemptId { hash: ContentHash }
+type PiObserveRawStdoutId { hash: ContentHash }
+type PiObserveRawStderrId { hash: ContentHash }
+type PiObserveReceiptId { hash: ContentHash }
+
+data pi_observe_content_hash_id_note: String = "PiObserve*Id carriers wrap ContentHash in a record (not brand-over-coproduct). Construction: PiObserveAttemptId { hash: content_hash_of_value(...) }. Serialization: serialize_content_hash(hash: id.hash). Equality: compare_content_hash(left: a.hash, right: b.hash) — never bare == on the union. Precedent note: ExecutionReceiptDigest (cache_identity.dag) brands ContentHash but has zero computed inhabitants — only a string literal witness; that hollow pattern is NOT copied here."
+
+type PiObserveExecutionLocus
+  = PiObserveOnSrv1
+  | PiObserveOnWorker
+
+type PiObserveProcessTermination
+  = ProcessExited { exit_code: Int }
+  | ProcessSignaled { signal: Int }
+  | ProcessNotStarted
+
+type PiObserveTransportCause
+  = TargetAuthenticationRefused { detail: NonEmptyStr }
+  | TargetUnreachable { detail: NonEmptyStr }
+  | TargetHostKeyMismatch { detail: NonEmptyStr }
+
+type HumanInterventionFrequency
+  = FleetOnce {}
+
+type PiObserveHumanIntervention
+  = FleetAutomationWifBindingIntervention { intervention: HumanInterventionFrequency }
+
+type FleetAutomationWifStanding
+  = FleetAutomationWifReady
+  | FleetAutomationWifBindingRequired { intervention: HumanInterventionFrequency }
+  | FleetAutomationWifRefused { cause: NonEmptyStr }
+
+data pi_observe_human_intervention_frequency_fork_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.human_intervention",
+    decl_name: "HumanInterventionFrequency",
+    field: WholeDeclaration,
+  },
+}
+
+data pi_observe_human_intervention_frequency_fork_note: String = "LOCAL FORK of HumanInterventionFrequency.FleetOnce only — dissolves when #7950 (sharp-bee-573) lands std.human_intervention as single authority. Do not add variants or consumers here; import std.human_intervention after #7950 merges."
+
+type PiObserveHostKeyBindingReceipt {
+  attempt_id: PiObserveAttemptId
+  subject: KnownEndpointAdoptionSubject
+  expected_neighbor_mac: MacAddress
+  observed_ssh_host_key: SshHostKeyFingerprint
+  known_hosts_path_digest: ContentHash
+}
+
+type PiObserveSudoStanding
+  = SudoNopasswdReady
+  | SudoNopasswdAbsent
+  | SudoStandingUnobserved
+
+type PiObserveFleetKeyMembership
+  = FleetKeyPresent
+  | FleetKeyAbsent
+  | FleetKeyMembershipUnobserved
+
+type PiObserveRawProcessReceipt {
+  attempt_id: PiObserveAttemptId
+  probed_at: NonEmptyStr
+  execution_locus: PiObserveExecutionLocus
+  requested_subject: KnownEndpointAdoptionSubject
+  stdout_id: PiObserveRawStdoutId?
+  stderr_id: PiObserveRawStderrId?
+  termination: PiObserveProcessTermination
+  raw_evidence_digest: ContentHash
+}
+
+type PiObserveDecodedFacts {
+  ethernet_ipv4: Ipv4Address?
+  route_to_srv1_interface: NonEmptyStr?
+  default_route_interface: NonEmptyStr?
+  fleet_key_membership: PiObserveFleetKeyMembership
+  sudo_standing: PiObserveSudoStanding
+  observed_controller: ObservedProvisioningController?
+}
+
+type PiReachObservePass {
+  receipt_id: PiObserveReceiptId
+  raw: PiObserveRawProcessReceipt
+  decoded: PiObserveDecodedFacts
+  resolved_secret_version: NonEmptyStr
+  host_key_binding: PiObserveHostKeyBindingReceipt?
+  ssh_key_file_cleanup: CleanupStanding
+  known_hosts_cleanup: CleanupStanding
+}
+
+type PiReachObserveRefused {
+  cause_detail: NonEmptyStr
+  execution_locus: PiObserveExecutionLocus
+  termination: PiObserveProcessTermination
+  raw: PiObserveRawProcessReceipt?
+  ssh_key_file_cleanup: CleanupStanding
+  known_hosts_cleanup: CleanupStanding
+}
+
+type PiReachObserveOutcome
+  = PiObservationDecoded { pass: PiReachObservePass }
+  | PiAdoptionGapped { pass: PiReachObservePass, gaps: List<NonEmptyStr> }
+  | PiAdoptionReady { pass: PiReachObservePass }
+  | PiObserveRefused { refused: PiReachObserveRefused }
+  | PiObserveHumanInterventionRequired {
+      attempt: PiObserveAttemptId,
+      intervention: PiObserveHumanIntervention,
+    }
+
+data pi_reach_known_endpoint_subject: KnownEndpointAdoptionSubject = KnownEndpointAdoptionSubject {
+  operator_observed_wifi_endpoint: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 197),
+  expected_mac: "b8:27:eb:73:7c:5b" as MacAddress,
+  fleet_account: "briansrls",
+  access_authority: fleet_automation_ssh_key,
+}
+
+fn pi_reach_probe_attempt_timestamp() -> NonEmptyStr {
+  let ts_run = shell.Exec.Run(script: "date -u +%Y-%m-%dT%H:%M:%SZ" as TransportScript)
+  trim(s: ts_run.stdout) as NonEmptyStr
+}
+
+fn pi_reach_attempt_id_from_timestamp(ts: NonEmptyStr) -> PiObserveAttemptId {
+  PiObserveAttemptId {
+    hash: content_hash_of_value(value: ts),
+  }
+}
+
+fn pi_reach_observe_dispatch_runner_name() -> String {
+  let env = shell.Env.Get(name: "RUNNER_NAME" as NonEmptyStr)
+  match env.value {
+    Present { value: raw } => trim(s: raw)
+    Absent => ""
+  }
+}
+
+fn pi_reach_observe_dispatch_actor() -> String {
+  let env = shell.Env.Get(name: "GITHUB_ACTOR" as NonEmptyStr)
+  match env.value {
+    Present { value: raw } => trim(s: raw)
+    Absent => ""
+  }
+}
+
+fn pi_reach_verify_srv1_execution_locus(runner_name: String) -> Bool {
+  runner_name_proves_host_identity(runner_name: runner_name, host: operator_host_srv1)
+}
+
+fn pi_reach_classify_fleet_wif_standing_from_credential_refusal(
+  reason: NonEmptyStr,
+) -> FleetAutomationWifStanding {
+  if pi_observe_wif_binding_refusal(reason: reason) {
+    FleetAutomationWifBindingRequired { intervention: FleetOnce {} }
+  } else if pi_observe_wif_federated_token_refusal(reason: reason) {
+    FleetAutomationWifRefused {
+      cause: concat(
+        concat(
+          "PiObserveFleetCredentialRefused: workflow must set token_format access_token and bind steps.gcp_auth.outputs.access_token (not auth_token): ",
+          reason as String,
+        ),
+        "",
+      ) as NonEmptyStr,
+    }
+  } else {
+    FleetAutomationWifRefused {
+      cause: concat("PiObserveFleetCredentialRefused: ", reason as String) as NonEmptyStr,
+    }
+  }
+}
+
+fn pi_reach_classify_fleet_wif_standing_from_access_token_refusal(
+  reason: NonEmptyStr,
+) -> FleetAutomationWifStanding {
+  if string_contains(s: reason as String, pattern: "WorkflowEnvAccessToken missing env") {
+    FleetAutomationWifRefused {
+      cause: concat(
+        concat(
+          "PiObserveFleetWifRefused: workflow did not bind steps.gcp_auth.outputs.access_token into ",
+          pi_observe_fleet_access_token_env as String,
+        ),
+        "",
+      ) as NonEmptyStr,
+    }
+  } else {
+    pi_reach_classify_fleet_wif_standing_from_credential_refusal(reason: reason)
+  }
+}
+
+fn pi_reach_outcome_from_fleet_wif_standing(
+  attempt_id: PiObserveAttemptId,
+  standing: FleetAutomationWifStanding,
+) -> PiReachObserveOutcome {
+  match standing {
+    FleetAutomationWifReady =>
+      PiObserveRefused {
+        refused: PiReachObserveRefused {
+          cause_detail: "PiObserveFleetWifInternalRefused: ready standing on refusal path" as NonEmptyStr,
+          execution_locus: PiObserveOnSrv1,
+          termination: ProcessNotStarted,
+          raw: none,
+          ssh_key_file_cleanup: CleanupNotApplicable,
+          known_hosts_cleanup: CleanupNotApplicable,
+        },
+      }
+    FleetAutomationWifBindingRequired { intervention: intervention } =>
+      PiObserveHumanInterventionRequired {
+        attempt: attempt_id,
+        intervention: FleetAutomationWifBindingIntervention {
+          intervention: intervention,
+        },
+      }
+    FleetAutomationWifRefused { cause: cause } =>
+      PiObserveRefused {
+        refused: PiReachObserveRefused {
+          cause_detail: cause,
+          execution_locus: PiObserveOnSrv1,
+          termination: ProcessNotStarted,
+          raw: none,
+          ssh_key_file_cleanup: CleanupNotApplicable,
+          known_hosts_cleanup: CleanupNotApplicable,
+        },
+      }
+  }
+}
+
+fn pi_reach_classify_adoption_readiness(
+  pass: PiReachObservePass,
+  stdout: String,
+) -> PiReachObserveOutcome {
+  let gaps = pi_reach_collect_adoption_gaps(pass: pass, stdout: stdout)
+  if count(gaps) == 0 {
+    PiAdoptionReady { pass: pass }
+  } else {
+    match pass.decoded.observed_controller {
+      Present { value: _ } => PiAdoptionGapped { pass: pass, gaps: gaps }
+      Absent => PiObservationDecoded { pass: pass }
+    }
+  }
+}
+
+fn pi_reach_observe_outcome_from_pass(
+  pass: PiReachObservePass,
+  stdout: String,
+) -> PiReachObserveOutcome {
+  pi_reach_classify_adoption_readiness(pass: pass, stdout: stdout)
+}
+
+fn pi_reach_observe_remote_script() -> String {
+  concat(
+    "set -euo pipefail\n",
+    concat(
+      "echo ===ATTEMPT===\n",
+      concat(
+        "date -u +%Y-%m-%dT%H:%M:%SZ\n",
+        concat(
+          "echo ===ARCH===\n",
+          concat(
+            "uname -m 2>/dev/null || true\n",
+            concat(
+              "echo ===BOARD===\n",
+              concat(
+                "tr -d '\\0' </proc/device-tree/model 2>/dev/null || true\n",
+                concat(
+                  "echo ===REVISION===\n",
+                  concat(
+                    "grep -m1 '^Revision' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | tr -d ' ' || true\n",
+                    concat(
+                      "echo ===SERIAL===\n",
+                      concat(
+                        "grep -m1 '^Serial' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | tr -d ' ' || true\n",
+                        concat(
+                          "echo ===OS===\n",
+                          concat(
+                            "grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '\"' || true\n",
+                            concat(
+                              "echo ===KERNEL===\n",
+                              concat(
+                                "uname -r 2>/dev/null || true\n",
+                                concat(
+                                  "echo ===ID===\n",
+                                  concat(
+                                    "id -un 2>/dev/null; id -u 2>/dev/null; id -g 2>/dev/null\n",
+                                    concat(
+                                      "echo ===SUDO===\n",
+                                      concat(
+                                        "sudo -n true 2>/dev/null && echo SUDO_NOPASSWD_OK || echo SUDO_NOPASSWD_FAIL\n",
+                                        concat(
+                                          "echo ===SSH_CONNECTION===\n",
+                                          concat(
+                                            "echo \"\\$SSH_CONNECTION\"\n",
+                                            concat(
+                                              "echo ===IP_LINK===\n",
+                                              concat(
+                                                "ip -j link show 2>/dev/null || true\n",
+                                                concat(
+                                                  "echo ===IP_ADDR===\n",
+                                                  concat(
+                                                    "ip -j addr show 2>/dev/null || true\n",
+                                                    concat(
+                                                      "echo ===IP_ROUTE===\n",
+                                                      concat(
+                                                        "ip -j route show 2>/dev/null || true\n",
+                                                        concat(
+                                                          "echo ===ROUTE_GET===\n",
+                                                          concat(
+                                                            "ORCH_IP=$(echo \"\\$SSH_CONNECTION\" | cut -d' ' -f1); ip -j route get \"\\$ORCH_IP\" 2>/dev/null || true\n",
+                                                            concat(
+                                                              "echo ===DEFAULT_ROUTE===\n",
+                                                              concat(
+                                                                "ip -j route show default 2>/dev/null || true\n",
+                                                                concat(
+                                                                  "echo ===NM===\n",
+                                                                  concat(
+                                                                    "command -v nmcli >/dev/null && nmcli -t -f DEVICE,TYPE,STATE device 2>/dev/null || echo NM_ABSENT\n",
+                                                                    concat(
+                                                                      "echo ===WIFI_STATION===\n",
+                                                                      concat(
+                                                                        "iw dev wlan0 info 2>/dev/null | grep -q type && echo WIFI_STATION_PRESENT || echo WIFI_STATION_ABSENT\n",
+                                                                        concat(
+                                                                          "echo ===AUTH_KEYS===\n",
+                                                                          concat(
+                                                                            "cat ~/.ssh/authorized_keys 2>/dev/null || true\n",
+                                                                            concat(
+                                                                              "echo ===HOST_KEY===\n",
+                                                                              "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null || true\n",
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+data pi_reach_endpoint_wire_render_note: String = "Ipv4Address as String renders record syntax containing braces — never interpolate into shell text. Use render_ipv4_address for wire dotted-decimal (receipt 2026-08-07: EP= assignment injected {, bash line 5: {: command not found)."
+
+fn pi_reach_observe_endpoint_wire_text() -> String {
+  render_ipv4_address(addr: pi_reach_known_endpoint_subject.operator_observed_wifi_endpoint) as String
+}
+
+fn pi_reach_synthetic_transport_handle() -> PiObserveKeyPaths {
+  PiObserveKeyPaths {
+    work_dir: "/run/user/1000/gunbc/pi-reach-XXXXXX",
+    key_path: "/run/user/1000/gunbc/pi-reach-XXXXXX/fleet_automation_id_ed25519",
+    known_hosts_path: "/run/user/1000/gunbc/pi-reach-XXXXXX/known_hosts",
+  }
+}
+
+fn pi_reach_transport_script_line(script: String, index: Int, line_no: Int) -> String {
+  match split(s: script, delimiter: "\n") |> get(index) {
+    Present { value: line } =>
+      concat(
+        concat(concat(to_string(line_no), ": "), line),
+        "\n",
+      )
+    Absent => ""
+  }
+}
+
+fn pi_reach_transport_script_head_lines(script: String) -> String {
+  concat(
+    pi_reach_transport_script_line(script: script, index: 0, line_no: 1),
+    concat(
+      pi_reach_transport_script_line(script: script, index: 1, line_no: 2),
+      concat(
+        pi_reach_transport_script_line(script: script, index: 2, line_no: 3),
+        concat(
+          pi_reach_transport_script_line(script: script, index: 3, line_no: 4),
+          concat(
+            pi_reach_transport_script_line(script: script, index: 4, line_no: 5),
+            concat(
+              pi_reach_transport_script_line(script: script, index: 5, line_no: 6),
+              concat(
+                pi_reach_transport_script_line(script: script, index: 6, line_no: 7),
+                pi_reach_transport_script_line(script: script, index: 7, line_no: 8),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+fn pi_reach_transport_script_diagnostic(script: String) -> NonEmptyStr {
+  concat(
+    concat(
+      "transport_script_digest=",
+      serialize_content_hash(hash: content_hash_of_value(value: script as NonEmptyStr)) as String,
+    ),
+    concat(
+      concat("; transport_script_head=\n", pi_reach_transport_script_head_lines(script: script)),
+      "",
+    ),
+  ) as NonEmptyStr
+}
+
+fn pi_reach_observe_transport_script_preview() -> String {
+  pi_reach_observe_transport_script(handle: pi_reach_synthetic_transport_handle())
+}
+
+fn pi_reach_observe_transport_script_preview_diagnostic() -> String {
+  pi_reach_transport_script_diagnostic(
+    script: pi_reach_observe_transport_script_preview(),
+  ) as String
+}
+
+data pi_reach_transport_stdin_contamination_note: String = "The outer transport is launched via shell.Exec.Run → bash -s (script on stdin). An inline script that runs ssh reading stdin consumes the remainder of that stream — lines after ssh never execute (exit 0, no markers). Fix: write transport body to $WORK/transport.sh and launch with a minimal bash path-invocation only on stdin."
+
+fn pi_reach_transport_script_path(work_dir: String) -> String {
+  concat(trim(s: work_dir), "/transport.sh")
+}
+
+fn pi_reach_observe_transport_launcher(handle: PiObserveKeyPaths) -> String {
+  let path = pi_reach_transport_script_path(work_dir: handle.work_dir)
+  concat(
+    "set -euo pipefail\n",
+    concat("bash ", concat(path, "\n")),
+  )
+}
+
+fn pi_reach_observe_refusal_with_transport_diagnostic(
+  detail: NonEmptyStr,
+  script: String,
+) -> NonEmptyStr {
+  concat(
+    concat(detail as String, " | "),
+    pi_reach_transport_script_diagnostic(script: script) as String,
+  ) as NonEmptyStr
+}
+
+fn pi_reach_observe_transport_script(handle: PiObserveKeyPaths) -> String {
+  let endpoint = pi_reach_observe_endpoint_wire_text()
+  let account = trim(s: pi_reach_known_endpoint_subject.fleet_account as String)
+  let key_path = trim(s: handle.key_path)
+  let known_hosts_path = trim(s: handle.known_hosts_path)
+  let work_dir = trim(s: handle.work_dir)
+  let remote = pi_reach_observe_remote_script()
+  concat(
+    "set -euo pipefail\n",
+    concat(
+      "KEY=",
+      concat(
+        key_path,
+        concat(
+          "\nKH=",
+          concat(
+            known_hosts_path,
+            concat(
+              "\nWORK=",
+              concat(
+                work_dir,
+                concat(
+                  "\nEP=",
+                  concat(
+                    endpoint,
+                    concat(
+                      "\nACCT=",
+                      concat(
+                        account,
+                        concat(
+                          "\nssh-keyscan -t ed25519 \"$EP\" >\"$KH\" 2>/dev/null || ( echo PI_HOST_KEY_SCAN_FAILED; exit 4 )\n",
+                          concat(
+                            "if ! ssh -i \"$KEY\" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"$KH\" \"$ACCT@$EP\" true 2>\"$WORK/liveness_stderr\"; then echo PI_TARGET_AUTH_REFUSED; cat \"$WORK/liveness_stderr\"; exit 5; fi\n",
+                            concat(
+                              "OUT=\"$WORK/obs_stdout\"\nERR=\"$WORK/obs_stderr\"\n",
+                              concat(
+                                "set +e\n",
+                                concat(
+                                  "ssh -i \"$KEY\" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"$KH\" \"$ACCT@$EP\" bash -s >\"$OUT\" 2>\"$ERR\" <<'PI_REACH_OBSERVE'\n",
+                                  concat(
+                                    remote,
+                                    concat(
+                                      "\nPI_REACH_OBSERVE\n",
+                                      concat(
+                                        "remote_rc=$?\n",
+                                        concat(
+                                          "set -e\n",
+                                          concat(
+                                            "echo ===PI_STDOUT===\n",
+                                            concat(
+                                              "cat \"$OUT\"\n",
+                                              concat(
+                                                "echo ===PI_STDERR===\n",
+                                                concat(
+                                                  "cat \"$ERR\"\n",
+                                                  "printf '===PI_EXIT===\\n%d\\n' \"$remote_rc\"\n",
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+type PiReachSplitTransportOutput
+  = PiReachSplitTransportDecoded {
+      stdout: String,
+      stderr: String,
+      exit_code: Int,
+    }
+  | PiReachSplitTransportDecodeRefused { detail: NonEmptyStr }
+
+fn pi_reach_split_transport_output(combined: String) -> PiReachSplitTransportOutput {
+  if !string_contains(s: combined, pattern: "===PI_EXIT===") {
+    PiReachSplitTransportDecodeRefused {
+      detail: "PiObserveObservationDecodeRefused: missing ===PI_EXIT=== marker (transport truncated — outer bash -s stdin likely consumed by ssh)" as NonEmptyStr,
+    }
+  } else if !string_contains(s: combined, pattern: "===PI_STDOUT===") {
+    PiReachSplitTransportDecodeRefused {
+      detail: "PiObserveObservationDecodeRefused: missing ===PI_STDOUT=== marker" as NonEmptyStr,
+    }
+  } else {
+    match pi_reach_marker_section(stdout: combined, marker: "===PI_STDOUT===") {
+      Absent =>
+        PiReachSplitTransportDecodeRefused {
+          detail: "PiObserveObservationDecodeRefused: missing ===PI_STDOUT=== marker section body" as NonEmptyStr,
+        }
+      Present { value: stdout } =>
+        match pi_reach_marker_section(stdout: combined, marker: "===PI_STDERR===") {
+          Absent =>
+            PiReachSplitTransportDecodeRefused {
+              detail: "PiObserveObservationDecodeRefused: missing ===PI_STDERR=== marker" as NonEmptyStr,
+            }
+          Present { value: stderr } =>
+            match pi_reach_marker_line(stdout: combined, marker: "===PI_EXIT===") {
+              Absent =>
+                PiReachSplitTransportDecodeRefused {
+                  detail: "PiObserveObservationDecodeRefused: missing ===PI_EXIT=== marker line" as NonEmptyStr,
+                }
+              Present { value: line } =>
+                match parse_int(s: trim(s: line)) {
+                  Present { value: exit_code } =>
+                    PiReachSplitTransportDecoded {
+                      stdout: stdout,
+                      stderr: stderr,
+                      exit_code: exit_code,
+                    }
+                  Absent =>
+                    PiReachSplitTransportDecodeRefused {
+                      detail: "PiObserveObservationDecodeRefused: ===PI_EXIT=== unparsable" as NonEmptyStr,
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn pi_reach_transport_cause_from_shell(
+  stdout: String,
+  stderr: String,
+  exit_code: Int,
+) -> PiObserveTransportCause? {
+  if string_contains(s: stdout, pattern: "PI_HOST_KEY_SCAN_FAILED") {
+    Present {
+      value: TargetHostKeyMismatch {
+        detail: "ssh-keyscan returned no host keys for target" as NonEmptyStr,
+      },
+    }
+  } else if string_contains(s: stdout, pattern: "PI_TARGET_AUTH_REFUSED")
+    || (exit_code == 5) {
+    Present {
+      value: TargetAuthenticationRefused {
+        detail: trim(s: stderr) as NonEmptyStr,
+      },
+    }
+  } else if exit_code == 255 {
+    Present {
+      value: TargetUnreachable {
+        detail: concat("ssh transport failed exit ", exit_code as String) as NonEmptyStr,
+      },
+    }
+  } else {
+    none
+  }
+}
+
+type PiReachObserveBracketResult
+  = PiReachObserveBracketPass { pass: PiReachObservePass, obs_stdout: String }
+  | PiReachObserveBracketRefused {
+      cause_detail: NonEmptyStr,
+      termination: PiObserveProcessTermination,
+      raw: PiObserveRawProcessReceipt?,
+    }
+
+fn pi_reach_observe_with_handle(
+  handle: PiObserveKeyPaths,
+  attempt_id: PiObserveAttemptId,
+  probed_at: NonEmptyStr,
+  resolved_secret_version: NonEmptyStr,
+  subject: KnownEndpointAdoptionSubject,
+) -> PiReachObserveBracketResult {
+  let transport_script = pi_reach_observe_transport_script(handle: handle)
+  let transport_path = pi_reach_transport_script_path(work_dir: handle.work_dir)
+  let written = Filesystem.Write(path: transport_path, content: transport_script)
+  if !written.success {
+    PiReachObserveBracketRefused {
+      cause_detail: concat(
+        "PiObserveTransportScriptWriteRefused: ",
+        written.error as String,
+      ) as NonEmptyStr,
+      termination: ProcessNotStarted,
+      raw: none,
+    }
+  } else {
+    let launcher = pi_reach_observe_transport_launcher(handle: handle)
+    let transport = shell.Exec.Run(
+      script: launcher as TransportScript,
+    )
+    match pi_reach_split_transport_output(combined: transport.stdout) {
+      PiReachSplitTransportDecodeRefused { detail: detail } =>
+        PiReachObserveBracketRefused {
+          cause_detail: pi_reach_observe_refusal_with_transport_diagnostic(
+            detail: detail,
+            script: transport_script,
+          ),
+          termination: ProcessExited { exit_code: transport.exit_code },
+          raw: none,
+        }
+      PiReachSplitTransportDecoded { stdout: obs_stdout, stderr: obs_stderr, exit_code: obs_exit } => {
+      let raw = pi_reach_raw_receipt(
+        attempt_id: attempt_id,
+        probed_at: probed_at,
+        stdout: obs_stdout,
+        stderr: obs_stderr,
+        exit_code: obs_exit,
+        subject: subject,
+      )
+      if obs_exit == 0 {
+        match pi_reach_parse_observed_controller(stdout: obs_stdout) {
+          Present { value: observed } =>
+            PiReachObserveBracketPass {
+              pass: PiReachObservePass {
+                receipt_id: PiObserveReceiptId {
+                  hash: content_hash_of_value(
+                    value: serialize_content_hash(hash: attempt_id.hash),
+                  ),
+                },
+                raw: raw,
+                decoded: PiObserveDecodedFacts {
+                  ethernet_ipv4: pi_reach_parse_ethernet_ipv4(stdout: obs_stdout),
+                  route_to_srv1_interface: pi_reach_parse_route_to_srv1_interface(stdout: obs_stdout),
+                  default_route_interface: match pi_reach_parse_default_route(stdout: obs_stdout) {
+                    DefaultRouteViaInterface { interface: iface } => Present { value: iface }
+                    DefaultRouteUnobserved => none
+                  },
+                  fleet_key_membership: pi_reach_parse_fleet_key(stdout: obs_stdout),
+                  sudo_standing: pi_reach_parse_sudo(stdout: obs_stdout),
+                  observed_controller: Present { value: observed },
+                },
+                resolved_secret_version: resolved_secret_version,
+                host_key_binding: pi_reach_host_key_binding_receipt(
+                  attempt_id: attempt_id,
+                  subject: subject,
+                  stdout: obs_stdout,
+                  known_hosts_path: handle.known_hosts_path,
+                ),
+                ssh_key_file_cleanup: CleanupObservedAbsent,
+                known_hosts_cleanup: CleanupObservedAbsent,
+              },
+              obs_stdout: obs_stdout,
+            }
+          Absent =>
+            PiReachObserveBracketRefused {
+              cause_detail: "PiObserveObservationDecodeRefused: observation stdout missing required sections" as NonEmptyStr,
+              termination: ProcessExited { exit_code: obs_exit },
+              raw: Present { value: raw },
+            }
+        }
+      } else {
+        match pi_reach_transport_cause_from_shell(
+          stdout: transport.stdout,
+          stderr: obs_stderr,
+          exit_code: obs_exit,
+        ) {
+          Present { value: cause } =>
+            PiReachObserveBracketRefused {
+              cause_detail: match cause {
+                TargetAuthenticationRefused { detail: d } => d
+                TargetUnreachable { detail: d } => d
+                TargetHostKeyMismatch { detail: d } => d
+              },
+              termination: ProcessExited { exit_code: obs_exit },
+              raw: Present { value: raw },
+            }
+          Absent =>
+            PiReachObserveBracketRefused {
+              cause_detail: concat("observe transport exit ", obs_exit as String) as NonEmptyStr,
+              termination: ProcessExited { exit_code: obs_exit },
+              raw: Present { value: raw },
+            }
+        }
+      }
+    }
+  }
+  }
+}
+
+fn pi_reach_eth0_inet_local_from_ip_addr_json(section: String) -> String? {
+  match split(s: section, delimiter: "\"ifname\":\"eth0\"") |> skip(n: 1) |> first {
+    Present { value: eth0_tail } =>
+      if string_contains(s: eth0_tail, pattern: "\"family\":\"inet\"") {
+        match split(s: eth0_tail, delimiter: "\"family\":\"inet\"") |> skip(n: 1) |> first {
+          Present { value: after_inet } =>
+            match pi_reach_extract_json_quoted_field(body: after_inet, field: "local") {
+              PiReachJsonQuotedFieldPresent { value: local } => Present { value: local }
+              _ => none
+            }
+          Absent => none
+        }
+      } else {
+        none
+      }
+    Absent => none
+  }
+}
+
+fn pi_reach_secret_fetch_refusal_detail(reason: NonEmptyStr) -> NonEmptyStr {
+  reason
+}
+
+fn pi_reach_observe_env(name: NonEmptyStr) -> String? {
+  match shell.Env.Get(name: name).value {
+    Present { value: raw } =>
+      if trim(s: raw) == "" {
+        none
+      } else {
+        Present { value: trim(s: raw) }
+      }
+    Absent => none
+  }
+}
+
+fn pi_reach_observe_env_key_paths() -> PiObserveKeyPaths? {
+  match pi_reach_observe_env(name: "PI_OBSERVE_WORK_DIR" as NonEmptyStr) {
+    Present { value: work_dir } =>
+      match pi_reach_observe_env(name: "PI_OBSERVE_KEY_PATH" as NonEmptyStr) {
+        Present { value: key_path } =>
+          match pi_reach_observe_env(name: "PI_OBSERVE_KNOWN_HOSTS_PATH" as NonEmptyStr) {
+            Present { value: known_hosts_path } =>
+              Present {
+                value: PiObserveKeyPaths {
+                  work_dir: work_dir,
+                  key_path: key_path,
+                  known_hosts_path: known_hosts_path,
+                },
+              }
+            Absent => none
+          }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+func pi_reach_write_fleet_ssh_key_to_path(key_path: String) -> Bool
+  uses net: Network
+{
+  match fetch_secret_ref_credential(
+    secret_ref: fleet_automation_ssh_privkey_secret,
+    token_source: WorkflowEnvAccessToken { env_var: pi_observe_fleet_access_token_env },
+  ) {
+    SecretCredentialReady { credential: credential, resolved_version_identity: _ } => {
+      let written = Filesystem.Write(path: key_path, content: credential as String)
+      written.success
+    }
+    _ => false
+  }
+}
+
+fn pi_reach_observe_outcome_label(outcome: PiReachObserveOutcome) -> String {
+  match outcome {
+    PiObservationDecoded { pass: _ } => "PiObservationDecoded"
+    PiAdoptionGapped { pass: _, gaps: _ } => "PiAdoptionGapped"
+    PiAdoptionReady { pass: _ } => "PiAdoptionReady"
+    PiObserveRefused { refused: _ } => "PiObserveRefused"
+    PiObserveHumanInterventionRequired { attempt: _, intervention: _ } =>
+      "PiObserveHumanInterventionRequired"
+  }
+}
+
+fn pi_reach_observe_receipt_json_body(outcome: PiReachObserveOutcome) -> String {
+  concat(
+    "{\"outcome\":\"",
+    concat(
+      pi_reach_observe_outcome_label(outcome: outcome),
+      concat(
+        "\",\"execution_locus\":\"",
+        concat(
+          match outcome {
+            PiObserveRefused { refused: refused } =>
+              match refused.execution_locus {
+                PiObserveOnSrv1 => "srv1"
+                PiObserveOnWorker => "worker"
+              }
+            _ => "srv1"
+          },
+          concat(
+            "\",\"receipt_id\":\"",
+            concat(
+              match outcome {
+                PiObservationDecoded { pass: pass } =>
+                  serialize_content_hash(hash: pass.receipt_id.hash) as String
+                PiAdoptionGapped { pass: pass, gaps: _ } =>
+                  serialize_content_hash(hash: pass.receipt_id.hash) as String
+                PiAdoptionReady { pass: pass } =>
+                  serialize_content_hash(hash: pass.receipt_id.hash) as String
+                PiObserveRefused { refused: refused } =>
+                  concat("refused:", refused.cause_detail as String)
+                PiObserveHumanInterventionRequired { attempt: attempt, intervention: _ } =>
+                  serialize_content_hash(hash: attempt.hash) as String
+              },
+              "\"}",
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+fn pi_reach_observe_write_receipt_json(
+  receipt_path: String,
+  outcome: PiReachObserveOutcome,
+) -> Bool {
+  let body = pi_reach_observe_receipt_json_body(outcome: outcome)
+  let written = Filesystem.Write(path: receipt_path, content: body)
+  written.success
+}
+
+fn pi_reach_observe_outcome_is_success(outcome: PiReachObserveOutcome) -> Bool {
+  match outcome {
+    PiObservationDecoded { pass: _ } => true
+    PiAdoptionGapped { pass: _, gaps: _ } => true
+    PiAdoptionReady { pass: _ } => true
+    PiObserveRefused { refused: _ } => false
+    PiObserveHumanInterventionRequired { attempt: _, intervention: _ } => false
+  }
+}
+
+func pi_reach_observe_dispatch_and_write_receipt(receipt_path: String) -> Bool
+  uses net: Network
+{
+  let outcome = pi_reach_observe_dispatch()
+  pi_reach_observe_write_receipt_json(receipt_path: receipt_path, outcome: outcome)
+    && pi_reach_observe_outcome_is_success(outcome: outcome)
+}
+
+fn pi_reach_parse_ethernet_ipv4(stdout: String) -> Ipv4Address? {
+  match pi_reach_marker_section(stdout: stdout, marker: "===IP_ADDR===") {
+    Present { value: section } =>
+      match pi_reach_eth0_inet_local_from_ip_addr_json(section: section) {
+        Present { value: local } =>
+          match parse_ipv4_address(text: local) {
+            Ipv4Parsed { address: addr } => Present { value: addr }
+            _ => none
+          }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn pi_reach_parse_running_architecture(stdout: String) -> ObservedRunningArchitecture {
+  if string_contains(s: stdout, pattern: "===ARCH===\naarch64") {
+    RunningArchitectureObserved { architecture: Aarch64 }
+  } else if string_contains(s: stdout, pattern: "===ARCH===\narmv7l") {
+    RunningArchitectureObserved { architecture: Armv7 }
+  } else if string_contains(s: stdout, pattern: "===ARCH===\narmv6l") {
+    RunningArchitectureObserved { architecture: Armv7 }
+  } else {
+    RunningArchitectureUnobserved
+  }
+}
+
+fn pi_reach_parse_wifi_station_capability(stdout: String) -> ObservedWifiStationCapability {
+  if string_contains(s: stdout, pattern: "WIFI_STATION_PRESENT") {
+    WifiStationCapabilityPresentObserved
+  } else if string_contains(s: stdout, pattern: "WIFI_STATION_ABSENT") {
+    WifiStationCapabilityAbsentObserved
+  } else {
+    WifiStationCapUnobserved
+  }
+}
+
+fn pi_reach_parse_network_manager(stdout: String) -> NetworkManagerObservation {
+  if string_contains(s: stdout, pattern: "NM_ABSENT") {
+    NetworkManagerAbsentObserved
+  } else if string_contains(s: stdout, pattern: "===NM===") {
+    NetworkManagerRendererObserved { renderer: NetworkManager }
+  } else {
+    NetworkManagerObsUnobserved
+  }
+}
+
+fn pi_reach_parse_default_route(stdout: String) -> DefaultRouteObservation {
+  match pi_reach_marker_section(stdout: stdout, marker: "===DEFAULT_ROUTE===") {
+    Present { value: section } =>
+      if string_contains(s: section, pattern: "\"dst\":\"default\"") {
+        if string_contains(s: section, pattern: "\"dev\":\"eth0\"") {
+          DefaultRouteViaInterface { interface: "eth0" }
+        } else if string_contains(s: section, pattern: "\"dev\":\"wlan0\"") {
+          DefaultRouteViaInterface { interface: "wlan0" }
+        } else {
+          DefaultRouteUnobserved
+        }
+      } else {
+        DefaultRouteUnobserved
+      }
+    Absent => DefaultRouteUnobserved
+  }
+}
+
+fn pi_reach_parse_route_to_srv1_interface(stdout: String) -> NonEmptyStr? {
+  match pi_reach_marker_section(stdout: stdout, marker: "===ROUTE_GET===") {
+    Present { value: section } =>
+      if string_contains(s: section, pattern: "\"dev\":\"eth0\"") {
+        Present { value: "eth0" as NonEmptyStr }
+      } else if string_contains(s: section, pattern: "\"dev\":\"wlan0\"") {
+        Present { value: "wlan0" as NonEmptyStr }
+      } else {
+        none
+      }
+    Absent => none
+  }
+}
+
+fn pi_reach_parse_fleet_key(stdout: String) -> PiObserveFleetKeyMembership {
+  match pi_reach_marker_section(stdout: stdout, marker: "===AUTH_KEYS===") {
+    Present { value: keys_blob } =>
+      if string_contains(s: keys_blob, pattern: ssh_public_key_line(k: fleet_automation_ssh_key)) {
+        FleetKeyPresent
+      } else {
+        FleetKeyAbsent
+      }
+    Absent => FleetKeyMembershipUnobserved
+  }
+}
+
+fn pi_reach_parse_sudo(stdout: String) -> PiObserveSudoStanding {
+  if string_contains(s: stdout, pattern: "SUDO_NOPASSWD_OK") {
+    SudoNopasswdReady
+  } else if string_contains(s: stdout, pattern: "SUDO_NOPASSWD_FAIL") {
+    SudoNopasswdAbsent
+  } else {
+    SudoStandingUnobserved
+  }
+}
+
+type PiObserveIdAccount {
+  account: NonEmptyStr
+  uid: Int?
+  gid: Int?
+}
+
+fn pi_reach_parse_id_account(stdout: String) -> PiObserveIdAccount? {
+  match pi_reach_marker_section(stdout: stdout, marker: "===ID===") {
+    Present { value: section } =>
+      match split(s: section, delimiter: "\n") |> first {
+        Present { value: account_line } =>
+          match split(s: section, delimiter: "\n") |> skip(n: 1) |> first {
+            Present { value: uid_line } =>
+              match split(s: section, delimiter: "\n") |> skip(n: 2) |> first {
+                Present { value: gid_line } =>
+                  Present {
+                    value: PiObserveIdAccount {
+                      account: trim(s: account_line) as NonEmptyStr,
+                      uid: parse_int(s: trim(s: uid_line)),
+                      gid: parse_int(s: trim(s: gid_line)),
+                    },
+                  }
+                Absent => none
+              }
+            Absent => none
+          }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn pi_reach_eth0_carrier_up(stdout: String) -> Bool {
+  match pi_reach_marker_section(stdout: stdout, marker: "===IP_LINK===") {
+    Present { value: section } =>
+      string_contains(s: section, pattern: "\"ifname\":\"eth0\"")
+        && string_contains(s: section, pattern: "\"operstate\":\"UP\"")
+    Absent => false
+  }
+}
+
+fn pi_reach_wlan0_present(stdout: String) -> Bool {
+  match pi_reach_marker_section(stdout: stdout, marker: "===IP_LINK===") {
+    Present { value: section } => string_contains(s: section, pattern: "\"ifname\":\"wlan0\"")
+    Absent => false
+  }
+}
+
+fn pi_reach_host_key_binding_receipt(
+  attempt_id: PiObserveAttemptId,
+  subject: KnownEndpointAdoptionSubject,
+  stdout: String,
+  known_hosts_path: String,
+) -> PiObserveHostKeyBindingReceipt? {
+  match pi_reach_parse_ssh_host_key(stdout: stdout) {
+    Present { value: host_key } =>
+      Present {
+        value: PiObserveHostKeyBindingReceipt {
+          attempt_id: attempt_id,
+          subject: subject,
+          expected_neighbor_mac: subject.expected_mac,
+          observed_ssh_host_key: host_key,
+          known_hosts_path_digest: content_hash_of_value(value: known_hosts_path as NonEmptyStr),
+        },
+      }
+    Absent => none
+  }
+}
+
+fn pi_reach_append_gap(gaps: List<NonEmptyStr>, label: NonEmptyStr) -> List<NonEmptyStr> {
+  append(gaps, [label])
+}
+
+fn pi_reach_gaps_from_observed_controller(
+  gaps: List<NonEmptyStr>,
+  observed: ObservedProvisioningController,
+) -> List<NonEmptyStr> {
+  let gaps = match observed.hardware.board_revision {
+    Present { value: _ } => gaps
+    Absent => pi_reach_append_gap(gaps: gaps, label: "board_revision_unobserved" as NonEmptyStr)
+  }
+  let gaps = match observed.hardware.serial {
+    Present { value: _ } => gaps
+    Absent => pi_reach_append_gap(gaps: gaps, label: "board_serial_unobserved" as NonEmptyStr)
+  }
+  let gaps = match observed.ssh_host_key {
+    Present { value: _ } => gaps
+    Absent => pi_reach_append_gap(gaps: gaps, label: "ssh_host_key_unobserved" as NonEmptyStr)
+  }
+  match observed.asset {
+    Present { value: _ } => gaps
+    Absent => pi_reach_append_gap(gaps: gaps, label: "physical_asset_unbound" as NonEmptyStr)
+  }
+}
+
+fn pi_reach_collect_adoption_gaps(pass: PiReachObservePass, stdout: String) -> List<NonEmptyStr> {
+  let gaps = []
+  let gaps = match pass.decoded.observed_controller {
+    Present { value: observed } =>
+      pi_reach_gaps_from_observed_controller(gaps: gaps, observed: observed)
+    Absent => pi_reach_append_gap(gaps: gaps, label: "controller_undecoded" as NonEmptyStr)
+  }
+  let gaps = match pi_reach_parse_id_account(stdout: stdout) {
+    Present { value: id } =>
+      match id.uid {
+        Present { value: _ } =>
+          match id.gid {
+            Present { value: _ } => gaps
+            Absent => pi_reach_append_gap(gaps: gaps, label: "account_uid_gid_unobserved" as NonEmptyStr)
+          }
+        Absent => pi_reach_append_gap(gaps: gaps, label: "account_uid_gid_unobserved" as NonEmptyStr)
+      }
+    Absent => pi_reach_append_gap(gaps: gaps, label: "account_unobserved" as NonEmptyStr)
+  }
+  let gaps = match pass.decoded.ethernet_ipv4 {
+    Present { value: _ } => gaps
+    Absent => pi_reach_append_gap(gaps: gaps, label: "ethernet_ipv4_unobserved" as NonEmptyStr)
+  }
+  let gaps = if !pi_reach_eth0_carrier_up(stdout: stdout) {
+    pi_reach_append_gap(gaps: gaps, label: "eth0_carrier_not_up" as NonEmptyStr)
+  } else {
+    gaps
+  }
+  let gaps = match pass.decoded.route_to_srv1_interface {
+    Present { value: iface } =>
+      if (iface as String) == "eth0" {
+        gaps
+      } else {
+        pi_reach_append_gap(gaps: gaps, label: "route_to_srv1_not_via_eth0" as NonEmptyStr)
+      }
+    Absent => pi_reach_append_gap(gaps: gaps, label: "route_to_srv1_unobserved" as NonEmptyStr)
+  }
+  let gaps = if !pi_reach_wlan0_present(stdout: stdout) {
+    pi_reach_append_gap(gaps: gaps, label: "wlan0_absent" as NonEmptyStr)
+  } else {
+    gaps
+  }
+  let gaps = match pass.decoded.observed_controller {
+    Present { value: observed } =>
+      match observed.wifi_station_capability {
+        WifiStationCapabilityPresentObserved => gaps
+        _ => pi_reach_append_gap(gaps: gaps, label: "wifi_station_capability_absent" as NonEmptyStr)
+      }
+    Absent => gaps
+  }
+  let gaps = match pass.decoded.fleet_key_membership {
+    FleetKeyPresent => gaps
+    _ => pi_reach_append_gap(gaps: gaps, label: "fleet_key_absent" as NonEmptyStr)
+  }
+  let gaps = match pass.decoded.sudo_standing {
+    SudoNopasswdReady => gaps
+    _ => pi_reach_append_gap(gaps: gaps, label: "sudo_standing_insufficient" as NonEmptyStr)
+  }
+  let gaps = match pass.raw.stdout_id {
+    Present { value: _ } =>
+      match pass.raw.stderr_id {
+        Present { value: _ } => gaps
+        Absent => pi_reach_append_gap(gaps: gaps, label: "raw_stream_identities_missing" as NonEmptyStr)
+      }
+    Absent => pi_reach_append_gap(gaps: gaps, label: "raw_stream_identities_missing" as NonEmptyStr)
+  }
+  let gaps = if (pass.ssh_key_file_cleanup != CleanupObservedAbsent) || (pass.known_hosts_cleanup != CleanupObservedAbsent) {
+    pi_reach_append_gap(gaps: gaps, label: "cleanup_standing_not_absent" as NonEmptyStr)
+  } else {
+    gaps
+  }
+  match pass.host_key_binding {
+    Present { value: _ } => gaps
+    Absent => pi_reach_append_gap(gaps: gaps, label: "host_key_binding_unjoined" as NonEmptyStr)
+  }
+}
+
+
+fn pi_reach_optional_nonempty(s: String) -> NonEmptyStr? {
+  let t = trim(s: s)
+  if t == "" {
+    none
+  } else {
+    Present { value: t as NonEmptyStr }
+  }
+}
+
+fn pi_reach_optional_board_serial(s: String) -> BoardSerialNumber? {
+  let t = trim(s: s)
+  if t == "" {
+    none
+  } else {
+    Present { value: t as BoardSerialNumber }
+  }
+}
+
+fn pi_reach_marker_section(stdout: String, marker: String) -> String? {
+  let needle = concat(marker, "\n")
+  if !string_contains(s: stdout, pattern: needle) {
+    none
+  } else {
+    match split(s: stdout, delimiter: needle) |> skip(n: 1) |> first {
+      Present { value: after } =>
+        if string_contains(s: after, pattern: "\n===") {
+          match split(s: after, delimiter: "\n===") |> first {
+            Present { value: section } => Present { value: trim(s: section) }
+            Absent => none
+          }
+        } else {
+          Present { value: trim(s: after) }
+        }
+      Absent => none
+    }
+  }
+}
+
+fn pi_reach_marker_line(stdout: String, marker: String) -> String? {
+  let needle = concat(marker, "\n")
+  if !string_contains(s: stdout, pattern: needle) {
+    none
+  } else {
+    match split(s: stdout, delimiter: needle) |> skip(n: 1) |> first {
+      Present { value: after } =>
+        match split(s: after, delimiter: "\n") |> first {
+          Present { value: line } => Present { value: trim(s: line) }
+          Absent => none
+        }
+      Absent => none
+    }
+  }
+}
+
+fn pi_reach_parse_ssh_host_key(stdout: String) -> SshHostKeyFingerprint? {
+  match pi_reach_marker_line(stdout: stdout, marker: "===HOST_KEY===") {
+    Present { value: line } =>
+      if string_contains(s: line, pattern: "SHA256:") {
+        Present { value: line as SshHostKeyFingerprint }
+      } else {
+        none
+      }
+    Absent => none
+  }
+}
+
+fn pi_reach_parse_observed_controller(stdout: String) -> ObservedProvisioningController? {
+  match pi_reach_marker_line(stdout: stdout, marker: "===BOARD===") {
+    Present { value: board_line } =>
+      match pi_reach_optional_nonempty(s: board_line) {
+        Present { value: board_model } =>
+          Present {
+            value: ObservedProvisioningController {
+              hardware: ObservedControllerHardware {
+                board_model: board_model,
+                board_revision: match pi_reach_marker_line(stdout: stdout, marker: "===REVISION===") {
+                  Present { value: rev } => pi_reach_optional_nonempty(s: rev)
+                  Absent => none
+                },
+                serial: match pi_reach_marker_line(stdout: stdout, marker: "===SERIAL===") {
+                  Present { value: ser } => pi_reach_optional_board_serial(s: ser)
+                  Absent => none
+                },
+              },
+              os: ObservedControllerOs {
+                kernel_release: match pi_reach_marker_line(stdout: stdout, marker: "===KERNEL===") {
+                  Present { value: kernel } => pi_reach_optional_nonempty(s: kernel)
+                  Absent => none
+                },
+                os_pretty_name: match pi_reach_marker_line(stdout: stdout, marker: "===OS===") {
+                  Present { value: os_name } => pi_reach_optional_nonempty(s: os_name)
+                  Absent => none
+                },
+                storage_identity: none,
+              },
+              running_architecture: pi_reach_parse_running_architecture(stdout: stdout),
+              interfaces: ObservedControllerInterfaces {
+                management_uplink: none,
+                wifi_station: none,
+              },
+              default_route: pi_reach_parse_default_route(stdout: stdout),
+              network_manager: pi_reach_parse_network_manager(stdout: stdout),
+              wifi_station_capability: pi_reach_parse_wifi_station_capability(stdout: stdout),
+              ssh_host_key: pi_reach_parse_ssh_host_key(stdout: stdout),
+              asset: none,
+            },
+          }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn pi_reach_raw_receipt(
+  attempt_id: PiObserveAttemptId,
+  probed_at: NonEmptyStr,
+  stdout: String,
+  stderr: String,
+  exit_code: Int,
+  subject: KnownEndpointAdoptionSubject,
+) -> PiObserveRawProcessReceipt {
+  PiObserveRawProcessReceipt {
+    attempt_id: attempt_id,
+    probed_at: probed_at,
+    execution_locus: PiObserveOnSrv1,
+    requested_subject: subject,
+    stdout_id: if stdout == "" {
+      none
+    } else {
+      Present {
+        value: PiObserveRawStdoutId {
+          hash: content_hash_of_value(value: stdout as NonEmptyStr),
+        },
+      }
+    },
+    stderr_id: if stderr == "" {
+      none
+    } else {
+      Present {
+        value: PiObserveRawStderrId {
+          hash: content_hash_of_value(value: stderr as NonEmptyStr),
+        },
+      }
+    },
+    termination: ProcessExited { exit_code: exit_code },
+    raw_evidence_digest: content_hash_of_value(value: stdout as NonEmptyStr),
+  }
+}
+
+fn pi_reach_observe_bracket_to_outcome(
+  bracket: PiReachObserveBracketResult,
+  key_cleanup: CleanupStanding,
+  hosts_cleanup: CleanupStanding,
+) -> PiReachObserveOutcome {
+  match bracket {
+    PiReachObserveBracketPass { pass: pass, obs_stdout: obs_stdout } =>
+      pi_reach_observe_outcome_from_pass(
+        pass: PiReachObservePass {
+          receipt_id: pass.receipt_id,
+          raw: pass.raw,
+          decoded: pass.decoded,
+          resolved_secret_version: pass.resolved_secret_version,
+          host_key_binding: pass.host_key_binding,
+          ssh_key_file_cleanup: key_cleanup,
+          known_hosts_cleanup: hosts_cleanup,
+        },
+        stdout: obs_stdout,
+      )
+    PiReachObserveBracketRefused {
+      cause_detail: cause_detail,
+      termination: termination,
+      raw: raw,
+    } =>
+      PiObserveRefused {
+        refused: PiReachObserveRefused {
+          cause_detail: cause_detail,
+          execution_locus: PiObserveOnSrv1,
+          termination: termination,
+          raw: raw,
+          ssh_key_file_cleanup: key_cleanup,
+          known_hosts_cleanup: hosts_cleanup,
+        },
+      }
+  }
+}
+
+func pi_reach_observe_dispatch() -> PiReachObserveOutcome
+  uses net: Network
+{
+  let probed_at = pi_reach_probe_attempt_timestamp()
+  let attempt_id = pi_reach_attempt_id_from_timestamp(ts: probed_at)
+  let subject = pi_reach_known_endpoint_subject
+  let actor = pi_reach_observe_dispatch_actor()
+  if !pi_observe_dispatch_allowed_actor(actor: actor) {
+    PiObserveRefused {
+      refused: PiReachObserveRefused {
+        cause_detail: concat(
+          "PiObserveDispatchActorRefused: actor not authorized (",
+          concat(actor, ")"),
+        ) as NonEmptyStr,
+        execution_locus: PiObserveOnWorker,
+        termination: ProcessNotStarted,
+        raw: none,
+        ssh_key_file_cleanup: CleanupNotApplicable,
+        known_hosts_cleanup: CleanupNotApplicable,
+      },
+    }
+  } else if !pi_reach_verify_srv1_execution_locus(
+    runner_name: pi_reach_observe_dispatch_runner_name(),
+  ) {
+    PiObserveRefused {
+      refused: PiReachObserveRefused {
+        cause_detail: "PiObserveExecutorLocusRefused: workflow runner does not prove srv1 execution locus" as NonEmptyStr,
+        execution_locus: PiObserveOnWorker,
+        termination: ProcessNotStarted,
+        raw: none,
+        ssh_key_file_cleanup: CleanupNotApplicable,
+        known_hosts_cleanup: CleanupNotApplicable,
+      },
+    }
+  } else {
+    match pi_reach_observe_env_key_paths() {
+      Absent =>
+        PiObserveRefused {
+          refused: PiReachObserveRefused {
+            cause_detail: "PiObserveKeyBracketRefused: workflow must export PI_OBSERVE_WORK_DIR, PI_OBSERVE_KEY_PATH, and PI_OBSERVE_KNOWN_HOSTS_PATH" as NonEmptyStr,
+            execution_locus: PiObserveOnSrv1,
+            termination: ProcessNotStarted,
+            raw: none,
+            ssh_key_file_cleanup: CleanupNotApplicable,
+            known_hosts_cleanup: CleanupNotApplicable,
+          },
+        }
+      Present { value: handle } => {
+        let resolved_secret_version = "workflow-bracket" as NonEmptyStr
+        match pi_reach_observe_with_handle(
+          handle: handle,
+          attempt_id: attempt_id,
+          probed_at: probed_at,
+          resolved_secret_version: resolved_secret_version,
+          subject: subject,
+        ) {
+          PiReachObserveBracketPass { pass: pass, obs_stdout: obs_stdout } =>
+            pi_reach_observe_bracket_to_outcome(
+              bracket: PiReachObserveBracketPass {
+                pass: pass,
+                obs_stdout: obs_stdout,
+              },
+              key_cleanup: CleanupNotApplicable,
+              hosts_cleanup: CleanupNotApplicable,
+            )
+          PiReachObserveBracketRefused {
+            cause_detail: cause_detail,
+            termination: termination,
+            raw: raw,
+          } =>
+            pi_reach_observe_bracket_to_outcome(
+              bracket: PiReachObserveBracketRefused {
+                cause_detail: cause_detail,
+                termination: termination,
+                raw: raw,
+              },
+              key_cleanup: CleanupNotApplicable,
+              hosts_cleanup: CleanupNotApplicable,
+            )
+        }
+      }
+    }
+  }
+}
+

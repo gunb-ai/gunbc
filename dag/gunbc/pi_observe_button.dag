@@ -1,0 +1,310 @@
+module gunbc.pi_observe_button
+
+import std.types { NonEmptyStr, String, Bool, List }
+import extdeps.github.actions {
+  Step,
+  RunStep,
+  UsesStep,
+  Workflow,
+  Job,
+  WorkflowTrigger,
+  WorkflowDispatch,
+  WorkflowPermissions,
+  PermRead,
+  PermWrite,
+  google_auth_action,
+  checkout_action,
+  upload_artifact_action,
+  default_job_timeout_minutes,
+  RunnerSpec,
+}
+import extdeps.languages.yaml.types { YamlKeyValue, kv, yaml_string }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.ssh { ssh_public_key_line }
+import gunbc.github_actions_wif { github_actions_wif_provider_resource }
+import gunbc.ci_fleet { srv1_offer }
+import gunbc.ci_deploy_target_host { host_pinned_runner_spec }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_ssh_access { fleet_automation_sa_email, fleet_automation_ssh_key }
+
+data pi_observe_receipt_artifact_path: String = "pi-observe-receipt/receipt.json"
+
+data pi_observe_button_authority_note: String = "PI-OBSERVE-BUTTON-0. workflow_dispatch on default branch only (Run button). Zero inputs; actor allowlist briansrls; srv1-pinned runner; build gunbc before auth; google-github-actions/auth@v2 with token_format access_token, create_credentials_file false, export_environment_variables false; steps.gcp_auth.outputs.access_token -> FLEET_AUTOMATION_ACCESS_TOKEN for the narrow observe bracket only. One shell session: umask 077, mktemp, trap, write key via gunbc, verify public half, observe, write receipt JSON, prove absence. upload-artifact@v4 with if-no-files-found error."
+
+data pi_observe_fleet_access_token_env: NonEmptyStr = "FLEET_AUTOMATION_ACCESS_TOKEN"
+
+data pi_observe_gcp_auth_step_id: NonEmptyStr = "gcp_auth"
+
+data pi_observe_gcp_auth_access_token_output: String = "${{ steps.gcp_auth.outputs.access_token }}"
+
+data pi_observe_dispatch_allowed_actors: List<NonEmptyStr> = ["briansrls"]
+
+data pi_observe_gunbc_bin: String = "./target/release/gunbc"
+
+data pi_observe_receipt_artifact_name: NonEmptyStr = "pi-observe-receipt"
+
+fn pi_observe_dispatch_allowed_actor(actor: String) -> Bool {
+  any(
+    pi_observe_dispatch_allowed_actors,
+    allowed => (allowed as String) == trim(s: actor),
+  )
+}
+
+fn pi_observe_wif_binding_refusal(reason: NonEmptyStr) -> Bool {
+  string_contains(s: reason as String, pattern: "Permission 'iam.serviceAccounts.getAccessToken' denied")
+    || string_contains(s: reason as String, pattern: "Unable to acquire impersonated credentials")
+    || string_contains(s: reason as String, pattern: "failed to impersonate")
+    || string_contains(s: reason as String, pattern: "roles/iam.workloadIdentityUser")
+}
+
+fn pi_observe_wif_federated_token_refusal(reason: NonEmptyStr) -> Bool {
+  string_contains(s: reason as String, pattern: "ACCESS_TOKEN_TYPE_UNSUPPORTED")
+}
+
+data pi_observe_button_human_intervention_fork_note: String = "Pi observe button does NOT own HumanInterventionFrequency — see pi_reach_observe pi_observe_human_intervention_frequency_fork_note. Dissolves to std.human_intervention when #7950 lands."
+
+fn pi_observe_srv1_runner_spec() -> RunnerSpec {
+  host_pinned_runner_spec(offer: srv1_offer, host: operator_host_srv1)
+}
+
+fn pi_observe_gunbc_run_prefix() -> String {
+  concat(
+    pi_observe_gunbc_bin,
+    concat(
+      " run --source-root dag --source-root src/v2 --entry dag/gunbc/pi_reach_observe.dag ",
+      "",
+    ),
+  )
+}
+
+fn pi_observe_expected_fleet_public_line() -> String {
+  ssh_public_key_line(k: fleet_automation_ssh_key)
+}
+
+fn pi_observe_gcp_wif_auth_step() -> Step {
+  UsesStep {
+    name: Present { value: "Authenticate to GCP (fleet-automation WIF)" },
+    id: Present { value: pi_observe_gcp_auth_step_id as String },
+    uses: google_auth_action,
+    with: Present {
+      value: [
+        kv(
+          key: "workload_identity_provider",
+          value: yaml_string(s: github_actions_wif_provider_resource()),
+        ),
+        kv(
+          key: "service_account",
+          value: yaml_string(s: fleet_automation_sa_email as String),
+        ),
+        kv(key: "token_format", value: yaml_string(s: "access_token")),
+        kv(key: "create_credentials_file", value: yaml_string(s: "false")),
+        kv(key: "export_environment_variables", value: yaml_string(s: "false")),
+      ],
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none,
+  }
+}
+
+fn pi_observe_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: none,
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none,
+  }
+}
+
+fn pi_observe_build_gunbc_step() -> Step {
+  RunStep {
+    name: Present { value: "Build gunbc" },
+    id: Present { value: "build_gunbc" },
+    run: "cargo build -p v1-compiler --bin gunbc --release",
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none,
+  }
+}
+
+fn pi_observe_workflow_bracket_script() -> String {
+  let gunbc = pi_observe_gunbc_run_prefix()
+  let receipt = pi_observe_receipt_artifact_path
+  let expected = pi_observe_expected_fleet_public_line()
+  concat(
+    "set -euo pipefail\n",
+    concat(
+      "umask 077\n",
+      concat(
+        "WORKDIR=$(mktemp -d /tmp/pi-observe-XXXXXX)\n",
+        concat(
+          "KEY=\"$WORKDIR/fleet_key\"\n",
+          concat(
+            "KH=\"$WORKDIR/known_hosts\"\n",
+            concat(
+              "mkdir -p pi-observe-receipt\n",
+              concat(
+                "cleanup() { rm -rf \"$WORKDIR\"; }\n",
+                concat(
+                  "trap cleanup EXIT HUP INT TERM\n",
+                  concat(
+                    "export PI_OBSERVE_WORK_DIR=\"$WORKDIR\" PI_OBSERVE_KEY_PATH=\"$KEY\" PI_OBSERVE_KNOWN_HOSTS_PATH=\"$KH\"\n",
+                    concat(
+                      concat(gunbc, "--function pi_reach_write_fleet_ssh_key_to_path --arg key_path=\"$KEY\"\n"),
+                      concat(
+                        "chmod 600 \"$KEY\"\n",
+                        concat(
+                          "EXPECTED='",
+                          concat(
+                            expected,
+                            concat(
+                              "'\n",
+                              concat(
+                                "DERIVED=$(ssh-keygen -y -f \"$KEY\" 2>/dev/null | head -n1)\n",
+                                concat(
+                                  "[ \"$(echo \"$DERIVED\" | awk '\{print $1,$2\}')\" = \"$(echo \"$EXPECTED\" | awk '\{print $1,$2\}')\" ]\n",
+                                  concat(
+                                    concat(
+                                      gunbc,
+                                      concat(
+                                        "--function pi_reach_observe_dispatch_and_write_receipt --arg receipt_path=\"",
+                                        concat(
+                                          receipt,
+                                          concat(
+                                            "\"\n",
+                                            concat(
+                                              "trap - EXIT HUP INT TERM\n",
+                                              concat(
+                                                "rm -rf \"$WORKDIR\"\n",
+                                                concat(
+                                                  "test ! -e \"$KEY\" && test ! -e \"$KH\" && test ! -d \"$WORKDIR\"\n",
+                                                  "",
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    "",
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+fn pi_observe_run_step() -> Step {
+  RunStep {
+    name: Present { value: "Observe rack Pi (read-only)" },
+    id: Present { value: "pi_observe" },
+    run: pi_observe_workflow_bracket_script(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(
+          key: pi_observe_fleet_access_token_env as String,
+          value: yaml_string(s: pi_observe_gcp_auth_access_token_output),
+        ),
+      ],
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none,
+  }
+}
+
+fn pi_observe_upload_receipt_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload Pi observe receipt artifact" },
+    id: Present { value: "upload_receipt" },
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: pi_observe_receipt_artifact_name as String)),
+        kv(key: "path", value: yaml_string(s: pi_observe_receipt_artifact_path)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      ],
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none,
+  }
+}
+
+fn pi_observe_actor_guard_condition() -> String {
+  concat(
+    "github.actor == '",
+    concat(
+      pi_observe_dispatch_allowed_actors.first() as String,
+      "'",
+    ),
+  )
+}
+
+fn pi_observe_dispatch_job() -> Job {
+  Job {
+    id: "adopt_rack_pi",
+    name: Present { value: "Adopt rack Pi" },
+    runner: pi_observe_srv1_runner_spec(),
+    steps: [
+      pi_observe_checkout_step(),
+      pi_observe_build_gunbc_step(),
+      pi_observe_gcp_wif_auth_step(),
+      pi_observe_run_step(),
+      pi_observe_upload_receipt_step(),
+    ],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: pi_observe_actor_guard_condition() },
+    timeout_minutes: Present { value: default_job_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none,
+  }
+}
+
+data pi_observe_button_workflow: Workflow = {
+  name: "Adopt rack Pi",
+  on: [WorkflowDispatch { inputs: [] }],
+  concurrency: none,
+  env: none,
+  permissions: Present {
+    value: WorkflowPermissions {
+      contents: Present { value: PermRead },
+      pull_requests: none,
+      issues: none,
+      actions: none,
+      id_token: Present { value: PermWrite },
+    },
+  },
+  jobs: [pi_observe_dispatch_job()],
+}
+
+fn emit_pi_observe_button_workflow_yaml() -> String {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: pi_observe_button_workflow))
+}

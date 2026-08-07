@@ -1,0 +1,476 @@
+module test.claim.pi_reach_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, Bool, Int, List, String }
+import extdeps.netplan.netplan {
+  InterfaceObservation,
+  AdminUpConfigured,
+  CarrierPresent,
+  NetworkManager,
+}
+import extdeps.dhcp.v4 { MacAddress }
+import extdeps.toolchain.types { Armv7 }
+import extdeps.ssh { SshPublicKey }
+import gunbc.pi_reach {
+  LanEndpointObservation,
+  LanEndpointSnapshot,
+  EndpointDiscoveryCardinality,
+  DiscoveryZero,
+  DiscoveryOne,
+  DiscoveryMany,
+  discover_endpoints_by_diff,
+  classify_discovered_endpoints,
+  lan_endpoint_added_hunks,
+  ObservedProvisioningController,
+  ObservedControllerHardware,
+  BoardSerialNumber,
+  ObservedControllerOs,
+  ObservedControllerInterfaces,
+  ObservedRunningArchitecture,
+  RunningArchitectureObserved,
+  ObservedWifiStationCapability,
+  WifiStationCapabilityPresentObserved,
+  DefaultRouteViaInterface,
+  DefaultRouteUnobserved,
+  NetworkManagerRendererObserved,
+  EthernetPreservingWifiStation,
+  BoundedPortalRelay,
+  PortalRelayBound,
+  Socks5PortalRelay,
+  PortalRelayCapability,
+  bootstrap_controller_reserved,
+  admit_provisioning_controller_adoption,
+  ProvisioningControllerAdopted,
+  ProvisioningControllerAdoptionRefused,
+  AdoptionDiscoveryZero,
+  AdoptionDiscoveryAmbiguous,
+  AdoptionObservationAbsent,
+  AdoptionBoardModelUnrecognized,
+  AdoptionCatalogObservationIncomplete,
+  PreconfiguredImageAdoption,
+  ManualAccountAdoption,
+  manual_account_adoption_scaffold,
+  provisioning_controller_authorized_keys,
+  PhysicalAssetIdentity,
+  RackIdentity,
+  EndpointBindingIdentity,
+  AllocatedBootstrapIdentities,
+  NetworkInterfaceIdentity,
+  SparkHotspotSsid,
+  SparkHotspotObservation,
+  SparkHotspotPresent,
+  SparkHotspotUnobserved,
+  WirelessInterfaceLeased,
+  WirelessInterfaceLeaseConflict,
+  admit_rack_bootstrap_controller_standing,
+  RackBootstrapControllerReady,
+  RackBootstrapControllerGapped,
+  PiEndpointNotObserved,
+  PiEndpointAmbiguous,
+  EthernetManagementNotIndependent,
+  PortalRelayCleanupReceipted,
+  PortalRelayCleanupUnobserved,
+  SshHostKeyFingerprint,
+}
+import extdeps.systems.raspberry_pi {
+  raspberry_pi_board_family_from_observed,
+  RaspberryPiBoardUnobserved,
+  RaspberryPi3ModelBPlus,
+  RaspberryPi4ModelB,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fixture_mac(label: NonEmptyStr) -> MacAddress {
+  label as MacAddress
+}
+
+fn fixture_endpoint(mac: NonEmptyStr) -> LanEndpointObservation {
+  LanEndpointObservation {
+    mac: fixture_mac(label: mac),
+    ipv4: none,
+    hostname: none,
+    probed_at: "fixture" as NonEmptyStr,
+  }
+}
+
+data fixture_before_snapshot: LanEndpointSnapshot = LanEndpointSnapshot {
+  probed_at: "before" as NonEmptyStr,
+  endpoints: [
+    fixture_endpoint(mac: "aa:bb:cc:dd:ee:01"),
+    fixture_endpoint(mac: "aa:bb:cc:dd:ee:02"),
+  ],
+}
+
+data fixture_after_one_added_snapshot: LanEndpointSnapshot = LanEndpointSnapshot {
+  probed_at: "after" as NonEmptyStr,
+  endpoints: concat(
+    fixture_before_snapshot.endpoints,
+    [fixture_endpoint(mac: "b8:27:eb:73:7c:5b")],
+  ),
+}
+
+data fixture_after_many_added_snapshot: LanEndpointSnapshot = LanEndpointSnapshot {
+  probed_at: "after-many" as NonEmptyStr,
+  endpoints: concat(
+    fixture_before_snapshot.endpoints,
+    [
+      fixture_endpoint(mac: "b8:27:eb:73:7c:5b"),
+      fixture_endpoint(mac: "dc:a6:32:aa:bb:cc"),
+    ],
+  ),
+}
+
+data fixture_wifi_station: EthernetPreservingWifiStation = EthernetPreservingWifiStation {
+  management_uplink_interface: "eth0" as NetworkInterfaceIdentity,
+  wifi_station_interface: "wlan0" as NetworkInterfaceIdentity,
+  relay: BoundedPortalRelay {
+    bind_address: none,
+    bound: PortalRelayBound {
+      transport: Socks5PortalRelay,
+      max_concurrent_sessions: 1,
+      allowed_destination_prefix: "http://spark-setup.local/" as NonEmptyStr,
+    },
+  },
+}
+
+data fixture_allocated_identities: AllocatedBootstrapIdentities = AllocatedBootstrapIdentities {
+  controller: "pi-rack-bootstrap-1" as PhysicalAssetIdentity,
+  rack: "rack-1" as RackIdentity,
+  management_endpoint: "eth0-management" as EndpointBindingIdentity,
+}
+
+data fixture_observed_controller_ethernet_route: ObservedProvisioningController = ObservedProvisioningController {
+  hardware: ObservedControllerHardware {
+    board_model: "Raspberry Pi 3 Model B+" as NonEmptyStr,
+    board_revision: "a020d3" as NonEmptyStr,
+    serial: "10000000deadbeef" as BoardSerialNumber,
+  },
+  os: ObservedControllerOs {
+    kernel_release: "6.6.31+rpt-rpi-v7" as NonEmptyStr,
+    os_pretty_name: "Debian GNU/Linux 12 (bookworm)" as NonEmptyStr,
+    storage_identity: "mmcblk0p2" as NonEmptyStr,
+  },
+  running_architecture: RunningArchitectureObserved { architecture: Armv7 },
+  interfaces: ObservedControllerInterfaces {
+    management_uplink: Present {
+      value: InterfaceObservation {
+        name: "eth0",
+        mac: "b8:27:eb:73:7c:5b",
+        admin: AdminUpConfigured,
+        carrier: CarrierPresent,
+      },
+    },
+    wifi_station: Present {
+      value: InterfaceObservation {
+        name: "wlan0",
+        mac: "b8:27:eb:73:7c:5c",
+        admin: AdminUpConfigured,
+        carrier: CarrierPresent,
+      },
+    },
+  },
+  default_route: DefaultRouteViaInterface { interface: "eth0" },
+  network_manager: NetworkManagerRendererObserved { renderer: NetworkManager },
+  wifi_station_capability: WifiStationCapabilityPresentObserved,
+  ssh_host_key: Present { value: "SHA256:fixture" as SshHostKeyFingerprint },
+  asset: Present { value: fixture_allocated_identities.controller },
+}
+
+data fixture_observed_controller_wifi_route: ObservedProvisioningController = ObservedProvisioningController {
+  hardware: fixture_observed_controller_ethernet_route.hardware,
+  os: fixture_observed_controller_ethernet_route.os,
+  running_architecture: fixture_observed_controller_ethernet_route.running_architecture,
+  interfaces: fixture_observed_controller_ethernet_route.interfaces,
+  default_route: DefaultRouteViaInterface { interface: "wlan0" },
+  network_manager: fixture_observed_controller_ethernet_route.network_manager,
+  wifi_station_capability: fixture_observed_controller_ethernet_route.wifi_station_capability,
+  ssh_host_key: fixture_observed_controller_ethernet_route.ssh_host_key,
+  asset: fixture_observed_controller_ethernet_route.asset,
+}
+
+data fixture_relay_ready: PortalRelayCapability = PortalRelayCapability {
+  relay: fixture_wifi_station.relay,
+  cleanup: PortalRelayCleanupReceipted { receipt_id: "fixture-relay-cleanup" as NonEmptyStr },
+}
+
+data fixture_spark_hotspot: SparkHotspotObservation = SparkHotspotPresent {
+  ssid: "Spark-Setup-ABCD" as SparkHotspotSsid,
+  observed_on: "wlan0" as NetworkInterfaceIdentity,
+}
+
+test fn w_diff_zero_when_snapshots_match() -> Bool {
+  match discover_endpoints_by_diff(
+    before: fixture_before_snapshot,
+    after: fixture_before_snapshot,
+  ) {
+    DiscoveryZero => true
+    DiscoveryOne { endpoint: _ } => false
+    DiscoveryMany { candidates: _ } => false
+  }
+}
+
+test fn w_diff_one_when_exactly_one_endpoint_added() -> Bool {
+  match discover_endpoints_by_diff(
+    before: fixture_before_snapshot,
+    after: fixture_after_one_added_snapshot,
+  ) {
+    DiscoveryOne { endpoint: ep } => (ep.mac as String) == "b8:27:eb:73:7c:5b"
+    DiscoveryZero => false
+    DiscoveryMany { candidates: _ } => false
+  }
+}
+
+test fn w_diff_many_when_multiple_endpoints_added() -> Bool {
+  match discover_endpoints_by_diff(
+    before: fixture_before_snapshot,
+    after: fixture_after_many_added_snapshot,
+  ) {
+    DiscoveryMany { candidates: cs } => cs.length() == 2
+    DiscoveryZero => false
+    DiscoveryOne { endpoint: _ } => false
+  }
+}
+
+test fn w_red_first_added_is_not_discovery_verdict() -> Bool {
+  let added = lan_endpoint_added_hunks(
+    before: fixture_before_snapshot,
+    after: fixture_after_many_added_snapshot,
+  )
+  match classify_discovered_endpoints(added: added) {
+    DiscoveryMany { candidates: _ } =>
+      match added |> first {
+        Present { value: first_only } =>
+          match classify_discovered_endpoints(added: [first_only]) {
+            DiscoveryOne { endpoint: _ } => true
+            DiscoveryZero => false
+            DiscoveryMany { candidates: _ } => false
+          }
+        Absent => false
+      }
+    DiscoveryZero => false
+    DiscoveryOne { endpoint: _ } => false
+  }
+}
+
+test fn w_red_adoption_without_observation_refuses() -> Bool {
+  match admit_provisioning_controller_adoption(
+    identity: bootstrap_controller_reserved,
+    discovery: DiscoveryOne { endpoint: fixture_endpoint(mac: "b8:27:eb:73:7c:5b") },
+    expected_mac: none,
+    observed: none,
+    wifi_station: fixture_wifi_station,
+    realization: PreconfiguredImageAdoption,
+  ) {
+    ProvisioningControllerAdoptionRefused { reason: AdoptionObservationAbsent } => true
+    ProvisioningControllerAdopted { role: _, discovered: _, observed: _, realization: _, authorized_keys: _ } => false
+    ProvisioningControllerAdoptionRefused { reason: _ } => false
+  }
+}
+
+test fn w_red_adoption_with_ambiguous_discovery_refuses() -> Bool {
+  match admit_provisioning_controller_adoption(
+    identity: bootstrap_controller_reserved,
+    discovery: DiscoveryMany {
+      candidates: [
+        fixture_endpoint(mac: "b8:27:eb:73:7c:5b"),
+        fixture_endpoint(mac: "dc:a6:32:aa:bb:cc"),
+      ],
+    },
+    expected_mac: none,
+    observed: Present { value: fixture_observed_controller_ethernet_route },
+    wifi_station: fixture_wifi_station,
+    realization: PreconfiguredImageAdoption,
+  ) {
+    ProvisioningControllerAdoptionRefused {
+      reason: AdoptionDiscoveryAmbiguous { candidate_count: 2 },
+    } => true
+    ProvisioningControllerAdopted { role: _, discovered: _, observed: _, realization: _, authorized_keys: _ } => false
+    ProvisioningControllerAdoptionRefused { reason: _ } => false
+  }
+}
+
+test fn w_adoption_with_one_discovery_and_observation_succeeds() -> Bool {
+  match admit_provisioning_controller_adoption(
+    identity: bootstrap_controller_reserved,
+    discovery: DiscoveryOne { endpoint: fixture_endpoint(mac: "b8:27:eb:73:7c:5b") },
+    expected_mac: none,
+    observed: Present { value: fixture_observed_controller_ethernet_route },
+    wifi_station: fixture_wifi_station,
+    realization: PreconfiguredImageAdoption,
+  ) {
+    ProvisioningControllerAdopted {
+      role: role,
+      discovered: discovered,
+      observed: _,
+      realization: realization,
+      authorized_keys: keys,
+    } =>
+      role.host == bootstrap_controller_reserved
+        && (discovered.mac as String) == "b8:27:eb:73:7c:5b"
+        && role.wifi_station.management_uplink_interface == ("eth0" as NetworkInterfaceIdentity)
+        && role.wifi_station.relay.bound.max_concurrent_sessions == 1
+        && realization == PreconfiguredImageAdoption
+        && keys.length() == 2
+    ProvisioningControllerAdoptionRefused { reason: _ } => false
+  }
+}
+
+test fn w_red_zero_discovery_refuses_adoption() -> Bool {
+  match admit_provisioning_controller_adoption(
+    identity: bootstrap_controller_reserved,
+    discovery: DiscoveryZero,
+    expected_mac: none,
+    observed: Present { value: fixture_observed_controller_ethernet_route },
+    wifi_station: fixture_wifi_station,
+    realization: PreconfiguredImageAdoption,
+  ) {
+    ProvisioningControllerAdoptionRefused { reason: AdoptionDiscoveryZero } => true
+    ProvisioningControllerAdopted { role: _, discovered: _, observed: _, realization: _, authorized_keys: _ } => false
+    ProvisioningControllerAdoptionRefused { reason: _ } => false
+  }
+}
+
+test fn w_red_unobserved_board_refuses_catalog_adoption() -> Bool {
+  let unobserved_board = ObservedProvisioningController {
+    hardware: ObservedControllerHardware {
+      board_model: "Unknown Board" as NonEmptyStr,
+      board_revision: none,
+      serial: none,
+    },
+    os: fixture_observed_controller_ethernet_route.os,
+    running_architecture: fixture_observed_controller_ethernet_route.running_architecture,
+    interfaces: fixture_observed_controller_ethernet_route.interfaces,
+    default_route: fixture_observed_controller_ethernet_route.default_route,
+    network_manager: fixture_observed_controller_ethernet_route.network_manager,
+    wifi_station_capability: fixture_observed_controller_ethernet_route.wifi_station_capability,
+    ssh_host_key: none,
+    asset: none,
+  }
+  match admit_provisioning_controller_adoption(
+    identity: bootstrap_controller_reserved,
+    discovery: DiscoveryOne { endpoint: fixture_endpoint(mac: "b8:27:eb:73:7c:5b") },
+    expected_mac: none,
+    observed: Present { value: unobserved_board },
+    wifi_station: fixture_wifi_station,
+    realization: ManualAccountAdoption { disposition: manual_account_adoption_scaffold },
+  ) {
+    ProvisioningControllerAdoptionRefused {
+      reason: AdoptionBoardModelUnrecognized { model: _, revision: _ },
+    } => true
+    ProvisioningControllerAdopted { role: _, discovered: _, observed: _, realization: _, authorized_keys: _ } => false
+    ProvisioningControllerAdoptionRefused { reason: _ } => false
+  }
+}
+
+test fn w_authorized_keys_reuse_fleet_ssh_access_authority() -> Bool {
+  provisioning_controller_authorized_keys().length() == 2
+}
+
+test fn w_standing_zero_discovery_is_pi_endpoint_not_observed_gap() -> Bool {
+  match admit_rack_bootstrap_controller_standing(
+    discovery: DiscoveryZero,
+    allocated: Present { value: fixture_allocated_identities },
+    observed: Present { value: fixture_observed_controller_ethernet_route },
+    wifi_station: Present { value: fixture_wifi_station },
+    hotspot: fixture_spark_hotspot,
+    lease: WirelessInterfaceLeased {
+      interface: "wlan0" as NetworkInterfaceIdentity,
+      holder: "Spark-Setup-ABCD" as SparkHotspotSsid,
+    },
+    relay: Present { value: fixture_relay_ready },
+  ) {
+    RackBootstrapControllerGapped { gaps: gs } =>
+      count(filter(gs, g => match g { PiEndpointNotObserved => true, _ => false })) == 1
+    RackBootstrapControllerReady { facts: _ } => false
+    RackBootstrapControllerUnobserved => false
+  }
+}
+
+test fn w_red_wifi_default_route_is_not_ready() -> Bool {
+  match admit_rack_bootstrap_controller_standing(
+    discovery: DiscoveryOne { endpoint: fixture_endpoint(mac: "b8:27:eb:73:7c:5b") },
+    allocated: Present { value: fixture_allocated_identities },
+    observed: Present { value: fixture_observed_controller_wifi_route },
+    wifi_station: Present { value: fixture_wifi_station },
+    hotspot: fixture_spark_hotspot,
+    lease: WirelessInterfaceLeased {
+      interface: "wlan0" as NetworkInterfaceIdentity,
+      holder: "Spark-Setup-ABCD" as SparkHotspotSsid,
+    },
+    relay: Present { value: fixture_relay_ready },
+  ) {
+    RackBootstrapControllerGapped { gaps: gs } =>
+      count(filter(gs, g => match g {
+        EthernetManagementNotIndependent { default_route: _ } => true
+        _ => false
+      })) >= 1
+    RackBootstrapControllerReady { facts: _ } => false
+    RackBootstrapControllerUnobserved => false
+  }
+}
+
+test fn w_standing_ready_when_all_admission_axes_hold() -> Bool {
+  let standing = admit_rack_bootstrap_controller_standing(
+    discovery: DiscoveryOne { endpoint: fixture_endpoint(mac: "b8:27:eb:73:7c:5b") },
+    allocated: Present { value: fixture_allocated_identities },
+    observed: Present { value: fixture_observed_controller_ethernet_route },
+    wifi_station: Present { value: fixture_wifi_station },
+    hotspot: fixture_spark_hotspot,
+    lease: WirelessInterfaceLeased {
+      interface: "wlan0" as NetworkInterfaceIdentity,
+      holder: "Spark-Setup-ABCD" as SparkHotspotSsid,
+    },
+    relay: Present { value: fixture_relay_ready },
+  )
+  match standing {
+    RackBootstrapControllerReady { facts: f } =>
+      (f.wireless_interface as String) == "wlan0"
+        && match f.browser_relay.cleanup {
+          PortalRelayCleanupReceipted { receipt_id: _ } => true
+          PortalRelayCleanupUnobserved => false
+        }
+    RackBootstrapControllerGapped { gaps: _ } => false
+    RackBootstrapControllerUnobserved => false
+  }
+}
+
+test fn w_red_wireless_lease_conflict_is_gap() -> Bool {
+  match admit_rack_bootstrap_controller_standing(
+    discovery: DiscoveryOne { endpoint: fixture_endpoint(mac: "b8:27:eb:73:7c:5b") },
+    allocated: Present { value: fixture_allocated_identities },
+    observed: Present { value: fixture_observed_controller_ethernet_route },
+    wifi_station: Present { value: fixture_wifi_station },
+    hotspot: SparkHotspotUnobserved,
+    lease: WirelessInterfaceLeaseConflict {
+      interface: "wlan0" as NetworkInterfaceIdentity,
+      holders: [
+        "Spark-A" as SparkHotspotSsid,
+        "Spark-B" as SparkHotspotSsid,
+      ],
+    },
+    relay: Present { value: fixture_relay_ready },
+  ) {
+    RackBootstrapControllerGapped { gaps: gs } => gs.length() >= 2
+    RackBootstrapControllerReady { facts: _ } => false
+    RackBootstrapControllerUnobserved => false
+  }
+}
+
+test fn w_red_pi_400_model_string_does_not_classify_as_pi4() -> Bool {
+  match raspberry_pi_board_family_from_observed(
+    model: "Raspberry Pi 400 Rev 1.0" as NonEmptyStr,
+    revision: none,
+  ) {
+    RaspberryPiBoardUnobserved => true
+    RaspberryPi4ModelB => false
+    _ => false
+  }
+}
+
+test fn w_revision_a020d3_classifies_pi3_b_plus() -> Bool {
+  raspberry_pi_board_family_from_observed(
+    model: "Raspberry Pi 3 Model B Plus Rev 1.3" as NonEmptyStr,
+    revision: Present { value: "a020d3" as NonEmptyStr },
+  ) == RaspberryPi3ModelBPlus
+}

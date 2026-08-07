@@ -19,6 +19,7 @@ import extdeps.cloud.gcp.auth_print_access_token {
 type AccessTokenSource
   = GcloudPrintToken
   | OperatorSuppliedToken { token: Secret }
+  | WorkflowEnvAccessToken { env_var: NonEmptyStr }
 
 type GoogleCloudInteractiveAuthenticationRequired {}
 
@@ -105,5 +106,28 @@ func ensure_access_token(source: AccessTokenSource) -> AccessTokenResolution
       )
     }
     OperatorSuppliedToken { token: t } => AccessTokenReady { token: t }
+    WorkflowEnvAccessToken { env_var: env_var } => {
+      let env = shell.Env.Get(name: env_var)
+      match env.value {
+        Present { value: raw } =>
+          if trim(s: raw) == "" {
+            AccessTokenEnsureRefused {
+              reason: concat(
+                "WorkflowEnvAccessToken empty for ",
+                env_var as String,
+              ) as NonEmptyStr,
+            }
+          } else {
+            AccessTokenReady { token: raw as Secret }
+          }
+        Absent =>
+          AccessTokenEnsureRefused {
+            reason: concat(
+              "WorkflowEnvAccessToken missing env ",
+              env_var as String,
+            ) as NonEmptyStr,
+          }
+      }
+    }
   }
 }

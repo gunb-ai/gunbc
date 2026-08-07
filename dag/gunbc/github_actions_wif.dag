@@ -1,0 +1,82 @@
+module gunbc.github_actions_wif
+
+import gunbc.repository { gunbc_repository }
+import extdeps.cloud.gcp.gcp {
+  WifPool,
+  WifProvider,
+  wif_provider_resource,
+  wif_principal_set_for_repo,
+}
+import std.types { NonEmptyStr, String }
+
+data github_actions_wif_authority_note: String = "Repo-level GitHub Actions OIDC → GCP Workload Identity Federation facts. NOT BMC-specific — gunbc.assimilate.bmc_token_federation and gunbc.pi_observe_button import this single authority. Do not redeclare pool/provider rows elsewhere."
+
+data gunbai_secrets_project_number: String = "582015116396"
+
+data github_actions_wif_federated_repository: String = gunbc_repository.full_name
+
+data github_actions_wif_pool_id: NonEmptyStr = "github-actions"
+
+data github_actions_wif_pool_display_name: NonEmptyStr = "GitHub Actions OIDC"
+
+data github_actions_wif_provider_id: NonEmptyStr = "github-oidc"
+
+data github_actions_wif_issuer_uri: NonEmptyStr = "https://token.actions.githubusercontent.com"
+
+data github_actions_wif_attribute_mapping: Map<String, String> = {
+  "google.subject": "assertion.sub",
+  "attribute.repository": "assertion.repository",
+  "attribute.ref": "assertion.ref",
+  "attribute.workflow": "assertion.workflow",
+}
+
+data github_actions_wif_pool: WifPool = WifPool {
+  name: github_actions_wif_pool_id,
+  project: "gunbai-secrets",
+  display_name: Present { value: github_actions_wif_pool_display_name },
+  disabled: false,
+}
+
+data github_actions_wif_provider: WifProvider = WifProvider {
+  name: github_actions_wif_provider_id,
+  pool: github_actions_wif_pool_id,
+  issuer_uri: github_actions_wif_issuer_uri,
+  attribute_mapping: Present { value: github_actions_wif_attribute_mapping },
+}
+
+fn github_actions_wif_provider_resource() -> String {
+  wif_provider_resource(
+    project_number: gunbai_secrets_project_number,
+    provider: github_actions_wif_provider,
+  )
+}
+
+fn github_actions_wif_principal_set() -> String {
+  wif_principal_set_for_repo(
+    project_number: gunbai_secrets_project_number,
+    pool_id: github_actions_wif_pool.name,
+    repository: github_actions_wif_federated_repository,
+  )
+}
+
+fn github_actions_wif_attribute_condition() -> String {
+  concat(
+    "assertion.repository == '",
+    concat(github_actions_wif_federated_repository, "'"),
+  )
+}
+
+data github_actions_wif_fleet_automation_iam_binding_note: String = "IAM boundary for fleet-automation@ impersonation is NOT github.actor — it is the provider attribute_condition plus a roles/iam.workloadIdentityUser binding whose member is the principalSet for this repository AND whose condition restricts assertion.ref to refs/heads/main and assertion.workflow to Adopt rack Pi. github.actor == briansrls is workflow policy only. Until the binding is observed live, pi_reach_observe surfaces FleetAutomationWifBindingRequired rather than assuming absence."
+
+fn github_actions_wif_adopt_rack_pi_attribute_condition() -> String {
+  concat(
+    "assertion.repository == '",
+    concat(
+      github_actions_wif_federated_repository,
+      concat(
+        "' && assertion.ref == 'refs/heads/main' && assertion.workflow == 'Adopt rack Pi'",
+        "",
+      ),
+    ),
+  )
+}
