@@ -28,3 +28,19 @@ test fn fleet_intent_network_srv3_addresses_holds() -> Bool {
     && srv3_bmc_endpoint.address == "192.168.1.192"
     && srv3_bmc_endpoint.role == BmcOutOfBand
 }
+
+data fleet_intent_network_srv5_srv6_reserved_not_enrolled_note: String = "SPARK-LANE-A. srv5/srv6 are named here as HostIdentity slots for the two ordered DGX Spark units, and naming is deliberately NOT enrollment. The count tripwire above cannot see that distinction — it would stay green if a fabricated srv5 endpoint replaced another — so this row asserts the separation directly at the enrollment authority: both identities exist, and NO endpoint in the topology is bound to either. It reds the moment someone authors an address for a machine that has not arrived, which is the exact fabrication the procurement lane's router-binding wall refuses on the other side."
+
+test fn fleet_intent_network_srv5_srv6_named_but_not_enrolled() -> Bool {
+  operator_host_srv5 == "srv5"
+    && operator_host_srv6 == "srv6"
+    && fold(
+      fleet_intent_network.endpoints,
+      init: true,
+      f: (acc, e) =>
+        acc && match e.host {
+          Present { value: h } => h != operator_host_srv5 && h != operator_host_srv6
+          Absent => true
+        }
+    )
+}
