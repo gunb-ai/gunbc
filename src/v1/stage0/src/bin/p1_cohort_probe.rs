@@ -1,9 +1,13 @@
 #![allow(clippy::disallowed_macros)]
 
-// Width-2 crossover cohort A/B harness (dashboard width-2 lane). Calls the SAME production
-// entrypoint `run_discovery_corpus_with_options` that `claim_executor` uses.
+// P1 retention cohort + width-2 crossover harness. Calls the SAME production entrypoint
+// `run_discovery_corpus_with_options` that `claim_executor` uses.
 //
-// Width selection (one run per invocation — interleave by alternating env):
+// Default (no width override): `DiscoveryWidthPolicy::Adaptive` — fleet-equivalent path;
+// schedule-retention arms here and `[p1-cohort]` per-entry lines emit on this branch
+// (`gunbc.p1_retention_cohort_receipt`, `p1-retention-vs-drain-cohort-receipt.md`).
+//
+// Width-2 crossover overrides (one run per invocation — interleave by alternating env):
 //   GUNBC_P1_COHORT_WIDTH=1  → DiscoveryWidthPolicy::Serial (width-1 baseline)
 //   GUNBC_P1_COHORT_WIDTH=2  → DiscoveryWidthPolicy::ControlledWidthTwo
 //   GUNBC_P1_MATRIX_CELL=A|B|C|D → 2×2 matrix (overrides width + shared-store arm)
@@ -30,7 +34,9 @@ use v1_compiler::cli_run::{
     typecheck_compute_count, DiscoveryCorpusOptions, DiscoveryWidthPolicy,
     NodeFrontierSelectionMode,
 };
-use v1_compiler::memory_governor::{leaf_cgroup_dir, read_cgroup_raw, read_cgroup_u64};
+use v1_compiler::memory_governor::{
+    leaf_cgroup_dir, read_cgroup_raw, read_cgroup_u64, MemoryGovernor,
+};
 use v1_compiler::v1_interpreter::ExecutionMode;
 
 fn cohort_roster_relative_path() -> String {
@@ -78,24 +84,23 @@ fn matrix_cell_label() -> Option<String> {
     }
 }
 
-fn cohort_width_policy() -> Result<DiscoveryWidthPolicy, String> {
+fn cohort_width_policy(governor: Arc<MemoryGovernor>) -> Result<DiscoveryWidthPolicy, String> {
     if let Some(cell) = matrix_cell_label() {
         match cell.as_str() {
             "A" | "B" => Ok(DiscoveryWidthPolicy::Serial),
             "C" | "D" => Ok(DiscoveryWidthPolicy::ControlledWidthTwo),
             _ => Err(format!("invalid GUNBC_P1_MATRIX_CELL {cell:?}")),
         }
-    } else {
-        match std::env::var("GUNBC_P1_COHORT_WIDTH")
-            .unwrap_or_else(|_| "1".to_string())
-            .trim()
-        {
+    } else if let Ok(raw) = std::env::var("GUNBC_P1_COHORT_WIDTH") {
+        match raw.trim() {
             "1" => Ok(DiscoveryWidthPolicy::Serial),
             "2" => Ok(DiscoveryWidthPolicy::ControlledWidthTwo),
             other => Err(format!(
                 "GUNBC_P1_COHORT_WIDTH must be 1 (serial) or 2 (controlled-width-two); got {other:?}"
             )),
         }
+    } else {
+        Ok(DiscoveryWidthPolicy::Adaptive(governor))
     }
 }
 
@@ -120,7 +125,7 @@ fn scheduled_width(width_policy: &DiscoveryWidthPolicy) -> usize {
     match width_policy {
         DiscoveryWidthPolicy::Serial => 1,
         DiscoveryWidthPolicy::ControlledWidthTwo => 2,
-        DiscoveryWidthPolicy::Adaptive(_) => 1,
+        DiscoveryWidthPolicy::Adaptive(governor) => governor.current_target_width(),
     }
 }
 
@@ -219,7 +224,13 @@ fn main() -> ExitCode {
         std::env::set_var("GUNBC_P1_COHORT_RECEIPT", "1");
     }
 
-    let width_policy = match cohort_width_policy() {
+    let governor = Arc::new(MemoryGovernor::from_environment(
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1),
+    ));
+
+    let width_policy = match cohort_width_policy(Arc::clone(&governor)) {
         Ok(p) => p,
         Err(msg) => {
             eprintln!("p1_cohort_probe: refused: {msg}");
