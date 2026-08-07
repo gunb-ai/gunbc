@@ -1176,6 +1176,10 @@ impl CiControlPlane {
             .join(format!("{run_id}.json"));
         if from_path.exists() {
             fs::rename(from_path, to_path).map_err(|e| format!("queue move {run_id}: {e}"))?;
+        } else {
+            return Err(format!(
+                "queue move refused: {run_id} missing from queue/{from} (fail-closed, not silent no-op)"
+            ));
         }
         Ok(())
     }
@@ -1188,12 +1192,20 @@ impl CiControlPlane {
     ) -> Result<(), String> {
         let mut index = self.read_index()?;
         let now = now_unix()?;
+        let mut found = false;
         for row in &mut index.runs {
             if row.run_id == run_id {
                 row.status = status.to_string();
                 row.conclusion = conclusion.map(str::to_string);
                 row.updated_at_unix = now;
+                found = true;
+                break;
             }
+        }
+        if !found {
+            return Err(format!(
+                "index update refused: run_id {run_id} absent from index.json (fail-closed, not silent no-op)"
+            ));
         }
         self.write_index(&index)
     }
@@ -1658,5 +1670,84 @@ mod tests {
         assert_eq!(non_main_base_refusals.len(), 1);
         assert_eq!(non_main_base_refusals[0].pr_number, 42);
         assert_eq!(non_main_base_refusals[0].base_ref, "develop");
+    }
+
+    #[test]
+    fn update_index_row_refuses_missing_run_id() {
+        let workspace_root =
+            std::env::temp_dir().join(format!("owned-ci-index-test-{}", std::process::id()));
+        let plane = CiControlPlane {
+            config: Config {
+                workspace_root: workspace_root.clone(),
+                mirror_path: workspace_root.clone(),
+                serve_base_url: "http://127.0.0.1:8787".to_string(),
+                poll_interval_secs: 60,
+                lease_secs: 3600,
+                lease_holder: "test".to_string(),
+                once: true,
+                dry_run: true,
+                enqueue_rerun_sha: None,
+            },
+            authority: SeedAuthority {
+                repo_owner: "gunb-ai".to_string(),
+                repo_name: "gunbc".to_string(),
+                repo_full_name: "gunb-ai/gunbc".to_string(),
+                check_name: "gunbc-ci".to_string(),
+                state_root_rel: ".gunbc/owned-ci".to_string(),
+                default_lease_seconds: 3600,
+                stage_labels: vec!["build".to_string()],
+                floor_plan_entry: "src/v2/workflow/ci_floor_plan.dag".to_string(),
+                floor_plan_function: "gunbc_ci_floor_plan".to_string(),
+                poll_missing_github_token_refusal: "missing".to_string(),
+                poll_empty_github_token_refusal: "empty".to_string(),
+                merge_target_branch: "main".to_string(),
+            },
+        };
+        plane.ensure_layout().expect("layout");
+        plane
+            .write_index(&RunIndex { runs: vec![] })
+            .expect("write empty index");
+        let err = plane
+            .update_index_row("1730000000-deadbeef", "completed", Some("success"))
+            .expect_err("missing index row");
+        assert!(err.contains("absent from index.json"));
+    }
+
+    #[test]
+    fn move_queue_file_refuses_missing_source() {
+        let workspace_root =
+            std::env::temp_dir().join(format!("owned-ci-queue-test-{}", std::process::id()));
+        let plane = CiControlPlane {
+            config: Config {
+                workspace_root: workspace_root.clone(),
+                mirror_path: workspace_root.clone(),
+                serve_base_url: "http://127.0.0.1:8787".to_string(),
+                poll_interval_secs: 60,
+                lease_secs: 3600,
+                lease_holder: "test".to_string(),
+                once: true,
+                dry_run: true,
+                enqueue_rerun_sha: None,
+            },
+            authority: SeedAuthority {
+                repo_owner: "gunb-ai".to_string(),
+                repo_name: "gunbc".to_string(),
+                repo_full_name: "gunb-ai/gunbc".to_string(),
+                check_name: "gunbc-ci".to_string(),
+                state_root_rel: ".gunbc/owned-ci".to_string(),
+                default_lease_seconds: 3600,
+                stage_labels: vec!["build".to_string()],
+                floor_plan_entry: "src/v2/workflow/ci_floor_plan.dag".to_string(),
+                floor_plan_function: "gunbc_ci_floor_plan".to_string(),
+                poll_missing_github_token_refusal: "missing".to_string(),
+                poll_empty_github_token_refusal: "empty".to_string(),
+                merge_target_branch: "main".to_string(),
+            },
+        };
+        plane.ensure_layout().expect("layout");
+        let err = plane
+            .move_queue_file("1730000000-deadbeef", "claimed", "completed")
+            .expect_err("missing queue file");
+        assert!(err.contains("missing from queue/claimed"));
     }
 }
