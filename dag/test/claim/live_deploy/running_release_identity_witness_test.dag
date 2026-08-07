@@ -1,6 +1,7 @@
 module test.claim.live_deploy.running_release_identity_witness_test
 
-import std.types { Bool, String, CommitSha }
+import std.content_hash { Fnv1a64Structural }
+import std.types { Bool, String, CommitSha, NonEmptyStr }
 import std.realization_reconcile { Grounding, Grounds, DoesNotGround }
 import test.claim.live_deploy.deploy_release_fixture {
   deploy_witness_release_revision,
@@ -37,6 +38,16 @@ fn witness_bundle() -> RoadmapSiteSurfaceBundle {
 }
 
 fn healthz_body_at_revision(revision: CommitSha) -> String {
+  healthz_body_at_revision_and_surface(
+    revision: revision,
+    surface_bundle_identity: witness_bundle().bundle_identity,
+  )
+}
+
+fn healthz_body_at_revision_and_surface(
+  revision: CommitSha,
+  surface_bundle_identity: Fnv1a64Structural,
+) -> String {
   let bundle = witness_bundle()
   healthz_body_with_release_identity(
     roadmap: bundle.roadmap_md,
@@ -45,15 +56,28 @@ fn healthz_body_at_revision(revision: CommitSha) -> String {
     full: bundle.full_html,
     dispatch_js: bundle.dispatch_js,
     release_revision: revision,
-    surface_bundle_identity: bundle.bundle_identity,
+    surface_bundle_identity: surface_bundle_identity,
   )
 }
 
 fn ground_body_against(body: String, expected_revision: CommitSha) -> Grounding<ServiceReadyEvidence> {
+  ground_body_against_surface(
+    body: body,
+    expected_revision: expected_revision,
+    expected_surface_identity: witness_bundle().bundle_identity,
+  )
+}
+
+fn ground_body_against_surface(
+  body: String,
+  expected_revision: CommitSha,
+  expected_surface_identity: Fnv1a64Structural,
+) -> Grounding<ServiceReadyEvidence> {
   ground_service_ready_from_healthz_with_bundle(
     read: HealthzEffectiveRead { body: body, probe_error: "" },
     bundle: witness_bundle(),
     expected_revision: expected_revision,
+    expected_surface_identity: expected_surface_identity,
   )
 }
 
@@ -89,7 +113,7 @@ test fn witness_readiness_refuses_when_reported_revision_is_not_the_admitted_one
   let a_body = healthz_body_at_revision(revision: deploy_witness_release_revision)
   let g = ground_body_against(body: a_body, expected_revision: deploy_witness_other_release_revision)
   grounding_refuses(g: g)
-    && grounding_refusal_mentions(g: g, fragment: "ReleaseRevisionMismatch")
+    && grounding_refusal_mentions(g: g, fragment: "ProcessRevisionMismatch")
     && grounding_refusal_mentions(g: g, fragment: deploy_witness_release_revision as String)
     && grounding_refusal_mentions(g: g, fragment: deploy_witness_other_release_revision as String)
 }
@@ -110,18 +134,42 @@ test fn witness_body_without_release_identity_refuses() -> Bool {
   let surface_only = witness_bundle().healthz_body
   let g = ground_body_against(body: surface_only, expected_revision: deploy_witness_release_revision)
   grounding_refuses(g: g)
-    && grounding_refusal_mentions(g: g, fragment: "ReleaseIdentityUnreadable")
+    && grounding_refusal_mentions(g: g, fragment: "ProcessIdentityAbsent")
     && !grounding_refusal_mentions(g: g, fragment: "ServedSurfaceStale")
 }
 
-data wrong_surface_note: String = "RIGHT RELEASE, WRONG SURFACE — the other half of the pair, and the reason the wire carries two members. The observed body states the admitted revision, so the revision comparison passes; its artifact digests are not this tree's, so the surface comparison refuses. A single fused identity digest could not produce this verdict at all: it would report one mismatch and leave the operator to guess whether the process is old or its graph failed to rebind."
+data two_surface_controls_note: String = "TWO CONTROLS, BECAUSE THERE ARE TWO INDEPENDENT WAYS THE SURFACE CAN BE WRONG AND ONE FIXTURE CANNOT DISCRIMINATE THEM. The previous single fixture varied the artifact map AND the bundle identity together, so it refused no matter which of the two checks was doing the work — it would have passed unchanged while surface_bundle_identity went entirely unread, which is exactly the state this branch was in when the member was captured and dropped.\\n\\nSo each control varies EXACTLY ONE member. Control A keeps the artifact map byte-identical to this tree and moves only the reported bundle identity: the process is rendering a different source tree than the candidate admitted, and the artifact projection cannot see it because those bytes still match. Control B keeps the identity correct and corrupts one artifact digest: the process bound the right tree and is serving something else, which the identity comparison cannot see because the identity still matches. Neither check subsumes the other, and each control fails if its own check is deleted."
 
-test fn witness_correct_revision_with_stale_surface_refuses() -> Bool {
-  let stale = "{\"status\": \"ok\", \"service\": \"gunbc-roadmap\", \"artifacts\": {\"/ROADMAP.md\": \"0000000000000000\"}, \"revision\": \"0123456789abcdef0123456789abcdef01234567\", \"surface_bundle_identity\": \"0000000000000000\"}"
-  let g = ground_body_against(body: stale, expected_revision: deploy_witness_release_revision)
+test fn witness_correct_artifacts_with_wrong_bundle_identity_refuses() -> Bool {
+  let expected_surface = witness_bundle().bundle_identity
+  let wrong_identity = Fnv1a64Structural { digest: "abcdef0123456789" as NonEmptyStr }
+  let body = healthz_body_at_revision_and_surface(
+    revision: deploy_witness_release_revision,
+    surface_bundle_identity: wrong_identity,
+  )
+  let g = ground_body_against_surface(
+    body: body,
+    expected_revision: deploy_witness_release_revision,
+    expected_surface_identity: expected_surface,
+  )
+  grounding_refuses(g: g)
+    && grounding_refusal_mentions(g: g, fragment: "ProcessSurfaceMismatch")
+    && !grounding_refusal_mentions(g: g, fragment: "ProcessRevisionMismatch")
+    && !grounding_refusal_mentions(g: g, fragment: "ServedSurfaceStale")
+    && (expected_surface.digest as String) != (wrong_identity.digest as String)
+}
+
+test fn witness_correct_identity_with_one_stale_artifact_refuses() -> Bool {
+  let body = join([
+    "{\"status\": \"ok\", \"service\": \"gunbc-roadmap\", \"artifacts\": {\"/ROADMAP.md\": \"0000000000000000\"}, ",
+    "\"revision\": \"", deploy_witness_release_revision as String, "\", ",
+    "\"surface_bundle_identity\": \"", witness_bundle().bundle_identity.digest as String, "\"}",
+  ], "")
+  let g = ground_body_against(body: body, expected_revision: deploy_witness_release_revision)
   grounding_refuses(g: g)
     && grounding_refusal_mentions(g: g, fragment: "ServedSurfaceStale")
-    && !grounding_refusal_mentions(g: g, fragment: "ReleaseRevisionMismatch")
+    && !grounding_refusal_mentions(g: g, fragment: "ProcessSurfaceMismatch")
+    && !grounding_refusal_mentions(g: g, fragment: "ProcessRevisionMismatch")
 }
 
 data surface_projection_note: String = "THE PROJECTION CHANGE, STATED AS A CLAIM RATHER THAN ASSUMED. Adding members to the served document would have broken a whole-body surface comparison outright — every deploy would refuse, forever, which is a broken check wearing the costume of a strict one. The witness asserts the property the projection buys: the surface-only document and the full document with identity members have the SAME surface projection, so the surface verdict is unchanged by the presence of the identity members.\\n\\nThe second conjunct is what keeps this from being vacuous: the two documents are NOT equal as strings. If someone reverted the projection to whole-body equality, the first conjunct would fail while the second still held, and the failure would be located here rather than surfacing as a mysteriously permanently-red deploy."
