@@ -1228,22 +1228,7 @@ pub fn eval_export_signature_facts(
 
 pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
     let facts = decl_facts_for_roots(pool_roots);
-    let pool_entries: Vec<crate::decl_facts_marshal_bridge::PoolCoproductDupEntry> = facts
-        .iter()
-        .filter_map(|fact| {
-            crate::decl_facts_marshal_bridge::pool_coproduct_dup_entry_from_decl_fact_raw(
-                &fact.qualified_name,
-                &fact.name,
-                fact.kind,
-                fact.node.clone(),
-                fact.source_indices.clone(),
-            )
-        })
-        .collect();
-    crate::decl_facts_marshal_bridge::set_pool_coproduct_dup_index(pool_entries);
-    let result = eval_decl_facts_rows(ctx, &facts);
-    crate::decl_facts_marshal_bridge::clear_pool_coproduct_dup_index();
-    result
+    eval_decl_facts_rows(ctx, &facts)
 }
 
 fn eval_decl_facts_rows(ctx: &InterpContext, facts: &[DeclFactRaw]) -> InterpResult<Value> {

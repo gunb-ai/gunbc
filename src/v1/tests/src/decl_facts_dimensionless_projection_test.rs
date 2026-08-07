@@ -20,8 +20,10 @@ const SPECIMENS_REL: &str = "dag/test/fixture/decl_facts_reflection/specimens.da
 const DISPOSITION_SCAFFOLD_QN: &str =
     "test.fixture.decl_facts_reflection.specimens.disposition_scaffold";
 const LOCAL_A_SCAFFOLD_QN: &str = "test.fixture.decl_facts_reflection.specimens.local_a_scaffold";
-const AMBIGUOUS_QN: &str =
+const AMBIGUOUS_ARM_SPECIMEN_QN: &str =
     "test.fixture.decl_facts_reflection.ambiguous_specimen.ambiguous_arm_specimen";
+const AMBIGUOUS_SHARED_A_SHARED_BARE_ARM_QN: &str =
+    "test.fixture.decl_facts_reflection.ambiguous_shared_a.SharedBareArm";
 const WITNESS_SUPPORT_REL: &str = "dag/test/claim/decl_facts_reflection_witness_support.dag";
 
 fn read_fixture(rel: &str) -> String {
@@ -145,7 +147,7 @@ fn constructor_parent_qualified_name(ctx: &InterpContext, projection: &Value) ->
 }
 
 #[test]
-fn eval_decl_facts_ambiguous_specimen_value_identity_is_ambiguous() {
+fn eval_decl_facts_explicit_import_resolves_unique_variant_projection() {
     use v1_compiler::coproduct_reflection::eval_decl_facts;
 
     let sources = resolve_imports_transitively_with_source_roots(
@@ -172,27 +174,32 @@ fn eval_decl_facts_ambiguous_specimen_value_identity_is_ambiguous() {
                         Value::Str(s) => Some(s.clone()),
                         _ => None,
                     })?;
-                    if qn != AMBIGUOUS_QN {
+                    if qn != AMBIGUOUS_ARM_SPECIMEN_QN {
                         return None;
                     }
                     ctx.field(fields, "node")
                 })
                 .expect("ambiguous specimen row");
-            let projection =
-                marshal_data_initializer_projection(&ctx, AMBIGUOUS_QN).expect("direct marshal");
+            let projection = marshal_data_initializer_projection(&ctx, AMBIGUOUS_ARM_SPECIMEN_QN)
+                .expect("direct marshal");
             let value_identity = edge_target_named(&ctx, &projection, "value_identity")
                 .expect("value_identity edge");
             assert_eq!(
                 projection_kind_lexeme(&ctx, &value_identity),
-                Some("VariantValueResolutionAmbiguousProjection".to_string()),
+                Some("ResolvedVariantValueProjection".to_string()),
                 "direct marshal value_identity kind"
             );
             let fact_value_identity =
                 edge_target_named(&ctx, node, "value_identity").expect("decl_facts value_identity");
             assert_eq!(
                 projection_kind_lexeme(&ctx, &fact_value_identity),
-                Some("VariantValueResolutionAmbiguousProjection".to_string()),
-                "decl_facts value_identity must be ambiguous projection"
+                Some("ResolvedVariantValueProjection".to_string()),
+                "decl_facts value_identity must resolve to explicit import"
+            );
+            assert_eq!(
+                constructor_parent_qualified_name(&ctx, &projection),
+                Some(AMBIGUOUS_SHARED_A_SHARED_BARE_ARM_QN.to_string()),
+                "constructor parent must be module A SharedBareArm"
             );
             assert_eq!(
                 projection_kind_lexeme(&ctx, node),
@@ -205,14 +212,14 @@ fn eval_decl_facts_ambiguous_specimen_value_identity_is_ambiguous() {
 }
 
 #[test]
-fn ambiguous_shared_arm_fixture_marshals_ambiguous_value_projection() {
+fn explicit_import_resolves_unique_variant_projection() {
     let sources = resolve_imports_transitively_with_source_roots(
         WITNESS_SUPPORT_REL,
         &read_fixture(WITNESS_SUPPORT_REL),
         &v2_layer_roots(),
     );
     let ctx = ctx_from_sources(sources);
-    let projection = marshal_data_initializer_projection(&ctx, AMBIGUOUS_QN)
+    let projection = marshal_data_initializer_projection(&ctx, AMBIGUOUS_ARM_SPECIMEN_QN)
         .expect("ambiguous specimen must marshal without error");
     assert_eq!(
         projection_kind_lexeme(&ctx, &projection),
@@ -223,8 +230,13 @@ fn ambiguous_shared_arm_fixture_marshals_ambiguous_value_projection() {
         .expect("nullary projection must carry value_identity");
     assert_eq!(
         projection_kind_lexeme(&ctx, &value_identity),
-        Some("VariantValueResolutionAmbiguousProjection".to_string()),
-        "value_identity must be ambiguous when duplicate SharedBareArm exists across modules"
+        Some("ResolvedVariantValueProjection".to_string()),
+        "explicit SharedBareArm import from ambiguous_shared_a must resolve uniquely"
+    );
+    assert_eq!(
+        constructor_parent_qualified_name(&ctx, &projection),
+        Some(AMBIGUOUS_SHARED_A_SHARED_BARE_ARM_QN.to_string()),
+        "constructor parent must be the explicitly imported SharedBareArm from module A"
     );
 }
 
