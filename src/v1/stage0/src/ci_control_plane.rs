@@ -603,11 +603,7 @@ impl CiControlPlane {
         record.updated_at_unix = now_unix();
         self.write_run(&record)?;
         self.update_index_row(run_id, &record.queue_state, Some(conclusion))?;
-        self.move_queue_file(
-            run_id,
-            "claimed",
-            if failed { "completed" } else { "completed" },
-        )?;
+        self.move_queue_file(run_id, "claimed", "completed")?;
         self.write_run_summary_receipt(run_id, &record)?;
 
         if self
@@ -1027,38 +1023,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn queue_lease_expiry_logic() {
-        let lease = QueueLease {
-            holder: "host".to_string(),
-            expires_at: UnixWholeSeconds { seconds: 100 },
-        };
-        assert!(100 >= lease.expires_at.seconds);
-        assert!(lease.expires_at.seconds <= 100);
-        assert!(lease.holder == "host");
-    }
-
-    #[test]
-    fn publication_pending_is_not_completed_kind() {
-        let pending = PublicationState {
-            kind: "pending".to_string(),
-            check_run_id: None,
-            local_conclusion: Some("success".to_string()),
-            details_url: Some("http://localhost/ci/run/x".to_string()),
-            cause: Some("api down".to_string()),
-        };
-        assert_ne!(pending.kind, "completed");
-    }
-
-    #[test]
     fn new_run_id_includes_sha_prefix() {
         let id = new_run_id("deadbeef01234567");
         assert!(id.contains("deadbeef"));
-    }
-
-    #[test]
-    fn lease_reclaim_when_expired() {
-        assert!(100 >= 100);
-        assert!(101 >= 100);
-        assert!(99 < 100);
     }
 }
