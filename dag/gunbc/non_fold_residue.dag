@@ -875,7 +875,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     reason: nfr_reason_release_identity_absent_split,
     trigger: TriggerProse { text: nfr_dissolve_release_identity_absent_split },
   },
-  },
 ]
 
 fn non_fold_residue_frontier_units() -> List<String> {
