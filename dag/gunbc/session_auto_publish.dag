@@ -1,0 +1,118 @@
+module gunbc.session_auto_publish
+
+import std.types { CommitSha, Timestamp, Bool }
+import v2.std.optional { Absent, Present }
+
+data session_auto_publish_note: String = "AUTO-PUBLISH slice 0: two publish axes that the session-dashboard schema conflated under pr_publish_head and pr_publish_notified_head. LocalCheckpoint is the branch-sync signal — updated after every successful git push, including the silent auto-push poll. RemotePublication is the worker-notification baseline — stamped only on user-invoked publish or after a drift reminder is delivered. Drift reminders diff RemotePublication.notified_head..HEAD; falling back to LocalCheckpoint when the two diverge sweeps unrelated mainline churn into the worker notice (DASHBOARD_OPS_HYGIENE_BRIEF section 6.1). This module is pure adjudication over values a caller already holds; the shell transport lands in a later slice."
+
+type LocalCheckpoint
+  = LocalCheckpointAbsent
+  | LocalCheckpointAt { head: CommitSha }
+
+type RemotePublication
+  = RemotePublicationAbsent
+  | RemotePublicationStamped { notified_head: CommitSha, notified_at: Timestamp }
+
+type SessionPublishState {
+  local: LocalCheckpoint
+  remote: RemotePublication
+}
+
+fn empty_session_publish_state() -> SessionPublishState {
+  SessionPublishState {
+    local: LocalCheckpointAbsent,
+    remote: RemotePublicationAbsent,
+  }
+}
+
+fn after_poll_push(state: SessionPublishState, pushed_head: CommitSha) -> SessionPublishState {
+  SessionPublishState {
+    local: LocalCheckpointAt { head: pushed_head },
+    remote: state.remote,
+  }
+}
+
+fn after_user_intent_publish(
+  state: SessionPublishState,
+  published_head: CommitSha,
+  at: Timestamp,
+) -> SessionPublishState {
+  SessionPublishState {
+    local: LocalCheckpointAt { head: published_head },
+    remote: RemotePublicationStamped {
+      notified_head: published_head,
+      notified_at: at,
+    },
+  }
+}
+
+fn after_drift_reminder_delivered(
+  state: SessionPublishState,
+  current_head: CommitSha,
+  at: Timestamp,
+) -> SessionPublishState {
+  SessionPublishState {
+    local: state.local,
+    remote: RemotePublicationStamped {
+      notified_head: current_head,
+      notified_at: at,
+    },
+  }
+}
+
+fn local_checkpoint_head(state: SessionPublishState) -> CommitSha? {
+  match state.local {
+    LocalCheckpointAbsent => none
+    LocalCheckpointAt { head: head } => Present { value: head }
+  }
+}
+
+fn remote_publication_head(state: SessionPublishState) -> CommitSha? {
+  match state.remote {
+    RemotePublicationAbsent => none
+    RemotePublicationStamped { notified_head: head, notified_at: _ } => Present { value: head }
+  }
+}
+
+data conflated_checkpoint_note: String = "THE OLD FALLBACK pr_publish_head || pr_publish_notified_head, kept only as a discriminating RED in the harness. When the poll has advanced LocalCheckpoint past the last RemotePublication stamp, this returns the local head and drift would start from the wrong baseline. Production must call remote_publication_baseline or resolve_drift_diff_start, never this."
+
+fn conflated_checkpoint_baseline(state: SessionPublishState) -> CommitSha? {
+  match local_checkpoint_head(state: state) {
+    Present { value: local } => Present { value: local }
+    Absent =>
+      match remote_publication_head(state: state) {
+        Present { value: remote } => Present { value: remote }
+        Absent => Absent
+      }
+  }
+}
+
+fn remote_publication_baseline(state: SessionPublishState) -> CommitSha? {
+  remote_publication_head(state: state)
+}
+
+fn resolve_drift_diff_start(
+  notified_baseline: CommitSha,
+  current_head: CommitSha,
+  merge_base_with_origin: CommitSha?,
+  baseline_is_ancestor_of_merge_base: Bool,
+) -> CommitSha {
+  match merge_base_with_origin {
+    Absent => notified_baseline
+    Present { value: merge_base } =>
+      if merge_base == notified_baseline {
+        notified_baseline
+      } else if baseline_is_ancestor_of_merge_base {
+        merge_base
+      } else {
+        notified_baseline
+      }
+  }
+}
+
+fn drift_poll_may_run(state: SessionPublishState) -> Bool {
+  match state.remote {
+    RemotePublicationAbsent => false
+    RemotePublicationStamped { notified_head: _, notified_at: _ } => true
+  }
+}

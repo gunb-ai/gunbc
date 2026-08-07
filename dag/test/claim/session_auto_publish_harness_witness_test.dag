@@ -1,0 +1,177 @@
+module test.claim.session_auto_publish_harness_witness
+
+import std.types { Bool, CommitSha, Timestamp }
+import v2.std.optional { Absent, Present }
+import gunbc.session_auto_publish {
+  SessionPublishState,
+  LocalCheckpointAbsent,
+  LocalCheckpointAt,
+  RemotePublicationAbsent,
+  RemotePublicationStamped,
+  empty_session_publish_state,
+  after_poll_push,
+  after_user_intent_publish,
+  after_drift_reminder_delivered,
+  local_checkpoint_head,
+  remote_publication_head,
+  remote_publication_baseline,
+  conflated_checkpoint_baseline,
+  resolve_drift_diff_start,
+  drift_poll_may_run,
+}
+
+data witness_scope_note: String = "AUTO-PUBLISH-0 harness: the publish state machine is pure and total over constructed values, so every arm is reachable with no git, no gh, and no sqlite. What is claimed is the SEPARATION of LocalCheckpoint from RemotePublication — poll push advances only the local axis; user intent stamps both; drift reminders read and advance only the remote axis. What is NOT claimed: nothing here executes publishSessionWorktree. A regression that re-merges the axes in production shell would keep these green until the shell slice lands."
+
+data head_a: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data head_b: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data head_c: CommitSha = "cccccccccccccccccccccccccccccccccccccccc"
+data head_main: CommitSha = "dddddddddddddddddddddddddddddddddddddddd"
+data stamp_one: Timestamp = "2026-08-07T00:00:00.000Z"
+data stamp_two: Timestamp = "2026-08-07T00:00:01.000Z"
+
+test fn poll_push_advances_local_checkpoint_only() -> Bool {
+  let after_manual = after_user_intent_publish(
+    state: empty_session_publish_state(),
+    published_head: head_a,
+    at: stamp_one,
+  )
+  let after_poll = after_poll_push(state: after_manual, pushed_head: head_b)
+  match local_checkpoint_head(state: after_poll) {
+    Present { value: head } => head == head_b
+    Absent => false
+  }
+    && match remote_publication_head(state: after_poll) {
+      Present { value: head } => head == head_a
+      Absent => false
+    }
+    && match after_poll.remote {
+      RemotePublicationStamped { notified_head: _, notified_at: at } => at == stamp_one
+      RemotePublicationAbsent => false
+    }
+}
+
+test fn user_intent_stamps_both_axes() -> Bool {
+  let state = after_user_intent_publish(
+    state: after_poll_push(
+      state: empty_session_publish_state(),
+      pushed_head: head_a,
+    ),
+    published_head: head_b,
+    at: stamp_two,
+  )
+  match local_checkpoint_head(state: state) {
+    Present { value: head } => head == head_b
+    Absent => false
+  }
+    && match remote_publication_head(state: state) {
+      Present { value: head } => head == head_b
+      Absent => false
+    }
+    && match state.remote {
+      RemotePublicationStamped { notified_head: _, notified_at: at } => at == stamp_two
+      RemotePublicationAbsent => false
+    }
+}
+
+test fn drift_reminder_advances_remote_publication_only() -> Bool {
+  let state = after_drift_reminder_delivered(
+    state: after_poll_push(
+      state: after_user_intent_publish(
+        state: empty_session_publish_state(),
+        published_head: head_a,
+        at: stamp_one,
+      ),
+      pushed_head: head_b,
+    ),
+    current_head: head_c,
+    at: stamp_two,
+  )
+  match local_checkpoint_head(state: state) {
+    Present { value: head } => head == head_b
+    Absent => false
+  }
+    && match remote_publication_head(state: state) {
+      Present { value: head } => head == head_c
+      Absent => false
+    }
+}
+
+test fn drift_poll_requires_remote_publication() -> Bool {
+  !drift_poll_may_run(state: empty_session_publish_state())
+    && drift_poll_may_run(
+      state: after_user_intent_publish(
+        state: empty_session_publish_state(),
+        published_head: head_a,
+        at: stamp_one,
+      ),
+    )
+    && !drift_poll_may_run(
+      state: after_poll_push(
+        state: empty_session_publish_state(),
+        pushed_head: head_a,
+      ),
+    )
+}
+
+data conflation_red_note: String = "When the poll advances LocalCheckpoint past the last RemotePublication stamp, the old pr_publish_head || pr_publish_notified_head fallback returns the local head. Drift must use remote_publication_baseline instead, or unrelated mainline commits enter the worker notice."
+
+test fn conflated_baseline_differs_from_remote_when_poll_ran() -> Bool {
+  let state = after_poll_push(
+    state: after_user_intent_publish(
+      state: empty_session_publish_state(),
+      published_head: head_a,
+      at: stamp_one,
+    ),
+    pushed_head: head_b,
+  )
+  match remote_publication_baseline(state: state) {
+    Present { value: remote } =>
+      match conflated_checkpoint_baseline(state: state) {
+        Present { value: conflated } =>
+          remote == head_a && conflated == head_b && remote != conflated
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn drift_diff_start_uses_remote_not_conflated_baseline() -> Bool {
+  let notified = head_a
+  resolve_drift_diff_start(
+    notified_baseline: notified,
+    current_head: head_c,
+    merge_base_with_origin: Present { value: head_main },
+    baseline_is_ancestor_of_merge_base: true,
+  ) == head_main
+    && resolve_drift_diff_start(
+      notified_baseline: notified,
+      current_head: head_c,
+      merge_base_with_origin: Absent,
+      baseline_is_ancestor_of_merge_base: false,
+    ) == notified
+}
+
+test fn red_conflated_baseline_would_start_drift_at_local_head() -> Bool {
+  let state = after_poll_push(
+    state: after_user_intent_publish(
+      state: empty_session_publish_state(),
+      published_head: head_a,
+      at: stamp_one,
+    ),
+    pushed_head: head_b,
+  )
+  match remote_publication_baseline(state: state) {
+    Present { value: remote } =>
+      match conflated_checkpoint_baseline(state: state) {
+        Present { value: conflated } =>
+          resolve_drift_diff_start(
+            notified_baseline: remote,
+            current_head: head_c,
+            merge_base_with_origin: Absent,
+            baseline_is_ancestor_of_merge_base: false,
+          ) != conflated
+        Absent => false
+      }
+    Absent => false
+  }
+}
