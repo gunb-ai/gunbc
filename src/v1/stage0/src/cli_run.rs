@@ -7765,6 +7765,81 @@ pub fn resolve_entry_graph_shared(
     Ok(resolved)
 }
 
+/// THE LIVE-READ SELECTION MANIFEST, and why it carries a subject rather than a timestamp.
+///
+/// G2 classification is expensive: it needs fn-arrow declaration facts reflected out of a
+/// whole-tree resolved context, which is why the design pairs G2 path-intersection with carrier
+/// memoization rather than treating the memo as an optimisation. But a memo whose validity is
+/// implicit is a cache with no invalidation story — it serves whatever it holds and cannot say
+/// which tree the answer came from.
+///
+/// So the manifest names its subject. `subject_id` is the content identity of the source
+/// population the classifications were derived from; a lookup whose current index does not equal
+/// that subject REFUSES rather than serving a classification built against a different tree. That
+/// is the same discipline the freeze-gate baseline needed this morning: evidence that cannot name
+/// its subject cannot be checked against it, and a stale answer that looks fresh is worse than no
+/// answer at all — here it would license a skip.
+///
+/// Rows are DECLARATION grain, not entry grain. Coarsening to one verdict per entry would make a
+/// single live-read witness render every sibling in its file unskippable, which is the same
+/// precision loss the G1 union caused one layer down.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveReadSelectionManifest {
+    pub subject_id: String,
+    pub rows: std::collections::HashMap<String, LiveReadSelectionRow>,
+}
+
+/// One declaration's classification, mirroring `v2.std.live_read.LiveReadSelectionProjection`
+/// arm for arm. `Refused` is not an error channel — it is the state that forbids a skip, so it
+/// must survive into the seed rather than being flattened into a bool.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LiveReadSelectionRow {
+    Classified {
+        runtime_read: bool,
+        carriers: Vec<String>,
+    },
+    Refused {
+        cause: String,
+    },
+}
+
+impl LiveReadSelectionManifest {
+    /// Look up one enrolled declaration. A subject mismatch is a typed refusal, never a miss that
+    /// silently falls back to recomputation against the wrong tree — and never a `None` the caller
+    /// could read as "nothing known, proceed".
+    pub fn row_for(
+        &self,
+        current_subject: &str,
+        entry_path: &str,
+        fn_name: &str,
+    ) -> Result<&LiveReadSelectionRow, String> {
+        if self.subject_id != current_subject {
+            return Err(format!(
+                "LIVE-READ MANIFEST REFUSAL cause=SubjectMismatch manifest_subject={} \
+                 current_subject={current_subject} — the memo was built against a different source \
+                 population, so its classifications cannot be attributed to this tree. Serving them \
+                 would license a skip derived from facts about another commit.",
+                self.subject_id
+            ));
+        }
+        let key = live_read_manifest_key(entry_path, fn_name);
+        self.rows.get(&key).ok_or_else(|| {
+            format!(
+                "LIVE-READ MANIFEST REFUSAL cause=DeclarationAbsent key={key} — the manifest claims \
+                 completeness for this subject but carries no row for an enrolled declaration. An \
+                 absent row is not an absent runtime read; it is a gap in the classification, and \
+                 the entry must not fast-skip on it."
+            )
+        })
+    }
+}
+
+/// Declaration-grain key. Entry path plus function name, which is the identity the floor already
+/// enrolls rows under.
+pub fn live_read_manifest_key(entry_path: &str, fn_name: &str) -> String {
+    format!("{}::{}", workspace_relative_repo_path(entry_path), fn_name)
+}
+
 pub struct MultiEntryIndex {
     source_files: ModuleSourceIndex,
     module_graph_facts: ModuleGraphFactsLive,
