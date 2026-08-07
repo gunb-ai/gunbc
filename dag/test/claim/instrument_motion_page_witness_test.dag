@@ -24,6 +24,7 @@ import gunbc.design.instrument_bob {
   frames_cross_rest, frames_terminate_exactly_once, bob_phase_key,
 }
 import extdeps.http.server { ServeHttpRequest, ServeHttpResponse }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import std.types { String, Int, Bool, List, HttpMethod, GET }
 
 data witness_subject_note: String = "THE MOTION LAB'S VERTICAL SLICE, exercised through the route rather than through the page function, because the thing that can break in production is the composition — a handler arm that renders the wrong page, an asset route serving the wrong body, a page whose attributes and whose client program have drifted apart. Calling instrument_motion_page() directly would prove the fragment and leave every seam above it untested.
@@ -39,6 +40,7 @@ fn motion_page_body() -> String {
     handler: InstrumentMotionPageHandler,
     params: [],
     request: fixture_request(method: GET, path: instrument_motion_page_path),
+    release_revision: deploy_witness_release_revision,
   ).body
 }
 
@@ -47,6 +49,7 @@ fn motion_asset_body() -> String {
     handler: InstrumentMotionAssetHandler,
     params: [],
     request: fixture_request(method: GET, path: instrument_motion_asset_path),
+    release_revision: deploy_witness_release_revision,
   ).body
 }
 
@@ -55,6 +58,7 @@ test fn witness_motion_page_renders_through_its_route() -> Bool {
     handler: InstrumentMotionPageHandler,
     params: [],
     request: fixture_request(method: GET, path: instrument_motion_page_path),
+    release_revision: deploy_witness_release_revision,
   )
   let html = r.body
   r.status == 200
