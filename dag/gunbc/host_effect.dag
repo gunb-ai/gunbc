@@ -22,6 +22,7 @@ import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinary
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
 import gunbc.runner_lifecycle { RunnerReplacementCause }
 import gunbc.auth.github_apps { gunbai_ci_declared }
+import gunbc.live_deploy.candidate { CandidateRelease }
 import std.effects {
   EffectShape,
   KeySource,
@@ -55,7 +56,7 @@ type HostEffect =
   | Srv3BootOnceReadBackSleep
   | Srv3ReceiptEmit { lines: List<String> }
   | HostIdentityShortHostnameRead
-  | LiveDeployApply { spec: DeploymentSpec }
+  | LiveDeployApply { spec: DeploymentSpec, candidate: CandidateRelease }
   | LiveDeployRetract { spec: DeploymentSpec }
   | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
   | LiveDeployDigestReadback { port: Int }

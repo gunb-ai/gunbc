@@ -1,6 +1,6 @@
 module gunbc.roadmap_static_site
 
-import std.types { String, Bool, List, NonEmptyStr, HttpMethod, GET, Port }
+import std.types { String, Bool, List, CommitSha, NonEmptyStr, HttpMethod, GET, Port }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -26,6 +26,7 @@ import gunbc.roadmap_site_surface_render {
   site_artifact_digest,
   served_page_body,
   healthz_body_from_surface_artifacts,
+  healthz_body_with_release_identity,
 }
 import gunbc.roadmap_authority { expected_roadmap_md, authored_merged_prs, roadmap_authority }
 import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
@@ -158,6 +159,21 @@ fn served_surface_digest_kv(url_path: NonEmptyStr, body: String) -> JsonKeyValue
 fn roadmap_site_healthz_body() -> String {
   materialize_live_roadmap_site_surface_bundle().healthz_body
 }
+
+fn roadmap_site_healthz_body_for_release(release_revision: CommitSha) -> String {
+  let bundle = materialize_live_roadmap_site_surface_bundle()
+  healthz_body_with_release_identity(
+    roadmap: bundle.roadmap_md,
+    dispatch: bundle.dispatch_json,
+    daily: bundle.daily_html,
+    full: bundle.full_html,
+    dispatch_js: bundle.dispatch_js,
+    release_revision: release_revision,
+    surface_bundle_identity: bundle.bundle_identity,
+  )
+}
+
+data roadmap_site_healthz_body_for_release_note: String = "THE SERVED /healthz DOCUMENT, AND THE ONLY ONE A CLIENT EVER SEES. It is the bundle's surface members plus the two launch-identity members, assembled from the SAME materialized bundle the route renders from — so the digests published here are digests of the bodies this process actually serves, not of a second rendering that could differ. roadmap_site_healthz_body (surface only) is retained as the deploy-side EXPECTED projection: the deploying tree computes it to answer 'what should the surface be', while the running process answers 'what is the surface, and which release am I'. Those are two different questions asked of two different parties, which is why both functions exist and why neither is a copy of the other."
 
 fn roadmap_site_healthz_route() -> ServedStaticRoute {
   ServedStaticRoute {

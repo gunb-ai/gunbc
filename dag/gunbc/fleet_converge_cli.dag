@@ -71,7 +71,7 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     Srv3BootOnceReadBackSleep => fallback
     Srv3ReceiptEmit { lines: _ } => fallback
     HostIdentityShortHostnameRead => fallback
-    LiveDeployApply { spec: _ } => fallback
+    LiveDeployApply { spec: _, candidate: _ } => fallback
     LiveDeployRetract { spec: _ } => fallback
     LiveDeployEnsureDependency { dep: _ } => fallback
     LiveDeployDigestReadback { port: _ } => fallback

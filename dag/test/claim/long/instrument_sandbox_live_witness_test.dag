@@ -6,6 +6,7 @@ import gunbc.roadmap_serve {
   InstrumentSandboxPageHandler, roadmap_serve_invoke_for_instance,
 }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import gunbc.roadmap_instrument_sandbox {
   instrument_sandbox_page, instrument_css, live_program_view_result,
   LiveProgramView, LiveViewDerived, LiveViewRefused,
@@ -31,6 +32,7 @@ fn served() -> ServeHttpResponse {
     handler: InstrumentSandboxPageHandler,
     params: [],
     request: fixture_request(path: "/sandbox/instrument"),
+    release_revision: deploy_witness_release_revision,
   )
 }
 

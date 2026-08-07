@@ -15272,15 +15272,48 @@ pub fn handle_run_with_options(
 /// seam). Sequential by design: one request at a time serializes the
 /// belt's observe-before-spawn window by construction, so two concurrent
 /// dispatch clicks cannot both observe the session absent.
+/// Exactly 40 lowercase hex digits — git's Sha1 object-name width.
+///
+/// The seed realization of `gunbc.running_release_identity`
+/// `release_revision_text_valid`. Both exist deliberately and neither is the
+/// other's nickname: this one refuses to START a process whose launch identity
+/// is not a revision, before the listener binds, so a misconfigured unit fails
+/// loudly at boot instead of publishing a malformed identity that every later
+/// deploy then has to refuse; the `.dag` one refuses to TRUST wire bytes read
+/// back from some other process. Same rule, two boundaries, and the boundary
+/// each guards is the reason it cannot be deleted in favour of the other.
+fn release_revision_text_valid(text: &str) -> bool {
+    text.len() == 40
+        && text
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+}
+
 pub fn handle_serve(
     source_roots: Vec<String>,
     entry_file: String,
     function: String,
     host: String,
     port: u16,
+    release_revision: String,
 ) {
     if source_roots.is_empty() {
         eprintln!("error: provide at least one --source-root");
+        std::process::exit(1);
+    }
+    // Bound BEFORE the graph is compiled and before the listener binds: a
+    // process that cannot say which release it is must never reach a state
+    // where something can route traffic to it and read its identity back.
+    if !release_revision_text_valid(&release_revision) {
+        eprintln!(
+            "error: --release-revision must be exactly 40 lowercase hex digits \
+             (git object name); got {:?} ({} chars). This is the identity this \
+             process publishes through /healthz and that deployment ordering \
+             reads back — a branch name, an abbreviated sha, or an empty value \
+             is not a revision.",
+            release_revision,
+            release_revision.chars().count()
+        );
         std::process::exit(1);
     }
     let index = process_shared_index(&source_roots);
@@ -15330,8 +15363,8 @@ pub fn handle_serve(
         }
     };
     eprintln!(
-        "gunbc serve listening on {}:{} -> {}()",
-        host, port, function
+        "gunbc serve listening on {}:{} -> {}() release_revision={}",
+        host, port, function, release_revision
     );
     v1_interpreter::with_active_context(&ctx, || {
         for stream in listener.incoming() {
@@ -15357,6 +15390,13 @@ pub fn handle_serve(
                         ),
                         (Some("path".to_string()), v1_interpreter::Value::Str(path)),
                         (Some("body".to_string()), v1_interpreter::Value::Str(body)),
+                        // Captured once above and cloned per request: the value
+                        // is fixed for the process lifetime, so no request can
+                        // observe a different release than any other request.
+                        (
+                            Some("release_revision".to_string()),
+                            v1_interpreter::Value::Str(release_revision.clone()),
+                        ),
                     ];
                     match v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true) {
                         Err(e) => serve_write_response(
