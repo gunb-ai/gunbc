@@ -377,6 +377,12 @@ test fn g2_complete_facts_reachable_home_without_carrier_call_is_local() -> Bool
   )
 }
 
+test fn probe_locally_constructed_classified_matches() -> Bool {
+  projection_is_refused(
+    p: LiveReadSelectionClassified { classification: LocalRead }
+  ) == false
+}
+
 test fn probe_locally_constructed_refused_matches() -> Bool {
   projection_is_refused(p: LiveReadSelectionRefused { cause: "locally constructed" })
 }
