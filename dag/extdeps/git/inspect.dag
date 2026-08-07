@@ -13,6 +13,16 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data git_inspect_service_note: String = "Read-only repository-root, revision, and tree inspection operations are de-fused from the broad git.Core service so consumers pay only the upstream facts they inspect. Toplevel, HeadCommit, and ShowTree move here with their existing shapes; MergeBase and ListTreePathsAtRevision extend this same inspection authority for revision-addressed Rust-source observation. No second Git inspection surface remains in extdeps.git."
 
+// WorkingTreeStatus pins every flag Git's own manual says a script must pin. `--porcelain=v1` because the
+// manual states plain `--porcelain` may change and that a version should be given for scripting, so the
+// version is named rather than implied. `-z` because paths may contain spaces, quotes, or newlines and the
+// non-NUL form C-quotes them, which would make every consumer reimplement Git's quoting rules to recover a
+// filename. `--untracked-files=all` because the default `normal` collapses an untracked directory to the
+// directory name alone, and a consumer asking "does this tree contain files HEAD does not name" needs the
+// files, not a folded ancestor.
+//
+// The mock answers a CLEAN tree because the runner contract hands each job a fresh checkout; a mocked
+// observation must report the state the contract guarantees rather than fabricate a dirty one.
 service git.Inspect {
   operation Toplevel {
     input {}
@@ -42,12 +52,6 @@ service git.Inspect {
     }
   }
 
-  // `--porcelain=v1` is the documented stable format — Git's own manual states plain `--porcelain` may
-  // change and that a version should be given for scripting, so the version is named rather than implied.
-  // `-z` because paths may contain spaces, quotes, or newlines: the non-NUL form C-quotes such paths, which
-  // would make a consumer parse Git's quoting rules to recover a filename. `--untracked-files=all` because
-  // the default `normal` collapses an untracked directory to the directory name alone, and a consumer
-  // asking "does the tree contain files HEAD does not name" needs the files, not a folded ancestor.
   operation WorkingTreeStatus {
     input {}
     output {
