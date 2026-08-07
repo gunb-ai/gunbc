@@ -73,6 +73,7 @@ type ClaudeCredentialStanding
 type ClaudeProviderEnrollmentAction
   = ConnectClaude
   | ReconnectClaude { cause: NonEmptyStr }
+  | EnrollmentActionNotRequired
 
 type ClaudeEnrollmentServiceIdentity {
   label: NonEmptyStr
@@ -266,7 +267,7 @@ fn claude_enrollment_action_for_credential_standing(
   standing: ClaudeCredentialStanding,
 ) -> ClaudeProviderEnrollmentAction {
   match standing {
-    ClaudeCredentialUsable => ConnectClaude
+    ClaudeCredentialUsable => EnrollmentActionNotRequired
     ClaudeCredentialExpiringSoon { detail } =>
       ReconnectClaude { cause: detail }
     ClaudeCredentialRejected { reason } =>
