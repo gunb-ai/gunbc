@@ -156,9 +156,11 @@ fn func_decl_owner_module(func_env: ResolvedFuncEnv, name: String) -> String? {
 // the index miss as unrecoverable turns a wrong guess into a hard refusal: measured on the
 // whole tree that fabricated 11 refusals over three ordinary data declarations
 // (srv3_nbd_proxy_local_port, gnu_bash_subject_ref, extdeps_external_authority_anchor), none of
-// them constructors, one of them a homonym declared in two modules. So a name no locating
-// authority claims is NotAnAdmissionBearingConstructor, and the unavailable arm is reserved for
-// the genuinely anomalous case -- a located declaration the index cannot produce.
+// them constructors, and the last of them a per-module anchor convention declared under that one
+// name in 459 modules across dag/extdeps -- so a guessed owner picks one of 459 homes and the
+// index miss that follows says nothing about admission. So a name no locating authority claims is
+// NotAdmissionBearingReference, and the unavailable arm is reserved for the genuinely anomalous
+// case -- a located declaration the index cannot produce.
 // THE VALUE NODE IS NOT AN ADMISSION FALLBACK. An earlier revision kept it as one and argued
 // the change could only add refusals; that is not sufficient, because a fabricated refusal is
 // a wrong answer exactly as a fabricated success is (DESIGN section 5), and keeping it would
